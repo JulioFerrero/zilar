@@ -1,7 +1,7 @@
 ---
 id: T-0174
 title: The XMPP connection survives idle networks and brief outages (keepalive, no fatal token blips)
-status: review
+status: merged
 milestone: M5
 branch: task/T-0174-connection-resilience
 model: meta/muse-spark-1.3-contributor
@@ -138,3 +138,8 @@ Verified by reading the full diff and the pre-review: scope is clean; the transi
 1. **`runBoot` is generation-blind** (`apps/mobile/src/store/real-store.ts` ~2906). A boot in flight for an older generation is awaited by a newer `runBoot(gen)`; the stale boot bails at its `gen !== generation` checks and creates no core, so the store sits with `core === undefined` and `chatsLoad: 'loading'` until the next resume. Store the generation next to the promise: if the cached boot belongs to a different generation, start a fresh boot for the new one (the stale one still ends by itself). Tests (mutation-check each): pull to refresh (`reloadChats`) during a slow first boot ends with a core and `loaded`; stop then start during a boot ends with a core; a resume during a boot of the SAME generation still shares one boot (keep your existing test). Also make `reconnect()` start a new attempt if the boot it awaited failed to produce a core, instead of silently dropping the resume.
 2. **First retry waits 2 s on a cold start** (`packages/xmpp-core/src/client.ts` ~546): skip arming the delay when `reconnectAttempt === 0 && !hasBeenOnline` so the first retry is 1 s; add a test.
 3. *(No change needed.)* The duplicate ping result from the library plus the core is accepted.
+
+### Round 1 result
+**Verdict:** Approved after one lead fix. Finding 1 (generation-aware `runBoot`, a resume retries when the awaited boot made no core) is fixed with three mutation-checked tests. Finding 2 as first fixed was wrong: `reconnectAttempt > 0 || hasBeenOnline` never became true for a client that never went online, so its backoff stayed at 1 s for ever (a phone starting offline would have hammered the token route, 120 per 10 minutes). The lead replaced it with a `coldAttemptSeen` flag (reset on connect, disconnect and failure): the first attempt keeps the library's 1 s, each retry arms 2, 4, 8 s and so on; the test now walks 2, 4 and 8 s and fails against the previous code. After the change: format, lint, typecheck pass; xmpp-core 179 passed (4 integration skipped), mobile `real-store` 158, web `src/store` 159, deploy ping test 4/4.
+
+Release note: `deploy/ejabberd/ejabberd.yml` changed (server pings every 60 s), so it takes effect with the next ejabberd image; the client keepalive works without it.

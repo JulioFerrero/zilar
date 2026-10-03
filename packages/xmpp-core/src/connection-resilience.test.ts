@@ -308,7 +308,7 @@ describe('connection resilience: backoff', () => {
     expect(fake.reconnect.delay).toBe(1000);
   });
 
-  it('a cold start that never went online retries first after 1 s', async () => {
+  it('a cold start that never went online still walks the backoff schedule', async () => {
     const fake = createFakeClient();
     const core = createCore(
       tokenOptions(async () => ({ jid: 'bob@zilar.localhost', token: 'tok' })),
@@ -319,14 +319,18 @@ describe('connection resilience: backoff', () => {
     // The initial attempt leaves the library's 1 s wait untouched.
     expect(fake.reconnect.delay).toBe(1000);
 
-    // The attempt fails while never online: the first retry still waits 1 s.
-    fake.emitStatus('disconnect');
-    fake.emitStatus('connecting');
-    expect(fake.reconnect.delay).toBe(1000);
+    // Each retry arms the wait after it: 2 s, 4 s, 8 s, never stuck at 1 s
+    // (a phone that starts offline must not hammer the token route).
+    for (const expected of [2000, 4000, 8000]) {
+      fake.emitStatus('disconnect');
+      fake.emitStatus('connecting');
+      expect(fake.reconnect.delay).toBe(expected);
+    }
 
     fake.emitOnline('bob@zilar.localhost');
     await connecting;
     expect(core.status()).toBe('online');
+    expect(fake.reconnect.delay).toBe(1000);
   });
 });
 

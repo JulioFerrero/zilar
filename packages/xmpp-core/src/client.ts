@@ -214,6 +214,9 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
   // Count of reconnect attempts since the last online; drives the
   // `reconnect.delay` the library waits before each retry.
   let reconnectAttempt = 0;
+  // True once a client that never went online has started its first attempt:
+  // later `connecting` events are retries and walk the backoff schedule.
+  let coldAttemptSeen = false;
   // The keepalive ping id while its reply is pending, if any.
   let keepalivePingId: string | undefined;
   let keepaliveIdleTimer: ReturnType<typeof setTimeout> | undefined;
@@ -379,6 +382,7 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
     desiredOnline = false;
     hasBeenOnline = false;
     reconnectAttempt = 0;
+    coldAttemptSeen = false;
     stopKeepalive();
     setStatus('offline');
     meJid = undefined;
@@ -545,9 +549,12 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
       // backs off 1 s, 2 s, 4 s, 8 s, 15 s, then 30 s. A cold start that
       // never went online keeps the 1 s wait the library starts with, so
       // its first retry is 1 s too.
-      if (raw === 'connecting' && (reconnectAttempt > 0 || hasBeenOnline)) {
-        reconnectAttempt += 1;
-        setReconnectDelay(reconnectDelayFor(reconnectAttempt));
+      if (raw === 'connecting') {
+        if (hasBeenOnline || coldAttemptSeen) {
+          reconnectAttempt += 1;
+          setReconnectDelay(reconnectDelayFor(reconnectAttempt));
+        }
+        coldAttemptSeen = true;
       }
       applyRawStatus(raw);
     });
@@ -763,6 +770,7 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
 
     desiredOnline = true;
     authFailed = false;
+    coldAttemptSeen = false;
     const current = ensureClient();
     setStatus(hasBeenOnline ? 'reconnecting' : 'connecting');
 
@@ -784,6 +792,7 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
     desiredOnline = false;
     hasBeenOnline = false;
     reconnectAttempt = 0;
+    coldAttemptSeen = false;
     transientTokenError = undefined;
     stopKeepalive();
     setStatus('offline');
