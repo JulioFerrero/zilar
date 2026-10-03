@@ -1,7 +1,7 @@
 ---
 id: T-0197
 title: Remove the old product name from the emulator smoke script (main's legacy-name test is red)
-status: review
+status: merged
 milestone: M5
 branch: task/T-0197-old-name-in-smoke-script
 model: meta/muse-spark-1.3-contributor
@@ -72,3 +72,5 @@ Unblocked: the lead fixed `CLAUDE.md` on main and rebased this branch. Gate summ
 No secrets, no routes, no deletes/updates, no caps, no auth changes. N/A.
 
 ## Review (written by Claude)
+
+**Verdict:** Approved and merged. The diff is exactly the spec: one message line in `scripts/phone/smoke.sh` and four root-only ignore patterns in `.gitignore`. The worker blocked correctly when the repo-wide format check failed on `CLAUDE.md` (the lead's file, fixed on main, branch rebased by the lead). Pre-review clean with no findings. I confirmed the ignore rule works: `PREREVIEW.md` was present at the worktree root and `git status --short` was empty.
