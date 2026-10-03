@@ -197,3 +197,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0164](T-0164-public-groups-and-channels.md) | Public and private groups and channels: handles, Explore directory, open join with an atomic cap, share links | 2026-10-03 |
 | [T-0165](T-0165-avatars.md) | Profile pictures for people, AIs, groups and channels: browser crop, validated static WebP/PNG, avatar-data volume | 2026-10-03 |
 | [T-0167](T-0167-ejabberd-admin-password-log.md) | ejabberd admin password no longer printed in logs: quiet registration in our entrypoint, leak test, dev stack mirrored | 2026-10-03 |
+| [T-0168](T-0168-send-failure-state.md) | A failed voice or attachment send shows Not sent with Retry, never a clock forever | planned | meta/muse-spark-1.3-contributor | T-0166 | Spec ready; launch when a worker slot is free |
