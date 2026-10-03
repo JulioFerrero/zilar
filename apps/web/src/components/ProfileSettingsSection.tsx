@@ -18,7 +18,10 @@ export function ProfileSettingsSection() {
 
   const trimmed = handle.trim();
   const current = auth.user?.handle ?? '';
-  const unchanged = current !== '' && trimmed.toLowerCase() === current.toLowerCase();
+  // Save is disabled only for the exactly equal value; a casing-only change
+  // stays enabled — the server applies it (interval rule, casing updated,
+  // nothing retired).
+  const unchanged = trimmed !== '' && trimmed === current;
 
   // Fill the input when the handle arrives after `getMe()` — but only while
   // the user has not started typing, so typed text is never overwritten.

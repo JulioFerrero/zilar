@@ -94,8 +94,17 @@ export function AddContactDialog({
     setSending(true);
     setSendError(undefined);
     try {
-      await sendContactRequest(lookup.profile.handle);
-      setSent(true);
+      const created = await sendContactRequest(lookup.profile.handle);
+      if (created.incoming === true) {
+        // They asked first and won the race: offer Accept on their request
+        // instead of showing "Request sent".
+        setLookup({
+          state: 'found',
+          profile: { ...lookup.profile, relation: 'request_received' },
+        });
+      } else {
+        setSent(true);
+      }
     } catch (error) {
       setSendError(friendlySendError(error));
     } finally {

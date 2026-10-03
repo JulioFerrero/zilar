@@ -1380,10 +1380,15 @@ function createMockContactRequest(init: RequestInit): Response {
         (row.fromUserId === userId && row.toUserId === currentUserId)),
   );
   if (pending !== undefined) {
-    return jsonResponse(
-      { error: { code: 'request_exists', message: 'A request is already pending' } },
-      409,
-    );
+    if (pending.fromUserId === currentUserId) {
+      return jsonResponse(
+        { error: { code: 'request_exists', message: 'A request is already pending' } },
+        409,
+      );
+    }
+    // The other side already asked: 200 with the existing request, like the
+    // server, so the dialog can offer Accept.
+    return jsonResponse({ request: mockContactRequestRow(pending), incoming: true }, 200);
   }
   const row: MockContactRequest = {
     id: `cr-${state.nextContactRequestSequence++}`,

@@ -2,6 +2,7 @@ import { Navigate, Route, Routes, useLocation, useNavigate, useParams } from 're
 import type { ReactNode } from 'react';
 import { useAuth } from '@/auth/AuthProvider';
 import { SKELETON_DELAY_MS } from '@/components/Skeleton';
+import { hasDismissedHandleGate } from '@/lib/handleGate';
 import { useDelayed } from '@/lib/useDelayed';
 import { AddContactRoute } from './AddContactRoute';
 import { ChatShell } from './ChatShell';
@@ -59,12 +60,17 @@ function RequireAuth({ children }: { children: ReactNode }) {
     return <Navigate to="/welcome/name" replace />;
   }
   // T-0163: people who already have an account but no handle are sent to
-  // the handle step once at their next visit; skip is always allowed, so
-  // the app works without a handle. Only when the handle is known-absent
-  // (`null`): while the user or `getMe()` is still loading (`undefined`)
-  // the gate does nothing — no Navigate, no flash.
+  // the handle step once per browser session at their next visit; skip is
+  // always allowed, so the app works without a handle. Only when the handle
+  // is known-absent (`null`): while the user or `getMe()` is still loading
+  // (`undefined`) the gate does nothing — no Navigate, no flash. The
+  // dismissal lives in `lib/handleGate` (sessionStorage per user id, with
+  // an in-memory fallback) and is honored here, so a skip is not asked
+  // again until the next browser session.
   if (
-    auth.user?.handle === null &&
+    auth.user !== undefined &&
+    auth.user.handle === null &&
+    !hasDismissedHandleGate(auth.user.id) &&
     location.pathname !== '/welcome/handle' &&
     !location.pathname.startsWith('/welcome/handle/')
   ) {

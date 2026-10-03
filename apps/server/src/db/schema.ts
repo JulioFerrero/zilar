@@ -131,10 +131,14 @@ export const retiredHandles = pgTable(
   ],
 );
 
-// A pending request from one user to become another's contact. The partial
-// unique index keeps at most one pending row per direction; the reverse
-// direction is refused in code under a per-pair advisory lock. `decided_at`
-// is set on accept/decline/cancel and gates the 7-day re-request cooldown.
+// A pending request from one user to become another's contact. Two partial
+// unique indexes share the work: `contact_requests_pending_idx` keeps at
+// most one pending row per direction (the race backstop for same-direction
+// creates), and `contact_requests_pending_pair_idx` keeps at most one
+// pending row per unordered pair (the backstop for simultaneous
+// opposite-direction creates — A→B and B→A racing past each other's
+// duplicate check). `decided_at` is set on accept/decline/cancel and gates
+// the 7-day re-request cooldown.
 export const contactRequests = pgTable(
   'contact_requests',
   {
@@ -158,6 +162,12 @@ export const contactRequests = pgTable(
     ),
     uniqueIndex('contact_requests_pending_idx')
       .on(table.fromUserId, table.toUserId)
+      .where(sql`${table.status} = 'pending'`),
+    uniqueIndex('contact_requests_pending_pair_idx')
+      .on(
+        sql`least(${table.fromUserId}, ${table.toUserId})`,
+        sql`greatest(${table.fromUserId}, ${table.toUserId})`,
+      )
       .where(sql`${table.status} = 'pending'`),
     check('contact_requests_different_users_check', sql`${table.fromUserId} <> ${table.toUserId}`),
   ],

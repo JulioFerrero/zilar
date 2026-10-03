@@ -182,6 +182,18 @@ describe('handles', () => {
     expect(lost).toHaveLength(1);
     const reason = (lost[0] as PromiseRejectedResult).reason as { code?: string };
     expect(reason.code).toBe('handle_taken');
+
+    // The race outcome is coherent: one live row owned by the winner,
+    // no retired reservation shadows it, and the loser owns nothing.
+    const live = await context.db.select().from(handles);
+    expect(live).toHaveLength(1);
+    expect(live[0]?.handleLower).toBe('race_handle');
+    const winnerId = live[0]?.userId;
+    expect([alice.id, bob.id]).toContain(winnerId);
+    const loserId = winnerId === alice.id ? bob.id : alice.id;
+    const loserRows = await context.db.select().from(handles).where(eq(handles.userId, loserId));
+    expect(loserRows).toHaveLength(0);
+    expect(await context.db.select().from(retiredHandles)).toHaveLength(0);
   });
 
   it('counts retired-by-me as available on check but taken for others', async () => {

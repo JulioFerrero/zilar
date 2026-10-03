@@ -3,17 +3,26 @@ import { useLocation, useNavigate } from 'react-router';
 import { useAuth } from '@/auth/AuthProvider';
 import { ApiError } from '@/lib/api';
 import { checkHandle, claimHandle, suggestHandleFor } from '@/lib/handles';
+import { dismissHandleGate } from '@/lib/handleGate';
 
 /** Onboarding step after the name step: pick a unique `@username`. */
 export function HandlePage() {
   const navigate = useNavigate();
   const location = useLocation();
   const auth = useAuth();
-  // The suggestion is filled in once from the name (or email local part),
-  // then left alone so typing is never overwritten.
+  // The suggestion fills when the user arrives (name/email may resolve
+  // after mount) while the input is untouched; typing wins forever after.
   const [handle, setHandle] = useState(() =>
     auth.user === undefined ? '' : suggestHandleFor(auth.user.name, auth.user.email),
   );
+  const [typed, setTyped] = useState(false);
+  const serverUser = auth.user;
+  if (!typed && handle === '' && serverUser !== undefined) {
+    const suggestion = suggestHandleFor(serverUser.name, serverUser.email);
+    if (suggestion !== '') {
+      setHandle(suggestion);
+    }
+  }
   const [check, setCheck] = useState<
     | { state: 'idle' }
     | { state: 'checking' }
@@ -80,6 +89,13 @@ export function HandlePage() {
   };
 
   const skip = (): void => {
+    // "Skip for now" really skips: record the dismissal for this browser
+    // session (kept separate from any claim), so the gate does not ask
+    // again until the next session. New users in the onboarding flow still
+    // reach this step via the name page's chain, not the gate.
+    if (auth.user !== undefined) {
+      dismissHandleGate(auth.user.id);
+    }
     navigate(next ?? '/', { replace: true });
   };
 
@@ -104,7 +120,10 @@ export function HandlePage() {
           autoCapitalize="none"
           autoCorrect="off"
           spellCheck={false}
-          onChange={(event) => setHandle(event.target.value)}
+          onChange={(event) => {
+            setHandle(event.target.value);
+            setTyped(true);
+          }}
           placeholder="ada_lovelace"
           className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-[15px] outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40"
         />

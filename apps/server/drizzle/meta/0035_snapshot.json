@@ -1,6 +1,6 @@
 {
-  "id": "f168825e-b4c1-48e2-a118-2d16a8ccd8dc",
-  "prevId": "3f30c7e2-a47c-4b10-83ec-690f5dee2ced",
+  "id": "b1645e55-c433-4ce9-b320-b659fd455530",
+  "prevId": "f168825e-b4c1-48e2-a118-2d16a8ccd8dc",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1326,6 +1326,28 @@
               "expression": "to_user_id",
               "isExpression": false,
               "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"contact_requests\".\"status\" = 'pending'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "contact_requests_pending_pair_idx": {
+          "name": "contact_requests_pending_pair_idx",
+          "columns": [
+            {
+              "expression": "least(\"from_user_id\", \"to_user_id\")",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "greatest(\"from_user_id\", \"to_user_id\")",
+              "asc": true,
+              "isExpression": true,
               "nulls": "last"
             }
           ],

@@ -65,6 +65,30 @@ describe('AddContactDialog', () => {
     expect(screen.queryByRole('button', { name: 'Send request' })).toBeNull();
   });
 
+  it('offers Accept when the send reveals they asked first', async () => {
+    lookupMock.mockResolvedValue(PROFILE);
+    // 200 `{ request, incoming: true }`: the other side's request won the
+    // race, so the dialog flips to the received state with the Accept link.
+    sendMock.mockResolvedValue({
+      request: {
+        id: 'r-9',
+        fromUserId: 'u-bob',
+        toUserId: 'u-me',
+        status: 'pending',
+        createdAt: new Date().toISOString(),
+      },
+      incoming: true,
+    });
+    renderDialog();
+
+    fireEvent.change(screen.getByLabelText('Username'), { target: { value: '@bob_b' } });
+    expect(await screen.findByText('Bob')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Send request' }));
+    expect(await screen.findByText('They already asked to add you.')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Go to Requests to accept' })).toBeTruthy();
+    expect(screen.queryByText('Request sent.')).toBeNull();
+  });
+
   it('shows a missing state for an unknown handle', async () => {
     const { ApiError } = await import('@/lib/api');
     lookupMock.mockRejectedValue(new ApiError(404, 'not_found', 'No user with that username'));

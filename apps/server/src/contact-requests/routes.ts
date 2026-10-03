@@ -90,8 +90,9 @@ export function createContactRequestsRoutes(deps: ContactRequestsRoutesDependenc
   }
 
   // Creates a pending request to the owner of `handle`. Unknown handles
-  // answer the same 404 as retired ones; the reverse-request case returns
-  // the existing request so the web can offer "Accept".
+  // answer the same 404 as retired ones. When the other side already asked
+  // (serially or by winning a concurrent race), answers 200
+  // `{ request, incoming: true }` so the web can offer "Accept".
   routes.post('/contact-requests', async (c) => {
     const { user } = await requireSession(deps.auth, c.req.raw.headers);
     if (!createLimiter.allow(user.id)) {
@@ -112,7 +113,7 @@ export function createContactRequestsRoutes(deps: ContactRequestsRoutesDependenc
       parsed.data.handle,
     );
     if (reverseOf) {
-      return c.json({ request: toJson(reverseOf), incoming: true }, 409);
+      return c.json({ request: toJson(reverseOf), incoming: true }, 200);
     }
     return c.json({ request: toJson(request) }, 201);
   });

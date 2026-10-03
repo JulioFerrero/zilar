@@ -62,10 +62,13 @@ describe('HandlePage', () => {
     expect(await screen.findByText('That username is taken. Try another.')).toBeTruthy();
   });
 
-  it('skips forward without claiming', async () => {
+  it('skips forward without claiming and records the dismissal', async () => {
+    const { hasDismissedHandleGate } = await import('@/lib/handleGate');
     checkMock.mockResolvedValue({ available: true });
     renderPage('/j/abc');
     fireEvent.click(screen.getByRole('button', { name: 'Skip for now' }));
     expect(claimMock).not.toHaveBeenCalled();
+    // The dismissal is recorded for this user id: the gate honors it.
+    expect(hasDismissedHandleGate('u-1')).toBe(true);
   });
 });

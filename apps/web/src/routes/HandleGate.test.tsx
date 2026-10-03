@@ -32,6 +32,38 @@ describe('handle gate', () => {
     expect(screen.queryByText('Pick your username')).toBeNull();
   });
 
+  it('does not redirect again after Skip for now (same session)', async () => {
+    const { dismissHandleGate, resetHandleGateDismissal } = await import('@/lib/handleGate');
+    resetHandleGateDismissal('u-you');
+    const auth = {
+      status: 'authenticated' as const,
+      user: { id: 'u-you', name: 'You', email: 'you@zilar.test', handle: null },
+      refetch: async () => {},
+    };
+    const first = renderApp('/', undefined, { auth });
+    expect(await screen.findByText('Pick your username')).toBeTruthy();
+    first.unmount();
+    // Skip records the dismissal; `/` and a chat route no longer redirect.
+    dismissHandleGate('u-you');
+    renderApp('/', undefined, { auth });
+    expect(screen.queryByText('Pick your username')).toBeNull();
+    expect(screen.queryByText(/Chats|New chat/)).not.toBeNull();
+  });
+
+  it('asks again for a different sign-in (dismissal is per user id)', async () => {
+    const { dismissHandleGate, resetHandleGateDismissal } = await import('@/lib/handleGate');
+    resetHandleGateDismissal();
+    dismissHandleGate('u-you');
+    renderApp('/', undefined, {
+      auth: {
+        status: 'authenticated',
+        user: { id: 'u-other', name: 'Other', email: 'other@zilar.test', handle: null },
+        refetch: async () => {},
+      },
+    });
+    expect(await screen.findByText('Pick your username')).toBeTruthy();
+  });
+
   it('opens the Add contact dialog prefilled from /u/handle', async () => {
     renderApp('/u/bob_b');
     expect(await screen.findByRole('dialog', { name: 'Add contact' })).toBeTruthy();

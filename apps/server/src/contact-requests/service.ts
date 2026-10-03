@@ -239,8 +239,12 @@ export async function createContactRequest(
       if (error instanceof HttpError) {
         throw error;
       }
-      // A concurrent create won the race on the partial unique index: the
-      // in-transaction read above missed it. Answer like the pre-check.
+      // A concurrent create won the race: the same-direction backstop is
+      // the partial unique index, the opposite-direction backstop is the
+      // unordered-pair index. Either way the in-transaction read above
+      // missed it — answer like the pre-check. The reverse-direction loser
+      // returns the row the winner just committed, so its caller can offer
+      // "Accept" exactly like the serial reverse case.
       const [raced] = await tx
         .select()
         .from(contactRequests)
@@ -253,6 +257,13 @@ export async function createContactRequest(
         )
         .limit(1);
       if (raced) {
+        throw new HttpError(409, 'request_exists', 'A request is already pending');
+      }
+      const reverse = await pendingBetween(txDb, fromId, target.id);
+      if (reverse && reverse.fromUserId !== fromId) {
+        return { request: reverse, reverseOf: reverse };
+      }
+      if (reverse) {
         throw new HttpError(409, 'request_exists', 'A request is already pending');
       }
       throw error;

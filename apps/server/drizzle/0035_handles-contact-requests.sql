@@ -36,3 +36,5 @@ ALTER TABLE "handles" ADD CONSTRAINT "handles_group_id_groups_id_fk" FOREIGN KEY
 ALTER TABLE "retired_handles" ADD CONSTRAINT "retired_handles_former_user_id_user_id_fk" FOREIGN KEY ("former_user_id") REFERENCES "public"."user"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "retired_handles" ADD CONSTRAINT "retired_handles_former_group_id_groups_id_fk" FOREIGN KEY ("former_group_id") REFERENCES "public"."groups"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE UNIQUE INDEX "contact_requests_pending_idx" ON "contact_requests" USING btree ("from_user_id","to_user_id") WHERE "contact_requests"."status" = 'pending';
+--> statement-breakpoint
+CREATE UNIQUE INDEX "contact_requests_pending_pair_idx" ON "contact_requests" USING btree (least("from_user_id", "to_user_id"),greatest("from_user_id", "to_user_id")) WHERE "contact_requests"."status" = 'pending';

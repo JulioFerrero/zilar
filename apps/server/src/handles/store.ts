@@ -173,6 +173,11 @@ export async function claimHandle(
 
     if (existing) {
       await tx.delete(handles).where(eq(handles.handleLower, existing.handleLower));
+      // The reservation belongs to whoever just gave the handle up: upsert
+      // so a racing retire (older owner) cannot survive a newer one. In
+      // practice the older reservation cannot exist here — the winner holds
+      // the live row, so only the winner reaches this path — but the upsert
+      // makes that invariant hold even if two txs interleave.
       await tx
         .insert(retiredHandles)
         .values({
@@ -181,7 +186,14 @@ export async function claimHandle(
           formerGroupId: null,
           reservedUntil: new Date(now.getTime() + HANDLE_RESERVATION_DAYS * 24 * 60 * 60 * 1000),
         })
-        .onConflictDoNothing();
+        .onConflictDoUpdate({
+          target: retiredHandles.handleLower,
+          set: {
+            formerUserId: userId,
+            formerGroupId: null,
+            reservedUntil: new Date(now.getTime() + HANDLE_RESERVATION_DAYS * 24 * 60 * 60 * 1000),
+          },
+        });
     }
 
     try {

@@ -65,17 +65,18 @@ describe('ProfileSettingsSection', () => {
     expect(screen.getByRole('button', { name: 'Copy share link' })).toBeTruthy();
   });
 
-  it('disables Save while the value equals the current handle', async () => {
+  it('disables Save for the exact value but enables a casing-only change', async () => {
     renderSection('ada');
     expect(screen.getByRole('button', { name: 'Save username' }).hasAttribute('disabled')).toBe(
       true,
     );
     expect(checkMock).not.toHaveBeenCalled();
+    // A casing-only change is saveable: the server applies it under the
+    // interval rule (casing updated, nothing retired).
     fireEvent.change(screen.getByLabelText('Your @username'), { target: { value: 'ADA' } });
     expect(screen.getByRole('button', { name: 'Save username' }).hasAttribute('disabled')).toBe(
-      true,
+      false,
     );
-    expect(checkMock).not.toHaveBeenCalled();
   });
 
   it('fills the input when the handle arrives after load', async () => {

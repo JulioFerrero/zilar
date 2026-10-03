@@ -111,16 +111,47 @@ describe('contact requests', () => {
       'request_exists',
     );
 
-    // The reverse direction answers with the existing request for "Accept".
+    // The reverse direction answers 200 with the existing request for
+    // "Accept" — and exactly one row exists.
     const reverse = await postRequest(bob.cookie, 'alice_w');
-    expect(reverse.status).toBe(409);
+    expect(reverse.status).toBe(200);
     const reverseBody = (await reverse.json()) as {
-      request: { fromUserId: string; toUserId: string };
+      request: { id: string; fromUserId: string; toUserId: string };
       incoming: boolean;
     };
     expect(reverseBody.incoming).toBe(true);
     expect(reverseBody.request.fromUserId).toBe(alice.id);
+    expect(reverseBody.request.toUserId).toBe(bob.id);
     expect((await context.db.select().from(contactRequests)).length).toBe(1);
+  });
+
+  it('creates exactly one pending row for simultaneous opposite-direction requests', async () => {
+    const alice = await withHandle('alice@example.com', 'alice_w');
+    const bob = await withHandle('bob@example.com', 'bob_b');
+    const { createContactRequest } = await import('./service');
+    const db = context.db;
+    const [aResult, bResult] = await Promise.allSettled([
+      createContactRequest({ db }, alice.id, 'bob_b'),
+      createContactRequest({ db }, bob.id, 'alice_w'),
+    ]);
+    const rows = await context.db.select().from(contactRequests);
+    expect(rows).toHaveLength(1);
+    const fulfilled = [aResult, bResult].filter((r) => r.status === 'fulfilled');
+    const rejected = [aResult, bResult].filter((r) => r.status === 'rejected');
+    // Exactly one direction wins the insert; the loser either got the
+    // reverse row back (200-style, no throw) or hit `request_exists` on the
+    // same-direction backstop. No other outcome is possible.
+    expect(fulfilled.length + rejected.length).toBe(2);
+    for (const result of fulfilled) {
+      const value = (result as PromiseFulfilledResult<{ request: { id: string } }>).value;
+      expect(value.request.id).toBe(rows[0]?.id);
+    }
+    for (const result of rejected) {
+      expect((result as PromiseRejectedResult).reason).toMatchObject({
+        code: 'request_exists',
+      });
+    }
+    expect(fulfilled.length).toBeGreaterThanOrEqual(1);
   });
 
   it('declines, cancels, and cools down re-requests for 7 days', async () => {
@@ -285,7 +316,9 @@ describe('contact requests', () => {
     const alice = await withHandle('alice@example.com', 'alice_w');
     const bob = await withHandle('bob@example.com', 'bob_b');
     expect((await postRequest(alice.cookie, 'bob_b')).status).toBe(201);
-    const reverse = (await (await postRequest(bob.cookie, 'alice_w')).json()) as {
+    const reverseResponse = await postRequest(bob.cookie, 'alice_w');
+    expect(reverseResponse.status).toBe(200);
+    const reverse = (await reverseResponse.json()) as {
       request: { id: string };
       incoming: boolean;
     };
