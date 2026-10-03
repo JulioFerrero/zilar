@@ -1,7 +1,7 @@
 ---
 id: T-0185
 title: Mobile: machines (runners) and model connections screens
-status: review
+status: merged
 milestone: M5
 branch: task/T-0185-mobile-machines-connections
 model: meta/muse-spark-1.3-contributor
@@ -181,3 +181,5 @@ untouched). Used `pnpm exec prettier`, never `npx`. Status stays `review`.
 The lead tests on the emulator and the phone.
 
 ## Review (written by Claude)
+
+**Verdict:** Approved and merged after two rounds. Round 1 (lead) found the machine id not parsed from the AI answer, raw server text in errors and missing guards. Round 2 pre-review found three should-fix items, fixed by the lead: the connection Test button and the home-machine picker now guard double taps with a ref (state alone lets two quick taps through), and the key-in-tree test now renders a record that carries an API key, so it can fail. Nit fixed: dead `currentMachine` in the machine picker. Format, lint, typecheck and 107 related tests pass; the emulator smoke run opened Machines and Connections without a crash (`/ais/[id]` needs data and was skipped). `lib/ais-api.ts` is outside the Allowed files list and was accepted: round 1 required it (machine id on the AI).

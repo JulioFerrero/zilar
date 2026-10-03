@@ -62,6 +62,7 @@ function EditAi() {
   // loaded AI, then from each PUT answer (the server is the source of truth).
   const [homeMachineId, setHomeMachineId] = useState<string | null>(null);
   const [machineBusy, setMachineBusy] = useState(false);
+  const machineBusyRef = useRef(false);
   const [machineError, setMachineError] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -146,9 +147,10 @@ function EditAi() {
   // on failure and carries a fixed error sentence; the PUT answer is the
   // source of truth on success.
   const changeMachine = (machineId: string | null): void => {
-    if (loaded === null || machineBusy) {
+    if (loaded === null || machineBusyRef.current) {
       return;
     }
+    machineBusyRef.current = true;
     const previous = homeMachineId;
     const aiId = loaded.id;
     setMachineBusy(true);
@@ -158,7 +160,10 @@ function EditAi() {
         setHomeMachineId(outcome.home);
         setMachineError(outcome.error);
       })
-      .finally(() => setMachineBusy(false));
+      .finally(() => {
+        machineBusyRef.current = false;
+        setMachineBusy(false);
+      });
   };
 
   const save = (): void => {

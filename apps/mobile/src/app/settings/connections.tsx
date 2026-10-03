@@ -66,6 +66,7 @@ function ConnectionsList() {
   const [errorInfo, setErrorInfo] = useState<ConnectionsErrorInfo>({ message: '' });
   const [showForm, setShowForm] = useState(false);
   const [testingId, setTestingId] = useState<string | null>(null);
+  const testingRef = useRef(false);
   const [testResults, setTestResults] = useState<Record<string, boolean>>({});
   const [testErrors, setTestErrors] = useState<Record<string, string>>({});
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
@@ -98,9 +99,10 @@ function ConnectionsList() {
   const test = (id: string): void => {
     // A second tap that lands before the disabled state propagates must
     // not fire a second test (the server rate-limits key tests per user).
-    if (testingId !== null) {
+    if (testingRef.current) {
       return;
     }
+    testingRef.current = true;
     setTestingId(id);
     setTestErrors((previous) => {
       if (!(id in previous)) return previous;
@@ -120,7 +122,10 @@ function ConnectionsList() {
         setTestResults((previous) => ({ ...previous, [id]: false }));
         setTestErrors((previous) => ({ ...previous, [id]: 'Could not test the key.' }));
       })
-      .finally(() => setTestingId(null));
+      .finally(() => {
+        testingRef.current = false;
+        setTestingId(null);
+      });
   };
 
   const confirmRemove = (id: string): void => {

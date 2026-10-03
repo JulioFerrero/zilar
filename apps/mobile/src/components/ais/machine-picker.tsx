@@ -29,7 +29,6 @@ export function MachinePicker({
   const approved = machines.filter((machine) => machine.status === 'approved');
   const knownIds = new Set(approved.map((machine) => machine.id));
   const currentUnknown = value !== null && !knownIds.has(value);
-  const currentMachine = value === null ? null : (approved.find((m) => m.id === value) ?? null);
 
   return (
     <View className="gap-2">
@@ -75,7 +74,7 @@ export function MachinePicker({
         <OptionRow
           selected
           disabled
-          accessibilityLabel={`Current machine ${currentMachine?.name ?? '(unavailable)'}`}
+          accessibilityLabel={'Current machine (unavailable)'}
           onPress={() => {}}
         >
           <OptionGlyph label="?" selected />

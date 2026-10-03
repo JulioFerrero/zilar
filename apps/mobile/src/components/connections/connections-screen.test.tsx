@@ -171,7 +171,10 @@ describe('ConnectionsScreen', () => {
   });
 
   it('never renders an API key the API carries', async () => {
-    const html = await renderScreen({ connections: [OPENAI], status: 'ready' });
+    // The record the API hands over carries a key field; the screen must not print it.
+    const carrying = { ...OPENAI, apiKey: LEAKED_KEY } as unknown as typeof OPENAI;
+    const html = await renderScreen({ connections: [carrying], status: 'ready' });
+    expect(html).toContain(OPENAI.label);
     expect(html).not.toContain(LEAKED_KEY);
   });
 });
