@@ -34,10 +34,12 @@ export interface ReplyRef {
   text?: string;
 }
 
-/** A member who can be mentioned in a group: a bare JID and a display name. */
+/** A member who can be mentioned in a group: a bare JID, a display name, and
+ * the member's `@handle` when they have one (T-0163/T-0169). AIs have none. */
 export interface MentionMember {
   jid: string;
   name: string;
+  handle?: string | undefined;
 }
 
 /** One rendered mention on a message, with offsets into its text. */

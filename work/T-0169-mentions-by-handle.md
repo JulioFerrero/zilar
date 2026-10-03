@@ -1,7 +1,7 @@
 ---
 id: T-0169
 title: Mentions find people by @handle and show handles
-status: planned
+status: review
 milestone: M5
 branch: task/T-0169-mentions-by-handle
 model: meta/muse-spark-1.3-contributor
@@ -52,5 +52,30 @@ Mentioning by handle someone who is not in the group, `@all`/`@here`, AI handles
 ---
 
 ## Report (written by the worker when done)
+
+Done. Mentions now find people by `@handle` and show handles.
+
+What changed:
+- `packages/chat-core/src/types.ts`: `MentionMember` gains optional `handle?: string | undefined`.
+- `packages/chat-core/src/mentions.ts`:
+  - `filterMentionMembers` matches the query (case-/accent-insensitive, leading `@` stripped) against handle prefix, and against display-name word prefixes (whitespace-separated); handle matches rank first, then name matches, ties keep input order. Empty/`@` query returns everyone, as before.
+  - `insertMention` inserts `@handle ` (range over `@handle`) when the member has a handle, else `@Name ` exactly as before. JID tracking, rebase, backspace and `splitMentions` are range-based and untouched (a literal `@handle` without a range stays plain text by construction).
+- `apps/web/src/components/MentionPicker.tsx`: each row shows `name` plus `@handle` in muted text when present; the option's accessible name is `Name @handle` when a handle exists, else the name.
+- Member-list plumbing passes handles through: `apps/web/src/store/store.ts` (`mentionMembersFor`), `apps/web/src/store/realStore.ts` (`applyGroupDetail`), `apps/web/src/mock/members.ts`. AIs keep no handle.
+- `apps/web/src/mock/groups.ts`: mock people in c-devteam, c-viernes, c-familia get handles (`you`, `ana`, `luis`, `marco`, `marta`, `sofia`); AIs unchanged. c-qa/c-gym/c-product/c-acme untouched.
+- No Composer.tsx logic change needed: it already funnels through `filterMentionMembers`/`insertMention`, and backspace deletion is range-based so it works for both token forms. No LinkText.tsx change needed: chips/highlight already render from tracked ranges only.
+- Tests: `packages/chat-core/src/mentions.test.ts` (handle prefix match incl. name mismatch, ranking, order stability, later-word name match, bare-`@` list, handle insert + range, literal `@handle` without range stays text); `Composer.test.tsx` (handle offer/insert/send-with-JID, same-name pair distinguished, no-handle member inserts `@Name`; 5 existing assertions updated from `@Luis `/`@Marta ` to `@luis `/`@marta `); `MentionPicker.test.tsx` (handle shown, accessible names, same-name pair); `MessageContent.test.tsx` (tracked `@handle` range renders a chip, literal `@handle` is plain text).
+
+Checks (all in `/Users/julio/personal-projects/zilar-T-0169`):
+- `pnpm format:check`: pass ("All matched files use Prettier code style!").
+- `pnpm lint`: pass (oxlint, no output).
+- `pnpm typecheck`: pass (11 tasks successful).
+- `pnpm --filter @zilar/chat-core test --maxWorkers=2`: 11 files, 143 tests passed.
+- `pnpm --filter @zilar/web test --maxWorkers=2 src/components/Composer src/components/MentionPicker src/components/MessageContent src/store`: 8 files, 222 tests passed.
+- Extra: `src/mock` (7 files, 89 passed) and GroupPanel/Channels/TopicPanel (3 files, 55 passed) to cover the mock group-detail change.
+
+Deviations: none. Security checklist: no secrets/logs/routes touched; no deletes/updates/caps changed; N/A items (401 sweep, audit, rate limits) don't apply — no server changes.
+
+Files changed: `packages/chat-core/src/types.ts`, `mentions.ts`, `mentions.test.ts`; `apps/web/src/components/MentionPicker.tsx`, `MentionPicker.test.tsx`, `Composer.test.tsx`, `MessageContent.test.tsx`; `apps/web/src/store/store.ts`, `realStore.ts`; `apps/web/src/mock/groups.ts`, `members.ts`; this task file.
 
 ## Review (written by Claude)

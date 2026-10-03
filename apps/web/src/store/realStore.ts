@@ -2203,12 +2203,17 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
     }
 
     // Caches a group detail and rebuilds the mention members from it, so the
-    // picker and the panel agree after a load, an add or a remove.
+    // picker and the panel agree after a load, an add or a remove. Handles
+    // pass through from the detail (T-0169); AIs have none.
     function applyGroupDetail(chatId: string, detail: GroupDetail, domain: string): void {
       const members = new Map<string, MentionMember>();
       for (const member of detail.members) {
         const localpart = member.userId.toLowerCase();
-        members.set(localpart, { jid: `${localpart}@${domain}`, name: member.name });
+        members.set(localpart, {
+          jid: `${localpart}@${domain}`,
+          name: member.name,
+          ...(member.handle == null || member.handle === '' ? {} : { handle: member.handle }),
+        });
       }
       for (const ai of detail.ais) {
         const localpart = (ai.jid.split('@')[0] ?? ai.jid).toLowerCase();

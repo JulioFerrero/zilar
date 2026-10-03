@@ -45,6 +45,15 @@ describe('insertMention', () => {
     });
   });
 
+  it('inserts the handle when the member has one', () => {
+    const julio: MentionMember = { jid: 'u-julio@zilar.test', name: 'Julio', handle: 'julio' };
+    expect(insertMention('hello @ju', 9, julio)).toEqual({
+      text: 'hello @julio ',
+      caret: 13,
+      mention: { jid: 'u-julio@zilar.test', name: 'Julio', begin: 6, end: 12 },
+    });
+  });
+
   it('keeps the text that follows the caret', () => {
     const result = insertMention('hi @a there', 5, ana);
     expect(result?.text).toBe('hi @Ana  there');
@@ -126,6 +135,10 @@ describe('splitMentions', () => {
     ]);
   });
 
+  it('ignores a literal @handle without a range', () => {
+    expect(splitMentions('hi @ana', [])).toEqual([{ kind: 'text', text: 'hi @ana' }]);
+  });
+
   it('ignores out-of-range and overlapping mentions', () => {
     const segments = splitMentions('hi @Ana', [
       mention('x', 'X', 0, 99),
@@ -144,18 +157,48 @@ describe('filterMentionMembers', () => {
     { jid: 'u-ana@zilar.test', name: 'Ana' },
     { jid: 'u-sofia@zilar.test', name: 'Sofía' },
     { jid: 'ai-dev-1@zilar.test', name: 'Dev-1' },
+    { jid: 'u-julio@zilar.test', name: 'Julio Bermúdez', handle: 'julio' },
   ];
 
   it('returns everyone for an empty query', () => {
     expect(filterMentionMembers(members, '')).toEqual(members);
   });
 
-  it('matches case-insensitively', () => {
+  it('returns everyone for a bare @', () => {
+    expect(filterMentionMembers(members, '@')).toEqual(members);
+  });
+
+  it('matches a name word prefix, case-insensitively', () => {
     expect(filterMentionMembers(members, 'an')).toEqual([members[0]]);
+  });
+
+  it('matches a later name word', () => {
+    expect(filterMentionMembers(members, 'ber')).toEqual([members[3]]);
   });
 
   it('matches without accents', () => {
     expect(filterMentionMembers(members, 'sofia')).toEqual([members[1]]);
+  });
+
+  it('matches a handle prefix even when the name does not', () => {
+    const julioByName: MentionMember = {
+      jid: 'u-julio@zilar.test',
+      name: 'Robert',
+      handle: 'julio',
+    };
+    expect(filterMentionMembers([julioByName], 'ju')).toEqual([julioByName]);
+  });
+
+  it('ranks handle matches before name matches', () => {
+    const byName: MentionMember = { jid: 'u-juan@zilar.test', name: 'Juan' };
+    const byHandle: MentionMember = { jid: 'u-x@zilar.test', name: 'Xavier', handle: 'juanito' };
+    expect(filterMentionMembers([byName, byHandle], 'juan')).toEqual([byHandle, byName]);
+  });
+
+  it('keeps the existing order within each rank', () => {
+    const first: MentionMember = { jid: 'u-1@zilar.test', name: 'Ann' };
+    const second: MentionMember = { jid: 'u-2@zilar.test', name: 'Anna' };
+    expect(filterMentionMembers([second, first], 'ann')).toEqual([second, first]);
   });
 
   it('returns nothing when no name matches', () => {
