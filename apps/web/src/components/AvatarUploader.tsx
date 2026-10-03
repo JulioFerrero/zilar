@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
+import { Avatar } from '@/components/Avatar';
 import { removeAvatar, uploadAvatar } from '@/lib/api';
 import {
   AVATAR_CROP_VIEW_SIDE,
@@ -266,16 +267,7 @@ export function AvatarUploader({
   return (
     <section aria-label={`${ownerName} picture`} className="flex flex-col gap-2">
       <div className="flex items-center gap-3">
-        {currentUrl !== undefined ? (
-          <img src={currentUrl} alt="" className="size-16 rounded-full object-cover" />
-        ) : (
-          <span
-            aria-hidden="true"
-            className="flex size-16 items-center justify-center rounded-full bg-surface-raised text-[14px] text-muted-foreground"
-          >
-            No picture
-          </span>
-        )}
+        <Avatar id={ownerId} name={ownerName} size={64} ai={kind === 'ai'} avatarUrl={currentUrl} />
         <div className="flex flex-wrap gap-2">
           <button
             type="button"

@@ -67,6 +67,11 @@ RUN mkdir -p /opt/tsx && cd /opt/tsx && npm init -y >/dev/null \
   && npm install --omit=dev --no-audit --no-fund tsx@4.23.15 \
   && node /opt/tsx/node_modules/tsx/dist/cli.mjs --version
 
+# Voice messages (POST /api/voice): ffprobe validates and measures the
+# browser recording and ffmpeg converts it to AAC/M4A. Without these two the
+# route answers 500 ("spawn ffprobe ENOENT") and a voice message never sends.
+RUN apk add --no-cache ffmpeg
+
 # Non-root user. Alpine's `node` image ships no `node` user, so create one.
 RUN addgroup -S zilar && adduser -S zilar -G zilar && chown -R zilar:zilar /app /opt/tsx
 # The sticker and avatar volumes mount here in production. Docker seeds
