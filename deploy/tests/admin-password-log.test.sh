@@ -142,11 +142,6 @@ done
 sleep 10
 assert_account "$SENTINEL_ONE" "fresh start"
 assert_no_leak "$SENTINEL_ONE" "fresh start"
-if docker logs "$EJ" 2>&1 | grep -q 'REGISTER_ADMIN_PASSWORD:'; then
-  bad "fresh start: log mentions REGISTER_ADMIN_PASSWORD (the leaky path is in use)"
-else
-  ok "fresh start: log never mentions REGISTER_ADMIN_PASSWORD"
-fi
 
 # 2. Restart with a different sentinel: password changes, still no leak.
 docker rm -f "$EJ" > /dev/null
@@ -185,11 +180,39 @@ fi
 assert_no_leak "$SENTINEL_TWO" "restart"
 
 # 3. Compose files wire the password under the entrypoint's name only.
-for _file in "deploy/docker-compose.yml" "deploy/coolify/docker-compose.yml"; do
+for _file in "deploy/docker-compose.yml" "deploy/coolify/docker-compose.yml" "infra/docker-compose.dev.yml"; do
   if grep -q 'REGISTER_ADMIN_PASSWORD:' "$ROOT/$_file"; then
     bad "$_file still sets REGISTER_ADMIN_PASSWORD"
   else
     ok "$_file no longer sets REGISTER_ADMIN_PASSWORD"
+  fi
+done
+# The container-level assertions above run against the deploy image; the
+# infra entrypoint carries the same registration block, so a static check
+# keeps the two copies from drifting (same loop bound, same discarded
+# output, same fixed messages, no REGISTER_ADMIN_PASSWORD use).
+for _entry in "deploy/ejabberd/jwt-entrypoint.sh" "infra/ejabberd/jwt-entrypoint.sh"; do
+  if grep -q 'REGISTER_ADMIN_PASSWORD' "$ROOT/$_entry"; then
+    # Only comments may name the leaky mechanism; it must never be read.
+    if grep -v '^[[:space:]]*#' "$ROOT/$_entry" | grep -q 'REGISTER_ADMIN_PASSWORD'; then
+      bad "$_entry reads REGISTER_ADMIN_PASSWORD in code"
+    else
+      ok "$_entry names REGISTER_ADMIN_PASSWORD only in comments"
+    fi
+  else
+    ok "$_entry never mentions REGISTER_ADMIN_PASSWORD"
+  fi
+  for _line in 'until ejabberdctl status' 'check_account' 'change_password' 'ejabberdctl register'; do
+    if grep -q "$_line" "$ROOT/$_entry"; then
+      ok "$_entry carries the registration step ($_line)"
+    else
+      bad "$_entry lost the registration step ($_line)"
+    fi
+  done
+  if grep -q 'admin account will not be registered' "$ROOT/$_entry"; then
+    ok "$_entry warns when the admin password is unset"
+  else
+    bad "$_entry silently skips registration when unset"
   fi
 done
 if grep -q 'EJABBERD_ADMIN_PASSWORD' "$ROOT/deploy/docker-compose.yml"; then

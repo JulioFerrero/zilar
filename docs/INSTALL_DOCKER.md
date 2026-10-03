@@ -335,7 +335,10 @@ all output discarded (the base image's `REGISTER_ADMIN_PASSWORD` mechanism,
 which echoes the password into the log, is not used). A wrong
 `EJABBERD_DB_PASSWORD` shows as SQL auth failures; changing any `*_PASSWORD`
 after the first start needs a volume reset (`down -v` wipes everything) to
-stay consistent with the databases already created.
+stay consistent with the databases already created — except
+`EJABBERD_ADMIN_PASSWORD`, which the entrypoint applies with
+`change_password` on every restart, so a new value takes effect with just
+a restart.
 
 **Server exits with "Invalid server configuration".** A required variable is
 missing or too short (the message names it, never its value). Compare

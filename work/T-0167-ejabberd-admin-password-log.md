@@ -82,12 +82,16 @@ discarded.
   deploy/, starts it with sentinel passwords against a throwaway Postgres,
   asserts account exists + live password, sentinel nowhere in
   `docker logs`, restart with a new sentinel changes the password and
-  leaks nothing, and both compose files wire the password under the
-  entrypoint's name only. Skips with a clear message when Docker is
-  missing. Removes all containers/networks afterwards.
+  leaks nothing, and all three compose files (plain, Coolify, dev) wire
+  the password under the entrypoint's name only. Also asserts both
+  entrypoint copies (deploy + infra) carry the same registration block
+  and the unset-variable warning. Skips with a clear message when Docker
+  is missing. Removes all containers/networks afterwards.
 - `docs/INSTALL_DOCKER.md`: one sentence (in the ejabberd-unhealthy
   troubleshooting entry) that container logs never contain the admin
-  password.
+  password, plus a carve-out that `EJABBERD_ADMIN_PASSWORD` — unlike the
+  other `*_PASSWORD` values — takes effect on restart via
+  `change_password`, no volume reset needed.
 
 ### Reproduction (before the fix, throwaway sentinel only)
 Built `deploy/ejabberd/Dockerfile` and started it with
@@ -100,7 +104,26 @@ It comes from the base image: `/usr/local/bin/ejabberdctl` builds
 `:> ejabberdctl $HEAD2` before running it. Containers and network removed
 afterwards.
 
-### Commands and real results
+### Commands and real results (review round)
+- `pnpm install`: done (848ms).
+- `sh deploy/tests/admin-password-log.test.sh`: `pass=24 fail=0` —
+  image builds; fresh start: account exists, sentinel live, sentinel
+  nowhere in logs; restart: new password live, old rejected, no leak;
+  all three compose files no longer set REGISTER_ADMIN_PASSWORD; both
+  entrypoints carry the registration block and the unset warning; plain
+  compose passes EJABBERD_ADMIN_PASSWORD, Coolify keeps
+  SERVICE_PASSWORD_EJABBERDADMIN mapped to EJABBERD_ADMIN_PASSWORD.
+  Full run takes ~4 min (two boots). Running dev containers
+  (zilar-dev-*) were not touched; only t0167-prefixed containers/networks
+  were created and all were removed, test image deleted afterwards.
+- `sh deploy/tests/storage-safety.test.sh`: `pass=24 fail=0`.
+- `pnpm format:check`: fails only on `PREREVIEW.md` (the lead's untracked
+  review file, not mine to edit); every file I changed passes
+  (`prettier --check` on the compose files, yml, task file: "All matched
+  files use Prettier code style!").
+- `sh -n` on both entrypoints and the test: syntax OK.
+
+### Commands and real results (first round)
 - `pnpm install`: done (7.4s).
 - `pnpm format:check`: "All matched files use Prettier code style!"
   (before the change and after).
@@ -128,9 +151,6 @@ afterwards.
 - No deletes/updates in app code; no caps/uniqueness rules touched; no new
   routes; no audit entries. No secrets read, printed or committed (only
   throwaway sentinels used in local containers, removed afterwards).
-- Skipped-scope note: `infra/docker-compose.dev.yml:65` still uses
-  `REGISTER_ADMIN_PASSWORD` for the dev stack — out of scope (Allowed
-  files cover only the deploy files), flagging for the lead.
 
 ### Other secrets in other containers (spec asks to list only)
 - `server`: `DATABASE_URL`, `XMPP_ARCHIVE_DATABASE_URL` (embed DB
@@ -153,11 +173,18 @@ afterwards.
   (covered by the storage-safety test).
 
 ### Deviations / open questions
-- None from the spec. One judgment call: when `EJABBERD_ADMIN_PASSWORD`
-  or `EJABBERD_MACRO_ADMIN` is unset the entrypoint silently skips
-  registration (both compose files always set them, so this only affects
-  hand-rolled runs — failing fast there would break existing dev-style
-  usage of the image without an admin).
+- Lead-approved scope extension (review round): `infra/ejabberd/jwt-entrypoint.sh`
+  and `infra/docker-compose.dev.yml` mirror the fix (same registration
+  block, `REGISTER_ADMIN_PASSWORD` replaced with `EJABBERD_ADMIN_PASSWORD`
+  for the dev stack). Dev compose still bind-mounts the entrypoint, so no
+  dev image rebuild is needed; running dev containers were not restarted
+  or touched.
+- Changed after review: the entrypoint now prints one fixed warning (no
+  values) when `EJABBERD_ADMIN_PASSWORD`/`EJABBERD_MACRO_ADMIN` is unset
+  instead of skipping silently; the dead `grep 'REGISTER_ADMIN_PASSWORD:'`
+  log check is removed from the test (the sentinel scan is the real
+  guard); the doc paragraph now carves out `EJABBERD_ADMIN_PASSWORD` from
+  the volume-reset rule.
 - The failing-registration path (fixed message, ejabberd still running)
   is implemented but was not exercised live — forcing it would need a
   broken SQL backend while the server answers, which the throwaway setup

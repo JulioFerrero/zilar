@@ -57,7 +57,9 @@ EOF
 # the container's stop signals: a slow or stuck registration cannot delay
 # `docker stop` (at most one 2s sleep), and when the main server process
 # (the exec below) exits the step dies with it.
-if [ -n "${EJABBERD_ADMIN_PASSWORD-}" ] && [ -n "${EJABBERD_MACRO_ADMIN-}" ]; then
+if [ -z "${EJABBERD_ADMIN_PASSWORD-}" ] || [ -z "${EJABBERD_MACRO_ADMIN-}" ]; then
+  echo "admin-register: warning: EJABBERD_ADMIN_PASSWORD or EJABBERD_MACRO_ADMIN is unset; the admin account will not be registered" >&2
+else
   (
     trap '' TERM INT HUP
     tries=0
