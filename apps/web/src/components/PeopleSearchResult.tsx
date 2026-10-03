@@ -9,7 +9,7 @@ import { ContactProfileRow } from './ContactProfileRow';
 export function PeopleSearchResult({ query }: { query: string }) {
   const { state, refreshProfile } = usePeopleSearch(query);
 
-  if (state.status === 'idle' || state.status === 'invalid') {
+  if (state.status === 'idle') {
     return null;
   }
   if (state.status === 'loading') {
@@ -20,7 +20,7 @@ export function PeopleSearchResult({ query }: { query: string }) {
       </div>
     );
   }
-  if (state.status === 'missing') {
+  if (state.status === 'missing' || state.status === 'invalid') {
     return (
       <div className="flex flex-col gap-1 px-2">
         <p className="px-[10px] pt-2 text-[12px] font-semibold text-muted-foreground">People</p>

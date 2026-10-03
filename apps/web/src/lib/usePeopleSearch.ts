@@ -7,12 +7,12 @@ export const PEOPLE_SEARCH_DEBOUNCE_MS = 900;
 
 export type PeopleSearchState =
   | { status: 'idle' }
-  | { status: 'invalid' }
+  | { status: 'invalid'; handle: string }
   | { status: 'loading'; handle: string }
   | { status: 'found'; handle: string; profile: HandleProfile }
   | { status: 'missing'; handle: string }
   | { status: 'rate_limited' }
-  | { status: 'error' };
+  | { status: 'error'; handle: string };
 
 function handleOf(query: string): string | null {
   const trimmed = query.trim();
@@ -24,11 +24,12 @@ function handleOf(query: string): string | null {
 
 /**
  * Exact-handle people search for the search bar. Only a text starting with
- * `@` followed by a valid handle shape ever calls the lookup: anything else
- * stays idle. Debounced 900 ms after the last keystroke; the same handle in
- * a row is never looked up twice (the last result is cached until the text
- * changes). A 429 reports rate-limited once and does not retry; Enter (the
- * `zilar:search-enter` event) looks up at once.
+ * `@` ever calls the lookup: anything else stays idle. Debounced 900 ms
+ * after the last keystroke; a successful handle is cached (the same handle
+ * in a row is never looked up twice); a 429 reports rate-limited once and
+ * does not retry, but a different handle is always attempted; Enter (the
+ * `zilar:search-enter` event) looks up at once. Only the latest lookup
+ * writes state (a request id drops stale responses).
  */
 export function usePeopleSearch(query: string): {
   state: PeopleSearchState;
@@ -36,68 +37,79 @@ export function usePeopleSearch(query: string): {
   refreshProfile: (profile: HandleProfile) => void;
 } {
   const [state, setState] = useState<PeopleSearchState>({ status: 'idle' });
-  const lastLookedUpRef = useRef<string | null>(null);
+  // Handles cached on success (404 counts as settled too: it stays until
+  // the text changes). A generic error clears the entry so Enter retries.
+  const cachedRef = useRef<string | null>(null);
+  const requestRef = useRef(0);
 
-  const runLookup = useCallback((handle: string, currentStatus: PeopleSearchState['status']) => {
-    if (lastLookedUpRef.current === handle) {
+  const startLookup = useCallback((handle: string) => {
+    if (cachedRef.current === handle) {
       return;
     }
-    if (currentStatus === 'rate_limited') {
-      return;
-    }
-    lastLookedUpRef.current = handle;
+    const id = requestRef.current + 1;
+    requestRef.current = id;
     setState({ status: 'loading', handle });
     void lookupByHandle(handle).then(
       (profile) => {
+        if (requestRef.current !== id) {
+          return;
+        }
+        cachedRef.current = handle;
         setState({ status: 'found', handle, profile });
       },
       (error: unknown) => {
+        if (requestRef.current !== id) {
+          return;
+        }
         if (error instanceof ApiError && error.status === 404) {
+          cachedRef.current = handle;
           setState({ status: 'missing', handle });
           return;
         }
         if (error instanceof ApiError && error.code === 'rate_limited') {
+          cachedRef.current = handle;
           setState({ status: 'rate_limited' });
           return;
         }
-        setState({ status: 'error' });
+        cachedRef.current = null;
+        setState({ status: 'error', handle });
       },
     );
   }, []);
 
   // Debounced lookup after the last keystroke. The effect only schedules the
-  // timer; the callback reads the latest status from the state updater, so
-  // no ref is read during render and no setState runs synchronously here.
+  // timer; the callback fires the lookup directly, so no setState runs
+  // synchronously inside the effect.
   useEffect(() => {
     const handle = handleOf(query);
-    if (handle === null || handle === '' || !isValidHandleShape(handle)) {
-      lastLookedUpRef.current = null;
-      const next: PeopleSearchState = handle === null ? { status: 'idle' } : { status: 'invalid' };
+    if (handle === null) {
+      cachedRef.current = null;
+      const pending = setTimeout(() => setState({ status: 'idle' }), 0);
+      return () => clearTimeout(pending);
+    }
+    if (handle === '' || !isValidHandleShape(handle)) {
+      cachedRef.current = null;
+      const next: PeopleSearchState = { status: 'invalid', handle };
       const pending = setTimeout(() => setState(next), 0);
       return () => clearTimeout(pending);
     }
-    if (lastLookedUpRef.current === handle) {
+    // A different handle after a 429 is a new search: the cache holds the
+    // last attempted handle, so a changed handle always falls through to
+    // the lookup below (the server re-429s if still limited).
+    if (cachedRef.current === handle) {
       return;
     }
-    const pending = setTimeout(() => {
-      setState((current) => {
-        runLookup(handle, current.status);
-        return current;
-      });
-    }, PEOPLE_SEARCH_DEBOUNCE_MS);
+    const pending = setTimeout(() => startLookup(handle), PEOPLE_SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(pending);
-  }, [query, runLookup]);
+  }, [query, startLookup]);
 
   const lookupNow = useCallback(() => {
     const handle = handleOf(query);
     if (handle === null || handle === '' || !isValidHandleShape(handle)) {
       return;
     }
-    setState((current) => {
-      runLookup(handle, current.status);
-      return current;
-    });
-  }, [query, runLookup]);
+    startLookup(handle);
+  }, [query, startLookup]);
 
   useEffect(() => {
     const onEnter = (): void => lookupNow();

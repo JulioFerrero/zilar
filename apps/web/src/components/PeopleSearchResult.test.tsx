@@ -117,6 +117,74 @@ describe('usePeopleSearch via the search bar', () => {
     expect(lookupMock).toHaveBeenCalledTimes(1);
   });
 
+  it('looks up a different handle after a 429', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    lookupMock.mockRejectedValueOnce(new ApiError(429, 'rate_limited', 'Too many'));
+    lookupMock.mockResolvedValue(PROFILE);
+    renderApp('/');
+    const input = screen.getByLabelText('Search chats');
+    fireEvent.change(input, { target: { value: '@taken_user' } });
+    await flushTimers();
+    expect(await screen.findByText('Too many searches, try again in a few minutes.')).toBeTruthy();
+
+    fireEvent.change(input, { target: { value: '@taken_user2' } });
+    await flushTimers();
+    expect(lookupMock).toHaveBeenCalledTimes(2);
+    expect(lookupMock).toHaveBeenLastCalledWith('taken_user2');
+  });
+
+  it('retries after a transient error on Enter', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    lookupMock.mockRejectedValueOnce(new Error('network down'));
+    lookupMock.mockResolvedValue(PROFILE);
+    renderApp('/');
+    const input = screen.getByLabelText('Search chats');
+    fireEvent.change(input, { target: { value: '@taken_user' } });
+    await flushTimers();
+    expect(await screen.findByText('Could not search for that username.')).toBeTruthy();
+
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(lookupMock).toHaveBeenCalledTimes(2);
+    expect(await screen.findByText('@taken_user')).toBeTruthy();
+  });
+
+  it('a stale lookup never overwrites a newer one', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let resolveSlow: ((profile: typeof PROFILE) => void) | undefined;
+    lookupMock.mockImplementationOnce(
+      () =>
+        new Promise<typeof PROFILE>((resolve) => {
+          resolveSlow = resolve;
+        }),
+    );
+    lookupMock.mockResolvedValue({ ...PROFILE, name: 'Taken User2', handle: 'taken_user2' });
+    renderApp('/');
+    const input = screen.getByLabelText('Search chats');
+    fireEvent.change(input, { target: { value: '@taken_user' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(lookupMock).toHaveBeenCalledTimes(1);
+
+    fireEvent.change(input, { target: { value: '@taken_user2' } });
+    await flushTimers();
+    expect(lookupMock).toHaveBeenCalledTimes(2);
+    expect(await screen.findByText('Taken User2')).toBeTruthy();
+
+    await act(async () => {
+      resolveSlow?.(PROFILE);
+    });
+    expect(screen.queryByText('Ana')).toBeNull();
+    expect(screen.getByText('Taken User2')).toBeTruthy();
+  });
+
+  it('an invalid handle shape shows the muted line without a lookup', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    renderApp('/');
+    fireEvent.change(screen.getByLabelText('Search chats'), { target: { value: '@ab' } });
+    await flushTimers();
+    expect(lookupMock).not.toHaveBeenCalled();
+    expect(await screen.findByText('No one with that username.')).toBeTruthy();
+  });
+
   it('never calls the lookup for text without @', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     renderApp('/');
