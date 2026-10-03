@@ -1,7 +1,7 @@
 ---
 id: T-0155
 title: Web UI polish round 2 (Machines, Approvals, dialogs, text size, sticker nits)
-status: planned
+status: review
 milestone: M5
 branch: task/T-0155-web-ui-polish-2
 model: meta/muse-spark-1.3-contributor
@@ -46,5 +46,100 @@ pnpm --filter @zilar/web test --maxWorkers=2 <the test files of the components y
 - The Report lists what was opened and changed.
 
 ## Report (written by the worker when done)
+
+### What I did
+
+Browser audit first (dev server `VITE_MOCK=1 pnpm --filter @zilar/web dev --port 5174`,
+Playwright Chromium, mock auth so no OTP/rate-limit risk): opened Machines, Approvals,
+Notifications, Stickers, Connections, My AIs, Login, the chat list, an open chat (header
+menu + sticker picker), and Welcome name/handle, Profile, Requests, Integrations at
+1280 px and 390 px. Measured viewport overflow per element, unlabeled icon-only buttons,
+column geometry, and fonts under 13 px; saved before/after screenshots to `/tmp`
+(not committed).
+
+Findings fixed (web app only, existing components/style reused):
+- Stickers pack rows overflowed at 390 px (audit: action span `w=434` vs 390 px viewport,
+  clipping "Remove from panel"/"Delete"). The actions span lost `shrink-0`, so the row
+  now wraps the buttons under the title instead of pushing past the viewport edge.
+  Verified: zero overflow on all 8 audited settings pages at both widths after.
+- Picker favorite star: was `absolute top-0 right-0 bg-black/60`, touching the tile edge
+  and the art. Now `top-0.5 right-0.5` with `border-edge` and `bg-black/70`, and the art
+  shrank (`TILE_PX - 12` with `p-1.5`) so the star has breathing room. Measured:
+  `overlap=false`, all 6 stars fully inside their tiles at both widths.
+- "Private" showed twice per imported pack row (badge + "· Private" in the subtitle).
+  Subtitle now reads `N stickers · Imported from Telegram`; the badge stays the single
+  visibility label.
+- Notifications "Not supported" was a bare paragraph; "server-off" too. Both are now
+  "This device" cards in the same column (`Not supported` / `Not available` + detail),
+  matching the Enabled/Not enabled/Blocked cards.
+- `ApprovedMachineCard`: the rename pencil had `aria-label` but no `title` tooltip;
+  added. Card heading confirmed as the machine's own name (comment now says so; the
+  section header "Your machines" names the group — no wrong title found beyond the
+  missing tooltip).
+- `AddMachineDialog`: copy button gained the missing `title`; stale copy ("On the
+  machine, run … / The runner app is coming soon.") now reads "download the runner
+  app, then run … / The desktop runner is not published yet — this code is ready for
+  when it is." (The `zilar-runner pair <CODE>` command is real: `apps/runner/` exists.)
+- Text size: settings secondary text raised to 13 px minimum — pending-card
+  Fingerprint label + both helper lines 12→13, revoked-card hardware + revoked-date
+  12→13, approval details/cost/expiry 12→13 (leading fixed 4→5), add-dialog timer
+  12→13. Body text was already ≥14 px everywhere in scope. Left alone per spec (chat
+  view sizes, 10–11 px badges/pills/unread counts/timestamps — pre-existing chat
+  microcopy, out of scope).
+- Wrapping hardening: machine hardware lines and fingerprints got `wrap-anywhere`,
+  approval action header wraps with `basis-40`, summary/details get `break-words`.
+
+Pages opened and result (all centered column, no clipping, no unlabeled icon buttons):
+Machines, Approvals, Notifications, Stickers, Connections, My AIs, Login, chat list,
+open chat + header menu (Topic info, Pinned messages, Search, Pin, Mute, Archive chat)
++ sticker picker, Welcome name/handle, Profile, Requests, Integrations — at 1280 and
+390. Login/welcome/profile/requests/integrations needed no changes.
+
+Left alone: chat-view 10–12 px microcopy (badges, pills, timestamps, unread counts —
+spec keeps chat sizes); 11 px `pending`/`active`/driver pills (badges, consistent
+across pages); sticker thumbnails 404 in mock-mode screenshots (known dev-only
+artifact: mock HTTP layer intercepts `fetch`, not raw `<img>` loads; unit tests and
+real backend unaffected).
+
+### Files changed
+- `apps/web/src/components/StickerPanel.tsx` (star inset + backdrop/border, art padding)
+- `apps/web/src/routes/StickersPage.tsx` (single visibility label, wrapping actions)
+- `apps/web/src/routes/NotificationsPage.tsx` (Not supported / server-off cards)
+- `apps/web/src/components/machines/ApprovedMachineCard.tsx` (rename `title`, wrap,
+  comment)
+- `apps/web/src/components/machines/AddMachineDialog.tsx` (copy `title`, fresh copy)
+- `apps/web/src/components/machines/PendingMachineCard.tsx` (13 px secondary, wrap)
+- `apps/web/src/components/machines/RevokedMachineCard.tsx` (13 px, machine name line)
+- `apps/web/src/components/approvals/ApprovalRow.tsx` (13 px, wrapping header/text)
+- Tests: `StickerPanel.test.tsx` (+star placement assertions), `StickersPage.test.tsx`
+  (single-label assertion), `NotificationsPage.test.tsx` (card assertions for both
+  states), `AddMachineDialog.test.tsx` + `MachinesPage.test.tsx` (new copy + tooltip)
+- `work/T-0155-web-ui-polish-2.md` (status + this report)
+
+### Commands run and real results
+- `pnpm install`: ok (8.3s)
+- `pnpm format:check`: pass ("All matched files use Prettier code style!")
+- `pnpm lint` (oxlint): pass, no findings
+- `pnpm typecheck`: pass (11 tasks, turbo)
+- `pnpm --filter @zilar/web test --maxWorkers=2 StickerPanel StickersPage
+  NotificationsPage MachinesPage AddMachineDialog ApprovalRow ApprovalsPage
+  ConnectionsPage AisPage AiPageShell NewAiDialog PackEditor TelegramImport`:
+  11 files, 133 passed
+- Browser audit (Playwright, mock mode, port 5174): before — stickers-390 overflow
+  (`w=434`); after — zero overflow on all pages/widths, picker `overlap=false`,
+  stars inside tiles, dialogs readable. Before/after PNGs in `/tmp` (`t155/` and
+  `t155/after/`), not committed.
+
+### Problems, deviations, open questions
+- No real-account check: mock mode only (per T-0152/T-0153 precedent, avoids OTP
+  rate limits). Geometry verified by measurement + screenshots; the lead may want a
+  live look.
+- `ApprovedMachineCard` "wrong title": the card heading is already the machine name,
+  so the fix is the missing rename tooltip + clarifying comment. If the lead meant a
+  different title bug, it needs a pointer.
+- No new dependencies. No secrets touched.
+
+### Blocked / needs a decision
+- None.
 
 ## Review (written by Claude)

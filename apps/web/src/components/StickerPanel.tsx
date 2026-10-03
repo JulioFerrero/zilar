@@ -299,8 +299,9 @@ export function StickerPanel({
   // The sticker grid: 5 columns of fixed 56 px square tiles inside a
   // min-344px panel (5 x 56 + 4 x 8 gap + 2 x 8 padding = 328 px, leaving
   // room for the scrollbar), so tiles never overlap. The image stays
-  // object-contain inside its tile and the star is a small corner button
-  // in the tile's padded corner.
+  // object-contain inside its tile with breathing room (T-0155: `p-1.5`
+  // plus an `m-0.5` ring box, so the star's backdrop corner never touches
+  // the art) and the star is a small corner button fully inside the tile.
   const TILE_PX = 56;
 
   const toggleFavorite = (sticker: StickerChoice): void => {
@@ -504,9 +505,9 @@ export function StickerPanel({
                       onMouseLeave={() => setPreview(undefined)}
                       onBlur={() => setPreview(undefined)}
                       style={{ width: TILE_PX, height: TILE_PX }}
-                      className="flex items-center justify-center overflow-hidden rounded-[8px] p-1 hover:bg-surface-raised focus-visible:bg-surface-raised"
+                      className="flex items-center justify-center overflow-hidden rounded-[8px] p-1.5 focus-visible:bg-surface-raised hover:bg-surface-raised"
                     >
-                      <StickerThumb sticker={sticker} size={TILE_PX - 8} />
+                      <StickerThumb sticker={sticker} size={TILE_PX - 12} />
                     </button>
                     <button
                       type="button"
@@ -519,8 +520,8 @@ export function StickerPanel({
                       title={starred ? 'Remove from favorites' : 'Add to favorites'}
                       onClick={() => toggleFavorite(sticker)}
                       className={cn(
-                        'absolute top-0 right-0 flex size-5 items-center justify-center rounded-full bg-black/60 text-[10px] leading-none',
-                        starred ? 'text-white' : 'text-muted-foreground opacity-70',
+                        'absolute top-0.5 right-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border border-edge bg-black/70 text-[10px] leading-none',
+                        starred ? 'text-white' : 'text-muted-foreground opacity-80',
                       )}
                     >
                       ★

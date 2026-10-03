@@ -403,12 +403,10 @@ export function StickersPage() {
                         </span>
                         <span className="mt-0.5 block text-[13px] text-muted-foreground">
                           {pack.stickers.length} sticker{pack.stickers.length === 1 ? '' : 's'}
-                          {pack.importedFrom !== undefined
-                            ? ' · Imported from Telegram · Private'
-                            : ''}
+                          {pack.importedFrom !== undefined ? ' · Imported from Telegram' : ''}
                         </span>
                       </span>
-                      <span className="flex shrink-0 flex-wrap items-center justify-end gap-1">
+                      <span className="flex min-w-0 flex-wrap items-center justify-end gap-1">
                         <button
                           type="button"
                           aria-label={`Move ${pack.title} up`}

@@ -13,7 +13,7 @@ const EXPIRED_ANNOUNCE = 'Code expired';
 /**
  * The "Add machine" dialog: mints a fresh pairing code, shows it big in Geist
  * Mono with a copy key, a live countdown, and the `zilar-runner pair <CODE>`
- * command. The runner app is coming soon (T-0071+), so the line below the
+ * command. The desktop runner is not published yet, so the line below the
  * command says so honestly.
  */
 export function AddMachineDialog({ onClose }: { onClose: () => void }) {
@@ -180,6 +180,7 @@ export function AddMachineDialog({ onClose }: { onClose: () => void }) {
                 <button
                   type="button"
                   aria-label="Copy pairing code"
+                  title="Copy pairing code"
                   disabled={status === 'expired'}
                   onClick={copy}
                   className="flex items-center gap-1 rounded-md bg-accent px-2.5 py-1 text-[13px] font-medium text-accent-foreground hover:bg-accent/90 disabled:opacity-60"
@@ -195,12 +196,14 @@ export function AddMachineDialog({ onClose }: { onClose: () => void }) {
             </div>
 
             <p className="mt-3 text-[14px]">
-              On the machine, run{' '}
+              On the machine, download the runner app, then run{' '}
               <span className="font-mono text-[13px] whitespace-nowrap">
                 zilar-runner pair {pairing.code}
               </span>
             </p>
-            <p className="mt-1 text-[13px] text-muted-foreground">The runner app is coming soon.</p>
+            <p className="mt-1 text-[13px] text-muted-foreground">
+              The desktop runner is not published yet — this code is ready for when it is.
+            </p>
 
             {/* Visually hidden so AT users hear the expiry once. */}
             <p role="status" aria-live="polite" className="sr-only">

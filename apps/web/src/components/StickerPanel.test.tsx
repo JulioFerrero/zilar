@@ -165,6 +165,17 @@ describe('StickerPanel', () => {
     for (const tile of tiles) {
       expect(tile.className).toContain('size-[56px]');
     }
+    // The favorite star sits fully inside the tile corner: a small button
+    // with a backdrop and border, offset from the tile edge, never covering
+    // the sticker art.
+    const stars = dialog.querySelectorAll('[aria-pressed]');
+    expect(stars.length).toBe(2);
+    for (const star of stars) {
+      expect(star.className).toContain('top-0.5');
+      expect(star.className).toContain('right-0.5');
+      expect(star.className).toContain('size-5');
+      expect(star.className).toContain('bg-black/70');
+    }
   });
 
   it('anchors the panel to the viewport bottom-right (above the emoji button)', async () => {

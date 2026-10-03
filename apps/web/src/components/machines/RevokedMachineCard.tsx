@@ -28,13 +28,15 @@ export function RevokedMachineCard({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <p className="truncate text-[15px] font-medium">{machine.name}</p>
-          <p className="text-[12px] text-muted-foreground">{hardwareLine(machine)}</p>
+          <p className="text-[13px] text-muted-foreground">
+            {machine.name} · {hardwareLine(machine)}
+          </p>
         </div>
         <span className="rounded-full bg-badge-muted px-2 py-0.5 text-[11px] text-muted-foreground">
           Revoked
         </span>
       </div>
-      <p className="text-[12px] text-muted-foreground">
+      <p className="text-[13px] text-muted-foreground">
         Revoked {formatRevokedAt(machine.approvedAt ?? machine.createdAt)}
       </p>
 

@@ -28,25 +28,29 @@ export function ApprovalRow({
   const cost = worstCaseText(approval.worstCase);
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-divider bg-surface p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 flex-1 items-center gap-2">
+      <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
+        <div className="flex min-w-0 flex-1 basis-40 items-center gap-2">
           <ShieldAlert className="size-4 shrink-0 text-accent" aria-hidden="true" />
-          <span className="truncate text-[16px] font-semibold">{approval.action}</span>
+          <span className="min-w-0 flex-1 truncate text-[16px] font-semibold">
+            {approval.action}
+          </span>
         </div>
         <span className="shrink-0 rounded-full bg-badge-muted px-2 py-0.5 text-[11px] text-foreground">
           pending
         </span>
       </div>
 
-      <p className="text-[14px] leading-5">{approval.summary}</p>
+      <p className="text-[14px] leading-5 break-words">{approval.summary}</p>
 
       {approval.details !== null && (
-        <p className="text-[13px] leading-4 text-muted-foreground">{approval.details}</p>
+        <p className="text-[13px] leading-5 text-muted-foreground break-words">
+          {approval.details}
+        </p>
       )}
 
-      {cost !== '' && <p className="text-[12px] text-muted-foreground">{cost}</p>}
+      {cost !== '' && <p className="text-[13px] text-muted-foreground">{cost}</p>}
 
-      <p className="text-[12px] text-muted-foreground">expires {expiresIn}</p>
+      <p className="text-[13px] text-muted-foreground">expires {expiresIn}</p>
 
       <div className="flex items-center gap-2">
         <Button

@@ -403,7 +403,12 @@ describe('StickersPage', () => {
     renderPage(fetchMock);
 
     await screen.findByText('Fun Cats');
-    expect(screen.getByText(/Imported from Telegram · Private/)).toBeTruthy();
+    // The visibility shows once: the Private badge, with the source (but no
+    // second "Private") in the subtitle.
+    const row = screen.getByText('Fun Cats').closest('li')!;
+    expect(within(row).getByText('Private')).toBeTruthy();
+    expect(within(row).getByText(/Imported from Telegram$/)).toBeTruthy();
+    expect(within(row).queryByText(/Imported from Telegram · Private/)).toBeNull();
     const share = screen.getByRole('button', { name: 'Share' }) as HTMLButtonElement;
     expect(share.disabled).toBe(true);
     expect(share.title).toContain('personal use');

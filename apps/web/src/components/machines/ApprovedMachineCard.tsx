@@ -23,7 +23,9 @@ interface ApprovedMachineCardProps {
 
 /**
  * An approved machine: name (inline rename), online dot, hardware, drivers,
-  fingerprint and a Revoke action that asks twice before disconnecting.
+ * fingerprint and a Revoke action that asks twice before disconnecting.
+ * The card's heading is the machine's own name (with the rename pencil);
+ * the section header above ("Your machines") names the group.
  */
 export function ApprovedMachineCard({
   machine,
@@ -108,6 +110,7 @@ export function ApprovedMachineCard({
               <button
                 type="button"
                 aria-label={`Rename ${machine.name}`}
+                title={`Rename ${machine.name}`}
                 disabled={renaming || revoking}
                 onClick={startEdit}
                 className="rounded-full p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
@@ -138,7 +141,9 @@ export function ApprovedMachineCard({
         </span>
       </div>
 
-      <p className="font-mono text-[13px] text-muted-foreground">{hardwareLine(machine)}</p>
+      <p className="font-mono text-[13px] text-muted-foreground wrap-anywhere">
+        {hardwareLine(machine)}
+      </p>
 
       {machine.drivers.length > 0 && (
         <div className="flex flex-wrap gap-1">
@@ -163,8 +168,8 @@ export function ApprovedMachineCard({
       )}
 
       <div className="flex flex-col gap-1">
-        <span className="text-[12px] text-muted-foreground">Fingerprint</span>
-        <code className="rounded-md bg-well px-2 py-1 font-mono text-[13px]">
+        <span className="text-[13px] text-muted-foreground">Fingerprint</span>
+        <code className="rounded-md bg-well px-2 py-1 font-mono text-[13px] wrap-anywhere">
           {machine.fingerprint}
         </code>
       </div>
