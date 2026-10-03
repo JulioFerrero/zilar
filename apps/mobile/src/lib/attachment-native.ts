@@ -48,11 +48,17 @@ function pickedFile(input: {
   size: number | undefined;
   width?: number | undefined;
   height?: number | undefined;
+  /** Real byte size read from the file when the picker reported none. */
+  measuredSize?: number | undefined;
 }): PickResult {
-  if (input.size !== undefined && input.size === 0) {
+  // An unknown picker size is not an empty file: only a real zero refuses.
+  // The picker reads the size from the file first (see `createAttachmentPicker`
+  // below); `measuredSize` is that stat when the picker reported nothing.
+  const size = input.size ?? input.measuredSize;
+  if (size !== undefined && size === 0) {
     return { status: 'error', message: EMPTY_MESSAGE };
   }
-  if (tooLarge(input.size)) {
+  if (tooLarge(size)) {
     return { status: 'error', message: TOO_LARGE_MESSAGE };
   }
   const mime = mimeForAsset(input.mimeType);
@@ -61,7 +67,7 @@ function pickedFile(input: {
     uri: input.uri,
     name: input.name ?? fallbackName,
     mimeType: mime,
-    size: input.size ?? 0,
+    size: size ?? 0,
   };
   if (input.width !== undefined && input.height !== undefined) {
     file.width = input.width;
@@ -71,7 +77,23 @@ function pickedFile(input: {
 }
 
 /** The real picker: library (photo or video), camera, and generic files. */
-export function createAttachmentPicker(): AttachmentPicker {
+export function createAttachmentPicker(sizeReader?: SizeReader): AttachmentPicker {
+  const reader = sizeReader;
+  // An unknown picker size is read from the file before the cap check: only
+  // a real zero says "That file is empty".
+  async function withRealSize(input: {
+    uri: string;
+    name: string | null | undefined;
+    mimeType: string | undefined;
+    size: number | undefined;
+    width?: number | undefined;
+    height?: number | undefined;
+  }): Promise<PickResult> {
+    if (input.size !== undefined || reader === undefined) {
+      return pickedFile(input);
+    }
+    return pickedFile({ ...input, measuredSize: await reader.sizeOf(input.uri) });
+  }
   return {
     async pickImageOrVideo(): Promise<PickResult> {
       const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -97,7 +119,7 @@ export function createAttachmentPicker(): AttachmentPicker {
       const mime = asset.mimeType ?? (asset.type === 'video' ? 'video/mp4' : 'image/jpeg');
       const name =
         asset.fileName ?? `photo.${extensionForMime(mime === undefined ? undefined : mime)}`;
-      return pickedFile({
+      return withRealSize({
         uri: asset.uri,
         name,
         mimeType: mime,
@@ -127,7 +149,7 @@ export function createAttachmentPicker(): AttachmentPicker {
       }
       const mime = asset.mimeType ?? 'image/jpeg';
       const name = asset.fileName ?? `photo.${extensionForMime(mime)}`;
-      return pickedFile({
+      return withRealSize({
         uri: asset.uri,
         name,
         mimeType: mime,
@@ -151,12 +173,33 @@ export function createAttachmentPicker(): AttachmentPicker {
       if (asset === undefined) {
         return { status: 'cancelled' };
       }
-      return pickedFile({
+      return withRealSize({
         uri: asset.uri,
         name: asset.name,
         mimeType: asset.mimeType,
         size: asset.size,
       });
+    },
+  };
+}
+
+/** Resolves the real byte size of a local file, or undefined when unknown. */
+export interface SizeReader {
+  sizeOf(uri: string): Promise<number | undefined>;
+}
+
+/** The real size reader: `expo-file-system` stat of the picked file. */
+export function createSizeReader(
+  getInfo: typeof FileSystem.getInfoAsync = FileSystem.getInfoAsync,
+): SizeReader {
+  return {
+    async sizeOf(uri: string): Promise<number | undefined> {
+      try {
+        const info = await getInfo(uri);
+        return info.exists === true && info.isDirectory === false ? info.size : undefined;
+      } catch {
+        return undefined;
+      }
     },
   };
 }
@@ -222,12 +265,18 @@ export function createAttachmentUploader(): AttachmentUploader {
  * session bearer when it is our own API origin) and opens the system
  * share/open sheet. Nothing is fetched without a tap: the screen only calls
  * this from a press handler. The destination name is sanitized, so a
- * peer-controlled `../../x` name cannot escape the cache directory.
+ * peer-controlled `../../x` name cannot escape the cache directory. The
+ * download is capped at the attachment size limit (T-0157): the reported
+ * content length refuses up front, and the progress callback aborts once the
+ * bytes pass the cap.
  */
 export function createAttachmentOpener(options?: {
   apiUrl?: string | undefined;
   getToken?: (() => Promise<string | undefined>) | undefined;
+  /** Tests inject a fake download; production uses the new file system. */
+  download?: typeof File.downloadFileAsync | undefined;
 }): AttachmentOpener {
+  const download = options?.download ?? File.downloadFileAsync;
   return {
     async open(
       url: string,
@@ -236,13 +285,25 @@ export function createAttachmentOpener(options?: {
       try {
         const headers = await authHeadersFor(url, options?.apiUrl, options?.getToken);
         const destination = new File(Paths.cache, cleanFilename(name));
-        const file = await File.downloadFileAsync(url, destination, {
+        const controller = new AbortController();
+        const file = await download(url, destination, {
           idempotent: true,
           ...(headers === undefined ? {} : { headers }),
+          signal: controller.signal,
+          onProgress: (progress) => {
+            const written = progress.bytesWritten;
+            const total = progress.totalBytes;
+            if (total > MAX_ATTACHMENT_BYTES || written > MAX_ATTACHMENT_BYTES) {
+              controller.abort();
+            }
+          },
         });
         await Share.share({ url: file.uri, title: cleanFilename(name) });
         return { status: 'opened' };
-      } catch {
+      } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') {
+          return { status: 'error', message: TOO_LARGE_MESSAGE };
+        }
         return { status: 'error', message: OPEN_FAILED_MESSAGE };
       }
     },

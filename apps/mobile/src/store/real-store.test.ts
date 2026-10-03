@@ -1902,6 +1902,61 @@ describe('mobile sends reactions, deletions and edits (T-0085)', () => {
     expect(sendCorrection).toHaveBeenCalledWith(ANA, 'chat', 'srv-2', 'updated text', undefined);
   });
 
+  it('edits the caption of an attachment message through the same correction path', async () => {
+    // T-0157 item 5: a long-press Edit on an attachment message edits its
+    // caption (the message text) with the attachment payload untouched.
+    const { store, xmpp } = await setup();
+    xmpp.emit('message', {
+      ...message({
+        id: 'srv-attach-1',
+        chatJid: ANA,
+        body: 'old caption',
+        timestamp: new Date('2026-09-28T12:00:00Z'),
+      }),
+      fromJid: 'me@zilar.test',
+      outgoing: true,
+      originId: 'srv-attach-1',
+      payload: {
+        v: 0 as const,
+        type: 'attachment' as const,
+        data: {
+          kind: 'file' as const,
+          url: 'https://upload.zilar.test/get/tickets.pdf',
+          name: 'tickets.pdf',
+          size: 2_411_724,
+          mime: 'application/pdf',
+        },
+      },
+    });
+    const seeded = store
+      .getState()
+      .messages(ANA)
+      .find((item) => item.id === 'srv-attach-1');
+    expect(seeded?.attachment?.name).toBe('tickets.pdf');
+    expect(seeded?.text).toBe('old caption');
+
+    const sendCorrection = vi.mocked(xmpp.core.sendCorrection);
+    sendCorrection.mockClear();
+    store.getState().editMessage(ANA, 'srv-attach-1', 'new caption');
+    expect(sendCorrection).toHaveBeenCalledWith(
+      ANA,
+      'chat',
+      'srv-attach-1',
+      'new caption',
+      undefined,
+    );
+    const edited = store
+      .getState()
+      .messages(ANA)
+      .find((item) => item.id === 'srv-attach-1');
+    expect(edited?.text).toBe('new caption');
+    expect(edited?.edited).toBe(true);
+    // The attachment payload is untouched: a caption edit never replaces
+    // the file, exactly like web (which edits the caption text only).
+    expect(edited?.attachment).toEqual(seeded?.attachment);
+    expect(edited?.attachment?.name).toBe('tickets.pdf');
+  });
+
   it('targets the origin id even when the store key is the local id', async () => {
     const { store, xmpp } = await setup();
     // Send and wait for the local id to be linked with the server id.

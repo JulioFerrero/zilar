@@ -265,15 +265,12 @@ export function MessageBubble({
   );
   // Edit/Delete are user-side limits: my own text message under 48 h, or my
   // own message of any kind. Tombstones and live drafts offer neither. An
-  // attachment message keeps delete (and copy of the caption) but never
-  // edits the file itself: the caption is plain text, edited like web
-  // (web's composer edits the caption; the attachment payload is replaced
-  // only by sending a new message).
+  // attachment message keeps delete (and copy of the caption); a long-press
+  // Edit edits the caption through the same correction path web uses, keeping
+  // the attachment payload (T-0157). `canEditMessage` (chat-core) already
+  // limits to my own text-carrying messages within the window.
   const canEdit =
-    !draft &&
-    message.deleted !== true &&
-    message.attachment === undefined &&
-    canEditMessage(message, currentUserId, new Date());
+    !draft && message.deleted !== true && canEditMessage(message, currentUserId, new Date());
   const canDelete = !draft && message.deleted !== true && canDeleteMessage(message, currentUserId);
   const myReactions = (message.reactions ?? []).filter((entry) => entry.mine);
   const react = onReact ?? (() => {});
@@ -575,7 +572,7 @@ export function MessageBubble({
       <MessageActionsSheet
         visible={menuOpen}
         canCopy={hasText && sticker === undefined}
-        canEdit={sticker === undefined && !hasAttachment && canEdit}
+        canEdit={sticker === undefined && canEdit}
         canDelete={canDelete}
         canPin={canPin}
         isPinned={isPinned}

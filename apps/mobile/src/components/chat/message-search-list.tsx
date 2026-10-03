@@ -11,6 +11,7 @@ import type { SearchApi, SearchItem } from '@/lib/search-api';
 import type { ChatSummary } from '@/lib/types';
 import { useChatStore } from '@/store/chat-store-provider';
 import { groupSearchByChat, nearEnd, searchResultTitle } from './message-search';
+import { openSearchHit } from './search-jump';
 import { SearchHitLine } from './search-snippet';
 import { useMessageSearch, type MessageSearchView } from './use-message-search';
 
@@ -90,19 +91,20 @@ export function MessageSearchList({
 
   const openHit = useCallback(
     (item: SearchItem): void => {
-      void openAtMessage(item.chatJid, item.messageId).then(
-        () => {
-          router.push({ pathname: '/chat/[id]', params: { id: item.chatJid } });
+      // One attempt: the store's `openAtMessage` pages backwards at most
+      // `MESSAGE_JUMP_MAX_PAGES` history pages, then gives up with
+      // "Message not found" — the chat opens at its bottom with the notice,
+      // never a retry loop (T-0157).
+      void openSearchHit(
+        {
+          openAtMessage,
+          pushChat: (chatId) => router.push({ pathname: '/chat/[id]', params: { id: chatId } }),
+          pushChatNotFound: (chatId) =>
+            router.push({ pathname: '/chat/[id]', params: { id: chatId, notFound: '1' } }),
+          onNotFound: (chatId) => notFoundRef.current(chatId),
         },
-        () => {
-          // The jump gave up ("Message not found"): still open the chat at
-          // its bottom, and say the message is not there.
-          router.push({
-            pathname: '/chat/[id]',
-            params: { id: item.chatJid, notFound: '1' },
-          });
-          notFoundRef.current(item.chatJid);
-        },
+        item.chatJid,
+        item.messageId,
       );
     },
     [openAtMessage, router],
