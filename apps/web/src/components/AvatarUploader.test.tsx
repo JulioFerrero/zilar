@@ -108,4 +108,11 @@ describe('AvatarUploader', () => {
     const { container } = renderUploader({ currentUrl: '/api/avatars/old' });
     expect(container.querySelector('img[src="/api/avatars/old"]')).not.toBeNull();
   });
+
+  it('shows the initials, not a text label, when there is no picture', () => {
+    const { container } = renderUploader();
+    expect(container.querySelector('img')).toBeNull();
+    expect(screen.queryByText('No picture')).toBeNull();
+    expect(container.textContent).toContain('A');
+  });
 });
