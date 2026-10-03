@@ -7,8 +7,14 @@ import { MIC_DENIED_MESSAGE, RECORD_TOO_SHORT_MESSAGE } from '@/lib/voice-native
 import type { VoiceRecorderPort } from '@/lib/voice-native';
 
 vi.mock('react-native', () => ({
+  PanResponder: { create: () => ({ panHandlers: {} }) },
   Pressable: 'Pressable',
   View: 'View',
+}));
+
+vi.mock('@/lib/depth', () => ({
+  ACCENT_FOREGROUND: '#0a0a0a',
+  primaryKey: {},
 }));
 
 vi.mock('lucide-react-native', () => ({
@@ -22,10 +28,6 @@ vi.mock('nativewind', () => ({
 
 vi.mock('@/components/ui/text', () => ({
   Text: 'Text',
-}));
-
-vi.mock('@/components/ui/icon-button', () => ({
-  IconButton: 'IconButton',
 }));
 
 function fakeRecorder(
@@ -71,7 +73,7 @@ describe('voice recorder button (T-0154 review)', () => {
         recorder: fakeRecorder(),
       }),
     );
-    expect(html).toContain('Record voice message');
+    expect(html).toContain('Hold to record voice message');
   });
 
   it('hides the mic button while the composer can send', () => {
@@ -83,7 +85,7 @@ describe('voice recorder button (T-0154 review)', () => {
         recorder: fakeRecorder(),
       }),
     );
-    expect(html).not.toContain('Record voice message');
+    expect(html).not.toContain('Hold to record voice message');
   });
 
   it('a denied permission reports the denied copy and creates no recorder', async () => {

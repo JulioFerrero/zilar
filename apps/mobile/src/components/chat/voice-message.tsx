@@ -36,7 +36,8 @@ import type { UiMessage } from '@/lib/types';
 import { useColorScheme } from 'nativewind';
 
 const BAR_COUNT = 24;
-const WAVEFORM_WIDTH = 108;
+// The bubble is at least this wide so the waveform can stretch to its end.
+const VOICE_MIN_WIDTH = 236;
 
 /**
  * Resolves the play source and applies it only when the request is still
@@ -215,12 +216,12 @@ export function VoiceMessage({
 
   if (failed) {
     return (
-      <View>
+      <View style={{ minWidth: VOICE_MIN_WIDTH }}>
         <View className="flex-row items-center gap-2">
           <View className="h-9 w-9 items-center justify-center rounded-full" style={primaryKey}>
             <Play size={16} color={ACCENT_FOREGROUND} fill={ACCENT_FOREGROUND} />
           </View>
-          <View className="flex-row items-center gap-[2px]" style={{ width: WAVEFORM_WIDTH }}>
+          <View className="flex-1 flex-row items-center justify-between">
             {bars.map((value, index) => (
               <View
                 key={index}
@@ -253,7 +254,7 @@ export function VoiceMessage({
   }
 
   return (
-    <View className="py-0.5">
+    <View className="py-0.5" style={{ minWidth: VOICE_MIN_WIDTH }}>
       <View className="flex-row items-center gap-2">
         <Pressable
           accessibilityRole="button"
@@ -276,8 +277,7 @@ export function VoiceMessage({
           accessibilityLabel={playing ? 'Pause voice message' : 'Play voice message'}
           disabled={!playable}
           onPress={toggle}
-          className="flex-row items-center gap-[2px]"
-          style={{ width: WAVEFORM_WIDTH }}
+          className="flex-1 flex-row items-center justify-between"
         >
           {bars.map((value, index) => {
             const played = index / bars.length <= fraction;

@@ -1,11 +1,11 @@
-import { ArrowUp, Mic, Trash2 } from 'lucide-react-native';
+import { Mic, Trash2 } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { PanResponder, Pressable, View, type GestureResponderHandlers } from 'react-native';
 
-import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
 import { asColorScheme, type ColorScheme } from '@/lib/color-scheme';
 import { ICON } from '@/lib/colors';
+import { ACCENT_FOREGROUND, primaryKey } from '@/lib/depth';
 import { VOICE_MAX_DURATION_MS } from '@/lib/voice';
 import {
   createVoiceRecorder,
@@ -128,12 +128,52 @@ type VoiceRecorderProps = {
 /** How often the recording row re-reads the live duration. */
 const TIMER_TICK_MS = 250;
 
+/** Sliding the finger this far left (negative dx, in px) while holding cancels. */
+const CANCEL_SLIDE_PX = -90;
+
+type HoldHandlers = { begin: () => void; release: (cancel: boolean) => void };
+type FlagRef = { current: boolean };
+
 /**
- * The composer's mic button (T-0154): tap to record, tap Send to send, trash
- * to cancel. While recording a timer row replaces the input (web's gesture
- * and states, touch-sized): a red dot, the elapsed time, and a 5-minute cap
- * that stops the recording automatically. Under one second is refused with
- * the same plain copy as web's "Recording too short".
+ * The hold gesture on the mic: grant starts, release sends, a slide past
+ * `CANCEL_SLIDE_PX` or a lost touch cancels. Built outside the component so
+ * the handlers may read refs (they only run in touch events).
+ */
+function createHoldResponder(
+  handlersRef: { current: HoldHandlers },
+  heldRef: FlagRef,
+  cancelRef: FlagRef,
+  setWillCancel: (value: boolean) => void,
+) {
+  return PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    // The system (a permission dialog, a scroll takeover) must not steal the
+    // touch silently: a lost touch cancels the recording.
+    onPanResponderTerminationRequest: () => false,
+    onPanResponderGrant: () => {
+      heldRef.current = true;
+      cancelRef.current = false;
+      handlersRef.current.begin();
+    },
+    onPanResponderMove: (_event, gesture) => {
+      setWillCancel(gesture.dx < CANCEL_SLIDE_PX);
+    },
+    onPanResponderRelease: (_event, gesture) => {
+      handlersRef.current.release(gesture.dx < CANCEL_SLIDE_PX);
+    },
+    onPanResponderTerminate: () => {
+      handlersRef.current.release(true);
+    },
+  });
+}
+
+/**
+ * The composer's mic button (T-0154): hold to record, release to send, slide
+ * left while holding to cancel. While holding, a timer row replaces the
+ * input: a red dot, the elapsed time and a hint, with a 5-minute cap that
+ * stops the recording automatically. The mic stays mounted under the finger
+ * for the whole hold (a remount would drop the touch). Under one second is
+ * refused with the same plain copy as web's "Recording too short".
  */
 export function VoiceRecorderButton({
   onSendVoice,
@@ -151,6 +191,7 @@ export function VoiceRecorderButton({
   useEffect(() => {
     onRecordingChange?.(recording);
   }, [recording, onRecordingChange]);
+  const [willCancel, setWillCancel] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [error, setError] = useState<string | undefined>(undefined);
   const timerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
@@ -181,6 +222,11 @@ export function VoiceRecorderButton({
     }
   };
 
+  // Releases that arrive before the native recorder finished starting (the
+  // first start waits on the permission prompt) are replayed when it does.
+  const heldRef = useRef(false);
+  const cancelRef = useRef(false);
+
   const begin = () => {
     if (recordingRef.current || startingRef.current || disabled) {
       return;
@@ -208,6 +254,9 @@ export function VoiceRecorderButton({
             void finish(false);
           }
         }, TIMER_TICK_MS);
+        if (!heldRef.current) {
+          void finish(cancelRef.current);
+        }
       })
       .catch(() => {
         setError(MIC_FAILED_MESSAGE);
@@ -221,6 +270,7 @@ export function VoiceRecorderButton({
     stopTimer();
     recordingRef.current = false;
     setRecording(false);
+    setWillCancel(false);
     const copy = await runRecorderFinish(
       { recorder, onSendVoice, onCancelReply, replyTo, waveformFor },
       cancel,
@@ -230,56 +280,65 @@ export function VoiceRecorderButton({
     }
   };
 
-  if (recording) {
-    return (
-      <View className="flex-1">
-        <View className="flex h-9 min-w-0 flex-1 flex-row items-center gap-3 px-1">
-          <View className="size-2.5 shrink-0 rounded-full bg-danger" />
-          <Text className="shrink-0 font-mono text-[15px] tabular-nums text-foreground">
-            {formatElapsed(elapsedMs)}
-          </Text>
-          <Text
-            numberOfLines={1}
-            className="min-w-0 flex-1 text-center text-[13px] text-muted-foreground"
-          >
-            Tap Send to send
-          </Text>
-          <IconButton
-            label="Cancel voice message"
-            className="h-9 w-9 rounded-[10px]"
-            onPress={() => void finish(true)}
-          >
-            <Trash2 size={20} color={ICON[scheme]} />
-          </IconButton>
-          <IconButton
-            label="Send voice message"
-            className="h-9 w-9 rounded-[10px]"
-            onPress={() => void finish(false)}
-          >
-            <ArrowUp size={20} color={ICON[scheme]} />
-          </IconButton>
-        </View>
-        {error !== undefined ? (
-          <Text className="mt-1 px-1 text-[12px] text-danger">{error}</Text>
-        ) : null}
-      </View>
-    );
-  }
+  const release = (cancel: boolean) => {
+    heldRef.current = false;
+    cancelRef.current = cancel;
+    if (recordingRef.current) {
+      void finish(cancel);
+    }
+  };
 
-  if (canSend) {
+  const handlersRef = useRef({
+    begin: () => {},
+    release: (_cancel: boolean) => {},
+  });
+  useEffect(() => {
+    handlersRef.current = { begin, release };
+  });
+
+  // Built in an effect: the responder's handlers read refs, which render may not touch.
+  const [panHandlers, setPanHandlers] = useState<GestureResponderHandlers>({});
+  useEffect(() => {
+    setPanHandlers(createHoldResponder(handlersRef, heldRef, cancelRef, setWillCancel).panHandlers);
+  }, []);
+
+  if (!recording && canSend) {
     return null;
   }
 
   return (
-    <View>
-      <IconButton
-        label="Record voice message"
-        className="h-9 w-9 rounded-[10px]"
-        onPress={begin}
-        disabled={disabled}
-      >
-        <Mic size={20} color={ICON[scheme]} />
-      </IconButton>
+    <View className={recording ? 'min-w-0 flex-1' : undefined}>
+      <View className="flex-row items-center gap-3">
+        {recording ? (
+          <View className="h-9 min-w-0 flex-1 flex-row items-center gap-3 px-1">
+            <View className="size-2.5 shrink-0 rounded-full bg-danger" />
+            <Text className="shrink-0 font-mono text-[15px] tabular-nums text-foreground">
+              {formatElapsed(elapsedMs)}
+            </Text>
+            <Text
+              numberOfLines={1}
+              className={
+                willCancel
+                  ? 'min-w-0 flex-1 text-center text-[13px] text-danger'
+                  : 'min-w-0 flex-1 text-center text-[13px] text-muted-foreground'
+              }
+            >
+              {willCancel ? 'Release to cancel' : '‹ Slide to cancel'}
+            </Text>
+            <Trash2 size={18} color={willCancel ? '#f87171' : ICON[scheme]} />
+          </View>
+        ) : null}
+        <View
+          accessibilityRole="button"
+          accessibilityLabel="Hold to record voice message"
+          accessibilityHint="Release to send, slide left to cancel"
+          className="h-9 w-9 items-center justify-center rounded-[10px]"
+          style={recording ? [primaryKey, { transform: [{ scale: 1.25 }] }] : undefined}
+          {...panHandlers}
+        >
+          <Mic size={20} color={recording ? ACCENT_FOREGROUND : ICON[scheme]} />
+        </View>
+      </View>
       {error !== undefined ? (
         <Pressable
           accessibilityRole="button"
