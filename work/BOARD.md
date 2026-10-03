@@ -194,7 +194,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0171](T-0171-block-users.md) | Block users, part 1 (blocklist, requests, web UI) | planned | meta/muse-spark-1.3-contributor | T-0163 | Spec ready; schema task |
 | [T-0172](T-0172-push-component-host.md) | Push component dials the ejabberd service, not 127.0.0.1 | planned | meta/muse-spark-1.3-contributor | — | Spec ready; found by T-0159 |
 | [T-0173](T-0173-effect-spike.md) | Effect 4.0 spike on the voice transcription pipeline, and a worker guide (gate for docs/ROADMAP_EFFECT.md) | planned | meta/muse-spark-1.3-contributor | T-0170 | Spec ready; waits for Julio's go |
-| [T-0174](T-0174-connection-resilience.md) | XMPP connection survives idle networks and blips (keepalive, no fatal token errors) | planned | meta/muse-spark-1.3-contributor | — | Spec ready; found on Julio's phone |
 | [T-0175](T-0175-emoji-panel-mobile.md) | Mobile: one emoji button with Emoji, Stickers, GIFs tabs | planned | meta/muse-spark-1.3-contributor | — | Spec ready; Julio's request |
 | [T-0177](T-0177-whistle-on-device-spike.md) | Spike: Cactus Whistle on-device transcription (Android local Expo module) | planned | meta/muse-spark-1.3-contributor | — | Spec ready; Julio wants to try Whistle on the phone |
 | [T-0155](T-0155-web-ui-polish-2.md) | Web UI polish round 2: Machines and Approvals layout, notification cards, sticker nits | 2026-10-03 |
@@ -207,3 +206,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0170](T-0170-voice-transcripts.md) | Voice transcripts on demand (owner-configured OpenAI-compatible endpoint) | 2026-10-03 |
 | [T-0154](T-0154-mobile-voice-messages.md) | Mobile voice messages: record, send, play (expo-audio) | 2026-10-03 |
 | [T-0176](T-0176-mobile-attach-icons-short-press.md) | Attach popup and attachment rows use icons, not emoji; a too-short mic press records and says nothing (1 round) | 2026-10-03 |
+| [T-0174](T-0174-connection-resilience.md) | XMPP connection survives idle networks and blips: transient token errors retry with backoff, keepalive ping, server pings answered, ejabberd pings (1 round + lead fix) | 2026-10-03 |
