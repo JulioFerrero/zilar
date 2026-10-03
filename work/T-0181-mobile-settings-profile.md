@@ -115,7 +115,50 @@ Edited: `app/index.tsx` (Settings button only), `auth/NameForm.tsx`
   handle avatar`: 7 files, 81 tests, all pass.
 - Neighbours `auth lib/auth-api lib/ais-api components/ais/ais`: 9 files
   pass, 80 tests pass, 1 skipped (pre-existing skip).
-- The lead tests on the emulator and the phone.
+### Round 1 (lead review findings)
+Lead-approved out-of-scope edits (kept, as signed off):
+- `apps/mobile/src/mock/profile.ts` + test: the mock profile API the
+  real-or-mock hook needs; no `mock/` file for profiles existed.
+- `apps/mobile/src/auth/NameForm.tsx`: the name step chains name -> handle
+  (exactly like web's `NamePage`); allowed was "only the next route", which
+  is what this is.
+
+Finding 1 — relative avatar URL (commit `fb92733` "T-0181: finding 1 - ..."):
+- `profile-logic.ts`: new pure `avatarImageSource(url, apiUrl, token)` —
+  relative paths resolve against the API origin (same idiom as
+  `stickerImageSource`), bearer only on same origin, `file://`/`data:`
+  previews and foreign urls get no headers.
+- `avatar-control.tsx`: uses it for the `expo-image` source; load errors
+  (`onError`) fall back to the initials avatar. The fallback view is split
+  into exported `AvatarPicture` so tests cover it without a simulator.
+- Tests: relative -> absolute + bearer; absolute `file://` unchanged, no
+  headers; no token -> no headers; foreign origin -> no bearer; `Image`
+  carries the absolute uri + `onError`; failed/null source renders
+  initials (incl. the `AL` initials assertion).
+
+Finding 2 — JPEG vs server PNG/WebP-only (commit `1b793fb` "T-0181:
+finding 2 - ..."):
+- `avatar-native.ts`: new `AvatarTranscoder` seam +
+  `createAvatarTranscoder` (`manipulateAsync` with centred-square `crop`
+  from the asset dimensions + `resize` 256x256, `SaveFormat.PNG`;
+  `expo-image-manipulator`, lead-added, no new dep by me).
+  `createPicturePicker({ sizeReader?, transcoder? })` now transcodes every
+  pick: JPEG in -> PNG out (`mimeType: 'image/png'`), so the uploader PUTs
+  `image/png`. Caps apply to the transcoded bytes (stat via
+  `AvatarSizeReader`); transcode failure reports "Could not prepare that
+  picture. Try another photo." and never uploads.
+- `profile-logic.ts`: `avatar_not_image` message no longer promises JPEG
+  works: "That file is not a picture we can use. Try another photo."
+- Tests (injected fake manipulator): JPEG asset goes through the
+  manipulator with `(uri, width, height)` and the upload receives
+  `image/png` (asserted on the PUT headers); manipulator failure shows the
+  prepare message and the uploader is never called; message string
+  asserted to not contain 'JPEG'. Plus `centeredSquareCrop` cases.
+- Round 1 checks: `pnpm format:check` pass; `pnpm lint` pass;
+  mobile `typecheck` pass; `pnpm --filter @zilar/mobile test
+  --maxWorkers=2 settings profile avatar welcome`: 7 files, 93 tests, all
+  pass. The lead tests on the emulator and the phone.
+- Status stays `review`.
 
 ### Problems / deviations
 - Web crops avatars in a canvas dialog; the phone has no canvas, so the OS
