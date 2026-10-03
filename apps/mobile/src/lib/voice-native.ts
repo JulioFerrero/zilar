@@ -15,8 +15,7 @@ import { isTrustedMediaUrl, safeHttpUrl } from './attachments';
 export const MIC_DENIED_MESSAGE =
   'Zilar needs access to your microphone to record voice messages. You can allow it in Settings.';
 export const MIC_FAILED_MESSAGE = 'Could not start recording. Try again.';
-export const RECORD_TOO_SHORT_MESSAGE =
-  'That recording was too short. Hold the mic a moment longer.';
+export const RECORD_TOO_SHORT_MESSAGE = 'Too short, hold the mic longer.';
 export const RECORD_TOO_LONG_MESSAGE = 'That recording is too long to send.';
 export const RECORD_FAILED_MESSAGE = 'Could not save the recording, try again.';
 
@@ -104,6 +103,8 @@ export interface VoiceRecorderPort {
   cancel(): Promise<void>;
   /** Live duration in ms while recording, for the timer row. */
   currentDurationMs(): number;
+  /** Live input level 0..1 while recording (0 when unknown), for the waveform. */
+  currentLevel(): number;
   /** True while the recorder holds the microphone. */
   isRecording(): boolean;
 }
@@ -116,6 +117,8 @@ export interface NativeRecorderShape {
   uri: string | null;
   isRecording: boolean;
   currentTime: number;
+  /** The recorder status; `metering` is the input level in dB (about -160..0). */
+  getStatus?: () => { metering?: number | undefined };
 }
 
 /** Creates the real recorder: permission first, `expo-audio` m4a second. */
@@ -130,6 +133,21 @@ export function createVoiceRecorder(deps?: {
   fileReader?: ((uri: string) => Promise<{ size: number | undefined }>) | undefined;
 }): VoiceRecorderPort {
   let recorder: NativeRecorderShape | null = null;
+  // Recording leaves the audio session in record mode, which makes playback
+  // quiet and tinny on some phones: switch back once the mic is released.
+  const restorePlaybackMode = async (): Promise<void> => {
+    try {
+      const mode = { playsInSilentMode: true, allowsRecording: false };
+      if (deps?.setAudioMode === undefined) {
+        const { setAudioModeAsync } = await import('expo-audio');
+        await setAudioModeAsync(mode);
+      } else {
+        await deps.setAudioMode(mode);
+      }
+    } catch {
+      // A nicety: never blocks sending.
+    }
+  };
   return {
     async start() {
       // Everything that can throw — the native import, the permission
@@ -168,7 +186,15 @@ export function createVoiceRecorder(deps?: {
             // The audio mode is a nicety; a failure must not block recording.
           }
         }
-        const fresh = new audio.AudioRecorder(audio.HIGH_QUALITY);
+        // Mono 48 kHz AAC: a phone microphone is mono, so a stereo preset only
+        // doubles the file; metering feeds the live waveform.
+        const fresh = new audio.AudioRecorder({
+          ...(audio.HIGH_QUALITY as object),
+          sampleRate: 48000,
+          numberOfChannels: 1,
+          bitRate: 128000,
+          isMeteringEnabled: true,
+        });
         await fresh.prepareToRecordAsync();
         fresh.record();
         recorder = fresh;
@@ -190,6 +216,8 @@ export function createVoiceRecorder(deps?: {
         await current.stop();
       } catch {
         return { status: 'error', message: RECORD_FAILED_MESSAGE };
+      } finally {
+        await restorePlaybackMode();
       }
       const settledUri = current.uri ?? uri;
       if (settledUri === null || settledUri === '') {
@@ -218,10 +246,17 @@ export function createVoiceRecorder(deps?: {
       } catch {
         // Discarding never reports: the mic is released either way.
       }
+      await restorePlaybackMode();
     },
     currentDurationMs() {
       const current = recorder;
       return current === null ? 0 : Math.max(0, Math.round(current.currentTime * 1000));
+    },
+    currentLevel() {
+      const db = recorder?.getStatus?.().metering;
+      return db === undefined || !Number.isFinite(db)
+        ? 0
+        : Math.min(1, Math.max(0, (db + 60) / 60));
     },
     isRecording() {
       return recorder?.isRecording === true;

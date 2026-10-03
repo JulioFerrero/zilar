@@ -21,8 +21,10 @@ function fakeAudio(
   }> = {},
 ) {
   const instances: Array<{ stopped: boolean }> = [];
+  const options_: unknown[] = [];
   return {
     instances,
+    options: options_,
     audio: {
       requestRecordingPermissionsAsync: vi.fn(async () => ({
         granted: overrides.granted ?? true,
@@ -31,6 +33,12 @@ function fakeAudio(
         uri: string | null = overrides.uri ?? 'file:///cache/rec.m4a';
         isRecording = false;
         currentTime = overrides.currentTime ?? 5;
+        constructor(readonly options: unknown) {
+          options_.push(options);
+        }
+        getStatus(): { metering: number } {
+          return { metering: -30 };
+        }
         async prepareToRecordAsync(): Promise<void> {
           if (overrides.prepareFails === true) {
             throw new Error('no mic');
@@ -141,6 +149,37 @@ describe('voice recorder seam (T-0154 review)', () => {
   });
 });
 
+describe('voice recording quality and level (device test 2026-10-03)', () => {
+  it('records mono with metering on, and reports a 0..1 level from the dB reading', async () => {
+    const fake = fakeAudio({});
+    const recorder = createVoiceRecorder({
+      audio: fake.audio,
+      setAudioMode: async () => {},
+      fileReader: async () => ({ size: 120_000 }),
+    });
+    await recorder.start();
+    expect(fake.options[0]).toMatchObject({ numberOfChannels: 1, isMeteringEnabled: true });
+    expect(recorder.currentLevel()).toBeCloseTo(0.5, 5);
+    await recorder.stop();
+    expect(recorder.currentLevel()).toBe(0);
+  });
+
+  it('switches the audio session back to playback once the mic is released', async () => {
+    const fake = fakeAudio({});
+    const modes: boolean[] = [];
+    const recorder = createVoiceRecorder({
+      audio: fake.audio,
+      setAudioMode: async (mode) => {
+        modes.push(mode.allowsRecording);
+      },
+      fileReader: async () => ({ size: 120_000 }),
+    });
+    await recorder.start();
+    await recorder.stop();
+    expect(modes).toEqual([true, false]);
+  });
+});
+
 describe('voice failure reasons (T-0154 review)', () => {
   it('maps offline to network', () => {
     expect(voiceFailureReasonFor(new Error('x'), true)).toBe('network');
@@ -182,7 +221,7 @@ describe('voice failure reasons (T-0154 review)', () => {
   });
 
   it('documents the recorder refusal copies', () => {
-    expect(RECORD_TOO_SHORT_MESSAGE).toContain('too short');
+    expect(RECORD_TOO_SHORT_MESSAGE).toContain('Too short');
     expect(RECORD_TOO_LONG_MESSAGE).toContain('too long');
   });
 });

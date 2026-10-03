@@ -11,6 +11,7 @@ vi.mock('expo-image', () => ({
 
 vi.mock('react-native', () => ({
   ActivityIndicator: 'ActivityIndicator',
+  PanResponder: { create: () => ({ panHandlers: {} }) },
   Image: 'Image',
   Modal: 'Modal',
   Pressable: 'Pressable',

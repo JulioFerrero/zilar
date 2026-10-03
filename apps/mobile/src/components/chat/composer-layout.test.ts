@@ -30,9 +30,19 @@ describe('composer and chat screen layout rules', () => {
     expect(recorder).toContain('onRecordingChange?.(recording)');
   });
 
-  it('shows a send arrow, not a microphone, on the recorder Send button', () => {
+  it('records while the mic is held and sends on release', () => {
+    // Hold to record, release to send, slide left to cancel: the mic must
+    // stay mounted under the finger (a remount drops the touch).
     const recorder = read('voice-recorder.tsx');
-    const sendButton = recorder.slice(recorder.indexOf('label="Send voice message"'));
-    expect(sendButton.slice(0, 300)).toContain('<ArrowUp');
+    expect(recorder).toContain('PanResponder.create');
+    expect(recorder).toContain('onPanResponderRelease');
+    expect(recorder).toContain('CANCEL_SLIDE_PX');
+    expect(recorder).not.toContain('Send voice message');
+  });
+
+  it('stretches the voice waveform to the end of the bubble', () => {
+    const voice = read('voice-message.tsx');
+    expect(voice).not.toContain('WAVEFORM_WIDTH');
+    expect(voice).toContain('flex-1 flex-row items-center justify-between');
   });
 });

@@ -194,6 +194,8 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0171](T-0171-block-users.md) | Block users, part 1 (blocklist, requests, web UI) | planned | meta/muse-spark-1.3-contributor | T-0163 | Spec ready; schema task |
 | [T-0172](T-0172-push-component-host.md) | Push component dials the ejabberd service, not 127.0.0.1 | planned | meta/muse-spark-1.3-contributor | — | Spec ready; found by T-0159 |
 | [T-0173](T-0173-effect-spike.md) | Effect 4.0 spike on the voice transcription pipeline, and a worker guide (gate for docs/ROADMAP_EFFECT.md) | planned | meta/muse-spark-1.3-contributor | T-0170 | Spec ready; waits for Julio's go |
+| [T-0174](T-0174-connection-resilience.md) | XMPP connection survives idle networks and blips (keepalive, no fatal token errors) | planned | meta/muse-spark-1.3-contributor | — | Spec ready; found on Julio's phone |
+| [T-0175](T-0175-emoji-panel-mobile.md) | Mobile: one emoji button with Emoji, Stickers, GIFs tabs | planned | meta/muse-spark-1.3-contributor | — | Spec ready; Julio's request |
 | [T-0155](T-0155-web-ui-polish-2.md) | Web UI polish round 2: Machines and Approvals layout, notification cards, sticker nits | 2026-10-03 |
 | [T-0158](T-0158-scheduled-backups.md) | Scheduled backups with retention, a freshness check in doctor, offsite hint, bare-metal timer and a Coolify guide | 2026-10-03 |
 | [T-0168](T-0168-send-failure-state.md) | Failed voice/attachment sends show Not sent with Retry and Delete, 60 s timeout | 2026-10-03 |
