@@ -12,6 +12,9 @@ Short messages, English. He tests on his phone: do NOT test audio/UI for him whe
 - Specs written, not launched: T-0188 owner integrations, T-0191 sticker editor and Telegram import (after T-0187). Blocked: T-0186 notification settings (needs T-0172 server push work, Julio has not approved). Not written: T-0189 tools/routines/activity, T-0190 @mention picker.
 - Effect 4.0: Julio said GO on 2026-10-04. Next step: launch T-0173 (spike, writes `docs/EFFECT_GUIDE.md`), then follow `docs/ROADMAP_EFFECT.md` pairs (new feature in Effect, then convert old code). Convert tasks keep tests unchanged.
 
+## Night of 2026-10-04 (Julio asleep, phone disconnected)
+Standing orders: be the boss. Delegate all code changes to Muse workers (including review fixes: exact prompt, `lead reply`), keep 4 workers busy, QA on the emulator (`pnpm phone:smoke <branch>`, look at the screenshots), merge only through the gate, never install on the phone (offline), only act when sure. Keep the dashboard Artifact fresh. In the morning leave Julio a short report: merged, running, broken, what to test on the phone.
+
 ## Commands (all from `packages/devtools`)
 - `pnpm exec tsx src/lead/cli.ts launch T-XXXX | status | reply T-XXXX <promptfile> | prereview T-XXXX | merge T-XXXX --summary "..." | autopilot`
 - State: `~/.zilar-lead/state.json` (tasks, sessionId, worktree, prereview{sessionId,head}, packetReadyForHead). Launching two tasks close together can lose an entry: wait 20-25 s between launches and verify with a python read of the file.
