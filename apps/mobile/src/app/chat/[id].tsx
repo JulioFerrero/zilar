@@ -14,6 +14,7 @@ import { PinnedBanner } from '@/components/chat/pinned-banner';
 import { PinsSheet } from '@/components/chat/pins-sheet';
 import { TaskStrip } from '@/components/chat/task-strip';
 import { TopicInfoSheet } from '@/components/chat/topic-sheets';
+import { useVoicePlayerHost } from '@/components/chat/voice-player';
 import { Text } from '@/components/ui/text';
 import { API_URL } from '@/lib/auth';
 import { createAttachmentOpener } from '@/lib/attachment-native';
@@ -28,7 +29,7 @@ import type { SheetPin } from '@/components/chat/pins-sheet';
 import type { TopicStatus } from '@/lib/topics-api';
 import type { ReplyRef, UiMessage } from '@/lib/types';
 import type { PickedFile } from '@/lib/attachment-ports';
-import type { SendAttachmentOptions } from '@/store/types';
+import type { SendAttachmentOptions, SendTextOptions, SendVoiceRecording } from '@/store/types';
 import { mockDemoStickerPacks } from '@/mock/stickers';
 import { mockDemoAttachments } from '@/mock/attachments';
 import { mockDemoGifs } from '@/mock/gifs';
@@ -53,6 +54,9 @@ function Chat() {
   const sendAttachment = useChatStore((state) => state.sendAttachment);
   const retryAttachment = useChatStore((state) => state.retryAttachment);
   const cancelAttachment = useChatStore((state) => state.cancelAttachment);
+  const sendVoice = useChatStore((state) => state.sendVoice);
+  const retryVoice = useChatStore((state) => state.retryVoice);
+  const cancelVoice = useChatStore((state) => state.cancelVoice);
   const sendSticker = useChatStore((state) => state.sendSticker);
   const retrySticker = useChatStore((state) => state.retrySticker);
   const sendTyping = useChatStore((state) => state.sendTyping);
@@ -164,6 +168,10 @@ function Chat() {
     () => createAttachmentOpener({ apiUrl: API_URL, getToken: getSessionToken }),
     [],
   );
+  // The shared voice playback host (T-0154): one expo-audio player for all
+  // bubbles, so only one voice plays at a time. Leaving the chat unmounts
+  // the screen and stops playback.
+  const voiceHost = useVoicePlayerHost();
   const [openingId, setOpeningId] = useState<string | undefined>(undefined);
   const [openError, setOpenError] = useState('');
 
@@ -198,6 +206,11 @@ function Chat() {
 
   const sendAttachmentNow = (file: PickedFile, options?: SendAttachmentOptions) => {
     sendAttachment(chatId, file, options);
+  };
+
+  const sendVoiceNow = (recording: SendVoiceRecording, options?: SendTextOptions) => {
+    sendVoice(chatId, recording, options ?? (replyTo === undefined ? undefined : { replyTo }));
+    cancelReply();
   };
 
   useEffect(() => {
@@ -448,8 +461,11 @@ function Chat() {
             onRetrySticker={(message) => retrySticker(chat.id, message.id)}
             onRetryAttachment={(message) => retryAttachment(chat.id, message.id)}
             onCancelAttachment={(message) => cancelAttachment(chat.id, message.id)}
+            onRetryVoice={(message) => retryVoice(chat.id, message.id)}
+            onCancelVoice={(message) => cancelVoice(chat.id, message.id)}
             onOpenAttachment={openAttachment}
             openingAttachmentId={openingId}
+            voiceHost={voiceHost}
           />
           {pinError !== '' ? (
             <View className="mx-2 flex-row items-center justify-between rounded-[10px] bg-danger/20 px-3 py-2">
@@ -521,6 +537,7 @@ function Chat() {
               );
               cancelReply();
             }}
+            onSendVoice={sendVoiceNow}
             demoAttachments={demoAttachments}
             demoGifs={demoGifs}
             replyTo={replyTo}
@@ -591,6 +608,14 @@ function Chat() {
             pinnedIds={pinnedIds}
             jumpToMessageId={jumpToMessageId}
             onJumped={() => setJumpToMessageId(undefined)}
+            onRetrySticker={(message) => retrySticker(chat.id, message.id)}
+            onRetryAttachment={(message) => retryAttachment(chat.id, message.id)}
+            onCancelAttachment={(message) => cancelAttachment(chat.id, message.id)}
+            onRetryVoice={(message) => retryVoice(chat.id, message.id)}
+            onCancelVoice={(message) => cancelVoice(chat.id, message.id)}
+            onOpenAttachment={openAttachment}
+            openingAttachmentId={openingId}
+            voiceHost={voiceHost}
           />
           {pinError !== '' ? (
             <View className="mx-2 flex-row items-center justify-between rounded-[10px] bg-danger/20 px-3 py-2">
@@ -667,6 +692,7 @@ function Chat() {
                 );
                 cancelReply();
               }}
+              onSendVoice={sendVoiceNow}
               replyTo={replyTo}
               onCancelReply={cancelReply}
               onTyping={() => sendTyping(chat.id)}
@@ -696,6 +722,7 @@ function Chat() {
                 );
                 cancelReply();
               }}
+              onSendVoice={sendVoiceNow}
               replyTo={replyTo}
               onCancelReply={cancelReply}
               onTyping={() => sendTyping(chat.id)}
@@ -824,8 +851,11 @@ function Chat() {
           onRetrySticker={(message) => retrySticker(chat.id, message.id)}
           onRetryAttachment={(message) => retryAttachment(chat.id, message.id)}
           onCancelAttachment={(message) => cancelAttachment(chat.id, message.id)}
+          onRetryVoice={(message) => retryVoice(chat.id, message.id)}
+          onCancelVoice={(message) => cancelVoice(chat.id, message.id)}
           onOpenAttachment={openAttachment}
           openingAttachmentId={openingId}
+          voiceHost={voiceHost}
         />
         {pinError !== '' ? (
           <View className="mx-2 flex-row items-center justify-between rounded-[10px] bg-danger/20 px-3 py-2">
@@ -896,6 +926,7 @@ function Chat() {
             );
             cancelReply();
           }}
+          onSendVoice={sendVoiceNow}
           demoAttachments={demoAttachments}
           demoGifs={demoGifs}
           replyTo={replyTo}

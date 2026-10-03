@@ -10,7 +10,12 @@ import type { ChatSummary, ReplyRef } from '@/lib/types';
 import { useChatStore } from '@/store/chat-store-provider';
 import type { StickerPack } from '@/lib/stickers';
 import type { GifItem } from '@/lib/gifs';
-import type { SendAttachmentOptions, SendStickerChoice } from '@/store/types';
+import type {
+  SendAttachmentOptions,
+  SendStickerChoice,
+  SendTextOptions,
+  SendVoiceRecording,
+} from '@/store/types';
 import type { PickedFile } from '@/lib/attachment-ports';
 import { Composer } from './composer';
 
@@ -25,6 +30,8 @@ type ChannelComposerProps = {
   onSendSticker: (sticker: SendStickerChoice) => void;
   /** Sends a picked file with the composer text as the caption (T-0150). */
   onSendAttachment?: ((file: PickedFile, options?: SendAttachmentOptions) => void) | undefined;
+  /** Sends a finished voice recording (T-0154, forwarded to the composer). */
+  onSendVoice?: ((recording: SendVoiceRecording, options?: SendTextOptions) => void) | undefined;
   /** Demo packs in mock mode (forwarded to the composer). */
   demoPacks?: StickerPack[];
   /** Demo attachments in mock mode, so the flow works without a server. */
@@ -55,6 +62,7 @@ export function ChannelComposerBar({
   onSend,
   onSendSticker,
   onSendAttachment,
+  onSendVoice,
   demoPacks,
   demoAttachments,
   demoGifs,
@@ -78,6 +86,7 @@ export function ChannelComposerBar({
         onSend={onSend}
         onSendSticker={onSendSticker}
         onSendAttachment={onSendAttachment}
+        onSendVoice={onSendVoice}
         demoPacks={demoPacks}
         demoAttachments={demoAttachments}
         demoGifs={demoGifs}

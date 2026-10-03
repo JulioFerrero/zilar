@@ -41,6 +41,12 @@
           "photosPermission": "Allow Zilar to access your photos to attach them to chats.",
           "cameraPermission": "Allow Zilar to access your camera to take photos to attach to chats."
         }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Allow Zilar to access your microphone to record voice messages."
+        }
       ]
     ],
     "experiments": {

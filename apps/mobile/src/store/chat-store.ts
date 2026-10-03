@@ -68,6 +68,9 @@ type ChatStoreData = Omit<
   | 'sendAttachment'
   | 'retryAttachment'
   | 'cancelAttachment'
+  | 'sendVoice'
+  | 'retryVoice'
+  | 'cancelVoice'
   | 'sendSticker'
   | 'retrySticker'
   | 'sendTyping'
@@ -1067,6 +1070,75 @@ export function createChatStore(
       cancelAttachment: (chatId, messageId) => {
         // Mock mode uploads settle instantly: cancelling a sending
         // attachment removes the optimistic bubble, like a delete.
+        set((state) => ({
+          messagesByChat: {
+            ...state.messagesByChat,
+            [chatId]: (state.messagesByChat[chatId] ?? NO_MESSAGES).filter(
+              (item) => item.id !== messageId || item.status !== 'sending',
+            ),
+          },
+        }));
+      },
+      sendVoice: (chatId, recording, options) => {
+        // Mock mode: the demo voice message sends without a server. The
+        // metadata rides the same `voice` payload shape the real store
+        // sends, with the local URI as the playable URL.
+        if (!get().chats.some((chat) => chat.id === chatId)) {
+          return;
+        }
+        messageCounter += 1;
+        const durationMs = Math.max(1, Math.round(recording.durationMs));
+        const waveform = recording.waveform.length > 0 ? recording.waveform : [12];
+        const message: UiMessage = {
+          id: `local-${Date.now()}-${messageCounter}`,
+          chatId,
+          senderId: get().currentUserId,
+          senderName: CURRENT_USER_NAME,
+          createdAt: new Date(),
+          status: 'sending',
+          voice: {
+            duration_ms: durationMs,
+            mime: 'audio/mp4',
+            waveform,
+            ...(recording.uri === '' ? {} : { url: recording.uri }),
+          },
+          ...(options?.replyTo === undefined ? {} : { replyTo: options.replyTo }),
+        };
+        set((state) => ({
+          actionError: state.actionError?.chatId === chatId ? undefined : state.actionError,
+          messagesByChat: {
+            ...state.messagesByChat,
+            [chatId]: [...(state.messagesByChat[chatId] ?? NO_MESSAGES), message],
+          },
+          chats: state.chats.map((chat) =>
+            chat.id === chatId ? { ...chat, lastMessage: message } : chat,
+          ),
+        }));
+        setTimeout(() => setStatus(chatId, message.id, 'sent'), SENT_DELAY_MS);
+        setTimeout(() => setStatus(chatId, message.id, 'read'), READ_DELAY_MS);
+      },
+      retryVoice: (chatId, messageId) => {
+        const message = get().messagesByChat[chatId]?.find((item) => item.id === messageId);
+        if (message?.voice === undefined) {
+          return;
+        }
+        set((state) => ({
+          actionError: state.actionError?.chatId === chatId ? undefined : state.actionError,
+          messagesByChat: {
+            ...state.messagesByChat,
+            [chatId]: (state.messagesByChat[chatId] ?? NO_MESSAGES).map((item) =>
+              item.id === messageId
+                ? { ...clearMockFailure(item), status: 'sending' as const }
+                : item,
+            ),
+          },
+        }));
+        setTimeout(() => setStatus(chatId, messageId, 'sent'), SENT_DELAY_MS);
+        setTimeout(() => setStatus(chatId, messageId, 'read'), READ_DELAY_MS);
+      },
+      cancelVoice: (chatId, messageId) => {
+        // Mock mode uploads settle instantly: cancelling a sending voice
+        // removes the optimistic bubble, like a delete.
         set((state) => ({
           messagesByChat: {
             ...state.messagesByChat,

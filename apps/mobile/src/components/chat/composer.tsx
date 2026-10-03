@@ -1,5 +1,5 @@
 import { StickerSchema, type Attachment } from '@zilar/protocol';
-import { ArrowUp, Mic, Paperclip, Smile, Sticker, X } from 'lucide-react-native';
+import { ArrowUp, Paperclip, Smile, Sticker, X } from 'lucide-react-native';
 import { useCallback, useMemo, useState } from 'react';
 import { Pressable, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -8,6 +8,7 @@ import { AttachSheet, type AttachmentChoice } from '@/components/chat/attach-she
 import { EditBar } from '@/components/chat/edit-bar';
 import { GifSheet } from '@/components/chat/gif-panel';
 import { loadStickerPacks, persistRecent, StickerPanel } from '@/components/chat/sticker-panel';
+import { VoiceRecorderButton } from '@/components/chat/voice-recorder';
 import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
 import { useKeyPress } from '@/components/ui/use-key-press';
@@ -29,7 +30,12 @@ import { mockDemoGifs } from '@/mock/gifs';
 import type { RecentStickerEntry, StickerChoice, StickerPack } from '@/lib/stickers';
 import type { StickerPanelState } from '@/components/chat/sticker-panel';
 import type { ReplyRef } from '@/lib/types';
-import type { SendAttachmentOptions, SendStickerChoice } from '@/store/types';
+import type {
+  SendAttachmentOptions,
+  SendStickerChoice,
+  SendTextOptions,
+  SendVoiceRecording,
+} from '@/store/types';
 import { useChatStore } from '@/store/chat-store-provider';
 import { useColorScheme } from 'nativewind';
 
@@ -88,6 +94,8 @@ type ComposerProps = {
   onSendSticker: (sticker: SendStickerChoice) => void;
   /** Sends a picked file with the composer text as the caption (T-0150). */
   onSendAttachment?: ((file: PickedFile, options?: SendAttachmentOptions) => void) | undefined;
+  /** Sends a finished voice recording (T-0154). */
+  onSendVoice?: ((recording: SendVoiceRecording, options?: SendTextOptions) => void) | undefined;
   /** Demo packs in mock mode, so the panel works without a server. */
   demoPacks?: StickerPack[];
   /** Demo attachments in mock mode, so the flow works without a server. */
@@ -110,6 +118,7 @@ export function Composer({
   onSend,
   onSendSticker,
   onSendAttachment,
+  onSendVoice,
   replyTo,
   onCancelReply,
   onTyping,
@@ -158,8 +167,8 @@ export function Composer({
   // Attachments (T-0150): the paperclip opens the attach sheet. Picking is
   // owned here (the native picker seam is injected for tests); sending goes
   // through the store's `sendAttachment` with the composer text as the
-  // caption, exactly like web. The mic button stays a stub (voice messages
-  // are a later task).
+  // caption, exactly like web. Voice (T-0154): the mic button records through
+  // the `VoiceRecorderButton` below and sends through `onSendVoice`.
   const [attachOpen, setAttachOpen] = useState(false);
   const [attachBusy, setAttachBusy] = useState(false);
   const [attachError, setAttachError] = useState<string | undefined>(undefined);
@@ -482,9 +491,12 @@ export function Composer({
             <ArrowUp size={20} color={ACCENT_FOREGROUND} />
           </Pressable>
         ) : (
-          <IconButton label="Record voice message" className="h-9 w-9 rounded-[10px]">
-            <Mic size={20} color={iconColor} />
-          </IconButton>
+          <VoiceRecorderButton
+            onSendVoice={(recording, options) => onSendVoice?.(recording, options)}
+            replyTo={replyTo}
+            onCancelReply={onCancelReply}
+            canSend={canSend}
+          />
         )}
       </View>
       <StickerPanel

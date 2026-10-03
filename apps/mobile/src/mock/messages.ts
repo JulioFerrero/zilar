@@ -3,6 +3,7 @@ import { PayloadSchema, type Payload } from '@zilar/protocol';
 import { gradientImage } from '../lib/image-presets';
 import { CURRENT_USER_ID, CURRENT_USER_NAME, type UiMessage } from '../lib/types';
 import { at, hoursFromNow } from './time';
+import { mockDemoVoice } from './voice';
 
 type Sender = { id: string; name: string };
 
@@ -58,21 +59,7 @@ function progressCard(stage: string, percent: number, detail?: string): Payload 
   });
 }
 
-const WAVEFORM = [
-  26, 44, 62, 38, 20, 34, 58, 72, 52, 30, 18, 40, 66, 80, 56, 32, 24, 48, 70, 60, 36, 22, 42, 64,
-  50, 28, 38, 54,
-];
-
-const VOICE = {
-  duration_ms: 12_400,
-  mime: 'audio/ogg; codecs=opus',
-  waveform: WAVEFORM,
-  transcript: {
-    text: "Plan is: terrace at nine, bring something to share. I'll get the ice.",
-    language: 'en',
-    source: 'local' as const,
-  },
-};
+const VOICE = mockDemoVoice();
 
 const APPROVAL: Payload = payload({
   v: 0,

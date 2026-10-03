@@ -27,6 +27,7 @@ import { SwipeToReply } from '@/components/chat/swipe-to-reply';
 import { Ticks } from '@/components/chat/ticks';
 import { PulseDot } from '@/components/chat/typing-dots';
 import { VoiceMessage } from '@/components/chat/voice-message';
+import type { VoicePlayerHost } from '@/components/chat/voice-player';
 import { Text } from '@/components/ui/text';
 import { asColorScheme } from '@/lib/color-scheme';
 import { BUBBLE_COLORS } from '@/lib/colors';
@@ -218,10 +219,16 @@ type MessageBubbleProps = {
   onRetryAttachment?: (message: UiMessage) => void;
   /** Called when Cancel is tapped while an attachment uploads. */
   onCancelAttachment?: (message: UiMessage) => void;
+  /** Called when the Retry is tapped on a failed voice send. */
+  onRetryVoice?: (message: UiMessage) => void;
+  /** Called when Cancel is tapped while a voice message uploads. */
+  onCancelVoice?: (message: UiMessage) => void;
   /** Called when a file row is tapped (system open sheet). */
   onOpenAttachment?: (message: UiMessage) => void;
   /** The message id currently downloading for the open sheet. */
   openingAttachmentId?: string | undefined;
+  /** The shared voice player host from the chat screen (T-0154). */
+  voiceHost?: VoicePlayerHost | undefined;
   /** Pin/unpin gating for chat of this message (T-0135). */
   canPin?: boolean;
   isPinned?: boolean;
@@ -245,8 +252,11 @@ export function MessageBubble({
   onRetrySticker,
   onRetryAttachment,
   onCancelAttachment,
+  onRetryVoice,
+  onCancelVoice,
   onOpenAttachment,
   openingAttachmentId,
+  voiceHost,
   canPin,
   isPinned,
   onPin,
@@ -270,7 +280,10 @@ export function MessageBubble({
   // the attachment payload (T-0157). `canEditMessage` (chat-core) already
   // limits to my own text-carrying messages within the window.
   const canEdit =
-    !draft && message.deleted !== true && canEditMessage(message, currentUserId, new Date());
+    !draft &&
+    message.deleted !== true &&
+    message.voice === undefined &&
+    canEditMessage(message, currentUserId, new Date());
   const canDelete = !draft && message.deleted !== true && canDeleteMessage(message, currentUserId);
   const myReactions = (message.reactions ?? []).filter((entry) => entry.mine);
   const react = onReact ?? (() => {});
@@ -497,7 +510,16 @@ export function MessageBubble({
                     </View>
                   ) : message.voice ? (
                     <>
-                      <VoiceMessage voice={message.voice} outgoing={outgoing} />
+                      <VoiceMessage
+                        voice={message.voice}
+                        outgoing={outgoing}
+                        message={message}
+                        onRetryVoice={onRetryVoice}
+                        onCancelVoice={onCancelVoice}
+                        {...(voiceHost === undefined
+                          ? {}
+                          : { playback: voiceHost.playback, controls: voiceHost.controls })}
+                      />
                       <BubbleMeta
                         message={message}
                         outgoing={outgoing}
@@ -572,7 +594,7 @@ export function MessageBubble({
       <MessageActionsSheet
         visible={menuOpen}
         canCopy={hasText && sticker === undefined}
-        canEdit={sticker === undefined && canEdit}
+        canEdit={sticker === undefined && message.voice === undefined && canEdit}
         canDelete={canDelete}
         canPin={canPin}
         isPinned={isPinned}
