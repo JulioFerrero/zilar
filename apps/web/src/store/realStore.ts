@@ -1533,6 +1533,36 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       });
     }
 
+    // Clears a bubble's send-failure state (status back to `sending`-ladder
+    // shape, flags dropped) without touching its content: used when a server
+    // echo proves the stanza was delivered after all. Only `failed` bubbles
+    // move; anything else is left alone.
+    function clearSendFailure(chatId: string, messageId: string): void {
+      set((state) => {
+        const clear = (item: UiMessage): UiMessage =>
+          item.status === 'failed' && sameMessage(item.id, messageId)
+            ? { ...clearFailure(item), status: 'sent' as const }
+            : item;
+        const next = listFor(state, chatId).map(clear);
+        const last = state.chats.find((chat) => chat.id === chatId)?.lastMessage;
+        const lastMatches =
+          last !== undefined && last.status === 'failed' && sameMessage(last.id, messageId);
+        return {
+          messagesByChat: { ...state.messagesByChat, [chatId]: next },
+          chats: lastMatches
+            ? state.chats.map((chat) =>
+                chat.id === chatId && chat.lastMessage !== undefined
+                  ? {
+                      ...chat,
+                      lastMessage: { ...clearFailure(chat.lastMessage), status: 'sent' as const },
+                    }
+                  : chat,
+              )
+            : state.chats,
+        };
+      });
+    }
+
     // Moves a failed bubble back to `sending` for an explicit retry (T-0168).
     // Only `failed` messages move: this is the one path that may leave that
     // status, so `advanceStatus` can stay closed to it.
@@ -1656,17 +1686,6 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       }));
     }
 
-    function clearAttachmentFailure(chatId: string, messageId: string): void {
-      set((state) => ({
-        messagesByChat: {
-          ...state.messagesByChat,
-          [chatId]: listFor(state, chatId).map((item) =>
-            sameMessage(item.id, messageId) ? clearFailure(item) : item,
-          ),
-        },
-      }));
-    }
-
     // One send attempt's deadline (T-0168): when it fires while the message is
     // still `sending`, the send is marked `failed` with `timed_out` and the
     // pipeline's late result is ignored. The run token pairs each timer with
@@ -1706,6 +1725,14 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       sendTimeoutRuns.delete(key);
     }
 
+    // Whether `run` is still the current send attempt for `messageId`: a
+    // retry arms a new run for the same message, and the older pipeline's
+    // late success or failure must then ignore itself instead of flipping a
+    // bubble another attempt owns.
+    function isCurrentSendRun(messageId: string, run: object): boolean {
+      return sendTimeoutRuns.get(aliasRoot(messageId)) === run;
+    }
+
     // The upload steps of an attachment, re-runnable from a Retry: read the
     // image size when it is one, PUT the bytes, then send the payload message.
     function runAttachmentUpload(
@@ -1743,13 +1770,23 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           linkMessageIds(localId, sent.id);
           linkLocalToServer(localId, sent.id);
           rememberOriginId(localId, sent.id);
+          // A retried attempt may own this message now: only this run's own
+          // success settles it, drops the timer and the kept bytes.
+          if (!isCurrentSendRun(localId, run)) {
+            return;
+          }
           settleSendTimeout(localId, run);
           updateMessageStatus(chat.id, localId, 'sent');
           pendingAttachments.delete(localId);
         } catch (error) {
+          // Same staleness rule on failure: a previous run racing a live
+          // retry must not flip the bubble the retry owns.
+          if (!isCurrentSendRun(localId, run)) {
+            return;
+          }
           settleSendTimeout(localId, run);
           // Keep the local bytes so the bubble can offer a Retry.
-          markSendFailed(chat.id, localId, sendFailureReasonFor(error, core === undefined));
+          markSendFailed(chat.id, localId, sendFailureReasonFor(error, false));
           // Pre-timeout code read only the `failed` flag; keep it in sync.
           markAttachmentFailed(chat.id, localId);
         }
@@ -2460,8 +2497,13 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         if (localId !== undefined) {
           linkMessageIds(localId, ui.id);
           linkLocalToServer(localId, ui.id);
-          // The stanza reached the server: its kept retry bytes (voice or
-          // attachment) can go, whichever pipeline stored them.
+          // An echo is proof the stanza reached the server: a bubble the
+          // pipeline had marked `failed` is delivered after all, so it moves
+          // to `sent` and its kept retry bytes can go, whichever pipeline
+          // stored them. `advanceStatus` below still guards against a later
+          // `sending`/`failed` update downgrading it again.
+          clearSendFailure(chatId, ui.id);
+          updateMessageStatus(chatId, ui.id, 'sent');
           const root = aliasRoot(localId);
           pendingVoices.delete(localId);
           pendingVoices.delete(root);
@@ -3218,15 +3260,25 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           linkMessageIds(localId, sent.id);
           linkLocalToServer(localId, sent.id);
           rememberOriginId(localId, sent.id);
+          // A retried attempt may own this message now: only this run's own
+          // success settles it, drops the timer and the kept bytes.
+          if (!isCurrentSendRun(localId, run)) {
+            return;
+          }
           settleSendTimeout(localId, run);
           updateMessageStatus(chat.id, localId, 'sent');
           pendingVoices.delete(localId);
           pendingVoices.delete(aliasRoot(localId));
         } catch (error) {
+          // Same staleness rule on failure: a previous run racing a live
+          // retry must not flip the bubble the retry owns.
+          if (!isCurrentSendRun(localId, run)) {
+            return;
+          }
           settleSendTimeout(localId, run);
           // The optimistic bubble keeps its local audio; the failure shows
           // "Not sent" with Retry and Delete instead of a clock.
-          markSendFailed(chat.id, localId, sendFailureReasonFor(error, core === undefined));
+          markSendFailed(chat.id, localId, sendFailureReasonFor(error, false));
         }
       })();
     }
@@ -4129,16 +4181,13 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           return;
         }
         const message = listFor(get(), chatId).find((item) => sameMessage(item.id, messageId));
-        if (message === undefined) {
+        // Like `retryVoice`: only a `failed` bubble may relaunch the pipeline,
+        // so a double Retry click cannot double-send (the first click flips
+        // the bubble back to `sending`, and the second returns here).
+        if (message === undefined || message.status !== 'failed') {
           return;
         }
-        // An explicit retry moves the bubble back to `sending` (T-0168): the
-        // only path that may leave `failed`.
-        if (message.status === 'failed') {
-          markSendRetrying(chatId, messageId);
-        } else {
-          clearAttachmentFailure(chatId, messageId);
-        }
+        markSendRetrying(chatId, messageId);
         runAttachmentUpload(chat, messageId, file, message.text ?? '', message.replyTo);
       },
       createGroup: async (title, memberIds, options) => {

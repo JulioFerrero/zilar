@@ -96,14 +96,34 @@ old-behavior assertion, new T-0168 suite), `apps/web/src/components/MessageBubbl
 
 ### Commands and real results
 - `pnpm install`: ok (1049 packages).
-- `pnpm format:check`: pass (after `prettier --write` on 2 files).
+- `pnpm format:check`: pass.
 - `pnpm lint`: pass, no warnings.
 - `pnpm typecheck` (turbo, all 11 tasks incl. `@zilar/mobile`): pass.
 - `pnpm --filter @zilar/chat-core test --maxWorkers=2`: 11 files, 136 passed.
 - `pnpm --filter @zilar/web test --maxWorkers=2 src/store src/components src/lib/voice`:
-  69 files, 756 passed (incl. 9 new T-0168 store tests + 4 new SendFailure UI tests).
+  69 files, 759 passed (incl. 12 T-0168 store tests + 4 SendFailure UI tests).
 - Targeted re-run after final edits (`realStore`, `SendFailure`, `AttachmentBubbles`,
   `StickerPanel`): 4 files, 157 passed.
+
+### Review round 1 (findings 1-5 fixed, 6-7 acknowledged)
+- Finding 1: `retryAttachment` now returns early unless the bubble's status is
+  `failed` (same guard as `retryVoice`); new test double-clicks Retry and asserts
+  `upload` ran exactly twice total (1 initial + 1 retry) and the bubble ends `sent`.
+- Finding 2: new `isCurrentSendRun` guard wraps every pipeline continuation — stale
+  run's success (status update, timer settle, bytes drop) and failure
+  (`markSendFailed`) are ignored once a retry owns the message.
+- Finding 3: a server echo that consumes the local id now promotes the bubble to
+  `sent` via new `clearSendFailure` (failure flags dropped) and drops the kept bytes;
+  the old late-echo test now asserts end state `sent` with no Retry, renamed to
+  `a server echo for a failed-but-delivered send marks it sent with no Retry`.
+  `advanceStatus` still blocks any later `sending`/`failed` downgrade.
+- Finding 4: renamed the timeout test to `a hung voice send is marked timed_out
+  after 60 s` (the hanging promise never settles there) and added two late-result
+  variants: stale reject after timeout+retry (stays `sending`, retry then `sent`) and
+  stale resolve after timeout+retry (stays `sending`, preview agrees).
+- Finding 5 (nit): removed the unreachable `core === undefined` argument — both catch
+  blocks now pass `false` (early return above guarantees a core).
+- Findings 6-7: stickers unchanged (out of scope, confirmed); `failures.ts` kept.
 
 ### Problems / deviations
 - Existing test `marks a failed upload failed and retries it` asserted

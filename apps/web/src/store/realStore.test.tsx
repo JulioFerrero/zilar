@@ -3666,7 +3666,155 @@ describe('send failure state (T-0168)', () => {
     expect(voice.convert).toHaveBeenCalledTimes(1);
   });
 
-  it('a hung voice send is marked timed_out after 60 s and ignores its late result', async () => {
+  it('a stale pipeline result is ignored once a retry owns the message', async () => {
+    // Finding 2: the send hangs, the timeout fires, the user retries, and only
+    // then does the ORIGINAL pipeline reject. The stale failure must not flip
+    // the bubble the retry owns; when the retry succeeds it ends `sent`.
+    vi.useFakeTimers();
+    try {
+      const api = fakeApi();
+      const xmpp = fakeXmpp();
+      xmpp.history['ana@zilar.test'] = [
+        message({
+          id: 'ana-1',
+          chatJid: 'ana@zilar.test',
+          body: 'older',
+          timestamp: new Date('2026-09-28T09:00:00Z'),
+        }),
+      ];
+      let releaseOriginal!: (error: unknown) => void;
+      const gate = new Promise<{ audio: Blob; durationMs: number }>((_resolve, reject) => {
+        releaseOriginal = reject;
+      });
+      let releaseRetry!: (value: { audio: Blob; durationMs: number }) => void;
+      const retryGate = new Promise<{ audio: Blob; durationMs: number }>((resolve) => {
+        releaseRetry = resolve;
+      });
+      let attempt = 0;
+      const convert = vi.fn(async (): Promise<{ audio: Blob; durationMs: number }> => {
+        attempt += 1;
+        if (attempt === 1) {
+          return gate;
+        }
+        return retryGate;
+      });
+      const store = createRealChatStore({
+        api,
+        storage: memoryStorage(),
+        now: () => new Date('2026-09-28T12:00:00Z'),
+        createXmpp: () => xmpp.core,
+        voice: fakeVoice({ convert }),
+      });
+      store.getState().start();
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(0);
+
+      store.getState().sendVoice('ana@zilar.test', voiceRecording());
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(SEND_TIMEOUT_MS);
+      expect(store.getState().messages('ana@zilar.test').at(-1)?.status).toBe('failed');
+
+      // Retry while the original pipeline is still hung.
+      store
+        .getState()
+        .retryVoice('ana@zilar.test', store.getState().messages('ana@zilar.test').at(-1)?.id ?? '');
+      await vi.advanceTimersByTimeAsync(0);
+      expect(store.getState().messages('ana@zilar.test').at(-1)?.status).toBe('sending');
+
+      // The original pipeline now rejects: ignored, the retry still owns it.
+      releaseOriginal(new Error('the stalled convert finally failed'));
+      await vi.advanceTimersByTimeAsync(0);
+      const during = store.getState().messages('ana@zilar.test').at(-1);
+      expect(during?.status).toBe('sending');
+
+      // The retry's own pipeline succeeds.
+      releaseRetry({
+        audio: new Blob([new Uint8Array([1, 2, 3])], { type: 'audio/mp4' }),
+        durationMs: 4321,
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      const retried = store.getState().messages('ana@zilar.test').at(-1);
+      expect(convert).toHaveBeenCalledTimes(2);
+      expect(retried?.status).toBe('sent');
+      expect(retried?.failed).toBeUndefined();
+      expect(retried?.failureReason).toBeUndefined();
+      store.getState().stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a late success after the timeout cannot resurrect a retried message', async () => {
+    // Mirror of the stale-failure case: the original pipeline resolves after
+    // the timeout + retry, and must not settle a message it no longer owns.
+    vi.useFakeTimers();
+    try {
+      const api = fakeApi();
+      const xmpp = fakeXmpp();
+      xmpp.history['ana@zilar.test'] = [
+        message({
+          id: 'ana-1',
+          chatJid: 'ana@zilar.test',
+          body: 'older',
+          timestamp: new Date('2026-09-28T09:00:00Z'),
+        }),
+      ];
+      let releaseOriginal!: (value: { audio: Blob; durationMs: number }) => void;
+      const gate = new Promise<{ audio: Blob; durationMs: number }>((resolve) => {
+        releaseOriginal = resolve;
+      });
+      let attempt = 0;
+      const convert = vi.fn(async (): Promise<{ audio: Blob; durationMs: number }> => {
+        attempt += 1;
+        if (attempt === 1) {
+          return gate;
+        }
+        // The retry hangs too, so only the stale resolution is exercised.
+        return new Promise(() => {});
+      });
+      const store = createRealChatStore({
+        api,
+        storage: memoryStorage(),
+        now: () => new Date('2026-09-28T12:00:00Z'),
+        createXmpp: () => xmpp.core,
+        voice: fakeVoice({ convert }),
+      });
+      store.getState().start();
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(0);
+
+      store.getState().sendVoice('ana@zilar.test', voiceRecording());
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(SEND_TIMEOUT_MS);
+      const failedId = store.getState().messages('ana@zilar.test').at(-1)?.id ?? '';
+      expect(store.getState().messages('ana@zilar.test').at(-1)?.status).toBe('failed');
+
+      store.getState().retryVoice('ana@zilar.test', failedId);
+      await vi.advanceTimersByTimeAsync(0);
+
+      // The original pipeline now resolves: ignored, the retry still owns it.
+      releaseOriginal({
+        audio: new Blob([new Uint8Array([1, 2, 3])], { type: 'audio/mp4' }),
+        durationMs: 4321,
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      const during = store
+        .getState()
+        .messages('ana@zilar.test')
+        .find((item) => item.id === failedId);
+      expect(during?.status).toBe('sending');
+      expect(
+        store.getState().chats.find((chat) => chat.id === 'ana@zilar.test')?.lastMessage?.status,
+      ).toBe('sending');
+      store.getState().stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a hung voice send is marked timed_out after 60 s', async () => {
+    // The hanging pipeline here never settles; the stale late-result paths
+    // (resolve/reject after timeout + retry) are covered by the two tests above.
     // Fake timers from the start (like the pins polling test): the store's
     // boot and every `flush` below advance them explicitly.
     vi.useFakeTimers();
@@ -3707,7 +3855,7 @@ describe('send failure state (T-0168)', () => {
     }
   });
 
-  it('a late server echo never moves a failed message back to sending', async () => {
+  it('a server echo for a failed-but-delivered send marks it sent with no Retry', async () => {
     const attachments = fakeAttachments({
       upload: vi.fn(async () => {
         throw new AttachmentError('upload_failed', 'nope');
@@ -3736,7 +3884,14 @@ describe('send failure state (T-0168)', () => {
       .getState()
       .messages('ana@zilar.test')
       .find((item) => item.id === 'srv-late');
-    expect(echoed?.status).toBe('failed');
+    // An echo is proof of delivery: the bubble becomes `sent`, the failure
+    // state clears, and no Retry remains.
+    expect(echoed?.status).toBe('sent');
+    expect(echoed?.failed).toBeUndefined();
+    expect(echoed?.failureReason).toBeUndefined();
+    expect(
+      store.getState().chats.find((chat) => chat.id === 'ana@zilar.test')?.lastMessage?.status,
+    ).toBe('sent');
   });
 
   it('an attachment final-send failure ends failed with a reason', async () => {
@@ -3750,5 +3905,32 @@ describe('send failure state (T-0168)', () => {
     expect(failed?.status).toBe('failed');
     expect(failed?.failureReason).toBe('network');
     expect(failed?.failed).toBe(true);
+  });
+
+  it('a double Retry click on a failed attachment sends only once', async () => {
+    let attempt = 0;
+    const upload = vi.fn(async () => {
+      attempt += 1;
+      if (attempt === 1) {
+        throw new AttachmentError('upload_failed', 'nope');
+      }
+      return 'http://upload.zilar.test/get/1/photo.png';
+    });
+    const { store } = await setup({}, undefined, { attachments: fakeAttachments({ upload }) });
+
+    store.getState().sendAttachment('ana@zilar.test', imageFile(), { caption: 'double retry' });
+    await flush();
+    const failedId = store.getState().messages('ana@zilar.test').at(-1)?.id ?? '';
+    expect(store.getState().messages('ana@zilar.test').at(-1)?.status).toBe('failed');
+
+    // Two Retry clicks in the same tick: the first flips to `sending`, the
+    // second must return early instead of launching a second pipeline.
+    store.getState().retryAttachment('ana@zilar.test', failedId);
+    store.getState().retryAttachment('ana@zilar.test', failedId);
+    await flush();
+
+    expect(upload).toHaveBeenCalledTimes(2);
+    const retried = store.getState().messages('ana@zilar.test').at(-1);
+    expect(retried?.status).toBe('sent');
   });
 });
