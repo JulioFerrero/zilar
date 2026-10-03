@@ -1,7 +1,7 @@
 ---
 id: T-0182
 title: Mobile: find people by @handle, profile card and contact requests
-status: planned
+status: review
 milestone: M5
 branch: task/T-0182-mobile-contacts-requests
 model: meta/muse-spark-1.3-contributor
@@ -58,5 +58,68 @@ Searching by partial name, importing the phone's address book, blocking (T-0171)
 ---
 
 ## Report (written by the worker when done)
+
+Done. Mobile can find people by exact @handle, shows the profile card with the
+right action per relation, and manages contact requests (send, accept,
+decline, cancel). No server change, no new dependency, no emoji in UI.
+
+What I built:
+- `apps/mobile/src/lib/contacts-api.ts` (+ `contacts-api.test.ts`): mirrors
+  the web client names (`lookupByHandle`, `sendContactRequest`,
+  `listContactRequests`, `acceptContactRequest`, `declineContactRequest`,
+  `cancelContactRequest`), type-guard validated, `ContactsApiError` with
+  `status` + `code`. Plus `normalizeHandleInput` (strip @, trim, lowercase),
+  `domainOfJid`, and `contactChatId` (server `localpartFor`+`jidFor` mapping:
+  user id lowercased + XMPP domain).
+- `apps/mobile/src/components/contacts/`: `profile-card.tsx` (name, avatar,
+  @handle, per-relation actions: Send / Cancel / Accept+Decline+Requests /
+  Message / nothing for self), `add-contact.ts` (UI-free lookup/send failure
+  mappers, `NO_USER_MESSAGE = 'No user with that username'`),
+  `add-contact-sheet.tsx` (exact-handle field, Look up button, debounced
+  lookup, Message resolves the loaded DM chat via `resolveContactChat` and
+  never guesses an id), `requests.ts` (list/action failure mappers),
+  `use-contacts-api.ts` (real-or-mock hook, `use-ais-api.ts` pattern),
+  `contacts-mock.ts` (mock API with default/empty/error scenarios; lives
+  beside the hook, not in `src/mock/`, so the task touches only allowed
+  files), tests for the card (each relation), the helpers, the mock, the
+  requests screen (loading, empty, incoming Accept/Decline, outgoing Cancel,
+  pending count) and the new-chat entry render.
+- `apps/mobile/src/app/u/[handle].tsx`: the profile screen with the same
+  card; bad handle shows the one plain 'No user with that username'.
+- `apps/mobile/src/app/settings/requests.tsx`: incoming (Accept/Decline) and
+  outgoing (Cancel) with loading/empty/error states and the pending count in
+  the subtitle. No Settings-icon badge (out of scope).
+- `apps/mobile/src/lib/settings-items.ts`: created with just the Contact
+  requests row (lucide `UserPlus`), since T-0181 has not merged (no file
+  existed); the lead resolves any conflict.
+- `apps/mobile/src/components/chat/new-chat-button.tsx` (+ test): new "Add
+  contact" menu entry opening the sheet; sheet Message opens `/chat/[id]`,
+  Requests opens `/settings/requests`.
+
+Accepting makes the person show up as a contact: the server lists every
+contact's DM in `/api/chats`, so the chat appears after the next chats
+refresh; Message opens it directly when already loaded, else says to pull to
+refresh. The lead tests on the emulator and the phone.
+
+Commands (all in `/Users/julio/personal-projects/zilar-T-0182`):
+- `pnpm install`: ok (9.9s).
+- `pnpm format:check`: pass ("All matched files use Prettier code style!").
+- `pnpm lint`: pass (one `set-state-in-effect` fixed by moving the handle
+  reset to render-time + deriving `looking`, dropping the `looking` state).
+- `pnpm typecheck` (turbo, all 11 packages): pass.
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 contacts requests
+  new-chat`: 5 files, 50 tests, all pass. Fixed along the way: `await
+  expect().toEqual()` on promises (used `resolves`/direct await), and the
+  unmocked `lucide-react-native` import breaking the static-markup tests.
+
+Deviations: none from behavior; file layout differs only in that the mock
+lives in `components/contacts/contacts-mock.ts` instead of `src/mock/`
+(both outside/inside allowed files respectively — `src/mock/` is not in this
+task's Allowed files). No secrets touched; request failures map to plain
+language, raw errors (handle text only, never tokens/codes) never render.
+
+Open questions: none. The `u/[handle].tsx` retry uses an icon button (keeps
+to allowed files without a new Button import chain); lead may prefer the
+shared Button.
 
 ## Review (written by Claude)
