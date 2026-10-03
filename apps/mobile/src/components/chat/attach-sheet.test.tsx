@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { renderToStaticMarkup } from 'react-dom/server';
 
-import { AttachSheet } from './attach-sheet';
+import { AttachSheet, PreviewFallbackIcon, isImageName } from './attach-sheet';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -118,11 +118,20 @@ describe('attach sheet (T-0150)', () => {
     expect(html).toContain('<FileText');
   });
 
-  it('shows a fallback icon instead of a thumbnail when the preview fails to load', () => {
-    const html = sheet({
-      preview: { uri: 'file:///cache/doc.pdf', name: 'doc.pdf', size: 44_000 },
-      onCancelPick: () => {},
-    });
-    expect(html).toContain('doc.pdf');
+  it('shows the image fallback icon for image names and the file icon otherwise', () => {
+    expect(isImageName('pic.png')).toBe(true);
+    expect(isImageName('PHOTO.JPG')).toBe(true);
+    expect(isImageName('doc.pdf')).toBe(false);
+    expect(isImageName('no-extension')).toBe(false);
+    const imageIcon = renderToStaticMarkup(
+      createElement(PreviewFallbackIcon, { name: 'pic.png', iconColor: '#d4d4d4' }),
+    );
+    expect(imageIcon).toContain('<Image');
+    expect(imageIcon).not.toContain('<FileText');
+    const fileIcon = renderToStaticMarkup(
+      createElement(PreviewFallbackIcon, { name: 'doc.pdf', iconColor: '#d4d4d4' }),
+    );
+    expect(fileIcon).toContain('<FileText');
+    expect(fileIcon).not.toContain('<Image');
   });
 });

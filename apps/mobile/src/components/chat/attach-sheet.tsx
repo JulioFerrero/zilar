@@ -36,10 +36,9 @@ function PreviewThumb({
 }) {
   const [failed, setFailed] = useState(false);
   if (failed) {
-    const FallbackIcon = isImageName(preview.name) ? ImageIcon : FileText;
     return (
       <View className="h-16 w-16 items-center justify-center rounded-[10px] bg-surface-raised">
-        <FallbackIcon size={20} color={iconColor} />
+        <PreviewFallbackIcon name={preview.name} iconColor={iconColor} />
       </View>
     );
   }
@@ -275,7 +274,17 @@ export type SheetPreview = Pick<PickedFile, 'uri' | 'name' | 'size'>;
 
 const IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'heif']);
 
-function isImageName(name: string): boolean {
+/** Whether a file name looks like an image, for the preview fallback icon. */
+export function isImageName(name: string): boolean {
   const extension = name.split('.').pop()?.toLowerCase() ?? '';
   return IMAGE_EXTENSIONS.has(extension);
+}
+
+/**
+ * The icon shown instead of the picked-file thumbnail when it fails to
+ * load: `Image` for image names, `FileText` for everything else.
+ */
+export function PreviewFallbackIcon({ name, iconColor }: { name: string; iconColor: string }) {
+  const Icon = isImageName(name) ? ImageIcon : FileText;
+  return <Icon size={20} color={iconColor} />;
 }

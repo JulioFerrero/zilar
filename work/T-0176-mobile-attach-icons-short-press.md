@@ -55,7 +55,26 @@ The emoji, sticker and GIF panel (T-0175), any other screen.
 - `apps/mobile/src/components/chat/voice-recorder.tsx`: `runRecorderFinish` now discards a sub-`VOICE_MIN_MS` recording silently — returns `undefined`, sends nothing, sets no error. The live duration is read via `recorder.currentDurationMs()` *before* `stop()` and, when below the floor, the take is discarded with `recorder.cancel()` (which discards the recording; `cancel()` after `stop()` would be a no-op since `stop()` consumes the native recorder). A post-`stop` duration guard stays as a fallback and also returns `undefined`. Updated the two comments that described the old "too short" refusal. A 1-second recording (exactly `VOICE_MIN_MS`) still sends with the real waveform.
 - `apps/mobile/src/lib/voice-native.ts`: deleted `RECORD_TOO_SHORT_MESSAGE`. Verified no other app code references it (only this task file's spec mentions it).
 - Tests: `voice-recorder.test.tsx` — sub-1s press asserts `undefined`, nothing sent, `stop` never called, `cancel` called once; new test that a 1000 ms recording still sends. `attach-sheet.test.tsx` — new test pins no `\p{Extended_Pictographic}` in `attach-sheet.tsx` source and that the sheet renders `Paperclip`/`Image`/`Camera`/`FileText`; lucide + `nativewind` + color-scheme mocks added. `voice-recorder-seam.test.ts` — dropped the removed constant, kept the too-long copy pin.
-- Out of scope untouched: `composer.tsx`, `sticker-panel.tsx`, `gif-panel.tsx` (T-0175). Note: `attachment-message.tsx:215` and `attachment-video.tsx:136` still contain a `📎` fallback glyph, but those files are outside Allowed files, so I left them alone.
+- Out of scope untouched: `composer.tsx`, `sticker-panel.tsx`, `gif-panel.tsx` (T-0175).
+
+### Round 1 (review findings 1–3)
+- Finding 1: extracted an exported `PreviewFallbackIcon` seam (`attach-sheet.tsx`) over the exported `isImageName` helper; the vacuous preview test now renders the seam directly and asserts `pic.png` → `<Image>` (and not `<FileText>`), `doc.pdf` → `<FileText>` (and not `<Image>`), plus `isImageName` branches. Mutation-checked: swapping the branches fails the test (1 failed, 5 passed in the temporary run).
+- Finding 2 (scope widened by the lead): replaced the remaining paperclip glyphs — `attachment-message.tsx` file row → lucide `FileText`, `attachment-video.tsx` untrusted row → lucide `Video`, both size 20 in `ICON[scheme]` via the same `nativewind` + `asColorScheme` read as the attach sheet. The same pass also replaced the other glyph-drawn UI icons the `\p{Extended_Pictographic}` source pins caught in these two files: retry `↻` → `RotateCcw`, open `⤴` → `ArrowUpRight`, GIF badge `▶` → `Play` (badge still reads "GIF"). New source tests pin no emoji in either file; icon assertions added to both test files and the lucide mock lists extended. Neighbour `attachment-body.test.tsx` renders these components, so it needed `lucide`/`nativewind`/color-scheme mocks too (it broke with `SyntaxError: Unexpected token 'typeof'` from the unmocked `nativewind` chain once `attachment-message.tsx` imported it — my change, so I fixed it there rather than in the components; disclosed, not hidden).
+- Finding 3: no change, as instructed.
+
+### Round 1 files changed (in addition to the list above)
+- `apps/mobile/src/components/chat/attachment-message.tsx`
+- `apps/mobile/src/components/chat/attachment-video.tsx`
+- `apps/mobile/src/components/chat/attachment-message.test.tsx`
+- `apps/mobile/src/components/chat/attachment-video.test.tsx`
+- `apps/mobile/src/components/chat/attachment-body.test.tsx` (missing-mock fix only)
+
+### Round 1 commands (real results)
+- Mutation check (branches swapped temporarily, then restored): attach-sheet suite 1 failed / 5 passed while mutated; final suite green.
+- `pnpm format:check`: pass.
+- `pnpm lint`: pass (oxlint, no findings).
+- `pnpm typecheck`: pass (11 tasks successful).
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 attach voice`: 18 files, 168 tests, all passed (was 165 before round 1).
 
 ### Files changed
 - `apps/mobile/src/components/chat/attach-sheet.tsx`
