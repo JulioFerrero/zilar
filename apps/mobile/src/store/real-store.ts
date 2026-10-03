@@ -87,6 +87,7 @@ import {
 import type { AttachmentUploader, PickedFile } from '../lib/attachment-ports';
 import type { ConvertedVoice, RecordedVoice, VoicePort } from '../lib/voice';
 import { createVoicePort, VoiceError } from '../lib/voice';
+import { voiceFailureReasonFor, type VoiceFailureReason } from '../lib/voice-native';
 import { CURRENT_USER_ID, mobileUploadOf, type MobileMessage } from '../lib/types';
 import type { ChatStoreState, ConnectionStatus, DraftState } from './types';
 
@@ -1155,11 +1156,12 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
 
     /** Drops the `failed` flag without leaving an `undefined` value behind. */
     function clearFailure(message: UiMessage): UiMessage {
-      if (message.failed === undefined) {
+      if (message.failed === undefined && message.failureReason === undefined) {
         return message;
       }
       const next: UiMessage = { ...message };
       delete next.failed;
+      delete next.failureReason;
       return next;
     }
 
@@ -1327,14 +1329,24 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         }
       })();
     }
-    // A failed voice send (T-0154): the bubble keeps its local recording
-    // and shows a Retry with the plain reason, never a silent "sending".
-    function markVoiceFailed(chatId: string, messageId: string): void {
+    // A failed voice send (T-0154, review round 1): the bubble keeps its
+    // local recording and shows a Retry with the plain reason, never a
+    // silent "sending". The reason rides the message in a subset of the
+    // shared `SendFailureReason` buckets plus `other` (a subset so the
+    // message keeps exactly the shared type); the bubble renders the
+    // matching copy.
+    function markVoiceFailed(
+      chatId: string,
+      messageId: string,
+      reason: VoiceFailureReason = 'server_unavailable',
+    ): void {
       set((state) => ({
         messagesByChat: {
           ...state.messagesByChat,
-          [chatId]: listFor(state, chatId).map((item) =>
-            sameMessage(item.id, messageId) ? { ...item, failed: true } : item,
+          [chatId]: listFor(state, chatId).map((item): UiMessage =>
+            sameMessage(item.id, messageId)
+              ? { ...item, failed: true, failureReason: reason }
+              : item,
           ),
         },
       }));
@@ -1404,7 +1416,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
     ): void {
       const current = core;
       if (current === undefined) {
-        markVoiceFailed(chat.id, localId);
+        markVoiceFailed(chat.id, localId, 'network');
         return;
       }
       const messageAlive = (): boolean =>
@@ -1451,7 +1463,11 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
             return;
           }
           if (messageAlive()) {
-            markVoiceFailed(chat.id, localId);
+            markVoiceFailed(
+              chat.id,
+              localId,
+              voiceFailureReasonFor(error, get().status !== 'online'),
+            );
           }
         }
       })();

@@ -1,11 +1,10 @@
 import type { VoiceMeta } from '@zilar/protocol';
 
 /**
- * Demo voice message for mock mode (T-0154): the mock store already carries
- * a voice message in the Viernes chat (`mock/messages.ts`), and the
- * composer sends through `sendVoice` without a server. This module holds the
- * shared demo clip metadata (waveform + transcript) so the bubble renders
- * identically everywhere.
+ * Demo voice clip for mock mode (T-0154): the Viernes chat (`mock/messages.ts`)
+ * uses it, and the mock store sends through `sendVoice` without a server, so
+ * the bubble renders identically everywhere. Mocked metadata only — never
+ * fetched, never played from here.
  */
 export function mockDemoVoice(): VoiceMeta {
   return {

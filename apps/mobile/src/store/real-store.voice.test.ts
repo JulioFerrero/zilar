@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { ChatApi } from '../lib/chat-api';
 import type { VoicePort } from '../lib/voice';
 import { VoiceError } from '../lib/voice';
+import { voiceErrorCopy } from '../lib/voice-native';
 import { createRealChatStore } from './real-store';
 import type { SendVoiceRecording } from './types';
 
@@ -199,7 +200,7 @@ describe('real store sends voice messages (T-0154)', () => {
     });
   });
 
-  it('a conversion failure ends failed and keeps the recording for retry', async () => {
+  it('a conversion failure ends failed with a reason and keeps the recording for retry', async () => {
     const voice = fakeVoice();
     vi.mocked(voice.convert).mockRejectedValueOnce(new VoiceError('voice_failed', 'x'));
     const { store } = await setup(voice);
@@ -213,13 +214,18 @@ describe('real store sends voice messages (T-0154)', () => {
           .messages(ANA)
           .find((item) => item.id === localId)?.failed === true,
     );
-    // The optimistic bubble keeps its local metadata for the retry.
+    // The optimistic bubble keeps its local metadata for the retry, and the
+    // reason rides the message so the bubble renders the matching copy.
     const failed = store
       .getState()
       .messages(ANA)
       .find((item) => item.id === localId);
     expect(failed?.voice?.duration_ms).toBe(9999);
     expect(failed?.voice?.waveform).toEqual([10, 20, 30]);
+    expect(failed?.failureReason).toBe('server_unavailable');
+    expect(voiceErrorCopy(failed?.failureReason ?? 'server_unavailable')).toContain(
+      'Could not send',
+    );
 
     store.getState().retryVoice(ANA, localId);
     await flushUntil(() => vi.mocked(voice.convert).mock.calls.length > 1);
@@ -230,6 +236,70 @@ describe('real store sends voice messages (T-0154)', () => {
           .messages(ANA)
           .find((item) => item.id === localId)?.status === 'sent',
     );
+  });
+
+  it('an offline failure ends failed with the network reason', async () => {
+    const { store } = await setup();
+    store.getState().stop();
+    store.getState().sendVoice(ANA, RECORDING);
+    const localId = store.getState().messages(ANA).at(-1)?.id ?? '';
+    await flushUntil(
+      () =>
+        store
+          .getState()
+          .messages(ANA)
+          .find((item) => item.id === localId)?.failed === true,
+    );
+    const failed = store
+      .getState()
+      .messages(ANA)
+      .find((item) => item.id === localId);
+    expect(failed?.failureReason).toBe('network');
+    expect(voiceErrorCopy('network')).toBe('Could not send. Check your connection.');
+  });
+
+  it('an over-limit failure ends failed with the too_large reason', async () => {
+    const voice = fakeVoice();
+    vi.mocked(voice.convert).mockRejectedValueOnce(new VoiceError('voice_too_large', 'x'));
+    const { store } = await setup(voice);
+    store.getState().sendVoice(ANA, RECORDING);
+    const localId = store.getState().messages(ANA).at(-1)?.id ?? '';
+    await flushUntil(
+      () =>
+        store
+          .getState()
+          .messages(ANA)
+          .find((item) => item.id === localId)?.failed === true,
+    );
+    expect(
+      store
+        .getState()
+        .messages(ANA)
+        .find((item) => item.id === localId)?.failureReason,
+    ).toBe('too_large');
+    expect(voiceErrorCopy('too_large')).toBe('That recording is too long to send.');
+  });
+
+  it('an upload refusal ends failed with the upload_refused reason', async () => {
+    const voice = fakeVoice();
+    vi.mocked(voice.upload).mockRejectedValueOnce(new VoiceError('upload_failed', 'x'));
+    const { store } = await setup(voice);
+    store.getState().sendVoice(ANA, RECORDING);
+    const localId = store.getState().messages(ANA).at(-1)?.id ?? '';
+    await flushUntil(
+      () =>
+        store
+          .getState()
+          .messages(ANA)
+          .find((item) => item.id === localId)?.failed === true,
+    );
+    expect(
+      store
+        .getState()
+        .messages(ANA)
+        .find((item) => item.id === localId)?.failureReason,
+    ).toBe('upload_refused');
+    expect(voiceErrorCopy('upload_refused')).toBe('Could not upload the recording.');
   });
 
   it('retries after a failed stanza send: the kept recording is still there', async () => {

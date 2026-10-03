@@ -85,6 +85,34 @@ describe('voice bubble (T-0154)', () => {
     expect(html).toContain('Retry sending voice message');
   });
 
+  it('renders one plain copy per failure reason', () => {
+    const copies: Array<[string, string]> = [
+      ['network', 'Could not send. Check your connection.'],
+      ['too_large', 'That recording is too long to send.'],
+      ['unsupported_file', 'That recording could not be read.'],
+      ['upload_refused', 'Could not upload the recording.'],
+      ['server_unavailable', 'Could not send the voice message. Try again.'],
+      ['timed_out', 'Sending took too long. Try again.'],
+    ];
+    for (const [reason, copy] of copies) {
+      const html = renderToStaticMarkup(
+        createElement(VoiceMessage, {
+          voice: VOICE,
+          outgoing: true,
+          message: {
+            ...BASE_MESSAGE,
+            status: 'sending',
+            failed: true,
+            failureReason: reason,
+          } as never,
+          onRetryVoice: () => {},
+          controls: CONTROLS,
+        }),
+      );
+      expect(html).toContain(copy);
+    }
+  });
+
   it('shows Cancel while the upload runs', () => {
     const html = renderToStaticMarkup(
       createElement(VoiceMessage, {

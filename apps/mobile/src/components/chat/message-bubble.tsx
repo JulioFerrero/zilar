@@ -280,7 +280,10 @@ export function MessageBubble({
   // the attachment payload (T-0157). `canEditMessage` (chat-core) already
   // limits to my own text-carrying messages within the window.
   const canEdit =
-    !draft && message.deleted !== true && canEditMessage(message, currentUserId, new Date());
+    !draft &&
+    message.deleted !== true &&
+    message.voice === undefined &&
+    canEditMessage(message, currentUserId, new Date());
   const canDelete = !draft && message.deleted !== true && canDeleteMessage(message, currentUserId);
   const myReactions = (message.reactions ?? []).filter((entry) => entry.mine);
   const react = onReact ?? (() => {});
@@ -591,7 +594,7 @@ export function MessageBubble({
       <MessageActionsSheet
         visible={menuOpen}
         canCopy={hasText && sticker === undefined}
-        canEdit={sticker === undefined && canEdit}
+        canEdit={sticker === undefined && message.voice === undefined && canEdit}
         canDelete={canDelete}
         canPin={canPin}
         isPinned={isPinned}

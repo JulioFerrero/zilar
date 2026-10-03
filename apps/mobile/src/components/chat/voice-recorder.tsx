@@ -6,21 +6,102 @@ import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
 import { asColorScheme, type ColorScheme } from '@/lib/color-scheme';
 import { ICON } from '@/lib/colors';
-import { VOICE_MAX_DURATION_MS, VOICE_MIN_MS } from '@/lib/voice';
-import {
-  createVoiceRecorder,
-  RECORD_FAILED_MESSAGE,
-  RECORD_TOO_LONG_MESSAGE,
-  RECORD_TOO_SHORT_MESSAGE,
-  type FinishedRecording,
-  type VoiceRecorderPort,
-} from '@/lib/voice-native';
+import { VOICE_MAX_DURATION_MS } from '@/lib/voice';
+import { createVoiceRecorder, type VoiceRecorderPort } from '@/lib/voice-native';
 import type { ReplyRef } from '@/lib/types';
 import type { SendTextOptions, SendVoiceRecording } from '@/store/types';
 import { useColorScheme } from 'nativewind';
 
-/** How often the recording row re-reads the live duration. */
-const TIMER_TICK_MS = 250;
+/**
+ * The recorder button's decision logic, extracted so tests drive the exact
+ * behaviour the component runs (finding 5): permission-denied copy with no
+ * recorder created, the sub-1s refusal with nothing sent, the too-long
+ * refusal, and the happy path. The component calls the same steps in the
+ * same order (`begin` → `finish`), so these tests pin its behaviour.
+ */
+
+import {
+  MIC_DENIED_MESSAGE,
+  RECORD_TOO_LONG_MESSAGE,
+  RECORD_TOO_SHORT_MESSAGE,
+  type FinishedRecording,
+  type VoiceRecorderPort as RecorderPort,
+} from '@/lib/voice-native';
+import { VOICE_MAX_BYTES, VOICE_MIN_MS } from '@/lib/voice';
+
+export type RecorderDecisionDeps = {
+  recorder: RecorderPort;
+  onSendVoice: (recording: SendVoiceRecording, options?: SendTextOptions) => void;
+  onCancelReply: () => void;
+  replyTo?: ReplyRef;
+  waveformFor?: ((durationMs: number) => number[]) | undefined;
+};
+
+function flatWaveform(durationMs: number): number[] {
+  const buckets = Math.min(64, Math.max(8, Math.round(durationMs / 1000) * 4));
+  return Array.from({ length: buckets }, () => 12);
+}
+
+/**
+ * Runs `begin`: asks the recorder to start and reports the denied copy when
+ * the permission is refused. Resolves true once recording, false otherwise.
+ * The caller owns the `starting` re-entry guard (see the component).
+ */
+export async function runRecorderBegin(
+  deps: RecorderDecisionDeps,
+): Promise<{ started: true } | { started: false; error: string }> {
+  const started = await deps.recorder.start();
+  if (started.status === 'error') {
+    return { started: false, error: started.message };
+  }
+  return { started: true };
+}
+
+export function deniedCopy(): string {
+  return MIC_DENIED_MESSAGE;
+}
+
+/**
+ * Runs `finish`: stops (or cancels) and either sends or reports the plain
+ * copy. Returns the copy when the recording is refused, so the component
+ * can show it; returns undefined when the flow completes or is cancelled.
+ */
+export async function runRecorderFinish(
+  deps: RecorderDecisionDeps,
+  cancel: boolean,
+): Promise<string | undefined> {
+  if (cancel) {
+    await deps.recorder.cancel().catch(() => {});
+    return undefined;
+  }
+  const result = await deps.recorder.stop();
+  if (result.status === 'cancelled') {
+    return undefined;
+  }
+  if (result.status === 'error') {
+    return result.message;
+  }
+  const finished: FinishedRecording = result.recording;
+  if (finished.durationMs < VOICE_MIN_MS) {
+    return RECORD_TOO_SHORT_MESSAGE;
+  }
+  if (finished.durationMs > VOICE_MAX_DURATION_MS || finished.size > VOICE_MAX_BYTES) {
+    return RECORD_TOO_LONG_MESSAGE;
+  }
+  const build = deps.waveformFor ?? flatWaveform;
+  deps.onSendVoice(
+    {
+      uri: finished.uri,
+      mimeType: finished.mimeType,
+      size: finished.size,
+      durationMs: finished.durationMs,
+      waveform: build(finished.durationMs),
+    },
+    deps.replyTo === undefined ? undefined : { replyTo: deps.replyTo },
+  );
+  deps.onCancelReply();
+  return undefined;
+}
 
 function formatElapsed(durationMs: number): string {
   const totalSeconds = Math.max(0, Math.floor(durationMs / 1000));
@@ -43,10 +124,8 @@ type VoiceRecorderProps = {
   disabled?: boolean | undefined;
 };
 
-function flatWaveform(durationMs: number): number[] {
-  const buckets = Math.min(64, Math.max(8, Math.round(durationMs / 1000) * 4));
-  return Array.from({ length: buckets }, () => 12);
-}
+/** How often the recording row re-reads the live duration. */
+const TIMER_TICK_MS = 250;
 
 /**
  * The composer's mic button (T-0154): tap to record, tap Send to send, trash
@@ -71,6 +150,9 @@ export function VoiceRecorderButton({
   const [error, setError] = useState<string | undefined>(undefined);
   const timerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
   const recordingRef = useRef(false);
+  // Set synchronously before the first await so a double tap cannot create
+  // two native recorders (finding 6); cleared once the start settles.
+  const startingRef = useRef(false);
 
   // Leaving the chat while recording stops the microphone and discards the
   // recording (the OS recording indicator must go off).
@@ -95,69 +177,46 @@ export function VoiceRecorderButton({
   };
 
   const begin = () => {
-    if (recordingRef.current || disabled) {
+    if (recordingRef.current || startingRef.current || disabled) {
       return;
     }
+    startingRef.current = true;
     setError(undefined);
-    void recorder.start().then((started) => {
-      if (started.status === 'error') {
-        setError(started.message);
-        return;
-      }
-      recordingRef.current = true;
-      setRecording(true);
-      setElapsedMs(0);
-      timerRef.current = setInterval(() => {
-        const elapsed = recorder.currentDurationMs();
-        setElapsedMs(elapsed);
-        // The 5-minute cap stops the recording automatically, like the
-        // server's `VOICE_MAX_DURATION_MS` refusal would.
-        if (elapsed >= VOICE_MAX_DURATION_MS) {
-          void finish(false);
+    void runRecorderBegin({ recorder, onSendVoice, onCancelReply, replyTo, waveformFor })
+      .then((result) => {
+        if (!result.started) {
+          setError(result.error);
+          return;
         }
-      }, TIMER_TICK_MS);
-    });
+        recordingRef.current = true;
+        setRecording(true);
+        setElapsedMs(0);
+        timerRef.current = setInterval(() => {
+          const elapsed = recorder.currentDurationMs();
+          setElapsedMs(elapsed);
+          // The 5-minute cap stops the recording automatically, like the
+          // server's `VOICE_MAX_DURATION_MS` refusal would.
+          if (elapsed >= VOICE_MAX_DURATION_MS) {
+            void finish(false);
+          }
+        }, TIMER_TICK_MS);
+      })
+      .finally(() => {
+        startingRef.current = false;
+      });
   };
 
   const finish = async (cancel: boolean): Promise<void> => {
     stopTimer();
     recordingRef.current = false;
     setRecording(false);
-    if (cancel) {
-      await recorder.cancel().catch(() => {});
-      return;
-    }
-    const result = await recorder
-      .stop()
-      .catch(() => ({ status: 'error' as const, message: RECORD_FAILED_MESSAGE }));
-    if (result.status === 'cancelled') {
-      return;
-    }
-    if (result.status === 'error') {
-      setError(result.message);
-      return;
-    }
-    const finished: FinishedRecording = result.recording;
-    if (finished.durationMs < VOICE_MIN_MS) {
-      setError(RECORD_TOO_SHORT_MESSAGE);
-      return;
-    }
-    if (finished.durationMs > VOICE_MAX_DURATION_MS || finished.size > 10 * 1024 * 1024) {
-      setError(RECORD_TOO_LONG_MESSAGE);
-      return;
-    }
-    const build = waveformFor ?? flatWaveform;
-    onSendVoice(
-      {
-        uri: finished.uri,
-        mimeType: finished.mimeType,
-        size: finished.size,
-        durationMs: finished.durationMs,
-        waveform: build(finished.durationMs),
-      },
-      replyTo === undefined ? undefined : { replyTo },
+    const copy = await runRecorderFinish(
+      { recorder, onSendVoice, onCancelReply, replyTo, waveformFor },
+      cancel,
     );
-    onCancelReply();
+    if (copy !== undefined) {
+      setError(copy);
+    }
   };
 
   if (recording) {

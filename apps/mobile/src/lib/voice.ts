@@ -75,8 +75,10 @@ async function errorCode(response: Response): Promise<string> {
 /**
  * Sends a recording to the server and gets back AAC/M4A plus its duration.
  * Mirrors web's `convertVoice`: the file must already sit on disk (the
- * recorder's URI), so the bytes are read through `fetch` and POSTed with
- * the session bearer. The duration header is authoritative, like on web.
+ * recorder's URI), so the bytes are read with `expo-file-system` (the same
+ * `new File(uri)` pattern `attachment-native.ts` uses — RN `fetch` does not
+ * serve `file://` URIs) and POSTed with the session bearer. The duration
+ * header is authoritative, like on web.
  */
 export async function convertVoice(
   file: { uri: string; mimeType: string; size: number },
@@ -84,6 +86,8 @@ export async function convertVoice(
     apiUrl?: string;
     getToken?: () => Promise<string | undefined>;
     fetchFn?: typeof fetch;
+    /** Reads the recorded bytes; production reads the device file. */
+    readFile?: ((uri: string) => Promise<Uint8Array>) | undefined;
   },
 ): Promise<ConvertedVoice> {
   const fetchFn = options?.fetchFn ?? fetch;
@@ -98,14 +102,16 @@ export async function convertVoice(
   if (apiUrl === undefined || token === undefined) {
     throw new VoiceError('network_error', 'Could not reach the server');
   }
-  let source: Response;
+  let bytes: Uint8Array;
   try {
-    source = await fetchFn(file.uri);
+    bytes =
+      options?.readFile !== undefined
+        ? await options.readFile(file.uri)
+        : await readDeviceFile(file.uri);
   } catch {
     throw new VoiceError('voice_failed', 'Could not read the recording');
   }
-  const bytes = await source.arrayBuffer().catch(() => undefined);
-  if (bytes === undefined || bytes.byteLength === 0) {
+  if (bytes.byteLength === 0) {
     throw new VoiceError('voice_empty', 'The recording is empty');
   }
   if (bytes.byteLength > VOICE_MAX_BYTES) {
@@ -120,7 +126,7 @@ export async function convertVoice(
         authorization: `Bearer ${token}`,
         'content-type': file.mimeType === '' ? 'application/octet-stream' : file.mimeType,
       },
-      body: bytes,
+      body: bytes.buffer as ArrayBuffer,
     });
   } catch {
     throw new VoiceError('network_error', 'Could not reach the server');
@@ -136,6 +142,12 @@ export async function convertVoice(
   }
   const audio = new Uint8Array(await response.arrayBuffer());
   return { uri: file.uri, mimeType: VOICE_MIME, size: audio.byteLength, durationMs };
+}
+
+/** Reads a recorded device file, the way the attachment uploader does. */
+async function readDeviceFile(uri: string): Promise<Uint8Array> {
+  const { File } = await import('expo-file-system');
+  return new File(uri).bytes();
 }
 
 /** Anything that can hand out a XEP-0363 upload slot. */
@@ -203,6 +215,7 @@ export function createVoicePort(options: {
   getToken: () => Promise<string | undefined>;
   uploader: VoiceUploader;
   fetchFn?: typeof fetch;
+  readFile?: ((uri: string) => Promise<Uint8Array>) | undefined;
 }): VoicePort {
   return {
     convert: (recording) =>
@@ -219,6 +232,7 @@ export function createVoicePort(options: {
               apiUrl: options.apiUrl,
               getToken: options.getToken,
               fetchFn: options.fetchFn,
+              readFile: options.readFile,
             }),
     upload: (requester, audio, onProgress, messageId) =>
       uploadVoice(requester, options.uploader, audio, onProgress, messageId),

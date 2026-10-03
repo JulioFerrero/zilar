@@ -4,7 +4,12 @@ import { Pause, Play } from 'lucide-react-native';
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
-import { subscribeVoiceState, type VoicePlayerControls } from '@/components/chat/voice-player';
+import {
+  subscribeVoicePlayError,
+  subscribeVoiceProgress,
+  subscribeVoiceState,
+  type VoicePlayerControls,
+} from '@/components/chat/voice-player';
 import { Text } from '@/components/ui/text';
 import { useKeyPress } from '@/components/ui/use-key-press';
 import { asColorScheme } from '@/lib/color-scheme';
@@ -22,6 +27,7 @@ import { mobileUploadOf } from '@/lib/types';
 import {
   isPlayableVoiceUrl,
   voiceAudioSource,
+  voiceErrorCopy,
   type VoicePlayback,
   type VoiceSpeed,
 } from '@/lib/voice-native';
@@ -79,50 +85,59 @@ export function VoiceMessage({
   const failed = message.failed === true;
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState<VoiceSpeed>(1);
+  const [positionMs, setPositionMs] = useState(0);
+  const [playError, setPlayError] = useState<string | undefined>(undefined);
   const [showTranscript, setShowTranscript] = useState(false);
   const bars = useMemo(() => sampleBars(voice.waveform, BAR_COUNT), [voice.waveform]);
 
-  useEffect(
-    () =>
-      subscribeVoiceState(message.id, (update) => {
-        if (update.playing) {
-          playback?.claim({
-            messageId: message.id,
-            playing: true,
-            positionMs: 0,
-            durationMs: voice.duration_ms,
-            speed: update.rate,
-            play: () => {},
-            pause: () => {
-              controls?.pause();
-              setPlaying(false);
-            },
-            seekTo: (at) => {
-              void controls?.seekTo(at).catch(() => {});
-              return Promise.resolve();
-            },
-            cycleSpeed: () => {},
-            release: () => {},
-          });
-        } else {
-          playback?.resign({
-            messageId: message.id,
-            playing: false,
-            positionMs: 0,
-            durationMs: voice.duration_ms,
-            speed: update.rate,
-            play: () => {},
-            pause: () => {},
-            seekTo: () => Promise.resolve(),
-            cycleSpeed: () => {},
-            release: () => {},
-          });
-        }
-        setPlaying(update.playing);
-        setSpeed(update.rate);
-      }),
-    [message.id, voice.duration_ms, playback, controls],
-  );
+  // The host owns play state, progress and play failures; the bubble only
+  // mirrors its own subscription. Claiming only records UI state (finding
+  // 1): the shared player is never paused as a side effect of switching.
+  useEffect(() => {
+    const stopState = subscribeVoiceState(message.id, (update) => {
+      if (update.playing) {
+        playback?.claim({
+          messageId: message.id,
+          playing: true,
+          positionMs: 0,
+          durationMs: voice.duration_ms,
+          speed: update.rate,
+          play: () => {},
+          pause: () => {},
+          seekTo: () => Promise.resolve(),
+          cycleSpeed: () => {},
+          release: () => {},
+        });
+      } else {
+        playback?.resign({
+          messageId: message.id,
+          playing: false,
+          positionMs: 0,
+          durationMs: voice.duration_ms,
+          speed: update.rate,
+          play: () => {},
+          pause: () => {},
+          seekTo: () => Promise.resolve(),
+          cycleSpeed: () => {},
+          release: () => {},
+        });
+      }
+      setPlaying(update.playing);
+      setSpeed(update.rate);
+    });
+    const stopProgress = subscribeVoiceProgress(message.id, (update) => {
+      setPositionMs(update.positionMs);
+    });
+    const stopPlayError = subscribeVoicePlayError(message.id, (copy) => {
+      setPlayError(copy);
+      setPlaying(false);
+    });
+    return () => {
+      stopState();
+      stopProgress();
+      stopPlayError();
+    };
+  }, [message.id, voice.duration_ms, playback]);
 
   const playable =
     failed || controls === undefined
@@ -142,9 +157,11 @@ export function VoiceMessage({
       setPlaying(false);
       return;
     }
+    setPlayError(undefined);
     void voiceAudioSource({ voice, localUri: upload.localUri, trustedHosts: hosts }).then(
       (source) => {
         if (source === undefined) {
+          setPlayError('Could not play that voice message.');
           return;
         }
         controls.play(message.id, source);
@@ -160,11 +177,13 @@ export function VoiceMessage({
   const idleColor = outgoing ? '#a3a3a3' : '#525252';
   const durationColor = outgoing ? '#525252' : metaColor;
   const peak = Math.max(...bars, 1);
-  // Live position comes from the host's 120 ms status ticks once playback
-  // starts (see the device note in the Report); until then the bar is idle
-  // and the label shows the total duration.
-  const fraction = 0;
-  const positionMs = 0;
+  const fraction =
+    voice.duration_ms <= 0 ? 0 : Math.min(1, Math.max(0, positionMs / voice.duration_ms));
+
+  // Why the send failed, when the store recorded it (finding 4). The web
+  // twin keeps the same fixed buckets; unknown errors stay generic.
+  const failureCopy =
+    message.failureReason === undefined ? "Couldn't send." : voiceErrorCopy(message.failureReason);
 
   if (failed) {
     return (
@@ -191,7 +210,7 @@ export function VoiceMessage({
           </Text>
         </View>
         <View className="mt-1 flex-row items-center gap-2">
-          <Text className="text-[12px] text-danger">Couldn't send.</Text>
+          <Text className="text-[12px] text-danger">{failureCopy}</Text>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Retry sending voice message"
@@ -292,6 +311,9 @@ export function VoiceMessage({
             <Text className="text-[12px] text-muted-foreground">Cancel</Text>
           </Pressable>
         </View>
+      ) : null}
+      {playError !== undefined && !uploading ? (
+        <Text className="mt-1 px-0.5 text-[12px] text-danger">{playError}</Text>
       ) : null}
       {showTranscript && voice.transcript ? (
         <Text className="mt-1.5 text-[14px] leading-5 text-muted-foreground">

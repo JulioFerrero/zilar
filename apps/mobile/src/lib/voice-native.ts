@@ -6,6 +6,7 @@
  */
 
 import type { VoiceMeta } from '@zilar/protocol';
+import type { SendFailureReason } from '@zilar/chat-core';
 
 import { API_URL } from './auth';
 import { getSessionToken } from './session-token';
@@ -19,6 +20,64 @@ export const RECORD_TOO_SHORT_MESSAGE =
   'That recording was too short. Hold the mic a moment longer.';
 export const RECORD_TOO_LONG_MESSAGE = 'That recording is too long to send.';
 export const RECORD_FAILED_MESSAGE = 'Could not save the recording, try again.';
+
+/**
+ * Why a voice send failed: exactly the shared `SendFailureReason` buckets
+ * (finding 4), reused from `chat-core` so the message keeps the shared
+ * type. Mobile maps its voice pipeline errors onto these buckets.
+ */
+export type VoiceFailureReason = SendFailureReason;
+
+/** Maps a pipeline error to the fixed failure bucket the bubble shows. */
+export function voiceFailureReasonFor(error: unknown, offline: boolean): VoiceFailureReason {
+  if (offline) {
+    return 'network';
+  }
+  const code =
+    error !== null && typeof error === 'object' && 'code' in error
+      ? (error as { code?: unknown }).code
+      : '';
+  if (code === 'voice_too_long' || code === 'voice_too_large' || code === 'too_large') {
+    return 'too_large';
+  }
+  if (code === 'voice_empty' || code === 'voice_not_audio' || code === 'invalid_response') {
+    return 'unsupported_file';
+  }
+  if (
+    code === 'convert_failed' ||
+    code === 'voice_failed' ||
+    (typeof code === 'string' && code.startsWith('voice_'))
+  ) {
+    return 'server_unavailable';
+  }
+  if (code === 'upload_refused' || code === 'upload_failed') {
+    return 'upload_refused';
+  }
+  if (code === 'network_error' || code === 'network') {
+    return 'network';
+  }
+  return 'server_unavailable';
+}
+
+/** The plain copy a failed voice bubble shows for its reason. */
+export function voiceErrorCopy(reason: VoiceFailureReason): string {
+  if (reason === 'network') {
+    return 'Could not send. Check your connection.';
+  }
+  if (reason === 'too_large') {
+    return 'That recording is too long to send.';
+  }
+  if (reason === 'unsupported_file') {
+    return 'That recording could not be read.';
+  }
+  if (reason === 'upload_refused') {
+    return 'Could not upload the recording.';
+  }
+  if (reason === 'server_unavailable') {
+    return 'Could not send the voice message. Try again.';
+  }
+  return 'Sending took too long. Try again.';
+}
 
 /** One finished recording, ready for the store's voice pipeline. */
 export interface FinishedRecording {
@@ -47,30 +106,63 @@ export interface VoiceRecorderPort {
   isRecording(): boolean;
 }
 
+/** The native recorder shape `createVoiceRecorder` drives (test seam). */
+export interface NativeRecorderShape {
+  prepareToRecordAsync: () => Promise<void>;
+  record: () => void;
+  stop: () => Promise<void>;
+  uri: string | null;
+  isRecording: boolean;
+  currentTime: number;
+}
+
 /** Creates the real recorder: permission first, `expo-audio` m4a second. */
-export function createVoiceRecorder(): VoiceRecorderPort {
-  let recorder: {
-    prepareToRecordAsync: () => Promise<void>;
-    record: () => void;
-    stop: () => Promise<void>;
-    uri: string | null;
-    isRecording: boolean;
-    currentTime: number;
-  } | null = null;
+export function createVoiceRecorder(deps?: {
+  audio?: {
+    requestRecordingPermissionsAsync: () => Promise<{ granted: boolean }>;
+    AudioRecorder: new (options: unknown) => NativeRecorderShape;
+    HIGH_QUALITY?: unknown;
+  };
+  setAudioMode?:
+    ((mode: { playsInSilentMode: boolean; allowsRecording: boolean }) => Promise<void>) | undefined;
+  fileReader?: ((uri: string) => Promise<{ size: number | undefined }>) | undefined;
+}): VoiceRecorderPort {
+  let recorder: NativeRecorderShape | null = null;
   return {
     async start() {
-      const { AudioModule, RecordingPresets, setAudioModeAsync } = await import('expo-audio');
-      const permission = await AudioModule.requestRecordingPermissionsAsync();
+      const audio: {
+        requestRecordingPermissionsAsync: () => Promise<{ granted: boolean }>;
+        AudioRecorder: new (options: unknown) => NativeRecorderShape;
+        HIGH_QUALITY?: unknown;
+      } =
+        deps?.audio ??
+        (await import('expo-audio').then((module) => ({
+          requestRecordingPermissionsAsync: module.AudioModule.requestRecordingPermissionsAsync,
+          AudioRecorder: module.AudioModule.AudioRecorder as new (
+            options: unknown,
+          ) => NativeRecorderShape,
+          HIGH_QUALITY: module.RecordingPresets.HIGH_QUALITY as unknown,
+        })));
+      const permission = await audio.requestRecordingPermissionsAsync();
       if (!permission.granted) {
         return { status: 'error', message: MIC_DENIED_MESSAGE };
       }
-      try {
-        await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: true });
-      } catch {
-        // The audio mode is a nicety; a failure must not block recording.
+      if (deps?.setAudioMode === undefined) {
+        try {
+          const { setAudioModeAsync } = await import('expo-audio');
+          await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: true });
+        } catch {
+          // The audio mode is a nicety; a failure must not block recording.
+        }
+      } else {
+        try {
+          await deps.setAudioMode({ playsInSilentMode: true, allowsRecording: true });
+        } catch {
+          // The audio mode is a nicety; a failure must not block recording.
+        }
       }
       try {
-        const fresh = new AudioModule.AudioRecorder(RecordingPresets.HIGH_QUALITY);
+        const fresh = new audio.AudioRecorder(audio.HIGH_QUALITY);
         await fresh.prepareToRecordAsync();
         fresh.record();
         recorder = fresh;
@@ -97,8 +189,12 @@ export function createVoiceRecorder(): VoiceRecorderPort {
       if (settledUri === null || settledUri === '') {
         return { status: 'error', message: RECORD_FAILED_MESSAGE };
       }
-      const { File } = await import('expo-file-system');
-      const size = await fileSizeOf(new File(settledUri) as unknown);
+      // A size failure is "unknown", never "empty": only a real zero refuses
+      // as `voice_empty` downstream (finding 3).
+      const size = await readFileSize(settledUri, deps?.fileReader);
+      if (size === undefined) {
+        return { status: 'error', message: RECORD_FAILED_MESSAGE };
+      }
       const recorded: RecordResult = {
         status: 'recorded',
         recording: { uri: settledUri, mimeType: 'audio/mp4', size, durationMs },
@@ -127,13 +223,23 @@ export function createVoiceRecorder(): VoiceRecorderPort {
   };
 }
 
-/** The byte size of a recorded file, 0 when it cannot be read. */
-async function fileSizeOf(file: unknown): Promise<number> {
+/**
+ * The byte size of a recorded file via the documented `expo-file-system`
+ * `size` property (0 when the file does not exist or cannot be read).
+ * Undefined when the read itself failed ("unknown", not "empty").
+ */
+async function readFileSize(
+  uri: string,
+  reader?: ((uri: string) => Promise<{ size: number | undefined }>) | undefined,
+): Promise<number | undefined> {
   try {
-    const sized = file as { info: () => { size: number | null } };
-    return sized.info().size ?? 0;
+    if (reader !== undefined) {
+      return (await reader(uri)).size;
+    }
+    const { File } = await import('expo-file-system');
+    return new File(uri).size;
   } catch {
-    return 0;
+    return undefined;
   }
 }
 
@@ -159,6 +265,10 @@ export interface VoiceSpeaker {
  * Only one voice plays at a time: starting one pauses the other. The chat
  * screen owns the registry and stops it on unmount (leaving the chat stops
  * playback). Tests drive this without any native module.
+ *
+ * Identity is by message, not by object: `resign` clears whoever is current
+ * for that message id, so the host can resign a bubble without holding the
+ * exact claimed object (finding 1).
  */
 export function createVoicePlayback(): {
   current(): VoiceSpeaker | undefined;
@@ -170,13 +280,13 @@ export function createVoicePlayback(): {
   return {
     current: () => current,
     claim(speaker) {
-      if (current !== undefined && current !== speaker) {
+      if (current !== undefined && current.messageId !== speaker.messageId) {
         current.pause();
       }
       current = speaker;
     },
     resign(speaker) {
-      if (current === speaker) {
+      if (current?.messageId === speaker.messageId) {
         current = undefined;
       }
     },

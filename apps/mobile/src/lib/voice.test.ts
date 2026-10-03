@@ -151,12 +151,12 @@ describe('voice send helper (T-0154)', () => {
 
   it('posts a non-m4a recording to /api/voice and trusts the duration header', async () => {
     const bytes = new Uint8Array([1, 2, 3, 4]);
+    const readFile = vi.fn(async (uri: string) => {
+      expect(uri).toBe('file:///cache/rec.3gp');
+      return bytes;
+    });
     const fetchFn = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
-      const target = String(url);
-      if (target.endsWith('.3gp')) {
-        return new Response(bytes.buffer as ArrayBuffer);
-      }
-      expect(target).toBe('http://127.0.0.1:3188/api/voice');
+      expect(String(url)).toBe('http://127.0.0.1:3188/api/voice');
       const headers = (init?.headers ?? {}) as Record<string, string>;
       expect(headers['authorization']).toBe('Bearer tok');
       const converted = new Uint8Array([9, 9, 9]);
@@ -170,6 +170,7 @@ describe('voice send helper (T-0154)', () => {
       getToken: async () => 'tok',
       uploader: { upload: vi.fn(async () => {}) },
       fetchFn: fetchFn as never,
+      readFile,
     });
     const converted = await port.convert({
       uri: 'file:///cache/rec.3gp',
@@ -177,9 +178,31 @@ describe('voice send helper (T-0154)', () => {
       size: 4,
       durationMs: 9000,
     });
+    // The file is read through the device reader (finding 2), never fetch.
+    expect(readFile).toHaveBeenCalledTimes(1);
+    expect(fetchFn).toHaveBeenCalledTimes(1);
     // The client-claimed duration is ignored: the server header wins.
     expect(converted.durationMs).toBe(4321);
     expect(converted.mimeType).toBe(VOICE_MIME);
+  });
+
+  it('a file-read failure maps to voice_failed, never to empty', async () => {
+    const port = createVoicePort({
+      apiUrl: 'http://127.0.0.1:3188',
+      getToken: async () => 'tok',
+      uploader: { upload: vi.fn(async () => {}) },
+      readFile: async () => {
+        throw new Error('unreadable');
+      },
+    });
+    await expect(
+      port.convert({
+        uri: 'file:///cache/rec.3gp',
+        mimeType: 'audio/3gpp',
+        size: 4,
+        durationMs: 9000,
+      }),
+    ).rejects.toMatchObject({ code: 'voice_failed' });
   });
 
   it('maps conversion errors to plain copy', () => {

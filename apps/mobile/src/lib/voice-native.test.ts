@@ -51,6 +51,14 @@ describe('voice playback registry + gates (T-0154)', () => {
     expect(playback.current()).toBeUndefined();
   });
 
+  it('resigns by message id, so the host needs no claimed object', () => {
+    const playback = createVoicePlayback();
+    playback.claim(speaker('m-1'));
+    // A different object for the same message still clears it (finding 1).
+    playback.resign(speaker('m-1'));
+    expect(playback.current()).toBeUndefined();
+  });
+
   it('stopAll pauses the current speaker (leaving the chat stops playback)', () => {
     const playback = createVoicePlayback();
     const first = speaker('m-1');
