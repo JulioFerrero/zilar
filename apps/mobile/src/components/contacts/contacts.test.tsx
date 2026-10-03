@@ -1,8 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import type { HandleProfile } from '@/lib/contacts-api';
+import type { ContactsApi, ContactRequestView, HandleProfile } from '@/lib/contacts-api';
 
-import { addContactHandle, addContactLookupFailure, addContactSendFailure } from './add-contact';
+import {
+  actOnProfileRequest,
+  addContactHandle,
+  addContactLookupFailure,
+  addContactSendFailure,
+} from './add-contact';
 import { requestsActionFailure, requestsLoadFailure } from './requests';
 import { ContactsApiError } from '@/lib/contacts-api';
 import { resolveContactChat } from './add-contact-sheet';
@@ -258,5 +263,165 @@ describe('requests helpers', () => {
 
   it('falls back to a plain message', () => {
     expect(requestsLoadFailure(new Error('boom'))).toBe('Something went wrong. Try again.');
+  });
+});
+
+describe('actOnProfileRequest', () => {
+  // A fake API with mutable server state: the lookup answers the current
+  // relation, the actions flip it. Both the sheet and the `u/[handle]`
+  // screen run this helper inside their busy guard, so these cases prove the
+  // card ends on the new relation without a second guarded reload.
+  function fakeApi(initial: {
+    relation: HandleProfile['relation'];
+    incoming: ContactRequestView[];
+    outgoing: ContactRequestView[];
+  }): ContactsApi & { calls: string[] } {
+    let relation = initial.relation;
+    let incoming = initial.incoming.map((row) => ({ ...row }));
+    let outgoing = initial.outgoing.map((row) => ({ ...row }));
+    const calls: string[] = [];
+    const profile = (): HandleProfile => ({
+      userId: 'u-ada',
+      name: 'Ada',
+      handle: 'ada',
+      image: null,
+      relation,
+    });
+    return {
+      calls,
+      async lookupByHandle() {
+        calls.push('lookup');
+        return profile();
+      },
+      async sendContactRequest() {
+        throw new ContactsApiError(409, 'request_exists', 'pending');
+      },
+      async listContactRequests() {
+        calls.push('list');
+        return {
+          incoming: incoming.map((row) => ({ ...row })),
+          outgoing: outgoing.map((row) => ({ ...row })),
+        };
+      },
+      async acceptContactRequest(id) {
+        calls.push(`accept:${id}`);
+        incoming = incoming.filter((row) => row.id !== id);
+        relation = 'contact';
+        return {
+          request: {
+            id,
+            fromUserId: 'u-ada',
+            toUserId: 'u-me',
+            status: 'accepted',
+            createdAt: '2026-10-03T10:00:00.000Z',
+          },
+        };
+      },
+      async declineContactRequest(id) {
+        calls.push(`decline:${id}`);
+        incoming = incoming.filter((row) => row.id !== id);
+        relation = 'none';
+        return {
+          request: {
+            id,
+            fromUserId: 'u-ada',
+            toUserId: 'u-me',
+            status: 'declined',
+            createdAt: '2026-10-03T10:00:00.000Z',
+          },
+        };
+      },
+      async cancelContactRequest(id) {
+        calls.push(`cancel:${id}`);
+        outgoing = outgoing.filter((row) => row.id !== id);
+        relation = 'none';
+        return {
+          request: {
+            id,
+            fromUserId: 'u-me',
+            toUserId: 'u-ada',
+            status: 'cancelled',
+            createdAt: '2026-10-03T10:00:00.000Z',
+          },
+        };
+      },
+    };
+  }
+
+  function requestRow(id: string): ContactRequestView {
+    return {
+      id,
+      status: 'pending',
+      createdAt: '2026-10-03T10:00:00.000Z',
+      other: { userId: 'u-ada', name: 'Ada', handle: 'ada', image: null },
+    };
+  }
+
+  it('Cancel on request_sent ends with none (Send request)', async () => {
+    const api = fakeApi({ relation: 'request_sent', incoming: [], outgoing: [requestRow('r1')] });
+    const seen: HandleProfile[] = [];
+    let sentCleared = 0;
+    await actOnProfileRequest(
+      api,
+      { userId: 'u-ada', handle: 'ada' },
+      (id) => api.cancelContactRequest(id),
+      (found) => seen.push(found),
+      () => {
+        sentCleared += 1;
+      },
+    );
+    expect(api.calls).toEqual(['list', 'cancel:r1', 'lookup']);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.relation).toBe('none');
+    expect(sentCleared).toBe(1);
+  });
+
+  it('Accept on request_received ends with contact (Message)', async () => {
+    const api = fakeApi({
+      relation: 'request_received',
+      incoming: [requestRow('r2')],
+      outgoing: [],
+    });
+    const seen: HandleProfile[] = [];
+    await actOnProfileRequest(
+      api,
+      { userId: 'u-ada', handle: 'ada' },
+      (id) => api.acceptContactRequest(id),
+      (found) => seen.push(found),
+      () => {},
+    );
+    expect(api.calls).toEqual(['list', 'accept:r2', 'lookup']);
+    expect(seen[0]?.relation).toBe('contact');
+  });
+
+  it('Decline on request_received ends with none', async () => {
+    const api = fakeApi({
+      relation: 'request_received',
+      incoming: [requestRow('r3')],
+      outgoing: [],
+    });
+    const seen: HandleProfile[] = [];
+    await actOnProfileRequest(
+      api,
+      { userId: 'u-ada', handle: 'ada' },
+      (id) => api.declineContactRequest(id),
+      (found) => seen.push(found),
+      () => {},
+    );
+    expect(seen[0]?.relation).toBe('none');
+  });
+
+  it('re-reads the profile when the row is already gone', async () => {
+    const api = fakeApi({ relation: 'none', incoming: [], outgoing: [] });
+    const seen: HandleProfile[] = [];
+    await actOnProfileRequest(
+      api,
+      { userId: 'u-ada', handle: 'ada' },
+      (id) => api.cancelContactRequest(id),
+      (found) => seen.push(found),
+      () => {},
+    );
+    expect(api.calls).toEqual(['list', 'lookup']);
+    expect(seen[0]?.relation).toBe('none');
   });
 });

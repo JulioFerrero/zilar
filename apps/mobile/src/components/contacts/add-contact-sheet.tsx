@@ -11,6 +11,7 @@ import {
 } from '@/lib/contacts-api';
 
 import {
+  actOnProfileRequest,
   addContactHandle,
   addContactLookupFailure,
   addContactSendFailure,
@@ -139,22 +140,14 @@ export function AddContactSheet({
   };
 
   const actOnRequest = (work: (id: string) => Promise<unknown>): void => {
-    if (profile === null) {
+    if (profile === null || handle === null) {
       return;
     }
-    const targetUserId = profile.userId;
+    const target = { userId: profile.userId, handle };
     runAction(() =>
-      api.listContactRequests().then(async (list) => {
-        const row = [...list.incoming, ...list.outgoing].find(
-          (entry) => entry.other.userId === targetUserId,
-        );
-        if (row === undefined) {
-          reloadProfile();
-          return;
-        }
-        await work(row.id);
-        reloadProfile();
-      }),
+      actOnProfileRequest(api, target, work, setProfile, () =>
+        setView({ state: 'found', sent: false }),
+      ),
     );
   };
 

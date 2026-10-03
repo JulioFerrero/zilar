@@ -1,4 +1,9 @@
-import { ContactsApiError, normalizeHandleInput } from '../../lib/contacts-api';
+import {
+  ContactsApiError,
+  normalizeHandleInput,
+  type ContactsApi,
+  type HandleProfile,
+} from '../../lib/contacts-api';
 
 /**
  * The add-contact states (T-0182, mirrors the web `AddContactDialog` found /
@@ -61,3 +66,33 @@ export function addContactSendFailure(error: unknown): string {
 
 /** The single plain "no user" line for an unknown handle. */
 export const NO_USER_MESSAGE = 'No user with that username';
+
+/**
+ * Runs a request action (Cancel, Accept, Decline) for the profile's pending
+ * row, then re-fetches the profile inline in the same promise chain so the
+ * card shows the new relation. The refresh must stay in this chain — never
+ * go through the busy-guarded runner, which would drop it while the action
+ * still holds the guard and leave the card stale.
+ */
+export async function actOnProfileRequest(
+  api: ContactsApi,
+  target: { userId: string; handle: string },
+  work: (id: string) => Promise<unknown>,
+  onProfile: (profile: HandleProfile) => void,
+  onSentNone: () => void,
+): Promise<void> {
+  const list = await api.listContactRequests();
+  const row = [...list.incoming, ...list.outgoing].find(
+    (entry) => entry.other.userId === target.userId,
+  );
+  if (row === undefined) {
+    const found = await api.lookupByHandle(target.handle);
+    onProfile(found);
+    onSentNone();
+    return;
+  }
+  await work(row.id);
+  const found = await api.lookupByHandle(target.handle);
+  onProfile(found);
+  onSentNone();
+}

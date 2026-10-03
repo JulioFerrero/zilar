@@ -1,5 +1,5 @@
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { ChevronLeft } from 'lucide-react-native';
+import { ChevronLeft, RefreshCw } from 'lucide-react-native';
 import { useCallback, useRef, useState } from 'react';
 import { ActivityIndicator, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -17,6 +17,7 @@ import {
   type HandleProfile,
 } from '@/lib/contacts-api';
 import {
+  actOnProfileRequest,
   addContactLookupFailure,
   addContactSendFailure,
   NO_USER_MESSAGE,
@@ -140,23 +141,11 @@ function HandleProfileView() {
   };
 
   const actOnRequest = (work: (id: string) => Promise<unknown>): void => {
-    if (profile === null) {
+    if (profile === null || handle === '') {
       return;
     }
-    const targetUserId = profile.userId;
-    runAction(() =>
-      api.listContactRequests().then(async (list) => {
-        const row = [...list.incoming, ...list.outgoing].find(
-          (entry) => entry.other.userId === targetUserId,
-        );
-        if (row === undefined) {
-          reloadProfile();
-          return;
-        }
-        await work(row.id);
-        reloadProfile();
-      }),
-    );
+    const target = { userId: profile.userId, handle };
+    runAction(() => actOnProfileRequest(api, target, work, setProfile, () => setSent(false)));
   };
 
   const openMessage = (): void => {
@@ -215,7 +204,7 @@ function HandleProfileView() {
                 {error}
               </Text>
               <IconButton label="Retry loading the profile" onPress={load}>
-                <ChevronLeft size={24} color={ICON[scheme]} />
+                <RefreshCw size={24} color={ICON[scheme]} />
               </IconButton>
             </View>
           ) : null}
