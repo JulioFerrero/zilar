@@ -15,7 +15,6 @@ import { isTrustedMediaUrl, safeHttpUrl } from './attachments';
 export const MIC_DENIED_MESSAGE =
   'Zilar needs access to your microphone to record voice messages. You can allow it in Settings.';
 export const MIC_FAILED_MESSAGE = 'Could not start recording. Try again.';
-export const RECORD_TOO_SHORT_MESSAGE = 'Too short, hold the mic longer.';
 export const RECORD_TOO_LONG_MESSAGE = 'That recording is too long to send.';
 export const RECORD_FAILED_MESSAGE = 'Could not save the recording, try again.';
 

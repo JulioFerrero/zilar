@@ -6,7 +6,6 @@ import {
   MIC_FAILED_MESSAGE,
   RECORD_FAILED_MESSAGE,
   RECORD_TOO_LONG_MESSAGE,
-  RECORD_TOO_SHORT_MESSAGE,
   voiceErrorCopy,
   voiceFailureReasonFor,
 } from './voice-native';
@@ -220,8 +219,7 @@ describe('voice failure reasons (T-0154 review)', () => {
     expect(voiceErrorCopy('timed_out')).toBe('Sending took too long. Try again.');
   });
 
-  it('documents the recorder refusal copies', () => {
-    expect(RECORD_TOO_SHORT_MESSAGE).toContain('Too short');
+  it('documents the recorder refusal copy', () => {
     expect(RECORD_TOO_LONG_MESSAGE).toContain('too long');
   });
 });

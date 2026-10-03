@@ -1,7 +1,7 @@
 ---
 id: T-0176
 title: Mobile: icons (not emoji) in the attach popup; a too-short press records nothing and says nothing
-status: planned
+status: review
 milestone: M5
 branch: task/T-0176-mobile-attach-icons-short-press
 model: meta/muse-spark-1.3-contributor
@@ -49,5 +49,32 @@ The emoji, sticker and GIF panel (T-0175), any other screen.
 ---
 
 ## Report (written by the worker when done)
+
+### What I did
+- `apps/mobile/src/components/chat/attach-sheet.tsx`: replaced every emoji character with lucide icons at size 20 in `ICON[scheme]` (same as `composer.tsx`): header `Paperclip` in a row with the "Attach" title, `Image` for "Photo or video", `Camera` for "Take a photo", `FileText` for "File", `Image`/`FileText` for the demo list by `attachment.kind`, and an extension-based `Image`/`FileText` fallback in `PreviewThumb` when the thumbnail fails to load. Added a `nativewind` `useColorScheme` + `asColorScheme` read like `composer.tsx`/`edit-bar.tsx`. No emoji characters remain in the file.
+- `apps/mobile/src/components/chat/voice-recorder.tsx`: `runRecorderFinish` now discards a sub-`VOICE_MIN_MS` recording silently — returns `undefined`, sends nothing, sets no error. The live duration is read via `recorder.currentDurationMs()` *before* `stop()` and, when below the floor, the take is discarded with `recorder.cancel()` (which discards the recording; `cancel()` after `stop()` would be a no-op since `stop()` consumes the native recorder). A post-`stop` duration guard stays as a fallback and also returns `undefined`. Updated the two comments that described the old "too short" refusal. A 1-second recording (exactly `VOICE_MIN_MS`) still sends with the real waveform.
+- `apps/mobile/src/lib/voice-native.ts`: deleted `RECORD_TOO_SHORT_MESSAGE`. Verified no other app code references it (only this task file's spec mentions it).
+- Tests: `voice-recorder.test.tsx` — sub-1s press asserts `undefined`, nothing sent, `stop` never called, `cancel` called once; new test that a 1000 ms recording still sends. `attach-sheet.test.tsx` — new test pins no `\p{Extended_Pictographic}` in `attach-sheet.tsx` source and that the sheet renders `Paperclip`/`Image`/`Camera`/`FileText`; lucide + `nativewind` + color-scheme mocks added. `voice-recorder-seam.test.ts` — dropped the removed constant, kept the too-long copy pin.
+- Out of scope untouched: `composer.tsx`, `sticker-panel.tsx`, `gif-panel.tsx` (T-0175). Note: `attachment-message.tsx:215` and `attachment-video.tsx:136` still contain a `📎` fallback glyph, but those files are outside Allowed files, so I left them alone.
+
+### Files changed
+- `apps/mobile/src/components/chat/attach-sheet.tsx`
+- `apps/mobile/src/components/chat/voice-recorder.tsx`
+- `apps/mobile/src/lib/voice-native.ts`
+- `apps/mobile/src/components/chat/attach-sheet.test.tsx`
+- `apps/mobile/src/components/chat/voice-recorder.test.tsx`
+- `apps/mobile/src/lib/voice-recorder-seam.test.ts`
+- `work/T-0176-mobile-attach-icons-short-press.md` (this report + status)
+
+### Commands (real results)
+- `pnpm install`: ok (1050 packages).
+- `pnpm format:check`: pass ("All matched files use Prettier code style!").
+- `pnpm lint`: pass (oxlint, no findings).
+- `pnpm typecheck`: pass (11 tasks successful).
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 attach voice`: 18 files, 165 tests, all passed.
+### Security checklist
+- No secrets touched, logged or committed.
+- No permission/cap/rate-limit surface changed (pure UI + local recorder flow; no new routes).
+- No deletes/updates beyond the local recorder discard via the existing `cancel()` seam.
 
 ## Review (written by Claude)
