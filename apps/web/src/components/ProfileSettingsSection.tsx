@@ -22,6 +22,10 @@ export function ProfileSettingsSection() {
   // stays enabled — the server applies it (interval rule, casing updated,
   // nothing retired).
   const unchanged = trimmed !== '' && trimmed === current;
+  // The live check skips your own handle in any casing: the server sees its
+  // live row and would report "taken", which is misleading next to an
+  // enabled Save.
+  const ownHandle = current !== '' && trimmed.toLowerCase() === current.toLowerCase();
 
   // Fill the input when the handle arrives after `getMe()` — but only while
   // the user has not started typing, so typed text is never overwritten.
@@ -33,7 +37,7 @@ export function ProfileSettingsSection() {
   // schedules the check (the lint rule flags synchronous setState inside
   // effects); the timeout callback applies the result once.
   useEffect(() => {
-    if (trimmed === '' || unchanged) {
+    if (trimmed === '' || ownHandle) {
       return;
     }
     let active = true;
@@ -61,7 +65,7 @@ export function ProfileSettingsSection() {
       active = false;
       clearTimeout(pending);
     };
-  }, [trimmed, current, unchanged]);
+  }, [trimmed, current, ownHandle]);
 
   const save = async (): Promise<void> => {
     if (trimmed === '') {

@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { contacts } from '../db/schema';
 import { handles, retiredHandles } from '../db/schema';
 import {
   bootstrapUser,
@@ -259,9 +258,13 @@ describe('handles', () => {
   it(`change interval is ${HANDLE_CHANGE_INTERVAL_DAYS} days from the stored timestamp`, async () => {
     const alice = await bootstrapUser(context, app, 'alice@example.com');
     await claimHandle(context.db, alice.id, 'interval_one');
-    await expect(claimHandle(context.db, alice.id, 'interval_two')).rejects.toMatchObject({
-      code: 'handle_change_too_soon',
-    });
-    expect(await context.db.select().from(contacts)).toHaveLength(0);
+    const tooSoon = await claimHandle(context.db, alice.id, 'interval_two').then(
+      () => null,
+      (error: unknown) => error as { code?: string },
+    );
+    expect(tooSoon?.code).toBe('handle_change_too_soon');
+    // The refused change wrote nothing: still exactly the first handle.
+    const rows = await context.db.select().from(handles).where(eq(handles.userId, alice.id));
+    expect(rows.map((row) => row.handle)).toEqual(['interval_one']);
   });
 });

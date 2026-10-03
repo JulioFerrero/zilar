@@ -511,11 +511,13 @@ export function createApp({
     if (error instanceof HttpError) {
       return c.json(
         {
+          // `detail` first: a detail key (e.g. a future `code`) can never
+          // overwrite the real `code`, `message` or `requestId`.
           error: {
+            ...error.detail,
             code: error.code,
             message: error.message,
             requestId: requestIdValue,
-            ...error.detail,
           },
         },
         error.status,

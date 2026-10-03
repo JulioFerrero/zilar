@@ -34,7 +34,7 @@ describe('contact requests', () => {
   async function withHandle(email: string, handle: string) {
     const user = await bootstrapUser(context, app, email);
     await claimHandle(context.db, user.id, handle);
-    return user;
+    return { ...user, email };
   }
 
   async function postRequest(cookie: string, handle: string): Promise<Response> {
@@ -140,7 +140,10 @@ describe('contact requests', () => {
     const rejected = [aResult, bResult].filter((r) => r.status === 'rejected');
     // Exactly one direction wins the insert; the loser either got the
     // reverse row back (200-style, no throw) or hit `request_exists` on the
-    // same-direction backstop. No other outcome is possible.
+    // same-direction backstop. No other outcome is possible. (On PGlite the
+    // two txs serialize on one connection so the loser takes the normal
+    // reverse path; on real Postgres the loser takes the recovery path
+    // below — both end with exactly one row.)
     expect(fulfilled.length + rejected.length).toBe(2);
     for (const result of fulfilled) {
       const value = (result as PromiseFulfilledResult<{ request: { id: string } }>).value;
@@ -154,10 +157,115 @@ describe('contact requests', () => {
     expect(fulfilled.length).toBeGreaterThanOrEqual(1);
   });
 
+  it('recovers outside the aborted tx when the insert hits the pair index', async () => {
+    // Real Postgres aborts the transaction on a unique violation, so the
+    // recovery reads must run on the outer db (a fresh connection), never
+    // on the aborted tx. PGlite serializes on one connection and cannot
+    // reproduce this — instead the insert is forced to throw a fake 23505
+    // for the pair constraint, and the test asserts the recovery answers
+    // from reads issued on the outer db.
+    const alice = await withHandle('alice@example.com', 'alice_w');
+    const bob = await withHandle('bob@example.com', 'bob_b');
+    const service = await import('./service');
+    const { createContactRequest, isPendingPairViolation } = service;
+
+    // The winner's row already exists (Bob asked first, serially).
+    const first = await createContactRequest({ db: context.db }, bob.id, 'alice_w');
+    expect(first.request.status).toBe('pending');
+
+    const recoveryReads: Array<'outer'> = [];
+    const outerSelect = context.db.select.bind(context.db);
+    // Wrap the outer select so the recovery reads leave a trace: the
+    // recovery MUST issue them on `deps.db` (fresh connection), never on
+    // the aborted tx double (which only implements `insert`).
+    const tracedOuterDb = new Proxy(context.db, {
+      get(target, property, receiver) {
+        if (property === 'select') {
+          return (...args: []) => {
+            recoveryReads.push('outer');
+            return outerSelect(...args);
+          };
+        }
+        const value = Reflect.get(target, property, receiver);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+    const outerDb = new Proxy(tracedOuterDb, {
+      get(target, property, receiver) {
+        if (property === 'transaction') {
+          return async (callback: (tx: unknown) => Promise<unknown>) => {
+            // A tx double whose insert throws a 23505 pair-index violation
+            // shaped like Drizzle's wrapped driver error (code nested
+            // under `cause`, constraint named — matched by code/constraint,
+            // never by message text). Reads issued AFTER the failure throw
+            // like a real aborted Postgres tx (25P02); the advisory take
+            // itself runs before the insert, so it still succeeds.
+            const aborted = new Error('aborted transaction (test double)');
+            let failed = false;
+            const txDouble = new Proxy(target, {
+              get(txTarget, txProperty, txReceiver) {
+                if (txProperty === 'insert') {
+                  return () => ({
+                    values: () => ({
+                      returning: async (): Promise<never> => {
+                        failed = true;
+                        throw {
+                          code: '23505',
+                          constraint: 'contact_requests_pending_pair_idx',
+                          cause: {
+                            code: '23505',
+                            constraint: 'contact_requests_pending_pair_idx',
+                          },
+                        };
+                      },
+                    }),
+                  });
+                }
+                if (failed && (txProperty === 'select' || txProperty === 'execute')) {
+                  return () => {
+                    throw aborted;
+                  };
+                }
+                const value = Reflect.get(txTarget, txProperty, txReceiver);
+                return typeof value === 'function' ? value.bind(txTarget) : value;
+              },
+            });
+            return callback(txDouble);
+          };
+        }
+        const value = Reflect.get(target, property, receiver);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+
+    const recovered = await createContactRequest(
+      { db: outerDb as unknown as typeof context.db },
+      alice.id,
+      'bob_b',
+    );
+    // The reverse-direction loser gets the winner's row back (200-style).
+    expect(recovered.request.id).toBe(first.request.id);
+    expect(recovered.reverseOf?.id).toBe(first.request.id);
+    // Recovery issued its reads on the outer db, not the aborted tx (which
+    // throws on any read, like a real aborted Postgres tx).
+    expect(recoveryReads.length).toBeGreaterThan(0);
+    expect(isPendingPairViolation({ code: '23505' })).toBe(true);
+    expect(
+      isPendingPairViolation({ code: '23505', constraint: 'contact_requests_pending_idx' }),
+    ).toBe(true);
+    expect(
+      isPendingPairViolation({ code: '23505', constraint: 'contact_requests_pending_pair_idx' }),
+    ).toBe(true);
+    expect(isPendingPairViolation({ code: '23505', constraint: 'some_other_index' })).toBe(false);
+    expect(isPendingPairViolation(new Error('boom'))).toBe(false);
+    // Still exactly one pending row.
+    expect(await context.db.select().from(contactRequests)).toHaveLength(1);
+  });
+
   it('declines, cancels, and cools down re-requests for 7 days', async () => {
     const alice = await withHandle('alice@example.com', 'alice_w');
     const bob = await withHandle('bob@example.com', 'bob_b');
-    const carol = await withHandle('carol@example.com', 'carol_c');
+    await withHandle('carol@example.com', 'carol_c');
 
     const created = await postRequest(alice.cookie, 'bob_b');
     expect(created.status).toBe(201);
@@ -192,7 +300,6 @@ describe('contact requests', () => {
     expect(cancel.status).toBe(200);
     // A cancelled request may be re-sent at once.
     expect((await postRequest(alice.cookie, 'carol_c')).status).toBe(201);
-    expect(carol.id).toBeDefined();
   });
 
   it('caps pending outgoing at 20, atomically per sender', async () => {
@@ -202,7 +309,7 @@ describe('contact requests', () => {
     for (let index = 0; index < 19; index += 1) {
       const target = await withHandle(`target${index}@example.com`, `target_${index}`);
       expect((await postRequest(alice.cookie, `target_${index}`)).status).toBe(201);
-      expect(target.id).toBeDefined();
+      expect(target.email).toContain('@example.com');
     }
     // At 19 pending, two concurrent creates to different targets serialize
     // on the per-sender lock: exactly one wins, the other hits the cap.
@@ -221,13 +328,18 @@ describe('contact requests', () => {
     expect((lost[0] as PromiseRejectedResult).reason).toMatchObject({
       code: 'too_many_requests',
     });
-    expect(extraA.id && extraB.id).toBeDefined();
+    expect([extraA.email, extraB.email].sort()).toEqual([
+      'extra-a@example.com',
+      'extra-b@example.com',
+    ]);
 
     // And one more serial create also hits the cap.
-    const extra = await withHandle('extra@example.com', 'extra_one');
+    await withHandle('extra@example.com', 'extra_one');
     const capped = await postRequest(alice.cookie, 'extra_one');
     expect(capped.status).toBe(429);
-    expect(extra.id).toBeDefined();
+    expect(((await capped.json()) as { error: { code: string } }).error.code).toBe(
+      'too_many_requests',
+    );
   });
 
   it('answers unknown and retired handles with the same 404', async () => {
@@ -399,7 +511,7 @@ describe('contact requests', () => {
       Date.parse(list.outgoing[0]?.createdAt ?? '') >=
         Date.parse(list.outgoing[1]?.createdAt ?? ''),
     ).toBe(true);
-    expect(first.id && second.id).toBeDefined();
+    expect([first.email, second.email].sort()).toEqual(['first@example.com', 'second@example.com']);
   });
 
   it('a re-accept repairs a half-finished accept', async () => {

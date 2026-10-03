@@ -24,8 +24,9 @@ function LiveAuthProvider({ children }: { children: ReactNode }) {
   const user = data?.user;
   const userId = user?.id;
   // T-0163: the handle lives on `GET /api/me` (Better Auth's session user
-  // has no handle field), fetched lazily once the session exists. Guests
-  // and failures read as handle-less so the gate never blocks on it.
+  // has no handle field), fetched lazily once the session exists. While it
+  // is loading — and if the fetch fails — `handle` stays `undefined` so the
+  // gate does not redirect: a failed `GET /me` must not mean "no handle".
   const [handle, setHandle] = useState<string | null | undefined>(undefined);
   useEffect(() => {
     if (userId === undefined) {
@@ -35,17 +36,15 @@ function LiveAuthProvider({ children }: { children: ReactNode }) {
     // synchronous setState inside effects); the fetch promise resolves the
     // next state, applied once.
     let active = true;
+    // Handled rejection (failure keeps `handle` undefined — see above), so
+    // no unhandled rejection escapes when the request fails.
     void getMe().then(
       (me) => {
         if (active) {
           setHandle(me.handle ?? null);
         }
       },
-      () => {
-        if (active) {
-          setHandle(null);
-        }
-      },
+      () => {},
     );
     return () => {
       active = false;
@@ -58,7 +57,11 @@ function LiveAuthProvider({ children }: { children: ReactNode }) {
           user: { id: user.id, name: user.name ?? '', email: user.email, handle },
           refetch: async () => {
             const me = await getMe().catch(() => null);
-            setHandle(me?.handle ?? null);
+            // A failed refetch keeps the previous handle: failure is not
+            // absence (see the effect above).
+            if (me !== null) {
+              setHandle(me.handle ?? null);
+            }
             await refetch();
           },
         }
