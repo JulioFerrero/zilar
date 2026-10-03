@@ -1,4 +1,5 @@
 import * as ImagePicker from 'expo-image-picker';
+import { ProfileApiError, parseApiErrorBody } from '@/lib/profile-api';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { File, UploadType } from 'expo-file-system';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
@@ -229,18 +230,48 @@ export function createAvatarFileUploader(): AvatarFileUploader {
                 },
         });
       } catch {
-        throw new Error(UPLOAD_FAILED_MESSAGE);
+        throw new ProfileApiError(0, 'network_error', 'Could not reach the server');
       }
       if (result.status < 200 || result.status >= 300) {
-        throw new Error(UPLOAD_FAILED_MESSAGE);
+        throw toAvatarUploadError(result.status, result.body);
       }
       const parsed = parseAvatarUploadBody(result.body);
       if (parsed === null) {
-        throw new Error(UPLOAD_FAILED_MESSAGE);
+        throw new ProfileApiError(200, 'invalid_response', UPLOAD_FAILED_MESSAGE);
       }
       return parsed;
     },
   };
+}
+
+/**
+ * Maps a refused avatar PUT to a `ProfileApiError`, so `friendlyAvatarError`
+ * can show the specific reason (`avatar_too_large`, `rate_limited`, ...)
+ * instead of the generic failure. A parseable `{ code, message }` envelope
+ * wins; otherwise the status decides (413 too large, 429 rate limited, 400
+ * not an image); anything else is the generic upload failure.
+ */
+export function toAvatarUploadError(status: number, body: string): ProfileApiError {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    parsed = null;
+  }
+  const { code, message } = parseApiErrorBody(parsed);
+  if (code !== 'request_failed') {
+    return new ProfileApiError(status, code, message ?? UPLOAD_FAILED_MESSAGE);
+  }
+  switch (status) {
+    case 400:
+      return new ProfileApiError(status, 'avatar_not_image', UPLOAD_FAILED_MESSAGE);
+    case 413:
+      return new ProfileApiError(status, 'avatar_too_large', UPLOAD_FAILED_MESSAGE);
+    case 429:
+      return new ProfileApiError(status, 'rate_limited', UPLOAD_FAILED_MESSAGE);
+    default:
+      return new ProfileApiError(status, 'request_failed', UPLOAD_FAILED_MESSAGE);
+  }
 }
 
 /** The cache copy of a picked picture, so the preview survives a library move. */

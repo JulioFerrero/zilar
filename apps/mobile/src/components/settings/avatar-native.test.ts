@@ -11,8 +11,11 @@ import {
   createPicturePicker,
   parseAvatarUploadBody,
   stagedAvatarName,
+  toAvatarUploadError,
   type AvatarTranscoder,
 } from './avatar-native';
+import { friendlyAvatarError } from './profile-logic';
+import { ProfileApiError } from '@/lib/profile-api';
 
 const mockedImagePicker = vi.mocked(ImagePicker, true);
 
@@ -227,6 +230,25 @@ describe('createPicturePicker', () => {
   });
 });
 
+describe('toAvatarUploadError', () => {
+  it('keeps the server code and message from the envelope', () => {
+    const error = toAvatarUploadError(
+      413,
+      JSON.stringify({ error: { code: 'avatar_too_large', message: 'The picture is big' } }),
+    );
+    expect(error).toBeInstanceOf(ProfileApiError);
+    expect(error).toMatchObject({ status: 413, code: 'avatar_too_large' });
+    expect(friendlyAvatarError(error)).toContain('256 KiB');
+  });
+
+  it('maps the status when the body has no envelope', () => {
+    expect(toAvatarUploadError(413, 'too big').code).toBe('avatar_too_large');
+    expect(toAvatarUploadError(429, 'slow down').code).toBe('rate_limited');
+    expect(toAvatarUploadError(400, 'bad').code).toBe('avatar_not_image');
+    expect(toAvatarUploadError(500, 'boom').code).toBe('request_failed');
+  });
+});
+
 describe('createAvatarFileUploader', () => {
   it('PUTs the transcoded PNG with its content type and parses the url', async () => {
     uploadedBy.mockClear();
@@ -250,5 +272,46 @@ describe('createAvatarFileUploader', () => {
         }),
       }),
     );
+  });
+
+  function uploadOnce(status: number, body: string) {
+    uploadedBy.mockResolvedValueOnce({ status, body });
+    return createAvatarFileUploader().upload(
+      'http://127.0.0.1:3188/api/avatars/user/user-1',
+      { uri: 'file:///cache/avatar.png', mimeType: 'image/png', width: 256, height: 256 },
+      'token-1',
+    );
+  }
+
+  it('a 413 response body produces the too-large message', async () => {
+    const error = await uploadOnce(
+      413,
+      JSON.stringify({
+        error: { code: 'avatar_too_large', message: 'The picture is larger than 256 KiB' },
+      }),
+    ).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(ProfileApiError);
+    expect(error).toMatchObject({ status: 413, code: 'avatar_too_large' });
+    expect(friendlyAvatarError(error)).toContain('256 KiB');
+  });
+
+  it('a 429 response body produces the rate-limit message', async () => {
+    const error = await uploadOnce(
+      429,
+      JSON.stringify({ error: { code: 'rate_limited', message: 'Too many avatar uploads' } }),
+    ).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(ProfileApiError);
+    expect(error).toMatchObject({ status: 429, code: 'rate_limited' });
+    expect(friendlyAvatarError(error)).toContain('Too many uploads');
+  });
+
+  it('a garbage 500 body produces the generic message', async () => {
+    const error = await uploadOnce(500, '<html>boom</html>').catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(ProfileApiError);
+    expect(error).toMatchObject({ status: 500, code: 'request_failed' });
+    expect(friendlyAvatarError(error)).toBe('Could not save the picture. Try again.');
   });
 });
