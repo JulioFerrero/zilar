@@ -33,9 +33,29 @@ describe('voice transcripts store (T-0179)', () => {
     expect(await readTranscripts(memoryFile(null))).toEqual({});
     expect(await readTranscripts(memoryFile(''))).toEqual({});
     expect(await readTranscripts(memoryFile('not json'))).toEqual({});
-    expect(await readTranscripts(memoryFile('{"m-1": {"text": 3}}'))).toEqual({});
     expect(await readTranscripts(memoryFile('[]'))).toEqual({});
     expect(parseTranscripts('{"m-1": {"text": ""}}')).toEqual({});
+  });
+
+  it('one hostile entry drops only that entry, the rest survive a save', async () => {
+    const file = memoryFile(
+      JSON.stringify({
+        'm-1': { text: 'one' },
+        'm-2': { text: 3 },
+        'm-3': { text: 'three', language: 'en' },
+        'm-4': { text: '' },
+      }),
+    );
+    expect(await readTranscripts(file)).toEqual({
+      'm-1': { text: 'one' },
+      'm-3': { text: 'three', language: 'en' },
+    });
+    await saveTranscript('m-5', { text: 'five' }, file);
+    expect(await readTranscripts(file)).toEqual({
+      'm-1': { text: 'one' },
+      'm-3': { text: 'three', language: 'en' },
+      'm-5': { text: 'five' },
+    });
   });
 
   it('a hostile file does not block the next save', async () => {

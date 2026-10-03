@@ -15,8 +15,6 @@ export const StoredTranscriptSchema = z.object({
 
 export type StoredTranscript = z.infer<typeof StoredTranscriptSchema>;
 
-const TranscriptFileSchema = z.record(z.string(), StoredTranscriptSchema);
-
 export type TranscriptMap = Record<string, StoredTranscript>;
 
 export const TRANSCRIPTS_FILENAME = 'voice-transcripts.json';
@@ -62,7 +60,13 @@ function defaultTranscriptFile(): TranscriptFile {
   };
 }
 
-/** Parses the raw file content; hostile or missing data resolves to {}. */
+/**
+ * Parses the raw file content entry by entry (T-0179, round 1): valid
+ * entries survive, only the invalid ones are dropped. A whole-file zod
+ * check would wipe the cache because of one bad entry; here a hostile
+ * entry never takes the good ones with it. Missing or unparsable data
+ * resolves to {}.
+ */
 export function parseTranscripts(raw: string | null | undefined): TranscriptMap {
   if (raw === null || raw === undefined || raw === '') {
     return {};
@@ -73,8 +77,17 @@ export function parseTranscripts(raw: string | null | undefined): TranscriptMap 
   } catch {
     return {};
   }
-  const validated = TranscriptFileSchema.safeParse(parsed);
-  return validated.success ? validated.data : {};
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    return {};
+  }
+  const kept: TranscriptMap = {};
+  for (const [key, value] of Object.entries(parsed)) {
+    const entry = StoredTranscriptSchema.safeParse(value);
+    if (entry.success) {
+      kept[key] = entry.data;
+    }
+  }
+  return kept;
 }
 
 /** Reads every stored transcript; a missing or hostile file resolves to {}. */
