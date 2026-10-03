@@ -476,6 +476,8 @@ const ALLOW_PATTERNS: RegExp[] = [
   // Read-only docker inspection. No logs/inspect (they can print container env).
   /^docker\s+(ps|images|version|info)(\s+-{1,2}[\w-]+(=\S+|\s+('[^']*'|"[^"]*"|[^\s-]\S*))?)*(\s+2>(&1|\/dev\/null))?$/,
   /^docker\s+compose\s+(-\S+(\s+[^\s-]\S*)?\s+)*(ps|config|images|ls)(\s+-\S+)*$/,
+  // Listing volumes and networks changes nothing.
+  /^docker\s+(volume|network)\s+ls(\s+--format\s+('[^']*'|"[^"]*"|\S+))?(\s+2>(&1|\/dev\/null))?$/,
   // Typechecking writes nothing (`--noEmit`).
   /^(npx|pnpm\s+exec)\s+tsc\s+--noEmit(\s+-p\s+[\w./-]+)?(\s+2>&1)?$/,
   // Scaffolding inside the worker's own checkout is harmless.

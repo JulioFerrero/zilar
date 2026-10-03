@@ -793,6 +793,24 @@ const CASES: { name: string; action: string; command: string | string[]; verdict
     command: 'curl -sk -D /tmp/h.txt -o /tmp/back.png https://localhost:18443/api/stickers/1/file',
     verdict: 'allow',
   },
+  {
+    name: 'docker volume ls',
+    action: 'shell',
+    command: ["docker volume ls --format '{{.Name}}'", 'grep -i rehearsal'],
+    verdict: 'allow',
+  },
+  {
+    name: 'docker network ls',
+    action: 'shell',
+    command: "docker network ls --format '{{.Name}}'",
+    verdict: 'allow',
+  },
+  {
+    name: 'docker volume rm stays escalated',
+    action: 'shell',
+    command: 'docker volume rm zilar-rehearsal_postgres-data',
+    verdict: 'escalate',
+  },
   // The same shapes with a hidden effect, or aimed elsewhere: never auto-allowed.
   {
     name: 'echo redirected to a file',
