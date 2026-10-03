@@ -1,6 +1,5 @@
 import { Plus } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AddContactDialog } from './AddContactDialog';
 import { ExplorePage } from './ExplorePage';
 import { InviteDialog } from './InviteDialog';
 import { NewAiDialog } from './ais/NewAiDialog';
@@ -14,17 +13,14 @@ import { cn } from '@/lib/utils';
 const MENU_ITEM_CLASS =
   'flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised focus-visible:bg-surface-raised focus-visible:outline-none';
 
-type Dialog =
-  'group' | 'channel' | 'message' | 'invite' | 'add-contact' | 'ai' | 'topic' | 'explore';
+type Dialog = 'group' | 'channel' | 'message' | 'invite' | 'ai' | 'topic' | 'explore';
 
 /** New chat: a full-width primary key on wide screens, a primary FAB on narrow. */
 export function NewChatButton({
   defaultGroupId,
-  onAddContact,
   onExplore,
 }: {
   defaultGroupId?: string;
-  onAddContact?: () => void;
   // T-0164: reaching the Explore directory from the + new chat menu. When
   // provided, the menu entry delegates to the owner (ChatList's overlay);
   // otherwise the button renders its own overlay.
@@ -210,21 +206,6 @@ export function NewChatButton({
               type="button"
               role="menuitem"
               className={MENU_ITEM_CLASS}
-              onClick={() => {
-                if (onAddContact !== undefined) {
-                  setMenuOpen(false);
-                  onAddContact();
-                } else {
-                  openDialog('add-contact');
-                }
-              }}
-            >
-              Add contact
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              className={MENU_ITEM_CLASS}
               onClick={() => openDialog('ai')}
             >
               New AI
@@ -278,7 +259,6 @@ export function NewChatButton({
       {dialog === 'explore' && <ExplorePage onClose={closeDialog} />}
       {dialog === 'ai' && <NewAiDialog onClose={closeDialog} />}
       {dialog === 'invite' && <InviteDialog onClose={closeDialog} />}
-      {dialog === 'add-contact' && <AddContactDialog onClose={closeDialog} />}
       {dialog === 'topic' &&
         (topicGroupId !== undefined ? (
           <NewTopicDialog groupId={topicGroupId} onClose={closeDialog} />
@@ -327,24 +307,17 @@ export function NewChatButton({
           >
             <h2 className="text-[16px] font-semibold">New message</h2>
             <p className="mt-1 text-[15px] text-muted-foreground">
-              Invite a friend to start a conversation, or add someone by their @username.
+              Invite a friend to start a conversation, or type their @username in the search bar
+              above.
             </p>
             <div className="mt-4 flex justify-end gap-2">
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => {
-                  if (onAddContact !== undefined) {
-                    setMenuOpen(false);
-                    setDialog(undefined);
-                    onAddContact();
-                  } else {
-                    openDialog('add-contact');
-                  }
-                }}
+                onClick={closeDialog}
                 className="h-9 rounded-full px-4"
               >
-                Add contact
+                Close
               </Button>
               <Button
                 type="button"

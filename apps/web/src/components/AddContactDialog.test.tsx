@@ -16,6 +16,10 @@ vi.mock('@/lib/api', () => ({
   },
   lookupByHandle: vi.fn(),
   sendContactRequest: vi.fn(),
+  listContactRequests: vi.fn(async () => ({ incoming: [], outgoing: [] })),
+  acceptContactRequest: vi.fn(),
+  declineContactRequest: vi.fn(),
+  cancelContactRequest: vi.fn(),
 }));
 
 const lookupMock = vi.mocked(lookupByHandle);
@@ -53,16 +57,17 @@ describe('AddContactDialog', () => {
 
     fireEvent.change(screen.getByLabelText('Username'), { target: { value: '@bob_b' } });
     expect(await screen.findByText('Bob')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Send request' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add contact' }));
     await waitFor(() => expect(sendMock).toHaveBeenCalledWith('bob_b'));
     expect(await screen.findByText('Request sent.')).toBeTruthy();
   });
 
-  it('shows "already contacts" without a send button', async () => {
+  it('shows "already contacts" with a Message action and no send button', async () => {
     lookupMock.mockResolvedValue({ ...PROFILE, relation: 'contact' as const });
     renderDialog('bob_b');
     expect(await screen.findByText("You're already contacts.")).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Send request' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Message' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Add contact' })).toBeNull();
   });
 
   it('offers Accept when the send reveals they asked first', async () => {
@@ -83,9 +88,10 @@ describe('AddContactDialog', () => {
 
     fireEvent.change(screen.getByLabelText('Username'), { target: { value: '@bob_b' } });
     expect(await screen.findByText('Bob')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Send request' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add contact' }));
     expect(await screen.findByText('They already asked to add you.')).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Go to Requests to accept' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Accept' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Go to Requests' })).toBeTruthy();
     expect(screen.queryByText('Request sent.')).toBeNull();
   });
 

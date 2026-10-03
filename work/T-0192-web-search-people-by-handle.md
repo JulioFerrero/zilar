@@ -1,7 +1,7 @@
 ---
 id: T-0192
 title: Web: typing @handle in the search bar shows the person (replaces Add contact in the new-chat menu)
-status: planned
+status: review
 milestone: M5
 branch: task/T-0192-web-search-people-by-handle
 model: meta/muse-spark-1.3-contributor
@@ -58,5 +58,12 @@ Partial or fuzzy people search (the server has none), searching by name or email
 ---
 
 ## Report (written by the worker when done)
+- What: `@handle` in the web search bar now shows a People section above chat/message results with one shared profile row (avatar, name, @handle, per-relation action). Removed Add contact from the main menu, the new-chat menu, the New message dialog, and the empty state; placeholder is now "Search, or type @username". `/u/:handle` and `/@handle` still use the dialog.
+- New files: `apps/web/src/components/ContactProfileRow.tsx` (shared row; contact -> Message to `/c/<userId>`, none -> Add contact -> Request sent, request_sent -> Cancel, request_received -> Accept/Decline, self -> "That's you."; errors are fixed sentences, nothing raw; row keyed by userId so a new handle remounts), `apps/web/src/components/PeopleSearchResult.tsx`, `apps/web/src/lib/usePeopleSearch.ts` (900 ms debounce, Enter via `zilar:search-enter`, last-handle cache, 429 -> "Too many searches, try again in a few minutes." once with no retry, 404 -> "No one with that username.", invalid shape / non-@ text never calls the API, reuses `isValidHandleShape`), `apps/web/src/components/PeopleSearchResult.test.tsx` (10 tests).
+- Changed: `AddContactDialog.tsx` (uses the shared row + "Go to Requests" link for request_received; lookup text unchanged), `ChatList.tsx` (People section render, removed Add contact wiring), `NewChatButton.tsx` (removed menu entry, dialog, onAddContact prop; New message dialog now points at the search bar), `SearchBar.tsx` (placeholder), `AddContactDialog.test.tsx` (updated to new button/link copy).
+- Deviation: Message action navigates to `/c/<userId>` (DM by contact id) since chats carry no per-contact user id; lead to confirm this matches the DM route. Accept/Decline/Cancel resolve the request id via `listContactRequests` matching `other.userId` (the lookup returns no request id).
+- Security checklist: no typed text or tokens logged; fixed user-facing error sentences only; no deletes/updates outside existing contact-request endpoints (scoped by request id server-side); 429 respected with no retry; no new routes, so no 401 sweep gap; no audit entries with message text.
+- Checks: `pnpm format:check` pass; `pnpm lint` pass; `pnpm typecheck` pass (11 tasks ok); `pnpm --filter @zilar/web test --maxWorkers=2 ChatList SearchBar NewChatButton AddContact PeopleSearch ContactProfileRow` -> 6 files, 62 tests, all pass. The lead tests on the emulator or in the browser.
+- Open: none; `/u/<handle>` and `/@handle` covered by existing HandleGate/GroupHandleRoute tests (untouched files, not re-run here).
 
 ## Review (written by Claude)
