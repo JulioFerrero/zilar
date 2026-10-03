@@ -21,6 +21,7 @@ import {
   describeConnectionsError,
   type ConnectionsErrorInfo,
 } from '@/components/connections/errors';
+import { keyAfterSave, saveConnection } from '@/components/connections/save-connection';
 import { useConnectionsApi } from '@/components/connections/use-connections-api';
 import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
@@ -374,25 +375,19 @@ function AddConnectionForm({
     busyRef.current = true;
     setBusy(true);
     setError('');
-    void api
-      .createConnection({
-        provider,
-        key: trimmedKey,
-        ...(label.trim() === '' ? {} : { label: label.trim() }),
-      })
-      .then((created) => {
-        // Write-only: drop the key state before anything else runs.
-        setKey('');
-        setShowKey(false);
-        onSaved(created);
-      })
-      .catch((cause: unknown) => {
-        setError(describeConnectionsError(cause, 'Could not save the connection.').message);
-      })
-      .finally(() => {
-        busyRef.current = false;
-        setBusy(false);
-      });
+    void saveConnection(api, { provider, key: trimmedKey, label: label.trim() }).then((outcome) => {
+      // Write-only: the transition empties the field on success and keeps
+      // the typed key for retry on failure.
+      setKey(keyAfterSave(outcome, trimmedKey));
+      setShowKey(false);
+      if (outcome.connection !== null) {
+        onSaved(outcome.connection);
+      } else {
+        setError(outcome.error);
+      }
+      busyRef.current = false;
+      setBusy(false);
+    });
   };
 
   return (
