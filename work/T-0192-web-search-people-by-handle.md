@@ -1,7 +1,7 @@
 ---
 id: T-0192
 title: Web: typing @handle in the search bar shows the person (replaces Add contact in the new-chat menu)
-status: review
+status: merged
 milestone: M5
 branch: task/T-0192-web-search-people-by-handle
 model: meta/muse-spark-1.3-contributor
@@ -76,3 +76,5 @@ Partial or fuzzy people search (the server has none), searching by name or email
 - Gate: `pnpm gate` does not exist in this worktree (no `gate` script in root package.json, no `gate` binary on PATH); ran the equivalent instead — `prettier --check` on all touched files: pass; `pnpm lint`: pass; `pnpm typecheck` (11 tasks): pass; `pnpm --filter @zilar/web test --maxWorkers=2 ChatList SearchBar NewChatButton AddContact PeopleSearch ContactProfileRow`: 6 files, 68 tests, all pass. (`pnpm format:check` repo-wide flags only the lead-owned untracked PREREVIEW.md, which I must not touch.) The lead tests on the emulator or in the browser.
 
 ## Review (written by Claude)
+
+**Verdict:** Approved and merged after two rounds. Round 1 (pre-review) found the Message button opened no chat (it used the user id, but a DM's chat id is the contact's JID), the People section below the chat matches, lookups that could never be retried after an error or a 429, a stale-response race and a silent invalid handle; all fixed and re-verified by the round 2 pre-review (clean, 68 tests). I checked the Message fix: it resolves the contact's JID from `store.contacts` and opens the DM only when that chat exists. `EmptyState.tsx` was outside the Allowed files but the spec ordered the edit, and the Report disclosed it. Accepted nits, for a follow-up: after Accept the row shows "contact" but no Message button until the contacts reload; a re-search of the same person can keep a stale "Request sent". The gate did not exist when this branch started; `lead merge` runs it after the rebase. Not checked in a browser (Julio asleep).
