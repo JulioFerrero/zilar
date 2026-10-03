@@ -5,9 +5,10 @@ export interface MachinesErrorInfo {
   message: string;
 }
 
-// Maps the machine error codes in the T-0068 contract to plain language,
-// mirroring web's `components/machines/errors.ts`. Most codes keep the
-// server's own message; the few known ones get friendlier.
+// Maps the machine error codes in the T-0068 contract to fixed plain
+// sentences, mirroring web's `components/machines/errors.ts`. Unknown codes
+// answer the `fallback` the call site passes: user-facing text is never the
+// server's raw message.
 export function describeMachinesError(error: unknown, fallback: string): MachinesErrorInfo {
   if (error instanceof MachinesApiError) {
     switch (error.code) {
@@ -23,8 +24,10 @@ export function describeMachinesError(error: unknown, fallback: string): Machine
         return { message: 'That machine no longer exists.' };
       case 'network_error':
         return { message: 'Could not reach the server.' };
+      case 'invalid_transition':
+        return { message: 'That machine changed. Reload the list and try again.' };
       default:
-        return { message: error.message };
+        return { message: fallback };
     }
   }
   return { message: error instanceof Error ? error.message : fallback };

@@ -5,8 +5,9 @@ export interface ConnectionsErrorInfo {
   message: string;
 }
 
-// Maps the connection error codes to plain language. Most codes keep the
-// server's own message; the few known ones get friendlier.
+// Maps the connection error codes to fixed plain sentences. Unknown codes
+// answer the `fallback` the call site passes: user-facing text is never the
+// server's raw message.
 export function describeConnectionsError(error: unknown, fallback: string): ConnectionsErrorInfo {
   if (error instanceof ConnectionsApiError) {
     switch (error.code) {
@@ -18,8 +19,12 @@ export function describeConnectionsError(error: unknown, fallback: string): Conn
         return { message: 'That connection no longer exists.' };
       case 'network_error':
         return { message: 'Could not reach the server.' };
+      case 'key_unreadable':
+        return { message: 'The stored key could not be read. Remove it and add it again.' };
+      case 'connections_unavailable':
+        return { message: 'Connections are not set up on this server.' };
       default:
-        return { message: error.message };
+        return { message: fallback };
     }
   }
   return { message: error instanceof Error ? error.message : fallback };
