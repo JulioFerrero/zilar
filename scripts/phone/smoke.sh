@@ -25,6 +25,8 @@ if [ "$(adb -s "$SERIAL" get-state 2>/dev/null || true)" != "device" ]; then
 fi
 
 ROUTES="$(git -C "$REPO" diff --name-only "main...$REF" -- apps/mobile/src/app | python3 "$HERE/routes.py")"
+# ZILAR_ROUTES (space separated, e.g. "/ /settings /explore") replaces the changed-screen list.
+[ -n "${ZILAR_ROUTES:-}" ] && ROUTES="$(echo "$ZILAR_ROUTES" | tr ' ' '\n')"
 [ -z "$ROUTES" ] && ROUTES="/"
 
 echo "building $REF for $SERIAL"
