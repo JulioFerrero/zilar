@@ -192,7 +192,7 @@ function stickerMessage(overrides: Partial<UiMessage> = {}): UiMessage {
     senderId: 'me',
     senderName: 'You',
     text: '🐱',
-    createdAt: new Date(2026, 9, 1, 12, 0),
+    createdAt: new Date(),
     status: 'sending',
     card: STICKER_CARD,
     ...overrides,
