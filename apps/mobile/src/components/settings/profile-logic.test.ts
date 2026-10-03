@@ -138,7 +138,10 @@ describe('friendlyAvatarError', () => {
       '64 and 512',
     );
     expect(friendlyAvatarError(new ProfileApiError(400, 'avatar_not_image', 'text'))).toContain(
-      'not a supported picture',
+      'not a picture we can use',
+    );
+    expect(friendlyAvatarError(new ProfileApiError(400, 'avatar_not_image', 'text'))).not.toContain(
+      'JPEG',
     );
     expect(friendlyAvatarError(new ProfileApiError(429, 'rate_limited', 'slow'))).toContain(
       'Too many uploads',

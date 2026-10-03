@@ -103,7 +103,7 @@ export function friendlyAvatarError(error: unknown): string {
       case 'avatar_bad_size':
         return 'The picture must be between 64 and 512 pixels on each side.';
       case 'avatar_not_image':
-        return 'That file is not a supported picture. Choose a PNG, JPEG or WebP image.';
+        return 'That file is not a picture we can use. Try another photo.';
       case 'rate_limited':
         return 'Too many uploads — wait a little and try again.';
       case 'network_error':

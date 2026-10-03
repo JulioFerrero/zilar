@@ -1,5 +1,7 @@
 import * as ImagePicker from 'expo-image-picker';
+import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { File, UploadType } from 'expo-file-system';
+import * as LegacyFileSystem from 'expo-file-system/legacy';
 
 /**
  * The seams the settings avatar control needs, kept in one place so tests
@@ -24,6 +26,22 @@ export interface PicturePicker {
   pickPicture(): Promise<PickPictureResult>;
 }
 
+/**
+ * Re-encodes a picked picture into the upload bytes: a centred-square crop
+ * and a 256 x 256 PNG. The server only accepts PNG or WebP bytes by magic
+ * bytes, and phone photos are JPEG, so every pick goes through this before
+ * the upload. Injected so tests use a fake and never touch the native
+ * module.
+ */
+export interface AvatarTranscoder {
+  transcode(uri: string, width: number, height: number): Promise<{ uri: string }>;
+}
+
+/** Reads the byte size of a local file, or undefined when unknown. */
+export interface AvatarSizeReader {
+  sizeOf(uri: string): Promise<number | undefined>;
+}
+
 export interface AvatarFileUploader {
   /**
    * PUTs the local file to the avatar slot and resolves the server's
@@ -40,6 +58,7 @@ export interface AvatarFileUploader {
 const DENIED_MESSAGE =
   'Zilar needs access to your photos to change your picture. You can allow it in Settings.';
 const PICK_FAILED_MESSAGE = 'Could not pick that picture. Try again.';
+const PREPARE_FAILED_MESSAGE = 'Could not prepare that picture. Try another photo.';
 const EMPTY_MESSAGE = 'That picture file is empty.';
 const TOO_LARGE_MESSAGE = 'The picture is larger than 256 KiB. Try a smaller file.';
 const UPLOAD_FAILED_MESSAGE = 'Could not save the picture. Try again.';
@@ -47,42 +66,74 @@ const UPLOAD_FAILED_MESSAGE = 'Could not save the picture. Try again.';
 /** Pictures over the server cap refuse before the upload starts. */
 export const AVATAR_UPLOAD_MAX_BYTES = 256 * 1024;
 
-function mimeForAsset(mimeType: string | undefined): string {
-  const lower = (mimeType ?? '').split(';')[0]?.trim().toLowerCase() ?? '';
-  if (lower === 'image/png' || lower === 'image/webp' || lower === 'image/gif') {
-    return lower;
+/** The exported avatar size: the server wants 64–512 px square; 256 is web's export. */
+export const AVATAR_EXPORT_SIDE = 256;
+
+/**
+ * The centred-square crop for the source dimensions, or null when the
+ * dimensions are unusable (the resize still runs, keeping the ratio).
+ */
+export function centeredSquareCrop(
+  width: number,
+  height: number,
+): { originX: number; originY: number; width: number; height: number } | null {
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    return null;
   }
-  return 'image/jpeg';
+  const side = Math.min(width, height);
+  return {
+    originX: Math.floor((width - side) / 2),
+    originY: Math.floor((height - side) / 2),
+    width: Math.floor(side),
+    height: Math.floor(side),
+  };
 }
 
-function pictureFromAsset(asset: {
-  uri: string;
-  mimeType?: string | undefined;
-  width: number;
-  height: number;
-  fileSize?: number | undefined;
-}): PickPictureResult {
-  // Like the attachment picker: an unknown size is not an empty file, but a
-  // real zero refuses, and anything over the server cap refuses up front.
-  if (asset.fileSize !== undefined && asset.fileSize === 0) {
-    return { status: 'error', message: EMPTY_MESSAGE };
-  }
-  if (asset.fileSize !== undefined && asset.fileSize > AVATAR_UPLOAD_MAX_BYTES) {
-    return { status: 'error', message: TOO_LARGE_MESSAGE };
-  }
+/** The real transcoder: centred-square crop, 256 x 256, PNG bytes. */
+export function createAvatarTranscoder(
+  manipulate: typeof manipulateAsync = manipulateAsync,
+): AvatarTranscoder {
   return {
-    status: 'picked',
-    picture: {
-      uri: asset.uri,
-      mimeType: mimeForAsset(asset.mimeType),
-      width: asset.width,
-      height: asset.height,
+    async transcode(uri, width, height) {
+      const crop = centeredSquareCrop(width, height);
+      const result = await manipulate(
+        uri,
+        [
+          ...(crop === null ? [] : [{ crop }]),
+          { resize: { width: AVATAR_EXPORT_SIDE, height: AVATAR_EXPORT_SIDE } },
+        ],
+        { format: SaveFormat.PNG },
+      );
+      return { uri: result.uri };
     },
   };
 }
 
-/** The real picture picker: the photo library, square-ish, editable. */
-export function createPicturePicker(): PicturePicker {
+/** The real size reader: `expo-file-system` stat of the transcoded file. */
+export function createAvatarSizeReader(
+  getInfo: typeof LegacyFileSystem.getInfoAsync = LegacyFileSystem.getInfoAsync,
+): AvatarSizeReader {
+  return {
+    async sizeOf(uri) {
+      try {
+        const info = await getInfo(uri);
+        return info.exists === true && info.isDirectory === false ? info.size : undefined;
+      } catch {
+        return undefined;
+      }
+    },
+  };
+}
+
+/** The real picture picker: the photo library, then the PNG transcode. */
+export function createPicturePicker(options?: {
+  sizeReader?: AvatarSizeReader | undefined;
+  transcoder?: AvatarTranscoder | undefined;
+}): PicturePicker {
+  // Production defaults to the real stat and the real manipulator; tests
+  // inject fakes.
+  const reader = options?.sizeReader ?? createAvatarSizeReader();
+  const transcoder = options?.transcoder ?? createAvatarTranscoder();
   return {
     async pickPicture() {
       const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -93,6 +144,8 @@ export function createPicturePicker(): PicturePicker {
       try {
         // The system editor crops (`allowsEditing` + square aspect): the
         // phone has no canvas crop dialog like web, so the OS sheet does it.
+        // The transcode below crops again from the asset dimensions, so a
+        // sheet without an editor still yields a square PNG.
         result = await ImagePicker.launchImageLibraryAsync({
           mediaTypes: ['images'],
           allowsEditing: true,
@@ -109,7 +162,32 @@ export function createPicturePicker(): PicturePicker {
       if (asset === undefined) {
         return { status: 'cancelled' };
       }
-      return pictureFromAsset(asset);
+      // Re-encode to the upload bytes (256 x 256 PNG): the server rejects
+      // JPEG by magic bytes, and phone photos are JPEG.
+      let uri: string;
+      try {
+        ({ uri } = await transcoder.transcode(asset.uri, asset.width, asset.height));
+      } catch {
+        return { status: 'error', message: PREPARE_FAILED_MESSAGE };
+      }
+      // The caps apply to the real upload bytes, not the picked JPEG: an
+      // unknown size is not an empty file, but a real zero refuses.
+      const size = await reader.sizeOf(uri);
+      if (size !== undefined && size === 0) {
+        return { status: 'error', message: EMPTY_MESSAGE };
+      }
+      if (size !== undefined && size > AVATAR_UPLOAD_MAX_BYTES) {
+        return { status: 'error', message: TOO_LARGE_MESSAGE };
+      }
+      return {
+        status: 'picked',
+        picture: {
+          uri,
+          mimeType: 'image/png',
+          width: AVATAR_EXPORT_SIDE,
+          height: AVATAR_EXPORT_SIDE,
+        },
+      };
     },
   };
 }
