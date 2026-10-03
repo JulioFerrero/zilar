@@ -9,6 +9,8 @@ export interface AuthUser {
   name: string;
   email: string;
   handle?: string | null | undefined;
+  /** T-0165: the caller's own picture, when set. */
+  avatarUrl?: string | undefined;
 }
 
 export interface AuthState {
@@ -27,7 +29,9 @@ function LiveAuthProvider({ children }: { children: ReactNode }) {
   // has no handle field), fetched lazily once the session exists. While it
   // is loading — and if the fetch fails — `handle` stays `undefined` so the
   // gate does not redirect: a failed `GET /me` must not mean "no handle".
+  // T-0165: the own picture rides the same fetch.
   const [handle, setHandle] = useState<string | null | undefined>(undefined);
+  const [avatarUrl, setAvatarUrl] = useState<string | undefined>(undefined);
   useEffect(() => {
     if (userId === undefined) {
       return;
@@ -42,6 +46,7 @@ function LiveAuthProvider({ children }: { children: ReactNode }) {
       (me) => {
         if (active) {
           setHandle(me.handle ?? null);
+          setAvatarUrl(me.avatarUrl);
         }
       },
       () => {},
@@ -54,13 +59,20 @@ function LiveAuthProvider({ children }: { children: ReactNode }) {
     user !== undefined && user !== null
       ? {
           status: 'authenticated',
-          user: { id: user.id, name: user.name ?? '', email: user.email, handle },
+          user: {
+            id: user.id,
+            name: user.name ?? '',
+            email: user.email,
+            handle,
+            ...(avatarUrl === undefined ? {} : { avatarUrl }),
+          },
           refetch: async () => {
             const me = await getMe().catch(() => null);
             // A failed refetch keeps the previous handle: failure is not
             // absence (see the effect above).
             if (me !== null) {
               setHandle(me.handle ?? null);
+              setAvatarUrl(me.avatarUrl);
             }
             await refetch();
           },

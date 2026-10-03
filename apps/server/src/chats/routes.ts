@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { Auth } from '../auth/auth';
 import { requireSession } from '../auth/session';
 import { listAis } from '../ais/service';
+import { avatarIdsByOwner, avatarUrlFor } from '../avatars/service';
 import type { ServerConfig } from '../config';
 import { listContacts } from '../contacts/service';
 import type { ServerDatabase } from '../db/client';
@@ -25,6 +26,8 @@ export type ChatListEntry =
       groupId: string;
       memberCount: number;
       role: GroupRole;
+      /** T-0165: the group's picture, when it has one. Omitted when none. */
+      avatarUrl?: string | undefined;
       // T-0124: `group` behaves as before; `channel` is the broadcast feed
       // (its General topic is the feed). Channels also carry the count under
       // `subscriberCount` (same number, the usual channel wording).
@@ -57,6 +60,21 @@ export function createChatsRoutes({ auth, db, config }: ChatsRoutesDependencies)
       listGroupsForUser(db, user.id),
       listAis(db, user.id),
     ]);
+    // T-0165: every list entry that already carries a name gets `avatarUrl`
+    // when a picture exists (omitted when none, like today). AI ids in the
+    // chat list are the AI rows' ids; group entries use the group id.
+    const [aiAvatars, groupAvatars] = await Promise.all([
+      avatarIdsByOwner(
+        db,
+        'ai',
+        ais.filter((ai) => ai.status === 'active').map((ai) => ai.id),
+      ),
+      avatarIdsByOwner(
+        db,
+        'group',
+        groups.map((group) => group.id),
+      ),
+    ]);
 
     const chats: ChatListEntry[] = [
       ...contacts.map((contact): ChatListEntry => ({
@@ -77,6 +95,9 @@ export function createChatsRoutes({ auth, db, config }: ChatsRoutesDependencies)
           chatJid: ai.jid,
           title: ai.name,
           isAi: true,
+          ...(aiAvatars.get(ai.id) === undefined
+            ? {}
+            : { avatarUrl: avatarUrlFor(aiAvatars.get(ai.id)!) }),
         })),
       ...groups.map((group): ChatListEntry => ({
         kind: 'group',
@@ -85,6 +106,9 @@ export function createChatsRoutes({ auth, db, config }: ChatsRoutesDependencies)
         groupId: group.id,
         memberCount: group.memberCount,
         role: group.role,
+        ...(groupAvatars.get(group.id) === undefined
+          ? {}
+          : { avatarUrl: avatarUrlFor(groupAvatars.get(group.id)!) }),
         chatKind: group.kind,
         // T-0124: the same count under the usual channel name, for channels only.
         // Groups keep exactly the shape they had (no extra keys).

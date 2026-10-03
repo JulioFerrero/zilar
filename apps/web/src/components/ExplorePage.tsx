@@ -230,7 +230,7 @@ export function ExplorePage({ onClose }: { onClose: () => void }) {
                 key={entry.id}
                 className="flex items-center gap-3 rounded-xl px-2 py-2 hover:bg-list-hover"
               >
-                <Avatar id={entry.id} name={entry.title} size={36} />
+                <Avatar id={entry.id} name={entry.title} size={36} avatarUrl={entry.avatarUrl} />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-[15px] font-medium">
                     {entry.title}{' '}

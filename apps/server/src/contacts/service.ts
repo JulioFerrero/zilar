@@ -3,6 +3,7 @@ import type { ServerDatabase } from '../db/client';
 import { contacts, handles, user, userInvites, xmppAccounts } from '../db/schema';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
+import { avatarIdsByOwner, avatarUrlFor } from '../avatars/service';
 import { findInviteByCode } from '../auth/invites';
 
 // The XMPP roster group every Zilar contact goes into.
@@ -18,7 +19,9 @@ export interface Contact {
   userId: string;
   name: string;
   jid: string;
-  avatarUrl?: string;
+  // T-0165: a stored picture wins over `user.image`; without a row the
+  // existing `user.image` value is kept.
+  avatarUrl?: string | undefined;
   /** The contact's `@username`, when they have one (T-0163). */
   handle?: string | null;
 }
@@ -75,12 +78,24 @@ export async function listContacts(
     .where(eq(contacts.userId, userId))
     .orderBy(asc(user.name));
 
+  // The avatar is read by joining `avatars` at read time: a stored
+  // picture wins (`/api/avatars/<id>`), otherwise the existing
+  // `user.image` value is kept (Better Auth's table is untouched).
+  const avatarIds = await avatarIdsByOwner(
+    db,
+    'user',
+    rows.map((row) => row.userId),
+  );
+
   const mapped = rows.map((row) => ({
     contact: {
       userId: row.userId,
       name: row.name.trim() === '' ? UNNAMED_CONTACT_NAME : row.name,
       jid: row.jid ?? jidFor(localpartFor(row.userId), domain),
       ...(row.image ? { avatarUrl: row.image } : {}),
+      ...(avatarIds.get(row.userId) === undefined
+        ? {}
+        : { avatarUrl: avatarUrlFor(avatarIds.get(row.userId)!) }),
       ...(row.handle ? { handle: row.handle } : {}),
     } satisfies Contact,
     unnamed: row.name.trim() === '',

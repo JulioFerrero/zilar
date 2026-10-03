@@ -47,6 +47,9 @@ export interface PublicAi {
   // T-0091: the AI's home machine id, or null when it runs on the platform.
   // CamelCase like the rest of the public AI fields.
   machineId: string | null;
+  // T-0165: the AI's picture, when it has one. Attached at read time by
+  // the routes; absent (not null) when none, like the chat list.
+  avatarUrl?: string | undefined;
   createdAt: Date;
 }
 

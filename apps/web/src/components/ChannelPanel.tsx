@@ -327,7 +327,7 @@ export function ChannelPanel({ chat, onClose }: { chat: ChatSummary; onClose: ()
         className="flex h-full w-full flex-col bg-surface shadow-xl outline-none sm:w-[380px]"
       >
         <header className="flex shrink-0 items-center gap-3 border-b border-divider p-4">
-          <Avatar id={chat.id} name={chat.title} size={44} />
+          <Avatar id={chat.id} name={chat.title} size={44} avatarUrl={chat.avatarUrl} />
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5">
               <div className="truncate text-[16px] font-semibold">{chat.title}</div>
@@ -371,7 +371,12 @@ export function ChannelPanel({ chat, onClose }: { chat: ChatSummary; onClose: ()
                         key={member.userId}
                         className="flex items-center gap-2 rounded-xl px-2 py-1.5 hover:bg-list-hover"
                       >
-                        <Avatar id={member.userId} name={member.name} size={32} />
+                        <Avatar
+                          id={member.userId}
+                          name={member.name}
+                          size={32}
+                          avatarUrl={member.avatarUrl}
+                        />
                         <span className="min-w-0 flex-1 truncate text-[14px]">{member.name}</span>
                         {label !== undefined && (
                           <span className="font-mono rounded-[5px] border border-badge-muted px-1 text-[10px] leading-[15px] text-muted-foreground">
@@ -422,7 +427,12 @@ export function ChannelPanel({ chat, onClose }: { chat: ChatSummary; onClose: ()
                       key={member.userId}
                       className="flex items-center gap-2 rounded-xl px-2 py-1.5"
                     >
-                      <Avatar id={member.userId} name={member.name} size={32} />
+                      <Avatar
+                        id={member.userId}
+                        name={member.name}
+                        size={32}
+                        avatarUrl={member.avatarUrl}
+                      />
                       <span className="min-w-0 flex-1 truncate text-[14px]">{member.name}</span>
                     </div>
                   ))}
@@ -445,7 +455,7 @@ export function ChannelPanel({ chat, onClose }: { chat: ChatSummary; onClose: ()
                       key={ai.aiId}
                       className="flex items-center gap-2 rounded-xl px-2 py-1.5 hover:bg-list-hover"
                     >
-                      <Avatar id={ai.jid} name={ai.name} size={32} ai />
+                      <Avatar id={ai.jid} name={ai.name} size={32} ai avatarUrl={ai.avatarUrl} />
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5">
                           <span className="truncate text-[14px]">{ai.name}</span>
@@ -509,7 +519,13 @@ export function ChannelPanel({ chat, onClose }: { chat: ChatSummary; onClose: ()
                             onClick={() => void add(ai.id)}
                             className="flex items-center gap-2 rounded-xl border border-border-strong bg-surface px-2 py-1.5 text-left text-[14px] hover:bg-surface-raised disabled:opacity-50"
                           >
-                            <Avatar id={ai.jid} name={ai.name} size={28} ai />
+                            <Avatar
+                              id={ai.jid}
+                              name={ai.name}
+                              size={28}
+                              ai
+                              avatarUrl={ai.avatarUrl}
+                            />
                             <span className="min-w-0 flex-1 truncate">{ai.name}</span>
                             <AiBadge />
                             {addingId === ai.id && (

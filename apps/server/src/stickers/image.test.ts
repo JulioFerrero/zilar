@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { isPng, isWebp, probeStickerBytes, STICKER_MAX_BYTES } from './image';
+import {
+  isAnimatedImage,
+  isAnimatedPng,
+  isAnimatedWebp,
+  isPng,
+  isWebp,
+  probeStickerBytes,
+  STICKER_MAX_BYTES,
+} from './image';
 
 function concat(...parts: Uint8Array[]): Uint8Array {
   const total = parts.reduce((sum, part) => sum + part.length, 0);
@@ -75,8 +83,10 @@ function vp8lBytes(width: number, height: number): Uint8Array {
   );
 }
 
-/** A minimal extended WebP (VP8X, the animated container) with the size. */
-function vp8xBytes(width: number, height: number): Uint8Array {
+/** A minimal extended WebP (VP8X, the animated container) with the size.
+ *  The flags byte carries no animation bit (static extended WebP); pass
+ *  `animated: true` for one with the animation flag set. */
+function vp8xBytes(width: number, height: number, animated = false): Uint8Array {
   const w = width - 1;
   const h = height - 1;
   return concat(
@@ -85,7 +95,7 @@ function vp8xBytes(width: number, height: number): Uint8Array {
     ascii('WEBP'),
     ascii('VP8X'),
     u32be(10),
-    new Uint8Array([0x12, 0x00, 0x00, 0x00]),
+    new Uint8Array([animated ? 0x12 : 0x10, 0x00, 0x00, 0x00]),
     new Uint8Array([w & 0xff, (w >> 8) & 0xff, (w >> 16) & 0xff]),
     new Uint8Array([h & 0xff, (h >> 8) & 0xff, (h >> 16) & 0xff]),
     new Uint8Array(10),
@@ -124,22 +134,55 @@ describe('probeStickerBytes', () => {
   it('accepts a valid PNG with its dimensions', () => {
     expect(probeStickerBytes(pngBytes(512, 512))).toEqual({
       ok: true,
-      info: { mime: 'image/png', width: 512, height: 512 },
+      info: { mime: 'image/png', width: 512, height: 512, animated: false },
     });
   });
 
   it('accepts static and animated WebP with their dimensions', () => {
     expect(probeStickerBytes(vp8Bytes(100, 200))).toEqual({
       ok: true,
-      info: { mime: 'image/webp', width: 100, height: 200 },
+      info: { mime: 'image/webp', width: 100, height: 200, animated: false },
     });
     expect(probeStickerBytes(vp8lBytes(64, 64))).toEqual({
       ok: true,
-      info: { mime: 'image/webp', width: 64, height: 64 },
+      info: { mime: 'image/webp', width: 64, height: 64, animated: false },
     });
     expect(probeStickerBytes(vp8xBytes(320, 240))).toEqual({
       ok: true,
-      info: { mime: 'image/webp', width: 320, height: 240 },
+      info: { mime: 'image/webp', width: 320, height: 240, animated: false },
+    });
+  });
+
+  it('flags animated WebP and APNG on the info, never as a failure', () => {
+    expect(isAnimatedWebp(vp8xBytes(64, 64, true))).toBe(true);
+    expect(isAnimatedWebp(vp8xBytes(64, 64))).toBe(false);
+    expect(probeStickerBytes(vp8xBytes(64, 64, true))).toEqual({
+      ok: true,
+      info: { mime: 'image/webp', width: 64, height: 64, animated: true },
+    });
+    const still = pngBytes(64, 64);
+    expect(isAnimatedPng(still)).toBe(false);
+    expect(isAnimatedImage(still)).toBe(false);
+    // PNG + acTL chunk before IDAT: an APNG (minimal, no pixels needed — the
+    // detector walks chunks only). The chunk layout is length(4) +
+    // name(4) + data(length) + crc(4); pngBytes has no crc, so the IHDR is
+    // rebuilt here with one.
+    const ihdr = concat(
+      u32be(13),
+      ascii('IHDR'),
+      u32be(64),
+      u32be(64),
+      Uint8Array.from([8, 2, 0, 0, 0]),
+      u32be(0),
+    );
+    const actl = concat(u32be(8), ascii('acTL'), new Uint8Array(8), u32be(0));
+    const idat = concat(u32be(0), ascii('IDAT'), u32be(0));
+    const animated = concat(still.subarray(0, 8), ihdr, actl, idat);
+    expect(isAnimatedPng(animated)).toBe(true);
+    expect(isAnimatedImage(animated)).toBe(true);
+    expect(probeStickerBytes(animated)).toEqual({
+      ok: true,
+      info: { mime: 'image/png', width: 64, height: 64, animated: true },
     });
   });
 

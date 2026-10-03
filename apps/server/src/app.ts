@@ -39,6 +39,7 @@ import { createPushRoutes } from './push/routes';
 import { createRolesRoutes } from './roles/routes';
 import { createSearchRoutes, type SearchRoutesDependencies } from './search/routes';
 import { createGifsRoutes } from './gifs/routes';
+import { createAvatarsRoutes } from './avatars/routes';
 import { createStickersRoutes } from './stickers/routes';
 import { createTopicsRoutes } from './topics/routes';
 import { createMachinesRoutes } from './machines/routes';
@@ -137,6 +138,12 @@ export interface AppDependencies {
   searchNow?: () => number;
   /** T-0120: sticker storage dir override; defaults to the parsed config. */
   stickerStorageDir?: string;
+  /** T-0165: avatar storage dir override; defaults to the parsed config. */
+  avatarStorageDir?: string;
+  /** T-0165: injected in tests so the avatar upload rate window can advance. */
+  avatarNow?: () => number;
+  /** T-0165: overrides the avatar upload limiter (tests inject a window). */
+  avatarUploadLimiter?: { allow: (key: string) => boolean };
   /** T-0120: injected in tests so the upload rate window can advance. */
   stickerNow?: () => number;
   /** T-0120: overrides the sticker upload limiter (cap tests inject a pass). */
@@ -198,6 +205,9 @@ export function createApp({
   stickerStorageDir,
   stickerNow,
   uploadLimiter,
+  avatarStorageDir,
+  avatarNow,
+  avatarUploadLimiter,
   telegramClient,
   telegramImportNow,
   integrations,
@@ -383,6 +393,21 @@ export function createApp({
       ...(uploadLimiter === undefined ? {} : { uploadLimiter }),
       ...(telegramClient === undefined ? {} : { telegramClient }),
       ...(telegramImportNow === undefined ? {} : { now: telegramImportNow }),
+    }),
+  );
+  // Avatars (T-0165): upload / remove / serve profile pictures for
+  // people, AIs, groups and channels. The storage dir comes from
+  // `AVATAR_STORAGE_DIR`; tests override it with a temp dir.
+  app.route(
+    '/api',
+    createAvatarsRoutes({
+      auth,
+      db,
+      config,
+      storageDir: avatarStorageDir ?? config.AVATAR_STORAGE_DIR,
+      audit: auditRecorder,
+      ...(avatarNow === undefined ? {} : { now: avatarNow }),
+      ...(avatarUploadLimiter === undefined ? {} : { uploadLimiter: avatarUploadLimiter }),
     }),
   );
   // Integration settings (T-0162 + Email): owner-only; everyone else gets
@@ -578,9 +603,10 @@ function durationSince(start: number): number {
   return Math.round(performance.now() - start);
 }
 
-// Join tokens (T-0115), sign-up invite codes and GIF media tokens (T-0122)
-// are bearer secrets, so the request log redacts every segment after
-// `/api/join/`, `/api/invites/` and `/api/gifs/media/`
+// Join tokens (T-0115), sign-up invite codes, GIF media tokens (T-0122) and
+// avatar ids (unguessable uuids) are bearer secrets, so the request log
+// redacts every segment after `/api/join/`, `/api/invites/`,
+// `/api/gifs/media/` and `/api/avatars/`
 // (`/api/join/<token>` and any variant such as a trailing slash, which 404s in
 // routing but still reaches this log line).
 function logPath(path: string): string {
@@ -589,6 +615,9 @@ function logPath(path: string): string {
   }
   if (path.startsWith('/api/gifs/media/')) {
     return '/api/gifs/media/:token';
+  }
+  if (path.startsWith('/api/avatars/')) {
+    return '/api/avatars/:id';
   }
   return path.startsWith('/api/invites/') ? '/api/invites/:code' : path;
 }

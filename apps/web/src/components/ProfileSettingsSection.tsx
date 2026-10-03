@@ -2,6 +2,34 @@ import { useEffect, useState } from 'react';
 import { ApiError, claimHandle, checkHandle } from '@/lib/api';
 import { useAuth } from '@/auth/AuthProvider';
 import { copyText } from '@/lib/clipboard';
+import { AvatarUploader } from './AvatarUploader';
+
+/** The caller's own picture, inside Settings → Profile. */
+function ProfilePictureSection() {
+  const auth = useAuth();
+  const user = auth.user;
+  // The uploader reports the new url (or undefined after a remove) through
+  // `onChanged`; while no change happened this render, the session wins.
+  const [changedUrl, setChangedUrl] = useState<string | undefined | null>(null);
+  if (user === undefined) {
+    return null;
+  }
+  const shown = changedUrl !== null ? changedUrl : user.avatarUrl;
+  return (
+    <div className="rounded-xl border border-border bg-surface px-3 py-2.5">
+      <AvatarUploader
+        kind="user"
+        ownerId={user.id}
+        ownerName={user.name}
+        currentUrl={shown}
+        onChanged={(next) => {
+          setChangedUrl(next);
+          void auth.refetch();
+        }}
+      />
+    </div>
+  );
+}
 
 /** Settings → Profile: name, handle (with live check), share link. */
 export function ProfileSettingsSection() {
@@ -94,6 +122,7 @@ export function ProfileSettingsSection() {
   return (
     <section aria-label="Username" className="flex flex-col gap-2">
       <h2 className="text-[16px] font-semibold">Username</h2>
+      <ProfilePictureSection />
       <div className="rounded-xl border border-border bg-surface px-3 py-2.5">
         <label className="block text-[14px] font-medium" htmlFor="profile-handle">
           Your @username

@@ -816,6 +816,7 @@ cmd_backup() {
 +                    can recreate the roles the dumps need
 +   uploads.tgz      the ejabberd uploads volume (/opt/ejabberd/upload)
 +   stickers.tgz     the sticker volume (STICKER_STORAGE_DIR=/data/stickers)
++   avatars.tgz      the avatar volume (AVATAR_STORAGE_DIR=/data/avatars)
 +   .env             a copy of $ENV_FILE (mode 0600 in the archive)
 +   SECRETS_WARNING.txt   "this archive contains live secrets"
 +   manifest.json    versions and provenance (domain, image tag,
@@ -853,9 +854,11 @@ EOF
   compose exec -T ejabberd tar -C /opt/ejabberd -czf - upload > "$_tmp/uploads.tgz"
   info "archiving stickers..."
   compose exec -T server tar -C /data -czf - stickers > "$_tmp/stickers.tgz"
+  info "archiving avatars..."
+  compose exec -T server tar -C /data -czf - avatars > "$_tmp/avatars.tgz"
 
   cp "$ENV_FILE" "$_tmp/.env"
-  chmod 600 "$_tmp/.env" "$_tmp/zilar.dump" "$_tmp/ejabberd.dump" "$_tmp/globals.sql" "$_tmp/uploads.tgz" "$_tmp/stickers.tgz"
+  chmod 600 "$_tmp/.env" "$_tmp/zilar.dump" "$_tmp/ejabberd.dump" "$_tmp/globals.sql" "$_tmp/uploads.tgz" "$_tmp/stickers.tgz" "$_tmp/avatars.tgz"
   cat > "$_tmp/SECRETS_WARNING.txt" <<EOF
 This archive contains LIVE SECRETS (the .env file: database passwords,
 JWT and session secrets). Anyone holding it owns this Zilar install.
@@ -874,7 +877,7 @@ EOF
 }
 EOF
 
-  tar -czf "$_dir/$_name" -C "$_tmp" zilar.dump ejabberd.dump globals.sql uploads.tgz stickers.tgz .env SECRETS_WARNING.txt manifest.json
+  tar -czf "$_dir/$_name" -C "$_tmp" zilar.dump ejabberd.dump globals.sql uploads.tgz stickers.tgz avatars.tgz .env SECRETS_WARNING.txt manifest.json
   chmod 600 "$_dir/$_name"
   trap - EXIT
   rm -rf "$_tmp"
@@ -910,7 +913,7 @@ cmd_restore() {
 + would: stop server, web and ejabberd (postgres keeps running)
 + would: recreate roles/globals from globals.sql, then pg_restore --clean
 +        into the zilar and ejabberd databases (credentials from the ARCHIVE)
-+ would: restore the uploads volume and the sticker volume, back up $ENV_FILE to $ENV_FILE.bak-<stamp>,
++ would: restore the uploads, sticker and avatar volumes, back up $ENV_FILE to $ENV_FILE.bak-<stamp>,
 +        install the archived .env (mode 0600)
 + would: start everything and wait for health
 + on any failure: the stack is restarted first, then the error is reported
@@ -932,6 +935,13 @@ EOF
   if [ ! -f "$_tmp/stickers.tgz" ]; then
     _has_stickers=0
     warn "$_archive has no stickers.tgz (made before sticker files were backed up): the sticker store will stay as it is."
+  fi
+  # Archives taken before the avatar volume was backed up carry no
+  # avatars.tgz: restore them with an empty avatar store, said out loud.
+  _has_avatars=1
+  if [ ! -f "$_tmp/avatars.tgz" ]; then
+    _has_avatars=0
+    warn "$_archive has no avatars.tgz (made before profile pictures were backed up): the avatar store will stay as it is."
   fi
   info "archive ok (backed up by $(sed -n 's/.*"created_at": "\(.*\)".*/\1/p' "$_tmp/manifest.json" | head -n 1))."
 
@@ -1056,6 +1066,11 @@ EOF
   if [ "$_has_stickers" = 1 ]; then
     info "restoring stickers..."
     compose exec -T server tar -C /data -xzf - stickers < "$_tmp/stickers.tgz" \
+      || { _step="restore file stores"; _recover; }
+  fi
+  if [ "$_has_avatars" = 1 ]; then
+    info "restoring avatars..."
+    compose exec -T server tar -C /data -xzf - avatars < "$_tmp/avatars.tgz" \
       || { _step="restore file stores"; _recover; }
   fi
 

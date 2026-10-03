@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { avatarIdsByOwner, avatarUrlFor } from '../avatars/service';
 import type { ServerConfig } from '../config';
 import { refreshRosterNicknames } from '../contacts/service';
 import type { ServerDatabase } from '../db/client';
@@ -54,11 +55,16 @@ export function createAuthRoutes({
       .from(handles)
       .where(eq(handles.userId, user.id))
       .limit(1);
+    // T-0165: a stored picture wins (`/api/avatars/<id>`), otherwise the
+    // existing `user.image` value is kept (Better Auth's table untouched).
+    const ownAvatar = await avatarIdsByOwner(db, 'user', [user.id]);
+    const avatarId = ownAvatar.get(user.id);
     return c.json({
       id: user.id,
       email: user.email,
       name: user.name,
       image: user.image ?? null,
+      ...(avatarId === undefined ? {} : { avatarUrl: avatarUrlFor(avatarId) }),
       handle: handleRow?.handle ?? null,
       createdAt: user.createdAt,
       jid: account?.jid ?? null,

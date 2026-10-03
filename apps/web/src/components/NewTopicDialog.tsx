@@ -300,7 +300,12 @@ export function NewTopicDialog({
                     onChange={() => toggleMember(member.userId)}
                     className="size-4 accent-white"
                   />
-                  <Avatar id={member.userId} name={member.name} size={28} />
+                  <Avatar
+                    id={member.userId}
+                    name={member.name}
+                    size={28}
+                    avatarUrl={member.avatarUrl}
+                  />
                   <span className="min-w-0 flex-1 truncate text-[14px]">{member.name}</span>
                   {member.role !== 'member' && (
                     <span className="font-mono rounded-[5px] border border-badge-muted px-1 text-[10px] leading-[15px] text-muted-foreground">

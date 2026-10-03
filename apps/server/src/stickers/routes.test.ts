@@ -21,6 +21,9 @@ function pngBytes(width: number, height: number): Uint8Array {
   return bytes;
 }
 
+// A minimal extended WebP (VP8X). The flags byte 0x12 sets the animation
+// bit: stickers accept animated WebP (T-0120), so this fixture doubles as
+// the animated case (see the upload test below).
 function webpBytes(width: number, height: number): Uint8Array {
   const ascii = (text: string): number[] => [...text].map((char) => char.charCodeAt(0));
   const bytes = new Uint8Array(34);
@@ -232,6 +235,62 @@ describe('stickers routes', () => {
     expect(file.headers.get('cache-control')).toBe('public, max-age=31536000, immutable');
     expect(file.headers.get('content-security-policy')).toBe("default-src 'none'; sandbox");
     expect(new Uint8Array(await file.arrayBuffer())).toEqual(webpBytes(100, 100));
+  });
+
+  it('still accepts an animated WebP sticker (T-0120 allows animated)', async () => {
+    const { json } = await createPack(owner);
+    // The shared webpBytes fixture carries the VP8X animation flag.
+    const uploaded = await uploadBytes(app, json.id, owner, webpBytes(100, 100));
+    expect(uploaded.status).toBe(201);
+    const sticker = (await uploaded.json()) as { id: string; width: number; height: number };
+    expect(sticker.width).toBe(100);
+    expect(sticker.height).toBe(100);
+    const file = await app.request(`${TEST_BASE_URL}/api/stickers/${sticker.id}/file`, {
+      headers: { cookie: stranger.cookie },
+    });
+    expect(file.status).toBe(200);
+    expect(new Uint8Array(await file.arrayBuffer())).toEqual(webpBytes(100, 100));
+  });
+
+  it('still accepts an animated PNG (APNG) sticker', async () => {
+    const { json } = await createPack(owner);
+    const still = pngBytes(64, 64);
+    // A real APNG needs full chunks; the probe only walks chunk names, so
+    // an IHDR with a crc plus acTL before IDAT is enough to flag animated.
+    const u32be = (value: number): Uint8Array =>
+      new Uint8Array([
+        (value >>> 24) & 0xff,
+        (value >>> 16) & 0xff,
+        (value >>> 8) & 0xff,
+        value & 0xff,
+      ]);
+    const ascii = (text: string): Uint8Array =>
+      Uint8Array.from([...text].map((char) => char.charCodeAt(0)));
+    const concat = (...parts: Uint8Array[]): Uint8Array => {
+      const merged = new Uint8Array(parts.reduce((sum, part) => sum + part.length, 0));
+      let offset = 0;
+      for (const part of parts) {
+        merged.set(part, offset);
+        offset += part.length;
+      }
+      return merged;
+    };
+    const ihdr = concat(
+      u32be(13),
+      ascii('IHDR'),
+      u32be(64),
+      u32be(64),
+      Uint8Array.from([8, 2, 0, 0, 0]),
+      u32be(0),
+    );
+    const apng = concat(
+      still.subarray(0, 8),
+      ihdr,
+      concat(u32be(8), ascii('acTL'), new Uint8Array(8), u32be(0)),
+      concat(u32be(0), ascii('IDAT'), u32be(0)),
+    );
+    const uploaded = await uploadBytes(app, json.id, owner, apng);
+    expect(uploaded.status).toBe(201);
   });
 
   it('answers the same 404 code for a missing id and a private pack of another user', async () => {

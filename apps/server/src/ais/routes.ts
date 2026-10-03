@@ -4,6 +4,7 @@ import type { LitellmAdminClient } from '../ai/litellm-client';
 import type { AuditRecorder } from '../audit/service';
 import type { Auth } from '../auth/auth';
 import { requireSession } from '../auth/session';
+import { avatarIdsByOwner, avatarUrlFor } from '../avatars/service';
 import type { ServerConfig } from '../config';
 import type { KeyCipher } from '../connections/crypto';
 import type { ServerDatabase } from '../db/client';
@@ -141,6 +142,23 @@ export function createAisRoutes({
     domain: config.xmpp.domain,
   });
 
+  // T-0165: every AI response that already carries a name gets `avatarUrl`
+  // when the AI has a picture (omitted when none, like today). One query
+  // for the whole list, never one per AI.
+  const withAvatars = async (list: PublicAi[]): Promise<PublicAi[]> => {
+    if (list.length === 0) {
+      return list;
+    }
+    const ids = await avatarIdsByOwner(
+      db,
+      'ai',
+      list.map((ai) => ai.id),
+    );
+    return list.map((ai) =>
+      ids.get(ai.id) === undefined ? ai : { ...ai, avatarUrl: avatarUrlFor(ids.get(ai.id)!) },
+    );
+  };
+
   // Reads one AI's usage with a per-AI timeout. Without a LiteLLM client, or
   // on any failure or timeout, the AI answers `usage: null`: spend is
   // best-effort decoration on the management API, never a reason to fail it.
@@ -160,7 +178,7 @@ export function createAisRoutes({
 
   routes.get('/ais', async (c) => {
     const { user } = await requireSession(auth, c.req.raw.headers);
-    const ais = await listAis(db, user.id);
+    const ais = await withAvatars(await listAis(db, user.id));
     // Owner only, as today: every id here came from the owner's own listing.
     // The reads run in parallel so one slow AI never holds the whole list.
     return c.json(await Promise.all(ais.map((ai) => withUsage(ai))));
@@ -172,7 +190,8 @@ export function createAisRoutes({
     if (!ai) {
       throw new HttpError(404, 'not_found', 'AI not found');
     }
-    return c.json(await withUsage(ai));
+    const [withAvatar] = await withAvatars([ai]);
+    return c.json(await withUsage(withAvatar ?? ai));
   });
 
   routes.post('/ais', async (c) => {

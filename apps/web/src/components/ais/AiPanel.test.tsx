@@ -230,6 +230,16 @@ describe('AiPanel', () => {
     expect(screen.getByDisplayValue('gpt-4o')).toBeTruthy();
   });
 
+  it('shows the AI picture when the server sends one', async () => {
+    const pictured = { ...ai, avatarUrl: '/api/avatars/a-1' };
+    mockPanelFetch([openaiConnection], pictured, undefined, pictured, pictured);
+
+    renderPanel();
+
+    expect(await screen.findByDisplayValue('Dev-1')).toBeTruthy();
+    expect(document.querySelector('header img[src="/api/avatars/a-1"]')).not.toBeNull();
+  });
+
   it('shows the usage block with meters above the limits', async () => {
     mockPanelFetch();
 

@@ -200,6 +200,17 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
               role="menuitem"
               onClick={() => {
                 setMenuOpen(false);
+                navigate('/settings/profile');
+              }}
+              className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised"
+            >
+              Profile
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setMenuOpen(false);
                 navigate('/settings/connections');
               }}
               className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised"
@@ -399,6 +410,7 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
                         key={group.key}
                         groupTitle={group.title}
                         groupId={group.groupId}
+                        avatarUrl={group.avatarUrl}
                         topics={group.topics}
                         selectedId={activeChatId}
                         collapsed={collapsed.has(group.groupId)}

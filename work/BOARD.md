@@ -191,8 +191,8 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0151](T-0151-deploy-storage-safety.md) | Production storage safety | 2026-10-01 |
 | [T-0160](T-0160-rename-zilar.md) | Rename everything from Zilar to Zilar | 2026-10-02 |
 | [T-0161](T-0161-first-run-setup.md) | First-run setup screen: email, Resend key, code; the key is stored encrypted, no manual mail setup or invite code | 2026-10-02 |
-| [T-0165](T-0165-avatars.md) | Profile pictures for people, AIs, groups and channels | planned | meta/muse-spark-1.3-contributor | T-0164 | Spec ready; launch after T-0164 merges |
 | [T-0162](T-0162-integrations-settings-telegram.md) | Integration keys in the UI: Telegram bot token and email sender and key (owner only, stored encrypted), import dialog as an overlay with a clear reason | 2026-10-02 |
 | [T-0166](T-0166-voice-fixes.md) | Voice notes on web: click to record with Send/Cancel, play/pause follows the audio, readable waveform colors, clear errors | 2026-10-03 |
 | [T-0163](T-0163-usernames-and-contact-requests.md) | @usernames and contact requests: unique handles, requests that must be accepted, share links, session-skippable onboarding step | 2026-10-03 |
 | [T-0164](T-0164-public-groups-and-channels.md) | Public and private groups and channels: handles, Explore directory, open join with an atomic cap, share links | 2026-10-03 |
+| [T-0165](T-0165-avatars.md) | Profile pictures for people, AIs, groups and channels: browser crop, validated static WebP/PNG, avatar-data volume | 2026-10-03 |

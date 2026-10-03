@@ -447,7 +447,7 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
         className="flex h-full w-full flex-col bg-surface shadow-xl outline-none sm:w-[380px]"
       >
         <header className="flex shrink-0 items-center gap-3 border-b border-divider p-4">
-          <Avatar id={chat.id} name={chat.title} size={44} />
+          <Avatar id={chat.id} name={chat.title} size={44} avatarUrl={chat.avatarUrl} />
           <div className="min-w-0 flex-1">
             <div className="truncate text-[16px] font-semibold">
               {groupTitle !== '' && (
@@ -541,7 +541,12 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
                         key={member.userId}
                         className="flex items-center gap-2 rounded-xl px-2 py-1.5 hover:bg-list-hover"
                       >
-                        <Avatar id={member.userId} name={member.name} size={32} />
+                        <Avatar
+                          id={member.userId}
+                          name={member.name}
+                          size={32}
+                          avatarUrl={detail?.avatarUrl}
+                        />
                         <span className="min-w-0 flex-1 truncate text-[14px]">
                           {member.name}
                           {member.userId === me && (
@@ -584,7 +589,12 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
                               'hover:bg-surface-raised disabled:opacity-50',
                             )}
                           >
-                            <Avatar id={member.userId} name={member.name} size={28} />
+                            <Avatar
+                              id={member.userId}
+                              name={member.name}
+                              size={28}
+                              avatarUrl={member.avatarUrl}
+                            />
                             <span className="min-w-0 flex-1 truncate">{member.name}</span>
                             {busyId === `add:${member.userId}` && (
                               <span className="text-[12px] text-muted-foreground">Adding…</span>
@@ -691,12 +701,14 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
             {aisState.status === 'ready' &&
               aisState.ais.map((ai) => {
                 const removing = busyId === `removeAi:${ai.id}`;
+                // Topic AI rows carry no picture; the group detail knows it.
+                const picture = groupAis.find((item) => item.aiId === ai.id)?.avatarUrl;
                 return (
                   <div
                     key={ai.id}
                     className="flex items-center gap-2 rounded-xl px-2 py-1.5 hover:bg-list-hover"
                   >
-                    <Avatar id={ai.id} name={ai.name} size={32} ai />
+                    <Avatar id={ai.id} name={ai.name} size={32} ai avatarUrl={picture} />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5">
                         <span className="truncate text-[14px]">{ai.name}</span>
@@ -737,7 +749,7 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
                           'hover:bg-surface-raised disabled:opacity-50',
                         )}
                       >
-                        <Avatar id={ai.jid} name={ai.name} size={28} ai />
+                        <Avatar id={ai.jid} name={ai.name} size={28} ai avatarUrl={ai.avatarUrl} />
                         <span className="min-w-0 flex-1 truncate">{ai.name}</span>
                         <AiBadge />
                         {busyId === `addAi:${ai.id}` && (

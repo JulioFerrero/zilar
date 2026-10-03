@@ -69,10 +69,11 @@ RUN mkdir -p /opt/tsx && cd /opt/tsx && npm init -y >/dev/null \
 
 # Non-root user. Alpine's `node` image ships no `node` user, so create one.
 RUN addgroup -S zilar && adduser -S zilar -G zilar && chown -R zilar:zilar /app /opt/tsx
-# The sticker volume mounts here in production. Docker seeds an empty named
-# volume with the image's directory ownership, so create it owned by the
-# server user or the non-root server cannot write to a fresh volume.
-RUN mkdir -p /data/stickers && chown zilar:zilar /data/stickers
+# The sticker and avatar volumes mount here in production. Docker seeds
+# an empty named volume with the image's directory ownership, so create
+# them owned by the server user or the non-root server cannot write to a
+# fresh volume.
+RUN mkdir -p /data/stickers /data/avatars && chown zilar:zilar /data/stickers /data/avatars
 USER zilar
 
 EXPOSE 3000 3189

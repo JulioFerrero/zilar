@@ -34,6 +34,8 @@ const HIKING = {
   description: 'Trail talk every Sunday.',
   memberCount: 12,
   joined: false,
+  // T-0165: the group's picture rides the directory entry.
+  avatarUrl: '/api/avatars/g-hiking',
 };
 
 const RELEASES = {
@@ -73,13 +75,15 @@ describe('ExplorePage', () => {
 
   it('lists the newest public rows with title, handle, description, count and Join', async () => {
     searchMock.mockResolvedValue({ entries: [HIKING], next: null });
-    renderExplore();
+    const { container } = renderExplore();
 
     expect(await screen.findByText('Hiking club')).toBeTruthy();
     expect(screen.getByText('@hiking_club')).toBeTruthy();
     expect(screen.getByText('Trail talk every Sunday.')).toBeTruthy();
     expect(screen.getByText('12 members')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Join' })).toBeTruthy();
+    // T-0165: the directory entry's picture paints the row.
+    expect(container.querySelector('img[src="/api/avatars/g-hiking"]')).not.toBeNull();
   });
 
   it('searches by query with at least 2 characters and filters by kind', async () => {

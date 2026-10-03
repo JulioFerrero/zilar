@@ -260,6 +260,13 @@
       "when": 1790995459896,
       "tag": "0036_loose_wendell_vaughn",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1791003409266,
+      "tag": "0037_calm_star_brand",
+      "breakpoints": true
     }
   ]
 }

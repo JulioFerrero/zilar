@@ -5,6 +5,7 @@
 // `group_members`.
 
 import { and, count, desc, eq, ilike, inArray, lt, or } from 'drizzle-orm';
+import { avatarIdsByOwner, avatarUrlFor } from '../avatars/service';
 import type { ServerDatabase } from '../db/client';
 import { groupMembers, groups, handles } from '../db/schema';
 import { HttpError } from '../errors';
@@ -25,6 +26,8 @@ export interface DirectoryEntry {
   description: string | null;
   memberCount: number;
   joined: boolean;
+  /** T-0165: the group's picture, when it has one. Omitted when none. */
+  avatarUrl?: string | undefined;
 }
 
 export interface DirectoryPage {
@@ -134,6 +137,13 @@ export async function searchDirectory(
     page.map((row) => row.id),
   );
 
+  // T-0165: every entry that already carries a name gets `avatarUrl` when
+  // the group has a picture (omitted when none, like today).
+  const entryAvatars = await avatarIdsByOwner(
+    db,
+    'group',
+    page.map((row) => row.id),
+  );
   const entries = page.map((row): DirectoryEntry => {
     if (row.handle === null) {
       throw new Error('a public group without a handle row');
@@ -146,9 +156,11 @@ export async function searchDirectory(
       description: row.description,
       memberCount: counts.get(row.id) ?? 0,
       joined: joined.has(row.id),
+      ...(entryAvatars.get(row.id) === undefined
+        ? {}
+        : { avatarUrl: avatarUrlFor(entryAvatars.get(row.id)!) }),
     };
   });
-  // Ranking: exact handle match first, then handle-prefix, then
   // title-prefix, keeping newest-first inside each bucket. The cursor still
   // walks newest-first overall; ranking only reorders the page in memory.
   if (hasQuery) {
@@ -206,6 +218,8 @@ export async function publicGroupForHandle(
   }
   const counts = await countMembers(db, [row.id]);
   const joined = await membershipsOf(db, viewerId, [row.id]);
+  const singleAvatar = await avatarIdsByOwner(db, 'group', [row.id]);
+  const singleAvatarId = singleAvatar.get(row.id);
   return {
     id: row.id,
     kind: row.kind,
@@ -214,6 +228,7 @@ export async function publicGroupForHandle(
     description: row.description,
     memberCount: counts.get(row.id) ?? 0,
     joined: joined.has(row.id),
+    ...(singleAvatarId === undefined ? {} : { avatarUrl: avatarUrlFor(singleAvatarId) }),
   };
 }
 
