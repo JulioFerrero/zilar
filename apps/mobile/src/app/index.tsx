@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Archive, Bot, Search, X } from 'lucide-react-native';
+import { Archive, Bot, Search, Settings, X } from 'lucide-react-native';
 import { useColorScheme } from 'nativewind';
 import { useMemo, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, TextInput, View } from 'react-native';
@@ -231,6 +231,9 @@ function ChatsList() {
         </IconButton>
         <IconButton label="Search" onPress={() => setSearchOpen(true)}>
           <Search size={20} color={ICON[scheme]} />
+        </IconButton>
+        <IconButton label="Settings" onPress={() => router.push('/settings')}>
+          <Settings size={20} color={ICON[scheme]} />
         </IconButton>
       </View>
     </View>

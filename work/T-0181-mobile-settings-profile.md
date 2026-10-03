@@ -1,7 +1,7 @@
 ---
 id: T-0181
 title: Mobile: settings hub, profile (name, avatar, @handle) and the handle step after sign-up
-status: planned
+status: review
 milestone: M5
 branch: task/T-0181-mobile-settings-profile
 model: meta/muse-spark-1.3-contributor
@@ -58,5 +58,86 @@ Notifications, stickers, machines and the other settings pages (later tasks), ch
 ---
 
 ## Report (written by the worker when done)
+
+### What was built
+Settings hub, profile editing (name, avatar, @handle) and the post-sign-up
+handle step, mirroring web (`ProfilePage`, `HandlePage`, `NamePage`,
+`SettingsShell`, `ProfileSettingsSection`, `AvatarUploader`):
+
+- `apps/mobile/src/lib/profile-api.ts` (+ tests): `getMe` (handle +
+  avatarUrl, optional like web's `meSchema`), `checkHandle`
+  (`GET /api/handles/check`), `claimHandle` (`PUT /api/me/handle`),
+  `uploadAvatar` (`PUT /api/avatars/user/<id>`; `fetch` blob path for
+  tests, injected `expo-file-system` uploader for production since RN
+  `fetch` cannot send binary bodies), `removeAvatar`. `ProfileApiError`
+  carries `status` + `code`.
+- `apps/mobile/src/lib/settings-items.ts` (+ tests): hub rows (Profile,
+  My AIs); icon stored as an id (Vitest cannot load
+  `lucide-react-native`), mapped to components in the screen.
+- `apps/mobile/src/app/settings/index.tsx`: hub with user card on top;
+  Settings lucide button added to the chat list header (`app/index.tsx`).
+- `apps/mobile/src/app/settings/profile.tsx` + `components/settings/`:
+  display-name edit (same validation as `NameForm`, saved through the
+  session store), avatar control (image picker with square OS editor,
+  picked preview, upload progress, failed/removed states, bearer-scoped
+  same-origin picture load), handle editor with debounced (300 ms) live
+  availability check, own-handle skip, claim with the server reason shown
+  (`handle_taken`, `handle_reserved`, `handle_invalid`,
+  `handle_change_too_soon` with the next-change date, `rate_limited`).
+  Plain-logic half (`profile-logic.ts`: availability view model, friendly
+  texts, `suggestHandleFor`) is hook-/JSX-free and fully tested, plus
+  `renderToStaticMarkup` tests for the two controls.
+- `apps/mobile/src/app/welcome/handle.tsx`: post-sign-up handle step with
+  suggestion + Skip; `NameForm` now chains `name -> handle` when there is
+  no explicit `from` (exactly like web's `NamePage`).
+- `mock/profile.ts` (+ tests) and `use-profile-api.ts`: real-or-mock hook
+  following `use-ais-api.ts`; mock mirrors check/claim/avatar semantics
+  (reserved/invalid/taken, second claim 409s, avatar urls persist).
+
+### Files changed
+New: `lib/profile-api.ts(.test.ts)`, `lib/settings-items.ts(.test.ts)`,
+`mock/profile.ts(.test.ts)`, `components/settings/{use-profile-api,
+screen-shell, hub.ts(.test.ts), profile-logic.ts(.test.ts),
+avatar-native.ts(.test.ts), avatar-control.tsx, handle-field.tsx,
+settings-ui.test.tsx}`, `app/settings/{index,profile}.tsx`,
+`app/welcome/handle.tsx`.
+Edited: `app/index.tsx` (Settings button only), `auth/NameForm.tsx`
+(next route only).
+
+### Commands and real results
+- `pnpm install`: ok (9.8s).
+- `pnpm format:check`: pass ("All matched files use Prettier code style!").
+- `pnpm lint`: pass (one `set-state-in-effect` hit fixed by mirroring the
+  AI list's `load` + `useFocusEffect` pattern).
+- `pnpm typecheck` (mobile): pass (one missing `saved` prop in a test
+  fixed).
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 settings profile
+  handle avatar`: 7 files, 81 tests, all pass.
+- Neighbours `auth lib/auth-api lib/ais-api components/ais/ais`: 9 files
+  pass, 80 tests pass, 1 skipped (pre-existing skip).
+- The lead tests on the emulator and the phone.
+
+### Problems / deviations
+- Web crops avatars in a canvas dialog; the phone has no canvas, so the OS
+  picker sheet crops (`allowsEditing` + square aspect, quality 0.9). No
+  256 KiB client resize: over-cap files refuse before upload with the
+  server's wording.
+- The screen passes an empty `Blob` with the native uploader (the blob is
+  only used on the `fetch` path); documented in code.
+- `NameForm` chains to `/welcome/handle` only when `from` is `/`; explicit
+  `from` (join-by-link, login) is preserved, exactly like web.
+- No emoji in UI, no new dependency, no server change.
+
+### Security checklist
+- Tokens ride only on same-origin avatar loads/uploads (the GIF-panel
+  pattern); nothing (tokens, codes) is logged.
+- Avatar PUT permission is server-checked; unknown vs. forbidden both 404.
+- Handle clamp: unique index on the server, loser maps to 409; no
+  check-then-insert on the client (claim failure just shows the reason).
+- Screens are `RequireAuth`/`RequireUser` guarded; audit untouched (no
+  server change).
+
+### Open questions
+None.
 
 ## Review (written by Claude)
