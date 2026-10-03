@@ -139,18 +139,57 @@ export function createPushRoutes(deps: PushRoutesDependencies): Hono {
     }
     const cipher = createPushCipher(storageKey);
     const pushJid = deps.push.PUSH_COMPONENT_JID as string;
+    // Drops the stale enable-pair behind a replaced node (XEP-0357 session
+    // state in ejabberd). There is no admin command that targets a push
+    // pair by node directly, so the backstop asks ejabberd to unsubscribe
+    // the user from every room they can see: publishes to the old pair
+    // stop, exactly like the last-device removal below. The browser's own
+    // session normally sends `<disable/>` for the old pair itself; this
+    // covers clients that re-register without disabling first. Best
+    // effort: a failure never fails the registration (no endpoint or key
+    // in the logs — user id only).
+    const dropStalePushPairs = async (staleNodes: string[]): Promise<void> => {
+      if (staleNodes.length === 0) {
+        return;
+      }
+      try {
+        await syncPushSubscriptionsForUser(
+          {
+            db: deps.db,
+            adminClient: deps.adminClient,
+            domain: deps.config.xmpp.domain,
+            logger: deps.logger,
+          },
+          user.id,
+        );
+      } catch (error) {
+        deps.logger.warn(
+          { userId: user.id, staleNodes: staleNodes.length, err: errorName(error) },
+          'push stale-pair cleanup failed after re-registration; publishes drop as unknown-device',
+        );
+      }
+    };
     let node = randomNode();
     parseNode(node);
     for (let attempt = 0; attempt < 3; attempt += 1) {
       try {
-        const row = await saveDevice(deps.db, cipher, {
-          id: randomUUID(),
-          userId: user.id,
-          node,
-          subscription: parsed.data,
-          userAgent: parsed.data.userAgent ?? null,
-          now: new Date(now()),
-        });
+        const row = await saveDevice(
+          deps.db,
+          cipher,
+          {
+            id: randomUUID(),
+            userId: user.id,
+            node,
+            subscription: parsed.data,
+            userAgent: parsed.data.userAgent ?? null,
+            now: new Date(now()),
+          },
+          {
+            disablePushPair: async (_userId, _node) => {
+              await dropStalePushPairs([_node]);
+            },
+          },
+        );
         // The device is stored: subscribe the user to every room they may
         // see so MUC/Sub events reach them while offline. Best effort — a
         // room failure never fails the registration (membership changes

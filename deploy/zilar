@@ -230,12 +230,16 @@ cmd_init() {
   _tag="${_tag:-latest}"
 
   case "$_domain" in
-    # A bare host (optionally with a port for trials): letters, digits,
-    # dots, hyphens, and one optional :port. Anything else — spaces,
-    # slashes, $, backticks, =, shell metacharacters — is rejected, so a
-    # hostile or mistyped value can never reach the env file or Compose
-    # interpolation (where `$` would silently expand).
-    *[!A-Za-z0-9.:-]*|*".."*|*":"*":"*|*":") die "init: bad domain '$_domain' — give a bare host like chat.example.com" ;;
+    # A bare host: letters, digits, dots and hyphens — never a `:port`. The
+    # port the trial runs on comes from `--http-port`/`--https-port`, not
+    # from the domain: `chat.example.com:8443` as a domain would bake an
+    # invalid host into PUBLIC_URL, WEB_ORIGINS, the XMPP domain and the
+    # push JID (`push.chat.example.com:8443` is not a JID). Anything else —
+    # spaces, slashes, $, backticks, =, shell metacharacters — is rejected,
+    # so a hostile or mistyped value can never reach the env file or
+    # Compose interpolation (where `$` would silently expand).
+    *":"*) die "init: bad domain '$_domain' — give a bare host like chat.example.com (no :port; the trial ports come from --http-port/--https-port)" ;;
+    *[!A-Za-z0-9.-]*|"."*|*".") die "init: bad domain '$_domain' — give a bare host like chat.example.com" ;;
   esac
   case "$_admin_email" in
     *"@"*.*) ;;
@@ -352,7 +356,6 @@ PUSH_STORAGE_KEY=$_push_storage_key"
     _push_lines="$_push_lines secrets in this file. Re-run '$PROG init --force'"
     _push_lines="$_push_lines (or add the PUSH_* lines by hand) to enable it."
   fi
-
   # Compose has no way to say "unset when empty": it substitutes an empty
   # string, and zod's .optional() rejects empty strings. So for a console
   # trial the optional-but-empty SMTP lines are simply absent; a real
@@ -368,6 +371,16 @@ PUSH_STORAGE_KEY=$_push_storage_key"
 SMTP_USER=
 SMTP_PASSWORD=
 MAIL_REPLY_TO="
+  fi
+  # Push off (`--no-push`): PUSH_COMPONENT_JID is not written either. The
+  # compose files derive it from ZILAR_DOMAIN themselves, so nothing needs
+  # the line — and leaving it would keep a stale value agreeing with a
+  # disabled feature (T-0156).
+  if [ "$_push_enabled" -eq 1 ]; then
+    _push_jid_lines="PUSH_COMPONENT_JID=push.$_domain
+$_push_lines"
+  else
+    _push_jid_lines="$_push_lines"
   fi
   (umask 077; cat > "$ENV_FILE") <<EOF
 # Zilar install env, written by '$PROG init'. Contains live secrets:
@@ -423,10 +436,11 @@ PUSH_ENABLED=$_push_enabled_value
 # push provider. PUSH_COMPONENT_JID (push.<this domain>) must equal the host
 # the ejabberd entrypoint writes into the ejabberd_service listener — the
 # compose file derives it from ZILAR_DOMAIN, so this line needs no edit.
-# Losing PUSH_STORAGE_KEY orphans every device (browsers must re-enable):
-# it is backed up with this file, never regenerated on an existing install.
-PUSH_COMPONENT_JID=push.$_domain
-$_push_lines
+# With --no-push neither the JID nor the keys are written (the compose files
+# derive the JID themselves). Losing PUSH_STORAGE_KEY orphans every device
+# (browsers must re-enable): it is backed up with this file, never
+# regenerated on an existing install.
+$_push_jid_lines
 TOOLS_ENABLED=false
 ROUTINES_ENABLED=false
 WEB_TOOLS_ENABLED=false
@@ -656,12 +670,16 @@ cmd_doctor() {
         _push_ok=0
       fi
       _component_jid="$(env_get PUSH_COMPONENT_JID)"
-      if [ -z "$_component_jid" ]; then
-        doctor_bad "PUSH_COMPONENT_JID is missing in $ENV_FILE" "set PUSH_COMPONENT_JID=push.$(env_get ZILAR_DOMAIN) (it must equal the ejabberd listener host)"
-        _push_ok=0
-      fi
+      # With --no-push no JID is written: the compose files derive
+      # push.<domain> from ZILAR_DOMAIN themselves, so an absent line is
+      # the correct off state, not a problem (T-0156).
       _domain="$(env_get ZILAR_DOMAIN)"
-      if [ -n "$_domain" ] && [ "$_component_jid" != "push.$_domain" ]; then
+      if [ -z "$_component_jid" ]; then
+        if [ "$_push_enabled" = "true" ]; then
+          doctor_bad "PUSH_COMPONENT_JID is missing in $ENV_FILE" "set PUSH_COMPONENT_JID=push.$_domain (it must equal the ejabberd listener host)"
+          _push_ok=0
+        fi
+      elif [ -n "$_domain" ] && [ "$_component_jid" != "push.$_domain" ]; then
         doctor_bad "PUSH_COMPONENT_JID ($_component_jid) is not push.$_domain" "set PUSH_COMPONENT_JID=push.$_domain in $ENV_FILE so it matches the ejabberd listener"
         _push_ok=0
       fi

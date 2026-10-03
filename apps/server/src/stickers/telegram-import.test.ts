@@ -3,6 +3,7 @@ import {
   createTelegramClient,
   parseTelegramPackInput,
   TELEGRAM_API_HOST,
+  TELEGRAM_JSON_MAX_BYTES,
   TelegramImportError,
   type TelegramClient,
   type TelegramStickerSet,
@@ -199,6 +200,33 @@ describe('createTelegramClient', () => {
     await expect(bigClient.downloadFile('file-id')).rejects.toMatchObject({
       code: 'file_too_large',
     });
+  });
+
+  it('caps the JSON read from a Telegram method envelope', async () => {
+    // A pathological `getStickerSet` envelope (1 MiB of sticker rows) is
+    // dropped instead of buffered without bound: the reader aborts past
+    // the 256 KiB cap and the request fails as `try_later`.
+    const huge = new TextEncoder().encode(
+      JSON.stringify({
+        ok: true,
+        result: { name: 'Big', title: 'Big', stickers: [{ file_id: 'x'.repeat(1024 * 1024) }] },
+      }),
+    );
+    expect(huge.byteLength).toBeGreaterThan(TELEGRAM_JSON_MAX_BYTES);
+    const { fetch: fetchImpl } = captureFetch(() => new Response(huge, { status: 200 }));
+    const client = createTelegramClient(secretToken, fetchImpl);
+    const error = await client.getStickerSet('Big').catch((cause: unknown) => cause);
+    expect(error).toBeInstanceOf(TelegramImportError);
+    expect((error as TelegramImportError).code).toBe('try_later');
+    const serialised = JSON.stringify(error, Object.getOwnPropertyNames(error));
+    expect(serialised).not.toContain(secretToken);
+
+    // A normal envelope (under the cap) still parses.
+    const small = captureFetch(() =>
+      okJson({ ok: true, result: { name: 'x', title: 'X', stickers: [] } }),
+    );
+    const smallClient = createTelegramClient(secretToken, small.fetch);
+    await expect(smallClient.getStickerSet('x')).resolves.toMatchObject({ name: 'x' });
   });
 
   it('parses the sticker set shape used by the importer', async () => {

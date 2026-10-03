@@ -20,6 +20,7 @@ import type {
 } from '../ai/litellm-client';
 import { createKeyCipher } from '../connections/crypto';
 import type { ActionGateway, RequestOutcome } from '../actions/gateway';
+import type { GatewayLogger } from './gateway';
 import {
   aiLimits,
   ais,
@@ -448,9 +449,30 @@ describe('agent gateway', () => {
       actions?: ActionGateway;
       toolsEnabled?: boolean;
       toolMaxRounds?: number;
+      turnLogger?: GatewayLogger;
     } = {},
-  ): { gateway: AgentGateway; logger: ReturnType<typeof captureLogger> } {
+  ): {
+    gateway: AgentGateway;
+    logger: ReturnType<typeof captureLogger>;
+    turnLogger: {
+      info: (fields: Record<string, unknown>, message: string) => void;
+      warn: (fields: Record<string, unknown>, message: string) => void;
+    };
+  } {
     const logger = captureLogger();
+    const turnLogger =
+      config.turnLogger ??
+      ({
+        info: (fields: Record<string, unknown>, message: string) => {
+          logger.info(fields, message);
+        },
+        warn: (fields: Record<string, unknown>, message: string) => {
+          logger.warn(fields, message);
+        },
+      } as {
+        info: (fields: Record<string, unknown>, message: string) => void;
+        warn: (fields: Record<string, unknown>, message: string) => void;
+      });
     const failConnect = config.failConnect ?? (() => false);
     const deps: AgentGatewayDeps = {
       db: context.db,
@@ -459,6 +481,7 @@ describe('agent gateway', () => {
       litellm,
       cipher: createKeyCipher(MASTER_KEY),
       logger,
+      turnLogger,
       litellmBaseUrl: 'http://litellm.test:4000',
       masterKeyForRedaction: MASTER_KEY,
       createCore: (options) => {
@@ -485,7 +508,7 @@ describe('agent gateway', () => {
         : { retryBaseDelayMs: config.retryBaseDelayMs }),
     });
     gateway = created;
-    return { gateway, logger };
+    return { gateway, logger, turnLogger };
   }
 
   function completionFetch(content = 'AI says hi'): { fetchImpl: FetchLike; calls: Call[] } {
@@ -4311,6 +4334,46 @@ describe('agent gateway', () => {
       expect(core.retractions).toHaveLength(1);
       const final = core.sent.at(-1);
       expect(final?.text).toBe('Done.');
+    });
+
+    it('logs the per-turn tool counts line with ids and counts only (T-0156)', async () => {
+      // The T-0106 counts line is wired in production: one DM turn with a
+      // tool round logs one `AI tool turn finished` line carrying the AI id,
+      // the round and call counts and the elapsed ms — never content.
+      const seeded = await seedAi(context);
+      const cores: FakeCore[] = [];
+      const { fetchImpl, calls } = scriptedFetchLocal(
+        guideResponse([{ id: 'call-1', name: 'request_action', args: { action: 'x', args: {} } }]),
+      );
+      const fake = fakeActionGatewayLocal({ status: 'executed', summary: 'ok' });
+      const turnInfos: Array<{ fields: Record<string, unknown>; message: string }> = [];
+      const { gateway: started, logger } = harness(cores, fetchImpl, new FakeLitellm(), {
+        actions: fake.gateway,
+        toolsEnabled: true,
+        turnLogger: {
+          info: (fields, message) => {
+            turnInfos.push({ fields, message });
+          },
+          warn: () => undefined,
+        },
+      });
+      await started.start();
+      const core = await coreFor(cores, seeded.aiJid);
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-1', 'look this up'));
+      await waitFor(() => calls.length === 2);
+      await waitFor(() => turnInfos.length === 1);
+      expect(turnInfos[0]?.message).toBe('AI tool turn finished');
+      // Default `maxRounds: 1`: round 1 offers tools and executes, then the
+      // legacy follow-up answers in text — one counted round, one call.
+      expect(turnInfos[0]?.fields).toMatchObject({
+        aiId: seeded.aiId,
+        rounds: 1,
+        toolCalls: 1,
+      });
+      expect(typeof turnInfos[0]?.fields['elapsedMs']).toBe('number');
+      const serialised = `${JSON.stringify(turnInfos)}\n${JSON.stringify(logger.calls)}`;
+      expect(serialised).not.toContain('look this up');
+      await started.stop();
     });
   });
 

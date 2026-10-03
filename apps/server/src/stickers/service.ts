@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { existsSync, readFileSync } from 'node:fs';
 import { and, asc, count, desc, eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { AuditRecorder } from '../audit/service';
@@ -79,11 +80,40 @@ export function resolveStorageDir(dir: string, baseDir: string = SERVER_PACKAGE_
 }
 
 /** The server package root (`apps/server`), the base for relative storage dirs. */
-export const SERVER_PACKAGE_ROOT: string = resolve(
-  dirname(fileURLToPath(import.meta.url)),
-  '..',
-  '..',
-);
+export function serverPackageRoot(from: string = fileURLToPath(import.meta.url)): string {
+  // Walk up from the caller's file until the directory holding the
+  // `package.json` named `@zilar/server`: relative storage dirs resolve
+  // against the package root whatever the file's depth below it, and a
+  // build step that changes the output shape (e.g. `src/` → `dist/`)
+  // resolves to the same root instead of moving a directory up or down.
+  // The walk stops at the filesystem root: without the package marker the
+  // dir is returned unchanged so callers never resolve against `/`.
+  let directory = dirname(from);
+  for (;;) {
+    const candidate = join(directory, 'package.json');
+    if (existsSync(candidate)) {
+      try {
+        const parsed: unknown = JSON.parse(readFileSync(candidate, 'utf8'));
+        if (
+          parsed !== null &&
+          typeof parsed === 'object' &&
+          (parsed as { name?: unknown }).name === '@zilar/server'
+        ) {
+          return directory;
+        }
+      } catch {
+        // Not JSON (or unreadable): keep walking up, it is not our marker.
+      }
+    }
+    const parent = dirname(directory);
+    if (parent === directory) {
+      return directory;
+    }
+    directory = parent;
+  }
+}
+
+export const SERVER_PACKAGE_ROOT: string = serverPackageRoot();
 
 const createPackBodySchema = z
   .object({
@@ -330,6 +360,11 @@ export async function patchPack(
     if (body.order !== undefined) {
       const rows = await tx.select().from(stickers).where(eq(stickers.packId, packId));
       const ids = new Set(rows.map((row) => row.id));
+      // Completeness alone is not enough: a doubled id with a dropped one
+      // passes it while corrupting the pack, so duplicates fail distinctly.
+      if (new Set(body.order).size !== body.order.length) {
+        throw new HttpError(400, 'duplicate_order', 'order must not list a sticker twice');
+      }
       if (body.order.length !== rows.length || !body.order.every((id) => ids.has(id))) {
         throw new HttpError(400, 'invalid_request', 'order must list every sticker exactly once');
       }

@@ -126,16 +126,16 @@ fi
 rm -f "$PROBE_FILE"
 trap - EXIT INT TERM
 
-# 3. --no-push writes no secrets and no empty values; both compose files
-# still render with that env, and the rendered server env carries
+# 3. --no-push writes no secrets, no JID and no empty values; both compose
+# files still render with that env, and the rendered server env carries
 # PUSH_ENABLED=false.
 T_OFF="$(make_env "push-off.example" "--no-push")"
-if grep -qE "^(PUSH_VAPID_PUBLIC_KEY|PUSH_VAPID_PRIVATE_KEY|PUSH_COMPONENT_SECRET|PUSH_STORAGE_KEY)=" "$T_OFF/.env"; then
-  bad "--no-push still wrote push secret lines"
+if grep -qE "^(PUSH_VAPID_PUBLIC_KEY|PUSH_VAPID_PRIVATE_KEY|PUSH_COMPONENT_SECRET|PUSH_STORAGE_KEY|PUSH_COMPONENT_JID)=" "$T_OFF/.env"; then
+  bad "--no-push still wrote push lines (secrets or the component JID)"
 else
-  ok "--no-push writes no push secret lines"
+  ok "--no-push writes no push secret or JID lines"
 fi
-if grep -qE "^(PUSH_VAPID_PUBLIC_KEY|PUSH_VAPID_PRIVATE_KEY|PUSH_VAPID_SUBJECT|PUSH_COMPONENT_SECRET|PUSH_STORAGE_KEY)=$" "$T_OFF/.env"; then
+if grep -qE "^(PUSH_VAPID_PUBLIC_KEY|PUSH_VAPID_PRIVATE_KEY|PUSH_VAPID_SUBJECT|PUSH_COMPONENT_SECRET|PUSH_STORAGE_KEY|PUSH_COMPONENT_JID)=$" "$T_OFF/.env"; then
   bad "--no-push left empty push values"
 else
   ok "--no-push leaves no empty push values"
@@ -202,7 +202,9 @@ else
 fi
 
 # Coolify renders with placeholder Coolify-style values (Coolify generates
-# the SERVICE_* variables; syntax only, per the T-0126 precedent).
+# the SERVICE_* variables; syntax only, per the T-0126 precedent). The
+# Coolify push JID derives from SERVICE_FQDN_WEB (Coolify's own domain
+# variable), not XMPP_DOMAIN, so both are set to the same test domain here.
 cat > "$T/cool.env" <<EOF
 IMAGE_OWNER=testowner
 IMAGE_TAG=t0145
@@ -213,7 +215,8 @@ SERVICE_PASSWORD_ARCHIVE_DB=x4
 SERVICE_PASSWORD_EJABBERD_ADMIN=x5
 SERVICE_PASSWORD_XMPP_JWT=x6
 SERVICE_PASSWORD_BETTER_AUTH=x7
-SERVICE_PASSWORD_PUSH_COMPONENT=x8
+SERVICE_PASSWORD_PUSHCOMPONENT=x8
+SERVICE_FQDN_WEB=push-test.example
 XMPP_DOMAIN=push-test.example
 XMPP_MUC_DOMAIN=rooms.push-test.example
 WEB_ORIGIN=http://localhost:18080
@@ -238,8 +241,10 @@ else
 fi
 
 # 5. The entrypoint writes the literal host, is idempotent on rerun
-# (restart-safe: the config persists in the container layer), and refuses
-# a config without its marker.
+# (restart-safe: the config persists in the container layer), refuses a
+# config without its marker, refuses a config with zero or two marker
+# lines (never a wrong-line replace), and verifies exactly one host line
+# changed.
 cp "$ROOT/deploy/ejabberd/ejabberd.yml" "$T/ejabberd.yml"
 chmod u+w "$T/ejabberd.yml"
 if ZILAR_DOMAIN="push-test.example" sh "$PUSH_ENTRY" "$T/ejabberd.yml" 2> "$T/entry.err" \
@@ -248,6 +253,29 @@ if ZILAR_DOMAIN="push-test.example" sh "$PUSH_ENTRY" "$T/ejabberd.yml" 2> "$T/en
   ok "entrypoint writes the literal push host"
 else
   bad "entrypoint did not write the literal push host ($(head -n 1 "$T/entry.err"))"
+fi
+# Exactly one line changed: one host line for this domain, and the marker
+# line is gone (not duplicated, not left behind).
+if [ "$(grep -c "^[[:space:]]*push.push-test.example:[[:space:]]*$" "$T/ejabberd.yml")" -eq 1 ] \
+  && [ "$(grep -c "ZILAR_PUSH_COMPONENT_HOST" "$T/ejabberd.yml")" -eq 0 ]; then
+  ok "entrypoint changed exactly one line (one host line, no marker left)"
+else
+  bad "entrypoint changed more or less than one line"
+fi
+# A neighbouring key on a marker comment line is never touched: only the
+# push host key on the marker line is replaced (T-0156 nit).
+cp "$ROOT/deploy/ejabberd/ejabberd.yml" "$T/ejabberd-neighbour.yml"
+chmod u+w "$T/ejabberd-neighbour.yml"
+printf '      some_other_key: value # ZILAR_PUSH_COMPONENT_HOST\n' >> "$T/ejabberd-neighbour.yml"
+if ZILAR_DOMAIN="push-test.example" sh "$PUSH_ENTRY" "$T/ejabberd-neighbour.yml" 2> /dev/null; then
+  bad "entrypoint accepted a config with two marker lines"
+else
+  if grep -q "some_other_key: value" "$T/ejabberd-neighbour.yml" \
+    && grep -q "push.zilar.localhost: # ZILAR_PUSH_COMPONENT_HOST" "$T/ejabberd-neighbour.yml"; then
+    ok "entrypoint refuses two marker lines and touches neither"
+  else
+    bad "entrypoint touched a line before refusing two marker lines"
+  fi
 fi
 if ZILAR_DOMAIN="push-test.example" sh "$PUSH_ENTRY" "$T/ejabberd.yml" 2> "$T/entry2.err" \
   && grep -q "^[[:space:]]*push.push-test.example:[[:space:]]*$" "$T/ejabberd.yml" \
@@ -298,7 +326,7 @@ else
 fi
 
 # 7. Secrets never appear in dry-run or doctor output.
-if "$ZILAR" --env-file="$T/.env" init --dry-run --domain push-test.example \
+if "$ZILAR" init --env-file="$T/.env" --dry-run --domain push-test.example \
   --admin-email "ops@push-test.example" --image-owner testowner \
   --push-subject "mailto:ops@push-test.example" 2> /dev/null | grep -qE "[A-Za-z0-9_-]{32,}"; then
   bad "dry-run output looks like it contains secret-shaped values"
@@ -312,6 +340,37 @@ else
   ok "doctor output echoes no push secret"
 fi
 
+# 8. The wizard rejects a domain with a `:port` (T-0156): `example.test:1234`
+# as an install domain would bake an invalid host into PUBLIC_URL,
+# WEB_ORIGINS, the XMPP domain and the push JID (`push.example.test:1234`
+# is not a JID). The trial ports come from --http-port/--https-port, never
+# from the domain. Caddy serves only the bare domain, so stripping the
+# port for the JID is not an option — the whole domain is rejected.
+# (Globals first: the command comes before --env-file, per the dispatch.)
+if "$ZILAR" init --domain "wizard-port.example:1234" \
+  --admin-email "ops@wizard-port.example" --acme-email "ops@wizard-port.example" \
+  --image-owner testowner \
+  --push-subject "mailto:ops@wizard-port.example" --env-file="$T/port.env" --dry-run \
+  > "$T/port-domain.log" 2>&1; then
+  bad "init accepted a domain with a :port"
+else
+  if grep -q "no .port" "$T/port-domain.log" \
+    && grep -q "bare host" "$T/port-domain.log"; then
+    ok "init rejects a domain with a :port in plain words"
+  else
+    bad "init rejected the :port domain but not in plain words: $(head -n 1 "$T/port-domain.log")"
+  fi
+fi
+# A bare host (and localhost) still passes.
+if "$ZILAR" init --domain wizard-port.example \
+  --admin-email "ops@wizard-port.example" --acme-email "ops@wizard-port.example" \
+  --image-owner testowner \
+  --push-subject "mailto:ops@wizard-port.example" --env-file="$T/bare.env" --dry-run \
+  > /dev/null 2>&1; then
+  ok "init still accepts a bare host"
+else
+  bad "init rejects a bare host"
+fi
 rm -rf "$T" "$T_OFF"
 echo "---"
 echo "pass=$PASS fail=$FAIL"

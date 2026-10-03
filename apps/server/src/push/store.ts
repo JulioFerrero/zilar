@@ -46,15 +46,31 @@ export interface SaveDeviceInput {
   now: Date;
 }
 
+export interface SaveDeviceAdmin {
+  /**
+   * Drops the ejabberd enable-pair behind a replaced node. The browser's own
+   * session should already have disabled it; this is the backstop for
+   * clients that re-register without disabling first. Best effort: throws
+   * are swallowed by the caller.
+   */
+  disablePushPair: (userId: string, node: string) => Promise<void>;
+}
+
 // Stores one browser subscription. A re-registration of the same endpoint
 // replaces the older row for that user (an endpoint identifies one browser
-// subscription), so enabling twice does not pile up devices.
+// subscription), so enabling twice does not pile up devices. The stale
+// enable-pair behind the replaced row is dropped by the caller (see
+// `SaveDeviceAdmin` above): the row delete is scoped by user id AND
+// endpoint in the same transaction as the insert, so two racing
+// re-registrations cannot leave a duplicate behind.
 export async function saveDevice(
   db: ServerDatabase,
   cipher: PushCipher,
   input: SaveDeviceInput,
+  admin?: SaveDeviceAdmin,
 ): Promise<PushDeviceRow> {
-  return db.transaction(async (tx) => {
+  let staleNodes: string[] = [];
+  const row = await db.transaction(async (tx) => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${input.userId}))`);
     const [devices] = await tx
       .select({ total: count() })
@@ -63,6 +79,19 @@ export async function saveDevice(
     if (Number(devices?.total ?? 0) >= PUSH_MAX_DEVICES_PER_USER) {
       throw new HttpError(409, 'too_many_devices', 'Too many push devices');
     }
+    // Read the stale rows (same user, same endpoint, any node) INSIDE the
+    // transaction: the read, the deletes and the insert serialize under the
+    // per-user lock, so concurrent re-registrations agree on the same set.
+    const stale = await tx
+      .select({ node: pushSubscriptions.node })
+      .from(pushSubscriptions)
+      .where(
+        and(
+          eq(pushSubscriptions.userId, input.userId),
+          eq(pushSubscriptions.endpoint, input.subscription.endpoint),
+        ),
+      );
+    staleNodes = stale.map((entry) => entry.node).filter((node) => node !== input.node);
     await tx
       .delete(pushSubscriptions)
       .where(
@@ -71,7 +100,7 @@ export async function saveDevice(
           eq(pushSubscriptions.endpoint, input.subscription.endpoint),
         ),
       );
-    const [row] = await tx
+    const [saved] = await tx
       .insert(pushSubscriptions)
       .values({
         id: input.id,
@@ -84,11 +113,20 @@ export async function saveDevice(
         createdAt: input.now,
       })
       .returning();
-    if (!row) {
+    if (!saved) {
       throw new HttpError(500, 'internal_error', 'Could not save the push device');
     }
-    return row;
+    return saved;
   });
+  // After the commit: tell ejabberd the replaced nodes are dead. Best
+  // effort — a failure is a stray `unknown-device` drop, never a failed
+  // registration — and no endpoint or key ever leaves this module.
+  if (admin !== undefined) {
+    for (const node of staleNodes) {
+      await admin.disablePushPair(input.userId, node).catch(() => {});
+    }
+  }
+  return row;
 }
 
 export async function devicesForUser(db: ServerDatabase, userId: string): Promise<PushDeviceRow[]> {

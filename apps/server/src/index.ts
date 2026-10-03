@@ -42,7 +42,12 @@ import { createLogger } from './logger';
 import { assertRunnerHubConfig, startRunnerHub, type RunnerHub } from './machines/hub';
 import { createDbMachineRegistry } from './machines/registry';
 import { buildRoutineScheduler, type RoutineSchedulerHandle } from './routines/wiring';
-import { ensureWritableDir, warnOnEmptyStorageDir } from './startup';
+import {
+  ensureWritableDir,
+  warnOnContainerLayerStorage,
+  warnOnEmptyStorageDir,
+  warnOnGifConfig,
+} from './startup';
 import { createEjabberdAdminClient } from './xmpp/admin-client';
 import { runTool } from './sandbox/run-tool';
 import { buildToolAdapters } from './tools/adapters';
@@ -101,6 +106,25 @@ await warnOnEmptyStorageDir({
 // created, an unwritable one fails fast with a clear message.
 const avatarDir = resolveStorageDir(config.AVATAR_STORAGE_DIR);
 await ensureWritableDir(avatarDir, 'AVATAR_STORAGE_DIR');
+
+// T-0156: warn once (ids/paths only) when the file stores sit on the
+// container layer in production (no mount: files lost on replace), and when
+// GIF search is half-configured (provider without a key). Absolute paths
+// are the norm in production (`/data/stickers`, `/data/avatars`); warn
+// anyway, since an unmounted named volume lands on the same device as `/`.
+await warnOnContainerLayerStorage({
+  dirs: [
+    { envName: 'STICKER_STORAGE_DIR', dir: stickerDir },
+    { envName: 'AVATAR_STORAGE_DIR', dir: avatarDir },
+  ],
+  isProduction: config.NODE_ENV === 'production',
+  warn: (message) => logger.warn(message),
+});
+warnOnGifConfig({
+  provider: config.GIF_PROVIDER,
+  apiKey: config.GIF_API_KEY,
+  warn: (message) => logger.warn(message),
+});
 
 const adminClient = createEjabberdAdminClient(config.xmpp);
 const auth = createAuth({ db, config, mailer: currentMailer, adminClient, logger });

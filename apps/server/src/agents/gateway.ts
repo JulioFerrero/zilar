@@ -92,6 +92,10 @@ export interface AgentGatewayDeps {
   /** Absent when the key master key is not configured: the gateway stays off. */
   cipher?: KeyCipher;
   logger: GatewayLogger;
+  /** T-0156: counts logger for the tool-turn counts line (rounds, tool
+   * calls, ms — ids and counts only, never content). Falls back to
+   * `logger` so production keeps the line the T-0106 review deferred. */
+  turnLogger?: GatewayLogger;
   litellmBaseUrl?: string;
   /** Only used to redact log lines; never sent anywhere. */
   masterKeyForRedaction?: string;
@@ -442,6 +446,7 @@ export function createAgentGateway(
   config: AgentGatewayConfig,
 ): AgentGateway {
   const logger = deps.logger;
+  const turnLogger = deps.turnLogger ?? deps.logger;
   const reconcileIntervalMs = config.reconcileIntervalMs ?? RECONCILE_INTERVAL_MS;
   const retryBaseMs = config.retryBaseDelayMs ?? RETRY_BASE_DELAY_MS;
   const createCore = deps.createCore ?? createXmppCore;
@@ -1609,6 +1614,9 @@ export function createAgentGateway(
               checkRoundGate: () => checkDmRoundGate(session),
               reportProgress: groupProgress.reportProgress,
               clearProgress: groupProgress.clearProgress,
+              // T-0156: the per-turn counts line (ids and counts only),
+              // like the DM path below.
+              turnLogger,
             }),
         sendMessage: (to, kind, text, opts) => liveSendMessage(session, to, kind, text, opts),
         sendTyping: (to, kind, state) => {
@@ -1815,6 +1823,10 @@ export function createAgentGateway(
         checkRoundGate: () => checkDmRoundGate(session),
         reportProgress: dmProgress.reportProgress,
         clearProgress: dmProgress.clearProgress,
+        // T-0156: wires the per-turn counts line (ids and counts only,
+        // never content) into production — the wire the T-0106 review
+        // deferred.
+        turnLogger,
         onDelta: (textSoFar) => {
           if (sessionIsLive(session)) {
             turnDrafts.push(textSoFar);

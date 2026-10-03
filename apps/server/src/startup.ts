@@ -1,4 +1,4 @@
-import { access, constants, mkdir, readdir } from 'node:fs/promises';
+import { access, constants, mkdir, readdir, stat } from 'node:fs/promises';
 import { count } from 'drizzle-orm';
 import type { ServerDatabase } from './db/client';
 import { stickers } from './db/schema';
@@ -96,6 +96,76 @@ export async function warnOnEmptyStorageDir(input: {
   if (!hasStickerFile) {
     input.warn(
       `STICKER_STORAGE_DIR (${input.storageDir}) holds no sticker files but the database has stickers: a relative path may have resolved against an unexpected base`,
+    );
+  }
+}
+
+/**
+ * Startup warning (T-0156): when `dirs` resolve onto the container layer in
+ * production (no mount), uploads and stickers are silently lost the next
+ * time the container is replaced. Warns ONCE per directory, with ids and
+ * paths only — never contents. `isProduction` gates the whole check, so
+ * development and tests stay quiet; `dirDevice`/`rootDevice` are injected
+ * so tests never touch the real filesystem (production compares
+ * `stat -c %d` of the dir against `/`: same device = container layer).
+ */
+export async function warnOnContainerLayerStorage(input: {
+  dirs: Array<{ envName: string; dir: string }>;
+  isProduction: boolean;
+  warn: (message: string) => void;
+  dirDevice?: ((dir: string) => Promise<number>) | undefined;
+  rootDevice?: (() => Promise<number>) | undefined;
+}): Promise<void> {
+  if (!input.isProduction) {
+    return;
+  }
+  const dirDevice = input.dirDevice ?? deviceOf;
+  const rootDevice = input.rootDevice ?? (async () => deviceOf('/'));
+  let root: number;
+  try {
+    root = await rootDevice();
+  } catch {
+    return;
+  }
+  const seen = new Set<string>();
+  for (const { envName, dir } of input.dirs) {
+    if (seen.has(dir)) {
+      continue;
+    }
+    seen.add(dir);
+    let device: number;
+    try {
+      device = await dirDevice(dir);
+    } catch {
+      continue;
+    }
+    if (device === root) {
+      input.warn(
+        `${envName} (${dir}) is on the container layer, not a mounted volume: files are lost when the container is replaced — mount a persistent volume there`,
+      );
+    }
+  }
+}
+
+async function deviceOf(dir: string): Promise<number> {
+  const info = await stat(dir);
+  return info.dev;
+}
+
+/**
+ * Startup warning (T-0156): `GIF_PROVIDER` set without `GIF_API_KEY` means
+ * the GIF feature is half-configured — every route answers 501. Warns ONCE
+ * with names only (never values), so a typo surfaces at boot instead of at
+ * the first search.
+ */
+export function warnOnGifConfig(input: {
+  provider: string | undefined;
+  apiKey: string | undefined;
+  warn: (message: string) => void;
+}): void {
+  if (input.provider !== undefined && input.apiKey === undefined) {
+    input.warn(
+      'GIF_PROVIDER is set without GIF_API_KEY: GIF search stays unavailable (501) until the key is set',
     );
   }
 }

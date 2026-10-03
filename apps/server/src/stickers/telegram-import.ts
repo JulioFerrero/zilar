@@ -14,6 +14,11 @@
 export const TELEGRAM_API_HOST = 'api.telegram.org';
 export const TELEGRAM_IMPORT_TIMEOUT_MS = 10_000;
 export const TELEGRAM_IMPORT_MAX_BYTES = 1024 * 1024;
+// Cap on the JSON read from a Telegram Bot API method response
+// (`getStickerSet`, `getFile`, `getMe`): a sticker set with 200 entries is
+// tens of KiB, so anything past this is pathological and is dropped instead
+// of buffered without bound — like the 1 MiB file download cap.
+export const TELEGRAM_JSON_MAX_BYTES = 256 * 1024;
 
 export type TelegramImportErrorCode =
   | 'pack_not_found'
@@ -198,6 +203,66 @@ async function fetchCapped(
   return merged;
 }
 
+// Reads one Telegram Bot API method envelope (`getStickerSet`, `getFile`,
+// `getMe`) with a cap: the reader aborts past `TELEGRAM_JSON_MAX_BYTES`, so
+// a pathological response cannot grow the buffer without bound. Undici's
+// `response.json()` would ingest the whole body first; this reads at most
+// the cap through the same streaming reader the downloads use.
+async function readTelegramEnvelope(response: Response): Promise<TelegramApiEnvelope> {
+  const body = response.body;
+  if (body === null) {
+    // No stream (undici already buffered it): cap the buffered text itself.
+    const text = await response.text().catch(() => {
+      throw new TelegramImportError('try_later', 'Could not reach Telegram, try again later');
+    });
+    if (new TextEncoder().encode(text).byteLength > TELEGRAM_JSON_MAX_BYTES) {
+      throw new TelegramImportError('try_later', 'Could not reach Telegram, try again later');
+    }
+    return parseTelegramEnvelope(text);
+  }
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read().catch(() => {
+        throw new TelegramImportError('try_later', 'Could not reach Telegram, try again later');
+      });
+      if (done) break;
+      if (value === undefined) continue;
+      total += value.byteLength;
+      // Past the cap the head alone is already pathological: stop reading
+      // and drop the response instead of buffering the rest. The caller's
+      // request fails as `try_later`; `file_too_large` stays reserved for
+      // downloads the importer skips and counts.
+      if (total > TELEGRAM_JSON_MAX_BYTES) {
+        await reader.cancel().catch(() => {});
+        throw new TelegramImportError('try_later', 'Could not reach Telegram, try again later');
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const merged = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return parseTelegramEnvelope(new TextDecoder().decode(merged));
+}
+
+// Parses one already-bounded envelope body. Telegram's error text never
+// passes through: a non-JSON answer is a transport failure, not content.
+function parseTelegramEnvelope(text: string): TelegramApiEnvelope {
+  try {
+    return JSON.parse(text) as TelegramApiEnvelope;
+  } catch {
+    throw new TelegramImportError('try_later', 'Could not reach Telegram, try again later');
+  }
+}
+
 // Any error that escapes the network layer is replaced by a fixed message:
 // Telegram's error text (and the token-bearing URL) must never reach the
 // caller. Only `TelegramImportError` (already scrubbed) passes through.
@@ -267,11 +332,12 @@ function toStickerSet(name: string, raw: unknown): TelegramStickerSet {
 
 /**
  * The real Telegram client: `fetch` only to the two hard-coded Telegram
- * URLs, no redirects, 10 s timeout, 1 MiB cap per file. Telegram's 429
- * (`retry_after`, capped at 5 s) is retried once, then reported as
- * `try_later`; an unknown bot token (401 on any method) is `invalid_token`
- * so the integrations page can verify a pasted key; a missing pack is
- * `pack_not_found`; no other Telegram text is passed through.
+ * URLs, no redirects, 10 s timeout, 1 MiB cap per file, 256 KiB cap per
+ * method JSON envelope. Telegram's 429 (`retry_after`, capped at 5 s) is
+ * retried once, then reported as `try_later`; an unknown bot token (401 on
+ * any method) is `invalid_token` so the integrations page can verify a
+ * pasted key; a missing pack is `pack_not_found`; no other Telegram text is
+ * passed through.
  */
 export function createTelegramClient(token: string, fetchFn: FetchFn = fetch): TelegramClient {
   async function callMethod(method: string, params: Record<string, string>): Promise<unknown> {
@@ -293,12 +359,7 @@ export function createTelegramClient(token: string, fetchFn: FetchFn = fetch): T
       await response.arrayBuffer().catch(() => {});
       throw new TelegramImportError('try_later', 'Could not reach Telegram, try again later');
     }
-    let envelope: TelegramApiEnvelope;
-    try {
-      envelope = (await response.json()) as TelegramApiEnvelope;
-    } catch {
-      throw new TelegramImportError('try_later', 'Could not reach Telegram, try again later');
-    }
+    const envelope = await readTelegramEnvelope(response);
     if (envelope.ok) {
       return envelope.result;
     }
@@ -345,12 +406,7 @@ export function createTelegramClient(token: string, fetchFn: FetchFn = fetch): T
       await response.arrayBuffer().catch(() => {});
       throw new TelegramImportError('try_later', 'Could not reach Telegram, try again later');
     }
-    let envelope: TelegramApiEnvelope;
-    try {
-      envelope = (await response.json()) as TelegramApiEnvelope;
-    } catch {
-      throw new TelegramImportError('try_later', 'Could not reach Telegram, try again later');
-    }
+    const envelope = await readTelegramEnvelope(response);
     if (envelope.ok) {
       return envelope.result;
     }

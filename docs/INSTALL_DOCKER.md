@@ -53,7 +53,7 @@ Fill in every `CHANGE_ME` in `deploy/.env`:
 
 | Variable | How to fill it |
 |---|---|
-| `ZILAR_DOMAIN` | Your domain, e.g. `chat.example.com`. Use `localhost` only to try it out. |
+| `ZILAR_DOMAIN` | Your domain, e.g. `chat.example.com`. A bare host, never a `:port` — the trial ports come from `HTTP_PORT`/`HTTPS_PORT` below, not from the domain (`init` rejects `chat.example.com:8443`, which would bake an invalid host into the URLs, the XMPP domain and the push JID). Use `localhost` only to try it out. |
 | `ACME_EMAIL` | Your email for the Let's Encrypt account. |
 | `POSTGRES_PASSWORD`, `ZILAR_DB_PASSWORD`, `EJABBERD_DB_PASSWORD`, `ZILAR_ARCHIVE_DB_PASSWORD` | `openssl rand -hex 24` each (URL-safe). |
 | `EJABBERD_ADMIN_PASSWORD` | `openssl rand -hex 24`. |
@@ -100,7 +100,10 @@ the server's `PUSH_COMPONENT_JID` is `push.<ZILAR_DOMAIN>`, the ejabberd
 container derives the same host into its `ejabberd_service` listener at
 start (ejabberd does not expand macros in map keys, so the host is
 generated, never a macro), and `PUSH_COMPONENT_SECRET` equals the
-ejabberd secret. `doctor` checks the pieces in plain words (keys present
+ejabberd secret. With `--no-push` neither the component JID nor the keys
+are written to the env file at all — the compose files derive
+`push.<domain>` from `ZILAR_DOMAIN` themselves, so an absent line is the
+correct off state. `doctor` checks the pieces in plain words (keys present
 with the right shape, JID matches the domain, and — when the stack runs —
 that ejabberd accepted the component handshake); `up` needs no extra
 step. Web Push needs HTTPS, which the Caddy setup gives on every install.
