@@ -1,7 +1,7 @@
 ---
 id: T-0181
 title: Mobile: settings hub, profile (name, avatar, @handle) and the handle step after sign-up
-status: review
+status: merged
 milestone: M5
 branch: task/T-0181-mobile-settings-profile
 model: meta/muse-spark-1.3-contributor
@@ -216,3 +216,5 @@ finding 4 - ..."):
 None.
 
 ## Review (written by Claude)
+
+**Verdict:** Approved and merged after three rounds. Round 1: the avatar url was relative and never loaded, and phone photos were JPEG while the server accepts PNG or WebP (the lead added `expo-image-manipulator`; every picked image is cropped to a square, resized to 256 px and sent as PNG); the two out-of-scope edits (`mock/profile.ts` and `auth/NameForm.tsx`) were signed off by the lead. Round 2: the next-change date of a too-soon handle change is shown, and the avatar uploader keeps the server's reason. Round 3 (lead): the mock avatar upload falls back to a minted url when a real uploader cannot reach the mock url. Format, lint, typecheck and 101 tests pass.

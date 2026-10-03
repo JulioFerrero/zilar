@@ -158,10 +158,12 @@ export function createMockProfileApi(scenario: ProfileMockScenario = 'default'):
       // uploader (React Native's `fetch` cannot send binary bodies): the
       // uploader PUTs and parses the server's `{ url }`, like the real one.
       if (uploader !== undefined) {
+        // There is no server behind the mock URL: a real uploader cannot
+        // reach it, so a failure falls back to a minted url like the plain path.
         const uploaded = await uploader(
           `mock:/api/avatars/user/${encodeURIComponent(ownerId)}`,
           blob.type,
-        );
+        ).catch(() => undefined);
         const url = parseMockUploadResult(uploaded) ?? `/api/avatars/mock-${nextAvatarId()}`;
         avatarUrls.set(ownerId, url);
         if (ownerId === mockMe.id) {
