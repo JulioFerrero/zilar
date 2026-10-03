@@ -8,77 +8,77 @@
 
 # host, so the host-cron recipe (deploy/backup-cron.example) does not
 
-# apply. Use Coolify's own scheduler instead:
+# apply — and there is no `./deploy/zilar` inside any container either.
+
+# What Coolify CAN do, verified against the official docs
+
+# (https://coolify.io/docs/databases/backups):
 
 #
 
-# 1. Open the Service, go to Configuration > Scheduled Tasks, Add.
+# 1. Database dumps — but NOT through Scheduled Tasks on this stack.
 
-# 2. Container name: the Compose service that carries the backup tooling.
+# Coolify's scheduled database backups ("Backups" on a database
 
-# On this stack that is `server` (it mounts the sticker/avatar
+# resource, "Back up a database inside a service" for a Service like
 
-# volumes; uploads live on ejabberd — see step 4).
+# this one) run `pg_dump` custom format themselves: open the Service,
 
-# 3. Command: the in-container equivalent of one backup pass. There is
+# open the `postgres` component, add a schedule under Backups, scope it
 
-# no `./deploy/zilar` inside the containers, so run the pieces the
+# to the `zilar` and `ejabberd` databases (comma-separated list),
 
-# helper runs (same members, same layout):
+# frequency `30 3 * * *` (daily 03:30, server timezone), retention to
 
-#
+# the newest 7. Coolify reads the credentials from the container's own
 
-# pg_dump -Fc -U postgres -d zilar > /tmp/zilar.dump \
+# environment (`POSTGRES_PASSWORD`, `POSTGRES_USER`, `POSTGRES_DB` —
 
-# && pg_dump -Fc -U postgres -d ejabberd > /tmp/ejabberd.dump
+# all present on this stack's `postgres` service), so no password step
 
-#
+# is needed. Verify once with Backup Now, then check the Executions
 
-# taken from the `postgres` container (it already carries
+# page (status Success, both database names, size greater than zero).
 
-# POSTGRES_PASSWORD in its own environment), plus
+# Optionally enable the S3 section so the dumps land off-machine.
 
-# `tar -C /data -czf - stickers` / `avatars` from `server` and
+# 2. File stores are NOT covered by Coolify's database backups. The
 
-# `tar -C /opt/ejabberd -czf - upload` from `ejabberd`.
+# `ejabberd-uploads`, `sticker-data` and `avatar-data` volumes hold
 
-# 4. File stores need their own lines: one scheduled task runs in ONE
+# attachments, stickers and avatars that no dump contains — a restore
 
-# container, so add one task per store (postgres dumps, server
+# of the databases alone brings back rows pointing at missing files.
 
-# stickers/avatars tar, ejabberd uploads tar), each writing to a
+# There is no runnable per-task recipe for them here: Scheduled Tasks
 
-# Coolify persistent-storage path shared by the tasks, then a final
+# run one command in one container with no shared assembly area and no
 
-# task that tars the members into
+# documented volume path, so the member-assembly + prune steps from the
 
-# `zilar-backup-<UTC stamp>.tgz` (mode 0600 — it holds the env
+# plain stack cannot be transcribed 1:1. Until someone proves a full
 
-# secrets if you include them) and prunes to the newest 7.
+# volume-copy recipe on a live Coolify, treat Coolify file stores as
 
-# 5. Frequency: `30 3 * * *` (daily 03:30, server timezone). Timeout:
+# backed up only if you add your own volume backup (e.g. a Duplicati
 
-# raise from the 300 s default for the first run (dumps of a 200-
+# sidecar over the mounted volumes, or periodic `docker cp` from the
 
-# person install take minutes, not seconds), then lower it to just
-
-# above what Recent executions shows.
-
-# 6. Press Execute Now on each task while the Service runs, then open
-
-# Recent executions and confirm the archive lists back
-
-# (`tar -tzf` names every member). A green exit alone does not prove
-
-# the archive is complete — verify the members once.
+# host) — and say so in your runbook.
 
 #
 
 # Retention rule (same as `./deploy/zilar backup --keep 7` on the plain
 
-# stack): keep the newest 7 `zilar-backup-*.tgz`, delete the oldest only
+# stack): keep the newest 7 database dumps, delete the oldest only after
 
-# after the new archive verified readable, never anything else.
+# the new dump verified (Coolify's Retention settings: number of backups
+
+# to keep = 7). A backup you never restored is a hope: restore a copy
+
+# into a disposable database (per the Coolify restore guide) and check
+
+# the sticker and upload counts before treating it as recoverable.
 
 #
 
@@ -86,12 +86,14 @@
 
 # checkout prints the encrypt-then-copy recipe (age/gpg + scp, or
 
-# rclone) — the archive holds live secrets, never upload it unencrypted.
+# rclone) — any archive holding the env holds live secrets, never upload
+
+# one unencrypted.
 
 #
 
 # Not verified on a live Coolify (same standing caveat as the Coolify
 
-# path in docs/INSTALL_DOCKER.md): the exact Scheduled Tasks UI mapping
+# path in docs/INSTALL_DOCKER.md): the exact Backups UI per Coolify
 
-# per Coolify version and the shared-storage wiring between tasks.
+# version, and no volume recipe is claimed here at all.

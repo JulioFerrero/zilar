@@ -30,9 +30,12 @@
 # zilar-backup-*.tgz are ever deleted, and never through symlinks.
 #
 # Configuration (environment, set in the unit or the shell):
-#   BACKUP_KEEP_N     archives to keep (default 7, must be >= 1)
+#   BACKUP_KEEP_N     archives to keep (default 7, must be >= 1, no leading zeros)
 #   BACKUP_DIR        where archives land (default /var/lib/zilar-backups)
 #   ZILAR_ENV_FILE    server env file to bundle (default /etc/zilar/zilar.env)
+#   PGPASSFILE        Postgres password file (default /etc/zilar/pgpass — see the
+#                     guide §7; mode 0600, owned by the zilar user; all three roles
+#                     on localhost: zilar, ejabberd, postgres)
 #   STICKER_STORAGE_DIR / AVATAR_STORAGE_DIR   file stores (defaults below)
 #
 set -eu
@@ -40,17 +43,28 @@ set -eu
 BACKUP_KEEP_N="${BACKUP_KEEP_N:-7}"
 BACKUP_DIR="${BACKUP_DIR:-/var/lib/zilar-backups}"
 ZILAR_ENV_FILE="${ZILAR_ENV_FILE:-/etc/zilar/zilar.env}"
+export PGPASSFILE="${PGPASSFILE:-/etc/zilar/pgpass}"
 STICKER_STORAGE_DIR="${STICKER_STORAGE_DIR:-/var/lib/zilar/stickers}"
 AVATAR_STORAGE_DIR="${AVATAR_STORAGE_DIR:-/var/lib/zilar/avatars}"
 EJABBERD_UPLOAD_DIR="${EJABBERD_UPLOAD_DIR:-/var/lib/ejabberd/upload}"
 
 case "$BACKUP_KEEP_N" in
-  ""|*[!0-9]*|0) echo "zilar-backup: error: BACKUP_KEEP_N must be a positive number (got '$BACKUP_KEEP_N')" >&2; exit 1 ;;
+  ""|*[!0-9]*|0*|0) echo "zilar-backup: error: BACKUP_KEEP_N must be a positive number without leading zeros (got '$BACKUP_KEEP_N')" >&2; exit 1 ;;
 esac
 [ -f "$ZILAR_ENV_FILE" ] || { echo "zilar-backup: error: no env file at $ZILAR_ENV_FILE" >&2; exit 1; }
+# pg_dump/pg_dumpall read the password from $PGPASSFILE (never from argv or
+# the environment). The file must exist and be readable only by its owner:
+# anything looser means another local user could read the database
+# passwords, so refuse loudly instead of dumping without auth. The message
+# names the setup step, never a password.
+if [ ! -f "$PGPASSFILE" ] || [ "$(stat -c %a "$PGPASSFILE" 2>/dev/null || stat -f %Lp "$PGPASSFILE" 2>/dev/null)" != "600" ]; then
+  echo "zilar-backup: error: no usable Postgres password file at $PGPASSFILE (want mode 0600) — create it per docs/INSTALL_BARE_METAL.md §7" >&2
+  exit 1
+fi
 
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 NAME="zilar-backup-$STAMP.tgz"
+TMPNAME="zilar-backup-$STAMP.tmp.tgz"
 
 mkdir -p "$BACKUP_DIR"
 TMP="$(mktemp -d)"
@@ -87,16 +101,22 @@ cat > "$TMP/manifest.json" <<EOF
 }
 EOF
 
-tar -czf "$BACKUP_DIR/$NAME" -C "$TMP" zilar.dump ejabberd.dump globals.sql \
+# Write to a temp name first: a kill between tar and the verify gate must
+# never leave a truncated file under the live name (doctor picks the
+# newest by name and would call a corrupt archive "less than a day old").
+tar -czf "$BACKUP_DIR/$TMPNAME" -C "$TMP" zilar.dump ejabberd.dump globals.sql \
   uploads.tgz stickers.tgz avatars.tgz zilar.env SECRETS_WARNING.txt manifest.json
-chmod 600 "$BACKUP_DIR/$NAME"
-# The new archive is the gate: it must list back before any retention.
-tar -tzf "$BACKUP_DIR/$NAME" >/dev/null \
-  || { echo "zilar-backup: error: $BACKUP_DIR/$NAME does not read back — keeping all older backups" >&2; exit 1; }
+chmod 600 "$BACKUP_DIR/$TMPNAME"
+# The new archive is the gate: it must list back before it takes the live
+# name and before any retention.
+tar -tzf "$BACKUP_DIR/$TMPNAME" >/dev/null \
+  || { echo "zilar-backup: error: $BACKUP_DIR/$TMPNAME does not read back — keeping all older backups" >&2; rm -f "$BACKUP_DIR/$TMPNAME"; exit 1; }
+mv "$BACKUP_DIR/$TMPNAME" "$BACKUP_DIR/$NAME"
 
 # Retention: newest $BACKUP_KEEP_N survive. Regular files only (-type f
-# never matches a symlink itself), anchored name pattern, one file at a
-# time with a re-check (never -delete, never rm globs).
+# never matches a symlink itself), anchored name pattern (temp *.tmp.tgz
+# files never match, so an interrupted run poisons nothing), one file at
+# a time with a re-check (never -delete, never rm globs).
 LIST="$(mktemp)"
 find "$BACKUP_DIR" -maxdepth 1 -type f -name 'zilar-backup-*.tgz' -print 2>/dev/null | sort > "$LIST" || true
 TOTAL="$(grep -c . "$LIST" 2>/dev/null || true)"

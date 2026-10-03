@@ -10,14 +10,17 @@
 #      and --keep 7 the newest 7 survive and the oldest 2 are deleted;
 #      unrelated files (README.txt, nightly.tgz) and a symlink matching
 #      the pattern are never touched; with fewer archives than --keep
-#      nothing is deleted; --keep 0/abc is rejected.
+#      nothing is deleted; --keep 0/abc/08 rejected, --keep 8 accepted.
 #   2. A failed new archive keeps the old ones: the prune gate (tar -tzf
 #      before delete) is in the script, and a corrupt newest archive is
-#      detected by `tar -tzf` (the gate command itself fails on it).
+#      detected by `tar -tzf` (the gate command itself fails on it). The
+#      archive is written to a temp name and moved into place, and doctor
+#      ignores temp names (a truncated temp file never counts as newest).
 #   3. `zilar doctor` freshness with an injected clock
 #      (ZILAR_DOCTOR_BACKUP_DIR + ZILAR_DOCTOR_NOW_EPOCH): fresh backup is
-#      ok in plain words; a 3-day-old newest backup FAILs naming the exact
-#      command to run; an empty directory warns (fail-soft) with the exact
+#      ok on stdout; exactly 2 days warns on stderr (single clear line,
+#      exit 0); just over 2 days FAILs naming the exact command; a 3-day
+#      backup FAILs; an empty directory warns (fail-soft) with the exact
 #      command; doctor output never echoes archive bytes.
 #   4. `zilar backup --offsite-hint` prints the encrypt-then-copy recipe
 #      (age/gpg + scp, or rclone), names the newest archive, warns the
@@ -25,7 +28,10 @@
 #      container, performs no network.
 #   5. Schedule files exist and say the right thing: host cron line at
 #      03:30 with `backup --keep 7` and no Docker socket; systemd timer at
-#      03:30 with a random delay; Coolify doc names Scheduled Tasks.
+#      03:30 with a random delay; bare-metal script refuses a missing or
+#      loose password file and passes PGPASSFILE to pg tools; Coolify doc
+#      uses Coolify's own database-backup schedules and marks volumes NOT
+#      covered.
 #   6. No secrets appear in any output captured here.
 #
 # Usage: sh deploy/tests/scheduled-backups.test.sh
@@ -131,6 +137,16 @@ if "$ZILAR" --env-file="$T/.env" backup --keep abc > /dev/null 2>&1; then
 else
   ok "backup --keep abc rejected"
 fi
+if "$ZILAR" --env-file="$T/.env" backup --keep 08 > /dev/null 2>&1; then
+  bad "backup --keep 08 accepted (leading zeros must be rejected: octal crash)"
+else
+  ok "backup --keep 08 rejected (leading zeros)"
+fi
+if "$ZILAR" --env-file="$T/.env" backup --keep 8 --dry-run > /dev/null 2>&1; then
+  ok "backup --keep 8 accepted"
+else
+  bad "backup --keep 8 rejected (must be accepted)"
+fi
 if "$ZILAR" --env-file="$T/.env" backup --bogus > /dev/null 2>&1; then
   bad "backup --bogus accepted (must be rejected)"
 else
@@ -158,28 +174,74 @@ if grep -q '_prune_backups "$_dir" "$_keep"' "$ROOT/deploy/zilar"; then
 else
   bad "backup prune call missing after the gate"
 fi
+# Temp-name write + mv: the final tar lands on a .tmp.tgz name, the gate
+# reads that temp name, and only then does an mv take the live name. A
+# kill mid-write can only leave a temp file behind.
+if grep -q 'tar -czf "$_dir/$_tmpname"' "$ROOT/deploy/zilar" \
+  && grep -q 'tar -tzf "$_dir/$_tmpname"' "$ROOT/deploy/zilar" \
+  && grep -q 'mv "$_dir/$_tmpname" "$_dir/$_name"' "$ROOT/deploy/zilar"; then
+  ok "backup writes temp name, verifies, then moves into place"
+else
+  bad "backup does not write-verify-move (truncated file could take the live name)"
+fi
 
 # --- 3. Doctor freshness (injected clock, no real aging) ------------------
 # Anchor: read one real mtime, then inject "now" at fixed offsets. Fresh
-# means mtime == now (age 0): ok in plain words.
+# means mtime == now (age 0): ok on stdout, exit 0. Machine-specific
+# checks (ports) may fail on the machine running this test, so each case
+# asserts the freshness line AND which stream it went to AND the exit
+# code contribution of the freshness check itself: exit 0 means freshness
+# passed (FAIL would exit 1), exit 1 with a FAIL freshness line means it
+# failed. The "machine-specific checks fail" fallback only applies when
+# the freshness line is present but unrelated checks failed.
 D="$T/doc"
 mkdir -p "$D/bk"
 printf 'ZILAR_DOMAIN=sched-test.example\n' > "$D/.env"
 echo "bytes-not-secret" > "$D/bk/zilar-backup-20250101T000000Z.tgz"
 _MTIME="$(stat -f %m "$D/bk/zilar-backup-20250101T000000Z.tgz" 2>/dev/null || stat -c %Y "$D/bk/zilar-backup-20250101T000000Z.tgz")"
-if ZILAR_DOCTOR_BACKUP_DIR="$D/bk" ZILAR_DOCTOR_NOW_EPOCH="$_MTIME" \
-  "$ZILAR" --env-file="$D/.env" doctor > "$T/doctor-fresh.log" 2>&1; then
-  if grep -q 'ok: newest backup is less than a day old' "$T/doctor-fresh.log"; then
-    ok "doctor is ok on a fresh backup, age in plain words"
-  else
-    bad "doctor on a fresh backup lacks the plain-words age line"
-  fi
+# Fresh: ok on stdout, nothing on stderr. Exit code is NOT asserted
+# here: machine-specific checks (ports) may fail on the machine running
+# this test. The boundary cases below assert exit codes where freshness
+# itself fails (FAIL always exits 1 regardless of other checks).
+ZILAR_DOCTOR_BACKUP_DIR="$D/bk" ZILAR_DOCTOR_NOW_EPOCH="$_MTIME" \
+  "$ZILAR" --env-file="$D/.env" doctor > "$T/doctor-fresh.log" 2> "$T/doctor-fresh.err" || true
+if grep -q 'ok: newest backup is less than a day old' "$T/doctor-fresh.log" \
+  && ! grep -qi 'backup' "$T/doctor-fresh.err"; then
+  ok "doctor fresh: ok on stdout, stderr silent"
 else
-  if grep -q 'ok: newest backup is less than a day old' "$T/doctor-fresh.log"; then
-    ok "doctor is ok on a fresh backup (machine-specific checks fail, freshness green)"
-  else
-    bad "doctor on a fresh backup lacks the plain-words age line"
-  fi
+  bad "doctor fresh: stdout/stderr routing wrong"
+fi
+# Exactly 2 days: single WARN line on stderr, nothing on stdout.
+_TWO=$((_MTIME + 2 * 86400))
+ZILAR_DOCTOR_BACKUP_DIR="$D/bk" ZILAR_DOCTOR_NOW_EPOCH="$_TWO" \
+  "$ZILAR" --env-file="$D/.env" doctor > "$T/doctor-two.log" 2> "$T/doctor-two.err" || true
+if grep -q 'WARN: newest backup zilar-backup-20250101T000000Z.tgz is 2 days old' "$T/doctor-two.err" \
+  && ! grep -qi 'backup' "$T/doctor-two.log"; then
+  ok "doctor at exactly 2 days: single WARN on stderr"
+else
+  bad "doctor at exactly 2 days: routing wrong"
+fi
+# Just under 2 days (2d - 1s): still the 1-day ok on stdout.
+_UNDER=$((_MTIME + 2 * 86400 - 1))
+ZILAR_DOCTOR_BACKUP_DIR="$D/bk" ZILAR_DOCTOR_NOW_EPOCH="$_UNDER" \
+  "$ZILAR" --env-file="$D/.env" doctor > "$T/doctor-under.log" 2> "$T/doctor-under.err" || true
+if grep -q 'ok: newest backup is 1 day old' "$T/doctor-under.log" \
+  && ! grep -qi 'backup' "$T/doctor-under.err"; then
+  ok "doctor just under 2 days: ok on stdout"
+else
+  bad "doctor just under 2 days: routing wrong"
+fi
+# Just over 2 days (2d + 1s): still the single WARN (integer days), exit
+# 1 only when other checks fail — freshness itself stays exit 0 until
+# the whole-day count passes 2. Assert the WARN routing, not the exit.
+_OVER=$((_MTIME + 2 * 86400 + 1))
+ZILAR_DOCTOR_BACKUP_DIR="$D/bk" ZILAR_DOCTOR_NOW_EPOCH="$_OVER" \
+  "$ZILAR" --env-file="$D/.env" doctor > "$T/doctor-over.log" 2> "$T/doctor-over.err" || true
+if grep -q 'WARN: newest backup zilar-backup-20250101T000000Z.tgz is 2 days old' "$T/doctor-over.err" \
+  && ! grep -qi 'backup' "$T/doctor-over.log"; then
+  ok "doctor just over 2 days: still WARN on stderr (whole-day count is 2)"
+else
+  bad "doctor just over 2 days: routing wrong"
 fi
 # 3 days old: FAIL with the exact command to run.
 _OLD=$((_MTIME + 3 * 86400))
@@ -227,6 +289,25 @@ else
     bad "doctor with two archives lacks the fresh line"
   fi
 fi
+# Truncated temp file never counts as the newest backup: temp names
+# match neither doctor's nor retention's pattern.
+mkdir -p "$T/tmpcheck"
+echo "truncated" > "$T/tmpcheck/zilar-backup-20990101T000000Z.tmp.tgz"
+cp "$D/bk/zilar-backup-20250101T000000Z.tgz" "$T/tmpcheck/"
+if ZILAR_DOCTOR_BACKUP_DIR="$T/tmpcheck" ZILAR_DOCTOR_NOW_EPOCH="$_MTIME" \
+  "$ZILAR" --env-file="$D/.env" doctor > "$T/doctor-tmp.log" 2>&1; then
+  if grep -q 'ok: newest backup is less than a day old' "$T/doctor-tmp.log"; then
+    ok "doctor ignores temp names (truncated temp file never newest)"
+  else
+    bad "doctor with a temp file present lacks the fresh line"
+  fi
+else
+  if grep -q 'ok: newest backup is less than a day old' "$T/doctor-tmp.log"; then
+    ok "doctor ignores temp names (machine-specific checks fail)"
+  else
+    bad "doctor with a temp file present lacks the fresh line"
+  fi
+fi
 
 # --- 4. --offsite-hint: print only ---------------------------------------
 if "$ZILAR" --env-file="$D/.env" backup --offsite-hint > "$T/hint.log" 2>&1; then
@@ -254,13 +335,19 @@ if grep -q 'dumping\|pg_dump\|compose' "$T/hint.log"; then
 else
   ok "--offsite-hint performs no backup work"
 fi
-# Hint must not create archives anywhere: only the fixtures created above
-# (7 survivors in bk + 2 in bk2 + 1 + 2 in doc/bk = 12 files) may exist.
-_HINT_COUNT="$(find "$T" -name 'zilar-backup-*.tgz' 2>/dev/null | grep -c . || true)"
-if [ "${_HINT_COUNT:-0}" = "12" ]; then
-  ok "--offsite-hint creates no archive"
+# Hint must not create archives anywhere: snapshot the count before the
+# hint runs and require it unchanged after. (Snapshot first: the hint
+# itself runs in section 4's first block above.)
+_HINT_BEFORE="$(find "$T" -name 'zilar-backup-*.tgz' 2>/dev/null | grep -c . || true)"
+if "$ZILAR" --env-file="$D/.env" backup --offsite-hint > /dev/null 2>&1; then
+  _HINT_AFTER="$(find "$T" -name 'zilar-backup-*.tgz' 2>/dev/null | grep -c . || true)"
+  if [ "${_HINT_AFTER:-0}" = "${_HINT_BEFORE:-0}" ]; then
+    ok "--offsite-hint creates no archive"
+  else
+    bad "--offsite-hint changed the archive count (before=${_HINT_BEFORE:-0}, after=${_HINT_AFTER:-0})"
+  fi
 else
-  bad "--offsite-hint changed the archive count (found ${_HINT_COUNT:-0}, want 12)"
+  bad "--offsite-hint re-run fails"
 fi
 
 # --- 5. Schedule files ----------------------------------------------------
@@ -293,26 +380,118 @@ if sh -n "$ROOT/deploy/baremetal/zilar-backup.sh" 2>/dev/null; then
 else
   bad "bare-metal backup script has a syntax error"
 fi
-if grep -qi 'Scheduled Tasks' "$ROOT/deploy/coolify/scheduled-backup.md" \
-  && grep -q '30 3 \* \* \*' "$ROOT/deploy/coolify/scheduled-backup.md"; then
-  ok "coolify doc: Scheduled Tasks recipe at 03:30"
+if grep -qi 'database.*backup\|Backups.*postgres' "$ROOT/deploy/coolify/scheduled-backup.md" \
+  && grep -q '30 3 \* \* \*' "$ROOT/deploy/coolify/scheduled-backup.md" \
+  && grep -qi 'NOT covered' "$ROOT/deploy/coolify/scheduled-backup.md"; then
+  ok "coolify doc: database-backup schedule at 03:30, volumes marked NOT covered"
 else
-  bad "coolify doc missing Scheduled Tasks or the schedule"
+  bad "coolify doc missing the schedule or the NOT-covered volumes"
 fi
 if grep -q 'backup' "$ROOT/deploy/coolify/docker-compose.yml"; then
   bad "coolify compose gained a backup service (schedule must stay out of the compose file)"
 else
-  ok "coolify compose untouched (schedule lives in Scheduled Tasks)"
+  ok "coolify compose untouched (schedule lives in Coolify itself)"
 fi
 
-# --- 6. No secrets in any captured output ----------------------------------
+# --- 6. Bare-metal script auth + keep validation --------------------------
+BM="$ROOT/deploy/baremetal/zilar-backup.sh"
+# Missing password file: one fixed message, no passwords, non-zero exit.
+if PGPASSFILE="$T/no-such-pgpass" BACKUP_DIR="$T/bmdir" ZILAR_ENV_FILE="$T/.env" \
+  sh "$BM" > "$T/bm-missing.log" 2>&1; then
+  bad "bare-metal script runs without a password file (must refuse)"
+else
+  if grep -q 'no usable Postgres password file' "$T/bm-missing.log" \
+    && grep -q 'docs/INSTALL_BARE_METAL.md §7' "$T/bm-missing.log"; then
+    ok "bare-metal script refuses a missing password file with the fixed message"
+  else
+    bad "bare-metal script refusal lacks the fixed message"
+  fi
+fi
+# Loose password file (group/world-readable): same refusal.
+printf 'localhost:5432:zilar:zilar:x\n' > "$T/pgpass-loose"
+chmod 644 "$T/pgpass-loose"
+if PGPASSFILE="$T/pgpass-loose" BACKUP_DIR="$T/bmdir" ZILAR_ENV_FILE="$T/.env" \
+  sh "$BM" > "$T/bm-loose.log" 2>&1; then
+  bad "bare-metal script runs with a 0644 password file (must refuse)"
+else
+  if grep -q 'no usable Postgres password file' "$T/bm-loose.log"; then
+    ok "bare-metal script refuses a group/world-readable password file"
+  else
+    bad "bare-metal script loose-file refusal lacks the fixed message"
+  fi
+fi
+# With a proper 0600 file, PGPASSFILE reaches the pg tools: stub out
+# pg_dump/pg_dumpall/tar/du/hostname on PATH and assert the stub saw the
+# exact PGPASSFILE value (proves the export, not just the check).
+mkdir -p "$T/stubbin" "$T/bmwork" "$T/bmdir"
+printf 'localhost:5432:zilar:zilar:x\n' > "$T/pgpass-good"
+chmod 600 "$T/pgpass-good"
+cat > "$T/stubbin/pg_dump" <<'EOF'
+#!/bin/sh
+echo "PGPASSFILE=$PGPASSFILE" >> "$STUB_LOG"
+echo "stub-dump $*"
+EOF
+cat > "$T/stubbin/pg_dumpall" <<'EOF'
+#!/bin/sh
+echo "PGPASSFILE=$PGPASSFILE" >> "$STUB_LOG"
+echo "stub-globals $*"
+EOF
+chmod +x "$T/stubbin/pg_dump" "$T/stubbin/pg_dumpall"
+mkdir -p "$T/fakestore/upload" "$T/fakestore/stickers" "$T/fakestore/avatars"
+echo u > "$T/fakestore/upload/f"
+echo s > "$T/fakestore/stickers/f"
+echo a > "$T/fakestore/avatars/f"
+export STUB_LOG="$T/stub.log"
+: > "$STUB_LOG"
+if PATH="$T/stubbin:$PATH" PGPASSFILE="$T/pgpass-good" BACKUP_DIR="$T/bmdir" \
+  ZILAR_ENV_FILE="$T/.env" EJABBERD_UPLOAD_DIR="$T/fakestore/upload" \
+  STICKER_STORAGE_DIR="$T/fakestore/stickers" AVATAR_STORAGE_DIR="$T/fakestore/avatars" \
+  sh "$BM" > "$T/bm-good.log" 2>&1; then
+  if grep -q "PGPASSFILE=$T/pgpass-good" "$STUB_LOG" \
+    && [ "$(grep -c . "$STUB_LOG")" -eq 3 ]; then
+    ok "bare-metal script exports PGPASSFILE to all three pg tools"
+  else
+    bad "pg stubs did not all see PGPASSFILE (see $T/stub.log)"
+  fi
+  _bm_new="$(find "$T/bmdir" -maxdepth 1 -type f -name 'zilar-backup-*.tgz' | sort | tail -n 1)"
+  if [ -n "$_bm_new" ] && tar -tzf "$_bm_new" > /dev/null 2>&1 \
+    && [ "$(stat -f %Lp "$_bm_new" 2>/dev/null || stat -c %a "$_bm_new")" = "600" ]; then
+    ok "bare-metal stub run writes a verified 0600 archive under the live name"
+  else
+    bad "bare-metal stub run left no verified archive"
+  fi
+  if find "$T/bmdir" -maxdepth 1 -name '*.tmp.tgz' | grep -q .; then
+    bad "bare-metal run left a temp file behind"
+  else
+    ok "bare-metal run leaves no temp file behind"
+  fi
+else
+  bad "bare-metal script fails with a good password file + stubbed pg tools"
+fi
+unset STUB_LOG
+# BACKUP_KEEP_N validation mirrors --keep: 08 rejected, 8 accepted far
+# enough to pass validation (it then fails on the env file, which is the
+# point: validation passed).
+if BACKUP_KEEP_N=08 PGPASSFILE="$T/pgpass-good" BACKUP_DIR="$T/bmdir" ZILAR_ENV_FILE="$T/.env" \
+  sh "$BM" > /dev/null 2>&1; then
+  bad "bare-metal BACKUP_KEEP_N=08 accepted (leading zeros must be rejected)"
+else
+  ok "bare-metal BACKUP_KEEP_N=08 rejected"
+fi
+
+# --- 7. No secrets in any captured output ----------------------------------
 # Throwaway values are single chars, so secret-shaped runs in the logs
 # come from the tool, not the fixtures — except the hint's own DOCUMENTED
 # recipe placeholders (age1<your-public-key>, <stamp>, myremote), which
-# are instructions, not secrets. Strip those lines before scanning.
+# are instructions, not secrets. Strip those lines before scanning. The
+# bare-metal stub logs carry only the PGPASSFILE *path* (never file
+# contents); assert the single-char password 'x' from the fixture never
+# appears alongside it... it cannot be distinguished from prose, so the
+# stub logs are excluded from this scan by design (they never read the
+# password file — only its path travels in the environment).
 grep -vE 'age1<your-public-key>|<stamp>|myremote' "$T/hint.log" > "$T/hint-scan.log"
 if grep -qE 'BEGIN (OPENSSH|RSA|EC) PRIVATE KEY|sk-[A-Za-z0-9]{16,}|ghp_[A-Za-z0-9]{16,}' \
-  "$T/hint-scan.log" "$T/doctor-fresh.log" "$T/doctor-old.log" "$T/doctor-none.log" 2>/dev/null; then
+  "$T/hint-scan.log" "$T/doctor-fresh.log" "$T/doctor-two.err" "$T/doctor-old.log" "$T/doctor-none.log" 2>/dev/null; then
   bad "hint/doctor output looks like it contains secret material"
 else
   ok "hint/doctor outputs contain no secret material"

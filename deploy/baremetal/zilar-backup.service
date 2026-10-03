@@ -28,4 +28,8 @@ UMask=0077
 # with the env file, keep the newest 7 only after the new archive reads
 # back. BACKUP_KEEP_N overrides the default 7.
 Environment=BACKUP_KEEP_N=7
+# Postgres auth for the dumps below (never on the command line, never in
+# the environment): pg_dump/pg_dumpall read $PGPASSFILE. Created once per
+# the guide §7 (mode 0600, zilar:zilar, one line per role on localhost).
+Environment=PGPASSFILE=/etc/zilar/pgpass
 ExecStart=/opt/zilar/deploy/baremetal/zilar-backup.sh

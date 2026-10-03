@@ -763,8 +763,7 @@ cmd_doctor() {
         if [ "$_age_days" -gt 2 ]; then
           doctor_bad "newest backup $(basename "$_newest") is $_age_words (older than 2 days)" "run '$PROG backup' now, then check the schedule (cron/systemd/Coolify) is still running"
         elif [ "$_age_days" -eq 2 ]; then
-          echo "WARN: newest backup $(basename "$_newest") is $_age_words — run '$PROG backup' soon" >&2
-          doctor_ok "newest backup is $_age_words (warn at 2 days, fail past 2 days)"
+          echo "WARN: newest backup $(basename "$_newest") is $_age_words — run '$PROG backup' soon (stale at more than 2 days)" >&2
         else
           doctor_ok "newest backup is $_age_words"
         fi
@@ -873,8 +872,11 @@ cmd_backup() {
     esac
   done
   _dir="${_dir:-$DEPLOY_DIR/backups}"
+  # Leading zeros are rejected, not normalized: $((total - 08)) is an
+  # octal error in POSIX shells, and silently rewriting what the operator
+  # typed hides mistakes. "8" is fine, "08" is an error.
   case "$_keep" in
-    ""|*[!0-9]*|0) die "backup: --keep must be a positive number (hint: --keep 7)" ;;
+    ""|*[!0-9]*|0*) die "backup: --keep must be a positive number without leading zeros (hint: --keep 7)" ;;
   esac
 
   # --offsite-hint prints and does nothing else: no archive, no deletion,
@@ -893,6 +895,7 @@ cmd_backup() {
 
   _stamp="$(date -u +%Y%m%dT%H%M%SZ)"
   _name="zilar-backup-$_stamp.tgz"
+  _tmpname="zilar-backup-$_stamp.tmp.tgz"
   _domain="$(env_get ZILAR_DOMAIN)"
 
   if [ "$DRY_RUN" -eq 1 ]; then
@@ -967,13 +970,20 @@ EOF
 }
 EOF
 
-  tar -czf "$_dir/$_name" -C "$_tmp" zilar.dump ejabberd.dump globals.sql uploads.tgz stickers.tgz avatars.tgz .env SECRETS_WARNING.txt manifest.json
-  chmod 600 "$_dir/$_name"
-  # The new archive is the gate: it must list back through tar before any
-  # retention runs. Until this point nothing in the directory was touched,
-  # so a failed dump leaves every old archive alone.
-  tar -tzf "$_dir/$_name" >/dev/null \
-    || die "wrote $_dir/$_name but it does not read back — keeping all older backups; inspect and remove the broken file by hand"
+  tar -czf "$_dir/$_tmpname" -C "$_tmp" zilar.dump ejabberd.dump globals.sql uploads.tgz stickers.tgz avatars.tgz .env SECRETS_WARNING.txt manifest.json
+  chmod 600 "$_dir/$_tmpname"
+  # The new archive is the gate: it must list back through tar before it
+  # takes the live name and before any retention runs. Write to a temp
+  # name first: a kill (OOM, SIGKILL) between tar and the gate must never
+  # leave a truncated file under the live name — doctor picks the newest
+  # by name, and a corrupt newest with a fresh mtime would read "less
+  # than a day old". Temp names (*.tmp.tgz) match neither the retention
+  # pattern nor doctor's, so an interrupted run poisons nothing. Until the
+  # mv below, nothing under a live name was touched, so a failed dump
+  # leaves every old archive alone.
+  tar -tzf "$_dir/$_tmpname" >/dev/null \
+    || { rm -f "$_dir/$_tmpname"; die "wrote $_dir/$_name but it does not read back — keeping all older backups; inspect the backup log, no live-named file was left behind"; }
+  mv "$_dir/$_tmpname" "$_dir/$_name"
   trap - EXIT
   rm -rf "$_tmp"
 
