@@ -120,6 +120,29 @@ export interface NativeRecorderShape {
   getStatus?: () => { metering?: number | undefined };
 }
 
+/**
+ * The options handed to the native recorder. `RecordingPresets.HIGH_QUALITY`
+ * keeps the platform codec settings under `ios` and `android`; expo-audio's
+ * own `useAudioRecorder` flattens them before the native call, and
+ * `AudioModule.AudioRecorder` does NOT. Passing the raw preset left Android
+ * without an output format or encoder, so it recorded with the system default
+ * (3GP, AMR-NB: 8 kHz telephone quality, device test 2026-10-03). Here the
+ * platform block is flattened in, and the recording is mono 48 kHz at 128 kbps
+ * with metering on for the live waveform.
+ */
+export function buildRecordingOptions(preset: unknown, os: string): Record<string, unknown> {
+  const source = (preset ?? {}) as { ios?: object; android?: object };
+  const platform = os === 'ios' ? source.ios : os === 'android' ? source.android : undefined;
+  return {
+    extension: '.m4a',
+    sampleRate: 48000,
+    numberOfChannels: 1,
+    bitRate: 128000,
+    isMeteringEnabled: true,
+    ...platform,
+  };
+}
+
 /** Creates the real recorder: permission first, `expo-audio` m4a second. */
 export function createVoiceRecorder(deps?: {
   audio?: {
@@ -130,6 +153,7 @@ export function createVoiceRecorder(deps?: {
   setAudioMode?:
     ((mode: { playsInSilentMode: boolean; allowsRecording: boolean }) => Promise<void>) | undefined;
   fileReader?: ((uri: string) => Promise<{ size: number | undefined }>) | undefined;
+  platform?: string | undefined;
 }): VoiceRecorderPort {
   let recorder: NativeRecorderShape | null = null;
   // Recording leaves the audio session in record mode, which makes playback
@@ -187,13 +211,13 @@ export function createVoiceRecorder(deps?: {
         }
         // Mono 48 kHz AAC: a phone microphone is mono, so a stereo preset only
         // doubles the file; metering feeds the live waveform.
-        const fresh = new audio.AudioRecorder({
-          ...(audio.HIGH_QUALITY as object),
-          sampleRate: 48000,
-          numberOfChannels: 1,
-          bitRate: 128000,
-          isMeteringEnabled: true,
-        });
+        const os =
+          deps?.platform ??
+          (await import('react-native').then(
+            (module) => module.Platform.OS as string,
+            () => 'unknown',
+          ));
+        const fresh = new audio.AudioRecorder(buildRecordingOptions(audio.HIGH_QUALITY, os));
         await fresh.prepareToRecordAsync();
         fresh.record();
         recorder = fresh;

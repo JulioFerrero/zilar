@@ -18,7 +18,32 @@ import {
 } from '@/lib/stickers';
 import { createStickersApi, type StickersApi } from '@/lib/stickers-api';
 
-const CELL_SIZE = 72;
+/** The sticker grid columns (5 across the sheet, web parity). */
+export const STICKER_GRID_COLUMNS = 5;
+
+/** The gap between sticker cells and the sheet's side padding, in px. */
+export const STICKER_GRID_GAP = 8;
+export const STICKER_GRID_PADDING = 16;
+
+/**
+ * The sticker cell size for a sheet of the given width: 5 equal columns
+ * with equal gaps and the sheet's side padding, so the grid has no uneven
+ * gaps or crowded items (T-0175 addenda). The thumbnail breathes inside
+ * its cell with a 4 px margin.
+ */
+export function stickerCellSize(sheetWidth: number): number {
+  const usable =
+    sheetWidth - STICKER_GRID_PADDING * 2 - STICKER_GRID_GAP * (STICKER_GRID_COLUMNS - 1);
+  return Math.floor(usable / STICKER_GRID_COLUMNS);
+}
+
+/** The thumbnail size inside a sticker cell (a 4 px margin all around). */
+export function stickerThumbSize(sheetWidth: number): number {
+  return Math.max(stickerCellSize(sheetWidth) - 8, 24);
+}
+
+/** The fallback sheet width before the first `onLayout` measurement. */
+export const DEFAULT_SHEET_WIDTH = 360;
 
 export type StickerPanelState = 'loading' | 'ready' | 'error' | 'empty';
 
@@ -44,12 +69,12 @@ type StickerPanelProps = {
 };
 
 /**
- * The sticker panel bottom sheet (T-0143): a pack tab row (first: Recent), a
- * grid of stickers, tap-to-send. Pure view so it stays render-testable like
- * `PinsSheet`: the composer owns the packs load and the recents storage.
+ * The Stickers tab body (T-0175): the pack strip (Recent first) and the 5-column
+ * grid with equal cells and equal gaps. Rendered inside `StickerPanel` and
+ * inside the tabbed `EmojiSheet`; the session token loads here so both hosts
+ * stay thin.
  */
-export function StickerPanel({
-  open,
+export function StickerGrid({
   packs,
   state,
   recents,
@@ -57,15 +82,13 @@ export function StickerPanel({
   onSelectPack,
   onPick,
   onRetry,
-  onClose,
-}: StickerPanelProps) {
-  const insets = useSafeAreaInsets();
+}: Omit<StickerPanelProps, 'open' | 'onClose'>) {
   const [token, setToken] = useState<string | undefined>(undefined);
+  // The grid measures its sheet (`onLayout`) instead of reading the window:
+  // inside the half-height sheet the window is wider than the content.
+  const [sheetWidth, setSheetWidth] = useState(DEFAULT_SHEET_WIDTH);
 
   useEffect(() => {
-    if (!open) {
-      return;
-    }
     let cancelled = false;
     void getSessionToken().then((value) => {
       if (!cancelled) {
@@ -75,11 +98,8 @@ export function StickerPanel({
     return () => {
       cancelled = true;
     };
-  }, [open]);
+  }, []);
 
-  if (!open) {
-    return null;
-  }
   const rows = packs ?? [];
   const activePackId = resolveActivePackId(activePackIdProp, rows, recents);
   const recentChoices: StickerChoice[] = recents.map(recentChoiceFor);
@@ -96,7 +116,125 @@ export function StickerPanel({
           height: sticker.height,
           mime: sticker.mime,
         })) ?? []);
+  const cell = stickerCellSize(sheetWidth);
+  const thumb = stickerThumbSize(sheetWidth);
 
+  return (
+    <View
+      className="flex min-h-0 flex-1 flex-col"
+      onLayout={(event) => setSheetWidth(Math.round(event.nativeEvent.layout.width))}
+    >
+      <View
+        accessibilityRole="toolbar"
+        accessibilityLabel="Sticker packs"
+        className="flex-row gap-1 pb-2"
+      >
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Recent stickers"
+          accessibilityState={{ selected: activePackId === undefined }}
+          onPress={() => onSelectPack(undefined)}
+          className="shrink-0 rounded-[8px] px-2.5 py-1 active:bg-surface-raised"
+        >
+          <Text className="text-[12px] text-foreground">Recent</Text>
+        </Pressable>
+        {rows.map((row) => (
+          <Pressable
+            key={row.id}
+            accessibilityRole="button"
+            accessibilityLabel={`Sticker pack ${row.title}`}
+            accessibilityState={{ selected: activePackId === row.id }}
+            onPress={() => onSelectPack(row.id)}
+            className="max-w-[120px] shrink-0 rounded-[8px] px-2.5 py-1 active:bg-surface-raised"
+          >
+            <Text numberOfLines={1} className="text-[12px] text-muted-foreground">
+              {row.title}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+      {state === 'loading' ? (
+        <View className="h-[180px] items-center justify-center">
+          <ActivityIndicator accessibilityLabel="Loading stickers" />
+        </View>
+      ) : state === 'error' ? (
+        <View className="h-[180px] items-center justify-center gap-2 px-4">
+          <Text className="text-center text-[13px] text-muted-foreground">
+            Couldn&apos;t load stickers.
+          </Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Retry loading stickers"
+            onPress={onRetry}
+            className="rounded-[10px] px-4 py-2 active:bg-surface-raised"
+          >
+            <Text className="text-[15px] font-semibold text-foreground">Retry</Text>
+          </Pressable>
+        </View>
+      ) : rows.length === 0 && recentChoices.length === 0 ? (
+        <View className="h-[180px] items-center justify-center px-4">
+          <Text className="text-center text-[13px] text-muted-foreground">
+            Create packs on the web for now
+          </Text>
+        </View>
+      ) : choices.length === 0 ? (
+        <View className="h-[180px] items-center justify-center px-4">
+          <Text className="text-center text-[13px] text-muted-foreground">
+            No stickers here yet.
+          </Text>
+        </View>
+      ) : (
+        <ScrollView
+          accessibilityLabel="Stickers grid"
+          className="min-h-0 flex-1"
+          contentContainerStyle={{
+            flexDirection: 'row',
+            flexWrap: 'wrap',
+            gap: STICKER_GRID_GAP,
+            paddingHorizontal: STICKER_GRID_PADDING,
+            paddingVertical: STICKER_GRID_GAP,
+          }}
+        >
+          {choices.map((item) => (
+            <Pressable
+              key={item.stickerId}
+              accessibilityRole="button"
+              accessibilityLabel={item.emoji ?? 'Sticker'}
+              onPress={() => onPick(item)}
+              className="items-center justify-center rounded-[8px] active:bg-surface-raised"
+              style={{ width: cell, height: cell }}
+            >
+              <StickerThumb sticker={item} token={token} size={thumb} />
+            </Pressable>
+          ))}
+        </ScrollView>
+      )}
+    </View>
+  );
+}
+
+/**
+ * The sticker panel bottom sheet (T-0143): a pack tab row (first: Recent), a
+ * grid of stickers, tap-to-send. Pure view so it stays render-testable like
+ * `PinsSheet`: the composer owns the packs load and the recents storage.
+ * The body is `StickerGrid`, shared with the tabbed `EmojiSheet` (T-0175).
+ */
+export function StickerPanel({
+  open,
+  packs,
+  state,
+  recents,
+  activePackId,
+  onSelectPack,
+  onPick,
+  onRetry,
+  onClose,
+}: StickerPanelProps) {
+  const insets = useSafeAreaInsets();
+
+  if (!open) {
+    return null;
+  }
   return (
     <Modal visible={open} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable
@@ -108,7 +246,7 @@ export function StickerPanel({
           onPress={() => {}}
           accessibilityRole="menu"
           accessibilityLabel="Stickers"
-          className="max-h-[70%] rounded-t-2xl border-t border-border-strong bg-surface px-4 pt-3"
+          className="h-[50%] rounded-t-2xl border-t border-border-strong bg-surface px-4 pt-3"
           style={{ paddingBottom: Math.max(insets.bottom, 8) }}
         >
           <View className="mb-1 h-1 w-10 self-center rounded-full bg-surface-raised" />
@@ -118,85 +256,15 @@ export function StickerPanel({
           >
             Stickers
           </Text>
-          <View
-            accessibilityRole="toolbar"
-            accessibilityLabel="Sticker packs"
-            className="flex-row gap-1 pb-2"
-          >
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Recent stickers"
-              accessibilityState={{ selected: activePackId === undefined }}
-              onPress={() => onSelectPack(undefined)}
-              className="shrink-0 rounded-[8px] px-2.5 py-1 active:bg-surface-raised"
-            >
-              <Text className="text-[12px] text-foreground">Recent</Text>
-            </Pressable>
-            {rows.map((row) => (
-              <Pressable
-                key={row.id}
-                accessibilityRole="button"
-                accessibilityLabel={`Sticker pack ${row.title}`}
-                accessibilityState={{ selected: activePackId === row.id }}
-                onPress={() => onSelectPack(row.id)}
-                className="max-w-[120px] shrink-0 rounded-[8px] px-2.5 py-1 active:bg-surface-raised"
-              >
-                <Text numberOfLines={1} className="text-[12px] text-muted-foreground">
-                  {row.title}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-          {state === 'loading' ? (
-            <View className="h-[180px] items-center justify-center">
-              <ActivityIndicator accessibilityLabel="Loading stickers" />
-            </View>
-          ) : state === 'error' ? (
-            <View className="h-[180px] items-center justify-center gap-2 px-4">
-              <Text className="text-center text-[13px] text-muted-foreground">
-                Couldn't load stickers.
-              </Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Retry loading stickers"
-                onPress={onRetry}
-                className="rounded-[10px] px-4 py-2 active:bg-surface-raised"
-              >
-                <Text className="text-[15px] font-semibold text-foreground">Retry</Text>
-              </Pressable>
-            </View>
-          ) : rows.length === 0 && recentChoices.length === 0 ? (
-            <View className="h-[180px] items-center justify-center px-4">
-              <Text className="text-center text-[13px] text-muted-foreground">
-                Create packs on the web for now
-              </Text>
-            </View>
-          ) : choices.length === 0 ? (
-            <View className="h-[180px] items-center justify-center px-4">
-              <Text className="text-center text-[13px] text-muted-foreground">
-                No stickers here yet.
-              </Text>
-            </View>
-          ) : (
-            <ScrollView
-              accessibilityLabel="Stickers grid"
-              className="shrink"
-              contentContainerStyle={{ flexDirection: 'row', flexWrap: 'wrap' }}
-            >
-              {choices.map((item) => (
-                <Pressable
-                  key={item.stickerId}
-                  accessibilityRole="button"
-                  accessibilityLabel={item.emoji ?? 'Sticker'}
-                  onPress={() => onPick(item)}
-                  className="items-center justify-center rounded-[8px] active:bg-surface-raised"
-                  style={{ width: CELL_SIZE, height: CELL_SIZE }}
-                >
-                  <StickerThumb sticker={item} token={token} />
-                </Pressable>
-              ))}
-            </ScrollView>
-          )}
+          <StickerGrid
+            packs={packs}
+            state={state}
+            recents={recents}
+            activePackId={activePackId}
+            onSelectPack={onSelectPack}
+            onPick={onPick}
+            onRetry={onRetry}
+          />
         </Pressable>
       </Pressable>
     </Modal>
@@ -204,7 +272,15 @@ export function StickerPanel({
 }
 
 /** A panel thumbnail: a same-origin file URL loads; anything else is emoji. */
-function StickerThumb({ sticker, token }: { sticker: StickerChoice; token: string | undefined }) {
+function StickerThumb({
+  sticker,
+  token,
+  size,
+}: {
+  sticker: StickerChoice;
+  token: string | undefined;
+  size: number;
+}) {
   const label = sticker.emoji ?? 'Sticker';
   if (!isPanelStickerUrl(sticker.url, API_URL)) {
     return (
@@ -217,7 +293,7 @@ function StickerThumb({ sticker, token }: { sticker: StickerChoice; token: strin
     <Image
       source={stickerImageSource(sticker.url, API_URL, token)}
       accessibilityLabel={label}
-      style={{ width: 64, height: 64 }}
+      style={{ width: size, height: size }}
       resizeMode="contain"
     />
   );

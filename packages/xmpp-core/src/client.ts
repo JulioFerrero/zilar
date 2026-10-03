@@ -63,6 +63,17 @@ import type {
 } from './types';
 
 const CONNECT_TIMEOUT_MS = 15_000;
+// How long the client may stay in `connecting` / `reconnecting` before it is
+// torn down and replaced by a fresh one. A normal connect (socket, TLS, token
+// fetch, login) takes a second or two, so the first wait is short and each
+// replacement that also fails waits a little longer (5, 8, 12, then 20 s;
+// back to 5 s once online). That is at most about 20 token requests per ten
+// minutes, far under the route's limit. `XmppCoreOptions.reconnectWatchdogMs`
+// replaces the whole schedule with one fixed wait; 0 disables. xmpp.js only
+// schedules a retry when it sees a socket `disconnect`; an attempt that fails
+// without one (or a token fetch that never answers) leaves it waiting for
+// ever, which is what showed as "Connecting..." until the app was force closed.
+const WATCHDOG_SCHEDULE_MS = [5_000, 8_000, 12_000, 20_000];
 const JOIN_TIMEOUT_MS = 15_000;
 const HISTORY_TIMEOUT_MS = 30_000;
 const UPLOAD_TIMEOUT_MS = 15_000;
@@ -221,6 +232,9 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
   let keepalivePingId: string | undefined;
   let keepaliveIdleTimer: ReturnType<typeof setTimeout> | undefined;
   let keepaliveReplyTimer: ReturnType<typeof setTimeout> | undefined;
+  let watchdogTimer: ReturnType<typeof setTimeout> | undefined;
+  // How many times the watchdog replaced the client since the last online.
+  let watchdogRestarts = 0;
   let latestToken: string | undefined;
   let xmpp: XmppClient | undefined;
 
@@ -264,7 +278,67 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
   function setStatus(next: ConnectionStatus): void {
     if (currentStatus === next) return;
     currentStatus = next;
+    if (next === 'online' || next === 'offline') {
+      stopWatchdog();
+      watchdogRestarts = 0;
+    } else {
+      armWatchdog();
+    }
     emitEvent('status', next);
+  }
+
+  // A function, so a check after an `await` is not narrowed by an earlier one.
+  function isOnline(): boolean {
+    return currentStatus === 'online';
+  }
+
+  function watchdogMs(): number {
+    if (options.reconnectWatchdogMs !== undefined) return options.reconnectWatchdogMs;
+    return (
+      WATCHDOG_SCHEDULE_MS[Math.min(watchdogRestarts, WATCHDOG_SCHEDULE_MS.length - 1)] ?? 20_000
+    );
+  }
+
+  function stopWatchdog(): void {
+    if (watchdogTimer !== undefined) {
+      clearTimeout(watchdogTimer);
+      watchdogTimer = undefined;
+    }
+  }
+
+  function armWatchdog(): void {
+    if (watchdogTimer !== undefined || !desiredOnline || watchdogMs() <= 0) return;
+    watchdogTimer = setTimeout(() => {
+      watchdogTimer = undefined;
+      void restartStuckClient();
+    }, watchdogMs());
+  }
+
+  // The client has not come online in time: drop it and start a fresh one.
+  // `xmpp` is cleared first, so every late event of the old client is ignored
+  // (see the `current !== xmpp` guards in `attachHandlers`).
+  async function restartStuckClient(): Promise<void> {
+    if (!desiredOnline || currentStatus === 'online') return;
+    const stale = xmpp;
+    xmpp = undefined;
+    watchdogRestarts += 1;
+    reconnectAttempt = 0;
+    coldAttemptSeen = false;
+    transientTokenError = undefined;
+    stopKeepalive();
+    if (stale !== undefined) {
+      try {
+        await stale.stop();
+      } catch {
+        // The old stream is already dead; nothing useful to report.
+      }
+    }
+    if (!desiredOnline || isOnline() || xmpp !== undefined) return;
+    const fresh = ensureClient();
+    armWatchdog();
+    void fresh.start().catch(() => {
+      // The error event reports the failure; the watchdog tries again.
+    });
   }
 
   function rosterFor(roomJid: string): Map<string, Occupant> {
@@ -541,6 +615,7 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
 
   function attachHandlers(current: XmppClient): void {
     current.on('status', (raw) => {
+      if (current !== xmpp) return;
       // xmpp.js reports the `online` status just before the `online` event
       // that carries the bound JID. Going online here would let a listener
       // query history with no identity yet, so only that event goes online.
@@ -560,6 +635,7 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
     });
 
     current.on('online', (jid) => {
+      if (current !== xmpp) return;
       meJid = jid.bare().toString();
       hasBeenOnline = true;
       reconnectAttempt = 0;
@@ -571,6 +647,7 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
     });
 
     current.on('error', (error) => {
+      if (current !== xmpp) return;
       emitError(errorMessage(error));
       if (isConflictError(error)) {
         // Replaced by another session with the same full JID: stop for good
@@ -606,6 +683,7 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
     });
 
     current.on('stanza', (stanza) => {
+      if (current !== xmpp) return;
       // Any traffic proves the connection is alive and restarts the idle
       // period; the keepalive only fires on a truly silent connection.
       if (currentStatus === 'online' && keepaliveEnabled()) startKeepalive();
@@ -771,6 +849,10 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
     desiredOnline = true;
     authFailed = false;
     coldAttemptSeen = false;
+    // An explicit connect() while the client is stuck mid-attempt (a resume
+    // from the background) replaces it at once instead of waiting.
+    const stuck =
+      xmpp !== undefined && (currentStatus === 'connecting' || currentStatus === 'reconnecting');
     const current = ensureClient();
     setStatus(hasBeenOnline ? 'reconnecting' : 'connecting');
 
@@ -781,9 +863,13 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
       }, CONNECT_TIMEOUT_MS);
     });
 
-    void current.start().catch(() => {
-      // The error event reports the failure; auto-reconnect keeps trying.
-    });
+    if (stuck) {
+      void restartStuckClient();
+    } else {
+      void current.start().catch(() => {
+        // The error event reports the failure; auto-reconnect keeps trying.
+      });
+    }
 
     return connectPromise;
   }

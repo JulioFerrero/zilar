@@ -458,3 +458,119 @@ describe('connection resilience: answering server pings', () => {
     expect(fake.sent.length).toBe(sentBefore);
   });
 });
+
+// Device test 2026-10-03 (Android emulator, airplane mode for 40 s): after the
+// network came back the app stayed on "Connecting..." for ever, until it was
+// force closed. xmpp.js only retries after a socket `disconnect`; a failed
+// attempt that never produces one leaves the client waiting. The watchdog
+// replaces a client that stays connecting or reconnecting too long.
+describe('connection resilience: reconnect watchdog', () => {
+  function coreWithFakes(extra: Partial<XmppCoreOptions> = {}): {
+    core: XmppCore;
+    clients: FakeClient[];
+  } {
+    const clients: FakeClient[] = [];
+    const core = createCore(
+      tokenOptions(async () => ({ jid: 'bob@zilar.localhost', token: 'tok' }), extra),
+      {
+        createClient: () => {
+          const fake = createFakeClient();
+          clients.push(fake);
+          return fake;
+        },
+      },
+    );
+    return { core, clients };
+  }
+
+  async function onlineThenWedged(extra: Partial<XmppCoreOptions> = {}) {
+    const { core, clients } = coreWithFakes(extra);
+    const connecting = core.connect();
+    clients[0]?.emitOnline('bob@zilar.localhost');
+    await connecting;
+    // The socket drops and the library never retries (no further events).
+    clients[0]?.emitStatus('disconnect');
+    expect(core.status()).toBe('reconnecting');
+    return { core, clients };
+  }
+
+  it('replaces a client that stays reconnecting, and ignores the old one afterwards', async () => {
+    const { core, clients } = await onlineThenWedged();
+
+    await vi.advanceTimersByTimeAsync(4_500);
+    expect(clients).toHaveLength(1);
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    await flush();
+    expect(clients).toHaveLength(2);
+    expect(clients[0]?.stopCalls).toBe(1);
+    expect(clients[1]?.status).toBe('connecting');
+
+    // Late events of the replaced client must not move the core.
+    clients[0]?.emitOnline('bob@zilar.localhost');
+    expect(core.status()).toBe('reconnecting');
+
+    clients[1]?.emitOnline('bob@zilar.localhost');
+    expect(core.status()).toBe('online');
+  });
+
+  it('keeps trying: a replacement that also wedges is replaced again', async () => {
+    const { clients } = await onlineThenWedged();
+    // The waits grow: 5 s, then 8 s, then 12 s, then 20 s.
+    await vi.advanceTimersByTimeAsync(5_100);
+    expect(clients).toHaveLength(2);
+    await vi.advanceTimersByTimeAsync(7_700);
+    expect(clients).toHaveLength(2);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(clients).toHaveLength(3);
+    await vi.advanceTimersByTimeAsync(12_100);
+    expect(clients).toHaveLength(4);
+    await vi.advanceTimersByTimeAsync(20_100);
+    expect(clients).toHaveLength(5);
+    await vi.advanceTimersByTimeAsync(20_100);
+    expect(clients).toHaveLength(6);
+  });
+
+  it('a cold start that never gets going is replaced too', async () => {
+    const { core, clients } = coreWithFakes();
+    const connecting = core.connect();
+    const failed = connecting.catch((error: unknown) => error);
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(await failed).toBeInstanceOf(Error);
+    await flush();
+    // Replaced after 5 s (and again after the next 8 s): never waits for ever.
+    expect(clients.length).toBeGreaterThanOrEqual(2);
+    clients.at(-1)?.emitOnline('bob@zilar.localhost');
+    expect(core.status()).toBe('online');
+  });
+
+  it('an explicit connect() while stuck (a resume) replaces the client at once', async () => {
+    const { core, clients } = await onlineThenWedged();
+    const reconnecting = core.connect();
+    await flush();
+    expect(clients).toHaveLength(2);
+    clients[1]?.emitOnline('bob@zilar.localhost');
+    await reconnecting;
+    expect(core.status()).toBe('online');
+  });
+
+  it('can be disabled with 0', async () => {
+    const { clients } = await onlineThenWedged({ reconnectWatchdogMs: 0 });
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(clients).toHaveLength(1);
+  });
+
+  it('stops for good on disconnect() and when the client comes back by itself', async () => {
+    // The keepalive is off here: this test is about the watchdog alone.
+    const { core, clients } = await onlineThenWedged({ keepaliveMs: 0 });
+    clients[0]?.emitOnline('bob@zilar.localhost');
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(clients).toHaveLength(1);
+    expect(core.status()).toBe('online');
+
+    clients[0]?.emitStatus('disconnect');
+    await core.disconnect();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(clients).toHaveLength(1);
+  });
+});

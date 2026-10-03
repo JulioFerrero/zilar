@@ -125,6 +125,14 @@ export function buildMessage(options: {
     children.push(xml('agent', { xmlns: AGENT_NAMESPACE }, encodePayload(options.payload)));
   }
 
+  // ejabberd's archive (mod_mam) only keeps a message that has text or an
+  // explicit store hint. A voice note has an empty body and its data in the
+  // payload, so without the hint it showed live but was gone after a reload
+  // (device test 2026-10-03). The hint also covers any other body-less payload.
+  if (options.payload !== undefined || options.text === '') {
+    children.push(xml('store', { xmlns: HINTS_NAMESPACE }));
+  }
+
   if (options.replyTo !== undefined) {
     const attrs: Record<string, string> = {
       xmlns: REPLY_NAMESPACE,

@@ -100,6 +100,37 @@ describe('buildMessage', () => {
     expect(stanza.getChild('agent', AGENT_NAMESPACE)).toBeUndefined();
     expect(stanza.getChild('reply', REPLY_NAMESPACE)).toBeUndefined();
   });
+
+  it('carries the store hint on a body-less payload message so the archive keeps it', () => {
+    // A voice note has an empty body: without the hint ejabberd's archive
+    // drops it and it is gone after a reload (device test 2026-10-03).
+    const voice = buildMessage({
+      id: 'm-3',
+      to: 'alice@zilar.localhost',
+      kind: 'chat',
+      text: '',
+      payload: progress,
+    });
+    expect(voice.getChild('store', 'urn:xmpp:hints')).toBeDefined();
+
+    const emptyText = buildMessage({
+      id: 'm-4',
+      to: 'alice@zilar.localhost',
+      kind: 'chat',
+      text: '',
+    });
+    expect(emptyText.getChild('store', 'urn:xmpp:hints')).toBeDefined();
+  });
+
+  it('adds no store hint to an ordinary text message (the archive keeps it by itself)', () => {
+    const plain = buildMessage({
+      id: 'm-5',
+      to: 'alice@zilar.localhost',
+      kind: 'chat',
+      text: 'hi',
+    });
+    expect(plain.getChild('store', 'urn:xmpp:hints')).toBeUndefined();
+  });
 });
 
 describe('buildTyping, buildDisplayed, presence and carbons', () => {

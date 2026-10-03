@@ -378,7 +378,7 @@ export function GifSheet({ open, mockItems, api, onPick, onClose }: GifSheetProp
           onPress={() => {}}
           accessibilityRole="menu"
           accessibilityLabel="GIFs"
-          className="max-h-[70%] min-h-[320px] rounded-t-2xl border-t border-border-strong bg-surface px-4 pt-3"
+          className="h-[50%] rounded-t-2xl border-t border-border-strong bg-surface px-4 pt-3"
           style={{ paddingBottom: Math.max(insets.bottom, 8) }}
         >
           <View className="mb-1 h-1 w-10 self-center rounded-full bg-surface-raised" />

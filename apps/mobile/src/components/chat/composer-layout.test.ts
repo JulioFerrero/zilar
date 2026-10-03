@@ -20,8 +20,9 @@ describe('composer and chat screen layout rules', () => {
   });
 
   it('hides the other controls while a voice note is being recorded', () => {
-    // Attach, the text field, emoji, stickers and GIF share one row with the
-    // recorder: left visible they push its Send button off the screen.
+    // Attach, the text field and emoji share one row with the recorder:
+    // left visible they push its Send button off the screen. Stickers and
+    // GIFs live inside the emoji sheet (T-0175), not as row buttons.
     const composer = read('composer.tsx');
     expect(composer).toContain('const [voiceRecording, setVoiceRecording] = useState(false)');
     expect(composer).toContain('{!voiceRecording ? (');
@@ -44,5 +45,13 @@ describe('composer and chat screen layout rules', () => {
     const voice = read('voice-message.tsx');
     expect(voice).not.toContain('WAVEFORM_WIDTH');
     expect(voice).toContain('flex-1 flex-row items-center justify-between');
+  });
+
+  it('keeps the emoji category strip at its natural height (no empty gap under the tabs)', () => {
+    // Seen on the Android emulator (2026-10-03): a horizontal ScrollView
+    // grows to fill the free height unless `flexGrow: 0` is set.
+    const tab = read('emoji-tab.tsx');
+    const strip = tab.slice(tab.indexOf('accessibilityLabel="Emoji categories"'));
+    expect(strip.slice(0, 400)).toContain('style={{ flexGrow: 0 }}');
   });
 });
