@@ -1,6 +1,6 @@
 import * as Clipboard from 'expo-clipboard';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Archive, ChevronLeft, Link2, Plus, Search, Users } from 'lucide-react-native';
+import { Archive, ChevronLeft, Eye, Link2, Plus, Search, Users } from 'lucide-react-native';
 import { useColorScheme } from 'nativewind';
 import { useEffect, useMemo, useState } from 'react';
 import { FlatList, Pressable, Share, TextInput, View } from 'react-native';
@@ -11,6 +11,12 @@ import { Avatar } from '@/components/chat/avatar';
 import { ChannelScreen } from '@/components/chat/channel-screen';
 import { InviteLinksSheet, type CreateInviteLinkForm } from '@/components/chat/invite-links-sheet';
 import { GroupRolesSheet } from '@/components/chat/group-roles-sheet';
+import {
+  mayChangeVisibility,
+  VisibilitySheet,
+  visibilitySaveError,
+} from '@/components/chat/visibility-sheet';
+import { useDirectoryApi } from '@/components/directory/use-directory-api';
 import { NewTopicSheet, type NewTopicInput } from '@/components/chat/new-topic-sheet';
 import {
   TopicActionsSheet,
@@ -23,6 +29,7 @@ import { Text } from '@/components/ui/text';
 import { asColorScheme } from '@/lib/color-scheme';
 import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
 import { well } from '@/lib/depth';
+import { DirectoryApiError, type GroupVisibility } from '@/lib/directory-api';
 import { mutedUntilFor } from '@/lib/chat-prefs';
 import type { GroupInviteLink } from '@/lib/invite-links-api';
 import { describeRolesError, mayManageRoles, membersWithChips } from '@/lib/roles';
@@ -58,6 +65,7 @@ function GroupTopics() {
   // path dedupes in-flight loads too, so the group screen after the chat
   // screen costs no second GET (T-0139). Explicit refreshes still force.
   const ensureGroupDetail = useChatStore((state) => state.ensureGroupDetail);
+  const refreshGroupDetail = useChatStore((state) => state.refreshGroupDetail);
   const groupRoles = useChatStore((state) => state.groupRoles(groupId));
   const refreshGroupRoles = useChatStore((state) => state.refreshGroupRoles);
   const createGroupRole = useChatStore((state) => state.createGroupRole);
@@ -96,6 +104,25 @@ function GroupTopics() {
   const [rolesBusy, setRolesBusy] = useState(false);
   const [rolesError, setRolesError] = useState('');
   const [rolesLoadError, setRolesLoadError] = useState('');
+  // Visibility (T-0183): owner only, like the web panel. The sheet reads
+  // server truth on open and saves through the directory API.
+  const { api: directoryApi } = useDirectoryApi();
+  const [visibilityOpen, setVisibilityOpen] = useState(false);
+  const [visibilityTruth, setVisibilityTruth] = useState<{
+    visibility: GroupVisibility;
+    handle: string | null;
+  } | null>(null);
+  const [visibilityLoadError, setVisibilityLoadError] = useState('');
+  const [picked, setPicked] = useState<GroupVisibility>('private');
+  const [typed, setTyped] = useState('');
+  const [check, setCheck] = useState<{ available: boolean; reason?: string | undefined } | null>(
+    null,
+  );
+  const [checking, setChecking] = useState(false);
+  const [visibilityBusy, setVisibilityBusy] = useState(false);
+  const [visibilityError, setVisibilityError] = useState('');
+  const [visibilitySaved, setVisibilitySaved] = useState(false);
+  const [confirmingPrivate, setConfirmingPrivate] = useState(false);
 
   // The detail is keyed by group id (not chat id): load it on mount so the
   // member list, the "+" gate and the AI count resolve even on first visit.
@@ -157,6 +184,8 @@ function GroupTopics() {
     membersCanCreateTopics: groupDetail?.membersCanCreateTopics === true,
   });
   const isManager = mayManageRoles(members.find((member) => member.userId === currentUserId)?.role);
+  const myRole = members.find((member) => member.userId === currentUserId)?.role;
+  const canChangeVisibility = mayChangeVisibility(myRole);
   const membersWithRoleChips = useMemo(
     () => membersWithChips(members, groupRoles),
     [members, groupRoles],
@@ -233,6 +262,109 @@ function GroupTopics() {
       .then(() => reloadLinks())
       .catch(() => setLinksError('Could not revoke the invite link. Try again.'))
       .finally(() => setRevokingId(undefined));
+  };
+
+  // Visibility (T-0183): loads server truth when the sheet opens, keeps a
+  // debounced live availability check for a changed handle, and saves
+  // through the directory API (the store refreshes the detail so the header
+  // re-renders with server truth).
+  const openVisibility = () => {
+    setVisibilityError('');
+    setVisibilitySaved(false);
+    setConfirmingPrivate(false);
+    setCheck(null);
+    setVisibilityOpen(true);
+    setVisibilityLoadError('');
+    void directoryApi
+      .getGroupVisibility(groupId)
+      .then((truth) => {
+        setVisibilityTruth(truth);
+        setPicked(truth.visibility);
+        setTyped(truth.handle ?? '');
+      })
+      .catch(() => setVisibilityLoadError('Could not load visibility. Try again.'));
+  };
+
+  const trimmedHandle = typed.trim();
+  const ownHandle =
+    visibilityTruth?.handle !== null &&
+    visibilityTruth?.handle !== undefined &&
+    visibilityTruth.handle !== '' &&
+    trimmedHandle.toLowerCase() === visibilityTruth.handle.toLowerCase();
+
+  // Debounced live availability for a changed handle (the group's own
+  // handle is skipped: the server sees its live row and would report
+  // "taken"). The effect only schedules the check; the timeout applies the
+  // busy state and the promise the result once (the lint rule flags
+  // synchronous setState inside effects).
+  useEffect(() => {
+    if (!visibilityOpen || picked !== 'public' || trimmedHandle === '' || ownHandle) {
+      return;
+    }
+    let active = true;
+    const value = trimmedHandle;
+    const pending = setTimeout(() => {
+      if (!active) {
+        return;
+      }
+      setChecking(true);
+      void directoryApi
+        .checkGroupHandle(value)
+        .then((result) => {
+          if (active) {
+            setCheck(result);
+            setChecking(false);
+          }
+        })
+        .catch((error: unknown) => {
+          if (!active) {
+            return;
+          }
+          if (error instanceof DirectoryApiError && error.code === 'rate_limited') {
+            setCheck({ available: false, reason: 'rate_limited' });
+          } else {
+            setCheck(null);
+          }
+          setChecking(false);
+        });
+    }, 300);
+    return () => {
+      active = false;
+      clearTimeout(pending);
+    };
+  }, [visibilityOpen, picked, trimmedHandle, ownHandle, directoryApi]);
+
+  const saveVisibility = () => {
+    if (visibilityTruth === null) {
+      return;
+    }
+    if (picked === 'public' && trimmedHandle === '') {
+      setVisibilityError('Choose a handle for the public group.');
+      return;
+    }
+    if (picked === 'private' && visibilityTruth.visibility === 'public' && !confirmingPrivate) {
+      setConfirmingPrivate(true);
+      return;
+    }
+    setVisibilityBusy(true);
+    setVisibilityError('');
+    setVisibilitySaved(false);
+    void directoryApi
+      .setGroupVisibility(groupId, {
+        visibility: picked,
+        ...(picked === 'public' ? { handle: trimmedHandle } : {}),
+      })
+      .then(() => {
+        setVisibilityTruth({
+          visibility: picked,
+          handle: picked === 'public' ? trimmedHandle : null,
+        });
+        setVisibilitySaved(true);
+        setConfirmingPrivate(false);
+        refreshGroupDetail(groupId);
+      })
+      .catch((error: unknown) => setVisibilityError(visibilitySaveError(error)))
+      .finally(() => setVisibilityBusy(false));
   };
 
   // The clipboard/share bridge for the shown-once block: `expo-clipboard`
@@ -373,6 +505,11 @@ function GroupTopics() {
         {canManageLinks ? (
           <IconButton label="Invite links" onPress={openLinks}>
             <Link2 size={20} color={ICON[scheme]} />
+          </IconButton>
+        ) : null}
+        {canChangeVisibility ? (
+          <IconButton label="Visibility" onPress={openVisibility}>
+            <Eye size={20} color={ICON[scheme]} />
           </IconButton>
         ) : null}
         <IconButton label="Members and roles" onPress={() => setRolesOpen(true)}>
@@ -539,6 +676,39 @@ function GroupTopics() {
         onClose={() => {
           if (!rolesBusy) {
             setRolesOpen(false);
+          }
+        }}
+      />
+      <VisibilitySheet
+        visible={visibilityOpen}
+        groupTitle={groupTitle}
+        visibility={visibilityTruth?.visibility ?? 'private'}
+        handle={visibilityTruth?.handle ?? null}
+        live={{ picked, typed }}
+        busy={visibilityBusy}
+        checking={checking}
+        check={check}
+        error={visibilityLoadError !== '' ? visibilityLoadError : visibilityError}
+        saved={visibilitySaved}
+        confirmingPrivate={confirmingPrivate}
+        share={linksShare}
+        onPick={(next) => {
+          setPicked(next);
+          setCheck(null);
+          setVisibilityError('');
+          setVisibilitySaved(false);
+          setConfirmingPrivate(false);
+        }}
+        onHandleChange={(next) => {
+          setTyped(next);
+          setCheck(null);
+          setVisibilitySaved(false);
+        }}
+        onSave={saveVisibility}
+        onCancelPrivate={() => setConfirmingPrivate(false)}
+        onClose={() => {
+          if (!visibilityBusy) {
+            setVisibilityOpen(false);
           }
         }}
       />
