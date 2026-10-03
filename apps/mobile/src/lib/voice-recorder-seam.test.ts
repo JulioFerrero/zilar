@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  buildRecordingOptions,
   createVoiceRecorder,
   MIC_DENIED_MESSAGE,
   MIC_FAILED_MESSAGE,
@@ -176,6 +177,49 @@ describe('voice recording quality and level (device test 2026-10-03)', () => {
     await recorder.start();
     await recorder.stop();
     expect(modes).toEqual([true, false]);
+  });
+});
+
+describe('recording options (device test 2026-10-03: sounded like a phone call)', () => {
+  const PRESET = {
+    extension: '.m4a',
+    sampleRate: 44100,
+    numberOfChannels: 2,
+    bitRate: 128000,
+    android: { outputFormat: 'mpeg4', audioEncoder: 'aac' },
+    ios: { outputFormat: 'aac ', audioQuality: 127 },
+  };
+
+  it('flattens the Android codec into the native options (mpeg4 + aac, never the 3gp/amr default)', () => {
+    const options = buildRecordingOptions(PRESET, 'android');
+    expect(options).toMatchObject({
+      outputFormat: 'mpeg4',
+      audioEncoder: 'aac',
+      numberOfChannels: 1,
+      sampleRate: 48000,
+      bitRate: 128000,
+      isMeteringEnabled: true,
+      extension: '.m4a',
+    });
+  });
+
+  it('flattens the iOS block on iOS and carries no Android fields', () => {
+    const options = buildRecordingOptions(PRESET, 'ios');
+    expect(options).toMatchObject({ outputFormat: 'aac ', audioQuality: 127, numberOfChannels: 1 });
+    expect(options).not.toHaveProperty('audioEncoder');
+  });
+
+  it('the recorder is built from the flattened options', async () => {
+    const fake = fakeAudio({});
+    fake.audio.HIGH_QUALITY = PRESET as unknown as { extension: string };
+    const recorder = createVoiceRecorder({
+      audio: fake.audio,
+      setAudioMode: async () => {},
+      fileReader: async () => ({ size: 120_000 }),
+      platform: 'android',
+    });
+    await recorder.start();
+    expect(fake.options[0]).toMatchObject({ outputFormat: 'mpeg4', audioEncoder: 'aac' });
   });
 });
 
