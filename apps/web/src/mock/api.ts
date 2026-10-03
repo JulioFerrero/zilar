@@ -2770,7 +2770,8 @@ export async function mockRequest(
   // through PATCH) appear — never users, never private groups. `q` matches
   // handle or title prefixes (case-insensitive, at least 2 characters);
   // empty lists newest first; `kind` filters; 20 per page with an opaque
-  // index cursor.
+  // base64url index cursor the mock parses back (like the server's cursor,
+  // only simpler — an offset into the filtered rows).
   if (head === 'directory' && method === 'GET') {
     const params = new URLSearchParams(path.includes('?') ? path.slice(path.indexOf('?') + 1) : '');
     const q = (params.get('q') ?? '').trim();
@@ -2814,8 +2815,42 @@ export async function mockRequest(
         joined: detail.members.some((member) => member.userId === currentUserId),
       }))
       .reverse();
-    const start = Number(params.get('cursor') ?? '0') || 0;
-    return jsonResponse({ entries: rows.slice(start, start + 20), next: null });
+    const start = decodeMockDirectoryCursor(params.get('cursor'));
+    if (start === null) {
+      return jsonResponse({ error: { code: 'invalid_request', message: 'Invalid cursor' } }, 400);
+    }
+    const page = rows.slice(start, start + 20);
+    return jsonResponse({
+      entries: page,
+      next: start + 20 < rows.length ? encodeMockDirectoryCursor(start + 20) : null,
+    });
+  }
+
+  // T-0164: the mock directory's opaque page cursor: a base64url offset
+  // into the filtered rows. Absent reads as the first page; anything that
+  // does not decode to a non-negative integer is a 400, like the server's
+  // invalid cursor.
+  function encodeMockDirectoryCursor(start: number): string {
+    return btoa(`dir_${start}`).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+
+  function decodeMockDirectoryCursor(raw: string | null): number | null {
+    if (raw === null || raw === '') {
+      return 0;
+    }
+    let decoded: string;
+    try {
+      const padded = raw.replace(/-/g, '+').replace(/_/g, '/');
+      decoded = atob(padded);
+    } catch {
+      return null;
+    }
+    const match = /^dir_(\d+)$/.exec(decoded);
+    if (match === null) {
+      return null;
+    }
+    const start = Number(match[1]);
+    return Number.isSafeInteger(start) ? start : null;
   }
 
   // T-0164: exact public-group lookup by `@handle` in memory. Users,

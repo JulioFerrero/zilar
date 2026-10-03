@@ -3,17 +3,23 @@
 // route needs a session (covered by the 401 sweep) and is rate limited.
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
-import { groupMembers, groups } from '../db/schema';
+import { aiLimits, ais, groupAis, groupMembers, groups, providerConnections } from '../db/schema';
+import { aiLocalpart } from '../ais/service';
+import { joinPublicGroup } from './join';
+import { PUBLIC_GROUP_MAX_MEMBERS } from '../directory/service';
 import {
   bootstrapUser,
   contactOf,
   createTestContext,
   testApp,
   TEST_BASE_URL,
+  TEST_XMPP_DOMAIN,
   type TestApp,
   type TestContext,
 } from '../test-support';
+import { localpartFor } from '../xmpp/provisioning';
 
 interface VisibilityBody {
   id: string;
@@ -277,6 +283,30 @@ describe('public groups and channels', () => {
     expect(((await loser.json()) as { error: { code: string } }).error.code).toBe('handle_taken');
   });
 
+  it('lets exactly one winner emerge when a group and a user race for one handle', async () => {
+    // One namespace: the user claim (per-user lock) and the group claim
+    // (per-group lock) do not serialize each other — the primary key
+    // decides, and the loser maps to 409 `handle_taken` on both sides.
+    const owner = await bootstrapUser(context, app, 'owner@example.com');
+    const user = await bootstrapUser(context, app, 'user@example.com');
+    const group = (await (
+      await createGroupRequest(owner.cookie, { title: 'Racing', memberIds: [] })
+    ).json()) as { id: string };
+
+    const [groupSide, userSide] = await Promise.all([
+      patchGroupRequest(owner.cookie, group.id, { visibility: 'public', handle: 'shared_prize' }),
+      app.request(`${TEST_BASE_URL}/api/me/handle`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json', cookie: user.cookie },
+        body: JSON.stringify({ handle: 'shared_prize' }),
+      }),
+    ]);
+    const both = [groupSide.status, userSide.status].sort();
+    expect(both).toEqual([200, 409]);
+    const loser = groupSide.status === 200 ? userSide : groupSide;
+    expect(((await loser.json()) as { error: { code: string } }).error.code).toBe('handle_taken');
+  });
+
   it('going private retires the handle for 30 days and hides the group at once', async () => {
     const { ownerCookie, strangerCookie, groupId } = await ownedGroup();
     expect(
@@ -361,6 +391,14 @@ describe('public groups and channels', () => {
       .from(groupMembers)
       .where(eq(groupMembers.groupId, groupId));
     expect(rows.map((row) => row.userId).sort()).toContain(strangerId);
+
+    // The joiner holds a `member` room affiliation in the group's
+    // unmoderated room — voice to post, like an invited member.
+    const [groupRow] = await context.db.select().from(groups).where(eq(groups.id, groupId));
+    const strangerJid = `${localpartFor(strangerId)}@${TEST_XMPP_DOMAIN}`;
+    expect(
+      context.adminClient.affiliationState.get(groupRow!.roomLocalpart)?.get(strangerJid),
+    ).toBe('member');
 
     // The directory now reports the newcomer as joined with the new count.
     const listed = (await (
@@ -593,5 +631,170 @@ describe('public groups and channels', () => {
     expect(
       (await app.request(`${TEST_BASE_URL}/api/groups/x/join`, { method: 'POST' })).status,
     ).toBe(401);
+  });
+
+  it('uses the production cap by default', async () => {
+    expect(PUBLIC_GROUP_MAX_MEMBERS).toBe(5000);
+  });
+
+  it('rejects a raw visibility value outside private/public at the database', async () => {
+    const owner = await bootstrapUser(context, app, 'owner@example.com');
+    const { sql } = await import('drizzle-orm');
+    await expect(
+      context.db.execute(
+        sql`INSERT INTO "groups" ("id", "room_localpart", "title", "created_by", "visibility") VALUES ('g-raw', 'grawroomlocalpart1', 'Raw', ${owner.id}, 'archived')`,
+      ),
+    ).rejects.toThrow();
+    // …while both legal values write fine.
+    for (const visibility of ['private', 'public'] as const) {
+      await context.db.insert(groups).values({
+        id: `g-raw-${visibility}`,
+        roomLocalpart: `grawroom${visibility}12`,
+        title: 'Raw',
+        createdBy: owner.id,
+        visibility,
+      });
+    }
+    expect(
+      await context.db.select({ id: groups.id }).from(groups).where(eq(groups.createdBy, owner.id)),
+    ).toHaveLength(2);
+  });
+
+  describe('join cap', () => {
+    function service(maxMembers: number) {
+      return {
+        db: context.db,
+        adminClient: context.adminClient,
+        domain: context.config.xmpp.domain,
+        logger: context.logger,
+        maxMembers,
+      };
+    }
+
+    async function seedAi(ownerId: string): Promise<string> {
+      const aiId = randomUUID();
+      const connectionId = randomUUID();
+      await context.db.insert(providerConnections).values({
+        id: connectionId,
+        owner: ownerId,
+        provider: 'openai',
+        encryptedKey: 'sealed-placeholder',
+        label: null,
+      });
+      await context.db.insert(ais).values({
+        id: aiId,
+        owner: ownerId,
+        name: 'Helper AI',
+        template: 'dev',
+        persona: 'A helpful persona.',
+        providerConnectionId: connectionId,
+        model: 'gpt-4o-mini',
+        localpart: aiLocalpart(aiId),
+        jid: `${aiLocalpart(aiId)}@example.com`,
+        status: 'active',
+      });
+      await context.db.insert(aiLimits).values({ aiId, perDayUsd: '1.00', perMonthUsd: '20.00' });
+      return aiId;
+    }
+
+    async function publicGroup(ownerCookie: string, title: string): Promise<string> {
+      const created = await app.request(`${TEST_BASE_URL}/api/groups`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie: ownerCookie },
+        body: JSON.stringify({ title, memberIds: [] }),
+      });
+      expect(created.status).toBe(201);
+      const { id } = (await created.json()) as { id: string };
+      const patched = await app.request(`${TEST_BASE_URL}/api/groups/${id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json', cookie: ownerCookie },
+        body: JSON.stringify({ visibility: 'public', handle: `pub_${id.slice(0, 8)}` }),
+      });
+      expect(patched.status).toBe(200);
+      return id;
+    }
+
+    it('admits exactly one of two simultaneous joins at the last seat', async () => {
+      const owner = await bootstrapUser(context, app, 'owner@example.com');
+      const fillerA = await bootstrapUser(context, app, 'filler-a@example.com');
+      const fillerB = await bootstrapUser(context, app, 'filler-b@example.com');
+      const racerA = await bootstrapUser(context, app, 'racer-a@example.com');
+      const racerB = await bootstrapUser(context, app, 'racer-b@example.com');
+      const groupId = await publicGroup(owner.cookie, 'Last seat');
+      // Cap 4: owner + 2 fillers = 3 occupants (cap-1), one seat left.
+      for (const filler of [fillerA, fillerB]) {
+        const joined = await joinPublicGroup(service(4), groupId, filler.id);
+        expect(joined.alreadyMember).toBe(false);
+      }
+
+      // Both racers join at once: the per-group advisory lock serializes
+      // the two transactions, so exactly one wins and the loser answers
+      // 409 `group_full` — never two memberships for one seat.
+      const [first, second] = await Promise.all([
+        joinPublicGroup(service(4), groupId, racerA.id).then(
+          (result) => ({ ok: true as const, result }),
+          (error: unknown) => ({ ok: false as const, error }),
+        ),
+        joinPublicGroup(service(4), groupId, racerB.id).then(
+          (result) => ({ ok: true as const, result }),
+          (error: unknown) => ({ ok: false as const, error }),
+        ),
+      ]);
+      const winners = [first, second].filter((outcome) => outcome.ok);
+      const losers = [first, second].filter((outcome) => !outcome.ok);
+      expect(winners).toHaveLength(1);
+      expect(losers).toHaveLength(1);
+      const loser = losers[0];
+      expect(loser?.ok).toBe(false);
+      if (loser !== undefined && !loser.ok) {
+        expect(loser.error).toMatchObject({ status: 409, code: 'group_full' });
+      }
+      const rows = await context.db
+        .select()
+        .from(groupMembers)
+        .where(eq(groupMembers.groupId, groupId));
+      // Owner + 2 fillers + exactly one racer: the cap is never exceeded.
+      expect(rows).toHaveLength(4);
+    });
+
+    it('counts AIs toward the cap in the pre-check and in the transaction', async () => {
+      const owner = await bootstrapUser(context, app, 'owner@example.com');
+      const newcomer = await bootstrapUser(context, app, 'newcomer@example.com');
+      const late = await bootstrapUser(context, app, 'late@example.com');
+      const groupId = await publicGroup(owner.cookie, 'AI room');
+      // Cap 3: owner (person) + 1 AI = 2 occupants, one seat left…
+      const aiId = await seedAi(owner.id);
+      await context.db.insert(groupAis).values({ groupId, aiId, addedBy: owner.id });
+
+      const joined = await joinPublicGroup(service(3), groupId, newcomer.id);
+      expect(joined).toEqual({ groupId, alreadyMember: false });
+
+      // …owner + AI + newcomer = 3 = cap: the next join is refused, even
+      // though only 2 of the 3 occupants are people.
+      const refused = await joinPublicGroup(service(3), groupId, late.id).then(
+        () => null,
+        (error: unknown) => error,
+      );
+      expect(refused).toMatchObject({ status: 409, code: 'group_full' });
+    });
+
+    it('refuses a join when AIs alone fill the cap', async () => {
+      const owner = await bootstrapUser(context, app, 'owner@example.com');
+      const newcomer = await bootstrapUser(context, app, 'newcomer@example.com');
+      const groupId = await publicGroup(owner.cookie, 'AI full');
+      // Cap 3: owner + 2 AIs = cap before anyone joins.
+      for (let index = 0; index < 2; index += 1) {
+        const aiId = await seedAi(owner.id);
+        await context.db.insert(groupAis).values({ groupId, aiId, addedBy: owner.id });
+      }
+      const refused = await joinPublicGroup(service(3), groupId, newcomer.id).then(
+        () => null,
+        (error: unknown) => error,
+      );
+      expect(refused).toMatchObject({ status: 409, code: 'group_full' });
+      expect(
+        await context.db.select().from(groupMembers).where(eq(groupMembers.groupId, groupId)),
+      ).toHaveLength(1);
+    });
   });
 });

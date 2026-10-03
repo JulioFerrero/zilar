@@ -341,3 +341,70 @@ describe('mock sticker demo packs (T-0120)', () => {
     }
   });
 });
+
+describe('mock directory (T-0164)', () => {
+  interface DirectoryPage {
+    entries: Array<{ id: string; handle: string }>;
+    next: string | null;
+  }
+
+  async function makePublic(title: string, handle: string): Promise<string> {
+    const created = await mockRequest('/groups', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, memberIds: [] }),
+    });
+    expect(created.status).toBe(201);
+    const { id } = (await created.json()) as { id: string };
+    const patched = await mockRequest(`/groups/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ visibility: 'public', handle }),
+    });
+    expect(patched.status).toBe(200);
+    return id;
+  }
+
+  it('pages with a real cursor the mock parses back', async () => {
+    setMockDelay(0);
+    resetMockApi();
+    try {
+      // 21 public groups (20 created + the seeded `@acme` channel): the
+      // first page carries 20 rows and a cursor, the second the last row.
+      for (let index = 0; index < 20; index += 1) {
+        await makePublic(`Club ${index}`, `club_${index}_pub`);
+      }
+      const first = (await (await mockRequest('/directory')).json()) as DirectoryPage;
+      expect(first.entries).toHaveLength(20);
+      expect(first.next).not.toBeNull();
+
+      const second = (await (
+        await mockRequest(`/directory?cursor=${encodeURIComponent(first.next ?? '')}`)
+      ).json()) as DirectoryPage;
+      expect(second.entries).toHaveLength(1);
+      expect(second.next).toBeNull();
+      // No row repeats across the two pages.
+      const seen = new Set([...first.entries, ...second.entries].map((entry) => entry.id));
+      expect(seen.size).toBe(21);
+
+      // A cursor that is not ours is a 400, like the server.
+      const bad = await mockRequest('/directory?cursor=bogus');
+      expect(bad.status).toBe(400);
+    } finally {
+      resetMockApi();
+    }
+  });
+
+  it('serves the seeded public channel by exact handle', async () => {
+    setMockDelay(0);
+    resetMockApi();
+    try {
+      const found = await mockRequest('/groups/by-handle/acme');
+      expect(found.status).toBe(200);
+      expect(((await found.json()) as { handle: string }).handle).toBe('acme');
+      expect((await mockRequest('/groups/by-handle/nope')).status).toBe(404);
+    } finally {
+      resetMockApi();
+    }
+  });
+});

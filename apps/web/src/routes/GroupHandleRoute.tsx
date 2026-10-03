@@ -9,8 +9,11 @@ import { Avatar } from '@/components/Avatar';
 /**
  * The `/@handle` share entry (T-0164): resolves a person or a public group.
  * A public group opens a card with title, description, member count and
- * Join; anything else falls back to the Add contact dialog (which 404s
- * unknown handles the same way). Logged out goes to login and comes back
+ * Join; a 404 (unknown, private, or a person) falls back to the Add contact
+ * dialog (which 404s unknown handles the same way). Any other lookup
+ * failure (500, 429, network) shows an error state with Retry — a stranger
+ * opening a share link during an outage is never prompted to send a contact
+ * request against a group handle. Logged out goes to login and comes back
  * to the real URL.
  */
 export function GroupHandleRoute({ atHandle }: { atHandle?: string | undefined }) {
@@ -26,12 +29,17 @@ export function GroupHandleRoute({ atHandle }: { atHandle?: string | undefined }
   const handle = atHandle ?? params.handle ?? '';
 
   const [lookup, setLookup] = useState<
-    { state: 'checking' } | { state: 'group'; entry: DirectoryEntry } | { state: 'person' }
+    | { state: 'checking' }
+    | { state: 'group'; entry: DirectoryEntry }
+    | { state: 'person' }
+    | { state: 'error'; message: string }
   >({ state: 'checking' });
+  // Bumped to re-run the lookup (the Retry button shares it).
+  const [attempt, setAttempt] = useState(0);
 
   // Resolve the handle once the session is known: a public group shows the
-  // group card, anything else (a person, unknown, private) falls back to
-  // the Add contact dialog. The effect only schedules the lookup.
+  // group card; a 404 falls back to the Add contact dialog; anything else
+  // is an error with Retry. The effect only schedules the lookup.
   useEffect(() => {
     if (auth.status !== 'authenticated' || handle === '') {
       return;
@@ -52,7 +60,13 @@ export function GroupHandleRoute({ atHandle }: { atHandle?: string | undefined }
             setLookup({ state: 'person' });
             return;
           }
-          setLookup({ state: 'person' });
+          setLookup({
+            state: 'error',
+            message:
+              error instanceof ApiError && error.code === 'rate_limited'
+                ? 'Too many lookups — wait a little and try again.'
+                : 'Could not open that link. Try again.',
+          });
         },
       );
     }, 0);
@@ -60,7 +74,7 @@ export function GroupHandleRoute({ atHandle }: { atHandle?: string | undefined }
       active = false;
       clearTimeout(pending);
     };
-  }, [auth.status, handle]);
+  }, [auth.status, handle, attempt]);
 
   if (auth.status === 'loading') {
     return null;
@@ -81,8 +95,52 @@ export function GroupHandleRoute({ atHandle }: { atHandle?: string | undefined }
     // Keyed by handle so /@one then /@two re-seeds the card state.
     return <GroupHandleCard key={handle} entry={lookup.entry} onClose={close} />;
   }
-  if (lookup.state === 'person') {
+  if (lookup.state === 'person' || lookup.state === 'checking') {
+    // While checking, the prefilled Add contact dialog shows at once (what
+    // the route rendered before groups existed): a person never sees a
+    // flash, a group swaps to its card when the lookup lands, and a failed
+    // lookup replaces it with the error state below — never a stuck dialog.
     return <AddContactDialog key={handle} initialHandle={handle} onClose={close} />;
+  }
+  if (lookup.state === 'error') {
+    return (
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Open @${handle}`}
+        onClick={close}
+        className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4"
+      >
+        <div
+          onClick={(event) => event.stopPropagation()}
+          className="w-full max-w-sm rounded-2xl bg-background p-6 text-center shadow-xl"
+        >
+          <h2 className="text-[18px] font-semibold">Couldn&apos;t open this link</h2>
+          <p role="alert" className="mt-2 text-[14px] text-muted-foreground">
+            {lookup.message}
+          </p>
+          <div className="mt-5 flex justify-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setLookup({ state: 'checking' });
+                setAttempt((value) => value + 1);
+              }}
+              className="rounded-full bg-accent px-4 py-1.5 text-[15px] font-medium text-accent-foreground hover:bg-accent/90"
+            >
+              Retry
+            </button>
+            <button
+              type="button"
+              onClick={close}
+              className="rounded-full px-4 py-1.5 text-[15px] text-muted-foreground hover:bg-list-hover"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   }
   return null;
 }

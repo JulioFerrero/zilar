@@ -1972,7 +1972,12 @@
         }
       },
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "groups_visibility_check": {
+          "name": "groups_visibility_check",
+          "value": "\"groups\".\"visibility\" IN ('private', 'public')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.handles": {

@@ -178,32 +178,38 @@ export const contactRequests = pgTable(
 export const groupKindSchema = z.enum(['group', 'channel']);
 export type GroupKind = z.infer<typeof groupKindSchema>;
 
-export const groups = pgTable('groups', {
-  id: text('id').primaryKey(),
-  roomLocalpart: text('room_localpart').notNull().unique(),
-  title: text('title').notNull(),
-  createdBy: text('created_by')
-    .notNull()
-    .references(() => user.id, { onDelete: 'cascade' }),
-  // T-0108: plain members may create topics only when this is true.
-  // Owners/admins always may.
-  membersCanCreateTopics: boolean('members_can_create_topics').notNull().default(false),
-  // T-0124: a channel is a group with one read-only broadcast feed: only
-  // owner/admins post (the room is moderated and subscribers are visitors);
-  // members subscribe, read and mute. Defaults to a plain group.
-  kind: text('kind', { enum: ['group', 'channel'] })
-    .notNull()
-    .default('group'),
-  // T-0124: the channel's short blurb, shown in its panel. Null = none.
-  description: text('description'),
-  // T-0164: `private` groups stay invisible and invite-only, like before;
-  // `public` ones hold exactly one `handles` row (`group_id`) and appear in
-  // the directory, joinable by anyone signed in. Defaults to private.
-  visibility: text('visibility', { enum: ['private', 'public'] })
-    .notNull()
-    .default('private'),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-});
+export const groups = pgTable(
+  'groups',
+  {
+    id: text('id').primaryKey(),
+    roomLocalpart: text('room_localpart').notNull().unique(),
+    title: text('title').notNull(),
+    createdBy: text('created_by')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    // T-0108: plain members may create topics only when this is true.
+    // Owners/admins always may.
+    membersCanCreateTopics: boolean('members_can_create_topics').notNull().default(false),
+    // T-0124: a channel is a group with one read-only broadcast feed: only
+    // owner/admins post (the room is moderated and subscribers are visitors);
+    // members subscribe, read and mute. Defaults to a plain group.
+    kind: text('kind', { enum: ['group', 'channel'] })
+      .notNull()
+      .default('group'),
+    // T-0124: the channel's short blurb, shown in its panel. Null = none.
+    description: text('description'),
+    // T-0164: `private` groups stay invisible and invite-only, like before;
+    // `public` ones hold exactly one `handles` row (`group_id`) and appear in
+    // the directory, joinable by anyone signed in. Defaults to private. The
+    // check keeps raw writes inside the two values (the service and zod own
+    // the friendly errors).
+    visibility: text('visibility', { enum: ['private', 'public'] })
+      .notNull()
+      .default('private'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [check('groups_visibility_check', sql`${table.visibility} IN ('private', 'public')`)],
+);
 
 // Shareable group invite links (T-0115, decision D28). One row per link: only
 // the SHA-256 hash of the token is stored — the token itself is shown once at

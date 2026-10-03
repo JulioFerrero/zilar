@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { GroupHandleRoute } from './GroupHandleRoute';
 import { lookupGroupByHandle } from '@/lib/api';
@@ -85,6 +85,41 @@ describe('GroupHandleRoute', () => {
 
     expect(await screen.findByRole('dialog', { name: 'Add contact' })).toBeTruthy();
   });
+
+  it.each([
+    {
+      name: 'server error',
+      error: { status: 500, code: 'internal_error' },
+      text: 'Could not open that link. Try again.',
+    },
+    {
+      name: 'rate limit',
+      error: { status: 429, code: 'rate_limited' },
+      text: 'Too many lookups — wait a little and try again.',
+    },
+    {
+      name: 'network failure',
+      error: { status: 0, code: 'network_error' },
+      text: 'Could not open that link. Try again.',
+    },
+  ])(
+    'shows an error state with Retry on $name, never the Add contact dialog',
+    async ({ error, text }) => {
+      const { ApiError } = await import('@/lib/api');
+      lookupMock.mockRejectedValue(new ApiError(error.status, error.code, 'boom'));
+      renderHandle('hiking_club');
+
+      expect(await screen.findByRole('dialog', { name: 'Open @hiking_club' })).toBeTruthy();
+      expect(screen.getByRole('alert').textContent).toBe(text);
+      expect(screen.queryByRole('dialog', { name: 'Add contact' })).toBeNull();
+
+      // Retry re-runs the lookup: this time the group resolves.
+      lookupMock.mockResolvedValue(HIKING);
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+      expect(await screen.findByRole('dialog', { name: 'Join Hiking club' })).toBeTruthy();
+      expect(lookupMock).toHaveBeenCalledTimes(2);
+    },
+  );
 
   it('sends a logged-out visitor to login and back', async () => {
     const store = createChatStore();
