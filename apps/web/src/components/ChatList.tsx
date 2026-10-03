@@ -375,6 +375,9 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
                 </Button>
               </div>
             )}
+            {/* People hits come first: `@handle` shows one row for that
+                person, above the chat-name matches and the message hits. */}
+            {store.search.trim().startsWith('@') && <PeopleSearchResult query={store.search} />}
             {chats.length === 0 && archived.length === 0 ? (
               <EmptyState
                 variant="no-chats"
@@ -444,11 +447,8 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
                 )}
               </>
             )}
-            {/* People hits come first: `@handle` shows one row for that
-                person. Message hits come after the chat-name matches.
-                `searchChat` scopes "Search only in this chat" from a chat
-                header. */}
-            {store.search.trim().startsWith('@') && <PeopleSearchResult query={store.search} />}
+            {/* Message hits come after the chat-name matches. `searchChat`
+                scopes "Search only in this chat" from a chat header. */}
             {store.search.trim().length >= 2 && (
               <MessageSearchResults
                 query={store.search}
