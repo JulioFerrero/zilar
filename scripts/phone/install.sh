@@ -3,6 +3,9 @@
 #
 #   pnpm phone:install
 #
+# ZILAR_PHONE picks the device (an emulator serial works), ZILAR_REF the branch
+# or commit to build (default main).
+#
 # It uses the detached build worktree (ZILAR_BUILD_DIR), rebuilds the native
 # project only when a native input changed (package.json, app.json, modules,
 # plugins, the lockfile), and otherwise rebundles the JavaScript only (about
@@ -12,6 +15,7 @@ set -euo pipefail
 
 SERIAL="${ZILAR_PHONE:-10AFAT234E00746}"
 BUILD="${ZILAR_BUILD_DIR:-$HOME/personal-projects/zilar-phone-build}"
+REF="${ZILAR_REF:-main}"
 API_URL="${EXPO_PUBLIC_ZILAR_API_URL:-https://chat.zilar.app}"
 
 export JAVA_HOME="${JAVA_HOME:-$(/usr/libexec/java_home -v 17)}"
@@ -24,7 +28,7 @@ if [ "$(adb -s "$SERIAL" get-state 2>/dev/null || true)" != "device" ]; then
 fi
 
 cd "$BUILD"
-git checkout -q --detach main
+git checkout -q --detach "$REF"
 HEAD_SHORT="$(git rev-parse --short HEAD)"
 pnpm install --frozen-lockfile >/dev/null
 

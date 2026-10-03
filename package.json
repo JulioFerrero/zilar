@@ -24,7 +24,8 @@
     "screenshots": "node --experimental-strip-types scripts/screenshots.ts",
     "gate": "pnpm --filter @zilar/devtools exec tsx src/gate/cli.ts --base main",
     "phone:install": "bash scripts/phone/install.sh",
-    "phone:crash": "bash scripts/phone/crash.sh"
+    "phone:crash": "bash scripts/phone/crash.sh",
+    "phone:smoke": "bash scripts/phone/smoke.sh"
   },
   "devDependencies": {
     "@types/node": "^24",
