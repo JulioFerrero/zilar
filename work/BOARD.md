@@ -210,3 +210,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0177](T-0177-whistle-on-device-spike.md) | Whistle on-device spike: local Expo module (arm64 Android), hidden dev screen, native sha256, tested on emulator and phone | 2026-10-03 |
 | [T-0178](T-0178-whistle-quiet-cut-chunks.md) | Whistle: quiet-point chunking from a native amplitude envelope | 2026-10-03 |
 | [T-0180](T-0180-signin-no-code-hint.md) | Sign-in hints for people without an invite (web + mobile) | 2026-10-03 |
+| [T-0181](T-0181-mobile-settings-profile.md) | Mobile: settings hub, profile (name, avatar, @handle) and the handle step after sign-up | planned | meta/muse-spark-1.3-contributor | — | Spec ready; mobile parity wave 1 |
+| [T-0182](T-0182-mobile-contacts-requests.md) | Mobile: find people by @handle, profile card and contact requests | planned | meta/muse-spark-1.3-contributor | — | Spec ready; mobile parity wave 1 |
+| [T-0183](T-0183-mobile-explore-group-handles.md) | Mobile: Explore public groups and channels, open @group links, group visibility and handle | planned | meta/muse-spark-1.3-contributor | — | Spec ready; mobile parity wave 1 |
+| [T-0184](T-0184-mobile-approvals-page.md) | Mobile: approvals page (pending, history, always-allowed rules) | planned | meta/muse-spark-1.3-contributor | — | Spec ready; mobile parity wave 1 |
