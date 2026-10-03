@@ -194,3 +194,18 @@ iOS, wiring transcripts into the chat UI or the server, word timestamps, keyword
   screen but no real transcription has executed yet (no device here).
 
 ## Review (written by Claude)
+
+**Verdict:** Round 1: changes requested
+
+The pre-review (Muse) read the whole diff; its findings are accepted. Do them in this order, commit after each, no exploring.
+
+### Findings
+1. **Must-fix: the dev screen is dead on a real phone.** `apps/mobile/src/lib/whistle-port.ts:65` hardcodes `isAvailable: () => false` and `whistle.tsx:64` gates all three buttons on it. Use the real native check that `transcribe.ts` already calls (it is synchronous and safe). Test: with a fake native module reporting available, the port reports true; with none, false (mutation-check by restoring the hardcoded false).
+2. **Stereo is downmixed twice** (`ZilarWhistleModule.kt:244`): `appendDecodedSamples` already makes mono, then `resampleTo16k(monoArray, sampleRate, channels)` treats it as interleaved again. Pass channel count 1 to the resampler (or stop downmixing before it, not both). Add a Kotlin-free pure test of the resample/downmix arithmetic if you moved it to JS; otherwise describe in the Report how you verified it.
+3. **iOS declared but absent** (`expo-module.config.json`): set `"platforms": ["android"]` and fix the Kotlin comment that points at a nonexistent Swift file.
+4. **Vacuous test** (`whistle-checksum.test.ts:50-58`): it calls a local `vi.fn` twice. Replace it with a real test of `downloadModel` through its `deps` seam: a second call with a verified file present returns without downloading again; a corrupt file is removed and re-downloaded.
+5. **Unbounded decode** (`ZilarWhistleModule.kt` `decodeToMono16k`): reject audio over 10 minutes up front using the duration from the extractor, stop the loop at that bound, and put a timeout around the decode so a stuck `MediaCodec` cannot leave the coroutine unsettled; make the JS `inFlight` guard clear on failure too (it must never hang later calls).
+6. **Tested twin is not what runs** (`whistle-last-voice.ts` `planQuietCutChunks` is unused in production; the shipped splitter is the untested native `splitIntoChunks`). Make the native side dumb as the spec says: JS computes the chunk plan with the tested function and passes the (startMs, endMs) ranges to native, which only decodes and transcribes those ranges. Remove the duplicate native splitter.
+7. Nits to take while you are there: fix the "streamed" comment in `download.ts` (`file.bytes()` loads the whole file), use the static `WhistleError` import instead of `await import('./result')`, and have `nativeTranscribeChunk` return an error string/nullable instead of `NULL` into a non-null Kotlin `String` so the `needle_last_error()` text is kept. Skip finding 8 (stale ref, ordering holds).
+
+Run every check, add a Round 1 part to your Report with real results, keep `status: review`, commit with the `T-0177:` prefix. Mark in the Report anything you could not compile or run.
