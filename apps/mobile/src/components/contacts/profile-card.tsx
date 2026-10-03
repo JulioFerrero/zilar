@@ -23,6 +23,7 @@ export function ProfileCard({
   onDecline,
   onMessage,
   onOpenRequests,
+  onOpenProfile,
 }: {
   profile: HandleProfile;
   /** True after a request was just sent from this card. */
@@ -37,20 +38,36 @@ export function ProfileCard({
   onDecline: () => void;
   onMessage: () => void;
   onOpenRequests: () => void;
+  /** Opens the full profile (the people-search row); absent keeps the header static. */
+  onOpenProfile?: (() => void) | undefined;
 }) {
+  const header = (
+    <View className="flex-row items-center gap-3">
+      <Avatar id={profile.userId} name={profile.name} size={44} />
+      <View className="min-w-0 flex-1">
+        <Text numberOfLines={1} className="text-[15px] font-medium text-foreground">
+          {profile.name}
+        </Text>
+        <Text numberOfLines={1} className="text-[14px] text-muted-foreground">
+          @{profile.handle}
+        </Text>
+      </View>
+    </View>
+  );
   return (
     <View className="rounded-xl border border-border bg-surface px-3 py-2.5">
-      <View className="flex-row items-center gap-3">
-        <Avatar id={profile.userId} name={profile.name} size={44} />
-        <View className="min-w-0 flex-1">
-          <Text numberOfLines={1} className="text-[15px] font-medium text-foreground">
-            {profile.name}
-          </Text>
-          <Text numberOfLines={1} className="text-[14px] text-muted-foreground">
-            @{profile.handle}
-          </Text>
-        </View>
-      </View>
+      {onOpenProfile === undefined ? (
+        header
+      ) : (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Open profile of ${profile.name}`}
+          onPress={onOpenProfile}
+          className="active:opacity-80"
+        >
+          {header}
+        </Pressable>
+      )}
       <ProfileCardActionRow
         relation={profile.relation}
         sent={sent}

@@ -1,0 +1,4 @@
+
+# Registry files that many parallel tasks append to: merge both sides' added
+# lines instead of stopping on a conflict (the gate catches a bad result).
+apps/mobile/src/lib/settings-items.ts merge=union
