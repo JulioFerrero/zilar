@@ -137,6 +137,10 @@ export function GifPanel({ open, mockItems, api, onPick }: GifPanelProps) {
         loadingMoreRef.current = true;
         setLoadingMore(true);
       } else {
+        // A fresh query owns the list now: an append it aborted must not
+        // leave the guard stuck, or infinite scroll would never fire again.
+        loadingMoreRef.current = false;
+        setLoadingMore(false);
         setLoading(true);
         setError(undefined);
         setRateLimited(false);
@@ -313,9 +317,9 @@ export function GifPanel({ open, mockItems, api, onPick }: GifPanelProps) {
 }
 
 /**
- * The GIF sheet's pager: given the cursor and a fetch, runs one append page
- * and reports whether more pages remain. Kept here (not on the panel) so the
- * synchronous in-flight guard below is unit-testable in Node (T-0157).
+ * The GIF sheet's pager: given the query and cursor, fetches one page (the
+ * trending feed for an empty query, a search otherwise). Kept here (not on
+ * the panel) so the request shape is unit-testable in Node (T-0157).
  */
 export async function fetchGifPage(input: {
   query: string;

@@ -105,7 +105,11 @@ export function MessageSearchList({
         },
         item.chatJid,
         item.messageId,
-      );
+      ).catch(() => {
+        // An unexpected failure (history or router) must not vanish: show the
+        // same miss notice instead of leaving the user on a spinner.
+        notFoundRef.current(item.chatJid);
+      });
     },
     [openAtMessage, router],
   );

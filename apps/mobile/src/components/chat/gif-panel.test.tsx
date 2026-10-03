@@ -210,4 +210,17 @@ describe('gif panel (T-0148)', () => {
     expect(panel).toContain('loadingMoreRef');
     expect(panel).toContain('!loadingMoreRef.current');
   });
+
+  it('fails if a fresh query leaves the append guard stuck after aborting an append', async () => {
+    // An append aborted by a new search returns early without clearing its
+    // own guard; the fresh (non-append) load must reset it, or infinite
+    // scroll never fires again.
+    const { readFileSync } = await import('node:fs');
+    const { dirname, join } = await import('node:path');
+    const { fileURLToPath } = await import('node:url');
+    const here = dirname(fileURLToPath(import.meta.url));
+    const panel = readFileSync(join(here, 'gif-panel.tsx'), 'utf8');
+    const freshBranch = panel.slice(panel.indexOf('} else {\n        // A fresh query owns'));
+    expect(freshBranch.slice(0, 400)).toContain('loadingMoreRef.current = false');
+  });
 });

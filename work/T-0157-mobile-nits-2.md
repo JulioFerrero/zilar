@@ -1,7 +1,7 @@
 ---
 id: T-0157
 title: Mobile nits bundle 2 (attachments, GIFs, roles load error)
-status: review
+status: merged
 milestone: M5
 branch: task/T-0157-mobile-nits-2
 model: meta/muse-spark-1.3-contributor
@@ -91,3 +91,7 @@ pnpm --filter @zilar/mobile test --maxWorkers=2 attachment gifs gif-panel real-s
 - Still needs a device look (no simulator run): unknown-size photo pick, over-cap tap-to-open refusal, GIF scroll under load, caption edit round-trip against a real server, roles sheet gone-line on a deleted group, search-jump miss landing.
 
 ## Review (written by Claude)
+
+Merged after one worker fix round (size reader wired in the production composer, unknown size no longer coerced to "empty", the roles Retry test pressing the real handler, search-jump catching only not-found) and fixes by me from the second pre-review: (1) a fresh GIF query now resets the append guard, so an aborted append can no longer stop infinite scroll for good; (2) the search list catches an unexpected jump error and shows the miss notice instead of an unhandled rejection; the stale `fetchGifPage` doc comment now says what it does. Both new tests were mutation-checked (they fail with the fix removed). Nits left: the roles Retry test cannot touch the rendered button without an RN testing library; the cap-contract test duplicates real-store coverage.
+
+Checks: format, lint, mobile tsc pass; mobile tests for attachment, gifs, gif-panel, real-store, chat-store, roles, search-jump, message-search, jump-scroll, message-bubble, composer 358 passed in pre-review, plus gif-panel/search-jump/message-search 38 passed after my fixes.
