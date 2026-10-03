@@ -1,7 +1,7 @@
 ---
 id: T-0197
 title: Remove the old product name from the emulator smoke script (main's legacy-name test is red)
-status: blocked
+status: review
 milestone: M5
 branch: task/T-0197-old-name-in-smoke-script
 model: meta/muse-spark-1.3-contributor
@@ -66,7 +66,7 @@ Any other change.
 - Verified pre-existing: stashed my changes (`git stash`) and ran `pnpm prettier --check .` on clean main worktree — same `CLAUDE.md` warning. So the failure is on main, not caused by me. `pnpm prettier --write CLAUDE.md` would fix it (9 insertions/9 deletions) but `CLAUDE.md` is outside my Allowed files, so I reverted it and did not keep the change.
 
 ### Blocked / needs a decision
-Gate cannot reach GATE PASS within my scope: the repo-wide `pnpm format:check` fails on `CLAUDE.md`, a file I am not allowed to touch. Options for the lead: (a) allow a one-line-format fix to `CLAUDE.md` in this task, (b) fix it in a separate task, or (c) scope the gate's format step to changed files. Until then, status is blocked. All T-0197 acceptance items I could satisfy pass: `src/no-legacy-name` passes, `bash -n` passes, scope check passes.
+Unblocked: the lead fixed `CLAUDE.md` on main and rebased this branch. Gate summary: `gate: 3 changed file(s) against main / PASS install (frozen) (0.9s) / PASS format (10.0s) / PASS lint (0.8s) / PASS typecheck (1.0s) / scope: every changed file is inside the Allowed files / GATE PASS`.
 
 ### Security checklist
 No secrets, no routes, no deletes/updates, no caps, no auth changes. N/A.
