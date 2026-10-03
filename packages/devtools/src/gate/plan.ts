@@ -51,3 +51,8 @@ export function gateSteps(
   }
   return steps;
 }
+
+// Merge and patch leftovers that must never be committed.
+export function strayFiles(trackedFiles: string[]): string[] {
+  return trackedFiles.filter((file) => /\.(orig|rej|bak)$/.test(file));
+}

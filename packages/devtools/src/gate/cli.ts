@@ -7,7 +7,7 @@
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { gateSteps, type GateStep, type WorkspacePackage } from './plan.js';
+import { gateSteps, strayFiles, type GateStep, type WorkspacePackage } from './plan.js';
 import { scopeReport } from './scope.js';
 
 function run(cwd: string, command: string, args: string[]): { ok: boolean; output: string } {
@@ -94,6 +94,11 @@ function main(): void {
       console.log(tail(result.output, 40));
       break;
     }
+  }
+  const stray = strayFiles(lines(run(root, 'git', ['ls-files']).output));
+  if (stray.length > 0) {
+    failed = true;
+    console.log(`FAIL  stray merge leftovers are tracked: ${stray.join(', ')}`);
   }
   const taskText = taskTextFor(root);
   if (taskText !== undefined) {

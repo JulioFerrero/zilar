@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { gateSteps, packagesTouched, type WorkspacePackage } from './plan.js';
+import { gateSteps, packagesTouched, strayFiles, type WorkspacePackage } from './plan.js';
 import { allowedTokens, scopeReport, tokenMatcher } from './scope.js';
 
 const workspace: WorkspacePackage[] = [
@@ -81,5 +81,15 @@ describe('gateSteps', () => {
 
   it('finds no package for files outside every package', () => {
     expect(packagesTouched(['docs/a.md', 'work/T-1.md'], workspace)).toEqual([]);
+  });
+});
+
+describe('strayFiles', () => {
+  it('flags merge and patch leftovers only', () => {
+    expect(strayFiles(['a/b.ts', 'a/b.ts.orig', 'c.rej', 'd.bak', 'origin.ts'])).toEqual([
+      'a/b.ts.orig',
+      'c.rej',
+      'd.bak',
+    ]);
   });
 });
