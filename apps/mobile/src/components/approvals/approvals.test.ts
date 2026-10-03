@@ -111,11 +111,24 @@ describe('rowsForList and orderedRows', () => {
     expect(orderedRows(rows).map((row) => row.approval.id)).toEqual(['apr-new', 'apr-old']);
   });
 
-  it('keeps an in-flight decision and its inline error across reloads', () => {
+  it('keeps an in-flight decision across reloads while its request runs', () => {
     const first = rowsForList([approval()], {});
-    const busy = { ...first, 'apr-1': { ...first['apr-1'], busy: 'deny' as const, error: 'boom' } };
-    const reloaded = rowsForList([approval()], busy);
+    const busy = { ...first, 'apr-1': { ...first['apr-1'], busy: 'deny' as const, error: '' } };
+    const reloaded = rowsForList([approval()], busy, new Set(['apr-1']));
     expect(reloaded['apr-1'].busy).toBe('deny');
+  });
+
+  it('clears a stuck busy on reload when no request is in flight for that id', () => {
+    const first = rowsForList([approval()], {});
+    const stuck = { ...first, 'apr-1': { ...first['apr-1'], busy: 'deny' as const, error: '' } };
+    const reloaded = rowsForList([approval()], stuck, new Set());
+    expect(reloaded['apr-1'].busy).toBeNull();
+  });
+
+  it('keeps the inline error across reloads so the failure stays visible', () => {
+    const first = rowsForList([approval()], {});
+    const failed = { ...first, 'apr-1': { ...first['apr-1'], busy: null, error: 'boom' } };
+    const reloaded = rowsForList([approval()], failed, new Set());
     expect(reloaded['apr-1'].error).toBe('boom');
   });
 
@@ -189,7 +202,7 @@ describe('decideScreenRow', () => {
     });
   });
 
-  it('returns the inline message for any other error', async () => {
+  it('reports a fixed plain message for any other error, never the raw text', async () => {
     const api = {
       getApproval: async () => approval(),
       decideApproval: async () => {
@@ -202,8 +215,51 @@ describe('decideScreenRow', () => {
     };
     await expect(decideScreenRow(api, 'apr-1', 'deny')).resolves.toEqual({
       kind: 'error',
-      message: 'boom',
+      message: 'Could not send the decision. Try again.',
     });
+  });
+
+  it('a failed decision leaves the row retryable: busy clears, the error shows, a reload keeps it usable and a second tap decides', async () => {
+    let calls = 0;
+    const decided = approval({ status: 'denied', decidedAt: '2026-09-28T02:00:00Z' });
+    const api = {
+      getApproval: async () => approval(),
+      decideApproval: async () => {
+        calls += 1;
+        if (calls === 1) {
+          throw new ApprovalsApiError(0, 'network_error', 'Could not reach the server');
+        }
+        return decided;
+      },
+      listApprovals: async () => [approval()],
+      listAiApprovalRules: async () => [],
+      listGroupApprovalRules: async () => [],
+      revokeApprovalRule: async () => {},
+    };
+    // First tap: the network fails. The screen clears `busy` and sets the
+    // inline error, so the buttons are enabled again with a visible line.
+    const first = await decideScreenRow(api, 'apr-1', 'deny');
+    expect(first).toEqual({ kind: 'error', message: 'Could not send the decision. Try again.' });
+    const failedRows = rowsForList([approval()], {
+      'apr-1': {
+        approval: approval(),
+        busy: null,
+        error: (first as { message: string }).message,
+      },
+    });
+    expect(failedRows['apr-1'].busy).toBeNull();
+    expect(failedRows['apr-1'].error).toBe('Could not send the decision. Try again.');
+    // A later reload (no request in flight) does not bring the busy state
+    // back and keeps the error visible.
+    const reloaded = rowsForList([approval()], failedRows, new Set());
+    expect(reloaded['apr-1'].busy).toBeNull();
+    expect(reloaded['apr-1'].error).toBe('Could not send the decision. Try again.');
+    // A second tap decides normally.
+    await expect(decideScreenRow(api, 'apr-1', 'deny')).resolves.toEqual({
+      kind: 'decided',
+      approval: decided,
+    });
+    expect(calls).toBe(2);
   });
 });
 

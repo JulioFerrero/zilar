@@ -24,13 +24,21 @@ export interface OwnedScreenRule {
 }
 
 /** One `ScreenRow` per approval, keeping any in-flight decision state. */
-export function rowsForList(list: PublicApproval[], previous: RowsById): RowsById {
+export function rowsForList(
+  list: PublicApproval[],
+  previous: RowsById,
+  inFlight: ReadonlySet<string> = new Set(),
+): RowsById {
   const next: RowsById = {};
   for (const approval of list) {
     const prior = previous[approval.id];
     next[approval.id] = {
       approval,
-      busy: prior?.busy ?? null,
+      // A reload must not resurrect a stuck `busy`: only a row with a
+      // request still in flight keeps it, so a failed decision never wedges
+      // the buttons after the list refreshes. The inline `error` is kept so
+      // a failure stays visible until the next decision attempt.
+      busy: prior !== undefined && inFlight.has(approval.id) ? prior.busy : null,
       error: prior?.error ?? '',
     };
   }
@@ -117,7 +125,9 @@ export function confirmationForDecision(decision: ApprovalDecision): string {
  * decided or expired elsewhere: when the fresh row is still pending the
  * decision did not land, so the row stays in the list with the refreshed
  * state (`stale`); otherwise the row drops from pending with the
- * "already decided" notice (`gone`).
+ * "already decided" notice (`gone`). Any other failure (offline, 500,
+ * 403, …) reports a fixed plain message — never the server's raw text —
+ * so the screen can show it inline and let the person retry.
  */
 export async function decideScreenRow(
   api: ApprovalsApi,
@@ -134,7 +144,7 @@ export async function decideScreenRow(
     }
     return { kind: 'gone', message: 'That request was already decided or expired.' };
   }
-  return { kind: 'error', message: outcome.message };
+  return { kind: 'error', message: 'Could not send the decision. Try again.' };
 }
 
 export function revokeFailedMessage(error: unknown): string {

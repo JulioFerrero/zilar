@@ -104,7 +104,7 @@ function ApprovalsBody() {
       try {
         const list = await api.listApprovals();
         const visible = list.filter((approval) => !decidedIds.current.has(approval.id));
-        setRows((previous) => rowsForList(visible, previous));
+        setRows((previous) => rowsForList(visible, previous, decidingIds.current));
         setStatus('ready');
         setErrorMessage('');
       } catch (error) {
@@ -242,6 +242,16 @@ function ApprovalsBody() {
                 ...previous,
                 [id]: { approval: outcome.approval, busy: null, error: '' },
               };
+            });
+          } else {
+            // Offline, 500, 403, …: clear `busy` and show the fixed inline
+            // message so the buttons work again and the person can retry.
+            setRows((previous) => {
+              const current = previous[id];
+              if (current === undefined) {
+                return previous;
+              }
+              return { ...previous, [id]: { ...current, busy: null, error: outcome.message } };
             });
           }
         } finally {
