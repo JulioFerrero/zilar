@@ -183,7 +183,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0153](T-0153-web-settings-layout.md) | Web settings pages layout | 2026-10-01 |
 | [T-0154](T-0154-mobile-voice-messages.md) | Mobile voice messages: record, send, play (expo-audio) | planned | meta/muse-spark-1.3-contributor | T-0150 | Spec ready |
 | [T-0157](T-0157-mobile-nits-2.md) | Mobile nits bundle 2: attachments, GIFs, roles load error | planned | meta/muse-spark-1.3-contributor | T-0148, T-0150 | Spec ready |
-| [T-0159](T-0159-install-rehearsal.md) | Fresh production install rehearsal (run only on a free machine) | planned | meta/muse-spark-1.3-contributor | T-0145, T-0151, T-0158 | Spec ready |
 | [T-0148](T-0148-mobile-gifs.md) | Mobile GIFs | 2026-10-01 |
 | [T-0151](T-0151-deploy-storage-safety.md) | Production storage safety | 2026-10-01 |
 | [T-0160](T-0160-rename-zilar.md) | Rename everything from Zilar to Zilar | 2026-10-02 |
@@ -202,3 +201,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0168](T-0168-send-failure-state.md) | Failed voice/attachment sends show Not sent with Retry and Delete, 60 s timeout | 2026-10-03 |
 | [T-0169](T-0169-mentions-by-handle.md) | Mentions find people by @handle and show handles | 2026-10-03 |
 | [T-0156](T-0156-server-deploy-nits.md) | Server and deploy nits bundle | 2026-10-03 |
+| [T-0159](T-0159-install-rehearsal.md) | Fresh production install rehearsal: report with findings (push host defect, docs notes) | 2026-10-03 |
