@@ -86,8 +86,8 @@ export function serverPackageRoot(from: string = fileURLToPath(import.meta.url))
   // against the package root whatever the file's depth below it, and a
   // build step that changes the output shape (e.g. `src/` → `dist/`)
   // resolves to the same root instead of moving a directory up or down.
-  // The walk stops at the filesystem root: without the package marker the
-  // dir is returned unchanged so callers never resolve against `/`.
+  // The walk stops at the filesystem root: without the package marker it
+  // returns the root itself, so a misplaced file resolves against `/`.
   let directory = dirname(from);
   for (;;) {
     const candidate = join(directory, 'package.json');

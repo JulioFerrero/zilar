@@ -1,7 +1,7 @@
 ---
 id: T-0156
 title: Server and deploy nits bundle
-status: review
+status: merged
 milestone: M5
 branch: task/T-0156-server-deploy-nits
 model: meta/muse-spark-1.3-contributor
@@ -97,3 +97,7 @@ sh deploy/tests/storage-safety.test.sh
 - None.
 
 ## Review (written by Claude)
+
+Merged after pre-review, fixes by me (no worker round). Findings fixed: (1) `deploy/zilar` domain check accepts `..` again after the rewrite: re-added the `*".."*` alternative, new test in `push-deploy.test.sh` (fails 24/1 on the old code, 25/0 now). (2) The stale-pair "backstop" in `push/routes.ts` only re-syncs room subscriptions and does not touch the old enable-pair; delivery to it stops because the device row is gone and the push component drops an unknown node. Comments and the warning log now say that. The extra sync is redundant with the one after save but harmless; left in place, not worth a schema-free refactor now. (3) Stale `one optional :port` comment in `push-entrypoint.sh`. (4) `serverPackageRoot` comment now matches the code at the filesystem root.
+
+Checks: format, lint, server tsc pass; server push/stickers tests 40 passed (plus pre-review: startup, agents, telegram-import 246 passed); `push-deploy.test.sh` 25/0; `storage-safety.test.sh` 24/0.

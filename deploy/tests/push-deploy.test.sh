@@ -371,6 +371,17 @@ if "$ZILAR" init --domain wizard-port.example \
 else
   bad "init rejects a bare host"
 fi
+# An empty label (`..`) is rejected too: it would bake a host with an empty
+# label into every derived URL and JID.
+if "$ZILAR" init --domain "chat..example.com" \
+  --admin-email "ops@wizard-port.example" --acme-email "ops@wizard-port.example" \
+  --image-owner testowner \
+  --push-subject "mailto:ops@wizard-port.example" --env-file="$T/dots.env" --dry-run \
+  > /dev/null 2>&1; then
+  bad "init accepted a domain with an empty label (..)"
+else
+  ok "init rejects a domain with an empty label (..)"
+fi
 rm -rf "$T" "$T_OFF"
 echo "---"
 echo "pass=$PASS fail=$FAIL"

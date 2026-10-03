@@ -139,13 +139,12 @@ export function createPushRoutes(deps: PushRoutesDependencies): Hono {
     }
     const cipher = createPushCipher(storageKey);
     const pushJid = deps.push.PUSH_COMPONENT_JID as string;
-    // Drops the stale enable-pair behind a replaced node (XEP-0357 session
-    // state in ejabberd). There is no admin command that targets a push
-    // pair by node directly, so the backstop asks ejabberd to unsubscribe
-    // the user from every room they can see: publishes to the old pair
-    // stop, exactly like the last-device removal below. The browser's own
-    // session normally sends `<disable/>` for the old pair itself; this
-    // covers clients that re-register without disabling first. Best
+    // A replaced node leaves a stale enable-pair behind in ejabberd (XEP-0357
+    // session state). No admin command targets a push pair by node, so this
+    // only re-syncs the user's room subscriptions. What actually stops
+    // delivery to the old pair is that its device row is gone: the push
+    // component drops publishes for an unknown node. The browser's own
+    // session normally sends `<disable/>` for the old pair itself. Best
     // effort: a failure never fails the registration (no endpoint or key
     // in the logs — user id only).
     const dropStalePushPairs = async (staleNodes: string[]): Promise<void> => {
@@ -165,7 +164,7 @@ export function createPushRoutes(deps: PushRoutesDependencies): Hono {
       } catch (error) {
         deps.logger.warn(
           { userId: user.id, staleNodes: staleNodes.length, err: errorName(error) },
-          'push stale-pair cleanup failed after re-registration; publishes drop as unknown-device',
+          'push room re-sync failed after node replacement; the old node drops as unknown-device',
         );
       }
     };

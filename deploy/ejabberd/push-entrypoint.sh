@@ -52,8 +52,8 @@ if [ "$(grep -c '# ZILAR_PUSH_COMPONENT_HOST$' "$CONFIG_PATH")" -ne 1 ]; then
   exit 1
 fi
 # The host key is YAML-indented under `hosts:` (six spaces). The domain was
-# validated by `./zilar init` (letters, digits, dots, hyphens, one optional
-# :port — no spaces, slashes or `$`), so it cannot break the line shape.
+# validated by `./zilar init` (letters, digits, dots, hyphens only — no
+# `:port`, spaces, slashes or `$`), so it cannot break the line shape.
 # Portable in-place edit: `sed -i` needs an argument on BSD (a backup
 # suffix) but takes the script directly on GNU, so always pass a backup
 # suffix and remove it afterwards — works on both. The replacement touches

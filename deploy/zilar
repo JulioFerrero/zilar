@@ -239,7 +239,7 @@ cmd_init() {
     # so a hostile or mistyped value can never reach the env file or
     # Compose interpolation (where `$` would silently expand).
     *":"*) die "init: bad domain '$_domain' — give a bare host like chat.example.com (no :port; the trial ports come from --http-port/--https-port)" ;;
-    *[!A-Za-z0-9.-]*|"."*|*".") die "init: bad domain '$_domain' — give a bare host like chat.example.com" ;;
+    *[!A-Za-z0-9.-]*|"."*|*"."|*".."*) die "init: bad domain '$_domain' — give a bare host like chat.example.com" ;;
   esac
   case "$_admin_email" in
     *"@"*.*) ;;
