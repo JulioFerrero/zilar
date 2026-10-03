@@ -5,7 +5,7 @@ status: planned
 milestone: M5
 branch: task/T-0176-mobile-attach-icons-short-press
 model: meta/muse-spark-1.3-contributor
-effort: small
+effort: low
 depends_on: []
 estimate: 0.5 day
 ---
