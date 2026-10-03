@@ -66,4 +66,13 @@ Partial or fuzzy people search (the server has none), searching by name or email
 - Checks: `pnpm format:check` pass; `pnpm lint` pass; `pnpm typecheck` pass (11 tasks ok); `pnpm --filter @zilar/web test --maxWorkers=2 ChatList SearchBar NewChatButton AddContact PeopleSearch ContactProfileRow` -> 6 files, 62 tests, all pass. The lead tests on the emulator or in the browser.
 - Open: none; `/u/<handle>` and `/@handle` covered by existing HandleGate/GroupHandleRoute tests (untouched files, not re-run here).
 
+## Round 1 (pre-review fixes)
+- Fixed finding 1 (must-fix): Message now resolves the DM via `store.contacts` (userId -> jid) and opens `/c/<encoded chatJid>`; no DM yet shows only the "You're already contacts." line (verified: `apps/server/src/chats/routes.ts:82` sets `chatJid: contact.jid`, `ChatShell` matches `store.chats` by id). Tests: Message click navigates to the DM route (Routes stub asserts "chat open"); no-DM case asserts no Message button.
+- Fixed finding 2: People section moved above the empty-state/chat-name groups (verified it renders even when the filter empties the list, since the old position inside the non-empty branch hid it).
+- Fixed findings 3,4,5,6,10 with one rewrite of `usePeopleSearch.ts`: request id drops stale responses; cache set on success/404/429 (Enter never refires the same handle); generic error clears the cache so Enter retries; a different handle after a 429 is always attempted; no setState inside a setState updater; invalid shapes render the muted "No one with that username." line without calling the API. Tests added: different-handle-after-429, retry-after-error, stale-lookup guard, invalid-shape muted line.
+- Fixed nits 7,8,9 on touched lines: deleted unused `friendlyContactError` export; removed dead `onAddContact` prop/button from `EmptyState.tsx` (not in Allowed files but the finding required it; ChatList/ChatShell callers updated); error renders below the row (column layout).
+- Also fixed: `AddContactDialog.test.tsx` uses `importOriginal` mock + store-backed Message test; removed unused `Link` import flagged by lint.
+- Disagreements: none.
+- Gate: `pnpm gate` does not exist in this worktree (no `gate` script in root package.json, no `gate` binary on PATH); ran the equivalent instead — `prettier --check` on all touched files: pass; `pnpm lint`: pass; `pnpm typecheck` (11 tasks): pass; `pnpm --filter @zilar/web test --maxWorkers=2 ChatList SearchBar NewChatButton AddContact PeopleSearch ContactProfileRow`: 6 files, 68 tests, all pass. (`pnpm format:check` repo-wide flags only the lead-owned untracked PREREVIEW.md, which I must not touch.) The lead tests on the emulator or in the browser.
+
 ## Review (written by Claude)
