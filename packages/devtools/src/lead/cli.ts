@@ -8,6 +8,7 @@ import { findTaskFile, launchTask } from './launch.js';
 import { mergeTask } from './merge.js';
 import { promptsDir } from './prompts.js';
 import { replyToWorker } from './reply.js';
+import { collectSnapshot } from './collect-snapshot.js';
 import { checkSpec, formatProblems } from './spec-check.js';
 import { startPrereviewSession } from './start-prereview.js';
 import { switchModel } from './switch-model.js';
@@ -28,6 +29,8 @@ Usage: lead <command> [options]
   reply <T-XXXX> <prompt-file>                              interrupt the worker and re-prompt it
   merge <T-XXXX> --summary "<one line>" [--skip-gate]       rebase, run the gate, fast-forward main, board, push, clean up
   spec-check <T-XXXX>                                       check a spec's paths, routes and web claims against the code
+  snapshot                                                  JSON of every task in flight, its step and timings
+  dashboard <out.html>                                      the snapshot rendered as the dashboard page
   status                                                    compact table of every tracked task
 
 State lives outside the repo at ~/.zilar-lead/state.json (or ZILAR_LEAD_STATE).
@@ -226,6 +229,35 @@ function runSpecCheck(positional: string[]): void {
   }
 }
 
+// `lead snapshot` prints the JSON the dashboard shows; `lead dashboard <out>`
+// writes it into the page template. Claude publishes that page as an Artifact.
+async function runSnapshot(positional: string[], page: boolean): Promise<void> {
+  const root = findRepoRoot();
+  const snapshot = await collectSnapshot({
+    client: new OpencodeCliClient(),
+    runner: new RealGitRunner(),
+    statePath: stateFilePath(),
+    root,
+    now: Date.now(),
+  });
+  const json = JSON.stringify(snapshot);
+  if (!page) {
+    console.log(json);
+    return;
+  }
+  const out = positional[0];
+  if (out === undefined) {
+    throw new Error('usage: lead dashboard <out.html>');
+  }
+  const template = fs.readFileSync(
+    path.join(root, 'packages', 'devtools', 'dashboard', 'template.html'),
+    'utf8',
+  );
+  // `<` is escaped so task text can never close the script tag.
+  fs.writeFileSync(out, template.replace('__SNAPSHOT__', json.replace(/</g, '\\u003c')));
+  console.log(`dashboard written to ${out} (${snapshot.active.length} active)`);
+}
+
 async function runStatus(): Promise<void> {
   const rows = await collectStatus({
     client: new OpencodeCliClient(),
@@ -251,6 +283,10 @@ export async function main(argv: string[]): Promise<void> {
     await runPrereview(positional);
   } else if (command === 'reply') {
     await runReply(positional);
+  } else if (command === 'snapshot') {
+    await runSnapshot(positional, false);
+  } else if (command === 'dashboard') {
+    await runSnapshot(positional, true);
   } else if (command === 'spec-check') {
     runSpecCheck(positional);
   } else if (command === 'merge') {

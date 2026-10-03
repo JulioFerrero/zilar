@@ -32,6 +32,12 @@ function createdMs(message: unknown): number {
   return 0;
 }
 
+// When the newest message of a session was created (ms since epoch; 0 when
+// unknown). The dashboard shows it as "last activity".
+export function newestMessageMs(messages: unknown[]): number {
+  return messages.reduce<number>((newest, message) => Math.max(newest, createdMs(message)), 0);
+}
+
 // Recursively looks for a provider quota failure: an object typed
 // `provider.quota`, or a 402 status carried by an error-shaped object.
 function containsQuotaError(value: unknown, depth: number): boolean {
