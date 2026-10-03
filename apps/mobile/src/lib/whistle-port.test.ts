@@ -67,10 +67,19 @@ describe('whistle port (T-0177)', () => {
     });
   });
 
-  it('the production port never loads the native module at build time', () => {
+  it('the production port reads the real native check, false with none linked', () => {
     const port = createWhistlePort();
+    // Under Vitest no native module is linked: the require throws and the
+    // port reports unavailable instead of crashing.
     expect(port.isAvailable()).toBe(false);
     expect(vi.isMockFunction(port.modelStatus)).toBe(false);
+  });
+
+  it('the production port reports true when the native check passes', () => {
+    const port = createWhistlePort({
+      isAvailable: () => true,
+    });
+    expect(port.isAvailable()).toBe(true);
   });
 });
 

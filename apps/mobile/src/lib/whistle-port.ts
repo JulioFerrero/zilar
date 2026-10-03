@@ -59,10 +59,9 @@ export function createWhistlePort(deps?: {
     };
   }
   return {
-    // No synchronous native check exists that is safe off-device: the real
-    // port reports through `modelStatus`/`transcribe` rejecting with
-    // `unavailable` on iOS, non-arm64 or unlinked builds.
-    isAvailable: () => false,
+    // The real native check is synchronous and safe: `getNativeModule`
+    // returns null off Android and `isAvailable` only reads the ABI list.
+    isAvailable: () => checkNativeAvailable(),
     modelStatus: async () => (await lazyModuleAsync()).modelStatus(),
     downloadModel: (onProgress) =>
       lazyModuleAsync().then((module) => module.downloadModel(onProgress)),
@@ -70,6 +69,23 @@ export function createWhistlePort(deps?: {
     transcribe: (fileUri, options) =>
       lazyModuleAsync().then((module) => module.transcribe(fileUri, options)),
   };
+}
+
+/**
+ * Reads the real native availability without a static import: the bare
+ * `require` below is only evaluated when this function runs, so Vitest
+ * (which always injects the fake through `deps`) never loads native code.
+ */
+function checkNativeAvailable(): boolean {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { getNativeModule } = require('zilar-whistle/src/ZilarWhistleModule') as {
+      getNativeModule: () => { isAvailable: () => boolean } | null;
+    };
+    return getNativeModule()?.isAvailable() ?? false;
+  } catch {
+    return false;
+  }
 }
 
 /**
