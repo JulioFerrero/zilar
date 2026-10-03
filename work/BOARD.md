@@ -209,7 +209,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0177](T-0177-whistle-on-device-spike.md) | Whistle on-device spike: local Expo module (arm64 Android), hidden dev screen, native sha256, tested on emulator and phone | 2026-10-03 |
 | [T-0178](T-0178-whistle-quiet-cut-chunks.md) | Whistle: quiet-point chunking from a native amplitude envelope | 2026-10-03 |
 | [T-0180](T-0180-signin-no-code-hint.md) | Sign-in hints for people without an invite (web + mobile) | 2026-10-03 |
-| [T-0192](T-0192-web-search-people-by-handle.md) | Web: @handle in the search bar shows the person (replaces Add contact in the menu) | planned | meta/muse-spark-1.3-contributor | — | Spec ready |
 | [T-0187](T-0187-mobile-sticker-packs.md) | Mobile: manage sticker packs (my packs, discover, add and remove, reorder, favourites) | planned | meta/muse-spark-1.3-contributor | — | Spec ready; mobile parity wave 2 |
 | [T-0188](T-0188-mobile-integrations-owner.md) | Mobile: owner integrations (Telegram bot, email, voice transcription) | planned | meta/muse-spark-1.3-contributor | — | Spec ready; mobile parity wave 2 |
 | [T-0191](T-0191-mobile-sticker-editor-telegram.md) | Mobile: sticker pack editor and Telegram sticker import | planned | meta/muse-spark-1.3-contributor | T-0187 | Spec ready; mobile parity wave 2 |
@@ -224,3 +223,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0184](T-0184-mobile-approvals-page.md) | Mobile approvals page: pending approvals and always-allowed rules | 2026-10-03 |
 | [T-0193](T-0193-mobile-search-people-by-handle.md) | Mobile: find people by @handle in the search bar, replacing the add-contact menu entry | 2026-10-03 |
 | [T-0185](T-0185-mobile-machines-connections.md) | Mobile machines and model connections screens, home machine picker on an AI | 2026-10-03 |
+| [T-0192](T-0192-web-search-people-by-handle.md) | Web: find people by @handle in the search bar, replacing Add contact in the new-chat menu | 2026-10-03 |
