@@ -1,4 +1,15 @@
-import { Clock, Hand, Hash, Heart, Lightbulb, PawPrint, Pizza, Plane, Smile, Trophy } from 'lucide-react-native';
+import {
+  Clock,
+  Hand,
+  Hash,
+  Heart,
+  Lightbulb,
+  PawPrint,
+  Pizza,
+  Plane,
+  Smile,
+  Trophy,
+} from 'lucide-react-native';
 import { Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColorScheme } from 'nativewind';
@@ -6,11 +17,7 @@ import { useColorScheme } from 'nativewind';
 import { Text } from '@/components/ui/text';
 import { asColorScheme } from '@/lib/color-scheme';
 import { ICON } from '@/lib/colors';
-import {
-  EMOJI_BY_CATEGORY,
-  EMOJI_CATEGORIES,
-  type EmojiCategoryId,
-} from '@/lib/emoji-data';
+import { EMOJI_BY_CATEGORY, EMOJI_CATEGORIES, type EmojiCategoryId } from '@/lib/emoji-data';
 
 const CATEGORY_ICONS: Record<EmojiCategoryId, typeof Smile> = {
   smileys: Smile,
@@ -45,7 +52,13 @@ export const EMOJI_GRID_COLUMNS = 8;
  * caret and never closes the sheet; a Lucide icon per category, emoji
  * characters only as emoji content.
  */
-export function EmojiTab({ open, recents, activeCategory, onSelectCategory, onPick }: EmojiTabProps) {
+export function EmojiTab({
+  open,
+  recents,
+  activeCategory,
+  onSelectCategory,
+  onPick,
+}: EmojiTabProps) {
   useSafeAreaInsets();
   const scheme = asColorScheme(useColorScheme().colorScheme);
   const iconColor = ICON[scheme];
@@ -62,7 +75,12 @@ export function EmojiTab({ open, recents, activeCategory, onSelectCategory, onPi
         horizontal
         accessibilityRole="toolbar"
         accessibilityLabel="Emoji categories"
-        contentContainerStyle={{ flexDirection: 'row', gap: 2, paddingHorizontal: 8, paddingVertical: 4 }}
+        contentContainerStyle={{
+          flexDirection: 'row',
+          gap: 2,
+          paddingHorizontal: 8,
+          paddingVertical: 4,
+        }}
       >
         <CategoryButton
           label="Recent emoji"

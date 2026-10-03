@@ -1,13 +1,13 @@
 import { StickerSchema, type Attachment } from '@zilar/protocol';
-import { ArrowUp, Paperclip, Smile, Sticker, X } from 'lucide-react-native';
+import { ArrowUp, Paperclip, Smile, X } from 'lucide-react-native';
 import { useCallback, useMemo, useState } from 'react';
-import { Pressable, TextInput, View } from 'react-native';
+import { Keyboard, Pressable, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AttachSheet, type AttachmentChoice } from '@/components/chat/attach-sheet';
 import { EditBar } from '@/components/chat/edit-bar';
-import { GifSheet } from '@/components/chat/gif-panel';
-import { loadStickerPacks, persistRecent, StickerPanel } from '@/components/chat/sticker-panel';
+import { EmojiSheet, type EmojiSheetTab } from '@/components/chat/emoji-sheet';
+import { loadStickerPacks, persistRecent } from '@/components/chat/sticker-panel';
 import { VoiceRecorderButton } from '@/components/chat/voice-recorder';
 import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
@@ -23,6 +23,14 @@ import {
   primaryKey,
   well,
 } from '@/lib/depth';
+import {
+  EMOJI_RECENTS_STORAGE,
+  insertEmojiAtCaret,
+  persistEmojiRecent,
+  readStoredEmojiRecents,
+  type CaretSelection,
+  type EmojiCategoryId,
+} from '@/lib/emoji-data';
 import { RECENTS_STORAGE, readStoredRecents } from '@/lib/stickers-storage';
 import { gifsAvailability, type GifItem } from '@/lib/gifs';
 import { probeGifsAvailability } from '@/components/chat/gif-panel';
@@ -41,6 +49,21 @@ import { useColorScheme } from 'nativewind';
 
 const MIN_INPUT_HEIGHT = 36;
 const MAX_INPUT_HEIGHT = 132;
+
+/**
+ * The text field height for a reported content height (T-0175): on Android
+ * the reported content height already includes the field's `py-2` padding,
+ * so adding padding again counted it twice and the composer well grew to
+ * about twice its height. An empty one-line field is exactly
+ * `MIN_INPUT_HEIGHT` (a 36 px field plus 8 px padding top and bottom makes
+ * one empty line about 52 px); the cap holds 8 lines.
+ */
+export function fieldHeightFor(contentHeight: number): number {
+  if (!Number.isFinite(contentHeight)) {
+    return MIN_INPUT_HEIGHT;
+  }
+  return clamp(Math.round(contentHeight), MIN_INPUT_HEIGHT, MAX_INPUT_HEIGHT);
+}
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -145,6 +168,10 @@ export function Composer({
   });
   const [text, setText] = useState('');
   const [inputHeight, setInputHeight] = useState(MIN_INPUT_HEIGHT);
+  // The caret for emoji insertion: tracked from the TextInput's
+  // `onSelectionChange`; `undefined` until the first selection event (an
+  // emoji pick then appends at the end).
+  const [selection, setSelection] = useState<CaretSelection | undefined>(undefined);
   // Entering edit mode prefills the input with the message's text; leaving it
   // restores whatever the user had typed before they tapped Edit. The seeding
   // runs while rendering, keyed on the message id (a string), instead of in an
@@ -185,8 +212,8 @@ export function Composer({
 
   // The sticker panel: the user's packs from the server (demo packs in mock
   // mode), a per-device Recent row, tap-to-send. Loading, error + retry, and
-  // the "create on web" empty state live in `StickerPanel`.
-  const [panelOpen, setPanelOpen] = useState(false);
+  // the "create on web" empty state live in `StickerGrid` (shown inside the
+  // emoji sheet's Stickers tab).
   const [packs, setPacks] = useState<StickerPack[] | undefined>(undefined);
   const [panelState, setPanelState] = useState<StickerPanelState>('loading');
   const [recents, setRecents] = useState<RecentStickerEntry[]>([]);
@@ -219,18 +246,8 @@ export function Composer({
       });
   }, [demoPacks]);
 
-  const openPanel = () => {
-    setPanelOpen(true);
-    loadPanel();
-    void readStoredRecents()
-      .then(setRecents)
-      .catch(() => {});
-  };
-
   // The GIF tab: hidden once the server answers 501 (provider off),
   // probed once per session. Mock mode serves demo GIFs without a server.
-  // The tab reuses the sticker sheet's shape: one sheet, two tabs.
-  const [gifOpen, setGifOpen] = useState(false);
   const [gifAvailable, setGifAvailable] = useState<boolean | undefined>(() =>
     demoGifs === undefined ? gifsAvailability() : true,
   );
@@ -239,27 +256,47 @@ export function Composer({
     [demoGifs],
   );
 
-  const openGifs = () => {
-    if (demoGifItems !== undefined) {
-      setGifAvailable(true);
-      setGifOpen(true);
-      return;
+  // The one emoji sheet (T-0175): tabs Emoji | Stickers | GIFs. Emoji first
+  // and selected by default; the last tab is remembered for the session.
+  // The GIFs tab hides when the provider is off (the probe above), and a
+  // tab that disappears under the active tab falls back to the first
+  // visible one (in `EmojiSheet`), so the sheet never vanishes.
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [sheetTab, setSheetTab] = useState<EmojiSheetTab | undefined>(undefined);
+  const [emojiRecents, setEmojiRecents] = useState<string[]>([]);
+  const [emojiCategory, setEmojiCategory] = useState<EmojiCategoryId | 'recent' | undefined>(
+    undefined,
+  );
+
+  const openSheet = () => {
+    // On Android with the keyboard open the sheet replaces the keyboard:
+    // dismiss it now, and a tap on the field brings it back.
+    Keyboard.dismiss();
+    setSheetOpen(true);
+    loadPanel();
+    void readStoredRecents()
+      .then(setRecents)
+      .catch(() => {});
+    void readStoredEmojiRecents()
+      .then(setEmojiRecents)
+      .catch(() => {});
+    if (demoGifItems === undefined && gifsAvailability() === undefined) {
+      void probeGifsAvailability().then((available) => {
+        setGifAvailable(available);
+      });
     }
-    const cached = gifsAvailability();
-    if (cached === false) {
-      return;
-    }
-    if (cached === true) {
-      setGifAvailable(true);
-      setGifOpen(true);
-      return;
-    }
-    void probeGifsAvailability().then((available) => {
-      setGifAvailable(available);
-      if (available) {
-        setGifOpen(true);
-      }
-    });
+  };
+
+  // Tapping an emoji inserts it at the caret and keeps the sheet open, so
+  // several can be added; the sheet closes with its handle, a tap outside,
+  // or the back button.
+  const pickEmoji = (emoji: string) => {
+    const { text: next, caret } = insertEmojiAtCaret(text, emoji, selection);
+    setText(next);
+    setSelection({ start: caret, end: caret });
+    void persistEmojiRecent(EMOJI_RECENTS_STORAGE, emojiRecents, emoji)
+      .then(setEmojiRecents)
+      .catch(() => {});
   };
 
   // A GIF pick fetches the media through the proxy, then sends it with the
@@ -268,7 +305,7 @@ export function Composer({
   // content type; failures show the inline error, and the attachment
   // bubble's Retry covers upload failures.
   const pickGif = (gif: GifItem) => {
-    setGifOpen(false);
+    setSheetOpen(false);
     if (onSendAttachment === undefined) {
       return;
     }
@@ -296,7 +333,7 @@ export function Composer({
   };
 
   const pickSticker = (sticker: StickerChoice) => {
-    setPanelOpen(false);
+    setSheetOpen(false);
     // Validate before persisting: a hostile or drifted choice shows the
     // store's error and is never written to Recents.
     const data = {
@@ -461,26 +498,18 @@ export function Composer({
               className="mx-1 flex-1 py-2 text-[16px] text-foreground"
               style={{ height: inputHeight, maxHeight: MAX_INPUT_HEIGHT, lineHeight: 20 }}
               onContentSizeChange={(event) =>
-                setInputHeight(
-                  clamp(
-                    Math.round(event.nativeEvent.contentSize.height) + 16,
-                    MIN_INPUT_HEIGHT,
-                    MAX_INPUT_HEIGHT,
-                  ),
-                )
+                setInputHeight(fieldHeightFor(event.nativeEvent.contentSize.height))
+              }
+              onSelectionChange={(event) =>
+                setSelection({
+                  start: event.nativeEvent.selection.start,
+                  end: event.nativeEvent.selection.end,
+                })
               }
             />
-            <IconButton label="Emoji" className="h-9 w-9 rounded-[10px]">
+            <IconButton label="Emoji" className="h-9 w-9 rounded-[10px]" onPress={openSheet}>
               <Smile size={20} color={iconColor} />
             </IconButton>
-            <IconButton label="Stickers" className="h-9 w-9 rounded-[10px]" onPress={openPanel}>
-              <Sticker size={20} color={iconColor} />
-            </IconButton>
-            {gifAvailable !== false ? (
-              <IconButton label="GIFs" className="h-9 w-9 rounded-[10px]" onPress={openGifs}>
-                <Text className="text-[15px] font-bold">GIF</Text>
-              </IconButton>
-            ) : null}
           </>
         ) : null}
         {canSend ? (
@@ -505,22 +534,25 @@ export function Composer({
           />
         )}
       </View>
-      <StickerPanel
-        open={panelOpen}
+      <EmojiSheet
+        open={sheetOpen}
+        tab={sheetTab}
+        onSelectTab={setSheetTab}
+        gifsVisible={gifAvailable !== false}
+        emojiRecents={emojiRecents}
+        emojiCategory={emojiCategory}
+        onSelectEmojiCategory={setEmojiCategory}
+        onPickEmoji={pickEmoji}
         packs={packs}
-        state={panelState}
-        recents={recents}
+        panelState={panelState}
+        stickerRecents={recents}
         activePackId={activePackId}
         onSelectPack={setActivePackId}
-        onPick={pickSticker}
-        onRetry={loadPanel}
-        onClose={() => setPanelOpen(false)}
-      />
-      <GifSheet
-        open={gifOpen}
-        mockItems={demoGifItems}
-        onPick={pickGif}
-        onClose={() => setGifOpen(false)}
+        onPickSticker={pickSticker}
+        onRetryStickers={loadPanel}
+        mockGifItems={demoGifItems}
+        onPickGif={pickGif}
+        onClose={() => setSheetOpen(false)}
       />
       <AttachSheet
         open={attachOpen}

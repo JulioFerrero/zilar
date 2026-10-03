@@ -1,7 +1,7 @@
 ---
 id: T-0175
 title: Mobile: one emoji button opens a panel with Emoji, Stickers and GIFs tabs (like web)
-status: in-progress
+status: review
 milestone: M5
 branch: task/T-0175-emoji-panel-mobile
 model: meta/muse-spark-1.3-contributor
@@ -63,5 +63,33 @@ Skin-tone variants, emoji search, animated emoji, the web composer.
 ---
 
 ## Report (written by the worker when done)
+
+### What I did
+Built the one-button mobile emoji panel with Emoji | Stickers | GIFs tabs, plus the three addenda (sticker grid spacing, GIF-tab hiding, composer height).
+- `apps/mobile/src/lib/emoji-data.ts` (new): 9 categories (~270 emoji, plain Unicode), `insertEmojiAtCaret`, `rememberRecentEmoji`/`readRecentEmoji` (cap 24), `EMOJI_RECENTS_STORAGE` + `readStoredEmojiRecents`/`persistEmojiRecent` on the same memory-backend seam as sticker recents. Test: `emoji-data.test.ts` (6 tests).
+- `apps/mobile/src/components/chat/emoji-tab.tsx` (new): category strip with Lucide icons (Recent `Clock`, smileys `Smile`, people `Hand`, hearts `Heart`, animals `PawPrint`, food `Pizza`, activities `Trophy`, travel `Plane`, objects `Lightbulb`, symbols `Hash`), 8-column grid, empty-recents copy. Test: `emoji-tab.test.tsx` (5 tests).
+- `apps/mobile/src/components/chat/emoji-sheet.tsx` (new): one half-height (`h-[50%]`) sheet with tab row (Lucide `Smile`/`Sticker`/`Film` + labels), `resolveSheetTab` fallback to first visible tab, hosts `EmojiTab`/`StickerGrid`/`GifPanel`. Test: `emoji-sheet.test.tsx` (9 tests incl. cell-size math and GIF-hidden fallback).
+- `sticker-panel.tsx`: extracted `StickerGrid` body (unchanged behaviour; `StickerPanel` now wraps it, so existing tests pass unedited); 5 equal columns via `stickerCellSize(sheetWidth)` measured with `onLayout` (default 360), equal 8px gaps, 16px side padding; sheet is now half-height like the others. `useWindowDimensions` was dropped because the existing sticker test mocks `react-native` without it (that test file is outside Allowed files, so the component had to adapt).
+- `gif-panel.tsx`: `GifSheet` sheet height aligned to `h-[50%]` (one line).
+- `composer.tsx`: removed Sticker and GIF row buttons (row is now Attach, field, Smile, Send/mic); Smile opens the sheet with `Keyboard.dismiss()`; caret tracked via `onSelectionChange`; `pickEmoji` inserts at caret and keeps sheet open; session-remembered tab + emoji category state; GIF availability probe still feeds `gifsVisible`; `fieldHeightFor(contentHeight)` replaces the `+16` double-padding sizing.
+- Tests updated (all in Allowed files): `composer-gifs.test.tsx` (one-button row, caret wiring, `fieldHeightFor` 1/2/8-line + cap + NaN, GIF-tab visibility now asserted through the sheet wiring), `composer-layout.test.ts` (comment now says Attach/field/emoji share the row).
+
+### Files changed
+`apps/mobile/src/lib/emoji-data.ts` + `.test.ts` (new), `components/chat/emoji-tab.tsx` + `.test.tsx` (new), `components/chat/emoji-sheet.tsx` + `.test.tsx` (new), `components/chat/composer.tsx`, `sticker-panel.tsx`, `gif-panel.tsx`, `composer-gifs.test.tsx`, `composer-layout.test.ts`, this task file.
+
+### Commands and real results
+- `pnpm install`: ok (6.9s).
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 composer sticker gif emoji`: 16 files, 111 tests, all passed.
+- `pnpm format:check`: pass (after `prettier --write` on touched files).
+- `pnpm lint`: pass. `pnpm typecheck`: pass (11 tasks ok).
+- Icon check: all suggested lucide-react-native exports exist (`Smile`, `Hand`, `Heart`, `PawPrint`, `Pizza`, `Trophy`, `Plane`, `Lightbulb`, `Hash`, `Clock`, `Sticker`, `Film`); no new dependency added.
+
+### Deviations / notes
+- The T-0148-era composer tests asserted a standalone GIFs row button; the spec removes that button, so I retargeted those three assertions to the sheet's GIFs tab (same availability semantics). Existing `sticker-panel.test.tsx` / `gif-panel.test.tsx` pass unedited.
+- Sheet height: `h-[50%]` (spec: "about half"). The pack strip is a plain row (not horizontally scrollable) — same as before; many packs could overflow, pre-existing behaviour.
+- Security checklist: no secrets/URLs logged; emoji recents validated on read (string, ≤16 chars, cap 24); sticker/GIF URL trust checks untouched; no new routes.
+
+### Blocked / needs a decision
+None.
 
 ## Review (written by Claude)

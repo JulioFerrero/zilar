@@ -1,9 +1,13 @@
 import { createElement } from 'react';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 
-import { Composer } from './composer';
-import { resetGifsAvailability, setGifsAvailability } from '@/lib/gifs';
+import { Composer, fieldHeightFor } from './composer';
+import { EmojiSheet } from './emoji-sheet';
+import { gifsAvailability, resetGifsAvailability, setGifsAvailability } from '@/lib/gifs';
 
 vi.mock('expo-image', () => ({
   Image: 'Image',
@@ -13,6 +17,7 @@ vi.mock('react-native', () => ({
   ActivityIndicator: 'ActivityIndicator',
   PanResponder: { create: () => ({ panHandlers: {} }) },
   Image: 'Image',
+  Keyboard: { dismiss: () => {} },
   Modal: 'Modal',
   Pressable: 'Pressable',
   ScrollView: 'ScrollView',
@@ -35,10 +40,20 @@ vi.mock('nativewind', () => ({
 
 vi.mock('lucide-react-native', () => ({
   ArrowUp: 'ArrowUp',
+  Clock: 'Clock',
+  Film: 'Film',
+  Hand: 'Hand',
+  Hash: 'Hash',
+  Heart: 'Heart',
+  Lightbulb: 'Lightbulb',
   Mic: 'Mic',
   Paperclip: 'Paperclip',
+  PawPrint: 'PawPrint',
+  Pizza: 'Pizza',
+  Plane: 'Plane',
   Smile: 'Smile',
   Sticker: 'StickerIcon',
+  Trophy: 'Trophy',
   X: 'X',
 }));
 
@@ -108,22 +123,98 @@ function composer(): string {
   );
 }
 
-describe('composer GIF tab (T-0148)', () => {
-  it('shows the GIFs button while availability is unknown', () => {
+function readComposerSource(): string {
+  const here = dirname(fileURLToPath(import.meta.url));
+  return readFileSync(join(here, 'composer.tsx'), 'utf8');
+}
+
+/**
+ * The sheet as the composer wires it: the GIFs tab is visible unless the
+ * probe said off (`gifsVisible={gifAvailable !== false}`, seeded from the
+ * availability cache). The sheet starts closed, so the row markup never
+ * shows the tabs — this renders it open with the composer's expression.
+ */
+function sheetForAvailability(): string {
+  return renderToStaticMarkup(
+    createElement(EmojiSheet, {
+      open: true,
+      tab: undefined,
+      onSelectTab: () => {},
+      gifsVisible: gifsAvailability() !== false,
+      emojiRecents: [],
+      emojiCategory: undefined,
+      onSelectEmojiCategory: () => {},
+      onPickEmoji: () => {},
+      packs: [],
+      panelState: 'empty',
+      stickerRecents: [],
+      activePackId: undefined,
+      onSelectPack: () => {},
+      onPickSticker: () => {},
+      onRetryStickers: () => {},
+      mockGifItems: [],
+      onPickGif: () => {},
+      onClose: () => {},
+    }),
+  );
+}
+
+describe('composer GIF tab (T-0148, sheet tabs in T-0175)', () => {
+  it('offers the GIFs sheet tab while availability is unknown', () => {
     resetGifsAvailability();
-    expect(composer()).toContain('GIFs');
+    expect(composer()).toContain('Emoji');
+    expect(sheetForAvailability()).toContain('>GIFs<');
     resetGifsAvailability();
   });
 
-  it('hides the GIFs button once the server answers 501 (provider off)', () => {
+  it('hides the GIFs sheet tab once the server answers 501 (provider off)', () => {
     setGifsAvailability(false);
-    expect(composer()).not.toContain('GIFs');
+    expect(sheetForAvailability()).not.toContain('>GIFs<');
+    expect(sheetForAvailability()).toContain('>Emoji<');
     resetGifsAvailability();
   });
 
-  it('shows the GIFs button once the provider answers', () => {
+  it('offers the GIFs sheet tab once the provider answers', () => {
     setGifsAvailability(true);
-    expect(composer()).toContain('GIFs');
+    expect(sheetForAvailability()).toContain('>GIFs<');
     resetGifsAvailability();
+  });
+
+  it('wires the composer to the availability cache', () => {
+    expect(readComposerSource()).toContain('gifsVisible={gifAvailable !== false}');
+  });
+});
+
+describe('composer emoji row (T-0175)', () => {
+  it('has exactly one emoji-related button: no Sticker or GIF buttons', () => {
+    const html = composer();
+    expect(html).toContain('Emoji');
+    expect(html).not.toContain('Stickers');
+    expect(html).not.toContain('>GIF<');
+    expect(html.match(/<IconButton/g)?.length ?? 0).toBe(2);
+  });
+
+  it('tracks the caret so emoji insert at the selection', () => {
+    const source = readComposerSource();
+    expect(source).toContain('onSelectionChange');
+    expect(source).toContain('insertEmojiAtCaret');
+  });
+});
+
+describe('fieldHeightFor (T-0175)', () => {
+  it('keeps an empty one-line field at MIN_INPUT_HEIGHT (36)', () => {
+    expect(fieldHeightFor(20)).toBe(36);
+    expect(fieldHeightFor(36)).toBe(36);
+    expect(fieldHeightFor(0)).toBe(36);
+  });
+
+  it('grows with two lines and caps at eight', () => {
+    expect(fieldHeightFor(40)).toBe(40);
+    expect(fieldHeightFor(132)).toBe(132);
+    expect(fieldHeightFor(200)).toBe(132);
+  });
+
+  it('never returns NaN for a hostile content height', () => {
+    expect(fieldHeightFor(Number.NaN)).toBe(36);
   });
 });
