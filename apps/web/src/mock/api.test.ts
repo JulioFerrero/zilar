@@ -69,6 +69,61 @@ describe('mockRequest', () => {
     expect((await getMe()).name).toBe('Ada');
   });
 
+  it('checks and claims handles through the real schemas', async () => {
+    const { checkHandle, claimHandle } = await import('@/lib/api');
+    const { RESERVED_HANDLES } = await import('@/lib/handles');
+    expect((await getMe()).handle ?? null).toBeNull();
+    expect(await checkHandle('ab')).toEqual({ available: false, reason: 'invalid' });
+    expect(await checkHandle('taken_user')).toEqual({ available: false, reason: 'taken' });
+    expect(await checkHandle('ada_new')).toEqual({ available: true });
+    // Every reserved word maps to `reserved`, like the server.
+    expect(RESERVED_HANDLES.size).toBeGreaterThan(0);
+    for (const word of RESERVED_HANDLES) {
+      expect(await checkHandle(word)).toEqual({ available: false, reason: 'reserved' });
+    }
+    expect(await claimHandle('ada_new')).toEqual({ handle: 'ada_new' });
+    expect((await getMe()).handle).toBe('ada_new');
+  });
+
+  it('looks up handles and runs the request flow through the real schemas', async () => {
+    const { lookupByHandle, sendContactRequest, listContactRequests, acceptContactRequest } =
+      await import('@/lib/api');
+    // `taken_user` resolves to a real person; a free handle to a stranger.
+    const ana = await lookupByHandle('taken_user');
+    expect(ana).toMatchObject({ name: 'Ana', handle: 'taken_user', relation: 'none' });
+    const stranger = await lookupByHandle('brand_new');
+    expect(stranger).toMatchObject({ handle: 'brand_new', relation: 'none' });
+    await expect(lookupByHandle('admin')).rejects.toMatchObject({ status: 404 });
+    await expect(lookupByHandle('ab')).rejects.toMatchObject({ status: 404 });
+
+    const created = await sendContactRequest('brand_new');
+    expect(created.request.status).toBe('pending');
+    const list = await listContactRequests();
+    expect(list.outgoing.map((entry) => entry.other.handle)).toEqual(['brand_new']);
+    expect(list.incoming).toEqual([]);
+    // The relation follows the pending outgoing request.
+    expect((await lookupByHandle('brand_new')).relation).toBe('request_sent');
+
+    // A duplicate create answers 409 `request_exists` — an error, not the
+    // created schema, so the client surfaces the code.
+    await expect(sendContactRequest('brand_new')).rejects.toMatchObject({
+      status: 409,
+      code: 'request_exists',
+    });
+
+    // Accepting from the other side is not possible in mock mode (the mock
+    // user is always the sender), but declining the id twice 404s: the
+    // first decline flips it, the second finds nothing pending.
+    const { declineContactRequest, cancelContactRequest } = await import('@/lib/api');
+    await expect(acceptContactRequest(created.request.id)).rejects.toMatchObject({ status: 404 });
+    const cancelled = await cancelContactRequest(created.request.id);
+    expect(cancelled.request.status).toBe('cancelled');
+    await expect(declineContactRequest(created.request.id)).rejects.toMatchObject({
+      status: 404,
+    });
+    expect((await lookupByHandle('brand_new')).relation).toBe('none');
+  });
+
   it('serves chats and contacts that pass the real schemas', async () => {
     const chats = await getChats();
     expect(chats.some((chat) => chat.kind === 'dm')).toBe(true);

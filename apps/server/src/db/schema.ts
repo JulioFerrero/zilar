@@ -88,6 +88,91 @@ export const contacts = pgTable(
   (table) => [primaryKey({ columns: [table.userId, table.contactUserId] })],
 );
 
+// @usernames (T-0163): one namespace for people and groups. Only `user_id`
+// rows are written in this task; the `group_id` column and its check exist
+// so the next task (public groups/channels) needs no change to the table.
+// The primary key on `handle_lower` is the only uniqueness rule: concurrent
+// claims race on it, never check-then-insert.
+export const handles = pgTable(
+  'handles',
+  {
+    handleLower: text('handle_lower').primaryKey(),
+    handle: text('handle').notNull(),
+    userId: text('user_id')
+      .unique()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    groupId: text('group_id')
+      .unique()
+      .references(() => groups.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    changedAt: timestamp('changed_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    check('handles_owner_check', sql`num_nonnulls(${table.userId}, ${table.groupId}) = 1`),
+  ],
+);
+
+// A handle given up by a change stays reserved for its former owner until
+// `reserved_until` (30 days): the owner may reclaim it, nobody else may take
+// it. Expired rows read as free and are reaped on the next claim.
+export const retiredHandles = pgTable(
+  'retired_handles',
+  {
+    handleLower: text('handle_lower').primaryKey(),
+    formerUserId: text('former_user_id').references(() => user.id, { onDelete: 'cascade' }),
+    formerGroupId: text('former_group_id').references(() => groups.id, { onDelete: 'cascade' }),
+    reservedUntil: timestamp('reserved_until', { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    check(
+      'retired_handles_owner_check',
+      sql`num_nonnulls(${table.formerUserId}, ${table.formerGroupId}) = 1`,
+    ),
+  ],
+);
+
+// A pending request from one user to become another's contact. Two partial
+// unique indexes share the work: `contact_requests_pending_idx` keeps at
+// most one pending row per direction (the race backstop for same-direction
+// creates), and `contact_requests_pending_pair_idx` keeps at most one
+// pending row per unordered pair (the backstop for simultaneous
+// opposite-direction creates — A→B and B→A racing past each other's
+// duplicate check). `decided_at` is set on accept/decline/cancel and gates
+// the 7-day re-request cooldown.
+export const contactRequests = pgTable(
+  'contact_requests',
+  {
+    id: text('id').primaryKey(),
+    fromUserId: text('from_user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    toUserId: text('to_user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    status: text('status', { enum: ['pending', 'accepted', 'declined', 'cancelled'] })
+      .notNull()
+      .default('pending'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+  },
+  (table) => [
+    check(
+      'contact_requests_status_check',
+      sql`${table.status} IN ('pending', 'accepted', 'declined', 'cancelled')`,
+    ),
+    uniqueIndex('contact_requests_pending_idx')
+      .on(table.fromUserId, table.toUserId)
+      .where(sql`${table.status} = 'pending'`),
+    uniqueIndex('contact_requests_pending_pair_idx')
+      .on(
+        sql`least(${table.fromUserId}, ${table.toUserId})`,
+        sql`greatest(${table.fromUserId}, ${table.toUserId})`,
+      )
+      .where(sql`${table.status} = 'pending'`),
+    check('contact_requests_different_users_check', sql`${table.fromUserId} <> ${table.toUserId}`),
+  ],
+);
+
 // A group is backed by a members-only XMPP MUC room. The room localpart is
 // random and never derived from the title.
 export const groupKindSchema = z.enum(['group', 'channel']);

@@ -90,6 +90,15 @@ Every group has shareable **invite links**: a short web address that lets someon
 - Only the group's owner or admins create, list and revoke links. Each link shows how many times it has been used, and whether it is expired or used up.
 - On the phone the same three actions work: the group screen has an invite-links sheet (owner/admin only) with create (label up to 60 characters, expiry up to a year, up to 10,000 uses), the uses/state list, and revoke — plus a "Join with a link" form that opens a preview card with Join/Cancel. (The mock/demo join preview always reports you as already a member; the real join path is tested, not demoed.)
 
+## Usernames and contacts
+
+Every person has a unique **@username**: 3–32 characters of letters, numbers and `_`, starting with a letter (some words like `admin` are reserved).
+
+- **Pick** yours during onboarding (right after your display name) or later from the profile settings. You can change it, but at most once every 14 days — and your old name stays reserved for you for 30 days, so nobody else can grab it.
+- **Add** someone by their username: "Add contact" in the chat-list menu, the + new chat menu, or the empty state. They get a contact request and must accept before you are contacts.
+- **Requests** live under Settings → Requests: Accept or Decline incoming ones, Cancel the ones you sent. The chat-list menu shows a badge with the incoming count.
+- Your share link looks like `https://your-server/@ada`: opening it shows your card with a Send request button (or asks to sign in first).
+
 ## Roles and private topics
 
 Bigger groups can hand out **roles**: named badges like "Designers" or "Approvers", managed by the group's owner and admins from the group panel.

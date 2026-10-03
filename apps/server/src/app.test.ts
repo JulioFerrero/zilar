@@ -10,6 +10,16 @@ function createTestRoutes(): Hono {
   routes.get('/conflict', () => {
     throw new HttpError(409, 'conflict', 'The resource already exists');
   });
+  routes.get('/detail', () => {
+    throw new HttpError(422, 'try_later', 'Real message', { nextChangeAt: '2026-10-20T00:00:00Z' });
+  });
+  routes.get('/hostile-detail', () => {
+    throw new HttpError(409, 'real_code', 'Real message', {
+      code: 'fake_code',
+      message: 'Fake message',
+      requestId: 'fake-id',
+    });
+  });
   routes.get('/boom', () => {
     throw new Error('secret detail');
   });
@@ -75,6 +85,30 @@ describe('createApp', () => {
     expect(await res.json()).toMatchObject({
       error: { code: 'conflict', message: 'The resource already exists' },
     });
+  });
+
+  it('serializes HttpError detail fields without letting them overwrite code', async () => {
+    const res = await testApp().request('/test/detail');
+
+    expect(res.status).toBe(422);
+    const body = (await res.json()) as {
+      error: { code: string; message: string; nextChangeAt: string; requestId: string };
+    };
+    expect(body.error.code).toBe('try_later');
+    expect(body.error.nextChangeAt).toBe('2026-10-20T00:00:00Z');
+    expect(body.error.requestId).toBeTruthy();
+  });
+
+  it('never lets detail overwrite code, message or requestId', async () => {
+    const res = await testApp().request('/test/hostile-detail');
+
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as {
+      error: { code: string; message: string; requestId: string };
+    };
+    expect(body.error.code).toBe('real_code');
+    expect(body.error.message).toBe('Real message');
+    expect(body.error.requestId).not.toBe('fake-id');
   });
 
   it('does not leak details of unknown errors', async () => {

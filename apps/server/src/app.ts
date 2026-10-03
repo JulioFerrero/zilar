@@ -27,6 +27,8 @@ import { createKeyCipher, type KeyCipher } from './connections/crypto';
 import type { ProviderProbe } from './connections/probe';
 import { createConnectionsRoutes, type ConnectionsLogger } from './connections/routes';
 import { createContactsRoutes } from './contacts/routes';
+import { createContactRequestsRoutes } from './contact-requests/routes';
+import { createHandlesRoutes } from './handles/routes';
 import type { ServerDatabase } from './db/client';
 import { HttpError } from './errors';
 import { createGroupsRoutes } from './groups/routes';
@@ -279,6 +281,13 @@ export function createApp({
     }),
   );
   app.route('/api', createContactsRoutes({ auth, db, config }));
+  // @usernames and contact requests (T-0163): session-required, rate
+  // limited; the sweep asserts every one of them answers 401 unauthenticated.
+  app.route('/api', createHandlesRoutes({ auth, db, audit: auditRecorder }));
+  app.route(
+    '/api',
+    createContactRequestsRoutes({ auth, db, config, adminClient, audit: auditRecorder }),
+  );
   app.route(
     '/api',
     createMachinesRoutes({
@@ -502,7 +511,14 @@ export function createApp({
     if (error instanceof HttpError) {
       return c.json(
         {
-          error: { code: error.code, message: error.message, requestId: requestIdValue },
+          // `detail` first: a detail key (e.g. a future `code`) can never
+          // overwrite the real `code`, `message` or `requestId`.
+          error: {
+            ...error.detail,
+            code: error.code,
+            message: error.message,
+            requestId: requestIdValue,
+          },
         },
         error.status,
       );

@@ -24,9 +24,9 @@ export function NamePage() {
       await updateMe(trimmed);
       await auth.refetch();
       // Callers (e.g. the join-by-link page) pass `next` to come back
-      // after the name step; the default stays the chat list.
+      // after the name step; the default chains into the handle step.
       const next = (location.state as { next?: string } | null)?.next;
-      navigate(next ?? '/', { replace: true });
+      navigate(next === undefined ? '/welcome/handle' : next, { replace: true });
     } catch {
       setBusy(false);
       setError('Could not save your name. Try again.');

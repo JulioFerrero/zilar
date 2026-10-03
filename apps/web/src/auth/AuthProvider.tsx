@@ -1,5 +1,6 @@
-import { createContext, useContext, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { authClient } from '@/lib/auth';
+import { getMe } from '@/lib/api';
 import { isMockMode } from '@/mock/gate';
 import { currentUserId } from '@/mock/ids';
 
@@ -7,6 +8,7 @@ export interface AuthUser {
   id: string;
   name: string;
   email: string;
+  handle?: string | null | undefined;
 }
 
 export interface AuthState {
@@ -20,12 +22,48 @@ const AuthContext = createContext<AuthState | null>(null);
 function LiveAuthProvider({ children }: { children: ReactNode }) {
   const { data, isPending, refetch } = authClient.useSession();
   const user = data?.user;
+  const userId = user?.id;
+  // T-0163: the handle lives on `GET /api/me` (Better Auth's session user
+  // has no handle field), fetched lazily once the session exists. While it
+  // is loading — and if the fetch fails — `handle` stays `undefined` so the
+  // gate does not redirect: a failed `GET /me` must not mean "no handle".
+  const [handle, setHandle] = useState<string | null | undefined>(undefined);
+  useEffect(() => {
+    if (userId === undefined) {
+      return;
+    }
+    // The effect only synchronizes with the session (the lint rule flags
+    // synchronous setState inside effects); the fetch promise resolves the
+    // next state, applied once.
+    let active = true;
+    // Handled rejection (failure keeps `handle` undefined — see above), so
+    // no unhandled rejection escapes when the request fails.
+    void getMe().then(
+      (me) => {
+        if (active) {
+          setHandle(me.handle ?? null);
+        }
+      },
+      () => {},
+    );
+    return () => {
+      active = false;
+    };
+  }, [userId]);
   const state: AuthState =
     user !== undefined && user !== null
       ? {
           status: 'authenticated',
-          user: { id: user.id, name: user.name ?? '', email: user.email },
-          refetch,
+          user: { id: user.id, name: user.name ?? '', email: user.email, handle },
+          refetch: async () => {
+            const me = await getMe().catch(() => null);
+            // A failed refetch keeps the previous handle: failure is not
+            // absence (see the effect above).
+            if (me !== null) {
+              setHandle(me.handle ?? null);
+            }
+            await refetch();
+          },
         }
       : isPending
         ? { status: 'loading', user: undefined, refetch }

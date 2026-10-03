@@ -105,6 +105,7 @@ import {
   type XmppToken,
 } from '@/lib/api';
 import { authClient } from '@/lib/auth';
+import { resetHandleGateDismissal } from '@/lib/handleGate';
 import { resetIsServerOwnerCache } from '@/lib/useIsServerOwner';
 import {
   subscribeToDrafts,
@@ -3802,6 +3803,9 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         get().stop();
         clearChatListCache(storage);
         resetIsServerOwnerCache();
+        // A new sign-in is a new session for the handle gate: clear every
+        // dismissal so the next user is asked again.
+        resetHandleGateDismissal();
         cachedUserId = undefined;
         lastRead = {};
         if (storage !== null && lastReadUserId !== undefined) {

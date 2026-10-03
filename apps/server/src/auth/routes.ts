@@ -3,6 +3,8 @@ import { z } from 'zod';
 import type { ServerConfig } from '../config';
 import { refreshRosterNicknames } from '../contacts/service';
 import type { ServerDatabase } from '../db/client';
+import { handles } from '../db/schema';
+import { eq } from 'drizzle-orm';
 import { HttpError } from '../errors';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { findXmppAccount } from '../xmpp/provisioning';
@@ -47,11 +49,17 @@ export function createAuthRoutes({
   routes.get('/me', async (c) => {
     const { user } = await requireSession(auth, c.req.raw.headers);
     const account = await findXmppAccount(db, user.id);
+    const [handleRow] = await db
+      .select({ handle: handles.handle })
+      .from(handles)
+      .where(eq(handles.userId, user.id))
+      .limit(1);
     return c.json({
       id: user.id,
       email: user.email,
       name: user.name,
       image: user.image ?? null,
+      handle: handleRow?.handle ?? null,
       createdAt: user.createdAt,
       jid: account?.jid ?? null,
     });

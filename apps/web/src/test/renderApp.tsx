@@ -9,10 +9,13 @@ export function renderApp(initialPath = '/', seed?: ChatStoreSeed, options?: { a
   const store = createChatStore(seed);
   const auth: AuthState = options?.auth ?? {
     status: 'authenticated',
+    // T-0163: a handle by default so the handle gate does not redirect the
+    // suite; pass `handle: null` explicitly to exercise the gate.
     user: {
       id: seed?.currentUserId ?? 'u-you',
       name: seed?.me?.name ?? 'You',
       email: 'you@zilar.test',
+      handle: 'you',
     },
     refetch: async () => {},
   };
