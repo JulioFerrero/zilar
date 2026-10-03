@@ -46,17 +46,13 @@ vi.mock('@/components/chat/new-channel-sheet', () => ({
   NewChannelSheet: 'NewChannelSheet',
 }));
 
-vi.mock('@/components/contacts/add-contact-sheet', () => ({
-  AddContactSheet: 'AddContactSheet',
-}));
-
 vi.mock('@/components/contacts/use-contacts-api', () => ({
   useContactsApi: () => ({ api: {}, scenario: null }),
 }));
 
 vi.mock('@/store/chat-store-provider', () => ({
   useChatStore: (select: (state: Record<string, unknown>) => unknown) =>
-    select({ createChannel: async () => 'g-1', chats: [], me: null }),
+    select({ createChannel: async () => 'g-1' }),
 }));
 
 vi.mock('@/lib/depth', () => ({
@@ -70,6 +66,11 @@ describe('NewChatButton', () => {
   it('renders the New chat entry', () => {
     const html = renderToStaticMarkup(createElement(NewChatButton));
     expect(html).toContain('New chat');
+  });
+
+  it('no longer lists Add contact: people search lives in the search bar', () => {
+    const html = renderToStaticMarkup(createElement(NewChatButton));
+    expect(html).not.toContain('Add contact');
   });
 
   it('never renders a bearer token', () => {

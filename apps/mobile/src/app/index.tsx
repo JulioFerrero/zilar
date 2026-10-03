@@ -2,7 +2,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Archive, Bot, Search, Settings, X } from 'lucide-react-native';
 import { useColorScheme } from 'nativewind';
 import { useMemo, useState } from 'react';
-import { FlatList, Pressable, RefreshControl, TextInput, View } from 'react-native';
+import { FlatList, Pressable, RefreshControl, ScrollView, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { RequireAuth } from '@/auth/RequireAuth';
@@ -14,6 +14,8 @@ import { LoadError, LoadErrorBanner } from '@/components/chat/load-error';
 import { MessageSearchList } from '@/components/chat/message-search-list';
 import { NewChatButton } from '@/components/chat/new-chat-button';
 import { ChatListSkeleton } from '@/components/chat/skeleton';
+import { PeopleSearchResult } from '@/components/contacts/people-search-result';
+import { useContactsApi } from '@/components/contacts/use-contacts-api';
 import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
 import { mutedUntilFor } from '@/lib/chat-prefs';
@@ -54,7 +56,12 @@ function ChatsList() {
   const setActiveFolder = useChatStore((state) => state.setActiveFolder);
   const status = useChatStore((state) => state.status);
   const connection = connectionLabel(status);
+  const me = useChatStore((state) => state.me);
   const [searchOpen, setSearchOpen] = useState(false);
+  // Typing `@handle` looks the person up above the other results (T-0193):
+  // the search field's Enter key bumps `submitRequest` so the lookup fires
+  // at once instead of waiting out the debounce.
+  const [submitRequest, setSubmitRequest] = useState(0);
   // "Search in this chat" from a chat header arrives as `?searchChat=<id>`:
   // the search opens at once, scoped to that chat until the chip clears.
   const searchChatParam = typeof params.searchChat === 'string' ? params.searchChat : undefined;
@@ -132,6 +139,7 @@ function ChatsList() {
     setSearchOpen(false);
     setSearchMiss(null);
     setSearchChat(undefined);
+    setSubmitRequest(0);
   };
 
   // The rows behind the open action sheet: a group resolves to its General
@@ -185,8 +193,12 @@ function ChatsList() {
 
   // A full-screen search (T-0138): typing 2+ characters searches message
   // text across every visible chat below the name matches; a shorter query
-  // keeps filtering chat names, like before.
+  // keeps filtering chat names, like before. Typing `@handle` also shows the
+  // People section above (T-0193), even under 2 characters — the section
+  // itself decides whether the handle is worth looking up.
   const messageQuery = search.trim().length >= 2 ? search : null;
+  const peopleSearch = search.trim().startsWith('@');
+  const { api: contactsApi } = useContactsApi();
 
   const searchHeader = searchOpen ? (
     <View className="flex-row items-center gap-3 px-4 py-2">
@@ -196,10 +208,13 @@ function ChatsList() {
           autoFocus
           value={search}
           onChangeText={onSearchChange}
-          placeholder="Search"
+          onSubmitEditing={() => setSubmitRequest((count) => count + 1)}
+          placeholder="Search, or type @username"
           placeholderTextColor={MUTED_FOREGROUND[scheme]}
-          accessibilityLabel="Search chats and messages"
+          accessibilityLabel="Search chats, messages and people"
           returnKeyType="search"
+          autoCapitalize="none"
+          autoCorrect={false}
           className="flex-1 text-[15px] text-foreground"
         />
         {search.length > 0 ? (
@@ -258,6 +273,23 @@ function ChatsList() {
             </Pressable>
           </View>
         ) : null}
+        {peopleSearch ? (
+          <PeopleSearchResult
+            api={contactsApi}
+            text={search}
+            chats={chats}
+            myJid={me?.jid ?? undefined}
+            onMessage={(chatId) => {
+              closeSearch();
+              router.push({ pathname: '/chat/[id]', params: { id: chatId } });
+            }}
+            onOpenRequests={() => {
+              closeSearch();
+              router.push('/settings/requests');
+            }}
+            submitRequest={submitRequest}
+          />
+        ) : null}
         <MessageSearchList
           searchApi={searchApi}
           query={messageQuery}
@@ -271,6 +303,34 @@ function ChatsList() {
             </Text>
           </View>
         ) : null}
+      </SafeAreaView>
+    );
+  }
+
+  // A short `@handle` (under 2 characters, e.g. '@j') shows only the People
+  // section: today only chat names filter here, and chat names keep working
+  // below in the normal list.
+  if (searchOpen && peopleSearch) {
+    return (
+      <SafeAreaView className="flex-1 bg-background" edges={['top']}>
+        {searchHeader}
+        <ScrollView className="flex-1" keyboardShouldPersistTaps="handled">
+          <PeopleSearchResult
+            api={contactsApi}
+            text={search}
+            chats={chats}
+            myJid={me?.jid ?? undefined}
+            onMessage={(chatId) => {
+              closeSearch();
+              router.push({ pathname: '/chat/[id]', params: { id: chatId } });
+            }}
+            onOpenRequests={() => {
+              closeSearch();
+              router.push('/settings/requests');
+            }}
+            submitRequest={submitRequest}
+          />
+        </ScrollView>
       </SafeAreaView>
     );
   }
