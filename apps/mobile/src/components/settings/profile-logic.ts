@@ -188,6 +188,40 @@ export type AvatarPhase =
   | { name: 'failed'; message: string }
   | { name: 'removed' };
 
+/**
+ * The `expo-image` source for an avatar url. The server's `avatarUrl` is a
+ * relative `/api/avatars/<id>` path, so it resolves against the API origin
+ * (the same way `stickerImageSource` resolves sticker paths). The bearer
+ * rides only to that origin: a `file://` preview or a foreign url gets no
+ * headers, so the session token can never leak cross-origin.
+ */
+export function avatarImageSource(
+  url: string,
+  apiUrl: string,
+  token: string | undefined,
+): { uri: string; headers?: { authorization: string } } {
+  if (url.startsWith('file://') || url.startsWith('data:')) {
+    return { uri: url };
+  }
+  let origin: string;
+  try {
+    origin = new URL(apiUrl).origin;
+  } catch {
+    return { uri: url };
+  }
+  const absolute = url.startsWith('/') ? `${origin}${url}` : url;
+  let sameOrigin = false;
+  try {
+    sameOrigin = new URL(absolute).origin === origin;
+  } catch {
+    sameOrigin = false;
+  }
+  if (!sameOrigin || token === undefined) {
+    return { uri: absolute };
+  }
+  return { uri: absolute, headers: { authorization: `Bearer ${token}` } };
+}
+
 export function avatarPhaseLabel(phase: AvatarPhase, hasCurrent: boolean): string {
   switch (phase.name) {
     case 'uploading':

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { ProfileApiError } from '../../lib/profile-api';
 import {
+  avatarImageSource,
   avatarPhaseLabel,
   friendlyAvatarError,
   friendlyClaimError,
@@ -174,6 +175,42 @@ describe('suggestHandleFor', () => {
   it('pads short names and prefixes digit starts', () => {
     expect(suggestHandleFor('Al')).toBe('al0');
     expect(suggestHandleFor('3po')).toBe('u_3po');
+  });
+});
+
+describe('avatarImageSource', () => {
+  const API = 'http://127.0.0.1:3188';
+
+  it('resolves a relative server path against the API origin with the bearer', () => {
+    expect(avatarImageSource('/api/avatars/abc', API, 'token-1')).toEqual({
+      uri: 'http://127.0.0.1:3188/api/avatars/abc',
+      headers: { authorization: 'Bearer token-1' },
+    });
+  });
+
+  it('sends no headers without a token', () => {
+    expect(avatarImageSource('/api/avatars/abc', API, undefined)).toEqual({
+      uri: 'http://127.0.0.1:3188/api/avatars/abc',
+    });
+  });
+
+  it('passes a picked file uri unchanged with no headers', () => {
+    expect(avatarImageSource('file:///cache/photo.jpg', API, 'token-1')).toEqual({
+      uri: 'file:///cache/photo.jpg',
+    });
+  });
+
+  it('keeps a same-origin absolute url with the bearer', () => {
+    expect(avatarImageSource('http://127.0.0.1:3188/api/avatars/abc', API, 'token-1')).toEqual({
+      uri: 'http://127.0.0.1:3188/api/avatars/abc',
+      headers: { authorization: 'Bearer token-1' },
+    });
+  });
+
+  it('never sends the bearer to another origin', () => {
+    expect(avatarImageSource('https://evil.test/avatar.png', API, 'token-1')).toEqual({
+      uri: 'https://evil.test/avatar.png',
+    });
   });
 });
 

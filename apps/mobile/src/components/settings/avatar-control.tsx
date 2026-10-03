@@ -1,18 +1,20 @@
 import { Image } from 'expo-image';
 import { useColorScheme } from 'nativewind';
+import { useState } from 'react';
 import { ActivityIndicator, Pressable, View } from 'react-native';
 
 import { Avatar } from '@/components/chat/avatar';
 import { Text } from '@/components/ui/text';
 import { ACCENT } from '@/lib/colors';
 import { asColorScheme } from '@/lib/color-scheme';
+import { API_URL } from '@/lib/auth';
 
-import { avatarPhaseLabel, type AvatarPhase } from './profile-logic';
+import { avatarImageSource, avatarPhaseLabel, type AvatarPhase } from './profile-logic';
 
 type AvatarControlProps = {
   ownerId: string;
   ownerName: string;
-  /** The bearer-scoped remote picture url, if any. */
+  /** The server's picture path (`/api/avatars/<id>`), if any. */
   currentUrl?: string | undefined;
   /** The bearer token for the same-origin picture load, if any. */
   token?: string | undefined;
@@ -24,10 +26,11 @@ type AvatarControlProps = {
 };
 
 /**
- * The profile picture row: the current picture (same-origin bearer load,
- * like the GIF previews), Change / Remove keys, the picked preview with a
+ * The profile picture row: the current picture (the relative server path
+ * resolved against the API origin, bearer on same-origin only, like the
+ * sticker images), Change / Remove keys, the picked preview with a
  * progress bar while it uploads, and the phase line (picked, uploading,
- * failed, removed).
+ * failed, removed). A failed image load falls back to the initials.
  */
 export function AvatarControl({
   ownerId,
@@ -45,27 +48,21 @@ export function AvatarControl({
   const progress = phase.name === 'uploading' ? phase.progress : null;
   const shown = picked?.uri ?? currentUrl ?? null;
   const uploading = phase.name === 'uploading' || busy;
+  const [imageFailed, setImageFailed] = useState(false);
+  const source = shown === null ? null : avatarImageSource(shown, API_URL, token);
   return (
     <View
       accessibilityLabel={`${ownerName} picture`}
       className="gap-2 rounded-xl border border-border bg-surface px-3 py-2.5"
     >
       <View className="flex-row items-center gap-3">
-        {shown !== null ? (
-          <Image
-            source={{
-              uri: shown,
-              ...(shown.startsWith('file://') || token === undefined
-                ? {}
-                : { headers: { authorization: `Bearer ${token}` } }),
-            }}
-            accessibilityLabel={`${ownerName} picture`}
-            style={{ width: 64, height: 64, borderRadius: 32 }}
-            contentFit="cover"
-          />
-        ) : (
-          <Avatar id={ownerId} name={ownerName} size={64} />
-        )}
+        <AvatarPicture
+          source={source}
+          ownerId={ownerId}
+          ownerName={ownerName}
+          imageFailed={imageFailed}
+          onImageError={() => setImageFailed(true)}
+        />
         <View className="flex-row flex-wrap gap-2">
           <Pressable
             accessibilityRole="button"
@@ -139,5 +136,37 @@ export function AvatarControl({
         </Text>
       )}
     </View>
+  );
+}
+
+/**
+ * The picture itself: the resolved image, or the initials when there is no
+ * picture or the image failed to load. Split out so tests cover the
+ * fallback without a simulator (the parent only owns the failed flag).
+ */
+export function AvatarPicture({
+  source,
+  ownerId,
+  ownerName,
+  imageFailed,
+  onImageError,
+}: {
+  source: { uri: string; headers?: { authorization: string } } | null;
+  ownerId: string;
+  ownerName: string;
+  imageFailed: boolean;
+  onImageError: () => void;
+}) {
+  if (source === null || imageFailed) {
+    return <Avatar id={ownerId} name={ownerName} size={64} />;
+  }
+  return (
+    <Image
+      source={source}
+      accessibilityLabel={`${ownerName} picture`}
+      style={{ width: 64, height: 64, borderRadius: 32 }}
+      contentFit="cover"
+      onError={onImageError}
+    />
   );
 }

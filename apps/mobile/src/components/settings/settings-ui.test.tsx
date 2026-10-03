@@ -2,7 +2,7 @@ import { createElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 
-import { AvatarControl } from './avatar-control';
+import { AvatarControl, AvatarPicture } from './avatar-control';
 import { HandleField } from './handle-field';
 import type { AvatarPhase } from './profile-logic';
 
@@ -86,6 +86,55 @@ const HANDLE_BASE = {
   onChange: () => {},
   onSave: () => {},
 };
+
+describe('AvatarPicture fallback', () => {
+  it('renders the resolved image with an error handler', () => {
+    const onImageError = () => {};
+    const element = AvatarPicture({
+      source: { uri: 'http://127.0.0.1:3188/api/avatars/1' },
+      ownerId: 'user-1',
+      ownerName: 'Ada',
+      imageFailed: false,
+      onImageError,
+    });
+
+    expect(element.type).toBe('Image');
+    expect(element.props.source).toMatchObject({
+      uri: 'http://127.0.0.1:3188/api/avatars/1',
+    });
+    expect(element.props.onError).toBe(onImageError);
+  });
+
+  it('shows the initials after a load error', () => {
+    const html = renderToStaticMarkup(
+      createElement(AvatarPicture, {
+        source: { uri: 'http://127.0.0.1:3188/api/avatars/1' },
+        ownerId: 'user-1',
+        ownerName: 'Ada Lovelace',
+        imageFailed: true,
+        onImageError: () => {},
+      }),
+    );
+
+    // The initials avatar (no Image), with the owner's initials.
+    expect(html).not.toContain('Image');
+    expect(html).toContain('AL');
+  });
+
+  it('shows the initials without a picture', () => {
+    const html = renderToStaticMarkup(
+      createElement(AvatarPicture, {
+        source: null,
+        ownerId: 'user-1',
+        ownerName: 'Ada',
+        imageFailed: false,
+        onImageError: () => {},
+      }),
+    );
+
+    expect(html).not.toContain('Image');
+  });
+});
 
 describe('HandleField states', () => {
   it('announces an available handle', () => {
