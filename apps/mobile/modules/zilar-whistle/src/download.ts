@@ -21,31 +21,37 @@ function tempFile(): File {
 }
 
 /**
- * The model status the screen shows: `ready` only when the file exists at
- * its full pinned size AND the native side reports it loaded. Anything else
- * is `missing`, including a half-written download.
+ * The model status the app shows. `ready` means the verified model file is on
+ * the phone at its full pinned size and the native engine has it loaded.
+ *
+ * The engine forgets the model every time the app starts, but the file stays.
+ * So when the file is there and the engine has not loaded it yet, this loads
+ * it (a second or less) and reports `ready`: nobody is asked to download a
+ * model that is already on the phone. The file only ever reaches its final
+ * name after its sha256 verified (see `downloadModel`), so its size is enough
+ * to trust it here. A missing, short or unloadable file is `missing`.
  */
-export async function modelStatus(): Promise<WhistleModelStatus> {
-  const native = getNativeModule();
+export async function modelStatus(deps?: {
+  native?: ReturnType<typeof getNativeModule>;
+  modelFile?: () => File;
+}): Promise<WhistleModelStatus> {
+  const native = deps?.native === undefined ? getNativeModule() : deps.native;
   if (native === null || !native.isAvailable()) {
     return 'missing';
   }
   try {
-    if (native.modelStatus() !== 'ready') {
-      return 'missing';
+    if (native.modelStatus() === 'ready') {
+      return 'ready';
     }
-  } catch {
-    return 'missing';
-  }
-  const file = modelFile();
-  try {
+    const file = (deps?.modelFile ?? modelFile)();
     if (!file.exists || file.size !== WHISTLE_MODEL_BYTES) {
       return 'missing';
     }
+    await native.loadModel(file.uri);
+    return native.modelStatus() === 'ready' ? 'ready' : 'missing';
   } catch {
     return 'missing';
   }
-  return 'ready';
 }
 
 /**

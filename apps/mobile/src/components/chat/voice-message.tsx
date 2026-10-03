@@ -502,6 +502,9 @@ export function VoiceMessage({
             accessibilityLabel={showTranscript ? 'Hide transcript' : 'Show transcript'}
             onPress={() => setShowTranscript((value) => !value)}
             className="rounded-md px-1.5 py-0.5"
+            // A fresh view per look: RN 0.86 on Android crashes in draw when a live
+            // view swaps one gradient style for another (device report 2026-10-04).
+            key={showTranscript ? 'transcript-on' : 'transcript-off'}
             style={showTranscript ? segment : iconKey}
           >
             <Text
@@ -530,6 +533,7 @@ export function VoiceMessage({
             accessibilityLabel={showTranscript ? 'Hide transcript' : 'Show transcript'}
             onPress={() => setShowTranscript((value) => !value)}
             className="rounded-md px-1.5 py-0.5"
+            key={showTranscript ? 'transcript-on' : 'transcript-off'}
             style={showTranscript ? segment : iconKey}
           >
             <Text

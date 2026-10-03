@@ -1,7 +1,7 @@
 ---
 id: T-0183
 title: Mobile: Explore public groups and channels, open @group links, group visibility and handle
-status: planned
+status: merged
 milestone: M5
 branch: task/T-0183-mobile-explore-group-handles
 model: meta/muse-spark-1.3-contributor
@@ -58,4 +58,110 @@ Creating a group (exists), user search, trending or recommendations.
 
 ## Report (written by the worker when done)
 
+Implemented Explore, the `@handle` route and the visibility sheet on mobile,
+mirroring the web T-0164 behaviour with no server change and no new
+dependency (`zod` is installed but the mobile convention is type guards, so
+the API module uses guards like `chat-api.ts`).
+
+What was built:
+- `apps/mobile/src/lib/directory-api.ts` (+ `directory-api.test.ts`, 8
+  tests): `searchDirectory` (q/kind/cursor), `lookupGroupByHandle`,
+  `joinPublicGroup`, `getGroupVisibility` (reads the visibility slice from
+  `GET /api/groups/:id`, since the mobile `GroupDetail` parser drops
+  `visibility`/`handle`), `setGroupVisibility` (exact PATCH body via
+  `buildVisibilityBody`), `checkGroupHandle`. `DirectoryApiError` carries
+  `status` and `code`.
+- `apps/mobile/src/app/explore.tsx` (+ `components/directory/`
+  `explore-helpers.ts` + test, `use-directory-api.ts`): search field,
+  all/groups/channels filter, rows with title, @handle, description, member
+  count and Join/Open, cursor paging (`Show more` + infinite scroll via
+  `onEndReached`), loading/empty/error states, 429 reads "Too many
+  searches, try again in a few minutes". Guarded by `RequireAuth`; mock
+  scenarios via `mock/directory.ts` (`default`/`empty`/`error`).
+- New-chat entry: one `Explore` row in `new-chat-button.tsx` pushing
+  `/explore`.
+- `apps/mobile/src/app/at/[handle].tsx` (+ `components/directory/`
+  `handle-helpers.ts` + `handle-route.test.ts`): `zilar://at/<handle>` opens
+  the group card with Join/Open; 404 (unknown and private alike) reads the
+  same neutral not-found line; other failures show Retry. Signed-out users
+  redirect to login with `from` preserved. Note: only the `zilar://`
+  scheme is wired — `app.json` has no universal/applinks host config, so
+  `https://<host>/@handle` is not handled; that needs a native config
+  change outside Allowed files.
+- Visibility sheet: `components/chat/visibility-sheet.tsx` (+ test:
+  permission, handle taken) with private/public pick, @handle field, live
+  availability check (own handle skipped), going-private confirm step and
+  copy-share-link (`zilar://at/<handle>`); owner-only gate
+  (`mayChangeVisibility` = owner, same rule as web `GroupPanel`); wired
+  into `app/group/[id].tsx` behind an Eye header button with the
+  `linksShare` clipboard bridge reused. After save the detail refreshes via
+  `refreshGroupDetail`.
+
+Files changed:
+- new: `lib/directory-api.ts`, `lib/directory-api.test.ts`, `app/explore.tsx`,
+  `app/at/[handle].tsx`, `components/directory/use-directory-api.ts`,
+  `components/directory/explore-helpers.ts`,
+  `components/directory/explore-helpers.test.ts`,
+  `components/directory/handle-helpers.ts`,
+  `components/directory/handle-route.test.ts`,
+  `components/chat/visibility-sheet.tsx`,
+  `components/chat/visibility-sheet.test.ts`, `mock/directory.ts`
+- edited: `components/chat/new-chat-button.tsx` (one Explore row),
+  `app/group/[id].tsx` (visibility sheet wiring only)
+
+Commands and real results:
+- `pnpm install`: done (9.3s).
+- `pnpm format:check`: pass ("All matched files use Prettier code style!").
+- `pnpm lint`: pass (no errors).
+- `pnpm --filter @zilar/mobile typecheck`: pass.
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 explore directory visibility`:
+  4 files, 17 tests, all pass.
+
+Problems / deviations:
+- The spec asks for `https://<host>/@handle` "if the app's link config
+  already handles host links" — it does not (only `"scheme": "zilar"` in
+  `app.json`), so only `zilar://at/<handle>` works. No config touched
+  (outside Allowed files).
+- `getGroupVisibility` reads the full group detail route and parses only
+  the visibility slice, instead of extending the shared `GroupDetail`
+  parser in `chat-api.ts` — a smaller, task-scoped change.
+- The lead tests on the emulator and the phone (per the task Checks note).
+
+Security checklist: no tokens/codes/message text logged (errors map
+status/code to neutral lines only); no deletes/updates outside the group
+scope; no new caps needed (server enforces rate limits, handle uniqueness
+and the 14-day interval); permission checked before effect (owner-only
+sheet, session guard on both routes); 404 shared for unknown and private;
+both new routes sit behind `RequireAuth`; audit is server-side.
+
+Open questions: none.
+
+## Round 1 (pre-review findings, two commits)
+
+Finding 1 — post-join navigation race (`app/explore.tsx`, `app/at/[handle].tsx`):
+replaced the synchronous `resolveGroupChat(store.getState().chats, …)` read
+with `postJoinTarget(groupId)` in `components/directory/handle-helpers.ts`
+(navigates to `/group/<id>` from the join result or the directory entry;
+only a missing id falls back to `/`). `reloadChats()` still fires so the
+list catches up behind the group screen. Test in `handle-route.test.ts`
+covers id → group screen and missing id → list. Mutation check: restoring
+the fall-through `/` made the new test fail (1 failed, 3 passed); with the
+fix, 4/4 pass. Commit `f673448`.
+
+Finding 2 — raw server text (`explore-helpers.ts` `describeDirectoryError`):
+removed the `error.message` return; 429 → rate-limit copy, network errors →
+offline copy, every other code/status → caller fallback. New test:
+`DirectoryApiError(500, 'internal', 'db timeout on shard 3')` renders the
+fallback and never contains 'shard'. Mutation check: restoring the
+`error.message` return failed the new test; with the fix, 4/4 pass. Commit
+`38e1a19`.
+
+Full verification after both: `pnpm lint` pass, `pnpm --filter
+@zilar/mobile typecheck` pass, `pnpm --filter @zilar/mobile test
+--maxWorkers=2 explore directory visibility` 4 files / 19 tests pass.
+`pnpm format:check` warns only on the untracked `PREREVIEW.md` (not mine,
+left untouched); all task files pass Prettier. Status stays `review`.
+
 ## Review (written by Claude)
+
+**Verdict:** Round 1: changes requested (post-join navigation raced the chat list refresh; raw server text in the Explore error), both fixed by the worker. Round 2 pre-review: one minor should-fix (Save in the visibility sheet did nothing until the state had loaded) and dead code, fixed by the lead (the sheet shows Saving until it has loaded; unused variables and imports removed). Wire parity with the server and web checked by the pre-review. Format, lint, typecheck and 19 tests pass. Accepted gap: directory rows show initials, not the group picture (mobile `Avatar` has no image prop yet).

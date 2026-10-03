@@ -26,6 +26,9 @@ type ChatListItemProps = {
 function UnreadBadge({ count, muted }: { count: number; muted: boolean }) {
   return (
     <View
+      // A fresh view per look: RN 0.86 on Android crashes in draw when a live
+      // view swaps one gradient style for another (device report 2026-10-04).
+      key={muted ? 'muted' : 'live'}
       style={muted ? raisedPill : primaryKey}
       className="h-[22px] min-w-[22px] shrink-0 items-center justify-center rounded-full px-1.5"
     >

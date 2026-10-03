@@ -124,6 +124,17 @@ export function NewChatButton() {
             </Pressable>
             <Pressable
               accessibilityRole="menuitem"
+              accessibilityLabel="Explore public groups"
+              onPress={() => {
+                setMenuOpen(false);
+                router.push('/explore');
+              }}
+              className="border-b border-divider px-4 py-3.5 active:bg-surface-raised"
+            >
+              <Text className="text-[16px] text-foreground">Explore</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="menuitem"
               accessibilityLabel="Join with a link"
               onPress={() => openDialog('join')}
               className="px-4 py-3.5 active:bg-surface-raised"
