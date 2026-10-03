@@ -20,7 +20,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
 
 if [ "$(adb -s "$SERIAL" get-state 2>/dev/null || true)" != "device" ]; then
-  echo "emulator $SERIAL is not running (start the AVD named galena)" >&2
+  echo "emulator $SERIAL is not running (start it from Android Studio or with emulator -avd <name>; list the names with emulator -list-avds)" >&2
   exit 2
 fi
 

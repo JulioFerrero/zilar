@@ -1,7 +1,7 @@
 ---
 id: T-0197
 title: Remove the old product name from the emulator smoke script (main's legacy-name test is red)
-status: planned
+status: blocked
 milestone: M5
 branch: task/T-0197-old-name-in-smoke-script
 model: meta/muse-spark-1.3-contributor
@@ -46,5 +46,29 @@ Any other change.
 ---
 
 ## Report (written by the worker when done)
+
+### What I did
+- `scripts/phone/smoke.sh` line 23: replaced the error message naming the AVD with the spec's generic text (`... with emulator -avd <name>; list the names with emulator -list-avds`). No other change to the file.
+- `.gitignore`: appended a `T-0197` comment plus root-only patterns `/PREREVIEW.md`, `/DOCTOR.md`, `/SCOUT.md`, `/QA.md`.
+- Proof of the gitignore fix: created `PREREVIEW.md` containing `#  bad   heading` at the worktree root; `git status --porcelain` did not list it (shown as `!! PREREVIEW.md` with `--ignored`), and `pnpm prettier --check PREREVIEW.md` reported "All matched files use Prettier code style!" (ignored). Deleted the file afterwards; final `git status --porcelain` shows only the 3 allowed files.
+
+### Files changed (all inside Allowed files)
+- `scripts/phone/smoke.sh`
+- `.gitignore`
+- `work/T-0197-old-name-in-smoke-script.md`
+
+### Commands and real results
+- `pnpm install --frozen-lockfile`: exit 0 (Done in 7.2s).
+- `bash -n scripts/phone/smoke.sh`: pass (BASH_OK).
+- `pnpm --filter @zilar/devtools test --maxWorkers=2 src/no-legacy-name`: 1 passed, 0 failed.
+- `pnpm prettier --check work/T-0197-old-name-in-smoke-script.md`: pass. (`smoke.sh`/`.gitignore` have no prettier parser; prettier reported that, which is normal.)
+- `pnpm gate`: GATE FAIL — `format` step fails on `CLAUDE.md` ("[warn] CLAUDE.md / Code style issues found"). Scope check printed `scope: every changed file is inside the Allowed files`. Tail summary: `PASS install (frozen)`, `FAIL format`, `GATE FAIL`.
+- Verified pre-existing: stashed my changes (`git stash`) and ran `pnpm prettier --check .` on clean main worktree — same `CLAUDE.md` warning. So the failure is on main, not caused by me. `pnpm prettier --write CLAUDE.md` would fix it (9 insertions/9 deletions) but `CLAUDE.md` is outside my Allowed files, so I reverted it and did not keep the change.
+
+### Blocked / needs a decision
+Gate cannot reach GATE PASS within my scope: the repo-wide `pnpm format:check` fails on `CLAUDE.md`, a file I am not allowed to touch. Options for the lead: (a) allow a one-line-format fix to `CLAUDE.md` in this task, (b) fix it in a separate task, or (c) scope the gate's format step to changed files. Until then, status is blocked. All T-0197 acceptance items I could satisfy pass: `src/no-legacy-name` passes, `bash -n` passes, scope check passes.
+
+### Security checklist
+No secrets, no routes, no deletes/updates, no caps, no auth changes. N/A.
 
 ## Review (written by Claude)

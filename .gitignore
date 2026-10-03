@@ -45,3 +45,9 @@ deploy/backups/
 
 # fetched native binaries, never committed (T-0177: Needle engine)
 apps/mobile/modules/zilar-whistle/android/third_party/
+
+# lead reviewer scratch files at the worktree root (T-0197)
+/PREREVIEW.md
+/DOCTOR.md
+/SCOUT.md
+/QA.md
