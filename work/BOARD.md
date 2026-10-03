@@ -211,7 +211,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0180](T-0180-signin-no-code-hint.md) | Sign-in hints for people without an invite (web + mobile) | 2026-10-03 |
 | [T-0185](T-0185-mobile-machines-connections.md) | Mobile: machines (runners) and model connections screens | planned | meta/muse-spark-1.3-contributor | — | Spec ready; mobile parity wave 2 |
 | [T-0192](T-0192-web-search-people-by-handle.md) | Web: @handle in the search bar shows the person (replaces Add contact in the menu) | planned | meta/muse-spark-1.3-contributor | — | Spec ready |
-| [T-0193](T-0193-mobile-search-people-by-handle.md) | Mobile: @handle in the search shows the person (replaces Add contact in the menu) | planned | meta/muse-spark-1.3-contributor | — | Spec ready |
 | [T-0187](T-0187-mobile-sticker-packs.md) | Mobile: manage sticker packs (my packs, discover, add and remove, reorder, favourites) | planned | meta/muse-spark-1.3-contributor | — | Spec ready; mobile parity wave 2 |
 | [T-0188](T-0188-mobile-integrations-owner.md) | Mobile: owner integrations (Telegram bot, email, voice transcription) | planned | meta/muse-spark-1.3-contributor | — | Spec ready; mobile parity wave 2 |
 | [T-0191](T-0191-mobile-sticker-editor-telegram.md) | Mobile: sticker pack editor and Telegram sticker import | planned | meta/muse-spark-1.3-contributor | T-0187 | Spec ready; mobile parity wave 2 |
@@ -220,3 +219,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0183](T-0183-mobile-explore-group-handles.md) | Mobile Explore, @group links and group visibility | 2026-10-03 |
 | [T-0181](T-0181-mobile-settings-profile.md) | Mobile settings hub, profile (name, avatar, @handle) and the handle step after sign-up | 2026-10-03 |
 | [T-0184](T-0184-mobile-approvals-page.md) | Mobile approvals page: pending approvals and always-allowed rules | 2026-10-03 |
+| [T-0193](T-0193-mobile-search-people-by-handle.md) | Mobile: find people by @handle in the search bar, replacing the add-contact menu entry | 2026-10-03 |
