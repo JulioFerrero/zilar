@@ -1,7 +1,7 @@
 ---
 id: T-0170
 title: Voice transcripts on demand (owner-configured, OpenAI-compatible endpoint)
-status: review
+status: merged
 milestone: M5
 branch: task/T-0170-voice-transcripts
 model: meta/muse-spark-1.3-contributor
@@ -237,3 +237,7 @@ probe of real bytes: the content-type gate treats `audio/*`, `video/mp4`
 anything else (e.g. ejabberd's 404 HTML) is 422 without billing the owner.
 
 ## Review (written by Claude)
+
+Merged after one worker fix round and one fix by me. Round 1 (worker): `endpoint_unreachable` is now real (transport failures vs a rejecting endpoint are different errors, tested with what the real seam throws), the audio-fetch leg answers fixed 502 instead of 500, the transaction and advisory lock no longer span the audio fetch and the provider call (in-process single-flight per URL hash, lock only for re-check and insert), `http://[::1]` is accepted as loopback, settings read failures log a fixed warning, validation runs before the rate limiter on POST. Fix by me (pre-review round 2): cache hits are audited too (URL hash only, never text); the new test fails with the audit call removed. Accepted: `useVoiceTranscription.ts` and its test sit outside the spec's allowed list (it is the same pattern as `useIsServerOwner`); the PUT spends rate budget before validation like the Telegram and Email PUTs; single-flight is per process (the server runs one process).
+
+Checks: format, lint, typecheck pass; server voice-transcription 30 passed (62 across voice, integrations and the authz sweep in pre-review, all new routes answer 401 unauthenticated); web VoiceMessage, IntegrationsPage, api, useVoiceTranscription 112 passed. Migration 0038 follows main's 0037.

@@ -334,7 +334,24 @@ export function createVoiceTranscriptionRoutes(deps: VoiceTranscriptionRoutesDep
       .from(voiceTranscripts)
       .where(eq(voiceTranscripts.urlHash, urlHash))
       .limit(1);
+    // Every successful request is audited, cache hits included (ids and the
+    // URL hash only, never the text).
+    const auditRequested = (): void => {
+      void deps.audit?.record({
+        actorUserId: caller.id,
+        aiId: null,
+        groupId: null,
+        action: 'voice.transcript_requested',
+        subjectId: null,
+        argsHash: null,
+        costCurrency: null,
+        costAmount: null,
+        result: 'ok',
+        detail: { urlHash },
+      });
+    };
     if (fastHit !== undefined) {
+      auditRequested();
       return c.json({ text: fastHit.text });
     }
 
@@ -373,18 +390,7 @@ export function createVoiceTranscriptionRoutes(deps: VoiceTranscriptionRoutesDep
       throw error;
     }
 
-    void deps.audit?.record({
-      actorUserId: caller.id,
-      aiId: null,
-      groupId: null,
-      action: 'voice.transcript_requested',
-      subjectId: null,
-      argsHash: null,
-      costCurrency: null,
-      costAmount: null,
-      result: 'ok',
-      detail: { urlHash },
-    });
+    auditRequested();
     return c.json({ text });
   });
 

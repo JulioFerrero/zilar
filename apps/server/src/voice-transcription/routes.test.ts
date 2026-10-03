@@ -397,6 +397,26 @@ describe('POST /api/voice/transcript', () => {
     const hash = createHash('sha256').update(SENTINEL_URL, 'utf8').digest('hex');
     expect(serialised).toContain(hash);
   });
+
+  it('audits a cache hit too, with the URL hash only (never the text)', async () => {
+    const fake: FakeProvider = okFake();
+    const app = appFor(fake);
+    expect((await configureOwner(app)).status).toBe(200);
+    fake.calls = 0;
+    for (let n = 0; n < 2; n += 1) {
+      const response = await jsonRequest(app, 'POST', '/api/voice/transcript', stranger, {
+        url: SENTINEL_URL,
+      });
+      expect(response.status).toBe(200);
+    }
+    expect(fake.calls).toBe(1);
+    const rows = await context.db
+      .select()
+      .from(auditLog)
+      .where(eq(auditLog.action, 'voice.transcript_requested'));
+    expect(rows).toHaveLength(2);
+    expect(JSON.stringify(rows)).not.toContain(SENTINEL_TEXT);
+  });
 });
 
 describe('PUT /api/settings/integrations/voice-transcription', () => {
