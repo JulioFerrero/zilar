@@ -26,7 +26,7 @@ Web has an owner-only Integrations page. The owner cannot configure Telegram, em
 
 ### What to build
 1. `apps/mobile/src/lib/integrations-api.ts` (+ tests): the functions above, zod-validated, `status` and `code` on errors.
-2. `apps/mobile/src/app/settings/integrations.tsx`: three cards (Telegram bot, Email, Voice transcription), each with its configured state, Save and Remove (confirm before Remove). Secret fields are secure text inputs cleared after a successful save. Follow the design brief `docs/design/briefs/T-0188-integrations.md` exactly for layout, sizes, icons and copy. Row `{ id: 'integrations', title: 'Integrations', subtitle: 'Telegram, email and transcription for this server.', icon: 'integrations', href: '/settings/integrations' }` in `settings-items.ts`, and `integrations: Plug` (lucide `Plug`) in `HUB_ICONS`. If the status call answers 404, the screen shows only the sentence 'Only the server owner can change these settings.' and no cards.
+2. `apps/mobile/src/app/settings/integrations.tsx`: three cards in the web order (Email, Voice transcription, Telegram bot), each with its configured state and Save; Telegram and Voice also have Remove (confirm before Remove); Email has no Remove, as on web. Secret fields are secure text inputs cleared after a successful save. Follow the design brief `docs/design/briefs/T-0188-integrations.md` exactly for layout, sizes, icons and copy. Row `{ id: 'integrations', title: 'Integrations', subtitle: 'Telegram, email and transcription for this server.', icon: 'integrations', href: '/settings/integrations' }` in `settings-items.ts`, and `integrations: Plug` (lucide `Plug`) in `HUB_ICONS`. If the status call answers 404, the screen shows only the sentence 'Only the server owner can change these settings.' and no cards.
 3. Tests (Vitest): API, each card's states, the 404 owner gate, a test that a saved secret is absent from the rendered tree and from every logged call.
 
 ### Read first
@@ -47,7 +47,7 @@ pnpm gate
 Say in the Report that the lead tests on the emulator and the phone.
 
 ### Acceptance
-- The owner can save and remove the Telegram token, email settings and transcription endpoint from the phone.
+- The owner can save and remove the Telegram token and the transcription endpoint, and save the email settings, from the phone.
 - A non-owner who opens the page sees only the owner sentence; no secret is ever shown back or logged.
 - No emoji in UI, no new dependency, no server change, no unrelated file touched.
 

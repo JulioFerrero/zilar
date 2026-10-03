@@ -27,7 +27,7 @@ The phone can send stickers but cannot manage them: no way to add a pack, remove
 
 ### What to build
 1. Extend `apps/mobile/src/lib/stickers-api.ts` (+ tests) with the functions above that are missing.
-2. `apps/mobile/src/app/settings/stickers.tsx`: 'My packs' list with Remove (confirm) and reorder (move up / move down buttons; no drag library), a Discover tab with search and Add, a Favourites section with remove; empty and error states. Follow the design brief `docs/design/briefs/T-0187-sticker-packs.md` exactly for layout, sizes, icons and copy. Row `{ id: 'stickers', title: 'Stickers', subtitle: 'Your packs, shared packs and favorites.', icon: 'stickers', href: '/settings/stickers' }` in `settings-items.ts`, and `stickers: Sticker` (lucide `Sticker`) in `HUB_ICONS`.
+2. `apps/mobile/src/app/settings/stickers.tsx`: 'My packs' list with Remove (confirm) and reorder (move up / move down buttons; no drag library), a Discover tab with search and Add, a Favourites section with remove; empty and error states. Follow the design brief `docs/design/briefs/T-0187-sticker-packs.md` exactly for layout, sizes, icons and copy (screen text spells it "Favorites", as web does). Row `{ id: 'stickers', title: 'Stickers', subtitle: 'Your packs, shared packs and favorites.', icon: 'stickers', href: '/settings/stickers' }` in `settings-items.ts`, and `stickers: Sticker` (lucide `Sticker`) in `HUB_ICONS`.
 3. After a change the chat's sticker panel shows the new order and packs without an app restart (reload the panel's pack list when the settings screen closes).
 4. Tests (Vitest): the API additions, the screen (list, add, remove, reorder, favourites, empty, error), the reorder payload is the complete id list in the new order.
 
