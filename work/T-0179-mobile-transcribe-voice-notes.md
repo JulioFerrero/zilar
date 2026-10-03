@@ -154,4 +154,37 @@ keyed by message id, never sent on the wire).
 - One run at a time per bubble (`transcribeBusy` + request id guard);
   user-tap driven, no auto-transcribe.
 
+### Round 1 (four should-fix findings, one commit each)
+- Finding 1, consent race (`b69481d`): the bubble passes a real
+  `confirmDownload` into `transcribeVoiceNote` via the new
+  `consumeTranscribeConsent` gate — the sheet's Download sets a one-shot
+  yes for this run, consumed on use; no yes (or a stale yes when the model
+  still reports missing) re-opens the sheet and stops with `cancelled`, so
+  the model can never download without the user's yes. Tests: fresh yes
+  downloads once; stale yes re-opens, `cancelled`, no second download.
+- Finding 2, cache wipe (`bc58f98`): `parseTranscripts` validates entry by
+  entry — valid entries survive, only invalid ones drop; the same helper
+  serves `readTranscripts` and `saveTranscript`, so one hostile entry no
+  longer replaces the whole cache with `{}`. Test: 3 good + 1 hostile
+  entries keep the 3 after read and after a save.
+- Finding 3, lost update (`7c69cde`): module-level promise chain —
+  `saveTranscript` and `deleteTranscript` each wait for the previous
+  write; a failed write never blocks later ones; reads stay unchained.
+  Tests: two concurrent saves both survive; a failed first write does not
+  block the second.
+- Finding 4, download cap (`1236d12`): the served-URL download copies the
+  attachment-opener pattern — `AbortController` + `onProgress` aborts past
+  `VOICE_MAX_BYTES` (from `@/lib/voice`, 10 MB), the partial file is
+  deleted, and the refusal maps to the existing too-long user message
+  (`TranscribeTooLargeError` -> `TRANSCRIBE_TOO_LONG_MESSAGE`). Pure
+  `transcribeDownloadOverCap` helper tested on both counters + boundary.
+  Tests: cap guard true/false cases; oversized fake aborts, deletes the
+  cache, never transcribes.
+- Full checks: `pnpm exec prettier --check` on all 9 touched files: pass
+  (repo-wide `format:check` flags only the lead's untracked `PREREVIEW.md`,
+  outside Allowed files, left untouched). `pnpm lint`: pass. `pnpm
+  typecheck`: 11/11 pass. `pnpm --filter @zilar/mobile test
+  --maxWorkers=2 voice whistle transcript`: 16 files, 160 tests, all pass.
+- The lead tests on the emulator and the phone (per spec: not run here).
+
 ## Review (written by Claude)
