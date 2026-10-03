@@ -19,6 +19,7 @@ const createdAi = {
   status: 'active',
   providerConnectionId: 'c-1',
   limits: { perDayUsd: 2, perMonthUsd: 20 },
+  machineId: null,
   createdAt: '2026-09-28T00:00:00.000Z',
 };
 
@@ -232,6 +233,30 @@ describe('createAisApi', () => {
     const api = createAisApi(async () => 'session-token', fetchImpl as unknown as typeof fetch);
 
     await expect(api.stopAi('a-1')).resolves.toMatchObject({ id: 'a-1', status: 'stopped' });
+  });
+
+  // T-0185: the server sends `machineId` (T-0091) on the public AI. A string
+  // survives the boundary so the machine picker can show the current home;
+  // a missing or non-string value means the platform, never a failure.
+  it('keeps a string machineId on the parsed AI (T-0185)', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse([{ ...createdAi, machineId: 'm-1' }]));
+    const api = createAisApi(async () => 't', fetchImpl as unknown as typeof fetch);
+
+    await expect(api.listAis()).resolves.toEqual([{ ...createdAi, machineId: 'm-1' }]);
+  });
+
+  it('maps a missing or non-string machineId to null (T-0185)', async () => {
+    const missing = { ...createdAi };
+    delete (missing as Record<string, unknown>)['machineId'];
+    const malformed = { ...createdAi, machineId: 42 };
+
+    const fetchMissing = vi.fn(async () => jsonResponse([missing]));
+    const apiMissing = createAisApi(async () => 't', fetchMissing as unknown as typeof fetch);
+    await expect(apiMissing.listAis()).resolves.toEqual([{ ...createdAi, machineId: null }]);
+
+    const fetchMalformed = vi.fn(async () => jsonResponse([malformed]));
+    const apiMalformed = createAisApi(async () => 't', fetchMalformed as unknown as typeof fetch);
+    await expect(apiMalformed.listAis()).resolves.toEqual([{ ...createdAi, machineId: null }]);
   });
 
   it('maps a 409 to AisApiError with the server code (T-0095)', async () => {

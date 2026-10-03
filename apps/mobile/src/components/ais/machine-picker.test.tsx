@@ -81,4 +81,34 @@ describe('MachinePicker', () => {
     );
     expect(html).toContain('Current machine (unavailable)');
   });
+
+  // T-0185 round 1: the edit screen passes the AI's parsed `machineId` as
+  // `value`, so the row matching the AI's home machine is the selected one
+  // (the `OptionRow` carries the selected border classes for it, exactly
+  // one row when one machine is the current home).
+  it('marks the AI home machine row as selected', () => {
+    const other = machine({ id: 'm-2', name: 'Office box' });
+    const selected = renderToStaticMarkup(
+      createElement(MachinePicker, {
+        machines: [APPROVED, other],
+        loaded: true,
+        value: 'm-1',
+        onChange: () => {},
+      }),
+    );
+    const platformSelected = renderToStaticMarkup(
+      createElement(MachinePicker, {
+        machines: [APPROVED, other],
+        loaded: true,
+        value: null,
+        onChange: () => {},
+      }),
+    );
+    const selectedRows = (html: string): number =>
+      (html.match(/border-accent bg-surface-raised/g) ?? []).length;
+    expect(selectedRows(selected)).toBe(1);
+    expect(selectedRows(platformSelected)).toBe(1);
+    expect(selected.indexOf('Home server')).toBeGreaterThan(-1);
+    expect(selected).not.toBe(platformSelected);
+  });
 });

@@ -23,18 +23,6 @@ import { asColorScheme } from '@/lib/color-scheme';
 import type { Connection as AisConnection, PublicAi, UpdateAiInput } from '@/lib/ais-api';
 import type { Machine } from '@/lib/machines-api';
 
-/**
- * The AI's home machine id. The server sends `machineId` on the public AI,
- * but mobile's `PublicAi` predates it (T-0091) and drops unknown fields from
- * the type — so it is read tolerantly here instead of in `ais-api.ts`, which
- * this task may not touch. A missing or non-string value means the platform.
- */
-function aiMachineId(ai: PublicAi): string | null {
-  const raw = ai as unknown as Record<string, unknown>;
-  const machineId = raw['machineId'];
-  return typeof machineId === 'string' ? machineId : null;
-}
-
 export default function EditAiScreen() {
   return (
     <RequireAisAuth>
@@ -308,7 +296,7 @@ function EditAi() {
               <MachinePicker
                 machines={machines}
                 loaded={machinesLoaded}
-                value={loaded === null ? null : aiMachineId(loaded)}
+                value={loaded?.machineId ?? null}
                 disabled={machineBusy}
                 onChange={changeMachine}
               />
