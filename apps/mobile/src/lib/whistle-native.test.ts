@@ -22,6 +22,7 @@ function nativeStub(overrides: Record<string, unknown> = {}) {
     isAvailable: vi.fn(() => true),
     modelStatus: vi.fn(() => 'missing'),
     loadModel: vi.fn(async () => 'ready'),
+    amplitudeEnvelope: vi.fn(async () => [] as number[]),
     transcribeFile: vi.fn(async () => ({
       text: 'hello',
       language: 'en',
@@ -181,5 +182,62 @@ describe('whistle transcribe wrapper (T-0177)', () => {
   it('keeps file paths intact', () => {
     expect(toLocalPath('file:///cache/a.m4a')).toBe('/cache/a.m4a');
     expect(toLocalPath('/cache/a.m4a')).toBe('/cache/a.m4a');
+  });
+});
+
+describe('whistle quiet-cut envelope (T-0178)', () => {
+  // One envelope entry per 10 ms window (160 samples at 16 kHz). A 60 s
+  // clip has 6000 windows; the gap at 27.0-27.5 s sits inside the 2 s
+  // search window before the 28 s limit (26-28 s), where the planner can
+  // find it. (A gap at 25 s would lie outside that window and be
+  // unreachable — deviation from the spec's 25.0-25.5 s noted in Report.)
+  function loudEnvelopeWithGap(): number[] {
+    const windows = 6000;
+    const envelope = Array.from({ length: windows }, () => 0.8);
+    for (let window = 2700; window < 2750; window += 1) {
+      envelope[window] = 0;
+    }
+    return envelope;
+  }
+
+  it('cuts inside the quiet gap instead of at the 28 s boundary', async () => {
+    const stub = nativeStub({ amplitudeEnvelope: vi.fn(async () => loudEnvelopeWithGap()) });
+    await transcribe('file:///quiet.m4a', { audioMs: 60_000 });
+    expect(stub.amplitudeEnvelope).toHaveBeenCalledWith('/quiet.m4a');
+    const [, ranges] = stub.transcribeRanges.mock.calls[0] as unknown as [
+      string,
+      Array<[number, number]>,
+    ];
+    expect(ranges.length).toBeGreaterThan(1);
+    const firstCut = ranges[0]?.[1] ?? 0;
+    expect(firstCut).toBeGreaterThanOrEqual(27_000);
+    expect(firstCut).toBeLessThan(27_500);
+    expect(firstCut).not.toBe(28_000);
+  });
+
+  it('an envelope failure falls back to the flat plan and still transcribes', async () => {
+    const stub = nativeStub({
+      amplitudeEnvelope: vi.fn(async () => {
+        throw { code: 'transcribe_failed', message: 'decode failed' };
+      }),
+    });
+    const result = await transcribe('file:///broken-env.m4a', { audioMs: 60_000 });
+    expect(result.text).toBe('hello-ranged');
+    const [, ranges] = stub.transcribeRanges.mock.calls[0] as unknown as [
+      string,
+      Array<[number, number]>,
+    ];
+    // () => 1 ties everywhere, so each cut is the earliest sample of the
+    // 2 s search window — the pre-existing T-0177 flat behaviour.
+    expect(ranges).toHaveLength(3);
+    expect(ranges[0]?.[1]).toBeCloseTo(26_000, 0);
+    expect(ranges.at(-1)?.[1]).toBeCloseTo(60_000, 0);
+  });
+
+  it('clips of 28 s or less never call amplitudeEnvelope', async () => {
+    const stub = nativeStub();
+    await transcribe('file:///short.m4a', { audioMs: 28_000 });
+    expect(stub.transcribeFile).toHaveBeenCalledTimes(1);
+    expect(stub.amplitudeEnvelope).not.toHaveBeenCalled();
   });
 });

@@ -143,6 +143,19 @@ class ZilarWhistleModule : Module() {
       ->
       transcribeRanges(path, rangesMs, language, promise)
     }
+
+    // One mean-absolute-amplitude value per 10 ms window (160 samples at
+    // 16 kHz) for the JS quiet-cut planner (T-0178): cuts land in pauses
+    // instead of on fixed 28 s boundaries. A silent clip returns all zeros.
+    // Capped at 60 000 entries (10 minutes), matching the decode bound.
+    // Plain value return (no Promise parameter): Expo modules cannot take a
+    // Promise inside a Coroutine function, and Hermes has no crypto.subtle.
+    AsyncFunction("amplitudeEnvelope") { path: String ->
+      if (!abiSupported()) {
+        throw CodedException("unavailable", "Whistle runs on Android arm64 only", null)
+      }
+      amplitudeEnvelope(decodeToMono16k(path).samples)
+    }
   }
 
   /**
@@ -267,6 +280,30 @@ class ZilarWhistleModule : Module() {
   }
 
   private data class DecodedAudio(val samples: FloatArray, val durationMs: Int, val isSilent: Boolean)
+
+  /**
+   * Builds the quiet-cut envelope for a decoded 16 kHz mono clip (T-0178):
+   * one mean absolute amplitude per 10 ms window (160 samples), 0.0..1.0,
+   * capped at 60 000 entries (10 minutes, the decode bound). A silent clip
+   * returns all zeros.
+   */
+  private fun amplitudeEnvelope(samples: FloatArray): List<Double> {
+    val window = 160
+    val cap = 60_000
+    val windows = minOf((samples.size + window - 1) / window, cap)
+    if (windows <= 0) {
+      return emptyList()
+    }
+    return List(windows) { index ->
+      val from = index * window
+      val to = minOf(from + window, samples.size)
+      var sum = 0.0
+      for (sample in from until to) {
+        sum += abs(samples[sample]).toDouble()
+      }
+      (sum / (to - from)).coerceIn(0.0, 1.0)
+    }
+  }
 
   private data class ParsedTranscript(
     val text: String,

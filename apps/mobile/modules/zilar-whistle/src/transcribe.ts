@@ -36,8 +36,10 @@ export interface TranscribeOptions {
   audioMs?: number | undefined;
   /**
    * Reads the absolute sample amplitude at an index for the quiet-cut plan.
-   * Production passes undefined (the plan falls back to even 28 s windows);
-   * tests inject fakes. Kept out of the hot path: only called for long clips.
+   * Production passes undefined: long clips then fetch the real envelope
+   * from the native decoder, falling back to even 28 s windows when that
+   * fails; tests inject fakes. Kept out of the hot path: only used for
+   * long clips.
    */
   amplitudes?: ((sample: number) => number) | undefined;
 }
@@ -92,7 +94,7 @@ async function runTranscribe(
   const localPath = toLocalPath(fileUri);
   const started = Date.now();
   const language = normalizeWhistleLanguage(options?.language);
-  const ranges = planRangesMs(options);
+  const ranges = await planRangesMs(localPath, options);
   let raw: Record<string, unknown>;
   try {
     raw =
@@ -123,8 +125,25 @@ export function toLocalPath(fileUri: string): string {
  * (finding 6): the native side only slices these, it never splits itself.
  * Returns null when the length is unknown or fits one chunk — the native
  * side then transcribes the whole clip as a single chunk.
+ *
+ * For long clips without caller-provided `amplitudes`, fetches the real
+ * amplitude envelope from the native decoder first so cuts land in pauses;
+ * an envelope failure falls back to even 28 s windows — never fails the
+ * transcription. Short clips never touch the native envelope.
  */
-export function planRangesMs(options?: TranscribeOptions): Array<[number, number]> | null {
+export function planRangesMs(
+  localPathOrOptions?: string | TranscribeOptions,
+  maybeOptions?: TranscribeOptions,
+): Promise<Array<[number, number]> | null> {
+  const localPath = typeof localPathOrOptions === 'string' ? localPathOrOptions : undefined;
+  const options = typeof localPathOrOptions === 'string' ? maybeOptions : localPathOrOptions;
+  return planRanges(localPath, options);
+}
+
+async function planRanges(
+  localPath: string | undefined,
+  options?: TranscribeOptions,
+): Promise<Array<[number, number]> | null> {
   const audioMs = options?.audioMs ?? 0;
   if (!Number.isFinite(audioMs) || audioMs <= 28_000) {
     return null;
@@ -133,7 +152,7 @@ export function planRangesMs(options?: TranscribeOptions): Array<[number, number
   if (totalSamples <= 0) {
     return null;
   }
-  const amplitudes = options?.amplitudes ?? (() => 1);
+  const amplitudes = options?.amplitudes ?? (await envelopeAmplitudes(localPath));
   const chunks = planQuietCutChunks(totalSamples, amplitudes);
   if (chunks.length <= 1) {
     return null;
@@ -142,4 +161,32 @@ export function planRangesMs(options?: TranscribeOptions): Array<[number, number
     (chunk.start * 1000) / 16000,
     (chunk.end * 1000) / 16000,
   ]);
+}
+
+/**
+ * Reads the native 10 ms amplitude envelope (one mean absolute amplitude per
+ * 160 samples) and adapts it to the planner's per-sample function. Returns
+ * the even-window fallback (`() => 1`) when there is no local path or the
+ * native call fails.
+ */
+async function envelopeAmplitudes(
+  localPath: string | undefined,
+): Promise<(sample: number) => number> {
+  const fallback = (): number => 1;
+  if (localPath === undefined || localPath === '') {
+    return fallback;
+  }
+  const native = getNativeModule();
+  if (native === null) {
+    return fallback;
+  }
+  try {
+    const envelope = await native.amplitudeEnvelope(localPath);
+    if (!Array.isArray(envelope) || envelope.length === 0) {
+      return fallback;
+    }
+    return (sample: number): number => envelope[Math.floor(sample / 160)] ?? 0;
+  } catch {
+    return fallback;
+  }
 }

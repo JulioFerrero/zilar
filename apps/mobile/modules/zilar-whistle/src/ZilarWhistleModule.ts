@@ -18,6 +18,7 @@ export interface ZilarWhistleNativeModule {
     rangesMs: Array<[number, number]> | null,
     language: string | null,
   ) => Promise<Record<string, unknown>>;
+  amplitudeEnvelope: (path: string) => Promise<number[]>;
 }
 
 export function getNativeModule(): ZilarWhistleNativeModule | null {
