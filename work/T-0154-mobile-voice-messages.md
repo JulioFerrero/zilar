@@ -1,7 +1,7 @@
 ---
 id: T-0154
 title: Mobile voice messages (record, send, play)
-status: review
+status: merged
 milestone: M5
 branch: task/T-0154-mobile-voice-messages
 model: meta/muse-spark-1.3-contributor
@@ -114,3 +114,9 @@ pnpm --filter @zilar/mobile test --maxWorkers=2 voice attachment composer hooks-
 - No new routes (only existing `POST /api/voice` + XEP-0363 slot + PUT); no audit/message-text capture.
 
 ## Review (written by Claude)
+
+Merged after three worker fix rounds. Round 1 fixed the cross-bubble playback deadlock (one player at a time), file reads (`new File`, no `fetch` on a file URI; size never coerced to empty), per-reason failure copy, real recorder tests and the double-tap recorder leak. Round 2 enforced the size and duration floor and caps at the send boundary before any upload request, released the replaced native player, deleted dead code and hid the empty transcript toggle. Round 3 handled the silent mic failure, resume from the paused position, the stale play-source race, the per-code over-limit banner, `failureReason` on retraction and the exact byte slice on upload. I reviewed round 3 myself (diff, full scoped suite, mutation-checked the resume fix).
+
+Not verified: nothing here has run on a device. The recorder and player depend on `expo-audio`, which needs a native dev-build rebuild before any phone test (mic permission is in `app.json`). Disclosed by the worker: an idle progress bar and a flat placeholder waveform. Nits left: three weak test assertions (a constant checked against itself, a message-length check), the test seam that fans out to every host.
+
+Checks: format, lint, mobile tsc pass; mobile voice, attachment, composer, hooks-guard, real-store and chat-store 27 files, 300 passed.
