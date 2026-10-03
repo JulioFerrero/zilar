@@ -7,6 +7,7 @@ import {
   Plus,
   RefreshCw,
   Trash2,
+  X,
   Zap,
 } from 'lucide-react-native';
 import { useCallback, useRef, useState } from 'react';
@@ -94,6 +95,11 @@ function ConnectionsList() {
   );
 
   const test = (id: string): void => {
+    // A second tap that lands before the disabled state propagates must
+    // not fire a second test (the server rate-limits key tests per user).
+    if (testingId !== null) {
+      return;
+    }
     setTestingId(id);
     setTestErrors((previous) => {
       if (!(id in previous)) return previous;
@@ -399,7 +405,7 @@ function AddConnectionForm({
           onPress={onCancel}
           className="rounded-full p-1 active:bg-surface-raised"
         >
-          <Text className="px-1 text-[16px] text-muted-foreground">✕</Text>
+          <X size={16} color={ICON[scheme]} />
         </Pressable>
       </View>
 

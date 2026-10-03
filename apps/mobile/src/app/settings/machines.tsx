@@ -52,13 +52,19 @@ function MachinesList() {
   // The add flow state lives in the parent: the "Add machine" tap mints
   // the code directly (an event, not an effect), and the sheet only renders
   // the result. `addToken` guards a late answer after the sheet closed.
+  // `addBusyRef` stops a double tap minting two pairing codes (10 per hour).
   const [adding, setAdding] = useState(false);
   const [pairing, setPairing] = useState<PairingCode | null>(null);
   const [pairingLoading, setPairingLoading] = useState(false);
   const [pairingError, setPairingError] = useState('');
   const addToken = useRef(0);
+  const addBusyRef = useRef(false);
 
   const openAdd = useCallback(() => {
+    if (addBusyRef.current) {
+      return;
+    }
+    addBusyRef.current = true;
     addToken.current += 1;
     const token = addToken.current;
     setAdding(true);
@@ -78,6 +84,7 @@ function MachinesList() {
         }
       })
       .finally(() => {
+        addBusyRef.current = false;
         if (addToken.current === token) {
           setPairingLoading(false);
         }
