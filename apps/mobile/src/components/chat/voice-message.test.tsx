@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import { VoiceMessage, resolvePlaySource } from './voice-message';
+import { createWhistlePort, type WhistlePort } from '@/lib/whistle-port';
 
 vi.mock('react-native', () => ({
   Pressable: 'Pressable',
@@ -10,6 +11,7 @@ vi.mock('react-native', () => ({
 }));
 
 vi.mock('lucide-react-native', () => ({
+  AudioLines: 'AudioLines',
   Pause: 'Pause',
   Play: 'Play',
 }));
@@ -25,6 +27,10 @@ vi.mock('nativewind', () => ({
 
 vi.mock('@/components/ui/text', () => ({
   Text: 'Text',
+}));
+
+vi.mock('./voice-transcribe-confirm', () => ({
+  VoiceTranscribeConfirm: 'VoiceTranscribeConfirm',
 }));
 
 vi.mock('@/components/ui/use-key-press', () => ({
@@ -57,6 +63,10 @@ const CONTROLS = {
   seekTo: () => Promise.resolve(),
   cycleSpeed: () => {},
 };
+
+function fakeWhistle(available: boolean): WhistlePort {
+  return createWhistlePort({ isAvailable: () => available });
+}
 
 describe('voice bubble (T-0154)', () => {
   it('renders the duration and the play state', () => {
@@ -238,5 +248,61 @@ describe('voice bubble (T-0154)', () => {
     );
     expect(played).toEqual([]);
     expect(missing).toEqual(['latest']);
+  });
+
+  it('hides the Transcribe button when the engine is unavailable', () => {
+    const html = renderToStaticMarkup(
+      createElement(VoiceMessage, {
+        voice: { ...VOICE, url: 'https://upload.zilar.test/get/voice.m4a' },
+        outgoing: false,
+        message: BASE_MESSAGE,
+        controls: CONTROLS,
+        whistle: fakeWhistle(false),
+      }),
+    );
+    expect(html).not.toContain('Transcribe voice message');
+  });
+
+  it('shows the Transcribe button when the engine is available', () => {
+    const html = renderToStaticMarkup(
+      createElement(VoiceMessage, {
+        voice: { ...VOICE, url: 'https://upload.zilar.test/get/voice.m4a' },
+        outgoing: false,
+        message: BASE_MESSAGE,
+        controls: CONTROLS,
+        whistle: fakeWhistle(true),
+        transcripts: {},
+      }),
+    );
+    expect(html).toContain('Transcribe voice message');
+  });
+
+  it('hides the Transcribe button when a transcript is stored', () => {
+    const html = renderToStaticMarkup(
+      createElement(VoiceMessage, {
+        voice: { ...VOICE, url: 'https://upload.zilar.test/get/voice.m4a' },
+        outgoing: false,
+        message: BASE_MESSAGE,
+        controls: CONTROLS,
+        whistle: fakeWhistle(true),
+        transcripts: { 'm-voice-1': { text: 'hello there' } },
+      }),
+    );
+    expect(html).not.toContain('Transcribe voice message');
+    expect(html).toContain('Show transcript');
+  });
+
+  it('hides the Transcribe button when the voice is not playable', () => {
+    const html = renderToStaticMarkup(
+      createElement(VoiceMessage, {
+        voice: { ...VOICE, url: 'https://evil.test/voice.m4a' },
+        outgoing: false,
+        message: { ...BASE_MESSAGE, voice: { ...VOICE, url: undefined } },
+        controls: CONTROLS,
+        whistle: fakeWhistle(true),
+        transcripts: {},
+      }),
+    );
+    expect(html).not.toContain('Transcribe voice message');
   });
 });

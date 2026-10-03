@@ -1,0 +1,149 @@
+/**
+ * On-device voice-note transcripts (T-0179): a single JSON file at
+ * `Paths.document/voice-transcripts.json`, keyed by message id. The
+ * transcripts never leave the phone and are never sent on the wire: the
+ * protocol package is untouched, and the bubble keeps them as local state.
+ */
+
+import { z } from 'zod';
+
+/** One stored transcript: the text plus the detected language, if any. */
+export const StoredTranscriptSchema = z.object({
+  text: z.string().min(1),
+  language: z.string().optional(),
+});
+
+export type StoredTranscript = z.infer<typeof StoredTranscriptSchema>;
+
+const TranscriptFileSchema = z.record(z.string(), StoredTranscriptSchema);
+
+export type TranscriptMap = Record<string, StoredTranscript>;
+
+export const TRANSCRIPTS_FILENAME = 'voice-transcripts.json';
+/** At most this many transcripts are kept; older ones are dropped. */
+export const MAX_STORED_TRANSCRIPTS = 500;
+/** A single transcript is never stored longer than this. */
+export const MAX_TRANSCRIPT_CHARS = 20_000;
+
+/** The file seam: tests inject a fake, production uses `expo-file-system`. */
+export interface TranscriptFile {
+  read: () => Promise<string | null>;
+  write: (raw: string) => Promise<void>;
+}
+
+async function defaultFile(): Promise<{
+  file: {
+    exists: boolean;
+    create: () => void;
+    text: () => Promise<string>;
+    write: (content: string) => void;
+  };
+}> {
+  const { File, Paths } = await import('expo-file-system');
+  return { file: new File(Paths.document, TRANSCRIPTS_FILENAME) };
+}
+
+function defaultTranscriptFile(): TranscriptFile {
+  return {
+    read: async () => {
+      const { file } = await defaultFile();
+      if (!file.exists) {
+        return null;
+      }
+      return file.text();
+    },
+    write: async (raw: string) => {
+      const { file } = await defaultFile();
+      if (!file.exists) {
+        file.create();
+      }
+      file.write(raw);
+    },
+  };
+}
+
+/** Parses the raw file content; hostile or missing data resolves to {}. */
+export function parseTranscripts(raw: string | null | undefined): TranscriptMap {
+  if (raw === null || raw === undefined || raw === '') {
+    return {};
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return {};
+  }
+  const validated = TranscriptFileSchema.safeParse(parsed);
+  return validated.success ? validated.data : {};
+}
+
+/** Reads every stored transcript; a missing or hostile file resolves to {}. */
+export async function readTranscripts(file?: TranscriptFile): Promise<TranscriptMap> {
+  const backend = file ?? defaultTranscriptFile();
+  try {
+    return parseTranscripts(await backend.read());
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Stores one transcript, capped at `MAX_TRANSCRIPT_CHARS` and
+ * `MAX_STORED_TRANSCRIPTS` entries (oldest dropped). A failing storage
+ * never breaks the chat: it resolves without throwing.
+ */
+export async function saveTranscript(
+  id: string,
+  entry: StoredTranscript,
+  file?: TranscriptFile,
+): Promise<void> {
+  if (id === '') {
+    return;
+  }
+  const backend = file ?? defaultTranscriptFile();
+  let current: TranscriptMap = {};
+  try {
+    current = parseTranscripts(await backend.read());
+  } catch {
+    current = {};
+  }
+  const text = entry.text.slice(0, MAX_TRANSCRIPT_CHARS);
+  if (text === '') {
+    return;
+  }
+  const next: TranscriptMap = { ...current };
+  delete next[id];
+  next[id] = entry.language === undefined ? { text } : { text, language: entry.language };
+  const keys = Object.keys(next);
+  if (keys.length > MAX_STORED_TRANSCRIPTS) {
+    for (const oldest of keys.slice(0, keys.length - MAX_STORED_TRANSCRIPTS)) {
+      delete next[oldest as string];
+    }
+  }
+  try {
+    await backend.write(JSON.stringify(next));
+  } catch {
+    // A blocked storage must never break the chat.
+  }
+}
+
+/** Forgets one transcript; a failing storage resolves without throwing. */
+export async function deleteTranscript(id: string, file?: TranscriptFile): Promise<void> {
+  const backend = file ?? defaultTranscriptFile();
+  let current: TranscriptMap = {};
+  try {
+    current = parseTranscripts(await backend.read());
+  } catch {
+    return;
+  }
+  if (current[id] === undefined) {
+    return;
+  }
+  const next: TranscriptMap = { ...current };
+  delete next[id];
+  try {
+    await backend.write(JSON.stringify(next));
+  } catch {
+    // A blocked storage must never break the chat.
+  }
+}
