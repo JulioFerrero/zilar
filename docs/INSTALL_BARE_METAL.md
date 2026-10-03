@@ -288,6 +288,75 @@ recreate roles/databases (§2), `pg_restore --clean`, restore both file
 dirs, put the env file back, restart ejabberd and `zilar-server`.
 Practice the restore once before you need it.
 
+## Backups: schedule, retention, off-machine copy
+
+One backup exists only when someone remembers to run it. The shipped
+timer pair (`deploy/baremetal/zilar-backup.timer` +
+`zilar-backup.service`, driving `zilar-backup.sh`) runs the full pass
+daily at 03:30 with a random delay of up to 30 minutes, and catches up
+at boot when the host was off (`Persistent=true`). Install it:
+
+```bash
+sudo mkdir -p /var/lib/zilar-backups
+sudo chown zilar:zilar /var/lib/zilar-backups
+sudo cp deploy/baremetal/zilar-backup.sh /opt/zilar/deploy/baremetal/
+sudo cp deploy/baremetal/zilar-backup.service deploy/baremetal/zilar-backup.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now zilar-backup.timer
+systemctl list-timers zilar-backup.timer   # NEXT column shows the coming run
+sudo journalctl -u zilar-backup --since '2 days ago' | tail -20
+```
+
+(`BACKUP_KEEP_N`, default 7, is set in the unit — edit the
+`Environment=` line to keep more or fewer.) `zilar-backup.sh` dumps both
+databases (`pg_dump -Fc`), `pg_dumpall -g` roles/globals, tars uploads +
+stickers + avatars, and bundles the archive with a copy of
+`/etc/zilar/zilar.env` — mode 0600 throughout, because the archive holds
+live secrets. Retention mirrors the Docker wizard: the new archive must
+list back through `tar -tzf` before the oldest beyond N are deleted; a
+failed dump keeps every old archive; only `zilar-backup-*.tgz` files are
+ever deleted, never through symlinks.
+
+A backup on the same disk is not a backup: encrypt each archive BEFORE
+copying it off the machine (the env file inside owns the install), then
+`scp`/`rclone` it to another host. With age:
+
+```bash
+age --encrypt --recipient age1<your-public-key> --output newest.tgz.age /var/lib/zilar-backups/zilar-backup-<stamp>.tgz
+scp newest.tgz.age backup-host:/srv/zilar-backups/
+```
+
+Freshness has no `doctor` on this path (the `./zilar doctor` freshness
+check only drives the Docker stack): watch it with the timer itself —
+`systemctl list-timers` shows the last run, and the service logs
+`Keeping the newest N (removed M older)` per pass. If the newest archive
+is older than 2 days, the timer is not firing (host off without
+`Persistent`, unit failed — read the journal) — fix it the way you would
+any missed backup: run `/opt/zilar/deploy/baremetal/zilar-backup.sh`
+by hand now, then repair the timer.
+
+### Restore drill (practice before you need it)
+
+A backup you never restored is a hope, not a backup. Once per quarter,
+prove the archives work — on a THROWAWAY host or throwaway
+roles/databases, never over the live data (restore overwrites):
+
+```bash
+# 1. Note the live sticker and upload counts (source of truth).
+#    Sticker count: sign in, open the sticker picker. Upload count:
+#    sudo -u ejabberd find /var/lib/ejabberd/upload -type f | wc -l
+# 2. Take a fresh backup: sudo systemctl start zilar-backup.service
+#    and copy the newest archive aside (still mode 0600).
+# 3. On the throwaway target: recreate roles/databases (§2),
+#    pg_restore --clean both dumps, restore both file dirs, put the env
+#    file back, restart ejabberd and zilar-server.
+# 4. Confirm: sign in, the sticker count matches step 1, uploads open
+#    (spot-check two files end to end), /health answers ok:true.
+# 5. Wipe the throwaway target and delete the aside copy.
+```
+
+If any step fails, fix the backup before you need it for real.
+
 ## 8. What was and was not tested
 
 Honestly: **none of this guide was run on a real machine.** It was
@@ -309,6 +378,12 @@ workstation allows:
   `deploy/postgres/init/*.sql` logically but was never executed — not
   even the `\if :{?...}` / `\gset` guards it shares with
   `20-search-reader.sql` (which IS proven in Docker).
+- `deploy/baremetal/zilar-backup.{service,timer,sh}` (T-0158) were never
+  checked with `systemd-analyze verify` (no systemd on macOS) and never
+  ran against a real Postgres/ejabberd: treat the timer install steps in
+  §7 as untested-on-a-real-machine until the first bare-metal backup is
+  observed end to end (archive written, verified, pruned, copied off
+  encrypted).
 - `deploy/baremetal/zilar-server.service` was never checked with
   `systemd-analyze verify` (no systemd on macOS) and never booted a
   machine; the hardening directives are standard systemd options, but a

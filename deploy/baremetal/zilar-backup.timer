@@ -1,0 +1,16 @@
+[Unit]
+Description=Run the Zilar nightly backup daily at 03:30
+Documentation=https://github.com/<owner>/zilar/blob/main/docs/INSTALL_BARE_METAL.md
+
+[Timer]
+# Daily at 03:30 local time, plus a random delay of up to 30 minutes so
+# a fleet of Zilar hosts does not stampede shared infrastructure
+# (database, off-machine backup target) at the same minute.
+OnCalendar=*-*-* 03:30:00
+RandomizedDelaySec=30min
+# If the host was off at 03:30, run once at the next boot instead of
+# silently skipping a night.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

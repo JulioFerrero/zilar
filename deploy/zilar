@@ -9,7 +9,8 @@
 #   ./zilar init          write deploy/.env with generated secrets
 #   ./zilar up|down|logs|status|update   run the compose stack
 #   ./zilar doctor        check the machine before/after install
-#   ./zilar backup [dir]  timestamped archive (databases, file stores, .env)
+#   ./zilar backup [dir] [--keep N] [--offsite-hint]
+#                           timestamped archive (databases, file stores, .env)
 #   ./zilar restore <archive>   bring an install back (needs --yes)
 #   ./zilar create-admin  mint the invite code for the first account
 #
@@ -139,8 +140,11 @@ Usage: $PROG [--env-file=PATH] [--dry-run] <command> [args]
   logs [compose args]     Follow the service logs (default: -f).
   status                  Show container and health status.
   update                  Pull images, restart, wait until healthy.
-  doctor                  Check Docker, ports, DNS and /health with fix hints.
-  backup [dir]            Write a timestamped archive (default dir: deploy/backups).
+  doctor                  Check Docker, ports, DNS, /health and backup freshness, with fix hints.
+  backup [dir] [--keep N] [--offsite-hint]
+                          Write a timestamped archive (default dir: deploy/backups,
+                          keep the newest 7). --offsite-hint prints how to copy
+                          the newest archive off the machine (nothing else).
   restore <archive> --yes Stop services, restore databases/file stores/.env, restart.
   create-admin [--uses N] [--days D]
       Mint the invite code for the first account on the running server.
@@ -725,6 +729,49 @@ cmd_doctor() {
     echo "skip: the stack is not running, so the sticker mount cannot be checked (run '$PROG up' first)"
   fi
 
+  # 7. Backup freshness: the newest archive must be younger than 2 days.
+  # ZILAR_DOCTOR_BACKUP_DIR overrides the directory and ZILAR_DOCTOR_NOW_EPOCH
+  # overrides "now" (tests inject both; never set them on a real install).
+  _backup_dir="${ZILAR_DOCTOR_BACKUP_DIR:-$DEPLOY_DIR/backups}"
+  _now="$(date +%s 2>/dev/null || echo 0)"
+  [ -n "${ZILAR_DOCTOR_NOW_EPOCH-}" ] && _now="$ZILAR_DOCTOR_NOW_EPOCH"
+  _newest=""
+  if [ -d "$_backup_dir" ]; then
+    _newest="$(find "$_backup_dir" -maxdepth 1 -type f -name 'zilar-backup-*.tgz' -print 2>/dev/null | sort | tail -n 1)"
+  fi
+  if [ -z "$_newest" ]; then
+    echo "WARN: no backup in $_backup_dir yet — run '$PROG backup' to take one (archives hold live secrets: keep them mode 0600 and copy one off the machine)" >&2
+  else
+    _mtime_epoch=""
+    if command -v stat >/dev/null 2>&1; then
+      _mtime_epoch="$(stat -f %m "$_newest" 2>/dev/null || stat -c %Y "$_newest" 2>/dev/null || true)"
+    fi
+    case "$_mtime_epoch" in
+      ""|*[!0-9]*)
+        echo "skip: cannot read the age of $(basename "$_newest") (stat unavailable)"
+        ;;
+      *)
+        _age_days=$(( (_now - _mtime_epoch) / 86400 ))
+        [ "$_age_days" -lt 0 ] && _age_days=0
+        if [ "$_age_days" -eq 0 ]; then
+          _age_words="less than a day old"
+        elif [ "$_age_days" -eq 1 ]; then
+          _age_words="1 day old"
+        else
+          _age_words="$_age_days days old"
+        fi
+        if [ "$_age_days" -gt 2 ]; then
+          doctor_bad "newest backup $(basename "$_newest") is $_age_words (older than 2 days)" "run '$PROG backup' now, then check the schedule (cron/systemd/Coolify) is still running"
+        elif [ "$_age_days" -eq 2 ]; then
+          echo "WARN: newest backup $(basename "$_newest") is $_age_words — run '$PROG backup' soon" >&2
+          doctor_ok "newest backup is $_age_words (warn at 2 days, fail past 2 days)"
+        else
+          doctor_ok "newest backup is $_age_words"
+        fi
+        ;;
+    esac
+  fi
+
   if [ "$doctor_fail" -ne 0 ]; then
     die "doctor found problems (see FAIL lines above)"
   fi
@@ -788,15 +835,56 @@ cmd_create_admin() {
 # --- backup -------------------------------------------------------------
 #
 # The archive lands in deploy/backups/ and contains the live .env, so it
-# is mode 0600 and the command says so loudly. `.gitignore` cannot be
-# edited from this task (lead decision pending: ignore `deploy/backups/`),
-# so NEVER `git add` the backups directory.
+# is mode 0600 and the command says so loudly. deploy/backups/ is in the
+# repo .gitignore — archives stay off git even so: NEVER `git add` them.
+#
+# Retention (--keep N, default 7): after the new archive is written AND
+# verified readable (listed by tar), the oldest archives beyond N are
+# deleted. Deletion only ever touches files matching the backup name
+# pattern, and never follows symlinks — anything else in the directory
+# (notes, unrelated files, links) is left alone. When the new archive
+# fails, nothing is deleted: the old ones stay.
 
 cmd_backup() {
   require_env_file
+  _offsite_hint=0
+  _keep=7
+  _dir=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --keep=*|--keep)
+        if [ "$1" = "--keep" ]; then
+          [ "$#" -ge 2 ] || die "backup: --keep needs a value (hint: --keep 7)"
+          _keep="$2"; shift 2
+        else
+          _keep="${1#--keep=}"; shift
+        fi
+        ;;
+      --offsite-hint)
+        _offsite_hint=1; shift
+        ;;
+      --*)
+        die "backup: unknown option '$1'"
+        ;;
+      *)
+        [ -z "$_dir" ] || die "backup takes at most one argument (the directory)"
+        _dir="$1"; shift
+        ;;
+    esac
+  done
+  _dir="${_dir:-$DEPLOY_DIR/backups}"
+  case "$_keep" in
+    ""|*[!0-9]*|0) die "backup: --keep must be a positive number (hint: --keep 7)" ;;
+  esac
+
+  # --offsite-hint prints and does nothing else: no archive, no deletion,
+  # no container traffic, no network. The wizard never uploads anything.
+  if [ "$_offsite_hint" -eq 1 ]; then
+    cmd_backup_offsite_hint "$_dir"
+    return 0
+  fi
+
   require_docker
-  _dir="${1:-$DEPLOY_DIR/backups}"
-  [ -n "${2-}" ] && die "backup takes at most one argument (the directory)"
 
   compose ps --status running postgres 2>/dev/null | grep -q postgres \
     || die "postgres is not running — start the stack with '$PROG up' first (same --env-file and COMPOSE_FILE_OVERRIDE, if any)"
@@ -822,6 +910,8 @@ cmd_backup() {
 +   manifest.json    versions and provenance (domain, image tag,
 +                    postgres version, ejabberd status line, date)
 + databases would be dumped through the running containers; nothing else changes
++ would then verify the new archive is readable and prune to the newest $_keep
++ (only zilar-backup-*.tgz files; never symlinks, never anything else)
 EOF
     return 0
   fi
@@ -879,14 +969,106 @@ EOF
 
   tar -czf "$_dir/$_name" -C "$_tmp" zilar.dump ejabberd.dump globals.sql uploads.tgz stickers.tgz avatars.tgz .env SECRETS_WARNING.txt manifest.json
   chmod 600 "$_dir/$_name"
+  # The new archive is the gate: it must list back through tar before any
+  # retention runs. Until this point nothing in the directory was touched,
+  # so a failed dump leaves every old archive alone.
+  tar -tzf "$_dir/$_name" >/dev/null \
+    || die "wrote $_dir/$_name but it does not read back — keeping all older backups; inspect and remove the broken file by hand"
   trap - EXIT
   rm -rf "$_tmp"
 
+  _pruned="$(_prune_backups "$_dir" "$_keep")"
+
   _size="$(du -h "$_dir/$_name" | cut -f1)"
-  info "wrote $_dir/$_name ($_size, mode 0600). Copy it off the machine — a backup on the same disk is not a backup."
+  info "wrote $_dir/$_name ($_size, mode 0600). Keeping the newest $_keep (removed $_pruned older). Copy it off the machine — a backup on the same disk is not a backup."
   warn "SECRETS: this archive contains the live .env (database passwords, JWT and session secrets)."
-  warn "NEVER commit deploy/backups/ to git — add 'deploy/backups/' to .gitignore (lead decision pending)."
-  warn "Copy the archive off the machine and restrict who can read it."
+  warn "NEVER commit deploy/backups/ to git — it is gitignored, and archives must never be added by hand."
+  warn "Copy the archive off the machine and restrict who can read it ('$PROG backup --offsite-hint' shows how)."
+}
+
+# Delete archives beyond the newest $2 in $1. Prints the number removed.
+# Only ever touches regular files (never symlinks, never directories)
+# whose name is exactly zilar-backup-<stamp>.tgz; anything else in the
+# directory is left alone. Callers run this only after the new archive
+# verified readable, so retention can never delete before a good backup.
+_prune_backups() {
+  _prune_dir="$1" _prune_keep="$2" _prune_removed=0
+  _prune_list="$(mktemp)"
+  # Regular files only (-type f excludes symlinks: -not -lname is implied
+  # since a symlink matched by -type f would be the target — find -type f
+  # without -L never matches a symlink itself). Name pattern is anchored.
+  find "$_prune_dir" -maxdepth 1 -type f -name 'zilar-backup-*.tgz' -print 2>/dev/null | sort > "$_prune_list" || true
+  _prune_total="$(grep -c . "$_prune_list" 2>/dev/null || true)"
+  _prune_total="${_prune_total:-0}"
+  if [ "$_prune_total" -gt "$_prune_keep" ]; then
+    _prune_drop=$((_prune_total - _prune_keep))
+    _prune_victims="$(head -n "$_prune_drop" "$_prune_list")"
+    # Delete one file at a time, re-checking it is still a regular file
+    # and still matches the pattern (never -delete, never rm globs).
+    # Read line by line: archive paths contain no newlines (we create them).
+    while IFS= read -r _prune_file; do
+      [ -n "$_prune_file" ] || continue
+      case "$_prune_file" in
+        "$_prune_dir"/zilar-backup-*.tgz)
+          if [ -f "$_prune_file" ] && [ ! -L "$_prune_file" ]; then
+            rm -f "$_prune_file"
+            _prune_removed=$((_prune_removed + 1))
+          fi
+          ;;
+      esac
+    done <<EOF
+$_prune_victims
+EOF
+  fi
+  rm -f "$_prune_list"
+  printf '%s' "$_prune_removed"
+}
+
+# --offsite-hint: print only. How to get the newest archive onto another
+# machine safely. No network code: the operator runs the copy by hand,
+# after encrypting. The archive holds live secrets either way.
+cmd_backup_offsite_hint() {
+  _hint_dir="$1"
+  _hint_newest=""
+  if [ -d "$_hint_dir" ]; then
+    _hint_newest="$(find "$_hint_dir" -maxdepth 1 -type f -name 'zilar-backup-*.tgz' -print 2>/dev/null | sort | tail -n 1)"
+  fi
+  cat <<EOF
+$PROG: WARNING: backup archives contain LIVE SECRETS (the install .env:
+database passwords, JWT and session secrets). Anyone holding one owns
+this Zilar install. Encrypt BEFORE copying, restrict who can read either
+end, and never upload an archive anywhere unencrypted.
+EOF
+  if [ -n "$_hint_newest" ]; then
+    cat <<EOF
+Newest archive: $_hint_newest
+EOF
+  else
+    cat <<EOF
+No archive in $_hint_dir yet — run '$PROG backup' first.
+EOF
+  fi
+  cat <<EOF
+
+Encrypt first (pick one), then copy. With age (https://age-encryption.org):
+
+  age --encrypt --recipient age1<your-public-key> --output newest.tgz.age "$_hint_dir/zilar-backup-<stamp>.tgz"
+  scp newest.tgz.age backup-host:/srv/zilar-backups/
+
+Or with GPG symmetric encryption:
+
+  gpg --symmetric --cipher-algo AES256 --output newest.tgz.gpg "$_hint_dir/zilar-backup-<stamp>.tgz"
+  scp newest.tgz.gpg backup-host:/srv/zilar-backups/
+
+With rclone to your own remote (after 'rclone config' names it):
+
+  rclone copyto "$_hint_dir/zilar-backup-<stamp>.tgz" myremote:zilar-backups/
+  (encrypt first: 'rclone copyto newest.tgz.age myremote:zilar-backups/')
+
+Replace <stamp> with the newest archive name above. Keep at least one
+copy on a different machine from the install — a backup on the same disk
+is not a backup.
+EOF
 }
 
 # --- restore ------------------------------------------------------------

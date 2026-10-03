@@ -1,0 +1,28 @@
+# Zilar nightly backup (Docker Compose install).
+#
+# Least-invasive schedule for the Compose path: no extra container, no
+# Docker socket mount — one host cron line running the install helper.
+# (A `backup` sidecar container would need the Docker socket to reach the
+# database containers, which widens what a compromised backup job can do;
+# the helper already talks to the stack through the local docker CLI.)
+#
+# Install as the user that owns the checkout (root only if the checkout
+# is root-owned), with the checkout path filled in:
+#
+#   crontab -e
+#
+# Every night at 03:30. --keep 7 retains the newest 7 archives in
+# deploy/backups/ (0600, live secrets inside). doctor warns when the
+# newest backup is older than 2 days, so a silent cron failure surfaces
+# the next time anyone runs `./deploy/zilar doctor`:
+#
+#   30 3 * * * /opt/zilar/deploy/zilar backup --keep 7 >>/var/log/zilar-backup.log 2>&1
+#
+# Off-machine copy (a backup on the same disk is not a backup): encrypt
+# first, then copy. `./deploy/zilar backup --offsite-hint` prints the
+# exact commands for the newest archive (age/gpg + scp, or rclone).
+#
+# After editing, confirm the line is installed and the helper runs:
+#
+#   crontab -l | grep zilar
+#   /opt/zilar/deploy/zilar backup --dry-run
