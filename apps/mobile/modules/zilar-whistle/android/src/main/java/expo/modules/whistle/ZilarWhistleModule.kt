@@ -55,6 +55,11 @@ class ZilarWhistleModule : Module() {
 
   external fun nativeLoadModel(path: String): Int
   external fun nativeLastError(): String
+  /**
+   * Transcribes one chunk. Returns the JSON on success, or a string starting
+   * with "NEEDLE_ERROR:" plus the engine error on failure — never null, so
+   * the Kotlin `String` return type always holds.
+   */
   external fun nativeTranscribeChunk(
     pcm: FloatArray,
     samples: Int,
@@ -165,8 +170,14 @@ class ZilarWhistleModule : Module() {
             // Only the first chunk may detect the language; later chunks
             // reuse it so a long note does not flip language mid-way.
             val chunkLanguage = if (index == 0) language else (detectedLanguage.ifEmpty { language })
-            val json = nativeTranscribeChunk(chunk, chunk.size, chunkLanguage, OUT_JSON_CAPACITY)
-            val parsed = parseTranscriptJson(json)
+            val result = nativeTranscribeChunk(chunk, chunk.size, chunkLanguage, OUT_JSON_CAPACITY)
+            if (result.startsWith("NEEDLE_ERROR:")) {
+              val detail = result.removePrefix("NEEDLE_ERROR:").ifEmpty {
+                runCatching { nativeLastError() }.getOrNull().orEmpty()
+              }
+              throw CodedException("transcribe_failed", detail.ifEmpty { "The transcription failed" }, null)
+            }
+            val parsed = parseTranscriptJson(result)
               ?: throw CodedException("transcribe_failed", runCatching { nativeLastError() }.getOrNull().orEmpty().ifEmpty { "The transcription failed" }, null)
             tokens += parsed.tokens
             if (parsed.text.isNotEmpty()) {

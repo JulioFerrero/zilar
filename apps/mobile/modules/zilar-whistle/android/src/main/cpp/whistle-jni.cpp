@@ -68,11 +68,11 @@ Java_expo_modules_whistle_ZilarWhistleModule_nativeTranscribeChunk(
     JNIEnv *env, jobject thiz, jfloatArray pcm, jint samples,
     jstring language, jint out_capacity) {
   if (pcm == NULL || samples <= 0 || out_capacity <= 0) {
-    return NULL;
+    return env->NewStringUTF("NEEDLE_ERROR:empty audio");
   }
   jfloat *c_pcm = env->GetFloatArrayElements(pcm, NULL);
   if (c_pcm == NULL) {
-    return NULL;
+    return env->NewStringUTF("NEEDLE_ERROR:empty audio");
   }
   const char *c_language = NULL;
   if (language != NULL) {
@@ -84,7 +84,7 @@ Java_expo_modules_whistle_ZilarWhistleModule_nativeTranscribeChunk(
     if (c_language != NULL) {
       env->ReleaseStringUTFChars(language, c_language);
     }
-    return NULL;
+    return env->NewStringUTF("NEEDLE_ERROR:out of memory");
   }
   memset(out, 0, (size_t)out_capacity);
   int tokens = needle_transcribe(
@@ -96,6 +96,19 @@ Java_expo_modules_whistle_ZilarWhistleModule_nativeTranscribeChunk(
   jstring result = NULL;
   if (tokens >= 0) {
     result = env->NewStringUTF(out);
+  } else {
+    const char *detail = needle_last_error();
+    if (detail == NULL) {
+      detail = "";
+    }
+    char *message = (char *)malloc(strlen(detail) + 15);
+    if (message == NULL) {
+      result = env->NewStringUTF("NEEDLE_ERROR:");
+    } else {
+      sprintf(message, "NEEDLE_ERROR:%s", detail);
+      result = env->NewStringUTF(message);
+      free(message);
+    }
   }
   free(out);
   return result;

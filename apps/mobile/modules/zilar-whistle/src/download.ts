@@ -6,7 +6,7 @@ import {
   WHISTLE_MODEL_SHA256,
   WHISTLE_MODEL_URL,
 } from './model';
-import { WhistleError } from './result';
+import { WhistleError, whistleErrorFor } from './result';
 import { getNativeModule } from './ZilarWhistleModule';
 
 export type WhistleModelStatus = 'missing' | 'ready';
@@ -126,14 +126,13 @@ export async function loadModel(): Promise<void> {
   try {
     await native.loadModel(file.uri);
   } catch (error) {
-    const { whistleErrorFor } = await import('./result');
     throw whistleErrorFor(error);
   }
 }
 
 /**
- * The sha256 hex of a file, streamed so the 17 MB model never sits fully in
- * memory. Uses the platform SubtleCrypto digest over the file bytes.
+ * The sha256 hex of a file. Reads the whole file into memory — fine for the
+ * 17 MB model on a phone, but not for larger files.
  */
 export async function sha256OfFile(file: File): Promise<string> {
   const bytes = await file.bytes();
