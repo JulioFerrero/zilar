@@ -68,7 +68,11 @@ services:
       EJABBERD_MACRO_HOST: ${SERVICE_FQDN_WEB}
       EJABBERD_MACRO_MUC_HOST: rooms.${SERVICE_FQDN_WEB}
       EJABBERD_MACRO_ADMIN: admin@${SERVICE_FQDN_WEB}
-      REGISTER_ADMIN_PASSWORD: ${SERVICE_PASSWORD_EJABBERDADMIN}
+      # T-0167: read by our own entrypoint (baked into the image), which
+      # registers the admin account with all output discarded. Never use the
+      # base image's REGISTER_ADMIN_PASSWORD here: it echoes the
+      # `ejabberdctl register ... <password>` command line into the log.
+      EJABBERD_ADMIN_PASSWORD: ${SERVICE_PASSWORD_EJABBERDADMIN}
       EJABBERD_MACRO_SQL_PASSWORD: ${SERVICE_PASSWORD_EJABBERDDB}
       # Push component (T-0145, XEP-0114): the secret the server's component
       # authenticates with. Must equal the server's PUSH_COMPONENT_SECRET

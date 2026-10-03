@@ -74,7 +74,11 @@ services:
       EJABBERD_MACRO_HOST: ${ZILAR_DOMAIN:?ZILAR_DOMAIN is required}
       EJABBERD_MACRO_MUC_HOST: rooms.${ZILAR_DOMAIN:?ZILAR_DOMAIN is required}
       EJABBERD_MACRO_ADMIN: admin@${ZILAR_DOMAIN:?ZILAR_DOMAIN is required}
-      REGISTER_ADMIN_PASSWORD: ${EJABBERD_ADMIN_PASSWORD:?EJABBERD_ADMIN_PASSWORD is required}
+      # T-0167: read by our own entrypoint (deploy/ejabberd/jwt-entrypoint.sh),
+      # which registers the admin account with all output discarded. Never use
+      # the base image's REGISTER_ADMIN_PASSWORD here: it echoes the
+      # `ejabberdctl register ... <password>` command line into the log.
+      EJABBERD_ADMIN_PASSWORD: ${EJABBERD_ADMIN_PASSWORD:?EJABBERD_ADMIN_PASSWORD is required}
       EJABBERD_MACRO_SQL_PASSWORD: ${EJABBERD_DB_PASSWORD:?EJABBERD_DB_PASSWORD is required}
       # Push component (T-0145, XEP-0114): the secret the server's component
       # authenticates with. Must equal the server's PUSH_COMPONENT_SECRET.

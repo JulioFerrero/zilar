@@ -62,7 +62,11 @@ services:
       # The container registers admin@zilar.localhost on first start and
       # overrides the ADMIN macro in infra/ejabberd/ejabberd.yml with it.
       EJABBERD_MACRO_ADMIN: admin@zilar.localhost
-      REGISTER_ADMIN_PASSWORD: ${EJABBERD_ADMIN_PASSWORD:?EJABBERD_ADMIN_PASSWORD is required in infra/.env}
+      # T-0167: read by jwt-entrypoint.sh, which registers the admin account
+      # with all output discarded. Never use the base image's
+      # REGISTER_ADMIN_PASSWORD here: it echoes the
+      # `ejabberdctl register ... <password>` command line into the log.
+      EJABBERD_ADMIN_PASSWORD: ${EJABBERD_ADMIN_PASSWORD:?EJABBERD_ADMIN_PASSWORD is required in infra/.env}
       EJABBERD_MACRO_SQL_PASSWORD: ${EJABBERD_DB_PASSWORD:?EJABBERD_DB_PASSWORD is required in infra/.env}
       # Same value as the server's PUSH_COMPONENT_SECRET (push stays off unless enabled).
       EJABBERD_MACRO_PUSH_COMPONENT_SECRET: ${PUSH_COMPONENT_SECRET:-CHANGE_ME_PUSH_COMPONENT_SECRET}
