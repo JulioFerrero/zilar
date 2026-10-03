@@ -4,6 +4,36 @@ How work moves from an idea to `main`. Read this before anything else after a re
 
 There is one rule the rest follows from: **all code reaches `main` the same way.** A Muse worker writes it in a task worktree, the gate checks it, a Muse pre-reviewer reviews it, the lead reviews it and checks it on the emulator, and `lead merge` merges it. Nothing else writes code.
 
+```
+  JULIO  ── decides what to build ──┐
+                                    v
+  LEAD (Claude Opus) ──────────────────────────────────────────────────┐
+  │ 1 facts: read the code (or launch an audit task)                   │
+  │ 2 design brief from the DESIGNER (Sonnet), screens only            │
+  │ 3 spec + `lead spec-check` + board row                             │
+  │ 4 `lead launch T-XXXX`  (max 4 at once)                            │
+  └──────────────┬─────────────────────────────────────────────────────┘
+                 v
+  WORKER (Muse) codes in zilar-T-XXXX ── `pnpm gate` ── status: review
+                 │                                         ^
+                 v                                         │ fix round
+  AUTOPILOT starts the PRE-REVIEWER (Muse) ──> PREREVIEW.md│
+                 │                                         │
+          must/should-fix? ── yes (max 2 times) ── AUTOFIX ┘
+                 │ no
+                 v
+  PACKET READY [CLEAN] ──> LEAD reads it, `pnpm phone:smoke` on the
+                 │         emulator (DESIGNER checks the screenshots)
+                 │            │
+                 │            └─ problem? ── `lead reply` prompt ──> WORKER
+                 v
+  LEAD writes the Review ──> `lead merge` = rebase + gate + merge main
+                 │            │
+                 │            └─ conflict or red gate ── prompt ──> WORKER
+                 v
+  main ──> DOCTOR (Muse) audits after merges ──> findings = new tasks ──> LEAD
+```
+
 ## Who does what
 
 | Role | Who | Does | Writes |
