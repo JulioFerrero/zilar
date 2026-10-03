@@ -15,6 +15,7 @@ import { defaultModelFor } from '@/components/ais/models';
 import { AisScreenShell } from '@/components/ais/screen-shell';
 import { useAisApi } from '@/components/ais/use-ais-api';
 import { useConnectionsApi } from '@/components/connections/use-connections-api';
+import { applyMachineChange } from '@/components/machines/machine-change';
 import { useMachinesApi } from '@/components/machines/use-machines-api';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
@@ -56,6 +57,10 @@ function EditAi() {
   const [modelDraft, setModelDraft] = useState('');
   const [machines, setMachines] = useState<Machine[]>([]);
   const [machinesLoaded, setMachinesLoaded] = useState(false);
+  // The AI's home machine, kept in local state so a successful change shows
+  // at once and a failed one restores the previous value. Set from the
+  // loaded AI, then from each PUT answer (the server is the source of truth).
+  const [homeMachineId, setHomeMachineId] = useState<string | null>(null);
   const [machineBusy, setMachineBusy] = useState(false);
   const [machineError, setMachineError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -81,6 +86,7 @@ function EditAi() {
         setMonth(String(ai.limits.perMonthUsd));
         setSelectedConnectionId(ai.providerConnectionId);
         setModelDraft(ai.model);
+        setHomeMachineId(ai.machineId ?? null);
         setStatus('ready');
       })
       .catch((cause: unknown) => {
@@ -136,17 +142,21 @@ function EditAi() {
   };
 
   // Sets or clears the AI's home machine through the separate machine route,
-  // exactly like web `AiPanel`: the server's answer is the source of truth.
+  // exactly like web `AiPanel`. The outcome helper keeps the previous value
+  // on failure and carries a fixed error sentence; the PUT answer is the
+  // source of truth on success.
   const changeMachine = (machineId: string | null): void => {
     if (loaded === null || machineBusy) {
       return;
     }
+    const previous = homeMachineId;
+    const aiId = loaded.id;
     setMachineBusy(true);
     setMachineError('');
-    void machinesApi
-      .setAiMachine(loaded.id, machineId)
-      .catch((cause: unknown) => {
-        setMachineError(describeAisError(cause, 'Could not update the home machine').message);
+    void applyMachineChange(machinesApi, aiId, machineId, previous)
+      .then((outcome) => {
+        setHomeMachineId(outcome.home);
+        setMachineError(outcome.error);
       })
       .finally(() => setMachineBusy(false));
   };
@@ -296,7 +306,7 @@ function EditAi() {
               <MachinePicker
                 machines={machines}
                 loaded={machinesLoaded}
-                value={loaded?.machineId ?? null}
+                value={homeMachineId}
                 disabled={machineBusy}
                 onChange={changeMachine}
               />
