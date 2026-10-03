@@ -1,7 +1,6 @@
 import { Archive, Loader2, Menu } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
-import { AddContactDialog } from './AddContactDialog';
 import { ChatListItem } from './ChatListItem';
 import { EmptyState } from './EmptyState';
 import { ExplorePage } from './ExplorePage';
@@ -10,6 +9,7 @@ import { InviteDialog } from './InviteDialog';
 import { MessageSearchResults } from './MessageSearchResults';
 import { NewChatButton } from './NewChatButton';
 import { NewTopicDialog } from './NewTopicDialog';
+import { PeopleSearchResult } from './PeopleSearchResult';
 import { SearchBar } from './SearchBar';
 import { ChatListSkeleton } from './Skeleton';
 import { GroupHeaderRow } from './TopicRow';
@@ -59,7 +59,6 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
   const archived = store.archivedChats();
   const [menuOpen, setMenuOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
-  const [addContactOpen, setAddContactOpen] = useState(false);
   // T-0164: the Explore overlay (public groups and channels to join).
   const [exploreOpen, setExploreOpen] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
@@ -153,17 +152,6 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
               className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised"
             >
               Invite a friend
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                setMenuOpen(false);
-                setAddContactOpen(true);
-              }}
-              className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised"
-            >
-              Add contact
             </button>
             <button
               type="button"
@@ -387,11 +375,13 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
                 </Button>
               </div>
             )}
+            {/* People hits come first: `@handle` shows one row for that
+                person, above the chat-name matches and the message hits. */}
+            {store.search.trim().startsWith('@') && <PeopleSearchResult query={store.search} />}
             {chats.length === 0 && archived.length === 0 ? (
               <EmptyState
                 variant="no-chats"
                 onInvite={() => setInviteOpen(true)}
-                onAddContact={() => setAddContactOpen(true)}
                 onExplore={() => setExploreOpen(true)}
               />
             ) : (
@@ -469,12 +459,8 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
           </>
         )}
       </nav>
-      <NewChatButton
-        onAddContact={() => setAddContactOpen(true)}
-        onExplore={() => setExploreOpen(true)}
-      />
+      <NewChatButton onExplore={() => setExploreOpen(true)} />
       {inviteOpen && <InviteDialog onClose={() => setInviteOpen(false)} />}
-      {addContactOpen && <AddContactDialog onClose={() => setAddContactOpen(false)} />}
       {exploreOpen && <ExplorePage onClose={() => setExploreOpen(false)} />}
       {newTopicGroup !== undefined && (
         <NewTopicDialog groupId={newTopicGroup} onClose={() => setNewTopicGroup(undefined)} />

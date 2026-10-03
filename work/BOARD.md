@@ -209,13 +209,13 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0177](T-0177-whistle-on-device-spike.md) | Whistle on-device spike: local Expo module (arm64 Android), hidden dev screen, native sha256, tested on emulator and phone | 2026-10-03 |
 | [T-0178](T-0178-whistle-quiet-cut-chunks.md) | Whistle: quiet-point chunking from a native amplitude envelope | 2026-10-03 |
 | [T-0180](T-0180-signin-no-code-hint.md) | Sign-in hints for people without an invite (web + mobile) | 2026-10-03 |
-| [T-0192](T-0192-web-search-people-by-handle.md) | Web: @handle in the search bar shows the person (replaces Add contact in the menu) | planned | meta/muse-spark-1.3-contributor | — | Spec ready |
 | [T-0187](T-0187-mobile-sticker-packs.md) | Mobile: manage sticker packs (my packs, discover, add and remove, reorder, favourites) | planned | meta/muse-spark-1.3-contributor | — | Spec ready; mobile parity wave 2 |
 | [T-0188](T-0188-mobile-integrations-owner.md) | Mobile: owner integrations (Telegram bot, email, voice transcription) | planned | meta/muse-spark-1.3-contributor | — | Spec ready; mobile parity wave 2 |
 | [T-0191](T-0191-mobile-sticker-editor-telegram.md) | Mobile: sticker pack editor and Telegram sticker import | planned | meta/muse-spark-1.3-contributor | T-0187 | Spec ready; mobile parity wave 2 |
 | [T-0194](T-0194-mobile-pitfall-guards.md) | Mobile: guard tests for the Android and Hermes pitfalls (Coroutine with Promise, crypto.subtle) | planned | meta/muse-spark-1.3-contributor | — | Spec ready; process roadmap R3 |
 | [T-0195](T-0195-mobile-parity-audit.md) | Audit (docs only): web vs mobile for AI tools, routines, activity, @mentions, dialogs | planned | meta/muse-spark-1.3-contributor | — | Spec ready; feeds the specs of T-0189 and T-0190 |
-| [T-0196](T-0196-lead-doctor.md) | Lead tooling: the doctor, a Muse session that audits main after merges | planned | meta/muse-spark-1.3-contributor | — | Spec ready; after T-0197 (a devtools task fails its gate until T-0197 is merged) |
+| [T-0196](T-0196-lead-doctor.md) | Lead tooling: the doctor, a Muse session that audits main after merges | planned | meta/muse-spark-1.3-contributor | T-0197, T-0198 | Spec ready; same files as T-0198, so after it |
+| [T-0198](T-0198-lead-state-lost-writes.md) | Lead tooling: the autopilot overwrites state written by lead launch and lead merge during a tick | planned | meta/muse-spark-1.3-contributor | T-0197 | Spec ready; until merged, launch only while the autopilot is stopped |
 | [T-0197](T-0197-old-name-in-smoke-script.md) | Remove the old product name from the emulator smoke script (main's legacy-name test is red) | planned | meta/muse-spark-1.3-contributor | — | Spec ready; first in the queue |
 | [T-0179](T-0179-mobile-transcribe-voice-notes.md) | Transcribe voice notes on the phone with Whistle: button in the bubble, consent for the 17 MB model, transcripts stored locally | 2026-10-03 |
 | [T-0182](T-0182-mobile-contacts-requests.md) | Mobile contacts: find by @handle, profile card, contact requests | 2026-10-03 |
@@ -224,3 +224,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0184](T-0184-mobile-approvals-page.md) | Mobile approvals page: pending approvals and always-allowed rules | 2026-10-03 |
 | [T-0193](T-0193-mobile-search-people-by-handle.md) | Mobile: find people by @handle in the search bar, replacing the add-contact menu entry | 2026-10-03 |
 | [T-0185](T-0185-mobile-machines-connections.md) | Mobile machines and model connections screens, home machine picker on an AI | 2026-10-03 |
+| [T-0192](T-0192-web-search-people-by-handle.md) | Web: find people by @handle in the search bar, replacing Add contact in the new-chat menu | 2026-10-03 |

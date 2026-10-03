@@ -1,7 +1,7 @@
 ---
 id: T-0192
 title: Web: typing @handle in the search bar shows the person (replaces Add contact in the new-chat menu)
-status: planned
+status: merged
 milestone: M5
 branch: task/T-0192-web-search-people-by-handle
 model: meta/muse-spark-1.3-contributor
@@ -58,5 +58,23 @@ Partial or fuzzy people search (the server has none), searching by name or email
 ---
 
 ## Report (written by the worker when done)
+- What: `@handle` in the web search bar now shows a People section above chat/message results with one shared profile row (avatar, name, @handle, per-relation action). Removed Add contact from the main menu, the new-chat menu, the New message dialog, and the empty state; placeholder is now "Search, or type @username". `/u/:handle` and `/@handle` still use the dialog.
+- New files: `apps/web/src/components/ContactProfileRow.tsx` (shared row; contact -> Message to `/c/<userId>`, none -> Add contact -> Request sent, request_sent -> Cancel, request_received -> Accept/Decline, self -> "That's you."; errors are fixed sentences, nothing raw; row keyed by userId so a new handle remounts), `apps/web/src/components/PeopleSearchResult.tsx`, `apps/web/src/lib/usePeopleSearch.ts` (900 ms debounce, Enter via `zilar:search-enter`, last-handle cache, 429 -> "Too many searches, try again in a few minutes." once with no retry, 404 -> "No one with that username.", invalid shape / non-@ text never calls the API, reuses `isValidHandleShape`), `apps/web/src/components/PeopleSearchResult.test.tsx` (10 tests).
+- Changed: `AddContactDialog.tsx` (uses the shared row + "Go to Requests" link for request_received; lookup text unchanged), `ChatList.tsx` (People section render, removed Add contact wiring), `NewChatButton.tsx` (removed menu entry, dialog, onAddContact prop; New message dialog now points at the search bar), `SearchBar.tsx` (placeholder), `AddContactDialog.test.tsx` (updated to new button/link copy).
+- Deviation: Message action navigates to `/c/<userId>` (DM by contact id) since chats carry no per-contact user id; lead to confirm this matches the DM route. Accept/Decline/Cancel resolve the request id via `listContactRequests` matching `other.userId` (the lookup returns no request id).
+- Security checklist: no typed text or tokens logged; fixed user-facing error sentences only; no deletes/updates outside existing contact-request endpoints (scoped by request id server-side); 429 respected with no retry; no new routes, so no 401 sweep gap; no audit entries with message text.
+- Checks: `pnpm format:check` pass; `pnpm lint` pass; `pnpm typecheck` pass (11 tasks ok); `pnpm --filter @zilar/web test --maxWorkers=2 ChatList SearchBar NewChatButton AddContact PeopleSearch ContactProfileRow` -> 6 files, 62 tests, all pass. The lead tests on the emulator or in the browser.
+- Open: none; `/u/<handle>` and `/@handle` covered by existing HandleGate/GroupHandleRoute tests (untouched files, not re-run here).
+
+## Round 1 (pre-review fixes)
+- Fixed finding 1 (must-fix): Message now resolves the DM via `store.contacts` (userId -> jid) and opens `/c/<encoded chatJid>`; no DM yet shows only the "You're already contacts." line (verified: `apps/server/src/chats/routes.ts:82` sets `chatJid: contact.jid`, `ChatShell` matches `store.chats` by id). Tests: Message click navigates to the DM route (Routes stub asserts "chat open"); no-DM case asserts no Message button.
+- Fixed finding 2: People section moved above the empty-state/chat-name groups (verified it renders even when the filter empties the list, since the old position inside the non-empty branch hid it).
+- Fixed findings 3,4,5,6,10 with one rewrite of `usePeopleSearch.ts`: request id drops stale responses; cache set on success/404/429 (Enter never refires the same handle); generic error clears the cache so Enter retries; a different handle after a 429 is always attempted; no setState inside a setState updater; invalid shapes render the muted "No one with that username." line without calling the API. Tests added: different-handle-after-429, retry-after-error, stale-lookup guard, invalid-shape muted line.
+- Fixed nits 7,8,9 on touched lines: deleted unused `friendlyContactError` export; removed dead `onAddContact` prop/button from `EmptyState.tsx` (not in Allowed files but the finding required it; ChatList/ChatShell callers updated); error renders below the row (column layout).
+- Also fixed: `AddContactDialog.test.tsx` uses `importOriginal` mock + store-backed Message test; removed unused `Link` import flagged by lint.
+- Disagreements: none.
+- Gate: `pnpm gate` does not exist in this worktree (no `gate` script in root package.json, no `gate` binary on PATH); ran the equivalent instead — `prettier --check` on all touched files: pass; `pnpm lint`: pass; `pnpm typecheck` (11 tasks): pass; `pnpm --filter @zilar/web test --maxWorkers=2 ChatList SearchBar NewChatButton AddContact PeopleSearch ContactProfileRow`: 6 files, 68 tests, all pass. (`pnpm format:check` repo-wide flags only the lead-owned untracked PREREVIEW.md, which I must not touch.) The lead tests on the emulator or in the browser.
 
 ## Review (written by Claude)
+
+**Verdict:** Approved and merged after two rounds. Round 1 (pre-review) found the Message button opened no chat (it used the user id, but a DM's chat id is the contact's JID), the People section below the chat matches, lookups that could never be retried after an error or a 429, a stale-response race and a silent invalid handle; all fixed and re-verified by the round 2 pre-review (clean, 68 tests). I checked the Message fix: it resolves the contact's JID from `store.contacts` and opens the DM only when that chat exists. `EmptyState.tsx` was outside the Allowed files but the spec ordered the edit, and the Report disclosed it. Accepted nits, for a follow-up: after Accept the row shows "contact" but no Message button until the contacts reload; a re-search of the same person can keep a stale "Request sent". The gate did not exist when this branch started; `lead merge` runs it after the rebase. Not checked in a browser (Julio asleep).

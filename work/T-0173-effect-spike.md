@@ -37,6 +37,7 @@ pnpm lint
 pnpm typecheck
 pnpm --filter @zilar/server test --maxWorkers=2 src/voice-transcription src/authz-sweep.test.ts
 pnpm --filter @zilar/server build
+pnpm gate
 ```
 
 ### Acceptance

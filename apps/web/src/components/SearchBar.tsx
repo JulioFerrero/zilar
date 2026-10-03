@@ -66,7 +66,9 @@ export function SearchBar() {
             window.dispatchEvent(new Event('zilar:search-enter'));
           }
         }}
-        placeholder={scopedChat === undefined ? 'Search' : `Search in ${scopedChat.title}`}
+        placeholder={
+          scopedChat === undefined ? 'Search, or type @username' : `Search in ${scopedChat.title}`
+        }
         aria-label={scopedChat === undefined ? 'Search chats' : `Search in ${scopedChat.title}`}
         className="h-full min-w-0 flex-1 bg-transparent text-[14px] text-foreground outline-none placeholder:text-subtle-foreground"
       />

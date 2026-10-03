@@ -1,22 +1,24 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
+import { AuthProvider } from '@/auth/AuthProvider';
+import { ChatStoreProvider } from '@/store/ChatStoreProvider';
+import { createChatStore } from '@/store/store';
 import { AddContactDialog } from './AddContactDialog';
 import { lookupByHandle, sendContactRequest } from '@/lib/api';
 
-vi.mock('@/lib/api', () => ({
-  ApiError: class ApiError extends Error {
-    readonly status: number;
-    readonly code: string;
-    constructor(status: number, code: string, message: string) {
-      super(message);
-      this.status = status;
-      this.code = code;
-    }
-  },
-  lookupByHandle: vi.fn(),
-  sendContactRequest: vi.fn(),
-}));
+vi.mock('@/lib/api', async (importOriginal) => {
+  const original = await importOriginal<typeof import('@/lib/api')>();
+  return {
+    ...original,
+    lookupByHandle: vi.fn(),
+    sendContactRequest: vi.fn(),
+    listContactRequests: vi.fn(async () => ({ incoming: [], outgoing: [] })),
+    acceptContactRequest: vi.fn(),
+    declineContactRequest: vi.fn(),
+    cancelContactRequest: vi.fn(),
+  };
+});
 
 const lookupMock = vi.mocked(lookupByHandle);
 const sendMock = vi.mocked(sendContactRequest);
@@ -31,9 +33,19 @@ const PROFILE = {
 
 function renderDialog(initialHandle?: string) {
   return render(
-    <MemoryRouter>
-      <AddContactDialog initialHandle={initialHandle} onClose={() => {}} />
-    </MemoryRouter>,
+    <AuthProvider
+      value={{
+        status: 'authenticated',
+        user: { id: 'u-you', name: 'You', email: 'you@zilar.test', handle: 'you' },
+        refetch: async () => {},
+      }}
+    >
+      <ChatStoreProvider store={createChatStore()}>
+        <MemoryRouter>
+          <AddContactDialog initialHandle={initialHandle} onClose={() => {}} />
+        </MemoryRouter>
+      </ChatStoreProvider>
+    </AuthProvider>,
   );
 }
 
@@ -53,16 +65,46 @@ describe('AddContactDialog', () => {
 
     fireEvent.change(screen.getByLabelText('Username'), { target: { value: '@bob_b' } });
     expect(await screen.findByText('Bob')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Send request' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add contact' }));
     await waitFor(() => expect(sendMock).toHaveBeenCalledWith('bob_b'));
     expect(await screen.findByText('Request sent.')).toBeTruthy();
   });
 
-  it('shows "already contacts" without a send button', async () => {
+  it('shows "already contacts" with a Message action and no send button', async () => {
+    const { createChatStore: createStore } = await import('@/store/store');
+    const store = createStore({
+      chats: [
+        {
+          id: 'u-bob@zilar.test',
+          title: 'Bob',
+          kind: 'dm',
+          isAI: false,
+          space: 'personal',
+          unread: 0,
+          muted: false,
+        },
+      ],
+      contacts: [{ userId: 'u-bob', name: 'Bob', jid: 'u-bob@zilar.test' }],
+    });
     lookupMock.mockResolvedValue({ ...PROFILE, relation: 'contact' as const });
-    renderDialog('bob_b');
+    render(
+      <AuthProvider
+        value={{
+          status: 'authenticated',
+          user: { id: 'u-you', name: 'You', email: 'you@zilar.test', handle: 'you' },
+          refetch: async () => {},
+        }}
+      >
+        <ChatStoreProvider store={store}>
+          <MemoryRouter>
+            <AddContactDialog initialHandle="bob_b" onClose={() => {}} />
+          </MemoryRouter>
+        </ChatStoreProvider>
+      </AuthProvider>,
+    );
     expect(await screen.findByText("You're already contacts.")).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Send request' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Message' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Add contact' })).toBeNull();
   });
 
   it('offers Accept when the send reveals they asked first', async () => {
@@ -83,9 +125,10 @@ describe('AddContactDialog', () => {
 
     fireEvent.change(screen.getByLabelText('Username'), { target: { value: '@bob_b' } });
     expect(await screen.findByText('Bob')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Send request' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add contact' }));
     expect(await screen.findByText('They already asked to add you.')).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Go to Requests to accept' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Accept' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Go to Requests' })).toBeTruthy();
     expect(screen.queryByText('Request sent.')).toBeNull();
   });
 
@@ -102,9 +145,19 @@ describe('AddContactDialog', () => {
     expect(screen.getByDisplayValue('alice_w')).toBeTruthy();
 
     view.rerender(
-      <MemoryRouter>
-        <AddContactDialog initialHandle="bob_b" onClose={() => {}} />
-      </MemoryRouter>,
+      <AuthProvider
+        value={{
+          status: 'authenticated',
+          user: { id: 'u-you', name: 'You', email: 'you@zilar.test', handle: 'you' },
+          refetch: async () => {},
+        }}
+      >
+        <ChatStoreProvider store={createChatStore()}>
+          <MemoryRouter>
+            <AddContactDialog initialHandle="bob_b" onClose={() => {}} />
+          </MemoryRouter>
+        </ChatStoreProvider>
+      </AuthProvider>,
     );
     expect(screen.getByDisplayValue('bob_b')).toBeTruthy();
   });

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
-import { ApiError, lookupByHandle, sendContactRequest, type HandleProfile } from '@/lib/api';
+import { ApiError, lookupByHandle, type HandleProfile } from '@/lib/api';
+import { ContactProfileRow } from './ContactProfileRow';
 
 /** "Add contact" dialog: type a `@username`, see the card, send a request. */
 export function AddContactDialog({
@@ -18,9 +19,6 @@ export function AddContactDialog({
     | { state: 'missing' }
     | { state: 'error'; message: string }
   >({ state: 'idle' });
-  const [sending, setSending] = useState(false);
-  const [sent, setSent] = useState(false);
-  const [sendError, setSendError] = useState<string | undefined>(undefined);
 
   const trimmed = query.trim().replace(/^@/, '');
 
@@ -31,8 +29,6 @@ export function AddContactDialog({
     setSeedHandle(seed);
     setQuery(seed);
     setLookup({ state: 'idle' });
-    setSent(false);
-    setSendError(undefined);
   }
 
   // Debounced exact lookup; unknown handles read as "missing". The effect
@@ -48,8 +44,6 @@ export function AddContactDialog({
         (profile) => {
           if (active) {
             setLookup({ state: 'found', profile });
-            setSent(false);
-            setSendError(undefined);
           }
         },
         (error: unknown) => {
@@ -87,29 +81,8 @@ export function AddContactDialog({
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [onClose]);
 
-  const send = async (): Promise<void> => {
-    if (lookup.state !== 'found' || sending) {
-      return;
-    }
-    setSending(true);
-    setSendError(undefined);
-    try {
-      const created = await sendContactRequest(lookup.profile.handle);
-      if (created.incoming === true) {
-        // They asked first and won the race: offer Accept on their request
-        // instead of showing "Request sent".
-        setLookup({
-          state: 'found',
-          profile: { ...lookup.profile, relation: 'request_received' },
-        });
-      } else {
-        setSent(true);
-      }
-    } catch (error) {
-      setSendError(friendlySendError(error));
-    } finally {
-      setSending(false);
-    }
+  const refreshRelation = (profile: HandleProfile): void => {
+    setLookup({ state: 'found', profile });
   };
 
   return (
@@ -154,56 +127,23 @@ export function AddContactDialog({
             </p>
           )}
           {lookup.state === 'found' && (
-            <div className="rounded-xl border border-border bg-surface px-3 py-2.5">
-              <p className="text-[15px] font-medium">
-                {lookup.profile.name}{' '}
-                <span className="font-normal text-muted-foreground">@{lookup.profile.handle}</span>
-              </p>
-              {lookup.profile.relation === 'self' && (
-                <p className="mt-1 text-[14px] text-muted-foreground">That&apos;s you.</p>
-              )}
-              {lookup.profile.relation === 'contact' && (
-                <p className="mt-1 text-[14px] text-muted-foreground">
-                  You&apos;re already contacts.
-                </p>
-              )}
-              {lookup.profile.relation === 'request_sent' && (
-                <p className="mt-1 text-[14px] text-muted-foreground">
-                  Request already sent — they haven&apos;t answered yet.
-                </p>
-              )}
+            <>
+              <ContactProfileRow
+                key={lookup.profile.userId}
+                profile={lookup.profile}
+                onRelationChange={refreshRelation}
+              />
               {lookup.profile.relation === 'request_received' && (
                 <div className="mt-2">
-                  <p className="text-[14px] text-muted-foreground">
-                    They already asked to add you.
-                  </p>
                   <Link
                     to="/settings/requests"
-                    className="mt-2 inline-block rounded-full bg-accent px-4 py-1.5 text-[14px] font-medium text-accent-foreground hover:bg-accent/90"
+                    className="inline-block rounded-full border border-border px-4 py-1.5 text-[14px] text-muted-foreground hover:bg-surface-raised"
                   >
-                    Go to Requests to accept
+                    Go to Requests
                   </Link>
                 </div>
               )}
-              {lookup.profile.relation === 'none' &&
-                (sent ? (
-                  <p className="mt-1 text-[14px] text-muted-foreground">Request sent.</p>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => void send()}
-                    disabled={sending}
-                    className="mt-2 rounded-full bg-accent px-4 py-1.5 text-[14px] font-medium text-accent-foreground hover:bg-accent/90 disabled:opacity-60"
-                  >
-                    {sending ? 'Sending…' : 'Send request'}
-                  </button>
-                ))}
-              {sendError !== undefined && (
-                <p role="alert" className="mt-2 text-[14px] text-danger">
-                  {sendError}
-                </p>
-              )}
-            </div>
+            </>
           )}
         </div>
 
@@ -219,24 +159,4 @@ export function AddContactDialog({
       </div>
     </div>
   );
-}
-
-function friendlySendError(error: unknown): string {
-  if (error instanceof ApiError) {
-    switch (error.code) {
-      case 'already_contact':
-        return "You're already contacts.";
-      case 'request_exists':
-        return 'A request is already pending.';
-      case 'too_many_requests':
-        return 'Too many pending requests — wait for some answers first.';
-      case 'declined_recently':
-        return 'They declined recently — try again in a few days.';
-      case 'rate_limited':
-        return 'Too many tries — wait a little and try again.';
-      default:
-        return error.message;
-    }
-  }
-  return 'Could not send the request. Try again.';
 }
