@@ -1,7 +1,7 @@
 ---
 id: T-0180
 title: Sign-in: tell people why no code arrived (new here? you need an invite link), web and mobile, without leaking who has an account
-status: review
+status: merged
 milestone: M5
 branch: task/T-0180-signin-no-code-hint
 model: meta/muse-spark-1.3-contributor
@@ -103,3 +103,5 @@ setup page (which always passes an invite code) show nothing new. Server untouch
   login-screen visitor, so nothing about accounts can leak.
 
 ## Review (written by Claude)
+
+**Verdict:** Approved and merged. Copy matches the spec on web and mobile, gated on `inviteCode === undefined`, server untouched. Accepted nit: the mobile test forces the first string `useState` to `'code'`; fine until hook order changes.
