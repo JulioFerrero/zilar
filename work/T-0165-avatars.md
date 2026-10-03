@@ -1,7 +1,7 @@
 ---
 id: T-0165
 title: Profile pictures for people, AIs, groups and channels
-status: review
+status: merged
 milestone: M5
 branch: task/T-0165-avatars
 model: meta/muse-spark-1.3-contributor
@@ -129,3 +129,12 @@ Acceptance re-check (each line against a test):
 - Confirm the `./data/avatars` dev default vs the spec's `/data/avatars` (production compose already pins the absolute path).
 
 ## Review (written by Claude)
+
+Approved and merged after two pre-review rounds; format, lint, typecheck, the server suites (avatars, stickers, directory, config, contacts, chats, ais, groups, 401 sweep), the storage-safety shell test and the web suites (components, routes, lib) pass on the final tree.
+
+- Round 1: the shared image probe is animation-neutral again (animated WebP/APNG stickers and Telegram imports keep working, with tests); only avatars reject animated images; `/data/avatars` added to the Dockerfile mkdir and chown (approved); the unreachable decoded-size check removed; delete takes the same lock as replace.
+- Round 2 (lead): two tests were hollow (named for the AI list and the directory, asserting neither). Making them real exposed a real bug: the directory route mapper dropped `avatarUrl`, so public groups never showed their picture in Explore. Fixed in `directory/routes.ts`, tests now call `GET /api/ais`, `GET /api/ais/:id`, `GET /api/directory` and `GET /api/groups/by-handle`. Also removed a redundant animation re-scan.
+- Scope sign-off (lead): `apps/server/Dockerfile`, `apps/server/src/directory/service.ts` and `routes.ts`, `apps/server/src/index.ts`, the sticker test files.
+- Accepted: the "directory moved" warning for an empty avatar directory exists only for stickers; avatars fail fast on an unwritable directory and create a missing one.
+- Deployment: both compose files gain the `avatar-data` volume; an existing Coolify service must have that volume added to its compose, or pictures are lost on restart.
+- Needs a manual check on chat.zilar.app: set a profile picture, set one on a group and on an AI, see them in the chat list, and check the animated-sticker import still works.

@@ -37,6 +37,7 @@ function toEntry(row: {
   description: string | null;
   memberCount: number;
   joined: boolean;
+  avatarUrl?: string | undefined;
 }) {
   return {
     id: row.id,
@@ -46,6 +47,7 @@ function toEntry(row: {
     description: row.description,
     memberCount: row.memberCount,
     joined: row.joined,
+    ...(row.avatarUrl === undefined ? {} : { avatarUrl: row.avatarUrl }),
   };
 }
 

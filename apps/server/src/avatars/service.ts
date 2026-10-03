@@ -7,7 +7,7 @@ import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
 import { ais, avatars, groupMembers, user, type AvatarOwnerKind } from '../db/schema';
 import { HttpError } from '../errors';
-import { isAnimatedImage, probeStickerBytes, type StickerImageInfo } from '../stickers/image';
+import { probeStickerBytes, type StickerImageInfo } from '../stickers/image';
 import { resolveStorageDir } from '../stickers/service';
 
 // Profile pictures for people, AIs, groups and channels (T-0165). The
@@ -76,7 +76,7 @@ export function checkAvatarBytes(bytes: Uint8Array): AvatarCheck {
   const { info } = probed;
   // The probe stays animation-neutral for stickers (T-0120 accepts animated
   // WebP/APNG); only avatars reject animated images, checked here.
-  if (info.animated || isAnimatedImage(bytes)) {
+  if (info.animated) {
     return { error: 'avatar_animated' };
   }
   if (info.width !== info.height) {

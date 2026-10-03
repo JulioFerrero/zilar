@@ -2,7 +2,6 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { createApp } from '../app';
 import { aiLimits, ais, avatars, providerConnections } from '../db/schema';
@@ -491,7 +490,7 @@ describe('avatars routes', () => {
     expect(get.status).toBe(401);
   });
 
-  it('a group member list and the directory carry the group picture', async () => {
+  it('a group member row carries the member picture, not the group one', async () => {
     const group = await createGroup(alice.cookie, 'Trip', [bob.id]);
     const put = await putAvatar('group', group.id, alice, pngSquare(128));
     const { url } = (await put.json()) as { url: string };
@@ -547,8 +546,45 @@ describe('avatars routes', () => {
     const ai = await addAi(alice.id);
     const put = await putAvatar('ai', ai.id, alice, pngSquare(128));
     const { url } = (await put.json()) as { url: string };
-    const rows = await context.db.select().from(avatars).where(eq(avatars.ownerId, ai.id));
-    expect(rows).toHaveLength(1);
-    void url;
+
+    const list = await app.request(`${TEST_BASE_URL}/api/ais`, {
+      headers: { cookie: alice.cookie },
+    });
+    expect(list.status).toBe(200);
+    const listed = (await list.json()) as Array<{ id: string; avatarUrl?: string }>;
+    expect(listed.find((entry) => entry.id === ai.id)?.avatarUrl).toBe(url);
+
+    const detail = await app.request(`${TEST_BASE_URL}/api/ais/${ai.id}`, {
+      headers: { cookie: alice.cookie },
+    });
+    expect(detail.status).toBe(200);
+    expect(((await detail.json()) as { avatarUrl?: string }).avatarUrl).toBe(url);
+  });
+
+  it('a public group picture rides the directory and the by-handle lookup', async () => {
+    const group = await createGroup(alice.cookie, 'Open club', [bob.id]);
+    const patched = await app.request(`${TEST_BASE_URL}/api/groups/${group.id}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json', cookie: alice.cookie },
+      body: JSON.stringify({ visibility: 'public', handle: 'open_club' }),
+    });
+    expect(patched.status).toBe(200);
+    const put = await putAvatar('group', group.id, alice, pngSquare(128));
+    const { url } = (await put.json()) as { url: string };
+
+    const directory = await app.request(`${TEST_BASE_URL}/api/directory?q=open`, {
+      headers: { cookie: bob.cookie },
+    });
+    expect(directory.status).toBe(200);
+    const found = (await directory.json()) as {
+      entries: Array<{ id: string; avatarUrl?: string }>;
+    };
+    expect(found.entries.find((entry) => entry.id === group.id)?.avatarUrl).toBe(url);
+
+    const byHandle = await app.request(`${TEST_BASE_URL}/api/groups/by-handle/open_club`, {
+      headers: { cookie: bob.cookie },
+    });
+    expect(byHandle.status).toBe(200);
+    expect(((await byHandle.json()) as { avatarUrl?: string }).avatarUrl).toBe(url);
   });
 });
