@@ -3,12 +3,7 @@
 // injected fetch, never a real endpoint.
 
 import { describe, expect, it, vi } from 'vitest';
-import {
-  silentVerificationWav,
-  transcribeAudio,
-  transcriptionEndpointFor,
-  TranscriptionProviderError,
-} from './provider';
+import { silentVerificationWav, transcribeAudio, transcriptionEndpointFor } from './provider';
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -81,18 +76,26 @@ describe('transcribeAudio', () => {
     expect(withoutKey.headers['authorization']).toBeUndefined();
   });
 
-  it('maps provider rejections, bad shapes and network failures to the provider error', async () => {
+  it('maps rejections vs transport failures to the matching kind', async () => {
     const failing = vi.fn(async () => jsonResponse(401, { error: 'bad key' }));
-    await expect(transcribeAudio(input, failing)).rejects.toBeInstanceOf(
-      TranscriptionProviderError,
-    );
+    await expect(transcribeAudio(input, failing)).rejects.toMatchObject({
+      name: 'TranscriptionProviderError',
+      kind: 'rejected',
+    });
+    const serverError = vi.fn(async () => jsonResponse(500, { error: 'boom' }));
+    await expect(transcribeAudio(input, serverError)).rejects.toMatchObject({
+      kind: 'rejected',
+    });
     const malformed = vi.fn(async () => jsonResponse(200, { nope: 1 }));
-    await expect(transcribeAudio(input, malformed)).rejects.toBeInstanceOf(
-      TranscriptionProviderError,
-    );
+    await expect(transcribeAudio(input, malformed)).rejects.toMatchObject({
+      kind: 'rejected',
+    });
     const down = vi.fn(async () => {
       throw new Error('down');
     });
-    await expect(transcribeAudio(input, down)).rejects.toBeInstanceOf(TranscriptionProviderError);
+    await expect(transcribeAudio(input, down)).rejects.toMatchObject({
+      name: 'TranscriptionProviderError',
+      kind: 'unreachable',
+    });
   });
 });

@@ -23,7 +23,11 @@ import {
   VOICE_TRANSCRIPT_RATE_LIMIT_MAX,
   type VoiceTranscriptionRoutesDependencies,
 } from './routes';
-import { getVoiceTranscriptionSettings, VOICE_TRANSCRIPTION_BASE_URL_SETTING } from './settings';
+import {
+  getVoiceTranscriptionSettings,
+  VOICE_TRANSCRIPTION_API_KEY_SETTING,
+  VOICE_TRANSCRIPTION_BASE_URL_SETTING,
+} from './settings';
 import { settingsCipherFor } from '../setup/settings';
 import { TranscriptionProviderError } from './provider';
 
@@ -39,16 +43,21 @@ let stranger: SignedInUser;
 interface FakeProvider {
   calls: number;
   text: string;
-  fail: boolean;
+  /** Mirrors `TranscriptionProviderError.kind`: what the real seam throws. */
+  fail: 'rejected' | 'unreachable' | false;
   lastForm?: { baseUrl: string; apiKey: string | null; model: string } | undefined;
+}
+
+function okFake(): FakeProvider {
+  return { calls: 0, text: SENTINEL_TEXT, fail: false };
 }
 
 function fakeProvider(fake: FakeProvider): VoiceTranscriptionRoutesDependencies['transcribe'] {
   return async (input) => {
     fake.calls += 1;
     fake.lastForm = { baseUrl: input.baseUrl, apiKey: input.apiKey, model: input.model };
-    if (fake.fail) {
-      throw new TranscriptionProviderError();
+    if (fake.fail !== false) {
+      throw new TranscriptionProviderError(fake.fail);
     }
     return { text: fake.text, language: 'en' };
   };
@@ -114,19 +123,19 @@ afterEach(async () => {
 
 describe('GET /api/voice/transcription', () => {
   it('answers 401 without a session', async () => {
-    const app = appFor({ calls: 0, text: SENTINEL_TEXT, fail: false });
+    const app = appFor(okFake());
     expect((await jsonRequest(app, 'GET', '/api/voice/transcription', null)).status).toBe(401);
   });
 
   it('says disabled with nothing configured', async () => {
-    const app = appFor({ calls: 0, text: SENTINEL_TEXT, fail: false });
+    const app = appFor(okFake());
     const response = await jsonRequest(app, 'GET', '/api/voice/transcription', stranger);
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ enabled: false });
   });
 
   it('says enabled after the owner configures an endpoint', async () => {
-    const fake: FakeProvider = { calls: 0, text: SENTINEL_TEXT, fail: false };
+    const fake: FakeProvider = okFake();
     const app = appFor(fake);
     expect((await configureOwner(app)).status).toBe(200);
     fake.calls = 0;
@@ -136,18 +145,34 @@ describe('GET /api/voice/transcription', () => {
       enabled: true,
     });
   });
+
+  it('a broken stored key fails closed with a fixed warning, not silence', async () => {
+    const fake: FakeProvider = okFake();
+    const app = appFor(fake);
+    expect((await configureOwner(app)).status).toBe(200);
+    // Corrupt the stored key envelope: decryption now fails.
+    await context.db
+      .update(instanceSettings)
+      .set({ value: 'v1:broken:envelope' })
+      .where(eq(instanceSettings.key, VOICE_TRANSCRIPTION_API_KEY_SETTING));
+    const response = await jsonRequest(app, 'GET', '/api/voice/transcription', stranger);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ enabled: false });
+    expect(context.logOutput()).toContain('voice transcription settings could not be read');
+    expect(context.logOutput()).not.toContain(SENTINEL_KEY);
+  });
 });
 
 describe('POST /api/voice/transcript', () => {
   it('answers 401 without a session', async () => {
-    const app = appFor({ calls: 0, text: SENTINEL_TEXT, fail: false });
+    const app = appFor(okFake());
     expect(
       (await jsonRequest(app, 'POST', '/api/voice/transcript', null, { url: SENTINEL_URL })).status,
     ).toBe(401);
   });
 
   it('answers 501 with nothing configured', async () => {
-    const app = appFor({ calls: 0, text: SENTINEL_TEXT, fail: false });
+    const app = appFor(okFake());
     const response = await jsonRequest(app, 'POST', '/api/voice/transcript', stranger, {
       url: SENTINEL_URL,
     });
@@ -158,7 +183,7 @@ describe('POST /api/voice/transcript', () => {
   });
 
   it('transcribes once and serves the cached text to a second tap and another user', async () => {
-    const fake: FakeProvider = { calls: 0, text: SENTINEL_TEXT, fail: false };
+    const fake: FakeProvider = okFake();
     const app = appFor(fake);
     expect((await configureOwner(app)).status).toBe(200);
     fake.calls = 0;
@@ -192,7 +217,7 @@ describe('POST /api/voice/transcript', () => {
   });
 
   it('two requests at once cause a single provider call', async () => {
-    const fake: FakeProvider = { calls: 0, text: SENTINEL_TEXT, fail: false };
+    const fake: FakeProvider = okFake();
     const app = appFor(fake);
     expect((await configureOwner(app)).status).toBe(200);
     fake.calls = 0;
@@ -209,7 +234,7 @@ describe('POST /api/voice/transcript', () => {
   });
 
   it('refuses a URL outside this install before any request is made', async () => {
-    const fake: FakeProvider = { calls: 0, text: SENTINEL_TEXT, fail: false };
+    const fake: FakeProvider = okFake();
     let fetched = 0;
     const app = appFor(fake, {
       audioFetcher: async () => {
@@ -235,7 +260,7 @@ describe('POST /api/voice/transcript', () => {
   });
 
   it('refuses an oversized file with 413', async () => {
-    const fake: FakeProvider = { calls: 0, text: SENTINEL_TEXT, fail: false };
+    const fake: FakeProvider = okFake();
     const app = appFor(fake, {
       audioFetcher: async () => ({
         body: new Uint8Array(10 * 1024 * 1024 + 1),
@@ -253,7 +278,7 @@ describe('POST /api/voice/transcript', () => {
   });
 
   it('refuses a non-audio file with 422', async () => {
-    const fake: FakeProvider = { calls: 0, text: SENTINEL_TEXT, fail: false };
+    const fake: FakeProvider = okFake();
     const app = appFor(fake, {
       audioFetcher: async () => ({ body: new Uint8Array([1, 2]), contentType: 'text/html' }),
     });
@@ -268,10 +293,10 @@ describe('POST /api/voice/transcript', () => {
   });
 
   it('a provider failure answers 502 with a fixed message and caches nothing', async () => {
-    const good: FakeProvider = { calls: 0, text: SENTINEL_TEXT, fail: false };
+    const good: FakeProvider = okFake();
     const setupApp = appFor(good);
     expect((await configureOwner(setupApp)).status).toBe(200);
-    const fake: FakeProvider = { calls: 0, text: SENTINEL_TEXT, fail: true };
+    const fake: FakeProvider = { calls: 0, text: SENTINEL_TEXT, fail: 'rejected' };
     const app = appFor(fake);
     const response = await jsonRequest(app, 'POST', '/api/voice/transcript', stranger, {
       url: SENTINEL_URL,
@@ -284,8 +309,52 @@ describe('POST /api/voice/transcript', () => {
     expect(rows).toHaveLength(0);
   });
 
+  it('an ejabberd fetch failure answers 502 audio_unavailable, never a 500', async () => {
+    const fake: FakeProvider = okFake();
+    const app = appFor(fake, {
+      audioFetcher: async () => {
+        throw new Error('socket hangup at ejabberd');
+      },
+    });
+    expect((await configureOwner(app)).status).toBe(200);
+    fake.calls = 0;
+    const response = await jsonRequest(app, 'POST', '/api/voice/transcript', stranger, {
+      url: SENTINEL_URL,
+    });
+    expect(response.status).toBe(502);
+    const raw = await response.text();
+    expect(JSON.parse(raw)).toMatchObject({ error: { code: 'audio_unavailable' } });
+    expect(raw).not.toContain('socket hangup');
+    expect(raw).not.toContain(SENTINEL_URL);
+    expect(fake.calls).toBe(0);
+    const rows = await context.db.select().from(voiceTranscripts);
+    expect(rows).toHaveLength(0);
+  });
+
+  it('malformed requests do not burn the rate budget', async () => {
+    const fake: FakeProvider = okFake();
+    const app = appFor(fake);
+    expect((await configureOwner(app)).status).toBe(200);
+    fake.calls = 0;
+    for (const url of ['not a url', 'https://evil.example.com/upload/x.m4a', '']) {
+      const response = await jsonRequest(app, 'POST', '/api/voice/transcript', stranger, { url });
+      expect(response.status).toBe(400);
+    }
+    // The full budget is still intact afterwards.
+    for (let attempt = 0; attempt < VOICE_TRANSCRIPT_RATE_LIMIT_MAX; attempt += 1) {
+      const response = await jsonRequest(app, 'POST', '/api/voice/transcript', stranger, {
+        url: `${SENTINEL_URL}?n=${attempt}`,
+      });
+      expect(response.status).toBe(200);
+    }
+    const limited = await jsonRequest(app, 'POST', '/api/voice/transcript', stranger, {
+      url: `${SENTINEL_URL}?n=over`,
+    });
+    expect(limited.status).toBe(429);
+  });
+
   it('rate limits 10 per 10 minutes per user', async () => {
-    const fake: FakeProvider = { calls: 0, text: SENTINEL_TEXT, fail: false };
+    const fake: FakeProvider = okFake();
     const app = appFor(fake);
     expect((await configureOwner(app)).status).toBe(200);
     fake.calls = 0;
@@ -303,7 +372,7 @@ describe('POST /api/voice/transcript', () => {
   });
 
   it('the key, URL and text never reach logs, audit rows or errors', async () => {
-    const fake: FakeProvider = { calls: 0, text: SENTINEL_TEXT, fail: false };
+    const fake: FakeProvider = okFake();
     const app = appFor(fake);
     expect((await configureOwner(app)).status).toBe(200);
     fake.calls = 0;
@@ -332,7 +401,7 @@ describe('POST /api/voice/transcript', () => {
 
 describe('PUT /api/settings/integrations/voice-transcription', () => {
   it('answers 401 without a session, and 404 for a non-owner', async () => {
-    const app = appFor({ calls: 0, text: SENTINEL_TEXT, fail: false });
+    const app = appFor(okFake());
     expect(
       (
         await jsonRequest(app, 'PUT', '/api/settings/integrations/voice-transcription', null, {
@@ -356,7 +425,7 @@ describe('PUT /api/settings/integrations/voice-transcription', () => {
   });
 
   it('the owner saves a verified endpoint; the key is stored encrypted', async () => {
-    const fake: FakeProvider = { calls: 0, text: SENTINEL_TEXT, fail: false };
+    const fake: FakeProvider = okFake();
     const app = appFor(fake);
     const response = await configureOwner(app);
     expect(response.status).toBe(200);
@@ -392,7 +461,7 @@ describe('PUT /api/settings/integrations/voice-transcription', () => {
   });
 
   it('requires https unless localhost or a private address', async () => {
-    const fake: FakeProvider = { calls: 0, text: SENTINEL_TEXT, fail: false };
+    const fake: FakeProvider = okFake();
     const app = appFor(fake);
     for (const baseUrl of ['http://transcribe.example.com/v1', 'ftp://x.example/y', 'nope']) {
       const response = await jsonRequest(
@@ -404,9 +473,23 @@ describe('PUT /api/settings/integrations/voice-transcription', () => {
       );
       expect(response.status).toBe(400);
     }
+    // A public IPv6 literal still needs https (2001:db8::/32 is the
+    // documentation range the guard blocks outright, so it reads as private
+    // like the RFC-1918 literals — the public test host is Cloudflare DNS).
+    {
+      const response = await jsonRequest(
+        app,
+        'PUT',
+        '/api/settings/integrations/voice-transcription',
+        owner,
+        { baseUrl: 'http://[2606:4700:4700::1111]/v1' },
+      );
+      expect(response.status).toBe(400);
+    }
     for (const baseUrl of [
       'http://localhost:8080/v1',
       'http://127.0.0.1:8080/v1',
+      'http://[::1]:8080/v1',
       'http://192.168.1.10:8080/v1',
     ]) {
       const response = await jsonRequest(
@@ -421,7 +504,7 @@ describe('PUT /api/settings/integrations/voice-transcription', () => {
   });
 
   it('a rejected endpoint answers 422 and stores nothing', async () => {
-    const fake: FakeProvider = { calls: 0, text: SENTINEL_TEXT, fail: true };
+    const fake: FakeProvider = { calls: 0, text: SENTINEL_TEXT, fail: 'rejected' };
     const app = appFor(fake);
     const response = await configureOwner(app);
     expect(response.status).toBe(422);
@@ -440,12 +523,10 @@ describe('PUT /api/settings/integrations/voice-transcription', () => {
   });
 
   it('an unreachable endpoint answers 422 endpoint_unreachable and stores nothing', async () => {
-    const fake: FakeProvider = { calls: 0, text: SENTINEL_TEXT, fail: false };
-    const app = appFor(fake, {
-      transcribe: async () => {
-        throw new Error('socket hangup');
-      },
-    });
+    // What the real seam throws on a transport failure (DNS, refused,
+    // timeout abort): the fake provider below mirrors `transcribeAudio`.
+    const fake: FakeProvider = { calls: 0, text: SENTINEL_TEXT, fail: 'unreachable' };
+    const app = appFor(fake);
     const response = await configureOwner(app);
     expect(response.status).toBe(422);
     const raw = await response.text();
@@ -457,7 +538,7 @@ describe('PUT /api/settings/integrations/voice-transcription', () => {
   });
 
   it('rejects bad bodies without calling the endpoint', async () => {
-    const fake: FakeProvider = { calls: 0, text: SENTINEL_TEXT, fail: false };
+    const fake: FakeProvider = okFake();
     const app = appFor(fake);
     for (const body of [
       {},
@@ -479,7 +560,7 @@ describe('PUT /api/settings/integrations/voice-transcription', () => {
   });
 
   it('the owner removes the endpoint; DELETE never touches the rate budget', async () => {
-    const fake: FakeProvider = { calls: 0, text: SENTINEL_TEXT, fail: false };
+    const fake: FakeProvider = okFake();
     const app = appFor(fake);
     expect((await configureOwner(app)).status).toBe(200);
     fake.calls = 0;
@@ -501,7 +582,7 @@ describe('PUT /api/settings/integrations/voice-transcription', () => {
   });
 
   it('the key never reaches logs, audit rows or responses', async () => {
-    const fake: FakeProvider = { calls: 0, text: SENTINEL_TEXT, fail: false };
+    const fake: FakeProvider = okFake();
     const app = appFor(fake);
     expect((await configureOwner(app)).status).toBe(200);
     fake.calls = 0;

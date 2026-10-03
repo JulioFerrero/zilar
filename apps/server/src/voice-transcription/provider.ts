@@ -2,8 +2,8 @@
 // audio to `POST {baseUrl}/audio/transcriptions` (multipart `file` +
 // `model`, optional bearer key) and answers the transcript text plus the
 // detected language. The provider's response shape is validated with zod;
-// the error body is never forwarded — the caller maps every failure to a
-// fixed 502 `transcription_failed`.
+// the error body is never forwarded — the caller maps each failure kind to
+// a fixed answer (`rejected` vs `unreachable`, never the provider's body).
 //
 // `fetchFn` is injected so tests use a fake provider, never a real
 // endpoint or key.
@@ -31,10 +31,14 @@ export interface TranscribeInput {
   mime: string;
 }
 
+export type TranscriptionFailureKind = 'unreachable' | 'rejected';
+
 export class TranscriptionProviderError extends Error {
-  constructor(message = 'The transcription provider failed') {
+  readonly kind: TranscriptionFailureKind;
+  constructor(kind: TranscriptionFailureKind, message = 'The transcription provider failed') {
     super(message);
     this.name = 'TranscriptionProviderError';
+    this.kind = kind;
   }
 }
 
@@ -73,15 +77,17 @@ export async function transcribeAudio(
         signal: controller.signal,
       });
     } catch {
-      throw new TranscriptionProviderError();
+      // Transport, abort (timeout) or DNS: the endpoint was never reached.
+      throw new TranscriptionProviderError('unreachable');
     }
     const raw: unknown = await response.json().catch(() => null);
     if (!response.ok) {
-      throw new TranscriptionProviderError();
+      // The endpoint answered, but refused (bad key, bad model, 5xx).
+      throw new TranscriptionProviderError('rejected');
     }
     const parsed = transcriptionResponseSchema.safeParse(raw);
     if (!parsed.success) {
-      throw new TranscriptionProviderError();
+      throw new TranscriptionProviderError('rejected');
     }
     // Empty text is a valid answer (silence transcribes to nothing): the
     // verify call proves the endpoint works either way, and a real message

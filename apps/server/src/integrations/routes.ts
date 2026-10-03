@@ -226,7 +226,7 @@ export function createIntegrationsRoutes(deps: IntegrationsRoutesDependencies): 
     const [telegram, email, voiceTranscription] = await Promise.all([
       telegramStatus(),
       mailStatus(),
-      voiceTranscriptionStatusFor(deps.db, deps.config),
+      voiceTranscriptionStatusFor(deps.db, deps.config, deps.logger),
     ]);
     return c.json({ telegram, email, voiceTranscription, canManage: true });
   });

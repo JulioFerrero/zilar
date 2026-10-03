@@ -14,11 +14,16 @@
 //   (`EJABBERD_API_URL` base, same path), enforcing a 10 MB cap and a 20 s
 //   timeout, sends it to the configured endpoint, and caches the result in
 //   `voice_transcripts` keyed by SHA-256 of the URL. A concurrent duplicate
-//   request must not double-bill: an advisory lock on the hash serializes
-//   the check-and-transcribe, and the cache is re-checked inside it.
+//   request must not double-bill: simultaneous taps share one in-flight
+//   fetch + provider call (an in-process map keyed by the hash), and the
+//   insert re-checks the cache under an advisory lock on the hash (with
+//   `onConflictDoNothing` as the backstop). No transaction or lock is held
+//   across the network.
 // - Errors: 501 `transcription_not_configured`, 413 `voice_too_large`,
 //   422 `not_audio`, 429 `rate_limited` (10 per 10 minutes per user), 502
-//   `transcription_failed` (fixed message; never the provider's body).
+//   `transcription_failed` (provider refused) and 502 `audio_unavailable`
+//   (the ejabberd fetch leg failed) — both fixed messages, never the
+//   provider's or network's body.
 // - Audit entries carry ids only (the URL hash, never the URL or the
 //   text). The transcript text and the API key are never logged.
 //
@@ -133,6 +138,15 @@ export type Transcriber = (input: {
   mime: string;
 }) => Promise<{ text: string; language: string | null }>;
 
+/** The audio-fetch leg failed (ejabberd down, slow, or refusing): fixed
+ * 502, never the network's error text and never a bare 500. */
+export class AudioUnavailableError extends Error {
+  constructor() {
+    super('The voice file could not be fetched');
+    this.name = 'AudioUnavailableError';
+  }
+}
+
 function notFound(): HttpError {
   return new HttpError(404, 'not_found', 'Not found');
 }
@@ -150,6 +164,81 @@ async function isOwner(db: ServerDatabase, userId: string): Promise<boolean> {
 
 export function voiceTranscriptUrlHash(url: string): string {
   return createHash('sha256').update(url, 'utf8').digest('hex');
+}
+
+interface FetchAndTranscribeInput {
+  db: ServerDatabase;
+  urlHash: string;
+  internalUrl: string;
+  settings: VoiceTranscriptionSettings;
+  fetchAudio: AudioFetcher;
+  transcribe: Transcriber;
+}
+
+/**
+ * Fetches the audio and transcribes it, then stores the result — with no
+ * transaction held across the network. Only the re-check + insert runs in
+ * one transaction under an advisory lock on the hash (a duplicate that won
+ * the race reads the winner's row; `onConflictDoNothing` covers the last
+ * overlap). Fetch-leg failures (ejabberd down, slow, refusing) surface as
+ * `AudioUnavailableError`, which the route maps to a fixed 502; size and
+ * content-type refusals keep their 413/422.
+ */
+async function fetchAndTranscribe(input: FetchAndTranscribeInput): Promise<string> {
+  const { db, urlHash, internalUrl, settings, fetchAudio, transcribe } = input;
+  let audio: FetchedAudio;
+  try {
+    audio = await fetchAudio(internalUrl);
+  } catch {
+    throw new AudioUnavailableError();
+  }
+  if (audio.body.byteLength > VOICE_TRANSCRIPT_MAX_BYTES) {
+    throw new HttpError(413, 'voice_too_large', 'The recording is too large');
+  }
+  if (audio.body.byteLength === 0 || !isAudioContentType(audio.contentType)) {
+    throw new HttpError(422, 'not_audio', 'The file is not a supported recording');
+  }
+  let result: { text: string; language: string | null };
+  try {
+    result = await transcribe({
+      baseUrl: settings.baseUrl,
+      apiKey: settings.apiKey,
+      model: settings.model,
+      audio: audio.body,
+      filename: 'voice.m4a',
+      mime: audio.contentType,
+    });
+  } catch (error) {
+    if (error instanceof TranscriptionProviderError) {
+      throw new HttpError(
+        502,
+        'transcription_failed',
+        'The transcription service failed, try again later',
+      );
+    }
+    throw error;
+  }
+  await db.transaction(async (tx: SetupTransaction) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${'voice-transcript:' + urlHash}))`);
+    const [cached] = await tx
+      .select({ text: voiceTranscripts.text })
+      .from(voiceTranscripts)
+      .where(eq(voiceTranscripts.urlHash, urlHash))
+      .limit(1);
+    if (cached !== undefined) {
+      return;
+    }
+    await tx
+      .insert(voiceTranscripts)
+      .values({ urlHash, text: result.text, language: result.language })
+      .onConflictDoNothing({ target: voiceTranscripts.urlHash });
+  });
+  const [stored] = await db
+    .select({ text: voiceTranscripts.text })
+    .from(voiceTranscripts)
+    .where(eq(voiceTranscripts.urlHash, urlHash))
+    .limit(1);
+  return stored?.text ?? result.text;
 }
 
 export function createVoiceTranscriptionRoutes(deps: VoiceTranscriptionRoutesDependencies): Hono {
@@ -172,6 +261,12 @@ export function createVoiceTranscriptionRoutes(deps: VoiceTranscriptionRoutesDep
   const fetchAudio = deps.audioFetcher ?? defaultAudioFetcher;
   const transcribe =
     deps.transcribe ?? (async (input) => transcribeAudio(input, defaultTranscriptionFetch));
+  // In-flight transcripts by URL hash: two simultaneous taps on the same
+  // voice message share one fetch + provider call instead of double-billing.
+  // The entry is removed in `finally`, so a failure never poisons the next
+  // tap; the DB row (re-checked under the lock at insert time) is the
+  // durable cache, this map only dedupes the overlap window.
+  const inFlight = new Map<string, Promise<string>>();
 
   async function requireOwner(userId: string): Promise<void> {
     if (!(await isOwner(deps.db, userId))) {
@@ -183,6 +278,10 @@ export function createVoiceTranscriptionRoutes(deps: VoiceTranscriptionRoutesDep
     try {
       return await getVoiceTranscriptionSettings(deps.db, settingsCipherFor(deps.config));
     } catch {
+      // Fail closed (reads as "not configured"), but say so: a DB or
+      // decrypt failure must not silently look like an unset endpoint. The
+      // message is fixed — no error text, no key.
+      deps.logger.warn({}, 'voice transcription settings could not be read');
       return null;
     }
   }
@@ -203,9 +302,9 @@ export function createVoiceTranscriptionRoutes(deps: VoiceTranscriptionRoutesDep
         'Voice transcription is not set up on this server',
       );
     }
-    if (!transcriptLimiter.allow(caller.id)) {
-      throw new HttpError(429, 'rate_limited', 'Too many attempts, try again later');
-    }
+    // Validation before the rate limiter: malformed requests must not burn
+    // the caller's budget. Cached hits still count (fine — they cost a row
+    // read, and the budget is generous).
     const body = await c.req.json().catch(() => null);
     const parsed = transcriptBodySchema.safeParse(body);
     if (!parsed.success) {
@@ -221,58 +320,58 @@ export function createVoiceTranscriptionRoutes(deps: VoiceTranscriptionRoutesDep
     if (internalUrl === null) {
       throw new HttpError(400, 'invalid_request', 'The voice URL is not from this server');
     }
+    if (!transcriptLimiter.allow(caller.id)) {
+      throw new HttpError(429, 'rate_limited', 'Too many attempts, try again later');
+    }
     const urlHash = voiceTranscriptUrlHash(parsed.data.url);
 
-    const text = await deps.db.transaction(async (tx: SetupTransaction) => {
-      await tx.execute(
-        sql`SELECT pg_advisory_xact_lock(hashtext(${'voice-transcript:' + urlHash}))`,
-      );
-      const [cached] = await tx
-        .select({ text: voiceTranscripts.text })
-        .from(voiceTranscripts)
-        .where(eq(voiceTranscripts.urlHash, urlHash))
-        .limit(1);
-      if (cached !== undefined) {
-        return cached.text;
-      }
-      const audio = await fetchAudio(internalUrl);
-      if (audio.body.byteLength > VOICE_TRANSCRIPT_MAX_BYTES) {
-        throw new HttpError(413, 'voice_too_large', 'The recording is too large');
-      }
-      if (audio.body.byteLength === 0 || !isAudioContentType(audio.contentType)) {
-        throw new HttpError(422, 'not_audio', 'The file is not a supported recording');
-      }
-      let result: { text: string; language: string | null };
-      try {
-        result = await transcribe({
-          baseUrl: settings.baseUrl,
-          apiKey: settings.apiKey,
-          model: settings.model,
-          audio: audio.body,
-          filename: 'voice.m4a',
-          mime: audio.contentType,
-        });
-      } catch (error) {
-        if (error instanceof TranscriptionProviderError) {
-          throw new HttpError(
-            502,
-            'transcription_failed',
-            'The transcription service failed, try again later',
-          );
+    // Fast path: the durable cache, no lock. Misses share one in-flight
+    // fetch + provider call per URL hash (finding 4: no transaction and no
+    // advisory lock is held across the network — the lock only covers the
+    // re-check + insert below, with `onConflictDoNothing` as the backstop).
+    const [fastHit] = await deps.db
+      .select({ text: voiceTranscripts.text })
+      .from(voiceTranscripts)
+      .where(eq(voiceTranscripts.urlHash, urlHash))
+      .limit(1);
+    if (fastHit !== undefined) {
+      return c.json({ text: fastHit.text });
+    }
+
+    let shared = inFlight.get(urlHash);
+    if (shared === undefined) {
+      shared = fetchAndTranscribe({
+        db: deps.db,
+        urlHash,
+        internalUrl,
+        settings,
+        fetchAudio,
+        transcribe,
+      });
+      inFlight.set(urlHash, shared);
+      // `.then` with both handlers (not `.finally`): the derived promise
+      // resolves either way, so a failed share never surfaces as an
+      // unhandled rejection — the awaiting requests already mapped it.
+      const cleanup = (): void => {
+        if (inFlight.get(urlHash) === shared) {
+          inFlight.delete(urlHash);
         }
-        throw error;
+      };
+      void shared.then(cleanup, cleanup);
+    }
+    let text: string;
+    try {
+      text = await shared;
+    } catch (error) {
+      if (error instanceof AudioUnavailableError) {
+        throw new HttpError(
+          502,
+          'audio_unavailable',
+          'The voice file could not be read, try again later',
+        );
       }
-      await tx
-        .insert(voiceTranscripts)
-        .values({ urlHash, text: result.text, language: result.language })
-        .onConflictDoNothing({ target: voiceTranscripts.urlHash });
-      const [stored] = await tx
-        .select({ text: voiceTranscripts.text })
-        .from(voiceTranscripts)
-        .where(eq(voiceTranscripts.urlHash, urlHash))
-        .limit(1);
-      return stored?.text ?? result.text;
-    });
+      throw error;
+    }
 
     void deps.audit?.record({
       actorUserId: caller.id,
@@ -316,8 +415,9 @@ export function createVoiceTranscriptionRoutes(deps: VoiceTranscriptionRoutesDep
 
     // Verify before storing: the silent WAV goes through the real provider
     // path (same `transcribe` seam the transcript route uses). A clip the
-    // endpoint accepts proves the URL/key/model work; anything else answers
-    // 422 and nothing is stored.
+    // endpoint accepts proves the URL/key/model work; a refusal answers 422
+    // `endpoint_rejected`, a transport failure 422 `endpoint_unreachable` —
+    // and nothing is stored either way.
     try {
       await transcribe({
         baseUrl: candidate.baseUrl,
@@ -328,6 +428,13 @@ export function createVoiceTranscriptionRoutes(deps: VoiceTranscriptionRoutesDep
         mime: 'audio/wav',
       });
     } catch (error) {
+      if (error instanceof TranscriptionProviderError && error.kind === 'unreachable') {
+        throw new HttpError(
+          422,
+          'endpoint_unreachable',
+          'The transcription endpoint could not be reached. Check the URL.',
+        );
+      }
       if (error instanceof TranscriptionProviderError) {
         throw new HttpError(
           422,
@@ -396,11 +503,16 @@ export interface VoiceTranscriptionPublicStatus {
 export async function voiceTranscriptionStatusFor(
   db: ServerDatabase,
   config: Pick<ServerConfig, 'ZILAR_KEY_ENCRYPTION_KEY' | 'BETTER_AUTH_SECRET'>,
+  logger?: { warn: (fields: Record<string, unknown>, message: string) => void } | undefined,
 ): Promise<VoiceTranscriptionPublicStatus> {
   let settings: VoiceTranscriptionSettings | null = null;
   try {
     settings = await getVoiceTranscriptionSettings(db, settingsCipherFor(config));
   } catch {
+    // Fail closed (reads as "not configured"), but say so: a DB or decrypt
+    // failure must not silently look like an unset endpoint. The message is
+    // fixed — no error text, no key.
+    logger?.warn({}, 'voice transcription settings could not be read');
     settings = null;
   }
   if (settings === null) {
@@ -457,10 +569,13 @@ function normalizeBaseUrl(raw: string): { normalized: string | null; problem?: s
     return { normalized: null, problem: 'The base URL must not contain credentials' };
   }
   const host = parsed.hostname.toLowerCase();
-  const isLocalhost = host === 'localhost' || host.endsWith('.localhost');
-  const isLoopbackIp = host === '127.0.0.1' || host === '::1';
-  const version = isIP(host);
-  const isPrivateLiteral = version !== 0 && (isLoopbackIp || classifyIp(host) === 'blocked');
+  // `hostname` keeps the brackets on IPv6 literals (`[::1]`), so strip them
+  // before comparing: `http://[::1]:8080/v1` is loopback like 127.0.0.1.
+  const bareHost = host.startsWith('[') && host.endsWith(']') ? host.slice(1, -1) : host;
+  const isLocalhost = bareHost === 'localhost' || bareHost.endsWith('.localhost');
+  const isLoopbackIp = bareHost === '127.0.0.1' || bareHost === '::1';
+  const version = isIP(bareHost);
+  const isPrivateLiteral = version !== 0 && (isLoopbackIp || classifyIp(bareHost) === 'blocked');
   if (parsed.protocol === 'http:' && !isLocalhost && !isPrivateLiteral) {
     return {
       normalized: null,
@@ -486,8 +601,11 @@ function isAudioContentType(contentType: string): boolean {
 const defaultTranscriptionFetch: TranscriptionFetch = (url, init) => fetch(url, init);
 
 // The internal download leg: same path on ejabberd's API base, 10 MB cap,
-// 20 s timeout. The content type gates the provider call (`not_audio`
-// without one); the bytes are never logged.
+// 20 s timeout. Every fetch-leg failure (transport, abort, non-OK, unreadable
+// body) surfaces as `AudioUnavailableError` — the route maps it to a fixed
+// 502, never a bare 500 and never the network's error text. The content type
+// gates the provider call (`not_audio` without one); the bytes are never
+// logged.
 async function defaultAudioFetcher(url: string): Promise<FetchedAudio> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), VOICE_FETCH_TIMEOUT_MS);
@@ -496,15 +614,15 @@ async function defaultAudioFetcher(url: string): Promise<FetchedAudio> {
     try {
       response = await fetch(url, { signal: controller.signal });
     } catch {
-      throw new TranscriptionProviderError();
+      throw new AudioUnavailableError();
     }
     if (!response.ok) {
-      throw new HttpError(422, 'not_audio', 'The voice file could not be read');
+      throw new AudioUnavailableError();
     }
     const contentType = response.headers.get('content-type') ?? 'application/octet-stream';
     const buffer = await response.arrayBuffer().catch(() => null);
     if (buffer === null) {
-      throw new TranscriptionProviderError();
+      throw new AudioUnavailableError();
     }
     return { body: new Uint8Array(buffer), contentType };
   } finally {

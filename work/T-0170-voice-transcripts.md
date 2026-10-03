@@ -171,9 +171,10 @@ OpenAI/Groq/self-hosted examples, silent-verification note).
   via `as unknown as`).
 - `pnpm --filter @zilar/server test --maxWorkers=2
   src/voice-transcription src/integrations src/voice
-  src/authz-sweep.test.ts`: 5 files passed, 2 skipped (integration), 58
-  passed / 3 skipped. The sweep prints all 4 new routes → 401
-  unauthenticated.
+  src/authz-sweep.test.ts`: 5 files passed, 2 skipped (integration), 62
+  passed / 3 skipped (round 1: +4 net — audio_unavailable, budget-intact,
+  fail-closed warning, in-flight dedupe kept green). The sweep prints all 4
+  new routes → 401 unauthenticated.
 - `pnpm --filter @zilar/web test --maxWorkers=2 src/components/VoiceMessage
   src/routes/IntegrationsPage src/lib/api.test.ts
   src/lib/useVoiceTranscription.test.tsx src/lib/useIsServerOwner.test.tsx`:
@@ -184,13 +185,49 @@ OpenAI/Groq/self-hosted examples, silent-verification note).
 **Security checklist:** key encrypted at rest, never in GET/audit/errors/
 responses/logs (sentinel tests for key, URL, text; audit rows detail-null
 or `{ urlHash }`; request log sees paths only); settings rows are global
-singleton keys, owner-gated; single-flight via advisory xact lock +
-in-tx re-check + unique PK (check-then-insert never escapes the lock);
+singleton keys, owner-gated; single-flight via the in-process in-flight map
+(re-check under the advisory lock + unique PK at insert, so
+check-then-insert never escapes the lock); validation before the limiter,
 429/42x before any provider call and before storing; unknown vs forbidden
 both 404 on all settings routes; new routes session-required (sweep: 401,
 never allowlisted); transcript POST + settings PUT rate-limited 10/10min
 per user, DELETE consumes nothing; audit carries the URL hash only, never
 URL or text.
+
+**Review fixes (lead review round 1, PREREVIEW.md findings 2-7; finding 1
+accepted — the hook stays, lead amends the allowlist):**
+2. `endpoint_unreachable` is real now: `TranscriptionProviderError` carries
+`kind: 'unreachable'` (transport/abort/DNS from the fetch throw) vs
+`'rejected'` (non-2xx or bad body). The PUT verify maps them to
+`endpoint_unreachable` vs `endpoint_rejected`; any other throw still maps
+to unreachable. The unreachable test now injects exactly what the real seam
+throws (`fail: 'unreachable'`), and the rejected case covers 401/500 from
+the fake endpoint at the provider level.
+3. The audio-fetch leg maps every failure (throw, non-OK, unreadable body)
+to `AudioUnavailableError` → fixed 502 `audio_unavailable`, never a 500
+and never network text. Test: fetcher throws → 502 + fixed code, no URL or
+error text in the body, provider untouched, nothing cached.
+4. No transaction or advisory lock is held across the network: fast
+cache lookup (no lock) → on a miss, fetch + transcribe outside any tx →
+lock only for the re-check + insert (`onConflictDoNothing` backstop).
+Concurrent duplicates share one call through an in-process
+`Map<urlHash, Promise>` cleaned up in `finally` (via `.then(cleanup,
+cleanup)` — `.finally` left the derived promise unhandled on failure, 4
+unhandled rejections observed and fixed). The concurrency test still proves
+one provider call for two simultaneous taps. Pool note: `db/client.ts`
+`max: 10` is why the lock window is now insert-only.
+5. Bracket-stripped IPv6 loopback: `http://[::1]:8080/v1` allowed like
+127.0.0.1/localhost; `http://[2606:4700:4700::1111]/v1` (public) still 400.
+(`2001:db8::/32` is blocked outright by the ip-guard, so it reads as
+private — the test uses a real public host instead.)
+6. `storedSettings()` and `voiceTranscriptionStatusFor` still fail closed,
+but log a fixed `voice transcription settings could not be read` warning
+(no error text, no key); the integrations caller passes its logger. Test:
+corrupted key envelope → `{ enabled: false }` + the warning + no secret in
+logs.
+7. URL/body validation runs before `transcriptLimiter.allow`, so malformed
+requests no longer burn the budget (test: three 400s, then the full 10
+succeed and the 11th 429s). Cached hits still count.
 
 **Deviations / notes:** (1) `logger.ts` untouched (outside Allowed files):
 `resendApiKey`/`botToken` redaction already covers the new `apiKey` body
@@ -198,8 +235,5 @@ field via the generic `apiKey` path — worth a lead check. (2) No `not_audio`
 probe of real bytes: the content-type gate treats `audio/*`, `video/mp4`
 (XEP-0363 voice notes are M4A) and `application/octet-stream` as audio;
 anything else (e.g. ejabberd's 404 HTML) is 422 without billing the owner.
-(3) `endpoint_unreachable` vs `endpoint_rejected` split by error shape:
-provider-shaped (HTTP/non-2xx/bad JSON via the seam) → rejected, transport
-throw → unreachable.
 
 ## Review (written by Claude)
