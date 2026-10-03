@@ -118,7 +118,7 @@ mv "$BACKUP_DIR/$TMPNAME" "$BACKUP_DIR/$NAME"
 # files never match, so an interrupted run poisons nothing), one file at
 # a time with a re-check (never -delete, never rm globs).
 LIST="$(mktemp)"
-find "$BACKUP_DIR" -maxdepth 1 -type f -name 'zilar-backup-*.tgz' -print 2>/dev/null | sort > "$LIST" || true
+find "$BACKUP_DIR" -maxdepth 1 -type f -name 'zilar-backup-*.tgz' ! -name '*.tmp.tgz' -print 2>/dev/null | sort > "$LIST" || true
 TOTAL="$(grep -c . "$LIST" 2>/dev/null || true)"
 TOTAL="${TOTAL:-0}"
 REMOVED=0

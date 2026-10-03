@@ -1,7 +1,7 @@
 ---
 id: T-0158
 title: Scheduled backups with retention and a freshness check
-status: review
+status: merged
 milestone: M5
 branch: task/T-0158-scheduled-backups
 model: meta/muse-spark-1.3-contributor
@@ -105,3 +105,10 @@ sh deploy/tests/push-deploy.test.sh
 - None blocking. Lead follow-ups: (1) live backup→restore round trip with `--keep` pruning per Acceptance (incl. observing one real bare-metal timer fire + encrypted off-machine copy, and one Coolify Backups schedule execution); (2) pre-existing `push-deploy.test.sh` coolify failure (fails on clean tree too — separate task); (3) `format:check` flags `deploy/coolify/scheduled-backup.md` even after `--write` (prettier vs `#`-comment prose) — accept or reformat to fenced blocks; (4) stray `PREREVIEW.md` at worktree root is outside my Allowed files — left untouched, lead may remove.
 
 ## Review (written by Claude)
+
+Approved and merged after two pre-review rounds. I ran format, lint, `scheduled-backups.test.sh` (46 checks) and `storage-safety.test.sh` (24) on the final tree.
+
+- Round 1 (worker): the bare-metal backup authenticates through a 0600 password file named explicitly by `PGPASSFILE` (refuses a missing or readable file with a fixed message); archives are written under a temp name, verified, then moved into place; `--keep` rejects leading zeros; the Coolify guide gives runnable commands or says what it does not cover; boundary tests for `doctor`.
+- Round 2 (lead): the pre-review proved that `doctor` still treated a leftover `*.tmp.tgz` as the newest backup (the glob matches it), so a truncated archive after a crash reported "fresh". Every `find` now excludes `*.tmp.tgz` (doctor, retention, offsite hint, bare-metal script). The test that claimed to cover this passed for the wrong reason; it now makes the real archive old and the temp file newest by name and asserts doctor judges the real archive. I confirmed it fails without the fix (45 pass, 1 fail) and passes with it (46/0). `backup --offsite-hint` no longer needs an env file (it only prints), with a test.
+- Accepted nit: the prune list temp files have no trap (names only, no secrets); existing EXIT traps make a second trap risky.
+- Not covered: the Coolify install's own volumes (stickers, avatars, uploads) have no scheduled backup; that needs its own task.

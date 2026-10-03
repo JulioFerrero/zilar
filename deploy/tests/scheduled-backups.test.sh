@@ -289,24 +289,30 @@ else
     bad "doctor with two archives lacks the fresh line"
   fi
 fi
-# Truncated temp file never counts as the newest backup: temp names
-# match neither doctor's nor retention's pattern.
+# Truncated temp file never counts as the newest backup. The real archive
+# is made OLD and the temp name sorts NEWEST: if doctor picked the temp
+# file (fresh mtime) it would report "fresh"; ignoring it, doctor judges
+# the old real archive and its line names that file, never the temp one.
 mkdir -p "$T/tmpcheck"
 echo "truncated" > "$T/tmpcheck/zilar-backup-20990101T000000Z.tmp.tgz"
 cp "$D/bk/zilar-backup-20250101T000000Z.tgz" "$T/tmpcheck/"
-if ZILAR_DOCTOR_BACKUP_DIR="$T/tmpcheck" ZILAR_DOCTOR_NOW_EPOCH="$_MTIME" \
-  "$ZILAR" --env-file="$D/.env" doctor > "$T/doctor-tmp.log" 2>&1; then
-  if grep -q 'ok: newest backup is less than a day old' "$T/doctor-tmp.log"; then
-    ok "doctor ignores temp names (truncated temp file never newest)"
-  else
-    bad "doctor with a temp file present lacks the fresh line"
-  fi
+touch -t 200001010000 "$T/tmpcheck/zilar-backup-20250101T000000Z.tgz"
+ZILAR_DOCTOR_BACKUP_DIR="$T/tmpcheck" ZILAR_DOCTOR_NOW_EPOCH="$_MTIME" \
+  "$ZILAR" --env-file="$D/.env" doctor > "$T/doctor-tmp.log" 2>&1 || true
+if grep -q 'tmp\.tgz' "$T/doctor-tmp.log"; then
+  bad "doctor named a temp file as a backup: $(grep 'tmp\.tgz' "$T/doctor-tmp.log" | head -n 1)"
+elif grep -q 'zilar-backup-20250101T000000Z.tgz is .* old' "$T/doctor-tmp.log" \
+  && ! grep -q 'ok: newest backup is less than a day old' "$T/doctor-tmp.log"; then
+  ok "doctor ignores temp names (judges the real archive, not the newer temp file)"
 else
-  if grep -q 'ok: newest backup is less than a day old' "$T/doctor-tmp.log"; then
-    ok "doctor ignores temp names (machine-specific checks fail)"
-  else
-    bad "doctor with a temp file present lacks the fresh line"
-  fi
+  bad "doctor did not judge the real old archive: $(grep -i 'backup' "$T/doctor-tmp.log" | head -n 2)"
+fi
+
+# --offsite-hint needs no env file: it only prints.
+if "$ZILAR" --env-file=/nonexistent-zilar-env backup --offsite-hint > "$T/hint-noenv.log" 2>&1; then
+  ok "backup --offsite-hint works without an env file"
+else
+  bad "backup --offsite-hint failed without an env file: $(head -n 1 "$T/hint-noenv.log")"
 fi
 
 # --- 4. --offsite-hint: print only ---------------------------------------

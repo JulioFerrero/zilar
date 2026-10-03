@@ -737,7 +737,7 @@ cmd_doctor() {
   [ -n "${ZILAR_DOCTOR_NOW_EPOCH-}" ] && _now="$ZILAR_DOCTOR_NOW_EPOCH"
   _newest=""
   if [ -d "$_backup_dir" ]; then
-    _newest="$(find "$_backup_dir" -maxdepth 1 -type f -name 'zilar-backup-*.tgz' -print 2>/dev/null | sort | tail -n 1)"
+    _newest="$(find "$_backup_dir" -maxdepth 1 -type f -name 'zilar-backup-*.tgz' ! -name '*.tmp.tgz' -print 2>/dev/null | sort | tail -n 1)"
   fi
   if [ -z "$_newest" ]; then
     echo "WARN: no backup in $_backup_dir yet — run '$PROG backup' to take one (archives hold live secrets: keep them mode 0600 and copy one off the machine)" >&2
@@ -845,7 +845,6 @@ cmd_create_admin() {
 # fails, nothing is deleted: the old ones stay.
 
 cmd_backup() {
-  require_env_file
   _offsite_hint=0
   _keep=7
   _dir=""
@@ -886,6 +885,7 @@ cmd_backup() {
     return 0
   fi
 
+  require_env_file
   require_docker
 
   compose ps --status running postgres 2>/dev/null | grep -q postgres \
@@ -1007,7 +1007,7 @@ _prune_backups() {
   # Regular files only (-type f excludes symlinks: -not -lname is implied
   # since a symlink matched by -type f would be the target — find -type f
   # without -L never matches a symlink itself). Name pattern is anchored.
-  find "$_prune_dir" -maxdepth 1 -type f -name 'zilar-backup-*.tgz' -print 2>/dev/null | sort > "$_prune_list" || true
+  find "$_prune_dir" -maxdepth 1 -type f -name 'zilar-backup-*.tgz' ! -name '*.tmp.tgz' -print 2>/dev/null | sort > "$_prune_list" || true
   _prune_total="$(grep -c . "$_prune_list" 2>/dev/null || true)"
   _prune_total="${_prune_total:-0}"
   if [ "$_prune_total" -gt "$_prune_keep" ]; then
@@ -1041,7 +1041,7 @@ cmd_backup_offsite_hint() {
   _hint_dir="$1"
   _hint_newest=""
   if [ -d "$_hint_dir" ]; then
-    _hint_newest="$(find "$_hint_dir" -maxdepth 1 -type f -name 'zilar-backup-*.tgz' -print 2>/dev/null | sort | tail -n 1)"
+    _hint_newest="$(find "$_hint_dir" -maxdepth 1 -type f -name 'zilar-backup-*.tgz' ! -name '*.tmp.tgz' -print 2>/dev/null | sort | tail -n 1)"
   fi
   cat <<EOF
 $PROG: WARNING: backup archives contain LIVE SECRETS (the install .env:
