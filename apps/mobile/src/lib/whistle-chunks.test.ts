@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  downmixToMono,
   isSilentPcm,
   planQuietCutChunks,
   planWhistleChunks,
   quietestCut,
+  resampleMonoTo16k,
   WHISTLE_MAX_CHUNK_SAMPLES,
   WHISTLE_SAMPLE_RATE,
 } from './whistle-last-voice';
@@ -79,5 +81,40 @@ describe('quietest cut (T-0177)', () => {
     expect(isSilentPcm([0, 0.001, -0.004])).toBe(true);
     expect(isSilentPcm([0, 0.5, 0])).toBe(false);
     expect(isSilentPcm([])).toBe(true);
+  });
+});
+
+describe('downmix + resample arithmetic (T-0177 finding 2)', () => {
+  it('downmixes stereo frames to mono once, clamped to [-1, 1]', () => {
+    expect(downmixToMono([0.5, -0.5, 1, 1], 2)).toEqual([0, 1]);
+    expect(downmixToMono([2, 2], 2)).toEqual([1]);
+    expect(downmixToMono([0.25], 1)).toEqual([0.25]);
+  });
+
+  it('resamples mono 48 kHz to 16 kHz with linear interpolation', () => {
+    const mono = [0, 1, 2, 3, 4, 5];
+    const resampled = resampleMonoTo16k(mono, 48000);
+    // 6 samples at 48 kHz cover 2 samples at 16 kHz (ratio 3).
+    expect(resampled).toHaveLength(2);
+    expect(resampled[0]).toBeCloseTo(0, 5);
+    expect(resampled[1]).toBeCloseTo(3, 5);
+  });
+
+  it('leaves 16 kHz mono untouched and handles empty input', () => {
+    expect(resampleMonoTo16k([0.1, 0.2], 16000)).toEqual([0.1, 0.2]);
+    expect(resampleMonoTo16k([], 48000)).toEqual([]);
+  });
+
+  it('decode order (downmix then resample-as-mono) matches the native path', () => {
+    // Interleaved stereo at 48 kHz: the native side downmixes first (floats
+    // clamped to [-1, 1]), then calls resampleTo16k(mono, rate, 1) — never
+    // the interleaved branch.
+    const interleaved = [0, 0, 0.3, 0.3, 0.6, 0.6, 0.9, 0.9, 0.2, 0.2, 0.5, 0.5];
+    const mono = downmixToMono(interleaved, 2);
+    expect(mono).toEqual([0, 0.3, 0.6, 0.9, 0.2, 0.5]);
+    const resampled = resampleMonoTo16k(mono, 48000);
+    expect(resampled).toHaveLength(2);
+    expect(resampled[0]).toBeCloseTo(0, 5);
+    expect(resampled[1]).toBeCloseTo(0.9, 5);
   });
 });

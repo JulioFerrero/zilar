@@ -1,10 +1,52 @@
 /**
- * Splits 16 kHz mono PCM into consecutive chunks of at most 28 s for the
- * 30 s Whistle engine limit (T-0177): the tested pure plan behind the native
- * `splitIntoChunks`, kept in JS so Vitest covers the rule. Each cut lands on
- * the quietest sample in the last 2 s of the chunk, never mid-sample (cuts
- * are sample indexes by construction).
+ * Downmix + resample arithmetic behind the native decode (T-0177, finding 2):
+ * the pure, tested twin of `appendDecodedSamples` + `resampleTo16k` in
+ * `ZilarWhistleModule.kt`. The native side downmixes interleaved 16-bit
+ * frames to mono first, then resamples that mono buffer with channel count
+ * 1 — never the interleaved path twice.
  */
+
+/**
+ * Downmixes interleaved 16-bit frames to mono float PCM in [-1, 1], the way
+ * the native `appendDecodedSamples` does (average the channels per frame).
+ */
+export function downmixToMono(interleaved: readonly number[], channels: number): number[] {
+  if (channels <= 1) {
+    return interleaved.map((sample) => Math.min(1, Math.max(-1, sample)));
+  }
+  const frames = Math.floor(interleaved.length / channels);
+  const mono: number[] = [];
+  for (let frame = 0; frame < frames; frame += 1) {
+    let sum = 0;
+    for (let channel = 0; channel < channels; channel += 1) {
+      sum += interleaved[frame * channels + channel] ?? 0;
+    }
+    mono.push(Math.min(1, Math.max(-1, sum / channels)));
+  }
+  return mono;
+}
+
+/**
+ * Resamples mono PCM to 16 kHz with linear interpolation, the way the native
+ * `resampleTo16k` does once it receives the already-downmixed buffer. Takes
+ * only mono: call `downmixToMono` first for interleaved input.
+ */
+export function resampleMonoTo16k(mono: readonly number[], sampleRate: number): number[] {
+  if (mono.length === 0 || sampleRate <= 0 || sampleRate === WHISTLE_SAMPLE_RATE) {
+    return [...mono];
+  }
+  const ratio = sampleRate / WHISTLE_SAMPLE_RATE;
+  const outSize = Math.floor(mono.length / ratio);
+  const out: number[] = [];
+  for (let index = 0; index < outSize; index += 1) {
+    const position = index * ratio;
+    const lower = Math.min(Math.max(0, Math.floor(position)), mono.length - 1);
+    const upper = Math.min(lower + 1, mono.length - 1);
+    const fraction = position - lower;
+    out.push((mono[lower] ?? 0) * (1 - fraction) + (mono[upper] ?? 0) * fraction);
+  }
+  return out;
+}
 export const WHISTLE_SAMPLE_RATE = 16000;
 export const WHISTLE_MAX_CHUNK_SAMPLES = 28 * WHISTLE_SAMPLE_RATE;
 export const WHISTLE_CUT_SEARCH_SAMPLES = 2 * WHISTLE_SAMPLE_RATE;

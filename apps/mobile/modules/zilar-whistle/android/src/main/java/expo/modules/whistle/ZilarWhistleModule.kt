@@ -241,7 +241,9 @@ class ZilarWhistleModule : Module() {
           }
         }
         val monoArray = mono.toFloatArray()
-        val resampled = resampleTo16k(monoArray, sampleRate, channels)
+        // `appendDecodedSamples` already downmixed to mono: the resampler
+        // gets channel count 1, never the interleaved path again.
+        val resampled = resampleTo16k(monoArray, sampleRate, 1)
         val durationMs = if (durationUs > 0) (durationUs / 1000).toInt() else ((resampled.size * 1000.0) / TARGET_SAMPLE_RATE).toInt()
         return DecodedAudio(resampled, durationMs, resampled.all { abs(it) < 0.005f })
       } finally {
