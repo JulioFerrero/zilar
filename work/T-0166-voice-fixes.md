@@ -100,9 +100,10 @@ Fixed all three voice-note bugs on web:
 - `apps/web/src/lib/voice.test.ts` — 2 new tests for the mapping.
 - `apps/web/src/components/Composer.tsx` — click/hold recording state machine,
   Send/Cancel row, Escape, unmount/chat-switch discard, specific error messages.
-- `apps/web/src/components/Composer.voice.test.tsx` — **new**, 8 tests (click→Send,
+- `apps/web/src/components/Composer.voice.test.tsx` — **new**, 11 tests (click→Send,
   grant-after-release, blocked message, long-hold sends, trash cancel, Escape
-  cancel, chat-switch stops mic, too-short message).
+  cancel, chat-switch stops mic, too-short message, stop()-rejects error,
+  hold-send carries post-mount reply, keyboard click-mode sends).
 - `apps/web/src/components/VoiceMessage.tsx` — real-state player, single-playback,
   unavailable state, token classes.
 - `apps/web/src/components/VoiceMessage.player.test.tsx` — **new**, 6 tests
@@ -111,13 +112,35 @@ Fixed all three voice-note bugs on web:
 - `apps/web/src/index.css` — `--voice-played`/`--voice-unplayed` tokens + per-bubble
   overrides (only addition, no other CSS touched).
 
+### Lead review fixes (PREREVIEW.md, 6 findings — all fixed)
+1. **Stale reply closure**: added `replyRef` (like `chatIdRef`); every
+   `finishRecording` path reads `replyRef.current` instead of a closure prop.
+   New test: reply set after mount + hold >400 ms + release → voice message
+   sent with that reply (`replyTo: {id ana-22, …}` asserted).
+2. **Silent `stop()` failure**: `finishRecording` wraps `recorder.stop()` and the
+   `computeWaveform()` + `sendVoice()` block in try/catch →
+   `voiceError` "Could not save the recording, try again". No unhandled
+   rejection. New test: `stop()` rejects → error shown, nothing sent.
+3. **Keyboard/AT dead-end**: `onMicClick` now calls
+   `beginRecording(0, clickMode: true)`, which skips the hold timer and goes
+   straight to locked click mode with Send + Cancel. New test: bare
+   `fireEvent.click` (no pointer events) → Send/Cancel appear and send works.
+4. **Hold-timer leak on start failure**: the `catch` in `beginRecording` clears
+   `press.holdTimer`.
+5. **Stale error on chat switch**: the chat-switch discard also clears
+   `voiceError`.
+6. **Misleading comment**: `PressState.holdTimer` now reads "Marks a press held
+   past 400 ms as hold-to-send; cleared on release."
+
 ### Commands and real results
 - `pnpm install` — exit 0 (lockfile up to date, 1049 resolved).
-- `pnpm format:check` — pass after `prettier --write` on 2 files.
+- `pnpm format:check` — my files pass (`prettier --check` on all 8 touched files:
+  "All matched files use Prettier code style"). Note: repo-wide `format:check`
+  flags `PREREVIEW.md` (the lead's file, not in my Allowed list — left untouched).
 - `pnpm lint` (`oxlint .`) — pass, no output.
 - `pnpm typecheck` (`turbo typecheck`, 11 tasks) — pass.
-- `pnpm --filter @zilar/web test --maxWorkers=2 src/lib/voice src/components/Composer src/components/VoiceMessage` — **5 files, 54 tests, all pass**
-  (incl. the 16 new tests: 8 Composer voice + 6 player + 2 error mapping).
+- `pnpm --filter @zilar/web test --maxWorkers=2 src/lib/voice src/components/Composer src/components/VoiceMessage` — **5 files, 57 tests, all pass**
+  (incl. the 19 new tests: 11 Composer voice + 6 player + 2 error mapping).
 - Neighbours `src/components/MessageBubble src/components/MessageContent src/components/AttachmentBubbles` — 2 files, 20 tests pass.
 
 ### Theme check (both themes)

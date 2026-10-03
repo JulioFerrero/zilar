@@ -228,4 +228,78 @@ describe('Composer voice recording (T-0166)', () => {
     expect(await screen.findByText('Recording too short')).toBeTruthy();
     expect(store.getState().messages('c-ana')).toHaveLength(before);
   });
+
+  it('shows an error instead of failing silently when stop() rejects', async () => {
+    const { resolveStart, makeRecorder, flushStart } = stubStart();
+    const recorder = makeRecorder({
+      stop: () => Promise.reject(new Error('recorder broke')),
+    });
+    const { store } = renderApp('/c/c-ana');
+    const before = store.getState().messages('c-ana').length;
+
+    holdMic();
+    resolveStart(recorder);
+    await flushStart();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    });
+    await act(async () => {
+      releaseMic();
+    });
+
+    expect(await screen.findByText('Could not save the recording, try again')).toBeTruthy();
+    expect(store.getState().messages('c-ana')).toHaveLength(before);
+  });
+
+  it('sends a hold recording with the reply set after mount', async () => {
+    const { resolveStart, makeRecorder, flushStart } = stubStart();
+    const { store } = renderApp('/c/c-ana');
+
+    // The composer mounts with no reply; the user sets one afterwards.
+    // The document pointer-up listener is registered once at mount, so it
+    // must not send the stale mount-time (absent) reply.
+    fireEvent.contextMenu(screen.getAllByText('Coffee at 6:30 then')[0] as HTMLElement);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Reply' }));
+    expect(screen.getByText('Reply to You')).toBeTruthy();
+
+    holdMic();
+    const recorder = makeRecorder();
+    resolveStart(recorder);
+    await flushStart();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    });
+    const before = store.getState().messages('c-ana').length;
+    await act(async () => {
+      releaseMic();
+    });
+
+    const sent = store.getState().messages('c-ana');
+    expect(sent).toHaveLength(before + 1);
+    expect(sent.at(-1)?.replyTo).toEqual({
+      id: 'ana-22',
+      senderName: 'You',
+      text: 'Coffee at 6:30 then',
+    });
+  });
+
+  it('starts a locked click-mode recording on keyboard activation', async () => {
+    const { resolveStart, makeRecorder, flushStart } = stubStart();
+    const { store } = renderApp('/c/c-ana');
+    const before = store.getState().messages('c-ana').length;
+
+    // No pointer events: the click path (keyboard/AT) goes straight to
+    // click mode with Send and Cancel, never through the hold timer.
+    fireEvent.click(screen.getByLabelText('Record voice message'));
+    resolveStart(makeRecorder());
+    await flushStart();
+
+    expect(screen.getByLabelText('Send voice message')).toBeTruthy();
+    expect(screen.getByLabelText('Cancel voice message')).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.click(screen.getByLabelText('Send voice message'));
+    });
+    expect(store.getState().messages('c-ana')).toHaveLength(before + 1);
+  });
 });
