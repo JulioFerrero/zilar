@@ -12,7 +12,11 @@ import { asColorScheme } from '@/lib/color-scheme';
 import { ICON } from '@/lib/colors';
 import type { ContactRequestView } from '@/lib/contacts-api';
 import { useContactsApi } from '@/components/contacts/use-contacts-api';
-import { requestsActionFailure, requestsLoadFailure } from '@/components/contacts/requests';
+import {
+  performRequestAction,
+  requestsLoadFailure,
+  type RequestAction,
+} from '@/components/contacts/requests';
 import { Avatar } from '@/components/chat/avatar';
 
 type PageStatus = 'loading' | 'ready' | 'error';
@@ -73,25 +77,18 @@ function RequestsList() {
     setOutgoing((rows) => rows.filter((row) => row.id !== id));
   };
 
-  const act = (id: string, action: 'accept' | 'decline' | 'cancel'): void => {
+  const act = (id: string, action: RequestAction): void => {
     if (busyRef.current) {
       return;
     }
     busyRef.current = true;
     setBusyId(id);
     setError('');
-    const work =
-      action === 'accept'
-        ? api.acceptContactRequest(id)
-        : action === 'decline'
-          ? api.declineContactRequest(id)
-          : api.cancelContactRequest(id);
-    void work
-      .then(() => {
-        remove(id);
-      })
-      .catch((actionError: unknown) => {
-        setError(requestsActionFailure(actionError));
+    void performRequestAction(api, id, action, remove)
+      .then((failure) => {
+        if (failure !== null) {
+          setError(failure);
+        }
       })
       .finally(() => {
         busyRef.current = false;

@@ -3,7 +3,8 @@ import type { Dispatch, SetStateAction } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 
-import type { ContactRequestView } from '@/lib/contacts-api';
+import { ContactsApiError, type ContactsApi, type ContactRequestView } from '@/lib/contacts-api';
+import { performRequestAction } from './requests';
 
 // The screen body is the default export wrapped in `RequireAuth`; the inner
 // list is not exported, so the test renders the default export with the auth
@@ -80,8 +81,13 @@ const OUTGOING: ContactRequestView = {
   other: { userId: 'u-cara', name: 'Cara', handle: 'cara', image: null },
 };
 
+// A token-shaped secret the fake API below carries: no mapped message and
+// no rendered tree may ever contain it.
+const LEAKED_TOKEN = 'zilar-contact-token-9f8e7d6c5b4a';
+
 let forcedArrays: ContactRequestView[][] = [];
 let forcedStatus: 'loading' | 'ready' | 'error' = 'loading';
+let forcedError: string | undefined = undefined;
 let arrayCursor = 0;
 
 vi.mock('react', async (importOriginal) => {
@@ -97,6 +103,9 @@ vi.mock('react', async (importOriginal) => {
       if (typeof initial === 'string' && initial !== '' && forcedStatus !== 'loading') {
         return [forcedStatus as unknown as T, (() => {}) as Dispatch<SetStateAction<T>>];
       }
+      if (typeof initial === 'string' && initial === '' && forcedError !== undefined) {
+        return [forcedError as unknown as T, (() => {}) as Dispatch<SetStateAction<T>>];
+      }
       return actual.useState(initial);
     },
   };
@@ -106,9 +115,11 @@ async function renderScreen(input: {
   incoming: ContactRequestView[];
   outgoing: ContactRequestView[];
   status: 'loading' | 'ready' | 'error';
+  error?: string | undefined;
 }): Promise<string> {
   forcedArrays = [input.incoming, input.outgoing];
   forcedStatus = input.status;
+  forcedError = input.error;
   arrayCursor = 0;
   try {
     const module = await import('@/app/settings/requests');
@@ -116,6 +127,7 @@ async function renderScreen(input: {
   } finally {
     forcedArrays = [];
     forcedStatus = 'loading';
+    forcedError = undefined;
   }
 }
 
@@ -158,12 +170,124 @@ describe('RequestsScreen', () => {
     expect(html).toContain('2 pending');
   });
 
-  it('never renders message text or tokens', async () => {
+  it('shows the error state with Retry', async () => {
+    const html = await renderScreen({
+      incoming: [],
+      outgoing: [],
+      status: 'error',
+      error: 'Could not reach the server. Try again.',
+    });
+    expect(html).toContain('Could not reach the server. Try again.');
+    expect(html).toContain('Retry');
+    expect(html).not.toContain('No pending requests');
+  });
+
+  it('renders no token the API carries', async () => {
     const html = await renderScreen({
       incoming: [INCOMING],
       outgoing: [OUTGOING],
       status: 'ready',
     });
-    expect(html).not.toMatch(/Bearer/i);
+    expect(html).not.toContain(LEAKED_TOKEN);
+  });
+});
+
+describe('performRequestAction', () => {
+  function fakeApi(): ContactsApi & { calls: string[] } {
+    const calls: string[] = [];
+    const decided = (id: string, status: 'accepted' | 'declined' | 'cancelled') => ({
+      request: {
+        id,
+        fromUserId: 'u-ada',
+        toUserId: 'u-me',
+        status,
+        createdAt: '2026-10-03T10:00:00.000Z',
+      },
+    });
+    return {
+      calls,
+      async lookupByHandle() {
+        throw new ContactsApiError(404, 'not_found', 'No user with that username');
+      },
+      async sendContactRequest() {
+        throw new ContactsApiError(409, 'request_exists', 'pending');
+      },
+      async listContactRequests() {
+        return { incoming: [], outgoing: [] };
+      },
+      async acceptContactRequest(id) {
+        calls.push(`accept:${id}`);
+        return decided(id, 'accepted');
+      },
+      async declineContactRequest(id) {
+        calls.push(`decline:${id}`);
+        return decided(id, 'declined');
+      },
+      async cancelContactRequest(id) {
+        calls.push(`cancel:${id}`);
+        return decided(id, 'cancelled');
+      },
+    };
+  }
+
+  function lists() {
+    let incoming = [INCOMING];
+    let outgoing = [OUTGOING];
+    return {
+      remove: (id: string) => {
+        incoming = incoming.filter((row) => row.id !== id);
+        outgoing = outgoing.filter((row) => row.id !== id);
+      },
+      snapshot: () => ({ incoming, outgoing }),
+    };
+  }
+
+  it('Accept calls the API once with the id and the row disappears', async () => {
+    const api = fakeApi();
+    const state = lists();
+    const failure = await performRequestAction(api, 'req-dan', 'accept', state.remove);
+    expect(failure).toBeNull();
+    expect(api.calls).toEqual(['accept:req-dan']);
+    expect(state.snapshot().incoming).toEqual([]);
+    expect(state.snapshot().outgoing).toEqual([OUTGOING]);
+  });
+
+  it('Decline calls the API once with the id and the row disappears', async () => {
+    const api = fakeApi();
+    const state = lists();
+    const failure = await performRequestAction(api, 'req-dan', 'decline', state.remove);
+    expect(failure).toBeNull();
+    expect(api.calls).toEqual(['decline:req-dan']);
+    expect(state.snapshot().incoming).toEqual([]);
+  });
+
+  it('Cancel calls the API once with the id and the row disappears', async () => {
+    const api = fakeApi();
+    const state = lists();
+    const failure = await performRequestAction(api, 'req-cara', 'cancel', state.remove);
+    expect(failure).toBeNull();
+    expect(api.calls).toEqual(['cancel:req-cara']);
+    expect(state.snapshot().outgoing).toEqual([]);
+  });
+
+  it('keeps the row and returns the message on failure', async () => {
+    const api = fakeApi();
+    api.acceptContactRequest = async () => {
+      throw new ContactsApiError(404, 'not_found', 'Not found');
+    };
+    const state = lists();
+    const failure = await performRequestAction(api, 'req-dan', 'accept', state.remove);
+    expect(failure).toBe('That request is no longer here.');
+    expect(state.snapshot().incoming).toEqual([INCOMING]);
+  });
+
+  it('never echoes a token-bearing raw error into the failure message', async () => {
+    const api = fakeApi();
+    api.acceptContactRequest = async () => {
+      throw new ContactsApiError(404, 'not_found', `Not found ${LEAKED_TOKEN}`);
+    };
+    const failure = await performRequestAction(api, 'req-dan', 'accept', () => {});
+    expect(failure).toBe('That request is no longer here.');
+    expect(failure ?? '').not.toContain(LEAKED_TOKEN);
   });
 });

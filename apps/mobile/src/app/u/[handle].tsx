@@ -114,15 +114,6 @@ function HandleProfileView() {
       });
   };
 
-  const reloadProfile = (): void => {
-    runAction(() =>
-      api.lookupByHandle(handle).then((found) => {
-        setProfile(found);
-        setSent(false);
-      }),
-    );
-  };
-
   const send = (): void => {
     if (profile === null) {
       return;
