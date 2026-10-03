@@ -23,6 +23,11 @@ export interface XmppCoreOptions {
    */
   keepaliveTimeoutMs?: number;
   /**
+   * How long the client may stay connecting or reconnecting before it is torn
+   * down and replaced by a fresh one. Defaults to 25 000; 0 disables.
+   */
+  reconnectWatchdogMs?: number;
+  /**
    * Fixed XMPP resource, e.g. `gateway`. When absent, a random
    * `zilar-xxxxxxxx` resource is used, as before.
    */
