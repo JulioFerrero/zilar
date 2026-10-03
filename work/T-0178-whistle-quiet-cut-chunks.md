@@ -1,7 +1,7 @@
 ---
 id: T-0178
 title: Whistle module: cut long voice notes at real quiet moments (amplitude envelope from the native decoder)
-status: review
+status: merged
 milestone: M5
 branch: task/T-0178-whistle-quiet-cut-chunks
 model: meta/muse-spark-1.3-contributor
@@ -88,3 +88,5 @@ The voice bubble UI (T-0179), iOS, overlapping chunks, word timestamps.
 - None. Ready for the lead's APK build + emulator/phone test.
 
 ## Review (written by Claude)
+
+**Verdict:** Approved and merged. The pre-review found no must-fix or should-fix issues; I accepted its two comment nits (the flat fallback cuts near 26 s, not on a 28 s boundary, so the comments saying "even 28 s windows" are slightly off). The Kotlin compiles in a release build. Julio asked to skip further device testing for this task; the real long-clip check happens with T-0179.
