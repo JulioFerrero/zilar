@@ -8,8 +8,9 @@ function member(
   name: string,
   role: GroupMember['role'],
   roles: GroupMember['roles'] = [],
+  handle?: string,
 ): GroupMember {
-  return { userId, name, role, roles };
+  return { userId, name, role, roles, ...(handle === undefined ? {} : { handle }) };
 }
 
 // AIs are provisioned as `ai-<aiId>`; the id is the localpart without the
@@ -40,13 +41,19 @@ export const mockGroupDetails: Record<string, GroupDetail> = {
     title: 'Dev team',
     createdBy: OWNER,
     members: [
-      member('u-you', 'You', 'owner', [
-        { id: 'role-designers', name: 'Designers' },
-        { id: 'role-devs', name: 'Devs' },
-      ]),
-      member('u-ana', 'Ana', 'admin', [{ id: 'role-designers', name: 'Designers' }]),
-      member('u-luis', 'Luis', 'member', [{ id: 'role-devs', name: 'Devs' }]),
-      member('u-marco', 'Marco', 'member'),
+      member(
+        'u-you',
+        'You',
+        'owner',
+        [
+          { id: 'role-designers', name: 'Designers' },
+          { id: 'role-devs', name: 'Devs' },
+        ],
+        'you',
+      ),
+      member('u-ana', 'Ana', 'admin', [{ id: 'role-designers', name: 'Designers' }], 'ana'),
+      member('u-luis', 'Luis', 'member', [{ id: 'role-devs', name: 'Devs' }], 'luis'),
+      member('u-marco', 'Marco', 'member', [], 'marco'),
     ],
     ais: [ai('dev-1', 'Dev-1', OWNER), ai('qa-1', 'QA-1', OWNER)],
   },
@@ -55,11 +62,11 @@ export const mockGroupDetails: Record<string, GroupDetail> = {
     title: 'Viernes 🍻',
     createdBy: 'u-luis',
     members: [
-      member('u-luis', 'Luis', 'owner'),
-      member('u-you', 'You', 'member'),
-      member('u-marta', 'Marta', 'member'),
-      member('u-ana', 'Ana', 'member'),
-      member('u-marco', 'Marco', 'member'),
+      member('u-luis', 'Luis', 'owner', [], 'luis'),
+      member('u-you', 'You', 'member', [], 'you'),
+      member('u-marta', 'Marta', 'member', [], 'marta'),
+      member('u-ana', 'Ana', 'member', [], 'ana'),
+      member('u-marco', 'Marco', 'member', [], 'marco'),
     ],
     ais: [],
   },
@@ -67,7 +74,10 @@ export const mockGroupDetails: Record<string, GroupDetail> = {
     id: 'g-familia',
     title: 'Familia',
     createdBy: OWNER,
-    members: [member('u-you', 'You', 'owner'), member('u-sofia', 'Sofía', 'member')],
+    members: [
+      member('u-you', 'You', 'owner', [], 'you'),
+      member('u-sofia', 'Sofía', 'member', [], 'sofia'),
+    ],
     ais: [],
   },
   'c-qa': {

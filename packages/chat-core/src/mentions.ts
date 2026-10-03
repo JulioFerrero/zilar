@@ -42,8 +42,10 @@ export interface InsertMentionResult {
 }
 
 /**
- * Replaces the `@query` at the caret with `@Name ` and reports the mention to
- * record. Returns `undefined` when the caret is not in a mention query.
+ * Replaces the `@query` at the caret with `@handle ` when the member has one
+ * (T-0169), else `@Name ` as before, and reports the mention to record. The
+ * range always covers the inserted token, without the trailing space.
+ * Returns `undefined` when the caret is not in a mention query.
  */
 export function insertMention(
   text: string,
@@ -54,7 +56,8 @@ export function insertMention(
   if (query === undefined) {
     return undefined;
   }
-  const token = `@${member.name}`;
+  const token =
+    member.handle === undefined || member.handle === '' ? `@${member.name}` : `@${member.handle}`;
   const next = `${text.slice(0, query.start)}${token} ${text.slice(caret)}`;
   return {
     text: next,
@@ -162,16 +165,38 @@ function fold(value: string): string {
     .toLowerCase();
 }
 
-/** Members whose name contains the query, case- and accent-insensitively. */
+/**
+ * Members matching the query, case- and accent-insensitively: a handle prefix
+ * match (T-0169, the `@` itself is not part of the query), or a word-prefix
+ * match on the display name as before. Handle matches rank first, then name
+ * matches; ties keep the existing order.
+ */
 export function filterMentionMembers(
   members: readonly MentionMember[],
   query: string,
 ): MentionMember[] {
-  const needle = fold(query.trim());
+  const needle = fold(query.trim().replace(/^@/, ''));
   if (needle.length === 0) {
     return [...members];
   }
-  return members.filter((member) => fold(member.name).includes(needle));
+  const byHandle: MentionMember[] = [];
+  const byName: MentionMember[] = [];
+  for (const member of members) {
+    const handle =
+      member.handle === undefined || member.handle === '' ? undefined : fold(member.handle);
+    if (handle !== undefined && handle.startsWith(needle)) {
+      byHandle.push(member);
+      continue;
+    }
+    if (
+      fold(member.name)
+        .split(/\s+/)
+        .some((word) => word.startsWith(needle))
+    ) {
+      byName.push(member);
+    }
+  }
+  return [...byHandle, ...byName];
 }
 
 /**

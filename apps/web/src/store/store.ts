@@ -531,13 +531,15 @@ function withToggledReaction(message: UiMessage, emoji: string, name: string): U
   return next;
 }
 
-// The people and AIs of a group as mention members. The mock domain is fixed;
-// the real store builds each JID from the signed-in user's domain.
+// The people and AIs of a group as mention members. Handles pass through
+// from the detail (T-0169); AIs have none. The mock domain is fixed; the
+// real store builds each JID from the signed-in user's domain.
 function mentionMembersFor(detail: GroupDetail): MentionMember[] {
   return [
     ...detail.members.map((member) => ({
       jid: `${member.userId.toLowerCase()}@zilar.test`,
       name: member.name,
+      ...(member.handle == null || member.handle === '' ? {} : { handle: member.handle }),
     })),
     ...detail.ais.map((ai) => ({ jid: ai.jid, name: ai.name })),
   ];

@@ -103,6 +103,79 @@ describe('Composer mentions (T-0053)', () => {
     expect(within(listbox).queryByText('Luis')).toBeNull();
   });
 
+  it('offers a member by handle even when the display name does not match', () => {
+    renderApp('/c/c-viernes');
+
+    openPicker('@lui');
+    const listbox = screen.getByRole('listbox');
+    expect(within(listbox).getByText('Luis')).toBeTruthy();
+    expect(
+      within(screen.getByRole('option', { name: 'Luis @luis' })).getByText('@luis'),
+    ).toBeTruthy();
+  });
+
+  it('inserts @handle and keeps the mention JID', () => {
+    const { store } = renderApp('/c/c-viernes');
+    const textarea = openPicker('@marc');
+
+    fireEvent.keyDown(textarea, { key: 'Enter' });
+    expect(textarea.value).toBe('@marco ');
+    fireEvent.keyDown(textarea, { key: 'Enter' });
+
+    const sent = store.getState().messages('c-viernes').at(-1);
+    expect(sent?.text).toBe('@marco');
+    expect(sent?.mentions).toEqual([
+      { jid: 'u-marco@zilar.test', name: 'Marco', begin: 0, end: 6 },
+    ]);
+  });
+
+  it('distinguishes two members with the same display name by handle', () => {
+    renderApp('/c/c-viernes', {
+      currentUserId: 'u-you',
+      groupInfos: {
+        'c-viernes': {
+          id: 'g-viernes',
+          title: 'Viernes 🍻',
+          createdBy: 'u-luis',
+          members: [
+            { userId: 'u-you', name: 'You', role: 'member', handle: 'you' },
+            { userId: 'u-alex-1', name: 'Alex', role: 'member', handle: 'alex' },
+            { userId: 'u-alex-2', name: 'Alex', role: 'member', handle: 'alex_r' },
+          ],
+          ais: [],
+        },
+      },
+    });
+
+    openPicker('@alex');
+    const options = screen.getAllByRole('option', { name: /Alex @alex/ });
+    expect(options).toHaveLength(2);
+    expect(within(options[0]!).getByText('@alex')).toBeTruthy();
+    expect(within(options[1]!).getByText('@alex_r')).toBeTruthy();
+  });
+
+  it('inserts @Name for a member without a handle', () => {
+    renderApp('/c/c-viernes', {
+      currentUserId: 'u-you',
+      groupInfos: {
+        'c-viernes': {
+          id: 'g-viernes',
+          title: 'Viernes 🍻',
+          createdBy: 'u-luis',
+          members: [
+            { userId: 'u-you', name: 'You', role: 'member' },
+            { userId: 'u-nora', name: 'Nora', role: 'member' },
+          ],
+          ais: [],
+        },
+      },
+    });
+
+    const textarea = openPicker('@no');
+    fireEvent.keyDown(textarea, { key: 'Enter' });
+    expect(textarea.value).toBe('@Nora ');
+  });
+
   it('moves the selection with the arrow keys and picks with Enter', () => {
     renderApp('/c/c-viernes');
     const textarea = openPicker('@');
@@ -110,7 +183,7 @@ describe('Composer mentions (T-0053)', () => {
     fireEvent.keyDown(textarea, { key: 'ArrowDown' });
     fireEvent.keyDown(textarea, { key: 'Enter' });
 
-    expect(textarea.value).toBe('@Marta ');
+    expect(textarea.value).toBe('@marta ');
     expect(screen.queryByRole('listbox')).toBeNull();
   });
 
@@ -119,11 +192,11 @@ describe('Composer mentions (T-0053)', () => {
     const textarea = openPicker('@lu');
 
     fireEvent.keyDown(textarea, { key: 'Tab' });
-    expect(textarea.value).toBe('@Luis ');
+    expect(textarea.value).toBe('@luis ');
     fireEvent.keyDown(textarea, { key: 'Enter' });
 
     const sent = store.getState().messages('c-viernes').at(-1);
-    expect(sent?.text).toBe('@Luis');
+    expect(sent?.text).toBe('@luis');
     expect(sent?.mentions).toEqual([{ jid: 'u-luis@zilar.test', name: 'Luis', begin: 0, end: 5 }]);
   });
 
@@ -141,7 +214,7 @@ describe('Composer mentions (T-0053)', () => {
     renderApp('/c/c-viernes');
     const textarea = openPicker('@');
     fireEvent.keyDown(textarea, { key: 'Enter' });
-    expect(textarea.value).toBe('@Luis ');
+    expect(textarea.value).toBe('@luis ');
 
     textarea.setSelectionRange(5, 5);
     fireEvent.keyDown(textarea, { key: 'Backspace' });
@@ -153,14 +226,14 @@ describe('Composer mentions (T-0053)', () => {
     const { store } = renderApp('/c/c-viernes');
     const textarea = openPicker('@');
     fireEvent.keyDown(textarea, { key: 'Enter' });
-    expect(textarea.value).toBe('@Luis ');
+    expect(textarea.value).toBe('@luis ');
 
-    fireEvent.change(textarea, { target: { value: '@LuiX ' } });
-    fireEvent.change(textarea, { target: { value: '@LuiX hello' } });
+    fireEvent.change(textarea, { target: { value: '@luiX ' } });
+    fireEvent.change(textarea, { target: { value: '@luiX hello' } });
     fireEvent.keyDown(textarea, { key: 'Enter' });
 
     const sent = store.getState().messages('c-viernes').at(-1);
-    expect(sent?.text).toBe('@LuiX hello');
+    expect(sent?.text).toBe('@luiX hello');
     expect(sent?.mentions).toBeUndefined();
   });
 
@@ -307,7 +380,7 @@ describe('Composer chat switching (T-0053 review)', () => {
 
     fireEvent.change(textarea, { target: { value: '@' } });
     fireEvent.keyDown(textarea, { key: 'Enter' });
-    expect(textarea.value).toBe('@Luis ');
+    expect(textarea.value).toBe('@luis ');
     expect(screen.queryByRole('listbox')).toBeNull();
 
     rerender(tree('c-devteam'));
@@ -316,7 +389,7 @@ describe('Composer chat switching (T-0053 review)', () => {
     fireEvent.keyDown(screen.getByLabelText('Message'), { key: 'Enter' });
 
     const sent = store.getState().messages('c-devteam').at(-1);
-    expect(sent?.text).toBe('@Luis');
+    expect(sent?.text).toBe('@luis');
     expect(sent?.mentions).toBeUndefined();
   });
 });

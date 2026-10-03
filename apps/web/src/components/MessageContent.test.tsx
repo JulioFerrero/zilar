@@ -299,4 +299,36 @@ describe('mention chips (T-0053)', () => {
     expect(within(list).getByText('@Ana').className).toContain('mention-chip');
     expect(within(list).getByRole('link').getAttribute('href')).toBe('https://x.com/a');
   });
+
+  it('renders a tracked @handle range as a chip', () => {
+    renderGroup({
+      id: 'm5',
+      chatId: 'g1',
+      senderId: 'u-ana',
+      senderName: 'Ana',
+      text: 'hi @ana there',
+      createdAt: new Date(2026, 8, 27, 12, 41),
+      status: 'read',
+      mentions: [{ jid: 'u-ana@zilar.test', name: 'Ana', begin: 3, end: 7 }],
+    });
+
+    const chip = within(screen.getByTestId('message-list')).getByText('@ana');
+    expect(chip.className).toContain('mention-chip');
+  });
+
+  it('leaves a literal @handle without a range as plain text', () => {
+    renderGroup({
+      id: 'm6',
+      chatId: 'g1',
+      senderId: 'u-ana',
+      senderName: 'Ana',
+      text: 'hi @ana there',
+      createdAt: new Date(2026, 8, 27, 12, 41),
+      status: 'read',
+    });
+
+    const list = screen.getByTestId('message-list');
+    expect(within(list).getByText('hi @ana there')).toBeTruthy();
+    expect(list.querySelector('.mention-chip')).toBeNull();
+  });
 });
