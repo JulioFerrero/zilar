@@ -129,6 +129,105 @@ describe('push device store', () => {
     expect((await devicesForUser(context.db, ana.id)).map((row) => row.node)).toEqual(['p-second']);
   });
 
+  it('drops the stale enable-pair when a device re-registers (same endpoint, new node)', async () => {
+    // The row delete is scoped by user id AND endpoint in the same
+    // transaction as the insert: the old pair's node is reported to the
+    // admin seam so the caller can drop it in ejabberd, and a failure there
+    // never fails the registration. The seam carries ids only — no endpoint
+    // URL, no keys.
+    const app = testApp(context);
+    const ana = await bootstrapUser(context, app, 'ana@example.com');
+    const cipher = createPushCipher(STORAGE_KEY);
+    const { saveDevice } = await import('./store');
+    const now = new Date('2026-09-30T10:00:00Z');
+
+    await saveDevice(context.db, cipher, {
+      id: randomUUID(),
+      userId: ana.id,
+      node: 'p-old-pair',
+      subscription: subscription('https://push.example.com/sub/rereg'),
+      userAgent: null,
+      now,
+    });
+    const disabled: Array<{ userId: string; node: string }> = [];
+    await saveDevice(
+      context.db,
+      cipher,
+      {
+        id: randomUUID(),
+        userId: ana.id,
+        node: 'p-new-pair',
+        subscription: subscription('https://push.example.com/sub/rereg'),
+        userAgent: null,
+        now,
+      },
+      {
+        disablePushPair: (userId, node) => {
+          disabled.push({ userId, node });
+          return Promise.resolve();
+        },
+      },
+    );
+    expect(disabled).toEqual([{ userId: ana.id, node: 'p-old-pair' }]);
+    expect((await devicesForUser(context.db, ana.id)).map((row) => row.node)).toEqual([
+      'p-new-pair',
+    ]);
+
+    // A re-registration whose cleanup throws still registers: the stray
+    // pair's publishes drop as `unknown-device` instead of failing the call.
+    await saveDevice(
+      context.db,
+      cipher,
+      {
+        id: randomUUID(),
+        userId: ana.id,
+        node: 'p-newer-pair',
+        subscription: subscription('https://push.example.com/sub/rereg'),
+        userAgent: null,
+        now,
+      },
+      {
+        disablePushPair: () => Promise.reject(new Error('ejabberd is down')),
+      },
+    );
+    expect((await devicesForUser(context.db, ana.id)).map((row) => row.node)).toEqual([
+      'p-newer-pair',
+    ]);
+
+    // Another user's identical endpoint is untouched: the delete is scoped
+    // by user id, not by endpoint alone.
+    const bob = await contactOf(context, app, ana.id, 'bob@example.com');
+    await saveDevice(context.db, cipher, {
+      id: randomUUID(),
+      userId: bob.id,
+      node: 'p-bob',
+      subscription: subscription('https://push.example.com/sub/rereg'),
+      userAgent: null,
+      now,
+    });
+    const seen: string[] = [];
+    await saveDevice(
+      context.db,
+      cipher,
+      {
+        id: randomUUID(),
+        userId: ana.id,
+        node: 'p-newest-pair',
+        subscription: subscription('https://push.example.com/sub/rereg'),
+        userAgent: null,
+        now,
+      },
+      {
+        disablePushPair: (_userId, node) => {
+          seen.push(node);
+          return Promise.resolve();
+        },
+      },
+    );
+    expect(seen).toEqual(['p-newer-pair']);
+    expect((await devicesForUser(context.db, bob.id)).map((row) => row.node)).toEqual(['p-bob']);
+  });
+
   it('marks devices inactive after 90 days without a send', async () => {
     const app = testApp(context);
     const ana = await bootstrapUser(context, app, 'ana@example.com');

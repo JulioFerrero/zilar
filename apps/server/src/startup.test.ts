@@ -2,7 +2,12 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { ensureWritableDir, warnOnEmptyStorageDir } from './startup';
+import {
+  ensureWritableDir,
+  warnOnContainerLayerStorage,
+  warnOnEmptyStorageDir,
+  warnOnGifConfig,
+} from './startup';
 import { bootstrapUser, createTestContext } from './test-support';
 
 describe('ensureWritableDir', () => {
@@ -215,5 +220,88 @@ describe('ensureWritableDir failures', () => {
       expect.stringContaining('STICKER_STORAGE_DIR (/readonly/mount) is not writable'),
     );
     expect(exit).toHaveBeenCalledWith(1);
+  });
+});
+
+describe('warnOnContainerLayerStorage (T-0156)', () => {
+  it('warns once per directory on the container layer in production', async () => {
+    const warn = vi.fn();
+    await warnOnContainerLayerStorage({
+      dirs: [
+        { envName: 'STICKER_STORAGE_DIR', dir: '/data/stickers' },
+        { envName: 'AVATAR_STORAGE_DIR', dir: '/data/avatars' },
+        // Same dir twice: warned once, not twice.
+        { envName: 'STICKER_STORAGE_DIR', dir: '/data/stickers' },
+      ],
+      isProduction: true,
+      warn,
+      dirDevice: () => Promise.resolve(8),
+      rootDevice: () => Promise.resolve(8),
+    });
+    expect(warn).toHaveBeenCalledTimes(2);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('STICKER_STORAGE_DIR (/data/stickers) is on the container layer'),
+    );
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('AVATAR_STORAGE_DIR (/data/avatars) is on the container layer'),
+    );
+  });
+
+  it('stays quiet off production, on mounted volumes, or when stat fails', async () => {
+    // Off production: never warns, whatever the devices say.
+    const offProd = vi.fn();
+    await warnOnContainerLayerStorage({
+      dirs: [{ envName: 'STICKER_STORAGE_DIR', dir: '/data/stickers' }],
+      isProduction: false,
+      warn: offProd,
+      dirDevice: () => Promise.resolve(8),
+      rootDevice: () => Promise.resolve(8),
+    });
+    expect(offProd).not.toHaveBeenCalled();
+
+    // Mounted volume (different device from /): quiet.
+    const mounted = vi.fn();
+    await warnOnContainerLayerStorage({
+      dirs: [{ envName: 'STICKER_STORAGE_DIR', dir: '/data/stickers' }],
+      isProduction: true,
+      warn: mounted,
+      dirDevice: () => Promise.resolve(99),
+      rootDevice: () => Promise.resolve(8),
+    });
+    expect(mounted).not.toHaveBeenCalled();
+
+    // stat fails (dir missing, container down): skipped, never warns.
+    const failing = vi.fn();
+    await warnOnContainerLayerStorage({
+      dirs: [{ envName: 'STICKER_STORAGE_DIR', dir: '/data/stickers' }],
+      isProduction: true,
+      warn: failing,
+      dirDevice: () => Promise.reject(new Error('ENOENT')),
+      rootDevice: () => Promise.resolve(8),
+    });
+    expect(failing).not.toHaveBeenCalled();
+  });
+});
+
+describe('warnOnGifConfig (T-0156)', () => {
+  it('warns once when the provider is set without a key', () => {
+    const warn = vi.fn();
+    warnOnGifConfig({ provider: 'giphy', apiKey: undefined, warn });
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('GIF_PROVIDER'));
+    const serialised = JSON.stringify(warn.mock.calls);
+    expect(serialised).not.toContain('giphy');
+  });
+
+  it('stays quiet when both are set, both are unset, or only the key is set', () => {
+    for (const input of [
+      { provider: 'giphy', apiKey: 'some-key' },
+      { provider: undefined, apiKey: undefined },
+      { provider: undefined, apiKey: 'some-key' },
+    ]) {
+      const warn = vi.fn();
+      warnOnGifConfig({ ...input, warn });
+      expect(warn).not.toHaveBeenCalled();
+    }
   });
 });

@@ -41,9 +41,19 @@ if ! grep -q 'ZILAR_PUSH_COMPONENT_HOST' "$CONFIG_PATH"; then
   exit 1
 fi
 
+# Only the push host key on the marker line is ever replaced: the pattern
+# anchors on the exact marker comment (`# ZILAR_PUSH_COMPONENT_HOST` at end
+# of line) and captures the existing indentation, so no other key — even on
+# a line that happens to share the marker text elsewhere — is touched. The
+# write is verified afterwards: exactly one host line for this domain must
+# exist, or the script fails instead of booting with a half-written config.
+if [ "$(grep -c '# ZILAR_PUSH_COMPONENT_HOST$' "$CONFIG_PATH")" -ne 1 ]; then
+  echo "push-entrypoint: error: expected exactly one ZILAR_PUSH_COMPONENT_HOST marker line in $CONFIG_PATH — refusing to guess which one to replace" >&2
+  exit 1
+fi
 # The host key is YAML-indented under `hosts:` (six spaces). The domain was
-# validated by `./zilar init` (letters, digits, dots, hyphens, one optional
-# :port — no spaces, slashes or `$`), so it cannot break the line shape.
+# validated by `./zilar init` (letters, digits, dots, hyphens only — no
+# `:port`, spaces, slashes or `$`), so it cannot break the line shape.
 # Portable in-place edit: `sed -i` needs an argument on BSD (a backup
 # suffix) but takes the script directly on GNU, so always pass a backup
 # suffix and remove it afterwards — works on both. The replacement touches
@@ -53,7 +63,7 @@ fi
 sed -i.bak "s|^\\( *\\)[^ \t#][^:]*:[ \t]*# ZILAR_PUSH_COMPONENT_HOST$|\\1$PUSH_HOST:|" "$CONFIG_PATH"
 rm -f "$CONFIG_PATH.bak"
 
-if ! grep -q "^[[:space:]]*$PUSH_HOST:[[:space:]]*$" "$CONFIG_PATH"; then
-  echo "push-entrypoint: error: failed to write the push component host into $CONFIG_PATH" >&2
+if [ "$(grep -c "^[[:space:]]*$PUSH_HOST:[[:space:]]*$" "$CONFIG_PATH")" -ne 1 ]; then
+  echo "push-entrypoint: error: failed to write exactly one push component host line into $CONFIG_PATH" >&2
   exit 1
 fi

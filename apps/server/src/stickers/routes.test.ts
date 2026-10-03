@@ -408,6 +408,21 @@ describe('stickers routes', () => {
     const reordered = (await reorder.json()) as { stickers: Array<{ id: string }> };
     expect(reordered.stickers.map((sticker) => sticker.id)).toEqual([second.id, first.id]);
 
+    // A reorder list with a duplicate id fails distinctly instead of
+    // passing the completeness check while corrupting the pack.
+    const duplicated = await jsonRequest(app, 'PATCH', `/api/sticker-packs/${json.id}`, owner, {
+      order: [second.id, second.id],
+    });
+    expect(duplicated.status).toBe(400);
+    const duplicateBody = (await duplicated.json()) as { error: { code: string } };
+    expect(duplicateBody.error.code).toBe('duplicate_order');
+    // The failed reorder changed nothing: the good order above still stands.
+    const panel = (await (await jsonRequest(app, 'GET', '/api/sticker-packs', owner)).json()) as {
+      packs: Array<{ id: string; stickers: Array<{ id: string }> }>;
+    };
+    const pack = panel.packs.find((entry) => entry.id === json.id);
+    expect(pack?.stickers.map((sticker) => sticker.id)).toEqual([second.id, first.id]);
+
     const remove = await jsonRequest(
       app,
       'DELETE',
@@ -548,9 +563,9 @@ describe('stickers routes', () => {
   });
 
   it('resolves a relative storage dir against the package root, not the cwd', async () => {
-    const { isAbsolute, resolve } = await import('node:path');
+    const { dirname, isAbsolute, join, resolve } = await import('node:path');
     const { chdir, cwd } = await import('node:process');
-    const { SERVER_PACKAGE_ROOT, resolveStorageDir } = await import('./service');
+    const { SERVER_PACKAGE_ROOT, resolveStorageDir, serverPackageRoot } = await import('./service');
     // A relative value like the `./data/stickers` default: the same string
     // must resolve to the same directory from two different cwds (the repo
     // root a developer starts from, and the package root itself).
@@ -565,6 +580,32 @@ describe('stickers routes', () => {
       expect(isAbsolute(fromRepoRoot)).toBe(true);
     } finally {
       chdir(previous);
+    }
+    // The root is the directory holding the `@zilar/server` package.json,
+    // whatever the file's depth below it: from the source layout and from a
+    // built layout fixture alike (a build step that changes the output shape
+    // must not move a relative storage dir).
+    expect(serverPackageRoot(join(SERVER_PACKAGE_ROOT, 'src', 'stickers', 'service.ts'))).toBe(
+      SERVER_PACKAGE_ROOT,
+    );
+    expect(serverPackageRoot(join(SERVER_PACKAGE_ROOT, 'dist', 'stickers', 'service.js'))).toBe(
+      SERVER_PACKAGE_ROOT,
+    );
+    expect(serverPackageRoot(join(SERVER_PACKAGE_ROOT, 'dist', 'service.js'))).toBe(
+      SERVER_PACKAGE_ROOT,
+    );
+    // Without the marker the walk stops at the filesystem root and returns
+    // it unchanged, so callers never resolve against a wrong parent: a
+    // fixture package.json with another name does not count.
+    const fixture = join(dirname(SERVER_PACKAGE_ROOT), 'zilar-package-root-fixture');
+    const { mkdir, rm, writeFile } = await import('node:fs/promises');
+    await rm(fixture, { recursive: true, force: true });
+    await mkdir(join(fixture, 'other', 'nested'), { recursive: true });
+    try {
+      await writeFile(join(fixture, 'package.json'), JSON.stringify({ name: 'other' }));
+      expect(serverPackageRoot(join(fixture, 'other', 'nested', 'service.js'))).not.toBe(fixture);
+    } finally {
+      await rm(fixture, { recursive: true, force: true });
     }
     // An explicit base wins (the startup path uses the default base).
     expect(resolveStorageDir('data/stickers', '/var/lib/zilar')).toBe(
