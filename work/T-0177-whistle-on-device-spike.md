@@ -1,7 +1,7 @@
 ---
 id: T-0177
 title: Spike: transcribe voice notes on the phone with Cactus Whistle (Android, local Expo module)
-status: review
+status: merged
 milestone: M5
 branch: task/T-0177-whistle-on-device-spike
 model: meta/muse-spark-1.3-contributor
@@ -253,3 +253,20 @@ The pre-review (Muse) read the whole diff; its findings are accepted. Do them in
 7. Nits to take while you are there: fix the "streamed" comment in `download.ts` (`file.bytes()` loads the whole file), use the static `WhistleError` import instead of `await import('./result')`, and have `nativeTranscribeChunk` return an error string/nullable instead of `NULL` into a non-null Kotlin `String` so the `needle_last_error()` text is kept. Skip finding 8 (stale ref, ordering holds).
 
 Run every check, add a Round 1 part to your Report with real results, keep `status: review`, commit with the `T-0177:` prefix. Mark in the Report anything you could not compile or run.
+
+
+## Review round 2 (written by Claude)
+
+**Verdict:** Approved and merged (spike, hidden dev screen only).
+
+Round 1 findings 1-7 were all fixed by the worker. I then built the branch and ran it on the Android emulator and on Julio's phone, which found three problems the unit tests could not see; I fixed them in `a5130c0`:
+
+1. `AsyncFunction(...) Coroutine { ..., promise: Promise -> }` is not allowed by expo-modules-core (no type converter for `Promise`); it broke the whole module, so the screen said "not available". Now plain `AsyncFunction` with a `Promise` parameter.
+2. `crypto.subtle` does not exist in Hermes, so the checksum step threw. The sha256 is now streamed natively (`sha256File`), which also avoids holding the model in memory.
+3. JS passes `file://` URIs; Kotlin now normalises them for every entry point (load, decode, checksum).
+
+Also fixed on the dev screen: unreadable light-on-light result card; recording is 2 minutes so several chunks are exercised.
+
+**Real results on a vivo phone (arm64):** model download + sha256 + native load works; a 5 s clip transcribed in 0.8 s; a 2:00 Spanish clip (with an English phrase) transcribed in 12.8 s (first token 220 ms, 54.7 tok/s), roughly 80-90% right by Julio's ear. Quiet-cut chunking still falls back to even 28 s windows in production (no amplitudes are passed); the real feature task must pass real amplitudes.
+
+Not verified: iOS (declared Android only), low-end devices, background/lock during a long run.
