@@ -122,4 +122,39 @@ Open questions: none. The `u/[handle].tsx` retry uses an icon button (keeps
 to allowed files without a new Button import chain); lead may prefer the
 shared Button.
 
+## Round 1 (review findings, 2026-10-03)
+
+1. Must-fix, swallowed reload: `actOnRequest` in both the sheet and the
+   `u/[handle]` screen called the guarded `reloadProfile()` from inside
+   `runAction`'s work while the busy guard was held, so the reload was
+   silently dropped. Fix: extracted the whole flow into UI-free
+   `actOnProfileRequest` (`components/contacts/add-contact.ts`) — find the
+   row, run the action, re-fetch the profile inline in the same promise
+   chain; both call sites wrap it in `runAction`. Tests: `actOnProfileRequest`
+   with a fake mutable API — Cancel on `request_sent` ends with `none`,
+   Accept on `request_received` ends with `contact`, Decline ends with
+   `none`, missing row re-reads. Mutation check: with the post-action
+   refresh neutered, exactly those 3 tests fail; restored, 52/52 pass.
+   Commit `25910dd` ("T-0182: finding 1 - ...").
+2. Should-fix, tests: extracted UI-free `performRequestAction`
+   (`components/contacts/requests.ts`, returns the failure message or null;
+   row removed only on success) and wired the screen to it. Added:
+   error-state render (message + Retry, no empty text), one action test per
+   action (Accept/Decline/Cancel: API called once with the id, row
+   disappears, others stay), failure keeps the row with the mapped message.
+   Replaced the trivial `/Bearer/i` assertions with a `LEAKED_TOKEN` the
+   fake API carries: rendered trees and mapped failure messages assert not
+   to contain it. Also removed the now-unused `reloadProfile` in
+   `u/[handle].tsx` (lint `no-unused-vars`). Commit `603cd21`
+   ("T-0182: finding 2 - ...").
+3. Nit: `u/[handle].tsx` retry button now uses `RefreshCw` like the requests
+   screen (went in with finding 1's commit).
+
+Final checks: `pnpm exec prettier --check` on all touched files: pass (the
+only `format:check` failure repo-wide is the pre-existing untracked
+`PREREVIEW.md`, not mine, left alone). `pnpm lint`: pass. `pnpm typecheck`
+(11 packages): pass. `pnpm --filter @zilar/mobile test --maxWorkers=2
+contacts requests new-chat`: 5 files, 60 tests, all pass. Status stays
+review.
+
 ## Review (written by Claude)
