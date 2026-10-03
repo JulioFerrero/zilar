@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router';
+import { useNavigate } from 'react-router';
 import { MessageSquare, UserCheck, UserMinus, UserPlus, UserX } from 'lucide-react';
 import {
   ApiError,
