@@ -178,9 +178,13 @@ function createVoicePlayerHost(createPlayer?: () => HostPlayer): VoicePlayerHost
         // bubble is notified, so it alone shows playing. The previous
         // bubble is told to show paused through its own listener — the
         // shared player is never paused as a side effect of switching.
+        // A new native instance always releases the old one and subscribes
+        // its own status, even for the same message (finding 2, round 2):
+        // two quick plays racing the async import would otherwise leak the
+        // first player and leave the bubble's bar dead.
         const previous = activeMessageId;
-        if (sharedPlayer === undefined || previous !== messageId) {
-          if (sharedPlayer !== undefined && sharedPlayer !== player) {
+        if (sharedPlayer !== player) {
+          if (sharedPlayer !== undefined) {
             try {
               sharedPlayer.remove();
             } catch {

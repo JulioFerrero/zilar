@@ -84,6 +84,41 @@ describe('voice player host one-at-a-time (T-0154 review)', () => {
     stopB();
   });
 
+  it('two quick plays of the same message keep exactly one live player', () => {
+    const first = fakePlayer();
+    const second = fakePlayer();
+    let calls = 0;
+    const host = createVoicePlayerHostForTest(() => {
+      calls += 1;
+      return calls === 1 ? first : second;
+    });
+    const states = new Map<string, { playing: boolean; rate: number }>();
+    const progress: Array<{ positionMs: number; durationMs: number }> = [];
+    const stopState = subscribeVoiceState('m-a', (update) => states.set('m-a', update));
+    const stopProgress = subscribeVoiceProgress('m-a', (update) => progress.push(update));
+
+    // Two taps racing the async import: each built its own native player.
+    host.controls.play('m-a', { uri: 'file:///a.m4a' });
+    host.controls.play('m-a', { uri: 'file:///a.m4a' });
+
+    // Exactly one live player: the old one is released, and the bubble's
+    // status ticks arrive (the old code skipped both for the same id).
+    expect(first.calls).toContain('remove');
+    expect(second.calls).toContain('play');
+    expect(states.get('m-a')).toEqual({ playing: true, rate: 1 });
+    emitPlayerStatusForTest(second, {
+      playing: true,
+      didJustFinish: false,
+      currentTime: 1,
+      duration: 12,
+      error: null,
+    });
+    expect(progress.at(-1)).toEqual({ positionMs: 1000, durationMs: 12000 });
+
+    stopState();
+    stopProgress();
+  });
+
   it('pause B pauses the player and clears the registry', () => {
     const playerA = fakePlayer();
     const playerB = fakePlayer();

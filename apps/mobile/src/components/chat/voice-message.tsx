@@ -280,20 +280,22 @@ export function VoiceMessage({
             {speed}x
           </Text>
         </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={showTranscript ? 'Hide transcript' : 'Show transcript'}
-          onPress={() => setShowTranscript((value) => !value)}
-          className="rounded-md px-1.5 py-0.5"
-          style={showTranscript ? segment : iconKey}
-        >
-          <Text
-            className="text-[11px] font-semibold"
-            color={showTranscript ? undefined : ICON_COLOR}
+        {voice.transcript === undefined ? null : (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={showTranscript ? 'Hide transcript' : 'Show transcript'}
+            onPress={() => setShowTranscript((value) => !value)}
+            className="rounded-md px-1.5 py-0.5"
+            style={showTranscript ? segment : iconKey}
           >
-            Aa
-          </Text>
-        </Pressable>
+            <Text
+              className="text-[11px] font-semibold"
+              color={showTranscript ? undefined : ICON_COLOR}
+            >
+              Aa
+            </Text>
+          </Pressable>
+        )}
       </View>
       {uploading ? (
         <View className="mt-1 flex-row items-center gap-2">

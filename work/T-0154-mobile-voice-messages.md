@@ -77,6 +77,13 @@ pnpm --filter @zilar/mobile test --maxWorkers=2 voice attachment composer hooks-
 8. Play failures surface on the bubble: `subscribeVoicePlayError` + a `Could not play that voice message.` line under the bubble (same small danger-copy style as the upload error), on source-resolve failure, player-create failure, and player error ticks. 3 lines of UI.
 - Round-1 checks (`voice attachment composer hooks-guard`, `--maxWorkers=2`): 19 files, 132 passed. Neighbours: 102 files, 858 passed, 1 skipped, 1 failed — the same pre-existing date-sensitive stickers test.
 
+### Review round 2 (findings 1-4 fixed; finding 5 skipped per instructions)
+1. Send-boundary limits: new `validateRecording()` in `lib/voice.ts` (empty/too-large/too-short/too-long, with the server's `voice_*` codes) runs at the top of the port's `convert` — including the already-converted skip branch — and in `sendVoice` before any optimistic bubble, plus the existing recorder check. A 400 ms recording, a 12 MB m4a and a 6-min recording are each refused with zero slot/PUT calls (new tests); the always-true "port boundary" test is replaced by those real ones. `convertVoice` also re-validates the converted bytes + server duration.
+2. Same-message replay: `startWith` releases + resubscribes whenever the native instance differs (`sharedPlayer !== player`), regardless of message id. New test: two quick plays of one message end with one live player, the old one released, ticks reaching the bubble.
+3. Dead code deleted: `MIC_BUSY_MESSAGE`, `deniedCopy()`, `voiceErrorMessage()` (+ its test block; `voiceErrorCopy()` is the one mapper that stays, with its per-reason tests in the seam + bubble suites).
+4. Transcript toggle hidden when `voice.transcript` is undefined (real sends carry none); test for both states.
+- Round-2 checks (`voice attachment composer hooks-guard`, `--maxWorkers=2`): 19 files, 137 passed. Neighbours (`src/components/chat src/store src/lib src/mock`): 102 files, 863 passed, 1 skipped, 1 failed — the same pre-existing date-sensitive stickers test (`message-bubble-stickers.test.tsx`, fixed Oct 1 date vs 48 h window).
+
 ### Problems, deviations from the spec
 - Deviation: no real waveform extraction on device (web uses `AudioContext.decodeAudioData`; there is no equivalent here without a new dep) — sends use a flat placeholder waveform. Audible playback is unaffected.
 - Deviation: press-and-hold/slide-to-cancel gesture not implemented — tap-to-record (web's click mode) only. The timer row, cancel, send, caps and denial copy match web.

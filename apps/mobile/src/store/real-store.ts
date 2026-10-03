@@ -86,7 +86,7 @@ import {
 } from '../lib/attachments';
 import type { AttachmentUploader, PickedFile } from '../lib/attachment-ports';
 import type { ConvertedVoice, RecordedVoice, VoicePort } from '../lib/voice';
-import { createVoicePort, VoiceError } from '../lib/voice';
+import { createVoicePort, validateRecording, VoiceError } from '../lib/voice';
 import { voiceFailureReasonFor, type VoiceFailureReason } from '../lib/voice-native';
 import { CURRENT_USER_ID, mobileUploadOf, type MobileMessage } from '../lib/types';
 import type { ChatStoreState, ConnectionStatus, DraftState } from './types';
@@ -3282,6 +3282,17 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       sendVoice: (chatId, recording, options) => {
         const chat = get().chats.find((entry) => entry.id === chatId);
         if (chat === undefined) {
+          return;
+        }
+        // The send boundary (finding 1, review round 2): refuse an
+        // over-limit recording here too, before any optimistic bubble, slot
+        // request or PUT — the composer is not the only caller.
+        try {
+          validateRecording(recording);
+        } catch {
+          set({
+            actionError: { chatId, message: 'That recording is too long to send.' },
+          });
           return;
         }
         const durationMs = Math.max(1, Math.round(recording.durationMs));

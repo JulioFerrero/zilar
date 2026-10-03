@@ -50,6 +50,29 @@ export interface RecordedVoice {
   durationMs: number;
 }
 
+/**
+ * Refuses a recording that breaks the send limits, before any request
+ * (finding 1, review round 2): the already-converted skip branch must not
+ * bypass the size/duration guards, and the composer is not the only caller.
+ * Empty/too-large carry the server's `voice_*` codes so the store maps them
+ * to the matching fixed failure reason; the sub-1s floor and the 5-min cap
+ * reuse the same codes the recorder path reports.
+ */
+export function validateRecording(recording: Pick<RecordedVoice, 'size' | 'durationMs'>): void {
+  if (recording.size === 0) {
+    throw new VoiceError('voice_empty', 'The recording is empty');
+  }
+  if (recording.size > VOICE_MAX_BYTES) {
+    throw new VoiceError('voice_too_large', 'The recording is too long to send');
+  }
+  if (recording.durationMs < VOICE_MIN_MS) {
+    throw new VoiceError('voice_too_short', 'The recording is too short');
+  }
+  if (recording.durationMs > VOICE_MAX_DURATION_MS) {
+    throw new VoiceError('voice_too_long', 'The recording is too long');
+  }
+}
+
 /** The converted bytes plus the server-measured duration, like web. */
 export interface ConvertedVoice {
   /** The AAC/M4A bytes produced by the server (or the local file). */
@@ -81,7 +104,7 @@ async function errorCode(response: Response): Promise<string> {
  * header is authoritative, like on web.
  */
 export async function convertVoice(
-  file: { uri: string; mimeType: string; size: number },
+  file: { uri: string; mimeType: string; size: number; durationMs: number },
   options?: {
     apiUrl?: string;
     getToken?: () => Promise<string | undefined>;
@@ -91,12 +114,7 @@ export async function convertVoice(
   },
 ): Promise<ConvertedVoice> {
   const fetchFn = options?.fetchFn ?? fetch;
-  if (file.size === 0) {
-    throw new VoiceError('voice_empty', 'The recording is empty');
-  }
-  if (file.size > VOICE_MAX_BYTES) {
-    throw new VoiceError('voice_too_large', 'The recording is too long to send');
-  }
+  validateRecording({ size: file.size, durationMs: file.durationMs });
   const apiUrl = options?.apiUrl;
   const token = await options?.getToken?.().catch(() => undefined);
   if (apiUrl === undefined || token === undefined) {
@@ -141,6 +159,7 @@ export async function convertVoice(
     throw new VoiceError('invalid_response', 'The server sent no duration');
   }
   const audio = new Uint8Array(await response.arrayBuffer());
+  validateRecording({ size: audio.byteLength, durationMs });
   return { uri: file.uri, mimeType: VOICE_MIME, size: audio.byteLength, durationMs };
 }
 
@@ -218,50 +237,26 @@ export function createVoicePort(options: {
   readFile?: ((uri: string) => Promise<Uint8Array>) | undefined;
 }): VoicePort {
   return {
-    convert: (recording) =>
-      recording.size === 0
-        ? Promise.reject(new VoiceError('voice_empty', 'The recording is empty'))
-        : isAlreadyConverted(recording)
-          ? Promise.resolve({
-              uri: recording.uri,
-              mimeType: VOICE_MIME,
-              size: recording.size,
-              durationMs: recording.durationMs,
-            })
-          : convertVoice(recording, {
-              apiUrl: options.apiUrl,
-              getToken: options.getToken,
-              fetchFn: options.fetchFn,
-              readFile: options.readFile,
-            }),
+    convert: async (recording) => {
+      // The send boundary (finding 1): the skip branch enforces the same
+      // size/duration limits as the conversion path, so an over-limit m4a
+      // never reaches the upload slot or the PUT.
+      validateRecording(recording);
+      return isAlreadyConverted(recording)
+        ? {
+            uri: recording.uri,
+            mimeType: VOICE_MIME,
+            size: recording.size,
+            durationMs: recording.durationMs,
+          }
+        : await convertVoice(recording, {
+            apiUrl: options.apiUrl,
+            getToken: options.getToken,
+            fetchFn: options.fetchFn,
+            readFile: options.readFile,
+          });
+    },
     upload: (requester, audio, onProgress, messageId) =>
       uploadVoice(requester, options.uploader, audio, onProgress, messageId),
   };
-}
-
-/** Maps any voice-pipeline error to the plain copy the bubble shows. */
-export function voiceErrorMessage(error: unknown, offline: boolean): string {
-  if (offline) {
-    return 'Could not send. Check your connection.';
-  }
-  const code =
-    error !== null && typeof error === 'object' && 'code' in error
-      ? (error as { code?: unknown }).code
-      : '';
-  if (code === 'voice_too_long' || code === 'voice_too_large') {
-    return 'That recording is too long to send.';
-  }
-  if (code === 'voice_empty') {
-    return 'That recording is empty.';
-  }
-  if (code === 'voice_not_audio') {
-    return 'That recording could not be read.';
-  }
-  if (code === 'upload_failed') {
-    return 'Could not upload the recording.';
-  }
-  if (code === 'network_error') {
-    return 'Could not reach the server.';
-  }
-  return 'Could not send the voice message.';
 }

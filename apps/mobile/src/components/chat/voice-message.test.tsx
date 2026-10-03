@@ -157,4 +157,33 @@ describe('voice bubble (T-0154)', () => {
     );
     expect(html).toContain('Playback speed 1x');
   });
+
+  it('hides the transcript toggle when the voice has no transcript', () => {
+    const html = renderToStaticMarkup(
+      createElement(VoiceMessage, {
+        voice: { ...VOICE, url: 'https://upload.zilar.test/get/voice.m4a' },
+        outgoing: false,
+        message: BASE_MESSAGE,
+        controls: CONTROLS,
+      }),
+    );
+    expect(html).not.toContain('Show transcript');
+    expect(html).not.toContain('Hide transcript');
+  });
+
+  it('shows the transcript toggle when the voice has a transcript', () => {
+    const html = renderToStaticMarkup(
+      createElement(VoiceMessage, {
+        voice: {
+          ...VOICE,
+          url: 'https://upload.zilar.test/get/voice.m4a',
+          transcript: { text: 'hello', source: 'local' as const },
+        },
+        outgoing: false,
+        message: BASE_MESSAGE,
+        controls: CONTROLS,
+      }),
+    );
+    expect(html).toContain('Show transcript');
+  });
 });

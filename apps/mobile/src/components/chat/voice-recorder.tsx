@@ -21,7 +21,6 @@ import { useColorScheme } from 'nativewind';
  */
 
 import {
-  MIC_DENIED_MESSAGE,
   RECORD_TOO_LONG_MESSAGE,
   RECORD_TOO_SHORT_MESSAGE,
   type FinishedRecording,
@@ -55,10 +54,6 @@ export async function runRecorderBegin(
     return { started: false, error: started.message };
   }
   return { started: true };
-}
-
-export function deniedCopy(): string {
-  return MIC_DENIED_MESSAGE;
 }
 
 /**

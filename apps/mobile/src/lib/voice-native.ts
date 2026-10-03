@@ -14,7 +14,6 @@ import { isTrustedMediaUrl, safeHttpUrl } from './attachments';
 
 export const MIC_DENIED_MESSAGE =
   'Zilar needs access to your microphone to record voice messages. You can allow it in Settings.';
-export const MIC_BUSY_MESSAGE = 'The microphone is busy. Try again.';
 export const MIC_FAILED_MESSAGE = 'Could not start recording. Try again.';
 export const RECORD_TOO_SHORT_MESSAGE =
   'That recording was too short. Hold the mic a moment longer.';
@@ -41,6 +40,9 @@ export function voiceFailureReasonFor(error: unknown, offline: boolean): VoiceFa
     return 'too_large';
   }
   if (code === 'voice_empty' || code === 'voice_not_audio' || code === 'invalid_response') {
+    return 'unsupported_file';
+  }
+  if (code === 'voice_too_short') {
     return 'unsupported_file';
   }
   if (
