@@ -87,18 +87,31 @@ Animated avatars, per-chat wallpapers, XMPP vCard avatars for other clients, mob
 - Deploy/docs: both compose files, `deploy/zilar`, `deploy/tests/storage-safety.test.sh`, `docs/INSTALL_DOCKER.md`.
 
 ### Commands run and real results
-- `pnpm install`: ok (7.2s).
-- `pnpm format:check`: pass. `pnpm lint` (oxlint): pass. `pnpm typecheck` (11 tasks): pass.
-- `pnpm --filter @zilar/server test --maxWorkers=2 src/avatars src/stickers src/config.test.ts src/contacts src/chats src/authz-sweep.test.ts`: 10 files, 172 passed.
-- `pnpm --filter @zilar/web test --maxWorkers=2 src/components src/routes src/lib/api.test.ts`: 78 files, 789 passed.
+- `pnpm install`: ok (7.2s, from the base commit; no new dependencies added).
+- `pnpm format:check`: pass. `pnpm lint` (oxlint): pass, no warnings. `pnpm typecheck` (11 tasks): pass.
+- `pnpm --filter @zilar/server test --maxWorkers=2 src/avatars src/stickers src/config.test.ts src/contacts src/chats src/authz-sweep.test.ts`: 10 files, 177 passed.
+- `pnpm --filter @zilar/web test --maxWorkers=2 src/components src/routes src/lib/api.test.ts`: 78 files, 789 passed (unchanged since base commit — no web files touched by this fix round).
 - `sh deploy/tests/storage-safety.test.sh`: pass=24 fail=0 (both compose files render with sticker + avatar volumes; backup/restore dry-runs list all three stores).
-- Neighbours: server `src/ais src/groups src/directory src/auth src/search` 269 passed; server `src/app.test.ts` 8 passed; web `src/store src/mock src/auth` 240 passed.
+
+### Review fixes (lead review of 555014e, PREREVIEW.md)
+1. Animated-sticker regression fixed: the shared probe is animation-neutral again — it returns `info.animated` (VP8X flag / APNG `acTL`) and stays `ok`, so sticker upload and the Telegram import keep their exact T-0120 behavior. Only `checkAvatarBytes` rejects animated images (`avatar_animated`). The wrong `probeErrorCode` comment is gone. Tests: sticker upload accepts an animated WebP and an APNG (`routes.test.ts`), the Telegram import stores an animated WebP file (`telegram-import-routes.test.ts`), the probe flags animated on the info (`image.test.ts`), and the avatar suite rejects those same bytes (`routes.test.ts` "rejects the same animated bytes the sticker upload accepts").
+2. `apps/server/Dockerfile`: added `/data/avatars` to the existing `mkdir -p` + `chown` line, exactly like `/data/stickers` (lead-approved; listed here as a Deviation since it is outside the original Allowed files).
+3. Removed the unreachable decoded-size branch in `checkAvatarBytes`; the comment now says honestly that the bomb case is enforced upstream by the shared probe (`too_large`/`decode_too_large` → `avatar_not_image`, pinned by the 1024-side test).
+4. `deleteAvatar` is atomic: read + delete-by-exact-`(ownerKind, ownerId, storageKey)` run in one transaction under the same advisory lock as replace, so a delete racing a put removes the old row with its old file or nothing — never the new row. New concurrency test ("a delete racing a replace never leaves a row without a file").
+
+Acceptance re-check (each line against a test):
+- Set/replace/remove per kind + display + initials fallback: avatar route tests (person / group+channel / AI), chat-list/group-detail/member/directory assertions in the same suite; web display tests per kind (ChatListItem group row, GroupPanel member+AI, AiPanel, ExplorePage) + Avatar initials tests.
+- Every refusal kind + lying content-type: the "refuses a non-image…" case table (svg, gif, animated WebP, APNG, non-square ×2, too small, too big, 60 000 bomb, empty) + 256 KB 413 test + lying-`Content-Type` test, each asserting nothing stored.
+- Replace never leaves owner without a picture + old file gone + concurrent uploads → one row: "replace swaps the file…", "a delete racing a replace…" (finding 4), "concurrent uploads…".
+- Backup/restore test passes with the new volume; server creates a missing dir at startup: `storage-safety.test.sh` 24/24; startup path is the shared `ensureWritableDir` (covered by `startup.test.ts`, untouched).
+- 401 sweep + rate limit + uniform 404 + ids-only audit: sweep 5/5 lists all 3 avatar routes → 401; "rate limits uploads to 10 per hour", "same 404", audit detail `{ownerKind, ownerId}` (pre-review verified no other fields).
 
 ### Problems, deviations from the spec
 - Spec says `AVATAR_STORAGE_DIR` default `/data/avatars`, but also "same rules as `STICKER_STORAGE_DIR`" whose default is `./data/stickers` (relative, resolved against the package root; production compose pins the absolute path). I used `./data/avatars` as the default for dev parity, `/data/avatars` fixed in both compose files. Say the word if the default must be absolute.
 - Spec's "64 to 512" top end: sides past 512 are refused by the shared sticker probe (max 512) before the avatar range check, so the code is `avatar_bad_size` and the test pins `avatar_not_image` for a 1024 side. Same 400 refusal, different code.
 - The sticker `routes.test.ts` VP8X fixture carried the animation flag (0x12); the shared probe now rejects it, so I flipped that fixture to static (0x10) and documented why. Sticker behaviour unchanged (stickers accept animated WebP; the `animated` probe error maps to `sticker_not_image` there).
 - Uploader has no drag-and-drop onto the section (only the file picker + in-dialog drag-to-position); spec's "(or drop one)" reads as the file choice, and no dropzone existed to reuse. A 6-line addition if the lead wants a real drop target.
+- Deviation (lead-approved in review): `apps/server/Dockerfile` gained `/data/avatars` on the existing `mkdir -p`/`chown` line, outside the original Allowed files.
 - Topic member rows and topic AI rows reuse the group detail's pictures via lookup (topic APIs carry no picture fields); channel subscriber rows for non-admins show initials (that audience list is admin-only server-side). Message-bubble sender avatars keep initials (no per-message picture field; out of scope to add one).
 - No mock-mode avatar support (`mock/api.ts` untouched — not in Allowed files); the uploader in mock mode hits the mock 404 path with a clear error.
 

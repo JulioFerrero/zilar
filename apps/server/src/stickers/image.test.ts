@@ -134,31 +134,31 @@ describe('probeStickerBytes', () => {
   it('accepts a valid PNG with its dimensions', () => {
     expect(probeStickerBytes(pngBytes(512, 512))).toEqual({
       ok: true,
-      info: { mime: 'image/png', width: 512, height: 512 },
+      info: { mime: 'image/png', width: 512, height: 512, animated: false },
     });
   });
 
   it('accepts static and animated WebP with their dimensions', () => {
     expect(probeStickerBytes(vp8Bytes(100, 200))).toEqual({
       ok: true,
-      info: { mime: 'image/webp', width: 100, height: 200 },
+      info: { mime: 'image/webp', width: 100, height: 200, animated: false },
     });
     expect(probeStickerBytes(vp8lBytes(64, 64))).toEqual({
       ok: true,
-      info: { mime: 'image/webp', width: 64, height: 64 },
+      info: { mime: 'image/webp', width: 64, height: 64, animated: false },
     });
     expect(probeStickerBytes(vp8xBytes(320, 240))).toEqual({
       ok: true,
-      info: { mime: 'image/webp', width: 320, height: 240 },
+      info: { mime: 'image/webp', width: 320, height: 240, animated: false },
     });
   });
 
-  it('rejects animated WebP and APNG as animated, not as unknown', () => {
+  it('flags animated WebP and APNG on the info, never as a failure', () => {
     expect(isAnimatedWebp(vp8xBytes(64, 64, true))).toBe(true);
     expect(isAnimatedWebp(vp8xBytes(64, 64))).toBe(false);
     expect(probeStickerBytes(vp8xBytes(64, 64, true))).toEqual({
-      ok: false,
-      error: 'animated',
+      ok: true,
+      info: { mime: 'image/webp', width: 64, height: 64, animated: true },
     });
     const still = pngBytes(64, 64);
     expect(isAnimatedPng(still)).toBe(false);
@@ -180,7 +180,10 @@ describe('probeStickerBytes', () => {
     const animated = concat(still.subarray(0, 8), ihdr, actl, idat);
     expect(isAnimatedPng(animated)).toBe(true);
     expect(isAnimatedImage(animated)).toBe(true);
-    expect(probeStickerBytes(animated)).toEqual({ ok: false, error: 'animated' });
+    expect(probeStickerBytes(animated)).toEqual({
+      ok: true,
+      info: { mime: 'image/png', width: 64, height: 64, animated: true },
+    });
   });
 
   it('rejects a PNG header claiming 60 000 x 60 000', () => {

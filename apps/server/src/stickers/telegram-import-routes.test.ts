@@ -139,6 +139,31 @@ describe('telegram sticker import', () => {
     expect(body.pack.stickers.map((sticker) => sticker.emoji)).toEqual(['🐱', '😂']);
   });
 
+  it('imports an animated WebP file as a sticker (T-0120 allows animated)', async () => {
+    // A minimal VP8X WebP with the animation flag set (0x12): Telegram
+    // serves animated stickers as files; the import stores them like any
+    // static one (the `animated` entry flag only skips .tgs/.webm, which
+    // never reach the download).
+    const ascii = (text: string): number[] => [...text].map((char) => char.charCodeAt(0));
+    const animated = new Uint8Array(34);
+    animated.set(ascii('RIFF'), 0);
+    animated.set(ascii('WEBP'), 8);
+    animated.set(ascii('VP8X'), 12);
+    animated.set([10, 0, 0, 0, 0x12, 0, 0, 0], 16);
+    animated.set([99, 0, 0], 24);
+    animated.set([99, 0, 0], 27);
+    animated.set([0, 0, 0, 0], 30);
+    const client = fakeClient(
+      stickerSet([{ sourceId: 'u-1', fileId: 'f-1', emoji: '🐱', animated: false }]),
+      { 'f-1': animated },
+    );
+    const response = await importRequest(appWithFake(client), owner, { input: 'FunCats' });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { imported: number; skippedInvalid: number };
+    expect(body.imported).toBe(1);
+    expect(body.skippedInvalid).toBe(0);
+  });
+
   it('skips invalid files and counts them', async () => {
     const client = fakeClient(
       stickerSet([

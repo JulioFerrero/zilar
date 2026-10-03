@@ -17,6 +17,10 @@ export interface StickerImageInfo {
   mime: StickerMime;
   width: number;
   height: number;
+  /** True for an animated WebP (VP8X with the animation flag) or an APNG
+   *  (an `acTL` chunk before any `IDAT`). Set by the parser, never a
+   *  failure: stickers accept animated images, avatars reject them. */
+  animated: boolean;
 }
 
 export type StickerProbeError =
@@ -26,8 +30,7 @@ export type StickerProbeError =
   | 'invalid_dimensions'
   | 'too_large'
   | 'decode_too_large'
-  | 'unsupported_layout'
-  | 'animated';
+  | 'unsupported_layout';
 
 /** True when the bytes carry an animated image: an animated WebP (VP8X with
  *  the animation flag) or an APNG (an `acTL` chunk before any `IDAT`). */
@@ -173,7 +176,7 @@ function parsePng(
   if (!checked.ok) {
     return checked;
   }
-  return { ok: true, info: { mime: 'image/png', width, height } };
+  return { ok: true, info: { mime: 'image/png', width, height, animated: isAnimatedPng(bytes) } };
 }
 
 /**
@@ -204,7 +207,9 @@ function parseWebp(
     if (!checked.ok) {
       return checked;
     }
-    return { ok: true, info: { mime: 'image/webp', width, height } };
+    // Lossy VP8 has no animation flag of its own: animated frames share the
+    // first frame's size, so report static here.
+    return { ok: true, info: { mime: 'image/webp', width, height, animated: false } };
   }
   if (chunk === 'VP8L') {
     // Lossless: 1-byte signature 0x2F, then 14-bit (width-1) and 14-bit
@@ -222,7 +227,8 @@ function parseWebp(
     if (!checked.ok) {
       return checked;
     }
-    return { ok: true, info: { mime: 'image/webp', width, height } };
+    // Lossless VP8L is always a still.
+    return { ok: true, info: { mime: 'image/webp', width, height, animated: false } };
   }
   if (chunk === 'VP8X') {
     // Extended: 1 flag byte + 3 reserved/FIXED bytes, then 24-bit
@@ -236,7 +242,10 @@ function parseWebp(
     if (!checked.ok) {
       return checked;
     }
-    return { ok: true, info: { mime: 'image/webp', width, height } };
+    return {
+      ok: true,
+      info: { mime: 'image/webp', width, height, animated: isAnimatedWebp(bytes) },
+    };
   }
   return { ok: false, error: 'unsupported_layout' };
 }
@@ -246,9 +255,11 @@ export type StickerProbeResult =
 
 /**
  * Detects and validates a sticker upload from its bytes. Accepts only PNG
- * and WebP within the size and dimension limits; SVG, GIF, APNG and anything
- * else fail as `unknown_type` (magic bytes never match) or as an explicit
- * layout error. Never trusts the caller's content type or file name.
+ * and WebP (static or animated) within the size and dimension limits; SVG,
+ * GIF and anything else fail as `unknown_type` (magic bytes never match) or
+ * as an explicit layout error. The result carries an `animated` flag (an
+ * animated WebP or an APNG) for callers that only accept stills. Never
+ * trusts the caller's content type or file name.
  */
 export function probeStickerBytes(bytes: Uint8Array): StickerProbeResult {
   if (bytes.byteLength === 0) {
@@ -258,24 +269,10 @@ export function probeStickerBytes(bytes: Uint8Array): StickerProbeResult {
     return { ok: false, error: 'too_large' };
   }
   if (isPng(bytes)) {
-    const parsed = parsePng(bytes);
-    if (!parsed.ok) {
-      return parsed;
-    }
-    if (isAnimatedPng(bytes)) {
-      return { ok: false, error: 'animated' };
-    }
-    return parsed;
+    return parsePng(bytes);
   }
   if (isWebp(bytes)) {
-    const parsed = parseWebp(bytes);
-    if (!parsed.ok) {
-      return parsed;
-    }
-    if (isAnimatedWebp(bytes)) {
-      return { ok: false, error: 'animated' };
-    }
-    return parsed;
+    return parseWebp(bytes);
   }
   if (bytes.byteLength < 12) {
     return { ok: false, error: 'too_small' };
@@ -283,10 +280,7 @@ export function probeStickerBytes(bytes: Uint8Array): StickerProbeResult {
   return { ok: false, error: 'unknown_type' };
 }
 
-/** Maps a probe failure to the public error code of the upload route.
- *  `animated` maps to `sticker_not_image`: stickers accept animated WebP,
- *  so callers that need the distinction (avatars) check the probe error
- *  itself instead of this code. */
+/** Maps a probe failure to the public error code of the upload route. */
 export function probeErrorCode(
   error: StickerProbeError,
 ): 'sticker_not_image' | 'sticker_too_large' {

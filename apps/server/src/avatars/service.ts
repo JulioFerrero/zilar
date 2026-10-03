@@ -7,11 +7,7 @@ import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
 import { ais, avatars, groupMembers, user, type AvatarOwnerKind } from '../db/schema';
 import { HttpError } from '../errors';
-import {
-  probeStickerBytes,
-  STICKER_MAX_DECODED_BYTES,
-  type StickerImageInfo,
-} from '../stickers/image';
+import { isAnimatedImage, probeStickerBytes, type StickerImageInfo } from '../stickers/image';
 import { resolveStorageDir } from '../stickers/service';
 
 // Profile pictures for people, AIs, groups and channels (T-0165). The
@@ -59,10 +55,13 @@ export interface AvatarCheck {
 }
 
 // Validates raw upload bytes: at most 256 KB, a static WebP or PNG by
-// magic bytes (never the client's content type or file name), square,
-// with a side in [64, 512], and the decoded size under the shared
-// decompression-bomb limit. Static-only: animated WebP and APNG fail as
-// `avatar_animated`, not as "not an image".
+// magic bytes (never the client's content type or file name), square, with
+// a side in [64, 512]. Static-only: an animated WebP or APNG fails as
+// `avatar_animated`, not as "not an image". The huge-decoded-size case
+// ("claims a huge decoded size") is enforced upstream by the shared sticker
+// probe (`too_large`/`decode_too_large` map to `avatar_not_image` below);
+// past the square and 64..512 checks no further bomb check can fire
+// (512 x 512 x 4 is 1 MiB, under the shared 4 MiB limit).
 export function checkAvatarBytes(bytes: Uint8Array): AvatarCheck {
   if (bytes.byteLength === 0) {
     return { error: 'avatar_empty' };
@@ -72,21 +71,24 @@ export function checkAvatarBytes(bytes: Uint8Array): AvatarCheck {
   }
   const probed = probeStickerBytes(bytes);
   if (!probed.ok) {
-    return { error: probed.error === 'animated' ? 'avatar_animated' : 'avatar_not_image' };
+    return { error: 'avatar_not_image' };
   }
   const { info } = probed;
+  // The probe stays animation-neutral for stickers (T-0120 accepts animated
+  // WebP/APNG); only avatars reject animated images, checked here.
+  if (info.animated || isAnimatedImage(bytes)) {
+    return { error: 'avatar_animated' };
+  }
   if (info.width !== info.height) {
     return { error: 'avatar_not_square' };
   }
   // The order matters: the shared sticker probe caps at 512 px, so a side
   // past the avatar range surfaces here as `avatar_bad_size` — except a
-  // side past 512, which the probe already refused. Keep the square check
-  // first (a 1024x512 file is "not square", not "bad size").
+  // side past 512, which the probe already refused as `too_large` (mapped
+  // to `avatar_not_image` above). Keep the square check first (a 1024x512
+  // file is "not square", not "bad size").
   if (info.width < AVATAR_MIN_SIDE || info.width > AVATAR_MAX_SIDE) {
     return { error: 'avatar_bad_size' };
-  }
-  if (info.width * info.height * 4 > STICKER_MAX_DECODED_BYTES) {
-    return { error: 'avatar_not_image' };
   }
   return { info };
 }
@@ -251,7 +253,11 @@ export async function uploadAvatar(
 
 // Removes the row and the file; idempotent (a missing picture is `{ ok:
 // true }`). The permission check runs first, so strangers cannot probe
-// whether a picture exists.
+// whether a picture exists. The read and the delete share the owner's
+// advisory lock (the same lock `uploadAvatar` holds) and the delete names
+// the exact row that was read (`ownerKind`, `ownerId`, `storageKey`), so a
+// delete racing a replace removes either the old row with its old file or
+// nothing at all — never the new row while deleting the old file.
 export async function deleteAvatar(
   deps: AvatarsServiceDeps,
   kind: AvatarKind,
@@ -259,19 +265,35 @@ export async function deleteAvatar(
   userId: string,
 ): Promise<void> {
   await checkAvatarWritePermission(deps.db, kind, ownerId, userId);
-  const [row] = await deps.db
-    .select()
-    .from(avatars)
-    .where(and(eq(avatars.ownerKind, kind), eq(avatars.ownerId, ownerId)))
-    .limit(1);
-  if (!row) {
+  let storageKey: string | null = null;
+  await deps.db.transaction(async (tx) => {
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtext(${'avatar:' + kind + ':' + ownerId}))`,
+    );
+    const [row] = await tx
+      .select({ storageKey: avatars.storageKey })
+      .from(avatars)
+      .where(and(eq(avatars.ownerKind, kind), eq(avatars.ownerId, ownerId)))
+      .limit(1);
+    if (!row) {
+      return;
+    }
+    storageKey = row.storageKey;
+    await tx
+      .delete(avatars)
+      .where(
+        and(
+          eq(avatars.ownerKind, kind),
+          eq(avatars.ownerId, ownerId),
+          eq(avatars.storageKey, row.storageKey),
+        ),
+      );
+  });
+  if (storageKey === null) {
     return;
   }
-  await deps.db
-    .delete(avatars)
-    .where(and(eq(avatars.ownerKind, kind), eq(avatars.ownerId, ownerId)));
   const storageDir = resolveStorageDir(deps.storageDir);
-  await rm(join(storageDir, row.storageKey), { force: true }).catch(() => {});
+  await rm(join(storageDir, storageKey), { force: true }).catch(() => {});
   if (deps.audit) {
     await deps.audit.record({
       actorUserId: userId,

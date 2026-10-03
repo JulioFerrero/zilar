@@ -6,6 +6,7 @@ import { eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { createApp } from '../app';
 import { aiLimits, ais, avatars, providerConnections } from '../db/schema';
+import { avatarUrlFor } from './service';
 import {
   bootstrapUser,
   contactOf,
@@ -357,6 +358,55 @@ describe('avatars routes', () => {
       expect(((await response.json()) as { error: { code: string } }).error.code, name).toBe(code);
     }
     expect(await context.db.select().from(avatars)).toHaveLength(0);
+  });
+
+  it('rejects the same animated bytes the sticker upload accepts', async () => {
+    // The sticker suite pins that these exact shapes upload as stickers
+    // (T-0120 allows animated); avatars must refuse them as stills-only.
+    for (const [name, bytes] of [
+      ['animated webp', animatedWebp(128)],
+      ['apng', apngSquare(128)],
+    ] as const) {
+      const response = await putAvatar('user', alice.id, alice, bytes);
+      expect(response.status, name).toBe(400);
+      expect(((await response.json()) as { error: { code: string } }).error.code, name).toBe(
+        'avatar_animated',
+      );
+    }
+    expect(await context.db.select().from(avatars)).toHaveLength(0);
+  });
+
+  it('a delete racing a replace never leaves a row without a file', async () => {
+    const first = await putAvatar('user', alice.id, alice, pngSquare(128));
+    expect(first.status).toBe(200);
+    const firstUrl = ((await first.json()) as { url: string }).url;
+    // A delete and a replace for the same owner run together: the delete
+    // holds the owner's advisory lock, so it removes either the old row
+    // with its old file or nothing — the winner's row always has its file.
+    const [removeResponse, putResponse] = await Promise.all([
+      deleteAvatar('user', alice.id, alice),
+      putAvatar('user', alice.id, alice, webpSquare(256)),
+    ]);
+    expect(removeResponse.status).toBe(200);
+    expect(putResponse.status).toBe(200);
+    const rows = await context.db.select().from(avatars);
+    expect(rows.length).toBeLessThanOrEqual(1);
+    for (const row of rows) {
+      await expect(readFile(join(storageDir, row.storageKey))).resolves.toBeDefined();
+    }
+    if (rows.length === 1) {
+      const get = await app.request(`${TEST_BASE_URL}${avatarUrlFor(rows[0]!.id)}`, {
+        headers: { cookie: alice.cookie },
+      });
+      expect(get.status).toBe(200);
+    } else {
+      // The delete won: the replaced file is an orphan on disk (never
+      // served), and the old URL 404s.
+      const gone = await app.request(`${TEST_BASE_URL}${firstUrl}`, {
+        headers: { cookie: alice.cookie },
+      });
+      expect(gone.status).toBe(404);
+    }
   });
 
   it('refuses files over 256 KB with a 413 and nothing stored', async () => {
