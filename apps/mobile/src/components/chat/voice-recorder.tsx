@@ -7,7 +7,11 @@ import { Text } from '@/components/ui/text';
 import { asColorScheme, type ColorScheme } from '@/lib/color-scheme';
 import { ICON } from '@/lib/colors';
 import { VOICE_MAX_DURATION_MS } from '@/lib/voice';
-import { createVoiceRecorder, type VoiceRecorderPort } from '@/lib/voice-native';
+import {
+  createVoiceRecorder,
+  MIC_FAILED_MESSAGE,
+  type VoiceRecorderPort,
+} from '@/lib/voice-native';
 import type { ReplyRef } from '@/lib/types';
 import type { SendTextOptions, SendVoiceRecording } from '@/store/types';
 import { useColorScheme } from 'nativewind';
@@ -177,6 +181,9 @@ export function VoiceRecorderButton({
     }
     startingRef.current = true;
     setError(undefined);
+    // A throw from the native import or the permission request (e.g. the
+    // pre-rebuild state) is a handled mic failure, never a silent death
+    // (finding 1, round 3): the button shows the failed copy.
     void runRecorderBegin({ recorder, onSendVoice, onCancelReply, replyTo, waveformFor })
       .then((result) => {
         if (!result.started) {
@@ -195,6 +202,9 @@ export function VoiceRecorderButton({
             void finish(false);
           }
         }, TIMER_TICK_MS);
+      })
+      .catch(() => {
+        setError(MIC_FAILED_MESSAGE);
       })
       .finally(() => {
         startingRef.current = false;

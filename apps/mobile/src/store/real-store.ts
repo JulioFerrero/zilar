@@ -86,7 +86,12 @@ import {
 } from '../lib/attachments';
 import type { AttachmentUploader, PickedFile } from '../lib/attachment-ports';
 import type { ConvertedVoice, RecordedVoice, VoicePort } from '../lib/voice';
-import { createVoicePort, validateRecording, VoiceError } from '../lib/voice';
+import {
+  createVoicePort,
+  validateRecording,
+  VoiceError,
+  voiceSendRefusalMessage,
+} from '../lib/voice';
 import { voiceFailureReasonFor, type VoiceFailureReason } from '../lib/voice-native';
 import { CURRENT_USER_ID, mobileUploadOf, type MobileMessage } from '../lib/types';
 import type { ChatStoreState, ConnectionStatus, DraftState } from './types';
@@ -798,6 +803,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           message.mentions === undefined &&
           message.edited === undefined &&
           message.failed === undefined &&
+          message.failureReason === undefined &&
           upload.localUri === undefined &&
           upload.uploadProgress === undefined
         ) {
@@ -815,6 +821,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         delete deleted.mentions;
         delete deleted.edited;
         delete deleted.failed;
+        delete deleted.failureReason;
         return deleted;
       }
       const text = state.text ?? message.text;
@@ -3286,13 +3293,12 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         }
         // The send boundary (finding 1, review round 2): refuse an
         // over-limit recording here too, before any optimistic bubble, slot
-        // request or PUT — the composer is not the only caller.
+        // request or PUT — the composer is not the only caller. The banner
+        // names the actual refusal (finding 4, round 3), never a guess.
         try {
           validateRecording(recording);
-        } catch {
-          set({
-            actionError: { chatId, message: 'That recording is too long to send.' },
-          });
+        } catch (error) {
+          set({ actionError: { chatId, message: voiceSendRefusalMessage(error) } });
           return;
         }
         const durationMs = Math.max(1, Math.round(recording.durationMs));

@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   createVoiceRecorder,
   MIC_DENIED_MESSAGE,
+  MIC_FAILED_MESSAGE,
+  RECORD_FAILED_MESSAGE,
   RECORD_TOO_LONG_MESSAGE,
   RECORD_TOO_SHORT_MESSAGE,
   voiceErrorCopy,
@@ -60,6 +62,23 @@ describe('voice recorder seam (T-0154 review)', () => {
     expect(fake.instances).toHaveLength(0);
   });
 
+  it('a throwing permission request is a handled mic failure', async () => {
+    const fake = fakeAudio({});
+    fake.audio.requestRecordingPermissionsAsync = vi.fn(async () => {
+      throw new Error('no native module');
+    });
+    const recorder = createVoiceRecorder({
+      audio: fake.audio,
+      setAudioMode: async () => {},
+      fileReader: async () => ({ size: 120_000 }),
+    });
+    // `start()` never throws: the failure is a handled result the button
+    // renders as the mic-failed copy (finding 1, round 3).
+    const result = await recorder.start();
+    expect(result).toEqual({ status: 'error', message: MIC_FAILED_MESSAGE });
+    expect(fake.instances).toHaveLength(0);
+  });
+
   it('reads the size through the injected reader (the documented File.size path)', async () => {
     const fake = fakeAudio({ currentTime: 5 });
     const fileReader = vi.fn(async (uri: string) => {
@@ -96,10 +115,9 @@ describe('voice recorder seam (T-0154 review)', () => {
     });
     expect(await recorder.start()).toEqual({ status: 'started' });
     const result = await recorder.stop();
-    expect(result.status).toBe('error');
-    if (result.status === 'error') {
-      expect(result.message.length).toBeGreaterThan(0);
-    }
+    // Behaviour: the stop reports the save-failed copy (the component
+    // shows it), not an empty recording and not a silent success.
+    expect(result).toEqual({ status: 'error', message: RECORD_FAILED_MESSAGE });
   });
 
   it('a real zero size stays zero (only a real zero is voice_empty)', async () => {

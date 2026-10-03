@@ -5,6 +5,7 @@ import {
   isAlreadyConverted,
   uploadVoice,
   validateRecording,
+  voiceSendRefusalMessage,
   VOICE_MAX_BYTES,
   VOICE_MAX_DURATION_MS,
   VOICE_MIME,
@@ -152,6 +153,19 @@ describe('voice send helper (T-0154)', () => {
     expect(() => validateRecording({ size: 1, durationMs: VOICE_MIN_MS })).not.toThrow();
   });
 
+  it('names each send-boundary refusal per code', () => {
+    expect(voiceSendRefusalMessage({ code: 'voice_empty' })).toBe('That recording is empty.');
+    expect(voiceSendRefusalMessage({ code: 'voice_too_short' })).toBe(
+      'That recording is too short.',
+    );
+    expect(voiceSendRefusalMessage({ code: 'voice_too_long' })).toBe(
+      'That recording is too long to send.',
+    );
+    expect(voiceSendRefusalMessage({ code: 'voice_too_large' })).toBe(
+      'That recording is too long to send.',
+    );
+  });
+
   it('uploads converted bytes with the voice filename and mime', async () => {
     const upload = vi.fn(async (_file: unknown, _slot: unknown) => undefined);
     const requester = {
@@ -261,6 +275,36 @@ describe('voice send helper (T-0154)', () => {
     // The client-claimed duration is ignored: the server header wins.
     expect(converted.durationMs).toBe(4321);
     expect(converted.mimeType).toBe(VOICE_MIME);
+  });
+
+  it("posts only the view's own bytes, never the whole buffer", async () => {
+    const backing = new Uint8Array([0, 0, 1, 2, 3, 4, 0, 0]);
+    const view = new Uint8Array(backing.buffer, 2, 4);
+    const readFile = vi.fn(async () => view);
+    let posted: ArrayBuffer | undefined;
+    const fetchFn = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      const body = init?.body as Uint8Array | ArrayBuffer;
+      posted = body instanceof Uint8Array ? (body.slice().buffer as ArrayBuffer) : body;
+      return new Response(new Uint8Array([9]).buffer as ArrayBuffer, {
+        status: 200,
+        headers: { 'x-zilar-duration-ms': '1000' },
+      });
+    });
+    const port = createVoicePort({
+      apiUrl: 'http://127.0.0.1:3188',
+      getToken: async () => 'tok',
+      uploader: { upload: vi.fn(async () => {}) },
+      fetchFn: fetchFn as never,
+      readFile,
+    });
+    await port.convert({
+      uri: 'file:///cache/rec.3gp',
+      mimeType: 'audio/3gpp',
+      size: 4,
+      durationMs: 5000,
+    });
+    expect(posted?.byteLength).toBe(4);
+    expect(new Uint8Array(posted ?? new ArrayBuffer(0))).toEqual(new Uint8Array([1, 2, 3, 4]));
   });
 
   it('a file-read failure maps to voice_failed, never to empty', async () => {

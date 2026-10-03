@@ -41,6 +41,25 @@ export function isAlreadyConverted(input: { uri: string; mimeType?: string }): b
   return extension === 'm4a' || extension === 'aac';
 }
 
+/**
+ * The banner copy for a send-boundary refusal (finding 4, round 3): named
+ * per `VoiceError.code`, so an empty or too-short programmatic send never
+ * reports the "too long" copy.
+ */
+export function voiceSendRefusalMessage(error: unknown): string {
+  const code =
+    error !== null && typeof error === 'object' && 'code' in error
+      ? (error as { code?: unknown }).code
+      : '';
+  if (code === 'voice_empty') {
+    return 'That recording is empty.';
+  }
+  if (code === 'voice_too_short') {
+    return 'That recording is too short.';
+  }
+  return 'That recording is too long to send.';
+}
+
 /** A finished recording, ready to be converted (or not) and uploaded. */
 export interface RecordedVoice {
   uri: string;
@@ -135,6 +154,12 @@ export async function convertVoice(
   if (bytes.byteLength > VOICE_MAX_BYTES) {
     throw new VoiceError('voice_too_large', 'The recording is too long to send');
   }
+  if (bytes.byteLength === 0) {
+    throw new VoiceError('voice_empty', 'The recording is empty');
+  }
+  if (bytes.byteLength > VOICE_MAX_BYTES) {
+    throw new VoiceError('voice_too_large', 'The recording is too long to send');
+  }
 
   let response: Response;
   try {
@@ -144,7 +169,9 @@ export async function convertVoice(
         authorization: `Bearer ${token}`,
         'content-type': file.mimeType === '' ? 'application/octet-stream' : file.mimeType,
       },
-      body: bytes.buffer as ArrayBuffer,
+      // The exact bytes, even when `readFile` returns a view over a larger
+      // buffer (finding 6, round 3): `buffer` alone would over-post.
+      body: voicePostBody(bytes),
     });
   } catch {
     throw new VoiceError('network_error', 'Could not reach the server');
@@ -167,6 +194,18 @@ export async function convertVoice(
 async function readDeviceFile(uri: string): Promise<Uint8Array> {
   const { File } = await import('expo-file-system');
   return new File(uri).bytes();
+}
+
+/**
+ * The exact POST body for recorded bytes (finding 6, round 3): a full-buffer
+ * view passes through untouched, while a view over a larger buffer is
+ * copied down to its own bytes — `buffer` alone would over-post.
+ */
+export function voicePostBody(bytes: Uint8Array): BodyInit {
+  if (bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength) {
+    return bytes as unknown as BodyInit;
+  }
+  return bytes.slice().buffer as ArrayBuffer;
 }
 
 /** Anything that can hand out a XEP-0363 upload slot. */

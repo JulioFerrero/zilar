@@ -132,38 +132,42 @@ export function createVoiceRecorder(deps?: {
   let recorder: NativeRecorderShape | null = null;
   return {
     async start() {
-      const audio: {
-        requestRecordingPermissionsAsync: () => Promise<{ granted: boolean }>;
-        AudioRecorder: new (options: unknown) => NativeRecorderShape;
-        HIGH_QUALITY?: unknown;
-      } =
-        deps?.audio ??
-        (await import('expo-audio').then((module) => ({
-          requestRecordingPermissionsAsync: module.AudioModule.requestRecordingPermissionsAsync,
-          AudioRecorder: module.AudioModule.AudioRecorder as new (
-            options: unknown,
-          ) => NativeRecorderShape,
-          HIGH_QUALITY: module.RecordingPresets.HIGH_QUALITY as unknown,
-        })));
-      const permission = await audio.requestRecordingPermissionsAsync();
-      if (!permission.granted) {
-        return { status: 'error', message: MIC_DENIED_MESSAGE };
-      }
-      if (deps?.setAudioMode === undefined) {
-        try {
-          const { setAudioModeAsync } = await import('expo-audio');
-          await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: true });
-        } catch {
-          // The audio mode is a nicety; a failure must not block recording.
-        }
-      } else {
-        try {
-          await deps.setAudioMode({ playsInSilentMode: true, allowsRecording: true });
-        } catch {
-          // The audio mode is a nicety; a failure must not block recording.
-        }
-      }
+      // Everything that can throw — the native import, the permission
+      // request, the recorder build — lands in one handled failure (finding
+      // 1, round 3): a missing native module (pre-rebuild) is a mic-failed
+      // copy, never an unhandled rejection. A denial stays the denied copy.
       try {
+        const audio: {
+          requestRecordingPermissionsAsync: () => Promise<{ granted: boolean }>;
+          AudioRecorder: new (options: unknown) => NativeRecorderShape;
+          HIGH_QUALITY?: unknown;
+        } =
+          deps?.audio ??
+          (await import('expo-audio').then((module) => ({
+            requestRecordingPermissionsAsync: module.AudioModule.requestRecordingPermissionsAsync,
+            AudioRecorder: module.AudioModule.AudioRecorder as new (
+              options: unknown,
+            ) => NativeRecorderShape,
+            HIGH_QUALITY: module.RecordingPresets.HIGH_QUALITY as unknown,
+          })));
+        const permission = await audio.requestRecordingPermissionsAsync();
+        if (!permission.granted) {
+          return { status: 'error', message: MIC_DENIED_MESSAGE };
+        }
+        if (deps?.setAudioMode === undefined) {
+          try {
+            const { setAudioModeAsync } = await import('expo-audio');
+            await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: true });
+          } catch {
+            // The audio mode is a nicety; a failure must not block recording.
+          }
+        } else {
+          try {
+            await deps.setAudioMode({ playsInSilentMode: true, allowsRecording: true });
+          } catch {
+            // The audio mode is a nicety; a failure must not block recording.
+          }
+        }
         const fresh = new audio.AudioRecorder(audio.HIGH_QUALITY);
         await fresh.prepareToRecordAsync();
         fresh.record();

@@ -238,6 +238,46 @@ describe('real store sends voice messages (T-0154)', () => {
     );
   });
 
+  it('a too-short programmatic send names the short banner, not "too long"', async () => {
+    const { store } = await setup();
+    store.getState().sendVoice(ANA, { ...RECORDING, durationMs: 400 });
+    expect(store.getState().messages(ANA)).toHaveLength(0);
+    expect(store.getState().actionError).toEqual({
+      chatId: ANA,
+      message: 'That recording is too short.',
+    });
+  });
+
+  it('an empty programmatic send names the empty banner, not "too long"', async () => {
+    const { store } = await setup();
+    store.getState().sendVoice(ANA, { ...RECORDING, size: 0 });
+    expect(store.getState().messages(ANA)).toHaveLength(0);
+    expect(store.getState().actionError).toEqual({
+      chatId: ANA,
+      message: 'That recording is empty.',
+    });
+  });
+
+  it('an over-long programmatic send names the too-long banner', async () => {
+    const { store } = await setup();
+    store.getState().sendVoice(ANA, { ...RECORDING, durationMs: 6 * 60 * 1000 });
+    expect(store.getState().messages(ANA)).toHaveLength(0);
+    expect(store.getState().actionError).toEqual({
+      chatId: ANA,
+      message: 'That recording is too long to send.',
+    });
+  });
+
+  it('an oversized programmatic send names the too-long banner', async () => {
+    const { store } = await setup();
+    store.getState().sendVoice(ANA, { ...RECORDING, size: 12 * 1024 * 1024 });
+    expect(store.getState().messages(ANA)).toHaveLength(0);
+    expect(store.getState().actionError).toEqual({
+      chatId: ANA,
+      message: 'That recording is too long to send.',
+    });
+  });
+
   it('an offline failure ends failed with the network reason', async () => {
     const { store } = await setup();
     store.getState().stop();

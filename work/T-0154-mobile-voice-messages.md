@@ -84,6 +84,16 @@ pnpm --filter @zilar/mobile test --maxWorkers=2 voice attachment composer hooks-
 4. Transcript toggle hidden when `voice.transcript` is undefined (real sends carry none); test for both states.
 - Round-2 checks (`voice attachment composer hooks-guard`, `--maxWorkers=2`): 19 files, 137 passed. Neighbours (`src/components/chat src/store src/lib src/mock`): 102 files, 863 passed, 1 skipped, 1 failed — the same pre-existing date-sensitive stickers test (`message-bubble-stickers.test.tsx`, fixed Oct 1 date vs 48 h window).
 
+### Review round 3 (findings 1-6 fixed; finding 7 strengthened cheaply)
+1. Silent mic death: `createVoiceRecorder.start()` wraps the native import + permission request + recorder build in one try → handled mic-failed copy (a missing native module pre-rebuild is a copy, never an unhandled rejection); `begin()` also has `.catch(() => setError(MIC_FAILED_MESSAGE))`. Tests: throwing permission → handled `MIC_FAILED_MESSAGE` with zero recorders; begin's catch asserted via the same copy constant.
+2. Pause/resume: pause keeps the native player alive (registry + active id clear, instance stays); playing the same message with a position reuses it in place — seek to the paused ms + play, no mint, no restart at zero. Tests: pause at 60 000 ms → play again seeks `[60]`, plays twice on the same instance, no remove, bubble playing; plus a reuse-only variant.
+3. Play-source race: `resolvePlaySource()` carries the request-id guard (stale resolves ignored, last tap wins); the bubble runs it from `toggle`. Tests: two taps with out-of-order resolves play only the latest; missing source reports the play error on the latest tap.
+4. Over-limit banner per code: `voiceSendRefusalMessage()` maps `voice_empty` → "That recording is empty.", `voice_too_short` → "That recording is too short.", else the "too long" copy. One store test per code (empty/short/long/oversized) + unit tests of the mapper.
+5. Retraction strips `failureReason` together with `failed` (and the already-deleted fast path checks it).
+6. Exact POST body: `voicePostBody()` passes full-buffer views through and slices views over larger buffers; test posts a 4-byte view over an 8-byte buffer and asserts only `[1,2,3,4]` go out.
+7. Strengthened cheaply: denial test asserts the copy content comes from the failure result (contains 'Settings') plus zero stop/send calls; size-failure test asserts the exact `RECORD_FAILED_MESSAGE` result; added a double-tap single-`start()` test driving the same guard logic as `begin`.
+- Round-3 checks (`voice attachment composer hooks-guard real-store chat-store`, `--maxWorkers=2`): 27 files, 300 passed.
+
 ### Problems, deviations from the spec
 - Deviation: no real waveform extraction on device (web uses `AudioContext.decodeAudioData`; there is no equivalent here without a new dep) — sends use a flat placeholder waveform. Audible playback is unaffected.
 - Deviation: press-and-hold/slide-to-cancel gesture not implemented — tap-to-record (web's click mode) only. The timer row, cancel, send, caps and denial copy match web.

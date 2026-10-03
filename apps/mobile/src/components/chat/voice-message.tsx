@@ -1,7 +1,7 @@
 import { formatDuration } from '@zilar/chat-core';
 import type { VoiceMeta } from '@zilar/protocol';
 import { Pause, Play } from 'lucide-react-native';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import {
@@ -9,7 +9,7 @@ import {
   subscribeVoiceProgress,
   subscribeVoiceState,
   type VoicePlayerControls,
-} from '@/components/chat/voice-player';
+} from './voice-player';
 import { Text } from '@/components/ui/text';
 import { useKeyPress } from '@/components/ui/use-key-press';
 import { asColorScheme } from '@/lib/color-scheme';
@@ -37,6 +37,30 @@ import { useColorScheme } from 'nativewind';
 
 const BAR_COUNT = 24;
 const WAVEFORM_WIDTH = 108;
+
+/**
+ * Resolves the play source and applies it only when the request is still
+ * the latest (finding 3, round 3): two taps with out-of-order resolves play
+ * only the latest tap's source. Extracted so tests drive the race without
+ * rendering; the bubble runs the same function from `toggle`.
+ */
+export async function resolvePlaySource(
+  input: { voice: VoiceMeta; localUri?: string | undefined; trustedHosts: ReadonlySet<string> },
+  seen: { current: number },
+  request: number,
+  onSource: (source: { uri: string; headers?: Record<string, string> }) => void,
+  onMissing: () => void,
+): Promise<void> {
+  const source = await voiceAudioSource(input);
+  if (seen.current !== request) {
+    return;
+  }
+  if (source === undefined) {
+    onMissing();
+    return;
+  }
+  onSource(source);
+}
 
 function sampleBars(waveform: readonly number[], count: number): number[] {
   if (waveform.length <= count) {
@@ -147,7 +171,10 @@ export function VoiceMessage({
         : voice.url !== undefined && isPlayableVoiceUrl(voice.url, hosts);
 
   // Resolves the audio source lazily on play (the bearer must be fresh),
-  // then hands it to the screen-owned player.
+  // then hands it to the screen-owned player. `resolvePlaySource` carries
+  // the request-id guard (finding 3): a stale resolve (an older tap whose
+  // source arrives after a newer tap) is ignored, so the last tap wins.
+  const playRequestRef = useRef(0);
   const toggle = () => {
     if (!playable || controls === undefined) {
       return;
@@ -158,14 +185,15 @@ export function VoiceMessage({
       return;
     }
     setPlayError(undefined);
-    void voiceAudioSource({ voice, localUri: upload.localUri, trustedHosts: hosts }).then(
-      (source) => {
-        if (source === undefined) {
-          setPlayError('Could not play that voice message.');
-          return;
-        }
-        controls.play(message.id, source);
-      },
+    playRequestRef.current += 1;
+    const request = playRequestRef.current;
+    const atMs = positionMs;
+    void resolvePlaySource(
+      { voice, localUri: upload.localUri, trustedHosts: hosts },
+      { current: playRequestRef.current },
+      request,
+      (source) => controls.play(message.id, source, atMs),
+      () => setPlayError('Could not play that voice message.'),
     );
   };
 

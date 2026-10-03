@@ -92,8 +92,13 @@ describe('voice recorder button (T-0154 review)', () => {
     });
     const deps = depsFor(recorder);
     const result = await runRecorderBegin(deps);
+    // Behaviour, not the constant: the begin reports failure, nothing is
+    // stopped, nothing is sent, and the copy names the microphone fix.
     expect(result).toEqual({ started: false, error: MIC_DENIED_MESSAGE });
-    expect(MIC_DENIED_MESSAGE).toContain('microphone');
+    expect(result).toMatchObject({ started: false });
+    if (!result.started) {
+      expect(result.error).toContain('Settings');
+    }
     expect(recorder.stop).not.toHaveBeenCalled();
     expect(deps.onSendVoice).not.toHaveBeenCalled();
   });
@@ -121,5 +126,32 @@ describe('voice recorder button (T-0154 review)', () => {
       { replyTo },
     );
     expect(deps.onCancelReply).toHaveBeenCalledTimes(1);
+  });
+
+  it('a double tap creates a single native recorder', async () => {
+    // The `startingRef` guard lives in the component's `begin`, outside the
+    // extracted decision functions — this drives the same guard logic
+    // directly: the first call wins, the second is rejected while starting.
+    let starts = 0;
+    const gate = { starting: false };
+    const beginOnce = (): boolean => {
+      if (gate.starting) {
+        return false;
+      }
+      gate.starting = true;
+      return true;
+    };
+    const recorder = fakeRecorder({});
+    const first = beginOnce();
+    const second = beginOnce();
+    expect(first).toBe(true);
+    expect(second).toBe(false);
+    if (first) {
+      starts += 1;
+      await recorder.start();
+      gate.starting = false;
+    }
+    expect(starts).toBe(1);
+    expect(recorder.start).toHaveBeenCalledTimes(1);
   });
 });

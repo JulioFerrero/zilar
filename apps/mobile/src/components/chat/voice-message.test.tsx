@@ -2,7 +2,7 @@ import { createElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 
-import { VoiceMessage } from './voice-message';
+import { VoiceMessage, resolvePlaySource } from './voice-message';
 
 vi.mock('react-native', () => ({
   Pressable: 'Pressable',
@@ -185,5 +185,58 @@ describe('voice bubble (T-0154)', () => {
       }),
     );
     expect(html).toContain('Show transcript');
+  });
+
+  it('a stale source resolve is ignored: the last tap wins', async () => {
+    const seen = { current: 0 };
+    const played: string[] = [];
+    const missing: string[] = [];
+    // Two taps; the first resolve arrives last (out of order).
+    seen.current += 1;
+    const first = seen.current;
+    seen.current += 1;
+    const second = seen.current;
+    await resolvePlaySource(
+      {
+        voice: { duration_ms: 5000, mime: 'audio/mp4', waveform: [1] },
+        localUri: 'file:///cache/second.m4a',
+        trustedHosts: new Set(),
+      },
+      seen,
+      second,
+      (source) => played.push(source.uri),
+      () => missing.push('second'),
+    );
+    await resolvePlaySource(
+      {
+        voice: { duration_ms: 5000, mime: 'audio/mp4', waveform: [1] },
+        localUri: 'file:///cache/first.m4a',
+        trustedHosts: new Set(),
+      },
+      { current: first - 1 },
+      first,
+      (source) => played.push(source.uri),
+      () => missing.push('first'),
+    );
+    expect(played).toEqual(['file:///cache/second.m4a']);
+    expect(missing).toEqual([]);
+  });
+
+  it('a missing source reports the play error on the latest tap', async () => {
+    const seen = { current: 1 };
+    const played: string[] = [];
+    const missing: string[] = [];
+    await resolvePlaySource(
+      {
+        voice: { duration_ms: 5000, mime: 'audio/mp4', waveform: [1] },
+        trustedHosts: new Set(),
+      },
+      seen,
+      1,
+      (source) => played.push(source.uri),
+      () => missing.push('latest'),
+    );
+    expect(played).toEqual([]);
+    expect(missing).toEqual(['latest']);
   });
 });

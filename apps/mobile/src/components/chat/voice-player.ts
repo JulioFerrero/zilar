@@ -24,7 +24,11 @@ import { createVoicePlayback, VOICE_SPEEDS } from '@/lib/voice-native';
 
 /** The seekable voice player inside the bubble; the screen owns the registry. */
 export interface VoicePlayerControls {
-  play(messageId: string, source: { uri: string; headers?: Record<string, string> }): void;
+  play(
+    messageId: string,
+    source: { uri: string; headers?: Record<string, string> },
+    resumeMs?: number,
+  ): void;
   pause(): void;
   seekTo(positionMs: number): Promise<void>;
   cycleSpeed(): void;
@@ -172,8 +176,29 @@ function createVoicePlayerHost(createPlayer?: () => HostPlayer): VoicePlayerHost
     }
   };
   const controls: VoicePlayerControls = {
-    play(messageId, source) {
-      const startWith = (player: NativePlayer): void => {
+    play(messageId, source, resumeMs?: number) {
+      // Resuming the paused message on its own live player: continue from
+      // the paused position instead of restarting at zero (finding 2,
+      // round 3). Pause keeps the instance alive, so `sharedPlayer` is
+      // still it — distinguished from a racing fresh instance by the
+      // playerPlaybacks record below.
+      if (
+        sharedPlayer !== undefined &&
+        playerPlaybacks.get(sharedPlayer) === playback &&
+        resumeMs !== undefined &&
+        resumeMs > 0
+      ) {
+        const player = sharedPlayer;
+        void player.seekTo(resumeMs / 1000).catch(() => {});
+        activeMessageId = messageId;
+        const rate = currentRate(player);
+        player.setPlaybackRate(rate);
+        player.play();
+        playback.claim(activeSpeaker(messageId, rate));
+        listeners.get(messageId)?.({ playing: true, rate });
+        return;
+      }
+      const startWith = (player: NativePlayer, atMs?: number): void => {
         // Switching sources stops the previous audio natively: only the new
         // bubble is notified, so it alone shows playing. The previous
         // bubble is told to show paused through its own listener — the
@@ -195,6 +220,14 @@ function createVoicePlayerHost(createPlayer?: () => HostPlayer): VoicePlayerHost
           sharedPlayer = player;
           playerPlaybacks.set(player, playback);
           subscribeStatus(player, messageId);
+        } else if (previous === messageId) {
+          // Same player re-handed for the active message (the injected
+          // factory returns one instance): still continue from the paused
+          // position (finding 2, round 3).
+          const atSeconds = Math.max(0, (atMs ?? 0) / 1000);
+          if (atSeconds > 0) {
+            void player.seekTo(atSeconds).catch(() => {});
+          }
         }
         activeMessageId = messageId;
         if (previous !== undefined && previous !== messageId) {
@@ -209,7 +242,7 @@ function createVoicePlayerHost(createPlayer?: () => HostPlayer): VoicePlayerHost
       };
       if (createPlayer !== undefined) {
         try {
-          startWith(createPlayer() as NativePlayer);
+          startWith(createPlayer() as NativePlayer, resumeMs);
         } catch {
           notifyPlayError(messageId, 'Could not play that voice message.');
         }
@@ -218,7 +251,7 @@ function createVoicePlayerHost(createPlayer?: () => HostPlayer): VoicePlayerHost
       void (async () => {
         try {
           const { createAudioPlayer } = await import('expo-audio');
-          startWith(createAudioPlayer(source, { updateInterval: 120 }) as NativePlayer);
+          startWith(createAudioPlayer(source, { updateInterval: 120 }) as NativePlayer, resumeMs);
         } catch {
           notifyPlayError(messageId, 'Could not play that voice message.');
         }
@@ -233,10 +266,12 @@ function createVoicePlayerHost(createPlayer?: () => HostPlayer): VoicePlayerHost
       } catch {
         // Pausing a released player is not an error here.
       }
+      // Pause keeps the native player alive for a resume (finding 2):
+      // only the registry and the active id clear, so playing the same
+      // message again seeks on this instance instead of minting one.
       if (activeMessageId !== undefined) {
         const id = activeMessageId;
         activeMessageId = undefined;
-        injectedStatus.delete(player as NativePlayer);
         playback.resign(resignedSpeaker(id));
         listeners.get(id)?.({ playing: false, rate: 1 });
       }

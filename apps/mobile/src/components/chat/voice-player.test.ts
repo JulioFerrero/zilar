@@ -119,6 +119,40 @@ describe('voice player host one-at-a-time (T-0154 review)', () => {
     stopProgress();
   });
 
+  it('resuming the same message seeks to the paused position on the live player', () => {
+    const live = fakePlayer();
+    const host = createVoicePlayerHostForTest(() => live);
+    const states = new Map<string, { playing: boolean; rate: number }>();
+    const stop = subscribeVoiceState('m-a', (update) => states.set('m-a', update));
+
+    // Pause keeps the native player alive (only the registry and the active
+    // id clear); the bubble keeps its last tick as the resume position.
+    host.controls.play('m-a', { uri: 'file:///a.m4a' });
+    emitPlayerStatusForTest(live, {
+      playing: true,
+      didJustFinish: false,
+      currentTime: 60,
+      duration: 120,
+      error: null,
+    });
+    host.controls.pause();
+    expect(live.calls).toContain('pause');
+
+    // Play again with the paused position: the live player seeks to
+    // 60 000 ms and plays in place instead of restarting at 0.
+    const seeks: number[] = [];
+    live.seekTo = async (seconds: number) => {
+      seeks.push(seconds);
+    };
+    host.controls.play('m-a', { uri: 'file:///a.m4a' }, 60_000);
+    expect(seeks).toEqual([60]);
+    expect(live.calls.filter((call) => call === 'play')).toHaveLength(2);
+    expect(live.calls).not.toContain('remove');
+    expect(states.get('m-a')).toEqual({ playing: true, rate: 1 });
+
+    stop();
+  });
+
   it('pause B pauses the player and clears the registry', () => {
     const playerA = fakePlayer();
     const playerB = fakePlayer();
@@ -132,6 +166,25 @@ describe('voice player host one-at-a-time (T-0154 review)', () => {
     host.controls.pause();
     expect(playerB.calls).toContain('pause');
     expect(host.playback.current()).toBeUndefined();
+  });
+
+  it('resume is a host-level reuse: the live instance is reused', () => {
+    // The resume path (live player + same message + position) seeks +
+    // plays in place instead of minting one. Minting lives in production's
+    // async import, not in the resume branch, so this pins the observable
+    // part: playing the active message again seeks to the saved position,
+    // releases nothing, and plays on the same instance.
+    const live = fakePlayer();
+    const host = createVoicePlayerHostForTest(() => live);
+    host.controls.play('m-a', { uri: 'file:///a.m4a' });
+    const seeks: number[] = [];
+    live.seekTo = async (seconds: number) => {
+      seeks.push(seconds);
+    };
+    host.controls.play('m-a', { uri: 'file:///a.m4a' }, 60_000);
+    expect(seeks).toEqual([60]);
+    expect(live.calls).not.toContain('remove');
+    expect(live.calls.filter((call) => call === 'play')).toHaveLength(2);
   });
 
   it('a failing player surfaces a visible play error on the asking bubble', () => {
