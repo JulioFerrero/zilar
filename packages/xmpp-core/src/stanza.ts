@@ -18,6 +18,7 @@ import {
   MUC_NAMESPACE,
   MUC_USER_NAMESPACE,
   OCCUPANT_ID_NAMESPACE,
+  PING_NAMESPACE,
   PUSH_NAMESPACE,
   REACTIONS_NAMESPACE,
   REPLY_NAMESPACE,
@@ -258,6 +259,22 @@ export function buildDisplayed(options: {
     { type: options.kind, to: options.chatJid },
     xml('displayed', { xmlns: CHAT_MARKERS_NAMESPACE, id: options.messageId }),
   );
+}
+
+// XEP-0199: the keepalive ping sent to the server domain when the connection
+// goes quiet, and the empty result sent back for an incoming server ping.
+export function buildPingRequest(options: { id: string; to: string }): XmppElement {
+  return xml(
+    'iq',
+    { type: 'get', id: options.id, to: options.to },
+    xml('ping', { xmlns: PING_NAMESPACE }),
+  );
+}
+
+export function buildPingResult(id: string, to?: string): XmppElement {
+  const attrs: Record<string, string> = { type: 'result', id };
+  if (to !== undefined) attrs['to'] = to;
+  return xml('iq', attrs);
 }
 
 // XEP-0444: a body-less message carrying my complete reaction set for a target,

@@ -2899,13 +2899,43 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
 
     // A real device suspends the socket in the background, so on resume we must
     // not assume it is alive: reconnect whenever the status is not `online`.
+    // A boot already in flight for the same generation (slow network, quick
+    // background/foreground) is awaited instead of starting a second one:
+    // two boots would create two cores and double every XMPP subscription.
+    // A boot for an older generation belongs to a stopped or reloaded store:
+    // it bails at its `gen !== generation` checks and creates no core, so a
+    // newer generation starts a fresh boot instead of waiting on the stale
+    // one (the stale one still ends by itself).
+    let bootPromise: { gen: number; promise: Promise<void> } | undefined;
+    async function runBoot(gen: number): Promise<void> {
+      if (bootPromise === undefined || bootPromise.gen !== gen) {
+        const fresh = boot(gen).finally(() => {
+          if (bootPromise?.promise === fresh) {
+            bootPromise = undefined;
+          }
+        });
+        bootPromise = { gen, promise: fresh };
+      }
+      await bootPromise.promise;
+    }
     async function reconnect(): Promise<void> {
       if (!started) {
         return;
       }
+      if (bootPromise !== undefined) {
+        const gen = generation;
+        await bootPromise.promise;
+        // The awaited boot belonged to an older generation, or it failed
+        // before creating a core (offline token fetch): try again for this
+        // generation instead of silently dropping the resume.
+        if (core === undefined && started && gen === generation) {
+          await runBoot(gen);
+        }
+        return;
+      }
       const current = core;
       if (current === undefined) {
-        await boot(generation);
+        await runBoot(generation);
         return;
       }
       if (get().status === 'online') {
@@ -2989,7 +3019,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         // retried whole; a running session just refetches the list.
         if (core === undefined) {
           generation += 1;
-          void boot(generation);
+          void runBoot(generation);
           return;
         }
         void reloadChatsList();
@@ -3892,7 +3922,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           void reconnect();
         });
         startTopicsPolling(generation);
-        void boot(generation);
+        void runBoot(generation);
       },
       stop: () => {
         started = false;
