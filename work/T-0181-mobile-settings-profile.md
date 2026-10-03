@@ -160,6 +160,38 @@ finding 2 - ..."):
   pass. The lead tests on the emulator and the phone.
 - Status stays `review`.
 
+### Round 2 (lead review findings)
+Finding 3 — next-change date lost (commit `95421cd` "T-0181: finding 3 -
+..."):
+- `lib/profile-api.ts`: `ProfileApiError` keeps `nextChangeAt` (optional
+  string, validated as a date in `parseApiErrorBody`; garbage dropped).
+  `request()` forwards it, so the 409 claim failure carries the date.
+- `profile-logic.ts`: `friendlyClaimError` shows "Next change possible on
+  \<local date>" for `handle_change_too_soon` when the field is present
+  (mirroring web's `ProfileSettingsSection`), else the server message.
+- Tests: error body with `nextChangeAt: '2026-11-01T00:00:00.000Z'` keeps
+  the field on the error and the friendly message contains the formatted
+  date; without the field the plain sentence shows; non-date values are
+  dropped.
+
+Finding 4 — avatar upload errors swallowed (commit `e52da88` "T-0181:
+finding 4 - ..."):
+- `avatar-native.ts`: new `toAvatarUploadError(status, body)` — the
+  `{ code, message }` envelope wins (via `parseApiErrorBody`), else the
+  status maps (400 `avatar_not_image`, 413 `avatar_too_large`, 429
+  `rate_limited`, else generic). The uploader throws it on every non-2xx
+  (a `ProfileApiError`, so `friendlyAvatarError`'s specific branches run
+  on a real phone); transport failures are `network_error`, unparseable
+  200 bodies `invalid_response`.
+- Tests through the real uploader (fake `File`): a 413 body gives the
+  256 KiB message, a 429 body the too-many-uploads message, a garbage 500
+  body the generic "Could not save the picture. Try again.".
+- Round 2 checks: `pnpm format:check` pass; `pnpm lint` pass; mobile
+  `typecheck` pass; `pnpm --filter @zilar/mobile test --maxWorkers=2
+  settings profile avatar welcome`: 7 files, 101 tests, all pass. The
+  lead tests on the emulator and the phone.
+- Status stays `review`.
+
 ### Problems / deviations
 - Web crops avatars in a canvas dialog; the phone has no canvas, so the OS
   picker sheet crops (`allowsEditing` + square aspect, quality 0.9). No
