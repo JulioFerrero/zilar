@@ -60,6 +60,25 @@ export function groupRulesForScreen(
   return [...byAi.entries()].map(([aiId, rules]) => ({ aiId, rules }));
 }
 
+export type RulesFanOut = PromiseSettledResult<{ aiId: string; rules: ApprovalRule[] }>;
+
+/**
+ * Merges one rules fetch per AI into the owned list. One AI's failure never
+ * blanks the others: a failed AI (404 or other) is skipped. `null` means
+ * every AI failed, so the caller shows the error state with Retry.
+ */
+export function mergeRulesFanOut(settled: RulesFanOut[]): OwnedScreenRule[] | null {
+  const succeeded = settled.flatMap((result) =>
+    result.status === 'fulfilled'
+      ? result.value.rules.map((rule) => ({ aiId: result.value.aiId, rule }))
+      : [],
+  );
+  if (succeeded.length === 0 && settled.some((result) => result.status === 'rejected')) {
+    return null;
+  }
+  return succeeded;
+}
+
 /**
  * Decisions for the screen's pending tab: Approve once (`approve_once`),
  * Always (`approve_always`, the standing rule) and Deny (`deny`).

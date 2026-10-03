@@ -21,6 +21,7 @@ import {
   confirmationForDecision,
   decideScreenRow,
   groupRulesForScreen,
+  mergeRulesFanOut,
   orderedRows,
   revokeFailedOutcome,
   rowsForList,
@@ -126,13 +127,25 @@ function ApprovalsBody() {
         }
         setAiNames(names);
         const aiIds = [...new Set(pending.map((approval) => approval.aiId))];
-        const perAi = await Promise.all(
+        // One AI's rules failure must not blank the others: each AI is
+        // handled on its own (`mergeRulesFanOut` skips failures), and only
+        // when every AI fails does the section show the error state.
+        const settled = await Promise.allSettled(
           aiIds.map(async (aiId) => ({
             aiId,
             rules: await api.listAiApprovalRules(aiId),
           })),
         );
-        setOwnedRules(perAi.flatMap(({ aiId, rules }) => rules.map((rule) => ({ aiId, rule }))));
+        const merged = mergeRulesFanOut(settled);
+        if (merged === null) {
+          const firstFailure = settled.find((result) => result.status === 'rejected');
+          const reason =
+            firstFailure !== undefined && firstFailure.status === 'rejected'
+              ? firstFailure.reason
+              : undefined;
+          throw reason instanceof Error ? reason : new Error('Could not load the rules.');
+        }
+        setOwnedRules(merged);
         setRulesStatus('ready');
         setRulesError('');
       } catch (error) {

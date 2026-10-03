@@ -8,6 +8,7 @@ import {
   confirmationForDecision,
   decideScreenRow,
   groupRulesForScreen,
+  mergeRulesFanOut,
   orderedRows,
   revokeFailedOutcome,
   rowsForList,
@@ -196,5 +197,37 @@ describe('groupRulesForScreen', () => {
     const sections = groupRulesForScreen(owned);
     expect(sections.map((section) => section.aiId)).toEqual(['ai-1', 'ai-2']);
     expect(sections[0].rules.map((item) => item.id)).toEqual(['r-1', 'r-3']);
+  });
+});
+
+describe('mergeRulesFanOut', () => {
+  const okA = {
+    status: 'fulfilled' as const,
+    value: { aiId: 'ai-a', rules: [rule({ id: 'r-a' })] },
+  };
+  const okB = {
+    status: 'fulfilled' as const,
+    value: { aiId: 'ai-b', rules: [rule({ id: 'r-b' })] },
+  };
+  const failed404 = {
+    status: 'rejected' as const,
+    reason: new ApprovalsApiError(404, 'not_found', 'AI not found'),
+  };
+
+  it("keeps B's rules when A's rules call answers 404, with no error", () => {
+    const merged = mergeRulesFanOut([failed404, okB]);
+    expect(merged).toEqual([{ aiId: 'ai-b', rule: rule({ id: 'r-b' }) }]);
+  });
+
+  it('merges every AI when all succeed', () => {
+    expect(mergeRulesFanOut([okA, okB])).toHaveLength(2);
+  });
+
+  it('returns null when every AI fails, so the caller shows the error state', () => {
+    expect(mergeRulesFanOut([failed404, failed404])).toBeNull();
+  });
+
+  it('returns an empty list (not an error) when no AI has pending requests', () => {
+    expect(mergeRulesFanOut([])).toEqual([]);
   });
 });
