@@ -1,7 +1,7 @@
 ---
 id: T-0175
 title: Mobile: one emoji button opens a panel with Emoji, Stickers and GIFs tabs (like web)
-status: planned
+status: in-progress
 milestone: M5
 branch: task/T-0175-emoji-panel-mobile
 model: meta/muse-spark-1.3-contributor
