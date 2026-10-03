@@ -53,3 +53,17 @@ export const SETTINGS_ITEMS = [
 
 export type SettingsItem = (typeof SETTINGS_ITEMS)[number];
 export type SettingsIconId = SettingsItem['icon'];
+export interface SettingsItem {
+  icon: 'UserPlus' | 'Server' | 'KeyRound';
+  label: string;
+  href: '/settings/requests' | '/settings/machines' | '/settings/connections';
+}
+
+export const SETTINGS_ITEMS: readonly SettingsItem[] = [
+  { icon: 'UserPlus', label: 'Contact requests', href: '/settings/requests' },
+  // T-0185: mirrors web's Settings → Machines and Connections. Web guards
+  // both pages with `RequireAuth` only (any signed-in user manages their
+  // own machines and keys), so no `ownerOnly` flag is needed here.
+  { icon: 'Server', label: 'Machines', href: '/settings/machines' },
+  { icon: 'KeyRound', label: 'Connections', href: '/settings/connections' },
+];
