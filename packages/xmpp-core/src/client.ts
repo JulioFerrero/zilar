@@ -64,12 +64,16 @@ import type {
 
 const CONNECT_TIMEOUT_MS = 15_000;
 // How long the client may stay in `connecting` / `reconnecting` before it is
-// torn down and replaced by a fresh one (overridable by
-// `XmppCoreOptions.reconnectWatchdogMs`; 0 disables). xmpp.js only schedules a
-// retry when it sees a socket `disconnect`; an attempt that fails without one
-// (or a token fetch that never answers) leaves it waiting for ever, which is
-// what showed as "Connecting..." until the app was force closed.
-const DEFAULT_RECONNECT_WATCHDOG_MS = 25_000;
+// torn down and replaced by a fresh one. A normal connect (socket, TLS, token
+// fetch, login) takes a second or two, so the first wait is short and each
+// replacement that also fails waits a little longer (5, 8, 12, then 20 s;
+// back to 5 s once online). That is at most about 20 token requests per ten
+// minutes, far under the route's limit. `XmppCoreOptions.reconnectWatchdogMs`
+// replaces the whole schedule with one fixed wait; 0 disables. xmpp.js only
+// schedules a retry when it sees a socket `disconnect`; an attempt that fails
+// without one (or a token fetch that never answers) leaves it waiting for
+// ever, which is what showed as "Connecting..." until the app was force closed.
+const WATCHDOG_SCHEDULE_MS = [5_000, 8_000, 12_000, 20_000];
 const JOIN_TIMEOUT_MS = 15_000;
 const HISTORY_TIMEOUT_MS = 30_000;
 const UPLOAD_TIMEOUT_MS = 15_000;
@@ -229,6 +233,8 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
   let keepaliveIdleTimer: ReturnType<typeof setTimeout> | undefined;
   let keepaliveReplyTimer: ReturnType<typeof setTimeout> | undefined;
   let watchdogTimer: ReturnType<typeof setTimeout> | undefined;
+  // How many times the watchdog replaced the client since the last online.
+  let watchdogRestarts = 0;
   let latestToken: string | undefined;
   let xmpp: XmppClient | undefined;
 
@@ -274,6 +280,7 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
     currentStatus = next;
     if (next === 'online' || next === 'offline') {
       stopWatchdog();
+      watchdogRestarts = 0;
     } else {
       armWatchdog();
     }
@@ -286,7 +293,10 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
   }
 
   function watchdogMs(): number {
-    return options.reconnectWatchdogMs ?? DEFAULT_RECONNECT_WATCHDOG_MS;
+    if (options.reconnectWatchdogMs !== undefined) return options.reconnectWatchdogMs;
+    return (
+      WATCHDOG_SCHEDULE_MS[Math.min(watchdogRestarts, WATCHDOG_SCHEDULE_MS.length - 1)] ?? 20_000
+    );
   }
 
   function stopWatchdog(): void {
@@ -311,6 +321,7 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
     if (!desiredOnline || currentStatus === 'online') return;
     const stale = xmpp;
     xmpp = undefined;
+    watchdogRestarts += 1;
     reconnectAttempt = 0;
     coldAttemptSeen = false;
     transientTokenError = undefined;

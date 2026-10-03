@@ -497,10 +497,10 @@ describe('connection resilience: reconnect watchdog', () => {
   it('replaces a client that stays reconnecting, and ignores the old one afterwards', async () => {
     const { core, clients } = await onlineThenWedged();
 
-    await vi.advanceTimersByTimeAsync(24_000);
+    await vi.advanceTimersByTimeAsync(4_500);
     expect(clients).toHaveLength(1);
 
-    await vi.advanceTimersByTimeAsync(1_500);
+    await vi.advanceTimersByTimeAsync(1_000);
     await flush();
     expect(clients).toHaveLength(2);
     expect(clients[0]?.stopCalls).toBe(1);
@@ -516,10 +516,19 @@ describe('connection resilience: reconnect watchdog', () => {
 
   it('keeps trying: a replacement that also wedges is replaced again', async () => {
     const { clients } = await onlineThenWedged();
-    await vi.advanceTimersByTimeAsync(26_000);
-    await vi.advanceTimersByTimeAsync(26_000);
-    await flush();
+    // The waits grow: 5 s, then 8 s, then 12 s, then 20 s.
+    await vi.advanceTimersByTimeAsync(5_100);
+    expect(clients).toHaveLength(2);
+    await vi.advanceTimersByTimeAsync(7_700);
+    expect(clients).toHaveLength(2);
+    await vi.advanceTimersByTimeAsync(500);
     expect(clients).toHaveLength(3);
+    await vi.advanceTimersByTimeAsync(12_100);
+    expect(clients).toHaveLength(4);
+    await vi.advanceTimersByTimeAsync(20_100);
+    expect(clients).toHaveLength(5);
+    await vi.advanceTimersByTimeAsync(20_100);
+    expect(clients).toHaveLength(6);
   });
 
   it('a cold start that never gets going is replaced too', async () => {
@@ -528,10 +537,10 @@ describe('connection resilience: reconnect watchdog', () => {
     const failed = connecting.catch((error: unknown) => error);
     await vi.advanceTimersByTimeAsync(15_000);
     expect(await failed).toBeInstanceOf(Error);
-    await vi.advanceTimersByTimeAsync(11_000);
     await flush();
-    expect(clients).toHaveLength(2);
-    clients[1]?.emitOnline('bob@zilar.localhost');
+    // Replaced after 5 s (and again after the next 8 s): never waits for ever.
+    expect(clients.length).toBeGreaterThanOrEqual(2);
+    clients.at(-1)?.emitOnline('bob@zilar.localhost');
     expect(core.status()).toBe('online');
   });
 

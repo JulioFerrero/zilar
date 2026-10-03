@@ -24,7 +24,8 @@ export interface XmppCoreOptions {
   keepaliveTimeoutMs?: number;
   /**
    * How long the client may stay connecting or reconnecting before it is torn
-   * down and replaced by a fresh one. Defaults to 25 000; 0 disables.
+   * down and replaced by a fresh one. Defaults to a schedule of 5, 8, 12 and
+   * 20 s; a number replaces it with one fixed wait, 0 disables.
    */
   reconnectWatchdogMs?: number;
   /**
