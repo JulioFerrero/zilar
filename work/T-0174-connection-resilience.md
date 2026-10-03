@@ -112,3 +112,12 @@ Token route allows 120 per 10 min (`apps/server/src/xmpp/routes.ts:17`). Backoff
 - Deploy tests are not wired into CI (`.github/workflows/ci.yml` has no deploy step); the new `.sh` runs manually like its siblings.
 
 ## Review (written by Claude)
+
+**Verdict:** Round 1: changes requested
+
+Verified by reading the full diff and the pre-review: scope is clean; the transient/fatal split, backoff, keepalive and ping reply read correct; token `status` check and rate-limit arithmetic accepted.
+
+### Findings
+1. **`runBoot` is generation-blind** (`apps/mobile/src/store/real-store.ts` ~2906). A boot in flight for an older generation is awaited by a newer `runBoot(gen)`; the stale boot bails at its `gen !== generation` checks and creates no core, so the store sits with `core === undefined` and `chatsLoad: 'loading'` until the next resume. Store the generation next to the promise: if the cached boot belongs to a different generation, start a fresh boot for the new one (the stale one still ends by itself). Tests (mutation-check each): pull to refresh (`reloadChats`) during a slow first boot ends with a core and `loaded`; stop then start during a boot ends with a core; a resume during a boot of the SAME generation still shares one boot (keep your existing test). Also make `reconnect()` start a new attempt if the boot it awaited failed to produce a core, instead of silently dropping the resume.
+2. **First retry waits 2 s on a cold start** (`packages/xmpp-core/src/client.ts` ~546): skip arming the delay when `reconnectAttempt === 0 && !hasBeenOnline` so the first retry is 1 s; add a test.
+3. *(No change needed.)* The duplicate ping result from the library plus the core is accepted.
