@@ -44,6 +44,16 @@ export type SendAttachmentOptions = {
   replyTo?: ReplyRef;
 };
 
+/** A finished voice recording the composer hands to the store (T-0154). */
+export type SendVoiceRecording = {
+  /** Local `file://` URI of the recorded bytes (m4a on iOS). */
+  uri: string;
+  mimeType: string;
+  size: number;
+  durationMs: number;
+  waveform: number[];
+};
+
 /** The tap-to-send choice the sticker panel hands to the store. */
 export type SendStickerChoice = {
   stickerId: string;
@@ -212,6 +222,12 @@ export interface ChatStoreState {
   retryAttachment: (chatId: string, messageId: string) => void;
   /** Cancels the in-flight upload of an attachment send. */
   cancelAttachment: (chatId: string, messageId: string) => void;
+  /** Sends a recorded voice message in the chat (T-0154). */
+  sendVoice: (chatId: string, recording: SendVoiceRecording, options?: SendTextOptions) => void;
+  /** Retries a failed voice send (the recording is kept for the retry). */
+  retryVoice: (chatId: string, messageId: string) => void;
+  /** Cancels the in-flight upload of a voice send. */
+  cancelVoice: (chatId: string, messageId: string) => void;
   /** Sends a sticker payload in the chat (same path as other payload messages). */
   sendSticker: (chatId: string, sticker: SendStickerChoice, options?: SendTextOptions) => void;
   /** Retries a failed sticker send (the payload is already on the message). */

@@ -13,6 +13,7 @@ import { startJumpScroll } from '@/components/chat/jump-scroll';
 import { LoadError } from '@/components/chat/load-error';
 import { MessageBubble } from '@/components/chat/message-bubble';
 import { MessageListSkeleton } from '@/components/chat/skeleton';
+import type { VoicePlayerHost } from '@/components/chat/voice-player';
 import { UnreadDivider } from '@/components/chat/unread-divider';
 import { Text } from '@/components/ui/text';
 import { useChatStore } from '@/store/chat-store-provider';
@@ -48,10 +49,16 @@ type MessageListProps = {
   onRetryAttachment?: ((message: UiMessage) => void) | undefined;
   /** Called when Cancel is tapped while an attachment uploads. */
   onCancelAttachment?: ((message: UiMessage) => void) | undefined;
+  /** Called when the Retry is tapped on a failed voice send. */
+  onRetryVoice?: ((message: UiMessage) => void) | undefined;
+  /** Called when Cancel is tapped while a voice message uploads. */
+  onCancelVoice?: ((message: UiMessage) => void) | undefined;
   /** Called when a file row is tapped (system open sheet). */
   onOpenAttachment?: ((message: UiMessage) => void) | undefined;
   /** The message id currently downloading for the open sheet. */
   openingAttachmentId?: string | undefined;
+  /** The shared voice player host from the chat screen (T-0154). */
+  voiceHost?: VoicePlayerHost | undefined;
 };
 
 /**
@@ -72,8 +79,11 @@ export function MessageList({
   onRetrySticker,
   onRetryAttachment,
   onCancelAttachment,
+  onRetryVoice,
+  onCancelVoice,
   onOpenAttachment,
   openingAttachmentId,
+  voiceHost,
 }: MessageListProps) {
   const currentUserId = useChatStore((state) => state.currentUserId);
   const messages = useChatStore((state) => state.messages(chat.id));
@@ -305,8 +315,11 @@ export function MessageList({
             {...(onRetrySticker === undefined ? {} : { onRetrySticker })}
             {...(onRetryAttachment === undefined ? {} : { onRetryAttachment })}
             {...(onCancelAttachment === undefined ? {} : { onCancelAttachment })}
+            {...(onRetryVoice === undefined ? {} : { onRetryVoice })}
+            {...(onCancelVoice === undefined ? {} : { onCancelVoice })}
             {...(onOpenAttachment === undefined ? {} : { onOpenAttachment })}
             {...(openingAttachmentId === undefined ? {} : { openingAttachmentId })}
+            {...(voiceHost === undefined ? {} : { voiceHost })}
           />
         );
       }}

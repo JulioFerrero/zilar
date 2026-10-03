@@ -33,7 +33,7 @@ import {
   type XmppCore,
   type XmppCoreOptions,
 } from '@zilar/xmpp-core';
-import { StickerSchema, type Attachment, type Payload } from '@zilar/protocol';
+import { StickerSchema, type Attachment, type Payload, type VoiceMeta } from '@zilar/protocol';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 
 import {
@@ -78,12 +78,15 @@ import {
 import { getSessionToken } from '../lib/session-token';
 import {
   attachmentDataFor,
+  isTrustedMediaUrl,
   MAX_ATTACHMENT_BYTES,
   sanitizeIncomingAttachment,
   trustedMediaHosts,
   type MediaTokenShape,
 } from '../lib/attachments';
 import type { AttachmentUploader, PickedFile } from '../lib/attachment-ports';
+import type { ConvertedVoice, RecordedVoice, VoicePort } from '../lib/voice';
+import { createVoicePort, VoiceError } from '../lib/voice';
 import { CURRENT_USER_ID, mobileUploadOf, type MobileMessage } from '../lib/types';
 import type { ChatStoreState, ConnectionStatus, DraftState } from './types';
 
@@ -155,6 +158,8 @@ export interface RealStoreDeps {
    * `expo-file-system` stat.
    */
   statSize?: (uri: string) => Promise<number | undefined>;
+  /** Converts + uploads voice recordings (T-0154); tests inject a fake. */
+  voice?: VoicePort;
   now?: () => Date;
   appState?: AppStateLike;
   /** The AI draft SSE stream; tests inject a fake. */
@@ -349,6 +354,29 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
   // The local bytes of an outgoing attachment, kept for a Retry after a
   // failed upload (like web's `pendingAttachments`).
   const pendingUploads = new Map<string, PickedFile>();
+  // A finished voice recording per optimistic message, kept for a Retry after
+  // a failed convert/upload/send (like web's `pendingVoices`, T-0154).
+  const pendingVoices = new Map<string, RecordedVoice>();
+  // The voice pipeline (T-0154): conversion through `POST /api/voice` when
+  // the recording is not already M4A, then the XEP-0363 upload. The app
+  // wires the real port through the uploader seam; tests inject a fake.
+  function voicePortFor(): VoicePort {
+    if (deps.voice !== undefined) {
+      return deps.voice;
+    }
+    const uploader = deps.uploader;
+    if (uploader === undefined) {
+      return {
+        convert: async () => {
+          throw new VoiceError('network_error', 'Could not reach the server');
+        },
+        upload: async () => {
+          throw new VoiceError('network_error', 'Could not reach the server');
+        },
+      };
+    }
+    return createVoicePort({ apiUrl: API_URL, getToken: getSessionToken, uploader });
+  }
 
   return createStore<ChatStoreState>((set, get) => {
     let core: XmppCore | undefined;
@@ -674,6 +702,26 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           ingestEdit(message);
         }
       }
+    }
+
+    /**
+     * An incoming voice message on an untrusted host would make the player
+     * fetch whatever URL a chat peer put in the payload, leaking the
+     * viewer's IP just like an image would. Drop the URL: the bubble still
+     * shows the waveform and the duration, but nothing is fetched. Mirrors
+     * web's `sanitizeIncomingVoice`.
+     */
+    function sanitizeVoice(voice: VoiceMeta, token: MediaTokenShape | undefined): VoiceMeta {
+      if (voice.url === undefined) {
+        return voice;
+      }
+      const trusted = token === undefined ? undefined : trustedMediaHosts(token);
+      if (trusted !== undefined && isTrustedMediaUrl(voice.url, trusted)) {
+        return voice;
+      }
+      const stripped: VoiceMeta = { ...voice };
+      delete stripped.url;
+      return stripped;
     }
 
     // Applies the edits that arrived before their target message was loaded.
@@ -1279,6 +1327,135 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         }
       })();
     }
+    // A failed voice send (T-0154): the bubble keeps its local recording
+    // and shows a Retry with the plain reason, never a silent "sending".
+    function markVoiceFailed(chatId: string, messageId: string): void {
+      set((state) => ({
+        messagesByChat: {
+          ...state.messagesByChat,
+          [chatId]: listFor(state, chatId).map((item) =>
+            sameMessage(item.id, messageId) ? { ...item, failed: true } : item,
+          ),
+        },
+      }));
+    }
+
+    // Swaps an optimistic voice message's placeholder metadata for the
+    // uploaded one: the server-measured duration and the download URL.
+    function updateMessageVoice(
+      chatId: string,
+      messageId: string,
+      voice: { duration_ms: number; mime: string; waveform: number[]; url: string },
+    ): void {
+      set((state) => {
+        const list = listFor(state, chatId).map((item) =>
+          sameMessage(item.id, messageId)
+            ? {
+                ...clearFailure(item),
+                voice:
+                  item.voice === undefined
+                    ? { ...voice }
+                    : { ...item.voice, duration_ms: voice.duration_ms, url: voice.url },
+              }
+            : item,
+        );
+        const last = state.chats.find((chat) => chat.id === chatId)?.lastMessage;
+        const lastMatches = last !== undefined && sameMessage(last.id, messageId);
+        return {
+          messagesByChat: { ...state.messagesByChat, [chatId]: list },
+          chats: lastMatches
+            ? state.chats.map((chat) =>
+                chat.id === chatId && chat.lastMessage !== undefined
+                  ? {
+                      ...chat,
+                      lastMessage: {
+                        ...clearFailure(chat.lastMessage),
+                        voice:
+                          chat.lastMessage.voice === undefined
+                            ? { ...voice }
+                            : {
+                                ...chat.lastMessage.voice,
+                                duration_ms: voice.duration_ms,
+                                url: voice.url,
+                              },
+                      },
+                    }
+                  : chat,
+              )
+            : state.chats,
+        };
+      });
+    }
+
+    // The voice pipeline (T-0154), re-runnable from a Retry: convert (skipped
+    // for m4a), PUT the bytes through the XEP-0363 slot, then send the `voice`
+    // payload message exactly as web does. The recording stays in
+    // `pendingVoices` until the stanza send succeeds, so a Retry after a
+    // failed send re-runs the same pipeline from the kept file. A
+    // 'cancelled' error is swallowed only when this very message was
+    // cancelled by the user (the bubble is already gone); any other failure
+    // marks the message failed so Retry appears.
+    function runVoiceSend(
+      chat: ChatSummary,
+      localId: string,
+      recording: RecordedVoice,
+      waveform: number[],
+      replyTo: ReplyRef | undefined,
+    ): void {
+      const current = core;
+      if (current === undefined) {
+        markVoiceFailed(chat.id, localId);
+        return;
+      }
+      const messageAlive = (): boolean =>
+        listFor(get(), chat.id).some((item) => sameMessage(item.id, localId));
+      void (async () => {
+        try {
+          const converted: ConvertedVoice = await voicePortFor().convert(recording);
+          if (!messageAlive()) {
+            return;
+          }
+          const url = await voicePortFor().upload(
+            current,
+            converted,
+            (fraction) => setUploadProgress(chat.id, localId, fraction),
+            localId,
+          );
+          if (!messageAlive()) {
+            return;
+          }
+          const voice = {
+            duration_ms: converted.durationMs,
+            mime: 'audio/mp4',
+            waveform,
+            url,
+          };
+          updateMessageVoice(chat.id, localId, voice);
+          clearUploadProgress(chat.id, localId);
+          const sent = await current.sendMessage(chat.id, coreKind(chat), '', {
+            payload: { v: 0, type: 'voice', data: voice },
+            ...(replyTo === undefined ? {} : { replyTo: { id: replyTo.id } }),
+          });
+          if (!messageAlive()) {
+            return;
+          }
+          pendingVoices.delete(localId);
+          pendingVoices.delete(aliasRoot(localId));
+          linkMessageIds(localId, sent.id);
+          linkLocalToServer(localId, sent.id);
+          rememberOriginId(localId, sent.id);
+          updateMessageStatus(chat.id, localId, 'sent');
+        } catch (error) {
+          clearUploadProgress(chat.id, localId);
+          if (error instanceof Error && error.message === 'cancelled' && !messageAlive()) {
+            return;
+          }
+          if (messageAlive()) {
+            markVoiceFailed(chat.id, localId);
+          }
+        }
+      })();
+    }
     // The send step of a sticker, re-runnable from a Retry: the payload is
     // already on the optimistic message, so only the stanza is (re)sent.
     function runStickerSend(
@@ -1798,6 +1975,12 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       if (message.payload !== undefined && message.payload.type === 'sticker') {
         ui.card = message.payload;
       }
+      // A voice payload rides `voice`, sanitized like on web: a recording on
+      // an untrusted host loses its URL (the bubble still shows the waveform
+      // and the duration, but nothing is ever fetched).
+      if (message.payload !== undefined && message.payload.type === 'voice') {
+        ui.voice = sanitizeVoice(message.payload.data, mediaToken);
+      }
       if (message.replyTo !== undefined) {
         const referenced = get().messagesByChat[message.chatJid]?.find(
           (item) => item.id === message.replyTo?.id,
@@ -2010,9 +2193,11 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           linkLocalToServer(localId, ui.id);
           // The upload finished: drop the kept bytes and the local preview
           // fields, so a later Retry is a no-op and the echo carries the
-          // served URL only.
+          // served URL only. Voice keeps its recording the same way.
           pendingUploads.delete(localId);
           pendingUploads.delete(aliasRoot(localId));
+          pendingVoices.delete(localId);
+          pendingVoices.delete(aliasRoot(localId));
         }
         set((state) => {
           const existing = listFor(state, chatId);
@@ -3071,6 +3256,95 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         deps.uploader?.cancel(messageId);
         pendingUploads.delete(aliasRoot(messageId));
         pendingUploads.delete(messageId);
+        set((state) => ({
+          messagesByChat: {
+            ...state.messagesByChat,
+            [chatId]: listFor(state, chatId).filter((item) => !sameMessage(item.id, messageId)),
+          },
+        }));
+      },
+      sendVoice: (chatId, recording, options) => {
+        const chat = get().chats.find((entry) => entry.id === chatId);
+        if (chat === undefined) {
+          return;
+        }
+        const durationMs = Math.max(1, Math.round(recording.durationMs));
+        const waveform = recording.waveform.length > 0 ? recording.waveform : [12];
+        sequence += 1;
+        const localId = `local-${sequence}`;
+        const replyTo = options?.replyTo;
+        const kept: RecordedVoice = {
+          uri: recording.uri,
+          mimeType: recording.mimeType,
+          size: recording.size,
+          durationMs,
+        };
+        const message: UiMessage = {
+          id: localId,
+          chatId,
+          senderId: get().currentUserId,
+          senderName: 'You',
+          createdAt: now(),
+          status: 'sending',
+          voice: {
+            duration_ms: durationMs,
+            mime: 'audio/mp4',
+            waveform,
+            ...(recording.uri === '' ? {} : { url: recording.uri }),
+          },
+          ...(replyTo === undefined ? {} : { replyTo }),
+        };
+        // The local file URI rides alongside (never on the wire): the bubble
+        // plays the local bytes while the upload runs.
+        (message as Partial<MobileMessage>).localUri = recording.uri;
+        const signature = signatureFor(chatId, '', replyTo);
+        const queue = pendingOutgoing.get(signature) ?? [];
+        queue.push(localId);
+        pendingOutgoing.set(signature, queue);
+        set((state) => ({
+          // A later validated send clears this chat's stale error banner.
+          actionError: state.actionError?.chatId === chatId ? undefined : state.actionError,
+        }));
+        setChatMessage(chatId, message, true);
+        pendingVoices.set(localId, kept);
+        const mine = myJid();
+        if (mine !== undefined) {
+          rememberAuthor(localId, { jid: mine, resolved: true });
+        }
+        runVoiceSend(chat, localId, kept, waveform, replyTo);
+      },
+      retryVoice: (chatId, messageId) => {
+        const root = aliasRoot(messageId);
+        const kept = pendingVoices.get(root) ?? pendingVoices.get(messageId);
+        const chat = get().chats.find((entry) => entry.id === chatId);
+        if (kept === undefined || chat === undefined) {
+          return;
+        }
+        const message = listFor(get(), chatId).find((item) => sameMessage(item.id, messageId));
+        if (message === undefined || message.voice === undefined || message.failed !== true) {
+          return;
+        }
+        clearAttachmentFailure(chatId, messageId);
+        // The retry re-keys the local preview and re-runs the pipeline from
+        // the kept recording.
+        set((state) => ({
+          messagesByChat: {
+            ...state.messagesByChat,
+            [chatId]: listFor(state, chatId).map((item) =>
+              sameMessage(item.id, messageId) ? { ...item, localUri: kept.uri } : item,
+            ),
+          },
+        }));
+        runVoiceSend(chat, messageId, kept, message.voice.waveform, message.replyTo);
+      },
+      cancelVoice: (chatId, messageId) => {
+        // Cancelling aborts only this message's in-flight PUT and removes
+        // the optimistic bubble. The recording is dropped, so a later Retry
+        // is a no-op. The uploader keys controllers per message id.
+        deps.uploader?.cancel(aliasRoot(messageId));
+        deps.uploader?.cancel(messageId);
+        pendingVoices.delete(aliasRoot(messageId));
+        pendingVoices.delete(messageId);
         set((state) => ({
           messagesByChat: {
             ...state.messagesByChat,
