@@ -169,6 +169,7 @@ export function Composer({
   // through the store's `sendAttachment` with the composer text as the
   // caption, exactly like web. Voice (T-0154): the mic button records through
   // the `VoiceRecorderButton` below and sends through `onSendVoice`.
+  const [voiceRecording, setVoiceRecording] = useState(false);
   const [attachOpen, setAttachOpen] = useState(false);
   const [attachBusy, setAttachBusy] = useState(false);
   const [attachError, setAttachError] = useState<string | undefined>(undefined);
@@ -445,38 +446,42 @@ export function Composer({
         className="flex-row items-end gap-1 rounded-[14px] p-2"
         style={[well, { borderColor: '#262626' }]}
       >
-        <IconButton label="Attach file" className="h-9 w-9 rounded-[10px]" onPress={openAttach}>
-          <Paperclip size={20} color={iconColor} />
-        </IconButton>
-        <TextInput
-          value={text}
-          onChangeText={handleChange}
-          multiline
-          placeholder={placeholder}
-          placeholderTextColor="#a1a1a1"
-          accessibilityLabel="Message"
-          className="mx-1 flex-1 py-2 text-[16px] text-foreground"
-          style={{ height: inputHeight, maxHeight: MAX_INPUT_HEIGHT, lineHeight: 20 }}
-          onContentSizeChange={(event) =>
-            setInputHeight(
-              clamp(
-                Math.round(event.nativeEvent.contentSize.height) + 16,
-                MIN_INPUT_HEIGHT,
-                MAX_INPUT_HEIGHT,
-              ),
-            )
-          }
-        />
-        <IconButton label="Emoji" className="h-9 w-9 rounded-[10px]">
-          <Smile size={20} color={iconColor} />
-        </IconButton>
-        <IconButton label="Stickers" className="h-9 w-9 rounded-[10px]" onPress={openPanel}>
-          <Sticker size={20} color={iconColor} />
-        </IconButton>
-        {gifAvailable !== false ? (
-          <IconButton label="GIFs" className="h-9 w-9 rounded-[10px]" onPress={openGifs}>
-            <Text className="text-[15px] font-bold">GIF</Text>
-          </IconButton>
+        {!voiceRecording ? (
+          <>
+            <IconButton label="Attach file" className="h-9 w-9 rounded-[10px]" onPress={openAttach}>
+              <Paperclip size={20} color={iconColor} />
+            </IconButton>
+            <TextInput
+              value={text}
+              onChangeText={handleChange}
+              multiline
+              placeholder={placeholder}
+              placeholderTextColor="#a1a1a1"
+              accessibilityLabel="Message"
+              className="mx-1 flex-1 py-2 text-[16px] text-foreground"
+              style={{ height: inputHeight, maxHeight: MAX_INPUT_HEIGHT, lineHeight: 20 }}
+              onContentSizeChange={(event) =>
+                setInputHeight(
+                  clamp(
+                    Math.round(event.nativeEvent.contentSize.height) + 16,
+                    MIN_INPUT_HEIGHT,
+                    MAX_INPUT_HEIGHT,
+                  ),
+                )
+              }
+            />
+            <IconButton label="Emoji" className="h-9 w-9 rounded-[10px]">
+              <Smile size={20} color={iconColor} />
+            </IconButton>
+            <IconButton label="Stickers" className="h-9 w-9 rounded-[10px]" onPress={openPanel}>
+              <Sticker size={20} color={iconColor} />
+            </IconButton>
+            {gifAvailable !== false ? (
+              <IconButton label="GIFs" className="h-9 w-9 rounded-[10px]" onPress={openGifs}>
+                <Text className="text-[15px] font-bold">GIF</Text>
+              </IconButton>
+            ) : null}
+          </>
         ) : null}
         {canSend ? (
           <Pressable
@@ -496,6 +501,7 @@ export function Composer({
             replyTo={replyTo}
             onCancelReply={onCancelReply}
             canSend={canSend}
+            onRecordingChange={setVoiceRecording}
           />
         )}
       </View>

@@ -359,7 +359,7 @@ export function MessageBubble({
           isLastInGroup ? 'mb-2' : 'mb-0.5',
         )}
       >
-        {!outgoing ? (
+        {!outgoing && isGroup ? (
           showAvatar ? (
             <Avatar id={message.senderId} name={message.senderName} size={34} className="mr-2" />
           ) : (
@@ -392,7 +392,7 @@ export function MessageBubble({
             isLastInGroup ? 'mb-2' : 'mb-0.5',
           )}
         >
-          {!outgoing ? (
+          {!outgoing && isGroup ? (
             showAvatar ? (
               <Avatar id={message.senderId} name={message.senderName} size={34} className="mr-2" />
             ) : (

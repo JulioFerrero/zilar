@@ -279,4 +279,28 @@ describe('MessageBubble sticker branch', () => {
     expect(html).toContain('data-can-edit="true"');
     expect(html).toContain('data-can-copy="true"');
   });
+
+  it('reserves no avatar column for an incoming message in a one-to-one chat', () => {
+    const incoming = stickerMessage({
+      senderId: 'ana',
+      senderName: 'Ana',
+      card: undefined,
+      text: 'hi',
+    });
+    const direct = renderToStaticMarkup(
+      createElement(MessageBubble, { ...BASE, message: incoming, isGroup: false }),
+    );
+    expect(direct).not.toContain('width:34px');
+    // In a group the column stays (a spacer under a non-last message), so the
+    // bubbles of one sender line up.
+    const grouped = renderToStaticMarkup(
+      createElement(MessageBubble, {
+        ...BASE,
+        message: incoming,
+        isGroup: true,
+        isLastInGroup: false,
+      }),
+    );
+    expect(grouped).toContain('width:34px');
+  });
 });
