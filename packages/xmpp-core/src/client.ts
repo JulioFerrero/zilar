@@ -542,8 +542,10 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
       // query history with no identity yet, so only that event goes online.
       if (raw === 'online') return;
       // Every attempt starts here: arm the wait after it, so a failure
-      // backs off 1 s, 2 s, 4 s, 8 s, 15 s, then 30 s.
-      if (raw === 'connecting') {
+      // backs off 1 s, 2 s, 4 s, 8 s, 15 s, then 30 s. A cold start that
+      // never went online keeps the 1 s wait the library starts with, so
+      // its first retry is 1 s too.
+      if (raw === 'connecting' && (reconnectAttempt > 0 || hasBeenOnline)) {
         reconnectAttempt += 1;
         setReconnectDelay(reconnectDelayFor(reconnectAttempt));
       }

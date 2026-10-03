@@ -683,6 +683,132 @@ describe('createRealChatStore', () => {
     expect(store.getState().chats.map((chat) => chat.id)).toEqual(['ana@zilar.test']);
     expect(createXmpp).toHaveBeenCalledTimes(1);
   });
+
+  it('pull to refresh during a slow first boot ends with a core and loaded chats', async () => {
+    // The first boot is stuck on the chats fetch; a manual reload bumps the
+    // generation instead of waiting on the stale boot (which bails by
+    // itself once the fetch settles).
+    const gate = deferred();
+    const api = fakeApi({
+      getChats: vi.fn(async () => {
+        await gate.promise;
+        return [{ kind: 'dm' as const, chatJid: 'ana@zilar.test', title: 'Ana', userId: 'u-ana' }];
+      }),
+    });
+    const xmpp = fakeXmpp();
+    const appState = fakeAppState();
+    const createXmpp = vi.fn((options: XmppCoreOptions) => {
+      xmpp.options.current = options;
+      return xmpp.core;
+    });
+    const store = createRealChatStore({
+      api,
+      appState,
+      now: () => new Date('2026-09-28T12:00:00Z'),
+      createXmpp,
+    });
+    store.getState().start();
+    await flush();
+    expect(api.getChats).toHaveBeenCalledTimes(1);
+
+    store.getState().reloadChats();
+    await flush();
+    // A fresh boot for the new generation is running alongside the stale one.
+    expect(api.getChats).toHaveBeenCalledTimes(2);
+
+    gate.resolve();
+    await flushUntil(() => store.getState().status === 'online');
+    expect(store.getState().chatsLoad).toBe('loaded');
+    expect(createXmpp).toHaveBeenCalledTimes(1);
+  });
+
+  it('stop then start during a boot ends with a core', async () => {
+    const gate = deferred();
+    const api = fakeApi({
+      getChats: vi.fn(async () => {
+        await gate.promise;
+        return [{ kind: 'dm' as const, chatJid: 'ana@zilar.test', title: 'Ana', userId: 'u-ana' }];
+      }),
+    });
+    const xmpp = fakeXmpp();
+    const appState = fakeAppState();
+    const createXmpp = vi.fn((options: XmppCoreOptions) => {
+      xmpp.options.current = options;
+      return xmpp.core;
+    });
+    const store = createRealChatStore({
+      api,
+      appState,
+      now: () => new Date('2026-09-28T12:00:00Z'),
+      createXmpp,
+    });
+    store.getState().start();
+    await flush();
+
+    // Stopping invalidates the in-flight boot; starting again boots fresh
+    // instead of sharing the stale promise.
+    store.getState().stop();
+    store.getState().start();
+    await flush();
+    expect(api.getChats).toHaveBeenCalledTimes(2);
+
+    gate.resolve();
+    await flushUntil(() => store.getState().status === 'online');
+    expect(store.getState().chats.map((chat) => chat.id)).toEqual(['ana@zilar.test']);
+    expect(createXmpp).toHaveBeenCalledTimes(1);
+  });
+
+  it('a resume retries when the awaited boot produced no core', async () => {
+    // The token fetch of the in-flight boot fails while the resume is
+    // waiting on it. The resume must start a new attempt rather than drop
+    // silently with no core.
+    let rejectToken!: (error: Error) => void;
+    const tokenGate = new Promise<never>((_resolve, reject) => {
+      rejectToken = reject;
+    });
+    // Avoid an unhandled rejection when the gate rejects before boot#1
+    // attaches its catch: boot always catches the token failure itself.
+    tokenGate.catch(() => {});
+    let tokenCalls = 0;
+    const api = fakeApi({
+      getXmppToken: vi.fn(async () => {
+        tokenCalls += 1;
+        if (tokenCalls === 1) {
+          await tokenGate;
+        }
+        return {
+          jid: 'me@zilar.test',
+          token: 'tok',
+          expiresAt: '2026-09-28T12:05:00Z',
+          service: 'ws://x',
+          domain: 'zilar.test',
+          mucDomain: 'rooms.zilar.test',
+        };
+      }),
+    });
+    const xmpp = fakeXmpp();
+    const appState = fakeAppState();
+    const store = createRealChatStore({
+      api,
+      appState,
+      now: () => new Date('2026-09-28T12:00:00Z'),
+      createXmpp: (options) => {
+        xmpp.options.current = options;
+        return xmpp.core;
+      },
+    });
+    store.getState().start();
+    await flushUntil(() => tokenCalls >= 1);
+
+    // Resume while the first boot is still waiting on its token, then fail it.
+    appState.setActive();
+    await flush();
+    rejectToken(new Error('the network is down'));
+
+    await flushUntil(() => store.getState().status === 'online');
+    expect(api.getXmppToken).toHaveBeenCalledTimes(2);
+    expect(xmpp.core.connect).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('AI reply drafts (T-0056)', () => {

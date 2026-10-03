@@ -105,11 +105,28 @@ Token route allows 120 per 10 min (`apps/server/src/xmpp/routes.ts:17`). Backoff
 - `pnpm format:check`: pass. `pnpm lint`: pass. `pnpm typecheck`: 11/11 pass.
 - Mobile regression-guard check: with the `runBoot` fix stashed, the new mobile test fails (double core); with it, passes.
 
-### Problems / deviations / open questions
+### Round 1 (review findings 1–2; finding 3 needed no change)
+
+**Finding 1 — generation-aware `runBoot`** (`apps/mobile/src/store/real-store.ts`): the in-flight boot promise now carries its generation. A newer generation starts a fresh boot instead of awaiting a stale one (the stale boot still bails at its own `gen !== generation` checks). `reconnect()` also retries for the current generation when the boot it awaited produced no core (failed before creating one), instead of silently dropping the resume. Same-generation resumes still share one boot (existing test kept).
+- New tests: pull-to-refresh during a slow first boot ends with a core + `loaded`; stop-then-start during a boot ends with a core; a resume whose awaited boot produced no core retries (token gate fails boot #1 mid-resume, boot #2 connects).
+- Mutation check (fix stashed): all 3 new tests fail, the other 75 pass — each test guards the fix. With the fix: 78/78 pass.
+
+**Finding 2 — cold-start first retry stays 1 s** (`packages/xmpp-core/src/client.ts`): the `connecting` handler skips arming the delay when `reconnectAttempt === 0 && !hasBeenOnline`, so the library's initial 1 s wait governs the first retry of a cold start. Post-online schedule is unchanged (1, 2, 4, 8, 15, 30…).
+- New test: a cold start that never went online keeps `reconnect.delay` at 1000 through its first `disconnect`/`connecting` cycle.
+- Mutation check (fix stashed): the new test fails (delay armed to 2000), the other 17 pass. With the fix: 18/18 pass.
+
+### Round 1 checks (real results)
+- `pnpm format:check`: pass. `pnpm lint`: pass. `pnpm typecheck`: 11/11 pass.
+- `pnpm --filter @zilar/xmpp-core test --maxWorkers=2`: 179 passed, 4 skipped (live-stack integration).
+- `pnpm --filter @zilar/web test --maxWorkers=2 src/store`: 159 passed.
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 real-store`: 158 passed (9 files).
+- `sh deploy/tests/connection-resilience.test.sh`: pass=4 fail=0 (unchanged this round).
 - The library (`@xmpp/client`'s `iqCallee`) already answers `urn:xmpp:ping` at its middleware layer, so in production a server ping now gets two empty results (library + core). Harmless (idempotent result, server consumes the first) but worth knowing; the core-level reply is what the spec and the fake-client tests require.
 - `core.test.ts` "goes offline … when getToken fails" now uses a 401 error — the plain-error case is transient by design (covered in the new file). Only existing test whose expectation honestly changed.
 - `transientTokenError` matches by object identity between the credentials throw and the client's error event (same object in both the real middleware path and the test helper). If a future library version clones the error, transient failures would fall back to "stay reconnecting without active teardown" (still reconnecting, just waiting on the server to close the stream).
 - Deploy tests are not wired into CI (`.github/workflows/ci.yml` has no deploy step); the new `.sh` runs manually like its siblings.
+
+### Problems / deviations / open questions
 
 ## Review (written by Claude)
 

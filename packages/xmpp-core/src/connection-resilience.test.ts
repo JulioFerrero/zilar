@@ -307,6 +307,27 @@ describe('connection resilience: backoff', () => {
     expect(core.status()).toBe('online');
     expect(fake.reconnect.delay).toBe(1000);
   });
+
+  it('a cold start that never went online retries first after 1 s', async () => {
+    const fake = createFakeClient();
+    const core = createCore(
+      tokenOptions(async () => ({ jid: 'bob@zilar.localhost', token: 'tok' })),
+      { createClient: () => fake },
+    );
+
+    const connecting = core.connect();
+    // The initial attempt leaves the library's 1 s wait untouched.
+    expect(fake.reconnect.delay).toBe(1000);
+
+    // The attempt fails while never online: the first retry still waits 1 s.
+    fake.emitStatus('disconnect');
+    fake.emitStatus('connecting');
+    expect(fake.reconnect.delay).toBe(1000);
+
+    fake.emitOnline('bob@zilar.localhost');
+    await connecting;
+    expect(core.status()).toBe('online');
+  });
 });
 
 describe('connection resilience: keepalive', () => {
