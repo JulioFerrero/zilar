@@ -1,4 +1,4 @@
-import { Mic, Trash2 } from 'lucide-react-native';
+import { ArrowUp, Mic, Trash2 } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
@@ -121,6 +121,8 @@ type VoiceRecorderProps = {
   /** Builds a flat waveform placeholder; tests inject a fake. */
   waveformFor?: ((durationMs: number) => number[]) | undefined;
   disabled?: boolean | undefined;
+  /** Tells the composer when a recording is active, so it can hide the other controls. */
+  onRecordingChange?: ((recording: boolean) => void) | undefined;
 };
 
 /** How often the recording row re-reads the live duration. */
@@ -141,10 +143,14 @@ export function VoiceRecorderButton({
   recorder: recorderProp,
   waveformFor,
   disabled = false,
+  onRecordingChange,
 }: VoiceRecorderProps) {
   const scheme: ColorScheme = asColorScheme(useColorScheme().colorScheme);
   const [recorder] = useState<VoiceRecorderPort>(() => recorderProp ?? createVoiceRecorder());
   const [recording, setRecording] = useState(false);
+  useEffect(() => {
+    onRecordingChange?.(recording);
+  }, [recording, onRecordingChange]);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [error, setError] = useState<string | undefined>(undefined);
   const timerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
@@ -250,7 +256,7 @@ export function VoiceRecorderButton({
             className="h-9 w-9 rounded-[10px]"
             onPress={() => void finish(false)}
           >
-            <Mic size={20} color={ICON[scheme]} />
+            <ArrowUp size={20} color={ICON[scheme]} />
           </IconButton>
         </View>
         {error !== undefined ? (

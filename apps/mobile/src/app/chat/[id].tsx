@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, View } from 'react-native';
+import { KeyboardAvoidingView, Pressable, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { RequireAuth } from '@/auth/RequireAuth';
@@ -443,10 +443,7 @@ function Chat() {
           onOpenList={() => setPinsOpen(true)}
           onDismissError={() => dismissPinsError()}
         />
-        <KeyboardAvoidingView
-          className="flex-1"
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        >
+        <KeyboardAvoidingView className="flex-1" behavior="padding">
           <MessageList
             chat={chat}
             onReply={startReply}
@@ -593,10 +590,7 @@ function Chat() {
           onOpenList={() => setPinsOpen(true)}
           onDismissError={() => dismissPinsError()}
         />
-        <KeyboardAvoidingView
-          className="flex-1"
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        >
+        <KeyboardAvoidingView className="flex-1" behavior="padding">
           <MessageList
             chat={chat}
             onReply={startReply}
@@ -833,10 +827,7 @@ function Chat() {
         onOpenList={() => setPinsOpen(true)}
         onDismissError={() => dismissPinsError()}
       />
-      <KeyboardAvoidingView
-        className="flex-1"
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+      <KeyboardAvoidingView className="flex-1" behavior="padding">
         <MessageList
           chat={chat}
           onReply={startReply}
