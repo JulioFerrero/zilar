@@ -86,4 +86,14 @@ Creating rules by hand, push notifications for approvals, the per-topic approval
 - Unknown/forbidden rows surface as the same 404-shaped error; no audit entries written.
 - No new routes server-side; no new dependency (`lucide-react-native`, existing UI kit only); no emoji in UI.
 
+### Round 1 (lead review findings, five commits)
+1. Removed the History tab and the in-memory `history` state (spec error: web has no history, parity means matching web). After a decision the row is gone and a short confirmation line (`confirmationForDecision`: "Approved once" / "Approved always" / "Denied") shows for 4 s where the row was (`showNotice` with a cleared-on-unmount timer). Removed `HistoryApprovalRow` and `decidedAgoText` (only the history used them). Tests: no history tab; `confirmationForDecision` pinned. Commit `a66e300`.
+2. One AI's rules failure no longer blanks the others: `loadRules` uses `Promise.allSettled` + pure `mergeRulesFanOut` (skips failed AIs; returns null only when every AI fails, and the caller shows the error state with Retry then). Test: AIs A (404) and B (ok) -> B's rules still show, no error; all-fail -> null; empty -> []. Commit `aa3cf76`.
+3. Double-tap decide: per-id in-flight guard (`claimDecision` over a `decidingIds` ref set; second tap while the first POST runs does nothing; released in `finally`). Test: `claimDecision` claims once, rejects while in flight, reclaims after release, tracks ids independently. Commit `c748882`.
+4. Still-pending after a 409: `decideScreenRow` returns `{ kind: 'stale', approval }` instead of `decided`, and the screen swaps the refreshed row back in with no error (row stays in the list). Test for the `stale` branch. Commit `9b4b50d`.
+5. `settings-items.ts` now holds only the Approvals row (narrowed `SettingsIconId`/`href` types); T-0181's Profile/My AIs rows and the merge left to the lead. Commit `7b350df`.
+
+Round 1 checks (real results): `pnpm format:check` passes except the pre-existing untracked `PREREVIEW.md` at the repo root (not mine, left untouched); `pnpm lint` clean; `pnpm typecheck` 11/11 pass; `pnpm --filter @zilar/mobile test --maxWorkers=2 approvals`: 4 files, 60 tests, all pass.
+- The lead tests on the emulator and the phone.
+
 ## Review (written by Claude)
