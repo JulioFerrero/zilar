@@ -29,7 +29,7 @@ afterEach(() => {
 });
 
 describe('AddMachineDialog', () => {
-  it('shows the code, copy key, command and the "coming soon" note', async () => {
+  it('shows the code, copy key, command and the runner note', async () => {
     vi.stubGlobal(
       'fetch',
       createFetch([
@@ -55,7 +55,11 @@ describe('AddMachineDialog', () => {
 
     expect(await screen.findByText('K7QX-M2PA')).toBeTruthy();
     expect(screen.getByText(/zilar-runner pair K7QX-M2PA/)).toBeTruthy();
-    expect(screen.getByText('The runner app is coming soon.')).toBeTruthy();
+    expect(screen.getByText(/The desktop runner is not published yet/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Copy pairing code' })).toHaveProperty(
+      'title',
+      'Copy pairing code',
+    );
 
     fireEvent.click(screen.getByRole('button', { name: 'Copy pairing code' }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith('K7QX-M2PA'));

@@ -136,11 +136,13 @@ describe('NotificationsPage', () => {
     expect(container.querySelector('.mx-auto.max-w-2xl')).not.toBeNull();
   });
 
-  it('shows the unsupported state without browser push APIs', async () => {
+  it('shows the unsupported state as a card without browser push APIs', async () => {
     stubFetch();
     renderApp('/settings/notifications');
 
-    expect(await screen.findByText(/not supported in this browser/)).toBeTruthy();
+    const region = await screen.findByRole('region', { name: 'Notifications on this device' });
+    expect(region.textContent).toContain('Not supported');
+    expect(region.textContent).toContain('not supported in this browser');
   });
 
   it('loads devices, previews and the enable flow', async () => {
@@ -227,7 +229,7 @@ describe('NotificationsPage', () => {
     expect(window.localStorage.getItem('zilar:pushDevice')).toBeNull();
   });
 
-  it('shows the server-off state when push is disabled server-side', async () => {
+  it('shows the server-off state as a card when push is disabled server-side', async () => {
     stubBrowserGlobals();
     vi.stubGlobal(
       'fetch',
@@ -240,7 +242,9 @@ describe('NotificationsPage', () => {
     );
     renderApp('/settings/notifications');
 
-    expect(await screen.findByText(/not enabled on this server/)).toBeTruthy();
+    const region = await screen.findByRole('region', { name: 'Notifications on this device' });
+    expect(region.textContent).toContain('Not available');
+    expect(region.textContent).toContain('not enabled on this server');
   });
 
   it('toggles previews and sends a test notification', async () => {

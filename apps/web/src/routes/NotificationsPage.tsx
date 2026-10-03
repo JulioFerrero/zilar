@@ -367,15 +367,31 @@ export function NotificationsPage() {
           <p className="text-[14px] text-muted-foreground">Loading notification settings…</p>
         )}
         {status === 'unsupported' && (
-          <p className="text-[14px] text-muted-foreground">
-            Push notifications are not supported in this browser. Try a recent Chrome, Edge, Firefox
-            or Safari.
-          </p>
+          <section aria-label="Notifications on this device" className="flex flex-col gap-2">
+            <h2 className="text-[16px] font-semibold">This device</h2>
+            <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-surface px-3 py-2.5">
+              <span className="min-w-0 flex-1 basis-40">
+                <span className="block text-[15px] font-medium">Not supported</span>
+                <span className="mt-0.5 block text-[13px] text-muted-foreground">
+                  Push notifications are not supported in this browser. Try a recent Chrome, Edge,
+                  Firefox or Safari.
+                </span>
+              </span>
+            </div>
+          </section>
         )}
         {status === 'server-off' && (
-          <p className="text-[14px] text-muted-foreground">
-            Push notifications are not enabled on this server yet.
-          </p>
+          <section aria-label="Notifications on this device" className="flex flex-col gap-2">
+            <h2 className="text-[16px] font-semibold">This device</h2>
+            <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-surface px-3 py-2.5">
+              <span className="min-w-0 flex-1 basis-40">
+                <span className="block text-[15px] font-medium">Not available</span>
+                <span className="mt-0.5 block text-[13px] text-muted-foreground">
+                  Push notifications are not enabled on this server yet.
+                </span>
+              </span>
+            </div>
+          </section>
         )}
         {status === 'ready' && (
           <div className="flex flex-col gap-4">
@@ -385,7 +401,7 @@ export function NotificationsPage() {
                 “Add to Home Screen”, then open Zilar from the home screen and enable below.
               </p>
             )}
-            <section aria-label="This device" className="flex flex-col gap-2">
+            <section aria-label="Notifications on this device" className="flex flex-col gap-2">
               <h2 className="text-[16px] font-semibold">This device</h2>
               <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-surface px-3 py-2.5">
                 <span className="min-w-0 flex-1 basis-40">

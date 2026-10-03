@@ -427,7 +427,7 @@ describe('MachinesPage', () => {
     expect(await screen.findByRole('dialog', { name: 'Add machine' })).toBeTruthy();
     expect(screen.getByText('K7QX-M2PA')).toBeTruthy();
     expect(screen.getByText(/zilar-runner pair K7QX-M2PA/)).toBeTruthy();
-    expect(screen.getByText('The runner app is coming soon.')).toBeTruthy();
+    expect(screen.getByText(/The desktop runner is not published yet/)).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Copy pairing code' }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith('K7QX-M2PA'));
