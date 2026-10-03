@@ -215,6 +215,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0191](T-0191-mobile-sticker-editor-telegram.md) | Mobile: sticker pack editor and Telegram sticker import | planned | meta/muse-spark-1.3-contributor | T-0187 | Spec ready; mobile parity wave 2 |
 | [T-0194](T-0194-mobile-pitfall-guards.md) | Mobile: guard tests for the Android and Hermes pitfalls (Coroutine with Promise, crypto.subtle) | planned | meta/muse-spark-1.3-contributor | — | Spec ready; process roadmap R3 |
 | [T-0195](T-0195-mobile-parity-audit.md) | Audit (docs only): web vs mobile for AI tools, routines, activity, @mentions, dialogs | planned | meta/muse-spark-1.3-contributor | — | Spec ready; feeds the specs of T-0189 and T-0190 |
+| [T-0196](T-0196-lead-doctor.md) | Lead tooling: the doctor, a Muse session that audits main after merges | planned | meta/muse-spark-1.3-contributor | — | Spec ready; first in the queue |
 | [T-0179](T-0179-mobile-transcribe-voice-notes.md) | Transcribe voice notes on the phone with Whistle: button in the bubble, consent for the 17 MB model, transcripts stored locally | 2026-10-03 |
 | [T-0182](T-0182-mobile-contacts-requests.md) | Mobile contacts: find by @handle, profile card, contact requests | 2026-10-03 |
 | [T-0183](T-0183-mobile-explore-group-handles.md) | Mobile Explore, @group links and group visibility | 2026-10-03 |
