@@ -195,7 +195,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0172](T-0172-push-component-host.md) | Push component dials the ejabberd service, not 127.0.0.1 | planned | meta/muse-spark-1.3-contributor | — | Spec ready; found by T-0159 |
 | [T-0173](T-0173-effect-spike.md) | Effect 4.0 spike on the voice transcription pipeline, and a worker guide (gate for docs/ROADMAP_EFFECT.md) | planned | meta/muse-spark-1.3-contributor | T-0170 | Spec ready; waits for Julio's go |
 | [T-0179](T-0179-mobile-transcribe-voice-notes.md) | Mobile: Transcribe button in the voice bubble, on-device with Whistle, stored locally | planned | meta/muse-spark-1.3-contributor | T-0178 | Spec ready; Android arm64 only |
-| [T-0180](T-0180-signin-no-code-hint.md) | Sign-in hints for people with no invite (web + mobile; the server stays silent on purpose) | planned | meta/muse-spark-1.3-contributor | — | Spec ready |
 | [T-0155](T-0155-web-ui-polish-2.md) | Web UI polish round 2: Machines and Approvals layout, notification cards, sticker nits | 2026-10-03 |
 | [T-0158](T-0158-scheduled-backups.md) | Scheduled backups with retention, a freshness check in doctor, offsite hint, bare-metal timer and a Coolify guide | 2026-10-03 |
 | [T-0168](T-0168-send-failure-state.md) | Failed voice/attachment sends show Not sent with Retry and Delete, 60 s timeout | 2026-10-03 |
@@ -210,3 +209,8 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0175](T-0175-emoji-panel-mobile.md) | One emoji button opens a sheet with Emoji, Stickers and GIFs tabs; sticker grid spacing, GIF tab hiding, composer height fix | 2026-10-03 |
 | [T-0177](T-0177-whistle-on-device-spike.md) | Whistle on-device spike: local Expo module (arm64 Android), hidden dev screen, native sha256, tested on emulator and phone | 2026-10-03 |
 | [T-0178](T-0178-whistle-quiet-cut-chunks.md) | Whistle: quiet-point chunking from a native amplitude envelope | 2026-10-03 |
+| [T-0180](T-0180-signin-no-code-hint.md) | Sign-in hints for people without an invite (web + mobile) | 2026-10-03 |
+| [T-0181](T-0181-mobile-settings-profile.md) | Mobile: settings hub, profile (name, avatar, @handle) and the handle step after sign-up | planned | meta/muse-spark-1.3-contributor | — | Spec ready; mobile parity wave 1 |
+| [T-0182](T-0182-mobile-contacts-requests.md) | Mobile: find people by @handle, profile card and contact requests | planned | meta/muse-spark-1.3-contributor | — | Spec ready; mobile parity wave 1 |
+| [T-0183](T-0183-mobile-explore-group-handles.md) | Mobile: Explore public groups and channels, open @group links, group visibility and handle | planned | meta/muse-spark-1.3-contributor | — | Spec ready; mobile parity wave 1 |
+| [T-0184](T-0184-mobile-approvals-page.md) | Mobile: approvals page (pending, history, always-allowed rules) | planned | meta/muse-spark-1.3-contributor | — | Spec ready; mobile parity wave 1 |

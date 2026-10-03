@@ -18,7 +18,11 @@ const sendMock = vi.mocked(sendSignInCode);
 const verifyMock = vi.mocked(verifySignInCode);
 const getSessionMock = vi.mocked(authClient.getSession);
 
-function renderFlow(props: { inviteCode?: string }) {
+function renderFlow(props: {
+  inviteCode?: string;
+  initialEmail?: string;
+  initialStep?: 'email' | 'code';
+}) {
   const refetch = vi.fn(async () => {});
   render(
     <AuthProvider
@@ -29,7 +33,12 @@ function renderFlow(props: { inviteCode?: string }) {
       }}
     >
       <MemoryRouter>
-        <AuthFlow inviteCode={props.inviteCode} heading="You're invited to Zilar" />
+        <AuthFlow
+          inviteCode={props.inviteCode}
+          heading="You're invited to Zilar"
+          initialEmail={props.initialEmail}
+          initialStep={props.initialStep}
+        />
       </MemoryRouter>
     </AuthProvider>,
   );
@@ -101,5 +110,67 @@ describe('AuthFlow', () => {
     await waitFor(() =>
       expect(screen.getByText('Too many attempts, try again later')).toBeTruthy(),
     );
+  });
+});
+
+const EMAIL_HINT = 'New here? Open the invite link you were sent first, then sign in.';
+const CODE_HINT =
+  'No email after a minute? Check spam, and if you are new here you need an invite link from whoever runs this server.';
+
+describe('AuthFlow sign-in hints (T-0180)', () => {
+  it('shows the email-step hint without an invite code, not with one', () => {
+    renderFlow({});
+    expect(screen.getByText(EMAIL_HINT)).toBeTruthy();
+    cleanup();
+
+    renderFlow({ inviteCode: 'CODE123' });
+    expect(screen.queryByText(EMAIL_HINT)).toBeNull();
+  });
+
+  it('shows the code-step hint without an invite code, not with one', async () => {
+    sendMock.mockResolvedValue({ data: { success: true } } as never);
+    renderFlow({});
+    await enterEmail('existing@example.com');
+    expect(
+      screen.getByText(
+        'No email after a minute? Check spam, and if you are new here you need an invite link from whoever runs this server.',
+      ),
+    ).toBeTruthy();
+    cleanup();
+
+    renderFlow({ inviteCode: 'CODE123' });
+    await enterEmail('friend@example.com');
+    expect(screen.queryByText(/No email after a minute\?/)).toBeNull();
+  });
+
+  it('shows neither hint on the setup page step (invite code set, code step)', async () => {
+    sendMock.mockResolvedValue({ data: { success: true } } as never);
+    renderFlow({ inviteCode: 'CODE', initialEmail: 'admin@example.com', initialStep: 'code' });
+
+    await waitFor(() => expect(screen.getByLabelText('Digit 1')).toBeTruthy());
+    expect(screen.queryByText(EMAIL_HINT)).toBeNull();
+    expect(screen.queryByText(CODE_HINT)).toBeNull();
+  });
+
+  it('keeps Resend code on the login code step and leaks nothing about accounts', async () => {
+    sendMock.mockResolvedValue({ data: { success: true } } as never);
+    renderFlow({});
+    await enterEmail('existing@example.com');
+
+    // Right after the code step opens, the resend slot shows the 30s
+    // countdown and flips to the "Resend code" button once it elapses.
+    expect(
+      screen.queryByRole('button', { name: 'Resend code' }) ?? screen.getByText(/Resend in \d+s/),
+    ).toBeTruthy();
+    const body = document.body.textContent ?? '';
+    for (const leaked of ['account', 'registered', 'exists']) {
+      expect(body.toLowerCase()).not.toContain(leaked);
+    }
+    expect(CODE_HINT.toLowerCase()).not.toContain('account');
+    expect(CODE_HINT.toLowerCase()).not.toContain('registered');
+    expect(CODE_HINT.toLowerCase()).not.toContain('exists');
+    expect(EMAIL_HINT.toLowerCase()).not.toContain('account');
+    expect(EMAIL_HINT.toLowerCase()).not.toContain('registered');
+    expect(EMAIL_HINT.toLowerCase()).not.toContain('exists');
   });
 });
