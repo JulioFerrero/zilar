@@ -68,6 +68,9 @@ export function whistleErrorFor(error: unknown): WhistleError {
   if (code === 'not_audio') {
     return new WhistleError('not_audio', 'That file could not be read as audio');
   }
+  if (code === 'too_long') {
+    return new WhistleError('too_long', 'That recording is too long to transcribe on the device');
+  }
   if (code === 'bad_checksum') {
     return new WhistleError('bad_checksum', 'The model download was corrupted, try again');
   }

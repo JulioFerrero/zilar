@@ -123,6 +123,22 @@ describe('whistle transcribe wrapper (T-0177)', () => {
     expect(order).toEqual(['start:/a.m4a', 'end:/a.m4a', 'start:/b.m4a', 'end:/b.m4a']);
   });
 
+  it('a failed call releases the guard for the next one', async () => {
+    const stub = nativeStub({
+      transcribeFile: vi.fn(async (path: string) => {
+        if (path === '/fail.m4a') {
+          throw { code: 'transcribe_failed', message: 'engine failed' };
+        }
+        return { text: `said:${path}`, language: 'en', ttftMs: 0, decodeTps: 0, audioMs: 1 };
+      }),
+    });
+    await expect(transcribe('file:///fail.m4a')).rejects.toMatchObject({
+      code: 'transcribe_failed',
+    });
+    const after = await transcribe('file:///ok.m4a');
+    expect(after.text).toBe('said:/ok.m4a');
+    expect(stub.transcribeFile).toHaveBeenCalledTimes(2);
+  });
   it('reports unavailable on a non-arm64 stub', async () => {
     mockedGetNative.mockReturnValue(null);
     await expect(transcribe('file:///a.m4a')).rejects.toMatchObject({ code: 'unavailable' });

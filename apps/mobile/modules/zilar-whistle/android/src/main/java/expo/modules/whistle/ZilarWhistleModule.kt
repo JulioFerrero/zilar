@@ -34,6 +34,22 @@ class ZilarWhistleModule : Module() {
   private val lock = Any()
   private var modelLoaded = false
 
+  companion object {
+    /** Refuses decodes longer than this (10 minutes, far above any voice note). */
+    const val MAX_DECODE_US = 10L * 60L * 1_000_000L
+    /** Fails the decode when MediaCodec produces nothing for this long. */
+    const val DECODE_STALL_MS = 30_000L
+
+    init {
+      try {
+        System.loadLibrary("zilar-whistle")
+      } catch (_: UnsatisfiedLinkError) {
+        // Loading fails on non-arm64 devices (the .so only ships arm64-v8a):
+        // methods below report `unavailable` instead of throwing at load.
+      }
+    }
+  }
+
   private fun abiSupported(): Boolean =
     Build.SUPPORTED_ABIS.any { it == "arm64-v8a" }
 
@@ -45,17 +61,6 @@ class ZilarWhistleModule : Module() {
     language: String?,
     outCapacity: Int,
   ): String
-
-  companion object {
-    init {
-      try {
-        System.loadLibrary("zilar-whistle")
-      } catch (_: UnsatisfiedLinkError) {
-        // Loading fails on non-arm64 devices (the .so only ships arm64-v8a):
-        // methods below report `unavailable` instead of throwing at load.
-      }
-    }
-  }
 
   override fun definition() = ModuleDefinition {
     Name("ZilarWhistle")
@@ -203,6 +208,12 @@ class ZilarWhistleModule : Module() {
       val sampleRate = if (format.containsKey(MediaFormat.KEY_SAMPLE_RATE)) format.getInteger(MediaFormat.KEY_SAMPLE_RATE) else 44100
       val channels = if (format.containsKey(MediaFormat.KEY_CHANNEL_COUNT)) format.getInteger(MediaFormat.KEY_CHANNEL_COUNT) else 1
       val durationUs = if (format.containsKey(MediaFormat.KEY_DURATION)) format.getLong(MediaFormat.KEY_DURATION) else 0L
+      if (durationUs > MAX_DECODE_US) {
+        throw CodedException("too_long", "The audio is too long to transcribe on the device", null)
+      }
+      // Caps the decoded PCM so a lying container cannot grow the buffer
+      // past the 10-minute bound (16 kHz mono floats).
+      val maxSamples = (MAX_DECODE_US / 1_000_000L * TARGET_SAMPLE_RATE).toInt()
       val codec = MediaCodec.createDecoderByType(mime)
       try {
         codec.configure(format, null, null, 0)
@@ -211,6 +222,7 @@ class ZilarWhistleModule : Module() {
         val bufferInfo = MediaCodec.BufferInfo()
         var inputDone = false
         var outputDone = false
+        var lastProgressMs = System.currentTimeMillis()
         while (!outputDone) {
           if (!inputDone) {
             val inputIndex = codec.dequeueInputBuffer(10_000)
@@ -221,6 +233,9 @@ class ZilarWhistleModule : Module() {
                 codec.queueInputBuffer(inputIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
                 inputDone = true
               } else {
+                if (extractor.sampleTime > MAX_DECODE_US) {
+                  throw CodedException("too_long", "The audio is too long to transcribe on the device", null)
+                }
                 codec.queueInputBuffer(inputIndex, 0, sample, extractor.sampleTime, 0)
                 extractor.advance()
               }
@@ -229,9 +244,13 @@ class ZilarWhistleModule : Module() {
           val outputIndex = codec.dequeueOutputBuffer(bufferInfo, 10_000)
           when {
             outputIndex >= 0 -> {
+              lastProgressMs = System.currentTimeMillis()
               val outputBuffer = codec.getOutputBuffer(outputIndex)!!
               appendDecodedSamples(outputBuffer, bufferInfo, channels, mono)
               codec.releaseOutputBuffer(outputIndex, false)
+              if (mono.size > maxSamples) {
+                throw CodedException("too_long", "The audio is too long to transcribe on the device", null)
+              }
               if (bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) {
                 outputDone = true
               }
@@ -239,6 +258,9 @@ class ZilarWhistleModule : Module() {
             outputIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
               // The decoder settled its output format; samples keep flowing.
             }
+          }
+          if (!outputDone && System.currentTimeMillis() - lastProgressMs > DECODE_STALL_MS) {
+            throw CodedException("transcribe_failed", "The audio decoder stalled", null)
           }
         }
         val monoArray = mono.toFloatArray()

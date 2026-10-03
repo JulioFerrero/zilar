@@ -18,7 +18,9 @@ export function isAvailable(): boolean {
 
 /**
  * One transcription at a time: the engine holds a single process-global
- * model, so a second call waits for the first instead of racing it.
+ * model, so a second call waits for the first instead of racing it. The
+ * guard always clears — on success AND on failure — so a failed call can
+ * never hang later ones.
  */
 let inFlight: Promise<WhistleTranscript> | undefined;
 
@@ -48,16 +50,17 @@ export function transcribe(
   }
   const current = runTranscribe(fileUri, options);
   inFlight = current;
-  void current.then(clearIfCurrent(current), clearIfCurrent(current));
-  return current;
-}
-
-function clearIfCurrent(current: Promise<WhistleTranscript>): () => void {
-  return () => {
+  // Clears on success and on failure alike: a rejection must release the
+  // guard, or every later call would hang behind the failed one. Queued
+  // followers replace `inFlight` with their own chained promise, so this
+  // only clears when nothing followed.
+  const release = () => {
     if (inFlight === current) {
       inFlight = undefined;
     }
   };
+  void current.then(release, release);
+  return current;
 }
 
 async function runTranscribe(
