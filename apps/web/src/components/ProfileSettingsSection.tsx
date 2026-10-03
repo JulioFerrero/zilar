@@ -7,6 +7,7 @@ import { copyText } from '@/lib/clipboard';
 export function ProfileSettingsSection() {
   const auth = useAuth();
   const [handle, setHandle] = useState(auth.user?.handle ?? '');
+  const [typed, setTyped] = useState(false);
   const [check, setCheck] = useState<
     { state: 'idle' } | { state: 'done'; available: boolean; reason?: string | undefined }
   >({ state: 'idle' });
@@ -18,6 +19,12 @@ export function ProfileSettingsSection() {
   const trimmed = handle.trim();
   const current = auth.user?.handle ?? '';
   const unchanged = current !== '' && trimmed.toLowerCase() === current.toLowerCase();
+
+  // Fill the input when the handle arrives after `getMe()` — but only while
+  // the user has not started typing, so typed text is never overwritten.
+  if (!typed && handle === '' && current !== '') {
+    setHandle(current);
+  }
 
   // Debounced live availability for a changed handle. The effect only
   // schedules the check (the lint rule flags synchronous setState inside
@@ -93,6 +100,7 @@ export function ProfileSettingsSection() {
           maxLength={32}
           onChange={(event) => {
             setHandle(event.target.value);
+            setTyped(true);
             setSaved(false);
           }}
           placeholder="ada_lovelace"

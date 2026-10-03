@@ -26,5 +26,8 @@ export function AddContactRoute() {
   if (!open) {
     return null;
   }
-  return <AddContactDialog initialHandle={params.handle} onClose={close} />;
+  // Keyed by handle so /@alice then /@bob re-seeds the dialog state.
+  return (
+    <AddContactDialog key={params.handle ?? ''} initialHandle={params.handle} onClose={close} />
+  );
 }

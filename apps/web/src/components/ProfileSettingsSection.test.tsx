@@ -78,6 +78,37 @@ describe('ProfileSettingsSection', () => {
     expect(checkMock).not.toHaveBeenCalled();
   });
 
+  it('fills the input when the handle arrives after load', async () => {
+    const { rerender } = render(
+      <AuthProvider
+        value={{
+          status: 'authenticated',
+          user: { id: 'u-1', name: 'Ada', email: 'ada@example.com', handle: undefined },
+          refetch: async () => {},
+        }}
+      >
+        <MemoryRouter>
+          <ProfileSettingsSection />
+        </MemoryRouter>
+      </AuthProvider>,
+    );
+    expect((screen.getByLabelText('Your @username') as HTMLInputElement).value).toBe('');
+    rerender(
+      <AuthProvider
+        value={{
+          status: 'authenticated',
+          user: { id: 'u-1', name: 'Ada', email: 'ada@example.com', handle: 'ada' },
+          refetch: async () => {},
+        }}
+      >
+        <MemoryRouter>
+          <ProfileSettingsSection />
+        </MemoryRouter>
+      </AuthProvider>,
+    );
+    expect((screen.getByLabelText('Your @username') as HTMLInputElement).value).toBe('ada');
+  });
+
   it('shows the too-soon message from the nextChangeAt body field', async () => {
     const { ApiError } = await import('@/lib/api');
     checkMock.mockResolvedValue({ available: false, reason: 'taken' });

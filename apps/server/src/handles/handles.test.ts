@@ -89,27 +89,31 @@ describe('handles', () => {
     expect(nextAt).toBeLessThanOrEqual(Date.now() + 14 * 24 * 60 * 60 * 1000 + 60 * 1000);
   });
 
-  it('re-saving the same handle is a no-op without spending the claim budget', async () => {
+  it('re-saving the exact value is a no-op without spending the claim budget', async () => {
     const alice = await bootstrapUser(context, app, 'alice@example.com');
     expect((await setHandle(alice.cookie, 'Ada')).status).toBe(200);
 
-    // Same value, same casing: returns the row, no 409, no budget spent.
+    // Exact same value and casing: returns the row, no 409, no budget spent.
     const same = await setHandle(alice.cookie, 'Ada');
     expect(same.status).toBe(200);
     expect(await same.json()).toEqual({ handle: 'Ada' });
 
-    // Same value, different casing: still the same handle, not "taken".
-    const recased = await setHandle(alice.cookie, 'ADA');
-    expect(recased.status).toBe(200);
-    expect(await recased.json()).toEqual({ handle: 'Ada' });
+    // A casing-only change reaches the store: too soon after the claim it
+    // answers 409 `handle_change_too_soon` (not a no-op 200), and after the
+    // interval the new casing is stored with nothing retired.
+    const recasedSoon = await setHandle(alice.cookie, 'ADA');
+    expect(recasedSoon.status).toBe(409);
+    expect(((await recasedSoon.json()) as { error: { code: string } }).error.code).toBe(
+      'handle_change_too_soon',
+    );
 
-    // Burn the whole budget on other handles failing, then re-save: the
-    // no-op fast path still answers 200.
+    // Burn the whole budget on other handles failing, then re-save the exact
+    // value: the no-op fast path still answers 200.
     for (let attempt = 0; attempt < 12; attempt += 1) {
       const response = await setHandle(alice.cookie, `other_${attempt}`);
       await response.text();
     }
-    const afterBudget = await setHandle(alice.cookie, 'aDa');
+    const afterBudget = await setHandle(alice.cookie, 'Ada');
     expect(afterBudget.status).toBe(200);
     expect((await context.db.select().from(retiredHandles)).length).toBe(0);
   });

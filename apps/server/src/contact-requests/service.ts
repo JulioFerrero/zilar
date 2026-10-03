@@ -138,11 +138,13 @@ async function pendingBetween(
 // request in either direction (409 `request_exists` — the reverse request is
 // returned so the web can offer "Accept"), more than 20 pending outgoing
 // (429), a re-request within 7 days after a decline (429
-// `declined_recently`). The contact check, the duplicate and cooldown reads
-// plus the insert run in one transaction under a per-pair advisory lock, so
-// a racing accept (which deletes no rows but flips no pending row either —
-// it only touches pending rows) cannot leave a stale pending row behind:
-// the in-transaction contact read sees the committed pair.
+// `declined_recently`). The contact check, the duplicate and cooldown reads,
+// the outgoing-cap count and the insert run in one transaction under two
+// advisory locks taken always in the same order — the per-sender lock first
+// (serializes the per-user cap count), then the per-pair lock (serializes
+// the duplicate check) — so neither lock order can deadlock and a racing
+// accept cannot leave a stale pending row behind: the in-transaction contact
+// read sees the committed pair.
 export async function createContactRequest(
   deps: ContactRequestsDeps,
   fromId: string,
@@ -158,6 +160,7 @@ export async function createContactRequest(
 
   return deps.db.transaction(async (tx) => {
     const txDb = tx as unknown as ServerDatabase;
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${'contact-sender:' + fromId}))`);
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${'contact-request:' + pair}))`);
 
     if (await isContact(txDb, fromId, target.id)) {
@@ -317,12 +320,12 @@ async function findActionable(
   return (row as ContactRequestRow | undefined) ?? null;
 }
 
-// Accepts a request (recipient only). The status flip and the contact-pair
-// creation share one transaction under a per-request advisory lock, so a
-// failure after the claim refunds it (the transaction rolls back). The
-// conditional update on `status = 'pending'` keeps a double click to one
-// flip; a re-accept of an `accepted` request re-runs `addContactPair` and
-// the roster sync idempotently, so it repairs a half-finished accept.
+// Accepts a request (recipient only). The status flip runs in a transaction
+// under a per-request advisory lock, so a double click flips once and a
+// failure before the flip leaves nothing behind. The contact-pair creation
+// and roster sync follow outside the transaction but are idempotent: every
+// re-accept of an `accepted` row re-runs them, so a half-finished first
+// accept (flipped but pair missing) repairs on retry.
 // Creates the mutual contact exactly like an invite does (the shared
 // `addContactPair` + roster sync with the same retry).
 export async function acceptContactRequest(

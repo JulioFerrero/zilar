@@ -10,7 +10,8 @@ export function AddContactDialog({
   initialHandle?: string | undefined;
   onClose: () => void;
 }) {
-  const [query, setQuery] = useState(initialHandle?.replace(/^@/, '') ?? '');
+  const seed = initialHandle?.replace(/^@/, '') ?? '';
+  const [query, setQuery] = useState(seed);
   const [lookup, setLookup] = useState<
     | { state: 'idle' }
     | { state: 'found'; profile: HandleProfile }
@@ -22,6 +23,17 @@ export function AddContactDialog({
   const [sendError, setSendError] = useState<string | undefined>(undefined);
 
   const trimmed = query.trim().replace(/^@/, '');
+
+  // Re-seed when the prefill changes (e.g. /@alice then /@bob reuses the
+  // route): the query is derived from the prop until the user types.
+  const [seedHandle, setSeedHandle] = useState(seed);
+  if (seed !== seedHandle) {
+    setSeedHandle(seed);
+    setQuery(seed);
+    setLookup({ state: 'idle' });
+    setSent(false);
+    setSendError(undefined);
+  }
 
   // Debounced exact lookup; unknown handles read as "missing". The effect
   // only schedules the lookup (the lint rule flags synchronous setState

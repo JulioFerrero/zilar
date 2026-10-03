@@ -71,4 +71,17 @@ describe('AddContactDialog', () => {
     renderDialog('nobody_xyz');
     expect(await screen.findByText('No one with that username. Check the spelling.')).toBeTruthy();
   });
+
+  it('re-seeds when the prefill handle changes', async () => {
+    lookupMock.mockResolvedValue(PROFILE);
+    const view = renderDialog('alice_w');
+    expect(screen.getByDisplayValue('alice_w')).toBeTruthy();
+
+    view.rerender(
+      <MemoryRouter>
+        <AddContactDialog initialHandle="bob_b" onClose={() => {}} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByDisplayValue('bob_b')).toBeTruthy();
+  });
 });

@@ -102,6 +102,12 @@ interface MockState {
   stickerFavorites: string[];
   nextStickerPackSequence: number;
   nextStickerSequence: number;
+  // T-0163: contact requests in memory for the page load. The mock has one
+  // user plus the PEOPLE directory: `taken_user` resolves to Ana (always
+  // taken), every other valid free handle resolves to a synthetic stranger,
+  // and invalid shapes 404 like the server.
+  contactRequests: MockContactRequest[];
+  nextContactRequestSequence: number;
 }
 
 type TopicVisibility = 'public' | 'private';
@@ -238,6 +244,16 @@ interface MockApproval {
   status: 'pending' | 'approved_once' | 'approved_always' | 'denied';
   decidedAt: string | null;
   note: string | null;
+}
+
+// T-0163: one pending contact request. `fromUserId`/`toUserId` mirror the
+// server's `contact_requests` row; status is `pending` until decided.
+interface MockContactRequest {
+  id: string;
+  fromUserId: string;
+  toUserId: string;
+  status: 'pending' | 'accepted' | 'declined' | 'cancelled';
+  createdAt: string;
 }
 
 // T-0100: one standing rule row. `groupId` null means the personal chat
@@ -1039,6 +1055,8 @@ function seedState(): MockState {
     stickerFavorites: [],
     nextStickerPackSequence: 1,
     nextStickerSequence: 1,
+    contactRequests: [],
+    nextContactRequestSequence: 1,
     audit: [
       {
         id: 'audit-dev-stopped',
@@ -1176,8 +1194,221 @@ function notImplemented(): Response {
   );
 }
 
+function readJsonBody(init: RequestInit): Record<string, unknown> {
+  if (typeof init.body !== 'string' || init.body === '') {
+    return {};
+  }
+  try {
+    const parsed: unknown = JSON.parse(init.body);
+    return parsed !== null && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
 function notFound(message: string): Response {
   return jsonResponse({ error: { code: 'not_found', message } }, 404);
+}
+
+// T-0163: who a handle resolves to in mock mode. `taken_user` is Ana (the
+// handle the check endpoint reports as taken); every other valid-shaped,
+// non-reserved handle is a synthetic stranger named after the handle, so
+// the Add-contact card always has someone to show. Invalid shapes and
+// reserved words resolve to null (the route answers the same 404).
+function mockHandleUserId(raw: string): string | null {
+  const trimmed = raw.trim().replace(/^@/, '');
+  const normalized = trimmed.toLowerCase();
+  if (RESERVED_HANDLES.has(normalized)) {
+    return null;
+  }
+  if (!/^[a-z][a-z0-9_]{2,31}$/.test(trimmed)) {
+    return null;
+  }
+  if (normalized === 'taken_user') {
+    return PEOPLE.ana!.id;
+  }
+  return `u-handle-${normalized}`;
+}
+
+function mockHandleProfile(raw: string): {
+  userId: string;
+  name: string;
+  handle: string;
+  image: null;
+  relation: 'none' | 'contact' | 'request_sent' | 'request_received' | 'self';
+} | null {
+  const userId = mockHandleUserId(raw);
+  if (userId === null) {
+    return null;
+  }
+  const trimmed = raw.trim().replace(/^@/, '');
+  const person = Object.values(PEOPLE).find((entry) => entry.id === userId);
+  const name =
+    person?.name ?? trimmed.charAt(0).toUpperCase() + trimmed.slice(1).replace(/_/g, ' ');
+  if (userId === currentUserId) {
+    return { userId, name, handle: trimmed, image: null, relation: 'self' };
+  }
+  const outgoing = state.contactRequests.find(
+    (row) =>
+      row.status === 'pending' && row.fromUserId === currentUserId && row.toUserId === userId,
+  );
+  const incoming = state.contactRequests.find(
+    (row) =>
+      row.status === 'pending' && row.fromUserId === userId && row.toUserId === currentUserId,
+  );
+  return {
+    userId,
+    name,
+    handle: trimmed,
+    image: null,
+    relation:
+      outgoing !== undefined
+        ? 'request_sent'
+        : incoming !== undefined
+          ? 'request_received'
+          : 'none',
+  };
+}
+
+function mockContactRequestRow(row: MockContactRequest): {
+  id: string;
+  fromUserId: string;
+  toUserId: string;
+  status: string;
+  createdAt: string;
+} {
+  return {
+    id: row.id,
+    fromUserId: row.fromUserId,
+    toUserId: row.toUserId,
+    status: row.status,
+    createdAt: row.createdAt,
+  };
+}
+
+function mockContactPerson(userId: string): {
+  userId: string;
+  name: string;
+  handle: string | null;
+  image: null;
+} {
+  const person = Object.values(PEOPLE).find((entry) => entry.id === userId);
+  const profile = userId === currentUserId ? null : mockHandleProfileForId(userId);
+  return {
+    userId,
+    name: userId === currentUserId ? state.me.name : (person?.name ?? profile?.name ?? userId),
+    handle:
+      userId === currentUserId
+        ? (state.me.handle ?? null)
+        : person !== undefined
+          ? mockPersonHandle(person.id)
+          : (profile?.handle ?? null),
+    image: null,
+  };
+}
+
+// The handle a known mock person is reachable under: Ana owns `taken_user`
+// (the always-taken handle); everyone else keeps a handle derived from
+// their name.
+function mockPersonHandle(userId: string): string | null {
+  if (userId === PEOPLE.ana!.id) {
+    return 'taken_user';
+  }
+  const person = Object.values(PEOPLE).find((entry) => entry.id === userId);
+  if (person === undefined) {
+    return null;
+  }
+  return person.name.toLowerCase().replace(/[^a-z0-9_]+/g, '_');
+}
+
+function mockHandleProfileForId(userId: string): { name: string; handle: string } | null {
+  if (userId.startsWith('u-handle-')) {
+    const handle = userId.slice('u-handle-'.length);
+    return { name: handle.charAt(0).toUpperCase() + handle.slice(1).replace(/_/g, ' '), handle };
+  }
+  return null;
+}
+
+function mockContactRequestList(): {
+  incoming: Array<ReturnType<typeof mockContactRequestView>>;
+  outgoing: Array<ReturnType<typeof mockContactRequestView>>;
+} {
+  const pending = state.contactRequests
+    .filter((row) => row.status === 'pending')
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id));
+  return {
+    incoming: pending.filter((row) => row.toUserId === currentUserId).map(mockContactRequestView),
+    outgoing: pending.filter((row) => row.fromUserId === currentUserId).map(mockContactRequestView),
+  };
+}
+
+function mockContactRequestView(row: MockContactRequest): {
+  id: string;
+  status: string;
+  createdAt: string;
+  other: ReturnType<typeof mockContactPerson>;
+} {
+  const otherId = row.fromUserId === currentUserId ? row.toUserId : row.fromUserId;
+  return {
+    id: row.id,
+    status: row.status,
+    createdAt: row.createdAt,
+    other: mockContactPerson(otherId),
+  };
+}
+
+function createMockContactRequest(init: RequestInit): Response {
+  const body = readJsonBody(init);
+  const raw = typeof body.handle === 'string' ? body.handle : '';
+  const userId = mockHandleUserId(raw);
+  if (userId === null) {
+    return jsonResponse(
+      { error: { code: 'not_found', message: 'No user with that username' } },
+      404,
+    );
+  }
+  if (userId === currentUserId) {
+    return jsonResponse(
+      { error: { code: 'invalid_request', message: 'You cannot add yourself' } },
+      400,
+    );
+  }
+  const pending = state.contactRequests.find(
+    (row) =>
+      row.status === 'pending' &&
+      ((row.fromUserId === currentUserId && row.toUserId === userId) ||
+        (row.fromUserId === userId && row.toUserId === currentUserId)),
+  );
+  if (pending !== undefined) {
+    return jsonResponse(
+      { error: { code: 'request_exists', message: 'A request is already pending' } },
+      409,
+    );
+  }
+  const row: MockContactRequest = {
+    id: `cr-${state.nextContactRequestSequence++}`,
+    fromUserId: currentUserId,
+    toUserId: userId,
+    status: 'pending',
+    createdAt: new Date().toISOString(),
+  };
+  state.contactRequests.push(row);
+  return jsonResponse({ request: mockContactRequestRow(row) }, 201);
+}
+
+function decideMockContactRequest(
+  id: string,
+  status: 'accepted' | 'declined' | 'cancelled',
+): Response {
+  const row = state.contactRequests.find((entry) => entry.id === id);
+  const mine =
+    row !== undefined &&
+    (status === 'cancelled' ? row.fromUserId === currentUserId : row.toUserId === currentUserId);
+  if (row === undefined || !mine || row.status !== 'pending') {
+    return jsonResponse({ error: { code: 'not_found', message: 'Not found' } }, 404);
+  }
+  row.status = status;
+  return jsonResponse({ request: mockContactRequestRow(row) });
 }
 
 // T-0163: mock handle availability. `taken-user` is always taken; reserved
@@ -1196,18 +1427,6 @@ function mockCheckHandle(raw: string): { available: boolean; reason?: string } {
     return { available: false, reason: 'taken' };
   }
   return { available: true };
-}
-
-function readJsonBody(init: RequestInit): Record<string, unknown> {
-  if (typeof init.body !== 'string' || init.body === '') {
-    return {};
-  }
-  try {
-    const parsed: unknown = JSON.parse(init.body);
-    return parsed !== null && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {};
-  } catch {
-    return {};
-  }
 }
 
 function readLimits(value: unknown): PublicAi['limits'] {
@@ -1834,20 +2053,77 @@ export async function mockRequest(
       }
       return jsonResponse(state.me);
     }
-    // T-0163: claiming a handle in memory for the page load. `taken-user`
+    // T-0163: claiming a handle in memory for the page load. `taken_user`
     // is always taken; anything valid-shaped and non-reserved is free.
+    // `reserved` maps to `handle_reserved` like the server.
     if (method === 'PUT' && first === 'handle') {
       const body = readJsonBody(init);
       const raw = typeof body.handle === 'string' ? body.handle.trim() : '';
       const checked = mockCheckHandle(raw);
       if (!checked.available) {
-        const code = checked.reason === 'invalid' ? 'handle_invalid' : 'handle_taken';
+        const code =
+          checked.reason === 'invalid'
+            ? 'handle_invalid'
+            : checked.reason === 'reserved'
+              ? 'handle_reserved'
+              : 'handle_taken';
         return jsonResponse({ error: { code, message: 'That username is not available' } }, 409);
       }
       state.me = { ...state.me, handle: raw };
       return jsonResponse({ handle: raw });
     }
     return notImplemented();
+  }
+
+  // T-0163: exact handle lookup, in memory. `taken_user` resolves to Ana
+  // (the handle the check endpoint reports as taken); every other
+  // valid-shaped, non-reserved handle resolves to a synthetic stranger, so
+  // the Add-contact dialog can demo the full card. Reserved words and bad
+  // shapes answer the same 404 as unknown handles (no enumeration).
+  if (head === 'users' && first === 'by-handle' && second !== undefined && method === 'GET') {
+    const raw = decodeURIComponent(second);
+    const profile = mockHandleProfile(raw);
+    if (profile === null) {
+      return jsonResponse(
+        { error: { code: 'not_found', message: 'No user with that username' } },
+        404,
+      );
+    }
+    return jsonResponse(profile);
+  }
+
+  // T-0163: contact requests in memory for the page load: create (POST),
+  // list (GET), accept/decline (POST), cancel (DELETE). Accepting links the
+  // pair in the in-memory contact sense (no-op here — the mock contact list
+  // is static) and flips the status, idempotently.
+  if (head === 'contact-requests' && method === 'POST' && first === undefined) {
+    return createMockContactRequest(init);
+  }
+
+  if (head === 'contact-requests' && method === 'GET' && first === undefined) {
+    return jsonResponse(mockContactRequestList());
+  }
+
+  if (
+    head === 'contact-requests' &&
+    second === 'accept' &&
+    method === 'POST' &&
+    first !== undefined
+  ) {
+    return decideMockContactRequest(decodeURIComponent(first), 'accepted');
+  }
+
+  if (
+    head === 'contact-requests' &&
+    second === 'decline' &&
+    method === 'POST' &&
+    first !== undefined
+  ) {
+    return decideMockContactRequest(decodeURIComponent(first), 'declined');
+  }
+
+  if (head === 'contact-requests' && second === undefined && method === 'DELETE') {
+    return decideMockContactRequest(decodeURIComponent(first ?? ''), 'cancelled');
   }
 
   // T-0163: live handle availability, in memory for the page load.

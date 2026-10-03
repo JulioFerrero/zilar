@@ -164,13 +164,35 @@ describe('contact requests', () => {
     expect(carol.id).toBeDefined();
   });
 
-  it('caps pending outgoing at 20', async () => {
+  it('caps pending outgoing at 20, atomically per sender', async () => {
     const alice = await withHandle('alice@example.com', 'alice_w');
-    for (let index = 0; index < 20; index += 1) {
+    const { createContactRequest } = await import('./service');
+    const service = { db: context.db };
+    for (let index = 0; index < 19; index += 1) {
       const target = await withHandle(`target${index}@example.com`, `target_${index}`);
       expect((await postRequest(alice.cookie, `target_${index}`)).status).toBe(201);
       expect(target.id).toBeDefined();
     }
+    // At 19 pending, two concurrent creates to different targets serialize
+    // on the per-sender lock: exactly one wins, the other hits the cap.
+    const [extraA, extraB] = await Promise.all([
+      withHandle('extra-a@example.com', 'extra_aaa'),
+      withHandle('extra-b@example.com', 'extra_bbb'),
+    ]);
+    const results = await Promise.allSettled([
+      createContactRequest(service, alice.id, 'extra_aaa'),
+      createContactRequest(service, alice.id, 'extra_bbb'),
+    ]);
+    const won = results.filter((result) => result.status === 'fulfilled');
+    const lost = results.filter((result) => result.status === 'rejected');
+    expect(won).toHaveLength(1);
+    expect(lost).toHaveLength(1);
+    expect((lost[0] as PromiseRejectedResult).reason).toMatchObject({
+      code: 'too_many_requests',
+    });
+    expect(extraA.id && extraB.id).toBeDefined();
+
+    // And one more serial create also hits the cap.
     const extra = await withHandle('extra@example.com', 'extra_one');
     const capped = await postRequest(alice.cookie, 'extra_one');
     expect(capped.status).toBe(429);
@@ -181,6 +203,7 @@ describe('contact requests', () => {
     const alice = await withHandle('alice@example.com', 'alice_w');
     const missing = await postRequest(alice.cookie, 'nobody_here_xyz');
     expect(missing.status).toBe(404);
+    const missingBody = (await missing.json()) as { error: { code: string; message: string } };
 
     const bob = await withHandle('bob@example.com', 'bob_retired');
     // Retire bob's handle by backdating and moving to a new one.
@@ -192,8 +215,10 @@ describe('contact requests', () => {
     await claimHandle(context.db, bob.id, 'bob_now');
     const retired = await postRequest(alice.cookie, 'bob_retired');
     expect(retired.status).toBe(404);
-    expect(await retired.text().then((text) => text.length)).toBeGreaterThan(0);
-    expect((await missing.text().then((text) => text.length)) >= 0).toBe(true);
+    const retiredBody = (await retired.json()) as { error: { code: string; message: string } };
+    // Same status, same code, same message — only the per-request id differs.
+    expect(retiredBody.error.code).toBe(missingBody.error.code);
+    expect(retiredBody.error.message).toBe(missingBody.error.message);
   });
 
   it('answers not-actable and unknown ids with the same 404', async () => {

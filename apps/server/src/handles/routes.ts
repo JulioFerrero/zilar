@@ -72,8 +72,9 @@ export function createHandlesRoutes(deps: HandlesRoutesDependencies): Hono {
   // interval is checked (409 `handle_change_too_soon` with `nextChangeAt` in
   // the error body; the first claim is always allowed), the old handle
   // retires for 30 days, the new row is written. A unique violation maps to
-  // 409 `handle_taken`. Saving the current handle is a no-op and never
-  // touches the claim budget.
+  // 409 `handle_taken`. Saving the exact current value (same casing) is a
+  // no-op and never touches the claim budget; a casing-only change reaches
+  // the store (interval applies, casing updated, nothing retired).
   routes.put('/me/handle', async (c) => {
     const { user } = await requireSession(deps.auth, c.req.raw.headers);
     const body = await c.req.json().catch(() => null);
@@ -85,11 +86,13 @@ export function createHandlesRoutes(deps: HandlesRoutesDependencies): Hono {
         parsed.error.issues[0]?.message ?? 'Invalid request',
       );
     }
-    // Saving the current handle is a no-op: answer without spending the
-    // claim budget. The store re-checks equality inside its transaction, so
-    // this is only a fast path, never the authority.
+    // Saving the exact current value is a no-op: answer without spending
+    // the claim budget. A casing-only change is NOT a no-op — it reaches
+    // the store, which applies the interval rule and updates the casing.
+    // The store re-checks equality inside its transaction, so this is only
+    // a fast path, never the authority.
     const current = await handleForUser(deps.db, user.id);
-    if (current !== null && current.toLowerCase() === parsed.data.handle.trim().toLowerCase()) {
+    if (current !== null && current === parsed.data.handle.trim()) {
       return c.json({ handle: current });
     }
     if (!claimLimiter.allow(user.id)) {
