@@ -46,4 +46,12 @@ describe('composer and chat screen layout rules', () => {
     expect(voice).not.toContain('WAVEFORM_WIDTH');
     expect(voice).toContain('flex-1 flex-row items-center justify-between');
   });
+
+  it('keeps the emoji category strip at its natural height (no empty gap under the tabs)', () => {
+    // Seen on the Android emulator (2026-10-03): a horizontal ScrollView
+    // grows to fill the free height unless `flexGrow: 0` is set.
+    const tab = read('emoji-tab.tsx');
+    const strip = tab.slice(tab.indexOf('accessibilityLabel="Emoji categories"'));
+    expect(strip.slice(0, 400)).toContain('style={{ flexGrow: 0 }}');
+  });
 });

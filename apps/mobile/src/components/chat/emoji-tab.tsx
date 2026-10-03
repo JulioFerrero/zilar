@@ -75,6 +75,9 @@ export function EmojiTab({
         horizontal
         accessibilityRole="toolbar"
         accessibilityLabel="Emoji categories"
+        // A horizontal ScrollView grows to fill the free height; without this
+        // the category strip floats in a big empty gap under the tabs.
+        style={{ flexGrow: 0 }}
         contentContainerStyle={{
           flexDirection: 'row',
           gap: 2,
