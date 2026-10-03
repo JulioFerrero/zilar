@@ -1,4 +1,7 @@
 import type { Attachment } from '@zilar/protocol';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { createElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -9,6 +12,8 @@ import {
   AttachmentViewer,
   isLoadableMediaUrl,
 } from './attachment-message';
+
+const here = dirname(fileURLToPath(import.meta.url));
 
 vi.mock('react-native', () => ({
   ActivityIndicator: 'ActivityIndicator',
@@ -43,6 +48,24 @@ vi.mock('@/lib/depth', () => ({
 
 vi.mock('@/lib/session-token', () => ({
   getSessionToken: async () => 'tok',
+}));
+
+vi.mock('lucide-react-native', () => ({
+  ArrowUpRight: 'ArrowUpRight',
+  FileText: 'FileText',
+  RotateCcw: 'RotateCcw',
+}));
+
+vi.mock('nativewind', () => ({
+  useColorScheme: () => ({ colorScheme: 'dark' }),
+}));
+
+vi.mock('@/lib/color-scheme', () => ({
+  asColorScheme: () => 'dark',
+}));
+
+vi.mock('@/lib/colors', () => ({
+  ICON: { dark: '#d4d4d4', light: '#d4d4d4' },
 }));
 
 const TRUSTED = new Set(['upload.zilar.test', 'zilar.test']);
@@ -128,11 +151,32 @@ describe('attachment rendering (T-0150)', () => {
     expect(html).toContain('Upload failed');
   });
 
-  it('renders a file row with name, size and MIME', () => {
+  it('renders a file row with name, size, MIME and the file icon', () => {
     const html = renderToStaticMarkup(createElement(AttachmentFileRow, { attachment: file() }));
     expect(html).toContain('tickets.pdf');
     expect(html).toContain('2.3 MB');
     expect(html).toContain('application/pdf');
+    expect(html).toContain('<FileText');
+  });
+
+  it('renders the file row with retry and open icon controls', () => {
+    const failed = renderToStaticMarkup(
+      createElement(AttachmentFileRow, {
+        attachment: file(),
+        failed: true,
+        onRetry: () => {},
+      }),
+    );
+    expect(failed).toContain('<RotateCcw');
+    const openable = renderToStaticMarkup(
+      createElement(AttachmentFileRow, { attachment: file(), onOpen: () => {} }),
+    );
+    expect(openable).toContain('<ArrowUpRight');
+  });
+
+  it('draws the file row with a lucide icon and no emoji', () => {
+    const source = readFileSync(join(here, 'attachment-message.tsx'), 'utf8');
+    expect(source).not.toMatch(/\p{Extended_Pictographic}/u);
   });
 
   it('renders the untrusted file row without size or MIME', () => {

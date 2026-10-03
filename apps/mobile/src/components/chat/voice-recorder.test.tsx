@@ -8,7 +8,7 @@ import {
   runRecorderFinish,
   waveformFromLevels,
 } from './voice-recorder';
-import { MIC_DENIED_MESSAGE, RECORD_TOO_SHORT_MESSAGE } from '@/lib/voice-native';
+import { MIC_DENIED_MESSAGE } from '@/lib/voice-native';
 import type { VoiceRecorderPort } from '@/lib/voice-native';
 
 vi.mock('react-native', () => ({
@@ -111,14 +111,30 @@ describe('voice recorder button (T-0154 review)', () => {
     expect(deps.onSendVoice).not.toHaveBeenCalled();
   });
 
-  it('a sub-1s recording reports too-short and sends nothing', async () => {
+  it('a sub-1s press is a silent miss: nothing sent, no hint, take discarded', async () => {
     const recorder = fakeRecorder({ durationMs: 400 });
     const deps = depsFor(recorder);
     expect(await runRecorderBegin(deps)).toEqual({ started: true });
     const copy = await runRecorderFinish(deps, false);
-    expect(copy).toBe(RECORD_TOO_SHORT_MESSAGE);
+    expect(copy).toBeUndefined();
     expect(deps.onSendVoice).not.toHaveBeenCalled();
     expect(deps.onCancelReply).not.toHaveBeenCalled();
+    expect(recorder.stop).not.toHaveBeenCalled();
+    expect(recorder.cancel).toHaveBeenCalledTimes(1);
+  });
+
+  it('a 1-second recording still sends', async () => {
+    const recorder = fakeRecorder({ durationMs: 1000 });
+    const deps = depsFor(recorder);
+    expect(await runRecorderBegin(deps)).toEqual({ started: true });
+    const copy = await runRecorderFinish(deps, false);
+    expect(copy).toBeUndefined();
+    expect(deps.onSendVoice).toHaveBeenCalledTimes(1);
+    expect(deps.onSendVoice).toHaveBeenCalledWith(
+      expect.objectContaining({ durationMs: 1000 }),
+      undefined,
+    );
+    expect(deps.onCancelReply).toHaveBeenCalledTimes(1);
   });
 
   it('a valid recording sends with the reply and clears it', async () => {

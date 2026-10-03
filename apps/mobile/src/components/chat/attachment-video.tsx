@@ -1,12 +1,16 @@
 import type { Attachment } from '@zilar/protocol';
 import { useVideoPlayer, VideoView } from 'expo-video';
+import { Video, Play } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, View } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
+import { useColorScheme } from 'nativewind';
 
 import { Text } from '@/components/ui/text';
 import { API_URL } from '@/lib/auth';
 import { getSessionToken } from '@/lib/session-token';
+import { asColorScheme } from '@/lib/color-scheme';
+import { ICON } from '@/lib/colors';
 
 import { isLoadableMediaUrl } from './attachment-message';
 
@@ -48,6 +52,7 @@ export function AttachmentVideo({
   onRetry,
 }: AttachmentVideoProps) {
   const reduceMotion = useReducedMotion();
+  const scheme = asColorScheme(useColorScheme().colorScheme);
   const [view, setView] = useState(false);
   const trusted = isLoadableMediaUrl(attachment.url, trustedHosts);
   const uri = localUri ?? (trusted ? attachment.url : undefined);
@@ -133,7 +138,7 @@ export function AttachmentVideo({
       <View className="min-w-[210px] max-w-[320px]">
         <View className="flex-row items-center gap-2.5 rounded-[10px] px-2.5 py-2">
           <View className="h-9 w-9 shrink-0 items-center justify-center rounded-[8px] bg-surface">
-            <Text className="text-[16px] leading-none">📎</Text>
+            <Video size={20} color={ICON[scheme]} />
           </View>
           <View className="min-w-0 flex-1">
             <Text numberOfLines={1} className="text-[13px] font-semibold text-foreground">
@@ -175,8 +180,9 @@ export function AttachmentVideo({
         />
         {gif && !playing ? (
           <View className="absolute inset-0 items-center justify-center">
-            <View className="items-center justify-center rounded-full bg-black/60 px-3 py-1.5">
-              <Text className="text-[13px] font-semibold text-white">▶ GIF</Text>
+            <View className="flex-row items-center gap-1.5 justify-center rounded-full bg-black/60 px-3 py-1.5">
+              <Play size={13} color="#ffffff" />
+              <Text className="text-[13px] font-semibold text-white">GIF</Text>
             </View>
           </View>
         ) : null}

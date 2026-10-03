@@ -1,9 +1,13 @@
-import { useState } from 'react';
+import { Camera, FileText, Image as ImageIcon, Paperclip } from 'lucide-react-native';
+import { useState, type ReactNode } from 'react';
 import { ActivityIndicator, Image, Modal, Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Attachment } from '@zilar/protocol';
+import { useColorScheme } from 'nativewind';
 
 import { Text } from '@/components/ui/text';
+import { asColorScheme } from '@/lib/color-scheme';
+import { ICON } from '@/lib/colors';
 import { well } from '@/lib/depth';
 import type { PickedFile } from '@/lib/attachment-ports';
 
@@ -23,12 +27,18 @@ type AttachSheetProps = {
   onClose: () => void;
 };
 
-function PreviewThumb({ preview }: { preview: { uri: string; name: string } }) {
+function PreviewThumb({
+  preview,
+  iconColor,
+}: {
+  preview: { uri: string; name: string };
+  iconColor: string;
+}) {
   const [failed, setFailed] = useState(false);
   if (failed) {
     return (
       <View className="h-16 w-16 items-center justify-center rounded-[10px] bg-surface-raised">
-        <Text className="text-[22px] leading-none">📎</Text>
+        <PreviewFallbackIcon name={preview.name} iconColor={iconColor} />
       </View>
     );
   }
@@ -64,6 +74,8 @@ export function AttachSheet({
   onClose,
 }: AttachSheetProps) {
   const insets = useSafeAreaInsets();
+  const scheme = asColorScheme(useColorScheme().colorScheme);
+  const iconColor = ICON[scheme];
   if (!open) {
     return null;
   }
@@ -82,12 +94,12 @@ export function AttachSheet({
           style={{ paddingBottom: Math.max(insets.bottom, 8) }}
         >
           <View className="mb-1 h-1 w-10 self-center rounded-full bg-surface-raised" />
-          <Text
-            accessibilityRole="header"
-            className="py-2 text-[17px] font-semibold text-foreground"
-          >
-            Attach
-          </Text>
+          <View className="flex-row items-center gap-2 py-2">
+            <Paperclip size={20} color={iconColor} />
+            <Text accessibilityRole="header" className="text-[17px] font-semibold text-foreground">
+              Attach
+            </Text>
+          </View>
           {preview === undefined ? (
             <>
               <SheetRow
@@ -95,18 +107,21 @@ export function AttachSheet({
                 hint="From your library"
                 onPress={() => onPick('library')}
                 busy={busy}
+                icon={<ImageIcon size={20} color={iconColor} />}
               />
               <SheetRow
                 label="Take a photo"
                 hint="With your camera"
                 onPress={() => onPick('camera')}
                 busy={busy}
+                icon={<Camera size={20} color={iconColor} />}
               />
               <SheetRow
                 label="File"
                 hint="Any document"
                 onPress={() => onPick('file')}
                 busy={busy}
+                icon={<FileText size={20} color={iconColor} />}
               />
               {(demoAttachments ?? []).length > 0 && onPickDemo !== undefined ? (
                 <View className="pt-1">
@@ -122,9 +137,13 @@ export function AttachSheet({
                       onPress={() => onPickDemo(attachment)}
                       className="flex-row items-center gap-3 px-1 py-2 active:bg-surface-raised disabled:opacity-60"
                     >
-                      <Text className="text-[16px] leading-none">
-                        {attachment.kind === 'image' ? '🖼' : '📎'}
-                      </Text>
+                      <View className="h-9 w-9 items-center justify-center rounded-[8px] bg-surface-raised">
+                        {attachment.kind === 'image' ? (
+                          <ImageIcon size={20} color={iconColor} />
+                        ) : (
+                          <FileText size={20} color={iconColor} />
+                        )}
+                      </View>
                       <Text
                         numberOfLines={1}
                         className="min-w-0 flex-1 text-[15px] text-foreground"
@@ -137,7 +156,12 @@ export function AttachSheet({
               ) : null}
             </>
           ) : (
-            <PickedPreview preview={preview} busy={busy} onCancelPick={onCancelPick} />
+            <PickedPreview
+              preview={preview}
+              busy={busy}
+              onCancelPick={onCancelPick}
+              iconColor={iconColor}
+            />
           )}
           {busy ? (
             <View className="flex-row items-center gap-2 px-1 py-3">
@@ -161,11 +185,13 @@ function SheetRow({
   hint,
   onPress,
   busy,
+  icon,
 }: {
   label: string;
   hint: string;
   onPress: () => void;
   busy: boolean;
+  icon: ReactNode;
 }) {
   return (
     <Pressable
@@ -176,9 +202,7 @@ function SheetRow({
       className="flex-row items-center gap-3 border-b border-divider px-1 py-3.5 active:bg-surface-raised disabled:opacity-60"
     >
       <View className="h-9 w-9 items-center justify-center rounded-[8px] bg-surface-raised">
-        <Text className="text-[16px] leading-none">
-          {label.startsWith('Photo') ? '🖼' : label.startsWith('Take') ? '📷' : '📎'}
-        </Text>
+        {icon}
       </View>
       <View className="min-w-0 flex-1">
         <Text className="text-[16px] text-foreground">{label}</Text>
@@ -192,14 +216,16 @@ function PickedPreview({
   preview,
   busy,
   onCancelPick,
+  iconColor,
 }: {
   preview: { uri: string; name: string; size?: number | undefined };
   busy: boolean;
   onCancelPick?: (() => void) | undefined;
+  iconColor: string;
 }) {
   return (
     <View className="flex-row items-center gap-3 rounded-[10px] px-1 py-2" style={well}>
-      <PreviewThumb preview={preview} />
+      <PreviewThumb preview={preview} iconColor={iconColor} />
       <View className="min-w-0 flex-1">
         <Text numberOfLines={1} className="text-[15px] font-semibold text-foreground">
           {preview.name}
@@ -245,3 +271,20 @@ function formatPreviewSize(bytes: number): string {
 
 /** The picked file the sheet preview shows, for tests. */
 export type SheetPreview = Pick<PickedFile, 'uri' | 'name' | 'size'>;
+
+const IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'heif']);
+
+/** Whether a file name looks like an image, for the preview fallback icon. */
+export function isImageName(name: string): boolean {
+  const extension = name.split('.').pop()?.toLowerCase() ?? '';
+  return IMAGE_EXTENSIONS.has(extension);
+}
+
+/**
+ * The icon shown instead of the picked-file thumbnail when it fails to
+ * load: `Image` for image names, `FileText` for everything else.
+ */
+export function PreviewFallbackIcon({ name, iconColor }: { name: string; iconColor: string }) {
+  const Icon = isImageName(name) ? ImageIcon : FileText;
+  return <Icon size={20} color={iconColor} />;
+}

@@ -54,6 +54,26 @@ vi.mock('@/components/chat/ticks', () => ({
   Ticks: 'Ticks',
 }));
 
+vi.mock('lucide-react-native', () => ({
+  ArrowUpRight: 'ArrowUpRight',
+  FileText: 'FileText',
+  Play: 'Play',
+  RotateCcw: 'RotateCcw',
+  Video: 'Video',
+}));
+
+vi.mock('nativewind', () => ({
+  useColorScheme: () => ({ colorScheme: 'dark' }),
+}));
+
+vi.mock('@/lib/color-scheme', () => ({
+  asColorScheme: () => 'dark',
+}));
+
+vi.mock('@/lib/colors', () => ({
+  ICON: { dark: '#d4d4d4', light: '#d4d4d4' },
+}));
+
 vi.mock('@/store/chat-store-provider', () => ({
   useChatStore: () => new Set(['upload.zilar.test', 'zilar.test']),
   useChatStoreApi: () => ({ getState: () => ({}) }),

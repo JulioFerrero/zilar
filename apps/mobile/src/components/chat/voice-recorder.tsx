@@ -19,14 +19,13 @@ import { useColorScheme } from 'nativewind';
 /**
  * The recorder button's decision logic, extracted so tests drive the exact
  * behaviour the component runs (finding 5): permission-denied copy with no
- * recorder created, the sub-1s refusal with nothing sent, the too-long
- * refusal, and the happy path. The component calls the same steps in the
- * same order (`begin` → `finish`), so these tests pin its behaviour.
+ * recorder created, the sub-1s miss press with nothing sent and no hint, the
+ * too-long refusal, and the happy path. The component calls the same steps in
+ * the same order (`begin` → `finish`), so these tests pin its behaviour.
  */
 
 import {
   RECORD_TOO_LONG_MESSAGE,
-  RECORD_TOO_SHORT_MESSAGE,
   type FinishedRecording,
   type VoiceRecorderPort as RecorderPort,
 } from '@/lib/voice-native';
@@ -87,13 +86,31 @@ export async function runRecorderBegin(
 /**
  * Runs `finish`: stops (or cancels) and either sends or reports the plain
  * copy. Returns the copy when the recording is refused, so the component
- * can show it; returns undefined when the flow completes or is cancelled.
+ * can show it; returns undefined when the flow completes, is cancelled, or
+ * the press was too short to be a real recording (a miss press records
+ * nothing and says nothing). A too-short recording is discarded through the
+ * recorder's `cancel`, so no file is left behind.
  */
 export async function runRecorderFinish(
   deps: RecorderDecisionDeps,
   cancel: boolean,
 ): Promise<string | undefined> {
   if (cancel) {
+    await deps.recorder.cancel().catch(() => {});
+    return undefined;
+  }
+  // A press shorter than the minimum is a miss press, not a recording: the
+  // live duration is checked before stopping so the take is discarded with
+  // `cancel` (no file is left behind) instead of `stop`. Nothing is sent and
+  // no hint appears; a failure of the duration read falls through to `stop`
+  // and the post-stop guard below.
+  let liveMs: number | undefined;
+  try {
+    liveMs = deps.recorder.currentDurationMs();
+  } catch {
+    liveMs = undefined;
+  }
+  if (liveMs !== undefined && liveMs < VOICE_MIN_MS) {
     await deps.recorder.cancel().catch(() => {});
     return undefined;
   }
@@ -106,7 +123,7 @@ export async function runRecorderFinish(
   }
   const finished: FinishedRecording = result.recording;
   if (finished.durationMs < VOICE_MIN_MS) {
-    return RECORD_TOO_SHORT_MESSAGE;
+    return undefined;
   }
   if (finished.durationMs > VOICE_MAX_DURATION_MS || finished.size > VOICE_MAX_BYTES) {
     return RECORD_TOO_LONG_MESSAGE;
@@ -197,7 +214,8 @@ function createHoldResponder(
  * input: a red dot, the elapsed time and a hint, with a 5-minute cap that
  * stops the recording automatically. The mic stays mounted under the finger
  * for the whole hold (a remount would drop the touch). Under one second is
- * refused with the same plain copy as web's "Recording too short".
+ * a miss press: the take is discarded silently, with nothing sent and no
+ * hint shown.
  */
 export function VoiceRecorderButton({
   onSendVoice,

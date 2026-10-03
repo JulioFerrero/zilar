@@ -205,3 +205,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0157](T-0157-mobile-nits-2.md) | Mobile nits bundle 2: attachments, GIFs, search jump, roles load error | 2026-10-03 |
 | [T-0170](T-0170-voice-transcripts.md) | Voice transcripts on demand (owner-configured OpenAI-compatible endpoint) | 2026-10-03 |
 | [T-0154](T-0154-mobile-voice-messages.md) | Mobile voice messages: record, send, play (expo-audio) | 2026-10-03 |
+| [T-0176](T-0176-mobile-attach-icons-short-press.md) | Attach popup and attachment rows use icons, not emoji; a too-short mic press records and says nothing (1 round) | 2026-10-03 |
