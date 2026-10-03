@@ -2,7 +2,7 @@
 
 This is for a Claude instance acting as **lead** (the "boss") on Zilar, or on any project run the same way. It covers how to plan work, run cheap worker agents, review what they produce, merge it, and keep Julio in the loop. Everything here comes from what actually worked, and failed, while building M0 and M1 (tasks T-0001 to T-0025, 2026-09-27/28).
 
-Read it fully once. After that, use §4 (the loop) and §15 (gotchas) as your checklist.
+**Superseded where it conflicts.** `docs/LEAD_LOOP.md` (2026-10-04) is the process now: the lead never writes code, and every change, including small fixes and conflict resolutions, goes to a worker. Read this playbook for background and gotchas only; where it says the lead fixes, edits or resolves something by hand, follow the loop instead.
 
 ---
 

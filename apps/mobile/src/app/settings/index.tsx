@@ -2,6 +2,8 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import {
   Bot,
   ChevronRight,
+  KeyRound,
+  Server,
   ShieldCheck,
   UserPlus,
   UserRound,
@@ -39,6 +41,8 @@ const HUB_ICONS: Record<SettingsIconId, LucideIcon> = {
   ai: Bot,
   requests: UserPlus,
   approvals: ShieldCheck,
+  machines: Server,
+  connections: KeyRound,
 };
 
 function hubIcon(icon: SettingsIconId, scheme: 'light' | 'dark') {

@@ -30,6 +30,11 @@ export interface PublicAi {
   status: 'active' | 'disabled' | 'stopped';
   providerConnectionId: string;
   limits: AiLimits;
+  // T-0091: the AI's home machine id, or null when it runs on the
+  // platform. Optional so older payloads stay valid; the parser maps a
+  // missing or non-string value to null. CamelCase like the rest of the
+  // public AI fields.
+  machineId?: string | null | undefined;
   createdAt: string;
 }
 
@@ -102,8 +107,10 @@ function parseLimits(value: unknown): AiLimits | null {
   return { perDayUsd, perMonthUsd };
 }
 
-// Tolerant of unknown fields (the server also sends `machineId` on
-// `PublicAiWithUsage`, T-0091): only the fields mobile renders are required.
+// Tolerant of unknown fields (the server also sends `avatarUrl` on the
+// public AI, T-0165): only the fields mobile renders are required.
+// `machineId` is a string or null (T-0091); anything else means the
+// platform, never a failure — an older server may omit it.
 function parsePublicAi(value: unknown): PublicAi | null {
   if (!isRecord(value)) return null;
   const id = value['id'];
@@ -130,6 +137,7 @@ function parsePublicAi(value: unknown): PublicAi | null {
   ) {
     return null;
   }
+  const machineId = value['machineId'];
   return {
     id,
     name,
@@ -140,6 +148,7 @@ function parsePublicAi(value: unknown): PublicAi | null {
     status,
     providerConnectionId,
     limits,
+    machineId: isString(machineId) ? machineId : null,
     createdAt,
   };
 }

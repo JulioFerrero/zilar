@@ -49,6 +49,20 @@ export const SETTINGS_ITEMS = [
     icon: 'approvals',
     href: '/settings/approvals',
   },
+  {
+    id: 'machines',
+    title: 'Machines',
+    subtitle: 'Computers where your AIs can work.',
+    icon: 'machines',
+    href: '/settings/machines',
+  },
+  {
+    id: 'connections',
+    title: 'Connections',
+    subtitle: 'Provider accounts for your AIs.',
+    icon: 'connections',
+    href: '/settings/connections',
+  },
 ] as const satisfies readonly SettingsItemShape[];
 
 export type SettingsItem = (typeof SETTINGS_ITEMS)[number];

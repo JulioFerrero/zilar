@@ -8,13 +8,21 @@ import { describeAisError } from '@/components/ais/errors';
 import { buildPatch } from '@/components/ais/form';
 import { LimitsFields } from '@/components/ais/limits-fields';
 import { validateLimits } from '@/components/ais/limits';
+import { MachinePicker } from '@/components/ais/machine-picker';
+import { ModelPicker } from '@/components/ais/model-picker';
+import { ProviderPicker } from '@/components/ais/provider-picker';
+import { defaultModelFor } from '@/components/ais/models';
 import { AisScreenShell } from '@/components/ais/screen-shell';
 import { useAisApi } from '@/components/ais/use-ais-api';
+import { useConnectionsApi } from '@/components/connections/use-connections-api';
+import { applyMachineChange } from '@/components/machines/machine-change';
+import { useMachinesApi } from '@/components/machines/use-machines-api';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { ACCENT } from '@/lib/colors';
 import { asColorScheme } from '@/lib/color-scheme';
-import type { PublicAi } from '@/lib/ais-api';
+import type { Connection as AisConnection, PublicAi, UpdateAiInput } from '@/lib/ais-api';
+import type { Machine } from '@/lib/machines-api';
 
 export default function EditAiScreen() {
   return (
@@ -28,6 +36,8 @@ function EditAi() {
   const router = useRouter();
   const scheme = asColorScheme(useColorScheme().colorScheme);
   const { api } = useAisApi();
+  const { api: connectionsApi } = useConnectionsApi();
+  const { api: machinesApi } = useMachinesApi();
   const params = useLocalSearchParams<{ id: string }>();
   const id = typeof params.id === 'string' ? params.id : '';
 
@@ -39,6 +49,21 @@ function EditAi() {
   const [persona, setPersona] = useState('');
   const [day, setDay] = useState('2');
   const [month, setMonth] = useState('20');
+  // The connection and machine pickers (mirror web `AiPanel`): the active
+  // connections and the owner's machines, loaded beside the AI so a failure
+  // here never blocks the rest of the screen.
+  const [connections, setConnections] = useState<AisConnection[]>([]);
+  const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(null);
+  const [modelDraft, setModelDraft] = useState('');
+  const [machines, setMachines] = useState<Machine[]>([]);
+  const [machinesLoaded, setMachinesLoaded] = useState(false);
+  // The AI's home machine, kept in local state so a successful change shows
+  // at once and a failed one restores the previous value. Set from the
+  // loaded AI, then from each PUT answer (the server is the source of truth).
+  const [homeMachineId, setHomeMachineId] = useState<string | null>(null);
+  const [machineBusy, setMachineBusy] = useState(false);
+  const machineBusyRef = useRef(false);
+  const [machineError, setMachineError] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   // Guards against a double tap landing before React re-renders the disabled
@@ -60,6 +85,9 @@ function EditAi() {
         setPersona(ai.persona);
         setDay(String(ai.limits.perDayUsd));
         setMonth(String(ai.limits.perMonthUsd));
+        setSelectedConnectionId(ai.providerConnectionId);
+        setModelDraft(ai.model);
+        setHomeMachineId(ai.machineId ?? null);
         setStatus('ready');
       })
       .catch((cause: unknown) => {
@@ -67,6 +95,30 @@ function EditAi() {
         setStatus('error');
       });
   }, [api, id]);
+
+  useEffect(() => {
+    connectionsApi
+      .listConnections()
+      .then((list) => {
+        setConnections(list.filter((connection) => connection.status === 'active'));
+      })
+      .catch(() => {
+        setConnections([]);
+      });
+  }, [connectionsApi]);
+
+  useEffect(() => {
+    machinesApi
+      .listMachines()
+      .then((list) => {
+        setMachines(list);
+        setMachinesLoaded(true);
+      })
+      .catch(() => {
+        setMachines([]);
+        setMachinesLoaded(false);
+      });
+  }, [machinesApi]);
 
   useEffect(() => {
     load();
@@ -80,11 +132,45 @@ function EditAi() {
   const limits = validateLimits(day, month);
   const canSave = loaded !== null && name.trim() !== '' && limits.limits !== null && !saving;
 
+  // Switching provider re-prefills that provider's default model, as in the
+  // create wizard: the old model name rarely fits the new provider.
+  const chooseConnection = (connectionId: string): void => {
+    setSelectedConnectionId(connectionId);
+    const next = connections.find((connection) => connection.id === connectionId) ?? null;
+    if (next !== null) {
+      setModelDraft(defaultModelFor(next.provider));
+    }
+  };
+
+  // Sets or clears the AI's home machine through the separate machine route,
+  // exactly like web `AiPanel`. The outcome helper keeps the previous value
+  // on failure and carries a fixed error sentence; the PUT answer is the
+  // source of truth on success.
+  const changeMachine = (machineId: string | null): void => {
+    if (loaded === null || machineBusyRef.current) {
+      return;
+    }
+    machineBusyRef.current = true;
+    const previous = homeMachineId;
+    const aiId = loaded.id;
+    setMachineBusy(true);
+    setMachineError('');
+    void applyMachineChange(machinesApi, aiId, machineId, previous)
+      .then((outcome) => {
+        setHomeMachineId(outcome.home);
+        setMachineError(outcome.error);
+      })
+      .finally(() => {
+        machineBusyRef.current = false;
+        setMachineBusy(false);
+      });
+  };
+
   const save = (): void => {
     if (loaded === null || savingRef.current) {
       return;
     }
-    const patch = buildPatch({
+    const base = buildPatch({
       name,
       originalName: loaded.name,
       persona,
@@ -92,6 +178,24 @@ function EditAi() {
       limits: limits.limits,
       originalLimits: loaded.limits,
     });
+    // The model and connection diffs ride the same patch, like web
+    // `AiPanel`: the server needs the model whenever the connection
+    // changes, so a connection change always carries both, while a
+    // model-only change carries just the model. `UpdateAiInput` predates
+    // those two fields, so they ride an extension the PATCH body keeps.
+    const modelTrimmed = modelDraft.trim();
+    const modelChanged = modelTrimmed !== '' && modelTrimmed !== loaded.model;
+    const connectionChanged =
+      selectedConnectionId !== null && selectedConnectionId !== loaded.providerConnectionId;
+    let patch: (UpdateAiInput & { model?: string; providerConnectionId?: string }) | null = base;
+    if (connectionChanged || modelChanged) {
+      patch = {
+        ...(patch === null ? { model: modelTrimmed } : { ...patch, model: modelTrimmed }),
+        ...(connectionChanged && selectedConnectionId !== null
+          ? { providerConnectionId: selectedConnectionId }
+          : {}),
+      };
+    }
     if (name.trim() === '' || limits.limits === null || patch === null) {
       return;
     }
@@ -175,6 +279,48 @@ function EditAi() {
               onDayChange={setDay}
               onMonthChange={setMonth}
             />
+
+            <View className="gap-1">
+              <Text className="text-[14px] font-medium text-foreground">Provider connection</Text>
+              {connections.length === 0 ? (
+                <Text className="text-[13px] text-muted-foreground">
+                  No active connections. Add one under Settings → Connections.
+                </Text>
+              ) : (
+                <ProviderPicker
+                  connections={connections}
+                  value={selectedConnectionId}
+                  onChange={chooseConnection}
+                />
+              )}
+            </View>
+
+            {selectedConnectionId !== null ? (
+              <ModelPicker
+                provider={
+                  connections.find((connection) => connection.id === selectedConnectionId)
+                    ?.provider ?? ''
+                }
+                value={modelDraft}
+                onChange={setModelDraft}
+              />
+            ) : null}
+
+            <View className="gap-1">
+              <Text className="text-[14px] font-medium text-foreground">Home machine</Text>
+              <MachinePicker
+                machines={machines}
+                loaded={machinesLoaded}
+                value={homeMachineId}
+                disabled={machineBusy}
+                onChange={changeMachine}
+              />
+              {machineError !== '' ? (
+                <Text accessibilityRole="alert" className="text-[13px] text-danger">
+                  {machineError}
+                </Text>
+              ) : null}
+            </View>
 
             {error !== '' ? (
               <Text accessibilityRole="alert" className="text-[14px] text-danger">
