@@ -21,7 +21,6 @@ Julio: "one commit per task from now on, stop spawning workers, when all finish,
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
 | T-0173 | Effect 4.0 spike on the server voice transcription pipeline | pre-review | branch predates T-0197: rebase before any fix round |
-| T-0187 | Mobile: manage sticker packs | unblock round | rebased by the lead (PREREVIEW.md gate noise); needs phone:smoke before merge |
 | T-0196 | The doctor: a Muse session that audits main after merges | coding | spec re-checked, full paths |
 
 ## Next, in order
@@ -38,6 +37,8 @@ Julio: "one commit per task from now on, stop spawning workers, when all finish,
 - Release: everything merged since v0.1.13 reaches the live web only with the next release.
 
 ## Recent events
+
+- 2026-10-04: merged T-0187 (mobile sticker packs; smoke PASS plus each tab checked; one-line HUB_ICONS conflict with T-0188 resolved by the worker). Deferred: mobile `addStickerFavorite`, to come with the first star button. T-0173 is in a lead nits round (EFFECT_GUIDE accuracy).
 
 - 2026-10-04: merged T-0188 (mobile owner integrations; smoke PASS, non-owner view checked on the emulator). T-0187 will conflict on `settings-items.ts` and `settings/index.tsx` at merge: use the conflict procedure.
 

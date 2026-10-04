@@ -128,4 +128,82 @@ describe('stickers api client', () => {
     );
     await expect(offline.listStickerPacks()).rejects.toMatchObject({ code: 'network_error' });
   });
+
+  it('discovers shared packs with the query and the next cursor', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ packs: [PACK], next: 'cursor-2' }));
+    const page = await api(fetchImpl).discoverStickerPacks('cats');
+    expect(page.packs).toHaveLength(1);
+    expect(page.next).toBe('cursor-2');
+    const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('http://127.0.0.1:3188/api/sticker-packs/discover?q=cats');
+    expect((init.headers as Record<string, string>)['authorization']).toBe('Bearer tok');
+  });
+
+  it('discovers without a query param on an empty search', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ packs: [], next: null }));
+    const page = await api(fetchImpl).discoverStickerPacks('   ');
+    expect(page).toEqual({ packs: [], next: null });
+    const [url] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('http://127.0.0.1:3188/api/sticker-packs/discover');
+  });
+
+  it('rejects a discover body with a bad cursor', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ packs: [PACK], next: 7 }));
+    await expect(api(fetchImpl).discoverStickerPacks()).rejects.toMatchObject({
+      status: 200,
+      code: 'invalid_response',
+    });
+  });
+
+  it('adds and removes a panel pack by id', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ ok: true }));
+    await api(fetchImpl).addStickerPanelPack(PACK.id);
+    await api(fetchImpl).removeStickerPanelPack(PACK.id);
+    const [putUrl, putInit] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    expect(putUrl).toBe(`http://127.0.0.1:3188/api/sticker-panel/${PACK.id}`);
+    expect(putInit.method).toBe('PUT');
+    const [deleteUrl, deleteInit] = fetchImpl.mock.calls[1] as unknown as [string, RequestInit];
+    expect(deleteUrl).toBe(`http://127.0.0.1:3188/api/sticker-panel/${PACK.id}`);
+    expect(deleteInit.method).toBe('DELETE');
+  });
+
+  it('sends the complete id list in the new order when reordering', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ ok: true }));
+    const order = ['pack-b', 'pack-a', PACK.id];
+    await api(fetchImpl).reorderStickerPanelPacks(order);
+    const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('http://127.0.0.1:3188/api/sticker-panel');
+    expect(init.method).toBe('PUT');
+    expect(init.body).toBe(JSON.stringify({ order }));
+  });
+
+  it('lists favorites and drops a malformed row', async () => {
+    const favorite = { ...ITEM, packId: PACK.id };
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({ favorites: [favorite, { id: 7, packId: PACK.id }] }),
+    );
+    const favorites = await api(fetchImpl).listStickerFavorites();
+    expect(favorites).toHaveLength(1);
+    expect(favorites[0]).toMatchObject({ id: ITEM.id, packId: PACK.id });
+    const [url] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('http://127.0.0.1:3188/api/sticker-favorites');
+  });
+
+  it('rejects a favorites body that is not a list', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ favorites: 'nope' }));
+    await expect(api(fetchImpl).listStickerFavorites()).rejects.toMatchObject({
+      status: 200,
+      code: 'invalid_response',
+    });
+  });
+
+  it('removes a favorite with the sticker id as a query param', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ ok: true }));
+    await api(fetchImpl).removeStickerFavorite(ITEM.id);
+    const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe(
+      `http://127.0.0.1:3188/api/sticker-favorites?${new URLSearchParams({ sticker_id: ITEM.id }).toString()}`,
+    );
+    expect(init.method).toBe('DELETE');
+  });
 });

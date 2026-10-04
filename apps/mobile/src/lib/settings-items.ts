@@ -70,6 +70,13 @@ export const SETTINGS_ITEMS = [
     icon: 'integrations',
     href: '/settings/integrations',
   },
+  {
+    id: 'stickers',
+    title: 'Stickers',
+    subtitle: 'Your packs, shared packs and favorites.',
+    icon: 'stickers',
+    href: '/settings/stickers',
+  },
 ] as const satisfies readonly SettingsItemShape[];
 
 export type SettingsItem = (typeof SETTINGS_ITEMS)[number];

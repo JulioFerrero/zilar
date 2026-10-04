@@ -6,6 +6,7 @@ import {
   Plug,
   Server,
   ShieldCheck,
+  Sticker,
   UserPlus,
   UserRound,
   type LucideIcon,
@@ -45,6 +46,7 @@ const HUB_ICONS: Record<SettingsIconId, LucideIcon> = {
   machines: Server,
   connections: KeyRound,
   integrations: Plug,
+  stickers: Sticker,
 };
 
 function hubIcon(icon: SettingsIconId, scheme: 'light' | 'dark') {
