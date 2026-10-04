@@ -329,18 +329,31 @@ describe('extractVerdict', () => {
 
 describe('extractCounts', () => {
   it('reads the Counts line in the requested form', () => {
+    expect(extractCounts('Counts: must-fix=1, should-fix=2, nit=3, follow-up=4')).toEqual({
+      mustFix: 1,
+      shouldFix: 2,
+      nit: 3,
+      followUp: 4,
+    });
+  });
+
+  it('treats the fourth number as 0 for older three-number reviews', () => {
     expect(extractCounts('Counts: must-fix=1, should-fix=2, nit=3')).toEqual({
       mustFix: 1,
       shouldFix: 2,
       nit: 3,
+      followUp: 0,
     });
   });
 
   it('tolerates spacing and case', () => {
-    expect(extractCounts('**counts:** must-fix = 0; should-fix = 0; nits = 4')).toEqual({
+    expect(
+      extractCounts('**counts:** must-fix = 0; should-fix = 0; nits = 4; follow-ups = 1'),
+    ).toEqual({
       mustFix: 0,
       shouldFix: 0,
       nit: 4,
+      followUp: 1,
     });
   });
 

@@ -4,7 +4,7 @@ title: Mobile: guard tests for the Android and Hermes pitfalls that crashed the 
 status: planned
 milestone: M5
 branch: task/T-0194-mobile-pitfall-guards
-model: meta/muse-spark-1.3-contributor
+model: minimax-coding-plan/MiniMax-M3
 effort: low
 depends_on: []
 estimate: 0.5 day
@@ -18,8 +18,8 @@ estimate: 0.5 day
 Four bugs reached Julio's phone because nothing in the test suite could see them. Each one is a pattern in source files, so a test that scans the source can catch it forever. One such test already exists: `apps/mobile/src/lib/gradient-swap.test.ts` (read it first and copy its style: it walks the source tree with `readdirSync` and `readFileSync` and reports `file:line` offenders).
 
 ### Verified facts (do not re-derive)
-- Expo modules cannot convert a `Promise` parameter inside a `Coroutine` async function. The Kotlin module `apps/mobile/modules/zilar-whistle/android/src/main/java/expo/modules/whistle/ZilarWhistleModule.kt` was broken by exactly this (`AsyncFunction("x") Coroutine { ..., promise: Promise -> }`). A plain `AsyncFunction("x") { path: String, promise: Promise -> ... }` is valid and is used today (lines ~108 and ~134). Today the word `Coroutine` appears in that file only in a comment (line ~152).
-- Hermes has no `crypto.subtle`. Today the string appears only in a comment in `ZilarWhistleModule.kt` and in a comment in `apps/mobile/modules/zilar-whistle/src/download.ts`.
+- Expo modules cannot convert a `Promise` parameter inside a `Coroutine` async function. The Kotlin module `apps/mobile/modules/zilar-whistle/android/src/main/java/expo/modules/whistle/ZilarWhistleModule.kt` was broken by exactly this (`AsyncFunction("x") Coroutine { ..., promise: Promise -> }`). A plain `AsyncFunction("x") { path: String, promise: Promise -> ... }` is valid and is used today (lines 108 and 134). Today the word `Coroutine` appears in that file only in a comment (line 152).
+- Hermes has no `crypto.subtle`. Today the string appears only in comments: `ZilarWhistleModule.kt` lines 98 and 152, and `apps/mobile/modules/zilar-whistle/src/download.ts` line 141 (a JSDoc line starting with ` * `, which the comment rule below skips).
 - App chrome uses lucide icons, never emoji. Emoji characters are allowed only as emoji CONTENT (the emoji picker data, reaction content, sticker fallback). Do not write an emoji guard in this task.
 - `pnpm test` for the mobile package is `vitest`; node `fs` works in these tests (the gradient test uses it).
 

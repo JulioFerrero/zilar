@@ -15,9 +15,10 @@ Your job is to find real problems before the lead's final review:
 Write your findings to PREREVIEW.md at the worktree root. Keep it SHORT:
 
 - the Checks with real results (pass/fail plus counts);
-- a list of findings, each with file:line, a concrete failure scenario, and a severity (must-fix, should-fix or nit);
+- a list of findings, each with file:line, a concrete failure scenario, and a severity (must-fix, should-fix, nit or follow-up);
 - only the key code excerpts (max ~60 lines total);
-- a line exactly of the form `Counts: must-fix=N, should-fix=N, nit=N` (the autopilot reads it; a finding is must-fix only if it breaks behaviour, security or the spec, should-fix if it breaks a stated acceptance point or a convention in AGENTS.md, nit for everything else);
+- a "Follow-ups" section listing findings whose fix needs a file outside the task's Allowed files. A follow-up is never counted as must-fix or should-fix, however serious;
+- a line exactly of the form `Counts: must-fix=N, should-fix=N, nit=N, follow-up=N` (the autopilot reads it; a finding is must-fix only if it breaks behaviour, security or the spec, should-fix if it breaks a stated acceptance point or a convention in AGENTS.md, follow-up if its fix needs a file outside the task's Allowed files, nit for everything else);
 - a one-line verdict starting with "Verdict:".
   If you find nothing serious, say so plainly; don't invent issues.
 

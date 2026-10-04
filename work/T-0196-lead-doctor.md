@@ -21,8 +21,9 @@ Julio, 2026-10-04: "we need a doctor/control AI with also Muse Spark to control 
 - Pre-review is the model to copy: `packages/devtools/src/lead/start-prereview.ts` (`startPrereviewSession`: `client.createSession({ title, agent: 'build', model: PREREVIEW_MODEL, directory, permissions: loadRulesFile(path.join(promptsDirPath, 'rules.json')) })`, then `client.promptDetached(sessionId, prompt)`; the prompt is `renderPrompt(loadPrompt(promptsDirPath, 'prereview'), {...})`).
 - `PromptName` is a union in `packages/devtools/src/lead/prompts.ts`; templates live in `packages/devtools/prompts/*.md` and use `{{NAME}}` placeholders.
 - The state file schema is `stateFileSchema` in `types.ts` (`{ version: 1, tasks }`). `loadState` in `state.ts` REBUILDS the object from `validated.data.tasks` and returns only `{ version: 1, tasks }`: a new top-level field would be silently dropped unless `loadState`, `emptyState`, the `StateFile` type and the schema all carry it. This already bit a per-task field once.
+- Every state write goes through `updateState(statePath, mutate)` in `state.ts` (line 75), which re-reads the file right before writing; `tickOnce` writes its task results once at the end through it. The doctor's state writes (autopilot and `lead doctor`) must use `updateState` too and change only `state.doctor`, never `state.tasks`.
 - The autopilot loop is `tickOnce` in `autopilot.ts`; `decide` in `decide.ts` is a pure function and is the pattern for testable decisions. `AutopilotDeps` has `client`, `runner` (a `GitRunner`), `statePath`, `promptsDirPath`; the CLI builds it in `runAutopilotCommand` in `cli.ts`, where `findRepoRoot()` gives the main checkout.
-- `extractCounts` and `extractVerdict` in `autopilot.ts` already parse the `Counts: must-fix=N, should-fix=N, nit=N` line and the `Verdict:` line of a review file. Reuse them.
+- `extractCounts` and `extractVerdict` in `autopilot.ts` already parse the `Counts: must-fix=N, should-fix=N, nit=N` line (an optional fourth `follow-up=N` defaults to 0; the doctor uses the three-number form) and the `Verdict:` line of a review file. Reuse them.
 - Task worktrees are siblings of the main checkout named `zilar-T-XXXX`; `lead merge` removes them. Nothing may ever delete or reset a worker's worktree.
 
 ### What to build
@@ -38,7 +39,7 @@ Julio, 2026-10-04: "we need a doctor/control AI with also Muse Spark to control 
 `AGENTS.md`, `packages/devtools/src/lead/start-prereview.ts`, `decide.ts`, `autopilot.ts`, `state.ts`, `types.ts`, `prompts.ts`, `cli.ts`, `packages/devtools/prompts/prereview.md`.
 
 ### Allowed files
-`packages/devtools/src/lead/doctor.ts`, `doctor.test.ts`, `state.ts`, `state.test.ts`, `types.ts`, `autopilot.ts`, `autopilot.test.ts`, `cli.ts`, `prompts.ts`, `prompts.test.ts`, `packages/devtools/prompts/doctor.md`, `docs/LEAD_HANDOFF.md`, `work/T-0196-lead-doctor.md`.
+`packages/devtools/src/lead/doctor.ts`, `packages/devtools/src/lead/doctor.test.ts`, `packages/devtools/src/lead/state.ts`, `packages/devtools/src/lead/state.test.ts`, `packages/devtools/src/lead/types.ts`, `packages/devtools/src/lead/autopilot.ts`, `packages/devtools/src/lead/autopilot.test.ts`, `packages/devtools/src/lead/cli.ts`, `packages/devtools/src/lead/prompts.ts`, `packages/devtools/src/lead/prompts.test.ts`, `packages/devtools/prompts/doctor.md`, `docs/LEAD_HANDOFF.md`, `work/T-0196-lead-doctor.md`.
 
 ### Checks
 ```bash

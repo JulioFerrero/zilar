@@ -234,7 +234,7 @@ describe('decide review', () => {
       });
 
     it('sends must-fix and should-fix findings back to the worker', () => {
-      const actions = decide(packet({ mustFix: 1, shouldFix: 2, nit: 3 }, 0));
+      const actions = decide(packet({ mustFix: 1, shouldFix: 2, nit: 3, followUp: 0 }, 0));
       expect(actions).toContainEqual({ kind: 'send-prompt', template: 'autofix' });
       expect(escalations(actions)).toEqual([
         'LEAD: AUTOFIX T-0038 round 1 (must-fix 1, should-fix 2)',
@@ -245,16 +245,43 @@ describe('decide review', () => {
     });
 
     it('stops after the round limit and hands the packet to the lead', () => {
-      const actions = decide(packet({ mustFix: 1, shouldFix: 0, nit: 0 }, AUTOFIX_LIMIT));
+      const actions = decide(
+        packet({ mustFix: 1, shouldFix: 0, nit: 0, followUp: 0 }, AUTOFIX_LIMIT),
+      );
       expect(actions.some((action) => action.kind === 'send-prompt')).toBe(false);
       expect(escalations(actions)[0]).toContain('PACKET READY T-0038 [NEEDS LEAD after 2');
     });
 
     it('announces a clean packet with only nits as CLEAN', () => {
-      const actions = decide(packet({ mustFix: 0, shouldFix: 0, nit: 2 }, 1));
+      const actions = decide(packet({ mustFix: 0, shouldFix: 0, nit: 2, followUp: 0 }, 1));
       expect(actions.some((action) => action.kind === 'send-prompt')).toBe(false);
       expect(escalations(actions)[0]).toContain(
         'PACKET READY T-0038 [CLEAN after 1 auto round(s), nit 2]',
+      );
+    });
+
+    it('starts no auto round for follow-ups alone and names them in the tag', () => {
+      const actions = decide(packet({ mustFix: 0, shouldFix: 0, nit: 2, followUp: 1 }, 0));
+      expect(actions.some((action) => action.kind === 'send-prompt')).toBe(false);
+      expect(escalations(actions)).toHaveLength(1);
+      expect(escalations(actions)[0]).toContain('PACKET READY T-0038 [CLEAN, nit 2, follow-up 1]');
+    });
+
+    it('still starts an auto round for should-fix when follow-ups are present', () => {
+      const actions = decide(packet({ mustFix: 0, shouldFix: 1, nit: 0, followUp: 1 }, 0));
+      expect(actions).toContainEqual({ kind: 'send-prompt', template: 'autofix' });
+      expect(escalations(actions)).toEqual([
+        'LEAD: AUTOFIX T-0038 round 1 (must-fix 0, should-fix 1)',
+      ]);
+    });
+
+    it('names follow-ups on the NEEDS LEAD tag after the round limit', () => {
+      const actions = decide(
+        packet({ mustFix: 0, shouldFix: 1, nit: 0, followUp: 1 }, AUTOFIX_LIMIT),
+      );
+      expect(actions.some((action) => action.kind === 'send-prompt')).toBe(false);
+      expect(escalations(actions)[0]).toContain(
+        'PACKET READY T-0038 [NEEDS LEAD after 2 auto round(s): must-fix 0, should-fix 1, follow-up 1]',
       );
     });
 

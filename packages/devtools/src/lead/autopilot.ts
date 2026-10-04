@@ -38,11 +38,12 @@ export function extractVerdict(text: string): string {
   return line === undefined ? '(no verdict line)' : line.trim();
 }
 
-// The `Counts: must-fix=N, should-fix=N, nit=N` line the pre-review prompt asks
-// for. Undefined when the reviewer skipped it, so the lead reads the packet.
+// The `Counts: must-fix=N, should-fix=N, nit=N, follow-up=N` line the pre-review
+// prompt asks for. Undefined when the reviewer skipped it, so the lead reads
+// the packet. Older reviews with only three numbers parse with followUp 0.
 export function extractCounts(text: string): FindingCounts | undefined {
   const match =
-    /counts:[\s*]*must-?fix\s*[=:]?\s*(\d+)\s*[,;]?\s*should-?fix\s*[=:]?\s*(\d+)\s*[,;]?\s*nits?\s*[=:]?\s*(\d+)/i.exec(
+    /counts:[\s*]*must-?fix\s*[=:]?\s*(\d+)\s*[,;]?\s*should-?fix\s*[=:]?\s*(\d+)\s*[,;]?\s*nits?\s*[=:]?\s*(\d+)(?:\s*[,;]?\s*follow-?ups?\s*[=:]?\s*(\d+))?/i.exec(
       text,
     );
   if (match === null) {
@@ -52,6 +53,7 @@ export function extractCounts(text: string): FindingCounts | undefined {
     mustFix: Number(match[1]),
     shouldFix: Number(match[2]),
     nit: Number(match[3]),
+    followUp: match[4] === undefined ? 0 : Number(match[4]),
   };
 }
 

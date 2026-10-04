@@ -212,10 +212,10 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0187](T-0187-mobile-sticker-packs.md) | Mobile: manage sticker packs (my packs, discover, add and remove, reorder, favourites) | planned | meta/muse-spark-1.3-contributor | — | Spec ready; mobile parity wave 2 |
 | [T-0188](T-0188-mobile-integrations-owner.md) | Mobile: owner integrations (Telegram bot, email, voice transcription) | planned | meta/muse-spark-1.3-contributor | — | Spec ready; mobile parity wave 2 |
 | [T-0191](T-0191-mobile-sticker-editor-telegram.md) | Mobile: sticker pack editor and Telegram sticker import | planned | meta/muse-spark-1.3-contributor | T-0187 | Spec ready; mobile parity wave 2 |
-| [T-0194](T-0194-mobile-pitfall-guards.md) | Mobile: guard tests for the Android and Hermes pitfalls (Coroutine with Promise, crypto.subtle) | planned | meta/muse-spark-1.3-contributor | — | Spec ready; process roadmap R3 |
-| [T-0195](T-0195-mobile-parity-audit.md) | Audit (docs only): web vs mobile for AI tools, routines, activity, @mentions, dialogs | planned | meta/muse-spark-1.3-contributor | — | Spec ready; feeds the specs of T-0189 and T-0190 |
-| [T-0196](T-0196-lead-doctor.md) | Lead tooling: the doctor, a Muse session that audits main after merges | planned | meta/muse-spark-1.3-contributor | T-0198, T-0199 | Spec ready; shares autopilot.ts with T-0198 and T-0199, so after them |
-| [T-0199](T-0199-prereview-follow-ups.md) | Lead tooling: pre-review findings outside the task's Allowed files are follow-ups, not fix rounds | planned | meta/muse-spark-1.3-contributor | T-0198 | Spec ready; two AUTOFIX rounds were wasted on T-0198 |
+| [T-0194](T-0194-mobile-pitfall-guards.md) | Mobile: guard tests for the Android and Hermes pitfalls (Coroutine with Promise, crypto.subtle) | planned | minimax-coding-plan/MiniMax-M3 | — | Spec ready; process roadmap R3 |
+| [T-0195](T-0195-mobile-parity-audit.md) | Audit (docs only): web vs mobile for AI tools, routines, activity, @mentions, dialogs | planned | minimax-coding-plan/MiniMax-M3 | — | Spec ready; feeds the specs of T-0189 and T-0190 |
+| [T-0196](T-0196-lead-doctor.md) | Lead tooling: the doctor, a Muse session that audits main after merges | in-progress | meta/muse-spark-1.3-contributor | T-0198, T-0199 | Launched 2026-10-04 |
+| [T-0200](T-0200-lead-squash-merge.md) | Lead tooling: lead merge lands each task as ONE commit on main | planned | meta/muse-spark-1.3-contributor | — | First task after the history compaction and force push |
 | [T-0179](T-0179-mobile-transcribe-voice-notes.md) | Transcribe voice notes on the phone with Whistle: button in the bubble, consent for the 17 MB model, transcripts stored locally | 2026-10-03 |
 | [T-0182](T-0182-mobile-contacts-requests.md) | Mobile contacts: find by @handle, profile card, contact requests | 2026-10-03 |
 | [T-0183](T-0183-mobile-explore-group-handles.md) | Mobile Explore, @group links and group visibility | 2026-10-03 |
@@ -226,3 +226,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0192](T-0192-web-search-people-by-handle.md) | Web: find people by @handle in the search bar, replacing Add contact in the new-chat menu | 2026-10-03 |
 | [T-0197](T-0197-old-name-in-smoke-script.md) | Old product name out of the smoke script; reviewer files at worktree roots are git-ignored | 2026-10-03 |
 | [T-0198](T-0198-lead-state-lost-writes.md) | Lead state writes re-read the file first: the autopilot no longer loses tasks launched, merged or switched during a tick | 2026-10-04 |
+| [T-0199](T-0199-prereview-follow-ups.md) | Pre-review findings outside a task's scope are follow-ups, not automatic fix rounds | 2026-10-04 |

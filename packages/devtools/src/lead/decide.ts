@@ -14,6 +14,7 @@ export interface FindingCounts {
   mustFix: number;
   shouldFix: number;
   nit: number;
+  followUp: number;
 }
 
 export interface DecideInput {
@@ -74,10 +75,11 @@ function packetTag(counts: FindingCounts | undefined, rounds: number): string {
     return '[no counts line, read it]';
   }
   const done = rounds === 0 ? '' : ` after ${rounds} auto round(s)`;
+  const followUp = counts.followUp > 0 ? `, follow-up ${counts.followUp}` : '';
   if (counts.mustFix + counts.shouldFix === 0) {
-    return `[CLEAN${done}, nit ${counts.nit}]`;
+    return `[CLEAN${done}, nit ${counts.nit}${followUp}]`;
   }
-  return `[NEEDS LEAD${done}: must-fix ${counts.mustFix}, should-fix ${counts.shouldFix}]`;
+  return `[NEEDS LEAD${done}: must-fix ${counts.mustFix}, should-fix ${counts.shouldFix}${followUp}]`;
 }
 
 function oneLine(text: string, max: number): string {

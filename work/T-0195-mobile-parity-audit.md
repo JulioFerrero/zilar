@@ -4,7 +4,7 @@ title: Audit: what web does for AI tools, routines, activity, @mentions and grou
 status: planned
 milestone: M5
 branch: task/T-0195-mobile-parity-audit
-model: meta/muse-spark-1.3-contributor
+model: minimax-coding-plan/MiniMax-M3
 effort: low
 depends_on: []
 estimate: 0.5 day
@@ -32,6 +32,8 @@ At the end, add a section "Suggested task split" listing for each of T-0189 and 
 ### Read first
 `AGENTS.md`, `docs/ROADMAP_MOBILE_PARITY.md`, `docs/FEATURES.md`.
 
+The web components named above live at (checked by the lead): `apps/web/src/components/ais/AiPanel.tsx`, `apps/web/src/components/ais/AiActivity.tsx`, `apps/web/src/components/MentionPicker.tsx`, `apps/web/src/components/InviteDialog.tsx`, `apps/web/src/components/NewGroupDialog.tsx`; the libs at `apps/web/src/lib/tools.ts` and `apps/web/src/lib/routines.ts`.
+
 ### Allowed files
 `docs/audit/mobile-parity-gaps.md` (create the folder), `work/T-0195-mobile-parity-audit.md`. No code file may change.
 
@@ -41,7 +43,7 @@ pnpm install --frozen-lockfile
 pnpm format:check
 pnpm gate
 ```
-`pnpm format:check` formats Markdown too: run `pnpm exec prettier --write docs/audit/mobile-parity-gaps.md` before it.
+`docs/` is in `.prettierignore`, so prettier does not touch the audit file; do not run prettier on it.
 
 ### Acceptance
 - All six sections exist and every claim has a `file:line` that exists (open the file and check the line before you cite it; the lead spot-checks ten of them).

@@ -78,6 +78,8 @@ describe('prompt templates', () => {
     expect(rendered).toContain('Verdict:');
     expect(rendered).toContain('60 lines');
     expect(rendered).toContain('file:line');
+    expect(rendered).toContain('Counts: must-fix=N, should-fix=N, nit=N, follow-up=N');
+    expect(rendered).toContain('Follow-ups');
   });
 
   it('renders scout and qa with their inputs', () => {
