@@ -3,6 +3,7 @@ import {
   Bot,
   ChevronRight,
   KeyRound,
+  Plug,
   Server,
   ShieldCheck,
   UserPlus,
@@ -43,6 +44,7 @@ const HUB_ICONS: Record<SettingsIconId, LucideIcon> = {
   approvals: ShieldCheck,
   machines: Server,
   connections: KeyRound,
+  integrations: Plug,
 };
 
 function hubIcon(icon: SettingsIconId, scheme: 'light' | 'dark') {

@@ -63,6 +63,13 @@ export const SETTINGS_ITEMS = [
     icon: 'connections',
     href: '/settings/connections',
   },
+  {
+    id: 'integrations',
+    title: 'Integrations',
+    subtitle: 'Telegram, email and transcription for this server.',
+    icon: 'integrations',
+    href: '/settings/integrations',
+  },
 ] as const satisfies readonly SettingsItemShape[];
 
 export type SettingsItem = (typeof SETTINGS_ITEMS)[number];

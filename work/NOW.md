@@ -22,7 +22,6 @@ Julio: "one commit per task from now on, stop spawning workers, when all finish,
 | --- | --- | --- | --- |
 | T-0173 | Effect 4.0 spike on the server voice transcription pipeline | pre-review | branch predates T-0197: rebase before any fix round |
 | T-0187 | Mobile: manage sticker packs | unblock round | rebased by the lead (PREREVIEW.md gate noise); needs phone:smoke before merge |
-| T-0188 | Mobile: owner integrations | pre-review after 2 auto rounds | branch predates T-0197; needs phone:smoke before merge |
 | T-0196 | The doctor: a Muse session that audits main after merges | coding | spec re-checked, full paths |
 
 ## Next, in order
@@ -39,6 +38,8 @@ Julio: "one commit per task from now on, stop spawning workers, when all finish,
 - Release: everything merged since v0.1.13 reaches the live web only with the next release.
 
 ## Recent events
+
+- 2026-10-04: merged T-0188 (mobile owner integrations; smoke PASS, non-owner view checked on the emulator). T-0187 will conflict on `settings-items.ts` and `settings/index.tsx` at merge: use the conflict procedure.
 
 - 2026-10-04: Julio: easy exact tasks move to `minimax-coding-plan/MiniMax-M3` (his subscription) to spend less on Muse; pre-reviews stay on Muse. Trial on T-0194 and T-0195; `lead switch-model` back to Muse if one needs more than 2 fix rounds.
 - 2026-10-04: merged T-0199 (pre-review findings outside the Allowed files are follow-ups: no automatic round, named in the PACKET READY tag). Autopilot restarted on it. Launched T-0196.
