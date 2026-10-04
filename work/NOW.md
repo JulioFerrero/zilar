@@ -14,14 +14,13 @@ Julio: "one commit per task from now on, stop spawning workers, when all finish,
 4. In a fresh clone (`git clone --no-local <repo> ~/.zilar-lead/compact/clone`), run `~/.zilar-lead/compact/compact-history.sh ~/.zilar-lead/compact/clone`. Verify in the clone: `git diff --quiet main compact-test`, and for every tag the old `^{tree}` equals the tree of its new commit (`tag-map.txt`). The 2026-10-04 test run gave 1,102 to 223 commits.
 5. Delete the test ref `compact/history-test`, fetch the clone's result into the repo, then push with a lease: `git push --force-with-lease=main:<old main sha> origin <new sha>:main`, and force-push each re-pointed tag `v0.1.0`..`v0.1.13`. Leave `t0113-orig`, `archive/*` and `spike/T-0118-push` alone.
 6. Move the main checkout onto the new main (the tree is identical), check `git log --oneline | wc -l`, run `pnpm gate` on main.
-7. Restart the autopilot. Launch T-0200 (`lead merge` squashes each task into one commit) first, alone; after it merges, T-0194 and T-0195 on MiniMax M3, then the rest of the queue.
+7. Restart the autopilot (it then includes the doctor, T-0196; there is no `doctor` record in the state yet, so its first audit covers the last 30 commits of the new history). Launch T-0200 (`lead merge` squashes each task into one commit) first, alone; after it merges, T-0194 and T-0195 on MiniMax M3, then the rest of the queue.
 
 ## Running (max 4)
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
 | T-0173 | Effect 4.0 spike on the server voice transcription pipeline | pre-review | branch predates T-0197: rebase before any fix round |
-| T-0196 | The doctor: a Muse session that audits main after merges | coding | spec re-checked, full paths |
 
 ## Next, in order
 
@@ -37,6 +36,8 @@ Julio: "one commit per task from now on, stop spawning workers, when all finish,
 - Release: everything merged since v0.1.13 reaches the live web only with the next release.
 
 ## Recent events
+
+- 2026-10-04: merged T-0196 (the doctor). The autopilot is deliberately NOT restarted until after the compaction, so no doctor audit runs on the old history.
 
 - 2026-10-04: merged T-0187 (mobile sticker packs; smoke PASS plus each tab checked; one-line HUB_ICONS conflict with T-0188 resolved by the worker). Deferred: mobile `addStickerFavorite`, to come with the first star button. T-0173 is in a lead nits round (EFFECT_GUIDE accuracy).
 

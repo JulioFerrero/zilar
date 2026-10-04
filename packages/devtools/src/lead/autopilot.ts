@@ -11,10 +11,18 @@ import {
   type ParsedPermission,
   type SessionState,
 } from './session.js';
+import {
+  applyDoctorRecordPatch,
+  decideDoctor,
+  doctorReportInfo,
+  doctorWorktreeFor,
+  startDoctorSession,
+  type DoctorAction,
+} from './doctor.js';
 import { startPrereviewSession } from './start-prereview.js';
 import { appendLog, loadState, updateState } from './state.js';
 import { extractBlockedText, parseFrontMatter } from './task-file.js';
-import type { TaskRecord } from './types.js';
+import type { DoctorRecord, TaskRecord } from './types.js';
 
 export const POLL_MS = 15_000;
 const MESSAGE_LIMIT = 30;
@@ -24,6 +32,7 @@ export interface AutopilotDeps {
   runner: GitRunner;
   statePath: string;
   promptsDirPath: string;
+  repoRoot: string;
 }
 
 export interface TickResult {
@@ -288,7 +297,154 @@ export async function tickOnce(
       }
     });
   }
+  try {
+    await tickDoctor(deps, { dryRun: options.dryRun, now });
+  } catch (error) {
+    // The doctor step must never break the task loop: a failure is logged
+    // (or printed in dry-run) and the task results still stand.
+    const line = `doctor: autopilot error: ${error instanceof Error ? error.message : String(error)}`;
+    if (options.dryRun) {
+      console.error(`DRY: ${line}`);
+    } else {
+      try {
+        appendLog(deps.statePath, line);
+      } catch {
+        // Logging must never break the loop.
+      }
+    }
+    result.errors.push(line);
+  }
   return result;
+}
+
+// The `since` for the very first audit: the first parent of the commit 30
+// commits back, so the first audit covers a bounded window; the root commit
+// when the history is shorter.
+function firstAuditSince(deps: AutopilotDeps, mainHead: string): string {
+  const base30 = deps.runner.run(deps.repoRoot, ['rev-parse', `${mainHead}~30^`]);
+  if (base30.ok && /^[0-9a-f]{40}$/.test(base30.stdout.trim())) {
+    return base30.stdout.trim();
+  }
+  const root = deps.runner.run(deps.repoRoot, ['rev-list', '--max-parents=0', mainHead]);
+  const first = root.stdout
+    .split('\n')
+    .map((line) => line.trim())
+    .find(Boolean);
+  return first ?? mainHead;
+}
+
+// One audit step over main HEAD: gather the doctor inputs (main HEAD and its
+// commit time through the runner in repoRoot, the doctor session state, the
+// report in the doctor worktree) and apply decideDoctor. The task loop above
+// is untouched by a doctor failure.
+async function tickDoctor(
+  deps: AutopilotDeps,
+  options: { dryRun: boolean; now: number },
+): Promise<void> {
+  const state = loadState(deps.statePath);
+  const mainHeadResult = deps.runner.run(deps.repoRoot, ['rev-parse', 'HEAD']);
+  if (!mainHeadResult.ok) {
+    return;
+  }
+  const mainHead = mainHeadResult.stdout.trim();
+  if (!/^[0-9a-f]{40}$/.test(mainHead)) {
+    return;
+  }
+  const doctor: DoctorRecord | undefined = state.doctor;
+  let mainHeadCommitMs = options.now;
+  const commitTime = deps.runner.run(deps.repoRoot, ['show', '-s', '--format=%ct', mainHead]);
+  if (commitTime.ok) {
+    const seconds = Number(commitTime.stdout.trim());
+    if (Number.isFinite(seconds)) {
+      mainHeadCommitMs = seconds * 1000;
+    }
+  }
+  let sinceFallback: string;
+  if (doctor !== undefined) {
+    sinceFallback = doctor.head;
+  } else {
+    sinceFallback = firstAuditSince(deps, mainHead);
+  }
+  let sessionState: 'running' | 'idle' | 'unknown' | 'none' = 'none';
+  if (doctor !== undefined) {
+    try {
+      sessionState = summarizeSession(await deps.client.listMessages(doctor.sessionId, 5)).state;
+    } catch {
+      sessionState = 'unknown';
+    }
+  }
+  const worktree = doctorWorktreeFor(deps.repoRoot);
+  const report = doctorReportInfo(worktree);
+  const actions = decideDoctor({
+    now: options.now,
+    mainHead,
+    mainHeadCommitMs,
+    doctor,
+    sinceFallback,
+    sessionState,
+    reportFilePresent: report.present,
+    counts: report.counts,
+    verdict: report.verdict,
+  });
+  await applyDoctorActions(actions, deps, options.dryRun, doctor);
+}
+
+async function applyDoctorActions(
+  actions: DoctorAction[],
+  deps: AutopilotDeps,
+  dryRun: boolean,
+  doctor: DoctorRecord | undefined,
+): Promise<void> {
+  const isoNow = new Date().toISOString();
+  for (const action of actions) {
+    if (action.kind === 'record-doctor') {
+      if (dryRun) {
+        continue;
+      }
+      const patch = action.patch;
+      const expectedSession = doctor?.sessionId;
+      updateState(deps.statePath, (fresh) => {
+        if (expectedSession === undefined || fresh.doctor?.sessionId === expectedSession) {
+          fresh.doctor = applyDoctorRecordPatch(fresh.doctor, patch, isoNow);
+        }
+      });
+      continue;
+    }
+    if (action.kind === 'escalate') {
+      if (dryRun) {
+        console.log(`DRY: would escalate: ${action.line}`);
+      } else {
+        console.log(action.line);
+        appendLog(deps.statePath, action.line);
+      }
+      continue;
+    }
+    if (dryRun) {
+      console.log('DRY: would start the doctor');
+      continue;
+    }
+    const sessionId = await startDoctorSession(
+      {
+        client: deps.client,
+        runner: deps.runner,
+        promptsDirPath: deps.promptsDirPath,
+        repoRoot: deps.repoRoot,
+      },
+      { head: action.head, since: action.since },
+    );
+    const startedAt = new Date().toISOString();
+    updateState(deps.statePath, (fresh) => {
+      fresh.doctor = {
+        sessionId,
+        head: action.head,
+        since: action.since,
+        startedAt,
+        reportedForHead: undefined,
+        stalledReportedForHead: undefined,
+      };
+    });
+    appendLog(deps.statePath, `doctor started ${sessionId} for ${action.head}`);
+  }
 }
 
 function sleep(ms: number): Promise<void> {

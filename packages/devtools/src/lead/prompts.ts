@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { permissionRulesSchema, type PermissionRule } from './types.js';
 
 export type PromptName =
-  'worker' | 'switch' | 'resume' | 'nudge' | 'prereview' | 'scout' | 'qa' | 'autofix';
+  'worker' | 'switch' | 'resume' | 'nudge' | 'prereview' | 'scout' | 'qa' | 'autofix' | 'doctor';
 
 export function promptsDir(): string {
   const here = path.dirname(fileURLToPath(import.meta.url));

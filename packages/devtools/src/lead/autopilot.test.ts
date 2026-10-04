@@ -40,7 +40,7 @@ const headGit: GitRunner = {
 function setup(
   status = 'in-progress',
   runner: GitRunner = noGit,
-): { deps: AutopilotDeps; client: FakeOpenCodeClient; worktree: string } {
+): { deps: AutopilotDeps; client: FakeOpenCodeClient; worktree: string; dir: string } {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lead-tick-'));
   const worktree = path.join(dir, 'zilar-T-0099');
   fs.mkdirSync(path.join(worktree, 'work'), { recursive: true });
@@ -62,9 +62,10 @@ function setup(
   const client = new FakeOpenCodeClient();
   client.addSession('ses_worker', { messages: [], permissions: [] });
   return {
-    deps: { client, runner, statePath, promptsDirPath: promptsDir() },
+    deps: { client, runner, statePath, promptsDirPath: promptsDir(), repoRoot: dir },
     client,
     worktree,
+    dir,
   };
 }
 
@@ -242,7 +243,13 @@ describe('tickOnce', () => {
     const before = fs.readFileSync(statePath, 'utf8');
     const client = new FakeOpenCodeClient();
     client.addSession('ses_worker', { messages: [], permissions: [] });
-    const deps: AutopilotDeps = { client, runner: noGit, statePath, promptsDirPath: promptsDir() };
+    const deps: AutopilotDeps = {
+      client,
+      runner: noGit,
+      statePath,
+      promptsDirPath: promptsDir(),
+      repoRoot: dir,
+    };
     const err = vi.spyOn(console, 'error').mockImplementation(() => {});
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
 
@@ -314,6 +321,168 @@ describe('tickOnce', () => {
     await tickOnce(deps, { dryRun: false, now: 1000 });
 
     expect(loadState(deps.statePath).tasks['T-0099']?.sessionId).toBe('ses_relaunched');
+  });
+
+  it('starts the doctor once on a new quiet head and records it', async () => {
+    const { deps, client, dir } = setup();
+    const session = client.sessions.get('ses_worker');
+    if (session === undefined) {
+      throw new Error('missing fake session');
+    }
+    session.messages = [{ id: 'm', type: 'text', time: { created: 1 } }];
+    // A nested main checkout, so the doctor worktree (its sibling) is
+    // isolated per test instead of shared in the tmp parent.
+    const mainRoot = path.join(dir, 'zilar-main');
+    fs.mkdirSync(mainRoot, { recursive: true });
+    const doctorPath = path.join(dir, 'zilar-doctor');
+    const head = 'f'.repeat(40);
+    const since = 'e'.repeat(40);
+    const createdWorktrees: string[] = [];
+    const mainGit: GitRunner = {
+      run: (cwd, args) => {
+        if (cwd === mainRoot && args[0] === 'worktree' && args[1] === 'list') {
+          return {
+            ok: true,
+            stdout: createdWorktrees.map((entry) => `worktree ${entry}\n`).join(''),
+          };
+        }
+        if (cwd === mainRoot && args[0] === 'worktree' && args[1] === 'add') {
+          const target = args[3];
+          if (typeof target === 'string') {
+            fs.mkdirSync(target, { recursive: true });
+            createdWorktrees.push(target);
+          }
+          return { ok: true, stdout: '' };
+        }
+        if (cwd === doctorPath && args[0] === 'checkout') {
+          return { ok: true, stdout: '' };
+        }
+        if (args[0] === 'rev-parse' && args[1] === 'HEAD') {
+          return { ok: true, stdout: `${head}\n` };
+        }
+        if (args[0] === 'show') {
+          return { ok: true, stdout: '1000\n' };
+        }
+        if (args[0] === 'rev-parse' && args[1] === `${head}~30^`) {
+          return { ok: true, stdout: `${since}\n` };
+        }
+        return { ok: false, stdout: '' };
+      },
+    };
+    const doctorDeps: AutopilotDeps = { ...deps, runner: mainGit, repoRoot: mainRoot };
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    const first = await tickOnce(doctorDeps, { dryRun: false, now: 1_000_000_000 });
+    expect(first.errors).toEqual([]);
+    expect(client.created).toHaveLength(1);
+    expect(client.created[0]?.options.directory).toBe(doctorPath);
+    const recorded = loadState(doctorDeps.statePath).doctor;
+    expect(recorded?.head).toBe(head);
+    expect(recorded?.since).toBe(since);
+
+    // The next tick sees the same head and does not start again.
+    const second = await tickOnce(doctorDeps, { dryRun: false, now: 1_001_000_000 });
+    expect(client.created).toHaveLength(1);
+    expect(second.errors).toEqual([]);
+    expect(log).not.toHaveBeenCalledWith(expect.stringMatching(/^LEAD: DOCTOR/));
+  });
+
+  it('dry-run prints the doctor start and changes nothing', async () => {
+    const { deps, client, dir } = setup();
+    const session = client.sessions.get('ses_worker');
+    if (session === undefined) {
+      throw new Error('missing fake session');
+    }
+    session.messages = [{ id: 'm', type: 'text', time: { created: 1 } }];
+    const mainRoot = path.join(dir, 'zilar-main');
+    fs.mkdirSync(mainRoot, { recursive: true });
+    const head = 'f'.repeat(40);
+    const mainGit: GitRunner = {
+      run: (cwd, args) => {
+        if (args[0] === 'rev-parse' && args[1] === 'HEAD') {
+          return { ok: true, stdout: `${head}\n` };
+        }
+        if (args[0] === 'show') {
+          return { ok: true, stdout: '1000\n' };
+        }
+        if (args[0] === 'rev-parse') {
+          return { ok: true, stdout: `${'e'.repeat(40)}\n` };
+        }
+        void cwd;
+        return { ok: false, stdout: '' };
+      },
+    };
+    const doctorDeps: AutopilotDeps = { ...deps, runner: mainGit, repoRoot: mainRoot };
+    const before = fs.readFileSync(doctorDeps.statePath, 'utf8');
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await tickOnce(doctorDeps, { dryRun: true, now: 1_000_000_000 });
+
+    expect(client.created).toEqual([]);
+    expect(log.mock.calls.some((call) => String(call[0]) === 'DRY: would start the doctor')).toBe(
+      true,
+    );
+    expect(fs.readFileSync(doctorDeps.statePath, 'utf8')).toBe(before);
+    expect(dir).toBeDefined();
+  });
+
+  it('a doctor failure never breaks the task loop', async () => {
+    const { deps, client, dir } = setup();
+    const session = client.sessions.get('ses_worker');
+    if (session === undefined) {
+      throw new Error('missing fake session');
+    }
+    session.messages = [{ id: 'm', type: 'text', time: { created: 1 } }];
+    session.permissions = [{ id: 'per_allow', action: 'shell', resources: 'rm -rf dist' }];
+    const mainRoot = path.join(dir, 'zilar-main');
+    fs.mkdirSync(mainRoot, { recursive: true });
+    // Task git works, so the task loop answers the permission; the doctor
+    // step sees a main HEAD but its session read throws, which must be
+    // contained as an error while the task results stand.
+    const head = 'f'.repeat(40);
+    const failingDoctor: GitRunner = {
+      run: (_cwd, args) => {
+        if (args[0] === 'rev-parse' && args[1] === 'HEAD') {
+          return { ok: true, stdout: `${head}\n` };
+        }
+        if (args[0] === 'show') {
+          return { ok: true, stdout: '1000\n' };
+        }
+        if (args[0] === 'rev-parse') {
+          return { ok: true, stdout: `${'e'.repeat(40)}\n` };
+        }
+        return { ok: true, stdout: '' };
+      },
+    };
+    const failingDeps: AutopilotDeps = { ...deps, runner: failingDoctor, repoRoot: mainRoot };
+    const realListMessages = client.listMessages.bind(client);
+    client.listMessages = async (sessionId: string, limit: number) => {
+      if (sessionId !== 'ses_worker') {
+        throw new Error('opencode is down');
+      }
+      return realListMessages(sessionId, limit);
+    };
+    updateState(deps.statePath, (state) => {
+      state.doctor = {
+        sessionId: 'ses_gone',
+        head: 'd'.repeat(40),
+        since: 'e'.repeat(40),
+        startedAt: 'x',
+        reportedForHead: undefined,
+        stalledReportedForHead: undefined,
+      };
+    });
+
+    const tick = await tickOnce(failingDeps, { dryRun: false, now: 1_000_000_000 });
+
+    expect(tick.errors).toEqual([]);
+    expect(client.replied).toContainEqual({
+      sessionId: 'ses_worker',
+      requestId: 'per_allow',
+      decision: 'once',
+      message: undefined,
+    });
+    expect(client.created).toHaveLength(1);
   });
 });
 

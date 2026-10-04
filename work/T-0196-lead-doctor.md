@@ -1,7 +1,7 @@
 ---
 id: T-0196
 title: Lead tooling: the doctor, a Muse session that audits main after merges
-status: planned
+status: merged
 milestone: M5
 branch: task/T-0196-lead-doctor
 model: meta/muse-spark-1.3-contributor
@@ -64,4 +64,38 @@ Auto-fixing findings, creating tasks or board rows, merging, any change to the p
 
 ## Report (written by the worker when done)
 
+What I built: the doctor loop from the spec — a Muse session that audits `main` after merges.
+
+Files changed (all inside Allowed files):
+- `packages/devtools/prompts/doctor.md` (new): read-only audit template with `{{HEAD}}`, `{{SHORT_HEAD}}`, `{{SINCE}}`, `{{SHORT_SINCE}}`, `{{WORKTREE}}`; asks for `DOCTOR.md` with checks, `file:line` findings with severities, exactly `Counts: must-fix=N, should-fix=N, nit=N` and a `Verdict:` line; forbids edits, commits and the question tool.
+- `packages/devtools/src/lead/doctor.ts` (new): `startDoctorSession` (creates `zilar-doctor` via `git worktree add --detach <path> <head>`, or `git -C <path> checkout --detach <head>` + stale `DOCTOR.md` removal; throws if the path exists but is not a worktree of this repo), `decideDoctor` (pure), `applyDoctorRecordPatch`, `renderDoctorPrompt`, `doctorReportInfo` (reuses `extractCounts`/`extractVerdict` from `autopilot.ts`), `doctorWorktreeFor`, `DOCTOR_MODEL` (`meta/muse-spark-1.3-contributor`), `DOCTOR_DEBOUNCE_MS` (10 min).
+- `packages/devtools/src/lead/doctor.test.ts` (new): 14 tests — start/escalate/stalled/no-repeat cases, exact git commands, non-worktree refusal, no git call on any other path, prompt renders with no `{{` left, report parsing.
+- `packages/devtools/src/lead/types.ts`, `state.ts`: optional top-level `doctor: { sessionId, head, since, startedAt, reportedForHead?, stalledReportedForHead? }` in schema, type, `emptyState`, and the object `loadState` returns. Old files without it still load.
+- `packages/devtools/src/lead/autopilot.ts`: `AutopilotDeps` gains `repoRoot`; `tickOnce` runs the doctor step after the task loop — gathers main HEAD + commit time via the runner, session state via `client.listMessages`, report via `doctorReportInfo`, applies `decideDoctor` through `updateState` (only `state.doctor`); first-audit `since` = first parent of the commit 30 back or the root; dry-run prints `DRY: would start the doctor` and changes nothing; any doctor-step failure is logged and never breaks the task loop (tested).
+- `packages/devtools/src/lead/cli.ts`: `lead doctor [--since <sha>]` (ignores debounce, records `state.doctor`, prints `doctor <session id> <worktree>`), usage text, `repoRoot: findRepoRoot()` in `runAutopilotCommand`.
+- `packages/devtools/src/lead/prompts.ts`, `prompts.test.ts`: `doctor` in `PromptName` and the template-presence/render tests.
+- `packages/devtools/src/lead/state.test.ts`: doctor round trip through `loadState` then `saveState`, old file without `doctor` loads.
+- `packages/devtools/src/lead/autopilot.test.ts`: `repoRoot` in test deps; doctor step starts once on a quiet head and records it, dry-run changes nothing, doctor failure never breaks the task loop.
+- `docs/LEAD_HANDOFF.md`: short "Doctor" paragraph (what it is, `lead doctor`, `DOCTOR.md` in `zilar-doctor`, findings become tasks).
+
+Commands and real results:
+- `pnpm install --frozen-lockfile`: pass (0.8s in gate).
+- `pnpm format:check`: pass (after `prettier --write` on 3 files).
+- `pnpm lint`: pass.
+- `pnpm typecheck` (turbo, all 11 packages): pass.
+- `pnpm --filter @zilar/devtools test --maxWorkers=2 src/lead`: 16 files, 407 tests, all pass.
+- `pnpm gate`: GATE PASS — `PASS install (frozen)`, `PASS format`, `PASS lint`, `PASS typecheck`, `PASS tests @zilar/devtools`, `scope: every changed file is inside the Allowed files`.
+
+Security checklist: no secrets (only session ids and SHAs in state/logs, same as task records); doctor state writes touch only `state.doctor` via `updateState` with a session guard against clobbering a newer audit; no deletes/resets of any worktree except `zilar-doctor` checkout; no new routes; nothing takes effect before checks (debounce + session-state gates).
+
+Problems/deviations:
+- `doctor.ts` imports `extractCounts`/`extractVerdict` from `autopilot.ts` (spec: reuse them), creating a doctor↔autopilot import cycle. It is safe: both usages are deferred calls inside function bodies, and typecheck + all 407 tests pass.
+- `lead doctor` with no previous audit requires `--since <sha]` (errors otherwise); the 30-commit fallback lives in the autopilot path. The spec does not define the CLI default; stating it here.
+- Test-only learning, no code impact: macOS tmpdir symlinks (`/var` vs `/private/var`) — `isWorktreeOfRepo` compares via `realpathSync` with a `resolve` fallback.
+- A stray empty `zilar-doctor` dir may exist in the shared system tmp from an early test run (test bug, since fixed to nest the fake checkout); it is outside the repo, harmless, and not part of this change. I did not remove it (rm outside the worktree needs lead approval).
+
+Open questions: none.
+
 ## Review (written by Claude)
+
+**Verdict:** Approved, first round. The doctor is a Muse session in a detached `zilar-doctor` worktree that audits the commits on `main` since its last visit and writes `DOCTOR.md`; the autopilot starts it once per head after 10 quiet minutes and prints one LEAD line; `lead doctor --since <sha>` starts it by hand. The lead read the git operations: only `worktree add --detach`, `checkout --detach` and the `DOCTOR.md` unlink, all on the doctor path, and a refusal when that path is not a worktree of this repo. State writes go through `updateState` and touch only `state.doctor`; an old state file loads. Pre-review clean. Accepted nits: the Report says 14 doctor tests, there are 18; one always-true `toBeDefined` in an autopilot test; a doctor/autopilot import cycle that is safe today (function declarations only); bare `lead doctor` with no previous audit asks for `--since` instead of using the 30-commit fallback. The stray `zilar-doctor` folder from an early test run is in the system temp folder, not next to the repo.

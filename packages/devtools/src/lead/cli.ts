@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { runAutopilot, type AutopilotDeps } from './autopilot.js';
 import { OpencodeCliClient } from './client.js';
+import { doctorWorktreeFor, startDoctorSession } from './doctor.js';
 import { RealGitRunner } from './git.js';
 import { findTaskFile, launchTask } from './launch.js';
 import { mergeTask } from './merge.js';
@@ -25,6 +26,7 @@ Usage: lead <command> [options]
   switch-model <T-XXXX> <provider/model> [--extra-rules <file>]
                                                             move a tracked worker onto a new model (quota fallback)
   autopilot [--once] [--dry-run]                            watch sessions, answer permissions, nudge, pre-review
+  doctor [--since <sha>]                                    audit main now with a Muse doctor session
   prereview <T-XXXX>                                        start a Muse pre-review manually
   reply <T-XXXX> <prompt-file>                              interrupt the worker and re-prompt it
   merge <T-XXXX> --summary "<one line>" [--skip-gate]       rebase, run the gate, fast-forward main, board, push, clean up
@@ -89,8 +91,42 @@ async function runAutopilotCommand(positional: string[], args: string[]): Promis
     runner: new RealGitRunner(),
     statePath: stateFilePath(),
     promptsDirPath: promptsDir(),
+    repoRoot: findRepoRoot(),
   };
   await runAutopilot(deps, { once: flag(args, '--once'), dryRun: flag(args, '--dry-run') });
+}
+
+async function runDoctor(positional: string[], args: string[]): Promise<void> {
+  void positional;
+  const root = findRepoRoot();
+  const statePath = stateFilePath();
+  const runner = new RealGitRunner();
+  const head = currentHead(runner, root);
+  if (head === undefined) {
+    throw new Error(`cannot read HEAD of ${root}`);
+  }
+  const state = loadState(statePath);
+  const since = flagValue(args, '--since') ?? state.doctor?.head;
+  if (since === undefined) {
+    throw new Error('no previous audit: pass --since <sha>');
+  }
+  const client = new OpencodeCliClient();
+  const sessionId = await startDoctorSession(
+    { client, runner, promptsDirPath: promptsDir(), repoRoot: root },
+    { head, since },
+  );
+  const startedAt = new Date().toISOString();
+  updateState(statePath, (fresh) => {
+    fresh.doctor = {
+      sessionId,
+      head,
+      since,
+      startedAt,
+      reportedForHead: undefined,
+      stalledReportedForHead: undefined,
+    };
+  });
+  console.log(`doctor ${sessionId} ${doctorWorktreeFor(root)}`);
 }
 
 async function runPrereview(positional: string[]): Promise<void> {
@@ -284,6 +320,8 @@ export async function main(argv: string[]): Promise<void> {
     await runSwitchModel(positional, rest);
   } else if (command === 'autopilot') {
     await runAutopilotCommand(positional, rest);
+  } else if (command === 'doctor') {
+    await runDoctor(positional, rest);
   } else if (command === 'prereview') {
     await runPrereview(positional);
   } else if (command === 'reply') {

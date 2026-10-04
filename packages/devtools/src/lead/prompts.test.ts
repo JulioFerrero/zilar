@@ -10,7 +10,17 @@ import {
   type PromptName,
 } from './prompts';
 
-const NAMES: PromptName[] = ['worker', 'switch', 'resume', 'nudge', 'prereview', 'scout', 'qa'];
+const NAMES: PromptName[] = [
+  'worker',
+  'switch',
+  'resume',
+  'nudge',
+  'prereview',
+  'scout',
+  'qa',
+  'autofix',
+  'doctor',
+];
 
 describe('prompt templates', () => {
   it('ships every template the CLI needs', () => {
@@ -80,6 +90,20 @@ describe('prompt templates', () => {
     expect(rendered).toContain('file:line');
     expect(rendered).toContain('Counts: must-fix=N, should-fix=N, nit=N, follow-up=N');
     expect(rendered).toContain('Follow-ups');
+  });
+
+  it('renders the doctor prompt with no placeholders left', () => {
+    const rendered = renderPrompt(loadPrompt(promptsDir(), 'doctor'), {
+      HEAD: 'a'.repeat(40),
+      SHORT_HEAD: 'aaaaaaa',
+      SINCE: 'b'.repeat(40),
+      SHORT_SINCE: 'bbbbbbb',
+      WORKTREE: '/tmp/zilar-doctor',
+    });
+    expect(unfilledPlaceholders(rendered)).toEqual([]);
+    expect(rendered).toContain('DOCTOR.md');
+    expect(rendered).toContain('Counts: must-fix=N, should-fix=N, nit=N');
+    expect(rendered).toContain('Verdict:');
   });
 
   it('renders scout and qa with their inputs', () => {

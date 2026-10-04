@@ -27,6 +27,9 @@ Refresh: `cd packages/devtools && pnpm exec tsx src/lead/cli.ts dashboard ~/.zil
 ## Pre-merge tools (all documented in docs/ROADMAP_PROCESS.md)
 `pnpm gate` (worker and merge), `lead spec-check T-XXXX` (before launching), `pnpm phone:smoke <branch>` (emulator, opens the changed screens, fails on a crash), `pnpm phone:install` (build main, install once on Julio's phone, changelog), `pnpm phone:crash` (crash buffer and cause).
 
+## Doctor (audits main after merges)
+The autopilot starts a Muse doctor session once main stays quiet 10 minutes: it runs the full checks on a detached `zilar-doctor` worktree next to the main checkout, reviews the commits since its last visit, and writes `DOCTOR.md` there (checks, findings with `Counts:` and `Verdict:` lines). The autopilot prints one `LEAD: DOCTOR ...` line per audited head. `lead doctor [--since <sha>]` starts one now for the current HEAD. Findings become tasks: the lead writes the task, never fixes in place.
+
 ## Devices and builds
 - Julio's Android phone (vivo): adb serial `10AFAT234E00746`. Emulator: the only AVD (`emulator -list-avds`), `emulator-5554`, signed in as the test user "Claude Test" (zilar@agentmail.to, AgentMail MCP, inbox for sign-in codes; mail from no-reply@mail.zilar.app). Sign-in recipe is in memory `android-emulator-setup`.
 - Build worktree: `/Users/julio/personal-projects/zilar-phone-build` (detached; `git checkout --detach main`, `pnpm install --frozen-lockfile`). Android: `docs/RELEASING.md` section 7 (`expo prebuild --platform android --clean --no-install`, then `./gradlew assembleRelease` with `JAVA_HOME` Java 17, `ANDROID_HOME=/opt/homebrew/share/android-commandlinetools`, `EXPO_PUBLIC_ZILAR_API_URL=https://chat.zilar.app`, `NODE_ENV=production`; for JS-only changes `:app:createBundleReleaseJsAndAssets --rerun assembleRelease` is enough, about 35 s). Install once with `adb -s <serial> install -r app/build/outputs/apk/release/app-release.apk`.

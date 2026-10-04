@@ -70,4 +70,33 @@ describe('state file', () => {
     fs.writeFileSync(file, '{"version": 2, "tasks": {}}');
     expect(() => loadState(file)).toThrow(/invalid state file/);
   });
+
+  it('keeps the doctor record through load then save', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lead-state-'));
+    const file = path.join(dir, 'state.json');
+    const state = emptyState();
+    state.doctor = {
+      sessionId: 'ses_doc',
+      head: 'a'.repeat(40),
+      since: 'b'.repeat(40),
+      startedAt: '2026-10-04T00:00:00.000Z',
+      reportedForHead: undefined,
+      stalledReportedForHead: undefined,
+    };
+    saveState(file, state);
+    const loaded = loadState(file);
+    expect(loaded.doctor?.sessionId).toBe('ses_doc');
+    expect(loaded.doctor?.head).toBe('a'.repeat(40));
+    saveState(file, loaded);
+    expect(loadState(file).doctor?.since).toBe('b'.repeat(40));
+  });
+
+  it('loads an old state file without a doctor field', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lead-state-'));
+    const file = path.join(dir, 'state.json');
+    fs.writeFileSync(file, '{"version": 1, "tasks": {}}');
+    const loaded = loadState(file);
+    expect(loaded.doctor).toBeUndefined();
+    expect(loaded.tasks).toEqual({});
+  });
 });

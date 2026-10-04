@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { stateFileSchema, type StateFile, type TaskRecord } from './types.js';
+import { stateFileSchema, type DoctorRecord, type StateFile, type TaskRecord } from './types.js';
 
 // The state file lives outside the repo so worktree removals and rebases can
 // never touch it. It holds session ids and bookkeeping only: no secrets.
@@ -18,7 +18,7 @@ export function logFilePath(statePath: string): string {
 }
 
 export function emptyState(): StateFile {
-  return { version: 1, tasks: {} };
+  return { version: 1, tasks: {}, doctor: undefined };
 }
 
 export function loadState(statePath: string): StateFile {
@@ -60,7 +60,18 @@ export function loadState(statePath: string): StateFile {
     };
     tasks[key] = entry;
   }
-  return { version: 1, tasks };
+  const doctor: DoctorRecord | undefined =
+    validated.data.doctor === undefined
+      ? undefined
+      : {
+          sessionId: validated.data.doctor.sessionId,
+          head: validated.data.doctor.head,
+          since: validated.data.doctor.since,
+          startedAt: validated.data.doctor.startedAt,
+          reportedForHead: validated.data.doctor.reportedForHead,
+          stalledReportedForHead: validated.data.doctor.stalledReportedForHead,
+        };
+  return { version: 1, tasks, doctor };
 }
 
 export function saveState(statePath: string, state: StateFile): void {

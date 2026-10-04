@@ -35,6 +35,17 @@ export interface PrereviewRecord {
   startedAt: string;
 }
 
+// The doctor's last audit of main. Bookkeeping fields keep the one-line
+// escalation per audited head instead of repeating it every 15 s poll.
+export interface DoctorRecord {
+  sessionId: string;
+  head: string;
+  since: string;
+  startedAt: string;
+  reportedForHead: string | undefined;
+  stalledReportedForHead: string | undefined;
+}
+
 export interface TaskRecord {
   task: string;
   sessionId: string;
@@ -63,6 +74,15 @@ const prereviewRecordSchema = z.object({
   startedAt: z.string(),
 });
 
+const doctorRecordSchema = z.object({
+  sessionId: z.string(),
+  head: z.string(),
+  since: z.string(),
+  startedAt: z.string(),
+  reportedForHead: z.string().optional(),
+  stalledReportedForHead: z.string().optional(),
+});
+
 const taskRecordSchema = z.object({
   task: z.string(),
   sessionId: z.string(),
@@ -88,11 +108,13 @@ const taskRecordSchema = z.object({
 export const stateFileSchema = z.object({
   version: z.literal(1),
   tasks: z.record(z.string(), taskRecordSchema),
+  doctor: doctorRecordSchema.optional(),
 });
 
 export type StateFile = {
   version: 1;
   tasks: Record<string, TaskRecord>;
+  doctor: DoctorRecord | undefined;
 };
 
 export function newTaskRecord(init: {
