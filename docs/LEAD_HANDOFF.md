@@ -5,14 +5,10 @@ You are the lead Claude for Zilar (the main checkout in `/Users/julio/personal-p
 ## How Julio likes to work
 Short messages, English. He tests on his phone: do NOT test audio/UI for him when he says so, build and install ONCE (never retry-loop installs). Icons, never emoji, in UI. He dislikes silent failures and asks "why" a lot: answer with the cause. Verify before claiming. Never leave work unmonitored. Cap: 4 parallel Muse workers (2 when he works at the computer), one schema task at a time. Workers must be easy for Muse: exact steps, verified facts, small scope, effort low, never interrupt a running turn, batch messages.
 
-## State (this goes stale: the truth is `lead status`, `work/BOARD.md` and `git log`)
-- Live: release v0.1.13 at https://chat.zilar.app. Everything merged since then reaches the live web only with the next release (`docs/RELEASING.md` sections 1-6).
-- Queue order on 2026-10-04 night: T-0196 (the doctor) first, then T-0194 (pitfall guard tests), T-0195 (parity audit; its result feeds the specs of T-0189 tools/routines/activity and T-0190 @mentions and dialogs), T-0191 (sticker editor, after T-0187). Blocked: T-0186 notification settings (needs T-0172 server push work, Julio has not approved).
-- Effect 4.0: Julio said GO on 2026-10-04. T-0173 (spike, writes `docs/EFFECT_GUIDE.md`) is the gate; then the pairs in `docs/ROADMAP_EFFECT.md` (a new feature in Effect, then a conversion of old code with tests unchanged).
-- Waiting for Julio's phone: the Aa press on a voice note, the silent model load after restart, transcribe with real speech, and the new settings screens. The last APK was built but not installed (the phone refused the USB install prompt).
+## State
+This file holds only what stays true. The live picture (running, next, waiting for Julio, recent events) is `work/NOW.md`: read it after this file, and rewrite it after every launch, merge or block. Checks against reality: `lead status`, `work/BOARD.md`, `git log`.
 
-## Night of 2026-10-04 (Julio asleep, phone disconnected)
-Standing orders: be the boss. Delegate all code changes to Muse workers (including review fixes: exact prompt, `lead reply`), keep 4 workers busy, QA on the emulator (`pnpm phone:smoke <branch>`, look at the screenshots), merge only through the gate, never install on the phone (offline), only act when sure. Keep the dashboard Artifact fresh. In the morning leave Julio a short report: merged, running, broken, what to test on the phone.
+Standing decisions: release v0.1.13 is live at https://chat.zilar.app (merges reach the live web only with the next release, `docs/RELEASING.md` sections 1-6). Effect 4.0 is a GO (2026-10-04): T-0173 is the spike and writes `docs/EFFECT_GUIDE.md`; then the pairs in `docs/ROADMAP_EFFECT.md`.
 
 ## Commands (all from `packages/devtools`)
 - `pnpm exec tsx src/lead/cli.ts launch T-XXXX | status | reply T-XXXX <promptfile> | prereview T-XXXX | merge T-XXXX --summary "..." | autopilot`

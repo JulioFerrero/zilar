@@ -17,7 +17,7 @@ The full loop is `docs/LEAD_LOOP.md`; commands, devices and pitfalls are in `doc
 2. `pgrep -f "lead/cli.ts autopilot"`. If nothing prints, start it: `cd packages/devtools && (nohup pnpm exec tsx src/lead/cli.ts autopilot >> ~/.zilar-lead/autopilot.out 2>&1 &)`. Never start a second one.
 3. Arm the watch with the Monitor tool, command exactly: `tail -n 0 -F ~/.zilar-lead/autopilot.out | grep --line-buffered "LEAD:"`. It expires after 30 minutes and you get a notice: **re-arm it at once with the same command, every time.** While nobody watches, the autopilot still answers permissions, starts pre-reviews and sends fix rounds; only your own steps wait.
 4. `tail -20 ~/.zilar-lead/autopilot.out` and `git log --oneline -15`: what happened while no session was watching.
-5. Read `work/BOARD.md` for the queue, then act on what is waiting.
+5. Read `work/NOW.md` (what runs, what is next, what waits for Julio), then act on what is waiting. Rewrite `work/NOW.md` after every launch, merge or block, and commit it.
 
 ## What to do with each event line
 
