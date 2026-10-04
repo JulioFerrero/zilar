@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { emptyState, loadState, saveState, stateFilePath } from './state';
+import { emptyState, loadState, saveState, stateFilePath, updateState } from './state';
 import { newTaskRecord } from './types';
 
 const ENV_KEY = 'ZILAR_LEAD_STATE';
@@ -45,6 +45,23 @@ describe('state file', () => {
 
   it('loads empty when the file is missing', () => {
     expect(loadState('/tmp/lead-state-does-not-exist-12345.json').tasks).toEqual({});
+  });
+
+  it('updateState starts from the empty state when the file is missing', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lead-state-'));
+    const file = path.join(dir, 'state.json');
+    const updated = updateState(file, (state) => {
+      state.tasks['T-0038'] = newTaskRecord({
+        task: 'T-0038',
+        sessionId: 'ses_x',
+        worktree: '/tmp/w',
+        model: 'opencode-go/muse-spark-1.3-contributor',
+        role: 'worker',
+        startedAt: '2026-09-28T00:00:00.000Z',
+      });
+    });
+    expect(updated.tasks['T-0038']?.sessionId).toBe('ses_x');
+    expect(loadState(file).tasks['T-0038']?.sessionId).toBe('ses_x');
   });
 
   it('rejects a corrupt state file instead of guessing', () => {

@@ -6,7 +6,7 @@ import { extractCounts, extractVerdict, tickOnce, type AutopilotDeps } from './a
 import { FakeOpenCodeClient } from './client';
 import type { GitRunner } from './git';
 import { promptsDir } from './prompts';
-import { loadState, saveState } from './state';
+import { loadState, saveState, updateState } from './state';
 import { emptyState } from './state';
 import { newTaskRecord } from './types';
 
@@ -252,6 +252,68 @@ describe('tickOnce', () => {
     expect(log).not.toHaveBeenCalled();
     expect(fs.readdirSync(dir).sort()).toEqual(['state.json']);
     expect(fs.readFileSync(statePath, 'utf8')).toBe(before);
+  });
+
+  it('keeps a task written by another command during the tick', async () => {
+    const { deps, client } = setup();
+    // Another writer (e.g. lead launch) adds T-0100 while the tick is busy
+    // on network calls for T-0099.
+    const realListMessages = client.listMessages.bind(client);
+    client.listMessages = async (sessionId: string, limit: number) => {
+      const messages = await realListMessages(sessionId, limit);
+      updateState(deps.statePath, (state) => {
+        state.tasks['T-0100'] = newTaskRecord({
+          task: 'T-0100',
+          sessionId: 'ses_other',
+          worktree: '/tmp/other',
+          model: 'opencode-go/muse-spark-1.3-contributor',
+          role: 'worker',
+          startedAt: '2026-10-04T00:00:00.000Z',
+        });
+      });
+      return messages;
+    };
+
+    await tickOnce(deps, { dryRun: false, now: 1000 });
+
+    const after = loadState(deps.statePath);
+    expect(after.tasks['T-0100']?.sessionId).toBe('ses_other');
+    expect(after.tasks['T-0099']?.sessionId).toBe('ses_worker');
+  });
+
+  it('does not resurrect a task deleted during the tick', async () => {
+    const { deps, client } = setup();
+    const realListMessages = client.listMessages.bind(client);
+    client.listMessages = async (sessionId: string, limit: number) => {
+      const messages = await realListMessages(sessionId, limit);
+      updateState(deps.statePath, (state) => {
+        delete state.tasks['T-0099'];
+      });
+      return messages;
+    };
+
+    await tickOnce(deps, { dryRun: false, now: 1000 });
+
+    expect(loadState(deps.statePath).tasks['T-0099']).toBeUndefined();
+  });
+
+  it('does not overwrite a task relaunched with a new session during the tick', async () => {
+    const { deps, client } = setup();
+    const realListMessages = client.listMessages.bind(client);
+    client.listMessages = async (sessionId: string, limit: number) => {
+      const messages = await realListMessages(sessionId, limit);
+      updateState(deps.statePath, (state) => {
+        const record = state.tasks['T-0099'];
+        if (record !== undefined) {
+          record.sessionId = 'ses_relaunched';
+        }
+      });
+      return messages;
+    };
+
+    await tickOnce(deps, { dryRun: false, now: 1000 });
+
+    expect(loadState(deps.statePath).tasks['T-0099']?.sessionId).toBe('ses_relaunched');
   });
 });
 

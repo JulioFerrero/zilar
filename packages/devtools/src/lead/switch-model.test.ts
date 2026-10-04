@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { FakeOpenCodeClient } from './client';
 import { launchTask } from './launch';
 import { promptsDir } from './prompts';
-import { loadState, saveState } from './state';
+import { loadState, saveState, updateState } from './state';
 import { switchModel } from './switch-model';
 import { newTaskRecord } from './types';
 
@@ -352,6 +352,48 @@ describe('switchModel', () => {
     expect(stateAfter.tasks['T-0099']).toEqual(stateBefore.tasks['T-0099']);
     // The previous session is still on the record (no switchedAt stamp).
     expect(stateAfter.tasks['T-0099']?.switchedAt).toBeUndefined();
+  });
+
+  it('keeps a task written by another command while the switch runs', async () => {
+    const { repoRoot, statePath } = setupRepo();
+    const client = new FakeOpenCodeClient();
+    const { runner } = stubRunner();
+    await launchTask('T-0099', undefined, {
+      repoRoot,
+      client,
+      promptsDirPath: promptsDir(),
+      statePath,
+      runner,
+    });
+    // Another writer (e.g. lead launch) adds T-0100 while the switch is busy
+    // on the interrupt / new session.
+    const realTryInterrupt = client.tryInterrupt.bind(client);
+    client.tryInterrupt = async (sessionId: string) => {
+      const outcome = await realTryInterrupt(sessionId);
+      updateState(statePath, (state) => {
+        state.tasks['T-0100'] = newTaskRecord({
+          task: 'T-0100',
+          sessionId: 'ses_other',
+          worktree: '/tmp/other',
+          model: 'opencode-go/muse-spark-1.3-contributor',
+          role: 'worker',
+          startedAt: '2026-10-04T00:00:00.000Z',
+        });
+      });
+      return outcome;
+    };
+
+    const result = await switchModel('T-0099', 'minimax-coding-plan/MiniMax-M3', undefined, {
+      repoRoot,
+      client,
+      promptsDirPath: promptsDir(),
+      statePath,
+    });
+
+    const after = loadState(statePath);
+    expect(after.tasks['T-0100']?.sessionId).toBe('ses_other');
+    expect(after.tasks['T-0099']?.sessionId).toBe(result.sessionId);
+    expect(after.tasks['T-0099']?.model).toBe('minimax-coding-plan/MiniMax-M3');
   });
 
   it('validates the rules and the prompt before touching the old session', async () => {

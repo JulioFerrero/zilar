@@ -70,6 +70,15 @@ export function saveState(statePath: string, state: StateFile): void {
   fs.renameSync(staging, statePath);
 }
 
+// Loads the file fresh, applies `mutate`, and saves atomically, so the read
+// happens right before the write and concurrent writers lose nothing.
+export function updateState(statePath: string, mutate: (state: StateFile) => void): StateFile {
+  const state = loadState(statePath);
+  mutate(state);
+  saveState(statePath, state);
+  return state;
+}
+
 export function appendLog(statePath: string, line: string): void {
   const stamped = `${new Date().toISOString()} ${line}\n`;
   fs.mkdirSync(path.dirname(statePath), { recursive: true });

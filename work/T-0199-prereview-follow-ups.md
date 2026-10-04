@@ -32,7 +32,7 @@ On 2026-10-04 the pre-review of T-0198 found a real problem in `switch-model.ts`
 `AGENTS.md`, `packages/devtools/prompts/prereview.md`, `packages/devtools/src/lead/autopilot.ts` (`extractCounts`), `decide.ts` (`FindingCounts`, the review block of `decide`, `packetTag`), `decide.test.ts`, `autopilot.test.ts`.
 
 ### Allowed files
-`packages/devtools/prompts/prereview.md`, `packages/devtools/src/lead/autopilot.ts`, `autopilot.test.ts`, `decide.ts`, `decide.test.ts`, `prompts.test.ts`, `work/T-0199-prereview-follow-ups.md`.
+`packages/devtools/prompts/prereview.md`, `packages/devtools/src/lead/autopilot.ts`, `packages/devtools/src/lead/autopilot.test.ts`, `packages/devtools/src/lead/decide.ts`, `packages/devtools/src/lead/decide.test.ts`, `packages/devtools/src/lead/prompts.test.ts`, `work/T-0199-prereview-follow-ups.md`.
 
 ### Checks
 ```bash

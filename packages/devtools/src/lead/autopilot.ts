@@ -12,7 +12,7 @@ import {
   type SessionState,
 } from './session.js';
 import { startPrereviewSession } from './start-prereview.js';
-import { appendLog, loadState, saveState } from './state.js';
+import { appendLog, loadState, updateState } from './state.js';
 import { extractBlockedText, parseFrontMatter } from './task-file.js';
 import type { TaskRecord } from './types.js';
 
@@ -171,6 +171,11 @@ export async function tickOnce(
   const result: TickResult = { escalations: [], errors: [] };
   const now = options.now ?? Date.now();
   const state = loadState(deps.statePath);
+  const initialSessions = new Map<string, string>();
+  for (const [task, record] of Object.entries(state.tasks)) {
+    initialSessions.set(task, record.sessionId);
+  }
+  const updated = new Map<string, TaskRecord>();
   for (const task of Object.keys(state.tasks).sort()) {
     const record = state.tasks[task];
     if (record === undefined || record.role !== 'worker') {
@@ -252,7 +257,7 @@ export async function tickOnce(
         }
         continue;
       }
-      state.tasks[task] = await applyActions(task, record, actions, deps, false, result);
+      updated.set(task, await applyActions(task, record, actions, deps, false, result));
     } catch (error) {
       const line = `${task}: autopilot error: ${error instanceof Error ? error.message : String(error)}`;
       if (options.dryRun) {
@@ -268,7 +273,18 @@ export async function tickOnce(
     }
   }
   if (!options.dryRun) {
-    saveState(deps.statePath, state);
+    // Re-read the file so writes from other commands during the tick are
+    // kept. A record is written back only when the task is still there with
+    // the same session: a task merged (gone) or relaunched (new session)
+    // during the tick keeps what the file says.
+    updateState(deps.statePath, (fresh) => {
+      for (const [task, record] of updated) {
+        const current = fresh.tasks[task];
+        if (current !== undefined && current.sessionId === initialSessions.get(task)) {
+          fresh.tasks[task] = record;
+        }
+      }
+    });
   }
   return result;
 }

@@ -215,7 +215,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0194](T-0194-mobile-pitfall-guards.md) | Mobile: guard tests for the Android and Hermes pitfalls (Coroutine with Promise, crypto.subtle) | planned | meta/muse-spark-1.3-contributor | — | Spec ready; process roadmap R3 |
 | [T-0195](T-0195-mobile-parity-audit.md) | Audit (docs only): web vs mobile for AI tools, routines, activity, @mentions, dialogs | planned | meta/muse-spark-1.3-contributor | — | Spec ready; feeds the specs of T-0189 and T-0190 |
 | [T-0196](T-0196-lead-doctor.md) | Lead tooling: the doctor, a Muse session that audits main after merges | planned | meta/muse-spark-1.3-contributor | T-0198, T-0199 | Spec ready; shares autopilot.ts with T-0198 and T-0199, so after them |
-| [T-0198](T-0198-lead-state-lost-writes.md) | Lead tooling: the autopilot overwrites state written by lead launch and lead merge during a tick | planned | meta/muse-spark-1.3-contributor | T-0197 | Spec ready; until merged, launch only while the autopilot is stopped |
 | [T-0199](T-0199-prereview-follow-ups.md) | Lead tooling: pre-review findings outside the task's Allowed files are follow-ups, not fix rounds | planned | meta/muse-spark-1.3-contributor | T-0198 | Spec ready; two AUTOFIX rounds were wasted on T-0198 |
 | [T-0179](T-0179-mobile-transcribe-voice-notes.md) | Transcribe voice notes on the phone with Whistle: button in the bubble, consent for the 17 MB model, transcripts stored locally | 2026-10-03 |
 | [T-0182](T-0182-mobile-contacts-requests.md) | Mobile contacts: find by @handle, profile card, contact requests | 2026-10-03 |
@@ -226,3 +225,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0185](T-0185-mobile-machines-connections.md) | Mobile machines and model connections screens, home machine picker on an AI | 2026-10-03 |
 | [T-0192](T-0192-web-search-people-by-handle.md) | Web: find people by @handle in the search bar, replacing Add contact in the new-chat menu | 2026-10-03 |
 | [T-0197](T-0197-old-name-in-smoke-script.md) | Old product name out of the smoke script; reviewer files at worktree roots are git-ignored | 2026-10-03 |
+| [T-0198](T-0198-lead-state-lost-writes.md) | Lead state writes re-read the file first: the autopilot no longer loses tasks launched, merged or switched during a tick | 2026-10-04 |

@@ -3,7 +3,7 @@ import path from 'node:path';
 import { type OpenCodeClient, type SessionModel } from './client.js';
 import type { GitRunner } from './git.js';
 import { loadPrompt, loadRulesFile, renderPrompt, unfilledPlaceholders } from './prompts.js';
-import { loadState, saveState } from './state.js';
+import { updateState } from './state.js';
 import { assertAllowedModel, parseTaskFrontMatter, pickEffort, splitModel } from './task-file.js';
 import { newTaskRecord } from './types.js';
 
@@ -185,15 +185,15 @@ export async function launchTask(
     rules,
     template: 'worker',
   });
-  const state = loadState(deps.statePath);
-  state.tasks[task] = newTaskRecord({
-    task,
-    sessionId,
-    worktree,
-    model: modelString,
-    role: 'worker',
-    startedAt: new Date().toISOString(),
+  updateState(deps.statePath, (state) => {
+    state.tasks[task] = newTaskRecord({
+      task,
+      sessionId,
+      worktree,
+      model: modelString,
+      role: 'worker',
+      startedAt: new Date().toISOString(),
+    });
   });
-  saveState(deps.statePath, state);
   return { sessionId, worktree };
 }

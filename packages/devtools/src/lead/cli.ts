@@ -14,7 +14,7 @@ import { startPrereviewSession } from './start-prereview.js';
 import { switchModel } from './switch-model.js';
 import { collectStatus, formatStatus } from './status.js';
 import { currentHead } from './git.js';
-import { loadState, saveState, stateFilePath } from './state.js';
+import { loadState, stateFilePath, updateState } from './state.js';
 import { parseTaskFrontMatter } from './task-file.js';
 
 const HELP = `lead — zero-token supervision of OpenCode workers
@@ -113,8 +113,13 @@ async function runPrereview(positional: string[]): Promise<void> {
     { client, promptsDirPath: promptsDir(), worktree: record.worktree, task },
     head,
   );
-  record.prereview = { sessionId, head, startedAt: new Date().toISOString() };
-  saveState(statePath, state);
+  const startedAt = new Date().toISOString();
+  updateState(statePath, (fresh) => {
+    const current = fresh.tasks[task];
+    if (current !== undefined) {
+      current.prereview = { sessionId, head, startedAt };
+    }
+  });
   console.log(`${task} pre-review ${sessionId} for ${head}`);
 }
 
@@ -188,9 +193,9 @@ async function runMerge(positional: string[], args: string[]): Promise<void> {
     writeText: (entry, text) => fs.writeFileSync(entry, text),
     ...(args.includes('--skip-gate') ? {} : { gate: runGate }),
     dropFromState: (entry) => {
-      const state = loadState(statePath);
-      delete state.tasks[entry];
-      saveState(statePath, state);
+      updateState(statePath, (state) => {
+        delete state.tasks[entry];
+      });
     },
   });
   console.log(`${task} merged`);

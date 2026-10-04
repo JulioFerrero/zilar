@@ -8,7 +8,7 @@ import {
   worktreeFor,
 } from './launch.js';
 import { loadRulesFile } from './prompts.js';
-import { appendLog, loadState, saveState } from './state.js';
+import { appendLog, loadState, updateState } from './state.js';
 import { assertAllowedModel, splitModel } from './task-file.js';
 import type { TaskRecord } from './types.js';
 
@@ -141,14 +141,25 @@ export async function switchModel(
     template: 'switch',
   });
   const now = new Date().toISOString();
-  state.tasks[task] = resetRecordForSwitch(
-    previous,
-    sessionId,
-    newModel,
-    worktree,
-    previous.startedAt,
-    now,
-  );
-  saveState(deps.statePath, state);
+  const previousSessionId = previous.sessionId;
+  const previousStartedAt = previous.startedAt;
+  // Re-read right before writing so a tick's bookkeeping (or another
+  // command) recorded mid-switch is kept. Only this task's record is
+  // touched, and only when it still points at the session the switch
+  // started from: a merge (gone) or relaunch (new session) mid-switch
+  // keeps what the file says.
+  updateState(deps.statePath, (fresh) => {
+    const current = fresh.tasks[task];
+    if (current !== undefined && current.sessionId === previousSessionId) {
+      fresh.tasks[task] = resetRecordForSwitch(
+        current,
+        sessionId,
+        newModel,
+        worktree,
+        previousStartedAt,
+        now,
+      );
+    }
+  });
   return { sessionId, model: newModel };
 }
