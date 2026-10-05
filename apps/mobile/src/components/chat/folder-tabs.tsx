@@ -1,44 +1,76 @@
-import { Pressable, View } from 'react-native';
+import type { ChatFolder } from '@zilar/chat-core';
+import { MessagesSquare } from 'lucide-react-native';
+import { useColorScheme } from 'nativewind';
+import { Pressable, ScrollView, View } from 'react-native';
 
 import { Text } from '@/components/ui/text';
-import { segment, well } from '@/lib/depth';
-import { CHAT_FOLDERS } from '@/lib/filter';
-import type { ChatFolder } from '@/lib/types';
+import { asColorScheme } from '@/lib/color-scheme';
+import { FOREGROUND, MUTED_FOREGROUND } from '@/lib/colors';
+import { segment } from '@/lib/depth';
 import { cn } from '@/lib/utils';
 
+import { folderIcon } from './folder-icon';
+
 type FolderTabsProps = {
-  activeFolder: ChatFolder;
-  counts: Record<ChatFolder, number>;
-  onSelect: (folder: ChatFolder) => void;
+  /** 'all' or a folder id. */
+  activeFolder: string;
+  folders: ChatFolder[];
+  /** Unread totals keyed by 'all' or a folder id. */
+  counts: Record<string, number>;
+  onSelect: (folder: string) => void;
 };
 
-/** Folder segmented control: a well track with the active tab raised (ui-style.md §5). */
-export function FolderTabs({ activeFolder, counts, onSelect }: FolderTabsProps) {
+/**
+ * The chat folders as scrollable chips (T-0248): "All chats" first, then one
+ * chip per server folder. The selected chip is raised (the `segment` look) and
+ * the rest are muted; a chip shows its unread count only when it is above zero.
+ */
+export function FolderTabs({ activeFolder, folders, counts, onSelect }: FolderTabsProps) {
+  const scheme = asColorScheme(useColorScheme().colorScheme);
+  const chips = [
+    { id: 'all', name: 'All chats', folder: undefined as ChatFolder | undefined },
+    ...folders.map((folder) => ({ id: folder.id, name: folder.name, folder })),
+  ];
   return (
-    <View
-      className="mx-4 mb-2 flex-row gap-0.5 rounded-[10px] p-[3px]"
-      style={[well, { borderColor: '#1a1a1a' }]}
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      // A horizontal ScrollView grows to fill the free height; without this it
+      // floats in a big empty gap above the list.
+      style={{ flexGrow: 0 }}
+      contentContainerStyle={{
+        flexDirection: 'row',
+        gap: 8,
+        paddingHorizontal: 16,
+        paddingBottom: 8,
+      }}
     >
-      {CHAT_FOLDERS.map((folder) => {
-        const selected = folder.key === activeFolder;
-        const count = counts[folder.key];
+      {chips.map((chip) => {
+        const selected = chip.id === activeFolder;
+        const count = counts[chip.id] ?? 0;
+        const Icon = chip.folder === undefined ? MessagesSquare : folderIcon(chip.folder.icon);
+        const iconColor = selected ? FOREGROUND[scheme] : MUTED_FOREGROUND[scheme];
         return (
           <Pressable
-            key={folder.key}
+            key={chip.id}
             accessibilityRole="tab"
             accessibilityState={{ selected }}
-            accessibilityLabel={folder.label}
-            onPress={() => onSelect(folder.key)}
-            className="h-[34px] flex-1 flex-row items-center justify-center gap-1 rounded-[7px]"
+            accessibilityLabel={chip.name}
+            onPress={() => onSelect(chip.id)}
+            className={cn(
+              'h-[34px] flex-row items-center gap-1.5 rounded-full px-3',
+              selected ? '' : 'bg-surface',
+            )}
             style={selected ? segment : undefined}
           >
+            <Icon size={14} color={iconColor} />
             <Text
               className={cn(
                 'text-[13px] font-medium',
                 selected ? 'text-foreground' : 'text-muted-foreground',
               )}
             >
-              {folder.label}
+              {chip.name}
             </Text>
             {count > 0 ? (
               <View
@@ -60,6 +92,6 @@ export function FolderTabs({ activeFolder, counts, onSelect }: FolderTabsProps) 
           </Pressable>
         );
       })}
-    </View>
+    </ScrollView>
   );
 }

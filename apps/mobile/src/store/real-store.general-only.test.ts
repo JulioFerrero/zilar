@@ -208,7 +208,7 @@ describe('real store General-only group (T-0139)', () => {
     store.getState().start();
     await flush();
 
-    const model = chatListModel(store.getState().chats, { folder: 'all', search: '' });
+    const model = chatListModel(store.getState().chats, { folder: undefined, search: '' });
     expect(model.rows).toEqual([{ kind: 'group', groupId: 'g1' }]);
     store.getState().stop();
   });

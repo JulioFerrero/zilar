@@ -2,8 +2,15 @@
 export const CURRENT_USER_ID = 'me';
 export const CURRENT_USER_NAME = 'You';
 
-/** The mobile folder tabs; `chat-core` has no folder concept. */
-export type ChatFolder = 'all' | 'personal' | 'ai' | 'work';
+/**
+ * The pre-server mobile folder keys (T-0135). Chat folders now come from the
+ * server (T-0248) and match through `chat-core`'s `ChatFolder`; this union
+ * only backs the older `topicInFolder` helper.
+ */
+export type LegacyFolder = 'all' | 'personal' | 'ai' | 'work';
+
+/** @deprecated Use `LegacyFolder`. Kept for `lib/topics.ts`'s `topicInFolder`. */
+export type ChatFolder = LegacyFolder;
 
 export type {
   AiStatus,

@@ -24,6 +24,7 @@ import {
   mentionsForTrimmedText,
   rebaseMentions,
   resolveEdits,
+  sortFolders,
   summarize,
 } from '@zilar/chat-core';
 import {
@@ -47,6 +48,7 @@ import {
 } from '../lib/chat-api';
 import type { ChatPref, ChatPrefsApi, PutChatPrefInput } from '../lib/chat-prefs-api';
 import { applyChatPrefs, optimisticPrefRow } from '../lib/chat-prefs';
+import type { ChatFoldersApi } from '../lib/chat-folders-api';
 import {
   createPinsApi,
   pinKindFor,
@@ -153,6 +155,8 @@ export interface RealStoreDeps {
   /** The channel management API (T-0144); tests inject a fake. */
   groupsApi?: GroupsApi;
   chatPrefsApi?: ChatPrefsApi;
+  /** The chat-folders API (T-0248); tests inject a fake. */
+  chatFoldersApi?: ChatFoldersApi;
   pinsApi?: PinsApi;
   ownedAis?: { id: string; name: string }[];
   createXmpp?: (options: XmppCoreOptions) => XmppCore;
@@ -443,6 +447,21 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         return [];
       }
       return api.listChatPrefs().catch((): ChatPref[] => chatPrefRows);
+    }
+    // The user's chat folders (T-0248), sorted by position. Loaded with the
+    // chats at boot and after every background/foreground refresh; the API
+    // client is injected by the app (`RealStoreDeps.chatFoldersApi`). A failed
+    // load keeps the last list, and a missing client keeps `[]`.
+    async function loadFolders(): Promise<void> {
+      const api = deps.chatFoldersApi;
+      if (api === undefined) {
+        return;
+      }
+      try {
+        get().setFolders(await api.listChatFolders());
+      } catch {
+        // Keep the last list; a retry happens on the next refresh.
+      }
     }
     // Pins by chat id (T-0135), newest first. Loaded when a chat opens and
     // refreshed on focus and every 60 s while it is open.
@@ -2589,7 +2608,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       let entries: ChatEntry[];
       let prefs: ChatPref[];
       try {
-        [entries, prefs] = await Promise.all([api.getChats(), loadPrefRows()]);
+        [entries, prefs] = await Promise.all([api.getChats(), loadPrefRows(), loadFolders()]);
       } catch {
         // A background refresh failure stays silent; the manual reload reports it.
         return;
@@ -2612,7 +2631,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       let entries: ChatEntry[];
       let prefs: ChatPref[];
       try {
-        [entries, prefs] = await Promise.all([api.getChats(), loadPrefRows()]);
+        [entries, prefs] = await Promise.all([api.getChats(), loadPrefRows(), loadFolders()]);
       } catch {
         if (gen === generation) {
           set({ chatsLoad: 'error' });
@@ -2842,6 +2861,8 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           // Prefs ride the boot like the web store; a failure reads as no
           // rows (older server, offline) rather than failing the boot.
           loadPrefRows().catch((): ChatPref[] => []),
+          // Folders ride the boot too, but never fail it (T-0248).
+          loadFolders(),
         ]);
       } catch {
         if (gen === generation) {
@@ -3008,6 +3029,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       historyComplete: {},
       search: '',
       activeFolder: 'all',
+      folders: [],
       typing: {},
       edits: {},
       reactions: {},
@@ -3986,6 +4008,17 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       },
       setSearch: (value) => set({ search: value }),
       setActiveFolder: (folder) => set({ activeFolder: folder }),
+      setFolders: (folders) => {
+        const sorted = sortFolders(folders);
+        set((state) => ({
+          folders: sorted,
+          activeFolder:
+            state.activeFolder === 'all' ||
+            sorted.some((folder) => folder.id === state.activeFolder)
+              ? state.activeFolder
+              : 'all',
+        }));
+      },
       start: () => {
         if (started) {
           return;

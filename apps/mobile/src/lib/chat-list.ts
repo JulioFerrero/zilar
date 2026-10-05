@@ -1,9 +1,8 @@
-import type { ChatSummary } from '@zilar/chat-core';
+import type { ChatFolder, ChatSummary } from '@zilar/chat-core';
 
 import { archivedChats, sortChatPinnedFirst, unarchivedChats } from './chat-prefs';
 import { filterChats } from './filter';
 import { groupRowFor, groupTopicChats } from './topics';
-import type { ChatFolder } from './types';
 
 /**
  * The chat list's row model (T-0135): the same composition the chat list
@@ -23,7 +22,7 @@ export interface ChatListModel {
 
 export function chatListModel(
   chats: readonly ChatSummary[],
-  options: { folder: ChatFolder; search: string },
+  options: { folder: ChatFolder | undefined; search: string },
 ): ChatListModel {
   const filtered = filterChats(chats, options);
   const listed = unarchivedChats(filtered);

@@ -1,4 +1,5 @@
 import type { MentionMember, MessageStatus, UiMessage } from '@zilar/chat-core';
+import { defaultFolders, sortFolders } from '@zilar/chat-core';
 import { StickerSchema } from '@zilar/protocol';
 import { create, type StoreApi, type UseBoundStore } from 'zustand';
 
@@ -124,6 +125,7 @@ type ChatStoreData = Omit<
   | 'setTopicRoles'
   | 'setSearch'
   | 'setActiveFolder'
+  | 'setFolders'
   | 'start'
   | 'stop'
 >;
@@ -166,6 +168,7 @@ export function createInitialState(phase?: MockDraftPhase, load?: MockLoadScenar
     historyLoad: loadedHistory,
     search: '',
     activeFolder: 'all',
+    folders: defaultFolders(),
     activeChatId: null,
     historyComplete: {},
     jumpTarget: undefined,
@@ -1207,6 +1210,17 @@ export function createChatStore(
       },
       setSearch: (search) => set({ search }),
       setActiveFolder: (activeFolder) => set({ activeFolder }),
+      setFolders: (folders) => {
+        const sorted = sortFolders(folders);
+        set((state) => ({
+          folders: sorted,
+          activeFolder:
+            state.activeFolder === 'all' ||
+            sorted.some((folder) => folder.id === state.activeFolder)
+              ? state.activeFolder
+              : 'all',
+        }));
+      },
     };
   });
 }

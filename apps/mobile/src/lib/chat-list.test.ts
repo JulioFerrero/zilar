@@ -61,7 +61,7 @@ describe('chatListModel', () => {
         }),
         chat('older', { lastMessage: at('2026-09-30T11:00:00Z') }),
       ],
-      { folder: 'all', search: '' },
+      { folder: undefined, search: '' },
     );
     expect(model.rows.map((row) => (row.kind === 'chat' ? row.chat.id : row.groupId))).toEqual([
       'pinned',
@@ -77,7 +77,7 @@ describe('chatListModel', () => {
         chat('fresh', { lastMessage: at('2026-09-30T12:00:00Z') }),
         chat('gone', { lastMessage: at('2026-09-30T12:30:00Z'), archived: true }),
       ],
-      { folder: 'all', search: '' },
+      { folder: undefined, search: '' },
     );
     // The archived chat would be first by recency; it leaves the list.
     expect(model.rows.map((row) => (row.kind === 'chat' ? row.chat.id : row.groupId))).toEqual([
@@ -97,7 +97,7 @@ describe('chatListModel', () => {
     });
     const model = chatListModel(
       [chat('fresh', { lastMessage: at('2026-09-30T12:00:00Z') }), general, bug],
-      { folder: 'all', search: '' },
+      { folder: undefined, search: '' },
     );
     // The group floats first: one of its topics is pinned.
     expect(
