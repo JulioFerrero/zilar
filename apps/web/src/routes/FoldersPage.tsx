@@ -6,6 +6,8 @@ import { useChatFolders } from '@/lib/useChatFolders';
 import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
 import { FolderEditorDialog } from '@/components/FolderEditorDialog';
 import { folderIconComponent } from '@/components/folderIcon';
+import { Card } from '@/components/ui/card';
+import { StateMessage } from '@/components/ui/state-message';
 import { useChatStore } from '@/store/ChatStoreProvider';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
 import { cn } from '@/lib/utils';
@@ -106,79 +108,79 @@ export function FoldersPage({ onBack }: { onBack: () => void }) {
     >
       <div className={SETTINGS_COLUMN}>
         {folders.length === 0 ? (
-          <p className="text-[14px] text-muted-foreground">
-            No folders yet. Create one to group your chats.
-          </p>
+          <StateMessage kind="empty" title="No folders yet. Create one to group your chats." />
         ) : (
-          <ul className="overflow-hidden rounded-xl border border-border bg-surface">
-            {folders.map((folder) => {
-              const Icon = folderIconComponent(folder.icon);
-              return (
-                <li
-                  key={folder.id}
-                  draggable
-                  onDragStart={(event) => {
-                    event.dataTransfer.setData('text/plain', folder.id);
-                    setDragId(folder.id);
-                  }}
-                  onDragEnd={() => setDragId(undefined)}
-                  onDragOver={(event) => event.preventDefault()}
-                  onDrop={(event) => {
-                    event.preventDefault();
-                    const from = event.dataTransfer.getData('text/plain') || dragId;
-                    setDragId(undefined);
-                    if (from !== undefined && from !== '') {
-                      move(from, folder.id);
-                    }
-                  }}
-                  className={cn(
-                    'flex items-center gap-2 border-b border-border px-2 py-2.5 last:border-b-0',
-                    dragId === folder.id && 'opacity-50',
-                  )}
-                >
-                  <button
-                    type="button"
-                    aria-label={`Reorder ${folder.name}`}
-                    title={`Reorder ${folder.name}`}
-                    disabled={reordering}
-                    onKeyDown={(event) => {
-                      if (!event.altKey) {
-                        return;
-                      }
-                      if (event.key === 'ArrowUp') {
-                        event.preventDefault();
-                        moveByKey(folder.id, -1);
-                      } else if (event.key === 'ArrowDown') {
-                        event.preventDefault();
-                        moveByKey(folder.id, 1);
+          <Card>
+            <ul className="divide-y divide-divider">
+              {folders.map((folder) => {
+                const Icon = folderIconComponent(folder.icon);
+                return (
+                  <li
+                    key={folder.id}
+                    draggable
+                    onDragStart={(event) => {
+                      event.dataTransfer.setData('text/plain', folder.id);
+                      setDragId(folder.id);
+                    }}
+                    onDragEnd={() => setDragId(undefined)}
+                    onDragOver={(event) => event.preventDefault()}
+                    onDrop={(event) => {
+                      event.preventDefault();
+                      const from = event.dataTransfer.getData('text/plain') || dragId;
+                      setDragId(undefined);
+                      if (from !== undefined && from !== '') {
+                        move(from, folder.id);
                       }
                     }}
-                    className="flex shrink-0 cursor-grab items-center justify-center rounded-lg p-1.5 text-muted-foreground hover:bg-list-hover hover:text-foreground"
+                    className={cn(
+                      'flex items-center gap-2 px-2 py-2.5',
+                      dragId === folder.id && 'opacity-50',
+                    )}
                   >
-                    <GripVertical className="h-5 w-5" aria-hidden="true" />
-                  </button>
-                  <span className="key-icon flex shrink-0 items-center justify-center rounded-xl p-2">
-                    <Icon className="h-5 w-5" aria-hidden="true" />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[15px] font-medium">{folder.name}</span>
-                    <span className="block truncate text-[13px] text-muted-foreground">
-                      {summary(folder)}
+                    <button
+                      type="button"
+                      aria-label={`Reorder ${folder.name}`}
+                      title={`Reorder ${folder.name}`}
+                      disabled={reordering}
+                      onKeyDown={(event) => {
+                        if (!event.altKey) {
+                          return;
+                        }
+                        if (event.key === 'ArrowUp') {
+                          event.preventDefault();
+                          moveByKey(folder.id, -1);
+                        } else if (event.key === 'ArrowDown') {
+                          event.preventDefault();
+                          moveByKey(folder.id, 1);
+                        }
+                      }}
+                      className="flex shrink-0 cursor-grab items-center justify-center rounded-lg p-1.5 text-muted-foreground hover:bg-list-hover hover:text-foreground"
+                    >
+                      <GripVertical className="h-5 w-5" aria-hidden="true" />
+                    </button>
+                    <span className="key-icon flex shrink-0 items-center justify-center rounded-xl p-2">
+                      <Icon className="h-5 w-5" aria-hidden="true" />
                     </span>
-                  </span>
-                  <button
-                    type="button"
-                    aria-label={`Edit ${folder.name}`}
-                    title={`Edit ${folder.name}`}
-                    onClick={() => setEditor({ open: true, folder })}
-                    className="flex shrink-0 items-center justify-center rounded-full p-2 text-muted-foreground hover:bg-list-hover hover:text-foreground"
-                  >
-                    <Pencil className="h-4 w-4" aria-hidden="true" />
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[15px] font-medium">{folder.name}</span>
+                      <span className="block truncate text-[13px] text-muted-foreground">
+                        {summary(folder)}
+                      </span>
+                    </span>
+                    <button
+                      type="button"
+                      aria-label={`Edit ${folder.name}`}
+                      title={`Edit ${folder.name}`}
+                      onClick={() => setEditor({ open: true, folder })}
+                      className="flex shrink-0 items-center justify-center rounded-full p-2 text-muted-foreground hover:bg-list-hover hover:text-foreground"
+                    >
+                      <Pencil className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </Card>
         )}
         {!atLimit && (
           <button
