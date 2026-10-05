@@ -1,7 +1,7 @@
 ---
 id: T-0208
 title: Lead tooling: pre-reviews and the doctor run on the free Muse listing (opencode/muse-spark-1.3-contributor-free)
-status: planned
+status: merged
 milestone: M5
 branch: task/T-0208-reviews-on-free-muse
 model: opencode/muse-spark-1.3-contributor-free
@@ -52,4 +52,30 @@ Fallback to the billed model on quota errors, any other model setting.
 
 ## Report (written by the worker when done)
 
+Did exactly what the spec asked:
+- `packages/devtools/src/lead/start-prereview.ts`: `PREREVIEW_MODEL` now `{ providerID: 'opencode', id: 'muse-spark-1.3-contributor-free' }`.
+- `packages/devtools/src/lead/doctor.ts`: `DOCTOR_MODEL` now `{ providerID: 'opencode', id: 'muse-spark-1.3-contributor-free' }`.
+- `packages/devtools/src/lead/doctor.test.ts`: model assertion updated to the new value.
+- New `packages/devtools/src/lead/start-prereview.test.ts`: asserts `PREREVIEW_MODEL` equals the new value.
+- Changed nothing else (`isCostlyMetaModel` untouched).
+
+Security checklist: no secrets/tokens touched; no deletes/updates, caps, permissions, routes, or audit entries involved — N/A for this model-constant change.
+
+Commands (real results):
+- `pnpm install`: exit 0 (11.7s).
+- `pnpm --filter @zilar/devtools test --maxWorkers=2 --reporter=dot src/lead/doctor.test.ts src/lead/start-prereview.test.ts`: 2 files passed, 19 tests passed.
+- `pnpm gate` (repo root): GATE PASS. Summary lines:
+  - `gate: 5 changed file(s) against main`
+  - `PASS  install (frozen)  (1.1s)`
+  - `PASS  format  (13.0s)`
+  - `PASS  lint  (1.5s)`
+  - `PASS  typecheck  (3.1s)`
+  - `PASS  tests @zilar/devtools  (1.4s)`
+  - `scope: every changed file is inside the Allowed files`
+  - `GATE PASS`
+
+No deviations, no open questions.
+
 ## Review (written by Claude)
+
+**Verdict:** Approved, clean on the first pre-review. `PREREVIEW_MODEL` and `DOCTOR_MODEL` now point at `{ providerID: 'opencode', id: 'muse-spark-1.3-contributor-free' }`; the doctor test is updated and a new test pins the pre-review model. The lead read the full diff (5 lines of code, one new test file). First task done end to end on the free Muse listing. The autopilot is restarted after the merge so new pre-reviews and doctor runs use it.

@@ -9,7 +9,7 @@ import type { SessionState } from './session.js';
 import type { DoctorRecord } from './types.js';
 
 // The doctor is always Muse: the strongest reader, like the pre-review.
-export const DOCTOR_MODEL = { providerID: 'meta', id: 'muse-spark-1.3-contributor' };
+export const DOCTOR_MODEL = { providerID: 'opencode', id: 'muse-spark-1.3-contributor-free' };
 
 // A quiet main HEAD becomes one audit. Merges landing within the window
 // collapse into a single session instead of one per commit.
