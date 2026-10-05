@@ -139,3 +139,55 @@ describe('real store createGroup (T-0214)', () => {
     expect(groups.createGroup).toHaveBeenCalledWith({ title: 'Weekend club', memberIds: [] });
   });
 });
+
+describe('real store public creates (T-0228)', () => {
+  it('forwards the trimmed visibility and handle for a public group', async () => {
+    const { store, groups } = setup();
+    store.getState().start();
+    await flush();
+
+    const id = await store.getState().createGroup({
+      title: 'Weekend club',
+      memberIds: ['u-ana'],
+      visibility: 'public',
+      handle: '  hiking_club  ',
+    });
+    expect(id).toBe('g-new');
+    expect(groups.createGroup).toHaveBeenCalledWith({
+      title: 'Weekend club',
+      memberIds: ['u-ana'],
+      visibility: 'public',
+      handle: 'hiking_club',
+    });
+  });
+
+  it('sends neither visibility nor handle for a private group', async () => {
+    const { store, groups } = setup();
+    store.getState().start();
+    await flush();
+
+    await store.getState().createGroup({ title: 'Weekend club', memberIds: ['u-ana'] });
+    expect(groups.createGroup).toHaveBeenCalledWith({
+      title: 'Weekend club',
+      memberIds: ['u-ana'],
+    });
+  });
+
+  it('forwards the trimmed visibility and handle for a public channel', async () => {
+    const { store, groups } = setup();
+    store.getState().start();
+    await flush();
+
+    const id = await store.getState().createChannel({
+      title: 'Releases',
+      visibility: 'public',
+      handle: '  hiking_club  ',
+    });
+    expect(id).toBe('g-channel');
+    expect(groups.createChannel).toHaveBeenCalledWith({
+      title: 'Releases',
+      visibility: 'public',
+      handle: 'hiking_club',
+    });
+  });
+});

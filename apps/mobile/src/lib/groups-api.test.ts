@@ -116,3 +116,63 @@ describe('createGroupsApi createGroup (T-0214)', () => {
     });
   });
 });
+
+describe('createGroupsApi public creates (T-0228)', () => {
+  it('sends visibility public with the handle for a public channel', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ id: 'g-2' }));
+    const api = createGroupsApi(async () => 't', fetchImpl as unknown as typeof fetch);
+
+    await api.createChannel({ title: 'Releases', visibility: 'public', handle: 'hiking_club' });
+    const [, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toEqual({
+      title: 'Releases',
+      kind: 'channel',
+      visibility: 'public',
+      handle: 'hiking_club',
+    });
+  });
+
+  it('sends neither visibility nor handle for a private channel', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ id: 'g-2' }));
+    const api = createGroupsApi(async () => 't', fetchImpl as unknown as typeof fetch);
+
+    await api.createChannel({ title: 'Releases', description: 'Notes' });
+    const [, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toEqual({
+      title: 'Releases',
+      kind: 'channel',
+      description: 'Notes',
+    });
+  });
+
+  it('sends visibility public with the handle for a public group', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ id: 'g-9' }));
+    const api = createGroupsApi(async () => 't', fetchImpl as unknown as typeof fetch);
+
+    await api.createGroup({
+      title: 'Weekend club',
+      memberIds: ['u-ana'],
+      visibility: 'public',
+      handle: 'hiking_club',
+    });
+    const [, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toEqual({
+      title: 'Weekend club',
+      memberIds: ['u-ana'],
+      visibility: 'public',
+      handle: 'hiking_club',
+    });
+  });
+
+  it('sends neither visibility nor handle for a private group', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ id: 'g-9' }));
+    const api = createGroupsApi(async () => 't', fetchImpl as unknown as typeof fetch);
+
+    await api.createGroup({ title: 'Weekend club', memberIds: ['u-ana'] });
+    const [, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toEqual({
+      title: 'Weekend club',
+      memberIds: ['u-ana'],
+    });
+  });
+});

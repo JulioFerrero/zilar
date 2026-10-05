@@ -1,8 +1,14 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Pressable, TextInput, View } from 'react-native';
 
+import {
+  buildChannelCreateInput,
+  VisibilityFields,
+  useHandleCheck,
+  type CreateVisibility,
+} from '@/components/chat/visibility-fields';
+import { useDirectoryApi } from '@/components/directory/use-directory-api';
 import { Text } from '@/components/ui/text';
-
 /**
  * The new-channel sheet (T-0144): a title plus an optional description
  * (≤ 300, the channel's short blurb). The screen creates the channel
@@ -16,15 +22,46 @@ export function NewChannelSheet({
 }: {
   busy: boolean;
   error: string;
-  onCreate: (input: { title: string; description?: string }) => void;
+  onCreate: (input: {
+    title: string;
+    description?: string;
+    visibility?: 'public';
+    handle?: string;
+  }) => void;
   onClose: () => void;
 }) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  // T-0228: Private (default, invite-only) or Public (its own `@handle`,
+  // checked live, created in the same step).
+  const [visibility, setVisibility] = useState<CreateVisibility>('private');
+  const [handle, setHandle] = useState('');
+  const [localError, setLocalError] = useState('');
+  const { api: directoryApi } = useDirectoryApi();
+  // Memoized like the group sheet's, for the same reason: the effect deps
+  // only see visibility/handle, never a fresh closure identity.
+  const checkHandle = useCallback(
+    (value: string) => directoryApi.checkGroupHandle(value),
+    [directoryApi],
+  );
+  const { check, checking, reset } = useHandleCheck(visibility, handle, checkHandle);
 
   const trimmed = title.trim();
   const tooLong = description.length > 300;
   const canCreate = trimmed !== '' && !tooLong && !busy;
+
+  const create = () => {
+    if (busy) {
+      return;
+    }
+    const guarded = buildChannelCreateInput(title, description, visibility, handle, check);
+    if ('error' in guarded) {
+      setLocalError(guarded.error);
+      return;
+    }
+    setLocalError('');
+    onCreate(guarded.input);
+  };
 
   return (
     <Pressable
@@ -64,6 +101,27 @@ export function NewChannelSheet({
           The description must be at most 300 characters.
         </Text>
       ) : null}
+      <VisibilityFields
+        kind="channel"
+        visibility={visibility}
+        onVisibility={(next) => {
+          setVisibility(next);
+          reset();
+          setLocalError('');
+        }}
+        handle={handle}
+        onHandle={(next) => {
+          setHandle(next);
+          reset();
+        }}
+        check={check}
+        checking={checking}
+      />
+      {localError !== '' ? (
+        <Text accessibilityRole="alert" className="mt-2 text-[14px] text-danger">
+          {localError}
+        </Text>
+      ) : null}
       {error !== '' ? (
         <Text accessibilityRole="alert" className="mt-2 text-[14px] text-danger">
           {error}
@@ -83,12 +141,7 @@ export function NewChannelSheet({
           accessibilityRole="button"
           accessibilityLabel="Create channel"
           disabled={!canCreate}
-          onPress={() =>
-            onCreate({
-              title: trimmed,
-              ...(description.trim() === '' ? {} : { description: description.trim() }),
-            })
-          }
+          onPress={create}
           className="rounded-full bg-accent px-4 py-2 active:opacity-90 disabled:opacity-60"
         >
           <Text className="text-[15px] font-medium text-accent-foreground">

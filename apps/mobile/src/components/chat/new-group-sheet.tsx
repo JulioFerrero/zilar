@@ -1,8 +1,15 @@
 import { Check } from 'lucide-react-native';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Pressable, ScrollView, TextInput, View } from 'react-native';
 
 import { Avatar } from '@/components/chat/avatar';
+import {
+  buildGroupCreateInput as buildGuardedGroupCreateInput,
+  VisibilityFields,
+  useHandleCheck,
+  type CreateVisibility,
+} from '@/components/chat/visibility-fields';
+import { useDirectoryApi } from '@/components/directory/use-directory-api';
 import { Text } from '@/components/ui/text';
 import type { Contact } from '@/lib/chat-api';
 import { ICON_COLOR } from '@/lib/depth';
@@ -58,25 +65,53 @@ export function NewGroupSheet({
   contacts: Contact[];
   busy: boolean;
   error: string;
-  onCreate: (input: { title: string; memberIds: string[] }) => void;
+  onCreate: (input: {
+    title: string;
+    memberIds: string[];
+    visibility?: 'public';
+    handle?: string;
+  }) => void;
   onClose: () => void;
 }) {
   const [step, setStep] = useState<'members' | 'name'>('members');
   const [selected, setSelected] = useState<string[]>([]);
   const [title, setTitle] = useState('');
   const [localError, setLocalError] = useState('');
+  // T-0228: Private (default, invite-only) or Public (its own `@handle`,
+  // checked live, created in the same step).
+  const [visibility, setVisibility] = useState<CreateVisibility>('private');
+  const [handle, setHandle] = useState('');
+  const { api: directoryApi } = useDirectoryApi();
+  // `directoryApi` is memoized, so the checker's identity is stable and the
+  // debounced effect in `useHandleCheck` only re-runs on visibility/handle.
+  const checkHandle = useCallback(
+    (value: string) => directoryApi.checkGroupHandle(value),
+    [directoryApi],
+  );
+  const { check, checking, reset } = useHandleCheck(visibility, handle, checkHandle);
 
   const create = () => {
     if (busy) {
       return;
     }
-    const input = nextGroupCreateInput(title, selected);
-    if (input === undefined) {
-      setLocalError('Enter a group name');
+    const guarded = buildGuardedGroupCreateInput(title, selected, visibility, handle, check);
+    if ('error' in guarded) {
+      setLocalError(guarded.error);
       return;
     }
     setLocalError('');
-    onCreate(input);
+    onCreate(guarded.input);
+  };
+
+  const pickVisibility = (next: CreateVisibility) => {
+    setVisibility(next);
+    reset();
+    setLocalError('');
+  };
+
+  const changeHandle = (next: string) => {
+    setHandle(next);
+    reset();
   };
 
   return (
@@ -88,10 +123,16 @@ export function NewGroupSheet({
       selected={selected}
       title={title}
       localError={localError}
+      visibility={visibility}
+      handle={handle}
+      check={check}
+      checking={checking}
       onToggle={(userId) => setSelected((current) => toggleSelected(current, userId))}
       onNext={() => setStep('name')}
       onBack={() => setStep('members')}
       onTitle={setTitle}
+      onVisibility={pickVisibility}
+      onHandle={changeHandle}
       onCreate={create}
       onClose={onClose}
     />
@@ -113,10 +154,16 @@ export function NewGroupSheetBody({
   selected,
   title,
   localError,
+  visibility,
+  handle,
+  check,
+  checking,
   onToggle,
   onNext,
   onBack,
   onTitle,
+  onVisibility,
+  onHandle,
   onCreate,
   onClose,
 }: {
@@ -127,10 +174,16 @@ export function NewGroupSheetBody({
   selected: string[];
   title: string;
   localError: string;
+  visibility: CreateVisibility;
+  handle: string;
+  check: { available: boolean; reason?: string | undefined } | null;
+  checking: boolean;
   onToggle: (userId: string) => void;
   onNext: () => void;
   onBack: () => void;
   onTitle: (next: string) => void;
+  onVisibility: (next: CreateVisibility) => void;
+  onHandle: (next: string) => void;
   onCreate: () => void;
   onClose: () => void;
 }) {
@@ -204,6 +257,15 @@ export function NewGroupSheetBody({
               className="text-[15px] text-foreground"
             />
           </View>
+          <VisibilityFields
+            kind="group"
+            visibility={visibility}
+            onVisibility={onVisibility}
+            handle={handle}
+            onHandle={onHandle}
+            check={check}
+            checking={checking}
+          />
           {localError !== '' ? (
             <Text accessibilityRole="alert" className="mt-2 text-[14px] text-danger">
               {localError}

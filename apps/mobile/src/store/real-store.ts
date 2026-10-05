@@ -3801,19 +3801,31 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           ...(input.description === undefined || input.description.trim() === ''
             ? {}
             : { description: input.description.trim() }),
+          // T-0228: the public handle rides along trimmed; private creates
+          // send neither field.
+          ...(input.visibility === 'public' && input.handle !== undefined
+            ? { visibility: 'public' as const, handle: input.handle.trim() }
+            : {}),
         });
         await refreshChats().catch(() => {});
         return created.id;
       },
-      // T-0214: creating a private group mirrors the channel flow (trim the
+      // T-0214: creating a group mirrors the channel flow (trim the
       // title, refresh the list, return the new group id from the POST
       // answer). No `kind` goes over the wire: missing means group.
+      // T-0228: a public group carries the handle in the same step.
       createGroup: async (input) => {
         const trimmed = input.title.trim();
         if (trimmed === '') {
           throw new Error('Enter a group name.');
         }
-        const created = await groupsApi.createGroup({ title: trimmed, memberIds: input.memberIds });
+        const created = await groupsApi.createGroup({
+          title: trimmed,
+          memberIds: input.memberIds,
+          ...(input.visibility === 'public' && input.handle !== undefined
+            ? { visibility: 'public' as const, handle: input.handle.trim() }
+            : {}),
+        });
         await refreshChats().catch(() => {});
         return created.id;
       },

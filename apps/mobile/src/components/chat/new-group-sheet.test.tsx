@@ -8,6 +8,11 @@ import {
   toggleSelected,
   validateGroupName,
 } from './new-group-sheet';
+import {
+  buildGroupCreateInput as buildGuardedGroupCreateInput,
+  groupCreateGuard,
+  publicCreateError,
+} from './visibility-fields';
 import type { Contact } from '@/lib/chat-api';
 
 // The body is hook-free, so it is called as a plain function with
@@ -30,6 +35,18 @@ vi.mock('@/components/chat/avatar', () => ({
 
 vi.mock('lucide-react-native', () => ({
   Check: 'Check',
+}));
+
+// The wrapper's guard path is covered against the real builders below;
+// the body renders whatever localError the wrapper hands it (the same
+// render output, guard sentence included).
+
+vi.mock('react-native-safe-area-context', () => ({
+  useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
+}));
+
+vi.mock('@/components/directory/use-directory-api', () => ({
+  useDirectoryApi: () => ({ api: { checkGroupHandle: async () => ({ available: true }) } }),
 }));
 
 vi.mock('@/lib/depth', () => ({
@@ -100,10 +117,16 @@ function body(
     selected: [],
     title: '',
     localError: '',
+    visibility: 'private' as const,
+    handle: '',
+    check: null,
+    checking: false,
     onToggle: () => {},
     onNext: () => {},
     onBack: () => {},
     onTitle: () => {},
+    onVisibility: () => {},
+    onHandle: () => {},
     onCreate: handlers.onCreate ?? (() => {}),
     onClose: () => {},
     ...overrides,
@@ -151,6 +174,33 @@ describe('new-group step logic (T-0214)', () => {
     expect(nextGroupCreateInput('  Weekend club  ', ['u-ana'])).toEqual({
       title: 'Weekend club',
       memberIds: ['u-ana'],
+    });
+  });
+
+  it('Public without a handle blocks Create with the guard sentence', () => {
+    expect(groupCreateGuard('Weekend club', 'public', '   ', null)).toEqual({
+      error: 'Choose a handle for the public group.',
+    });
+  });
+
+  it('Public with an available handle carries visibility and handle', () => {
+    // The guarded builder is the wrapper's exact Create path (the body
+    // takes `localError` only): a regression dropping `visibility` or
+    // `handle` from the wrapper's `onCreate(...)` call fails here.
+    expect(
+      buildGuardedGroupCreateInput('  Weekend club  ', ['u-ana'], 'public', '  hiking_club  ', {
+        available: true,
+      }),
+    ).toEqual({
+      input: {
+        title: 'Weekend club',
+        memberIds: ['u-ana'],
+        visibility: 'public',
+        handle: 'hiking_club',
+      },
+    });
+    expect(buildGuardedGroupCreateInput('Weekend club', ['u-ana'], 'private', '', null)).toEqual({
+      input: { title: 'Weekend club', memberIds: ['u-ana'] },
     });
   });
 
@@ -227,6 +277,29 @@ describe('NewGroupSheetBody name step', () => {
     expect(all).toContain('Could not create the group. Try again.');
   });
 
+  it('Public without a handle blocks Create with the guard sentence', () => {
+    expect(publicCreateError('public', '  ', null, 'group')).toBe(
+      'Choose a handle for the public group.',
+    );
+    // The body renders the wrapper-owned localError the guard produced.
+    const all = textOf(
+      collect(body({ step: 'name', localError: 'Choose a handle for the public group.' })),
+    );
+    expect(all).toContain('Choose a handle for the public group.');
+  });
+
+  it('Public renders the visibility row and the handle field on the name step', () => {
+    const elements = collect(body({ step: 'name', visibility: 'public', handle: 'hiking_club' }));
+    expect(elements.filter((element) => element.type === 'TextInput')).toHaveLength(2);
+    expect(
+      elements.filter(
+        (element) =>
+          element.type === 'TextInput' &&
+          (element as TestElement).props.placeholder === 'hiking_club',
+      ),
+    ).toHaveLength(1);
+  });
+
   it('Create calls onCreate (the wrapper validates and passes title + ids)', () => {
     const calls: string[] = [];
     press(
@@ -237,7 +310,6 @@ describe('NewGroupSheetBody name step', () => {
     );
     expect(calls).toEqual(['create']);
   });
-
   it('Back calls onBack', () => {
     const calls: string[] = [];
     press(button(collect(body({ step: 'name', onBack: () => calls.push('back') })), 'Back'));
