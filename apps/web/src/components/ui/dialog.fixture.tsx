@@ -15,7 +15,7 @@ function OpenDialog({
   description?: string;
   children?: ReactNode;
   label?: string;
-  size?: 'sm' | 'md';
+  size?: 'sm' | 'md' | 'lg';
   ariaLabel?: string;
   dismissable?: boolean;
 }) {
@@ -87,6 +87,11 @@ export default {
   Small: (
     <OpenDialog title="Leave chat?" size="sm" label="Open small dialog">
       <p className="mt-3 text-[14px] text-muted-foreground">You can rejoin later with an invite.</p>
+    </OpenDialog>
+  ),
+  Large: (
+    <OpenDialog title="Edit folder" size="lg" label="Open large dialog">
+      <p className="mt-3 text-[14px] text-muted-foreground">The wider panel for folder settings.</p>
     </OpenDialog>
   ),
   WithoutDescription: (

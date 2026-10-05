@@ -218,6 +218,21 @@ describe('FolderEditorDialog', () => {
     expect(deleteMock).not.toHaveBeenCalled();
   });
 
+  it('Escape closes only the delete confirm', () => {
+    const { store } = renderApp('/settings/folders');
+    act(() => {
+      store.getState().setFolders([BASE]);
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Personal' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete folder' }));
+
+    expect(screen.getByRole('dialog', { name: 'Delete folder' })).toBeTruthy();
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    expect(screen.queryByRole('dialog', { name: 'Delete folder' })).toBeNull();
+    expect(screen.getByRole('dialog', { name: 'Edit folder Personal' })).toBeTruthy();
+  });
+
   it('patch sends the edited body', async () => {
     const { store } = renderApp('/settings/folders');
     act(() => {

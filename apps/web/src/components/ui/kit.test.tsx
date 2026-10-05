@@ -189,6 +189,14 @@ describe('Dialog', () => {
     expect(container.innerHTML).toBe('');
   });
 
+  it('applies the panel width for each size', () => {
+    const { unmount } = render(<Dialog open onClose={() => {}} title="Small" size="sm" />);
+    expect(screen.getByRole('dialog', { name: 'Small' }).className).toContain('max-w-sm');
+    unmount();
+    render(<Dialog open onClose={() => {}} title="Large" size="lg" />);
+    expect(screen.getByRole('dialog', { name: 'Large' }).className).toContain('max-w-lg');
+  });
+
   it('focuses the first focusable element on open and wraps Tab at both ends', () => {
     render(
       <Dialog

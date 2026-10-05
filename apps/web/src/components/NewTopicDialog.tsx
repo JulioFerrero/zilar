@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router';
 import { Avatar } from './Avatar';
 import { AiBadge } from './AiBadge';
 import { Button } from './ui/button';
+import { Dialog } from './ui/dialog';
 import { cn } from '@/lib/utils';
 import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
 import type { GroupDetail, GroupRole, PublicAi, TopicKind, TopicVisibility } from '@/lib/api';
@@ -106,16 +107,6 @@ export function NewTopicDialog({
     };
   }, [storeApi]);
 
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') {
-        onClose();
-      }
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, [onClose]);
-
   const members = detail?.members ?? [];
   const groupAis = detail?.ais ?? [];
   const myAisInGroup = myAis.filter((ai) => groupAis.some((item) => item.aiId === ai.id));
@@ -191,217 +182,14 @@ export function NewTopicDialog({
   };
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="New topic"
-      onClick={onClose}
-      className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4"
-    >
-      <div
-        onClick={(event) => event.stopPropagation()}
-        className="flex max-h-[85vh] w-full max-w-sm flex-col rounded-2xl border border-border bg-panel p-5 shadow-xl"
-      >
-        <h2 className="text-[18px] font-semibold">New topic</h2>
-        <p className="mt-1 text-[14px] text-muted-foreground">
-          in {detail?.title ?? chat?.groupTitle ?? 'the group'}
-        </p>
-
-        <label className="mt-4 flex flex-col gap-1">
-          <span className="text-[14px] font-medium">Name</span>
-          <input
-            aria-label="Topic name"
-            value={name}
-            maxLength={80}
-            onChange={(event) => setName(event.target.value)}
-            placeholder="e.g. Checkout bug"
-            className="well-surface rounded-[10px] px-3 py-2 text-[15px] text-foreground outline-none placeholder:text-subtle-foreground focus-visible:ring-2 focus-visible:ring-accent/40"
-          />
-        </label>
-
-        <div className="mt-3 flex flex-col gap-1.5">
-          <span id="new-topic-type" className="text-[14px] font-medium">
-            Type
-          </span>
-          <div role="group" aria-labelledby="new-topic-type" className="flex flex-wrap gap-1.5">
-            {TYPE_CHIPS.map((chip) => (
-              <button
-                key={chip.kind}
-                type="button"
-                aria-pressed={kind === chip.kind}
-                onClick={() => setKind(chip.kind)}
-                className={cn(
-                  'rounded-full border px-3 py-1.5 text-[13px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40',
-                  kind === chip.kind
-                    ? 'raised-segment border-border-strong text-foreground'
-                    : 'border-border text-muted-foreground hover:text-foreground',
-                )}
-              >
-                {chip.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="mt-3 flex flex-col gap-1.5">
-          <span id="new-topic-visibility" className="text-[14px] font-medium">
-            Who can see it
-          </span>
-          <div
-            role="group"
-            aria-labelledby="new-topic-visibility"
-            className="well-surface grid grid-cols-2 gap-0.5 rounded-[10px] p-[3px]"
-          >
-            {(
-              [
-                { value: 'public', label: 'Public' },
-                { value: 'private', label: 'Private' },
-              ] as const
-            ).map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                aria-pressed={visibility === option.value}
-                onClick={() => setVisibility(option.value)}
-                className={cn(
-                  'h-[30px] rounded-[7px] text-[13px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40',
-                  visibility === option.value
-                    ? 'raised-segment text-foreground'
-                    : 'text-muted-foreground hover:text-foreground',
-                )}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-          <p className="text-[13px] text-muted-foreground">
-            {visibility === 'public'
-              ? 'Everyone in the group can read and write here.'
-              : 'Only the people you pick can see this topic — it stays hidden from everyone else, including group admins.'}
-          </p>
-        </div>
-
-        {visibility === 'private' && (
-          <div className="mt-3 flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
-            <span className="text-[14px] font-medium">People</span>
-            {members.map((member) => {
-              const locked = member.userId === me;
-              const checked = locked || selectedMembers.includes(member.userId);
-              return (
-                <label
-                  key={member.userId}
-                  className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 hover:bg-list-hover"
-                >
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    disabled={locked}
-                    aria-label={`${member.name}${locked ? ' (you, always included)' : ''}`}
-                    onChange={() => toggleMember(member.userId)}
-                    className="size-4 accent-white"
-                  />
-                  <Avatar
-                    id={member.userId}
-                    name={member.name}
-                    size={28}
-                    avatarUrl={member.avatarUrl}
-                  />
-                  <span className="min-w-0 flex-1 truncate text-[14px]">{member.name}</span>
-                  {member.role !== 'member' && (
-                    <span className="font-mono rounded-[5px] border border-badge-muted px-1 text-[10px] leading-[15px] text-muted-foreground">
-                      {member.role}
-                    </span>
-                  )}
-                </label>
-              );
-            })}
-            {myAisInGroup.length > 0 && (
-              <>
-                <span className="mt-2 text-[14px] font-medium">My AIs in this group</span>
-                <p className="text-[13px] text-muted-foreground">
-                  AIs only read topics you add them to.
-                </p>
-                {myAisInGroup.map((ai) => {
-                  const checked = selectedAis.includes(ai.id);
-                  return (
-                    <label
-                      key={ai.id}
-                      className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 hover:bg-list-hover"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        aria-label={ai.name}
-                        onChange={() => toggleAi(ai.id)}
-                        className="size-4 accent-white"
-                      />
-                      <Avatar id={ai.jid} name={ai.name} size={28} ai />
-                      <span className="min-w-0 flex-1 truncate text-[14px]">{ai.name}</span>
-                      <AiBadge />
-                    </label>
-                  );
-                })}
-              </>
-            )}
-            {groupRoles.length > 0 && (
-              <>
-                <span className="mt-2 text-[14px] font-medium">Roles</span>
-                <p className="text-[13px] text-muted-foreground">
-                  Everyone holding a picked role can see this topic.
-                </p>
-                {groupRoles.map((role) => {
-                  const checked = selectedRoles.includes(role.id);
-                  return (
-                    <label
-                      key={role.id}
-                      className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 hover:bg-list-hover"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        aria-label={`${role.name} (${role.members.length})`}
-                        onChange={() => toggleRole(role.id)}
-                        className="size-4 accent-white"
-                      />
-                      <span className="min-w-0 flex-1 truncate text-[14px]">{role.name}</span>
-                      <span className="text-[12px] text-muted-foreground">
-                        {role.members.length}
-                      </span>
-                    </label>
-                  );
-                })}
-                <label className="mt-1 flex flex-col gap-1">
-                  <span className="text-[14px] font-medium">Approvers</span>
-                  <select
-                    aria-label="Approvers"
-                    value={approverRoleId ?? ''}
-                    onChange={(event) =>
-                      setApproverRoleId(event.target.value === '' ? null : event.target.value)
-                    }
-                    className="well-surface rounded-[10px] px-3 py-2 text-[14px] text-foreground outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
-                  >
-                    <option value="">Owner and admins only</option>
-                    {groupRoles
-                      .filter((role) => selectedRoles.includes(role.id))
-                      .map((role) => (
-                        <option key={role.id} value={role.id}>
-                          {role.name}
-                        </option>
-                      ))}
-                  </select>
-                </label>
-              </>
-            )}
-          </div>
-        )}
-
-        {error !== '' && (
-          <p role="alert" className="mt-3 text-[13px] text-danger">
-            {error}
-          </p>
-        )}
-
-        <div className="mt-4 flex justify-end gap-2">
+    <Dialog
+      open
+      onClose={onClose}
+      title="New topic"
+      description={`in ${detail?.title ?? chat?.groupTitle ?? 'the group'}`}
+      size="sm"
+      actions={
+        <>
           <Button
             type="button"
             variant="ghost"
@@ -421,8 +209,200 @@ export function NewTopicDialog({
           >
             {busy ? 'Creating…' : 'Create topic'}
           </Button>
+        </>
+      }
+    >
+      <label className="mt-4 flex flex-col gap-1">
+        <span className="text-[14px] font-medium">Name</span>
+        <input
+          aria-label="Topic name"
+          value={name}
+          maxLength={80}
+          onChange={(event) => setName(event.target.value)}
+          placeholder="e.g. Checkout bug"
+          className="well-surface rounded-[10px] px-3 py-2 text-[15px] text-foreground outline-none placeholder:text-subtle-foreground focus-visible:ring-2 focus-visible:ring-accent/40"
+        />
+      </label>
+
+      <div className="mt-3 flex flex-col gap-1.5">
+        <span id="new-topic-type" className="text-[14px] font-medium">
+          Type
+        </span>
+        <div role="group" aria-labelledby="new-topic-type" className="flex flex-wrap gap-1.5">
+          {TYPE_CHIPS.map((chip) => (
+            <button
+              key={chip.kind}
+              type="button"
+              aria-pressed={kind === chip.kind}
+              onClick={() => setKind(chip.kind)}
+              className={cn(
+                'rounded-full border px-3 py-1.5 text-[13px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40',
+                kind === chip.kind
+                  ? 'raised-segment border-border-strong text-foreground'
+                  : 'border-border text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {chip.label}
+            </button>
+          ))}
         </div>
       </div>
-    </div>
+
+      <div className="mt-3 flex flex-col gap-1.5">
+        <span id="new-topic-visibility" className="text-[14px] font-medium">
+          Who can see it
+        </span>
+        <div
+          role="group"
+          aria-labelledby="new-topic-visibility"
+          className="well-surface grid grid-cols-2 gap-0.5 rounded-[10px] p-[3px]"
+        >
+          {(
+            [
+              { value: 'public', label: 'Public' },
+              { value: 'private', label: 'Private' },
+            ] as const
+          ).map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              aria-pressed={visibility === option.value}
+              onClick={() => setVisibility(option.value)}
+              className={cn(
+                'h-[30px] rounded-[7px] text-[13px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40',
+                visibility === option.value
+                  ? 'raised-segment text-foreground'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+        <p className="text-[13px] text-muted-foreground">
+          {visibility === 'public'
+            ? 'Everyone in the group can read and write here.'
+            : 'Only the people you pick can see this topic — it stays hidden from everyone else, including group admins.'}
+        </p>
+      </div>
+
+      {visibility === 'private' && (
+        <div className="mt-3 flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
+          <span className="text-[14px] font-medium">People</span>
+          {members.map((member) => {
+            const locked = member.userId === me;
+            const checked = locked || selectedMembers.includes(member.userId);
+            return (
+              <label
+                key={member.userId}
+                className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 hover:bg-list-hover"
+              >
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  disabled={locked}
+                  aria-label={`${member.name}${locked ? ' (you, always included)' : ''}`}
+                  onChange={() => toggleMember(member.userId)}
+                  className="size-4 accent-white"
+                />
+                <Avatar
+                  id={member.userId}
+                  name={member.name}
+                  size={28}
+                  avatarUrl={member.avatarUrl}
+                />
+                <span className="min-w-0 flex-1 truncate text-[14px]">{member.name}</span>
+                {member.role !== 'member' && (
+                  <span className="font-mono rounded-[5px] border border-badge-muted px-1 text-[10px] leading-[15px] text-muted-foreground">
+                    {member.role}
+                  </span>
+                )}
+              </label>
+            );
+          })}
+          {myAisInGroup.length > 0 && (
+            <>
+              <span className="mt-2 text-[14px] font-medium">My AIs in this group</span>
+              <p className="text-[13px] text-muted-foreground">
+                AIs only read topics you add them to.
+              </p>
+              {myAisInGroup.map((ai) => {
+                const checked = selectedAis.includes(ai.id);
+                return (
+                  <label
+                    key={ai.id}
+                    className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 hover:bg-list-hover"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      aria-label={ai.name}
+                      onChange={() => toggleAi(ai.id)}
+                      className="size-4 accent-white"
+                    />
+                    <Avatar id={ai.jid} name={ai.name} size={28} ai />
+                    <span className="min-w-0 flex-1 truncate text-[14px]">{ai.name}</span>
+                    <AiBadge />
+                  </label>
+                );
+              })}
+            </>
+          )}
+          {groupRoles.length > 0 && (
+            <>
+              <span className="mt-2 text-[14px] font-medium">Roles</span>
+              <p className="text-[13px] text-muted-foreground">
+                Everyone holding a picked role can see this topic.
+              </p>
+              {groupRoles.map((role) => {
+                const checked = selectedRoles.includes(role.id);
+                return (
+                  <label
+                    key={role.id}
+                    className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 hover:bg-list-hover"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      aria-label={`${role.name} (${role.members.length})`}
+                      onChange={() => toggleRole(role.id)}
+                      className="size-4 accent-white"
+                    />
+                    <span className="min-w-0 flex-1 truncate text-[14px]">{role.name}</span>
+                    <span className="text-[12px] text-muted-foreground">{role.members.length}</span>
+                  </label>
+                );
+              })}
+              <label className="mt-1 flex flex-col gap-1">
+                <span className="text-[14px] font-medium">Approvers</span>
+                <select
+                  aria-label="Approvers"
+                  value={approverRoleId ?? ''}
+                  onChange={(event) =>
+                    setApproverRoleId(event.target.value === '' ? null : event.target.value)
+                  }
+                  className="well-surface rounded-[10px] px-3 py-2 text-[14px] text-foreground outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+                >
+                  <option value="">Owner and admins only</option>
+                  {groupRoles
+                    .filter((role) => selectedRoles.includes(role.id))
+                    .map((role) => (
+                      <option key={role.id} value={role.id}>
+                        {role.name}
+                      </option>
+                    ))}
+                </select>
+              </label>
+            </>
+          )}
+        </div>
+      )}
+
+      {error !== '' && (
+        <p role="alert" className="mt-3 text-[13px] text-danger">
+          {error}
+        </p>
+      )}
+    </Dialog>
   );
 }

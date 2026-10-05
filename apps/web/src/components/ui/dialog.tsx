@@ -15,7 +15,7 @@ export interface DialogProps {
   description?: string;
   children?: ReactNode;
   actions?: ReactNode;
-  size?: 'sm' | 'md';
+  size?: 'sm' | 'md' | 'lg';
   /** Element to focus on open instead of the first focusable child. */
   initialFocusRef?: RefObject<HTMLElement | null>;
   /** Accessible name when it should differ from the visible title. */
@@ -124,7 +124,7 @@ export function Dialog({
         onKeyDown={onKeyDown}
         className={cn(
           'flex max-h-[85vh] w-full flex-col rounded-2xl border border-border bg-panel p-5 shadow-xl outline-none',
-          size === 'sm' ? 'max-w-sm' : 'max-w-md',
+          size === 'sm' ? 'max-w-sm' : size === 'lg' ? 'max-w-lg' : 'max-w-md',
         )}
       >
         <h2 id={titleId} className="shrink-0 text-[18px] font-semibold tracking-[-0.02em]">
