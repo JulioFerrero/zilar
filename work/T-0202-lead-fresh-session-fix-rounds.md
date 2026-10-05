@@ -1,7 +1,7 @@
 ---
 id: T-0202
 title: Lead tooling: fix rounds run in a fresh worker session instead of the long original one (token saving)
-status: planned
+status: merged
 milestone: M5
 branch: task/T-0202-lead-fresh-session-fix-rounds
 model: meta/muse-spark-1.3-contributor
@@ -66,4 +66,45 @@ Changing what `decide` decides, the pre-review, the gate, `switch-model`, any ne
 
 ## Report (written by the worker when done)
 
+Built fresh-session fix rounds: AUTOFIX rounds and `lead reply --fresh` now open a new worker session in the same worktree instead of re-prompting the long original session.
+
+What I did:
+- New `packages/devtools/src/lead/fresh-session.ts`: `freshSessionRecord` (swaps `sessionId`, resets `nudgesSent`, `lastQuotaRetryAt`, `lastQuotaEscalatedAt`, `stalledEscalated`, `escalatedPermissionIds`, `escalatedQuestionIds`; keeps `autoFixRounds`, `prereview`, `packetReadyForHead`, `model`, `worktree`, `startedAt`) and `startFreshWorkerSession` (model `{ ...splitModel(record.model), variant: effort }`, rules from `rules.json`, `createSession` in `record.worktree` with agent `build`, then `promptDetached`; never touches git or state).
+- `autopilot.ts` `applyActions`: `autofix` renders the prompt as before, calls `startFreshWorkerSession` with title `<task> autofix round <current.autoFixRounds + 1>`, sets `current = freshSessionRecord(...)`, logs `<task> autofix round N in fresh session <id>`. Old session (idle) gets nothing. `nudge`/`resume` unchanged.
+- `prompts/autofix.md`: fresh-session preamble (read AGENTS.md pitfalls + "Running tests", task file, PREREVIEW.md; orient with `git log --oneline main..HEAD` + `git diff --stat main...HEAD`; open only findings' files); numbered rules 1-5 kept, "in this same session" removed, single tests with `--reporter=dot`.
+- `lead reply --fresh`: interrupts old session via `tryInterrupt` (abort on `kind: 'error'`), starts fresh session with rendered `prompts/fresh.md` + blank line + prompt file text, writes state via `updateState` only if record still has old session id with `freshSessionRecord`. Added `'fresh'` to `PromptName`; usage line updated. Plain `lead reply` unchanged (same `interrupt` + `promptDetached` path).
+- Tests: `fresh-session.test.ts` (3), `reply.test.ts` (3, new), autopilot +2 (autofix fresh session with round count kept, nudge to old session), prompts +2 (autofix/fresh render, no `{{`).
+
+Files changed (all inside Allowed files):
+`src/lead/fresh-session.ts` (new), `src/lead/fresh-session.test.ts` (new), `src/lead/autopilot.ts`, `src/lead/autopilot.test.ts`, `src/lead/reply.ts`, `src/lead/reply.test.ts` (new), `src/lead/cli.ts`, `src/lead/prompts.ts`, `src/lead/prompts.test.ts`, `prompts/autofix.md`, `prompts/fresh.md` (new), this task file.
+
+Commands and real results:
+- `pnpm install`: exit 0 (turbo 2.11.4, typescript 6.0.3, vitest 5.0.2; done in 18.2s).
+- `pnpm --filter @zilar/devtools test --maxWorkers=2 --reporter=dot src/lead/fresh-session.test.ts src/lead/reply.test.ts src/lead/prompts.test.ts`: 3 files, 17 tests, all passed.
+- `pnpm --filter @zilar/devtools test --maxWorkers=2 --reporter=dot src/lead/autopilot.test.ts`: 20 passed (after fixing my test fixture to create `dir/work/`).
+- `pnpm --filter @zilar/devtools test --maxWorkers=2 --reporter=dot src/lead` (Checks command): 18 files, 420 tests, all passed.
+- `pnpm gate`: gate 12 changed file(s); PASS install (frozen), PASS format, PASS lint, PASS typecheck, PASS tests @zilar/devtools; scope: every changed file is inside the Allowed files; GATE PASS. (First two runs failed on format of autopilot.test.ts and an unused import in fresh-session.test.ts; fixed both, no source changes.)
+
+Security checklist: no secrets/tokens in logs (session ids only); no deletes/updates outside scoped state writes; no caps/uniqueness changes; no permission changes (rules.json untouched); unknown task still throws before any effect; no new routes; audit untouched.
+
+No deviations from the spec. No open questions.
+
+## Round 1 (2026-10-05, pre-review findings)
+
+- Finding 1 (should-fix, plain `lead reply` required a checkout): fixed in `cli.ts` — `findRepoRoot()` is now called only when `--fresh` is passed; the plain path passes `repoRoot: ''`, which it never uses (verified: `replyToWorker` touches `deps.repoRoot` only inside the `fresh` branch). No new test: `runReply` is not exported and testing it would mean refactoring the CLI, out of scope for a 2-line fix; the existing non-fresh `replyToWorker` test covers the unchanged behavior.
+- Finding 2 (nit, vacuous `nudgesSent` assertion): strengthened the autofix test exactly as suggested — fixture now sets `record.nudgesSent = 2` (so the `0` afterwards proves the reset) and asserts the created session's model `{ providerID: 'opencode-go', id: 'muse-spark-1.3-contributor' }`.
+- Finding 3 (nit, interrupt-before-create window in `reply --fresh`): no code change — the order is spec-mandated (spec item 4) and matches the `switch-model` precedent; flagged for lead awareness as the reviewer asked.
+
+Commands: `pnpm --filter @zilar/devtools test --maxWorkers=2 --reporter=dot src/lead` → 18 files, 420 tests, all passed. `pnpm gate` → 12 changed files; PASS install/format/lint/typecheck/tests; scope clean; GATE PASS. Status stays `review`.
+
+## Round 2 (2026-10-05, pre-review findings)
+
+- Finding 1 (should-fix, `--fresh` interrupts before fallible reads): fixed in `reply.ts` — `findTaskFile`/task-file read/`loadPrompt`/`renderPrompt` now run before `tryInterrupt`, mirroring the `switch-model.ts` precedent. Prompt bytes identical. Added test `--fresh fails before interrupting when the worktree is gone`: removes the worktree's `work/` dir, asserts the call throws, `interruptOutcomes` stays empty, no session created, state still points at the old session.
+- Finding 2 (nit, help-text alignment off by one column in `cli.ts:31`): not changed — the rule says not to touch nits outside lines I already change, and I did not touch that line this round. One-space fix if the lead wants it.
+- Finding 3 (nit, no test for `--fresh` flag parsing in `runReply`): noted; `runReply` is not exported and no `cli.test.ts` exists, so testing it would mean a CLI refactor out of scope for this round.
+
+Commands: `pnpm --filter @zilar/devtools test --maxWorkers=2 --reporter=dot src/lead` → 18 files, 421 tests, all passed. `pnpm gate` → 12 changed files; PASS install/format/lint/typecheck/tests; scope clean; GATE PASS. Status stays `review`.
+
 ## Review (written by Claude)
+
+**Verdict:** Approved after two automatic rounds. AUTOFIX now opens a fresh worker session in the same worktree (`startFreshWorkerSession` in the new `fresh-session.ts`, same model and effort, same permission rules), points the state record at it with `freshSessionRecord` (resets nudges, quota and escalation bookkeeping, keeps the round count and pre-review), and the rewritten `autofix.md` tells the new session to orient from the task file, `PREREVIEW.md` and the git log. `lead reply --fresh` does the same for lead fix rounds, after every local read succeeds and the old session is interrupted. The lead read `fresh-session.ts`, both prompts and the autopilot change. Accepted nits: a two-space misalignment in the help text, and no log line for the interrupt outcome on `--fresh`. The autopilot is restarted after the merge.

@@ -1,0 +1,200 @@
+<title>Lead Watch Mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@400;600&display=swap">
+<style>
+:root {
+  --page: #f3f2ef; --ink: #23221f; --muted: #6d6a63; --rule: #dcd9d2;
+  --term: #15161a; --term-bar: #24252b; --fg: #d8dae0; --dim: #7c818c; --faint: #3a3d45;
+  --cyan: #5fd3e6; --magenta: #d68cf2; --yellow: #f0c25e; --green: #7ad48a; --red: #f07c7c; --orange: #f2a65e;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --page: #101113; --ink: #e8e6e1; --muted: #9a978f; --rule: #2a2b2f; color-scheme: dark; }
+}
+:root[data-theme="dark"] { --page: #101113; --ink: #e8e6e1; --muted: #9a978f; --rule: #2a2b2f; color-scheme: dark; }
+* { box-sizing: border-box; }
+body { background: var(--page); color: var(--ink); font-family: Inter, system-ui, sans-serif; padding: 32px 16px 48px; }
+.wrap { max-width: 1180px; margin: 0 auto; display: grid; gap: 28px; }
+header h1 { font-size: 22px; margin: 0 0 6px; text-wrap: balance; }
+header p { margin: 0; color: var(--muted); max-width: 70ch; line-height: 1.5; font-size: 14px; }
+.stage { display: flex; flex-wrap: wrap; gap: 28px; align-items: flex-start; }
+.col { display: grid; gap: 8px; min-width: 0; }
+.cap { font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+
+/* terminal window */
+.win { background: var(--term); border-radius: 10px; box-shadow: 0 18px 40px rgba(0,0,0,.28); overflow: hidden; max-width: 100%; }
+.bar { background: var(--term-bar); height: 28px; display: flex; align-items: center; gap: 7px; padding: 0 11px; }
+.bar i { width: 11px; height: 11px; border-radius: 50%; display: block; }
+.bar i:nth-child(1){background:#ff5f57}.bar i:nth-child(2){background:#febc2e}.bar i:nth-child(3){background:#28c840}
+.bar span { flex: 1; text-align: center; color: #8a8d96; font-size: 12px; margin-right: 40px; }
+.scr { font-family: "Fira Code", ui-monospace, monospace; font-size: 13px; line-height: 1.55; color: var(--fg); padding: 10px 10px 12px; overflow-x: auto; }
+.narrow .scr { width: 62ch; max-width: 100%; }
+.wide .scr { width: 102ch; max-width: 100%; }
+
+.card { position: relative; border: 1px solid var(--faint); border-radius: 9px; padding: 9px 12px 7px; margin-top: 12px; }
+.card .tag { position: absolute; top: -0.8em; left: 10px; background: var(--term); padding: 0 6px; font-weight: 600; display: flex; gap: 6px; align-items: center; }
+.card .badge { position: absolute; top: -0.8em; right: 10px; background: var(--term); padding: 0 6px; display: flex; gap: 6px; align-items: center; }
+.row { display: flex; align-items: center; gap: 8px; white-space: nowrap; min-width: 0; }
+.row .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.sp { justify-content: space-between; }
+.dim { color: var(--dim); } .b { font-weight: 600; }
+.c-cyan{color:var(--cyan)} .c-mag{color:var(--magenta)} .c-yel{color:var(--yellow)} .c-grn{color:var(--green)} .c-red{color:var(--red)} .c-org{color:var(--orange)}
+.bd-cyan{border-color:color-mix(in srgb,var(--cyan) 55%,transparent)} .bd-mag{border-color:color-mix(in srgb,var(--magenta) 55%,transparent)} .bd-yel{border-color:color-mix(in srgb,var(--yellow) 60%,transparent)} .bd-dim{border-color:var(--faint)}
+svg.ic { width: 1.05em; height: 1.05em; flex: none; vertical-align: -0.15em; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.pill { border-radius: 99px; padding: 0 7px; font-size: 12px; }
+.free { background: color-mix(in srgb, var(--green) 18%, transparent); color: var(--green); }
+.track { letter-spacing: -0.5px; }
+.spark { letter-spacing: 0; color: var(--cyan); }
+.foot { margin-top: 10px; }
+kbd { font-family: inherit; border: 1px solid var(--faint); border-radius: 4px; padding: 0 4px; color: var(--fg); }
+
+.notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 18px 28px; border-top: 1px solid var(--rule); padding-top: 22px; }
+.notes h2 { font-size: 13px; margin: 0 0 8px; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+.legend { display: grid; gap: 6px; font-size: 14px; }
+.legend div { display: flex; gap: 10px; align-items: center; }
+.legend .chip { width: 26px; height: 26px; border-radius: 6px; background: var(--term); display: grid; place-items: center; flex: none; }
+.notes p, .notes li { font-size: 14px; line-height: 1.5; color: var(--ink); margin: 0; }
+.notes ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+code { font-family: "Fira Code", monospace; font-size: 12.5px; }
+</style>
+
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="i-orbit" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><ellipse cx="12" cy="12" rx="10" ry="4.2" transform="rotate(-20 12 12)"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+  <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></symbol>
+  <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4z"/><path d="M10 20a2 2 0 0 0 4 0"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></symbol>
+  <symbol id="i-branch" viewBox="0 0 24 24"><circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="8" r="2"/><path d="M6 7v10M18 10c0 4-6 3-11 7"/></symbol>
+  <symbol id="i-pencil" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13 7 4 4"/></symbol>
+  <symbol id="i-brain" viewBox="0 0 24 24"><path d="M9 4a3 3 0 0 0-3 3 3 3 0 0 0-2 5 3 3 0 0 0 2 5 3 3 0 0 0 6 1V5a2 2 0 0 0-3-1z"/><path d="M15 4a3 3 0 0 1 3 3 3 3 0 0 1 2 5 3 3 0 0 1-2 5 3 3 0 0 1-6 1"/></symbol>
+  <symbol id="i-flask" viewBox="0 0 24 24"><path d="M9 3h6M10 3v6L4 19a1.5 1.5 0 0 0 1.3 2h13.4a1.5 1.5 0 0 0 1.3-2L14 9V3"/><path d="M7 15h10"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3 5 6v6c0 4 3 7 7 9 4-2 7-5 7-9V6z"/><path d="m9 12 2 2 4-4"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-commit" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.5"/><path d="M2 12h6.5M15.5 12H22"/></symbol>
+  <symbol id="i-db" viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v12c0 1.7 3 3 7 3s7-1.3 7-3V6M5 12c0 1.7 3 3 7 3s7-1.3 7-3"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M12 8v8M8 12h8"/></symbol>
+  <symbol id="i-dot" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3"/><circle cx="12" cy="12" r="2.5"/></symbol>
+  <symbol id="i-minus" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 12h8"/></symbol>
+  <symbol id="i-eyeglass" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6"/><path d="m15 15 5 5"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M10 9v6M14 9v6"/></symbol>
+</svg>
+
+<div class="wrap">
+  <header>
+    <h1>lead watch — redesign</h1>
+    <p>What <code>pnpm lead:watch</code> will look like after T-0211, in the small Terminal window and in a wider one. Icons come from your FiraCode Nerd Font (drawn here as lookalikes, since a web page cannot use the local font). The spinner and sparklines animate as they will in the terminal.</p>
+  </header>
+
+  <div class="stage">
+    <div class="col narrow">
+      <span class="cap">Small window · 60 columns</span>
+      <div class="win"><div class="bar"><i></i><i></i><i></i><span>lead watch</span></div>
+        <div class="scr" id="small"></div></div>
+    </div>
+    <div class="col wide">
+      <span class="cap">Wide window · 100 columns</span>
+      <div class="win"><div class="bar"><i></i><i></i><i></i><span>lead watch</span></div>
+        <div class="scr" id="wide"></div></div>
+    </div>
+  </div>
+
+  <section class="notes">
+    <div>
+      <h2>Step icons</h2>
+      <div class="legend">
+        <div><span class="chip c-cyan"><svg class="ic"><use href="#i-brain"/></svg></span>thinking</div>
+        <div><span class="chip c-cyan"><svg class="ic"><use href="#i-eye"/></svg></span>reading a file</div>
+        <div><span class="chip c-cyan"><svg class="ic"><use href="#i-pencil"/></svg></span>editing a file</div>
+        <div><span class="chip c-cyan"><svg class="ic"><use href="#i-flask"/></svg></span>running tests</div>
+        <div><span class="chip c-cyan"><svg class="ic"><use href="#i-shield"/></svg></span>running the gate</div>
+        <div><span class="chip c-cyan"><svg class="ic"><use href="#i-commit"/></svg></span>committing</div>
+      </div>
+    </div>
+    <div>
+      <h2>Card colour = step</h2>
+      <div class="legend">
+        <div><span class="chip c-cyan">●</span>Coding or fixing review findings</div>
+        <div><span class="chip c-mag">●</span>Pre-review running</div>
+        <div><span class="chip c-yel"><svg class="ic"><use href="#i-bell"/></svg></span>Waiting for the lead (you)</div>
+        <div><span class="chip c-red"><svg class="ic"><use href="#i-pause"/></svg></span>Blocked, idle or out of quota</div>
+      </div>
+    </div>
+    <div>
+      <h2>How it behaves</h2>
+      <ul>
+        <li>Refreshes every 3 s in a background process; the animation never freezes.</li>
+        <li>Fits the window: under 50 columns the tracker loses its bars, the sparkline and file names drop.</li>
+        <li><code>ctx</code> turns yellow at 150k and red at 200k: that is when a session gets expensive.</li>
+        <li>The watch window switches to <code>FiraCode Nerd Font Mono</code> so the icons render.</li>
+        <li><kbd>q</kbd> quits and leaves the terminal clean.</li>
+      </ul>
+    </div>
+  </section>
+</div>
+
+<script>
+const SPIN = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏';
+const BARS = '▁▂▃▄▅▆▇█';
+const ic = (n, cls = '') => `<svg class="ic ${cls}"><use href="#i-${n}"/></svg>`;
+const tasks = [
+  { id: 'T-0207', title: 'Mobile: import a Telegram sticker pack from the Stickers screen', model: 'Muse', mc: 'c-mag', effort: 'low', free: true,
+    phase: 'Coding', step: 1, color: 'cyan', age: '12 m', live: ['pencil', 'editing telegram-import-sheet.tsx'],
+    speed: [26.5, 8.1, '42k', 'c-grn'], files: [3, 2, 0], names: ['telegram-import.ts', 'telegram-import-sheet.tsx', 'stickers-api.ts'], spark: [12, 30, 24, 41, 38, 22, 47, 33, 29, 44] },
+  { id: 'T-0211', title: 'Lead tooling: lead watch redesigned as an Ink terminal app', model: 'Muse', mc: 'c-mag', effort: 'high', free: true,
+    phase: 'Pre-review', step: 3, color: 'mag', age: '1 h 4 m', live: ['flask', 'running tests'],
+    speed: [31.2, 6.4, '163k', 'c-yel'], files: [4, 4, 0], names: ['watch-app.tsx', 'watch-app.test.tsx', 'watch.ts'], spark: [40, 36, 51, 47, 30, 28, 44, 52, 49, 38] },
+  { id: 'T-0189', title: 'Mobile: AI tools and routines', model: 'MiniMax', mc: 'c-org', effort: 'default', free: false,
+    phase: 'Packet ready, needs you', step: 4, color: 'yel', age: '2 h 18 m', live: null,
+    speed: null, files: [6, 3, 1], names: ['tools-screen.tsx', 'routines-api.ts'], spark: [] },
+];
+
+function tracker(step, color, compact) {
+  const cls = { cyan: 'c-cyan', mag: 'c-mag', yel: 'c-yel' }[color];
+  let s = '';
+  for (let i = 1; i <= 4; i++) {
+    const done = i <= step;
+    s += `<span class="${done ? cls : 'dim'}${i === step ? ' b' : ''}">${done ? '●' : '○'}</span>`;
+    if (i < 4) s += compact ? ' ' : `<span class="${i < step ? cls : 'dim'}">━━━━</span>`;
+  }
+  return `<span class="track">${s}</span>`;
+}
+function spark(values, frame) {
+  if (!values.length) return '';
+  const v = values.map((x, i) => x + Math.sin((frame + i * 3) / 6) * 4);
+  const lo = Math.min(...v), hi = Math.max(...v);
+  return v.map(x => BARS[Math.round(((x - lo) / (hi - lo || 1)) * 7)]).join('');
+}
+function card(t, frame, wide) {
+  const bd = { cyan: 'bd-cyan', mag: 'bd-mag', yel: 'bd-yel' }[t.color];
+  const pc = { cyan: 'c-cyan', mag: 'c-mag', yel: 'c-yel' }[t.color];
+  const live = t.live
+    ? `<div class="row ${pc}"><span>${SPIN[frame % 10]}</span>${ic(t.live[0])}<span class="grow">${t.live[1]}${'.'.repeat(1 + (Math.floor(frame / 4) % 3))}</span></div>`
+    : `<div class="row c-yel">${ic('bell')}<span class="grow">review the packet and merge</span></div>`;
+  const speed = t.speed
+    ? `<div class="row dim">${ic('bolt', 'c-cyan')}<span class="${pc}">${t.speed[0].toFixed(1)}</span> tok/s · ${ic('clock')}${t.speed[1]} s/step · ${ic('db')}<span class="${t.speed[3]}">${t.speed[2]}</span><span class="spark">&nbsp;${spark(t.spark, frame)}</span></div>`
+    : `<div class="row dim">${ic('pause')}<span>idle · waiting for you</span></div>`;
+  const names = t.names.slice(0, wide ? 3 : 2).join('  ');
+  return `<div class="card ${bd}">
+    <div class="tag ${pc}">${t.live ? `<span>${SPIN[frame % 10]}</span>` : ic('bell')}<span>${t.id}</span></div>
+    <div class="badge"><span class="${t.mc}">${t.model}</span><span class="dim">· ${t.effort}</span>${t.free ? '<span class="pill free">free</span>' : ''}</div>
+    <div class="row"><span class="grow b">${t.title}</span></div>
+    <div class="row sp"><span class="row">${tracker(t.step, t.color, false)}<span class="${pc}">${t.phase}</span></span><span class="dim">${t.age}</span></div>
+    ${live}
+    ${speed}
+    <div class="row"><span class="c-grn row">${ic('plus')}${t.files[0]}</span><span class="c-yel row">${ic('dot')}${t.files[1]}</span><span class="c-red row">${ic('minus')}${t.files[2]}</span><span class="grow dim">&nbsp;${names}</span></div>
+  </div>`;
+}
+function screen(frame, wide) {
+  const now = new Date().toTimeString().slice(0, 8);
+  const head = `<div class="card bd-dim" style="margin-top:2px">
+    <div class="row sp"><span class="row b">${ic('orbit', 'c-mag')}zilar · lead</span><span class="row dim">${ic('clock')}${now}</span></div>
+    <div class="row" style="gap:14px"><span class="row c-cyan">${ic('bolt')}2 working</span><span class="row c-yel b">${ic('bell')}1 needs you</span><span class="row c-grn">${ic('check')}4 merged today</span></div>
+  </div>`;
+  const foot = `<div class="row dim foot"><kbd>q</kbd> quit · ${ic('branch')} main · updated ${1 + (Math.floor(frame / 12) % 3)} s ago</div>`;
+  return head + tasks.map(t => card(t, frame, wide)).join('') + foot;
+}
+let frame = 0;
+const small = document.getElementById('small'), wideEl = document.getElementById('wide');
+function draw() { small.innerHTML = screen(frame, false); wideEl.innerHTML = screen(frame, true); frame++; }
+draw();
+setInterval(draw, 100);
+</script>

@@ -20,6 +20,7 @@ const NAMES: PromptName[] = [
   'qa',
   'autofix',
   'doctor',
+  'fresh',
 ];
 
 describe('prompt templates', () => {
@@ -43,6 +44,8 @@ describe('prompt templates', () => {
     expect(rendered).toContain('pnpm install');
     expect(rendered).toContain('status: review');
     expect(rendered).toContain('T-0038:');
+    expect(rendered).toContain('--reporter=dot');
+    expect(rendered).toContain('pnpm gate');
   });
 
   it('renders resume and nudge prompts', () => {
@@ -90,6 +93,8 @@ describe('prompt templates', () => {
     expect(rendered).toContain('file:line');
     expect(rendered).toContain('Counts: must-fix=N, should-fix=N, nit=N, follow-up=N');
     expect(rendered).toContain('Follow-ups');
+    expect(rendered).toContain('--reporter=dot');
+    expect(rendered).toContain('Do NOT run install');
   });
 
   it('renders the doctor prompt with no placeholders left', () => {
@@ -104,6 +109,35 @@ describe('prompt templates', () => {
     expect(rendered).toContain('DOCTOR.md');
     expect(rendered).toContain('Counts: must-fix=N, should-fix=N, nit=N');
     expect(rendered).toContain('Verdict:');
+  });
+
+  it('renders the autofix prompt for a fresh session with no placeholders left', () => {
+    const rendered = renderPrompt(loadPrompt(promptsDir(), 'autofix'), {
+      TASK: 'T-0038',
+      TASK_FILE: 'T-0038-lead-autopilot.md',
+      WORKTREE: '/tmp/zilar-T-0038',
+      BRANCH: 'task/x',
+    });
+    expect(unfilledPlaceholders(rendered)).toEqual([]);
+    expect(rendered).toMatch(/fresh session/i);
+    expect(rendered).toContain('PREREVIEW.md');
+    expect(rendered).toContain('AGENTS.md');
+    expect(rendered).toContain('--reporter=dot');
+    expect(rendered).not.toMatch(/same session/i);
+  });
+
+  it('renders the fresh reply prompt with no placeholders left', () => {
+    const rendered = renderPrompt(loadPrompt(promptsDir(), 'fresh'), {
+      TASK: 'T-0038',
+      TASK_FILE: 'T-0038-lead-autopilot.md',
+      WORKTREE: '/tmp/zilar-T-0038',
+      BRANCH: 'task/x',
+    });
+    expect(unfilledPlaceholders(rendered)).toEqual([]);
+    expect(rendered).toContain('T-0038');
+    expect(rendered).toContain('AGENTS.md');
+    expect(rendered).toContain('work/T-0038-lead-autopilot.md');
+    expect(rendered).toContain('/tmp/zilar-T-0038');
   });
 
   it('renders scout and qa with their inputs', () => {

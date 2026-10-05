@@ -69,4 +69,53 @@ describe('createMockStickersApi', () => {
     await expect(api.discoverStickerPacks()).rejects.toMatchObject({ status: 500 });
     await expect(api.listStickerFavorites()).rejects.toMatchObject({ status: 500 });
   });
+
+  it('creates, patches, uploads, removes a sticker and deletes a pack', async () => {
+    resetStickersMock();
+    const api = createMockStickersApi('default');
+    const created = await api.createStickerPack({ title: 'Mine', visibility: 'private' });
+    expect(created.title).toBe('Mine');
+    expect(created.ownerId).toBe('mock-user');
+    const uploaded = await api.uploadStickerFile(
+      created.id,
+      { uri: 'file:///cache/a.webp', mimeType: 'image/webp' },
+      '🐱',
+    );
+    expect(uploaded.emoji).toBe('🐱');
+    const renamed = await api.patchStickerPack(created.id, { title: 'Renamed' });
+    expect(renamed.title).toBe('Renamed');
+    await api.deletePackSticker(created.id, uploaded.id);
+    const afterDelete = await api.listStickerPacks();
+    expect(afterDelete.find((pack) => pack.id === created.id)?.stickers).toEqual([]);
+    const warning = await api.deleteStickerPack(created.id);
+    expect(warning.warning).toContain('no longer loads a sticker');
+    expect((await api.listStickerPacks()).some((pack) => pack.id === created.id)).toBe(false);
+  });
+
+  it('mints a fresh id after a delete so create-delete-create never collides', async () => {
+    resetStickersMock();
+    const api = createMockStickersApi('default');
+    const first = await api.createStickerPack({ title: 'One' });
+    await api.deleteStickerPack(first.id);
+    const second = await api.createStickerPack({ title: 'Two' });
+    expect(second.id).not.toBe(first.id);
+  });
+
+  it('refuses the 121st sticker with pack_full', async () => {
+    resetStickersMock();
+    const api = createMockStickersApi('default');
+    const created = await api.createStickerPack({ title: 'Full' });
+    for (let index = 0; index < 120; index += 1) {
+      await api.uploadStickerFile(created.id, {
+        uri: `file:///cache/${index}.webp`,
+        mimeType: 'image/webp',
+      });
+    }
+    await expect(
+      api.uploadStickerFile(created.id, {
+        uri: 'file:///cache/extra.webp',
+        mimeType: 'image/webp',
+      }),
+    ).rejects.toMatchObject({ code: 'pack_full' });
+  });
 });

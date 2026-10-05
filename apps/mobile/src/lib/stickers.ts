@@ -10,6 +10,12 @@
 export interface StickerPack {
   id: string;
   title: string;
+  /** Absent on older payloads; the panel still renders without it. */
+  ownerId?: string | undefined;
+  /** Absent on older payloads; treated as private when missing. */
+  visibility?: 'private' | 'server' | undefined;
+  /** Set by the Telegram importer (`telegram:<name>`); absent otherwise. */
+  importedFrom?: string | undefined;
   stickers: StickerItem[];
 }
 

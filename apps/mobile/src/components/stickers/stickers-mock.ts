@@ -43,6 +43,9 @@ function clonePack(pack: StickerPack): StickerPack {
   return { ...pack, stickers: pack.stickers.map((sticker) => ({ ...sticker })) };
 }
 
+// Monotonic mock ids: create-delete-create must never mint a duplicate.
+let mockPackCounter = 0;
+
 function cloneItem(item: StickerItem): StickerItem {
   return { ...item };
 }
@@ -171,6 +174,93 @@ export function createMockStickersApi(scenario: StickersMockScenario = 'default'
       if (index !== -1) {
         favorites.splice(index, 1);
       }
+    },
+    async createStickerPack(input) {
+      if (scenario === 'error') fail();
+      mockPackCounter += 1;
+      const created: StickerPack = {
+        id: `mock-pack-${mockPackCounter}`,
+        ownerId: 'mock-user',
+        title: input.title,
+        visibility: input.visibility ?? 'private',
+        stickers: [],
+      };
+      panel.push(created);
+      return clonePack(created);
+    },
+    async patchStickerPack(packId, input) {
+      if (scenario === 'error') fail();
+      const pack = panel.find((row) => row.id === packId);
+      if (pack === undefined) {
+        throw new StickersApiError(404, 'not_found', 'Pack not found');
+      }
+      if (input.title !== undefined) {
+        pack.title = input.title;
+      }
+      if (input.visibility !== undefined) {
+        pack.visibility = input.visibility;
+      }
+      if (input.order !== undefined) {
+        const byId = new Map(pack.stickers.map((sticker) => [sticker.id, sticker]));
+        pack.stickers = input.order
+          .map((id) => byId.get(id))
+          .filter((sticker) => sticker !== undefined);
+      }
+      return clonePack(pack);
+    },
+    async deleteStickerPack(packId) {
+      if (scenario === 'error') fail();
+      const index = panel.findIndex((row) => row.id === packId);
+      if (index === -1) {
+        throw new StickersApiError(404, 'not_found', 'Pack not found');
+      }
+      const removed = panel.splice(index, 1)[0];
+      if (removed !== undefined) {
+        const ids = new Set(removed.stickers.map((sticker) => sticker.id));
+        for (let favorite = favorites.length - 1; favorite >= 0; favorite -= 1) {
+          if (ids.has(favorites[favorite]?.id ?? '')) {
+            favorites.splice(favorite, 1);
+          }
+        }
+      }
+      return {
+        warning:
+          'The pack and its files are deleted. Messages already sent keep their sticker URL, which no longer loads a sticker.',
+      };
+    },
+    async deletePackSticker(packId, stickerId) {
+      if (scenario === 'error') fail();
+      const pack = panel.find((row) => row.id === packId);
+      if (pack === undefined) {
+        throw new StickersApiError(404, 'not_found', 'Pack not found');
+      }
+      const index = pack.stickers.findIndex((sticker) => sticker.id === stickerId);
+      if (index === -1) {
+        throw new StickersApiError(404, 'not_found', 'Sticker not found');
+      }
+      pack.stickers.splice(index, 1);
+    },
+    async uploadStickerFile(packId, file, emoji) {
+      if (scenario === 'error') fail();
+      const pack = panel.find((row) => row.id === packId);
+      if (pack === undefined) {
+        throw new StickersApiError(404, 'not_found', 'Pack not found');
+      }
+      if (pack.stickers.length >= 120) {
+        throw new StickersApiError(400, 'pack_full', 'This pack is full');
+      }
+      const id = `mock-sticker-${packId}-${pack.stickers.length + 1}`;
+      const item: StickerItem = {
+        id,
+        packId,
+        url: `/api/stickers/${id}/file`,
+        emoji: emoji === undefined || emoji === '' ? null : emoji.slice(0, 8),
+        width: 200,
+        height: 200,
+        mime: file.mimeType,
+      };
+      pack.stickers.push(item);
+      return cloneItem(item);
     },
   };
 }

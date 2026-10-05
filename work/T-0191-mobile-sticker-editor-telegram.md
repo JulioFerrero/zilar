@@ -1,7 +1,7 @@
 ---
 id: T-0191
 title: Mobile: sticker pack editor (create, rename, visibility, add and remove stickers, delete)
-status: planned
+status: merged
 milestone: M5
 branch: task/T-0191-mobile-sticker-editor-telegram
 model: meta/muse-spark-1.3-contributor
@@ -60,4 +60,67 @@ The Telegram import (T-0207), reordering stickers inside a pack, editing the emo
 
 ## Report (written by the worker when done)
 
+### What I did
+Built the mobile sticker pack editor per the spec and brief §1-9:
+- `lib/stickers.ts`: `StickerPack` gains optional `ownerId`, `visibility`, `importedFrom`.
+- `lib/stickers-api.ts`: `parseStickerPack` reads the new fields (wrong types ignored, pack still returned); `StickersApi` + real client gain `createStickerPack`, `patchStickerPack`, `deleteStickerPack` (returns `{ warning }`), `deletePackSticker`, `uploadStickerFile` (raw binary POST, `content-type` = image type, percent-encoded `x-emoji`, errors become `StickersApiError` with `status`/`code`). The binary upload is an injected seam defaulting to the `expo-file-system` binary upload, so tests never touch native modules.
+- `components/stickers/sticker-native.ts` (new): picker (multi-select, images only, no editing), preparer (fit inside 512x512, WebP quality steps `[0.92, 0.8, 0.7, 0.6, 0.5]` then one PNG try; a WebP throw goes straight to PNG), size reader — all injectable like `avatar-native.ts`.
+- `components/stickers/pack-editor.ts` (new): pure helpers — count, fit-take, row/form error sentences (brief §6 verbatim), `512 x 380 px, 94 KB` size line, lookup-kind split, and the `runSavePack` loop (create-first-once, then patch, deletions, sequential uploads; partial failure keeps per-row Retry and the created id via `onCreated`).
+- `app/settings/sticker-pack.tsx` (new): editor screen, create mode without `id`, edit mode with `?id=`, all brief copy/states/modals (name, visibility radios with imported lock, grid + add tile, new-sticker rows with emoji wells, progress line, Save/Cancel, delete section, discard modal).
+- `app/settings/stickers.tsx`: `New pack` pill in the My packs heading row; `Edit` pill + `Private`/`Shared`/`Imported` subtitle on packs whose `ownerId` equals `me.id`. Nothing else changed.
+- `stickers-mock.ts`: mock gains the five editor methods backed by in-memory state (uploads kept, 120-cap enforced with `pack_full`).
+
+### Files changed
+`apps/mobile/src/lib/stickers.ts`, `apps/mobile/src/lib/stickers-api.ts`, `apps/mobile/src/lib/stickers-api.test.ts`, `apps/mobile/src/components/stickers/stickers-mock.ts`, `apps/mobile/src/components/stickers/stickers-mock.test.ts`, `apps/mobile/src/components/stickers/sticker-native.ts` (new), `apps/mobile/src/components/stickers/sticker-native.test.ts` (new), `apps/mobile/src/components/stickers/pack-editor.ts` (new), `apps/mobile/src/components/stickers/pack-editor.test.ts` (new), `apps/mobile/src/components/stickers/sticker-pack-screen.test.tsx` (new), `apps/mobile/src/components/stickers/stickers-screen.test.tsx`, `apps/mobile/src/app/settings/sticker-pack.tsx` (new), `apps/mobile/src/app/settings/stickers.tsx`, this task file.
+
+### Commands and real results
+- `pnpm install`: ok (10.3s). It touched `pnpm-lock.yaml` (added `bufferutil` peer); I reverted that file since it is outside Allowed files.
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot stickers sticker-pack sticker-native pack-editor`: 11 files, 101 tests, all passed.
+- `pnpm gate` from repo root: `PASS install (frozen)`, `PASS format`, `PASS lint`, `PASS typecheck`, `PASS tests @zilar/mobile`, `scope: every changed file is inside the Allowed files`, `GATE PASS`.
+- Single tests I ran while working: `stickers-api.test.ts` + `pack-editor.test.ts` + `sticker-native.test.ts` (36 passed), then `pack-editor.test.ts` alone after adding the save loop (11 passed), then the sticker-pack screen test file (7 passed).
+
+### Problems / deviations
+- `accessibilityRole="status"` is not a valid RN role, so the upload-progress line uses `accessibilityLiveRegion="polite"` on a wrapping View instead (same as `handle-field.tsx`).
+- The editor loads via `useFocusEffect` (not `useEffect`) to satisfy the `set-state-in-effect` lint rule and to match `stickers.tsx`; the brief's focus-reload note still holds.
+- Preparer accepts the first WebP save when the size reader returns `undefined` (unknown size is not an empty file), mirroring the avatar flow.
+- The save `onRow` callback reuses its `error` param to carry the uploaded sticker id on the `uploaded` path (typed, no `any`).
+- Screen tests drive `sticker-pack.tsx` through a `useState`-forcing mock (the `stickers-screen.test.tsx` pattern); save orchestration itself is tested directly against `runSavePack` plus the mock.
+
+### Security checklist
+- Bearer token only in request headers, never logged; error lines show only the brief's fixed sentences, never server text.
+- No deletes/updates outside the pack id scope; no new routes, no caps implemented client-side beyond the 120-fit take (server enforces `pack_limit`/`pack_full` atomically).
+- No secrets read or committed; no checks disabled.
+
+### Blocked / needs a decision
+None.
+
+### Round 2 (fix round, PREREVIEW.md: must-fix=1, should-fix=0, nit=4)
+- Finding 2 (must-fix, stuck retry after partial save): fixed. The deletion loop in `runSavePack` now treats a 404/`not_found` delete as success (the sticker is already gone), so a retry after a partial save converges; other delete errors still fail the save and are retried. Decision recorded: treat-404-on-delete-as-success (the PREREVIEW's first option).
+- Findings 1, 3, 4, 5 are nits on lines outside this fix: left untouched per instructions.
+- Tests added: `pack-editor.test.ts` — "treats a 404 delete as success so a retry after a partial save converges" (delete throws 404 `not_found`, outcome ok, `onRemovedFlushed` runs).
+- Single tests: `src/components/stickers/pack-editor.test.ts`: 12 passed.
+- `pnpm gate` from repo root: PASS install (frozen), PASS format, PASS lint, PASS typecheck, PASS tests @zilar/mobile, scope clean, GATE PASS.
+
+### Round 3 (fix round, PREREVIEW.md: must-fix=1, should-fix=2, nit=2)
+- Finding 1 (must-fix, removing an uploaded new row orphans it on the server): fixed. `removeFresh` in `sticker-pack.tsx` now queues any removed row that already has a `stickerId` into `removedIds` (both modes, matching web `PackEditor.removeItem`), and `runSavePack` in `pack-editor.ts` runs the deletion loop in create-mode retries too (previously edit-only), so the next Save deletes it. The fire-and-forget `deletePackSticker(...).catch(() => undefined)` is gone.
+- Finding 2 (should-fix, create-mode button never reads `Save` after a partial save): fixed. `runSavePack` returns `created` on the partial outcome as well; the screen stores it in `createdPackIdRef`/`createdTitleRef`/`createdVisibilityRef` plus a `createdPackId` state, and the label/`changed`/`saveDisabled` now derive from `isCreate = packId === undefined && createdPackId === undefined`, so the button reads `Save` after the first partial save (brief §5). State (not a ref read during render) so the `react(refs)` lint rule holds.
+- Finding 3 (should-fix, no test for the delete-with-warning-modal flow): fixed. Screen tests now cover the verbatim §8 modal body (`The pack and its files are deleted. ... no longer loads a sticker.`) and the failure sentence (`Could not delete the pack. Try again.`); the flow itself runs through a new `runDeletePack` helper in `pack-editor.ts` (success -> close + back, failure -> fixed sentence, modal stays open), covered by two `runDeletePack` unit tests.
+- Finding 4 (nit, fail-open editor load gate): fixed within the touched `load` block — a pack with an `ownerId` now shows `forbidden` even while `me` is still `null` (one-line condition change, same line already edited).
+- Finding 5 (nit, mock pack id reuse): fixed. `createStickerPack` in `stickers-mock.ts` mints from a monotonic `mockPackCounter` instead of `panel.length + 1`, plus a `create-delete-create never collides` test.
+- Tests added: `pack-editor.test.ts` — "returns the created pack on a partial failure so the retry keeps one pack", "deletes a removed upload on the create-mode retry instead of orphaning it", `runDeletePack` success/failure; `sticker-pack-screen.test.tsx` — verbatim delete warning modal, delete-failure sentence; `stickers-mock.test.ts` — fresh id after delete.
+- Single tests: `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot stickers sticker-pack sticker-native pack-editor`: 11 files, 109 passed.
+- `pnpm gate` from repo root: PASS install (frozen), PASS format, PASS lint, PASS typecheck, PASS tests @zilar/mobile, scope clean, GATE PASS.
+- Disagreements: none.
+
+### Lead round (fix round, PREREVIEW.md: should-fix=2, nit=0)
+- Finding 1 (should-fix, picker errors are silent): fixed. The Add handler in `sticker-pack.tsx` now routes a `{ status: 'error', message }` picker result into `setFormError(result.message)` (the `DENIED_MESSAGE` / `PICK_FAILED_MESSAGE` from `sticker-native.ts`), which renders in the existing `formError` line. `cancelled` still shows nothing.
+- Finding 2 (should-fix, visibility radios use literal colours): fixed. Both radio `Pressable`s now use theme classes (`border-border-strong bg-surface-raised` when selected, `border-border bg-surface` otherwise); `style` keeps only `opacity`. `grep -n "#[0-9a-fA-F]\{6\}" apps/mobile/src/app/settings/sticker-pack.tsx` prints nothing.
+- Tests added: `sticker-pack-screen.test.tsx` — "shows the picker denied sentence after Add fails" (error picker result -> exact `Zilar needs access...` sentence shown) and "shows no form sentence when the picker is cancelled". Test note: the picker seam is captured through the Add tile's `onPress` (the `Pressable` mock), and the `vi.mock` factory cannot close over module-scope state, so the forced result is synced via `globalThis.__forcedPickerResult`.
+- The Add handler also snapshots `activePicker`/`activePreparer`/`slotsLeft` into locals so the pressed callback cannot read a stale closure.
+- Single tests: `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot stickers sticker-pack sticker-native pack-editor`: 11 files, 111 passed.
+- `pnpm gate` from repo root: PASS install (frozen), PASS format, PASS lint, PASS typecheck, PASS tests @zilar/mobile, scope clean, GATE PASS.
+- Disagreements: none.
+
 ## Review (written by Claude)
+
+**Verdict:** Approved after two automatic rounds and one lead round. The phone gets the sticker pack editor (`/settings/sticker-pack`): name, Private or Shared on this server, add stickers (prepared to WebP or PNG within 512 px and 512 KiB), remove, save, delete, opened from `New pack` and from a pack's Edit on the Stickers screen. The lead round fixed what the automatic rounds missed: a denied or failed photo picker now shows its sentence instead of doing nothing, and the visibility radios use theme classes instead of literal hex (no hex left in the file). Emulator (AVD galena, signed in as the test user, live server): `pnpm phone:smoke` PASS on both routes, but its screenshots only showed the boot spinner because the emulator's DNS had failed; after a restart with working DNS the lead opened Stickers, then New pack, and checked the screen against the brief (header, name field, the two radios with icons, sticker grid with the dashed Add tile and `0 / 120`, the format hint, Create pack disabled until valid, Cancel) and that tapping Shared moves the selection and the raised background. Picking real images was not tested (no images on the emulator). Accepted nits: two mock and hygiene points from the last pre-review.

@@ -37,6 +37,8 @@ vi.mock('react-native', () => ({
 vi.mock('lucide-react-native', () => ({
   ChevronDown: 'ChevronDown',
   ChevronUp: 'ChevronUp',
+  Pencil: 'Pencil',
+  Plus: 'Plus',
   RefreshCw: 'RefreshCw',
   Search: 'Search',
   Star: 'Star',
@@ -61,6 +63,10 @@ vi.mock('@/components/stickers/use-stickers-api', () => ({
 
 vi.mock('@/components/stickers/require-stickers-auth', () => ({
   RequireStickersAuth: ({ children }: { children: React.ReactNode }) => children,
+}));
+
+vi.mock('@/auth/session', () => ({
+  useAuthStore: () => ({ id: 'me-1' }),
 }));
 
 vi.mock('@/lib/auth', () => ({
@@ -218,12 +224,36 @@ describe('StickersScreen', () => {
   it('lists the panel packs with Remove and move buttons', async () => {
     const html = await renderScreen({ packs: [CATS, MOODS], status: 'ready' });
     expect(html).toContain('My packs');
+    expect(html).toContain('New pack');
+    expect(html).toContain('Create a new sticker pack');
     expect(html).toContain('Cats');
     expect(html).toContain('2 stickers');
     expect(html).toContain('1 sticker');
     expect(html).toContain('Remove Cats');
     expect(html).toContain('Move Cats up');
     expect(html).toContain('Move Moods down');
+  });
+
+  it('shows Edit with the ownership subtitle only on your own packs', async () => {
+    const mine: StickerPack = {
+      ...pack('p-mine', 'Mine'),
+      ownerId: 'me-1',
+      visibility: 'server',
+    };
+    const imported: StickerPack = {
+      ...pack('p-imported', 'Old'),
+      ownerId: 'me-1',
+      visibility: 'private',
+      importedFrom: 'telegram:cats',
+    };
+    const theirs: StickerPack = { ...pack('p-theirs', 'Theirs'), ownerId: 'user-2' };
+    const unknown: StickerPack = pack('p-unknown', 'Unknown');
+    const html = await renderScreen({ packs: [mine, imported, theirs, unknown], status: 'ready' });
+    expect(html).toContain('Edit Mine');
+    expect(html).toContain('2 stickers · Shared');
+    expect(html).toContain('2 stickers · Imported');
+    expect(html).not.toContain('Edit Theirs');
+    expect(html).not.toContain('Edit Unknown');
   });
 
   it('renders the My packs Remove on the second line, after the move buttons', async () => {

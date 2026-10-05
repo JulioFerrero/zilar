@@ -13,6 +13,7 @@ import { collectSnapshot } from './collect-snapshot.js';
 import { checkSpec, formatProblems } from './spec-check.js';
 import { startPrereviewSession } from './start-prereview.js';
 import { switchModel } from './switch-model.js';
+import { runWatch, runWatchData } from './watch.js';
 import { collectStatus, formatStatus } from './status.js';
 import { currentHead } from './git.js';
 import { loadState, stateFilePath, updateState } from './state.js';
@@ -28,12 +29,13 @@ Usage: lead <command> [options]
   autopilot [--once] [--dry-run]                            watch sessions, answer permissions, nudge, pre-review
   doctor [--since <sha>]                                    audit main now with a Muse doctor session
   prereview <T-XXXX>                                        start a Muse pre-review manually
-  reply <T-XXXX> <prompt-file>                              interrupt the worker and re-prompt it
+  reply <T-XXXX> <prompt-file> [--fresh]                   interrupt the worker and re-prompt it
   merge <T-XXXX> --summary "<one line>" [--skip-gate]       rebase, run the gate, squash onto main, board, push, clean up
   spec-check <T-XXXX>                                       check a spec's paths, routes and web claims against the code
   snapshot                                                  JSON of every task in flight, its step and timings
   dashboard <out.html>                                      the snapshot rendered as the dashboard page
   status                                                    compact table of every tracked task
+  watch                                                     live terminal view of every running task
 
 State lives outside the repo at ~/.zilar-lead/state.json (or ZILAR_LEAD_STATE).
 Escalations print as one LEAD: line each on stdout; everything else goes to lead.log.
@@ -159,16 +161,26 @@ async function runPrereview(positional: string[]): Promise<void> {
   console.log(`${task} pre-review ${sessionId} for ${head}`);
 }
 
-async function runReply(positional: string[]): Promise<void> {
+async function runReply(positional: string[], args: string[]): Promise<void> {
   const task = positional[0];
   const promptFile = positional[1];
   if (task === undefined || promptFile === undefined) {
-    throw new Error('usage: lead reply <T-XXXX> <prompt-file>');
+    throw new Error('usage: lead reply <T-XXXX> <prompt-file> [--fresh]');
   }
-  await replyToWorker(task, promptFile, {
-    client: new OpencodeCliClient(),
-    statePath: stateFilePath(),
-  });
+  const fresh = flag(args, '--fresh');
+  await replyToWorker(
+    task,
+    promptFile,
+    {
+      client: new OpencodeCliClient(),
+      statePath: stateFilePath(),
+      promptsDirPath: promptsDir(),
+      // The non-fresh path never uses the repo root, and finding it throws
+      // outside a checkout — so only look it up when --fresh needs it.
+      repoRoot: fresh ? findRepoRoot() : '',
+    },
+    { fresh },
+  );
   console.log(`${task} replied`);
 }
 
@@ -325,7 +337,7 @@ export async function main(argv: string[]): Promise<void> {
   } else if (command === 'prereview') {
     await runPrereview(positional);
   } else if (command === 'reply') {
-    await runReply(positional);
+    await runReply(positional, rest);
   } else if (command === 'snapshot') {
     await runSnapshot(positional, false);
   } else if (command === 'dashboard') {
@@ -336,6 +348,12 @@ export async function main(argv: string[]): Promise<void> {
     await runMerge(positional, rest);
   } else if (command === 'status') {
     await runStatus();
+  } else if (command === 'watch') {
+    if (rest.includes('--data')) {
+      await runWatchData();
+    } else {
+      await runWatch();
+    }
   } else {
     throw new Error(`unknown command ${JSON.stringify(command)} (try: lead --help)`);
   }

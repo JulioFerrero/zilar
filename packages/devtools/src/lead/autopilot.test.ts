@@ -323,6 +323,74 @@ describe('tickOnce', () => {
     expect(loadState(deps.statePath).tasks['T-0099']?.sessionId).toBe('ses_relaunched');
   });
 
+  it('sends a nudge to the old session', async () => {
+    const { deps, client } = setup();
+    const session = client.sessions.get('ses_worker');
+    if (session === undefined) {
+      throw new Error('missing fake session');
+    }
+    session.messages = [{ id: 'm', type: 'idle', outcome: 'done', time: { created: 1 } }];
+
+    await tickOnce(deps, { dryRun: false, now: 1000 });
+
+    expect(client.created).toEqual([]);
+    expect(client.prompted).toHaveLength(1);
+    expect(client.prompted[0]?.sessionId).toBe('ses_worker');
+    expect(loadState(deps.statePath).tasks['T-0099']?.sessionId).toBe('ses_worker');
+    expect(loadState(deps.statePath).tasks['T-0099']?.nudgesSent).toBe(1);
+  });
+
+  it('runs an autofix round in a fresh session and keeps the round count', async () => {
+    const { deps, client, worktree, dir } = setup('review', headGit);
+    fs.mkdirSync(path.join(dir, 'work'), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, 'work', 'T-0099-demo.md'),
+      TASK_MD.replace('status: in-progress', 'status: review'),
+    );
+    fs.writeFileSync(
+      path.join(worktree, 'PREREVIEW.md'),
+      '# Pre-review\n\nVerdict: changes requested\n\nCounts: must-fix=1, should-fix=1, nit=0\n',
+    );
+    const worker = client.sessions.get('ses_worker');
+    if (worker === undefined) {
+      throw new Error('missing fake session');
+    }
+    worker.messages = [{ id: 'm', type: 'idle', outcome: 'done', time: { created: 1 } }];
+    client.addSession('ses_pre', {
+      messages: [{ id: 'm', type: 'idle', outcome: 'done', time: { created: 1 } }],
+      permissions: [],
+    });
+    const state = loadState(deps.statePath);
+    const record = state.tasks['T-0099'];
+    if (record === undefined) {
+      throw new Error('missing record');
+    }
+    record.prereview = { sessionId: 'ses_pre', head: HEAD, startedAt: 'x' };
+    record.nudgesSent = 2;
+    saveState(deps.statePath, state);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await tickOnce(deps, { dryRun: false, now: 1000 });
+
+    expect(client.created).toHaveLength(1);
+    expect(client.created[0]?.options.directory).toBe(worktree);
+    expect(client.created[0]?.options.title).toBe('T-0099 autofix round 1');
+    expect(client.created[0]?.options.model).toMatchObject({
+      providerID: 'opencode-go',
+      id: 'muse-spark-1.3-contributor',
+    });
+    const freshId = client.created[0]?.sessionId as string;
+    expect(client.prompted.some((entry) => entry.sessionId === 'ses_worker')).toBe(false);
+    const sent = client.prompted.find((entry) => entry.sessionId === freshId)?.text ?? '';
+    expect(sent).toMatch(/fresh session/i);
+    expect(sent).toContain('PREREVIEW.md');
+    const after = loadState(deps.statePath).tasks['T-0099'];
+    expect(after?.sessionId).toBe(freshId);
+    expect(after?.autoFixRounds).toBe(1);
+    expect(after?.nudgesSent).toBe(0);
+    expect(log.mock.calls.some((call) => String(call[0]).startsWith('LEAD: AUTOFIX'))).toBe(true);
+  });
+
   it('starts the doctor once on a new quiet head and records it', async () => {
     const { deps, client, dir } = setup();
     const session = client.sessions.get('ses_worker');

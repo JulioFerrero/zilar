@@ -4,6 +4,8 @@ Context: you are in a git worktree at {{WORKTREE}}, already on branch {{BRANCH}}
 
 Before you finish, run `pnpm gate` from the repo root. It must end with GATE PASS and list no files outside your Allowed files; put its summary lines in the Report. Read the pitfalls section of AGENTS.md first.
 
+Keep your session small: every command output stays in your context. While you work, run single test files with `pnpm --filter <package> test --maxWorkers=2 --reporter=dot <path>`. Do not run format, lint, typecheck or whole test suites one by one: `pnpm gate` runs all of them once at the end. Read only the files and line ranges you need, and never print a whole log; when a command fails, look at the failing part only.
+
 When finished: fill in the Report section with real command results, set status: review in the task front matter, and commit to this branch with a message starting with "{{TASK}}:". Do not push, merge or switch branches (those commands are blocked).
 
 Some commands (curl, npx, docker, rm -rf) need approval from the lead; if one is rejected, read the rejection message and adapt.

@@ -208,11 +208,8 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0177](T-0177-whistle-on-device-spike.md) | Whistle on-device spike: local Expo module (arm64 Android), hidden dev screen, native sha256, tested on emulator and phone | 2026-10-03 |
 | [T-0178](T-0178-whistle-quiet-cut-chunks.md) | Whistle: quiet-point chunking from a native amplitude envelope | 2026-10-03 |
 | [T-0180](T-0180-signin-no-code-hint.md) | Sign-in hints for people without an invite (web + mobile) | 2026-10-03 |
-| [T-0191](T-0191-mobile-sticker-editor-telegram.md) | Mobile: sticker pack editor (Telegram import split out as T-0207) | in-progress | meta/muse-spark-1.3-contributor | T-0187 | Spec ready; mobile parity wave 2 |
-| [T-0202](T-0202-lead-fresh-session-fix-rounds.md) | Lead tooling: fix rounds run in a fresh worker session (token saving A) | planned | meta/muse-spark-1.3-contributor | T-0200 | Julio asked 2026-10-05 |
-| [T-0203](T-0203-worker-prompt-quiet-checks.md) | Lead tooling: worker prompt runs checks once and quiet single tests (token saving B) | planned | minimax-coding-plan/MiniMax-M3 | T-0202 | Julio asked 2026-10-05 |
-| [T-0204](T-0204-prereview-no-duplicate-checks.md) | Lead tooling: pre-review stops re-running the gate's checks (token saving C) | planned | minimax-coding-plan/MiniMax-M3 | T-0203 | Julio asked 2026-10-05 |
-| [T-0207](T-0207-mobile-telegram-sticker-import.md) | Mobile: import a Telegram sticker pack from the Stickers screen | planned | minimax-coding-plan/MiniMax-M3 | T-0191 | Brief ready; harder MiniMax trial (Julio, 2026-10-05) |
+| [T-0207](T-0207-mobile-telegram-sticker-import.md) | Mobile: import a Telegram sticker pack from the Stickers screen | planned | opencode/muse-spark-1.3-contributor-free | T-0191 | Brief ready; free Muse (Julio, 2026-10-05) |
+| [T-0211](T-0211-lead-watch-ink-redesign.md) | Lead tooling: `lead watch` redesigned as an Ink terminal app (cards, step tracker, model badges) | planned | opencode/muse-spark-1.3-contributor-free | T-0210 | Julio asked 2026-10-05 ("super ugly") |
 | [T-0179](T-0179-mobile-transcribe-voice-notes.md) | Transcribe voice notes on the phone with Whistle: button in the bubble, consent for the 17 MB model, transcripts stored locally | 2026-10-03 |
 | [T-0182](T-0182-mobile-contacts-requests.md) | Mobile contacts: find by @handle, profile card, contact requests | 2026-10-03 |
 | [T-0183](T-0183-mobile-explore-group-handles.md) | Mobile Explore, @group links and group visibility | 2026-10-03 |
@@ -234,3 +231,10 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0194](T-0194-mobile-pitfall-guards.md) | Mobile guard tests for the Android Coroutine+Promise and Hermes crypto.subtle pitfalls | 2026-10-05 |
 | [T-0206](T-0206-scout-repomap-trial.md) | RepoMapper trial: measured on our repo, recommendation drop it (docs only) | 2026-10-05 |
 | [T-0195](T-0195-mobile-parity-audit.md) | Audit of web vs mobile for AI tools, routines, activity, mentions and group dialogs (docs only) | 2026-10-05 |
+| [T-0208](T-0208-reviews-on-free-muse.md) | Pre-reviews and the doctor run on the free Muse listing | 2026-10-05 |
+| [T-0202](T-0202-lead-fresh-session-fix-rounds.md) | Fix rounds run in a fresh worker session; lead reply --fresh | 2026-10-05 |
+| [T-0203](T-0203-worker-prompt-quiet-checks.md) | Worker prompt: checks once with pnpm gate, quiet single tests | 2026-10-05 |
+| [T-0204](T-0204-prereview-no-duplicate-checks.md) | Pre-review stops re-running the gate's checks and focuses on the diff | 2026-10-05 |
+| [T-0209](T-0209-lead-watch-terminal.md) | lead watch: live terminal view of every running task | 2026-10-05 |
+| [T-0191](T-0191-mobile-sticker-editor-telegram.md) | Mobile sticker pack editor: create, rename, visibility, add and remove stickers, delete | 2026-10-05 |
+| [T-0210](T-0210-lead-watch-speed.md) | lead watch: speed line (tok/s, s/step, context, sparkline) | 2026-10-05 |

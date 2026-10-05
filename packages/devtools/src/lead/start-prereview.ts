@@ -6,7 +6,7 @@ import { loadPrompt, loadRulesFile, renderPrompt } from './prompts.js';
 import { parseTaskFrontMatter } from './task-file.js';
 
 // The pre-review is always Muse: the strongest reader, per §5.1.
-export const PREREVIEW_MODEL = { providerID: 'meta', id: 'muse-spark-1.3-contributor' };
+export const PREREVIEW_MODEL = { providerID: 'opencode', id: 'muse-spark-1.3-contributor-free' };
 
 export interface PrereviewDeps {
   client: OpenCodeClient;

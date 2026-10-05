@@ -250,8 +250,8 @@ describe('startDoctorSession', () => {
     expect(created?.options.title).toBe(`doctor ${HEAD.slice(0, 7)}`);
     expect(created?.options.agent).toBe('build');
     expect(created?.options.model).toEqual({
-      providerID: 'meta',
-      id: 'muse-spark-1.3-contributor',
+      providerID: 'opencode',
+      id: 'muse-spark-1.3-contributor-free',
     });
     expect(client.prompted).toHaveLength(1);
     expect(client.prompted[0]?.sessionId).toBe(sessionId);

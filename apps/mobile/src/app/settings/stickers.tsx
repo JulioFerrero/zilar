@@ -1,5 +1,14 @@
 import { useFocusEffect, useRouter } from 'expo-router';
-import { ChevronDown, ChevronUp, RefreshCw, Search, Star, Sticker } from 'lucide-react-native';
+import {
+  ChevronDown,
+  ChevronUp,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Search,
+  Star,
+  Sticker,
+} from 'lucide-react-native';
 import { useColorScheme } from 'nativewind';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -14,9 +23,11 @@ import {
 
 import { RequireStickersAuth } from '@/components/stickers/require-stickers-auth';
 import { Text } from '@/components/ui/text';
+import { useAuthStore } from '@/auth/session';
 import { API_URL } from '@/lib/auth';
 import { asColorScheme } from '@/lib/color-scheme';
 import { ACCENT, FOREGROUND, ICON, MUTED_FOREGROUND } from '@/lib/colors';
+import { ACCENT_FOREGROUND } from '@/lib/depth';
 import { segment, well } from '@/lib/depth';
 import { getSessionToken } from '@/lib/session-token';
 import {
@@ -92,6 +103,7 @@ function StickersBody() {
   const [confirming, setConfirming] = useState<StickerPack | null>(null);
   const [confirmError, setConfirmError] = useState('');
   const [token, setToken] = useState<string | undefined>(undefined);
+  const me = useAuthStore((state) => state.me);
   const discoverLoaded = useRef(false);
 
   useEffect(() => {
@@ -319,7 +331,19 @@ function StickersBody() {
 
         {status === 'ready' && tab === 'packs' ? (
           <View className="gap-2">
-            <Text className="text-[16px] font-semibold text-foreground">My packs</Text>
+            <View className="flex-row items-center justify-between">
+              <Text className="text-[16px] font-semibold text-foreground">My packs</Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Create a new sticker pack"
+                disabled={busy}
+                onPress={() => router.push('/settings/sticker-pack')}
+                className="flex-row items-center gap-1.5 rounded-full bg-accent px-3 py-1.5 active:opacity-90 disabled:opacity-60"
+              >
+                <Plus size={16} color={ACCENT_FOREGROUND} />
+                <Text className="text-[14px] font-medium text-accent-foreground">New pack</Text>
+              </Pressable>
+            </View>
             {actionError !== '' ? (
               <Text accessibilityRole="alert" className="text-[14px] text-danger">
                 {actionError}
@@ -345,7 +369,7 @@ function StickersBody() {
             ) : (
               <View className="gap-2">
                 {packs.map((pack, index) => (
-                  <PackCard key={pack.id} pack={pack} token={token}>
+                  <PackCard key={pack.id} pack={pack} token={token} meId={me?.id}>
                     <View className="mt-2 flex-row items-center justify-between border-t border-divider pt-2">
                       <View className="flex-row gap-1">
                         <Pressable
@@ -369,15 +393,34 @@ function StickersBody() {
                           <ChevronDown size={20} color={ICON[scheme]} />
                         </Pressable>
                       </View>
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel={`Remove ${pack.title}`}
-                        disabled={busy}
-                        onPress={() => askRemove(pack)}
-                        className="rounded-full border border-border-strong px-3 py-1 active:bg-surface-raised disabled:opacity-60"
-                      >
-                        <Text className="text-[14px] text-foreground">Remove</Text>
-                      </Pressable>
+                      <View className="flex-row items-center gap-2">
+                        {me !== null && pack.ownerId !== undefined && pack.ownerId === me.id ? (
+                          <Pressable
+                            accessibilityRole="button"
+                            accessibilityLabel={`Edit ${pack.title}`}
+                            disabled={busy}
+                            onPress={() =>
+                              router.push({
+                                pathname: '/settings/sticker-pack',
+                                params: { id: pack.id },
+                              })
+                            }
+                            className="flex-row items-center gap-1 rounded-full border border-border-strong px-3 py-1 active:bg-surface-raised disabled:opacity-60"
+                          >
+                            <Pencil size={14} color={ICON[scheme]} />
+                            <Text className="text-[14px] text-foreground">Edit</Text>
+                          </Pressable>
+                        ) : null}
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel={`Remove ${pack.title}`}
+                          disabled={busy}
+                          onPress={() => askRemove(pack)}
+                          className="rounded-full border border-border-strong px-3 py-1 active:bg-surface-raised disabled:opacity-60"
+                        >
+                          <Text className="text-[14px] text-foreground">Remove</Text>
+                        </Pressable>
+                      </View>
                     </View>
                   </PackCard>
                 ))}
@@ -588,15 +631,27 @@ function PackCard({
   token,
   action,
   children,
+  meId,
 }: {
   pack: StickerPack;
   token: string | undefined;
   /** Discover rows pass Add/Remove here; My packs rows render none (brief §3). */
   action?: React.ReactNode;
   children?: React.ReactNode;
+  /** The signed-in user id: own packs get the subtitle and the Edit pill. */
+  meId?: string | undefined;
 }) {
   const scheme = asColorScheme(useColorScheme().colorScheme);
   const thumbs = pack.stickers.slice(0, 3);
+  const own = meId !== undefined && pack.ownerId !== undefined && pack.ownerId === meId;
+  const subtitle =
+    own && pack.importedFrom !== undefined
+      ? `${packCountLabel(pack.stickers.length)} · Imported`
+      : own && pack.visibility === 'server'
+        ? `${packCountLabel(pack.stickers.length)} · Shared`
+        : own
+          ? `${packCountLabel(pack.stickers.length)} · Private`
+          : packCountLabel(pack.stickers.length);
   return (
     <View className="gap-1 rounded-xl border border-border bg-surface px-3 py-2.5">
       <View className="flex-row items-center gap-3">
@@ -629,9 +684,7 @@ function PackCard({
           <Text numberOfLines={1} className="text-[15px] font-medium text-foreground">
             {pack.title}
           </Text>
-          <Text className="text-[13px] text-muted-foreground">
-            {packCountLabel(pack.stickers.length)}
-          </Text>
+          <Text className="text-[13px] text-muted-foreground">{subtitle}</Text>
         </View>
         {action === undefined ? null : <View className="shrink-0">{action}</View>}
       </View>
