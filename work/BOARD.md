@@ -211,7 +211,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0219](T-0219-mobile-tool-writes.md) | Mobile: Run now, Revert and Delete in the tool detail sheet | planned | opencode/muse-spark-1.3-contributor-free | T-0218 | T-0195 audit 7.1 T-0189b write half |
 | [T-0227](T-0227-mobile-mention-picker.md) | Mobile: @mention picker in the group composer, mentions sent with the message | planned | opencode/muse-spark-1.3-contributor-free | — | T-0195 audit 7.2a |
 | [T-0228](T-0228-mobile-create-visibility.md) | Mobile: New group / New channel can be Public with an @handle | planned | opencode/muse-spark-1.3-contributor-free | T-0214 | T-0195 audit 7.2c |
-| [T-0226](T-0226-smoke-mock-build.md) | Phone tooling: phone:smoke can build a mock-mode app for the emulator | planned | opencode/muse-spark-1.3-contributor-free | — | to see T-0189/T-0213/T-0218 on a device |
 | [T-0179](T-0179-mobile-transcribe-voice-notes.md) | Transcribe voice notes on the phone with Whistle: button in the bubble, consent for the 17 MB model, transcripts stored locally | 2026-10-03 |
 | [T-0182](T-0182-mobile-contacts-requests.md) | Mobile contacts: find by @handle, profile card, contact requests | 2026-10-03 |
 | [T-0183](T-0183-mobile-explore-group-handles.md) | Mobile Explore, @group links and group visibility | 2026-10-03 |
@@ -257,3 +256,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0223](T-0223-docs-sync-1005.md) | Docs: FEATURES, mobile parity roadmap and README catch up with T-0181..T-0222 | 2026-10-05 |
 | [T-0225](T-0225-doctor-claude-md.md) | Lead tooling: the doctor accepts lead commits that touch CLAUDE.md | 2026-10-05 |
 | [T-0224](T-0224-doctor-fallback.md) | Lead tooling: the doctor also switches in place to the paid Muse on a free-Muse rate limit | 2026-10-05 |
+| [T-0226](T-0226-smoke-mock-build.md) | Phone tooling: pnpm phone:smoke can build a mock-mode app for the emulator | 2026-10-05 |

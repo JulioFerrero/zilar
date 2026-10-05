@@ -17,6 +17,17 @@ SERIAL="${ZILAR_PHONE:-10AFAT234E00746}"
 BUILD="${ZILAR_BUILD_DIR:-$HOME/personal-projects/zilar-phone-build}"
 REF="${ZILAR_REF:-main}"
 API_URL="${EXPO_PUBLIC_ZILAR_API_URL:-https://chat.zilar.app}"
+MOCK_FLAG=""
+if [ "${ZILAR_MOCK:-}" = "1" ]; then
+  case "$SERIAL" in
+    emulator-*) ;;
+    *)
+      echo "mock builds are for the emulator only" >&2
+      exit 1
+      ;;
+  esac
+  MOCK_FLAG="1"
+fi
 
 export JAVA_HOME="${JAVA_HOME:-$(/usr/libexec/java_home -v 17)}"
 export ANDROID_HOME="${ANDROID_HOME:-/opt/homebrew/share/android-commandlinetools}"
@@ -37,17 +48,24 @@ mkdir -p "$STATE_DIR"
 FINGERPRINT="$(git ls-files -s apps/mobile/package.json apps/mobile/app.json apps/mobile/modules apps/mobile/plugins pnpm-lock.yaml 2>/dev/null | shasum | cut -d' ' -f1)"
 LAST_FINGERPRINT="$(cat "$STATE_DIR/native-fingerprint" 2>/dev/null || true)"
 LAST_COMMIT="$(cat "$STATE_DIR/commit" 2>/dev/null || true)"
+LAST_MOCK="$(cat "$STATE_DIR/mock" 2>/dev/null || true)"
 
 cd apps/mobile
 if [ ! -d android ] || [ "$FINGERPRINT" != "$LAST_FINGERPRINT" ]; then
   echo "native inputs changed: prebuild + full release build (about 6 minutes)"
   pnpm exec expo prebuild --platform android --clean --no-install >/dev/null
   cd android
-  EXPO_PUBLIC_ZILAR_API_URL="$API_URL" NODE_ENV=production ./gradlew assembleRelease --console=plain -q
+  EXPO_PUBLIC_ZILAR_API_URL="$API_URL" EXPO_PUBLIC_ZILAR_MOCK="$MOCK_FLAG" NODE_ENV=production ./gradlew assembleRelease --console=plain -q
 else
-  echo "JavaScript-only change: rebundle (about 35 s)"
+  # A mock-flag change is treated like a JS-only change: the bundle is always
+  # rebuilt with --rerun, so the next normal build never ships a mock bundle.
+  if [ "$MOCK_FLAG" != "$LAST_MOCK" ]; then
+    echo "mock flag changed: rebundle (about 35 s)"
+  else
+    echo "JavaScript-only change: rebundle (about 35 s)"
+  fi
   cd android
-  EXPO_PUBLIC_ZILAR_API_URL="$API_URL" NODE_ENV=production \
+  EXPO_PUBLIC_ZILAR_API_URL="$API_URL" EXPO_PUBLIC_ZILAR_MOCK="$MOCK_FLAG" NODE_ENV=production \
     ./gradlew :app:createBundleReleaseJsAndAssets --rerun assembleRelease --console=plain -q
 fi
 
@@ -59,7 +77,10 @@ APK="app/build/outputs/apk/release/app-release.apk"
 adb -s "$SERIAL" install -r "$APK"
 
 echo "$FINGERPRINT" >"$STATE_DIR/native-fingerprint"
-echo "$HEAD_SHORT" >"$STATE_DIR/commit"
+echo "$MOCK_FLAG" >"$STATE_DIR/mock"
+if [ -z "$MOCK_FLAG" ]; then
+  echo "$HEAD_SHORT" >"$STATE_DIR/commit"
+fi
 echo
 echo "installed $HEAD_SHORT on $SERIAL"
 if [ -n "$LAST_COMMIT" ]; then

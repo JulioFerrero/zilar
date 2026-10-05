@@ -32,6 +32,7 @@ Refresh: `cd packages/devtools && pnpm exec tsx src/lead/cli.ts dashboard ~/.zil
 
 ## Pre-merge tools (all documented in docs/ROADMAP_PROCESS.md)
 `pnpm gate` (worker and merge), `lead spec-check T-XXXX` (before launching), `pnpm phone:smoke <branch>` (emulator, opens the changed screens, fails on a crash), `pnpm phone:install` (build main, install once on Julio's phone, changelog), `pnpm phone:crash` (crash buffer and cause).
+`ZILAR_SMOKE_MOCK=1 pnpm phone:smoke <branch>` builds a mock-mode app (emulator only) and opens `/`, `/ais` and the mock AI `/ais/ai-dev-1`, so the AI screen's tools, routines and activity can be seen; the next normal smoke reinstalls the real app.
 
 ## Doctor (audits main after merges)
 The autopilot starts a Muse doctor session once main stays quiet 10 minutes: it runs the full checks on a detached `zilar-doctor` worktree next to the main checkout, reviews the commits since its last visit, and writes `DOCTOR.md` there (checks, findings with `Counts:` and `Verdict:` lines). The autopilot prints one `LEAD: DOCTOR ...` line per audited head. `lead doctor [--since <sha>]` starts one now for the current HEAD. Findings become tasks: the lead writes the task, never fixes in place.
