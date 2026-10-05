@@ -2,7 +2,7 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
-Last updated: 2026-10-05, after merging T-0200 and launching T-0202, T-0194, T-0195, T-0205.
+Last updated: 2026-10-05, after merging T-0195 and the free-model benchmark.
 
 ## Running (max 4)
 
@@ -10,7 +10,6 @@ Last updated: 2026-10-05, after merging T-0200 and launching T-0202, T-0194, T-0
 | --- | --- | --- | --- |
 | T-0202 | Fix rounds in a fresh worker session (token saving A) | coding | Muse |
 | T-0194 | Mobile guard tests for the Android and Hermes pitfalls | coding | MiniMax M3 trial, `effort: default` |
-| T-0195 | Audit web vs mobile (docs only) | coding | MiniMax M3 trial |
 | T-0191 | Mobile sticker pack editor | coding | Muse; brief `docs/design/briefs/T-0191-sticker-editor.md`; needs phone:smoke |
 
 ## Next, in order
@@ -24,7 +23,11 @@ Last updated: 2026-10-05, after merging T-0200 and launching T-0202, T-0194, T-0
 | --- | --- | --- | --- | --- | --- |
 | T-0205 | easy (devtools parse) | 0 | clean, 2 nits | 0.49M | exact to spec |
 | T-0194 | easy (guard tests) | 0 | clean, 0 nits | 1.4M | did the negative test properly |
-| T-0195 | medium (docs audit) | 1+ | 7 should-fix, 5 nits: invented strings, false claims, wrong citations | 8.1M | in round 1; lead spot-checks 10 citations before merge |
+| T-0195 | medium (docs audit) | 2 | round 1: 7 should-fix (invented strings, false claims, wrong citations) | 8.1M+ | merged; lead spot-check 9/10 citations exact |
+
+## Free-model benchmark (2026-10-05, 5 hard prompts, one run each, graded by the lead)
+
+Prompts and outputs: `~/.claude/jobs/fcd95e40/tmp/bench/` (temporary). Scores: `opencode/muse-spark-1.3-contributor-free` 5/5 (fastest, 26 s avg, concise, proposed our real T-0198 fix); `opencode/mimo-v2.6-flash-free` 5/5; `opencode-go/longcat-2.5-preview-free` 5/5; `opencode/nemotron-3-ultra-free` 5/5 (one invented issue); `opencode-go/space-bunny-free` 4/5 (wrong event-loop order, most thorough elsewhere); `minimax-coding-plan/MiniMax-M3` 2/5 (wrong event loop and tiling, a fix that does not work across processes). `opencode-go/ox-alpha-free` unavailable, `opencode/fledge-alpha-free` not available in our country. Waiting for Julio: trial the free Muse listing on real tasks (rate limits and prompt logging unknown).
 | T-0203, T-0204 | easy (prompts) | | | | queued |
 | T-0207 | medium-hard (mobile sheet, state machine) | | | | after T-0191 |
 
