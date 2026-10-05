@@ -210,6 +210,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0245](T-0245-model-by-peak-hours.md) | Lead tooling: `model: auto` = DeepSeek flash off-peak, free Muse in DeepSeek peak hours | planned | deepseek/deepseek-flash | T-0244 | Julio 2026-10-05 |
 | [T-0246](T-0246-web-kit-2.md) | Web kit batch 2: SegmentedControl, ListRow, Card, StateMessage, Avatar fixture, Cosmos config | planned | deepseek/deepseek-flash | T-0243 | UI kit step 2b |
 | [T-0247](T-0247-mobile-settings-hub.md) | Mobile: Settings hub redesign, Blocked people row, tab header padding | planned | deepseek/deepseek-flash | T-0244 | Telegram brief c; QA run 5 |
+| [T-0248](T-0248-mobile-folders-chips.md) | Mobile: chat folders from the server as chips, store on the shared matcher | planned | deepseek/deepseek-flash | T-0233 | Telegram brief e step 4 |
 | [T-0179](T-0179-mobile-transcribe-voice-notes.md) | Transcribe voice notes on the phone with Whistle: button in the bubble, consent for the 17 MB model, transcripts stored locally | 2026-10-03 |
 | [T-0182](T-0182-mobile-contacts-requests.md) | Mobile contacts: find by @handle, profile card, contact requests | 2026-10-03 |
 | [T-0183](T-0183-mobile-explore-group-handles.md) | Mobile Explore, @group links and group visibility | 2026-10-03 |
