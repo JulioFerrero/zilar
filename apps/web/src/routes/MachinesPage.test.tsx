@@ -430,10 +430,12 @@ describe('MachinesPage', () => {
     expect(screen.getByText(/The desktop runner is not published yet/)).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Copy pairing code' }));
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith('K7QX-M2PA'));
-    expect(screen.getByRole('button', { name: 'Copy pairing code' }).textContent).toContain(
-      'Copied',
-    );
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith('K7QX-M2PA');
+      expect(screen.getByRole('button', { name: 'Copy pairing code' }).textContent).toContain(
+        'Copied',
+      );
+    });
   });
 
   it('closes the add dialog on Escape and clears timers', async () => {

@@ -93,8 +93,7 @@ describe('FolderEditorDialog', () => {
     expect(screen.getByRole('radio', { name: 'star' }).getAttribute('aria-checked')).toBe('true');
   });
 
-  // 100 clicks each re-render two 100-row pickers: needs a longer timeout.
-  it('caps the include and exclude pickers at 100', { timeout: 60000 }, async () => {
+  it('caps the include and exclude pickers at 100', () => {
     const many = Array.from({ length: 101 }, (_, index) => ({
       id: `c-${index}`,
       title: `Chat ${index}`,
@@ -106,20 +105,26 @@ describe('FolderEditorDialog', () => {
     }));
     const { store } = renderApp('/settings/folders', { chats: many });
     act(() => {
-      store.getState().setFolders([]);
+      store
+        .getState()
+        .setFolders([
+          { ...BASE, includeChats: Array.from({ length: 100 }, (_, index) => `c-${index}`) },
+        ]);
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Create new folder' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Personal' }));
 
     const showSection = within(screen.getByRole('region', { name: 'Show these chats' }));
     const hideSection = within(screen.getByRole('region', { name: 'Hide' }));
-    expect(showSection.getByText('0 of 100 selected')).toBeTruthy();
-    for (let index = 0; index < 100; index += 1) {
-      fireEvent.click(showSection.getByRole('checkbox', { name: `Chat ${index}` }));
-    }
     expect(showSection.getByText('100 of 100 selected')).toBeTruthy();
     expect(
       (showSection.getByRole('checkbox', { name: 'Chat 100' }) as HTMLButtonElement).disabled,
     ).toBe(true);
+
+    fireEvent.click(showSection.getByRole('checkbox', { name: 'Chat 0' }));
+    expect(showSection.getByText('99 of 100 selected')).toBeTruthy();
+    expect(
+      (showSection.getByRole('checkbox', { name: 'Chat 100' }) as HTMLButtonElement).disabled,
+    ).toBe(false);
     expect(hideSection.getByText('0 of 100 selected')).toBeTruthy();
   });
 
