@@ -1,11 +1,13 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AisScreenShell } from '@/components/ais/screen-shell';
 import { tabScreenBottomPadding } from '@/components/nav/floating-tab-bar';
 
 import { SettingsScreenShell } from './screen-shell';
+
+const insets = vi.hoisted(() => ({ top: 0, bottom: 0, left: 0, right: 0 }));
 
 // The shells render as plain elements with `react-native`,
 // `react-native-safe-area-context` and `lucide-react-native` stubbed (the
@@ -23,7 +25,7 @@ vi.mock('react-native', () => ({
 
 vi.mock('react-native-safe-area-context', () => ({
   SafeAreaView: 'SafeAreaView',
-  useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
+  useSafeAreaInsets: () => insets,
 }));
 
 vi.mock('nativewind', () => ({
@@ -63,6 +65,13 @@ vi.mock('@/components/settings/profile-logic', () => ({
 }));
 
 const SHELLS = ['settings', 'ais'] as const;
+
+beforeEach(() => {
+  insets.top = 0;
+  insets.bottom = 0;
+  insets.left = 0;
+  insets.right = 0;
+});
 
 function renderHeader(shell: (typeof SHELLS)[number], onBack?: () => void): string {
   return renderToStaticMarkup(
@@ -112,15 +121,17 @@ function renderScrollBody(shell: (typeof SHELLS)[number], onBack?: () => void): 
 
 describe('screen shells scroll body padding', () => {
   it('clears the floating tab bar when there is no back key', () => {
-    const expected = String(tabScreenBottomPadding(false, 0));
+    const expected = String(tabScreenBottomPadding(false, insets.bottom));
     for (const shell of SHELLS) {
       expect(renderScrollBody(shell)).toContain(`data-padding-bottom="${expected}"`);
     }
   });
 
-  it('keeps the 32 px inset when the back key brings its own spacing', () => {
+  it('clears the gesture bar when the back key brings its own spacing', () => {
+    insets.bottom = 34;
+    const expected = String(tabScreenBottomPadding(true, insets.bottom));
     for (const shell of SHELLS) {
-      expect(renderScrollBody(shell, () => {})).toContain('data-padding-bottom="32"');
+      expect(renderScrollBody(shell, () => {})).toContain(`data-padding-bottom="${expected}"`);
     }
   });
 });

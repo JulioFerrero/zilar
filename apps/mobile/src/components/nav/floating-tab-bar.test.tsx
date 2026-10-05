@@ -180,7 +180,8 @@ describe('tabScreenBottomPadding', () => {
     expect(tabScreenBottomPadding(false, 34)).toBe(TAB_BAR_HEIGHT + TAB_BAR_BOTTOM_GAP + 34 + 16);
   });
 
-  it('keeps the plain 32 px inset on a pushed page with a back key', () => {
-    expect(tabScreenBottomPadding(true, 34)).toBe(32);
+  it('adds the bottom inset to the plain 32 on a pushed page with a back key', () => {
+    expect(tabScreenBottomPadding(true, 0)).toBe(32);
+    expect(tabScreenBottomPadding(true, 34)).toBe(32 + 34);
   });
 });
