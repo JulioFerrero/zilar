@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import { useAuth } from '@/auth/AuthProvider';
+import { Button } from '@/components/ui/button';
 import { ApiError } from '@/lib/api';
 import { checkHandle, claimHandle, suggestHandleFor } from '@/lib/handles';
 import { dismissHandleGate } from '@/lib/handleGate';
@@ -140,13 +141,9 @@ export function HandlePage() {
             {error}
           </p>
         )}
-        <button
-          type="submit"
-          disabled={busy}
-          className="mt-4 w-full rounded-full bg-accent px-4 py-2.5 text-[15px] font-medium text-accent-foreground hover:bg-accent/90 disabled:opacity-60"
-        >
+        <Button type="submit" disabled={busy} size="lg" className="mt-4 w-full">
           Continue
-        </button>
+        </Button>
         <button
           type="button"
           onClick={skip}

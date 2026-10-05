@@ -29,6 +29,10 @@ describe('NamePage', () => {
       </AuthProvider>,
     );
 
+    expect(screen.getByRole('button', { name: 'Continue' }).getAttribute('data-slot')).toBe(
+      'button',
+    );
+
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: '  Ada  ' } });
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
 

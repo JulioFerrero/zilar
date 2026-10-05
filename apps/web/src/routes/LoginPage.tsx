@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import { AuthFlow } from '@/components/auth/AuthFlow';
+import { Button } from '@/components/ui/button';
 import { getSetupStatus } from '@/lib/api';
 
 /**
@@ -38,12 +39,9 @@ export function LoginPage() {
           <p className="mt-2 text-[15px] text-muted-foreground">
             This server has no accounts yet. Finish the one-time setup to create the first admin.
           </p>
-          <Link
-            to="/setup"
-            className="mt-5 inline-block rounded-full bg-accent px-5 py-2.5 text-[15px] font-medium text-accent-foreground hover:bg-accent/90"
-          >
-            Finish setting up this server
-          </Link>
+          <Button asChild size="lg" className="mt-5">
+            <Link to="/setup">Finish setting up this server</Link>
+          </Button>
         </div>
       </div>
     );

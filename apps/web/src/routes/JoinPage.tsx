@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { useAuth } from '@/auth/AuthProvider';
+import { Button } from '@/components/ui/button';
 import { ApiError, joinByLink, previewJoinLink, type JoinPreview } from '@/lib/api';
 
 /**
@@ -90,13 +91,11 @@ export function JoinPage({
           <p className="mt-2 text-[15px] text-muted-foreground">
             Sign in to see the group and join it.
           </p>
-          <Link
-            to="/login"
-            state={{ from: `/j/${token}` }}
-            className="mt-5 inline-block rounded-full bg-accent px-6 py-2 text-[15px] font-medium text-accent-foreground hover:bg-accent/90"
-          >
-            Sign in
-          </Link>
+          <Button asChild size="lg" className="mt-5">
+            <Link to="/login" state={{ from: `/j/${token}` }}>
+              Sign in
+            </Link>
+          </Button>
         </div>
       </div>
     );
@@ -207,19 +206,18 @@ export function JoinPage({
           </p>
         )}
         {needsName ? (
-          <Link
-            to="/welcome/name"
-            state={{ next: `/j/${token}` }}
-            className="mt-5 inline-block w-full rounded-full bg-accent px-4 py-2.5 text-[15px] font-medium text-accent-foreground hover:bg-accent/90"
-          >
-            Choose a name
-          </Link>
+          <Button asChild size="lg" className="mt-5 w-full">
+            <Link to="/welcome/name" state={{ next: `/j/${token}` }}>
+              Choose a name
+            </Link>
+          </Button>
         ) : (
-          <button
+          <Button
             type="button"
             disabled={busy}
             onClick={() => void join()}
-            className="mt-5 w-full rounded-full bg-accent px-4 py-2.5 text-[15px] font-medium text-accent-foreground hover:bg-accent/90 disabled:opacity-60"
+            size="lg"
+            className="mt-5 w-full"
           >
             {busy
               ? 'Joining…'
@@ -228,7 +226,7 @@ export function JoinPage({
                 : preview?.kind === 'channel'
                   ? 'Join the channel'
                   : 'Join the group'}
-          </button>
+          </Button>
         )}
       </div>
     </div>
@@ -241,12 +239,9 @@ function JoinCard({ title, body }: { title: string; body: string }) {
       <div className="w-full max-w-sm rounded-2xl bg-background p-6 text-center shadow-xl">
         <h1 className="text-[24px] leading-8 font-semibold">{title}</h1>
         <p className="mt-2 text-[15px] text-muted-foreground">{body}</p>
-        <Link
-          to="/"
-          className="mt-5 inline-block rounded-full bg-accent px-6 py-2 text-[15px] font-medium text-accent-foreground hover:bg-accent/90"
-        >
-          Back to chats
-        </Link>
+        <Button asChild size="lg" className="mt-5">
+          <Link to="/">Back to chats</Link>
+        </Button>
       </div>
     </div>
   );

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import { OtpInput } from './OtpInput';
+import { Button } from '@/components/ui/button';
 import { useAuth } from '@/auth/AuthProvider';
 import { authClient, sendSignInCode, verifySignInCode } from '@/lib/auth';
 
@@ -151,13 +152,9 @@ export function AuthFlow({
                 {error}
               </p>
             )}
-            <button
-              type="submit"
-              disabled={busy}
-              className="mt-1 rounded-full bg-accent px-4 py-2.5 text-[15px] font-medium text-accent-foreground hover:bg-accent/90 disabled:opacity-60"
-            >
+            <Button type="submit" disabled={busy} size="lg" className="mt-1">
               Continue
-            </button>
+            </Button>
           </form>
         ) : (
           <div className="mt-6 flex flex-col items-center gap-4">
@@ -183,14 +180,9 @@ export function AuthFlow({
               </p>
             )}
             <div className="flex items-center gap-3">
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => void verify(code)}
-                className="rounded-full bg-accent px-5 py-2 text-[15px] font-medium text-accent-foreground hover:bg-accent/90 disabled:opacity-60"
-              >
+              <Button type="button" disabled={busy} onClick={() => void verify(code)} size="lg">
                 Continue
-              </button>
+              </Button>
               {secondsLeft > 0 ? (
                 <span className="text-[14px] text-muted-foreground">Resend in {secondsLeft}s</span>
               ) : (
