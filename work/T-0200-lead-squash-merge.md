@@ -81,6 +81,15 @@ Commands and results:
 
 Security checklist: no secrets/tokens touched; squash commit only adds branch files + board row; `git diff --quiet` safety check blocks push on mismatch; `branch -D` runs only after push success; no `reset`/`push --force`/`--no-verify` in `merge.ts` (verified by grep).
 
+### Round 2 (pre-review fixes)
+
+Fixed both should-fix findings from PREREVIEW.md (must-fix=0):
+- Finding 1 (board validated before squash): `moveBoardRow` text is now computed before `git merge --squash`, so a board throw leaves main's tree clean and the merge stays re-runnable. Test: "leaves main untouched when the board row is unparseable" (hand-edited `| T-0099 |` row, asserts `git status --porcelain` empty after refusal).
+- Finding 2 (safety-check test): added stub-runner test "refuses to push when the squash result differs from the branch" (diff returns non-ok, asserts push never runs, `squash result differs…; nothing pushed` thrown).
+- Follow-ups 3-4 (`collect-snapshot.ts` grep, `LEAD_PLAYBOOK.md` docs) are outside Allowed files; left for separate tasks as the verdict directs. No disagreements.
+
+Round 2 commands: `pnpm --filter @zilar/devtools test --maxWorkers=2 src/lead/merge`: 17 passed; `pnpm gate`: GATE PASS — "4 changed file(s) against main", PASS install/format/lint/typecheck/tests @zilar/devtools, scope clean.
+
 Deviation / open question: `packages/devtools/src/lead/collect-snapshot.ts` (lines 168, 176) greps main's log for the old `board: T-… merged` subject to build the dashboard "merged today" list. After this change no new commit will match, so that list will go empty. Fixing it means matching `^T-\d+: ` subjects, but that file is outside my Allowed files — left for the lead to task separately.
 
 ## Review (written by Claude)
