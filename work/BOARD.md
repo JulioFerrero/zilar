@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-0274](T-0274-web-kit-dialogs-5.md) | Web kit migration 7: Explore and avatar crop dialogs on the kit | in_progress | auto | T-0273 | audit step 6 |
 | [T-0276](T-0276-web-kit-accent-buttons-2.md) | Web kit migration 9: accent buttons in machines, Telegram import, invite links | in_progress | auto | | audit §5 gate prep |
 
 ## Follow-ups
@@ -305,3 +304,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0273](T-0273-web-kit-dialogs-4.md) | Web kit: NewChatButton pickers and GroupHandleRoute dialogs on the kit Dialog | 2026-10-05 |
 | [T-0275](T-0275-web-kit-accent-buttons-1.md) | Web kit: accent buttons on Connections, Integrations and Stickers pages use the kit Button | 2026-10-05 |
 | [T-0272](T-0272-lockfile-peer-flip.md) | Tooling: pnpm install no longer flips the bufferutil/utf-8-validate lockfile peers | 2026-10-05 |
+| [T-0274](T-0274-web-kit-dialogs-5.md) | Web kit: Explore and avatar crop dialogs on the kit Dialog | 2026-10-05 |

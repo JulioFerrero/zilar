@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import { Avatar } from '@/components/Avatar';
+import { Dialog } from '@/components/ui/dialog';
 import { removeAvatar, uploadAvatar } from '@/lib/api';
 import {
   AVATAR_CROP_VIEW_SIDE,
@@ -10,7 +11,6 @@ import {
   fitInView,
   type CropState,
 } from '@/lib/avatar-crop';
-import { cn } from '@/lib/utils';
 
 export type AvatarKind = 'user' | 'ai' | 'group';
 
@@ -258,6 +258,13 @@ export function AvatarUploader({
     dragRef.current = null;
   };
 
+  const closeCrop = (): void => {
+    if (phase.name === 'crop') {
+      revokePreviewUrl(phase.objectUrl);
+    }
+    setPhase({ name: 'idle' });
+  };
+
   const fitted = phase.name === 'crop' ? fitInView(phase.natural) : null;
   const zoomed =
     fitted === null || phase.name !== 'crop'
@@ -318,23 +325,34 @@ export function AvatarUploader({
         </p>
       )}
       {phase.name === 'crop' && fitted !== null && zoomed !== null && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="Crop your picture"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-          onClick={() => {
-            if (!busy && phase.name === 'crop') {
-              revokePreviewUrl(phase.objectUrl);
-              setPhase({ name: 'idle' });
-            }
-          }}
+        <Dialog
+          open
+          onClose={closeCrop}
+          title="Crop your picture"
+          size="sm"
+          dismissable={!busy}
+          actions={
+            <>
+              <button
+                type="button"
+                onClick={closeCrop}
+                disabled={busy}
+                className="rounded-full px-4 py-1.5 text-[14px] text-muted-foreground hover:bg-list-hover disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void save()}
+                disabled={busy}
+                className="rounded-full bg-accent px-4 py-1.5 text-[14px] font-medium text-accent-foreground hover:bg-accent/90 disabled:opacity-60"
+              >
+                {busy ? 'Saving…' : 'Save picture'}
+              </button>
+            </>
+          }
         >
-          <div
-            onClick={(event) => event.stopPropagation()}
-            className="flex w-full max-w-sm flex-col items-center gap-3 rounded-2xl bg-background p-5 shadow-xl"
-          >
-            <h2 className="text-[16px] font-semibold">Crop your picture</h2>
+          <div className="flex flex-col items-center gap-3">
             <div
               className="relative touch-none overflow-hidden rounded-full bg-surface-raised select-none"
               style={{
@@ -385,33 +403,8 @@ export function AvatarUploader({
             <p className="text-[13px] text-muted-foreground">
               Drag to position · exports 256 × 256
             </p>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  if (phase.name === 'crop') {
-                    revokePreviewUrl(phase.objectUrl);
-                  }
-                  setPhase({ name: 'idle' });
-                }}
-                disabled={busy}
-                className="rounded-full px-4 py-1.5 text-[14px] text-muted-foreground hover:bg-list-hover disabled:opacity-60"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => void save()}
-                disabled={busy}
-                className={cn(
-                  'rounded-full bg-accent px-4 py-1.5 text-[14px] font-medium text-accent-foreground hover:bg-accent/90 disabled:opacity-60',
-                )}
-              >
-                {busy ? 'Saving…' : 'Save picture'}
-              </button>
-            </div>
           </div>
-        </div>
+        </Dialog>
       )}
     </section>
   );

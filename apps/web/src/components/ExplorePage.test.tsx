@@ -48,7 +48,7 @@ const RELEASES = {
   joined: true,
 };
 
-function renderExplore() {
+function renderExplore(onClose: () => void = () => {}) {
   const store = createChatStore();
   return render(
     <MemoryRouter>
@@ -60,7 +60,7 @@ function renderExplore() {
         }}
       >
         <ChatStoreProvider store={store}>
-          <ExplorePage onClose={() => {}} />
+          <ExplorePage onClose={onClose} />
         </ChatStoreProvider>
       </AuthProvider>
     </MemoryRouter>,
@@ -149,5 +149,14 @@ describe('ExplorePage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
     expect(await screen.findByText('Releases')).toBeTruthy();
     expect(searchMock).toHaveBeenLastCalledWith(expect.objectContaining({ cursor: 'cursor-1' }));
+  });
+
+  it('closes with Escape', () => {
+    const onClose = vi.fn();
+    renderExplore(onClose);
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });
