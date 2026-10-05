@@ -1,7 +1,7 @@
 ---
 id: T-0209
 title: Lead tooling: `lead watch`, a live terminal view of every running task (step, model, files) with small animations
-status: planned
+status: merged
 milestone: M5
 branch: task/T-0209-lead-watch-terminal
 model: minimax-coding-plan/MiniMax-M3
@@ -102,4 +102,167 @@ Keyboard navigation, scrolling, opening a task, merged or queued lists, token co
 
 ## Report (written by the worker when done)
 
+### What I did
+
+Built `pnpm lead:watch`: a live terminal view of every running worker task. The package now exports `liveStep`, `parseChangedFiles`, `modelLabel`, `renderWatch` (pure, tested) and `runWatch` (the terminal loop). The `lead` CLI got a new `watch` subcommand and the root `package.json` got the `lead:watch` script.
+
+The renderer matches the spec example at width 60 and width 100, restores the terminal on `q`, Ctrl-C and `process.on('exit')`, and keeps the previous tasks visible with a dimmed `refresh failed, retrying` in the header when the snapshot throws. Files are read from `git merge-base main HEAD` + `git diff --name-status <base>` + `git status --porcelain ??`, in the worktree (skipped if the worktree is gone, falls back to the cached list), with `work/` paths dropped and a `+N more` after 6 entries.
+
+The live step uses the pre-review session while the pre-review is running, otherwise the worker session. Phase colors: coding/fixing cyan, pre-review magenta, waiting/blocked/idle yellow, quota red.
+
+### Files I changed
+
+- `packages/devtools/src/lead/watch.ts` (new) — pure helpers + `runWatch` loop
+- `packages/devtools/src/lead/watch.test.ts` (new) — 23 tests covering every spec bullet
+- `packages/devtools/src/lead/cli.ts` — added `runWatch` import, HELP line, `watch` dispatch
+- `package.json` — added `"lead:watch": "pnpm --filter @zilar/devtools exec tsx src/lead/cli.ts watch"`
+- `work/T-0209-lead-watch-terminal.md` — this Report and the `status: review` flip
+
+### Commands I ran
+
+```
+pnpm install                                                        # 12 packages, 0 errors
+pnpm --filter @zilar/devtools test --maxWorkers=2 --reporter=dot \
+  src/lead/watch.test.ts                                            # 23 passed (23)
+pnpm exec prettier --write packages/devtools/src/lead/watch.ts \
+  packages/devtools/src/lead/watch.test.ts                          # fixed: 2 files
+pnpm gate                                                           # GATE PASS
+```
+
+`pnpm gate` summary lines:
+
+```
+gate: 5 changed file(s) against main
+PASS  install (frozen)  (0.8s)
+PASS  format  (10.8s)
+PASS  lint  (0.4s)
+PASS  typecheck  (1.9s)
+PASS  tests @zilar/devtools  (10.6s)
+scope: every changed file is inside the Allowed files
+GATE PASS
+```
+
+The 5 changed files are exactly the 5 in the Allowed list. No new dependency; the devtools package still has only `zod` plus `tsx`/`@xmpp/client` in devDeps.
+
+### Problems and deviations
+
+- The lead state does not carry `effort`; `collectSnapshot` doesn't surface it either. I read it from the task file's front matter (`work/<task>.md`) inside `buildView` using the existing `findTaskFile` + `parseFrontMatter` helpers. Both are exported, so no other files were touched.
+- The spec lists "modelLabel with and without a variant" (2 cases). I added a third case for a bare model id without a provider prefix (`modelLabel('bar', 'medium')`) as a small belt-and-braces check. Spec list still satisfied.
+- I added one extra `renderWatch` test ("puts the clock on the right and the title on the left of the header") because the spec describes the layout in words and an assertion feels cheap insurance. The spec list of required tests is still covered.
+- The gate initially failed with a prettier complaint on the two new files, then with one unused variable. Both fixed before the final GATE PASS; the formatting was applied with `pnpm exec prettier --write`.
+
+### Blocked / needs a decision
+
+None.
+
+### Round (fix round)
+
+The PREREVIEW named one must-fix and two should-fix findings; I fixed all three and left the three nits alone (per "Do not touch nits unless they are in a line you already change").
+
+Findings fixed:
+
+- **Finding 1 (must-fix)** — `q`/`Ctrl-C` quit path no longer leaks raw mode. Extracted `disableRawMode(stdin, ref)` (exported) and called it from `restore()` so the cleanup runs whether or not `process.exit` interrupts the `finally`. Hoisted the `stdin` and `stdinRaw` declarations above `restore` so the closure can see them. New test: `disableRawMode > clears raw mode when the ref says it is on` (asserts the ref's `raw` becomes `false`) plus a `> is a no-op when raw mode was never enabled` sanity check. Each test uses a fake stdin with a recorded call list.
+- **Finding 2 (should-fix)** — `collectFiles` now returns the previous `fallback` when either `merge-base` or `diff --name-status` fails. Promoted `collectFiles` to an exported function and added three tests under `describe('collectFiles')`: merge-base fails → fallback, diff fails → fallback, both succeed → parses both `name-status` and porcelain correctly (the third is the happy-path spec for the new function shape).
+- **Finding 3 (should-fix)** — meta line and file rows are now clipped to `width` visible characters. `renderEntry` clips `meta` and `third` with `clip(..., width)`. `renderFiles` clips each `left`/`right` column item to `itemBudget = max(0, colWidth - 1)` and the single-column items to `itemBudget = max(0, width - 6)`. New test: `renderWatch > clips the meta line and file rows when basenames are longer than the width` (entry has a 60-char `modelLabel` and a 56-char basename; renders at width 60; asserts every line's `length` ≤ 60).
+
+Disagreements: none.
+
+Tests added: 6. New `it(...)` cases: 1 in `renderWatch` (clip meta + file rows when basenames are wider than `width`), 2 in a new `describe('disableRawMode')` (clears raw mode when ref says it is on, no-op when never enabled), 3 in a new `describe('collectFiles')` (merge-base fails → fallback, diff fails → fallback, both succeed → parses name-status + porcelain). Suite size: 25 → 31.
+
+Commands I ran:
+
+```
+pnpm --filter @zilar/devtools test --maxWorkers=2 --reporter=dot src/lead/watch.test.ts   # 31 passed (31)
+pnpm exec prettier --write packages/devtools/src/lead/watch.ts \
+  packages/devtools/src/lead/watch.test.ts                                                  # reformatted: 2
+pnpm gate                                                                                   # GATE PASS
+```
+
+`pnpm gate` summary lines:
+
+```
+gate: 5 changed file(s) against main
+PASS  install (frozen)  (1.0s)
+PASS  format  (13.6s)
+PASS  lint  (0.6s)
+PASS  typecheck  (2.3s)
+PASS  tests @zilar/devtools  (12.6s)
+scope: every changed file is inside the Allowed files
+GATE PASS
+```
+
+Five new commits on the branch (after `684adc98`):
+
+```
+18ca93cc T-0209: typecheck-safe fake stdin for disableRawMode test
+390d823a T-0209: prettier reformat of watch.ts and watch.test.ts
+431e499b T-0209: fix finding 3 - clip meta line and file rows to width
+d3b43cd7 T-0209: fix finding 2 - return fallback from collectFiles when git merge-base or diff fails
+a32f4ca9 T-0209: fix finding 1 - clear stdin raw mode inside restore() so q/Ctrl-C do not leak raw mode
+```
+
+`git diff main...HEAD --name-only` still lists the same 5 files as the original Allowed list; no new dependency.
+
+### Lead round
+
+The lead ran `pnpm lead:watch` in a 60x25 pseudo-terminal for 12 seconds: it renders correctly, but the animation freezes and the screen flickers. Two must-fix items, two commits.
+
+**Lead 1 (animation blocking)** — fixed in `T-0209: fix lead 1 - refresh in a child process, animation never blocks` (7784ab2f).
+
+- `runWatch` used to await `buildView` inside the redraw loop, so the synchronous git and OpenCode CLI calls froze the spinner for the second of every 3-second refresh. `q` was also unreadable during a refresh.
+- New `runWatchData()` in `watch.ts` builds the view once with the existing `buildView` and prints one JSON line. Hidden `--data` flag on `lead watch` (handled in `cli.ts`'s `watch` dispatch).
+- `runWatch` now runs the redraw on `setInterval(REDRAW_INTERVAL_MS)` and the refresh on `setInterval(REFRESH_INTERVAL_MS)`. The refresh interval spawns a child with `execFile(process.execPath, [...process.execArgv, process.argv[1], 'watch', '--data'], { cwd: process.cwd(), maxBuffer: 10 * 1024 * 1024 }, cb)`; a `refreshing` flag prevents a second child while one is running. On success it parses the JSON line; on error (or parse failure) it keeps the previous view and sets `refreshFailed = true`.
+- The child's `process.execArgv` carries `tsx`'s `--require`/`--import` hooks so the `.ts` file runs in the child the same way the parent was launched.
+- File cache: the child returns the files it found as part of each entry, so the parent doesn't need to track a cross-process cache. (The lead explicitly said this was OK: "the child returns the files it found".)
+
+**Lead 2 (flicker)** — fixed in `T-0209: fix lead 2 - redraw in place without clearing` (db9878e2).
+
+- Every frame used to write `ESC.clearScreen` (`\u001b[2J\u001b[H`), blanking the whole screen for one tick and producing visible flicker.
+- Extracted `frameText(lines: string[]): string` (exported, tested). It writes `\u001b[H` (cursor home), then each line followed by `\u001b[K` (clear to end of line) and a newline, then `\u001b[J` (clear to end of screen) once at the end. No `\u001b[2J`. Tested: the result contains no `\u001b[2J` and ends with `\u001b[J`.
+- `ESC.clearScreen` is now used only on entering the alternate screen, on `process.stdout` `resize` (tracked by a `needsClear` flag consumed on the next redraw), and on `restore()` (final cleanup before exit).
+- New ESC constants `cursorHome`, `clearLine`, `clearScreenBelow` keep the prefix fragments readable.
+
+### New tests (9 total)
+
+- `parseWatchView` (6): round-trips a valid view, junk string, empty string, wrong field type, missing entry field, bad file kind. Junk → `null`.
+- `frameText` (3): no `\u001b[2J` and ends with `\u001b[J`; full sequence including per-line `\u001b[K`; empty `lines` list does not crash.
+
+Suite size: 31 → 40. All pass.
+
+### Commands I ran
+
+```
+pnpm --filter @zilar/devtools test --maxWorkers=2 --reporter=dot src/lead/watch.test.ts   # 40 passed (40)
+pnpm gate                                                                                # GATE PASS
+pnpm --filter @zilar/devtools exec tsx src/lead/cli.ts watch --data 2>&1 | head -1 \
+  | grep -o '"id":"[^"]*"'                                                                 # T-0191, T-0209 (child prints one JSON line and exits)
+(pnpm --filter @zilar/devtools exec tsx src/lead/cli.ts watch 2>&1 &) ; sleep 1 ; \
+  pkill -f "tsx src/lead/cli.ts watch"                                                   # redraw frames seen: [H ... [K per line ... [J (no [2J between frames)
+```
+
+`pnpm gate` summary lines:
+
+```
+gate: 5 changed file(s) against main
+PASS  install (frozen)  (1.0s)
+PASS  format  (12.0s)
+PASS  lint  (0.5s)
+PASS  typecheck  (0.6s)
+PASS  tests @zilar/devtools  (11.3s)
+scope: every changed file is inside the Allowed files
+GATE PASS
+```
+
+`git diff main...HEAD --name-only` is still the same 5 files as before; no new dependency.
+
+### Disagreements
+
+None.
+
+### Blocked / needs a decision
+
+None.
+
 ## Review (written by Claude)
+
+**Verdict:** Approved after two automatic rounds and one lead round (MiniMax). `pnpm lead:watch` shows every task in flight with spinner, model and effort, run time, phase, live step and changed files, in an alternate screen, and restores the terminal on `q`, Ctrl-C and exit. The automatic rounds fixed raw mode left on after `q`, files vanishing on a failed git call and over-long lines. The lead ran it in a 60x25 pseudo-terminal: before the lead round it dropped from 8 to 2-3 frames per second during every refresh (synchronous `spawnSync` calls inside the redraw loop) and cleared the whole screen every frame; after it, the data comes from a child process (`lead watch --data`), redraws run on their own timer at a steady 8 frames per second, and the screen is cleared once, then redrawn in place. Accepted nits: three small ones from the last pre-review. Follow-up: T-0210 adds the speed line.

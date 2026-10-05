@@ -21,6 +21,7 @@
     "infra:reset": "node infra/reset.mjs",
     "infra:smoke": "pnpm --filter @zilar/devtools smoke",
     "xmpp:e2e": "pnpm --filter @zilar/devtools xmpp:e2e",
+    "lead:watch": "pnpm --filter @zilar/devtools exec tsx src/lead/cli.ts watch",
     "screenshots": "node --experimental-strip-types scripts/screenshots.ts",
     "gate": "pnpm --filter @zilar/devtools exec tsx src/gate/cli.ts --base main",
     "phone:install": "bash scripts/phone/install.sh",

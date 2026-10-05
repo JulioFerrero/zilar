@@ -13,6 +13,7 @@ import { collectSnapshot } from './collect-snapshot.js';
 import { checkSpec, formatProblems } from './spec-check.js';
 import { startPrereviewSession } from './start-prereview.js';
 import { switchModel } from './switch-model.js';
+import { runWatch, runWatchData } from './watch.js';
 import { collectStatus, formatStatus } from './status.js';
 import { currentHead } from './git.js';
 import { loadState, stateFilePath, updateState } from './state.js';
@@ -34,6 +35,7 @@ Usage: lead <command> [options]
   snapshot                                                  JSON of every task in flight, its step and timings
   dashboard <out.html>                                      the snapshot rendered as the dashboard page
   status                                                    compact table of every tracked task
+  watch                                                     live terminal view of every running task
 
 State lives outside the repo at ~/.zilar-lead/state.json (or ZILAR_LEAD_STATE).
 Escalations print as one LEAD: line each on stdout; everything else goes to lead.log.
@@ -346,6 +348,12 @@ export async function main(argv: string[]): Promise<void> {
     await runMerge(positional, rest);
   } else if (command === 'status') {
     await runStatus();
+  } else if (command === 'watch') {
+    if (rest.includes('--data')) {
+      await runWatchData();
+    } else {
+      await runWatch();
+    }
   } else {
     throw new Error(`unknown command ${JSON.stringify(command)} (try: lead --help)`);
   }
