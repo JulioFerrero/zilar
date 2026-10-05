@@ -1,7 +1,7 @@
 ---
 id: T-0254
 title: "Mobile: create sheets taller than the space above the keyboard scroll so the last field and Create stay reachable (Android)"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0254-mobile-sheets-keyboard-scroll
 model: auto
@@ -58,4 +58,71 @@ Changing the sheets' content or layout, and the floating tab bar.
 
 ## Report (written by the worker when done)
 
+### What I did
+
+- Added `apps/mobile/src/lib/use-keyboard-height.ts`: exported pure
+  `keyboardHeightFromEvent(event)` (reads `event.endCoordinates.height`) and
+  `useKeyboardHeight()`, which listens to `keyboardDidShow` / `keyboardDidHide`
+  (0) and removes both listeners on unmount.
+- Added `apps/mobile/src/lib/use-keyboard-height.test.ts`: covers the pure
+  event reader (312 -> 312, 0 -> 0).
+- `apps/mobile/src/components/chat/new-chat-button.tsx`:
+  - exported pure `createSheetBottomPadding(platform, keyboardHeight)` ->
+    `16 + keyboardHeight` on Android, `undefined` on iOS;
+  - `KeyboardAvoidingView` behaviour is now
+    `Platform.OS === 'ios' ? 'padding' : undefined` (Android no longer uses
+    `height`);
+  - the sheets' `ScrollView` gets a `ref`, and its content `paddingBottom` is
+    `createSheetBottomPadding(Platform.OS, keyboardHeight)`;
+  - a `useEffect` on `keyboardHeight` calls `scrollToEnd({ animated: true })`
+    when the height goes from 0 to > 0.
+- `apps/mobile/src/components/chat/new-chat-button.test.tsx`: mocks
+  `@/lib/use-keyboard-height` and adds a `createSheetBottomPadding` describe
+  (Android 16/336, iOS undefined).
+
+### Files changed
+
+- `apps/mobile/src/lib/use-keyboard-height.ts` (new)
+- `apps/mobile/src/lib/use-keyboard-height.test.ts` (new)
+- `apps/mobile/src/components/chat/new-chat-button.tsx`
+- `apps/mobile/src/components/chat/new-chat-button.test.tsx`
+- `work/T-0254-mobile-sheets-keyboard-scroll.md` (status + this report)
+
+### Commands and real results
+
+- `pnpm install`: done in 14s, code 0 (peer-dep warn only).
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot use-keyboard-height new-chat-button`:
+  2 test files passed, 8 tests passed (505 ms). (The test files print
+  pre-existing React DOM casing warnings to stderr; no failures.)
+- `pnpm gate` (repo root): first run FAIL at `format` on
+  `new-chat-button.test.tsx`; after `pnpm exec prettier --write` on that file,
+  second run:
+  - `gate: 5 changed file(s) against main`
+  - `PASS  install (frozen)  (1.2s)`
+  - `PASS  format  (15.5s)`
+  - `PASS  lint  (0.8s)`
+  - `PASS  typecheck  (6.2s)`
+  - `PASS  tests @zilar/mobile  (1.4s)`
+  - `scope: every changed file is inside the Allowed files`
+  - `GATE PASS`
+
+### Problems / deviations
+
+- None from the spec. No new dependencies, no file outside Allowed files, and
+  `pnpm-lock.yaml` untouched.
+- I could not verify the actual scroll on a device/emulator here; the behavior
+  is pinned by the pure padding helper, the unit test, and the source change.
+
+### Open questions
+
+- None.
+
 ## Review (written by Claude)
+
+**Verdict:** Approved; the first pre-review was clean (0 nits).
+- I read the diff:
+  - on Android, the `KeyboardAvoidingView` no longer sets a behaviour;
+  - the content's bottom padding is 16 plus the keyboard height;
+  - `scrollToEnd` runs when the keyboard opens;
+  - iOS is unchanged.
+- The emulator check of the New channel sheet (Public, keyboard open) goes into the next QA run.
