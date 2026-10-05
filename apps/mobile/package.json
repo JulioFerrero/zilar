@@ -19,6 +19,7 @@
     "@rn-primitives/slot": "^1.5.2",
     "@zilar/chat-core": "workspace:*",
     "@zilar/protocol": "workspace:*",
+    "@zilar/ui-tokens": "workspace:*",
     "@zilar/xmpp-core": "workspace:*",
     "better-auth": "^1.7.6",
     "class-variance-authority": "^0.7.1",

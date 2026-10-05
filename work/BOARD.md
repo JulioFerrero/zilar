@@ -208,7 +208,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0180](T-0180-signin-no-code-hint.md) | Sign-in hints for people without an invite (web + mobile) | 2026-10-03 |
 | [T-0233](T-0233-mobile-bottom-bar.md) | Mobile: floating bottom bar, search bar on Chats, Profile tab | planned | opencode/muse-spark-1.3-contributor-free | — | Telegram brief a, d |
 | [T-0234](T-0234-mobile-create-sheets-keyboard.md) | Mobile: create sheets above the keyboard; mock create and contacts | planned | opencode/muse-spark-1.3-contributor-free | T-0233 | Emulator QA run 3; launch after T-0233 |
-| [T-0240](T-0240-ui-tokens-package.md) | packages/ui-tokens: shared colours, radius and depth recipes, drift tests in web and mobile | planned | opencode/muse-spark-1.3-contributor-free | T-0236 | UI kit step 1 (audit section 5) |
 | [T-0238](T-0238-web-folders-page-editor.md) | Web: Chat folders page with reorder and the folder editor dialog | planned | opencode/muse-spark-1.3-contributor-free | T-0237 | Telegram brief b, decision 4 |
 | [T-0179](T-0179-mobile-transcribe-voice-notes.md) | Transcribe voice notes on the phone with Whistle: button in the bubble, consent for the 17 MB model, transcripts stored locally | 2026-10-03 |
 | [T-0182](T-0182-mobile-contacts-requests.md) | Mobile contacts: find by @handle, profile card, contact requests | 2026-10-03 |
@@ -270,3 +269,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0239](T-0239-web-hide-blocked.md) | Web: hide blocked people's group messages; Blocked page fix for people without a @handle | 2026-10-05 |
 | [T-0227](T-0227-mobile-mention-picker.md) | Mobile: @mention picker in the group composer, mentions sent with the message | 2026-10-05 |
 | [T-0241](T-0241-mobile-mention-chips.md) | Mobile: mention chips in bubbles, a mention of me stands out | 2026-10-05 |
+| [T-0240](T-0240-ui-tokens-package.md) | packages/ui-tokens: shared colours, radius and depth recipes, drift tests in web and mobile | 2026-10-05 |

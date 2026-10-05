@@ -53,6 +53,9 @@ importers:
       '@zilar/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
+      '@zilar/ui-tokens':
+        specifier: workspace:*
+        version: link:../../packages/ui-tokens
       '@zilar/xmpp-core':
         specifier: workspace:*
         version: link:../../packages/xmpp-core
@@ -321,6 +324,9 @@ importers:
       '@zilar/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
+      '@zilar/ui-tokens':
+        specifier: workspace:*
+        version: link:../../packages/ui-tokens
       '@zilar/xmpp-core':
         specifier: workspace:*
         version: link:../../packages/xmpp-core
@@ -450,6 +456,8 @@ importers:
       '@types/ws':
         specifier: ^8.18.1
         version: 8.18.1
+
+  packages/ui-tokens: {}
 
   packages/xmpp-core:
     dependencies:
