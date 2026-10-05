@@ -206,7 +206,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0177](T-0177-whistle-on-device-spike.md) | Whistle on-device spike: local Expo module (arm64 Android), hidden dev screen, native sha256, tested on emulator and phone | 2026-10-03 |
 | [T-0178](T-0178-whistle-quiet-cut-chunks.md) | Whistle: quiet-point chunking from a native amplitude envelope | 2026-10-03 |
 | [T-0180](T-0180-signin-no-code-hint.md) | Sign-in hints for people without an invite (web + mobile) | 2026-10-03 |
-| [T-0234](T-0234-mobile-create-sheets-keyboard.md) | Mobile: create sheets above the keyboard; mock create and contacts | planned | opencode/muse-spark-1.3-contributor-free | T-0233 | Emulator QA run 3; launch after T-0233 |
 | [T-0179](T-0179-mobile-transcribe-voice-notes.md) | Transcribe voice notes on the phone with Whistle: button in the bubble, consent for the 17 MB model, transcripts stored locally | 2026-10-03 |
 | [T-0182](T-0182-mobile-contacts-requests.md) | Mobile contacts: find by @handle, profile card, contact requests | 2026-10-03 |
 | [T-0183](T-0183-mobile-explore-group-handles.md) | Mobile Explore, @group links and group visibility | 2026-10-03 |
@@ -279,3 +278,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0246](T-0246-web-kit-2.md) | Web kit 2: SegmentedControl, ListRow, Card, SectionLabel, StateMessage, Avatar fixture; Cosmos on 5100 | 2026-10-05 |
 | [T-0248](T-0248-mobile-folders-chips.md) | Mobile: chat folders from the server as scrollable chips on the shared matcher | 2026-10-05 |
 | [T-0249](T-0249-web-blocked-previews.md) | Web: blocked senders never show as chat list previews; shared isBlockedSender | 2026-10-05 |
+| [T-0234](T-0234-mobile-create-sheets-keyboard.md) | Mobile: create sheets move above the keyboard; mock store creates groups and channels | 2026-10-05 |

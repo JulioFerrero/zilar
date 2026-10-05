@@ -10,6 +10,7 @@ import type {
   JoinResult,
 } from '../lib/invite-links-api';
 import { attachmentDataFor } from '../lib/attachments';
+import { GroupsApiError } from '../lib/groups-api';
 import { imageGradient } from '../lib/image-presets';
 import { CURRENT_USER_ID, CURRENT_USER_NAME } from '../lib/types';
 import type { CustomGroupRole } from '../lib/roles-api';
@@ -27,6 +28,8 @@ import {
 import { mockChannelChats, mockChannelDetail, resetMockChannels } from '../mock/channel';
 import { mockListPins, resetMockPins } from '../mock/pins';
 import { resetMockChatPrefs } from '../mock/chat-prefs';
+import { createMockDirectoryApi } from '../mock/directory';
+import { mockContacts } from '../mock/contacts';
 import { mockParamAllowed } from '../mock/gate';
 import {
   MOCK_DRAFT_CHAT_ID,
@@ -163,7 +166,7 @@ export function createInitialState(phase?: MockDraftPhase, load?: MockLoadScenar
     status: 'online',
     chatsLoad: 'loaded',
     chats,
-    contacts: [],
+    contacts: mockContacts.map((contact) => ({ ...contact })),
     messagesByChat,
     historyLoad: loadedHistory,
     search: '',
@@ -237,6 +240,20 @@ const mockPinsRead: Record<string, Pin[]> = {};
 // One shared empty list: a selector must return the same reference while
 // nothing changed, or React re-renders forever ("Maximum update depth").
 const EMPTY_PINS: Pin[] = [];
+
+/**
+ * Whether a public handle is taken in the mock directory (T-0234): the mock
+ * creates reject with the same `handle_taken` error the real store surfaces,
+ * so the sheet shows "That handle was just taken."
+ */
+async function mockHandleTaken(handle: string): Promise<boolean> {
+  const wanted = handle.trim();
+  if (wanted === '') {
+    return false;
+  }
+  const check = await createMockDirectoryApi().checkGroupHandle(wanted);
+  return !check.available;
+}
 
 function mockPinsFor(chatId: string): Pin[] {
   return mockPinsRead[chatId] ?? EMPTY_PINS;
@@ -724,21 +741,127 @@ export function createChatStore(
       revokeInviteLink: async (groupId: string, linkId: string): Promise<void> => {
         inviteLinks.revoke(groupId, linkId);
       },
-      createChannel: async (_input: {
+      createChannel: async (input: {
         title: string;
         description?: string;
         visibility?: 'public';
         handle?: string;
       }) => {
-        throw new Error('createChannel is not available in the mock store');
+        const trimmed = input.title.trim();
+        if (trimmed === '') {
+          throw new Error('Enter a channel name.');
+        }
+        if (input.description !== undefined && input.description.length > 300) {
+          throw new Error('The description must be at most 300 characters.');
+        }
+        const publicHandle =
+          input.visibility === 'public' && input.handle !== undefined
+            ? input.handle.trim()
+            : undefined;
+        if (publicHandle !== undefined && (await mockHandleTaken(publicHandle))) {
+          throw new GroupsApiError(409, 'handle_taken', 'That handle is taken');
+        }
+        messageCounter += 1;
+        const groupId = `g-mock-${Date.now()}-${messageCounter}`;
+        const feedId = `c-${groupId}`;
+        const description = input.description?.trim() ?? '';
+        set((state) => ({
+          chats: [
+            {
+              id: feedId,
+              title: trimmed,
+              kind: 'group',
+              isAI: false,
+              space: 'personal',
+              unread: 0,
+              muted: false,
+              memberCount: 1,
+              onlineCount: 0,
+              chatKind: 'channel',
+              subscriberCount: 1,
+              description: description === '' ? null : description,
+              ...(publicHandle === undefined
+                ? {}
+                : { visibility: 'public' as const, handle: publicHandle }),
+              myRole: 'owner',
+              groupId,
+              groupTitle: trimmed,
+              topic: {
+                id: `t-${feedId}`,
+                glyph: [...trimmed][0]?.toUpperCase() ?? 'C',
+                kind: 'chat',
+                status: 'open',
+                visibility: publicHandle === undefined ? 'private' : 'public',
+                isGeneral: true,
+                archived: false,
+                owner: null,
+                linkUrl: null,
+                linkLabel: null,
+              },
+            },
+            ...state.chats,
+          ],
+          messagesByChat: { ...state.messagesByChat, [feedId]: [] },
+          historyLoad: { ...state.historyLoad, [feedId]: 'loaded' },
+        }));
+        return groupId;
       },
-      createGroup: async (_input: {
+      createGroup: async (input: {
         title: string;
         memberIds: string[];
         visibility?: 'public';
         handle?: string;
       }) => {
-        throw new Error('createGroup is not available in the mock store');
+        const trimmed = input.title.trim();
+        if (trimmed === '') {
+          throw new Error('Enter a group name.');
+        }
+        const publicHandle =
+          input.visibility === 'public' && input.handle !== undefined
+            ? input.handle.trim()
+            : undefined;
+        if (publicHandle !== undefined && (await mockHandleTaken(publicHandle))) {
+          throw new GroupsApiError(409, 'handle_taken', 'That handle is taken');
+        }
+        messageCounter += 1;
+        const groupId = `g-mock-${Date.now()}-${messageCounter}`;
+        const chatId = `mock-group-${messageCounter}`;
+        set((state) => ({
+          chats: [
+            {
+              id: chatId,
+              title: trimmed,
+              kind: 'group',
+              isAI: false,
+              space: 'personal',
+              unread: 0,
+              muted: false,
+              memberCount: input.memberIds.length + 1,
+              onlineCount: 0,
+              ...(publicHandle === undefined
+                ? {}
+                : { visibility: 'public' as const, handle: publicHandle }),
+              groupId,
+              groupTitle: trimmed,
+              topic: {
+                id: `t-${chatId}`,
+                glyph: [...trimmed][0]?.toUpperCase() ?? 'G',
+                kind: 'chat',
+                status: 'open',
+                visibility: publicHandle === undefined ? 'private' : 'public',
+                isGeneral: true,
+                archived: false,
+                owner: null,
+                linkUrl: null,
+                linkLabel: null,
+              },
+            },
+            ...state.chats,
+          ],
+          messagesByChat: { ...state.messagesByChat, [chatId]: [] },
+          historyLoad: { ...state.historyLoad, [chatId]: 'loaded' },
+        }));
+        return groupId;
       },
       leaveChannel: async (chatId) => {
         // T-0144: mock channels are topic groups (see `mock/channel.ts`);

@@ -2,7 +2,7 @@ import { createElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 
-import { NewChatButton } from './new-chat-button';
+import { NewChatButton, CREATE_SHEETS_SCROLL_TAPS_PERSIST } from './new-chat-button';
 
 // The mobile app has no React Native testing library, so the button is
 // rendered to static markup with its seams stubbed (the `AuthFlow.test.tsx`
@@ -17,8 +17,12 @@ vi.mock('nativewind', () => ({
 }));
 
 vi.mock('react-native', () => ({
+  KeyboardAvoidingView: 'KeyboardAvoidingView',
   Modal: 'Modal',
+  Platform: { OS: 'ios' },
   Pressable: 'Pressable',
+  ScrollView: 'ScrollView',
+  Share: { share: () => Promise.resolve({ action: 'dismissedAction' }) },
   View: 'View',
 }));
 
@@ -72,5 +76,11 @@ describe('NewChatButton', () => {
   it('never renders a bearer token', () => {
     const html = renderToStaticMarkup(createElement(NewChatButton));
     expect(html).not.toMatch(/Bearer/i);
+  });
+
+  it('keeps first taps while the sheet keyboard is open', () => {
+    expect(CREATE_SHEETS_SCROLL_TAPS_PERSIST).toBe('handled');
+    const html = renderToStaticMarkup(createElement(NewChatButton));
+    expect(html).toContain('keyboardShouldPersistTaps="handled"');
   });
 });
