@@ -26,11 +26,10 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 | --- | --- | --- | --- |
 | T-0237 | Web: chat folders from the server, chips (narrow), left folder rail (wide) | coding | Telegram brief b, decision 4; part 2 (T-0238: Chat folders page + editor dialog) written after it |
 | T-0236 | Audit: duplicated UI, shared kit, React Cosmos plan (docs only) | pre-review | Julio: React Cosmos for web and mobile; audit → tokens + kit + catalog → gradual migration |
-| T-0235 | Web: block and unblock people, Blocked people page | pre-review | builds on T-0171 (merged); hiding blocked messages is the next task |
 | T-0227 | Mobile: @mention picker in the group composer, mentions sent | pre-review after auto round 2 | |
 | T-0233 | Mobile: floating bottom bar (Chats, AIs, Settings, Profile), search well, Profile tab | pre-review | Telegram brief a, d; uses `expo-router/ui` headless tabs |
 
-Merged: T-0232 (chat_folders server, migration 0040, clean first pre-review). Merged: T-0171 (block users server, after lead round 1). Queued: T-0234 (create sheets keyboard + mock create, after T-0233). Lead TODO: Docker compose rehearsal for T-0172 (push-deploy.test.sh already PASS 25/25).
+Merged: T-0235 (web block/unblock + Blocked people page; 2 nits deferred: unblock error sentence, mock self-block). Merged: T-0232 (chat_folders server, migration 0040, clean first pre-review). Merged: T-0171 (block users server, after lead round 1). Queued: T-0234 (create sheets keyboard + mock create, after T-0233). Lead TODO: Docker compose rehearsal for T-0172 (push-deploy.test.sh already PASS 25/25).
 
 Merged: T-0228 (public groups/channels), T-0230 (tool sheet keyboard), T-0172 (push component host), T-0231 (folder matcher), T-0225 (doctor accepts `CLAUDE.md` in lead commits), T-0224 (doctor in-place fallback; autopilot restarted), T-0226 (`ZILAR_SMOKE_MOCK=1 pnpm phone:smoke <ref>`: mock build, emulator only, leaves `.zilar-phone/commit` alone), T-0219 (tool Run/Revert/Delete; QA run 2 PASS, keyboard and stale-list issues → T-0230), T-0229 (AI screen layout fixes). Free slot (6th): block users web UI once T-0171 merges. Next: received mentions highlighted in mobile bubbles (after T-0227); New channel members step.
 
