@@ -158,30 +158,58 @@ function queuedTasks(deps: SnapshotDeps, activeIds: Set<string>): QueuedTask[] {
   return queued;
 }
 
+// Parses lines of `<unix-seconds>|<subject>` from `git log --format=%ct|%s`
+// for the "merged today" list. Accepts both the old `board: T-XXXX merged`
+// form and the new squash-merge form `T-XXXX: <summary>`; everything else
+// (e.g. `work: ...`, `docs: ...`) is ignored. `git log` lists commits
+// newest first, so the first line per task id wins and later duplicates
+// are dropped.
+export function parseMergedLog(stdout: string): { id: string; time: string }[] {
+  const SQUASH = /^(\d+)\|T-(\d+):\s/;
+  const BOARD = /^(\d+)\|board: T-(\d+) merged$/;
+  const seen = new Map<string, { id: string; time: string }>();
+  for (const raw of stdout.split('\n')) {
+    const line = raw.trim();
+    if (line === '') {
+      continue;
+    }
+    const match = SQUASH.exec(line) ?? BOARD.exec(line);
+    if (match === null) {
+      continue;
+    }
+    const seconds = match[1];
+    const num = match[2];
+    if (seconds === undefined || num === undefined) {
+      continue;
+    }
+    const id = `T-${num}`;
+    if (seen.has(id)) {
+      continue;
+    }
+    seen.set(id, { id, time: new Date(Number(seconds) * 1000).toISOString() });
+  }
+  return [...seen.values()];
+}
+
 function mergedToday(deps: SnapshotDeps): MergedToday[] {
   const midnight = new Date(deps.now);
   midnight.setHours(0, 0, 0, 0);
   const result = deps.runner.run(deps.root, [
     'log',
     'main',
+    '--first-parent',
     `--since=${midnight.toISOString()}`,
-    '--grep=^board: T-.* merged$',
     '--format=%ct|%s',
   ]);
   if (!result.ok) {
     return [];
   }
   const entries: MergedToday[] = [];
-  for (const line of result.stdout.split('\n')) {
-    const match = /^(\d+)\|board: (T-\d+) merged$/.exec(line.trim());
-    if (match === null) {
-      continue;
-    }
-    const id = match[2] ?? '';
+  for (const { id, time } of parseMergedLog(result.stdout)) {
     const fields = readFields(deps.root, id);
     entries.push({
       id,
-      time: new Date(Number(match[1]) * 1000).toISOString(),
+      time,
       summary: fields?.['title'] ?? '',
     });
   }
