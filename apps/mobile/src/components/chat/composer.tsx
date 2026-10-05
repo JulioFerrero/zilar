@@ -31,6 +31,16 @@ import {
   type CaretSelection,
   type EmojiCategoryId,
 } from '@/lib/emoji-data';
+import {
+  backspaceMention,
+  caretAfterChange,
+  isSingleCharBackspace,
+  mentionCandidates,
+  mentionStateForChange,
+  pickMentionMember,
+  resetMentionStateForChatKey,
+} from '@/components/chat/composer-mentions';
+import { MentionPicker } from '@/components/chat/mention-picker';
 import { RECENTS_STORAGE, readStoredRecents } from '@/lib/stickers-storage';
 import { gifsAvailability, type GifItem } from '@/lib/gifs';
 import { probeGifsAvailability } from '@/components/chat/gif-panel';
@@ -38,6 +48,7 @@ import { mockDemoGifs } from '@/mock/gifs';
 import type { RecentStickerEntry, StickerChoice, StickerPack } from '@/lib/stickers';
 import type { StickerPanelState } from '@/components/chat/sticker-panel';
 import type { ReplyRef } from '@/lib/types';
+import type { MentionMember, UiMention } from '@zilar/chat-core';
 import type {
   SendAttachmentOptions,
   SendStickerChoice,
@@ -113,7 +124,7 @@ function ReplyBar({ reply, onCancel }: { reply: ReplyRef; onCancel: () => void }
 }
 
 type ComposerProps = {
-  onSend: (text: string) => void;
+  onSend: (text: string, mentions?: UiMention[]) => void;
   onSendSticker: (sticker: SendStickerChoice) => void;
   /** Sends a picked file with the composer text as the caption (T-0150). */
   onSendAttachment?: ((file: PickedFile, options?: SendAttachmentOptions) => void) | undefined;
@@ -128,12 +139,16 @@ type ComposerProps = {
   replyTo?: ReplyRef;
   onCancelReply: () => void;
   onTyping?: () => void;
+  /** Group members (and AIs) for the `@` picker; absent in DMs (T-0227). */
+  mentionMembers?: MentionMember[] | undefined;
   /** Used for the `Message <title>` placeholder, like the web composer. */
   title?: string;
   /** The native pickers; tests inject a fake. */
   picker?: AttachmentPicker | undefined;
   /** The GIF media downloader; tests inject a fake. */
   gifDownloader?: GifDownloader | undefined;
+  /** The chat behind this composer; a switch resets mention state (T-0227). */
+  chatKey?: string | undefined;
 };
 
 /** Bottom composer: a well with attach, auto-growing input, emoji and mic/send. */
@@ -146,6 +161,8 @@ export function Composer({
   onCancelReply,
   onTyping,
   title,
+  mentionMembers,
+  chatKey,
   demoPacks,
   demoAttachments,
   demoGifs,
@@ -172,6 +189,14 @@ export function Composer({
   // `onSelectionChange`; `undefined` until the first selection event (an
   // emoji pick then appends at the end).
   const [selection, setSelection] = useState<CaretSelection | undefined>(undefined);
+  // The `@` mention tracking (T-0227, like web's `mentions` + `picker`): the
+  // mention ranges carried with the text, and the open query. Edit mode keeps
+  // today's behaviour (no picker while editing). A chat switch resets the
+  // tracked mentions through `chatKey` below; the draft text stays.
+  const [mentions, setMentions] = useState<UiMention[]>([]);
+  const [mentionQuery, setMentionQuery] = useState<{ start: number; query: string } | undefined>(
+    undefined,
+  );
   // Entering edit mode prefills the input with the message's text; leaving it
   // restores whatever the user had typed before they tapped Edit. The seeding
   // runs while rendering, keyed on the message id (a string), instead of in an
@@ -181,12 +206,26 @@ export function Composer({
     editTarget === undefined ? undefined : `${editTarget.chatId}:${editTarget.messageId}`;
   const [seededFor, setSeededFor] = useState<string | undefined>(undefined);
   const [previousDraft, setPreviousDraft] = useState('');
+  // The screen passes `chatKey={chat.id}`: a switch resets the tracked
+  // mentions and the open query (a picked mention must never leak into
+  // another chat, like web), while the draft text stays. Seeding the initial
+  // value from `chatKey` skips the reset on the first render.
+  const [trackedChatKey, setTrackedChatKey] = useState<string | undefined>(chatKey);
   if (editingId !== seededFor) {
     setSeededFor(editingId);
     if (editingId !== undefined) {
       setPreviousDraft(text);
       setText(targetText ?? '');
     }
+  }
+  if (chatKey !== undefined && trackedChatKey !== chatKey) {
+    const reset = resetMentionStateForChatKey(trackedChatKey, chatKey, {
+      mentions,
+      query: mentionQuery,
+    });
+    setTrackedChatKey(reset.trackedChatKey);
+    setMentions(reset.state.mentions);
+    setMentionQuery(reset.state.query);
   }
   const iconColor = ICON[scheme];
   const placeholder = title === undefined ? 'Message' : `Message ${title}`;
@@ -294,6 +333,17 @@ export function Composer({
     const { text: next, caret } = insertEmojiAtCaret(text, emoji, selection);
     setText(next);
     setSelection({ start: caret, end: caret });
+    if (mentionsEnabled) {
+      const state = mentionStateForChange(
+        text,
+        next,
+        caret,
+        { mentions, query: mentionQuery },
+        true,
+      );
+      setMentions(state.mentions);
+      setMentionQuery(state.query);
+    }
     void persistEmojiRecent(EMOJI_RECENTS_STORAGE, emojiRecents, emoji)
       .then(setEmojiRecents)
       .catch(() => {});
@@ -355,6 +405,16 @@ export function Composer({
     onSendSticker(sticker);
   };
 
+  // The `@` mention picker (T-0227, like web): only when the screen passes
+  // members (groups, never DMs) and never while editing. Sending and the
+  // `chatKey` chat switch below both reset the tracked mentions.
+  const mentionsEnabled = mentionMembers !== undefined && editTarget === undefined;
+  const candidates =
+    mentionsEnabled && mentionQuery !== undefined
+      ? mentionCandidates(mentionMembers, { mentions, query: mentionQuery })
+      : [];
+  const pickerOpen = candidates.length > 0;
+
   const handleSend = () => {
     // A picked file sends with the composer text as the caption (web sends
     // the same way): the store uploads the bytes, then the attachment
@@ -388,8 +448,10 @@ export function Composer({
       setInputHeight(MIN_INPUT_HEIGHT);
       return;
     }
-    onSend(text);
+    onSend(text, mentions.length === 0 ? undefined : [...mentions]);
     setText('');
+    setMentions([]);
+    setMentionQuery(undefined);
     setInputHeight(MIN_INPUT_HEIGHT);
   };
 
@@ -455,10 +517,62 @@ export function Composer({
   };
 
   const handleChange = (value: string) => {
+    // Deleting one character inside or right after a mention removes the
+    // whole token, like web's Backspace handler (RN has no reliable
+    // `onKeyPress` backspace signal). Only a real single-character delete at
+    // a collapsed caret takes the token path (T-0227 M1): a range replace
+    // with net −1 is normal typing, or the user's edit would be lost. Any
+    // other change retracks the ranges and the picker through the shared
+    // helper. The tracked `selection` is the pre-change caret
+    // (`onSelectionChange` for this keystroke has not fired yet), so shift
+    // it by the length delta to find the post-change caret; tapping a row
+    // and emoji insertion set it explicitly.
+    const caret = caretAfterChange(text, value, selection?.start);
+    if (mentionsEnabled && mentions.length > 0 && isSingleCharBackspace(text, value, selection)) {
+      const removed = backspaceMention(
+        text,
+        selection?.start ?? 0,
+        { mentions, query: mentionQuery },
+        true,
+      );
+      if (removed !== undefined) {
+        setText(removed.text);
+        setMentions(removed.state.mentions);
+        setMentionQuery(removed.state.query);
+        setSelection({ start: removed.caret, end: removed.caret });
+        return;
+      }
+    }
     setText(value);
+    if (mentionsEnabled) {
+      const next = mentionStateForChange(
+        text,
+        value,
+        caret,
+        { mentions, query: mentionQuery },
+        true,
+      );
+      setMentions(next.mentions);
+      setMentionQuery(next.query);
+    }
     if (editTarget === undefined && value.trim().length > 0) {
       onTyping?.();
     }
+  };
+
+  // Tapping a picker row replaces the `@query` with the token and puts the
+  // caret after it, like web's `pickMention`. The native field is controlled
+  // by `selection`, so setting it moves the caret on the next render.
+  const pickMention = (member: MentionMember) => {
+    const caret = selection?.start ?? text.length;
+    const picked = pickMentionMember(text, caret, member, { mentions, query: mentionQuery });
+    if (picked === undefined) {
+      return;
+    }
+    setText(picked.text);
+    setMentions(picked.state.mentions);
+    setMentionQuery(undefined);
+    setSelection({ start: picked.caret, end: picked.caret });
   };
 
   return (
@@ -479,6 +593,7 @@ export function Composer({
           <Text className="text-[13px] text-[#f87171]">{attachError}</Text>
         </Pressable>
       ) : null}
+      {pickerOpen ? <MentionPicker members={candidates} onSelect={pickMention} /> : null}
       <View
         className="flex-row items-end gap-1 rounded-[14px] p-2"
         style={[well, { borderColor: '#262626' }]}
@@ -497,6 +612,7 @@ export function Composer({
               accessibilityLabel="Message"
               className="mx-1 flex-1 py-2 text-[16px] text-foreground"
               style={{ height: inputHeight, maxHeight: MAX_INPUT_HEIGHT, lineHeight: 20 }}
+              selection={selection}
               onContentSizeChange={(event) =>
                 setInputHeight(fieldHeightFor(event.nativeEvent.contentSize.height))
               }

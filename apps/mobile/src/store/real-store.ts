@@ -3,6 +3,7 @@ import type {
   EditAuthor,
   EditUpdate,
   EditsState,
+  MentionMember,
   MessageStatus,
   ReactionsState,
   ReplyRef,
@@ -1927,6 +1928,44 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       groupMembers.set(chatId, members);
     }
 
+    // The mention members behind one chat row (T-0227, built like web's
+    // `applyGroupDetail`): people as `{ jid: localpart@domain, name, handle?
+    // }` plus the group's AIs as `{ jid, name }`, never yourself. Self is
+    // excluded by `userId` against `currentUserId` (T-0227 S2): `me?.jid`
+    // is undefined before boot and in the mock store, while `currentUserId`
+    // is always set (`me.id` after boot). The sender-name map above keeps
+    // working from the same detail. Reads the shared detail cache (so
+    // every topic row of a group agrees) and never fetches on its own.
+    function mentionMembersFor(chatId: string): MentionMember[] {
+      const groupId = groupIdForChat(chatId);
+      if (groupId === undefined) {
+        return [];
+      }
+      const detail = groupDetails.get(groupId);
+      if (detail === undefined) {
+        return [];
+      }
+      const mine = myJid();
+      const domain = mine === undefined ? undefined : mine.slice(mine.indexOf('@') + 1);
+      const meId = get().currentUserId;
+      const members: MentionMember[] = [];
+      for (const member of detail.members) {
+        if (member.userId === meId) {
+          continue;
+        }
+        const localpart = member.userId.toLowerCase();
+        members.push({
+          jid: domain === undefined ? member.userId : `${localpart}@${domain}`,
+          name: member.name,
+          ...(member.handle === undefined || member.handle === '' ? {} : { handle: member.handle }),
+        });
+      }
+      for (const ai of detail.ais) {
+        members.push({ jid: ai.jid, name: ai.name });
+      }
+      return members;
+    }
+
     async function ensureGroupMembers(chatId: string): Promise<void> {
       if (groupMembers.has(chatId) || loadingGroupMembers.has(chatId)) {
         return;
@@ -2979,6 +3018,8 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       mediaTrustedHosts: undefined,
       messages: (chatId) => get().messagesByChat[chatId] ?? EMPTY_MESSAGES,
       hasMore: (chatId) => get().historyComplete[chatId] !== true && cursors[chatId] !== undefined,
+      groupMembers: (chatId) => mentionMembersFor(chatId),
+      groupIdForChat: (chatId) => groupIdForChat(chatId),
       jumpTarget: undefined,
       openChat: (chatId) => {
         set((state) => {
@@ -3087,6 +3128,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         if (trimmed.length === 0 || chat === undefined) {
           return;
         }
+        const mentions = mentionsForTrimmedText(text, trimmed, options?.mentions ?? []);
         sequence += 1;
         const localId = `local-${sequence}`;
         const replyTo = options?.replyTo;
@@ -3098,6 +3140,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           text: trimmed,
           createdAt: now(),
           status: 'sending',
+          ...(mentions.length === 0 ? {} : { mentions }),
           ...(replyTo === undefined ? {} : { replyTo }),
         };
         const signature = signatureFor(chatId, trimmed, replyTo);
@@ -3118,7 +3161,20 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
             chatId,
             coreKind(chat),
             trimmed,
-            replyTo === undefined ? undefined : { replyTo: { id: replyTo.id } },
+            mentions.length === 0 && replyTo === undefined
+              ? undefined
+              : {
+                  ...(replyTo === undefined ? {} : { replyTo: { id: replyTo.id } }),
+                  ...(mentions.length === 0
+                    ? {}
+                    : {
+                        mentions: mentions.map((mention) => ({
+                          jid: mention.jid,
+                          begin: mention.begin,
+                          end: mention.end,
+                        })),
+                      }),
+                },
           )
           .then((sent) => {
             linkMessageIds(localId, sent.id);

@@ -1,8 +1,10 @@
 import type {
   ChatSummary,
   EditsState,
+  MentionMember,
   ReactionsState,
   ReplyRef,
+  UiMention,
   UiMessage,
 } from '@zilar/chat-core';
 
@@ -36,6 +38,8 @@ export type TypingState = {
 
 export type SendTextOptions = {
   replyTo?: ReplyRef;
+  /** XEP-0372 mentions tracked by the composer (T-0227, like web). */
+  mentions?: UiMention[];
 };
 
 /** Options for `sendAttachment`: a caption and an optional reply, like web. */
@@ -195,6 +199,21 @@ export interface ChatStoreState {
   messages: (chatId: string) => UiMessage[];
   hasMore: (chatId: string) => boolean;
   openChat: (chatId: string) => void;
+  /**
+   * The members and AIs of the group behind one chat row (T-0227, the mobile
+   * twin of web's `groupMembers`): people as `{ jid: localpart@domain, name,
+   * handle? }` plus the group's AIs as `{ jid, name }`. Empty for DMs and
+   * when no group detail is cached yet.
+   */
+  groupMembers: (chatId: string) => MentionMember[];
+  /**
+   * The group id behind one chat row (T-0227, the mobile twin of the web
+   * row's group id): topic rows carry it directly, legacy group rows
+   * resolve it through the remembered `/api/chats` entries. Undefined for
+   * DMs and unknown chats. The chat screen subscribes its mention memo
+   * through it so a cold open re-resolves members when the detail lands.
+   */
+  groupIdForChat: (chatId: string) => string | undefined;
   /**
    * Opens a chat and waits until `messageId` is loaded, paging backwards at
    * most `MESSAGE_JUMP_MAX_PAGES` history pages (T-0138, like web's
