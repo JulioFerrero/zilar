@@ -1,4 +1,5 @@
 import type { ColorScheme } from './color-scheme';
+import { palette } from '@zilar/ui-tokens';
 
 /**
  * Literal colors that cannot go through NativeWind class names: SVG fills and
@@ -15,40 +16,40 @@ export const BUBBLE_COLORS: Record<
   { incoming: string; outgoing: string; incomingMeta: string; outgoingMeta: string }
 > = {
   light: {
-    incoming: '#161616',
-    outgoing: '#dedede',
-    incomingMeta: '#8a8a8a',
-    outgoingMeta: '#525252',
+    incoming: palette.bubbleIn,
+    outgoing: palette.bubbleOut,
+    incomingMeta: palette.bubbleInMeta,
+    outgoingMeta: palette.bubbleOutMeta,
   },
   dark: {
-    incoming: '#161616',
-    outgoing: '#dedede',
-    incomingMeta: '#8a8a8a',
-    outgoingMeta: '#525252',
+    incoming: palette.bubbleIn,
+    outgoing: palette.bubbleOut,
+    incomingMeta: palette.bubbleInMeta,
+    outgoingMeta: palette.bubbleOutMeta,
   },
 };
 
 export const ACCENT: Record<ColorScheme, string> = {
-  light: '#ededed',
-  dark: '#ededed',
+  light: palette.accent,
+  dark: palette.accent,
 };
 
 export const MUTED_FOREGROUND: Record<ColorScheme, string> = {
-  light: '#a1a1a1',
-  dark: '#a1a1a1',
+  light: palette.mutedForeground,
+  dark: palette.mutedForeground,
 };
 
 export const FOREGROUND: Record<ColorScheme, string> = {
-  light: '#ededed',
-  dark: '#ededed',
+  light: palette.foreground,
+  dark: palette.foreground,
 };
 
 /** The icon-key glyph color from ui-style.md §4. */
 export const ICON: Record<ColorScheme, string> = {
-  light: '#d4d4d4',
-  dark: '#d4d4d4',
+  light: palette.iconColor,
+  dark: palette.iconColor,
 };
 
 /** Monochrome accents used by the depth recipes and bubbles. */
-export const EDGE = '#050505';
-export const DANGER = '#ef4444';
+export const EDGE = palette.edge;
+export const DANGER = palette.danger;

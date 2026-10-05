@@ -1,56 +1,48 @@
 import type { TextStyle, ViewStyle } from 'react-native';
 
+import { depth, palette } from '@zilar/ui-tokens';
+
 /**
  * The four skeuomorphic depth recipes from docs/design/ui-style.md §4, plus the
  * bubble looks from §5. Every shadow and gradient string lives here once; the
  * `ui/*` components and the chat pieces apply them, never ad hoc.
  */
 
-export const ACCENT = '#ededed';
-export const ACCENT_FOREGROUND = '#0a0a0a';
-export const EDGE = '#050505';
-export const BORDER = '#1f1f1f';
-export const BORDER_STRONG = '#262626';
-export const WELL_BACKGROUND = '#0c0c0c';
-export const ICON_COLOR = '#d4d4d4';
+export const ACCENT = palette.accent;
+export const ACCENT_FOREGROUND = palette.accentForeground;
+export const EDGE = palette.edge;
+export const BORDER = palette.border;
+export const BORDER_STRONG = palette.borderStrong;
+export const WELL_BACKGROUND = palette.well;
+export const ICON_COLOR = palette.iconColor;
 
 /** Primary (accent) button, badge and FAB: a glossy key (§4). */
-export const KEY_PRIMARY_GRADIENT =
-  'linear-gradient(180deg, rgba(255,255,255,0.40), rgba(255,255,255,0.08) 48%, rgba(0,0,0,0) 52%, rgba(0,0,0,0.14))';
-export const KEY_PRIMARY_SHADOW =
-  'inset 0 1px 0 rgba(255,255,255,0.85), inset 0 -2px 0 rgba(0,0,0,0.2), inset 0 0 0 1px rgba(255,255,255,0.12), 0 1px 0 rgba(0,0,0,0.95), 0 2px 3px rgba(0,0,0,0.7), 0 10px 18px -8px rgba(0,0,0,0.95)';
-export const KEY_PRIMARY_PRESSED_SHADOW =
-  'inset 0 2px 5px rgba(0,0,0,0.35), 0 1px 0 rgba(0,0,0,0.95)';
+export const KEY_PRIMARY_GRADIENT = depth.keyPrimaryGradient;
+export const KEY_PRIMARY_SHADOW = depth.keyPrimaryShadow;
+export const KEY_PRIMARY_PRESSED_SHADOW = depth.keyPrimaryPressedShadow;
 
 /** Icon button: a dark key (§4). */
-export const KEY_ICON_GRADIENT = 'linear-gradient(180deg, #2c2c2c, #151515)';
-export const KEY_ICON_SHADOW =
-  'inset 0 1px 0 rgba(255,255,255,0.16), inset 0 -1px 0 rgba(0,0,0,0.65), 0 1px 0 rgba(0,0,0,0.95), 0 3px 6px -1px rgba(0,0,0,0.75)';
-export const KEY_ICON_PRESSED_SHADOW = 'inset 0 2px 5px rgba(0,0,0,0.9)';
+export const KEY_ICON_GRADIENT = depth.keyIconGradient;
+export const KEY_ICON_SHADOW = depth.keyIconShadow;
+export const KEY_ICON_PRESSED_SHADOW = depth.keyIconPressedShadow;
 
 /** Well: recessed search, composer and segment track (§4). */
-export const WELL_SHADOW =
-  'inset 0 2px 6px rgba(0,0,0,0.9), inset 0 1px 1px rgba(0,0,0,0.8), inset 0 0 0 1px rgba(0,0,0,0.4), 0 1px 0 rgba(255,255,255,0.06)';
+export const WELL_SHADOW = depth.wellShadow;
 
 /** Raised segment: the active folder tab (§4). */
-export const SEGMENT_GRADIENT = 'linear-gradient(180deg, #333333, #1c1c1c)';
-export const SEGMENT_SHADOW =
-  'inset 0 1px 0 rgba(255,255,255,0.16), inset 0 -1px 0 rgba(0,0,0,0.6), 0 1px 0 rgba(0,0,0,0.9), 0 2px 4px rgba(0,0,0,0.7)';
+export const SEGMENT_GRADIENT = depth.segmentGradient;
+export const SEGMENT_SHADOW = depth.segmentShadow;
 
 /** Raised pill: the date separator and big-emoji meta (§4). */
-export const PILL_GRADIENT = 'linear-gradient(180deg, #1f1f1f, #121212)';
-export const PILL_SHADOW =
-  'inset 0 1px 0 rgba(255,255,255,0.1), 0 1px 0 rgba(0,0,0,0.9), 0 2px 4px rgba(0,0,0,0.6)';
+export const PILL_GRADIENT = depth.pillGradient;
+export const PILL_SHADOW = depth.pillShadow;
 
 /** Bubble looks (§5). */
-export const BUBBLE_OUT_GRADIENT = 'linear-gradient(180deg, #ffffff, #dedede)';
-export const BUBBLE_OUT_SHADOW =
-  'inset 0 1px 0 #ffffff, inset 0 -3px 6px rgba(0,0,0,0.08), 0 1px 0 rgba(0,0,0,0.95), 0 4px 10px -3px rgba(0,0,0,0.85)';
-export const BUBBLE_IN_GRADIENT = 'linear-gradient(180deg, #252525, #161616)';
-export const BUBBLE_IN_SHADOW =
-  'inset 0 1px 0 rgba(255,255,255,0.12), inset 0 -1px 0 rgba(0,0,0,0.6), 0 1px 0 rgba(0,0,0,0.95), 0 4px 10px -3px rgba(0,0,0,0.85)';
-export const BUBBLE_GEN_SHADOW =
-  'inset 0 2px 6px rgba(0,0,0,0.9), inset 0 0 0 1px rgba(0,0,0,0.5), 0 1px 0 rgba(255,255,255,0.06)';
+export const BUBBLE_OUT_GRADIENT = depth.bubbleOutGradient;
+export const BUBBLE_OUT_SHADOW = depth.bubbleOutShadow;
+export const BUBBLE_IN_GRADIENT = depth.bubbleInGradient;
+export const BUBBLE_IN_SHADOW = depth.bubbleInShadow;
+export const BUBBLE_GEN_SHADOW = depth.bubbleGenShadow;
 
 export const TEXT_SHADOW_LIGHT: TextStyle = {
   textShadowColor: 'rgba(255,255,255,0.7)',
