@@ -2,7 +2,7 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
-Last updated: 2026-10-05 ~13:50 local, after merging T-0211 (Julio: "the resize is working great") and T-0221, and launching T-0222. Main checkout got `pnpm install` (T-0211 added Ink/React; the autopilot could not start without it). Julio's watcher reopened on the new version and floated; test window closed.
+Last updated: 2026-10-05 ~14:05 local, after merging T-0222 and launching T-0223 (docs); earlier merged T-0211 (Julio: "the resize is working great") and T-0221, and launching T-0222. Main checkout got `pnpm install` (T-0211 added Ink/React; the autopilot could not start without it). Julio's watcher reopened on the new version and floated; test window closed.
 
 Autopilot restarted with `ZILAR_REVIEW_MODEL=meta/muse-spark-1.3-contributor` (free Muse still 429 at ~12:05). When the free listing answers again (`opencode2 run -m "opencode/muse-spark-1.3-contributor-free#low" "Reply OK."`), restart it without the variable.
 
@@ -22,8 +22,10 @@ Models (Julio, 2026-10-05): default `opencode/muse-spark-1.3-contributor-free`; 
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0219 | Mobile: Run now, Revert, Delete in the tool detail sheet | coding | its first turn hit 429 while still `planned` (fixed for the future by T-0221); lead switched it to paid Muse by hand, so `state.json` still says free (watch badge "free") |
-| T-0222 | `lead switch-model --in-place` (same session, records the model) | coding | Julio: fix the "free" badge. After merge: `lead switch-model T-0219 meta/muse-spark-1.3-contributor --in-place` if T-0219 still runs |
+| T-0219 | Mobile: Run now, Revert, Delete in the tool detail sheet | pre-review (paid Muse by FALLBACK) | worker on paid Muse; state fixed with `lead switch-model --in-place` (T-0222) |
+| T-0223 | Docs: FEATURES, mobile parity roadmap, README M5 line catch up with T-0181..T-0222 | coding | free Muse (fallback on 429). Julio asked "do we need to update the readme or some of the docs?"; lead updated `CLAUDE.md` and `LEAD_HANDOFF.md` itself (d70f6d36) |
+
+T-0222 merged. Doctor stalled on a 429 (the fallback does not cover it); lead switched it by hand. Next small lead task: cover the doctor in the fallback.
 
 First live `LEAD: FALLBACK`: T-0220's pre-review (free 429 → paid, same session) worked. T-0220 merged; autopilot restarted.
 
