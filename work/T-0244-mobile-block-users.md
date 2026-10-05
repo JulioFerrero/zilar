@@ -1,7 +1,7 @@
 ---
 id: T-0244
 title: "Mobile: block and unblock people, Blocked people screen, and the 'blocked' relation no longer breaks profile lookups"
-status: planned
+status: merged
 milestone: M5
 branch: task/T-0244-mobile-block-users
 model: deepseek/deepseek-flash
@@ -82,4 +82,127 @@ Hiding blocked people's messages on mobile (next task), the settings hub row (af
 
 ## Report (written by the worker when done)
 
+Status: review. Branch: `task/T-0244-mobile-block-users`.
+
+### What I did
+
+- `contacts-api.ts`: added `'blocked'` to `ContactRelation` and `isRelation`; added
+  `BlockedPerson { userId, name, handle: string | null, image: string | null, jid: string | null }`;
+  added `blockUser` (PUT `/api/blocks/:userId`), `unblockUser` (DELETE same) and
+  `listBlockedUsers` (GET `/api/blocks`) to `ContactsApi`/`createContactsApi` with type-guarded
+  parsers (`parseBlockResult`, `parseBlockedPerson`, `parseBlockedList`; a non-array or a row
+  without `userId`/`name` is rejected as `invalid_response`).
+- `contacts-mock.ts`: in-memory blocked list. Seed adds `u-eve` (`relation: 'blocked'`) so the fix
+  is visible in mock mode. `blockUser` is idempotent, 404s an unknown id, 400s `u-me`, flips the
+  profile relation; `unblockUser` is idempotent and flips back to `none`; `listBlockedUsers`
+  returns a copy. `sendContactRequest` on a blocked profile now throws 409 `blocked`.
+- `add-contact.ts`: added the missing `blocked` case to `addContactSendFailure` ->
+  "Unblock this person first." (previously it fell through to the raw server message, which
+  broke the fixed-sentences rule).
+- `blocks.ts` (new): UI-free `blockFailure`/`unblockFailure`/`blockedLoadFailure` (429 ->
+  "Too many tries — wait a little and try again."), `performBlock` and `performUnblock`
+  (success callbacks; failures return sentences, never throw).
+- `profile-card.tsx`: `ProfileCard` owns the inline confirm (`useState`, reset on a new
+  `userId`, like the add-contact sheet) and gets `onBlock`/`onUnblock`.
+  `ProfileCardActionRow` stays presentational and gets `name`, `blockConfirming`, `onStartBlock`,
+  `onCancelBlock`, `onBlock`, `onUnblock`. Blocked relation -> "You blocked this person." +
+  Unblock. Every other relation but `self` gets the muted "Block" text button; the confirm uses
+  the web sentence with a danger Block (lucide `Ban`) and Cancel.
+- Wired the handlers in `u/[handle].tsx`, `use-people-search.ts` (used by
+  `people-search-result.tsx`) and `add-contact-sheet.tsx`; on success the shown relation becomes
+  `blocked`/`none`, on failure the inline sentence is shown.
+- `settings/blocked.tsx` (new): "Blocked people", same structure as `requests.tsx`
+  (`RequireAuth`, `useContactsApi`, loading/ready/error, back `IconButton`, `Avatar`), rows with
+  avatar, name and muted `@handle` only when not null plus Unblock, empty state "You have not
+  blocked anyone.", load error with Retry, unblock failure "Could not unblock. Try again.".
+- `settings/requests.tsx`: added a bottom "Blocked people" row (lucide `Ban`, chevron) pushing
+  `/settings/blocked`. Did not touch the settings hub.
+
+### Tests
+
+- `contacts-api.test.ts`: `'blocked'` parses; PUT/DELETE/GET of the block routes and their
+  bodies; null `handle`/`jid` pass; malformed list and malformed block result reject.
+- `contacts.test.tsx`: blocked relation shows Unblock; Block appears on every non-self relation;
+  confirm shows the web sentence and "Confirm block"/"Cancel the block"; Block press calls
+  `onStartBlock`, Confirm calls `onBlock`; `performBlock` calls `blockUser` and maps 429 /
+  fallback sentences; 409 `blocked` send maps to "Unblock this person first.".
+- `blocked-screen.test.tsx` (new): list, null handle without `@`, empty, loading, load error with
+  Retry, inline unblock failure; `performUnblock` removes the row on success and keeps it on
+  failure (plus the 429 sentence).
+- `contacts-mock.test.ts`: blocking twice is idempotent, unblock flips back, unknown id 404,
+  yourself 400, blocked lookup parses.
+- `people-search.test.ts` and `requests-screen.test.tsx`: updated the expected labels (Block added)
+  and the fake APIs; the requests screen shows the Blocked people link.
+
+### Commands (real results)
+
+- `pnpm install` — done, no errors.
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot src/lib/contacts-api.test.ts src/components/contacts/contacts.test.tsx src/components/contacts/contacts-mock.test.ts`
+  — 3 files, 57 tests passed.
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot src/components/contacts/blocked-screen.test.tsx src/components/contacts/people-search.test.ts src/components/contacts/requests-screen.test.tsx`
+  — 3 files, 39 tests passed.
+- `pnpm gate` (first run) — FAIL on format for 2 of my files; I ran
+  `pnpm exec prettier --write` on exactly those two.
+- `pnpm gate` (final) — GATE PASS:
+  - `PASS install (frozen) (4.1s)`, `PASS format (20.1s)`, `PASS lint (0.8s)`,
+    `PASS typecheck (8.6s)`, `PASS tests @zilar/mobile (1.9s)`
+  - `gate: 18 changed file(s) against main`
+  - `scope: every changed file is inside the Allowed files`
+  - `GATE PASS`
+
+### Deviations from the spec
+
+- `ProfileCardActionRow` also received `name`, `blockConfirming`, `onStartBlock` and
+  `onCancelBlock`. The mobile suite renders components directly (no React Native testing library),
+  so the confirm state lives in `ProfileCard` and the row stays presentational, matching the
+  existing `AlwaysAllowedRow` confirm pattern. `onBlock`/`onUnblock` are as the spec asks.
+- `add-contact-sheet.tsx` was simple enough, so I wired Block/Unblock there too (not just
+  compile).
+- The mock seeds a blocked `u-eve` profile/list so the default mock shows the fixed behaviour.
+- Fixed the missing `blocked` case in the send-error mapper (needed for the card's 409 sentence;
+  without it the app would have shown raw server text).
+
+### Blocked / needs a decision
+
+None.
+
+### Round 2 (pre-review fixes)
+
+Fixed finding 1 (should-fix): the inline block confirm reopened after block → unblock.
+`profile-card.tsx` now resets `confirmingBlock` when the profile's `userId` **or** `relation`
+changes (new `shouldResetBlockConfirm` predicate), so a successful block or unblock closes the
+confirm instead of leaving state `true` that reappears when the relation flips back to `none`.
+
+- Tests added in `contacts.test.tsx`: a relation change (none → blocked and blocked → none)
+  drops the confirm, the same relation keeps it, and a different person drops it.
+- Finding 2 (blocked-screen avatar image) is a nit outside the Allowed files and in lines I did
+  not change, so it is left as-is. No must-fix findings.
+- Commands (real results):
+  - `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot contacts-api contacts blocked-screen`
+    → 6 files, 98 passed.
+  - `pnpm gate` → GATE PASS (`PASS install (frozen)`, `PASS format`, `PASS lint`,
+    `PASS typecheck`, `PASS tests @zilar/mobile`; 18 changed files, every one inside the Allowed
+    files). The first gate run failed format on my changed test file; I ran
+    `pnpm exec prettier --write` on exactly that file and reran.
+
 ## Review (written by Claude)
+
+**Verdict:** Approved after 1 auto round. This was the first task on `deepseek/deepseek-flash` (Julio's trial).
+- Round 1 pre-review: 0 must-fix, 1 should-fix: the block confirm reopened after a block and then an unblock. It was fixed by resetting the confirm on a person or relation change (`shouldResetBlockConfirm`).
+- The second pre-review is clean.
+- It fixed the live `'blocked'` lookup bug and handles a null handle and jid.
+- It found and fixed the missing 409 `blocked` sentence in `add-contact.ts`, and wired the add-contact sheet too.
+
+| | First pass | Fix round | Total |
+| --- | --- | --- | --- |
+| Time | 7.5 min | 1.7 min | 9.2 min |
+| Steps | 75 | 22 | 97 |
+| Speed | 148 tok/s | | |
+| Cost (off-peak) | $0.076 | $0.017 | $0.093 |
+
+Same review count as the Muse web twin T-0235 (1 should-fix in round 1).
+
+Not yet seen on a device. Follow-ups:
+- the "Blocked people" row in the settings hub;
+- hiding blocked people's messages on mobile;
+- Avatar has no image prop, so the screen shows initials (shared with requests).

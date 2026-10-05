@@ -79,7 +79,14 @@ describe('createContactsApi', () => {
   });
 
   it('accepts each relation value', async () => {
-    const relations = ['none', 'contact', 'request_sent', 'request_received', 'self'] as const;
+    const relations = [
+      'none',
+      'contact',
+      'request_sent',
+      'request_received',
+      'self',
+      'blocked',
+    ] as const;
     for (const relation of relations) {
       const fetchImpl = vi.fn(async () => jsonResponse({ ...PROFILE, relation }));
       const api = createContactsApi(async () => 't', fetchImpl as unknown as typeof fetch);
@@ -143,6 +150,48 @@ describe('createContactsApi', () => {
     expect(calls[1]?.[1].method).toBe('POST');
     expect(calls[2]?.[0]).toBe('http://127.0.0.1:3188/api/contact-requests/req-1');
     expect(calls[2]?.[1].method).toBe('DELETE');
+  });
+
+  it('PUTs, DELETEs and GETs the block routes and parses their bodies', async () => {
+    const person = {
+      userId: 'u-ada',
+      name: 'Ada',
+      handle: null,
+      image: null,
+      jid: null,
+    };
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ blocked: true }))
+      .mockResolvedValueOnce(jsonResponse({ blocked: false }))
+      .mockResolvedValueOnce(jsonResponse({ blocked: [person] }));
+    const api = createContactsApi(async () => 't', fetchImpl as unknown as typeof fetch);
+
+    await expect(api.blockUser('u-ada')).resolves.toEqual({ blocked: true });
+    await expect(api.unblockUser('u-ada')).resolves.toEqual({ blocked: false });
+    await expect(api.listBlockedUsers()).resolves.toEqual([person]);
+
+    const calls = fetchImpl.mock.calls as unknown as [string, RequestInit][];
+    expect(calls[0]?.[0]).toBe('http://127.0.0.1:3188/api/blocks/u-ada');
+    expect(calls[0]?.[1].method).toBe('PUT');
+    expect(calls[1]?.[0]).toBe('http://127.0.0.1:3188/api/blocks/u-ada');
+    expect(calls[1]?.[1].method).toBe('DELETE');
+    expect(calls[2]?.[0]).toBe('http://127.0.0.1:3188/api/blocks');
+    expect(calls[2]?.[1].method).toBe('GET');
+  });
+
+  it('rejects a malformed blocked list', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ blocked: [{ userId: 'u-ada' }] }));
+    const api = createContactsApi(async () => 't', fetchImpl as unknown as typeof fetch);
+
+    await expect(api.listBlockedUsers()).rejects.toMatchObject({ code: 'invalid_response' });
+  });
+
+  it('rejects a malformed block result', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ blocked: 'yes' }));
+    const api = createContactsApi(async () => 't', fetchImpl as unknown as typeof fetch);
+
+    await expect(api.blockUser('u-ada')).rejects.toMatchObject({ code: 'invalid_response' });
   });
 
   it('keeps the server error code and status for 404', async () => {

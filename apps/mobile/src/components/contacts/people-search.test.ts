@@ -13,6 +13,10 @@ vi.mock('@/components/ui/text', () => ({
   Text: 'Text',
 }));
 
+vi.mock('lucide-react-native', () => ({
+  Ban: 'Ban',
+}));
+
 vi.mock('../chat/avatar', () => ({
   Avatar: 'Avatar',
 }));
@@ -92,6 +96,15 @@ function fakeApi(respond: (handle: string) => Promise<HandleProfile>): {
     },
     async cancelContactRequest() {
       throw new ContactsApiError(404, 'not_found', 'gone');
+    },
+    async blockUser() {
+      return { blocked: true };
+    },
+    async unblockUser() {
+      return { blocked: false };
+    },
+    async listBlockedUsers() {
+      return [];
     },
   };
   return { api, calls };
@@ -367,23 +380,26 @@ describe('people row actions per relation', () => {
       onDecline: () => {},
       onMessage: () => {},
       onOpenRequests: () => {},
+      onStartBlock: () => {},
+      onCancelBlock: () => {},
+      onBlock: () => {},
+      onUnblock: () => {},
     };
 
-    expect(labels(render({ relation: 'contact', sent: false, busy: false, ...handlers }))).toEqual([
-      'Message',
+    const row = (relation: HandleProfile['relation'], sent = false, blockConfirming = false) =>
+      render({ name: 'Ada', relation, sent, blockConfirming, busy: false, ...handlers });
+
+    expect(labels(row('contact'))).toEqual(['Message', 'Block']);
+    expect(labels(row('none'))).toEqual(['Send request', 'Block']);
+    expect(labels(row('none', true))).toEqual(['Cancel the request', 'Block']);
+    expect(labels(row('request_sent'))).toEqual(['Cancel the request', 'Block']);
+    expect(labels(row('request_received'))).toEqual([
+      'Accept',
+      'Decline',
+      'Open contact requests',
+      'Block',
     ]);
-    expect(labels(render({ relation: 'none', sent: false, busy: false, ...handlers }))).toEqual([
-      'Send request',
-    ]);
-    expect(labels(render({ relation: 'none', sent: true, busy: false, ...handlers }))).toEqual([
-      'Cancel the request',
-    ]);
-    expect(
-      labels(render({ relation: 'request_sent', sent: false, busy: false, ...handlers })),
-    ).toEqual(['Cancel the request']);
-    expect(
-      labels(render({ relation: 'request_received', sent: false, busy: false, ...handlers })),
-    ).toEqual(['Accept', 'Decline', 'Open contact requests']);
-    expect(labels(render({ relation: 'self', sent: false, busy: false, ...handlers }))).toEqual([]);
+    expect(labels(row('self'))).toEqual([]);
+    expect(labels(row('blocked'))).toEqual(['Unblock']);
   });
 });

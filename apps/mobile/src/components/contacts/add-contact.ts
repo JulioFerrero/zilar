@@ -51,6 +51,8 @@ export function addContactSendFailure(error: unknown): string {
         return 'You are already contacts.';
       case 'request_exists':
         return 'A request is already pending.';
+      case 'blocked':
+        return 'Unblock this person first.';
       case 'too_many_requests':
         return 'Too many pending requests — wait for some answers first.';
       case 'declined_recently':

@@ -1,5 +1,6 @@
 import {
   ContactsApiError,
+  type BlockedPerson,
   type ContactRequestList,
   type ContactRequestView,
   type ContactsApi,
@@ -24,7 +25,16 @@ const PROFILES: readonly HandleProfile[] = [
   { userId: 'u-bob', name: 'Bob', handle: 'bob', image: null, relation: 'contact' },
   { userId: 'u-cara', name: 'Cara', handle: 'cara', image: null, relation: 'request_sent' },
   { userId: 'u-dan', name: 'Dan', handle: 'dan', image: null, relation: 'request_received' },
+  { userId: 'u-eve', name: 'Eve', handle: 'eve', image: null, relation: 'blocked' },
 ];
+
+const BLOCKED_SEED: BlockedPerson = {
+  userId: 'u-eve',
+  name: 'Eve',
+  handle: 'eve',
+  image: null,
+  jid: null,
+};
 
 const INCOMING_SEED: ContactRequestView = {
   id: 'req-dan',
@@ -72,6 +82,7 @@ interface MockState {
   profiles: HandleProfile[];
   incoming: ContactRequestView[];
   outgoing: ContactRequestView[];
+  blocked: BlockedPerson[];
 }
 
 const states = new Map<ContactsMockScenario, MockState>();
@@ -83,11 +94,12 @@ function stateFor(scenario: ContactsMockScenario): MockState {
   }
   const created: MockState =
     scenario === 'empty'
-      ? { profiles: [], incoming: [], outgoing: [] }
+      ? { profiles: [], incoming: [], outgoing: [], blocked: [] }
       : {
           profiles: PROFILES.map((profile) => ({ ...profile })),
           incoming: [{ ...INCOMING_SEED, other: { ...INCOMING_SEED.other } }],
           outgoing: [{ ...OUTGOING_SEED, other: { ...OUTGOING_SEED.other } }],
+          blocked: [{ ...BLOCKED_SEED }],
         };
   states.set(scenario, created);
   return created;
@@ -152,6 +164,9 @@ export function createMockContactsApi(scenario: ContactsMockScenario = 'default'
       const profile = profileFor(handle);
       if (profile.relation === 'self') {
         throw new ContactsApiError(400, 'invalid_request', 'You cannot add yourself');
+      }
+      if (profile.relation === 'blocked') {
+        throw new ContactsApiError(409, 'blocked', 'Unblock this person first');
       }
       if (profile.relation === 'contact') {
         throw new ContactsApiError(409, 'already_contact', 'You are already contacts');
@@ -276,6 +291,47 @@ export function createMockContactsApi(scenario: ContactsMockScenario = 'default'
           decidedAt: new Date().toISOString(),
         },
       };
+    },
+    async blockUser(userId) {
+      failIfError();
+      if (userId === 'u-me') {
+        throw new ContactsApiError(400, 'invalid_request', 'You cannot block yourself');
+      }
+      const profile = state.profiles.find((entry) => entry.userId === userId);
+      const existing = state.blocked.find((entry) => entry.userId === userId);
+      if (profile === undefined && existing === undefined) {
+        throw new ContactsApiError(404, 'not_found', 'User not found');
+      }
+      if (existing === undefined) {
+        state.blocked.unshift(
+          profile === undefined
+            ? { userId, name: 'Unnamed user', handle: null, image: null, jid: null }
+            : {
+                userId: profile.userId,
+                name: profile.name,
+                handle: profile.handle,
+                image: profile.image,
+                jid: null,
+              },
+        );
+      }
+      if (profile !== undefined) {
+        profile.relation = 'blocked';
+      }
+      return { blocked: true };
+    },
+    async unblockUser(userId) {
+      failIfError();
+      state.blocked = state.blocked.filter((entry) => entry.userId !== userId);
+      const stored = state.profiles.find((entry) => entry.userId === userId);
+      if (stored !== undefined && stored.relation === 'blocked') {
+        stored.relation = 'none';
+      }
+      return { blocked: false };
+    },
+    async listBlockedUsers() {
+      failIfError();
+      return state.blocked.map((entry) => ({ ...entry }));
     },
   };
 }

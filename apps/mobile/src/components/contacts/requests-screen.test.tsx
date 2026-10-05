@@ -34,7 +34,9 @@ vi.mock('react-native-safe-area-context', () => ({
 }));
 
 vi.mock('lucide-react-native', () => ({
+  Ban: 'Ban',
   ChevronLeft: 'ChevronLeft',
+  ChevronRight: 'ChevronRight',
   RefreshCw: 'RefreshCw',
   UserPlus: 'UserPlus',
 }));
@@ -141,6 +143,7 @@ describe('RequestsScreen', () => {
     const html = await renderScreen({ incoming: [], outgoing: [], status: 'ready' });
     expect(html).toContain('No pending requests');
     expect(html).not.toContain('Accept');
+    expect(html).toContain('Blocked people');
   });
 
   it('shows incoming rows with Accept and Decline', async () => {
@@ -226,6 +229,17 @@ describe('performRequestAction', () => {
       async cancelContactRequest(id) {
         calls.push(`cancel:${id}`);
         return decided(id, 'cancelled');
+      },
+      async blockUser(userId) {
+        calls.push(`block:${userId}`);
+        return { blocked: true };
+      },
+      async unblockUser(userId) {
+        calls.push(`unblock:${userId}`);
+        return { blocked: false };
+      },
+      async listBlockedUsers() {
+        return [];
       },
     };
   }

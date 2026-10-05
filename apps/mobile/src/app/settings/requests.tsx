@@ -1,5 +1,5 @@
 import { useFocusEffect, useRouter } from 'expo-router';
-import { ChevronLeft, RefreshCw, UserPlus } from 'lucide-react-native';
+import { Ban, ChevronLeft, ChevronRight, RefreshCw, UserPlus } from 'lucide-react-native';
 import { useCallback, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -201,6 +201,17 @@ function RequestsList() {
               {error}
             </Text>
           ) : null}
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Blocked people"
+            onPress={() => router.push('/settings/blocked')}
+            className="mt-6 flex-row items-center gap-3 rounded-xl border border-border bg-surface px-3 py-2.5 active:bg-surface-raised"
+          >
+            <Ban size={20} color={ICON[scheme]} />
+            <Text className="min-w-0 flex-1 text-[15px] text-foreground">Blocked people</Text>
+            <ChevronRight size={20} color={ICON[scheme]} />
+          </Pressable>
         </View>
       </ScrollView>
       {scenario !== null ? (
