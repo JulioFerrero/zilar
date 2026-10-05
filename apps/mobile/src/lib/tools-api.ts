@@ -57,6 +57,19 @@ export interface ToolsApi {
   listAiRoutines(aiId: string): Promise<Routine[]>;
 }
 
+/**
+ * The routine mutations (T-0212). Kept separate from `ToolsApi` so the
+ * read-only sections keep depending on the two list methods only.
+ */
+export interface RoutineActionsApi {
+  pauseRoutine(id: string): Promise<Routine>;
+  resumeRoutine(id: string): Promise<Routine>;
+  deleteRoutine(id: string): Promise<void>;
+}
+
+/** The full API the AI edit screen works against: lists plus mutations. */
+export type AiToolsApi = ToolsApi & RoutineActionsApi;
+
 export class ToolsApiError extends Error {
   readonly status: number;
   readonly code: string;
@@ -234,7 +247,7 @@ export function createToolsApi(
   getToken: () => Promise<string | undefined>,
   fetchImpl: typeof fetch = fetch,
   apiUrl: string = API_URL,
-): ToolsApi {
+): AiToolsApi {
   const parseList = <T>(value: unknown, parseItem: (item: unknown) => T | null): T[] | null => {
     if (!Array.isArray(value)) return null;
     const parsed: T[] = [];
@@ -278,6 +291,37 @@ export function createToolsApi(
         (value) => parseList(value, parseRoutine),
       );
       return body as Routine[];
+    },
+    async pauseRoutine(id) {
+      const body = await withToken(
+        `/api/routines/${encodeURIComponent(id)}/pause`,
+        { method: 'POST' },
+        parseRoutine,
+      );
+      return body as Routine;
+    },
+    async resumeRoutine(id) {
+      const body = await withToken(
+        `/api/routines/${encodeURIComponent(id)}/resume`,
+        { method: 'POST' },
+        parseRoutine,
+      );
+      return body as Routine;
+    },
+    async deleteRoutine(id) {
+      const token = await getToken();
+      if (token === undefined) {
+        throw new ToolsApiError(401, 'unauthorized', 'No session');
+      }
+      await request(
+        apiUrl,
+        `/api/routines/${encodeURIComponent(id)}`,
+        token,
+        {
+          method: 'DELETE',
+        },
+        fetchImpl,
+      );
     },
   };
 }

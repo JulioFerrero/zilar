@@ -1,7 +1,7 @@
 ---
 id: T-0212
 title: Mobile: pause, resume and delete a routine on the AI screen
-status: planned
+status: merged
 milestone: M5
 branch: task/T-0212-mobile-routine-actions
 model: opencode/muse-spark-1.3-contributor-free
@@ -60,4 +60,26 @@ Tool actions (run, revert, delete), the activity feed, group routines.
 
 ## Report (written by the worker when done)
 
+Implemented pause/resume/delete routine actions on the phone's AI edit screen.
+
+What I did:
+- `apps/mobile/src/lib/tools-api.ts`: added `RoutineActionsApi` (`pauseRoutine`, `resumeRoutine` returning the parsed `Routine`; `deleteRoutine` accepting the empty 204) plus the combined `AiToolsApi` type. `createToolsApi` serves all five methods with `encodeURIComponent` ids. Deviation from the spec: the three mutations live in `RoutineActionsApi` instead of directly on `ToolsApi`. Reason: `ToolsApi` stubs in `apps/mobile/src/components/ais/tools-section.test.tsx` and the `useToolsApi`/`[id].tsx` wiring are outside my Allowed files; extending `ToolsApi` broke their typecheck. The read-only sections keep depending on `ToolsApi`; the routines section and both factories use `AiToolsApi`.
+- `apps/mobile/src/mock/tools.ts`: stateful mock with pause (sets `paused`/`user`), resume (the `failures` routine returns to `active`; the new third routine `routine-3`, `needs_approval` with `hosts_changed`, throws 409 `needs_approval`), delete (removes; 404 when missing).
+- `apps/mobile/src/components/ais/routines-section.tsx`: Pause/Resume/Delete buttons per row (wrapping row so buttons drop under the text when narrow), two-step delete (`Delete` destructive + `Cancel` ghost, `Deleting…` while running), `Pausing…`/`Resuming…` labels, every action button disabled while any action runs, and the three fixed messages under the list via the exported pure `routineActionMessage`. List transitions go through the exported `applyRoutineAction` (pause/resume swaps the server row, delete removes it, failure keeps the list with the message; success clears the previous message).
+- Tests: 6 new `tools-api` cases (pause/resume method+path+parsing, invalid resume body, 409 code, delete 204, no-session 401); 15 new section cases (`routineActionMessage` per case, `applyRoutineAction` pause/resume/needs_approval/403/404/network/delete, button labels and wiring, two-step delete incl. Cancel, disabled-while-busy, hint/error lines).
+
+Commands and real results:
+- `pnpm install`: ok (11.5s).
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot tools-api routines-section`: 2 files, 38 tests passed.
+- `pnpm prettier --write` on my 3 flagged files (gate format step had flagged them).
+- `pnpm gate`: `PASS install`, `PASS format`, `PASS lint`, `PASS typecheck`, `PASS tests @zilar/mobile`, `scope: every changed file is inside the Allowed files`, `GATE PASS`.
+
+Problems / deviations:
+- Spec deviation above (`RoutineActionsApi` + `AiToolsApi` instead of extending `ToolsApi`; plus a documented `as AiToolsApi` cast in `RoutinesSection` because `useToolsApi` still declares `ToolsApi`). No behavior change: at runtime both factories serve all five methods.
+- Mock gained a third routine (`Hosts changed digest`, `needs_approval`), so the mock list is 3 routines; updated the two `toHaveLength(2)` assertions.
+
+Security checklist: no secrets/tokens in code or logs; fixed user-facing sentences only (server text never shown); no new routes; client-side only, deletes scoped by routine id server-side (verified in `apps/server/src/routines/routes.ts`: manager check, stranger gets 404).
+
 ## Review (written by Claude)
+
+**Verdict:** Approved, clean pre-review (paid Muse after the free listing hit its rate limit). Pause, resume and two-step delete on each routine row, server-returned row swapped in, row removed only after a successful delete, fixed sentences only (no server text). The worker's first turn ended on the rate limit before committing; the lead switched the session in place and it committed after a GATE PASS. Emulator smoke PASS on home; the AI screen is not reachable with the test account (no AI). Follow-up: F1 widen `RoutinesSection`'s prop to `AiToolsApi` and drop the `as` cast (needs `use-tools-api.ts`). Accepted nit: F2 double tap before re-render (a ref guard like the Save button would fix it).
