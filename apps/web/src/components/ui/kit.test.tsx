@@ -1,9 +1,15 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
+import { Shield } from 'lucide-react';
 import { useState } from 'react';
+import { MemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 import { Badge } from './badge';
 import { Button } from './button';
+import { Card, SectionLabel } from './card';
 import { Dialog } from './dialog';
+import { ListRow } from './list-row';
+import { SegmentedControl } from './segmented-control';
+import { StateMessage } from './state-message';
 import { Switch } from './switch';
 import { TextArea, TextInput } from './text-input';
 
@@ -176,5 +182,176 @@ describe('Dialog', () => {
     fireEvent.keyDown(screen.getByRole('dialog', { name: 'Edit group' }), { key: 'Escape' });
     expect(screen.queryByRole('dialog', { name: 'Edit group' })).toBeNull();
     expect(document.activeElement).toBe(opener);
+  });
+});
+
+const FOLDER_OPTIONS = [
+  { value: 'all', label: 'All chats', count: 3 },
+  { value: 'people', label: 'People' },
+  { value: 'ais', label: 'AIs', count: 1 },
+];
+
+describe('SegmentedControl', () => {
+  it('marks the active tab with aria-selected', () => {
+    render(
+      <SegmentedControl
+        options={FOLDER_OPTIONS}
+        value="people"
+        onChange={() => {}}
+        ariaLabel="Folders"
+      />,
+    );
+    expect(screen.getByRole('tablist', { name: 'Folders' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: /All chats/ }).getAttribute('aria-selected')).toBe(
+      'false',
+    );
+    expect(screen.getByRole('tab', { name: /People/ }).getAttribute('aria-selected')).toBe('true');
+  });
+
+  it('selects a tab on click', () => {
+    const onChange = vi.fn();
+    render(
+      <SegmentedControl
+        options={FOLDER_OPTIONS}
+        value="all"
+        onChange={onChange}
+        ariaLabel="Folders"
+      />,
+    );
+    fireEvent.click(screen.getByRole('tab', { name: /AIs/ }));
+    expect(onChange).toHaveBeenCalledWith('ais');
+  });
+
+  it('moves and selects with the arrow keys, Home and End', () => {
+    const onChange = vi.fn();
+    render(
+      <SegmentedControl
+        options={FOLDER_OPTIONS}
+        value="people"
+        onChange={onChange}
+        ariaLabel="Folders"
+      />,
+    );
+    const people = screen.getByRole('tab', { name: /People/ });
+    fireEvent.keyDown(people, { key: 'ArrowRight' });
+    expect(onChange).toHaveBeenLastCalledWith('ais');
+    fireEvent.keyDown(people, { key: 'ArrowLeft' });
+    expect(onChange).toHaveBeenLastCalledWith('all');
+    fireEvent.keyDown(people, { key: 'Home' });
+    expect(onChange).toHaveBeenLastCalledWith('all');
+    fireEvent.keyDown(people, { key: 'End' });
+    expect(onChange).toHaveBeenLastCalledWith('ais');
+  });
+
+  it('shows counts in a Badge, muted when the tab is not active', () => {
+    render(
+      <SegmentedControl
+        options={FOLDER_OPTIONS}
+        value="all"
+        onChange={() => {}}
+        ariaLabel="Folders"
+      />,
+    );
+    const active = screen.getByRole('tab', { name: /All chats/ });
+    expect(within(active).getByText('3').className).toContain('key-primary');
+    const inactive = screen.getByRole('tab', { name: /AIs/ });
+    expect(within(inactive).getByText('1').className).toContain('bg-badge-muted');
+  });
+});
+
+describe('ListRow', () => {
+  it('renders title, subtitle and chevron in a plain div without an action', () => {
+    const { container } = render(<ListRow title="About" subtitle="Version 0.1.0" chevron />);
+    expect(screen.getByText('About')).toBeTruthy();
+    expect(screen.getByText('Version 0.1.0')).toBeTruthy();
+    const row = container.firstElementChild as HTMLElement;
+    expect(row.tagName).toBe('DIV');
+    expect(row.querySelector('svg')).toBeTruthy();
+  });
+
+  it('renders a button and reports clicks', () => {
+    const onClick = vi.fn();
+    render(<ListRow title="Notifications" onClick={onClick} />);
+    fireEvent.click(screen.getByRole('button', { name: /Notifications/ }));
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders a router link when href is given', () => {
+    render(
+      <MemoryRouter>
+        <ListRow title="Privacy" href="/settings/privacy" />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole('link', { name: /Privacy/ }).getAttribute('href')).toBe(
+      '/settings/privacy',
+    );
+  });
+
+  it('turns the title red when danger', () => {
+    render(<ListRow title="Log out" onClick={() => {}} danger />);
+    expect(screen.getByText('Log out').className).toContain('text-danger');
+  });
+
+  it('puts the icon in a 32 px key tile', () => {
+    const { container } = render(<ListRow title="Privacy" icon={<Shield aria-hidden="true" />} />);
+    expect(container.querySelector('.key-icon')?.className).toContain('size-8');
+  });
+});
+
+describe('Card and SectionLabel', () => {
+  it('separates direct rows with hairline dividers', () => {
+    const { container } = render(
+      <Card>
+        <ListRow title="One" />
+        <ListRow title="Two" />
+      </Card>,
+    );
+    const card = container.firstElementChild as HTMLElement;
+    expect(card.className).toContain('divide-y');
+    expect(card.className).toContain('divide-border');
+    expect(card.className).toContain('rounded-xl');
+    expect(card.className).toContain('border-border');
+    expect(card.className).toContain('bg-surface');
+  });
+
+  it('merges a caller className', () => {
+    const { container } = render(<Card className="max-w-sm">x</Card>);
+    expect((container.firstElementChild as HTMLElement).className).toContain('max-w-sm');
+  });
+
+  it('renders an uppercase muted section label', () => {
+    render(<SectionLabel>Account</SectionLabel>);
+    const label = screen.getByText('Account');
+    expect(label.className).toContain('uppercase');
+    expect(label.className).toContain('tracking-[0.06em]');
+    expect(label.className).toContain('text-muted-foreground');
+  });
+});
+
+describe('StateMessage', () => {
+  it('shows a title, hint and action for empty', () => {
+    const onClick = vi.fn();
+    render(
+      <StateMessage
+        kind="empty"
+        title="No chats yet"
+        hint="Start one."
+        action={{ label: 'New chat', onClick }}
+      />,
+    );
+    expect(screen.getByText('No chats yet')).toBeTruthy();
+    expect(screen.getByText('Start one.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'New chat' }));
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  it('announces loading with role status', () => {
+    render(<StateMessage kind="loading" title="Loading chats" />);
+    expect(screen.getByRole('status')).toBeTruthy();
+  });
+
+  it('announces errors with role alert', () => {
+    render(<StateMessage kind="error" title="Something went wrong." />);
+    expect(screen.getByRole('alert')).toBeTruthy();
   });
 });

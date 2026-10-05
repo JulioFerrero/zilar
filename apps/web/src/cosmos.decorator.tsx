@@ -3,5 +3,5 @@ import './index.css';
 
 /** Global Cosmos decorator: dark-only frame matching the app page. */
 export default function CosmosDecorator({ children }: { children: ReactNode }) {
-  return <div className="bg-page p-6 font-sans text-foreground">{children}</div>;
+  return <div className="min-h-dvh bg-page p-6 font-sans text-foreground">{children}</div>;
 }
