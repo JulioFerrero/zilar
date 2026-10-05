@@ -10,6 +10,8 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0260](T-0260-auto-deploy-green-main.md) | Deploy: auto-deploy live after green CI on main | in_progress | auto | | Julio 2026-10-06 |
+| [T-0270](T-0270-web-kit-dialogs-3.md) | Web kit migration 5: NewTopic and FolderEditor dialogs | in_progress | auto | T-0263 | audit step 6, batch 3 |
+| [T-0269](T-0269-flaky-535-assertion.md) | Server tests: '535' checks ignore the random requestId | in_progress | auto | | CI flake |
 
 ## Follow-ups
 
