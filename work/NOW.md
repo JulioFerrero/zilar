@@ -24,9 +24,18 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0251 | Mobile: Settings/My AIs tab lists clear the floating bar; short Blocked subtitle | coding (DeepSeek) | from QA run 6 |
-| T-0252 | Mobile: hide blocked people in groups and previews; helpers move to chat-core | coding (DeepSeek) | mobile twin of T-0239/T-0249 |
-| T-0253 | Web kit migration 1: toggles on the kit Switch; Notifications on Card/SectionLabel | coding (DeepSeek) | audit step 4 |
+| T-0260 | Deploy: auto-deploy live after every green CI on main; /health shows the commit | coding (DeepSeek) | Julio 2026-10-06 chose "every green main push"; he must add secrets COOLIFY_URL, COOLIFY_TOKEN, COOLIFY_SERVICE_UUID (zilar service uuid zogjtvwnoh9rqo96h7e7ajz1) |
+| T-0261 | Forwarding step 1: ForwardOriginSchema + xmpp-core `<forward xmlns="urn:zilar:forward:0">` | coding | plan T-A + T-B |
+| T-0262 | Mobile: list ticks use the real user id (never showed in the real app); folder editor waits for its folder | coding | pre-review follow-ups |
+| T-0263 | Web kit migration 3: TelegramImport, NewAi, NewGroup dialogs | coding | audit step 6 batch 2 |
+
+Night 10-06 (Julio asleep, `caffeinate -dimsu` running): merged T-0251, T-0252 (after a lead memo fix round), T-0253 (lead browser check), T-0254, T-0255 (lead allowed hub.test.ts), T-0256 (forwarding plan), T-0257 (media gallery plan), T-0258 (4 dialogs on kit), T-0259 (CI red since T-0244: slow folder cap test; fixed). QA run 8 sent (T-0251, T-0252, T-0254, T-0255). Live chat.zilar.app is still v0.1.13: Julio said no manual release tonight; T-0260 automates it.
+
+Waiting for Julio:
+- Forwarding UI (plan T-D/T-E) needs his answers to `docs/audit/forwarding-plan.md` §5 (7 questions with recommendations).
+- Media gallery Task 1 (schema migration) needs his answers to `docs/audit/media-gallery-plan.md` §5 (8 questions).
+- Security note from T-0256: `/upload/*` is served with no auth (bearer URLs); anyone with a URL can read the file, even after a retraction.
+- Add the three Coolify secrets in GitHub once T-0260 merges.
 
 2026-10-06 ~00:25 local: merged T-0246 (web kit 2; lead saw ListRow, SegmentedControl, Card render in Cosmos on 5100; first load takes a few seconds), T-0248 (mobile folder chips), T-0249 (web blocked previews), T-0234 (mobile create sheets + keyboard). QA run 6 done: Settings hub, Blocked people, block from search PASS; Integrations row hidden under the tab bar → T-0251. QA run 7 sent (T-0248 chips, T-0234 sheets). Cosmos running from main on http://localhost:5100 for Julio. Next specs: mobile folders part 2 (editor + Settings row), more web kit migrations (settings rows, dialogs), mobile kit.
 
