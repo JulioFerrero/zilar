@@ -1,4 +1,4 @@
-import type { Payload } from '@zilar/protocol';
+import type { ForwardOrigin, Payload } from '@zilar/protocol';
 
 export type ConnectionStatus = 'offline' | 'connecting' | 'online' | 'reconnecting';
 
@@ -58,6 +58,11 @@ export interface ChatMessage {
   body?: string;
   /** Decoded with `decodePayload`; invalid payloads are dropped. */
   payload?: Payload;
+  /**
+   * Where the message was forwarded from, captured at forward time. A
+   * malformed `<forward>` element is dropped, so this is absent when invalid.
+   */
+  forward?: ForwardOrigin;
   replyTo?: { id: string; to?: string };
   /**
    * XEP-0444 reactions carried by a body-less message: the target message id
@@ -194,6 +199,8 @@ export interface RosterEvent {
 
 export interface SendMessageOptions {
   payload?: Payload;
+  /** Origin to attach when this message is a forward. */
+  forward?: ForwardOrigin;
   replyTo?: { id: string; to?: string };
   /** Offsets are UTF-16 code units; `buildMessage` writes them as code points. */
   mentions?: MentionInput[];
