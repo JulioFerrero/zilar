@@ -2,7 +2,7 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
-Last updated: 2026-10-05 ~13:30 local, after merging T-0214 (emulator: both sheet steps, nothing created) and opening the T-0211 test window; earlier merged T-0217 (T-0216 unblocked: stubs in `launch.test.ts` and `watch.test.ts` allowed).
+Last updated: 2026-10-05 ~13:50 local, after merging T-0211 (Julio: "the resize is working great") and T-0221, and launching T-0222. Main checkout got `pnpm install` (T-0211 added Ink/React; the autopilot could not start without it). Julio's watcher reopened on the new version and floated; test window closed.
 
 Autopilot restarted with `ZILAR_REVIEW_MODEL=meta/muse-spark-1.3-contributor` (free Muse still 429 at ~12:05). When the free listing answers again (`opencode2 run -m "opencode/muse-spark-1.3-contributor-free#low" "Reply OK."`), restart it without the variable.
 
@@ -22,9 +22,8 @@ Models (Julio, 2026-10-05): default `opencode/muse-spark-1.3-contributor-free`; 
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0211 | `lead watch` Ink redesign | round 2 committed (Ink `alternateScreen: true` + `fullClearOnResize` listener ahead of Ink's, which clears only on shrink; `useInput` active only with raw mode). Julio priority. Test window open: `~/.claude/jobs/fcd95e40/tmp/lead-watch-test` runs `watch-test.sh` (branch code, main's data); waiting for Julio's resize check and the pre-review | billed Muse. After merge: close the test window, restart Julio's watcher |
-| T-0219 | Mobile: Run now, Revert, Delete in the tool detail sheet | coding | its first turn hit 429 while still `planned`, so the fallback skipped it (status gate `decide.ts:223`); lead switched it to paid Muse by hand |
-| T-0221 | In-place fallback also for a worker still at `planned` | coding | MiniMax |
+| T-0219 | Mobile: Run now, Revert, Delete in the tool detail sheet | coding | its first turn hit 429 while still `planned` (fixed for the future by T-0221); lead switched it to paid Muse by hand, so `state.json` still says free (watch badge "free") |
+| T-0222 | `lead switch-model --in-place` (same session, records the model) | coding | Julio: fix the "free" badge. After merge: `lead switch-model T-0219 meta/muse-spark-1.3-contributor --in-place` if T-0219 still runs |
 
 First live `LEAD: FALLBACK`: T-0220's pre-review (free 429 → paid, same session) worked. T-0220 merged; autopilot restarted.
 
