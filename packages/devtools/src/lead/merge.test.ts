@@ -495,7 +495,10 @@ describe('mergeTask squash failures', () => {
     // Hand-edited board row with no link, which `moveBoardRow` cannot parse.
     const broken = fs
       .readFileSync(path.join(harness.root, 'work', 'BOARD.md'), 'utf8')
-      .replace('| [T-0099](T-0099-demo.md) | Demo | in-progress |', '| T-0099 | Demo | in-progress |');
+      .replace(
+        '| [T-0099](T-0099-demo.md) | Demo | in-progress |',
+        '| T-0099 | Demo | in-progress |',
+      );
     fs.writeFileSync(path.join(harness.root, 'work', 'BOARD.md'), broken);
     git(harness.root, ['add', '.']);
     git(harness.root, ['commit', '-qam', 'break board']);
