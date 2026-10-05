@@ -210,6 +210,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0232](T-0232-chat-folders-server.md) | Server: chat_folders table and API | planned | opencode/muse-spark-1.3-contributor-free | T-0231, T-0171 | Schema task; launch after T-0171 merges |
 | [T-0233](T-0233-mobile-bottom-bar.md) | Mobile: floating bottom bar, search bar on Chats, Profile tab | planned | opencode/muse-spark-1.3-contributor-free | — | Telegram brief a, d |
 | [T-0234](T-0234-mobile-create-sheets-keyboard.md) | Mobile: create sheets above the keyboard; mock create and contacts | planned | opencode/muse-spark-1.3-contributor-free | T-0233 | Emulator QA run 3; launch after T-0233 |
+| [T-0235](T-0235-web-block-users.md) | Web: block and unblock people, Blocked people page | planned | opencode/muse-spark-1.3-contributor-free | T-0171 | Block users part 1b |
 | [T-0179](T-0179-mobile-transcribe-voice-notes.md) | Transcribe voice notes on the phone with Whistle: button in the bubble, consent for the 17 MB model, transcripts stored locally | 2026-10-03 |
 | [T-0182](T-0182-mobile-contacts-requests.md) | Mobile contacts: find by @handle, profile card, contact requests | 2026-10-03 |
 | [T-0183](T-0183-mobile-explore-group-handles.md) | Mobile Explore, @group links and group visibility | 2026-10-03 |
