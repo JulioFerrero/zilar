@@ -1,7 +1,7 @@
 import { useGlobalSearchParams } from 'expo-router';
 import { useMemo } from 'react';
 
-import { createToolsApi, type ToolsApi } from '@/lib/tools-api';
+import { createToolsApi, type AiToolsApi } from '@/lib/tools-api';
 import { getSessionToken } from '@/lib/session-token';
 import { createMockToolsApi } from '@/mock/tools';
 import { mockParamAllowed } from '@/mock/gate';
@@ -29,7 +29,7 @@ function toolsMockActive(
 }
 
 export interface ToolsApiHandle {
-  api: ToolsApi;
+  api: AiToolsApi;
   /** True when the mock is active (used by tests/UI to skip the network). */
   mock: boolean;
 }

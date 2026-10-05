@@ -254,7 +254,7 @@ export function RoutinesSectionContent({
  * While an action runs every action button is disabled; failures show one
  * fixed line under the list (never server text).
  */
-export function RoutinesSection({ api, aiId }: { api: ToolsApi; aiId: string }) {
+export function RoutinesSection({ api, aiId }: { api: AiToolsApi; aiId: string }) {
   const [state, setState] = useState<RoutinesSectionState>({
     status: 'loading',
     routines: [],
@@ -289,22 +289,23 @@ export function RoutinesSection({ api, aiId }: { api: ToolsApi; aiId: string }) 
     routinesRef.current = state.routines;
   }, [state.routines]);
 
+  const runningRef = useRef(false);
+
   const run = (id: string, routineAction: RoutineAction): void => {
+    if (runningRef.current) return;
+    runningRef.current = true;
     setBusyId(id);
     setAction(null);
     void (async () => {
-      // `useToolsApi` still declares the read-only `ToolsApi`, but both
-      // factories behind it serve the routine actions too.
-      const outcome = await applyRoutineAction(
-        api as AiToolsApi,
-        routinesRef.current,
-        id,
-        routineAction,
-      );
-      setState((current) => ({ ...current, routines: outcome.routines }));
-      setAction(outcome.action);
-      setConfirmingId(null);
-      setBusyId(null);
+      try {
+        const outcome = await applyRoutineAction(api, routinesRef.current, id, routineAction);
+        setState((current) => ({ ...current, routines: outcome.routines }));
+        setAction(outcome.action);
+        setConfirmingId(null);
+      } finally {
+        runningRef.current = false;
+        setBusyId(null);
+      }
     })();
   };
 

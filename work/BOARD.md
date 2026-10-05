@@ -211,7 +211,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0211](T-0211-lead-watch-ink-redesign.md) | Lead tooling: `lead watch` redesigned as an Ink terminal app (cards, step tracker, model badges) | planned | opencode/muse-spark-1.3-contributor-free | T-0210 | Julio asked 2026-10-05 ("super ugly") |
 | [T-0214](T-0214-mobile-new-group-sheet.md) | Mobile: New group sheet (pick contacts, name the group) | planned | opencode/muse-spark-1.3-contributor-free | T-0190 | Mobile parity; T-0195 audit 7.2b, private groups only |
 | [T-0216](T-0216-quota-fallback-in-place.md) | Lead tooling: on a free-Muse rate limit the autopilot switches the same session to the paid Muse | planned | meta/muse-spark-1.3-contributor | — | Julio asked 2026-10-05 |
-| [T-0217](T-0217-routines-api-type.md) | Mobile: RoutinesSection takes AiToolsApi (no cast) and ignores a second tap | planned | minimax-coding-plan/MiniMax-M3 | T-0212 | T-0212 pre-review F1 and F2 |
 | [T-0179](T-0179-mobile-transcribe-voice-notes.md) | Transcribe voice notes on the phone with Whistle: button in the bubble, consent for the 17 MB model, transcripts stored locally | 2026-10-03 |
 | [T-0182](T-0182-mobile-contacts-requests.md) | Mobile contacts: find by @handle, profile card, contact requests | 2026-10-03 |
 | [T-0183](T-0183-mobile-explore-group-handles.md) | Mobile Explore, @group links and group visibility | 2026-10-03 |
@@ -246,3 +245,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0213](T-0213-mobile-ai-activity.md) | Mobile: the AI edit screen shows the AI's activity feed | 2026-10-05 |
 | [T-0212](T-0212-mobile-routine-actions.md) | Mobile: pause, resume and delete a routine on the AI screen | 2026-10-05 |
 | [T-0215](T-0215-review-model-override.md) | Lead tooling: ZILAR_REVIEW_MODEL overrides the pre-review and doctor model | 2026-10-05 |
+| [T-0217](T-0217-routines-api-type.md) | Mobile: RoutinesSection takes AiToolsApi (no cast) and ignores a second tap | 2026-10-05 |
