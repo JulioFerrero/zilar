@@ -2,7 +2,7 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
-Last updated: 2026-10-05, after merging T-0191 (emulator-checked) and T-0210, and launching T-0207 and T-0211. Julio approved the `lead watch` mockup (artifact https://claude.ai/artifact/8QujyLaobor35XDKHr7ZZG, copy in `docs/design/briefs/T-0211-lead-watch-mockup.html`).
+Last updated: 2026-10-05, after merging T-0207 (Telegram import on the phone, emulator-checked; first mobile task on the free Muse, one auto round). T-0211 running. Julio approved the `lead watch` mockup (artifact https://claude.ai/artifact/8QujyLaobor35XDKHr7ZZG, copy in `docs/design/briefs/T-0211-lead-watch-mockup.html`).
 
 Emulator: run only the `galena` AVD (never `bicing_plus`, Julio's). Its DNS failed today (smoke screenshots stuck on the boot spinner); start it with `-dns-server 8.8.8.8,1.1.1.1`.
 
@@ -16,7 +16,6 @@ Models (Julio, 2026-10-05): default `opencode/muse-spark-1.3-contributor-free`; 
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0207 | Mobile Telegram sticker import sheet | coding | free Muse; brief `docs/design/briefs/T-0207-telegram-import.md`; needs the emulator check |
 | T-0211 | `lead watch` Ink redesign | coding | free Muse, effort high. When its turn ends, BEFORE merging, send the approved look: `lead reply T-0211 <prompt> --fresh` with the prompt from `docs/design/briefs/T-0211-lead-watch-icons.md` (Nerd Font icons and 10 changes). Then set the watch window font to FiraCode Nerd Font Mono and check it |
 
 ## Next, in order
