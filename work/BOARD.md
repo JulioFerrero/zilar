@@ -208,6 +208,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0180](T-0180-signin-no-code-hint.md) | Sign-in hints for people without an invite (web + mobile) | 2026-10-03 |
 | [T-0234](T-0234-mobile-create-sheets-keyboard.md) | Mobile: create sheets above the keyboard; mock create and contacts | planned | opencode/muse-spark-1.3-contributor-free | T-0233 | Emulator QA run 3; launch after T-0233 |
 | [T-0245](T-0245-model-by-peak-hours.md) | Lead tooling: `model: auto` = DeepSeek flash off-peak, free Muse in DeepSeek peak hours | planned | deepseek/deepseek-flash | T-0244 | Julio 2026-10-05 |
+| [T-0246](T-0246-web-kit-2.md) | Web kit batch 2: SegmentedControl, ListRow, Card, StateMessage, Avatar fixture, Cosmos config | planned | deepseek/deepseek-flash | T-0243 | UI kit step 2b |
 | [T-0179](T-0179-mobile-transcribe-voice-notes.md) | Transcribe voice notes on the phone with Whistle: button in the bubble, consent for the 17 MB model, transcripts stored locally | 2026-10-03 |
 | [T-0182](T-0182-mobile-contacts-requests.md) | Mobile contacts: find by @handle, profile card, contact requests | 2026-10-03 |
 | [T-0183](T-0183-mobile-explore-group-handles.md) | Mobile Explore, @group links and group visibility | 2026-10-03 |
