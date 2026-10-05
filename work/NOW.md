@@ -2,7 +2,7 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
-Last updated: 2026-10-05, after launching T-0208 (first task on the free Muse listing).
+Last updated: 2026-10-05, after merging T-0208: pre-reviews and the doctor now run on the free Muse (autopilot restarted).
 
 Models (Julio, 2026-10-05): default `opencode/muse-spark-1.3-contributor-free`; MiniMax M3 only for the easiest exact tasks; billed `meta/muse-spark-1.3-contributor` is the fallback if the free listing hits limits.
 
@@ -12,7 +12,6 @@ Models (Julio, 2026-10-05): default `opencode/muse-spark-1.3-contributor-free`; 
 | --- | --- | --- | --- |
 | T-0202 | Fix rounds in a fresh worker session (token saving A) | fix rounds | Muse (billed) |
 | T-0191 | Mobile sticker pack editor | coding | Muse (billed); brief `docs/design/briefs/T-0191-sticker-editor.md`; needs phone:smoke |
-| T-0208 | Pre-reviews and the doctor on the free Muse listing | coding | free Muse; restart the autopilot after merge |
 
 ## Next, in order
 
