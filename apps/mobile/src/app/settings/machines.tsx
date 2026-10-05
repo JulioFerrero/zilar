@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useColorScheme } from 'nativewind';
 
 import { RequireAuth } from '@/auth/RequireAuth';
+import { Card, SectionLabel } from '@/components/ui/card';
 import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
 import { asColorScheme } from '@/lib/color-scheme';
@@ -314,10 +315,8 @@ function MachinesList() {
 
           {status === 'ready' && pending.length > 0 ? (
             <View accessibilityLabel="Waiting for approval" className="gap-2">
-              <Text className="text-[16px] font-semibold text-foreground">
-                Waiting for approval
-              </Text>
-              <View className="gap-2">
+              <SectionLabel>Waiting for approval</SectionLabel>
+              <Card>
                 {pending.map((machine) => (
                   <MachineCard
                     key={machine.id}
@@ -350,20 +349,17 @@ function MachinesList() {
                     }
                   />
                 ))}
-              </View>
+              </Card>
             </View>
           ) : null}
 
           {status === 'ready' && approved.length > 0 ? (
             <View accessibilityLabel="Your machines" className="gap-2">
-              <Text className="text-[16px] font-semibold text-foreground">Your machines</Text>
-              <View className="gap-2">
+              <SectionLabel>Your machines</SectionLabel>
+              <Card>
                 {approved.map((machine) =>
                   renamingId === machine.id ? (
-                    <View
-                      key={machine.id}
-                      className="gap-2 rounded-xl border border-border bg-surface px-3 py-2.5"
-                    >
+                    <View key={machine.id} className="gap-2 px-3 py-2.5">
                       <Text className="text-[14px] font-medium text-foreground">Rename</Text>
                       <TextInput
                         value={renameDraft}
@@ -432,7 +428,7 @@ function MachinesList() {
                     />
                   ),
                 )}
-              </View>
+              </Card>
             </View>
           ) : null}
 
@@ -449,7 +445,7 @@ function MachinesList() {
                 </Text>
               </Pressable>
               {showRevoked ? (
-                <View className="gap-2">
+                <Card>
                   {revoked.map((machine) => (
                     <MachineCard
                       key={machine.id}
@@ -469,7 +465,7 @@ function MachinesList() {
                       }
                     />
                   ))}
-                </View>
+                </Card>
               ) : null}
             </View>
           ) : null}
@@ -553,7 +549,7 @@ function MachineCard({
   actions: React.ReactNode;
 }) {
   return (
-    <View className="gap-1 rounded-xl border border-border bg-surface px-3 py-2.5">
+    <View className="gap-1 px-3 py-2.5">
       <View className="flex-row items-center gap-3">
         <View className="min-w-0 flex-1">
           <Text numberOfLines={1} className="text-[15px] font-medium text-foreground">

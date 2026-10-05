@@ -23,6 +23,7 @@ import {
 } from '@/components/connections/errors';
 import { keyAfterSave, saveConnection } from '@/components/connections/save-connection';
 import { useConnectionsApi } from '@/components/connections/use-connections-api';
+import { Card, SectionLabel } from '@/components/ui/card';
 import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
 import { asColorScheme } from '@/lib/color-scheme';
@@ -227,14 +228,11 @@ function ConnectionsList() {
             <View className="gap-4">
               {connections.length > 0 ? (
                 <View className="gap-2">
-                  <Text className="text-[16px] font-semibold text-foreground">Connections</Text>
-                  <View className="gap-2">
+                  <SectionLabel>Connections</SectionLabel>
+                  <Card>
                     {connections.map((connection) =>
                       confirmingId === connection.id ? (
-                        <View
-                          key={connection.id}
-                          className="gap-2 rounded-xl border border-border bg-surface px-3 py-2.5"
-                        >
+                        <View key={connection.id} className="gap-2 px-3 py-2.5">
                           <Text className="text-[15px] font-medium text-foreground">
                             Remove {providerLabel(connection.provider)}?
                           </Text>
@@ -272,7 +270,7 @@ function ConnectionsList() {
                       ) : (
                         <View
                           key={connection.id}
-                          className="flex-row items-center gap-3 rounded-xl border border-border bg-surface px-3 py-2.5"
+                          className="flex-row items-center gap-3 px-3 py-2.5"
                         >
                           <View className="min-w-0 flex-1">
                             <View className="flex-row flex-wrap items-center gap-2">
@@ -323,7 +321,7 @@ function ConnectionsList() {
                         </View>
                       ),
                     )}
-                  </View>
+                  </Card>
                 </View>
               ) : null}
 
