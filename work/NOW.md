@@ -12,7 +12,6 @@ Last updated: 2026-10-05, after merging T-0200 and launching T-0202, T-0194, T-0
 | T-0194 | Mobile guard tests for the Android and Hermes pitfalls | coding | MiniMax M3 trial, `effort: default` |
 | T-0195 | Audit web vs mobile (docs only) | coding | MiniMax M3 trial |
 | T-0191 | Mobile sticker pack editor | coding | Muse; brief `docs/design/briefs/T-0191-sticker-editor.md`; needs phone:smoke |
-| T-0206 | Scout: RepoMapper trial (docs only) | coding | Muse; tool installed by the lead at `~/.zilar-lead/tools/RepoMapper` (uv, Python 3.13); its commands run outside the worktree, approve them |
 
 ## Next, in order
 
@@ -25,7 +24,7 @@ Last updated: 2026-10-05, after merging T-0200 and launching T-0202, T-0194, T-0
 | --- | --- | --- | --- | --- | --- |
 | T-0205 | easy (devtools parse) | 0 | clean, 2 nits | 0.49M | exact to spec |
 | T-0194 | easy (guard tests) | 0 | clean, 0 nits | 1.4M | did the negative test properly |
-| T-0195 | medium (docs audit) | | | 8.1M | pre-review pending |
+| T-0195 | medium (docs audit) | 1+ | 7 should-fix, 5 nits: invented strings, false claims, wrong citations | 8.1M | in round 1; lead spot-checks 10 citations before merge |
 | T-0203, T-0204 | easy (prompts) | | | | queued |
 | T-0207 | medium-hard (mobile sheet, state machine) | | | | after T-0191 |
 
@@ -36,6 +35,8 @@ Last updated: 2026-10-05, after merging T-0200 and launching T-0202, T-0194, T-0
 - Release: everything merged since v0.1.13 reaches the live web only with the next release.
 
 ## Recent events
+
+- 2026-10-05: merged T-0206 (RepoMapper trial, `docs/audit/repomap-trial.md`): recommendation DROP. Our tasks mostly create new files, which a map of existing code cannot show; the maps only echoed the spec's "Read first" plus noise. Tool left at `~/.zilar-lead/tools/RepoMapper` (deletable).
 
 - 2026-10-05: merged T-0205, the first MiniMax M3 task (clean first round) and the first squash merge: main gained exactly one commit `T-0205: ...` with the branch commits in its body.
 
