@@ -2,6 +2,7 @@ import {
   FOLDER_ICONS,
   FOLDERS_MAX,
   FOLDER_NAME_MAX,
+  type ChatFolder,
   type FolderChatType,
   type FolderIcon,
 } from '@zilar/chat-core';
@@ -13,7 +14,12 @@ import { Pressable, Switch, TextInput, View } from 'react-native';
 import { RequireAuth } from '@/auth/RequireAuth';
 import { folderIcon } from '@/components/chat/folder-icon';
 import { SettingsScreenShell } from '@/components/settings/screen-shell';
-import { FOLDER_TYPE_LABELS, folderInput, isFolderNameValid } from '@/components/settings/folders';
+import {
+  FOLDER_TYPE_LABELS,
+  editorState,
+  folderInput,
+  isFolderNameValid,
+} from '@/components/settings/folders';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { ChatFoldersApiError } from '@/lib/chat-folders-api';
@@ -31,6 +37,12 @@ const TYPE_ORDER: FolderChatType[] = ['dm', 'group', 'channel', 'ai'];
  * and — for an existing folder — an inline delete confirm. `id` is `new` for a
  * new folder. The single-chat pickers are a later task; a folder's existing
  * include/exclude chat lists are left untouched.
+ *
+ * The folder is resolved from the store before the form mounts (T-0262): a deep
+ * link or cold start shows "Loading folder…" until folders sync, the form only
+ * mounts once the folder is known (keyed by its id so the snapshot is taken
+ * exactly once), and a synced-but-absent id shows a missing notice instead of a
+ * blank form that could PATCH over data it never loaded.
  */
 export default function FolderEditorScreen() {
   return (
@@ -42,12 +54,48 @@ export default function FolderEditorScreen() {
 
 function FolderEditor() {
   const router = useRouter();
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   const params = useLocalSearchParams<{ id?: string }>();
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
   const folder = useChatStore((state) =>
     id === undefined || id === 'new' ? undefined : state.folders.find((entry) => entry.id === id),
   );
+  const foldersLoaded = useChatStore((state) => state.foldersLoaded);
+  const state = editorState(id, folder, foldersLoaded);
+
+  if (state === 'loading') {
+    return (
+      <SettingsScreenShell title="Edit folder" onBack={() => router.back()}>
+        <Text className="px-1 text-[15px] text-muted-foreground">Loading folder…</Text>
+      </SettingsScreenShell>
+    );
+  }
+
+  if (state === 'missing') {
+    return (
+      <SettingsScreenShell title="Edit folder" onBack={() => router.back()}>
+        <View className="gap-3">
+          <Text className="px-1 text-[15px] text-foreground">This folder no longer exists.</Text>
+          <View className="flex-row">
+            <Button
+              variant="ghost"
+              size="sm"
+              onPress={() => router.back()}
+              accessibilityLabel="Back"
+            >
+              <Text>Back</Text>
+            </Button>
+          </View>
+        </View>
+      </SettingsScreenShell>
+    );
+  }
+
+  return <FolderForm key={folder?.id ?? 'new'} id={id ?? 'new'} folder={folder} />;
+}
+
+function FolderForm({ id, folder }: { id: string; folder: ChatFolder | undefined }) {
+  const router = useRouter();
+  const scheme = asColorScheme(useColorScheme().colorScheme);
   const createFolder = useChatStore((state) => state.createFolder);
   const updateFolder = useChatStore((state) => state.updateFolder);
   const deleteFolder = useChatStore((state) => state.deleteFolder);
@@ -61,7 +109,7 @@ function FolderEditor() {
   const [error, setError] = useState('');
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
-  const isNew = id === undefined || id === 'new';
+  const isNew = folder === undefined;
   const canSave = isFolderNameValid(name) && !busy;
 
   const toggleType = (type: FolderChatType): void => {
@@ -71,13 +119,13 @@ function FolderEditor() {
   };
 
   const save = (): void => {
-    if (!canSave || id === undefined) {
+    if (!canSave) {
       return;
     }
     const input = folderInput({ name, icon, includeTypes, excludeMuted, excludeRead });
     setBusy(true);
     setError('');
-    const request = id === 'new' ? createFolder(input) : updateFolder(id, input);
+    const request = isNew ? createFolder(input) : updateFolder(id, input);
     request
       .then(() => router.back())
       .catch((saveError: unknown) => setError(folderSaveError(saveError)))
@@ -85,7 +133,7 @@ function FolderEditor() {
   };
 
   const remove = (): void => {
-    if (isNew || id === undefined || busy) {
+    if (isNew || busy) {
       return;
     }
     setBusy(true);

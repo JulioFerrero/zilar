@@ -165,6 +165,13 @@ export interface ChatStoreState {
   activeFolder: string;
   /** Server folders sorted by position; `[]` until synced. */
   folders: ChatFolder[];
+  /**
+   * Whether the folders have synced at least once (T-0262). The editor uses
+   * it to tell "not loaded yet" (a cold start or deep link) from "the folder
+   * no longer exists". The mock store starts `true`, the real store flips it
+   * on the first successful `setFolders`.
+   */
+  foldersLoaded: boolean;
   activeChatId: string | null;
   historyComplete: Record<string, boolean>;
   typing: Record<string, TypingState>;

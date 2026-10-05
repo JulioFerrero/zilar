@@ -153,6 +153,8 @@ describe('chat store', () => {
     const store = createChatStore();
     expect(store.getState().folders.map((folder) => folder.name)).toEqual(['Personal', 'AIs']);
     expect(store.getState().activeFolder).toBe('all');
+    // The mock store is loaded at once, so the editor sees folders as loaded.
+    expect(store.getState().foldersLoaded).toBe(true);
   });
 
   it('setFolders sorts by position and resets a vanished active id to all', () => {

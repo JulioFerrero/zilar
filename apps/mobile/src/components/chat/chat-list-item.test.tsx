@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { ChatSummary, UiMessage } from '@zilar/chat-core';
 
-import { TopicRow } from './topic-row';
+import { ChatListItem } from './chat-list-item';
 
 const state = vi.hoisted(() => ({
   messages: [] as UiMessage[],
@@ -63,10 +63,6 @@ vi.mock('@/lib/blocked-users', () => ({
   useBlockedJids: () => state.blocked,
 }));
 
-vi.mock('@/lib/topics', () => ({
-  topicStatusLabel: (status: string) => status,
-}));
-
 vi.mock('@/lib/utils', () => ({
   cn: (...parts: unknown[]) => parts.filter(Boolean).join(' '),
 }));
@@ -99,7 +95,6 @@ vi.mock('@/store/chat-store-provider', () => ({
 }));
 
 vi.mock('lucide-react-native', () => ({
-  Lock: 'Lock',
   Pin: 'Pin',
   VolumeX: 'VolumeX',
 }));
@@ -132,31 +127,14 @@ function collect(node: unknown, out: TestElement[] = []): TestElement[] {
   return out;
 }
 
-function textOf(node: unknown): string {
-  if (node === null || node === undefined) {
-    return '';
-  }
-  if (typeof node === 'string' || typeof node === 'number') {
-    return String(node);
-  }
-  if (Array.isArray(node)) {
-    return node.map(textOf).join('');
-  }
-  if (typeof node === 'object' && 'props' in (node as TestElement)) {
-    const element = node as TestElement;
-    if (typeof element.type === 'function') {
-      const Component = element.type as (props: unknown) => unknown;
-      return textOf(Component(element.props));
-    }
-    return textOf(element.props.children);
-  }
-  return '';
+function hasTicks(elements: TestElement[]): boolean {
+  return elements.some((element) => element.type === 'Ticks');
 }
 
 function message(id: string, senderId: string, text: string): UiMessage {
   return {
     id,
-    chatId: 't-devteam-bug',
+    chatId: 'dm-1',
     senderId,
     senderName: senderId,
     text,
@@ -165,95 +143,33 @@ function message(id: string, senderId: string, text: string): UiMessage {
   };
 }
 
-function topicChat(overrides: Partial<ChatSummary> = {}): ChatSummary {
+function dmChat(overrides: Partial<ChatSummary> = {}): ChatSummary {
   return {
-    id: 't-devteam-bug',
-    title: 'Checkout bug',
-    kind: 'group',
+    id: 'dm-1',
+    title: 'Ana',
+    kind: 'dm',
     isAI: false,
-    space: 'work',
+    space: 'personal',
     unread: 0,
     muted: false,
-    groupId: 'g-devteam',
-    groupTitle: 'Dev team',
-    topic: {
-      id: 't-devteam-bug',
-      glyph: 'B',
-      kind: 'bug',
-      status: 'in_progress',
-      visibility: 'public',
-      isGeneral: false,
-      archived: false,
-      owner: null,
-      linkUrl: null,
-      linkLabel: null,
-    },
     ...overrides,
   };
 }
 
-function labels(elements: TestElement[]): (string | undefined)[] {
-  return elements
-    .filter((element) => element.type === 'View')
-    .map((element) => element.props.accessibilityLabel)
-    .filter((label) => label !== undefined);
-}
-
-function hasTicks(elements: TestElement[]): boolean {
-  return elements.some((element) => element.type === 'Ticks');
-}
-
-const BASE = {
-  onPress: () => {},
-  onLongPress: () => {},
-};
-
-describe('TopicRow', () => {
+describe('ChatListItem', () => {
   beforeEach(() => {
     state.messages = [];
     state.blocked = new Set();
     state.currentUserId = 'me';
   });
 
-  it('renders the title with no pin or muted icon by default', () => {
-    const elements = collect(TopicRow({ ...BASE, chat: topicChat() }));
-    expect(textOf(elements)).toContain('Checkout bug');
-    expect(labels(elements)).not.toContain('Pinned chat');
-    expect(labels(elements)).not.toContain('Muted chat');
-  });
-
-  it('shows pin and muted icons when the topic is pinned and muted', () => {
-    const elements = collect(
-      TopicRow({ ...BASE, chat: topicChat({ muted: true, pinnedAt: new Date() }) }),
-    );
-    expect(labels(elements)).toContain('Pinned chat');
-    expect(labels(elements)).toContain('Muted chat');
-  });
-
-  it('renders the muted unread badge in the grey style', () => {
-    const elements = collect(TopicRow({ ...BASE, chat: topicChat({ unread: 3, muted: true }) }));
-    expect(textOf(elements)).toContain('3');
-  });
-
-  it('previews the newest visible message when the last is from a blocked sender', () => {
-    state.blocked = new Set(['bea']);
-    state.messages = [
-      message('m1', 'carlos@zilar.test', 'visible message'),
-      message('m2', 'bea@zilar.test', 'blocked message'),
-    ];
-    const elements = collect(
-      TopicRow({ ...BASE, chat: topicChat({ lastMessage: state.messages[1] }) }),
-    );
-    const text = textOf(elements);
-    expect(text).toContain('visible message');
-    expect(text).not.toContain('blocked message');
-  });
-
   it('shows ticks when the last message is mine under the store user id', () => {
     state.currentUserId = 'u-42';
     const last = message('m1', 'u-42', 'mine');
     state.messages = [last];
-    const elements = collect(TopicRow({ ...BASE, chat: topicChat({ lastMessage: last }) }));
+    const elements = collect(
+      ChatListItem({ chat: dmChat({ lastMessage: last }), onPress: () => {} }),
+    );
     expect(hasTicks(elements)).toBe(true);
   });
 
@@ -261,7 +177,9 @@ describe('TopicRow', () => {
     state.currentUserId = 'u-42';
     const last = message('m1', 'u-7', 'theirs');
     state.messages = [last];
-    const elements = collect(TopicRow({ ...BASE, chat: topicChat({ lastMessage: last }) }));
+    const elements = collect(
+      ChatListItem({ chat: dmChat({ lastMessage: last }), onPress: () => {} }),
+    );
     expect(hasTicks(elements)).toBe(false);
   });
 });

@@ -1,7 +1,7 @@
 ---
 id: T-0262
 title: "Mobile: chat list ticks use the signed-in user id (they never show in the real app), and the folder editor waits for its folder before showing the form"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0262-mobile-ticks-folder-deeplink
 model: auto
@@ -54,4 +54,53 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**Status: done.**
+
+### What I did
+
+1. Chat-list ticks (spec §1)
+   - `apps/mobile/src/components/chat/chat-list-item.tsx` and `topic-row.tsx`: `showTicks` now compares `last?.senderId` against the store's `currentUserId` (the value both rows already subscribe to for the preview) instead of the `'me'` constant; removed the now-unused `CURRENT_USER_ID` import from both.
+   - `topic-row.test.tsx`: the store mock now takes `currentUserId` from hoisted state; added two cases — last message mine under a real id (`u-42`) shows ticks, someone else's shows none.
+   - `chat-list-item.test.tsx` (new): copies the module-mocking pattern of `topic-row.test.tsx` and adds the same two cases for `ChatListItem`.
+2. Folder editor deep link (spec §2)
+   - `apps/mobile/src/components/settings/folders.ts`: added `FolderEditorState` and the pure `editorState(id, folder, foldersLoaded)` returning `'new' | 'loading' | 'missing' | 'ready'`.
+   - `apps/mobile/src/store/types.ts`: added `foldersLoaded: boolean` to `ChatStoreState`.
+   - `apps/mobile/src/store/chat-store.ts` (mock): initial `foldersLoaded: true` (its folders are seeded at once) and `setFolders` sets it `true`.
+   - `apps/mobile/src/store/real-store.ts`: initial `foldersLoaded: false`; `setFolders` sets it `true` (only a successful `/api/chat-folders` load calls it).
+   - `apps/mobile/src/app/settings/folder/[id].tsx`: the screen resolves the folder before mounting anything. `loading` renders a muted "Loading folder…" and no form; `missing` renders "This folder no longer exists." with a Back button; `ready`/`new` mount an inner `FolderForm` with `key={folder?.id ?? 'new'}` that takes the folder as a prop and snapshots the form state exactly once.
+   - `folders.test.ts`: added `editorState` cases (new / ready / loading / missing).
+   - `chat-store.test.ts` and `real-store.folders.test.ts`: assert `foldersLoaded` default and the flip on the first `setFolders` for the mock and real store.
+
+### Commands run (real results)
+
+- `pnpm install`: done, ok.
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot chat-list-item topic-row components/settings/folders chat-store real-store.folders`: **7 files, 70 tests passed**.
+- `pnpm gate` (first run): **GATE FAIL** on `format` for `[id].tsx` and `chat-list-item.test.tsx`. Fixed with a targeted `pnpm exec prettier --write` on those two files, then re-ran.
+- `pnpm gate` (final):
+```
+gate: 13 changed file(s) against main
+PASS  install (frozen)
+PASS  format
+PASS  lint
+PASS  typecheck
+PASS  tests @zilar/mobile
+scope: every changed file is inside the Allowed files
+GATE PASS
+```
+
+### Deviations / notes
+
+- For the mock store I set the initial `foldersLoaded` to `true` rather than only flipping it inside `setFolders`: the mock seeds `defaultFolders()` synchronously, so a deep link to a missing folder must resolve to `missing`, not hang on `loading`. `setFolders` still sets it, so both stores agree.
+- Nothing outside the Allowed files changed; `pnpm-lock.yaml` is untouched.
+
+### Open questions / blocked
+
+None.
+
 ## Review (written by Claude)
+
+**Verdict:** Approved; the first pre-review was clean (2 nits: leftover test mocks, harmless).
+- Both rows compare ticks against the store's `currentUserId`.
+- `editorState` returns new, loading, missing or ready.
+- `foldersLoaded` is true from the start in the mock store and set on the first sync in the real store.
+- No form shows until the folder is there.

@@ -16,7 +16,7 @@ import { primaryKey, raisedPill } from '@/lib/depth';
 import { useBlockedJids } from '@/lib/blocked-users';
 import { previewParts, typingLabel } from '@/lib/format';
 import { topicStatusLabel } from '@/lib/topics';
-import { CURRENT_USER_ID, type ChatSummary, type MessageStatus } from '@/lib/types';
+import { type ChatSummary, type MessageStatus } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { useChatStore } from '@/store/chat-store-provider';
 
@@ -83,7 +83,7 @@ export function TopicRow({
   });
   const deletedPreview = previewed?.deleted === true ? 'Message deleted' : undefined;
   const body = plainPreviewBody(chat, previewed, preview.body, currentUserId);
-  const showTicks = chat.unread === 0 && last?.senderId === CURRENT_USER_ID;
+  const showTicks = chat.unread === 0 && last?.senderId === currentUserId;
   const status = topic?.status ?? 'open';
   return (
     <Pressable
