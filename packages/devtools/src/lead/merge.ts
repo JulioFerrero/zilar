@@ -153,9 +153,22 @@ export async function mergeTask(options: MergeOptions): Promise<void> {
       );
     }
   }
-  const fastForward = options.runner.run(options.root, ['merge', '--ff-only', options.branch]);
-  if (!fastForward.ok) {
-    throw new MergeError(`fast-forward merge of ${options.branch} failed`);
+  const subjectsResult = options.runner.run(options.root, [
+    'log',
+    '--reverse',
+    '--format=%s',
+    `main..${options.branch}`,
+  ]);
+  if (!subjectsResult.ok) {
+    throw new MergeError(`could not read commits of ${options.branch}`);
+  }
+  const subjects = subjectsResult.stdout
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  const squashed = options.runner.run(options.root, ['merge', '--squash', options.branch]);
+  if (!squashed.ok) {
+    throw new MergeError(`squash of ${options.branch} failed`);
   }
   const boardFile = path.join(options.root, 'work', 'BOARD.md');
   options.writeText(
@@ -168,13 +181,33 @@ export async function mergeTask(options: MergeOptions): Promise<void> {
       options.today,
     ).text,
   );
+  const staged = options.runner.run(options.root, ['add', 'work/BOARD.md']);
+  if (!staged.ok) {
+    throw new MergeError('board stage failed');
+  }
+  const body = [`Squashed from ${options.branch}:`, ...subjects.map((s) => `- ${s}`)].join('\n');
   const committed = options.runner.run(options.root, [
     'commit',
-    '-qam',
-    `board: ${options.task} merged`,
+    '-q',
+    '-m',
+    `${options.task}: ${options.summary}`,
+    '-m',
+    body,
   ]);
   if (!committed.ok) {
-    throw new MergeError('board commit failed');
+    throw new MergeError('squash commit failed');
+  }
+  const same = options.runner.run(options.root, [
+    'diff',
+    '--quiet',
+    'HEAD',
+    options.branch,
+    '--',
+    '.',
+    ':(exclude)work/BOARD.md',
+  ]);
+  if (!same.ok) {
+    throw new MergeError(`squash result differs from ${options.branch}; nothing pushed`);
   }
   const pushed = options.runner.run(options.root, ['push', '-q', 'origin', 'main']);
   if (!pushed.ok) {
@@ -188,7 +221,7 @@ export async function mergeTask(options: MergeOptions): Promise<void> {
   if (!removed.ok) {
     throw new MergeError(`could not remove worktree ${options.worktree}; branch kept`);
   }
-  const deleted = options.runner.run(options.root, ['branch', '-d', options.branch]);
+  const deleted = options.runner.run(options.root, ['branch', '-D', options.branch]);
   if (!deleted.ok) {
     throw new MergeError(`could not delete branch ${options.branch}`);
   }

@@ -207,28 +207,62 @@ describe('mergeTask rebase conflicts', () => {
 });
 
 describe('mergeTask happy path', () => {
-  it('rebases, fast-forwards, boards, pushes, and cleans up', async () => {
+  it('rebases, squashes to one commit, boards, pushes, and cleans up', async () => {
     const harness = setup('todo', 'merged');
     fs.writeFileSync(path.join(harness.worktree, 'feature.txt'), 'new\n');
     git(harness.worktree, ['add', '.']);
     git(harness.worktree, ['commit', '-qam', 'feature']);
+    const before = spawnSync('git', ['rev-parse', 'HEAD'], {
+      cwd: harness.root,
+      encoding: 'utf8',
+    }).stdout.trim();
 
     await mergeTask(options(harness));
 
-    // Fast-forwarded: main holds the feature commit.
+    // Squashed: main gained exactly one commit with the task subject.
+    const count = spawnSync('git', ['rev-list', '--count', `${before}..HEAD`], {
+      cwd: harness.root,
+      encoding: 'utf8',
+    }).stdout.trim();
+    expect(count).toBe('1');
+    const subject = spawnSync('git', ['log', '-1', '--format=%s'], {
+      cwd: harness.root,
+      encoding: 'utf8',
+    }).stdout.trim();
+    expect(subject).toBe('T-0099: Demo summary');
+    const body = spawnSync('git', ['log', '-1', '--format=%b'], {
+      cwd: harness.root,
+      encoding: 'utf8',
+    }).stdout.trim();
+    expect(body).toContain('Squashed from task/T-0099-demo:');
+    expect(body).toContain('- worker: status');
+    expect(body).toContain('- feature');
+    const bodyLines = body.split('\n');
+    expect(bodyLines.indexOf('- worker: status')).toBeLessThan(bodyLines.indexOf('- feature'));
+    // The single commit holds both the feature change and the board change.
     expect(fs.existsSync(path.join(harness.root, 'feature.txt'))).toBe(true);
+    const files = spawnSync('git', ['show', '--name-only', '--format=', 'HEAD'], {
+      cwd: harness.root,
+      encoding: 'utf8',
+    }).stdout;
+    expect(files).toContain('feature.txt');
+    expect(files).toContain('work/BOARD.md');
     // Board: moved from Active to the end of Done.
     const board = fs.readFileSync(path.join(harness.root, 'work', 'BOARD.md'), 'utf8');
     expect(board).not.toContain('| [T-0099](T-0099-demo.md) | Demo | in-progress |');
     expect(board).toContain('| [T-0099](T-0099-demo.md) | Demo summary | 2026-09-29 |');
     const doneSection = board.split('## Done')[1] as string;
     expect(doneSection.indexOf('T-0001')).toBeLessThan(doneSection.indexOf('T-0099'));
-    // Pushed: the origin sees the feature commit.
-    const originLog = spawnSync('git', ['log', '--format=%s', 'main'], {
+    // Pushed: origin/main equals local main.
+    const localHead = spawnSync('git', ['rev-parse', 'main'], {
+      cwd: harness.root,
+      encoding: 'utf8',
+    }).stdout.trim();
+    const originHead = spawnSync('git', ['rev-parse', 'main'], {
       cwd: harness.origin,
       encoding: 'utf8',
-    }).stdout;
-    expect(originLog).toContain('feature');
+    }).stdout.trim();
+    expect(originHead).toBe(localHead);
     // Cleaned up: worktree removed, branch deleted, state dropped.
     expect(fs.existsSync(harness.worktree)).toBe(false);
     const branches = spawnSync('git', ['branch', '--list', harness.branch], {
@@ -237,6 +271,46 @@ describe('mergeTask happy path', () => {
     }).stdout.trim();
     expect(branches).toBe('');
     expect(harness.dropped).toEqual(['T-0099']);
+  });
+
+  it('squashes a three-commit branch into one commit on main', async () => {
+    const harness = setup('todo', 'merged');
+    fs.writeFileSync(path.join(harness.worktree, 'a.txt'), 'a\n');
+    git(harness.worktree, ['add', '.']);
+    git(harness.worktree, ['commit', '-qam', 'first change']);
+    fs.writeFileSync(path.join(harness.worktree, 'b.txt'), 'b\n');
+    git(harness.worktree, ['add', '.']);
+    git(harness.worktree, ['commit', '-qam', 'second change']);
+    fs.writeFileSync(path.join(harness.worktree, 'c.txt'), 'c\n');
+    git(harness.worktree, ['add', '.']);
+    git(harness.worktree, ['commit', '-qam', 'third change']);
+    const before = spawnSync('git', ['rev-parse', 'HEAD'], {
+      cwd: harness.root,
+      encoding: 'utf8',
+    }).stdout.trim();
+
+    await mergeTask(options(harness));
+
+    const count = spawnSync('git', ['rev-list', '--count', `${before}..HEAD`], {
+      cwd: harness.root,
+      encoding: 'utf8',
+    }).stdout.trim();
+    expect(count).toBe('1');
+    const subject = spawnSync('git', ['log', '-1', '--format=%s'], {
+      cwd: harness.root,
+      encoding: 'utf8',
+    }).stdout.trim();
+    expect(subject).toBe('T-0099: Demo summary');
+    const body = spawnSync('git', ['log', '-1', '--format=%b'], {
+      cwd: harness.root,
+      encoding: 'utf8',
+    }).stdout.trim();
+    expect(body).toContain('- first change');
+    expect(body).toContain('- second change');
+    expect(body).toContain('- third change');
+    for (const file of ['a.txt', 'b.txt', 'c.txt']) {
+      expect(fs.existsSync(path.join(harness.root, file))).toBe(true);
+    }
   });
 });
 

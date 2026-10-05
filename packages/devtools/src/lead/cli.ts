@@ -29,7 +29,7 @@ Usage: lead <command> [options]
   doctor [--since <sha>]                                    audit main now with a Muse doctor session
   prereview <T-XXXX>                                        start a Muse pre-review manually
   reply <T-XXXX> <prompt-file>                              interrupt the worker and re-prompt it
-  merge <T-XXXX> --summary "<one line>" [--skip-gate]       rebase, run the gate, fast-forward main, board, push, clean up
+  merge <T-XXXX> --summary "<one line>" [--skip-gate]       rebase, run the gate, squash onto main, board, push, clean up
   spec-check <T-XXXX>                                       check a spec's paths, routes and web claims against the code
   snapshot                                                  JSON of every task in flight, its step and timings
   dashboard <out.html>                                      the snapshot rendered as the dashboard page

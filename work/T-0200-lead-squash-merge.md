@@ -1,7 +1,7 @@
 ---
 id: T-0200
 title: Lead tooling: lead merge lands each task as ONE commit on main (squash, board included)
-status: planned
+status: review
 milestone: M5
 branch: task/T-0200-lead-squash-merge
 model: meta/muse-spark-1.3-contributor
@@ -63,5 +63,24 @@ Rewriting old history, the lead's own `work:`/`docs:` commits, any other lead co
 ---
 
 ## Report (written by the worker when done)
+
+Implemented squash merge in `mergeTask`: reads branch commit subjects, `git merge --squash`, stages the board row, commits once as `<task>: <summary>` with body `Squashed from <branch>:` + subject list, verifies with `git diff --quiet HEAD <branch> -- . ':(exclude)work/BOARD.md'` before push, and deletes the branch with `-D` after a successful push. Updated `cli.ts` usage line to say "squash onto main". Rewrote the happy-path test for the one-commit assertion and added a three-commits-to-one test.
+
+Files changed:
+- `packages/devtools/src/lead/merge.ts`
+- `packages/devtools/src/lead/merge.test.ts`
+- `packages/devtools/src/lead/cli.ts`
+
+Commands and results:
+- `pnpm install --frozen-lockfile`: exit 0
+- `pnpm --filter @zilar/devtools test --maxWorkers=2 src/lead/merge`: 15 passed
+- `pnpm format:check`: pass
+- `pnpm lint`: pass (11 tasks)
+- `pnpm typecheck`: pass (11 tasks)
+- `pnpm gate`: GATE PASS — "4 changed file(s) against main", PASS install/format/lint/typecheck/tests @zilar/devtools, "scope: every changed file is inside the Allowed files", GATE PASS
+
+Security checklist: no secrets/tokens touched; squash commit only adds branch files + board row; `git diff --quiet` safety check blocks push on mismatch; `branch -D` runs only after push success; no `reset`/`push --force`/`--no-verify` in `merge.ts` (verified by grep).
+
+Deviation / open question: `packages/devtools/src/lead/collect-snapshot.ts` (lines 168, 176) greps main's log for the old `board: T-… merged` subject to build the dashboard "merged today" list. After this change no new commit will match, so that list will go empty. Fixing it means matching `^T-\d+: ` subjects, but that file is outside my Allowed files — left for the lead to task separately.
 
 ## Review (written by Claude)
