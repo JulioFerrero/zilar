@@ -7,6 +7,8 @@ settings:
 overrides:
   '@types/node': ^24
 
+packageExtensionsChecksum: sha256-phokSFO6ziZSjQwLz+yFAJcHECQWoPH6cowRQ8w+6/s=
+
 importers:
 
   .:
@@ -2652,6 +2654,14 @@ packages:
   '@react-native/metro-config@0.86.3':
     resolution: {integrity: sha512-qdzDMepV2xdUhsO4XC7idnnbt8K6+Hd59AjeK9y4KS86fxSQq5oL0TAbqUuajDGR7beNQoYTuS6AowN/zP0oaQ==}
     engines: {node: ^20.19.4 || ^22.13.0 || ^24.3.0 || >= 25.0.0}
+    peerDependencies:
+      bufferutil: '*'
+      utf-8-validate: '*'
+    peerDependenciesMeta:
+      bufferutil:
+        optional: true
+      utf-8-validate:
+        optional: true
 
   '@react-native/normalize-colors@0.74.89':
     resolution: {integrity: sha512-qoMMXddVKVhZ8PA1AbUCk83trpd6N+1nF2A6k1i6LsQObyS92fELuk8kU/lQs6M7BsMHwqyLCpQJ1uFgNvIQXg==}
