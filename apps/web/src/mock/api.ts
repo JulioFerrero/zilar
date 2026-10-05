@@ -1475,17 +1475,24 @@ function decideMockContactRequest(
 
 // T-0235: blocks in memory for the page load. Blocking is idempotent, like
 // the server; unblocking someone never blocked still answers success.
-function mockBlockList(): Array<{ userId: string; name: string; handle: string; image: null }> {
+function mockBlockList(): Array<{
+  userId: string;
+  name: string;
+  handle: string | null;
+  image: null;
+  jid: string | null;
+}> {
   const ordered = [...state.blockedUsers].sort((a, b) => b.blockedAt.localeCompare(a.blockedAt));
   return ordered.map((entry) => {
     const profile = mockHandleProfileForId(entry.userId);
     const person = Object.values(PEOPLE).find((item) => item.id === entry.userId);
-    const handle = mockPersonHandle(entry.userId) ?? profile?.handle ?? entry.userId;
+    const handle = mockPersonHandle(entry.userId) ?? profile?.handle ?? null;
     return {
       userId: entry.userId,
-      name: person?.name ?? profile?.name ?? handle,
+      name: person?.name ?? profile?.name ?? entry.userId,
       handle,
       image: null,
+      jid: entry.userId === currentUserId ? (state.me.jid ?? null) : `${entry.userId}@zilar.test`,
     };
   });
 }

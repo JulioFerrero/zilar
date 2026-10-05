@@ -1,7 +1,7 @@
 ---
 id: T-0239
 title: "Web: hide blocked people's group messages; fix the Blocked page for people without a @handle"
-status: planned
+status: merged
 milestone: M5
 branch: task/T-0239-web-hide-blocked
 model: opencode/muse-spark-1.3-contributor-free
@@ -64,4 +64,77 @@ Chat list previews and unread counts from blocked people, mentions, DM composer 
 
 ## Report (written by the worker when done)
 
+Done. Blocked people's group/channel messages are hidden on web, and the
+Blocked page loads for people without a @handle.
+
+What changed:
+- Server `listBlockedUsers` (`apps/server/src/blocks/service.ts`) left-joins
+  `xmppAccounts` and returns `jid` (null when no XMPP account). Response shape
+  is otherwise unchanged; still never an email. No route/schema change (the
+  route returns the service object directly).
+- Web `blockedPersonSchema` (`apps/web/src/lib/api.ts`): `handle` and `jid`
+  are now `z.string().nullable()`.
+- `BlockedPage.tsx`: renders `@{handle}` only when non-null; unblock failure
+  shows `Could not unblock. Try again.` (429 sentence kept); calls
+  `refreshBlockedJids()` after a successful unblock.
+- New `apps/web/src/lib/blockedJids.ts`: `useSyncExternalStore` holding
+  lowercased bare JIDs from `listBlockedUsers()`; loads on first use and on
+  window `focus`; errors keep the last good set. Exposes `useBlockedJids()`
+  and `refreshBlockedJids()`.
+- `ContactProfileRow.tsx`: calls `refreshBlockedJids()` after successful
+  block/unblock.
+- `MessageList.tsx`: when `chat.kind === 'group'` (groups and channels ride
+  `kind: 'group'`; DMs are `kind: 'dm'`, AI chats `isAI`) and the set is
+  non-empty, drops messages whose lowercased bare `senderId` is in the set
+  before grouping. Own messages (`senderId === currentUserId`) are never
+  dropped. No placeholder. Filtering also drives the scroll-count refs.
+- Mock `mockBlockList()` returns `jid` (`<userId>@zilar.test`, me's jid for
+  self) and `handle: null` for handle-less people (previously fell back to
+  the raw userId).
+- Tests: server list tests expect `jid` (provisioned JID via `expectedJid`,
+  null for raw inserts); `api.test.ts` null handle/jid case;
+  `blockedJids.test.ts` (load lowercased bare JIDs, focus refresh, error
+  keeps set); `MessageList.test.tsx` (group hides blocked, own kept, DM
+  unfiltered, channel mixed-case); `BlockedPage.test.tsx` (null handle
+  renders no `@`, unblock failure sentence); `ContactProfileRow.test.tsx`
+  (refresh called after block/unblock).
+
+Commands (real results):
+- `pnpm install`: ok (10.9s).
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot src/lib/blockedJids.test.ts`: 3 passed.
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot src/components/MessageList.test.tsx`: 19 passed.
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot src/routes/BlockedPage.test.tsx src/lib/api.test.ts`: 100 passed.
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot src/components/ContactProfileRow.test.tsx`: 7 passed.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/blocks`: 14 passed.
+- `pnpm gate`: GATE PASS. Summary lines:
+  - `PASS  install (frozen)  (1.3s)`, `PASS  format`, `PASS  lint`,
+    `PASS  typecheck`, `PASS  tests @zilar/server  (415.2s)`,
+    `PASS  tests @zilar/web  (40.2s)`
+  - `scope: every changed file is inside the Allowed files`
+  - `GATE PASS`
+
+Notes / deviations:
+- `apps/server/src/blocks/routes.ts` is NOT in Allowed files, so I reverted a
+  comment-only edit there; the route comment still says `{ userId, name,
+  handle, image }` while the payload now also has `jid`. Mentioning in case
+  the lead wants a follow-up task to touch that file.
+- Fixed along the way: prettier formatting on 4 files, an oxlint
+  `react(globals)` error (moved the lazy load into `useEffect`), and a
+  web typecheck error (`state.me.jid` is `string | null | undefined` in the
+  mock).
+
+Security checklist: no secrets touched; no new routes (nothing for the 401
+sweep); unblock/block writes keep existing rate limits; list returns ids,
+names, handles, jids only — no emails; audit unchanged (ids only);
+filtering is client-side view-only, no permission change.
+
 ## Review (written by Claude)
+
+**Verdict:** Approved. The first pre-review was clean (1 follow-up: the stale list-shape comment at `apps/server/src/blocks/routes.ts:74`). I read the service and `MessageList` diffs:
+- The list adds `jid` through a left join on the `xmpp_accounts` primary key, so rows are not duplicated, and still no email.
+- Only group and channel chats are filtered; my own messages are never dropped; DMs are untouched.
+- Blocked JIDs are compared by lowercased localpart, so a domain difference cannot defeat the match.
+- A failed load keeps the last good set, so a network error never unhides messages.
+- The Blocked page bug for people without a @handle is fixed, with a test.
+
+Follow-ups: the routes.ts comment, and the chat list previews and unread counts from blocked people (out of scope here).

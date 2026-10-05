@@ -13,6 +13,7 @@ import {
   type HandleProfile,
 } from '@/lib/api';
 import { useChatStore } from '@/store/ChatStoreProvider';
+import { refreshBlockedJids } from '@/lib/blockedJids';
 import { Avatar } from './Avatar';
 
 /**
@@ -104,6 +105,7 @@ export function ContactProfileRow({
       await blockUser(profile.userId);
       setConfirmingBlock(false);
       onRelationChange({ ...profile, relation: 'blocked' });
+      await refreshBlockedJids();
     } catch (blockError) {
       setError(friendlyBlockError(blockError, 'Could not block. Try again.'));
     } finally {
@@ -120,6 +122,7 @@ export function ContactProfileRow({
     try {
       await unblockUser(profile.userId);
       onRelationChange({ ...profile, relation: 'none' });
+      await refreshBlockedJids();
     } catch (unblockError) {
       setError(friendlyBlockError(unblockError, 'Could not unblock. Try again.'));
     } finally {

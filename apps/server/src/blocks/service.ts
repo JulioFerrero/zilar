@@ -6,7 +6,7 @@
 import { and, desc, eq, or, sql } from 'drizzle-orm';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
-import { contactRequests, handles, user, userBlocks } from '../db/schema';
+import { contactRequests, handles, user, userBlocks, xmppAccounts } from '../db/schema';
 import { HttpError } from '../errors';
 
 // The list endpoint caps server-side; nobody should keep 500 blocks, but
@@ -25,6 +25,7 @@ export interface BlockedUserView {
   name: string;
   handle: string | null;
   image: string | null;
+  jid: string | null;
 }
 
 function serviceNow(deps: BlocksDeps): Date {
@@ -128,8 +129,9 @@ export async function unblockUser(
 }
 
 // The blocker's list, newest first, capped server-side: `{ userId, name,
-// handle, image }`. Never an email; `handle` is null when the person has
-// none. One joined query over the blocked ids — never one select per row.
+// handle, image, jid }`. Never an email; `handle` is null when the person
+// has none and `jid` is null when they have no XMPP account. One joined
+// query over the blocked ids — never one select per row.
 export async function listBlockedUsers(
   deps: BlocksDeps,
   userId: string,
@@ -140,10 +142,12 @@ export async function listBlockedUsers(
       name: user.name,
       image: user.image,
       handle: handles.handle,
+      jid: xmppAccounts.jid,
     })
     .from(userBlocks)
     .innerJoin(user, eq(user.id, userBlocks.blockedUserId))
     .leftJoin(handles, eq(handles.userId, user.id))
+    .leftJoin(xmppAccounts, eq(xmppAccounts.userId, user.id))
     .where(eq(userBlocks.userId, userId))
     .orderBy(desc(userBlocks.createdAt))
     .limit(MAX_BLOCK_LIST_ROWS);
@@ -153,6 +157,7 @@ export async function listBlockedUsers(
       name: row.name.trim() === '' ? 'Unnamed user' : row.name,
       handle: row.handle,
       image: row.image,
+      jid: row.jid,
     })),
   };
 }
