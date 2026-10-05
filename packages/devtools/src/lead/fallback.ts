@@ -1,7 +1,6 @@
-import { DEEPSEEK_FLASH } from './model-schedule.js';
+import { DEEPSEEK_FLASH, FREE_MUSE, PAID_MUSE } from './models.js';
 
-export const FREE_MUSE = 'opencode/muse-spark-1.3-contributor-free';
-export const PAID_MUSE = 'meta/muse-spark-1.3-contributor';
+export { DEEPSEEK_FLASH, FREE_MUSE, PAID_MUSE };
 
 export function fallbackModel(model: string): string | undefined {
   // T-0245: DeepSeek flash (`model: auto` off-peak) falls back in place to the

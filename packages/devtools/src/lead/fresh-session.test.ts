@@ -123,9 +123,10 @@ describe('startFreshWorkerSession', () => {
     );
 
     expect(model).toBe('opencode/muse-spark-1.3-contributor-free');
-    expect(client.created[0]?.options.model).toMatchObject({
+    expect(client.created[0]?.options.model).toEqual({
       providerID: 'opencode',
       id: 'muse-spark-1.3-contributor-free',
+      variant: 'low',
     });
   });
 
