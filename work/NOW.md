@@ -2,7 +2,11 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
-Last updated: 2026-10-05, after merging T-0203 and launching T-0204; T-0210 (speed line for `lead watch`) waits for T-0209.
+Last updated: 2026-10-05, after merging T-0204 (all three token-saving tasks A, B, C are in; autopilot restarted). T-0210 (speed line for `lead watch`) waits for T-0209.
+
+Token saving check: the first fresh-session fix round (T-0191 round 1) started at ~21k context instead of the old session's ~158k per step.
+
+Known issue: `pnpm install` flips two `transitivePeerDependencies` entries (`bufferutil`, `utf-8-validate`, under the `metro-runtime` block of `pnpm-lock.yaml`) between worktrees: T-0203 added them, T-0204 removed them. Harmless, but it puts lockfile noise in every task. Later: an audit task to find why (pnpm version or install order).
 
 Models (Julio, 2026-10-05): default `opencode/muse-spark-1.3-contributor-free`; MiniMax M3 only for the easiest exact tasks; billed `meta/muse-spark-1.3-contributor` is the fallback if the free listing hits limits.
 
@@ -12,7 +16,6 @@ Models (Julio, 2026-10-05): default `opencode/muse-spark-1.3-contributor-free`; 
 | --- | --- | --- | --- |
 | T-0191 | Mobile sticker pack editor | coding | Muse (billed); brief `docs/design/briefs/T-0191-sticker-editor.md`; needs phone:smoke |
 | T-0209 | `lead watch`: live terminal view of the workers (Julio asked) | coding | MiniMax; the lead runs `pnpm lead:watch` in a small terminal before merging |
-| T-0204 | Pre-review stops re-running the gate's checks (token saving C) | coding | MiniMax |
 
 ## Next, in order
 
