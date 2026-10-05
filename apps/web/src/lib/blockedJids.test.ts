@@ -1,7 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
 import { ApiError } from './api';
-import { refreshBlockedJids, resetBlockedJidsForTests, useBlockedJids } from './blockedJids';
+import {
+  isBlockedSender,
+  refreshBlockedJids,
+  resetBlockedJidsForTests,
+  useBlockedJids,
+} from './blockedJids';
 
 const listMock = vi.fn();
 
@@ -74,6 +79,21 @@ describe('blockedJids', () => {
       await refreshBlockedJids();
     });
     expect(result.current.has('ana')).toBe(true);
+  });
+
+  it('matches lowercased localparts and ignores the domain', () => {
+    const blocked = new Set(['bob']);
+    expect(isBlockedSender('bob@zilar.test', blocked)).toBe(true);
+    expect(isBlockedSender('BOB@ZILAR.TEST', blocked)).toBe(true);
+    expect(isBlockedSender('Bob@other.test', blocked)).toBe(true);
+    expect(isBlockedSender('bobby@zilar.test', blocked)).toBe(false);
+    expect(isBlockedSender('ana@zilar.test', blocked)).toBe(false);
+  });
+
+  it('treats a bare localpart with no domain as itself', () => {
+    const blocked = new Set(['bob']);
+    expect(isBlockedSender('Bob', blocked)).toBe(true);
+    expect(isBlockedSender('bob', blocked)).toBe(true);
   });
 
   it('refreshBlockedJids updates the set', async () => {

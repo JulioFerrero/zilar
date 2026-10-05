@@ -72,7 +72,8 @@ export function createBlocksRoutes(deps: BlocksRoutesDependencies): Hono {
   });
 
   // The blocker's list, newest first: `{ blocked: [{ userId, name, handle,
-  // image }] }`. Never an email.
+  // image, jid }] }` (`jid` is null when the person has no XMPP account).
+  // Never an email.
   routes.get('/blocks', async (c) => {
     const { user } = await requireSession(deps.auth, c.req.raw.headers);
     if (!readLimiter.allow(user.id)) {

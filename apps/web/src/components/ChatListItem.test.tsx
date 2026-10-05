@@ -1,7 +1,24 @@
-import { describe, expect, it } from 'vitest';
-import { act, screen } from '@testing-library/react';
-import type { ChatSummary } from '@zilar/chat-core';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, cleanup, screen, waitFor } from '@testing-library/react';
+import type { ChatSummary, UiMessage } from '@zilar/chat-core';
 import { renderApp } from '@/test/renderApp';
+import { listBlockedUsers } from '@/lib/api';
+import { resetBlockedJidsForTests } from '@/lib/blockedJids';
+
+vi.mock('@/lib/api', async (importOriginal) => {
+  const original = await importOriginal<typeof import('@/lib/api')>();
+  return {
+    ...original,
+    listBlockedUsers: vi.fn(async () => []),
+  };
+});
+
+beforeEach(() => {
+  resetBlockedJidsForTests();
+  vi.mocked(listBlockedUsers).mockReset();
+  vi.mocked(listBlockedUsers).mockResolvedValue([]);
+  cleanup();
+});
 
 const aiChat: ChatSummary = {
   id: 'c-devai',
@@ -205,5 +222,67 @@ describe('ChatListItem', () => {
     const { container } = renderApp('/', { chats: [personChat], messagesByChat: {} });
     expect(container.querySelector('img')).toBeNull();
     expect(container.textContent).toContain('A');
+  });
+});
+
+describe('ChatListItem blocked previews (T-0249)', () => {
+  const blockedGroup: ChatSummary = {
+    id: 'g-blocked',
+    title: 'Familia',
+    kind: 'group',
+    isAI: false,
+    space: 'personal',
+    unread: 0,
+    muted: false,
+  };
+
+  function blockedLast(): UiMessage {
+    return {
+      id: 'm-2',
+      chatId: 'g-blocked',
+      senderId: 'bea@zilar.test',
+      senderName: 'Bea',
+      text: 'blocked preview text',
+      createdAt: new Date(2026, 8, 28, 10, 2),
+      status: 'read',
+    };
+  }
+
+  function stubBlocked(): void {
+    vi.mocked(listBlockedUsers).mockResolvedValue([
+      { userId: 'u-bea', name: 'Bea', handle: 'bea', image: null, jid: 'bea@zilar.test' },
+    ]);
+  }
+
+  it('shows the newest visible message instead of a blocked last one', async () => {
+    stubBlocked();
+    const visible: UiMessage = {
+      id: 'm-1',
+      chatId: 'g-blocked',
+      senderId: 'carlos@zilar.test',
+      senderName: 'Carlos',
+      text: 'visible earlier text',
+      createdAt: new Date(2026, 8, 28, 10, 1),
+      status: 'read',
+    };
+    renderApp('/', {
+      chats: [{ ...blockedGroup, lastMessage: blockedLast() }],
+      messagesByChat: { 'g-blocked': [visible, blockedLast()] },
+    });
+
+    expect(await screen.findByText('visible earlier text')).toBeTruthy();
+    expect(screen.queryByText('blocked preview text')).toBeNull();
+  });
+
+  it('shows no preview when only a blocked message is loaded', async () => {
+    stubBlocked();
+    renderApp('/', {
+      chats: [{ ...blockedGroup, lastMessage: blockedLast() }],
+      messagesByChat: { 'g-blocked': [blockedLast()] },
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText('blocked preview text')).toBeNull();
+    });
   });
 });

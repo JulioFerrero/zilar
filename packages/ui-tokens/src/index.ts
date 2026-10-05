@@ -104,9 +104,9 @@ export interface PlatformDifference {
 }
 
 /**
- * Tokens that differ between web and mobile today. Kept as-is on purpose
- * (Julio decides the dot-grid question later); the drift tests skip these by
- * name and read them from here.
+ * Tokens that differ between web and mobile today. The dot grid is on both
+ * apps (decided 2026-10-05), so these entries are real differences only; the
+ * drift tests skip these by name and read them from here.
  */
 export const platformDifferences: readonly PlatformDifference[] = [
   {

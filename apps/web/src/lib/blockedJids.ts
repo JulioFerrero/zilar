@@ -1,7 +1,7 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import { listBlockedUsers } from './api';
 
-// The lowercased bare JIDs I blocked, kept outside React so every
+// The lowercased localparts I blocked, kept outside React so every
 // MessageList reads the same set without a prop chain. Loads lazily on
 // first use and on window focus; a failed load keeps the last good set so
 // a flaky network never unhides someone's messages.
@@ -10,9 +10,15 @@ let loading: Promise<void> | undefined;
 let focusListening = false;
 const listeners = new Set<() => void>();
 
-function bareJid(value: string): string {
+/** The localpart of a JID, lowercased (`Bob@zilar.test` becomes `bob`). */
+function localpartOf(value: string): string {
   const at = value.indexOf('@');
   return (at === -1 ? value : value.slice(0, at)).toLowerCase();
+}
+
+/** Whether `senderId` belongs to a blocked person, ignoring case and domain. */
+export function isBlockedSender(senderId: string, blocked: ReadonlySet<string>): boolean {
+  return blocked.has(localpartOf(senderId));
 }
 
 function emit(): void {
@@ -27,7 +33,7 @@ async function load(): Promise<void> {
     const next = new Set<string>();
     for (const person of people) {
       if (person.jid !== null && person.jid.trim() !== '') {
-        next.add(bareJid(person.jid.trim()));
+        next.add(localpartOf(person.jid.trim()));
       }
     }
     blocked = next;
@@ -58,7 +64,7 @@ function getSnapshot(): ReadonlySet<string> {
   return blocked;
 }
 
-/** The lowercased bare JIDs I blocked; starts loading on first use. */
+/** The lowercased localparts I blocked; starts loading on first use. */
 export function useBlockedJids(): ReadonlySet<string> {
   useEffect(() => {
     ensureFocusListener();
