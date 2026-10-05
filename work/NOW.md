@@ -9,7 +9,6 @@ Last updated: 2026-10-05, after the history compaction and the T-0200 launch.
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
 | T-0200 | `lead merge` lands each task as ONE commit on main | coding | Muse |
-| T-0201 | Runner connect test waits for "live" instead of a 200 ms sleep (CI flake) | coding | Julio asked; MiniMax launch failed (`effort: low` is not a MiniMax variant), switched to Muse; set the spec's `model:` to Muse in the Review |
 
 ## Next, in order
 
@@ -24,6 +23,8 @@ Last updated: 2026-10-05, after the history compaction and the T-0200 launch.
 - Release: everything merged since v0.1.13 reaches the live web only with the next release.
 
 ## Recent events
+
+- 2026-10-05: merged T-0201 (runner connect test polls for "live"; fixes the CI flake Julio pasted). Token audit of worker sessions shown to Julio: fix rounds in the same long session (up to 217k context per step) are the main waste; proposals A/B/C (fresh session for fix rounds, quiet gate output, pre-review reuses the gate result) wait for his answer.
 
 - 2026-10-05: MiniMax-M3 has no effort variants; a launch with `effort: low` fails with no reply. `effort: default` works (tested). T-0194 and T-0195 now say `effort: default`. Noted in `docs/LEAD_HANDOFF.md`.
 
