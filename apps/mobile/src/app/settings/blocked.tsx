@@ -97,7 +97,7 @@ function BlockedList() {
             Blocked people
           </Text>
           <Text numberOfLines={1} className="mt-0.5 text-[14px] leading-5 text-muted-foreground">
-            They are not told. Their contact requests do not reach you.
+            They are not told.
           </Text>
         </View>
       </View>

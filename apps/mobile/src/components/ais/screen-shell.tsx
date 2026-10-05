@@ -4,6 +4,7 @@ import { ScrollView, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColorScheme } from 'nativewind';
 
+import { tabScreenBottomPadding } from '@/components/nav/floating-tab-bar';
 import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
 import { asColorScheme } from '@/lib/color-scheme';
@@ -59,7 +60,9 @@ export function AisScreenShell({
       {scroll ? (
         <ScrollView
           className="flex-1"
-          contentContainerStyle={{ paddingBottom: 32 }}
+          contentContainerStyle={{
+            paddingBottom: tabScreenBottomPadding(onBack !== undefined, insets.bottom),
+          }}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="interactive"
           automaticallyAdjustKeyboardInsets

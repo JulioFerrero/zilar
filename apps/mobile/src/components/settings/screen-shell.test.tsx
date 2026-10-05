@@ -1,7 +1,9 @@
+import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 
 import { AisScreenShell } from '@/components/ais/screen-shell';
+import { tabScreenBottomPadding } from '@/components/nav/floating-tab-bar';
 
 import { SettingsScreenShell } from './screen-shell';
 
@@ -10,7 +12,12 @@ import { SettingsScreenShell } from './screen-shell';
 // `settings-ui.test.tsx` pattern): Node only, no simulator, no new dependency.
 vi.mock('react-native', () => ({
   Pressable: 'Pressable',
-  ScrollView: 'ScrollView',
+  ScrollView: (props: { children?: unknown; contentContainerStyle?: { paddingBottom?: number } }) =>
+    createElement(
+      'div',
+      { 'data-padding-bottom': String(props.contentContainerStyle?.paddingBottom) },
+      props.children as never,
+    ),
   View: 'View',
 }));
 
@@ -33,6 +40,26 @@ vi.mock('@/components/ui/icon-button', () => ({
 
 vi.mock('@/components/ui/text', () => ({
   Text: 'Text',
+}));
+
+// The shells now import `floating-tab-bar` for the tab-screen padding helper,
+// so its heavier seams are stubbed here too (the `floating-tab-bar.test.tsx`
+// pattern) to keep this a Node-only render.
+vi.mock('expo-router/ui', () => ({
+  TabTrigger: 'TabTrigger',
+  useTabTrigger: () => ({ trigger: undefined, triggerProps: {} }),
+}));
+
+vi.mock('@zilar/chat-core', () => ({
+  initials: () => 'AL',
+}));
+
+vi.mock('@/lib/auth', () => ({
+  API_URL: 'https://api.example',
+}));
+
+vi.mock('@/components/settings/profile-logic', () => ({
+  avatarImageSource: () => ({}),
 }));
 
 const SHELLS = ['settings', 'ais'] as const;
@@ -65,6 +92,35 @@ describe('screen shells header padding', () => {
       const html = renderHeader(shell, () => {});
       expect(html).toContain('px-2');
       expect(html).not.toContain('px-4');
+    }
+  });
+});
+
+function renderScrollBody(shell: (typeof SHELLS)[number], onBack?: () => void): string {
+  return renderToStaticMarkup(
+    shell === 'settings' ? (
+      <SettingsScreenShell title="Settings" onBack={onBack}>
+        body
+      </SettingsScreenShell>
+    ) : (
+      <AisScreenShell title="Settings" onBack={onBack} scroll>
+        body
+      </AisScreenShell>
+    ),
+  );
+}
+
+describe('screen shells scroll body padding', () => {
+  it('clears the floating tab bar when there is no back key', () => {
+    const expected = String(tabScreenBottomPadding(false, 0));
+    for (const shell of SHELLS) {
+      expect(renderScrollBody(shell)).toContain(`data-padding-bottom="${expected}"`);
+    }
+  });
+
+  it('keeps the 32 px inset when the back key brings its own spacing', () => {
+    for (const shell of SHELLS) {
+      expect(renderScrollBody(shell, () => {})).toContain('data-padding-bottom="32"');
     }
   });
 });

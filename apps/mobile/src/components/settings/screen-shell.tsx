@@ -2,8 +2,9 @@ import { ChevronLeft } from 'lucide-react-native';
 import { useColorScheme } from 'nativewind';
 import type { ReactNode } from 'react';
 import { ScrollView, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { tabScreenBottomPadding } from '@/components/nav/floating-tab-bar';
 import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
 import { asColorScheme } from '@/lib/color-scheme';
@@ -28,6 +29,7 @@ export function SettingsScreenShell({
   children,
 }: SettingsScreenShellProps) {
   const scheme = asColorScheme(useColorScheme().colorScheme);
+  const insets = useSafeAreaInsets();
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top']}>
       <View
@@ -52,7 +54,9 @@ export function SettingsScreenShell({
       </View>
       <ScrollView
         className="flex-1"
-        contentContainerStyle={{ paddingBottom: 32 }}
+        contentContainerStyle={{
+          paddingBottom: tabScreenBottomPadding(onBack !== undefined, insets.bottom),
+        }}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
         automaticallyAdjustKeyboardInsets

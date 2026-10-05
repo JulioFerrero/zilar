@@ -2,7 +2,14 @@ import { createElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 
-import { avatarFailedFor, FloatingTabBar, TabProfileFace } from './floating-tab-bar';
+import {
+  avatarFailedFor,
+  FloatingTabBar,
+  TabProfileFace,
+  tabScreenBottomPadding,
+  TAB_BAR_BOTTOM_GAP,
+  TAB_BAR_HEIGHT,
+} from './floating-tab-bar';
 
 // Hook-free assertions over the rendered markup with the seams stubbed (the
 // `new-group-sheet.test.tsx` pattern): Node only, no simulator.
@@ -164,5 +171,16 @@ describe('FloatingTabBar', () => {
     expect(avatarFailedFor('/api/avatars/old', '/api/avatars/old')).toBe(true);
     expect(avatarFailedFor('/api/avatars/old', '/api/avatars/new')).toBe(false);
     expect(avatarFailedFor(undefined, '/api/avatars/new')).toBe(false);
+  });
+});
+
+describe('tabScreenBottomPadding', () => {
+  it('clears the floating bar on a tab screen', () => {
+    expect(tabScreenBottomPadding(false, 0)).toBe(TAB_BAR_HEIGHT + TAB_BAR_BOTTOM_GAP + 16);
+    expect(tabScreenBottomPadding(false, 34)).toBe(TAB_BAR_HEIGHT + TAB_BAR_BOTTOM_GAP + 34 + 16);
+  });
+
+  it('keeps the plain 32 px inset on a pushed page with a back key', () => {
+    expect(tabScreenBottomPadding(true, 34)).toBe(32);
   });
 });
