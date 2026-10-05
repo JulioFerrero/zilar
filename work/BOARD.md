@@ -209,7 +209,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0178](T-0178-whistle-quiet-cut-chunks.md) | Whistle: quiet-point chunking from a native amplitude envelope | 2026-10-03 |
 | [T-0180](T-0180-signin-no-code-hint.md) | Sign-in hints for people without an invite (web + mobile) | 2026-10-03 |
 | [T-0191](T-0191-mobile-sticker-editor-telegram.md) | Mobile: sticker pack editor (Telegram import split out as T-0207) | in-progress | meta/muse-spark-1.3-contributor | T-0187 | Spec ready; mobile parity wave 2 |
-| [T-0203](T-0203-worker-prompt-quiet-checks.md) | Lead tooling: worker prompt runs checks once and quiet single tests (token saving B) | planned | minimax-coding-plan/MiniMax-M3 | T-0202 | Julio asked 2026-10-05 |
 | [T-0204](T-0204-prereview-no-duplicate-checks.md) | Lead tooling: pre-review stops re-running the gate's checks (token saving C) | planned | minimax-coding-plan/MiniMax-M3 | T-0203 | Julio asked 2026-10-05 |
 | [T-0207](T-0207-mobile-telegram-sticker-import.md) | Mobile: import a Telegram sticker pack from the Stickers screen | planned | opencode/muse-spark-1.3-contributor-free | T-0191 | Brief ready; free Muse (Julio, 2026-10-05) |
 | [T-0209](T-0209-lead-watch-terminal.md) | Lead tooling: `lead watch`, a live terminal view of every running task | planned | minimax-coding-plan/MiniMax-M3 | — | Julio asked 2026-10-05, on MiniMax |
@@ -237,3 +236,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0195](T-0195-mobile-parity-audit.md) | Audit of web vs mobile for AI tools, routines, activity, mentions and group dialogs (docs only) | 2026-10-05 |
 | [T-0208](T-0208-reviews-on-free-muse.md) | Pre-reviews and the doctor run on the free Muse listing | 2026-10-05 |
 | [T-0202](T-0202-lead-fresh-session-fix-rounds.md) | Fix rounds run in a fresh worker session; lead reply --fresh | 2026-10-05 |
+| [T-0203](T-0203-worker-prompt-quiet-checks.md) | Worker prompt: checks once with pnpm gate, quiet single tests | 2026-10-05 |

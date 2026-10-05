@@ -44,6 +44,8 @@ describe('prompt templates', () => {
     expect(rendered).toContain('pnpm install');
     expect(rendered).toContain('status: review');
     expect(rendered).toContain('T-0038:');
+    expect(rendered).toContain('--reporter=dot');
+    expect(rendered).toContain('pnpm gate');
   });
 
   it('renders resume and nudge prompts', () => {
