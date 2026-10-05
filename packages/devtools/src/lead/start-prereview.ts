@@ -3,9 +3,11 @@ import path from 'node:path';
 import { type OpenCodeClient } from './client.js';
 import { findTaskFile } from './launch.js';
 import { loadPrompt, loadRulesFile, renderPrompt } from './prompts.js';
-import { parseTaskFrontMatter } from './task-file.js';
+import { parseTaskFrontMatter, reviewModel } from './task-file.js';
 
-// The pre-review is always Muse: the strongest reader, per §5.1.
+// The pre-review is always Muse: the strongest reader, per §5.1. The
+// exported default keeps the tests honest; the live call site uses
+// reviewModel() so ZILAR_REVIEW_MODEL can move it.
 export const PREREVIEW_MODEL = { providerID: 'opencode', id: 'muse-spark-1.3-contributor-free' };
 
 export interface PrereviewDeps {
@@ -38,7 +40,7 @@ export async function startPrereviewSession(deps: PrereviewDeps, head: string): 
   const sessionId = await deps.client.createSession({
     title: `${deps.task} pre-review ${head.slice(0, 7)}`,
     agent: 'build',
-    model: PREREVIEW_MODEL,
+    model: reviewModel(),
     directory: deps.worktree,
     permissions: loadRulesFile(path.join(deps.promptsDirPath, 'rules.json')),
   });

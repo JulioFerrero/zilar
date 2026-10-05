@@ -2,9 +2,9 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
-Last updated: 2026-10-05 ~11:40 UTC, after writing T-0216.
+Last updated: 2026-10-05 ~11:55 UTC, after merging T-0212 and launching T-0216.
 
-FREE MUSE RATE-LIMITED since ~10:43 UTC (429 "Rate limit exceeded" for every session). Manual fallback in place (tested, keeps the session's context): `opencode2 api session.switchModel --param sessionID=S -d '{"model":{"providerID":"meta","id":"muse-spark-1.3-contributor","variant":"low"}}'`, then `lead reply` (worker) or `opencode2 api session.prompt` (pre-review). Done this way: T-0212 worker and pre-review, T-0215 pre-review. T-0216 automates it in the autopilot (Julio: "use free Muse as much as possible, switch to my paid one if it fails, without restarting"); launch it when a slot frees. T-0215 adds `ZILAR_REVIEW_MODEL` for the doctor.
+FREE MUSE RATE-LIMITED since ~10:43 UTC (429 "Rate limit exceeded" for every session). Manual fallback in place (tested, keeps the session's context): `opencode2 api session.switchModel --param sessionID=S -d '{"model":{"providerID":"meta","id":"muse-spark-1.3-contributor","variant":"low"}}'`, then `lead reply` (worker) or `opencode2 api session.prompt` (pre-review). Done this way: T-0212 worker and pre-review, T-0215 pre-review. T-0216 automates it in the autopilot (Julio: "use free Muse as much as possible, switch to my paid one if it fails, without restarting"); launched. T-0215 adds `ZILAR_REVIEW_MODEL` for the doctor.
 
 Julio's watcher now runs in a floating Ghostty window. Julio approved the `lead watch` mockup (artifact https://claude.ai/artifact/8QujyLaobor35XDKHr7ZZG, copy in `docs/design/briefs/T-0211-lead-watch-mockup.html`).
 
@@ -21,15 +21,14 @@ Models (Julio, 2026-10-05): default `opencode/muse-spark-1.3-contributor-free`; 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
 | T-0211 | `lead watch` Ink redesign | lead round 2 (alternate screen + full clear on resize: Julio saw ghost lines when enlarging the old watcher; no crash without a TTY stdin) | billed Muse now. Look round done (icons, 10 changes). Branch rebased on main. Before merging: run it in Julio's Ghostty watch window and let him try a resize |
-| T-0212 | Mobile: pause, resume, delete a routine | packet CLEAN (nit 1, follow-up F1: widen `RoutinesSection` prop, drop the `as AiToolsApi` cast), but the worker never committed: asked to run the gate and commit | paid Muse now; then emulator smoke and merge |
+| T-0216 | Autopilot switches a rate-limited free-Muse session to paid Muse in place | coding | paid Muse; restart the autopilot after merge |
 | T-0214 | Mobile: New group sheet (private groups) | coding | billed Muse now; emulator check without creating a group on the live server |
 | T-0215 | `ZILAR_REVIEW_MODEL` override for pre-review and doctor | pre-review (switched to paid Muse in place) | MiniMax worker, committed |
 
 ## Next, in order
 
-1. T-0216 automatic in-place fallback (spec checked), first free slot.
-2. Follow-up of T-0212 F1 (widen the `RoutinesSection` prop in `use-tools-api.ts`), small.
-3. Then from the audit: tool writes and detail sheet (7.1b, after T-0212: both edit `tools-api.ts`), @mention picker (7.2a), New channel parity (7.2c). Re-check every fact in the code.
+1. Follow-up of T-0212 F1 (widen the `RoutinesSection` prop in `use-tools-api.ts`), small.
+2. Then from the audit: tool writes and detail sheet (7.1b, T-0212 now merged), @mention picker (7.2a), New channel parity (7.2c). Re-check every fact in the code.
 
 Waiting for Julio: the AI screen's Tools/Routines/Activity sections could not be seen on the emulator (the test account has no AI; creating one needs a provider key). Look at an AI on the phone after the next release.
 

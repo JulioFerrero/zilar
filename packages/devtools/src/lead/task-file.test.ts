@@ -8,6 +8,7 @@ import {
   parseFrontMatter,
   pickEffort,
   parseTaskFrontMatter,
+  reviewModel,
   splitModel,
 } from './task-file';
 
@@ -164,5 +165,36 @@ describe('pickEffort', () => {
 
   it('lets the front matter win', () => {
     expect(pickEffort(task('`apps/server/drizzle/**`'), 'low')).toBe('low');
+  });
+});
+
+describe('reviewModel', () => {
+  it('returns the free Muse default when the env is unset', () => {
+    expect(reviewModel({})).toEqual({
+      providerID: 'opencode',
+      id: 'muse-spark-1.3-contributor-free',
+    });
+  });
+
+  it('returns the free Muse default for an empty override', () => {
+    expect(reviewModel({ ZILAR_REVIEW_MODEL: '' })).toEqual({
+      providerID: 'opencode',
+      id: 'muse-spark-1.3-contributor-free',
+    });
+  });
+
+  it('splits a valid override into providerID and id', () => {
+    expect(reviewModel({ ZILAR_REVIEW_MODEL: 'meta/muse-spark-1.3-contributor' })).toEqual({
+      providerID: 'meta',
+      id: 'muse-spark-1.3-contributor',
+    });
+  });
+
+  it('refuses a costly Meta Model API tier', () => {
+    expect(() => reviewModel({ ZILAR_REVIEW_MODEL: 'meta/muse-spark-1.3' })).toThrow(/contributor/);
+  });
+
+  it('refuses a malformed value', () => {
+    expect(() => reviewModel({ ZILAR_REVIEW_MODEL: 'nonsense' })).toThrow(/providerID\/modelID/);
   });
 });
