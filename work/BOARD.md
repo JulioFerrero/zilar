@@ -10,6 +10,8 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0260](T-0260-auto-deploy-green-main.md) | Deploy: auto-deploy live after green CI on main | in_progress | auto | | Julio 2026-10-06 |
+| [T-0272](T-0272-lockfile-peer-flip.md) | Tooling: pnpm install stops flipping the lockfile peers | in_progress | auto | | noise in every task |
+| [T-0273](T-0273-web-kit-dialogs-4.md) | Web kit migration 6: NewChatButton and GroupHandleRoute dialogs | in_progress | auto | T-0270 | audit step 6, batch 4 |
 
 ## Follow-ups
 
