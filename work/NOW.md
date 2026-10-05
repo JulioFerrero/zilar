@@ -19,12 +19,11 @@ Models (Julio, 2026-10-05): default `opencode/muse-spark-1.3-contributor-free`; 
 | T-0211 | `lead watch` Ink redesign | lead round "look" (icons, 10 changes from `docs/design/briefs/T-0211-lead-watch-icons.md`) | free Muse, high. Before merging: run it in Julio's Ghostty watch window (memory `lead-watch-window`; Ghostty has Nerd Font symbols built in) and compare with the mockup. The worker tried python edits and npx twice; rejected each time |
 | T-0212 | Mobile: pause, resume, delete a routine | coding | free Muse |
 | T-0213 | Mobile: AI activity feed | coding | free Muse |
-| T-0190 | Mobile: Invite a friend + New message box | coding | free Muse; needs the emulator check |
+| T-0214 | Mobile: New group sheet (private groups) | coding | free Muse; emulator check without creating a group on the live server |
 
 ## Next, in order
 
-1. New group sheet (audit 7.2 T-0190b) after T-0190 merges: both edit `apps/mobile/src/components/chat/new-chat-button.tsx`
-2. Then from the audit: tool writes and detail sheet (7.1b, after T-0212: both edit `tools-api.ts`), @mention picker (7.2a), New channel parity (7.2c). Re-check every fact in the code.
+1. Then from the audit: tool writes and detail sheet (7.1b, after T-0212: both edit `tools-api.ts`), @mention picker (7.2a), New channel parity (7.2c). Re-check every fact in the code.
 
 Waiting for Julio: the AI screen's Tools/Routines/Activity sections could not be seen on the emulator (the test account has no AI; creating one needs a provider key). Look at an AI on the phone after the next release.
 

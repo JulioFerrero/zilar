@@ -1,7 +1,7 @@
 ---
 id: T-0213
 title: Mobile: the AI edit screen shows the AI's activity feed (audit log)
-status: planned
+status: merged
 milestone: M5
 branch: task/T-0213-mobile-ai-activity
 model: opencode/muse-spark-1.3-contributor-free
@@ -62,4 +62,75 @@ Group activity (owner and admins on the group screen), cost display, filtering.
 
 ## Report (written by the worker when done)
 
+Implemented the Activity section on the mobile AI edit screen, matching web's
+`AiActivity.tsx` descriptions, relative times, Load more, Refresh and fixed
+sentences.
+
+What I did:
+- `apps/mobile/src/lib/audit-api.ts` (new): `PublicAuditEntry`, `AuditPage`,
+  `AuditApiError` (status, code), `AUDIT_PAGE_LIMIT = 20`, `AuditApi`
+  (`listAiAudit(aiId, before?)`) calling
+  `GET /api/audit?aiId=<id>&limit=20[&before=<cursor>]` with bearer auth,
+  defensive type-guard parsing (a bad entry makes the page
+  `invalid_response`), `createAuditApi(getToken, fetchImpl = fetch,
+  apiUrl = API_URL)`.
+- `apps/mobile/src/mock/audit.ts` (new): 25 entries newest-first across
+  `approval.decided` (all decisions), `ai.stopped`, `ai.resumed`,
+  `tool.run`, routine/message actions and an empty action; paginates by
+  `before` cursor with limit 20, so Load more shows (20 + 5).
+- `apps/mobile/src/components/ais/use-audit-api.ts` (new): same mock gate
+  shape as `use-tools-api.ts`.
+- `apps/mobile/src/components/ais/activity-format.ts` (new):
+  `describeAuditEntry`, `formatRelativeAudit` (+ helpers) copied from web.
+- `apps/mobile/src/components/ais/ai-activity.tsx` (new): `AiActivity({ api,
+  aiId })` with heading `Activity` (14px medium) + `RefreshCw` refresh button
+  (`Refresh activity` label, only when ready), three-bar loading skeleton,
+  `No activity yet.` empty state, `Could not load activity.` + Retry on first
+  failure, rows (description left, muted relative time right), `Load more` /
+  `Loading…`, `Could not load more activity.` keeping rows on page failure.
+  One request at a time (sync `loadingMoreRef` + flag); stale results ignored
+  after unmount via the `active` flag. `AiActivityContent` and
+  `AiActivityHeader` are exported for tests; no server text is ever shown.
+- `apps/mobile/src/app/ais/[id].tsx`: mounts
+  `<AiActivity api={auditApi} aiId={id} />` under `RoutinesSection` via the new
+  `useAuditApi()` hook. Nothing else changed.
+- Tests: `audit-api.test.ts` (8 tests: URL with/without `before`, bearer,
+  full parse, bad entry, bad page shape, HTTP error code, no-token 401,
+  network error); `activity-format.test.ts` (11 tests: every description case
+  incl. all decisions/stop/resume/humanise/empty, every relative-time step
+  incl. singular/plural/future clamp); `ai-activity.test.tsx` (17 tests: rows,
+  empty, first-load error + Retry wiring, Load more show/hide/`Loading…`/
+  wiring, load-more error keeps rows, header refresh show/hide/wiring,
+  initial mount, first-page/append/dedupe/failure/reload helpers).
+
+Commands and real results:
+- `pnpm install`: ok (11.6s).
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot audit-api
+  activity-format ai-activity`: 3 files, 36 tests, all passed.
+- `pnpm gate` (final): PASS install, PASS format, PASS lint, PASS typecheck,
+  PASS tests @zilar/mobile; "scope: every changed file is inside the Allowed
+  files"; GATE PASS.
+
+Problems / deviations:
+- Mobile has no React Native async testing library, so the `.tsx` tests use
+  the same pattern as `routines-section.test.tsx` (static markup of the
+  content/header states + direct tests of `loadAiActivity`/`appendAiActivity`
+  incl. deduplication and reload counting). Mounted tap-through of Load more
+  / Refresh is not covered; the wired callbacks are.
+- The lint rule `react(set-state-in-effect)` rejects resetting to loading
+  inside the fetch effect, so `refresh` sets the loading state in the event
+  handler instead (same visible behaviour).
+- One process note: I fixed two test files' formatting with
+  `prettier --write` on just those files after the first gate run flagged
+  them; and I edited the test file once via a `python3 -c` replace instead of
+  the edit tool — content is identical, no stray changes (gate scope clean).
+
+Security checklist: no secrets/tokens in logs or errors (fixed sentences
+only); no deletes/updates; no caps/uniqueness rules; no permission changes;
+no new routes; audit entries carry ids only.
+
+Open questions: none.
+
 ## Review (written by Claude)
+
+**Verdict:** Approved, clean on the first pre-review (free Muse). New `audit-api.ts` (`GET /audit?aiId&limit=20&before`), its mock (25 entries) and hook, `activity-format.ts` (web's descriptions and relative times copied), and `AiActivity` mounted under Routines on the AI edit screen (4 added lines there); error messages are the fixed sentences, never server text (checked in `ai-activity.tsx`). Not seen on a device: the test account has no AI, like T-0189; Julio checks an AI screen on his phone after the next release. Accepted nits: three small ones.
