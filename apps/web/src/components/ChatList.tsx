@@ -343,7 +343,7 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
           {connection}
         </div>
       )}
-      <FolderTabs />
+      {!isWide && <FolderTabs />}
       <nav
         aria-label="Chats"
         className={cn(

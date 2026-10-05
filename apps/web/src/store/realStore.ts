@@ -27,6 +27,7 @@ import {
   mentionsForTrimmedText,
   rebaseMentions,
   resolveEdits,
+  sortFolders,
   summarize,
 } from '@zilar/chat-core';
 import type { Payload } from '@zilar/protocol';
@@ -3316,6 +3317,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       search: '',
       searchChat: undefined,
       activeFolder: 'all',
+      folders: [],
       typing: {},
       drafts: {},
       finishedDraftMessages: {},
@@ -4304,6 +4306,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           search: '',
           searchChat: undefined,
           activeFolder: 'all',
+          folders: [],
         });
         groupMembers.clear();
         groupInfos.clear();
@@ -4380,6 +4383,17 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       setSearch: (value) => set({ search: value }),
       setSearchChat: (chatId) => set({ searchChat: chatId }),
       setActiveFolder: (folder) => set({ activeFolder: folder }),
+      setFolders: (folders) => {
+        const sorted = sortFolders(folders);
+        set((state) => ({
+          folders: sorted,
+          activeFolder:
+            state.activeFolder === 'all' ||
+            sorted.some((folder) => folder.id === state.activeFolder)
+              ? state.activeFolder
+              : 'all',
+        }));
+      },
       refreshChatPrefs: async () => {
         const gen = generation;
         let prefs: ChatPref[];

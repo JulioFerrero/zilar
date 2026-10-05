@@ -77,6 +77,9 @@ interface MockState {
   joinAttempts: Map<string, number>;
   // T-0113: per-chat prefs (mute/archive/pin) in memory for the page load.
   chatPrefs: MockChatPref[];
+  // T-0237: chat folders in memory for the page load, seeded on first GET
+  // with Personal and AIs (mirroring the server's seed).
+  chatFolders: MockChatFolder[] | undefined;
   // T-0119: push devices and the previews setting in memory for the page
   // load. The mock has no XMPP session, so the enable IQ step is skipped.
   pushDevices: MockPushDevice[];
@@ -165,6 +168,46 @@ interface MockInviteLink {
   expiresAt: string | null;
   revoked: boolean;
   createdAt: string;
+}
+
+// T-0237: one chat folder row, mirroring the server's `chat_folders`.
+interface MockChatFolder {
+  id: string;
+  name: string;
+  icon: string;
+  position: number;
+  includeTypes: string[];
+  includeChats: string[];
+  excludeChats: string[];
+  excludeMuted: boolean;
+  excludeRead: boolean;
+}
+
+function seedChatFolders(): MockChatFolder[] {
+  return [
+    {
+      id: 'mock-folder-personal',
+      name: 'Personal',
+      icon: 'user',
+      position: 0,
+      includeTypes: ['dm'],
+      includeChats: [],
+      excludeChats: [],
+      excludeMuted: false,
+      excludeRead: false,
+    },
+    {
+      id: 'mock-folder-ais',
+      name: 'AIs',
+      icon: 'bot',
+      position: 1,
+      includeTypes: ['ai'],
+      includeChats: [],
+      excludeChats: [],
+      excludeMuted: false,
+      excludeRead: false,
+    },
+  ];
 }
 
 // T-0113: one chat-preference row, mirroring the server's `chat_prefs`.
@@ -1048,6 +1091,7 @@ function seedState(): MockState {
     nextRoleSequence: 3,
     joinAttempts: new Map(),
     chatPrefs: [],
+    chatFolders: undefined,
     pushDevices: [],
     pushShowPreviews: true,
     nextPushDeviceSequence: 1,
@@ -2467,6 +2511,109 @@ export async function mockRequest(
       );
     }
     return jsonResponse(row);
+  }
+
+  // T-0237: in-memory chat folders, seeded on first GET with Personal and
+  // AIs like the server. Validation is deliberately light here (the client
+  // only reads); writes mirror the server's status codes and error codes.
+  if (head === 'chat-folders' && first === undefined && second === undefined) {
+    if (method === 'GET') {
+      if (state.chatFolders === undefined) {
+        state.chatFolders = seedChatFolders();
+      }
+      return jsonResponse({ folders: state.chatFolders });
+    }
+    if (method === 'POST') {
+      if (state.chatFolders === undefined) {
+        state.chatFolders = seedChatFolders();
+      }
+      if (state.chatFolders.length >= 20) {
+        return jsonResponse({ error: { code: 'folder_limit', message: 'Too many folders' } }, 409);
+      }
+      const body = readJsonBody(init);
+      const folder: MockChatFolder = {
+        id: `mock-folder-${state.chatFolders.length + 1}-${Date.now()}`,
+        name: typeof body.name === 'string' ? body.name : 'Folder',
+        icon: typeof body.icon === 'string' ? body.icon : 'folder',
+        position: state.chatFolders.length,
+        includeTypes: Array.isArray(body.includeTypes) ? (body.includeTypes as string[]) : [],
+        includeChats: Array.isArray(body.includeChats) ? (body.includeChats as string[]) : [],
+        excludeChats: Array.isArray(body.excludeChats) ? (body.excludeChats as string[]) : [],
+        excludeMuted: body.excludeMuted === true,
+        excludeRead: body.excludeRead === true,
+      };
+      state.chatFolders = [...state.chatFolders, folder];
+      return jsonResponse({ folder }, 201);
+    }
+  }
+
+  if (head === 'chat-folders' && first === 'order' && second === undefined && method === 'PUT') {
+    if (state.chatFolders === undefined) {
+      state.chatFolders = seedChatFolders();
+    }
+    const body = readJsonBody(init);
+    const ids = Array.isArray(body.ids) ? (body.ids as unknown[]) : undefined;
+    const currentIds = new Set(state.chatFolders.map((folder) => folder.id));
+    if (
+      ids === undefined ||
+      ids.length !== state.chatFolders.length ||
+      new Set(ids).size !== ids.length ||
+      ids.some((id) => typeof id !== 'string' || !currentIds.has(id))
+    ) {
+      return jsonResponse(
+        {
+          error: {
+            code: 'invalid_request',
+            message: 'Folder order must list every folder exactly once',
+          },
+        },
+        400,
+      );
+    }
+    const byId = new Map(state.chatFolders.map((folder) => [folder.id, folder]));
+    state.chatFolders = (ids as string[]).map((id, position) => ({
+      ...(byId.get(id) as MockChatFolder),
+      position,
+    }));
+    return jsonResponse({ folders: state.chatFolders });
+  }
+
+  if (head === 'chat-folders' && first !== undefined && second === undefined && first !== 'order') {
+    if (state.chatFolders === undefined) {
+      state.chatFolders = seedChatFolders();
+    }
+    const id = decodeURIComponent(first);
+    const existing = state.chatFolders.find((folder) => folder.id === id);
+    if (existing === undefined) {
+      return notFound('Folder not found');
+    }
+    if (method === 'PATCH') {
+      const body = readJsonBody(init);
+      const updated: MockChatFolder = {
+        ...existing,
+        ...(typeof body.name === 'string' ? { name: body.name } : {}),
+        ...(typeof body.icon === 'string' ? { icon: body.icon } : {}),
+        ...(Array.isArray(body.includeTypes)
+          ? { includeTypes: body.includeTypes as string[] }
+          : {}),
+        ...(Array.isArray(body.includeChats)
+          ? { includeChats: body.includeChats as string[] }
+          : {}),
+        ...(Array.isArray(body.excludeChats)
+          ? { excludeChats: body.excludeChats as string[] }
+          : {}),
+        ...(typeof body.excludeMuted === 'boolean' ? { excludeMuted: body.excludeMuted } : {}),
+        ...(typeof body.excludeRead === 'boolean' ? { excludeRead: body.excludeRead } : {}),
+      };
+      state.chatFolders = state.chatFolders.map((folder) => (folder.id === id ? updated : folder));
+      return jsonResponse({ folder: updated });
+    }
+    if (method === 'DELETE') {
+      state.chatFolders = state.chatFolders
+        .filter((folder) => folder.id !== id)
+        .map((folder, position) => ({ ...folder, position }));
+      return jsonResponse({ deleted: true });
+    }
   }
 
   // T-0119: in-memory push devices. The mock has one user and no XMPP

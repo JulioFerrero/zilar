@@ -1,0 +1,60 @@
+import {
+  Bell,
+  Bookmark,
+  Bot,
+  Briefcase,
+  Camera,
+  Code,
+  Coffee,
+  Dumbbell,
+  Flag,
+  Folder,
+  Gamepad2,
+  Globe,
+  GraduationCap,
+  Heart,
+  House,
+  Megaphone,
+  MessageCircle,
+  Music,
+  Plane,
+  ShoppingBag,
+  Star,
+  User,
+  Users,
+  Wallet,
+  type LucideIcon,
+} from 'lucide-react';
+import type { FolderIcon } from '@zilar/chat-core';
+
+/** Maps every server folder icon name to its lucide component (T-0237). */
+const FOLDER_ICON_COMPONENTS: Record<FolderIcon, LucideIcon> = {
+  folder: Folder,
+  'message-circle': MessageCircle,
+  user: User,
+  users: Users,
+  megaphone: Megaphone,
+  bot: Bot,
+  briefcase: Briefcase,
+  house: House,
+  star: Star,
+  heart: Heart,
+  bookmark: Bookmark,
+  flag: Flag,
+  bell: Bell,
+  globe: Globe,
+  'graduation-cap': GraduationCap,
+  'gamepad-2': Gamepad2,
+  music: Music,
+  camera: Camera,
+  'shopping-bag': ShoppingBag,
+  plane: Plane,
+  coffee: Coffee,
+  dumbbell: Dumbbell,
+  code: Code,
+  wallet: Wallet,
+};
+
+export function folderIconComponent(icon: FolderIcon): LucideIcon {
+  return FOLDER_ICON_COMPONENTS[icon] ?? Folder;
+}

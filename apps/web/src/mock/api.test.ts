@@ -173,6 +173,30 @@ describe('mockRequest', () => {
     expect(await listChatPrefs()).toEqual([]);
   });
 
+  it('seeds Personal and AIs chat folders once on first GET', async () => {
+    const { listChatFolders } = await import('@/lib/api');
+    const first = await listChatFolders();
+    expect(first.map((folder) => folder.name)).toEqual(['Personal', 'AIs']);
+    expect(first[0]).toMatchObject({ icon: 'user', includeTypes: ['dm'] });
+    expect(first[1]).toMatchObject({ icon: 'bot', includeTypes: ['ai'] });
+
+    const second = await listChatFolders();
+    expect(second).toEqual(first);
+  });
+
+  it('answers 409 folder_limit when creating a 21st chat folder', async () => {
+    const { createChatFolder, listChatFolders } = await import('@/lib/api');
+    await listChatFolders();
+    for (let index = 0; index < 18; index += 1) {
+      await createChatFolder({ name: `Folder ${index}`, icon: 'folder' });
+    }
+    expect((await listChatFolders()).length).toBe(20);
+    await expect(createChatFolder({ name: 'Too many', icon: 'folder' })).rejects.toMatchObject({
+      status: 409,
+      code: 'folder_limit',
+    });
+  });
+
   it('registers, lists and removes push devices in memory', async () => {
     const { getPushConfig, getPushSettings, setPushSettings, sendTestPushNotification } =
       await import('@/lib/api');
