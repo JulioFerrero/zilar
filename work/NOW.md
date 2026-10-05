@@ -25,6 +25,7 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
 | T-0232 | Server: chat_folders table and API | coding | the only schema task; migration 0040 |
+| T-0236 | Audit: duplicated UI, shared kit, React Cosmos plan (docs only) | coding | Julio: React Cosmos for web and mobile; audit → tokens + kit + catalog → gradual migration |
 | T-0235 | Web: block and unblock people, Blocked people page | coding | builds on T-0171 (merged); hiding blocked messages is the next task |
 | T-0227 | Mobile: @mention picker in the group composer, mentions sent | auto round 1 (1 must-fix, 3 should-fix) | |
 | T-0233 | Mobile: floating bottom bar (Chats, AIs, Settings, Profile), search well, Profile tab | coding | Telegram brief a, d; uses `expo-router/ui` headless tabs |
