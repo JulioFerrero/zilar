@@ -1,7 +1,7 @@
 ---
 id: T-0281
 title: "Web guard: a test fails when a hand-rolled bg-accent button or link comes back outside the kit"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0281-web-accent-pill-guard
 model: auto
@@ -59,4 +59,107 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+
+- Added `apps/web/src/components/ui/no-accent-pill.test.ts`, a web-owned guard so
+  it runs in the `PASS tests @zilar/web` gate step whenever web code changes.
+  - Scans every `*.tsx` under `apps/web/src` except the kit (`components/ui/`)
+    and `*.test.tsx` files.
+  - Matches only the solid class with
+    `/(^|[\s'"`])bg-accent(?![/-])/` — so `bg-accent/10`, `bg-accent/25`,
+    `hover:bg-accent/10` and `bg-accent-foreground` are allowed.
+  - Resolves the nearest `<Tag` at or above the matching line and fails when it
+    is `button`, `a` or `Link`, printing
+    `file:line: <tag> use the kit Button from '@/components/ui/button' (variant default = key-primary)`.
+  - Unit-tests the matcher inline: a `<button>` pill fails, a `<span>` badge
+    passes, a `<Link>` pill fails, and a `<button className="bg-accent/10">`
+    passes; plus a multi-line tag-resolution case.
+- Updated the "Gate check proposal" paragraph in `docs/audit/ui-kit-audit.md`
+  (now line 437) to say the guard exists and where, replacing the old
+  `rg 'bg-accent px-'` snippet.
+
+### Files changed
+
+- `apps/web/src/components/ui/no-accent-pill.test.ts` (new)
+- `docs/audit/ui-kit-audit.md` (rewrote the gate-check paragraph)
+- `work/T-0281-web-accent-pill-guard.md` (this report + status)
+
+### Deviation from the spec (and why)
+
+The spec said to copy `packages/devtools/src/no-legacy-name.test.ts` and list
+files with `git ls-files`. That needs `node:child_process`, which the web
+typecheck rejects: `apps/web/tsconfig.json` is DOM-only (`types: ["vite/client"]`)
+and its local shim `apps/web/src/lib/node-builtins.d.ts` declares only `node:fs`,
+`node:path` and `node:url`. Adding `child_process`/`Buffer` to that shim is
+outside my Allowed files, so I listed files with Vite's `import.meta.glob`
+(the same mechanism `apps/web/src/components/ui/fixtures.test.tsx` already
+uses) and read each one with the shim's `readFileSync`. Behaviour is otherwise
+as specified; one consequence is that the guard walks the working tree rather
+than only tracked files (today the only untracked `.tsx` is none; the guard's
+own file is `.ts` and excluded). Verified facts unaffected: the two `<span>`
+badges (`FolderRail.tsx:124`, `StickersPage.tsx:78`), the `FolderTabs.tsx:82`
+and `FolderEditorDialog.tsx:376` check spans, and the `ProgressCard.tsx:33`
+div are all allowed because the nearest tag is not interactive.
+
+### Commands and real results
+
+- `pnpm install`: done, 1170 packages, exit 0.
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot no-accent-pill`:
+  `Test Files 1 passed (1)`, `Tests 4 passed (4)`, exit 0.
+- Bite proof: temporarily added `bg-accent` to the `<button>` class in
+  `apps/web/src/components/FolderTabs.tsx:70` and re-ran the test; it failed
+  with
+  `apps/web/src/components/FolderTabs.tsx:70: <button> use the kit Button from '@/components/ui/button' (variant default = key-primary)`
+  (`Tests 1 failed | 3 passed`). Reverted with `git checkout -- apps/web/src/components/FolderTabs.tsx`; `git status` clean for that file.
+- `pnpm gate` (from repo root): exit 0, summary lines:
+  ```
+  gate: 3 changed file(s) against main
+  PASS  install (frozen)  (1.8s)
+  PASS  format  (22.8s)
+  PASS  lint  (0.6s)
+  PASS  typecheck  (10.0s)
+  PASS  tests @zilar/web  (3.3s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Open questions / problems
+
+None. No new dependency added.
+
+### Fix round 1 (lead review)
+
+- Commit `beba5185`: the repo-scan test now asserts the scan actually read the
+  tree — `findHandRolledPills` exposes `scanned` and the test requires
+  `scanned > 50` (232 `*.tsx` files under `apps/web/src` today), so a broken
+  glob fails instead of passing vacuously.
+- Commit `d4564114`: `nearestTag` now attributes the class to the last `<Tag`
+  at or before the `bg-accent` position on the matching line (walking upward as
+  before), with a new unit case: `<span><button className="bg-accent px-2">`
+  fails as `<button>`.
+- Nit 1 (solid `hover:bg-accent`) left as requested.
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot no-accent-pill`:
+  `Test Files 1 passed (1)`, `Tests 4 passed (4)`, exit 0.
+- `pnpm gate` (from repo root): exit 0 —
+  ```
+  gate: 3 changed file(s) against main
+  PASS  install (frozen)  (0.9s)
+  PASS  format  (11.1s)
+  PASS  lint  (0.5s)
+  PASS  typecheck  (6.2s)
+  PASS  tests @zilar/web  (1.9s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
 ## Review (written by Claude)
+
+**Approved** after one lead fix round.
+- **The scan cannot pass empty.** It now asserts that it read the web sources, so a broken glob fails the test.
+- **The tag check is right.** A same-line `bg-accent` is attributed to the last tag before it.
+
+**Accepted nits:**
+- The upward search still takes the first tag on a line above. A formatter never produces that layout.
+- A solid `hover:bg-accent` stays allowed, as the spec defines.
+
+**Proof it works:** the worker planted a pill in a real file, saw the test fail, and reverted it.
