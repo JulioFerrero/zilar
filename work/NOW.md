@@ -24,9 +24,10 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0277 | Web kit migration 10: accent buttons in chat dialogs | coding | `bg-accent px-` batch 3 |
-| T-0278 | Web kit migration 11: accent buttons in profile/visibility/pack editor/contact rows | coding | batch 4 |
-| T-0279 | Web kit migration 12: accent buttons on sign-in and onboarding | coding | batch 5; after it, a gate check task (audit line 437) |
+| T-0280 | Web tests: GroupHandleRoute Escape flake | coding | flaked in T-0273 and T-0277 gates |
+| T-0281 | Web guard test: no hand-rolled solid bg-accent button/link | coding | audit line 437 |
+
+~01:55 local: merged T-0277, T-0278, T-0279. No hand-rolled accent buttons left on web (only 2 badge spans). Images workflow has only skipped so far (main moves faster than CI); the first build comes when merges pause.
 
 ~01:40 local: merged T-0272 (lockfile flip fixed with `packageExtensions`; pnpm changelog quotes not verified by the lead), T-0274 (no hand-rolled modal dialogs left on web), T-0275, T-0276. Images workflow verified: it skips non-tip commits ("no longer the tip of main") and will build when CI passes on the tip.
 
