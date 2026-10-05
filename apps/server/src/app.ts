@@ -26,6 +26,7 @@ import { createDraftsRoutes } from './drafts/routes';
 import { createKeyCipher, type KeyCipher } from './connections/crypto';
 import type { ProviderProbe } from './connections/probe';
 import { createConnectionsRoutes, type ConnectionsLogger } from './connections/routes';
+import { createBlocksRoutes } from './blocks/routes';
 import { createContactsRoutes } from './contacts/routes';
 import { createContactRequestsRoutes } from './contact-requests/routes';
 import { createDirectoryRoutes } from './directory/routes';
@@ -310,6 +311,9 @@ export function createApp({
     '/api',
     createContactRequestsRoutes({ auth, db, config, adminClient, audit: auditRecorder }),
   );
+  // User blocks (T-0171): session-required, write-rate-limited; the sweep
+  // asserts every one of them answers 401 unauthenticated.
+  app.route('/api', createBlocksRoutes({ auth, db, audit: auditRecorder }));
   // Public groups and channels (T-0164): the Explore directory and the
   // exact `@handle` lookup — public rows only, session-required, rate
   // limited; the sweep asserts both answer 401 unauthenticated.

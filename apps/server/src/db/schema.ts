@@ -186,6 +186,27 @@ export const contactRequests = pgTable(
   ],
 );
 
+// A user blocking another user (T-0171). One row per (blocker, blocked).
+// Blocking is silent: the blocked person is never told. FKs cascade so
+// deleting a user drops both directions.
+export const userBlocks = pgTable(
+  'user_blocks',
+  {
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    blockedUserId: text('blocked_user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.blockedUserId] }),
+    check('user_blocks_different_users_check', sql`${table.userId} <> ${table.blockedUserId}`),
+    index('user_blocks_blocked_idx').on(table.blockedUserId),
+  ],
+);
+
 // A group is backed by a members-only XMPP MUC room. The room localpart is
 // random and never derived from the title.
 export const groupKindSchema = z.enum(['group', 'channel']);
