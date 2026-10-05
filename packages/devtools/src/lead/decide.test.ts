@@ -144,9 +144,26 @@ describe('decide quota backoff', () => {
       model: 'meta/muse-spark-1.3-contributor',
     });
     expect(escalations(actions)).toEqual([
-      'LEAD: FALLBACK T-0038 free Muse rate-limited, worker continues on paid Muse',
+      'LEAD: FALLBACK T-0038 free Muse failed or rate-limited, worker continues on paid Muse',
     ]);
     expect(actions.some((action) => action.kind === 'send-prompt')).toBe(false);
+  });
+
+  it('names DeepSeek flash when the DeepSeek model falls back', () => {
+    const actions = decide(
+      base({
+        quotaError: true,
+        record: record({ model: 'deepseek/deepseek-flash' }),
+      }),
+    );
+    expect(actions).toContainEqual({
+      kind: 'fallback-model',
+      session: 'worker',
+      model: 'meta/muse-spark-1.3-contributor',
+    });
+    expect(escalations(actions)).toEqual([
+      'LEAD: FALLBACK T-0038 DeepSeek flash failed or rate-limited, worker continues on paid Muse',
+    ]);
   });
 
   it('keeps the resume path on the paid model', () => {
@@ -221,7 +238,7 @@ describe('decide quota backoff', () => {
       model: 'meta/muse-spark-1.3-contributor',
     });
     expect(escalations(actions)).toEqual([
-      'LEAD: FALLBACK T-0038 free Muse rate-limited, worker continues on paid Muse',
+      'LEAD: FALLBACK T-0038 free Muse failed or rate-limited, worker continues on paid Muse',
     ]);
   });
 

@@ -1,5 +1,5 @@
 import { classifyPermission, type PermissionRequest } from './policy.js';
-import { fallbackModel, FREE_MUSE } from './fallback.js';
+import { DEEPSEEK_FLASH, fallbackModel, FREE_MUSE } from './fallback.js';
 import type { SessionState } from './session.js';
 import type { PrereviewRecord, TaskRecord } from './types.js';
 
@@ -104,12 +104,23 @@ export function decide(input: DecideInput): Action[] {
     actions.push({ kind: 'escalate', line });
     actions.push({ kind: 'record', patch: { lastEscalation: line } });
   };
-  // Push the in-place worker fallback (free Muse -> paid Muse) and its
-  // escalation. Used by both the planned-task branch (before the status gate)
-  // and the todo/in-progress quota branch below.
-  const pushFreeFallback = (model: string): void => {
-    actions.push({ kind: 'fallback-model', session: 'worker', model });
-    escalate(`LEAD: FALLBACK ${input.task} free Muse rate-limited, worker continues on paid Muse`);
+  // Push the in-place worker fallback (free Muse or DeepSeek -> paid Muse) and
+  // its escalation. Used by both the planned-task branch (before the status
+  // gate) and the todo/in-progress quota branch below.
+  const label = (model: string): string => {
+    if (model === FREE_MUSE) {
+      return 'free Muse';
+    }
+    if (model === DEEPSEEK_FLASH) {
+      return 'DeepSeek flash';
+    }
+    return model;
+  };
+  const pushWorkerFallback = (from: string, to: string): void => {
+    actions.push({ kind: 'fallback-model', session: 'worker', model: to });
+    escalate(
+      `LEAD: FALLBACK ${input.task} ${label(from)} failed or rate-limited, worker continues on paid Muse`,
+    );
   };
 
   // 1. Permissions: answer what the policy settles, escalate the rest once.
@@ -230,7 +241,7 @@ export function decide(input: DecideInput): Action[] {
   if (input.taskStatus === 'planned' && input.quotaError) {
     const plannedFallback = fallbackModel(input.record.model);
     if (plannedFallback !== undefined) {
-      pushFreeFallback(plannedFallback);
+      pushWorkerFallback(input.record.model, plannedFallback);
       return actions;
     }
   }
@@ -243,7 +254,7 @@ export function decide(input: DecideInput): Action[] {
   if (input.quotaError) {
     const fallback = fallbackModel(input.record.model);
     if (fallback !== undefined) {
-      pushFreeFallback(fallback);
+      pushWorkerFallback(input.record.model, fallback);
       return actions;
     }
     const lastRetry = input.record.lastQuotaRetryAt;

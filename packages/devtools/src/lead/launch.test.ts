@@ -113,9 +113,10 @@ describe('launchTask', () => {
       now: () => new Date('2026-10-05T09:59:00.000Z'),
     });
 
-    expect(client.created[0]?.options.model).toMatchObject({
+    expect(client.created[0]?.options.model).toEqual({
       providerID: 'opencode',
       id: 'muse-spark-1.3-contributor-free',
+      variant: 'low',
     });
     expect(loadState(statePath).tasks['T-0099']?.model).toBe(
       'opencode/muse-spark-1.3-contributor-free',

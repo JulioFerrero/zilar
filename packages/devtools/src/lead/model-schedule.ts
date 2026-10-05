@@ -1,10 +1,11 @@
-import { FREE_MUSE } from './fallback.js';
+import { DEEPSEEK_FLASH, FREE_MUSE, PAID_MUSE } from './models.js';
+
+export { DEEPSEEK_FLASH, FREE_MUSE, PAID_MUSE };
 
 // T-0245: a task may say `model: auto` in its front matter. The lead then
 // picks the worker model from DeepSeek's peak hours: flash is cheap off-peak,
 // and the peak hours double its price, so the free Muse covers them instead.
 // Pre-reviews and the doctor never use this; they stay on Muse.
-export const DEEPSEEK_FLASH = 'deepseek/deepseek-flash';
 
 // DeepSeek peak hours: 01:00-04:00 and 06:00-10:00 UTC, Monday to Friday.
 // Every other hour, including the whole weekend, is off-peak.
