@@ -5,14 +5,12 @@ import { describe, expect, it } from 'vitest';
 import {
   buildView,
   collectFiles,
-  disableRawMode,
   formatContext,
-  frameText,
+  fullClearOnResize,
   liveStep,
   modelLabel,
   parseChangedFiles,
   parseWatchView,
-  renderWatch,
   sessionSpeed,
   sparkline,
   type ChangedFile,
@@ -58,6 +56,19 @@ describe('liveStep', () => {
         ]),
       ]),
     ).toBe('editing foo.ts');
+  });
+
+  it('says "editing…" for an edit tool call without a path yet', () => {
+    expect(
+      liveStep([assistant([contentPart('tool', { name: 'edit', state: { input: {} } })])]),
+    ).toBe('editing…');
+    expect(liveStep([assistant([contentPart('tool', { name: 'edit' })])])).toBe('editing…');
+  });
+
+  it('says "reading…" for a read tool call without a path yet', () => {
+    expect(
+      liveStep([assistant([contentPart('tool', { name: 'read', state: { input: {} } })])]),
+    ).toBe('reading…');
   });
 
   it('says "reading <basename>" for a read tool call', () => {
@@ -181,7 +192,10 @@ function entry(overrides: Partial<WatchEntry>): WatchEntry {
     id: 'T-9999',
     title: 'A long title about the work',
     modelLabel: 'muse-spark-1.3-contributor (low)',
+    model: 'meta/muse-spark-1.3-contributor',
+    effort: 'low',
     totalAge: '42 min',
+    autoFixRounds: 0,
     phaseId: 'coding',
     phaseLabel: 'Coding',
     needsLead: false,
@@ -192,219 +206,6 @@ function entry(overrides: Partial<WatchEntry>): WatchEntry {
     ...overrides,
   };
 }
-
-function view(entries: WatchEntry[]): WatchView {
-  return { clock: '10:42:07', refreshFailed: false, entries };
-}
-
-describe('renderWatch', () => {
-  it('shows "No tasks in flight." when there are no entries', () => {
-    const lines = renderWatch(view([]), 60, 0, false);
-    expect(lines.some((line) => line.includes('No tasks in flight.'))).toBe(true);
-  });
-
-  it('limits the file list to 6 and adds "+N more"', () => {
-    const files = Array.from({ length: 8 }, (_, i) => ({
-      path: `packages/devtools/src/lead/file-${i}.ts`,
-      kind: 'modified' as const,
-    }));
-    const lines = renderWatch(
-      view([entry({ running: true, step: 'editing file-0.ts', files })]),
-      60,
-      0,
-      false,
-    );
-    expect(lines.some((line) => line.includes('+2 more'))).toBe(true);
-    expect(lines.some((line) => line.includes('file-5.ts'))).toBe(true);
-    expect(lines.every((line) => !line.includes('file-6.ts'))).toBe(true);
-  });
-
-  it('shows the steady dot for tasks that are not running', () => {
-    const lines = renderWatch(
-      view([
-        entry({
-          id: 'T-0202',
-          running: false,
-          phaseId: 'waiting-lead',
-          phaseLabel: 'Packet ready, waiting for the lead',
-          step: null,
-        }),
-      ]),
-      60,
-      0,
-      false,
-    );
-    expect(lines.some((line) => line.includes('●'))).toBe(true);
-    expect(lines.some((line) => line.includes('Packet ready'))).toBe(true);
-  });
-
-  it('changes the spinner character with the frame number', () => {
-    const filesAt0 = renderWatch(view([entry({})]), 60, 0, false).join('\n');
-    const filesAt2 = renderWatch(view([entry({})]), 60, 2, false).join('\n');
-    expect(filesAt0).not.toBe(filesAt2);
-  });
-
-  it('never lets a line exceed the width (60 columns)', () => {
-    const files = Array.from({ length: 8 }, (_, i) => ({
-      path: `apps/mobile/src/components/long-basename-${i}.tsx`,
-      kind: 'modified' as const,
-    }));
-    const lines = renderWatch(
-      view([
-        entry({
-          id: 'T-1234',
-          title: 'A title that should not break the line budget at all',
-          files,
-        }),
-      ]),
-      60,
-      0,
-      false,
-    );
-    for (const line of lines) {
-      expect(line.length).toBeLessThanOrEqual(60);
-    }
-  });
-
-  it('never lets a line exceed the width (100 columns)', () => {
-    const files = Array.from({ length: 8 }, (_, i) => ({
-      path: `apps/mobile/src/components/long-basename-${i}.tsx`,
-      kind: 'modified' as const,
-    }));
-    const lines = renderWatch(
-      view([
-        entry({
-          id: 'T-1234',
-          title: 'A title that should not break the line budget at all',
-          files,
-        }),
-      ]),
-      100,
-      0,
-      false,
-    );
-    for (const line of lines) {
-      expect(line.length).toBeLessThanOrEqual(100);
-    }
-  });
-
-  it('puts the clock on the right and the title on the left of the header', () => {
-    const lines = renderWatch(view([]), 60, 0, false);
-    const header = lines[0] ?? '';
-    expect(header.startsWith('zilar lead watch')).toBe(true);
-    expect(header.trimEnd().endsWith('10:42:07')).toBe(true);
-  });
-
-  it('counts blocked and idle tasks in "waiting for you" (not only waiting-lead)', () => {
-    const lines = renderWatch(
-      view([
-        entry({
-          id: 'T-A',
-          running: false,
-          phaseId: 'blocked',
-          phaseLabel: 'Blocked, needs a decision',
-          needsLead: true,
-          step: null,
-        }),
-        entry({
-          id: 'T-B',
-          running: false,
-          phaseId: 'idle',
-          phaseLabel: 'Idle, not in review (stalled?)',
-          needsLead: true,
-          step: null,
-        }),
-        entry({
-          id: 'T-C',
-          running: true,
-          phaseId: 'coding',
-          phaseLabel: 'Coding',
-          needsLead: false,
-        }),
-      ]),
-      60,
-      0,
-      false,
-    );
-    const counts = lines.find((line) => line.includes('running')) ?? '';
-    expect(counts.trimEnd()).toBe('1 running · 2 waiting for you');
-  });
-
-  it('clips the meta line and file rows when basenames are longer than the width', () => {
-    const lines = renderWatch(
-      view([
-        entry({
-          id: 'T-1234',
-          modelLabel: 'a-very-long-model-label-that-easily-exceeds-any-small-terminal',
-          totalAge: '99 min',
-          files: [
-            {
-              path: 'apps/mobile/src/components/an-unreasonably-long-basename.tsx',
-              kind: 'modified',
-            },
-          ],
-        }),
-      ]),
-      60,
-      0,
-      false,
-    );
-    for (const line of lines) {
-      expect(line.length).toBeLessThanOrEqual(60);
-    }
-  });
-
-  it('shows the speed line at width 80', () => {
-    const lines = renderWatch(
-      view([
-        entry({
-          speed: {
-            tokPerSec: 18.234,
-            secPerStep: 9.612,
-            context: 158_705,
-            spark: [1, 2, 3, 4, 5, 4, 3, 2, 1],
-          },
-        }),
-      ]),
-      80,
-      0,
-      false,
-    );
-    const joined = lines.join('\n');
-    expect(joined).toContain('18.2 tok/s');
-    expect(joined).toContain('9.6 s/step');
-    expect(joined).toContain('ctx 158k');
-    expect(joined).toContain('▁▃▅▆█▆▅▃▁');
-  });
-
-  it('drops the sparkline at width 50', () => {
-    const lines = renderWatch(
-      view([
-        entry({
-          speed: {
-            tokPerSec: 18.234,
-            secPerStep: 9.612,
-            context: 158_705,
-            spark: [1, 2, 3, 4, 5, 4, 3, 2, 1],
-          },
-        }),
-      ]),
-      50,
-      0,
-      false,
-    );
-    const speedLine = lines.find((line) => line.includes('tok/s')) ?? '';
-    expect(speedLine).not.toContain('▁');
-    expect(speedLine).not.toContain('█');
-    expect(speedLine.length).toBeLessThanOrEqual(50);
-  });
-
-  it('shows "measuring…" when speed is null', () => {
-    const lines = renderWatch(view([entry({ speed: null })]), 80, 0, false);
-    const measuring = lines.find((line) => line.includes('measuring')) ?? '';
-    expect(measuring).toContain('measuring…');
-  });
-});
 
 describe('formatContext', () => {
   it('formats thousands as "k"', () => {
@@ -558,6 +359,7 @@ describe('buildView', () => {
       const previous: WatchView = {
         clock: '10:00:00',
         refreshFailed: false,
+        mergedToday: 2,
         entries: [
           entry({
             id: 'T-KEEP',
@@ -585,31 +387,16 @@ describe('buildView', () => {
   });
 });
 
-describe('disableRawMode', () => {
-  function fakeStdin() {
-    const calls: number[] = [];
-    return {
-      isTTY: true,
-      setRawMode(value: boolean) {
-        calls.push(value ? 1 : -1);
-        return this;
-      },
-      calls,
-    };
-  }
-
-  it('clears raw mode when the ref says it is on', () => {
-    const stdin = fakeStdin();
-    const ref = { raw: true };
-    disableRawMode(stdin as unknown as NodeJS.ReadStream, ref);
-    expect(ref.raw).toBe(false);
-  });
-
-  it('is a no-op when raw mode was never enabled', () => {
-    const stdin = fakeStdin();
-    const ref = { raw: false };
-    disableRawMode(stdin as unknown as NodeJS.ReadStream, ref);
-    expect(ref.raw).toBe(false);
+describe('fullClearOnResize', () => {
+  it('writes the full-clear sequence then calls clear once', () => {
+    const written: string[] = [];
+    let clears = 0;
+    fullClearOnResize({ write: (s: string) => written.push(s) }, () => {
+      clears += 1;
+    });
+    const esc = String.fromCharCode(27);
+    expect(written).toEqual([`${esc}[2J${esc}[H`]);
+    expect(clears).toBe(1);
   });
 });
 
@@ -682,34 +469,9 @@ describe('collectFiles', () => {
   });
 });
 
-describe('frameText', () => {
-  const HOME = '\u001b[H';
-  const CLEAR_LINE = '\u001b[K';
-  const CLEAR_BELOW = '\u001b[J';
-  const CLEAR_SCREEN = '\u001b[2J';
-
-  it('contains no whole-screen clear, ends with clear-to-end-of-screen', () => {
-    const out = frameText(['one', 'two', 'three']);
-    expect(out.includes(CLEAR_SCREEN)).toBe(false);
-    expect(out.endsWith(CLEAR_BELOW)).toBe(true);
-  });
-
-  it('starts with cursor home, puts clear-to-end-of-line after every line', () => {
-    const out = frameText(['one', 'two']);
-    expect(out.startsWith(HOME)).toBe(true);
-    expect(out).toBe(`${HOME}one${CLEAR_LINE}\ntwo${CLEAR_LINE}\n${CLEAR_BELOW}`);
-  });
-
-  it('handles an empty line list without crashing', () => {
-    const out = frameText([]);
-    expect(out).toBe(`${HOME}${CLEAR_BELOW}`);
-    expect(out.includes(CLEAR_SCREEN)).toBe(false);
-  });
-});
-
 describe('parseWatchView', () => {
   function view(entries: WatchEntry[]): WatchView {
-    return { clock: '10:42:07', refreshFailed: false, entries };
+    return { clock: '10:42:07', refreshFailed: false, mergedToday: 1, entries };
   }
 
   it('round-trips a valid view', () => {
@@ -753,12 +515,15 @@ describe('parseWatchView', () => {
     const bad = JSON.stringify({
       clock: '10:00:00',
       refreshFailed: false,
+      mergedToday: 0,
       entries: [
         {
           id: 'T-1',
           title: 't',
           modelLabel: 'm',
+          model: 'meta/m',
           totalAge: '1m',
+          autoFixRounds: 0,
           phaseId: 'coding',
           phaseLabel: 'Coding',
           needsLead: false,
@@ -792,12 +557,15 @@ describe('parseWatchView', () => {
     const bad = JSON.stringify({
       clock: '10:00:00',
       refreshFailed: false,
+      mergedToday: 0,
       entries: [
         {
           id: 'T-1',
           title: 't',
           modelLabel: 'm',
+          model: 'meta/m',
           totalAge: '1m',
+          autoFixRounds: 0,
           phaseId: 'coding',
           phaseLabel: 'Coding',
           needsLead: false,

@@ -35,7 +35,7 @@ Usage: lead <command> [options]
   snapshot                                                  JSON of every task in flight, its step and timings
   dashboard <out.html>                                      the snapshot rendered as the dashboard page
   status                                                    compact table of every tracked task
-  watch                                                     live terminal view of every running task
+  watch [--no-icons]                                          live terminal view of every running task
 
 State lives outside the repo at ~/.zilar-lead/state.json (or ZILAR_LEAD_STATE).
 Escalations print as one LEAD: line each on stdout; everything else goes to lead.log.
@@ -352,7 +352,7 @@ export async function main(argv: string[]): Promise<void> {
     if (rest.includes('--data')) {
       await runWatchData();
     } else {
-      await runWatch();
+      await runWatch({ noIcons: rest.includes('--no-icons') });
     }
   } else {
     throw new Error(`unknown command ${JSON.stringify(command)} (try: lead --help)`);
