@@ -36,6 +36,32 @@ export function folderSummary(folder: ChatFolder): string {
   return labels.length === 0 ? 'No chat types' : labels.join(', ');
 }
 
+/**
+ * What the folder editor shows for a route id (T-0262): `new` for the create
+ * route, `ready` once an existing folder is in the store, `loading` while the
+ * folders have not synced yet, and `missing` once they have and the id is
+ * still absent.
+ */
+export type FolderEditorState = 'new' | 'loading' | 'missing' | 'ready';
+
+/**
+ * Decides the editor view from the route id, the store's folder and whether
+ * the folders have synced. Pure, so Vitest covers it without a simulator.
+ */
+export function editorState(
+  id: string | undefined,
+  folder: ChatFolder | undefined,
+  foldersLoaded: boolean,
+): FolderEditorState {
+  if (id === undefined || id === 'new') {
+    return 'new';
+  }
+  if (folder !== undefined) {
+    return 'ready';
+  }
+  return foldersLoaded ? 'missing' : 'loading';
+}
+
 /** Save is enabled for a non-blank, at-most-max name. */
 export function isFolderNameValid(name: string): boolean {
   const trimmed = name.trim();

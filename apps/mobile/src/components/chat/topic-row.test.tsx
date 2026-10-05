@@ -7,6 +7,7 @@ import { TopicRow } from './topic-row';
 const state = vi.hoisted(() => ({
   messages: [] as UiMessage[],
   blocked: new Set<string>(),
+  currentUserId: 'me',
 }));
 
 vi.mock('react-native', () => ({
@@ -92,7 +93,7 @@ vi.mock('@/store/chat-store-provider', () => ({
     selector({
       typing: {},
       drafts: {},
-      currentUserId: 'me',
+      currentUserId: state.currentUserId,
       messages: () => state.messages,
     }),
 }));
@@ -198,6 +199,10 @@ function labels(elements: TestElement[]): (string | undefined)[] {
     .filter((label) => label !== undefined);
 }
 
+function hasTicks(elements: TestElement[]): boolean {
+  return elements.some((element) => element.type === 'Ticks');
+}
+
 const BASE = {
   onPress: () => {},
   onLongPress: () => {},
@@ -207,6 +212,7 @@ describe('TopicRow', () => {
   beforeEach(() => {
     state.messages = [];
     state.blocked = new Set();
+    state.currentUserId = 'me';
   });
 
   it('renders the title with no pin or muted icon by default', () => {
@@ -241,5 +247,21 @@ describe('TopicRow', () => {
     const text = textOf(elements);
     expect(text).toContain('visible message');
     expect(text).not.toContain('blocked message');
+  });
+
+  it('shows ticks when the last message is mine under the store user id', () => {
+    state.currentUserId = 'u-42';
+    const last = message('m1', 'u-42', 'mine');
+    state.messages = [last];
+    const elements = collect(TopicRow({ ...BASE, chat: topicChat({ lastMessage: last }) }));
+    expect(hasTicks(elements)).toBe(true);
+  });
+
+  it('shows no ticks when the last message is someone else under the store user id', () => {
+    state.currentUserId = 'u-42';
+    const last = message('m1', 'u-7', 'theirs');
+    state.messages = [last];
+    const elements = collect(TopicRow({ ...BASE, chat: topicChat({ lastMessage: last }) }));
+    expect(hasTicks(elements)).toBe(false);
   });
 });

@@ -176,6 +176,8 @@ export function createInitialState(phase?: MockDraftPhase, load?: MockLoadScenar
     search: '',
     activeFolder: 'all',
     folders: defaultFolders(),
+    // The mock store is loaded at once, so its folders are already known.
+    foldersLoaded: true,
     activeChatId: null,
     historyComplete: {},
     jumpTarget: undefined,
@@ -1343,6 +1345,7 @@ export function createChatStore(
         const sorted = sortFolders(folders);
         set((state) => ({
           folders: sorted,
+          foldersLoaded: true,
           activeFolder:
             state.activeFolder === 'all' ||
             sorted.some((folder) => folder.id === state.activeFolder)

@@ -148,4 +148,14 @@ describe('real store folders (T-0255)', () => {
       store.getState().createFolder({ name: 'Work', icon: 'briefcase' }),
     ).rejects.toThrow('Too many folders');
   });
+
+  it('starts unloaded and flips foldersLoaded on the first setFolders', () => {
+    const store = createRealChatStore({ chatFoldersApi: fakeFolders([folder()]) });
+    expect(store.getState().foldersLoaded).toBe(false);
+
+    store.getState().setFolders([folder()]);
+
+    expect(store.getState().foldersLoaded).toBe(true);
+    expect(store.getState().folders).toEqual([folder()]);
+  });
 });

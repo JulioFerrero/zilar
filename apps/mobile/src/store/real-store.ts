@@ -3038,6 +3038,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       search: '',
       activeFolder: 'all',
       folders: [],
+      foldersLoaded: false,
       typing: {},
       edits: {},
       reactions: {},
@@ -4020,6 +4021,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         const sorted = sortFolders(folders);
         set((state) => ({
           folders: sorted,
+          foldersLoaded: true,
           activeFolder:
             state.activeFolder === 'all' ||
             sorted.some((folder) => folder.id === state.activeFolder)

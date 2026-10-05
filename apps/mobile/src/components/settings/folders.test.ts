@@ -1,7 +1,7 @@
 import { FOLDER_NAME_MAX, type ChatFolder } from '@zilar/chat-core';
 import { describe, expect, it } from 'vitest';
 
-import { folderInput, folderSummary, isFolderNameValid } from './folders';
+import { editorState, folderInput, folderSummary, isFolderNameValid } from './folders';
 
 const FOLDER: ChatFolder = {
   id: 'f-1',
@@ -38,6 +38,23 @@ describe('isFolderNameValid', () => {
     expect(isFolderNameValid('')).toBe(false);
     expect(isFolderNameValid('   ')).toBe(false);
     expect(isFolderNameValid('x'.repeat(FOLDER_NAME_MAX + 1))).toBe(false);
+  });
+});
+
+describe('editorState', () => {
+  it('is new for the create route', () => {
+    expect(editorState(undefined, undefined, false)).toBe('new');
+    expect(editorState('new', undefined, true)).toBe('new');
+  });
+
+  it('is ready as soon as the folder is in the store', () => {
+    expect(editorState('f-1', FOLDER, true)).toBe('ready');
+    expect(editorState('f-1', FOLDER, false)).toBe('ready');
+  });
+
+  it('is loading before the folders sync and missing once they have', () => {
+    expect(editorState('f-1', undefined, false)).toBe('loading');
+    expect(editorState('f-1', undefined, true)).toBe('missing');
   });
 });
 

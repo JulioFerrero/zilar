@@ -14,7 +14,7 @@ import { MUTED_FOREGROUND } from '@/lib/colors';
 import { primaryKey, raisedPill } from '@/lib/depth';
 import { useBlockedJids } from '@/lib/blocked-users';
 import { previewParts, typingLabel } from '@/lib/format';
-import { CURRENT_USER_ID, type ChatSummary, type MessageStatus } from '@/lib/types';
+import { type ChatSummary, type MessageStatus } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { useChatStore } from '@/store/chat-store-provider';
 import { useColorScheme } from 'nativewind';
@@ -67,7 +67,7 @@ export function ChatListItem({ chat, onPress, onLongPress }: ChatListItemProps) 
   // An incoming AI reply (a DM AI or a group AI reply) previews as plain text; a
   // human message or your own stays literal.
   const body = plainPreviewBody(chat, previewed, preview.body, currentUserId);
-  const showTicks = chat.unread === 0 && last?.senderId === CURRENT_USER_ID;
+  const showTicks = chat.unread === 0 && last?.senderId === currentUserId;
   return (
     <Pressable
       accessibilityRole="button"
