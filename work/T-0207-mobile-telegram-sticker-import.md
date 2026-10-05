@@ -4,8 +4,8 @@ title: Mobile: import a Telegram sticker pack from the Stickers screen
 status: planned
 milestone: M5
 branch: task/T-0207-mobile-telegram-sticker-import
-model: minimax-coding-plan/MiniMax-M3
-effort: default
+model: opencode/muse-spark-1.3-contributor-free
+effort: low
 depends_on: [T-0191]
 estimate: 1 day
 ---
