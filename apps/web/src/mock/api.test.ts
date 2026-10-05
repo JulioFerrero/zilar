@@ -124,6 +124,26 @@ describe('mockRequest', () => {
     expect((await lookupByHandle('brand_new')).relation).toBe('none');
   });
 
+  it('blocks and unblocks through the real schemas', async () => {
+    const { lookupByHandle, blockUser, unblockUser, listBlockedUsers } = await import('@/lib/api');
+    const stranger = await lookupByHandle('brand_new');
+    expect(stranger.relation).toBe('none');
+
+    // Unknown user ids 404 like the server.
+    await expect(blockUser('u-nope')).rejects.toMatchObject({ status: 404, code: 'not_found' });
+
+    await expect(blockUser(stranger.userId)).resolves.toEqual({ blocked: true });
+    // Idempotent: blocking again still answers success.
+    await expect(blockUser(stranger.userId)).resolves.toEqual({ blocked: true });
+    expect((await lookupByHandle('brand_new')).relation).toBe('blocked');
+    const listed = await listBlockedUsers();
+    expect(listed.map((entry) => entry.userId)).toEqual([stranger.userId]);
+
+    await expect(unblockUser(stranger.userId)).resolves.toEqual({ blocked: false });
+    expect(await listBlockedUsers()).toEqual([]);
+    expect((await lookupByHandle('brand_new')).relation).toBe('none');
+  });
+
   it('serves chats and contacts that pass the real schemas', async () => {
     const chats = await getChats();
     expect(chats.some((chat) => chat.kind === 'dm')).toBe(true);

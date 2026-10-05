@@ -215,6 +215,13 @@ describe('ChatList', () => {
     expect(screen.getByText('Machines')).toBeTruthy();
   });
 
+  it('navigates to the Blocked people page from the menu', () => {
+    renderApp('/');
+    fireEvent.click(screen.getByRole('button', { name: 'Open menu' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Blocked people' }));
+    expect(screen.getByText('Blocked people')).toBeTruthy();
+  });
+
   it('does not call the approvals list before the menu opens', () => {
     let fetchCalls = 0;
     const fetchMock = vi.fn((url: string) => {

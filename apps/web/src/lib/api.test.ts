@@ -1506,4 +1506,73 @@ describe('handles and contact requests API', () => {
     const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe('/api/contact-requests');
   });
+
+  it('lookupByHandle parses a blocked relation', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      jsonResponse(200, {
+        userId: 'u-2',
+        name: 'Bob',
+        handle: 'bob_b',
+        image: null,
+        relation: 'blocked',
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { lookupByHandle } = await import('@/lib/api');
+    await expect(lookupByHandle('bob_b')).resolves.toMatchObject({
+      userId: 'u-2',
+      relation: 'blocked',
+    });
+  });
+
+  it('blockUser PUTs the user id and parses the result', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(200, { blocked: true }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { blockUser } = await import('@/lib/api');
+    await expect(blockUser('u-2')).resolves.toEqual({ blocked: true });
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/blocks/u-2');
+    expect(init.method).toBe('PUT');
+  });
+
+  it('unblockUser DELETEs the user id and parses the result', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(200, { blocked: false }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { unblockUser } = await import('@/lib/api');
+    await expect(unblockUser('u-2')).resolves.toEqual({ blocked: false });
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/blocks/u-2');
+    expect(init.method).toBe('DELETE');
+  });
+
+  it('listBlockedUsers parses the list', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      jsonResponse(200, {
+        blocked: [{ userId: 'u-2', name: 'Bob', handle: 'bob_b', image: null }],
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { listBlockedUsers } = await import('@/lib/api');
+    await expect(listBlockedUsers()).resolves.toEqual([
+      { userId: 'u-2', name: 'Bob', handle: 'bob_b', image: null },
+    ]);
+    const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/blocks');
+  });
+
+  it('sendContactRequest maps 409 blocked to a fixed sentence at the row', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      jsonResponse(409, {
+        error: { code: 'blocked', message: 'Unblock this person first' },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { sendContactRequest } = await import('@/lib/api');
+    await expect(sendContactRequest('bob_b')).rejects.toMatchObject({ code: 'blocked' });
+  });
 });

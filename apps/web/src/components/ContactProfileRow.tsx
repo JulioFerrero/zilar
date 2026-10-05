@@ -1,13 +1,15 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
-import { MessageSquare, UserCheck, UserMinus, UserPlus, UserX } from 'lucide-react';
+import { Ban, MessageSquare, UserCheck, UserMinus, UserPlus, UserX } from 'lucide-react';
 import {
   ApiError,
   acceptContactRequest,
+  blockUser,
   cancelContactRequest,
   declineContactRequest,
   listContactRequests,
   sendContactRequest,
+  unblockUser,
   type HandleProfile,
 } from '@/lib/api';
 import { useChatStore } from '@/store/ChatStoreProvider';
@@ -30,6 +32,7 @@ export function ContactProfileRow({
   const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
+  const [confirmingBlock, setConfirmingBlock] = useState(false);
   // Keyed by the parent on the profile id, so a different handle remounts
   // the row with fresh local state (no reset effect needed).
 
@@ -91,6 +94,39 @@ export function ContactProfileRow({
     }
   };
 
+  const block = async (): Promise<void> => {
+    if (busy) {
+      return;
+    }
+    setBusy(true);
+    setError(undefined);
+    try {
+      await blockUser(profile.userId);
+      setConfirmingBlock(false);
+      onRelationChange({ ...profile, relation: 'blocked' });
+    } catch (blockError) {
+      setError(friendlyBlockError(blockError, 'Could not block. Try again.'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const unblock = async (): Promise<void> => {
+    if (busy) {
+      return;
+    }
+    setBusy(true);
+    setError(undefined);
+    try {
+      await unblockUser(profile.userId);
+      onRelationChange({ ...profile, relation: 'none' });
+    } catch (unblockError) {
+      setError(friendlyBlockError(unblockError, 'Could not unblock. Try again.'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   // The DM chat id is the contact's JID; the lookup profile carries no
   // JID, so the row finds the DM two ways: the contact list (userId ->
   // jid) first, then a chat whose id matches that JID. No DM yet means no
@@ -143,9 +179,21 @@ export function ContactProfileRow({
               They already asked to add you.
             </p>
           )}
+          {profile.relation === 'blocked' && (
+            <p className="mt-0.5 text-[13px] text-muted-foreground">You blocked this person.</p>
+          )}
           {sentLabel && <p className="mt-0.5 text-[13px] text-muted-foreground">Request sent.</p>}
         </div>
-        {profile.relation === 'self' ? null : profile.relation === 'contact' &&
+        {profile.relation === 'blocked' ? (
+          <button
+            type="button"
+            onClick={() => void unblock()}
+            disabled={busy}
+            className="flex shrink-0 items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-[13px] text-muted-foreground hover:bg-surface-raised disabled:opacity-60"
+          >
+            {busy ? 'Unblocking…' : 'Unblock'}
+          </button>
+        ) : profile.relation === 'self' ? null : profile.relation === 'contact' &&
           dmChatId !== undefined ? (
           <button
             type="button"
@@ -210,6 +258,46 @@ export function ContactProfileRow({
           {error}
         </p>
       )}
+      {confirmingBlock && profile.relation !== 'blocked' && profile.relation !== 'self' && (
+        <div className="flex flex-col gap-2 rounded-lg bg-surface-raised px-3 py-2.5">
+          <p className="text-[13px]">
+            Block {profile.name}? They are not told. You won&apos;t see their contact requests.
+          </p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => void block()}
+              disabled={busy}
+              aria-label="Confirm block"
+              className="flex items-center gap-1.5 rounded-full bg-danger px-3 py-1.5 text-[13px] font-medium text-white hover:opacity-90 disabled:opacity-60"
+            >
+              <Ban className="size-3.5" aria-hidden="true" />
+              {busy ? 'Blocking…' : 'Block'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirmingBlock(false)}
+              disabled={busy}
+              className="rounded-full border border-border px-3 py-1.5 text-[13px] text-muted-foreground hover:bg-surface disabled:opacity-60"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+      {profile.relation !== 'self' && profile.relation !== 'blocked' && !confirmingBlock && (
+        <button
+          type="button"
+          onClick={() => {
+            setError(undefined);
+            setConfirmingBlock(true);
+          }}
+          className="flex items-center gap-1.5 self-start px-1 text-[13px] text-muted-foreground hover:text-foreground"
+        >
+          <Ban className="size-3.5" aria-hidden="true" />
+          Block
+        </button>
+      )}
     </div>
   );
 }
@@ -221,6 +309,8 @@ function friendlySendError(error: unknown): string {
         return "You're already contacts.";
       case 'request_exists':
         return 'A request is already pending.';
+      case 'blocked':
+        return 'Unblock this person first.';
       case 'too_many_requests':
         return 'Too many pending requests — wait for some answers first.';
       case 'declined_recently':
@@ -232,4 +322,11 @@ function friendlySendError(error: unknown): string {
     }
   }
   return 'Could not complete that action. Try again.';
+}
+
+function friendlyBlockError(error: unknown, fallback: string): string {
+  if (error instanceof ApiError && error.code === 'rate_limited') {
+    return 'Too many tries — wait a little and try again.';
+  }
+  return fallback;
 }
