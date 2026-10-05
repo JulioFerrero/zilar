@@ -155,11 +155,11 @@ async function applyActions(
         // file read and test log so far, which re-sends ~138k tokens per
         // step. The old session is idle, so it needs no interrupt.
         const round = current.autoFixRounds + 1;
-        const sessionId = await startFreshWorkerSession(
+        const { sessionId, model } = await startFreshWorkerSession(
           { client: deps.client, promptsDirPath: deps.promptsDirPath, repoRoot: deps.repoRoot },
           { task, record: current, title: `${task} autofix round ${round}`, prompt },
         );
-        current = freshSessionRecord(current, sessionId);
+        current = freshSessionRecord(current, sessionId, model);
         appendLog(deps.statePath, `${task} autofix round ${round} in fresh session ${sessionId}`);
       } else {
         deps.client.promptDetached(current.sessionId, prompt);

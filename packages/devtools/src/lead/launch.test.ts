@@ -79,6 +79,49 @@ describe('launchTask', () => {
     expect(client.created[0]?.options.model.variant).toBe('high');
   });
 
+  it('resolves `auto` to DeepSeek flash with default effort off-peak', async () => {
+    const { repoRoot, statePath } = setupRepo('auto');
+    const client = new FakeOpenCodeClient();
+
+    await launchTask('T-0099', undefined, {
+      repoRoot,
+      client,
+      promptsDirPath: promptsDir(),
+      statePath,
+      runner: stubRunner([]),
+      now: () => new Date('2026-10-05T00:59:00.000Z'),
+    });
+
+    expect(client.created[0]?.options.model).toEqual({
+      providerID: 'deepseek',
+      id: 'deepseek-flash',
+      variant: 'default',
+    });
+    expect(loadState(statePath).tasks['T-0099']?.model).toBe('deepseek/deepseek-flash');
+  });
+
+  it('resolves `auto` to the free Muse in DeepSeek peak hours', async () => {
+    const { repoRoot, statePath } = setupRepo('auto');
+    const client = new FakeOpenCodeClient();
+
+    await launchTask('T-0099', undefined, {
+      repoRoot,
+      client,
+      promptsDirPath: promptsDir(),
+      statePath,
+      runner: stubRunner([]),
+      now: () => new Date('2026-10-05T09:59:00.000Z'),
+    });
+
+    expect(client.created[0]?.options.model).toMatchObject({
+      providerID: 'opencode',
+      id: 'muse-spark-1.3-contributor-free',
+    });
+    expect(loadState(statePath).tasks['T-0099']?.model).toBe(
+      'opencode/muse-spark-1.3-contributor-free',
+    );
+  });
+
   it('creates the worktree, session, prompt, and state record', async () => {
     const { repoRoot, statePath } = setupRepo();
     const client = new FakeOpenCodeClient();

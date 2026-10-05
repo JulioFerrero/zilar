@@ -8,23 +8,24 @@ import { promptsDir } from './prompts';
 import { emptyState, saveState } from './state';
 import { newTaskRecord } from './types';
 
-const TASK_MD = [
-  '---',
-  'id: T-0099',
-  'title: Demo',
-  'status: in-progress',
-  'milestone: tooling',
-  'branch: task/T-0099-demo',
-  'model: opencode-go/muse-spark-1.3-contributor',
-  'depends_on: []',
-  'estimate: 1 day',
-  '---',
-  '',
-  '# T-0099',
-  '',
-].join('\n');
+const taskMd = (model: string): string =>
+  [
+    '---',
+    'id: T-0099',
+    'title: Demo',
+    'status: in-progress',
+    'milestone: tooling',
+    'branch: task/T-0099-demo',
+    `model: ${model}`,
+    'depends_on: []',
+    'estimate: 1 day',
+    '---',
+    '',
+    '# T-0099',
+    '',
+  ].join('\n');
 
-function setup(): {
+function setup(model = 'opencode-go/muse-spark-1.3-contributor'): {
   client: FakeOpenCodeClient;
   worktree: string;
   dir: string;
@@ -33,14 +34,14 @@ function setup(): {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lead-fresh-'));
   const worktree = path.join(dir, 'zilar-T-0099');
   fs.mkdirSync(path.join(worktree, 'work'), { recursive: true });
-  fs.writeFileSync(path.join(worktree, 'work', 'T-0099-demo.md'), TASK_MD);
+  fs.writeFileSync(path.join(worktree, 'work', 'T-0099-demo.md'), taskMd(model));
   fs.mkdirSync(path.join(dir, 'work'), { recursive: true });
-  fs.writeFileSync(path.join(dir, 'work', 'T-0099-demo.md'), TASK_MD);
+  fs.writeFileSync(path.join(dir, 'work', 'T-0099-demo.md'), taskMd(model));
   const record = newTaskRecord({
     task: 'T-0099',
     sessionId: 'ses_old',
     worktree,
-    model: 'opencode-go/muse-spark-1.3-contributor',
+    model,
     role: 'worker',
     startedAt: '2026-09-28T00:00:00.000Z',
   });
@@ -89,7 +90,7 @@ describe('startFreshWorkerSession', () => {
     state.tasks['T-0099'] = record;
     saveState(statePath, state);
 
-    const sessionId = await startFreshWorkerSession(
+    const { sessionId } = await startFreshWorkerSession(
       { client, promptsDirPath: promptsDir(), repoRoot: dir },
       { task: 'T-0099', record, title: 'T-0099 autofix round 2', prompt: 'fix it' },
     );
@@ -105,5 +106,48 @@ describe('startFreshWorkerSession', () => {
       variant: 'low',
     });
     expect(client.prompted).toContainEqual({ sessionId, text: 'fix it' });
+  });
+
+  it('re-resolves `auto` to the free Muse in peak hours even after a DeepSeek pass', async () => {
+    const { client, dir, record } = setup('auto');
+    record.model = 'deepseek/deepseek-flash';
+
+    const { model } = await startFreshWorkerSession(
+      {
+        client,
+        promptsDirPath: promptsDir(),
+        repoRoot: dir,
+        now: () => new Date('2026-10-05T09:59:00.000Z'),
+      },
+      { task: 'T-0099', record, title: 'T-0099 autofix round 2', prompt: 'fix it' },
+    );
+
+    expect(model).toBe('opencode/muse-spark-1.3-contributor-free');
+    expect(client.created[0]?.options.model).toMatchObject({
+      providerID: 'opencode',
+      id: 'muse-spark-1.3-contributor-free',
+    });
+  });
+
+  it('re-resolves `auto` to DeepSeek with default effort off-peak', async () => {
+    const { client, dir, record } = setup('auto');
+    record.model = 'opencode/muse-spark-1.3-contributor-free';
+
+    const { model } = await startFreshWorkerSession(
+      {
+        client,
+        promptsDirPath: promptsDir(),
+        repoRoot: dir,
+        now: () => new Date('2026-10-05T00:59:00.000Z'),
+      },
+      { task: 'T-0099', record, title: 'T-0099 autofix round 2', prompt: 'fix it' },
+    );
+
+    expect(model).toBe('deepseek/deepseek-flash');
+    expect(client.created[0]?.options.model).toEqual({
+      providerID: 'deepseek',
+      id: 'deepseek-flash',
+      variant: 'default',
+    });
   });
 });

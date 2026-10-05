@@ -1,7 +1,7 @@
 ---
 id: T-0245
 title: "Lead tooling: `model: auto` picks DeepSeek flash off-peak and the free Muse in DeepSeek's peak hours"
-status: planned
+status: merged
 milestone: M5
 branch: task/T-0245-model-by-peak-hours
 model: deepseek/deepseek-flash
@@ -70,4 +70,41 @@ Chinese public holidays (rare; we pay peak price those days), switching a runnin
 
 ## Report (written by the worker when done)
 
+### What I did
+- New `model-schedule.ts`: `DEEPSEEK_FLASH`, `isDeepSeekPeak` (UTC Mon-Fri, [1,4) and [6,10)) and `resolveWorkerModel` (`auto` -> DeepSeek flash + `effortOverride: 'default'` off-peak, `FREE_MUSE` in peak; every other value unchanged).
+- `launch.ts`: resolves the model with `resolveWorkerModel(modelString, deps.now?.() ?? new Date())` before `assertAllowedModel`, uses the override effort, stores the resolved model in the record, and prints `T-XXXX auto -> <model> (peak|off-peak)` for `auto`. Added `now?: () => Date` to `LaunchDeps`.
+- `fresh-session.ts`: re-resolves `auto` at fresh-session time (injectable `now`); every other front-matter model keeps `record.model` (switch-model behaviour preserved). `startFreshWorkerSession` now returns `{ sessionId, model }`; `freshSessionRecord(record, sessionId, model?)` records the resolved model. Both call sites (`autopilot.ts` autofix round, `reply.ts` reply --fresh) pass it through.
+- `fallback.ts`: `fallbackModel(DEEPSEEK_FLASH)` returns `PAID_MUSE`; all other behaviour unchanged. (`model-schedule.ts` imports `FREE_MUSE`, `fallback.ts` imports `DEEPSEEK_FLASH`; the cycle is only read inside function bodies.)
+- Docs: one bullet in the models section of `docs/LEAD_HANDOFF.md`.
+- Tests: new `model-schedule.test.ts` (all boundary hours, Saturday off-peak, explicit pass-through) plus additions to `launch.test.ts` (auto off-peak/peak and the stored record), `fresh-session.test.ts` (re-resolve both directions), `fallback.test.ts`, `task-file.test.ts` and `spec-check.test.ts`.
+
+Note on spec item 5: `parseTaskFrontMatter` already accepted `model: auto` (the schema's `model` is `z.string().min(1)`) and `checkSpec` never inspects the model field, so no source change was needed there; I added regression tests so the acceptance is locked in.
+
+### Files changed
+`packages/devtools/src/lead/model-schedule.ts` (new), `model-schedule.test.ts` (new), `launch.ts`, `launch.test.ts`, `fresh-session.ts`, `fresh-session.test.ts`, `fallback.ts`, `fallback.test.ts`, `task-file.ts` (no change), `task-file.test.ts`, `spec-check.test.ts`, `autopilot.ts`, `reply.ts`, `docs/LEAD_HANDOFF.md`, `work/T-0245-model-by-peak-hours.md`, plus `pnpm-lock.yaml` (pnpm install added two peer-dependency lines; the gate always allows it).
+
+### Commands and results
+- `pnpm install`: added turbo/typescript/vitest links, "Done in 12.6s".
+- `pnpm --filter @zilar/devtools test --maxWorkers=2 --reporter=dot src/lead/model-schedule.test.ts src/lead/launch.test.ts src/lead/fresh-session.test.ts src/lead/fallback.test.ts src/lead/task-file.test.ts src/lead/spec-check.test.ts`: `Test Files 6 passed (6)`, `Tests 72 passed (72)`.
+- First `pnpm gate`: FAIL on `format` (`packages/devtools/src/lead/launch.ts`); ran `pnpm exec prettier --write packages/devtools/src/lead/launch.ts`.
+- Final `pnpm gate` from the repo root:
+  - `PASS  install (frozen)  (1.0s)`
+  - `PASS  format  (16.5s)`
+  - `PASS  lint  (1.6s)`
+  - `PASS  typecheck  (4.2s)`
+  - `PASS  tests @zilar/devtools  (7.6s)`
+  - `scope: every changed file is inside the Allowed files`
+  - `GATE PASS`
+
+### Problems / deviations
+- No deviations from the Spec. `model-schedule.ts` and `fallback.ts` import each other; the constants are only read inside functions, so there is no runtime cycle.
+- The lockfile change is a side effect of the required `pnpm install`, not a dependency addition.
+
 ## Review (written by Claude)
+
+**Verdict:** Approved. The first pre-review was clean (2 nits, 1 follow-up). I read `model-schedule.ts`: UTC weekday hours [1,4) and [6,10) count as peak; `auto` resolves to flash with `effort: default` off-peak and to the free Muse in peak; explicit models pass through. The lead had the worker drop the two-line `pnpm-lock.yaml` peer flip (`5bebb942`).
+
+Follow-ups:
+- `decide.ts:112`: the FALLBACK line says "free Muse" even for a DeepSeek fallback.
+- The peak tests assert the variant only loosely.
+- `fallback.ts` and `model-schedule.ts` import each other.

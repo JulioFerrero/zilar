@@ -4,6 +4,7 @@ import { type OpenCodeClient, type SessionModel } from './client.js';
 import type { GitRunner } from './git.js';
 import { loadPrompt, loadRulesFile, renderPrompt, unfilledPlaceholders } from './prompts.js';
 import { updateState } from './state.js';
+import { isDeepSeekPeak, resolveWorkerModel } from './model-schedule.js';
 import { assertAllowedModel, parseTaskFrontMatter, pickEffort, splitModel } from './task-file.js';
 import { newTaskRecord } from './types.js';
 
@@ -13,6 +14,8 @@ export interface LaunchDeps {
   promptsDirPath: string;
   statePath: string;
   runner: GitRunner;
+  // Injectable clock for tests of `model: auto` peak-hour resolution.
+  now?: () => Date;
 }
 
 // Finds work/T-XXXX-*.md inside a checkout. Exactly one must match.
@@ -151,8 +154,13 @@ export async function launchTask(
     throw new Error(`task must look like T-0038, got ${JSON.stringify(task)}`);
   }
   const { file, model: modelString, branch, effort } = readTaskFrontMatter(deps.repoRoot, task);
-  assertAllowedModel(modelString);
-  const model = { ...splitModel(modelString), variant: effort };
+  const now = deps.now?.() ?? new Date();
+  const resolved = resolveWorkerModel(modelString, now);
+  assertAllowedModel(resolved.model);
+  const model = { ...splitModel(resolved.model), variant: resolved.effortOverride ?? effort };
+  if (modelString === 'auto') {
+    console.log(`${task} auto -> ${resolved.model} (${isDeepSeekPeak(now) ? 'peak' : 'off-peak'})`);
+  }
   const worktree = worktreeFor(deps.repoRoot, task);
   if (fs.existsSync(worktree)) {
     throw new Error(`worktree already exists: ${worktree}`);
@@ -190,7 +198,7 @@ export async function launchTask(
       task,
       sessionId,
       worktree,
-      model: modelString,
+      model: resolved.model,
       role: 'worker',
       startedAt: new Date().toISOString(),
     });
