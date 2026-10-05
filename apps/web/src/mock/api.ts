@@ -108,6 +108,8 @@ interface MockState {
   // and invalid shapes 404 like the server.
   contactRequests: MockContactRequest[];
   nextContactRequestSequence: number;
+  // T-0235: blocked people in memory for the page load.
+  blockedUsers: MockBlockedUser[];
 }
 
 type TopicVisibility = 'public' | 'private';
@@ -254,6 +256,13 @@ interface MockContactRequest {
   toUserId: string;
   status: 'pending' | 'accepted' | 'declined' | 'cancelled';
   createdAt: string;
+}
+
+// T-0235: one blocked person, in blocker order. `blockedAt` keeps the
+// newest-first list order the server answers with.
+interface MockBlockedUser {
+  userId: string;
+  blockedAt: string;
 }
 
 // T-0100: one standing rule row. `groupId` null means the personal chat
@@ -1057,6 +1066,7 @@ function seedState(): MockState {
     nextStickerSequence: 1,
     contactRequests: [],
     nextContactRequestSequence: 1,
+    blockedUsers: [],
     audit: [
       {
         id: 'audit-dev-stopped',
@@ -1235,7 +1245,7 @@ function mockHandleProfile(raw: string): {
   name: string;
   handle: string;
   image: null;
-  relation: 'none' | 'contact' | 'request_sent' | 'request_received' | 'self';
+  relation: 'none' | 'contact' | 'request_sent' | 'request_received' | 'self' | 'blocked';
 } | null {
   const userId = mockHandleUserId(raw);
   if (userId === null) {
@@ -1247,6 +1257,9 @@ function mockHandleProfile(raw: string): {
     person?.name ?? trimmed.charAt(0).toUpperCase() + trimmed.slice(1).replace(/_/g, ' ');
   if (userId === currentUserId) {
     return { userId, name, handle: trimmed, image: null, relation: 'self' };
+  }
+  if (state.blockedUsers.some((entry) => entry.userId === userId)) {
+    return { userId, name, handle: trimmed, image: null, relation: 'blocked' };
   }
   const outgoing = state.contactRequests.find(
     (row) =>
@@ -1414,6 +1427,23 @@ function decideMockContactRequest(
   }
   row.status = status;
   return jsonResponse({ request: mockContactRequestRow(row) });
+}
+
+// T-0235: blocks in memory for the page load. Blocking is idempotent, like
+// the server; unblocking someone never blocked still answers success.
+function mockBlockList(): Array<{ userId: string; name: string; handle: string; image: null }> {
+  const ordered = [...state.blockedUsers].sort((a, b) => b.blockedAt.localeCompare(a.blockedAt));
+  return ordered.map((entry) => {
+    const profile = mockHandleProfileForId(entry.userId);
+    const person = Object.values(PEOPLE).find((item) => item.id === entry.userId);
+    const handle = mockPersonHandle(entry.userId) ?? profile?.handle ?? entry.userId;
+    return {
+      userId: entry.userId,
+      name: person?.name ?? profile?.name ?? handle,
+      handle,
+      image: null,
+    };
+  });
 }
 
 // T-0163: mock handle availability. `taken-user` is always taken; reserved
@@ -2133,6 +2163,33 @@ export async function mockRequest(
 
   if (head === 'contact-requests' && second === undefined && method === 'DELETE') {
     return decideMockContactRequest(decodeURIComponent(first ?? ''), 'cancelled');
+  }
+
+  // T-0235: blocks in memory. Unknown users 404; blocking a known user is
+  // idempotent and answers `{ blocked: true }`.
+  if (head === 'blocks' && first !== undefined && second === undefined && method === 'PUT') {
+    const userId = decodeURIComponent(first);
+    const known =
+      userId === currentUserId ||
+      Object.values(PEOPLE).some((entry) => entry.id === userId) ||
+      userId.startsWith('u-handle-');
+    if (!known) {
+      return jsonResponse({ error: { code: 'not_found', message: 'No user with that id' } }, 404);
+    }
+    if (!state.blockedUsers.some((entry) => entry.userId === userId)) {
+      state.blockedUsers.push({ userId, blockedAt: new Date().toISOString() });
+    }
+    return jsonResponse({ blocked: true });
+  }
+
+  if (head === 'blocks' && first !== undefined && second === undefined && method === 'DELETE') {
+    const userId = decodeURIComponent(first);
+    state.blockedUsers = state.blockedUsers.filter((entry) => entry.userId !== userId);
+    return jsonResponse({ blocked: false });
+  }
+
+  if (head === 'blocks' && first === undefined && method === 'GET') {
+    return jsonResponse({ blocked: mockBlockList() });
   }
 
   // T-0163: live handle availability, in memory for the page load.

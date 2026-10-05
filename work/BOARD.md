@@ -209,7 +209,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0227](T-0227-mobile-mention-picker.md) | Mobile: @mention picker in the group composer, mentions sent with the message | planned | opencode/muse-spark-1.3-contributor-free | — | T-0195 audit 7.2a |
 | [T-0233](T-0233-mobile-bottom-bar.md) | Mobile: floating bottom bar, search bar on Chats, Profile tab | planned | opencode/muse-spark-1.3-contributor-free | — | Telegram brief a, d |
 | [T-0234](T-0234-mobile-create-sheets-keyboard.md) | Mobile: create sheets above the keyboard; mock create and contacts | planned | opencode/muse-spark-1.3-contributor-free | T-0233 | Emulator QA run 3; launch after T-0233 |
-| [T-0235](T-0235-web-block-users.md) | Web: block and unblock people, Blocked people page | planned | opencode/muse-spark-1.3-contributor-free | T-0171 | Block users part 1b |
 | [T-0236](T-0236-ui-kit-audit.md) | Audit: duplicated UI, the shared kit, React Cosmos plan (docs only) | planned | opencode/muse-spark-1.3-contributor-free | — | Julio: shared kit + React Cosmos |
 | [T-0237](T-0237-web-chat-folders.md) | Web: chat folders from the server, chips (narrow) and left folder rail (wide) | planned | opencode/muse-spark-1.3-contributor-free | T-0232 | Telegram brief b, decision 4 |
 | [T-0179](T-0179-mobile-transcribe-voice-notes.md) | Transcribe voice notes on the phone with Whistle: button in the bubble, consent for the 17 MB model, transcripts stored locally | 2026-10-03 |
@@ -266,3 +265,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0230](T-0230-mobile-tool-sheet-keyboard.md) | Mobile: tool sheet keyboard and Tools list refresh after close | 2026-10-05 |
 | [T-0171](T-0171-block-users.md) | Block users part 1a: server blocklist, block/unblock API, silent effects | 2026-10-05 |
 | [T-0232](T-0232-chat-folders-server.md) | Server: chat_folders table and API | 2026-10-05 |
+| [T-0235](T-0235-web-block-users.md) | Web: block and unblock people, Blocked people page | 2026-10-05 |

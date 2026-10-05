@@ -13,6 +13,7 @@ import { ConnectionsPage } from './ConnectionsPage';
 import { InvitePage } from './InvitePage';
 import { JoinPage } from './JoinPage';
 import { LoginPage } from './LoginPage';
+import { BlockedPage } from './BlockedPage';
 import { RequestsPage } from './RequestsPage';
 import { SetupPage } from './SetupPage';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
@@ -190,6 +191,14 @@ export function AppRoutes() {
           </RequireAuth>
         }
       />
+      <Route
+        path="/settings/blocked"
+        element={
+          <RequireAuth>
+            <BlockedRoute />
+          </RequireAuth>
+        }
+      />
       {/* Share links: /@handle opens the group card for a public group or
           the Add contact dialog for a person when logged in, and goes to
           login (returning afterwards) when logged out. react-router matches
@@ -232,6 +241,11 @@ function JoinRoute() {
 function RequestsRoute() {
   const navigate = useNavigate();
   return <RequestsPage onBack={() => navigate('/')} />;
+}
+
+function BlockedRoute() {
+  const navigate = useNavigate();
+  return <BlockedPage onBack={() => navigate('/')} />;
 }
 
 // The `/@handle` gate: react-router cannot match `/@:handle` (a param must

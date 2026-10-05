@@ -1974,14 +1974,15 @@ export function claimHandle(handle: string): Promise<{ handle: string }> {
   });
 }
 
-export type ContactRelation = 'none' | 'contact' | 'request_sent' | 'request_received' | 'self';
+export type ContactRelation =
+  'none' | 'contact' | 'request_sent' | 'request_received' | 'self' | 'blocked';
 
 const handleProfileSchema = z.object({
   userId: z.string(),
   name: z.string(),
   handle: z.string(),
   image: z.string().nullable(),
-  relation: z.enum(['none', 'contact', 'request_sent', 'request_received', 'self']),
+  relation: z.enum(['none', 'contact', 'request_sent', 'request_received', 'self', 'blocked']),
 });
 
 export type HandleProfile = z.infer<typeof handleProfileSchema>;
@@ -2071,6 +2072,41 @@ export function cancelContactRequest(id: string): Promise<{ request: ContactRequ
   return request(`/contact-requests/${encodeURIComponent(id)}`, decidedRequestSchema, {
     method: 'DELETE',
   });
+}
+
+// --- Blocked people (T-0235) -------------------------------------------------
+// Silent blocking: the blocked person is not told, and their contact
+// requests never reach the blocker. Writes answer `{ blocked: true/false }`,
+// the list answers newest first.
+
+const blockResultSchema = z.object({ blocked: z.boolean() });
+
+const blockedPersonSchema = z.object({
+  userId: z.string(),
+  name: z.string(),
+  handle: z.string(),
+  image: z.string().nullable(),
+});
+
+export type BlockedPerson = z.infer<typeof blockedPersonSchema>;
+
+const blockedListSchema = z.object({ blocked: z.array(blockedPersonSchema) });
+
+export function blockUser(userId: string): Promise<{ blocked: boolean }> {
+  return request(`/blocks/${encodeURIComponent(userId)}`, blockResultSchema, {
+    method: 'PUT',
+  });
+}
+
+export function unblockUser(userId: string): Promise<{ blocked: boolean }> {
+  return request(`/blocks/${encodeURIComponent(userId)}`, blockResultSchema, {
+    method: 'DELETE',
+  });
+}
+
+export async function listBlockedUsers(): Promise<BlockedPerson[]> {
+  const { blocked } = await request('/blocks', blockedListSchema);
+  return blocked;
 }
 
 // --- Public groups and channels (T-0164) -----------------------------------

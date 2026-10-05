@@ -1,0 +1,106 @@
+import { useEffect, useState } from 'react';
+import { ApiError, listBlockedUsers, unblockUser, type BlockedPerson } from '@/lib/api';
+import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
+import { Avatar } from '@/components/Avatar';
+
+/** Settings → Blocked people: who you blocked, with an Unblock per row. */
+export function BlockedPage({ onBack }: { onBack: () => void }) {
+  const [people, setPeople] = useState<BlockedPerson[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState<string | undefined>(undefined);
+  const [busyId, setBusyId] = useState<string | undefined>(undefined);
+
+  useEffect(() => {
+    let active = true;
+    listBlockedUsers()
+      .then((blocked) => {
+        if (active) {
+          setPeople(blocked);
+          setLoaded(true);
+        }
+      })
+      .catch((loadError: unknown) => {
+        if (active) {
+          setError(friendlyError(loadError));
+          setLoaded(true);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const unblock = async (userId: string): Promise<void> => {
+    setBusyId(userId);
+    setError(undefined);
+    try {
+      await unblockUser(userId);
+      setPeople((rows) => rows.filter((row) => row.userId !== userId));
+    } catch (unblockError) {
+      setError(friendlyError(unblockError));
+    } finally {
+      setBusyId(undefined);
+    }
+  };
+
+  return (
+    <SettingsShell
+      title="Blocked people"
+      subtitle="They are not told. Their contact requests don't reach you."
+      onBack={onBack}
+    >
+      <div className={SETTINGS_COLUMN}>
+        {!loaded && <p className="text-[14px] text-muted-foreground">Loading blocked people…</p>}
+        {loaded && people.length === 0 && error === undefined && (
+          <p className="text-[14px] text-muted-foreground">You haven&apos;t blocked anyone.</p>
+        )}
+        {people.length > 0 && (
+          <ul className="flex flex-col gap-2">
+            {people.map((person) => (
+              <li
+                key={person.userId}
+                className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-surface px-3 py-2.5"
+              >
+                <Avatar
+                  id={person.userId}
+                  name={person.name}
+                  size={36}
+                  avatarUrl={person.image ?? undefined}
+                />
+                <span className="min-w-0 flex-1 basis-40 text-[14px]">
+                  <span className="block truncate text-[15px] font-medium">
+                    {person.name}{' '}
+                    <span className="font-normal text-muted-foreground">@{person.handle}</span>
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  disabled={busyId === person.userId}
+                  onClick={() => void unblock(person.userId)}
+                  className="rounded-full border border-border px-3 py-1 text-[14px] hover:bg-surface-raised disabled:opacity-60"
+                >
+                  {busyId === person.userId ? 'Unblocking…' : 'Unblock'}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {error !== undefined && (
+          <p role="alert" className="text-[14px] text-danger">
+            {error}
+          </p>
+        )}
+      </div>
+    </SettingsShell>
+  );
+}
+
+function friendlyError(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.code === 'rate_limited') {
+      return 'Too many tries — wait a little and try again.';
+    }
+    return 'Could not load blocked people. Try again.';
+  }
+  return 'Could not load blocked people. Try again.';
+}
