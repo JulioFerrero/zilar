@@ -23,8 +23,10 @@ Models (Julio, 2026-10-05): default `opencode/muse-spark-1.3-contributor-free`; 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
 | T-0211 | `lead watch` Ink redesign | round 2 committed (Ink `alternateScreen: true` + `fullClearOnResize` listener ahead of Ink's, which clears only on shrink; `useInput` active only with raw mode). Julio priority. Test window open: `~/.claude/jobs/fcd95e40/tmp/lead-watch-test` runs `watch-test.sh` (branch code, main's data); waiting for Julio's resize check and the pre-review | billed Muse. After merge: close the test window, restart Julio's watcher |
-| T-0219 | Mobile: Run now, Revert, Delete in the tool detail sheet | coding | free Muse on purpose: first live test of the T-0216 in-place fallback (watch for `LEAD: FALLBACK`) |
-| T-0220 | `'prereview-resume'` in `PromptName`, one task-file import | coding | MiniMax (T-0216 follow-ups) |
+| T-0219 | Mobile: Run now, Revert, Delete in the tool detail sheet | coding | its first turn hit 429 while still `planned`, so the fallback skipped it (status gate `decide.ts:223`); lead switched it to paid Muse by hand |
+| T-0221 | In-place fallback also for a worker still at `planned` | coding | MiniMax |
+
+First live `LEAD: FALLBACK`: T-0220's pre-review (free 429 → paid, same session) worked. T-0220 merged; autopilot restarted.
 
 Merged since the last update: T-0214 (New group sheet), T-0216 (in-place fallback; autopilot restarted WITHOUT `ZILAR_REVIEW_MODEL`: new sessions start on free Muse and switch on a 429), T-0218 (tool detail sheet, read only).
 
