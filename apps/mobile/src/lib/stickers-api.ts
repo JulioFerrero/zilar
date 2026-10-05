@@ -92,11 +92,55 @@ export function parseStickerPack(value: unknown): StickerPack | null {
       items.push(item);
     }
   }
-  return { id, title, stickers: items };
+  // T-0191: the editor metadata rides along when present; wrong types are
+  // ignored and the pack still parses (the panel keeps working unchanged).
+  const ownerId = value['ownerId'];
+  const visibility = value['visibility'];
+  const importedFrom = value['importedFrom'];
+  return {
+    id,
+    title,
+    ...(typeof ownerId === 'string' && ownerId !== '' ? { ownerId } : {}),
+    ...(visibility === 'private' || visibility === 'server' ? { visibility } : {}),
+    ...(typeof importedFrom === 'string' && importedFrom !== '' ? { importedFrom } : {}),
+    stickers: items,
+  };
 }
 
 /** Reads the bearer session token from secure storage. */
 export type TokenProvider = () => Promise<string | undefined>;
+
+/**
+ * The raw-bytes POST a sticker upload needs. Injected so tests use a fake
+ * and never touch the native modules; production defaults to the
+ * `expo-file-system` binary upload (the avatar uploader pattern).
+ */
+export interface StickerBinaryUpload {
+  upload(
+    url: string,
+    uri: string,
+    headers: Record<string, string>,
+  ): Promise<{ status: number; body: string }>;
+}
+
+async function defaultBinaryUpload(
+  url: string,
+  uri: string,
+  headers: Record<string, string>,
+): Promise<{ status: number; body: string }> {
+  const { File, UploadType } = await import('expo-file-system');
+  const source = new File(uri);
+  try {
+    const result = await source.upload(url, {
+      httpMethod: 'POST',
+      uploadType: UploadType.BINARY_CONTENT,
+      headers,
+    });
+    return { status: result.status, body: result.body };
+  } catch {
+    throw new StickersApiError(0, 'network_error', 'Could not reach the server');
+  }
+}
 
 export interface StickersApi {
   listStickerPacks(): Promise<StickerPack[]>;
@@ -108,6 +152,33 @@ export interface StickersApi {
   reorderStickerPanelPacks(order: string[]): Promise<void>;
   listStickerFavorites(): Promise<StickerItem[]>;
   removeStickerFavorite(stickerId: string): Promise<void>;
+  /** Mints an empty pack (web `createStickerPack`). */
+  createStickerPack(input: {
+    title: string;
+    visibility?: 'private' | 'server';
+  }): Promise<StickerPack>;
+  /** Renames, re-shares or reorders a pack (web `patchStickerPack`). */
+  patchStickerPack(
+    packId: string,
+    input: { title?: string; visibility?: 'private' | 'server'; order?: string[] },
+  ): Promise<StickerPack>;
+  /**
+   * Deletes a pack and its files (web `deleteStickerPack`): resolves the
+   * server's keep-message warning, shown in the delete confirm copy.
+   */
+  deleteStickerPack(packId: string): Promise<{ warning: string }>;
+  /** Deletes one sticker of a pack (web `deletePackSticker`). */
+  deletePackSticker(packId: string, stickerId: string): Promise<void>;
+  /**
+   * Uploads one prepared sticker file: raw bytes (not multipart), the
+   * `Content-Type` is the image type, and the emoji travels percent-encoded
+   * in `x-emoji` (header values are latin1; a raw emoji throws in fetch).
+   */
+  uploadStickerFile(
+    packId: string,
+    file: { uri: string; mimeType: 'image/webp' | 'image/png' },
+    emoji?: string,
+  ): Promise<StickerItem>;
 }
 
 /** The production `StickersApi`: bearer auth, `fetch`, build-time API URL. */
@@ -115,6 +186,7 @@ export function createStickersApi(
   getToken: TokenProvider = getSessionToken,
   fetchImpl: typeof fetch = fetch,
   apiUrl: string = API_URL,
+  binaryUpload: StickerBinaryUpload = { upload: defaultBinaryUpload },
 ): StickersApi {
   async function withToken(path: string, init: RequestInit): Promise<unknown> {
     const token = await getToken();
@@ -224,6 +296,104 @@ export function createStickersApi(
     async removeStickerFavorite(stickerId: string) {
       const params = new URLSearchParams({ sticker_id: stickerId });
       await withToken(`/api/sticker-favorites?${params.toString()}`, { method: 'DELETE' });
+    },
+    async createStickerPack(input) {
+      const body = await withToken('/api/sticker-packs', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(input),
+      });
+      const pack = parseStickerPack(body);
+      if (pack === null) {
+        throw new StickersApiError(
+          200,
+          'invalid_response',
+          'The server sent an unexpected response',
+        );
+      }
+      return pack;
+    },
+    async patchStickerPack(packId, input) {
+      const body = await withToken(`/api/sticker-packs/${encodeURIComponent(packId)}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(input),
+      });
+      const pack = parseStickerPack(body);
+      if (pack === null) {
+        throw new StickersApiError(
+          200,
+          'invalid_response',
+          'The server sent an unexpected response',
+        );
+      }
+      return pack;
+    },
+    async deleteStickerPack(packId) {
+      const body = await withToken(`/api/sticker-packs/${encodeURIComponent(packId)}`, {
+        method: 'DELETE',
+      });
+      if (!isRecord(body) || !isString(body['warning'])) {
+        throw new StickersApiError(
+          200,
+          'invalid_response',
+          'The server sent an unexpected response',
+        );
+      }
+      return { warning: body['warning'] };
+    },
+    async deletePackSticker(packId, stickerId) {
+      await withToken(
+        `/api/sticker-packs/${encodeURIComponent(packId)}/stickers/${encodeURIComponent(stickerId)}`,
+        { method: 'DELETE' },
+      );
+    },
+    async uploadStickerFile(packId, file, emoji) {
+      const token = await getToken();
+      if (token === undefined) {
+        throw new StickersApiError(401, 'unauthorized', 'No session');
+      }
+      const headers: Record<string, string> = {
+        'content-type': file.mimeType,
+        authorization: `Bearer ${token}`,
+      };
+      if (emoji !== undefined && emoji !== '') {
+        headers['x-emoji'] = encodeURIComponent(emoji);
+      }
+      const result = await binaryUpload.upload(
+        `${apiUrl}/api/sticker-packs/${encodeURIComponent(packId)}/stickers`,
+        file.uri,
+        headers,
+      );
+      if (result.status < 200 || result.status >= 300) {
+        let parsed: unknown = null;
+        try {
+          parsed = JSON.parse(result.body);
+        } catch {
+          parsed = null;
+        }
+        const error = isRecord(parsed) && isRecord(parsed['error']) ? parsed['error'] : null;
+        const code = isString(error?.['code']) ? error['code'] : 'request_failed';
+        const message = isString(error?.['message'])
+          ? error['message']
+          : `Request failed (${result.status})`;
+        throw new StickersApiError(result.status, code, message);
+      }
+      let parsed: unknown = null;
+      try {
+        parsed = JSON.parse(result.body);
+      } catch {
+        parsed = null;
+      }
+      const item = parseStickerItem(parsed, packId);
+      if (item === null) {
+        throw new StickersApiError(
+          200,
+          'invalid_response',
+          'The server sent an unexpected response',
+        );
+      }
+      return item;
     },
   };
 }

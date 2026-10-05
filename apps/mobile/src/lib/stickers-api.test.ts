@@ -41,6 +41,8 @@ describe('parseStickerPack', () => {
     expect(pack).toEqual({
       id: PACK.id,
       title: 'Cats',
+      ownerId: 'u-me',
+      visibility: 'server',
       stickers: [
         {
           id: ITEM.id,
@@ -53,6 +55,20 @@ describe('parseStickerPack', () => {
         },
       ],
     });
+  });
+
+  it('ignores editor fields with the wrong type and still returns the pack', () => {
+    expect(
+      parseStickerPack({ ...PACK, ownerId: 7, visibility: 'nobody' })?.ownerId,
+    ).toBeUndefined();
+    expect(
+      parseStickerPack({ ...PACK, ownerId: 7, visibility: 'nobody' })?.visibility,
+    ).toBeUndefined();
+    expect(parseStickerPack({ ...PACK, importedFrom: 7 })?.importedFrom).toBeUndefined();
+    expect(parseStickerPack({ ...PACK, importedFrom: 'telegram:cats' })?.importedFrom).toBe(
+      'telegram:cats',
+    );
+    expect(parseStickerPack({ ...PACK, visibility: 'private' })?.visibility).toBe('private');
   });
 
   it('drops malformed packs and oversized rows', () => {
@@ -205,5 +221,112 @@ describe('stickers api client', () => {
       `http://127.0.0.1:3188/api/sticker-favorites?${new URLSearchParams({ sticker_id: ITEM.id }).toString()}`,
     );
     expect(init.method).toBe('DELETE');
+  });
+
+  it('creates a pack with the title and visibility', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ ...PACK, title: 'New' }));
+    const created = await api(fetchImpl).createStickerPack({ title: 'New', visibility: 'private' });
+    expect(created.title).toBe('New');
+    const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('http://127.0.0.1:3188/api/sticker-packs');
+    expect(init.method).toBe('POST');
+    expect(init.body).toBe(JSON.stringify({ title: 'New', visibility: 'private' }));
+  });
+
+  it('patches a pack title and visibility', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse(PACK));
+    await api(fetchImpl).patchStickerPack(PACK.id, { title: 'Renamed', visibility: 'server' });
+    const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe(`http://127.0.0.1:3188/api/sticker-packs/${PACK.id}`);
+    expect(init.method).toBe('PATCH');
+    expect(init.body).toBe(JSON.stringify({ title: 'Renamed', visibility: 'server' }));
+  });
+
+  it('deletes a pack and returns the warning', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ warning: 'gone' }));
+    const result = await api(fetchImpl).deleteStickerPack(PACK.id);
+    expect(result).toEqual({ warning: 'gone' });
+    const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe(`http://127.0.0.1:3188/api/sticker-packs/${PACK.id}`);
+    expect(init.method).toBe('DELETE');
+  });
+
+  it('deletes one pack sticker', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ ok: true }));
+    await api(fetchImpl).deletePackSticker(PACK.id, ITEM.id);
+    const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe(`http://127.0.0.1:3188/api/sticker-packs/${PACK.id}/stickers/${ITEM.id}`);
+    expect(init.method).toBe('DELETE');
+  });
+
+  it('uploads raw sticker bytes with the content type and the encoded emoji', async () => {
+    const upload = vi.fn(async () => ({
+      status: 200,
+      body: JSON.stringify({ ...ITEM, packId: PACK.id }),
+    }));
+    const client = createStickersApi(
+      async () => 'tok',
+      (async () => {
+        throw new Error('must not fetch');
+      }) as typeof fetch,
+      'http://127.0.0.1:3188',
+      { upload },
+    );
+    const sticker = await client.uploadStickerFile(
+      PACK.id,
+      { uri: 'file:///cache/sticker.webp', mimeType: 'image/webp' },
+      '🐱',
+    );
+    expect(sticker.id).toBe(ITEM.id);
+    expect(upload).toHaveBeenCalledWith(
+      `http://127.0.0.1:3188/api/sticker-packs/${PACK.id}/stickers`,
+      'file:///cache/sticker.webp',
+      {
+        'content-type': 'image/webp',
+        authorization: 'Bearer tok',
+        'x-emoji': encodeURIComponent('🐱'),
+      },
+    );
+  });
+
+  it('omits the emoji header when no emoji is set', async () => {
+    const upload = vi.fn(async () => ({
+      status: 200,
+      body: JSON.stringify({ ...ITEM, packId: PACK.id }),
+    }));
+    const client = createStickersApi(
+      async () => 'tok',
+      (async () => {
+        throw new Error('must not fetch');
+      }) as typeof fetch,
+      'http://127.0.0.1:3188',
+      { upload },
+    );
+    await client.uploadStickerFile(PACK.id, { uri: 'file:///cache/s.png', mimeType: 'image/png' });
+    const [, , headers] = upload.mock.calls[0] as unknown as [
+      string,
+      string,
+      Record<string, string>,
+    ];
+    expect(headers['content-type']).toBe('image/png');
+    expect(headers['x-emoji']).toBeUndefined();
+  });
+
+  it('maps an upload refusal to its code', async () => {
+    const upload = vi.fn(async () => ({
+      status: 400,
+      body: JSON.stringify({ error: { code: 'pack_full', message: 'full' } }),
+    }));
+    const client = createStickersApi(
+      async () => 'tok',
+      (async () => {
+        throw new Error('must not fetch');
+      }) as typeof fetch,
+      'http://127.0.0.1:3188',
+      { upload },
+    );
+    await expect(
+      client.uploadStickerFile(PACK.id, { uri: 'file:///cache/s.png', mimeType: 'image/png' }),
+    ).rejects.toMatchObject({ status: 400, code: 'pack_full' });
   });
 });
