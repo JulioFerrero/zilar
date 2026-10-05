@@ -1,7 +1,7 @@
 ---
 id: T-0206
 title: Scout (docs only): can a RepoMapper repo map replace worker exploration? Measure it on our repo
-status: planned
+status: merged
 milestone: M5
 branch: task/T-0206-scout-repomap-trial
 model: meta/muse-spark-1.3-contributor
@@ -54,4 +54,41 @@ Installing an MCP server, changing prompts or specs, any code.
 
 ## Report (written by the worker when done)
 
+### What I did
+- Ran RepoMapper from `~/.zilar-lead/tools/RepoMapper` per the spec command shape: 4 unfocused maps (mobile + server, with/without `--exclude-unranked`), 3 focused maps (T-0187/T-0188/T-0173 mentioned-files from each spec's Read-first + Allowed paths), 1 `--chat-files` trial. All at `--map-tokens 2048`.
+- Compared each focused map against the task's squash-commit file list (`git log --format=%H --grep '^T-XXXX:' main` + `git show --stat`: T-0187 `4b96bc37`, T-0188 `3e30452f`, T-0173 `da804c10`) and its Read-first list.
+- Wrote `docs/audit/repomap-trial.md` (4 sections, all numbers measured). Verdict: **drop it** — maps echo mentioned-files, cannot show files tasks create, 25-41% test noise, and surfaced zero files the specs had not already named.
+- Found and documented 2 CLI bugs by reading the tool source (not by editing it): `--verbose` crashes (tuple passed to tiktoken, exit 1) and flag-before-paths order silently yields an empty map (exit 0).
+
+### Files changed
+- `docs/audit/repomap-trial.md` (new), `work/T-0206-scout-repomap-trial.md` (this Report, status).
+
+### Commands and real results
+- `pnpm install`: pass (10.1s).
+- RepoMapper runs (from `~/.zilar-lead/tools/RepoMapper`, `uv run -q python repomap.py --root $R --map-tokens 2048 ...`): m1 mobile 7,991 bytes/~2,000 tok/413 files; m2 excl-unranked 8,138 bytes; m3 server 8,211 bytes/278 files; m4 excl 8,254 bytes; f187 7,716 bytes/12 files; f188 7,937 bytes/14 files; f173 8,509 bytes/16 files; c187 chat-files 8,150 bytes/16 files. Each ~1.2-1.3s warm. Full table + per-task hit/miss tables in the audit doc.
+- No single-package tests applied (docs-only task, no code); `pnpm gate` runs the relevant checks.
+- `pnpm gate`: GATE PASS — PASS install (frozen), format, lint, typecheck; `scope: every changed file is inside the Allowed files` (2 changed files).
+
+### Problems / deviations
+- `--verbose` unusable (crash above), so token counts are chars/4 estimates as the spec permits; gpt-4 tiktoken counts unavailable.
+- Mentioned-files must follow positional paths (argparse `nargs='*'` swallows them otherwise); all measured runs use the working order.
+- Lead's 6.5s cold timing not re-derived (warm runs ~1.3s); T-0187's 37M-token figure is the lead's, cited as such.
+
+### Security checklist
+- Docs-only task: no routes, no secrets, no deletes, no logging changes. No secret read or committed.
+
+### Blocked / needs a decision
+- None.
+
+### Disagreements
+- None. Both should-fix findings were correct (verified finding 1 with `git show --name-only 4b96bc37`: no sticker-panel; re-ran both bug-repro commands for finding 2). Nits 3-4 left untouched per instructions (not in lines otherwise changed).
+
+### Round 2 — pre-review fixes (worker, 2026-10-05)
+- Finding 1 (should-fix): `sticker-panel.tsx` row now "no (spec-named but commit does not touch it)"; T-0187 score corrected to 3 of 8; pattern paragraph updated to 5/8 new.
+- Finding 2 (should-fix): both CLI-bug claims now quote the exact invocations with exit codes/outputs (verbose → exit 1 + TypeError; misordered flags → exit 0 + 116-byte empty tuple).
+- No behaviour code exists in this docs-only task, so no tests apply.
+- `pnpm gate`: GATE PASS — PASS install (frozen), format, lint, typecheck; `scope: every changed file is inside the Allowed files` (2 files).
+
 ## Review (written by Claude)
+
+**Verdict:** Approved after one automatic round. `docs/audit/repomap-trial.md` measures RepoMapper on our repo and recommends dropping it: unfocused maps rank every file the same and spend 25-41 percent of the budget on tests; focused maps for T-0187, T-0188 and T-0173 only echoed the files the spec already names, because most of what our tasks change are NEW files a map of existing code cannot show (5 of 8, 9 of 10 and 2 of 3). The lead spot-checked the commit claims (`4b96bc37` does not touch `sticker-panel.tsx`; `3e30452f` changed 14 files). Accepted nits: two small wording points in the report. Decision: RepoMapper is not adopted; the tool stays installed outside the repo at `~/.zilar-lead/tools/RepoMapper` and can be deleted.
