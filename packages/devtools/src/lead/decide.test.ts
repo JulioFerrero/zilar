@@ -205,6 +205,49 @@ describe('decide quota backoff', () => {
     );
     expect(actions.some((action) => action.kind === 'send-prompt')).toBe(false);
   });
+
+  it('falls back in place for a planned task on the free model with a quota error', () => {
+    const actions = decide(
+      base({
+        taskStatus: 'planned',
+        quotaError: true,
+        sessionState: 'idle',
+        record: record({ model: 'opencode/muse-spark-1.3-contributor-free' }),
+      }),
+    );
+    expect(actions).toContainEqual({
+      kind: 'fallback-model',
+      session: 'worker',
+      model: 'meta/muse-spark-1.3-contributor',
+    });
+    expect(escalations(actions)).toEqual([
+      'LEAD: FALLBACK T-0038 free Muse rate-limited, worker continues on paid Muse',
+    ]);
+  });
+
+  it('does nothing for a planned task on the paid model with a quota error', () => {
+    const actions = decide(
+      base({
+        taskStatus: 'planned',
+        quotaError: true,
+        sessionState: 'idle',
+        record: record({ model: 'meta/muse-spark-1.3-contributor' }),
+      }),
+    );
+    expect(actions).toEqual([]);
+  });
+
+  it('does nothing for a planned task on the free model without a quota error', () => {
+    const actions = decide(
+      base({
+        taskStatus: 'planned',
+        quotaError: false,
+        sessionState: 'idle',
+        record: record({ model: 'opencode/muse-spark-1.3-contributor-free' }),
+      }),
+    );
+    expect(actions).toEqual([]);
+  });
 });
 
 describe('decide stalls', () => {
