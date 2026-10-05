@@ -1,7 +1,7 @@
 ---
 id: T-0194
 title: Mobile: guard tests for the Android and Hermes pitfalls that crashed the app
-status: planned
+status: merged
 milestone: M5
 branch: task/T-0194-mobile-pitfall-guards
 model: minimax-coding-plan/MiniMax-M3
@@ -55,4 +55,49 @@ Fixing any pitfall found (none exist today), emoji detection, iOS code, any new 
 
 ## Report (written by the worker when done)
 
+### What I did
+
+Added two files in `apps/mobile/src/lib/` that mirror the style of the existing `gradient-swap.test.ts` (walks the source tree with `node:fs`, reports `file:line` offenders):
+
+- `native-pitfalls-scan.ts` — exports `findKotlinCoroutinePromiseOffenders`, `findHermesCryptoSubtleOffenders`, `kotlinFiles`, `hermesSourceFiles`. The line scanners are pure data-in / data-out so they can be exercised directly from the test. The Hermes patterns are built from parts (`crypto` + `.` + `subtle`, and `Subtle` + `Crypto`) so the helper itself does not contain the literal strings it scans for (a previous draft did and tripped the new guard).
+- `native-pitfalls.test.ts` — three `describe` blocks:
+  1. Kotlin: walks `apps/mobile/modules` for `.kt` files, runs the Kotlin scanner, also asserts the walk found at least one `.kt` file and at least one `AsyncFunction` whose parameter list contains `promise: Promise` (uses a small `fileHasAsyncFunctionWithPromise` helper in the test file that looks at the next 6 lines after each `AsyncFunction`).
+  2. Hermes: walks `apps/mobile/src` plus every `apps/mobile/modules/*/src` directory, skipping `*.test.ts`/`*.test.tsx`, runs the Hermes scanner, asserts scanned > 50 files.
+  3. Self-test: feeds the two scanners a bad and a good sample each and asserts the right result.
+
+### Files changed
+
+- `apps/mobile/src/lib/native-pitfalls-scan.ts` (new)
+- `apps/mobile/src/lib/native-pitfalls.test.ts` (new)
+- `work/T-0194-mobile-pitfall-guards.md` (status + this report)
+
+### Commands and real results
+
+- `pnpm install` — Done in 27.2s; 1053 packages added; 3 pre-existing deprecation warnings and 1 pre-existing peer-dependency warning (both unrelated to this task).
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot native-pitfalls gradient-swap` — 2 files passed, 5 tests passed (the new 3 + the 2 pre-existing `gradient-swap` tests).
+- Negative-test verification: temporarily edited `ZilarWhistleModule.kt` line 108 from `AsyncFunction("loadModel") { path: String, promise: Promise ->` to `AsyncFunction("loadModel") Coroutine { path: String, promise: Promise ->`, re-ran the new tests, and got `expected [Array(1)] to deeply equal []` with `[ ".../ZilarWhistleModule.kt:108" ]` as the offender (1 failed, 3 passed). Reverted the edit; `git diff` against `ZilarWhistleModule.kt` was empty afterwards. The bad line was never committed.
+- `pnpm gate` from repo root:
+  ```
+  gate: 3 changed file(s) against main
+  PASS  install (frozen)  (0.9s)
+  PASS  format  (9.6s)
+  PASS  lint  (0.8s)
+  PASS  typecheck  (5.9s)
+  PASS  tests @zilar/mobile  (2.0s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+  No files outside the Allowed files. The format check failed on the first gate run (Prettier flagged both new files); I ran `pnpm exec prettier --write` on the two files, and the second gate run passed.
+
+### Problems / deviations
+
+- The spec phrases the Kotlin "AsyncFunction with a Promise parameter" assertion loosely. A naive `AsyncFunction\(...\Promise\)\b` regex misses the real shape `AsyncFunction("loadModel") { path: String, promise: Promise ->` (the `Promise` is inside the lambda). I added a small scanner `fileHasAsyncFunctionWithPromise` in the test file that walks the next 6 lines after each `AsyncFunction` and matches `promise\s*:\s*Promise\b` — same intent, and it correctly counted the three `AsyncFunction`s that take a `promise: Promise` in `ZilarWhistleModule.kt` (lines 108, 134, 138-145).
+- Prettier flagged the new files on the first gate. After `prettier --write` on the two files the gate is green. No semantic change.
+
+### Open questions
+
+None.
+
 ## Review (written by Claude)
+
+**Verdict:** Approved, first round (MiniMax M3). `native-pitfalls.test.ts` scans every Kotlin file under `apps/mobile/modules` for a `Coroutine` async function with a `Promise` parameter and every app and module TypeScript file for `crypto.subtle`/`SubtleCrypto`, skipping comments, and fails with `file:line`; it asserts it scanned real files so it cannot go blind, and the detectors have their own good and bad samples. The worker did the negative test the spec asked for (a `Coroutine` on `ZilarWhistleModule.kt:108` was reported at that line, then reverted; the Kotlin file is not in the diff). Pre-review clean, no nits. Test-only, so no emulator check.
