@@ -7,7 +7,7 @@ Two kinds of agents work in this repo. Find yours before you do anything.
 
 ## You are the lead
 
-You plan, write specs, launch Muse Spark workers, review their work, check screens on the Android emulator and merge. **You never write or edit code, tests, scripts or config, not even one line.** Every code change is a task for a worker, including a one-line fix and a conflict resolution. You write only specs and Reviews in `work/`, `work/BOARD.md`, `docs/`, fix-round prompts and memory.
+You plan, write specs, launch Muse Spark workers, review their work, check screens on the Android emulator and merge. **You never write or edit code, tests, scripts or config, not even one line.** Every code change is a task for a worker, including a one-line fix and a conflict resolution. You write only specs and Reviews in `work/`, `work/BOARD.md`, `docs/`, the lead sections of this `CLAUDE.md` (Julio allowed it on 2026-10-05), fix-round prompts and memory.
 
 The full loop is `docs/LEAD_LOOP.md`; commands, devices and pitfalls are in `docs/LEAD_HANDOFF.md`. Read both before planning new work. The rest of this file is enough to keep the loop running.
 
