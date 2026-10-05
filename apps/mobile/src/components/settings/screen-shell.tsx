@@ -12,7 +12,7 @@ import { ICON } from '@/lib/colors';
 type SettingsScreenShellProps = {
   title: string;
   subtitle?: string | undefined;
-  onBack: () => void;
+  onBack?: (() => void) | undefined;
   /** A header action, e.g. the profile screen's save state. */
   right?: ReactNode;
   children: ReactNode;
@@ -30,9 +30,11 @@ export function SettingsScreenShell({
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top']}>
       <View className="flex-row items-center gap-1 px-2 py-2">
-        <IconButton label="Back" onPress={onBack}>
-          <ChevronLeft size={24} color={ICON[scheme]} />
-        </IconButton>
+        {onBack === undefined ? null : (
+          <IconButton label="Back" onPress={onBack}>
+            <ChevronLeft size={24} color={ICON[scheme]} />
+          </IconButton>
+        )}
         <View className="min-w-0 flex-1">
           <Text numberOfLines={1} className="text-[20px] font-semibold leading-6 text-foreground">
             {title}

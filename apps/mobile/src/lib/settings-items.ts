@@ -29,13 +29,6 @@ export const SETTINGS_ITEMS = [
     href: '/settings/profile',
   },
   {
-    id: 'ais',
-    title: 'My AIs',
-    subtitle: 'Your AIs, their model and their spending limits.',
-    icon: 'ai',
-    href: '/ais',
-  },
-  {
     id: 'requests',
     title: 'Contact requests',
     subtitle: 'People who asked to connect, and your own requests.',

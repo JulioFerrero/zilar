@@ -124,7 +124,9 @@ export function NewChatButton() {
         style={[
           primaryKey,
           pressStyle(pressed, KEY_PRIMARY_PRESSED_SHADOW, reduceMotion),
-          { bottom: Math.max(insets.bottom, 20) + 14 },
+          // The floating tab bar (64 px + 12 px bottom gap) sits under the
+          // chats list, so the FAB floats above it (T-0233).
+          { bottom: Math.max(insets.bottom, 12) + 12 + 64 + 14 },
         ]}
       >
         <Plus size={24} color={ACCENT_FOREGROUND} />

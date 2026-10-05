@@ -1,7 +1,7 @@
 ---
 id: T-0233
 title: "Mobile: floating bottom bar (Chats, AIs, Settings, Profile), search bar on Chats, Profile tab"
-status: planned
+status: merged
 milestone: M5
 branch: task/T-0233-mobile-bottom-bar
 model: opencode/muse-spark-1.3-contributor-free
@@ -88,4 +88,156 @@ Folder chips and folder editing (wait for T-0232), the Settings redesign (groupe
 
 ## Report (written by the worker when done)
 
+Done. Floating bottom bar with four tabs (Chats, AIs, Settings, Profile),
+search well on Chats, Profile tab. `pnpm gate`: GATE PASS, scope clean.
+
+What I did (all inside Allowed files):
+- Route group: `git mv` index/ais/settings screens into `src/app/(tabs)/`
+  (`index.tsx`, `ais.tsx`, `settings.tsx`); new `(tabs)/_layout.tsx` and
+  `(tabs)/profile.tsx`. URLs unchanged (`/`, `/ais`, `/settings`); sub-screens
+  stay outside the group and open above the bar on the root stack.
+- `(tabs)/_layout.tsx`: `expo-router/ui` `Tabs` + `TabSlot`; a hidden `TabList`
+  declares the four `TabTrigger`s (registry only — the runtime only parses
+  triggers that are element-children of `TabList`, verified in
+  `build/ui/Tabs.js` `parseTriggersFromChildren`); the visible
+  `FloatingTabBar` renders below it inside `NavigationContent` and reuses the
+  trigger map via `useTabTrigger`, wrapped in a full-size
+  `pointerEvents="box-none"` overlay so it floats above the active tab.
+- `components/nav/floating-tab-bar.tsx`: absolute bar, 12 px side margins,
+  `insets.bottom + 12`, height 64, radius 22, `#1b1b1b→#0e0e0e` gradient with
+  1 px `#050505` edge, top inner highlight, drop shadow; four equal tabs
+  (lucide `MessagesSquare`/`Bot`/`Settings`, avatar picture or initials for
+  Profile), active tab `segment` face, others muted; unread badge (All-folder
+  total incl. muted exclusion via `unreadCount(chats,'all')`, primary-key
+  style, hidden at 0, `99+` cap); `accessibilityRole="tab"` +
+  `selected` state; hides on keyboard via `Keyboard` listeners. Active/idle
+  faces keyed so no live gradient swap (gradient-swap rule).
+- Chats tab: header is title only; full-width search well (h-40→40 px,
+  radius 12, placeholder `Search chats and @usernames`, truncates with
+  `numberOfLines`/`ellipsizeMode`); tap opens existing search mode unchanged;
+  list `paddingBottom` 180; FAB offset `insets.bottom + 12 + 64 + 14`.
+- AIs/Settings tabs: `onBack` optional in both shells, back key rendered only
+  when given; tab files pass none; `ais` row removed from `settings-items.ts`
+  (deleted 7 lines only, no reorder) and `ai` icon dropped from `HUB_ICONS`.
+- Profile tab: centered avatar 104 (picture via `avatarImageSource` against
+  API origin, else initials), name 22 semibold, green dot + `online`; three
+  keys Set photo / Edit info / Settings; info card with `@handle` + copy key
+  (`expo-clipboard` lazy import, the `new-chat-button` pattern), `Claim a
+  username` row when handle null, email row; loading/error sentences match
+  `settings/profile.tsx`; body split into hook-free `ProfileViewContent`
+  (+ stateful `ProfileView` wrapper) for tests.
+- Tests: `floating-tab-bar.test.tsx` (4 tabs, selected styling, badge
+  total/hide-at-0, initials), `profile-view.test.tsx` (initials/handle/email,
+  claim row, three handlers fire, copy key conditional), settings-items
+  updated (starts with Profile, no `/ais` row).
+
+Files changed (15): the 3 moved screens, `(tabs)/_layout.tsx`,
+`(tabs)/profile.tsx`, `floating-tab-bar.tsx` + test, `profile-view.tsx` +
+test, both screen shells, `new-chat-button.tsx`, `settings-items.ts` +
+test, this task file.
+
+Commands (real results):
+- `pnpm install`: ok (11.5s).
+- Single tests: `floating-tab-bar profile-view settings-items routes-dir`:
+  4 files, 12 passed.
+- Mobile `tsc --noEmit` on touched files: clean (fixed one literal-union
+  comparison in the settings-items test).
+- `pnpm gate` (final): PASS install, format, lint, typecheck,
+  tests @zilar/mobile; "scope: every changed file is inside the Allowed
+  files"; GATE PASS.
+- Gate round-trips: first fail = prettier on 3 files (fixed with
+  `prettier --write` on touched files only); second fail = unused
+  `Pressable` import in floating-tab-bar (removed).
+
+Deviations: none from spec. Notes: (1) `TabTrigger` needs element presence
+under `TabList` so the bar could not itself BE the `TabList` children — hence
+hidden registry + separate floating bar. (2) Profile "Set photo" reuses the
+picker/transcode/upload pipeline from `settings/profile.tsx` inline (same
+`avatar-native` seams) rather than mounting `AvatarControl`, whose UI is a
+settings card. (3) Not tested on emulator — lead verifies visually.
+
+Security checklist: no secrets/tokens in logs or UI (bearer only same-origin
+via `avatarImageSource`); no DB/auth/server changes; no new dependency;
+icons only (lucide), no emoji; fixed error sentences.
+
+### Round 2 (fix round, PREREVIEW commit 2190e1c)
+
+Fixed both behaviour findings; nits 3–7 left untouched (none on a changed
+line). Disagreements: none.
+
+- Finding 1 (must-fix, tab-bar avatar): `TabIcon` fed raw
+  `profile.avatarUrl` into `Image`, which never resolves the relative
+  `/api/avatars/<id>` path. New hook-free `TabProfileFace` resolves via
+  `avatarImageSource(url, API_URL, profile.token)` (same pattern as
+  `profile-view.tsx`) with an `onError` fallback to initials; the
+  `(tabs)/_layout.tsx` focus reload now also fetches the session token and
+  plumbs it through the new `TabProfile.token`. Tests added to
+  `floating-tab-bar.test.tsx`: relative url resolves against the API origin
+  (mocked resolver) and shows no initials; `imageFailed` renders initials
+  and no avatar url.
+- Finding 2 (should-fix, Set photo): replaced the immediate-upload inline
+  pipeline with the staged `settings/profile.tsx` pattern — Set photo picks
+  and stages only; new `PhotoEditRow` in `profile-view.tsx` shows the
+  `file://` preview with explicit Save / Discard, plus a Remove key when a
+  current picture exists; nothing uploads until Save. The double-tap guard
+  is now a ref (`photoRef`, same as settings) across pick/save/remove.
+  Tests added to `profile-view.test.tsx`: staged preview with Save/Discard
+  invocation counts, Remove key present only when `canRemove`.
+- Finding 5 (nit, key on TabTrigger): left as is — the key is load-bearing
+  for the gradient-swap rule (`segment` face style toggles on the same
+  `View` child of the trigger), not waste.
+
+Commands (real results):
+- Single tests: `floating-tab-bar profile-view settings-items routes-dir`:
+  4 files, 16 passed.
+- `pnpm gate` (final): PASS install, format, lint, typecheck,
+  tests @zilar/mobile; "scope: every changed file is inside the Allowed
+  files"; GATE PASS. Gate round-trips: first fail = prettier on 2 touched
+  files (fixed, folded into the finding commits); second fail = typecheck
+  (`ProfileView` wrapper missed the new `photoEdit` prop; fixed, single
+  tests re-run: 2 files, 12 passed).
+
+### Round 3 (fix round, PREREVIEW at worktree root)
+
+Fixed the must-fix and the should-fix; nits 3–4 left untouched (neither
+is on a changed line). Disagreements: none.
+
+- Finding 1 (must-fix, stale `imageFailed` flag): `ProfileView`
+  (`profile-view.tsx`) and `FloatingTabButton` (`floating-tab-bar.tsx`)
+  stored a boolean that stuck on initials after a 404 even when Set photo
+  saved a new `avatarUrl`. Both now store the failed url and derive the
+  fallback as `failedUrl === avatarUrl`, so a fresh url renders the
+  picture again. Tests: new `avatarFailedFor` cases in
+  `floating-tab-bar.test.tsx` (stale url falls back, changed url clears)
+  and a `ProfileView` wrapper case in `profile-view.test.tsx` (new url
+  renders `<Image>`, failed url renders initials).
+- Finding 2 (should-fix, unscrollable Profile tab): `(tabs)/profile.tsx`
+  body is now a `ScrollView` (header stays fixed, `px-4` moved inside,
+  existing bottom padding keeps content clear of the bar); no new test
+  file allowed under `src/app` (`routes-dir.test.ts`), behaviour covered
+  by the existing checks.
+- Nits 3 (settings subtitle) and 4 (FAB offset): left as is — neither
+  line was touched by these fixes.
+
+Commands (real results):
+- Single tests: `floating-tab-bar profile-view settings-items routes-dir`:
+  4 files, 18 passed.
+- `pnpm gate` (final): PASS install, format, lint, typecheck,
+  tests @zilar/mobile; "scope: every changed file is inside the Allowed
+  files"; GATE PASS.
+
+status: review (unchanged).
+
 ## Review (written by Claude)
+
+**Verdict:** Approved after 2 auto rounds. Earlier rounds fixed:
+- the tab-bar avatar source;
+- the staged photo save;
+- the image-failed flag never resetting when the photo changed;
+- the Profile tab not scrolling.
+
+The lead rejected a probe command that would have copied test files into `src/probe` and `/tmp`. The final packet is clean with 2 nits:
+- `savePhoto`/`removePhoto` spread a possibly stale `profile`;
+- the clipboard promise has no catch.
+
+Emulator look is sent to the QA subagent (QA run 5). Next: T-0234 (create sheets above the keyboard), the Settings hub redesign, and the Blocked people row in the hub once T-0244 merges.

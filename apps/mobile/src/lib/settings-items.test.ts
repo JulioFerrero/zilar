@@ -3,9 +3,10 @@ import { describe, expect, it } from 'vitest';
 import { SETTINGS_ITEMS } from './settings-items';
 
 describe('SETTINGS_ITEMS', () => {
-  it('starts with Profile and My AIs', () => {
+  it('starts with Profile and has no My AIs row', () => {
     expect(SETTINGS_ITEMS[0]).toMatchObject({ title: 'Profile', href: '/settings/profile' });
-    expect(SETTINGS_ITEMS[1]).toMatchObject({ title: 'My AIs', href: '/ais' });
+    expect(SETTINGS_ITEMS.some((item) => item.id === 'profile')).toBe(true);
+    expect(SETTINGS_ITEMS.map((item) => item.id as string)).not.toContain('ais');
   });
 
   it('gives every row a title, a subtitle, an icon id and a route', () => {

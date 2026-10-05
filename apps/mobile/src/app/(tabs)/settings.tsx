@@ -1,6 +1,5 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import {
-  Bot,
   ChevronRight,
   KeyRound,
   Plug,
@@ -40,7 +39,6 @@ export default function SettingsScreen() {
 // error. Append one line per new row.
 const HUB_ICONS: Record<SettingsIconId, LucideIcon> = {
   profile: UserRound,
-  ai: Bot,
   requests: UserPlus,
   approvals: ShieldCheck,
   machines: Server,
@@ -133,11 +131,7 @@ function SettingsHub() {
   );
 
   return (
-    <SettingsScreenShell
-      title="Settings"
-      subtitle="Your profile and your AIs."
-      onBack={() => router.back()}
-    >
+    <SettingsScreenShell title="Settings" subtitle="Your profile and your AIs.">
       <View className="gap-3">
         {loading ? (
           <View className="items-center py-4">
