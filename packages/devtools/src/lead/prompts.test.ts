@@ -10,18 +10,19 @@ import {
   type PromptName,
 } from './prompts';
 
-const NAMES: PromptName[] = [
+const NAMES = [
   'worker',
   'switch',
   'resume',
   'nudge',
   'prereview',
+  'prereview-resume',
   'scout',
   'qa',
   'autofix',
   'doctor',
   'fresh',
-];
+] as PromptName[];
 
 describe('prompt templates', () => {
   it('ships every template the CLI needs', () => {

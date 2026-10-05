@@ -523,6 +523,7 @@ function fakeClient(): OpenCodeClient {
       return [];
     },
     async replyPermission() {},
+    async switchModel() {},
   };
 }
 

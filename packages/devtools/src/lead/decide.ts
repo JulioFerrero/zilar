@@ -1,4 +1,5 @@
 import { classifyPermission, type PermissionRequest } from './policy.js';
+import { fallbackModel, FREE_MUSE } from './fallback.js';
 import type { SessionState } from './session.js';
 import type { PrereviewRecord, TaskRecord } from './types.js';
 
@@ -38,6 +39,7 @@ export interface DecideInput {
   // From the `Counts:` line of PREREVIEW.md; undefined when the reviewer skipped it.
   prereviewCounts: FindingCounts | undefined;
   prereviewSessionState: SessionState | 'none';
+  prereviewQuotaError: boolean;
 }
 
 export type Action =
@@ -49,6 +51,7 @@ export type Action =
       message?: string | undefined;
     }
   | { kind: 'send-prompt'; template: 'resume' | 'nudge' | 'autofix' }
+  | { kind: 'fallback-model'; session: 'worker' | 'prereview'; model: string }
   | { kind: 'start-prereview'; head: string }
   | { kind: 'escalate'; line: string }
   | { kind: 'record'; patch: RecordPatch };
@@ -173,6 +176,19 @@ export function decide(input: DecideInput): Action[] {
       input.head !== undefined &&
       input.record.prereview !== undefined &&
       input.record.prereview.head === input.head &&
+      input.prereviewQuotaError
+    ) {
+      const fallback = fallbackModel(input.record.prereview.model ?? FREE_MUSE);
+      if (fallback !== undefined) {
+        actions.push({ kind: 'fallback-model', session: 'prereview', model: fallback });
+        escalate(`LEAD: FALLBACK ${input.task} pre-review continues on paid Muse`);
+        return actions;
+      }
+    }
+    if (
+      input.head !== undefined &&
+      input.record.prereview !== undefined &&
+      input.record.prereview.head === input.head &&
       input.prereviewSessionState === 'idle'
     ) {
       if (input.prereviewFilePresent) {
@@ -210,6 +226,14 @@ export function decide(input: DecideInput): Action[] {
 
   // 5. Quota errors: back off the retry, and escalate at most hourly.
   if (input.quotaError) {
+    const fallback = fallbackModel(input.record.model);
+    if (fallback !== undefined) {
+      actions.push({ kind: 'fallback-model', session: 'worker', model: fallback });
+      escalate(
+        `LEAD: FALLBACK ${input.task} free Muse rate-limited, worker continues on paid Muse`,
+      );
+      return actions;
+    }
     const lastRetry = input.record.lastQuotaRetryAt;
     if (lastRetry === undefined || input.now - lastRetry >= QUOTA_RETRY_MS) {
       actions.push({ kind: 'send-prompt', template: 'resume' });

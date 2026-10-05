@@ -1,7 +1,7 @@
 ---
 id: T-0216
 title: "Lead tooling: on a free-Muse rate limit the autopilot switches the same session to the paid Muse and continues"
-status: planned
+status: merged
 milestone: M5
 branch: task/T-0216-quota-fallback-in-place
 model: meta/muse-spark-1.3-contributor
@@ -61,7 +61,7 @@ then a normal `session.prompt` on the same session.
 `AGENTS.md`, `packages/devtools/src/lead/decide.ts`, `packages/devtools/src/lead/autopilot.ts` (lines 100-300), `packages/devtools/src/lead/client.ts` (lines 40-80, 130-200, 300-360), `packages/devtools/src/lead/types.ts` (lines 29-80), `packages/devtools/src/lead/session.ts` (lines 1-150), `packages/devtools/prompts/resume.md`.
 
 ### Allowed files
-`packages/devtools/src/lead/fallback.ts` (new), `packages/devtools/src/lead/fallback.test.ts` (new), `packages/devtools/src/lead/client.ts`, `packages/devtools/src/lead/client.test.ts`, `packages/devtools/src/lead/types.ts`, `packages/devtools/src/lead/decide.ts`, `packages/devtools/src/lead/decide.test.ts`, `packages/devtools/src/lead/autopilot.ts`, `packages/devtools/src/lead/autopilot.test.ts`, `packages/devtools/prompts/prereview-resume.md` (new), `packages/devtools/src/lead/prompts.test.ts`, `docs/LEAD_HANDOFF.md`, `work/T-0216-quota-fallback-in-place.md`.
+`packages/devtools/src/lead/fallback.ts` (new), `packages/devtools/src/lead/fallback.test.ts` (new), `packages/devtools/src/lead/client.ts`, `packages/devtools/src/lead/client.test.ts`, `packages/devtools/src/lead/types.ts`, `packages/devtools/src/lead/decide.ts`, `packages/devtools/src/lead/decide.test.ts`, `packages/devtools/src/lead/autopilot.ts`, `packages/devtools/src/lead/autopilot.test.ts`, `packages/devtools/prompts/prereview-resume.md` (new), `packages/devtools/src/lead/prompts.test.ts`, `docs/LEAD_HANDOFF.md`, `packages/devtools/src/lead/launch.test.ts` and `packages/devtools/src/lead/watch.test.ts` (lead, 2026-10-05: only a `switchModel` stub in their fake clients), `work/T-0216-quota-fallback-in-place.md`.
 
 ### Checks
 ```bash
@@ -81,4 +81,80 @@ The doctor (T-0215's env override covers it), switching back to free when the li
 
 ## Report (written by the worker when done)
 
+Implemented everything in the spec except the gate is red on typecheck for a
+reason outside my Allowed files (see Blocked below).
+
+What I did:
+- New `packages/devtools/src/lead/fallback.ts`: `FREE_MUSE`, `PAID_MUSE`,
+  `fallbackModel` (paid iff free).
+- `client.ts`: `switchModel` on the interface, real client
+  (`api session.switchModel --param sessionID=... -d {"model":{...}}`),
+  fake records into `switched` and throws for unknown sessions.
+- `types.ts`: `PrereviewRecord.model?` optional in interface and zod schema.
+- `decide.ts`: `fallback-model` action, `prereviewQuotaError` input; worker
+  quota branch falls back with `LEAD: FALLBACK <task> free Muse rate-limited,
+  worker continues on paid Muse`; pre-review block falls back before the stall
+  check with `LEAD: FALLBACK <task> pre-review continues on paid Muse`.
+- `autopilot.ts`: captures `prereviewQuotaError` from the pre-review
+  `summarizeSession`; runs `fallback-model` (worker: effort variant from
+  `readTaskFrontMatter`, resume prompt, `current.model` updated; pre-review:
+  no variant, `prereview-resume` prompt, `current.prereview.model` updated);
+  switch errors are logged and skipped without crashing; dry run prints
+  `DRY: would switch <session> of <task> to <model>`.
+- New prompt `packages/devtools/prompts/prereview-resume.md` with the exact
+  spec sentence (uses `{{TASK}}`). Note: `prompts.test.ts` NAMES addition uses
+  `as PromptName[]` cast because extending the `PromptName` union in
+  `prompts.ts` is outside my Allowed files (see Blocked).
+- `docs/LEAD_HANDOFF.md`: one line under the models notes (spec wording).
+- Tests: new `fallback.test.ts`; `decide.test.ts` (free->fallback+FALLBACK,
+  paid keeps resume+QUOTA, pre-review free->fallback, pre-review paid no
+  fallback; the pre-existing quota backoff tests now pin the paid model
+  explicitly since the default fixture model is not the free listing);
+  `autopilot.test.ts` (free worker with quota error: one `switched` entry with
+  paid model + `low` variant, one resume prompt on same session, record model
+  saved as paid, no second switch); `client.test.ts` (real client arg capture,
+  fake record + unknown-session throw).
+
+Commands and real results:
+- `pnpm install`: ok (10.5s).
+- Targeted tests `src/lead/fallback.test.ts src/lead/decide.test.ts
+  src/lead/autopilot.test.ts src/lead/client.test.ts`: 4 files, 77 tests,
+  all passed.
+- `src/lead/prompts.test.ts`: 11 passed.
+- `pnpm gate`: GATE PASS (install, format, lint, typecheck, @zilar/devtools
+  tests all PASS; 15 changed files, all inside the Allowed files).
+
+The lead approved adding `switchModel` stubs in `launch.test.ts` and
+`watch.test.ts`; the gate passes.
+
+Security checklist: no secrets/tokens in logs or code; no deletes/updates;
+no caps changed; nothing runs before permission checks; no new routes; audit
+log lines carry task id and model only, no message text.
+
+### Round 2 (fix round, 2026-10-05)
+Findings fixed:
+- Finding 1 (must-fix): pre-review fallback in `decide.ts` now triggers on
+  `prereviewQuotaError` regardless of the idle gate (new quota-error block
+  before the idle-gated block). Test added: `decide.test.ts` "falls back a
+  quota-hit pre-review whose session summarizes as running"
+  (`prereviewSessionState: 'running'` + `prereviewQuotaError: true` gives
+  `fallback-model` for `prereview` + the FALLBACK line).
+- Finding 2 (should-fix): failed `switchModel` in `autopilot.ts` now returns
+  the current record (stops remaining actions for the task) instead of
+  `continue`, so the `LEAD: FALLBACK` escalation is not emitted when the
+  switch did not happen. Test added: `autopilot.test.ts` "logs a failed
+  switch without the FALLBACK escalation or a prompt" (throwing
+  `switchModel`: no escalations, no prompts, no `LEAD: FALLBACK` log line,
+  record model unchanged).
+- Nits 3 (stale Report line above) and 4 (transient extra resume prompt)
+  left as-is per the fix-round instructions (nits only when in a line
+  already changed); finding 4's suggestion would be a behavior change.
+- Disagreements: none.
+Single tests run: `src/lead/decide.test.ts` (35 passed),
+`src/lead/autopilot.test.ts` (22 passed), both with `--reporter=dot`.
+Gate: GATE PASS (install, format, lint, typecheck, @zilar/devtools tests
+all PASS; 15 changed files, all inside the Allowed files).
+
 ## Review (written by Claude)
+
+**Verdict:** Approved after one auto fix round (pre-review fallback no longer waits for idle; a failed switch returns before the prompt and the FALLBACK line). Read the core diff: `fallbackModel` maps only the free Muse to the paid one; `decide` emits `fallback-model` + one `LEAD: FALLBACK` line for a worker quota error or a pre-review quota error on the current head; `applyActions` calls `session.switchModel` (worker with the task's effort as variant, pre-review without), re-prompts the same session (`resume` / new `prereview-resume.md`) and saves the new model in state; other models keep the old retry. Lead allowed `switchModel` stubs in `launch.test.ts` and `watch.test.ts`. Follow-ups: add `'prereview-resume'` to `PromptName` in `prompts.ts` and drop the cast; merge the two `task-file.js` imports in `autopilot.ts`.

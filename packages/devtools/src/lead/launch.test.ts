@@ -19,6 +19,7 @@ type OpenCodeClientLike = Pick<
   | 'listMessages'
   | 'listPermissions'
   | 'replyPermission'
+  | 'switchModel'
 >;
 
 const TASK_MD = (model: string, effort?: string): string =>
@@ -228,6 +229,7 @@ describe('startWorkerSession', () => {
       listMessages: () => Promise.resolve([]),
       listPermissions: () => Promise.resolve([]),
       replyPermission: () => Promise.resolve(),
+      switchModel: () => Promise.resolve(),
     };
     await expect(
       startWorkerSession({

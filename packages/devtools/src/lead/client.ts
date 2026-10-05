@@ -57,6 +57,7 @@ export interface OpenCodeClient {
   >;
   listMessages(sessionId: string, limit: number): Promise<unknown[]>;
   listPermissions(sessionId: string): Promise<unknown[]>;
+  switchModel(sessionId: string, model: SessionModel): Promise<void>;
   replyPermission(
     sessionId: string,
     requestId: string,
@@ -273,6 +274,10 @@ export class OpencodeCliClient implements OpenCodeClient {
     return Array.isArray(data) ? data : [];
   }
 
+  async switchModel(sessionId: string, model: SessionModel): Promise<void> {
+    this.call('session.switchModel', { sessionID: sessionId }, { model }, false);
+  }
+
   async replyPermission(
     sessionId: string,
     requestId: string,
@@ -311,6 +316,7 @@ export class FakeOpenCodeClient implements OpenCodeClient {
     message: string | undefined;
   }[] = [];
   readonly prompted: { sessionId: string; text: string }[] = [];
+  readonly switched: { sessionId: string; model: SessionModel }[] = [];
   readonly interrupted: string[] = [];
   readonly interruptOutcomes: { sessionId: string; outcome: InterruptOutcome }[] = [];
   // Per-session interrupt script: tests push a result to override the
@@ -387,6 +393,11 @@ export class FakeOpenCodeClient implements OpenCodeClient {
 
   async listPermissions(sessionId: string): Promise<unknown[]> {
     return [...this.get(sessionId).permissions];
+  }
+
+  async switchModel(sessionId: string, model: SessionModel): Promise<void> {
+    this.get(sessionId);
+    this.switched.push({ sessionId, model });
   }
 
   async replyPermission(
