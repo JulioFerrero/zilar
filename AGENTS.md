@@ -65,8 +65,9 @@ The full design is in `docs/PROJECT_PLAN.md`. Read the sections your task links 
 
 ## Running tests (the machine is shared)
 
-- While you work, run only the tests for the files you touched: `pnpm --filter <package> test --maxWorkers=2 <path>` (or `related`/`--changed`). Never a bare `turbo test`, never `vitest run` without a filter and the worker cap, never `--force`.
-- Do not run full package suites: the lead runs them once per batch on main. At the end run format, lint, typecheck and the tests of the files you touched and of their neighbours (`--maxWorkers=2`). Say in the Report which tests you ran.
+- While you work, run only the tests for the files you touched, with the quiet reporter: `pnpm --filter <package> test --maxWorkers=2 --reporter=dot <path>`. Never a bare `turbo test`, never `vitest run` without a filter and the worker cap, never `--force`.
+- At the end run `pnpm gate` once from the repo root. It runs install, format, lint, typecheck and the tests of the packages you touched; do not run those one by one before it. Paste its summary lines in the Report and say which single tests you ran.
+- Keep your session small: every command output stays in your context for the rest of the task. Read only the files and line ranges you need, never print a whole log, and when a command fails look at the failing part only.
 - Wait for a run to finish before starting another.
 
 ## Security checklist (check each before you set status review)

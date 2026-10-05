@@ -39,8 +39,6 @@ The web components named above live at (checked by the lead): `apps/web/src/comp
 
 ### Checks
 ```bash
-pnpm install --frozen-lockfile
-pnpm format:check
 pnpm gate
 ```
 `docs/` is in `.prettierignore`, so prettier does not touch the audit file; do not run prettier on it.

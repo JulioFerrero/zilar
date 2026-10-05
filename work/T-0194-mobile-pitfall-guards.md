@@ -39,11 +39,7 @@ No change to any existing source file.
 
 ### Checks
 ```bash
-pnpm install --frozen-lockfile
-pnpm format:check
-pnpm lint
-pnpm typecheck
-pnpm --filter @zilar/mobile test --maxWorkers=2 native-pitfalls gradient-swap
+pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot native-pitfalls gradient-swap
 pnpm gate
 ```
 

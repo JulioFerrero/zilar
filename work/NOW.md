@@ -12,6 +12,7 @@ Last updated: 2026-10-05, after the history compaction and the T-0200 launch.
 
 ## Next, in order
 
+0. T-0202 fresh session for fix rounds (after T-0200; token saving A), then T-0203 (B) and T-0204 (C) in that order: they share `prompts.test.ts`
 1. T-0194 guard tests for the Android and Hermes pitfalls (MiniMax M3 trial), after T-0200 merges
 2. T-0195 audit of web vs mobile, feeds the specs of T-0189 and T-0190 (MiniMax M3 trial)
 3. T-0191 sticker editor and Telegram import
@@ -23,6 +24,8 @@ Last updated: 2026-10-05, after the history compaction and the T-0200 launch.
 - Release: everything merged since v0.1.13 reaches the live web only with the next release.
 
 ## Recent events
+
+- 2026-10-05: Julio approved the token-saving tasks: T-0202 (A), T-0203 (B), T-0204 (C) written. The lead updated `AGENTS.md` "Running tests" (quiet dot reporter, `pnpm gate` once, small sessions) and the spec rule in `CLAUDE.md` (Checks = single tests + `pnpm gate`); T-0194 and T-0195 Checks trimmed to match.
 
 - 2026-10-05: merged T-0201 (runner connect test polls for "live"; fixes the CI flake Julio pasted). Token audit of worker sessions shown to Julio: fix rounds in the same long session (up to 217k context per step) are the main waste; proposals A/B/C (fresh session for fix rounds, quiet gate output, pre-review reuses the gate result) wait for his answer.
 
