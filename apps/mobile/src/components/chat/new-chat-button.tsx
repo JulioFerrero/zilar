@@ -1,17 +1,21 @@
 import { useRouter } from 'expo-router';
 import { Plus } from 'lucide-react-native';
-import { useState } from 'react';
-import { Modal, Pressable, View } from 'react-native';
+import { useMemo, useState } from 'react';
+import { Modal, Pressable, Share, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { InviteSheet } from '@/components/chat/invite-sheet';
 import { JoinLinkForm } from '@/components/chat/join-link';
 import { NewChannelSheet } from '@/components/chat/new-channel-sheet';
+import { NewMessageSheet } from '@/components/chat/new-message-sheet';
+import { createInvitesApi } from '@/lib/invites-api';
+import { getSessionToken } from '@/lib/session-token';
 import { Text } from '@/components/ui/text';
 import { useKeyPress } from '@/components/ui/use-key-press';
 import { ACCENT_FOREGROUND, KEY_PRIMARY_PRESSED_SHADOW, pressStyle, primaryKey } from '@/lib/depth';
 import { useChatStore } from '@/store/chat-store-provider';
 
-type NewChatAction = 'channel' | 'group' | 'message' | 'join';
+type NewChatAction = 'channel' | 'group' | 'message' | 'invite' | 'join';
 
 /** The 56 px primary FAB with a "New channel" / "New group" / "New message" / "Join" menu. */
 export function NewChatButton() {
@@ -23,6 +27,29 @@ export function NewChatButton() {
   const createChannel = useChatStore((state) => state.createChannel);
   const [channelBusy, setChannelBusy] = useState(false);
   const [channelError, setChannelError] = useState('');
+  // The invite box always talks to the real session API (a personal invite
+  // link is meaningless offline): the mock-capable `useInvitesApi` hook stays
+  // available for mock-mode surfaces, but this menu must stay importable
+  // under the Node tests, whose `expo-router` mock has no
+  // `useGlobalSearchParams`.
+  const invitesApi = useMemo(() => createInvitesApi(getSessionToken), []);
+
+  // The clipboard/share bridge for the invite box: `expo-clipboard` cannot be
+  // imported statically here (like `expo-secure-store` in `session-token.ts`,
+  // the native module does not load under Vitest/Node), so it is imported
+  // lazily and React Native's `Share` is only touched on press. The sheet
+  // takes callbacks and this menu wires the real modules at the edge (the
+  // `group/[id].tsx` pattern).
+  const inviteShare = useMemo(
+    () => ({
+      copyText: (text: string) =>
+        import('expo-clipboard').then((Clipboard) => Clipboard.setStringAsync(text)).then(() => {}),
+      shareText: async (text: string): Promise<void> => {
+        await Share.share({ message: text });
+      },
+    }),
+    [],
+  );
 
   const openDialog = (next: NewChatAction) => {
     setMenuOpen(false);
@@ -155,6 +182,18 @@ export function NewChatButton() {
                   setAction(undefined);
                 }
               }}
+            />
+          ) : action === 'message' ? (
+            <NewMessageSheet
+              onInvite={() => setAction('invite')}
+              onClose={() => setAction(undefined)}
+            />
+          ) : action === 'invite' ? (
+            <InviteSheet
+              api={invitesApi}
+              copyText={inviteShare.copyText}
+              shareText={inviteShare.shareText}
+              onClose={() => setAction(undefined)}
             />
           ) : (
             <Pressable
