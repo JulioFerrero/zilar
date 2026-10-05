@@ -1,7 +1,7 @@
 ---
 id: T-0251
 title: "Mobile: Settings and My AIs tab lists scroll clear of the floating tab bar; shorter Blocked people subtitle"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0251-mobile-tab-shell-bottom-space
 model: auto
@@ -53,4 +53,50 @@ The Chats list (it has its own padding at `(tabs)/index.tsx` line 368), and any 
 
 ## Report (written by the worker when done)
 
+Done and ready for review.
+
+### What changed
+- `floating-tab-bar.tsx`: added exported `tabScreenBottomPadding(hasBack, insetBottom)`. It returns `32` when a back key is shown and `TAB_BAR_HEIGHT + TAB_BAR_BOTTOM_GAP + insetBottom + 16` otherwise, using the exported constants.
+- `settings/screen-shell.tsx` and `ais/screen-shell.tsx`: the scroll body's `contentContainerStyle.paddingBottom` now calls the helper with `onBack !== undefined` and `insets.bottom`. The settings shell imports `useSafeAreaInsets`; the ais shell already had it.
+- `app/settings/blocked.tsx`: subtitle shortened to "They are not told." so it fits on one line.
+- `floating-tab-bar.test.tsx`: helper test with and without a back key (including a non-zero inset).
+- `screen-shell.test.tsx`: renders both shells and asserts a shell with no `onBack` gets the tab-bar padding, and with `onBack` stays at 32.
+
+### Files changed (all inside Allowed files)
+- `apps/mobile/src/components/nav/floating-tab-bar.tsx`
+- `apps/mobile/src/components/nav/floating-tab-bar.test.tsx`
+- `apps/mobile/src/components/settings/screen-shell.tsx`
+- `apps/mobile/src/components/settings/screen-shell.test.tsx`
+- `apps/mobile/src/components/ais/screen-shell.tsx`
+- `apps/mobile/src/app/settings/blocked.tsx`
+- `work/T-0251-mobile-tab-shell-bottom-space.md`
+
+### Commands and real results
+- `pnpm install` — ok. It rewrote `pnpm-lock.yaml` (added `bufferutil`/`utf-8-validate` snapshot metadata); restored with `git checkout -- pnpm-lock.yaml`, so the final diff has no lockfile change.
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot screen-shell floating-tab-bar` — Test Files 2 passed (2); Tests 13 passed (13).
+- `pnpm gate` — summary lines:
+  - `PASS  install (frozen)`
+  - `PASS  format`
+  - `PASS  lint`
+  - `PASS  typecheck`
+  - `PASS  tests @zilar/mobile`
+  - `scope: every changed file is inside the Allowed files`
+  - `GATE PASS`
+
+### Deviations / notes
+- `screen-shell.test.tsx` now stubs `expo-router/ui`, `@zilar/chat-core`, `@/lib/auth` and `@/components/settings/profile-logic`, because the shells now import `floating-tab-bar` and that module pulls those in. Without the stubs the suite failed to transform (`SyntaxError: Unexpected token 'typeof'`). Stubs follow the `floating-tab-bar.test.tsx` pattern.
+- The mocked `ScrollView` serializes `contentContainerStyle.paddingBottom` to a `data-padding-bottom` attribute so the test can assert the numeric padding; `renderToStaticMarkup` otherwise prints the style object as `[object Object]`.
+- Prettier reformatted the two test files once (`pnpm exec prettier --write`), then the gate passed.
+
+### Open questions
+None.
+
 ## Review (written by Claude)
+
+**Verdict:** Approved; the first pre-review was clean (1 test nit).
+- `tabScreenBottomPadding` matches the `profile.tsx` precedent (64 + 12 + inset + 16), and both shells use it.
+- Sub-pages keep 32.
+- The subtitle is shortened.
+- Accepted nit: the absolute number is pinned in the helper test.
+
+An emulator look at the Settings list end goes into the next QA run.

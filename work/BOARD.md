@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-0251](T-0251-mobile-tab-shell-bottom-space.md) | Mobile: tab lists scroll clear of the floating bar | review | auto | T-0247 | QA run 6 follow-up |
 | [T-0252](T-0252-mobile-hide-blocked.md) | Mobile: hide blocked people in groups and previews | in_progress | auto | T-0239, T-0244, T-0249 | helpers move to chat-core |
 | [T-0253](T-0253-web-kit-switches.md) | Web kit migration 1: toggles on the kit Switch | in_progress | auto | T-0243, T-0246 | audit step 4 |
 
@@ -282,3 +281,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0248](T-0248-mobile-folders-chips.md) | Mobile: chat folders from the server as scrollable chips on the shared matcher | 2026-10-05 |
 | [T-0249](T-0249-web-blocked-previews.md) | Web: blocked senders never show as chat list previews; shared isBlockedSender | 2026-10-05 |
 | [T-0234](T-0234-mobile-create-sheets-keyboard.md) | Mobile: create sheets move above the keyboard; mock store creates groups and channels | 2026-10-05 |
+| [T-0251](T-0251-mobile-tab-shell-bottom-space.md) | Mobile: Settings and My AIs tab lists scroll clear of the floating bar | 2026-10-05 |
