@@ -1,7 +1,7 @@
 ---
 id: T-0230
 title: "Mobile: tool sheet keyboard (Run tapped on the first tap, input not covered) and the Tools list refreshes after the sheet closes"
-status: planned
+status: merged
 milestone: M5
 branch: task/T-0230-mobile-tool-sheet-keyboard
 model: opencode/muse-spark-1.3-contributor-free
@@ -53,4 +53,78 @@ The stale JSON error (accepted nit), any other layout.
 
 ## Report (written by the worker when done)
 
+Done. All three spec points are implemented; no text changes; no new dependency.
+
+What changed:
+- `apps/mobile/src/components/ais/tool-detail-sheet.tsx`
+  - Vertical `ScrollView` now uses `keyboardShouldPersistTaps={SHEET_SCROLL_TAPS_PERSIST}` where `SHEET_SCROLL_TAPS_PERSIST = 'handled'` (exported const, point 1). Exported as a const (rather than asserting on the JSX tree) because `ToolDetailLoader` is not exported and the sheet's own `ScrollView` only exists inside its render — confirmed by dumping the rendered element tree (only `Modal > KeyboardAvoidingView > View > ToolDetailLoader` is visible without mounting effects).
+  - Modal content `View` wrapped in `KeyboardAvoidingView` with `behavior={Platform.OS === 'ios' ? 'padding' : 'height'}` and `className="flex-1"` (point 2).
+- `apps/mobile/src/components/ais/tools-section.tsx`
+  - Sheet `onClose` now goes through new exported pure helper `closeDetailSheet(setOpenId, bump)`, which sets `openId` to null and bumps `reloadTick` so the list reloads after a run or revert (point 3). `onDeleted` kept as is.
+- Tests: `tool-detail-sheet.test.tsx` asserts `SHEET_SCROLL_TAPS_PERSIST === 'handled'`; `tools-section.test.tsx` has a new `closeDetailSheet` case asserting the sheet closes and the list loader (`listAiTools`) is called again on a counting fake api.
+
+Checks (real results):
+- `pnpm install`: done, 25s.
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot src/components/ais/tool-detail-sheet.test.tsx src/components/ais/tools-section.test.tsx`: 2 files passed, 37 tests passed.
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot tool-detail-sheet tools-section` (spec Checks line): 2 files passed, 37 tests passed.
+- `pnpm --filter @zilar/mobile typecheck`: pass (no output).
+- `pnpm gate` (from repo root):
+  - `gate: 5 changed file(s) against main`
+  - `PASS install (frozen)`, `PASS format`, `PASS lint`, `PASS typecheck`, `PASS tests @zilar/mobile`
+  - `scope: every changed file is inside the Allowed files`
+  - `GATE PASS`
+  - Note: first gate run failed on `format` (prettier wanted the long react-native import split); fixed with `pnpm exec prettier --write` on the four allowed files, then gate passed.
+
+Deviations: none from the three spec points. One structural choice: the persisted-taps value and the close-and-reload behavior are exposed as tiny exported pure const/helper so the tests can cover them without mounting effects (`renderToStaticMarkup` never runs `useEffect`, and the repo has no react-test-renderer/testing-library for stateful renders).
+
+Security checklist: no secrets/tokens touched; no deletes/updates scoping changes; no caps/uniqueness logic; no permission changes; no new routes; no audit entries. N/A beyond that.
+
+Blocked / needs a decision: nothing.
+
+## Round (fix round, 2026-10-05)
+
+Fixed both should-fix findings (must-fix=0, nit untouched — finding 3's
+horizontal ScrollView is out of scope per the spec, and it is not on a line
+this round changed):
+
+- Finding 1 (`tool-detail-sheet.test.tsx` asserted the exported const, not
+  the ScrollView prop): the `react-native` ScrollView mock now captures the
+  props passed to the vertical ScrollView, and the test renders the real
+  `ToolDetailSheet` via `renderToStaticMarkup` and asserts the captured
+  `keyboardShouldPersistTaps === 'handled'` plus the prop in the markup.
+  Verified regression-sensitive: dropping the prop from the JSX fails the
+  test (1 failed, 22 passed); restored, 23 passed.
+- Finding 2 (`tools-section.test.tsx` drove the `closeDetailSheet` helper
+  with a stub instead of the wired `onClose`): the sheet mock now captures
+  the actual `onClose` prop `ToolsSection` passes, and a new test asserts
+  the captured closure is the close-and-reload expression
+  (`closeDetailSheet(setOpenId, () => setReloadTick(...))`), plus the helper
+  itself nulls the id and bumps the tick (direct call, no unawaited loader).
+  Verified regression-sensitive: reverting `onClose` to
+  `() => setOpenId(null)` fails the new test; restored, 15 passed.
+
+Tests added/adjusted: 1 strengthened (`keeps Run taps...` now asserts the
+real ScrollView prop), 1 new (`wires the sheet onClose through
+closeDetailSheet so the list reloads`), 1 simplified (helper case now counts
+tick bumps directly).
+
+Checks (real results):
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot src/components/ais/tool-detail-sheet.test.tsx src/components/ais/tools-section.test.tsx`: 2 files passed, 38 tests passed.
+- `pnpm exec tsc --noEmit -p apps/mobile`: pass (no output).
+- `pnpm gate` (from repo root): 5 changed files against main; PASS install (frozen), PASS format, PASS lint, PASS typecheck, PASS tests @zilar/mobile; scope: every changed file is inside the Allowed files; GATE PASS.
+
+Disagreements: none — both findings were correct.
+
+Security checklist: test-only changes; no secrets, scoping, caps, permissions, routes, or audit entries touched.
+
+Cleanup (lead request, 2026-10-05): the worktree had 31 uncommitted changes
+under `packages/devtools/` and `work/T-0209-lead-watch-terminal.md` left
+over from my regression-sensitivity check (a stash pop restored the wrong
+side). Ran `git checkout -- packages/devtools
+work/T-0209-lead-watch-terminal.md`; `git status --short` output after that
+was empty (no lines printed). Nothing committed; task commits untouched;
+`status: review` kept.
+
 ## Review (written by Claude)
+
+**Verdict:** Approved after one auto round. Read the diff: `keyboardShouldPersistTaps="handled"` on the sheet ScrollView, `KeyboardAvoidingView` (`padding` on iOS, `height` on Android) around the Modal content, and the Tools list reloads when the sheet closes. The worker had left 31 stray old-version files from its regression check uncommitted in the worktree; the lead had it restore them (`git status` clean before merge). Emulator check comes with the next QA run.

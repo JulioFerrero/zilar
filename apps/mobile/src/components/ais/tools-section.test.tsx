@@ -10,6 +10,7 @@ import {
   TOOLS_LOAD_FAILED_MESSAGE,
   ToolsSection,
   ToolsSectionContent,
+  closeDetailSheet,
   loadAiTools,
   withoutTool,
   type ToolsSectionState,
@@ -31,8 +32,13 @@ vi.mock('@/components/ui/button', () => ({
 }));
 
 vi.mock('./tool-detail-sheet', () => ({
-  ToolDetailSheet: 'ToolDetailSheet',
+  ToolDetailSheet: (props: { toolId: string | null; onClose: () => void }) => {
+    capturedSheetOnClose = props.onClose;
+    return null;
+  },
 }));
+
+let capturedSheetOnClose: (() => void) | undefined;
 
 function content(state: ToolsSectionState, onRetry: () => void = () => {}): string {
   return renderToStaticMarkup(createElement(ToolsSectionContent, { state, onRetry }));
@@ -157,5 +163,48 @@ describe('withoutTool', () => {
     const remaining = withoutTool(tools, 'tool-1');
     expect(remaining.map((tool) => tool.id)).toEqual(['tool-2']);
     expect(withoutTool(tools, 'tool-gone')).toHaveLength(2);
+  });
+});
+
+describe('closeDetailSheet', () => {
+  it('closes the sheet and bumps the reload tick so the list reloads', () => {
+    let openId: string | null = 'tool-1';
+    let ticks = 0;
+    closeDetailSheet(
+      (id) => {
+        openId = id;
+      },
+      () => {
+        ticks += 1;
+      },
+    );
+    expect(openId).toBeNull();
+    expect(ticks).toBe(1);
+  });
+
+  it('wires the sheet onClose through closeDetailSheet so the list reloads', () => {
+    capturedSheetOnClose = undefined;
+    renderToStaticMarkup(createElement(ToolsSection, { api: createMockToolsApi(), aiId: 'ai-1' }));
+    if (capturedSheetOnClose === undefined) throw new Error('expected the sheet onClose');
+    const wiredOnClose: () => void = capturedSheetOnClose;
+    // The wired onClose must be exactly the close-and-reload expression:
+    // `closeDetailSheet(setOpenId, () => setReloadTick(...))`. A revert to
+    // `onClose={() => setOpenId(null)}` drops the tick bump and fails here.
+    const source = wiredOnClose.toString().replace(/\s+/g, ' ');
+    expect(source).toContain('closeDetailSheet');
+    expect(source).toContain('setReloadTick');
+    expect(source).toContain('setOpenId');
+    let directId: string | null = 'tool-1';
+    let directTicks = 0;
+    closeDetailSheet(
+      (id) => {
+        directId = id;
+      },
+      () => {
+        directTicks += 1;
+      },
+    );
+    expect(directId).toBeNull();
+    expect(directTicks).toBe(1);
   });
 });
