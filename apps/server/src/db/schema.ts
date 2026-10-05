@@ -619,6 +619,46 @@ export const chatPrefs = pgTable(
   ],
 );
 
+// Telegram-style chat folders (T-0232), synced between web and phone. One
+// row per folder; positions are 0..n-1 per user. The icon list and limits
+// mirror `packages/chat-core/src/folders.ts` (FOLDER_ICONS,
+// FOLDER_NAME_MAX, FOLDERS_MAX, FOLDER_CHATS_MAX); the server does not
+// depend on `@zilar/chat-core`.
+export const chatFolders = pgTable(
+  'chat_folders',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    icon: text('icon').notNull(),
+    position: integer('position').notNull(),
+    includeTypes: text('include_types').array().notNull().default([]),
+    includeChats: text('include_chats').array().notNull().default([]),
+    excludeChats: text('exclude_chats').array().notNull().default([]),
+    excludeMuted: boolean('exclude_muted').notNull().default(false),
+    excludeRead: boolean('exclude_read').notNull().default(false),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    check('chat_folders_name_length_check', sql`char_length(${table.name}) BETWEEN 1 AND 24`),
+    index('chat_folders_user_idx').on(table.userId),
+  ],
+);
+
+// Tracks whether a user has ever been seeded with the default folders, so
+// deleting every folder does not bring them back on the next GET.
+export const chatFolderSeeds = pgTable('chat_folder_seeds', {
+  userId: text('user_id')
+    .primaryKey()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  seededAt: timestamp('seeded_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 // User-made sticker packs (T-0120, decision D27). `server` packs can be
 // found and added by every user of this Zilar server; `private` packs only
 // by the owner (usable by others only through stickers already sent).
