@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ApiError, listBlockedUsers, unblockUser, type BlockedPerson } from '@/lib/api';
+import { refreshBlockedJids } from '@/lib/blockedJids';
 import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
 import { Avatar } from '@/components/Avatar';
 
@@ -36,8 +37,9 @@ export function BlockedPage({ onBack }: { onBack: () => void }) {
     try {
       await unblockUser(userId);
       setPeople((rows) => rows.filter((row) => row.userId !== userId));
+      await refreshBlockedJids();
     } catch (unblockError) {
-      setError(friendlyError(unblockError));
+      setError(friendlyUnblockError(unblockError));
     } finally {
       setBusyId(undefined);
     }
@@ -69,8 +71,10 @@ export function BlockedPage({ onBack }: { onBack: () => void }) {
                 />
                 <span className="min-w-0 flex-1 basis-40 text-[14px]">
                   <span className="block truncate text-[15px] font-medium">
-                    {person.name}{' '}
-                    <span className="font-normal text-muted-foreground">@{person.handle}</span>
+                    {person.name}
+                    {person.handle !== null && (
+                      <span className="font-normal text-muted-foreground"> @{person.handle}</span>
+                    )}
                   </span>
                 </span>
                 <button
@@ -103,4 +107,11 @@ function friendlyError(error: unknown): string {
     return 'Could not load blocked people. Try again.';
   }
   return 'Could not load blocked people. Try again.';
+}
+
+function friendlyUnblockError(error: unknown): string {
+  if (error instanceof ApiError && error.code === 'rate_limited') {
+    return 'Too many tries — wait a little and try again.';
+  }
+  return 'Could not unblock. Try again.';
 }

@@ -27,6 +27,14 @@ vi.mock('@/lib/api', async (importOriginal) => {
   };
 });
 
+vi.mock('@/lib/blockedJids', async (importOriginal) => {
+  const original = await importOriginal<typeof import('@/lib/blockedJids')>();
+  return {
+    ...original,
+    refreshBlockedJids: vi.fn(),
+  };
+});
+
 const blockMock = vi.mocked(blockUser);
 const sendMock = vi.mocked(sendContactRequest);
 const unblockMock = vi.mocked(unblockUser);
@@ -133,6 +141,26 @@ describe('ContactProfileRow block actions', () => {
   it('hides the Block action for self', () => {
     renderRow({ ...PROFILE, relation: 'self' }, vi.fn());
     expect(screen.queryByRole('button', { name: 'Block' })).toBeNull();
+  });
+
+  it('refreshes the blocked JIDs after block and unblock', async () => {
+    const { refreshBlockedJids } = await import('@/lib/blockedJids');
+    const refreshMock = vi.mocked(refreshBlockedJids);
+    blockMock.mockResolvedValue({ blocked: true });
+    const onRelationChange = vi.fn();
+    renderRow(PROFILE, onRelationChange);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Block' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm block' }));
+    await waitFor(() => expect(blockMock).toHaveBeenCalledWith('u-bob'));
+    await waitFor(() => expect(refreshMock).toHaveBeenCalledTimes(1));
+
+    unblockMock.mockResolvedValue({ blocked: false });
+    const changed = vi.fn();
+    renderRow({ ...PROFILE, relation: 'blocked' }, changed);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Unblock' })[0]!);
+    await waitFor(() => expect(unblockMock).toHaveBeenCalledWith('u-bob'));
+    await waitFor(() => expect(refreshMock).toHaveBeenCalledTimes(2));
   });
 
   it('shows the fixed sentence when the person blocked the request', async () => {

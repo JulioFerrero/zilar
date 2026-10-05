@@ -12,6 +12,7 @@ import { MessageListSkeleton } from './Skeleton';
 import { UnreadDivider } from './UnreadDivider';
 import { Button } from './ui/button';
 import { IconButton } from './ui/icon-button';
+import { useBlockedJids } from '@/lib/blockedJids';
 import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
 
 const NEAR_BOTTOM_PX = 80;
@@ -32,6 +33,21 @@ export function MessageList({
   const history = store.historyStateFor(chat.id);
   const draft = store.drafts[chat.id];
   const draftText = draft?.text.trim() ?? '';
+  const blockedJids = useBlockedJids();
+  const meId = store.currentUserId;
+  const hideBlocked = chat.kind === 'group' && chat.isAI !== true && blockedJids.size > 0;
+  const visibleMessages = hideBlocked
+    ? messages.filter(
+        (message) =>
+          message.senderId === meId ||
+          !blockedJids.has(
+            (message.senderId.includes('@')
+              ? message.senderId.slice(0, message.senderId.indexOf('@'))
+              : message.senderId
+            ).toLowerCase(),
+          ),
+      )
+    : messages;
   // The draft is rendered as the AI's next message, so grouping, styles and
   // size are identical to the final message that replaces it.
   const draftMessage: UiMessage | undefined =
@@ -48,13 +64,15 @@ export function MessageList({
           status: 'read',
         }
       : undefined;
-  const items = groupMessages(draftMessage === undefined ? messages : [...messages, draftMessage]);
+  const items = groupMessages(
+    draftMessage === undefined ? visibleMessages : [...visibleMessages, draftMessage],
+  );
   const [initialUnread] = useState(() => chat.unread);
   const dividerIndex = unreadDividerIndex(items, initialUnread);
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const dividerRef = useRef<HTMLDivElement>(null);
-  const previousCount = useRef(messages.length);
+  const previousCount = useRef(visibleMessages.length);
   const prependScrollHeight = useRef<number | undefined>(undefined);
   const [atBottom, setAtBottom] = useState(true);
   const atBottomRef = useRef(atBottom);
@@ -82,8 +100,8 @@ export function MessageList({
     if (element === null) {
       return;
     }
-    const added = messages.length - previousCount.current;
-    previousCount.current = messages.length;
+    const added = visibleMessages.length - previousCount.current;
+    previousCount.current = visibleMessages.length;
     const previousHeight = prependScrollHeight.current;
     if (previousHeight !== undefined) {
       prependScrollHeight.current = undefined;
@@ -95,7 +113,7 @@ export function MessageList({
     } else if (added > 0) {
       setPending((value) => value + added);
     }
-  }, [messages.length, atBottom]);
+  }, [visibleMessages.length, atBottom]);
 
   // A growing draft keeps the view pinned to the bottom only when the user is
   // already there; someone who scrolled up to read is never pulled down.

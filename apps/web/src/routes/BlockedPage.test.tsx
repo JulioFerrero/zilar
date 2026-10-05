@@ -16,8 +16,9 @@ const listMock = vi.mocked(listBlockedUsers);
 const unblockMock = vi.mocked(unblockUser);
 
 const PEOPLE = [
-  { userId: 'u-bob', name: 'Bob', handle: 'bob_b', image: null },
-  { userId: 'u-ana', name: 'Ana', handle: 'ana_a', image: null },
+  { userId: 'u-bob', name: 'Bob', handle: 'bob_b', image: null, jid: 'u-bob@zilar.test' },
+  { userId: 'u-ana', name: 'Ana', handle: 'ana_a', image: null, jid: null },
+  { userId: 'u-nohandle', name: 'No Handle', handle: null, image: null, jid: null },
 ];
 
 describe('BlockedPage', () => {
@@ -32,7 +33,16 @@ describe('BlockedPage', () => {
     expect(await screen.findByText('Bob')).toBeTruthy();
     expect(screen.getByText('@bob_b')).toBeTruthy();
     expect(screen.getByText('Ana')).toBeTruthy();
-    expect(screen.getAllByRole('button', { name: 'Unblock' })).toHaveLength(2);
+    expect(screen.getAllByRole('button', { name: 'Unblock' })).toHaveLength(3);
+  });
+
+  it('renders a person without a handle with no @', async () => {
+    listMock.mockResolvedValue(PEOPLE);
+    renderApp('/settings/blocked');
+
+    expect(await screen.findByText('No Handle')).toBeTruthy();
+    expect(screen.queryByText('@null')).toBeNull();
+    expect(screen.queryByText('@undefined')).toBeNull();
   });
 
   it('shows the empty state', async () => {
@@ -59,5 +69,15 @@ describe('BlockedPage', () => {
     renderApp('/settings/blocked');
 
     expect(await screen.findByText('Could not load blocked people. Try again.')).toBeTruthy();
+  });
+
+  it('shows the unblock failure sentence', async () => {
+    listMock.mockResolvedValue(PEOPLE);
+    unblockMock.mockRejectedValueOnce(new ApiError(500, 'request_failed', 'boom'));
+    renderApp('/settings/blocked');
+
+    await screen.findByText('Bob');
+    fireEvent.click(screen.getAllByRole('button', { name: 'Unblock' })[0]!);
+    expect(await screen.findByText('Could not unblock. Try again.')).toBeTruthy();
   });
 });

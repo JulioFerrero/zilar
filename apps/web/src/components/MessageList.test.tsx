@@ -1,11 +1,28 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { fireEvent } from '@testing-library/react';
 import type { ChatSummary, UiMessage } from '@zilar/chat-core';
 import { AuthProvider } from '@/auth/AuthProvider';
 import { MessageList } from './MessageList';
 import { ChatStoreProvider } from '@/store/ChatStoreProvider';
 import { createChatStore, type ChatStoreSeed } from '@/store/store';
+import { listBlockedUsers } from '@/lib/api';
+import { resetBlockedJidsForTests } from '@/lib/blockedJids';
+
+vi.mock('@/lib/api', async (importOriginal) => {
+  const original = await importOriginal<typeof import('@/lib/api')>();
+  return {
+    ...original,
+    listBlockedUsers: vi.fn(async () => []),
+  };
+});
+
+beforeEach(() => {
+  resetBlockedJidsForTests();
+  vi.mocked(listBlockedUsers).mockReset();
+  vi.mocked(listBlockedUsers).mockResolvedValue([]);
+  cleanup();
+});
 
 const chat: ChatSummary = {
   id: 'c-ana',
@@ -354,6 +371,128 @@ describe('MessageBubble grouping (T-0047)', () => {
   });
 });
 
+describe('MessageList blocked senders (T-0239)', () => {
+  const group: ChatSummary = {
+    id: 'g1',
+    title: 'Team',
+    kind: 'group',
+    isAI: false,
+    space: 'personal',
+    unread: 0,
+    muted: false,
+    memberCount: 3,
+  };
+
+  const channel: ChatSummary = { ...group, id: 'g2', chatKind: 'channel' };
+
+  function groupMessage(
+    id: string,
+    senderId: string,
+    senderName: string,
+    minute: number,
+  ): UiMessage {
+    return {
+      id,
+      chatId: 'g1',
+      senderId,
+      senderName,
+      text: `${senderName} ${minute}`,
+      createdAt: new Date(2026, 8, 28, 10, minute),
+      status: 'read',
+    };
+  }
+
+  function stubBlocked(jid: string): void {
+    vi.mocked(listBlockedUsers).mockResolvedValue([
+      { userId: 'u-bea', name: 'Bea', handle: 'bea', image: null, jid },
+    ]);
+  }
+
+  it('hides the blocked sender in a group and keeps the others', async () => {
+    stubBlocked('bea@zilar.test');
+    renderMessages(
+      {
+        currentUserId: 'u-you',
+        messagesByChat: {
+          g1: [
+            groupMessage('m1', 'bea@zilar.test', 'Bea', 1),
+            groupMessage('m2', 'u-carlos@zilar.test', 'Carlos', 2),
+          ],
+        },
+      },
+      group,
+    );
+
+    expect(await screen.findByText('Carlos 2')).toBeTruthy();
+    expect(screen.queryByText('Bea 1')).toBeNull();
+  });
+
+  it('never drops my own messages and leaves a DM unfiltered', async () => {
+    stubBlocked('bea@zilar.test');
+    renderMessages(
+      {
+        currentUserId: 'u-you',
+        messagesByChat: {
+          g1: [groupMessage('m1', 'u-you', 'You', 1)],
+          'c-ana': [
+            {
+              id: 'm-dm',
+              chatId: 'c-ana',
+              senderId: 'bea@zilar.test',
+              senderName: 'Bea',
+              text: 'dm from bea',
+              createdAt: new Date(2026, 8, 28, 10, 5),
+              status: 'read',
+            },
+          ],
+        },
+      },
+      group,
+    );
+    expect(await screen.findByText('You 1')).toBeTruthy();
+
+    cleanup();
+    renderMessages(
+      {
+        currentUserId: 'u-you',
+        messagesByChat: {
+          'c-ana': [
+            {
+              id: 'm-dm',
+              chatId: 'c-ana',
+              senderId: 'bea@zilar.test',
+              senderName: 'Bea',
+              text: 'dm from bea',
+              createdAt: new Date(2026, 8, 28, 10, 5),
+              status: 'read',
+            },
+          ],
+        },
+      },
+      chat,
+    );
+    expect(await screen.findByText('dm from bea')).toBeTruthy();
+  });
+
+  it('hides the blocked sender in a channel with mixed-case JIDs', async () => {
+    stubBlocked('Bea@zilar.test');
+    renderMessages(
+      {
+        currentUserId: 'u-you',
+        messagesByChat: {
+          g2: [
+            { ...groupMessage('m1', 'BEA@ZILAR.TEST', 'Bea', 1), chatId: 'g2' },
+            { ...groupMessage('m2', 'u-carlos@zilar.test', 'Carlos', 2), chatId: 'g2' },
+          ],
+        },
+      },
+      channel,
+    );
+
+    expect(await screen.findByText('Carlos 2')).toBeTruthy();
+    expect(screen.queryByText('Bea 1')).toBeNull();
+  });
+});
 describe('MessageList Markdown drafts (T-0049)', () => {
   const aiChat: ChatSummary = {
     id: 'c-ai',

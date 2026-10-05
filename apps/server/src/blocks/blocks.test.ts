@@ -8,6 +8,7 @@ import { contactRequests, user, userBlocks } from '../db/schema';
 import {
   bootstrapUser,
   createTestContext,
+  expectedJid,
   testApp,
   TEST_BASE_URL,
   type TestApp,
@@ -139,13 +140,23 @@ describe('blocks', () => {
     });
     expect(response.status).toBe(200);
     const body = (await response.json()) as {
-      blocked: Array<{ userId: string; name: string; handle: string | null; image: unknown }>;
+      blocked: Array<{
+        userId: string;
+        name: string;
+        handle: string | null;
+        image: unknown;
+        jid: string | null;
+      }>;
     };
     expect(body.blocked.map((entry) => entry.userId).sort()).toEqual([bob.id, carol.id].sort());
     for (const entry of body.blocked) {
       expect(entry.image).toBeNull();
     }
     expect(body.blocked.find((entry) => entry.userId === bob.id)?.handle).toBe('bob_b');
+    expect(body.blocked.find((entry) => entry.userId === bob.id)?.jid).toBe(expectedJid(bob.id));
+    expect(body.blocked.find((entry) => entry.userId === carol.id)?.jid).toBe(
+      expectedJid(carol.id),
+    );
     expect(JSON.stringify(body)).not.toContain('bob@example.com');
     expect(JSON.stringify(body)).not.toContain('carol@example.com');
 
@@ -184,8 +195,9 @@ describe('blocks', () => {
     const listed = await listBlockedUsers({ db: context.db }, blockerId);
     expect(listed.blocked).toHaveLength(MAX_BLOCK_LIST_ROWS);
     // Newest first: `blocked-500` first, and the oldest (`blocked-0`) fell
-    // off the cap.
+    // off the cap. Raw inserts have no XMPP account, so `jid` is null.
     expect(listed.blocked[0]?.userId).toBe(`blocked-${MAX_BLOCK_LIST_ROWS}`);
+    expect(listed.blocked[0]?.jid).toBeNull();
     expect(listed.blocked.map((entry) => entry.userId)).not.toContain('blocked-0');
   });
 
@@ -399,5 +411,9 @@ describe('blocks', () => {
     );
     const listed = await listBlockedUsers({ db: context.db }, alice.id);
     expect(listed.blocked.map((entry) => entry.userId)).toEqual([carol.id, bob.id]);
+    expect(listed.blocked.map((entry) => entry.jid)).toEqual([
+      expectedJid(carol.id),
+      expectedJid(bob.id),
+    ]);
   });
 });

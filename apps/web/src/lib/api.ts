@@ -2157,8 +2157,9 @@ const blockResultSchema = z.object({ blocked: z.boolean() });
 const blockedPersonSchema = z.object({
   userId: z.string(),
   name: z.string(),
-  handle: z.string(),
+  handle: z.string().nullable(),
   image: z.string().nullable(),
+  jid: z.string().nullable(),
 });
 
 export type BlockedPerson = z.infer<typeof blockedPersonSchema>;
