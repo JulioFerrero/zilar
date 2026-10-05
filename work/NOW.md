@@ -2,7 +2,7 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
-Last updated: 2026-10-05, after merging T-0202 (fix rounds in fresh sessions; autopilot restarted) and launching T-0209 and T-0203.
+Last updated: 2026-10-05, after merging T-0203 and launching T-0204; T-0210 (speed line for `lead watch`) waits for T-0209.
 
 Models (Julio, 2026-10-05): default `opencode/muse-spark-1.3-contributor-free`; MiniMax M3 only for the easiest exact tasks; billed `meta/muse-spark-1.3-contributor` is the fallback if the free listing hits limits.
 
@@ -12,12 +12,12 @@ Models (Julio, 2026-10-05): default `opencode/muse-spark-1.3-contributor-free`; 
 | --- | --- | --- | --- |
 | T-0191 | Mobile sticker pack editor | coding | Muse (billed); brief `docs/design/briefs/T-0191-sticker-editor.md`; needs phone:smoke |
 | T-0209 | `lead watch`: live terminal view of the workers (Julio asked) | coding | MiniMax; the lead runs `pnpm lead:watch` in a small terminal before merging |
-| T-0203 | Worker prompt: checks once, quiet single tests (token saving B) | coding | MiniMax |
+| T-0204 | Pre-review stops re-running the gate's checks (token saving C) | coding | MiniMax |
 
 ## Next, in order
 
-1. T-0204 (C) after T-0203: they share `prompts.test.ts`; easy text edit, MiniMax
-   (First fix round in a fresh session will be the first real test of T-0202.)
+1. T-0210 `lead watch` speed line (tok/s, s/step, ctx, sparkline), MiniMax, after T-0209 merges; re-check the spec against the merged `watch.ts` first
+   (The first fix round in a fresh session will be the first real test of T-0202.)
 2. T-0207 Telegram import sheet on the free Muse (after T-0191; spec and brief ready)
 3. Specs for T-0189 and T-0190 from `docs/audit/mobile-parity-gaps.md` (re-check every fact in the code)
 
