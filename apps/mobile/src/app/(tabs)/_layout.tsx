@@ -68,7 +68,7 @@ export default function TabsLayout() {
         style={{ position: 'absolute', left: 0, right: 0, bottom: 0, top: 0 }}
         pointerEvents="box-none"
       >
-        <FloatingTabBar unreadTotal={unreadCount(chats, 'all')} profile={profile} />
+        <FloatingTabBar unreadTotal={unreadCount(chats, undefined)} profile={profile} />
       </View>
     </Tabs>
   );

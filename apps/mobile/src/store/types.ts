@@ -1,4 +1,5 @@
 import type {
+  ChatFolder,
   ChatSummary,
   EditsState,
   MentionMember,
@@ -27,7 +28,6 @@ import type {
 } from '../lib/topics-api';
 import type { PutChatPrefInput } from '../lib/chat-prefs-api';
 import type { Pin } from '../lib/pins-api';
-import type { ChatFolder } from '../lib/types';
 
 /** Connection state shown by the thin "Connecting…" bar in the chat list. */
 export type ConnectionStatus = 'offline' | 'connecting' | 'online' | 'reconnecting';
@@ -160,7 +160,10 @@ export interface ChatStoreState {
   /** The first history page of each chat, by chat id (T-0067). */
   historyLoad: Record<string, LoadState>;
   search: string;
-  activeFolder: ChatFolder;
+  /** 'all' or a folder id; folders arrive from /api/chat-folders (T-0248). */
+  activeFolder: string;
+  /** Server folders sorted by position; `[]` until synced. */
+  folders: ChatFolder[];
   activeChatId: string | null;
   historyComplete: Record<string, boolean>;
   typing: Record<string, TypingState>;
@@ -461,7 +464,8 @@ export interface ChatStoreState {
   /** Loads the attached roles + approver role of the topic. Rejects on failure. */
   refreshTopicRoles: (chatId: string) => Promise<void>;
   setSearch: (search: string) => void;
-  setActiveFolder: (folder: ChatFolder) => void;
+  setActiveFolder: (folder: string) => void;
+  setFolders: (folders: ChatFolder[]) => void;
   start: () => void;
   stop: () => void;
 }

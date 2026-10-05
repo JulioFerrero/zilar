@@ -28,12 +28,9 @@ import { unreadCount } from '@/lib/filter';
 import { createSearchApi } from '@/lib/search-api';
 import { getSessionToken } from '@/lib/session-token';
 import { topicsOfGroup } from '@/lib/topics';
-import type { ChatFolder } from '@/lib/types';
 import { createMockSearchApi } from '@/mock/search';
 import { useChatStore } from '@/store/chat-store-provider';
 import { chatsListView, emptyChatsText } from '@/store/types';
-
-const FOLDER_KEYS: ChatFolder[] = ['all', 'personal', 'ai', 'work'];
 
 export default function ChatsScreen() {
   return (
@@ -54,6 +51,7 @@ function ChatsList() {
   const setSearch = useChatStore((state) => state.setSearch);
   const activeFolder = useChatStore((state) => state.activeFolder);
   const setActiveFolder = useChatStore((state) => state.setActiveFolder);
+  const folders = useChatStore((state) => state.folders);
   const status = useChatStore((state) => state.status);
   const connection = connectionLabel(status);
   const me = useChatStore((state) => state.me);
@@ -114,19 +112,23 @@ function ChatsList() {
   // topics from an older server keeps its chat row as today (T-0112).
   // Pinned chats/topics float first and archived chats leave the main list
   // for the Archived entry at the bottom (T-0135, `lib/chat-list`).
+  const activeFolderDef = useMemo(
+    () =>
+      activeFolder === 'all' ? undefined : folders.find((folder) => folder.id === activeFolder),
+    [activeFolder, folders],
+  );
   const { rows: visibleRows, archived } = useMemo(
-    () => chatListModel(chats, { folder: activeFolder, search }),
-    [chats, activeFolder, search],
+    () => chatListModel(chats, { folder: activeFolderDef, search }),
+    [chats, activeFolderDef, search],
   );
   const listView = chatsListView(chatsLoad, chats.length);
-  const counts = useMemo(
-    () =>
-      Object.fromEntries(FOLDER_KEYS.map((key) => [key, unreadCount(chats, key)])) as Record<
-        ChatFolder,
-        number
-      >,
-    [chats],
-  );
+  const counts = useMemo(() => {
+    const next: Record<string, number> = { all: unreadCount(chats, undefined) };
+    for (const folder of folders) {
+      next[folder.id] = unreadCount(chats, folder);
+    }
+    return next;
+  }, [chats, folders]);
 
   const openActions = (id: string) => {
     setActionMuteOpen(false);
@@ -345,7 +347,12 @@ function ChatsList() {
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top']}>
       {searchHeader}
-      <FolderTabs activeFolder={activeFolder} counts={counts} onSelect={setActiveFolder} />
+      <FolderTabs
+        activeFolder={activeFolder}
+        folders={folders}
+        counts={counts}
+        onSelect={setActiveFolder}
+      />
       {connection !== undefined ? (
         <View className="border-b border-divider px-3 py-1">
           <Text className="text-center text-[12px] text-muted-foreground">{connection}</Text>

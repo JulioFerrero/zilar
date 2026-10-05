@@ -149,6 +149,29 @@ describe('chat store', () => {
     expect(store.getState().activeFolder).toBe('work');
   });
 
+  it('starts the mock folders with the chat-core defaults', () => {
+    const store = createChatStore();
+    expect(store.getState().folders.map((folder) => folder.name)).toEqual(['Personal', 'AIs']);
+    expect(store.getState().activeFolder).toBe('all');
+  });
+
+  it('setFolders sorts by position and resets a vanished active id to all', () => {
+    const store = createChatStore();
+    const personal = store.getState().folders[0]!;
+    const ais = store.getState().folders[1]!;
+
+    store.getState().setActiveFolder(personal.id);
+    store.getState().setFolders([
+      { ...ais, position: 0 },
+      { ...personal, position: 1 },
+    ]);
+    expect(store.getState().folders.map((folder) => folder.name)).toEqual(['AIs', 'Personal']);
+    expect(store.getState().activeFolder).toBe(personal.id);
+
+    store.getState().setFolders([{ ...ais, position: 0 }]);
+    expect(store.getState().activeFolder).toBe('all');
+  });
+
   it('shows typing after the mock delay and clears it again', () => {
     const store = createChatStore();
     expect(store.getState().typing).toEqual({});
