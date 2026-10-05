@@ -1,7 +1,7 @@
 ---
 id: T-0189
 title: Mobile: the AI edit screen lists the AI's tools and routines (read only)
-status: planned
+status: merged
 milestone: M5
 branch: task/T-0189-mobile-ai-tools-routines-read
 model: opencode/muse-spark-1.3-contributor-free
@@ -67,4 +67,65 @@ Tapping a tool, tool detail, run now, revert, delete, pause, resume, delete rout
 
 ## Report (written by the worker when done)
 
+Done. The AI edit screen (`/ais/<id>`) now shows Tools and Routines sections
+(read only) under the Home machine block, with web's copy and states.
+
+What I built (all inside Allowed files, 12 changed files):
+- `apps/mobile/src/lib/tools-api.ts` (new): `ToolListItem` / `Routine` types,
+  `ToolsApiError` (status, code), `ToolsApi { listAiTools, listAiRoutines }`,
+  defensive type-guard parsers (one bad item fails the whole list as
+  `invalid_response`), `createToolsApi(getToken, fetchImpl, apiUrl)` with
+  bearer auth, paths `/api/ais/:id/tools` and `/api/ais/:id/routines`.
+- `apps/mobile/src/lib/routines-format.ts` (new): copy of web
+  `routines.ts` plus pure row-text helpers `hostsLine`, `toolLastRunText`,
+  `routineStatusText`, `nextRunText`, `routineLastText`.
+- `apps/mobile/src/mock/tools.ts` (new): `createMockToolsApi()` with two
+  tools (hosts+approved / no hosts+never run) and two routines (active /
+  paused with `failures`).
+- `apps/mobile/src/components/ais/use-tools-api.ts` (new): real-or-mock
+  picker mirroring `use-approvals-api.ts`.
+- `apps/mobile/src/components/ais/tools-section.tsx` +
+  `routines-section.tsx` (new): `{ api, aiId }`, load on mount, states
+  `Loading…` / exact web empty sentences / fixed error sentence
+  (`Could not load the tools/routines. Try again.`) in danger colour with an
+  outline `Retry` that reloads only that section. `loadAiTools` /
+  `loadAiRoutines` map 404 and `invalid_response` to `[]`, like web. Rows
+  are `View`s (not tappable). Only `Text`/`Button` and existing screen
+  classes; no hex, no emoji, no icons.
+- `apps/mobile/src/app/ais/[id].tsx`: mounts both sections under the Home
+  machine block (inside the ready branch, above the error line) via
+  `useToolsApi()`. Nothing else changed.
+- Tests: `tools-api.test.ts` (paths, bearer header, both lists, bad item
+  gives `invalid_response`, 404 `ToolsApiError`), `routines-format.test.ts`
+  (all web `routines.test.ts` cases plus each helper),
+  `tools-section.test.tsx` / `routines-section.test.tsx` (mock rows, empty
+  sentences, error with Retry wired to reload, 404/invalid_response read as
+  empty via the exported loaders). Section bodies are exported pure
+  components because the repo has no DOM/effects test setup
+  (`renderToStaticMarkup` only); the mount effect itself is covered by the
+  loading-state render plus the loader unit tests.
+
+Commands and real results:
+- `pnpm install`: pass (11.8s).
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot tools-api
+  routines-format tools-section routines-section`: 4 files, 42 tests passed.
+- `pnpm gate` (repo root): GATE PASS. Summary lines: `gate: 12 changed
+  file(s) against main / PASS install (frozen) (0.9s) / PASS format (10.5s)
+  / PASS lint (0.8s) / PASS typecheck (6.0s) / PASS tests @zilar/mobile
+  (1.5s) / scope: every changed file is inside the Allowed files / GATE
+  PASS`. First gate run failed on prettier formatting of 7 new files; fixed
+  with `prettier --write` limited to my files, then re-ran tests + gate.
+
+Deviations: none from the spec. Fixed error sentences instead of raw server
+text per the mobile pitfalls (user-facing errors are fixed sentences).
+No new dependency, no server/web change.
+
+Open questions: none.
+
+Security checklist: bearer token only in the `authorization` header, never
+logged; no deletes/updates added (read-only GETs); no audit entries; no new
+routes; fixed error sentences (no server internals leak to the UI).
+
 ## Review (written by Claude)
+
+**Verdict:** Approved, clean on the first pre-review (free Muse). New `tools-api.ts` (tools and routines read, defensive parsing, `ToolsApiError`), its mock and hook, `routines-format.ts` (the web plain-words helpers plus the row-text helpers), and `ToolsSection` / `RoutinesSection` mounted under Home machine on the AI edit screen (7 added lines there). Emulator: `pnpm phone:smoke` PASS but it skips `/ais/[id]` (route parameter), and the test account has no AI (creating one needs a provider key), so the sections were NOT seen on a device; the component tests cover rows, the empty sentences, the error with Retry and 404 as empty. Julio should glance at an AI's screen on his phone after the next release.

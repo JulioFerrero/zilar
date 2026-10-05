@@ -209,7 +209,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0178](T-0178-whistle-quiet-cut-chunks.md) | Whistle: quiet-point chunking from a native amplitude envelope | 2026-10-03 |
 | [T-0180](T-0180-signin-no-code-hint.md) | Sign-in hints for people without an invite (web + mobile) | 2026-10-03 |
 | [T-0211](T-0211-lead-watch-ink-redesign.md) | Lead tooling: `lead watch` redesigned as an Ink terminal app (cards, step tracker, model badges) | planned | opencode/muse-spark-1.3-contributor-free | T-0210 | Julio asked 2026-10-05 ("super ugly") |
-| [T-0189](T-0189-mobile-ai-tools-routines-read.md) | Mobile: the AI edit screen lists the AI's tools and routines (read only) | planned | opencode/muse-spark-1.3-contributor-free | — | Mobile parity; from the T-0195 audit section 7.1 |
 | [T-0190](T-0190-mobile-invite-new-message.md) | Mobile: "Invite a friend" link sheet and the New message dialog | planned | opencode/muse-spark-1.3-contributor-free | — | Mobile parity; T-0195 audit 7.2 (T-0190d) |
 | [T-0179](T-0179-mobile-transcribe-voice-notes.md) | Transcribe voice notes on the phone with Whistle: button in the bubble, consent for the 17 MB model, transcripts stored locally | 2026-10-03 |
 | [T-0182](T-0182-mobile-contacts-requests.md) | Mobile contacts: find by @handle, profile card, contact requests | 2026-10-03 |
@@ -240,3 +239,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0191](T-0191-mobile-sticker-editor-telegram.md) | Mobile sticker pack editor: create, rename, visibility, add and remove stickers, delete | 2026-10-05 |
 | [T-0210](T-0210-lead-watch-speed.md) | lead watch: speed line (tok/s, s/step, context, sparkline) | 2026-10-05 |
 | [T-0207](T-0207-mobile-telegram-sticker-import.md) | Mobile: import a Telegram sticker pack from the Stickers screen | 2026-10-05 |
+| [T-0189](T-0189-mobile-ai-tools-routines-read.md) | Mobile: the AI edit screen lists the AI's tools and routines (read only) | 2026-10-05 |
