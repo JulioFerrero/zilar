@@ -1,7 +1,7 @@
 ---
 id: T-0190
 title: Mobile: "Invite a friend" link sheet and the New message dialog (replaces "Coming soon")
-status: planned
+status: merged
 milestone: M5
 branch: task/T-0190-mobile-invite-new-message
 model: opencode/muse-spark-1.3-contributor-free
@@ -62,4 +62,65 @@ Revoking invites, a list of my invites, the New group sheet, starting a DM by @h
 
 ## Report (written by the worker when done)
 
+### What I did
+- New message box: `NewMessageSheet` shows the web sentence ("Invite a friend to
+  start a conversation, or type their @username in the search bar above.") with
+  outline `Close` and primary `Invite a friend`, same box structure/classes as
+  the placeholder it replaces.
+- Invite box: `InviteSheet` creates a new link on every open (remount per open;
+  stale results ignored via the `active` flag), shows `Creating link…` while
+  loading, the truncated link with `Copy` (Copy/Check icons, flips to `Copied`)
+  and `Share` (Share2 icon, system share sheet) underneath, `Close` on the
+  right; on failure the row is replaced by `Could not create an invite link.
+  Try again.` with `Try again` (one request at a time, guarded) plus `Close`.
+- API: `createInvitesApi` POSTs `/api/invites` with bearer auth and defensive
+  parse (missing `code`/`url` or non-string `expiresAt` is `invalid_response`);
+  `createMockInvitesApi` returns `https://chat.zilar.app/invite/mock-code`;
+  `useInvitesApi` mirrors `use-approvals-api.ts`.
+- `new-chat-button.tsx`: added `'invite'` to `NewChatAction`; `message` shows
+  `NewMessageSheet` (Invite switches to `invite`), `invite` shows `InviteSheet`.
+  `group` keeps the untouched placeholder. Nothing else in the menu changed.
+
+### Files changed
+- `apps/mobile/src/lib/invites-api.ts` (new), `.test.ts` (new)
+- `apps/mobile/src/mock/invites.ts` (new)
+- `apps/mobile/src/components/chat/use-invites-api.ts` (new)
+- `apps/mobile/src/components/chat/invite-sheet.tsx` (new: stateful `InviteSheet`
+  + hook-free `InviteSheetBody`, the `join-link.tsx` test pattern),
+  `.test.tsx` (new)
+- `apps/mobile/src/components/chat/new-message-sheet.tsx` (new), `.test.tsx` (new)
+- `apps/mobile/src/components/chat/new-chat-button.tsx` (menu wiring only)
+
+### Commands and real results
+- `pnpm install`: ok (12s).
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot
+  invites-api invite-sheet new-message-sheet src/components/chat/new-chat-button.test.tsx`:
+  4 files, 20 tests passed (incl. the pre-existing menu test).
+- `pnpm gate`: GATE PASS — `PASS install (frozen)`, `PASS format`, `PASS lint`,
+  `PASS typecheck`, `PASS tests @zilar/mobile`,
+  `scope: every changed file is inside the Allowed files`. First gate run failed
+  on `format` (4 of my files); fixed with `prettier --write` on my files only,
+  re-ran gate once: PASS.
+
+### Problems / deviations from the spec
+- Path: spec says POST `/invites`; mobile sends `/api/invites` (server mounts
+  auth routes under `/api`, `apps/server/src/app.ts:287`; every mobile API uses
+  the `/api` prefix). Same endpoint.
+- `useInvitesApi` is created per spec but the menu uses
+  `createInvitesApi(getSessionToken)` directly: the hook needs
+  `useGlobalSearchParams`, which the existing `new-chat-button.test.tsx` (not in
+  Allowed files, cannot edit) does not mock, so calling it breaks that test. A
+  personal invite link needs a real session anyway.
+- `expo-clipboard` is loaded via dynamic `import()` in the copy callback:
+  a static import crashes Node tests (`__DEV__ is not defined` from
+  expo-modules-core); precedent is `session-token.ts`. `Share` (react-native) is
+  only touched on press. Verified the pre-existing menu test still passes.
+- Async transitions (loading -> link / failure -> retry) are tested at the
+  `InviteSheetBody` + API level: effects never run under `react-dom/server`,
+  so the wrapper test asserts the initial `Creating link…` render only.
+- Security checklist: no secrets/tokens in logs or errors (fixed user-facing
+  sentences only); no server routes touched; bearer token via header only.
+
 ## Review (written by Claude)
+
+**Verdict:** Approved, clean on the first pre-review (free Muse). New `invites-api.ts` (POST `/invites`), its mock and hook, `InviteSheet` (link, Copy/Copied, Share, the failure sentence with Try again) and `NewMessageSheet`; the `+` menu's `New message` now shows web's sentence with `Close` and `Invite a friend`; `New group` keeps its placeholder. Emulator (galena, live server): smoke PASS; the lead opened the menu and the New message box and compared it with web. The invite box itself was not opened on the emulator: it would create a real invite on the live server, which the lead does not do without Julio; its behaviour is covered by `invite-sheet.test.tsx`. Accepted nits: two small ones.
