@@ -266,9 +266,11 @@ describe('NotificationsPage', () => {
 
     expect(await screen.findByText(/Push is on for this device/)).toBeTruthy();
 
-    const checkbox = screen.getByRole('checkbox');
-    expect(checkbox).toBeTruthy();
-    fireEvent.click(checkbox);
+    const previews = screen.getByRole('switch', {
+      name: 'Show the first lines of new messages in notifications',
+    });
+    expect(previews).toBeTruthy();
+    fireEvent.click(previews);
     await vi.waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
         '/api/push/settings',

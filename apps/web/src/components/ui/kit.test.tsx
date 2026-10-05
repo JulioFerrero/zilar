@@ -59,6 +59,12 @@ describe('Switch', () => {
     fireEvent.click(control);
     expect(onCheckedChange).not.toHaveBeenCalled();
   });
+
+  it('hides the visible label but keeps the accessible name', () => {
+    render(<Switch checked={false} onCheckedChange={() => {}} label="Sounds" hideLabel />);
+    expect(screen.getByRole('switch', { name: 'Sounds' })).toBeTruthy();
+    expect(screen.queryByText('Sounds')).toBeNull();
+  });
 });
 
 describe('TextInput and TextArea', () => {

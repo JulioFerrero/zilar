@@ -18,6 +18,7 @@ import {
 import { useChatStore } from '@/store/ChatStoreProvider';
 import { folderIconComponent } from './folderIcon';
 import { ConfirmDialog } from './ConfirmDialog';
+import { Switch } from './ui/switch';
 import { cn } from '@/lib/utils';
 
 const TYPE_SWITCHES: { type: FolderChatType; label: string }[] = [
@@ -241,7 +242,8 @@ export function FolderEditorDialog({
                       <Switch
                         checked={checked}
                         label={label}
-                        onChange={() =>
+                        hideLabel
+                        onCheckedChange={() =>
                           setIncludeTypes((types) =>
                             types.includes(type)
                               ? types.filter((item) => item !== type)
@@ -274,7 +276,8 @@ export function FolderEditorDialog({
                   <Switch
                     checked={excludeMuted}
                     label="Muted chats"
-                    onChange={() => setExcludeMuted((value) => !value)}
+                    hideLabel
+                    onCheckedChange={() => setExcludeMuted((value) => !value)}
                   />
                 </div>
                 <div className="flex items-center gap-2 px-3 py-2 text-[15px]">
@@ -282,7 +285,8 @@ export function FolderEditorDialog({
                   <Switch
                     checked={excludeRead}
                     label="Read chats"
-                    onChange={() => setExcludeRead((value) => !value)}
+                    hideLabel
+                    onCheckedChange={() => setExcludeRead((value) => !value)}
                   />
                 </div>
               </div>
@@ -346,39 +350,6 @@ export function FolderEditorDialog({
         />
       )}
     </>
-  );
-}
-
-/** Small on/off switch for the folder type and hide rows. */
-function Switch({
-  checked,
-  label,
-  onChange,
-}: {
-  checked: boolean;
-  label: string;
-  onChange: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      aria-label={label}
-      onClick={onChange}
-      className={cn(
-        'relative h-6 w-11 shrink-0 rounded-full transition-colors',
-        checked ? 'bg-accent' : 'well-surface',
-      )}
-    >
-      <span
-        aria-hidden="true"
-        className={cn(
-          'key-icon absolute top-0.5 size-5 rounded-full transition-all',
-          checked ? 'left-[22px]' : 'left-0.5',
-        )}
-      />
-    </button>
   );
 }
 
