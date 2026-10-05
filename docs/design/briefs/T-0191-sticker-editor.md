@@ -1,0 +1,61 @@
+# Design brief T-0191: Sticker pack editor (mobile)
+
+Scope: the "New pack" entry, the edit entry on your own packs, and the editor screen at `/settings/sticker-pack` (create) and `/settings/sticker-pack?id=...` (edit). Builds on T-0187 (`apps/mobile/src/app/settings/stickers.tsx`). Not the Telegram import (T-0207). Web source for behaviour and copy: `apps/web/src/components/PackEditor.tsx`. Use only tokens and classes already in `stickers.tsx`, never a literal hex. Lucide icons only, no emoji in app chrome (sticker emoji typed by the person are content, not chrome).
+
+## 1. Entry points on the Stickers screen
+- My packs heading row: `flex-row items-center justify-between`. Left: the existing `My packs` heading. Right: filled pill `New pack` (`flex-row items-center gap-1.5 rounded-full bg-accent px-3 py-1.5 active:opacity-90`), lucide `Plus` size 16 with `color={ACCENT_FOREGROUND}` (`lib/depth.ts`), text `text-[14px] font-medium text-accent-foreground`, label `Create a new sticker pack`. Shown on the My packs tab in every state (also when the list is empty, above the empty block). It pushes `/settings/sticker-pack`. Disabled with `opacity-60` while `busy`.
+- Your pack = `pack.ownerId` equals the signed-in user id. In the My packs second line (divider row), your packs get an outline pill `Edit` before `Remove`, in a right group `flex-row items-center gap-2`: lucide `Pencil` size 14 + text `text-[14px] text-foreground`, same classes as `Remove`, label `Edit {title}`. Pushes `/settings/sticker-pack?id={pack.id}`.
+- Others' packs (added from Discover, ownerId differs): no `Edit`, nothing else changes. They are visibly read-only by having only `Remove`. Second line of the top text column for yours: `{N stickers} · Private` or `{N stickers} · Shared`, same `text-[13px] text-muted-foreground`; imported packs read `{N stickers} · Imported`. Others' packs keep `{N stickers}` only.
+- The Stickers screen already reloads on focus (`useFocusEffect`), so a saved or deleted pack shows when the editor goes back. After Create, do nothing extra for the panel: the server adds a new pack to the creator's panel in the same transaction (lead, verified in `apps/server/src/stickers/service.ts`, the `userStickerPacks` insert in the create function).
+
+## 2. Editor frame
+- `SettingsScreenShell` (`components/settings/screen-shell.tsx`), wrapped in `RequireStickersAuth`. Title `New pack` (create) or `Edit pack` (edit). Subtitle `Name it, pick images, save.` (create) or the pack title (edit, one line). Back is `router.back()`. No header action; Save is at the bottom (section 7).
+- Body: `gap-5` column, in this order: Name, Who can find it, Stickers (existing grid, add tile, new list), error line, Save/Cancel, Delete (edit only).
+- Leaving with unsaved changes (back button or Android back): Modal as in `stickers.tsx` confirm, title `Discard changes?`, body `Your changes to this pack are not saved.`, buttons `Keep editing` (muted) and `Discard` (`bg-destructive`, `text-white`). No modal if nothing changed or while saving (back is ignored while saving).
+
+## 3. Name and visibility
+- Label `Pack name` (`text-[14px] font-medium text-foreground`), under it a well field `h-11 rounded-xl px-3` with `style={well}` (as the search well in stickers.tsx), `TextInput` `text-[15px] text-foreground`, `maxLength={60}`, placeholder `My stickers`, label `Pack name`. Disabled while saving (`opacity-60`).
+- Label `Who can find this pack`. Two stacked radio rows, each `min-h-[52px] flex-row items-center gap-3 rounded-xl border px-3 py-2.5`: selected `border-border-strong bg-surface-raised`, other `border-border bg-surface`; role `radio`, `accessibilityState={{ selected, disabled }}`. Left icon size 18 in `ICON[scheme]`, then title `text-[15px] font-medium text-foreground`, right a radio dot: lucide `CircleDot` (selected) or `Circle` size 20.
+  - `Private` (lucide `Lock`): sub `Only you can find a private pack. Stickers you already sent still show.`
+  - `Shared on this server` (lucide `Globe`): sub `Anyone on this server can find and add it.`
+  Sub text `text-[13px] text-muted-foreground`.
+- Imported pack (`importedFrom` set): both rows disabled (`opacity-60`), `Private` selected, and under the two rows `text-[13px] text-muted-foreground`: `Imported packs are for personal use, so they stay private and cannot be shared.` If a save still answers `imported_private`, show the same sentence in the error line.
+
+## 4. Stickers section
+- Heading row `flex-row items-baseline justify-between`: `Stickers` (`text-[16px] font-semibold`) and the count `{n} / 120` (`text-[13px] text-muted-foreground`, never wraps). `n` = saved stickers not marked for removal + new images in the list (also failed ones).
+- Grid: same 4 columns and tile size as Favorites (`favoriteTileSize(windowWidth)` from stickers.tsx; `flex-row flex-wrap gap-2`; tile `rounded-[10px] border border-border bg-surface items-center justify-center p-1`, image `resizeMode="contain"`, built with `stickerImageSource`).
+- Saved stickers fill the grid first. Each tile has a remove control top right: 24x24 `absolute right-0.5 top-0.5 rounded-full bg-black/70 items-center justify-center`, lucide `X` size 12 with `color={FOREGROUND[scheme]}`, `hitSlop={10}`, label `Remove sticker`. Removing takes effect on Save (as web does): the tile disappears at once, no confirm, the count drops. If the sticker has an emoji, show it as a tiny `text-[11px]` caption badge bottom left.
+- Add tile last in the grid: same size, `rounded-[10px] border border-dashed border-border-strong bg-well items-center justify-center gap-1`, lucide `ImagePlus` size 22 in `ICON[scheme]`, text `Add` `text-[12px] text-muted-foreground`, label `Add sticker images`. Opens the photo library (`expo-image-picker`, multi-select, images only). It is `disabled opacity-60` while saving, while images are being prepared, and when the pack is full; when full, under the grid: `This pack is full. A pack holds up to 120 stickers.` (`text-[13px] text-muted-foreground`).
+- Selecting more images than fit: take as many as fit and show once, `text-[13px] text-muted-foreground`: `Only 120 stickers fit in a pack. Extra images were skipped.`
+- Preparing: the phone resizes each picked image to fit 512 px and saves PNG, one after another. While it runs, a line under the grid with a small `ActivityIndicator` (`ACCENT[scheme]`, size small) and `Preparing {n} images…` (`Preparing 1 image…` for one), `text-[13px] text-muted-foreground`.
+- New images list (only when there is at least one, heading `New stickers` `text-[14px] font-medium`, `gap-2`). Each row is a card `flex-row items-center gap-3 rounded-xl border border-border bg-surface p-2`:
+  - Thumb 56x56 `rounded-lg border border-border bg-surface-raised`, `resizeMode="contain"` (stickers are often transparent, never crop).
+  - Middle `min-w-0 flex-1 gap-1`: status line `text-[13px] text-muted-foreground`: `Ready` / `Uploading…` / `Uploaded`, plus size `512 x 380 px, 94 KB` (one line). Under it, for ready rows, an emoji well `h-9 w-14 rounded-lg px-2 text-[16px]` (`style={well}`), `maxLength={8}`, placeholder empty, label `Emoji for sticker {n}`, hint outside the field `Optional emoji`. Hide the emoji field once uploaded.
+  - Right `shrink-0`: a 36x36 remove button (`rounded-lg active:bg-surface-raised`), lucide `X` size 18, label `Remove new sticker {n}`.
+  - Error row: thumb replaced by a 56x56 `rounded-lg bg-well` tile with lucide `TriangleAlert` size 22 in the danger color (`text-danger` via `color` from the existing danger token; reuse as in other screens), middle shows the fixed sentence (section 6) in `text-[13px] text-danger` (role alert), right gets an outline pill `Retry` (when the file prepared and only the upload failed) before the remove button. A row that failed to prepare has only remove.
+- Empty (create mode, no images yet): the grid shows only the add tile, and under it `text-[13px] text-muted-foreground`: `Pick PNG, JPEG, WebP or GIF images. Each is resized to fit 512 px.`
+- Loading (edit mode, fetching the pack): `items-center gap-3 pt-16`, `ActivityIndicator color={ACCENT[scheme]}`, `Loading pack…`.
+- Load error: `Could not load this pack.` (role alert, `text-[15px] text-danger`) plus Retry pill with `RefreshCw` (same as stickers.tsx), label `Retry loading pack`. If the pack is not found or not yours: `This pack was not found.` or `You can only edit your own packs.`, and a `Back to stickers` outline pill. Never show server text.
+
+## 5. Upload progress
+- On Save, uploads run one after another, one request per image. While saving the whole form is disabled (`opacity-60`) and above the buttons a line shows `Uploading {done} of {total}…` (role status, `text-[14px] text-muted-foreground`). Each row's status line flips to `Uploading…` then `Uploaded`.
+- Create mode: the pack is created first; if some images fail, the screen stays open, remembers the created pack (no second pack on retry), the button reads `Save`, and the failed rows show Retry. Edit mode: title/visibility patch first, then deletions, then uploads (web order).
+- Save stays disabled while any row has an error (retry or remove it first) and while images are being prepared. Create mode also needs at least one ready image.
+
+## 6. Exact copy: errors
+Fixed sentences, chosen by error code, never server text. The row errors apply to one image, the rest to the form line (`text-[14px] text-danger`, role alert, above the buttons, cleared when the next action starts).
+- Row: `sticker_too_large`: `This image is too big. A sticker can be up to 512 KB and 512 px.` / `sticker_empty`: `This image is empty.` / unsupported file: `This file type is not supported. Use PNG, JPEG, WebP or GIF.` / could not be prepared: `This image could not be prepared.` / any other upload failure: `The upload failed. Try again.` / `pack_full` during an upload: `This pack is full. A pack holds up to 120 stickers.`
+- Form: empty name: `Name the pack first.` / failed rows exist: `Retry or remove the failed stickers first.` / create with no image: `Add at least one sticker first.` / `pack_limit`: `You have reached the limit of 100 packs.` / `imported_private`: `Imported packs are for personal use and cannot be shared.` / `pack_full`: `This pack is full. A pack holds up to 120 stickers.` / any other save failure: `Could not save the pack. Try again.`
+
+## 7. Buttons
+- Bottom row, `flex-row items-center gap-2`: filled pill `Create pack` (create) or `Save` (edit) `rounded-full bg-accent px-5 py-2.5 active:opacity-90`, text `text-[15px] font-medium text-accent-foreground`; then `Cancel` `rounded-full px-4 py-2.5 text-[15px] text-muted-foreground`. While saving the primary reads `Saving…` and both are `disabled opacity-60`. Cancel goes through the discard check (section 2).
+- Save is `disabled opacity-60` until a change exists (edit) or a ready image exists (create).
+
+## 8. Delete pack (edit mode only)
+- Below the buttons, a section divider (`border-t border-divider pt-4`), then a full-width outline pill `h-11 flex-row items-center justify-center gap-2 rounded-full border border-danger`: lucide `Trash2` size 16 (danger color) + text `Delete pack` `text-[15px] font-medium text-danger`, label `Delete {title}`. Hidden in create mode.
+- Confirm Modal (structure of the Remove modal in stickers.tsx): title `Delete this pack?`, body, verbatim: `The pack and its files are deleted. Messages already sent keep their sticker URL, which no longer loads a sticker.`, buttons `Cancel` and `Delete` (`rounded-full bg-destructive px-3 py-1.5`, `text-[14px] font-medium text-white`). While running `Deleting…`, both disabled `opacity-60`. Failure keeps the modal open with `Could not delete the pack. Try again.` (`mt-2 text-[13px] text-danger`, role alert). On success close the modal and `router.back()`.
+
+## 9. Small touches
+- One request at a time: reuse the ref guard of stickers.tsx (`busyRef`). Keyboard: the shell already handles insets; the field uses `returnKeyType="done"`.
+- Thumbnails and emoji captions hidden from screen readers except as labelled; no exclamation marks; spacing 20 between sections, 8 between rows, bottom padding 32 from the shell.
+- Not in this task: reordering stickers inside a pack, editing the emoji of a saved sticker, sharing links.
