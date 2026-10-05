@@ -5,7 +5,7 @@ status: planned
 milestone: M5
 branch: task/T-0195-mobile-parity-audit
 model: minimax-coding-plan/MiniMax-M3
-effort: low
+effort: default
 depends_on: []
 estimate: 0.5 day
 ---

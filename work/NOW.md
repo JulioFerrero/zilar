@@ -9,7 +9,7 @@ Last updated: 2026-10-05, after the history compaction and the T-0200 launch.
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
 | T-0200 | `lead merge` lands each task as ONE commit on main | coding | Muse |
-| T-0201 | Runner connect test waits for "live" instead of a 200 ms sleep (CI flake) | coding | MiniMax M3, test-only; Julio asked |
+| T-0201 | Runner connect test waits for "live" instead of a 200 ms sleep (CI flake) | coding | Julio asked; MiniMax launch failed (`effort: low` is not a MiniMax variant), switched to Muse; set the spec's `model:` to Muse in the Review |
 
 ## Next, in order
 
@@ -24,6 +24,8 @@ Last updated: 2026-10-05, after the history compaction and the T-0200 launch.
 - Release: everything merged since v0.1.13 reaches the live web only with the next release.
 
 ## Recent events
+
+- 2026-10-05: MiniMax-M3 has no effort variants; a launch with `effort: low` fails with no reply. `effort: default` works (tested). T-0194 and T-0195 now say `effort: default`. Noted in `docs/LEAD_HANDOFF.md`.
 
 - 2026-10-05: **main's history compacted** (Julio's request): 1,146 commits became 227, one per task; the final tree is identical, the 14 release tags `v0.1.0`..`v0.1.13` were re-created (same message and date) on the matching new commits and force-pushed; main force-pushed with a lease on the old sha `e80dfa25`. Backups: local branch `backup/main-pre-compact` and `~/.zilar-lead/compact/main-pre-compact.bundle` (verified). Untouched: `t0113-orig`, `archive/*`, `spike/T-0118-push`, old detached worktrees. Gate PASS on the new main. Commit hashes quoted in older task files and Reviews point to the old history (still in the backup).
 - 2026-10-05: merged T-0173 (Effect 4.0 spike, `docs/EFFECT_GUIDE.md`) after a lead nits round; a second power cut overnight lost nothing.
