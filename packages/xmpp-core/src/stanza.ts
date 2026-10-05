@@ -1,5 +1,11 @@
 import { xml, type XmppElement } from '@xmpp/client';
-import { decodePayload, encodePayload, type Payload } from '@zilar/protocol';
+import {
+  decodePayload,
+  encodePayload,
+  ForwardOriginSchema,
+  type ForwardOrigin,
+  type Payload,
+} from '@zilar/protocol';
 import { bareJid, jidDomain, jidResource } from './jid';
 import { capBody } from './text';
 import {
@@ -27,6 +33,7 @@ import {
   ROSTER_NAMESPACE,
   STANZA_ID_NAMESPACE,
   STANZA_NAMESPACE,
+  ZILAR_FORWARD_NAMESPACE,
 } from './namespaces';
 import type {
   ChatKind,
@@ -110,12 +117,32 @@ function utf16Offset(text: string, codePointIndex: number): number {
 // Outgoing stanzas
 // ---------------------------------------------------------------------------
 
+// A Zilar forward origin (namespace `urn:zilar:forward:0`, distinct from
+// XEP-0297's `urn:xmpp:forward:0`). Long strings travel as child text, ids and
+// the time as attributes; `id` and `<chat>` only appear when present.
+function forwardElement(origin: ForwardOrigin): XmppElement {
+  const attrs: Record<string, string> = {
+    xmlns: ZILAR_FORWARD_NAMESPACE,
+    sender: origin.sender_id,
+    at: origin.original_at,
+  };
+  if (origin.original_id !== undefined) {
+    attrs['id'] = origin.original_id;
+  }
+  const children: XmppElement[] = [xml('name', {}, origin.sender_name)];
+  if (origin.chat_id !== undefined && origin.chat_name !== undefined) {
+    children.push(xml('chat', { jid: origin.chat_id, name: origin.chat_name }));
+  }
+  return xml('forward', attrs, ...children);
+}
+
 export function buildMessage(options: {
   id: string;
   to: string;
   kind: ChatKind;
   text: string;
   payload?: Payload | undefined;
+  forward?: ForwardOrigin | undefined;
   replyTo?: ReplyRef | undefined;
   mentions?: MentionInput[] | undefined;
 }): XmppElement {
@@ -131,6 +158,10 @@ export function buildMessage(options: {
   // (device test 2026-10-03). The hint also covers any other body-less payload.
   if (options.payload !== undefined || options.text === '') {
     children.push(xml('store', { xmlns: HINTS_NAMESPACE }));
+  }
+
+  if (options.forward !== undefined) {
+    children.push(forwardElement(options.forward));
   }
 
   if (options.replyTo !== undefined) {
@@ -891,6 +922,24 @@ export function parseRetraction(stanza: XmppElement): MessageRetraction | undefi
   return { targetId };
 }
 
+// A Zilar forward origin. A malformed element (a missing sender or name, a bad
+// `at`, or a `<chat>` missing one of its parts) is dropped so the message still
+// decodes without it; this path never throws.
+export function parseForward(stanza: XmppElement): ForwardOrigin | undefined {
+  const element = stanza.getChild('forward', ZILAR_FORWARD_NAMESPACE);
+  if (element === undefined) return undefined;
+  const chat = element.getChild('chat');
+  const result = ForwardOriginSchema.safeParse({
+    sender_id: element.attrs['sender'],
+    sender_name: element.getChildText('name'),
+    chat_id: chat?.attrs['jid'],
+    chat_name: chat?.attrs['name'],
+    original_id: element.attrs['id'],
+    original_at: element.attrs['at'],
+  });
+  return result.success ? result.data : undefined;
+}
+
 // The id the sender generated: its `<origin-id/>` (XEP-0359) when present, else
 // the stanza's `id` attribute. Used to name the original in an edit.
 export function originIdOf(stanza: XmppElement): string | undefined {
@@ -943,6 +992,8 @@ export function decodeMessageStanza(stanza: XmppElement, ctx: ParseContext): Dec
 
   const reactions = parseReactions(inner);
 
+  const forward = parseForward(inner);
+
   if (
     body !== undefined ||
     payload !== undefined ||
@@ -964,6 +1015,7 @@ export function decodeMessageStanza(stanza: XmppElement, ctx: ParseContext): Dec
     if (sender.occupantId !== undefined) message.occupantId = sender.occupantId;
     if (body !== undefined) message.body = body;
     if (payload !== undefined) message.payload = payload;
+    if (forward !== undefined) message.forward = forward;
     if (reactions !== undefined) message.reactions = reactions;
     if (correction !== undefined) message.correction = correction;
     if (retraction !== undefined) message.retraction = retraction;

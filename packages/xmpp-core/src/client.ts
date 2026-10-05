@@ -942,6 +942,7 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
         kind,
         text,
         payload: opts.payload,
+        forward: opts.forward,
         replyTo: opts.replyTo,
         mentions: opts.mentions,
       }),

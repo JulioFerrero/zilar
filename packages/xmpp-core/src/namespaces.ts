@@ -24,3 +24,4 @@ export const ROSTER_NAMESPACE = 'jabber:iq:roster';
 export const RSM_NAMESPACE = 'http://jabber.org/protocol/rsm';
 export const STANZA_ID_NAMESPACE = 'urn:xmpp:sid:0';
 export const STANZA_NAMESPACE = 'urn:ietf:params:xml:ns:xmpp-stanzas';
+export const ZILAR_FORWARD_NAMESPACE = 'urn:zilar:forward:0';

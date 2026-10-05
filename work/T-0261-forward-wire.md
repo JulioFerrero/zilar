@@ -1,7 +1,7 @@
 ---
 id: T-0261
 title: "Forwarding step 1: ForwardOriginSchema in protocol, and xmpp-core builds and parses a <forward xmlns='urn:zilar:forward:0'> element"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0261-forward-wire
 model: auto
@@ -70,4 +70,77 @@ Stores, UI, the server, and mobile.
 
 ## Report (written by the worker when done)
 
+### What I did
+- **protocol**: added `ForwardOriginSchema` (`z.strictObject` + a refinement that
+  `chat_id`/`chat_name` are both present or both absent) and the `ForwardOrigin`
+  type in `forward.ts`; exported it from `index.ts`.
+- **xmpp-core**: added `ZILAR_FORWARD_NAMESPACE = 'urn:zilar:forward:0'`;
+  `SendMessageOptions.forward` and `ChatMessage.forward`;
+  `buildMessage` writes
+  `<forward xmlns sender at [id]><name>…</name>[<chat jid name/>]</forward>`
+  (`id` and `<chat>` only when present); `sendMessage` passes `forward`
+  through; `decodeMessageStanza` reads it with a new `parseForward`, validates
+  with `ForwardOriginSchema`, and drops a malformed element without throwing.
+- **tests**: `packages/protocol/src/forward.test.ts` (valid object, valid with
+  chat, unknown key, each required field missing, each length cap, bad
+  datetime, chat half missing, both directions of the chat pair) and a new
+  `forwards` describe in `packages/xmpp-core/src/stanza.test.ts` (round trip
+  with/without chat, writer shape, missing name, bad `at`, partial `<chat>`,
+  no element, never throws, XEP-0297 MAM `forwarded` not mistaken for ours).
+
+### Files changed (all inside Allowed files)
+- `packages/protocol/src/forward.ts` (new)
+- `packages/protocol/src/forward.test.ts` (new)
+- `packages/protocol/src/index.ts`
+- `packages/xmpp-core/src/namespaces.ts`
+- `packages/xmpp-core/src/types.ts`
+- `packages/xmpp-core/src/stanza.ts`
+- `packages/xmpp-core/src/client.ts`
+- `packages/xmpp-core/src/stanza.test.ts`
+- `work/T-0261-forward-wire.md`
+
+### Commands and results
+- `pnpm --filter @zilar/protocol test --maxWorkers=2 --reporter=dot forward` →
+  1 file passed, 15 tests passed.
+- `pnpm --filter @zilar/xmpp-core test --maxWorkers=2 --reporter=dot stanza` →
+  1 file passed, 77 tests passed.
+- `pnpm gate` (from the repo root, final run) summary:
+  ```
+  gate: 9 changed file(s) against main
+  PASS  install (frozen)  (3.3s)
+  PASS  format  (41.3s)
+  PASS  lint  (1.1s)
+  PASS  typecheck  (1.3s)
+  PASS  tests @zilar/protocol  (3.0s)
+  PASS  tests @zilar/xmpp-core  (2.9s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Deviations and notes
+- `pnpm install` rewrote `pnpm-lock.yaml` with two unrelated transitive
+  peer-dependency lines (`bufferutil`, `utf-8-validate`). I reverted the
+  lockfile (the task says not to touch it) and re-ran `pnpm gate`, which still
+  passes against the committed lockfile.
+- I did not touch `packages/xmpp-core/src/client.test.ts`: the task's Allowed
+  files omit it, although the plan's T-B lists it. `sendMessage`'s change is a
+  single pass-through line, covered by typecheck.
+- `parseForward` is exported, matching the existing `parseReactions` /
+  `parseReply` style; it is called by `decodeMessageStanza`.
+- A forward-only message with no body/payload is not turned into a `ChatMessage`
+  (it reuses the existing "has content" condition), so existing stanzas decode
+  exactly as before.
+
+### Open questions
+None.
+
 ## Review (written by Claude)
+
+**Verdict:** Approved; the first pre-review was clean (2 nits).
+- `ForwardOriginSchema` has the chat pair refinement.
+- `parseForward` uses `safeParse` and never throws.
+- The new namespace is distinct from XEP-0297's.
+
+Notes for the store task (T-D):
+- validate the origin before sending, since `buildMessage` drops a half chat silently;
+- a forward-only stanza with no body is not content today.

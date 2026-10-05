@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { xml, type XmppElement } from '@xmpp/client';
-import { encodePayload, type Payload } from '@zilar/protocol';
+import { encodePayload, type ForwardOrigin, type Payload } from '@zilar/protocol';
 import {
   buildCarbonsEnable,
   buildCorrection,
@@ -44,6 +44,7 @@ import {
   REPLY_NAMESPACE,
   RETRACTION_NAMESPACE,
   STANZA_ID_NAMESPACE,
+  ZILAR_FORWARD_NAMESPACE,
 } from './namespaces';
 
 const ctx: ParseContext = {
@@ -558,6 +559,167 @@ describe('decodeMessageStanza: archived results', () => {
   it('prefers the archive stanza-id over the result id', () => {
     const stanza = archived({ queryId: 'q1', archiveId: 'archive-1', withStanzaId: true });
     expect(decodeMessageStanza(stanza, ctx).message?.id).toBe('sid-1');
+  });
+});
+
+describe('decodeMessageStanza: forwards', () => {
+  const origin: ForwardOrigin = {
+    sender_id: 'ana@zilar.localhost',
+    sender_name: 'Ana',
+    original_at: '2026-10-06T10:00:00.000Z',
+  };
+
+  const originWithChat: ForwardOrigin = {
+    ...origin,
+    chat_id: 'design@rooms.zilar.localhost',
+    chat_name: 'Design',
+    original_id: 'orig-123',
+  };
+
+  function incoming(...children: Array<string | XmppElement>): XmppElement {
+    return xml(
+      'message',
+      { from: 'ana@zilar.localhost', to: 'bob@zilar.localhost', type: 'chat', id: 'm-30' },
+      ...children,
+    );
+  }
+
+  it('round trips a forward without a chat', () => {
+    const built = buildMessage({
+      id: 'm-30',
+      to: 'bob@zilar.localhost',
+      kind: 'chat',
+      text: 'hi',
+      forward: origin,
+    });
+    const { message } = decodeMessageStanza(incoming(...built.children), ctx);
+    expect(message?.body).toBe('hi');
+    expect(message?.forward).toEqual(origin);
+  });
+
+  it('round trips a forward with a chat and original id', () => {
+    const built = buildMessage({
+      id: 'm-31',
+      to: 'bob@zilar.localhost',
+      kind: 'chat',
+      text: 'hi',
+      forward: originWithChat,
+    });
+    const { message } = decodeMessageStanza(incoming(...built.children), ctx);
+    expect(message?.forward).toEqual(originWithChat);
+  });
+
+  it('writes the origin as a namespaced forward element', () => {
+    const built = buildMessage({
+      id: 'm-32',
+      to: 'bob@zilar.localhost',
+      kind: 'chat',
+      text: 'hi',
+      forward: origin,
+    });
+    const forward = built.getChild('forward', ZILAR_FORWARD_NAMESPACE);
+    expect(forward?.attrs).toMatchObject({
+      sender: origin.sender_id,
+      at: origin.original_at,
+    });
+    expect(forward?.attrs['id']).toBeUndefined();
+    expect(forward?.getChildText('name')).toBe('Ana');
+    expect(forward?.getChild('chat')).toBeUndefined();
+  });
+
+  it('writes id and chat only when present', () => {
+    const built = buildMessage({
+      id: 'm-33',
+      to: 'bob@zilar.localhost',
+      kind: 'chat',
+      text: 'hi',
+      forward: originWithChat,
+    });
+    const forward = built.getChild('forward', ZILAR_FORWARD_NAMESPACE);
+    expect(forward?.attrs['id']).toBe('orig-123');
+    expect(forward?.getChild('chat')?.attrs).toMatchObject({
+      jid: originWithChat.chat_id,
+      name: originWithChat.chat_name,
+    });
+  });
+
+  it('drops a forward with a missing name', () => {
+    const stanza = incoming(
+      xml('body', {}, 'hi'),
+      xml(
+        'forward',
+        { xmlns: ZILAR_FORWARD_NAMESPACE, sender: origin.sender_id, at: origin.original_at },
+        xml('chat', { jid: originWithChat.chat_id, name: originWithChat.chat_name }),
+      ),
+    );
+    const { message } = decodeMessageStanza(stanza, ctx);
+    expect(message?.body).toBe('hi');
+    expect(message?.forward).toBeUndefined();
+  });
+
+  it('drops a forward with a bad at', () => {
+    const stanza = incoming(
+      xml('body', {}, 'hi'),
+      xml(
+        'forward',
+        { xmlns: ZILAR_FORWARD_NAMESPACE, sender: origin.sender_id, at: 'not-a-date' },
+        xml('name', {}, origin.sender_name),
+      ),
+    );
+    expect(decodeMessageStanza(stanza, ctx).message?.forward).toBeUndefined();
+  });
+
+  it('drops a forward whose chat is missing a part', () => {
+    const stanza = incoming(
+      xml('body', {}, 'hi'),
+      xml(
+        'forward',
+        { xmlns: ZILAR_FORWARD_NAMESPACE, sender: origin.sender_id, at: origin.original_at },
+        xml('name', {}, origin.sender_name),
+        xml('chat', { jid: originWithChat.chat_id }),
+      ),
+    );
+    expect(decodeMessageStanza(stanza, ctx).message?.forward).toBeUndefined();
+  });
+
+  it('has no forward when the element is absent', () => {
+    const stanza = incoming(xml('body', {}, 'plain'));
+    expect(decodeMessageStanza(stanza, ctx).message?.forward).toBeUndefined();
+  });
+
+  it('never throws on a malformed forward', () => {
+    const stanza = incoming(
+      xml('body', {}, 'hi'),
+      xml('forward', { xmlns: ZILAR_FORWARD_NAMESPACE }),
+    );
+    expect(() => decodeMessageStanza(stanza, ctx)).not.toThrow();
+    expect(decodeMessageStanza(stanza, ctx).message?.forward).toBeUndefined();
+  });
+
+  it('does not mistake an XEP-0297 forwarded element for ours', () => {
+    const inner = xml(
+      'message',
+      { from: 'project@rooms.zilar.localhost/alice', type: 'groupchat', id: 'm-34' },
+      xml('body', {}, 'archived'),
+      mucUser('alice@zilar.localhost'),
+    );
+    const stanza = xml(
+      'message',
+      { from: 'project@rooms.zilar.localhost', to: 'bob@zilar.localhost/laptop' },
+      xml(
+        'result',
+        { xmlns: MAM_NAMESPACE, queryid: 'q1', id: 'archive-1' },
+        xml(
+          'forwarded',
+          { xmlns: FORWARD_NAMESPACE },
+          xml('delay', { xmlns: DELAY_NAMESPACE, stamp: '2026-09-26T07:00:00.000Z' }),
+          inner,
+        ),
+      ),
+    );
+    const { message } = decodeMessageStanza(stanza, ctx);
+    expect(message?.body).toBe('archived');
+    expect(message?.forward).toBeUndefined();
   });
 });
 
