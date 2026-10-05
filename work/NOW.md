@@ -20,17 +20,15 @@ Models (Julio, 2026-10-05): default `opencode/muse-spark-1.3-contributor-free`; 
 
 ## Running (max 6, at most 3 mobile; Julio 2026-10-05)
 
-Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's request): it builds, taps, screenshots and reports, never edits files. First run in progress: the AI screen (T-0189, T-0212, T-0213, T-0218) on a mock build (`EXPO_PUBLIC_ZILAR_MOCK=1 ZILAR_PHONE=emulator-5554 bash scripts/phone/install.sh`), then it reinstalls the real app and restores `.zilar-phone/commit` to b45684f1. The emulator is busy until it reports.
+Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's request): it builds, taps, screenshots and reports, never edits files. Run 1 done: T-0189, T-0212, T-0213, T-0218 PASS on a mock build, no crash; layout issues (routine row squeeze on Delete confirm, Activity header/icon, "Show all" under the gesture bar, version date cut) → T-0229 (written, launches after T-0219). Run 2 in progress: T-0219's Run/Revert/Delete via `ZILAR_SMOKE_MOCK=1 pnpm phone:smoke`.
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0219 | Mobile: Run now, Revert, Delete in the tool detail sheet | after lead round 1, an auto round (1 should-fix) | paid Muse |
-| T-0224 | The doctor also switches in place on a 429 | lead round 1 (no FALLBACK line on a failed switch; second-tick assertion) | paid Muse; `state.ts` added to Allowed (doctor `model` was dropped by `loadState`) |
+| T-0219 | Mobile: Run now, Revert, Delete in the tool detail sheet | packet clean, code reviewed; waiting for emulator QA run 2 | paid Muse |
 | T-0227 | Mobile: @mention picker in the group composer, mentions sent | coding | free Muse (fallback) |
 | T-0228 | Mobile: New group / New channel can be Public with an @handle | coding | free Muse; touches `real-store.ts`/`types.ts` like T-0227 (different functions) |
-| T-0226 | `ZILAR_SMOKE_MOCK=1 pnpm phone:smoke` builds a mock-mode app (emulator only) | coding | free Muse; after merge: see T-0189/T-0213/T-0218 on the emulator via `/ais/ai-dev-1` |
 
-Merged: T-0225 (doctor accepts `CLAUDE.md` in lead commits). Next: received mentions highlighted in mobile bubbles (after T-0227); New channel members step.
+Merged: T-0225 (doctor accepts `CLAUDE.md` in lead commits), T-0224 (doctor in-place fallback; autopilot restarted), T-0226 (`ZILAR_SMOKE_MOCK=1 pnpm phone:smoke <ref>`: mock build, emulator only, leaves `.zilar-phone/commit` alone). Next: received mentions highlighted in mobile bubbles (after T-0227); New channel members step.
 
 Merged: T-0222, T-0223 (docs sync: FEATURES 14 rows, parity roadmap state, README M5). Doctor flagged the lead's `CLAUDE.md` edit (d70f6d36) as must-fix; Julio chose "keep it, allow lead edits": `CLAUDE.md` line 10 updated (92190c62), T-0225 updates the doctor prompt. Doctor stalled twice on 429; lead switched it by hand both times until T-0224 merges.
 
