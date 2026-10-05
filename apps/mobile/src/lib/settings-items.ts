@@ -10,6 +10,12 @@
  * block, and append at the end.
  */
 
+/** The hub card a row belongs to; the hub renders one card per group. */
+export type SettingsGroup = 'account' | 'ais' | 'chats' | 'server';
+
+/** The order the hub renders the group cards in. */
+export const SETTINGS_GROUP_ORDER = ['account', 'ais', 'chats', 'server'] as const;
+
 export interface SettingsItemShape {
   id: string;
   title: string;
@@ -18,6 +24,8 @@ export interface SettingsItemShape {
   icon: string;
   /** The expo-router route pushed when the row is tapped. */
   href: string;
+  /** Which card of the hub renders this row. */
+  group: SettingsGroup;
 }
 
 export const SETTINGS_ITEMS = [
@@ -27,6 +35,7 @@ export const SETTINGS_ITEMS = [
     subtitle: 'Your name, picture and @username.',
     icon: 'profile',
     href: '/settings/profile',
+    group: 'account',
   },
   {
     id: 'requests',
@@ -34,6 +43,7 @@ export const SETTINGS_ITEMS = [
     subtitle: 'People who asked to connect, and your own requests.',
     icon: 'requests',
     href: '/settings/requests',
+    group: 'account',
   },
   {
     id: 'approvals',
@@ -41,6 +51,7 @@ export const SETTINGS_ITEMS = [
     subtitle: 'Pending requests and always-allowed rules.',
     icon: 'approvals',
     href: '/settings/approvals',
+    group: 'ais',
   },
   {
     id: 'machines',
@@ -48,6 +59,7 @@ export const SETTINGS_ITEMS = [
     subtitle: 'Computers where your AIs can work.',
     icon: 'machines',
     href: '/settings/machines',
+    group: 'ais',
   },
   {
     id: 'connections',
@@ -55,6 +67,7 @@ export const SETTINGS_ITEMS = [
     subtitle: 'Provider accounts for your AIs.',
     icon: 'connections',
     href: '/settings/connections',
+    group: 'ais',
   },
   {
     id: 'integrations',
@@ -62,6 +75,7 @@ export const SETTINGS_ITEMS = [
     subtitle: 'Telegram, email and transcription for this server.',
     icon: 'integrations',
     href: '/settings/integrations',
+    group: 'server',
   },
   {
     id: 'stickers',
@@ -69,6 +83,15 @@ export const SETTINGS_ITEMS = [
     subtitle: 'Your packs, shared packs and favorites.',
     icon: 'stickers',
     href: '/settings/stickers',
+    group: 'chats',
+  },
+  {
+    id: 'blocked',
+    title: 'Blocked people',
+    subtitle: 'People you blocked. They are not told.',
+    icon: 'blocked',
+    href: '/settings/blocked',
+    group: 'account',
   },
 ] as const satisfies readonly SettingsItemShape[];
 
