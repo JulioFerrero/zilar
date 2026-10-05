@@ -25,9 +25,10 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
 | T-0260 | Deploy: auto-deploy live after every green CI on main; /health shows the commit | coding (DeepSeek) | Julio 2026-10-06 chose "every green main push"; he must add secrets COOLIFY_URL, COOLIFY_TOKEN, COOLIFY_SERVICE_UUID (zilar service uuid zogjtvwnoh9rqo96h7e7ajz1) |
-| T-0261 | Forwarding step 1: ForwardOriginSchema + xmpp-core `<forward xmlns="urn:zilar:forward:0">` | coding | plan T-A + T-B |
-| T-0262 | Mobile: list ticks use the real user id (never showed in the real app); folder editor waits for its folder | coding | pre-review follow-ups |
-| T-0263 | Web kit migration 3: TelegramImport, NewAi, NewGroup dialogs | coding | audit step 6 batch 2 |
+| T-0272 | Tooling: pnpm install stops flipping the lockfile peers | coding | noise in every task |
+| T-0273 | Web kit migration 6: NewChatButton + GroupHandleRoute dialogs | coding | audit step 6 batch 4 |
+
+Later the same night: merged T-0261 (forward wire), T-0262 (ticks + folder deep link), T-0263 (lead fix: kit Dialog 85vh + scrolling body), T-0264 (mobile kit batch 1 + `zilar://dev/kit`), T-0265, T-0266, T-0267 (SectionLabel heading), T-0268, T-0269 (CI flake: '535' in random requestId), T-0270 (folder editor on kit, browser-checked), T-0271. QA run 9 all PASS (qa9/). T-0260 got a lead fix round: tip-of-main guard + serialized publishing (overlapping CI runs could push an older `latest`).
 
 Night 10-06 (Julio asleep, `caffeinate -dimsu` running): merged T-0251, T-0252 (after a lead memo fix round), T-0253 (lead browser check), T-0254, T-0255 (lead allowed hub.test.ts), T-0256 (forwarding plan), T-0257 (media gallery plan), T-0258 (4 dialogs on kit), T-0259 (CI red since T-0244: slow folder cap test; fixed). QA run 8 sent (T-0251, T-0252, T-0254, T-0255). Live chat.zilar.app is still v0.1.13: Julio said no manual release tonight; T-0260 automates it.
 
