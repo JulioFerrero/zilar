@@ -166,21 +166,22 @@ export async function mergeTask(options: MergeOptions): Promise<void> {
     .split('\n')
     .map((line) => line.trim())
     .filter((line) => line.length > 0);
+  // Compute the new board text BEFORE the squash stages anything into
+  // main's index: a board throw (e.g. a hand-edited row `moveBoardRow`
+  // cannot parse) must leave main untouched so the merge stays re-runnable.
+  const boardFile = path.join(options.root, 'work', 'BOARD.md');
+  const boardText = moveBoardRow(
+    options.readText(boardFile),
+    options.task,
+    options.file,
+    options.summary,
+    options.today,
+  ).text;
   const squashed = options.runner.run(options.root, ['merge', '--squash', options.branch]);
   if (!squashed.ok) {
     throw new MergeError(`squash of ${options.branch} failed`);
   }
-  const boardFile = path.join(options.root, 'work', 'BOARD.md');
-  options.writeText(
-    boardFile,
-    moveBoardRow(
-      options.readText(boardFile),
-      options.task,
-      options.file,
-      options.summary,
-      options.today,
-    ).text,
-  );
+  options.writeText(boardFile, boardText);
   const staged = options.runner.run(options.root, ['add', 'work/BOARD.md']);
   if (!staged.ok) {
     throw new MergeError('board stage failed');
