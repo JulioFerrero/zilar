@@ -1,7 +1,7 @@
 ---
 id: T-0225
 title: "Lead tooling: the doctor accepts lead commits that touch CLAUDE.md"
-status: planned
+status: merged
 milestone: M5
 branch: task/T-0225-doctor-claude-md
 model: minimax-coding-plan/MiniMax-M3
@@ -47,4 +47,43 @@ Any other doctor rule.
 
 ## Report (written by the worker when done)
 
+### What I did
+
+Updated step 4 of the doctor prompt so that a lead commit (any commit whose message does not start with `T-XXXX:`) is allowed to change `CLAUDE.md` in addition to files under `work/` and `docs/`. This matches Julio's 2026-10-05 decision recorded in `CLAUDE.md` line 10.
+
+The `describe('doctor prompt'` block in `doctor.test.ts` (line 359) only asserts generic placeholder text and a few constant phrases, not the specific sentence in step 4, so no test update was needed.
+
+### Files changed
+
+- `packages/devtools/prompts/doctor.md` — single-sentence update on step 4.
+- `work/T-0225-doctor-claude-md.md` — status front matter.
+
+Both are inside the Allowed files.
+
+### Commands run
+
+- `pnpm install` — Done in 15.1s, 1090 packages added (peer-dep warnings only, pre-existing).
+- `pnpm --filter @zilar/devtools test --maxWorkers=2 --reporter=dot src/lead/doctor.test.ts` — 18 passed (1 file), 353ms.
+- `pnpm gate` — `GATE PASS`, summary:
+  ```
+  gate: 2 changed file(s) against main
+  PASS  install (frozen)  (1.9s)
+  PASS  format  (18.4s)
+  PASS  lint  (1.5s)
+  PASS  typecheck  (4.0s)
+  PASS  tests @zilar/devtools  (1.3s)
+  scope: every changed file is inside the Allowed files
+  ```
+
+### Note on `git diff main`
+
+`git diff --stat main` also lists `work/NOW.md` (11 lines) because main advanced while I worked — another worker's merge landed on main updating it. I did not touch `work/NOW.md`. The gate correctly evaluates my working-tree changes only.
+
+### Acceptance
+
+- Doctor prompt now allows `CLAUDE.md` in lead commits (step 4).
+- Gate ends with `GATE PASS` and lists no file outside the Allowed files.
+
 ## Review (written by Claude)
+
+**Verdict:** Approved, clean first pre-review (MiniMax). One-line change to the doctor prompt's rule 4, exactly as specified.
