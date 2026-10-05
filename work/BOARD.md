@@ -11,6 +11,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0252](T-0252-mobile-hide-blocked.md) | Mobile: hide blocked people in groups and previews | in_progress | auto | T-0239, T-0244, T-0249 | helpers move to chat-core |
 | [T-0253](T-0253-web-kit-switches.md) | Web kit migration 1: toggles on the kit Switch | in_progress | auto | T-0243, T-0246 | audit step 4 |
+| [T-0254](T-0254-mobile-sheets-keyboard-scroll.md) | Mobile: create sheets scroll above the keyboard (Android) | in_progress | auto | T-0234 | QA run 7 follow-up |
 
 ## Follow-ups
 
