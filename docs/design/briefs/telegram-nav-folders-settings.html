@@ -127,6 +127,35 @@ h2.sec{font-size:13px;font-weight:500;color:var(--subtle);text-transform:upperca
 .dcol{flex:1;min-width:0;display:flex;flex-direction:column}
 .dcol h4{margin:0 0 4px;font-size:18px;font-weight:600}
 .dcol .d{font-size:13px;color:var(--muted);margin:0 0 14px}
+.main{position:relative}
+.pg{flex:1;min-height:0;width:100%;max-width:640px;margin:0 auto;padding:36px 24px}
+.pgh{display:flex;align-items:flex-start;gap:16px;margin-bottom:28px}
+.pgh>div{flex:1;min-width:0}
+.pgt{font-size:24px;font-weight:600;letter-spacing:-.02em}
+.pgd{font-size:14px;color:var(--muted);margin-top:6px;line-height:1.45;max-width:52ch}
+.sech{display:flex;justify-content:space-between;align-items:baseline;font-size:12px;color:var(--subtle);text-transform:uppercase;letter-spacing:.08em;margin:0 4px 10px}
+.sech .mono{text-transform:none;letter-spacing:0}
+.frow{padding:13px 14px}
+.frow .a{font-size:15px}
+.ed{width:32px;height:32px;border-radius:9px}
+.pgn{font-size:12.5px;color:var(--subtle);margin:12px 4px 0}
+.ovl{position:absolute;inset:0;background:rgba(0,0,0,.62);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;padding:24px}
+.dlg{width:520px;max-width:100%;max-height:100%;display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--strong);border-radius:18px;box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 30px 60px -12px rgba(0,0,0,.95);overflow:hidden}
+.dlgh{display:flex;align-items:center;gap:12px;padding:16px 18px;border-bottom:1px solid var(--border)}
+.dlgb{padding:6px 18px 4px;overflow:hidden}
+.fs{padding:16px 0;border-top:1px solid var(--line)}
+.fs:first-child{border-top:0}
+.fl{font-size:13px;font-weight:600;color:var(--fg);margin:0 0 10px}
+.ic12{grid-template-columns:repeat(12,minmax(0,1fr));gap:6px;margin-top:10px}
+.ic12 .k{height:34px;border-radius:9px}
+.ic12 .i{width:16px;height:16px}
+.tg2{display:grid;grid-template-columns:1fr 1fr}
+.tg2 .row{border-top:1px solid var(--line);padding:10px 14px}
+.tg2 .row:nth-child(-n+2){border-top:0}
+.tg2 .row:nth-child(odd){border-right:1px solid var(--line)}
+.tg2 .a{font-size:14px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.dlgf{display:flex;align-items:center;gap:8px;padding:14px 18px;border-top:1px solid var(--border);background:var(--surface)}
 .qs{margin-top:44px;max-width:76ch;background:var(--surface);border:1px solid var(--strong);border-radius:16px;padding:18px 20px}
 .qs h2{font-size:16px;font-weight:600;margin:0 0 10px}
 .qs ol{margin:0;padding-left:20px;display:grid;gap:9px;font-size:14px;line-height:1.5}
@@ -412,52 +441,96 @@ h2.sec{font-size:13px;font-weight:500;color:var(--subtle);text-transform:upperca
   </div>
  </aside>
  <main class="main">
-  <div class="mh"><span style="font-size:15px;font-weight:600">Chat folders</span><span style="font-size:13px;color:var(--muted)">Synced with your phone</span></div>
-  <div class="dpane">
-   <div class="dcol" style="flex:0 0 340px">
-    <h4>Your folders</h4><p class="d">Drag to reorder. 4 of 20.</p>
-    <div class="card">
-     <div class="row"><svg class="i s chev"><use href="#grip"/></svg><span class="key tile"><svg class="i s"><use href="#msgs"/></svg></span><div class="t"><div class="a" style="font-size:14px">All chats</div><div class="c">Always there</div></div></div>
-     <div class="row"><svg class="i s chev"><use href="#grip"/></svg><span class="key tile"><svg class="i s"><use href="#user"/></svg></span><div class="t"><div class="a" style="font-size:14px">Personal</div><div class="c">Personal chats</div></div></div>
-     <div class="row"><svg class="i s chev"><use href="#grip"/></svg><span class="key tile"><svg class="i s"><use href="#bot"/></svg></span><div class="t"><div class="a" style="font-size:14px">AIs</div><div class="c">AIs</div></div></div>
-     <div class="row" style="background:var(--raised)"><svg class="i s chev"><use href="#grip"/></svg><span class="key tile"><svg class="i s"><use href="#brief"/></svg></span><div class="t"><div class="a" style="font-size:14px">Work</div><div class="c">Groups, AIs, 2 chats</div></div></div>
-    </div>
-    <div style="margin-top:12px"><span class="prim" style="width:100%;height:40px;border-radius:10px;gap:8px;font-size:14px"><svg class="i s" style="stroke-width:2"><use href="#folderplus"/></svg>New folder</span></div>
+  <div class="pg">
+   <div class="pgh"><div><div class="pgt">Chat folders</div><div class="pgd">Group chats into folders. They show in the rail on the web and as tabs on your phone.</div></div><span class="prim" style="height:38px;padding:0 16px;border-radius:10px;gap:8px;font-size:14px;flex:none"><svg class="i s" style="stroke-width:2"><use href="#folderplus"/></svg>New folder</span></div>
+   <div class="sech"><span>Your folders</span><span class="mono">4 of 20</span></div>
+   <div class="card">
+    <div class="row frow"><svg class="i s chev"><use href="#grip"/></svg><span class="key tile"><svg class="i s"><use href="#msgs"/></svg></span><div class="t"><div class="a">All chats</div><div class="c">Every chat. Always first.</div></div><span class="cnt mono">3</span></div>
+    <div class="row frow"><svg class="i s chev"><use href="#grip"/></svg><span class="key tile"><svg class="i s"><use href="#user"/></svg></span><div class="t"><div class="a">Personal</div><div class="c">Personal chats</div></div><span class="cnt mono">1</span><span class="key ed"><svg class="i s"><use href="#pen"/></svg></span></div>
+    <div class="row frow"><svg class="i s chev"><use href="#grip"/></svg><span class="key tile"><svg class="i s"><use href="#bot"/></svg></span><div class="t"><div class="a">AIs</div><div class="c">AIs</div></div><span class="cnt mono">2</span><span class="key ed"><svg class="i s"><use href="#pen"/></svg></span></div>
+    <div class="row frow"><svg class="i s chev"><use href="#grip"/></svg><span class="key tile"><svg class="i s"><use href="#brief"/></svg></span><div class="t"><div class="a">Work</div><div class="c">Groups and AIs, plus 2 chats</div></div><span class="key ed"><svg class="i s"><use href="#pen"/></svg></span></div>
    </div>
-   <div class="dcol">
-    <h4>Work</h4><p class="d">Edits save to the server and show on every device.</p>
-    <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px">
-     <div>
+   <p class="pgn">Drag a handle to reorder. Changes sync to every device.</p>
+  </div>
+ </main>
+</div></div>
+<p class="cap"><b>Chat folders page.</b> One centered column: title and description, a New folder key, then the folder list with counts, drag handles and an edit pencil.</p>
+<div class="dwrap" style="margin-top:28px"><div class="desk">
+ <div class="rail">
+  <div class="ri"><svg class="i"><use href="#msgs"/></svg>All chats<span class="cnt mono">3</span></div>
+  <div class="ri"><svg class="i"><use href="#user"/></svg>Personal<span class="cnt mono">1</span></div>
+  <div class="ri"><svg class="i"><use href="#bot"/></svg>AIs<span class="cnt mono">2</span></div>
+  <div class="ri"><svg class="i"><use href="#brief"/></svg>Work</div>
+  <div class="ri"><svg class="i"><use href="#folderplus"/></svg>New</div>
+  <div style="flex:1"></div>
+  <div class="rsep"></div>
+  <div class="ri"><svg class="i"><use href="#bot"/></svg>My AIs</div>
+  <div class="ri segon"><svg class="i"><use href="#gear"/></svg>Settings</div>
+  <div class="ri"><span class="av ring" style="width:30px;height:30px;font-size:11px">CT</span></div>
+ </div>
+ <aside class="side" style="padding:0 0 12px">
+  <div class="big" style="padding:18px 0 14px"><span style="position:relative"><span class="av ring" style="width:64px;height:64px;font-size:20px">CT</span><span class="prim cam" style="width:24px;height:24px"><svg class="i xs" style="width:12px;height:12px"><use href="#cam"/></svg></span></span><div class="nm" style="font-size:17px;margin-top:10px">Claude Test</div><div class="st mono" style="font-size:12px">@ada_lovelace</div></div>
+  <div style="padding:0 12px;display:flex;flex-direction:column;gap:10px;overflow:hidden">
+   <div class="card">
+    <div class="row"><span class="key tile"><svg class="i s"><use href="#user"/></svg></span><div class="t"><div class="a" style="font-size:14px">Profile</div></div><svg class="i s chev"><use href="#chev"/></svg></div>
+    <div class="row"><span class="key tile"><svg class="i s"><use href="#uadd"/></svg></span><div class="t"><div class="a" style="font-size:14px">Contact requests</div></div><span class="prim badge mono">2</span></div>
+   </div>
+   <div class="card">
+    <div class="row"><span class="key tile"><svg class="i s"><use href="#shield"/></svg></span><div class="t"><div class="a" style="font-size:14px">Approvals</div></div><svg class="i s chev"><use href="#chev"/></svg></div>
+    <div class="row"><span class="key tile"><svg class="i s"><use href="#server"/></svg></span><div class="t"><div class="a" style="font-size:14px">Machines</div></div><svg class="i s chev"><use href="#chev"/></svg></div>
+    <div class="row"><span class="key tile"><svg class="i s"><use href="#key"/></svg></span><div class="t"><div class="a" style="font-size:14px">Connections</div></div><svg class="i s chev"><use href="#chev"/></svg></div>
+   </div>
+   <div class="card">
+    <div class="row" style="background:var(--raised)"><span class="key tile"><svg class="i s"><use href="#folder"/></svg></span><div class="t"><div class="a" style="font-size:14px">Chat folders</div></div><svg class="i s chev"><use href="#chev"/></svg></div>
+    <div class="row"><span class="key tile"><svg class="i s"><use href="#sticker"/></svg></span><div class="t"><div class="a" style="font-size:14px">Stickers</div></div><svg class="i s chev"><use href="#chev"/></svg></div>
+    <div class="row"><span class="key tile"><svg class="i s"><use href="#plug"/></svg></span><div class="t"><div class="a" style="font-size:14px">Integrations</div></div><svg class="i s chev"><use href="#chev"/></svg></div>
+   </div>
+  </div>
+ </aside>
+ <main class="main">
+  <div class="pg">
+   <div class="pgh"><div><div class="pgt">Chat folders</div><div class="pgd">Group chats into folders. They show in the rail on the web and as tabs on your phone.</div></div><span class="prim" style="height:38px;padding:0 16px;border-radius:10px;gap:8px;font-size:14px;flex:none"><svg class="i s" style="stroke-width:2"><use href="#folderplus"/></svg>New folder</span></div>
+   <div class="sech"><span>Your folders</span><span class="mono">4 of 20</span></div>
+   <div class="card">
+    <div class="row frow"><svg class="i s chev"><use href="#grip"/></svg><span class="key tile"><svg class="i s"><use href="#msgs"/></svg></span><div class="t"><div class="a">All chats</div><div class="c">Every chat. Always first.</div></div><span class="cnt mono">3</span></div>
+    <div class="row frow"><svg class="i s chev"><use href="#grip"/></svg><span class="key tile"><svg class="i s"><use href="#user"/></svg></span><div class="t"><div class="a">Personal</div><div class="c">Personal chats</div></div><span class="cnt mono">1</span><span class="key ed"><svg class="i s"><use href="#pen"/></svg></span></div>
+    <div class="row frow"><svg class="i s chev"><use href="#grip"/></svg><span class="key tile"><svg class="i s"><use href="#bot"/></svg></span><div class="t"><div class="a">AIs</div><div class="c">AIs</div></div><span class="cnt mono">2</span><span class="key ed"><svg class="i s"><use href="#pen"/></svg></span></div>
+    <div class="row frow"><svg class="i s chev"><use href="#grip"/></svg><span class="key tile"><svg class="i s"><use href="#brief"/></svg></span><div class="t"><div class="a">Work</div><div class="c">Groups and AIs, plus 2 chats</div></div><span class="key ed"><svg class="i s"><use href="#pen"/></svg></span></div>
+   </div>
+   <p class="pgn">Drag a handle to reorder. Changes sync to every device.</p>
+  </div>
+  <div class="ovl">
+   <div class="dlg">
+    <div class="dlgh"><span class="key tile"><svg class="i s"><use href="#brief"/></svg></span><div style="flex:1;min-width:0"><div class="pgt" style="font-size:17px">Edit folder</div><div class="pgd" style="margin:0">Work</div></div><span class="key" style="width:34px;height:34px;border-radius:10px" aria-label="Close"><svg class="i s"><use href="#x"/></svg></span></div>
+    <div class="dlgb">
+     <div class="fs"><div class="fl">Name and icon</div>
       <div class="field well"><span>Work</span><span class="mono" style="font-size:12px;color:var(--subtle)">4/24</span></div>
-      <div class="lbl">Icon</div>
-      <div class="icons">
-       <span class="key k"><svg class="i"><use href="#folder"/></svg></span><span class="key k"><svg class="i"><use href="#user"/></svg></span><span class="key k"><svg class="i"><use href="#users"/></svg></span><span class="key k"><svg class="i"><use href="#bot"/></svg></span><span class="key k"><svg class="i"><use href="#mega"/></svg></span><span class="segon k" style="display:flex;align-items:center;justify-content:center"><svg class="i"><use href="#brief"/></svg></span>
-       <span class="key k"><svg class="i"><use href="#home"/></svg></span><span class="key k"><svg class="i"><use href="#star"/></svg></span><span class="key k"><svg class="i"><use href="#heart"/></svg></span><span class="key k"><svg class="i"><use href="#flag"/></svg></span><span class="key k"><svg class="i"><use href="#code"/></svg></span><span class="key k"><svg class="i"><use href="#globe"/></svg></span>
-      </div>
-      <div class="lbl">Exclude</div>
-      <div class="card">
-       <div class="row"><div class="t"><div class="a" style="font-size:14px">Muted chats</div></div><span class="tog well on"></span></div>
-       <div class="row"><div class="t"><div class="a" style="font-size:14px">Read chats</div></div><span class="tog well"></span></div>
+      <div class="icons ic12">
+       <span class="key k"><svg class="i"><use href="#folder"/></svg></span><span class="key k"><svg class="i"><use href="#user"/></svg></span><span class="key k"><svg class="i"><use href="#users"/></svg></span><span class="key k"><svg class="i"><use href="#bot"/></svg></span><span class="key k"><svg class="i"><use href="#mega"/></svg></span><span class="segon k" style="display:flex;align-items:center;justify-content:center"><svg class="i"><use href="#brief"/></svg></span><span class="key k"><svg class="i"><use href="#home"/></svg></span><span class="key k"><svg class="i"><use href="#star"/></svg></span><span class="key k"><svg class="i"><use href="#heart"/></svg></span><span class="key k"><svg class="i"><use href="#flag"/></svg></span><span class="key k"><svg class="i"><use href="#code"/></svg></span><span class="key k"><svg class="i"><use href="#globe"/></svg></span>
       </div>
      </div>
-     <div>
-      <div class="lbl" style="margin-top:0">Include</div>
-      <div class="card">
-       <div class="row"><svg class="i s" style="color:var(--muted)"><use href="#user"/></svg><div class="t"><div class="a" style="font-size:14px">Personal chats</div></div><span class="tog well"></span></div>
-       <div class="row"><svg class="i s" style="color:var(--muted)"><use href="#users"/></svg><div class="t"><div class="a" style="font-size:14px">Groups</div></div><span class="tog well on"></span></div>
-       <div class="row"><svg class="i s" style="color:var(--muted)"><use href="#mega"/></svg><div class="t"><div class="a" style="font-size:14px">Channels</div></div><span class="tog well"></span></div>
-       <div class="row"><svg class="i s" style="color:var(--muted)"><use href="#bot"/></svg><div class="t"><div class="a" style="font-size:14px">AIs</div></div><span class="tog well on"></span></div>
+     <div class="fs"><div class="fl">Show these chats</div>
+      <div class="card tg2">
+       <div class="row"><svg class="i s" style="color:var(--muted)"><use href="#user"/></svg><div class="t"><div class="a">Personal chats</div></div><span class="tog well"></span></div>
+       <div class="row"><svg class="i s" style="color:var(--muted)"><use href="#users"/></svg><div class="t"><div class="a">Groups</div></div><span class="tog well on"></span></div>
+       <div class="row"><svg class="i s" style="color:var(--muted)"><use href="#mega"/></svg><div class="t"><div class="a">Channels</div></div><span class="tog well"></span></div>
+       <div class="row"><svg class="i s" style="color:var(--muted)"><use href="#bot"/></svg><div class="t"><div class="a">AIs</div></div><span class="tog well on"></span></div>
       </div>
-      <div class="lbl">Chats in this folder</div>
-      <div class="card"><div class="row" style="flex-wrap:wrap;gap:6px"><span class="chipx pill"><span class="av">AN</span>Ana<svg class="i xs" style="color:var(--subtle)"><use href="#x"/></svg></span><span class="chipx pill"><span class="av">TG</span>test group<svg class="i xs" style="color:var(--subtle)"><use href="#x"/></svg></span><span class="key" style="height:28px;padding:0 10px;border-radius:999px;gap:4px;font-size:13px"><svg class="i xs"><use href="#plus"/></svg>Add</span></div></div>
-      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px"><span class="key" style="height:36px;padding:0 14px;border-radius:10px;font-size:14px;color:var(--danger)">Delete folder</span><span class="prim" style="height:36px;padding:0 18px;border-radius:10px;font-size:14px">Save</span></div>
+      <div class="chips"><span class="chipx pill"><span class="av">AN</span>Ana<svg class="i xs" style="color:var(--subtle)"><use href="#x"/></svg></span><span class="chipx pill"><span class="av">TG</span>test group<svg class="i xs" style="color:var(--subtle)"><use href="#x"/></svg></span><span class="key" style="height:28px;padding:0 10px;border-radius:999px;gap:4px;font-size:13px"><svg class="i xs"><use href="#plus"/></svg>Add chats</span></div>
+     </div>
+     <div class="fs"><div class="fl">Hide</div>
+      <div class="card tg2">
+       <div class="row"><div class="t"><div class="a">Muted chats</div></div><span class="tog well on"></span></div>
+       <div class="row"><div class="t"><div class="a">Read chats</div></div><span class="tog well"></span></div>
+      </div>
      </div>
     </div>
+    <div class="dlgf"><span class="key" style="height:36px;padding:0 14px;border-radius:10px;font-size:14px;color:var(--danger);gap:6px"><svg class="i s"><use href="#trash"/></svg>Delete</span><span style="flex:1"></span><span class="key" style="height:36px;padding:0 16px;border-radius:10px;font-size:14px;color:var(--fg)">Cancel</span><span class="prim" style="height:36px;padding:0 20px;border-radius:10px;font-size:14px">Save</span></div>
    </div>
   </div>
  </main>
 </div></div>
-<p class="cap"><b>Settings on desktop.</b> The rail's Settings key opens the settings list in the sidebar column; Chat folders shows the list and the editor side by side in the main pane.</p>
+<p class="cap"><b>Settings on desktop.</b> The rail's Settings key opens the settings list in the sidebar column. Chat folders is one centered page: title, then the folder list. The pencil (or a click on a folder) opens the editor in a dialog with three labelled sections: Name and icon, Show these chats, Hide. Delete sits apart from Save.</p>
 
 <section class="qs">
 <h2>Questions for Julio</h2>
