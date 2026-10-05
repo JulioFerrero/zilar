@@ -2,8 +2,10 @@ import { useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { ChatList } from '@/components/ChatList';
 import { EmptyState } from '@/components/EmptyState';
+import { FolderRail } from '@/components/FolderRail';
 import { ChatView } from './ChatView';
 import { useChatStore } from '@/store/ChatStoreProvider';
+import { useChatFolders } from '@/lib/useChatFolders';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { cn } from '@/lib/utils';
 
@@ -24,6 +26,7 @@ export function ChatShell() {
   const store = useChatStore();
   const navigate = useNavigate();
   const isWide = useMediaQuery('(min-width: 900px)');
+  useChatFolders();
   const chat = chatId === undefined ? undefined : store.chats.find((item) => item.id === chatId);
 
   useEffect(() => {
@@ -38,6 +41,7 @@ export function ChatShell() {
 
   return (
     <div className="flex h-dvh w-full overflow-hidden bg-page wide:gap-3 wide:p-3">
+      {isWide && <FolderRail />}
       <aside
         className={cn(
           'h-full w-full min-w-0 flex-col bg-panel wide:w-[360px] wide:shrink-0 wide:overflow-hidden wide:rounded-2xl wide:border wide:border-border',

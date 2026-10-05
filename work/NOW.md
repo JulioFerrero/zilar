@@ -25,12 +25,12 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
 | T-0237 | Web: chat folders from the server, chips (narrow), left folder rail (wide) | coding | Telegram brief b, decision 4; part 2 (T-0238: Chat folders page + editor dialog) written after it |
+| T-0240 | packages/ui-tokens + drift tests (no visual change) | coding | UI kit step 1; dot-grid on mobile left for Julio |
 | T-0239 | Web: hide blocked people's group messages; Blocked page fix for null @handle | coding | the lead found the null-handle bug after merging T-0235 |
-| T-0236 | Audit: duplicated UI, shared kit, React Cosmos plan (docs only) | pre-review | Julio: React Cosmos for web and mobile; audit → tokens + kit + catalog → gradual migration |
-| T-0227 | Mobile: @mention picker in the group composer, mentions sent | pre-review after auto round 2 | |
+| T-0227 | Mobile: @mention picker in the group composer, mentions sent | lead fix round 3 (M1 typed text lost on range replace, S1 legacy groups, S2 self in list) | F1 channel feed mentions = follow-up |
 | T-0233 | Mobile: floating bottom bar (Chats, AIs, Settings, Profile), search well, Profile tab | pre-review | Telegram brief a, d; uses `expo-router/ui` headless tabs |
 
-Merged: T-0235 (web block/unblock + Blocked people page; 2 nits deferred: unblock error sentence, mock self-block). Merged: T-0232 (chat_folders server, migration 0040, clean first pre-review). Merged: T-0171 (block users server, after lead round 1). Queued: T-0234 (create sheets keyboard + mock create, after T-0233). Lead TODO: Docker compose rehearsal for T-0172 (push-deploy.test.sh already PASS 25/25).
+Merged: T-0236 (UI kit audit, `docs/audit/ui-kit-audit.md`; next `packages/ui-tokens`, web kit + Cosmos, mobile kit with the react-native-web fallback, then migrations per area). Merged: T-0235 (web block/unblock + Blocked people page; 2 nits deferred: unblock error sentence, mock self-block). Merged: T-0232 (chat_folders server, migration 0040, clean first pre-review). Merged: T-0171 (block users server, after lead round 1). Queued: T-0234 (create sheets keyboard + mock create, after T-0233). Lead TODO: Docker compose rehearsal for T-0172 (push-deploy.test.sh already PASS 25/25).
 
 Merged: T-0228 (public groups/channels), T-0230 (tool sheet keyboard), T-0172 (push component host), T-0231 (folder matcher), T-0225 (doctor accepts `CLAUDE.md` in lead commits), T-0224 (doctor in-place fallback; autopilot restarted), T-0226 (`ZILAR_SMOKE_MOCK=1 pnpm phone:smoke <ref>`: mock build, emulator only, leaves `.zilar-phone/commit` alone), T-0219 (tool Run/Revert/Delete; QA run 2 PASS, keyboard and stale-list issues → T-0230), T-0229 (AI screen layout fixes). Free slot (6th): block users web UI once T-0171 merges. Next: received mentions highlighted in mobile bubbles (after T-0227); New channel members step.
 
@@ -41,6 +41,8 @@ First live `LEAD: FALLBACK`: T-0220's pre-review (free 429 → paid, same sessio
 Merged since the last update: T-0214 (New group sheet), T-0216 (in-place fallback; autopilot restarted WITHOUT `ZILAR_REVIEW_MODEL`: new sessions start on free Muse and switch on a 429), T-0218 (tool detail sheet, read only).
 
 ## Next, in order
+
+- Julio 2026-10-05 (chat background): dot grid on BOTH web and mobile. After T-0240 merges, a mobile task draws the 22px dot grid (SVG pattern) and removes that difference from `packages/ui-tokens`. Later feature in the plan: custom chat backgrounds (images or dots in different colours), web first.
 
 0. Julio (2026-10-05, Telegram screenshots): folders (All/Personal/AIs/Work) fully editable and configurable like Telegram; AIs and the header options move to a floating bottom tab bar; redesign Settings and Profile. Today folders are hard-coded in `apps/mobile/src/lib/filter.ts` and `apps/web/src/components/FolderTabs.tsx`, nothing on the server. Brief and mockup v3 done (`docs/design/briefs/telegram-nav-folders-settings.{md,html}`, artifact https://claude.ai/artifact/BHee2ibwek1Q7ALdWjp38N). Julio's decisions are in the brief: monochrome keys, no Work default, tabs Chats/AIs/Settings/Profile, desktop folder rail. T-0231 (chat-core matcher) launched. Next: server `chat_folders` table + API (schema, after T-0171 merges), web rail + Chat folders page, mobile tabs, mobile folders, Settings, Profile. Julio: ask every question with the AskUserQuestion tool.
 

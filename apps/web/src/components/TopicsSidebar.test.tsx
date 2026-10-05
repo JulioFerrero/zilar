@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { fireEvent, screen, within } from '@testing-library/react';
+import { act, fireEvent, screen, within } from '@testing-library/react';
+import type { ChatFolder } from '@zilar/chat-core';
 import { renderApp } from '@/test/renderApp';
 import { resetMockApi, setMockDelay } from '@/mock/api';
 
@@ -98,7 +99,48 @@ describe('Topics sidebar (T-0111)', () => {
   });
 
   it('filters by folder treating topics like their group', () => {
-    renderApp('/');
+    // T-0237: folders come from the server now; seed Personal (DMs) and a
+    // Work folder that names the Dev team topic chat ids explicitly.
+    // `folderMatches` checks each topic row by its own chat id, so the
+    // topics appear only when their ids are in `includeChats`.
+    const { store } = renderApp('/');
+    const folder = (
+      id: string,
+      name: string,
+      includeTypes: ChatFolder['includeTypes'],
+      includeChats: string[] = [],
+    ): ChatFolder => ({
+      id,
+      name,
+      icon: 'folder',
+      position: 0,
+      includeTypes,
+      includeChats,
+      excludeChats: [],
+      excludeMuted: false,
+      excludeRead: false,
+    });
+    act(() => {
+      store
+        .getState()
+        .setFolders([
+          folder('f-personal', 'Personal', ['dm']),
+          folder(
+            'f-work',
+            'Work',
+            [],
+            [
+              'c-devteam',
+              'c-devteam-bug',
+              'c-devteam-ui',
+              'c-devteam-standup',
+              'c-devteam-release',
+              'c-devteam-hiring',
+              'c-devteam-ideas',
+            ],
+          ),
+        ]);
+    });
     fireEvent.click(screen.getByRole('tab', { name: /Personal/ }));
     expect(screen.queryByText('Dev team')).toBeNull();
     fireEvent.click(screen.getByRole('tab', { name: /Work/ }));

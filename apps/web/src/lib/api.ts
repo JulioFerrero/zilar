@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { FOLDER_ICONS, type FolderChatType, type FolderIcon } from '@zilar/chat-core';
 import { isMockApiEnabled } from '@/mock/gate';
 import { mockRequest } from '@/mock/api';
 
@@ -795,6 +796,78 @@ export async function putChatPref(
     return null;
   }
   return chatPrefSchema.parse(raw);
+}
+
+// --- Chat folders (T-0237) ---------------------------------------------------
+// Folders come from the server (`apps/server/src/chat-folders/routes.ts`);
+// the client only lists and syncs them here (create/rename/delete/reorder
+// UI is T-0238). The wire shape mirrors `ChatFolder` in chat-core.
+
+const folderChatTypeSchema = z.enum(['dm', 'group', 'channel', 'ai']);
+const folderIconSchema = z.enum(FOLDER_ICONS);
+
+export const chatFolderSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  icon: folderIconSchema,
+  position: z.number(),
+  includeTypes: z.array(folderChatTypeSchema),
+  includeChats: z.array(z.string()),
+  excludeChats: z.array(z.string()),
+  excludeMuted: z.boolean(),
+  excludeRead: z.boolean(),
+});
+
+export type ApiChatFolder = z.infer<typeof chatFolderSchema>;
+
+const chatFoldersSchema = z.object({ folders: z.array(chatFolderSchema) });
+const chatFolderResultSchema = z.object({ folder: chatFolderSchema });
+const chatFolderDeletedSchema = z.object({ deleted: z.literal(true) });
+
+export interface CreateChatFolderInput {
+  name: string;
+  icon: FolderIcon;
+  includeTypes?: FolderChatType[] | undefined;
+  includeChats?: string[] | undefined;
+  excludeChats?: string[] | undefined;
+  excludeMuted?: boolean | undefined;
+  excludeRead?: boolean | undefined;
+}
+
+export type PatchChatFolderInput = Partial<CreateChatFolderInput>;
+
+export function listChatFolders(): Promise<ApiChatFolder[]> {
+  return request('/chat-folders', chatFoldersSchema).then((body) => body.folders);
+}
+
+export function createChatFolder(input: CreateChatFolderInput): Promise<ApiChatFolder> {
+  return request('/chat-folders', chatFolderResultSchema, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  }).then((body) => body.folder);
+}
+
+export function patchChatFolder(id: string, input: PatchChatFolderInput): Promise<ApiChatFolder> {
+  return request(`/chat-folders/${encodeURIComponent(id)}`, chatFolderResultSchema, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  }).then((body) => body.folder);
+}
+
+export function reorderChatFolders(ids: string[]): Promise<ApiChatFolder[]> {
+  return request('/chat-folders/order', chatFoldersSchema, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids }),
+  }).then((body) => body.folders);
+}
+
+export async function deleteChatFolder(id: string): Promise<void> {
+  await request(`/chat-folders/${encodeURIComponent(id)}`, chatFolderDeletedSchema, {
+    method: 'DELETE',
+  });
 }
 
 // --- Pinned messages (T-0114) ------------------------------------------------

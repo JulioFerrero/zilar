@@ -1,24 +1,28 @@
 import type { KeyboardEvent } from 'react';
 import { useRef } from 'react';
-import { Well } from './ui/well';
-import { folderUnread, type FolderId } from '@/store/store';
+import { LayoutGrid } from 'lucide-react';
+import { folderIconComponent } from './folderIcon';
+import { folderUnread } from '@/store/store';
 import { useChatStore } from '@/store/ChatStoreProvider';
 import { cn } from '@/lib/utils';
 
-const FOLDERS: { id: FolderId; label: string }[] = [
-  { id: 'all', label: 'All' },
-  { id: 'personal', label: 'Personal' },
-  { id: 'ais', label: 'AIs' },
-  { id: 'work', label: 'Work' },
-];
-
-/** Folder segmented control: a recessed track with a raised active segment. */
+/** Folder chips for narrow screens: "All chats" plus one chip per folder. */
 export function FolderTabs() {
   const store = useChatStore();
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
+  const tabs: { id: string; label: string; icon: typeof LayoutGrid | null; unread: number }[] = [
+    { id: 'all', label: 'All chats', icon: null, unread: folderUnread(store, 'all') },
+    ...store.folders.map((folder) => ({
+      id: folder.id,
+      label: folder.name,
+      icon: folderIconComponent(folder.icon),
+      unread: folderUnread(store, folder.id),
+    })),
+  ];
+
   const moveFocus = (event: KeyboardEvent<HTMLButtonElement>, index: number): void => {
-    const last = FOLDERS.length - 1;
+    const last = tabs.length - 1;
     let next: number | undefined;
     if (event.key === 'ArrowRight') {
       next = index === last ? 0 : index + 1;
@@ -33,27 +37,26 @@ export function FolderTabs() {
       return;
     }
     event.preventDefault();
-    const folder = FOLDERS[next];
-    if (folder === undefined) {
+    const tab = tabs[next];
+    if (tab === undefined) {
       return;
     }
-    store.setActiveFolder(folder.id);
+    store.setActiveFolder(tab.id);
     tabRefs.current[next]?.focus();
   };
 
   return (
-    <Well
+    <div
       role="tablist"
       aria-label="Chat folders"
-      className="mx-3 mt-1 mb-2 grid shrink-0 grid-cols-4 gap-0.5 rounded-[10px] p-[3px]"
-      style={{ borderColor: '#1a1a1a' }}
+      className="scrollbar-thin flex shrink-0 gap-1.5 overflow-x-auto px-3 pt-1 pb-2"
     >
-      {FOLDERS.map((folder, index) => {
-        const active = store.activeFolder === folder.id;
-        const unread = folderUnread(store, folder.id);
+      {tabs.map((tab, index) => {
+        const active = store.activeFolder === tab.id;
+        const Icon = tab.icon;
         return (
           <button
-            key={folder.id}
+            key={tab.id}
             ref={(element) => {
               tabRefs.current[index] = element;
             }}
@@ -61,29 +64,30 @@ export function FolderTabs() {
             role="tab"
             aria-selected={active}
             tabIndex={active ? 0 : -1}
-            onClick={() => store.setActiveFolder(folder.id)}
+            onClick={() => store.setActiveFolder(tab.id)}
             onKeyDown={(event) => moveFocus(event, index)}
             className={cn(
-              'flex h-[30px] items-center justify-center gap-1 rounded-[7px] text-[13px] font-medium transition-colors',
+              'flex h-[30px] shrink-0 items-center gap-1.5 rounded-full border px-3 text-[13px] font-medium transition-colors',
               active
-                ? 'segment-raised text-foreground'
-                : 'text-muted-foreground hover:text-foreground',
+                ? 'segment-raised border-edge text-foreground'
+                : 'border-border text-muted-foreground hover:text-foreground',
             )}
           >
-            {folder.label}
-            {unread > 0 && (
+            {Icon !== null && <Icon className="h-3.5 w-3.5" aria-hidden="true" />}
+            {tab.label}
+            {tab.unread > 0 && (
               <span
                 className={cn(
                   'font-mono rounded-full px-1 text-[10px] leading-4 font-semibold',
                   active ? 'bg-accent text-accent-foreground' : 'bg-surface text-muted-foreground',
                 )}
               >
-                {unread}
+                {tab.unread}
               </span>
             )}
           </button>
         );
       })}
-    </Well>
+    </div>
   );
 }

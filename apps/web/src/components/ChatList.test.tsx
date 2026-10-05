@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, screen } from '@testing-library/react';
+import type { ChatFolder } from '@zilar/chat-core';
 import { renderApp } from '@/test/renderApp';
 
 const ALL_TITLES = [
@@ -45,7 +46,52 @@ describe('ChatList', () => {
   });
 
   it('filters chats by folder', () => {
-    renderApp('/');
+    // T-0237: folders come from the server now; seed the store with the
+    // Personal/AIs/Work set the old hard-coded tabs provided. The Work
+    // folder names the work chat ids explicitly.
+    const { store } = renderApp('/');
+    const folder = (
+      id: string,
+      name: string,
+      includeTypes: ChatFolder['includeTypes'],
+      includeChats: string[] = [],
+    ): ChatFolder => ({
+      id,
+      name,
+      icon: 'folder',
+      position: 0,
+      includeTypes,
+      includeChats,
+      excludeChats: [],
+      excludeMuted: false,
+      excludeRead: false,
+    });
+    act(() => {
+      store
+        .getState()
+        .setFolders([
+          folder('f-personal', 'Personal', ['dm']),
+          folder('f-ais', 'AIs', ['ai']),
+          folder(
+            'f-work',
+            'Work',
+            [],
+            [
+              'c-acme',
+              'c-devteam',
+              'c-devai',
+              'c-qa',
+              'c-product',
+              'c-devteam-bug',
+              'c-devteam-ui',
+              'c-devteam-standup',
+              'c-devteam-release',
+              'c-devteam-hiring',
+              'c-devteam-ideas',
+            ],
+          ),
+        ]);
+    });
 
     fireEvent.click(screen.getByRole('tab', { name: /AIs/ }));
     expect(screen.getByText('Dev AI')).toBeTruthy();

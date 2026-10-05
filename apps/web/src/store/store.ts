@@ -9,11 +9,15 @@ import type {
   UiMessage,
 } from '@zilar/chat-core';
 import {
+  folderMatches,
+  folderUnreadTotal,
   mentionsForTrimmedText,
   rebaseMentions,
   canEditMessage,
   canDeleteMessage,
+  sortFolders,
 } from '@zilar/chat-core';
+import type { ChatFolder } from '@zilar/chat-core';
 import type {
   ChatPref,
   Contact,
@@ -65,8 +69,6 @@ import {
   mockTopicChats,
   mockTopicMessages,
 } from '@/mock';
-
-export type FolderId = 'all' | 'personal' | 'ais' | 'work';
 
 export type ConnectionStatus = 'offline' | 'connecting' | 'online' | 'reconnecting';
 
@@ -367,8 +369,12 @@ export interface ChatStore {
   /** Scopes message search to one chat ("Search only in this chat"). */
   searchChat: string | undefined;
   setSearchChat: (chatId: string | undefined) => void;
-  activeFolder: FolderId;
-  setActiveFolder: (folder: FolderId) => void;
+  /** 'all' or a folder id; folders arrive from /api/chat-folders (T-0237). */
+  activeFolder: string;
+  setActiveFolder: (folder: string) => void;
+  /** Folders from the server, sorted by position; `[]` until synced. */
+  folders: ChatFolder[];
+  setFolders: (folders: ChatFolder[]) => void;
 }
 
 export type ChatStoreState = ChatStore & {
@@ -1052,6 +1058,7 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
       },
       search: '',
       activeFolder: 'all',
+      folders: [],
       typing: {},
       drafts: {},
       finishedDraftMessages: {},
@@ -1409,21 +1416,35 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
       searchChat: undefined,
       setSearchChat: (chatId) => set({ searchChat: chatId }),
       setActiveFolder: (folder) => set({ activeFolder: folder }),
+      setFolders: (folders) => {
+        const sorted = sortFolders(folders);
+        set((state) => ({
+          folders: sorted,
+          activeFolder:
+            state.activeFolder === 'all' ||
+            sorted.some((folder) => folder.id === state.activeFolder)
+              ? state.activeFolder
+              : 'all',
+        }));
+      },
     };
   });
 }
 
-export function matchesFolder(chat: ChatSummary, folder: FolderId): boolean {
-  switch (folder) {
-    case 'all':
-      return true;
-    case 'personal':
-      return chat.space === 'personal' && chat.kind !== 'ai';
-    case 'ais':
-      return chat.kind === 'ai';
-    case 'work':
-      return chat.space === 'work' && chat.kind !== 'ai';
+/** True when the chat belongs to the active folder: `undefined` (unknown id)
+ * and `'all'` both match everything, like the old hard-coded All tab. */
+export function matchesFolder(chat: ChatSummary, folder: ChatFolder | undefined): boolean {
+  if (folder === undefined) {
+    return true;
   }
+  return folderMatches(folder, chat);
+}
+
+function activeFolderOf(state: ChatStoreState): ChatFolder | undefined {
+  if (state.activeFolder === 'all') {
+    return undefined;
+  }
+  return state.folders.find((folder) => folder.id === state.activeFolder);
 }
 
 export function visibleChats(state: ChatStoreState): ChatSummary[] {
@@ -1435,7 +1456,7 @@ export function visibleChats(state: ChatStoreState): ChatSummary[] {
     if (chat.topic === undefined && chat.archived === true) {
       return false;
     }
-    if (!matchesFolder(chat, state.activeFolder)) {
+    if (!matchesFolder(chat, activeFolderOf(state))) {
       return false;
     }
     return query.length === 0 || chat.title.toLowerCase().includes(query);
@@ -1482,7 +1503,7 @@ export function groupChats(state: ChatStoreState): ChatGroup[] {
     if (chat.topic === undefined && chat.archived === true) {
       continue;
     }
-    if (!matchesFolder(chat, state.activeFolder)) {
+    if (!matchesFolder(chat, activeFolderOf(state))) {
       continue;
     }
     if (chat.topic !== undefined && chat.groupId !== undefined) {
@@ -1565,10 +1586,15 @@ function sortTopics(topics: ChatSummary[]): ChatSummary[] {
   });
 }
 
-export function folderUnread(state: ChatStoreState, folder: FolderId): number {
-  return state.chats
-    .filter((chat) => matchesFolder(chat, folder) && !chat.muted)
-    .reduce((total, chat) => total + chat.unread, 0);
+export function folderUnread(state: ChatStoreState, folderId: string): number {
+  if (folderId === 'all') {
+    return folderUnreadTotal('all', state.chats);
+  }
+  const folder = state.folders.find((entry) => entry.id === folderId);
+  if (folder === undefined) {
+    return 0;
+  }
+  return folderUnreadTotal(folder, state.chats);
 }
 
 export { MUTE_DURATIONS, applyChatPrefs, effectivePrefFor, mutedUntilFor, sortPinnedFirst };
