@@ -212,7 +212,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0194](T-0194-mobile-pitfall-guards.md) | Mobile: guard tests for the Android and Hermes pitfalls (Coroutine with Promise, crypto.subtle) | planned | minimax-coding-plan/MiniMax-M3 | — | Spec ready; process roadmap R3 |
 | [T-0195](T-0195-mobile-parity-audit.md) | Audit (docs only): web vs mobile for AI tools, routines, activity, @mentions, dialogs | planned | minimax-coding-plan/MiniMax-M3 | — | Spec ready; feeds the specs of T-0189 and T-0190 |
 | [T-0200](T-0200-lead-squash-merge.md) | Lead tooling: lead merge lands each task as ONE commit on main | in-progress | meta/muse-spark-1.3-contributor | — | First task after the history compaction and force push |
-| [T-0201](T-0201-runner-connect-test-flake.md) | Runner: connect.test.ts waits for the runner to be live instead of a fixed sleep (CI flake) | planned | minimax-coding-plan/MiniMax-M3 | — | CI failure 2026-10-05; test-only, first MiniMax trial |
 | [T-0179](T-0179-mobile-transcribe-voice-notes.md) | Transcribe voice notes on the phone with Whistle: button in the bubble, consent for the 17 MB model, transcripts stored locally | 2026-10-03 |
 | [T-0182](T-0182-mobile-contacts-requests.md) | Mobile contacts: find by @handle, profile card, contact requests | 2026-10-03 |
 | [T-0183](T-0183-mobile-explore-group-handles.md) | Mobile Explore, @group links and group visibility | 2026-10-03 |
@@ -228,3 +227,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0187](T-0187-mobile-sticker-packs.md) | Mobile sticker packs: my packs, discover, add and remove, reorder, favorites (2 auto rounds) | 2026-10-04 |
 | [T-0196](T-0196-lead-doctor.md) | The doctor: a Muse session that audits main after merges and writes DOCTOR.md | 2026-10-04 |
 | [T-0173](T-0173-effect-spike.md) | Effect 4.0 spike: voice transcription pipeline as Effect programs, worker guide docs/EFFECT_GUIDE.md | 2026-10-05 |
+| [T-0201](T-0201-runner-connect-test-flake.md) | Runner connect test polls for the runner to be live instead of a fixed 200 ms sleep (CI flake) | 2026-10-05 |
