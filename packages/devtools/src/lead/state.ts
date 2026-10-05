@@ -70,6 +70,7 @@ export function loadState(statePath: string): StateFile {
           startedAt: validated.data.doctor.startedAt,
           reportedForHead: validated.data.doctor.reportedForHead,
           stalledReportedForHead: validated.data.doctor.stalledReportedForHead,
+          model: validated.data.doctor.model,
         };
   return { version: 1, tasks, doctor };
 }

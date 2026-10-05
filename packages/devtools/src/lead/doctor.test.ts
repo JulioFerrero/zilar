@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { FakeOpenCodeClient } from './client';
+import { PAID_MUSE } from './fallback';
 import {
   applyDoctorRecordPatch,
   decideDoctor,
@@ -33,6 +34,7 @@ function base(overrides: Partial<DecideDoctorInput> = {}): DecideDoctorInput {
     reportFilePresent: false,
     counts: undefined,
     verdict: '',
+    quotaError: false,
     ...overrides,
   };
 }
@@ -178,9 +180,11 @@ describe('decideDoctor escalate', () => {
   });
 
   it('stays quiet while the doctor session runs on the audited head', () => {
-    expect(decideDoctor(audited({ sessionState: 'running', reportFilePresent: false }))).toEqual(
-      [],
-    );
+    expect(
+      decideDoctor(
+        audited({ sessionState: 'running', reportFilePresent: false, quotaError: false }),
+      ),
+    ).toEqual([]);
   });
 
   it('stays quiet for unknown session states on the audited head', () => {
@@ -196,6 +200,39 @@ describe('decideDoctor escalate', () => {
         ),
       ),
     ).toEqual([]);
+  });
+
+  it('falls back in place on a quota error while on the free listing', () => {
+    const actions = decideDoctor(audited({ quotaError: true, reportFilePresent: false }));
+    expect(actions).toEqual([
+      { kind: 'fallback-doctor', model: PAID_MUSE },
+      { kind: 'escalate', line: 'LEAD: FALLBACK doctor continues on paid Muse' },
+    ]);
+    const lines = escalations(actions);
+    expect(lines).toEqual(['LEAD: FALLBACK doctor continues on paid Muse']);
+    expect(lines.some((line) => line.includes('STALLED'))).toBe(false);
+  });
+
+  it('takes the normal STALLED path on a quota error while already on paid', () => {
+    const onPaid = audited().doctor;
+    if (onPaid === undefined) {
+      throw new Error('missing doctor record');
+    }
+    const actions = decideDoctor(
+      audited({
+        quotaError: true,
+        reportFilePresent: false,
+        doctor: { ...onPaid, model: PAID_MUSE },
+      }),
+    );
+    expect(actions.some((action) => action.kind === 'fallback-doctor')).toBe(false);
+    expect(escalations(actions)).toEqual(['LEAD: DOCTOR STALLED (idle, no DOCTOR.md)']);
+  });
+
+  it('keeps the STALLED path without a quota error', () => {
+    expect(
+      escalations(decideDoctor(audited({ quotaError: false, reportFilePresent: false }))),
+    ).toEqual(['LEAD: DOCTOR STALLED (idle, no DOCTOR.md)']);
   });
 });
 

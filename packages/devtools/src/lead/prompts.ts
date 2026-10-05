@@ -14,6 +14,7 @@ export type PromptName =
   | 'qa'
   | 'autofix'
   | 'doctor'
+  | 'doctor-resume'
   | 'fresh';
 
 export function promptsDir(): string {
