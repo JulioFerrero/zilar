@@ -407,9 +407,9 @@ describe('PackEditor', () => {
 
   it('keeps Create disabled with no stickers, and asks for a name with stickers', async () => {
     render(<PackEditor onDone={() => {}} onCancel={() => {}} prepare={prepareOk()} />);
-    expect(
-      (screen.getByRole('button', { name: 'Create pack' }) as HTMLButtonElement).disabled,
-    ).toBe(true);
+    const createButton = screen.getByRole('button', { name: 'Create pack' });
+    expect(createButton.getAttribute('data-slot')).toBe('button');
+    expect((createButton as HTMLButtonElement).disabled).toBe(true);
 
     pickFiles(screen.getByLabelText('Pick sticker images') as HTMLInputElement, [
       new File(['a'], 'a.png', { type: 'image/png' }),

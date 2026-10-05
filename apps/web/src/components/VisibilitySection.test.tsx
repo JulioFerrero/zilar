@@ -119,10 +119,9 @@ describe('VisibilitySection', () => {
 
   it('disables Save while unchanged', async () => {
     renderSection('public', 'hiking_club');
-    expect(screen.getByRole('button', { name: 'Save visibility' })).toHaveProperty(
-      'disabled',
-      true,
-    );
+    const saveButton = screen.getByRole('button', { name: 'Save visibility' });
+    expect(saveButton.getAttribute('data-slot')).toBe('button');
+    expect(saveButton).toHaveProperty('disabled', true);
   });
 
   it('waits for the debounce and shows the error alert', async () => {

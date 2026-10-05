@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { ApiError, claimHandle, checkHandle } from '@/lib/api';
 import { useAuth } from '@/auth/AuthProvider';
 import { copyText } from '@/lib/clipboard';
+import { Button } from '@/components/ui/button';
 import { AvatarUploader } from './AvatarUploader';
 
 /** The caller's own picture, inside Settings → Profile. */
@@ -157,14 +158,9 @@ export function ProfileSettingsSection() {
         )}
         {saved && <p className="mt-1 text-[14px] text-muted-foreground">Saved.</p>}
         <div className="mt-2 flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => void save()}
-            disabled={busy || unchanged}
-            className="rounded-full bg-accent px-4 py-1.5 text-[14px] font-medium text-accent-foreground hover:bg-accent/90 disabled:opacity-60"
-          >
+          <Button type="button" onClick={() => void save()} disabled={busy || unchanged}>
             {busy ? 'Saving…' : 'Save username'}
-          </button>
+          </Button>
           {shareUrl !== null && (
             <button
               type="button"

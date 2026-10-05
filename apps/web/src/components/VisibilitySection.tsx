@@ -4,6 +4,7 @@ import { copyText } from '@/lib/clipboard';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
 import { FieldError } from './ais/AiPageShell';
 import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
 
 /**
  * Visibility settings (T-0164, owner only): flip a group or channel private
@@ -203,14 +204,9 @@ export function VisibilitySection({
         {error !== undefined && <FieldError>{error}</FieldError>}
         {saved && <p className="text-[14px] text-muted-foreground">Saved.</p>}
         <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => void save()}
-            disabled={busy || unchanged}
-            className="rounded-full bg-accent px-4 py-1.5 text-[14px] font-medium text-accent-foreground hover:bg-accent/90 disabled:opacity-60"
-          >
+          <Button type="button" onClick={() => void save()} disabled={busy || unchanged}>
             {busy ? 'Saving…' : confirmingPrivate ? 'Confirm going private' : 'Save visibility'}
-          </button>
+          </Button>
           {confirmingPrivate && (
             <button
               type="button"

@@ -1,7 +1,7 @@
 ---
 id: T-0278
 title: "Web kit migration 11: hand-rolled accent buttons in profile, visibility, pack editor and contact rows become the kit Button"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0278-web-kit-accent-buttons-4
 model: auto
@@ -64,4 +64,79 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+Replaced every listed hand-rolled `bg-accent px-…` button with the kit `Button`
+(`import { Button } from '@/components/ui/button'`), keeping `type`, `onClick`,
+`disabled` and all content (text and icons). Size was mapped by font:
+`text-[15px]` → `size="lg"`, `text-[14px]` → `size="default"` (the kit default,
+so no `size` attribute), `text-[13px]` → `size="sm"`. Colour, padding, radius,
+font, hover and disabled classes are gone; only layout-only classes stay through
+`className` (`shrink-0`). The kit base already provides `inline-flex`,
+`items-center`, `gap` and `disabled:opacity-50`, so the old `flex items-center
+gap-1.5` and `disabled:opacity-60` were dropped.
+
+- `apps/web/src/components/ProfileSettingsSection.tsx`: "Save username" is now
+  `<Button type="button" onClick={…} disabled={busy || unchanged}>` (default size).
+- `apps/web/src/components/VisibilitySection.tsx`: "Save visibility" /
+  "Confirm going private" is now `<Button …>` (default size).
+- `apps/web/src/components/PackEditor.tsx`: "Create pack" / "Save" is now
+  `<Button … size="lg">`.
+- `apps/web/src/components/ContactProfileRow.tsx`: "Message" and "Add contact"
+  are `<Button … size="sm" className="shrink-0">`; "Accept" is
+  `<Button … size="sm">` (no `shrink-0`, matching the original class list).
+
+The muted border buttons next to them (Copy share link, Cancel, Unblock,
+Cancel, Decline) and every other file with `bg-accent px-` were left alone
+(out of scope).
+
+### Files changed
+- `apps/web/src/components/ProfileSettingsSection.tsx`
+- `apps/web/src/components/ProfileSettingsSection.test.tsx`
+- `apps/web/src/components/VisibilitySection.tsx`
+- `apps/web/src/components/VisibilitySection.test.tsx`
+- `apps/web/src/components/PackEditor.tsx`
+- `apps/web/src/components/PackEditor.test.tsx`
+- `apps/web/src/components/ContactProfileRow.tsx`
+- `apps/web/src/components/ContactProfileRow.test.tsx`
+- `work/T-0278-web-kit-accent-buttons-4.md`
+
+### Tests added
+One `data-slot="button"` assertion per test file, using the codebase's existing
+`getAttribute('data-slot')` style:
+- `ProfileSettingsSection.test.tsx`: on the "Save username" button.
+- `VisibilitySection.test.tsx`: on the "Save visibility" button (in the
+  "disables Save while unchanged" test).
+- `PackEditor.test.tsx`: on the "Create pack" button (in the "keeps Create
+  disabled with no stickers" test).
+- `ContactProfileRow.test.tsx`: on the "Add contact" button.
+Existing queries are by role/name and needed no behavioural change.
+
+### Commands and results
+- `pnpm install` — Done in 16s; `git status` confirms `pnpm-lock.yaml` is
+  unchanged.
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot ProfileSettingsSection VisibilitySection PackEditor ContactProfileRow` — `Test Files 4 passed (4)`, `Tests 30 passed (30)`.
+- `pnpm gate` (first run) — `GATE FAIL` at `FAIL format (19.4s)` with
+  `[warn] apps/web/src/components/ContactProfileRow.tsx`; scope line still
+  `every changed file is inside the Allowed files`.
+- `pnpm exec prettier --write apps/web/src/components/ContactProfileRow.tsx` —
+  reformatted the single migrated Accept button (collapsed onto one line);
+  no other file touched.
+- `pnpm gate` (second run) — `GATE PASS`:
+  - `gate: 9 changed file(s) against main`
+  - `PASS  install (frozen)  (1.7s)`
+  - `PASS  format  (24.2s)`
+  - `PASS  lint  (1.5s)`
+  - `PASS  typecheck  (14.9s)`
+  - `PASS  tests @zilar/web  (22.5s)`
+  - `scope: every changed file is inside the Allowed files`
+  - `GATE PASS`
+- Confirmed by `grep 'bg-accent px-'` that none of the four source files
+  contains it.
+
+### Deviations / open questions
+- None. Sizes follow the spec's font mapping; only `shrink-0` was kept through
+  `className`, and the `data-slot` assertions are the only test additions.
+
 ## Review (written by Claude)
+
+Approved. The pre-review was clean with 0 nits and there were no fix rounds. No `bg-accent px-` is left in the four files, and sizes follow the font mapping.

@@ -9,6 +9,7 @@ import {
 } from '@/lib/api';
 import { formatStickerSize, prepareStickerImage, PrepError } from '@/lib/sticker-images';
 import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
 
 export type PackEditorItemStatus = 'ready' | 'uploading' | 'done' | 'error';
 
@@ -642,16 +643,16 @@ export function PackEditor({
       )}
 
       <div className="flex items-center gap-2">
-        <button
+        <Button
           type="button"
           disabled={
             busy || preparing > 0 || errorCount > 0 || (packId === undefined && readyCount === 0)
           }
           onClick={save}
-          className="rounded-full bg-accent px-4 py-2 text-[15px] font-medium text-accent-foreground hover:bg-accent/90 disabled:opacity-60"
+          size="lg"
         >
           {packId === undefined ? 'Create pack' : 'Save'}
-        </button>
+        </Button>
         <button
           type="button"
           disabled={busy}

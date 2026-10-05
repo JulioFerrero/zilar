@@ -10,7 +10,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0277](T-0277-web-kit-accent-buttons-3.md) | Web kit migration 10: accent buttons in the chat dialogs | in_progress | auto | | audit §5 gate prep |
-| [T-0278](T-0278-web-kit-accent-buttons-4.md) | Web kit migration 11: accent buttons in profile, visibility, pack editor, contact rows | in_progress | auto | | audit §5 gate prep |
 
 ## Follow-ups
 
@@ -308,3 +307,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0274](T-0274-web-kit-dialogs-5.md) | Web kit: Explore and avatar crop dialogs on the kit Dialog | 2026-10-05 |
 | [T-0276](T-0276-web-kit-accent-buttons-2.md) | Web kit: accent buttons in machines, Telegram import and invite links use the kit Button | 2026-10-05 |
 | [T-0279](T-0279-web-kit-accent-buttons-5.md) | Web kit: sign-in and onboarding call-to-action buttons and links use the kit Button | 2026-10-05 |
+| [T-0278](T-0278-web-kit-accent-buttons-4.md) | Web kit: accent buttons in profile, visibility, pack editor and contact rows use the kit Button | 2026-10-05 |
