@@ -1,7 +1,7 @@
 import { useRouter } from 'expo-router';
 import { Plus } from 'lucide-react-native';
 import { useMemo, useState } from 'react';
-import { Modal, Pressable, Share } from 'react-native';
+import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Share } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { createErrorText } from '@/components/chat/visibility-fields';
@@ -18,6 +18,13 @@ import { ACCENT_FOREGROUND, KEY_PRIMARY_PRESSED_SHADOW, pressStyle, primaryKey }
 import { useChatStore } from '@/store/chat-store-provider';
 
 type NewChatAction = 'channel' | 'group' | 'message' | 'invite' | 'join';
+
+/**
+ * The action-dialog scroll keeps Create taps while the sheet keyboard is
+ * open (T-0234): a tap on Create creates at once instead of only dismissing
+ * the keyboard. Pure so tests can cover it without mounting the dialog.
+ */
+export const CREATE_SHEETS_SCROLL_TAPS_PERSIST = 'handled' as const;
 
 /** The 56 px primary FAB with a "New channel" / "New group" / "New message" / "Join" menu. */
 export function NewChatButton() {
@@ -200,50 +207,65 @@ export function NewChatButton() {
         animationType="fade"
         onRequestClose={() => setAction(undefined)}
       >
-        <Pressable
-          accessibilityLabel="Close dialog"
-          onPress={() => setAction(undefined)}
-          className="flex-1 items-center justify-center bg-black/40 p-4"
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          className="flex-1"
         >
-          {action === 'join' ? (
-            <JoinLinkForm onSubmit={joinWithToken} />
-          ) : action === 'channel' ? (
-            <NewChannelSheet
-              busy={channelBusy}
-              error={channelError}
-              onCreate={create}
-              onClose={() => {
-                if (!channelBusy) {
-                  setAction(undefined);
-                }
-              }}
+          <ScrollView
+            keyboardShouldPersistTaps={CREATE_SHEETS_SCROLL_TAPS_PERSIST}
+            contentContainerStyle={{
+              flexGrow: 1,
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 16,
+            }}
+            className="flex-1 bg-black/40"
+          >
+            <Pressable
+              accessibilityLabel="Close dialog"
+              onPress={() => setAction(undefined)}
+              className="absolute inset-0"
             />
-          ) : action === 'group' ? (
-            <NewGroupSheet
-              contacts={contacts}
-              busy={groupBusy}
-              error={groupError}
-              onCreate={submitGroup}
-              onClose={() => {
-                if (!groupBusy) {
-                  setAction(undefined);
-                }
-              }}
-            />
-          ) : action === 'message' ? (
-            <NewMessageSheet
-              onInvite={() => setAction('invite')}
-              onClose={() => setAction(undefined)}
-            />
-          ) : action === 'invite' ? (
-            <InviteSheet
-              api={invitesApi}
-              copyText={inviteShare.copyText}
-              shareText={inviteShare.shareText}
-              onClose={() => setAction(undefined)}
-            />
-          ) : null}
-        </Pressable>
+            {action === 'join' ? (
+              <JoinLinkForm onSubmit={joinWithToken} />
+            ) : action === 'channel' ? (
+              <NewChannelSheet
+                busy={channelBusy}
+                error={channelError}
+                onCreate={create}
+                onClose={() => {
+                  if (!channelBusy) {
+                    setAction(undefined);
+                  }
+                }}
+              />
+            ) : action === 'group' ? (
+              <NewGroupSheet
+                contacts={contacts}
+                busy={groupBusy}
+                error={groupError}
+                onCreate={submitGroup}
+                onClose={() => {
+                  if (!groupBusy) {
+                    setAction(undefined);
+                  }
+                }}
+              />
+            ) : action === 'message' ? (
+              <NewMessageSheet
+                onInvite={() => setAction('invite')}
+                onClose={() => setAction(undefined)}
+              />
+            ) : action === 'invite' ? (
+              <InviteSheet
+                api={invitesApi}
+                copyText={inviteShare.copyText}
+                shareText={inviteShare.shareText}
+                onClose={() => setAction(undefined)}
+              />
+            ) : null}
+          </ScrollView>
+        </KeyboardAvoidingView>
       </Modal>
     </>
   );

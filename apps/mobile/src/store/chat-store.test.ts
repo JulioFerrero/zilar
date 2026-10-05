@@ -295,6 +295,100 @@ describe('chat store', () => {
     );
     expect(store.getState().jumpTarget).toBeUndefined();
   });
+
+  it('ships mock contacts for the group flow', () => {
+    const store = createChatStore();
+    const contacts = store.getState().contacts;
+    expect(contacts.length).toBeGreaterThan(0);
+    expect(contacts.map((contact) => contact.name)).toEqual(
+      expect.arrayContaining(['Ana', 'Marco', 'Lena']),
+    );
+  });
+
+  it('creates a mock channel and returns its group id', async () => {
+    const store = createChatStore();
+    const before = store.getState().chats.length;
+
+    const groupId = await store.getState().createChannel({ title: '  New channel  ' });
+
+    expect(groupId).toMatch(/^g-mock-/);
+    const { topicsOfGroup } = await import('@/lib/topics');
+    const topics = topicsOfGroup(store.getState().chats, groupId);
+    expect(topics).toHaveLength(1);
+    const created = topics[0]!;
+    expect(created.title).toBe('New channel');
+    expect(created.kind).toBe('group');
+    expect(created.chatKind).toBe('channel');
+    expect(created.unread).toBe(0);
+    expect(store.getState().chats).toHaveLength(before + 1);
+  });
+
+  it('marks a private mock channel topic private', async () => {
+    const store = createChatStore();
+
+    const groupId = await store.getState().createChannel({ title: 'Quiet' });
+
+    const { topicsOfGroup } = await import('@/lib/topics');
+    expect(topicsOfGroup(store.getState().chats, groupId)[0]?.topic?.visibility).toBe('private');
+  });
+
+  it('creates a mock channel with its public handle', async () => {
+    const store = createChatStore();
+
+    const id = await store
+      .getState()
+      .createChannel({ title: 'News', visibility: 'public', handle: 'fresh_handle' });
+
+    const { topicsOfGroup } = await import('@/lib/topics');
+    const topics = topicsOfGroup(store.getState().chats, id);
+    expect(topics).toHaveLength(1);
+    expect(topics[0]?.visibility).toBe('public');
+    expect(topics[0]?.handle).toBe('fresh_handle');
+  });
+
+  it('creates a mock group and returns its group id', async () => {
+    const store = createChatStore();
+    const before = store.getState().chats.length;
+
+    const groupId = await store
+      .getState()
+      .createGroup({ title: '  Weekend club  ', memberIds: ['u-ana'] });
+
+    expect(groupId).toMatch(/^g-mock-/);
+    const { topicsOfGroup } = await import('@/lib/topics');
+    const topics = topicsOfGroup(store.getState().chats, groupId);
+    expect(topics).toHaveLength(1);
+    const created = topics[0]!;
+    expect(created.title).toBe('Weekend club');
+    expect(created.kind).toBe('group');
+    expect(created.topic?.isGeneral).toBe(true);
+    expect(created.unread).toBe(0);
+    expect(store.getState().chats).toHaveLength(before + 1);
+  });
+
+  it('rejects a mock group whose public handle is taken in the mock directory', async () => {
+    const store = createChatStore();
+
+    await expect(
+      store.getState().createGroup({
+        title: 'Hiking',
+        memberIds: ['u-ana'],
+        visibility: 'public',
+        handle: 'hiking_club',
+      }),
+    ).rejects.toMatchObject({ code: 'handle_taken' });
+  });
+
+  it('rejects blank mock create titles like the real store', async () => {
+    const store = createChatStore();
+
+    await expect(store.getState().createChannel({ title: '   ' })).rejects.toThrow(
+      'Enter a channel name.',
+    );
+    await expect(
+      store.getState().createGroup({ title: '   ', memberIds: ['u-ana'] }),
+    ).rejects.toThrow('Enter a group name.');
+  });
 });
 
 describe('isMockMode', () => {
