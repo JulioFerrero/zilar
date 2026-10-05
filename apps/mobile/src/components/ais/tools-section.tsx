@@ -105,6 +105,14 @@ export function ToolsSectionContent({
 }
 
 /**
+ * Removes a deleted tool from the list (the sheet's `onDeleted` callback).
+ * Pure so tests can cover it without mounting the section.
+ */
+export function withoutTool(tools: ToolListItem[], toolId: string): ToolListItem[] {
+  return tools.filter((tool) => tool.id !== toolId);
+}
+
+/**
  * The Tools section of the AI edit screen (T-0189, read only): every tool
  * with name, version, description, hosts (declared, and approved when the
  * API gives them), and last run. Tapping a row opens the read-only detail
@@ -144,7 +152,15 @@ export function ToolsSection({ api, aiId }: { api: AiToolsApi; aiId: string }) {
         onRetry={() => setReloadTick((tick) => tick + 1)}
         onOpenTool={setOpenId}
       />
-      <ToolDetailSheet api={api} toolId={openId} onClose={() => setOpenId(null)} />
+      <ToolDetailSheet
+        api={api}
+        toolId={openId}
+        onClose={() => setOpenId(null)}
+        onDeleted={(toolId) => {
+          setOpenId(null);
+          setState((current) => ({ ...current, tools: withoutTool(current.tools, toolId) }));
+        }}
+      />
     </View>
   );
 }

@@ -11,6 +11,7 @@ import {
   ToolsSection,
   ToolsSectionContent,
   loadAiTools,
+  withoutTool,
   type ToolsSectionState,
 } from './tools-section';
 
@@ -147,5 +148,14 @@ describe('loadAiTools', () => {
       listAiRoutines: async () => [],
     };
     await expect(loadAiTools(api, 'ai-1')).rejects.toMatchObject({ code: 'network_error' });
+  });
+});
+
+describe('withoutTool', () => {
+  it('removes the deleted tool and keeps the others', async () => {
+    const tools = await createMockToolsApi().listAiTools('ai-1');
+    const remaining = withoutTool(tools, 'tool-1');
+    expect(remaining.map((tool) => tool.id)).toEqual(['tool-2']);
+    expect(withoutTool(tools, 'tool-gone')).toHaveLength(2);
   });
 });

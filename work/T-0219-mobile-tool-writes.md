@@ -1,7 +1,7 @@
 ---
 id: T-0219
 title: "Mobile: Run now, Revert and Delete in the tool detail sheet"
-status: planned
+status: merged
 milestone: M5
 branch: task/T-0219-mobile-tool-writes
 model: opencode/muse-spark-1.3-contributor-free
@@ -68,4 +68,49 @@ Editing a tool's code, host approval, group and topic tools, the dim-backdrop cl
 
 ## Report (written by the worker when done)
 
+### What I did
+Implemented Run now, Revert and Delete in the mobile tool detail sheet (T-0218 sheet), mirroring web's `ToolDetailPanel`:
+- `apps/mobile/src/lib/tools-api.ts`: added `ToolRunResult` type + `parseToolRunResult` guard, `ToolActionsApi` (`revertTool`, `runToolNow`, `deleteTool`), widened `AiToolsApi`, implemented the three calls in `createToolsApi` (POSTs with `content-type: application/json`; 204 DELETE without parsing, like `deleteRoutine`).
+- `apps/mobile/src/mock/tools.ts`: added the three writes on per-instance closure copies (versions/sources/runs copied into the closure so one instance's writes don't leak into other instances' reads); revert appends `Revert to v<N>` and bumps `currentVersion`; run returns ok output for `tool-1` and `{ ok: false, timeout }` for `tool-2` and appends a run; delete removes the tool (later reads 404).
+- New `apps/mobile/src/components/ais/tool-actions.ts`: pure `parseRunInput` (4096 UTF-8 bytes via `TextEncoder`), `runErrorMessage` (429/403+404/501/other), `changeErrorMessage(error, fallback)`, `fetchCountText`.
+- `tool-detail-sheet.tsx`: revert buttons on non-current rows with inline confirm (`Revert to v<N>? This creates a new version copying that version's code.` + Cancel/Revert/Reverting…), Run now section (label, 3-line mono TextInput, Run now/Running…, both result shapes with `truncateOutput` + Show all/less, fixed request-error lines, silent failed runs-refresh), Delete tool with inline confirm that calls `onDeleted`. One action at a time via `actionRef` (like `runningRef`); new `onDeleted(toolId)` prop; `api` prop is now `ToolDetailsApi & ToolActionsApi`. `ToolDetailBody` stays hook-free (new state via `ToolDetailBodyState`, callbacks via `ToolDetailBodyActions`).
+- `tools-section.tsx`: passes `onDeleted` (closes sheet + removes row via new pure `withoutTool` helper).
+- Tests: extended `tools-api.test.ts` (revert method/path/body/bearer, run both shapes + empty-input `{}`, bad result → `invalid_response`, 429 keeps status+code, delete 204); new `tool-actions.test.ts` (empty/invalid JSON, exactly-4096 vs 4097 bytes incl. multi-byte `é`, every error sentence, fetch/fetches); extended `tool-detail-sheet.test.tsx` (revert buttons only on non-current rows, confirm text, Run now section, input error, ok + failed blocks, Running…/Reverting…/Deleting…, delete confirm text); `tools-section.test.tsx` (`withoutTool` keeps others).
+
+### Files changed
+`apps/mobile/src/lib/tools-api.ts`, `apps/mobile/src/lib/tools-api.test.ts`, `apps/mobile/src/mock/tools.ts`, `apps/mobile/src/components/ais/tool-actions.ts` (new), `apps/mobile/src/components/ais/tool-actions.test.ts` (new), `apps/mobile/src/components/ais/tool-detail-sheet.tsx`, `apps/mobile/src/components/ais/tool-detail-sheet.test.tsx`, `apps/mobile/src/components/ais/tools-section.tsx`, `apps/mobile/src/components/ais/tools-section.test.tsx`.
+
+### Commands and real results
+- `pnpm install`: ok (18.3s).
+- Single tests while working: `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot src/lib/tools-api.test.ts src/components/ais/tool-actions.test.ts src/components/ais/tool-detail-sheet.test.tsx src/components/ais/tools-section.test.tsx` → 4 files, 67 tests, all passed (fixed along the way: added `TextInput` to the sheet test's react-native mock; fixed an `&apos;` vs `&#x27;` assertion).
+- `pnpm gate` (final): `PASS install (frozen)`, `PASS format`, `PASS lint`, `PASS typecheck`, `PASS tests @zilar/mobile`, `scope: every changed file is inside the Allowed files`, `GATE PASS`. (Fixed along the way: prettier on 4 files; restored dropped `ToolDetailsApi` import; tuple-index typing in one test.)
+
+### Problems / deviations
+- Spec's Run now order is history → Run now → Recent runs; I kept Recent runs in place and inserted Run now between history and Recent runs, matching the spec.
+- Spec's revert button label is `Revert to v<N>`; web shows `Revert to this version` with aria-label `Revert to v<N>`. I used visible text `Revert to v<N>` with the same accessibility label (spec describes the mobile label as `Revert to v<N>`).
+- Mock: deviated slightly from a literal "appends a version" on the shared arrays — copied versions/sources/runs into the `createMockToolsApi` closure so one instance's revert/run/delete doesn't pollute other instances (existing `tools`/`routines` were already closure-local; `TOOL_VERSIONS`/`TOOL_SOURCES`/`TOOL_RUNS` were module-shared). Behavior from the caller's view is exactly as specced.
+- No new dependency, no server/web change, no emoji, no server error text in UI (the failed-run kind/message shown is the tool's own output, which the spec explicitly allows).
+
+### Blocked / needs a decision
+None.
+
+### Security checklist
+- No secrets/tokens in logs, errors or code.
+- Deletes scoped by encoded tool id in the path.
+- No caps/uniqueness logic added; no permissions logic (sheet is owner-only per spec); no new routes; no audit entries; failed-run output shown is the tool's own data, allowed by the spec.
+
+### Lead round 1
+- `tool-detail-sheet.tsx`: added `busyAny` (`actionBusy || runBusy || deleteBusy`); every action button (Revert/Revert-confirm/Cancel, Run now, Delete/Delete-confirm/Cancel) now uses it, so a Run tap during a revert is visibly disabled instead of silently swallowed by `actionRef`. New test: with a revert busy, `Run now` and `Delete tool` render disabled.
+- `mock/tools.ts` `deleteTool`: also removes the tool's versions, sources and runs; `getTool`, `listToolVersions`, `getToolVersion` and `listToolRuns` then answer 404. New test in `tools-api.test.ts` via `createMockToolsApi()` asserting all four reject with status 404 after deleting `tool-1`.
+- `pnpm-lock.yaml`: reverted the uncommitted `bufferutil`/`utf-8-validate` change with `git checkout -- pnpm-lock.yaml`; not committed.
+- Checks: `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot tools-api tool-actions tool-detail-sheet tools-section` → 4 files, 69 tests, all passed. `pnpm gate` → `PASS install (frozen)`, `PASS format`, `PASS lint`, `PASS typecheck`, `PASS tests @zilar/mobile`, scope inside Allowed files, `GATE PASS`. (Fixed along the way: prettier collapse of one Button block; `children` in the new test's button props type for typecheck.)
+
+### Fix round (PREREVIEW findings)
+- Finding 1 (should-fix, mock run-id reuse): `mock/tools.ts` `runToolNow` used `runs.length + 1` for the new id, so a delete that shrank `runs` caused id reuse and duplicate React keys. Now a per-instance closure counter `nextMockRunId` (seeded from the initial run count) only increments. New test in `tools-api.test.ts`: run tool-2 twice, delete tool-1, run tool-2 twice more → `listToolRuns('tool-2')` returns 4 runs with 4 distinct ids.
+- Finding 2 (nit, JSON TextInput autocorrect): `tool-detail-sheet.tsx` Run-now `TextInput` now sets `autoCapitalize="none"` and `autoCorrect={false}`, so iOS can't mangle typed JSON into `Input must be valid JSON.`. New test in `tool-detail-sheet.test.tsx` walks the `ToolDetailBody` tree and asserts the run input's `autoCapitalize === 'none'` and `autoCorrect === false` (asserted on element props because `renderToStaticMarkup` drops `autoCorrect={false}` and lowercases `autoCapitalize`).
+- Disagreements: none — both findings were correct.
+- Single tests: `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot src/lib/tools-api.test.ts src/components/ais/tool-actions.test.ts src/components/ais/tool-detail-sheet.test.tsx src/components/ais/tools-section.test.tsx` → 4 files, 71 tests, all passed. `pnpm gate` (final) → `PASS install (frozen)`, `PASS format`, `PASS lint`, `PASS typecheck`, `PASS tests @zilar/mobile`, scope inside Allowed files, `GATE PASS`. (Fixed along the way: prettier line-wrap of the new test's props type; added `children` to that props type for typecheck.)
+
 ## Review (written by Claude)
+
+**Verdict:** Approved after lead round 1 (every action disabled while one runs; mock delete drops versions and sources) and one auto round (mock run ids, run input without autocapitalize). Final packet clean, one nit (a stale JSON error stays until the next Run tap), left as is. Emulator QA of the actions runs in parallel in the Sonnet QA subagent on a mock build; any finding goes to the polish task T-0229.
