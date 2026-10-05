@@ -48,6 +48,9 @@ export interface GroupMember {
   userId: string;
   name: string;
   role: GroupRole;
+  // T-0227: the member's `@handle` while set (null on the wire when unset).
+  // Optional so payloads from an older server still parse.
+  handle?: string;
   // T-0116: the custom group roles this member holds, shown as chips. Absent
   // on payloads from an older server (treated as none).
   roles: { id: string; name: string }[];
@@ -236,6 +239,17 @@ function parseGroupDetail(value: unknown): GroupDetail | null {
     const name = member['name'];
     const role = member['role'];
     if (!isString(userId) || !isString(name) || !isGroupRole(role)) return null;
+    // T-0227: the member's `@handle` (like web since T-0169). Null or absent
+    // on older servers (no handle); a non-string handle rejects the detail
+    // rather than rendering half of it.
+    const rawHandleValue = member['handle'];
+    if (rawHandleValue !== undefined && rawHandleValue !== null && !isString(rawHandleValue)) {
+      return null;
+    }
+    const rawHandle =
+      rawHandleValue === undefined || rawHandleValue === null || rawHandleValue === ''
+        ? undefined
+        : rawHandleValue;
     // T-0116: custom role chips. Absent on older servers (treated as none);
     // a malformed entry rejects the detail rather than rendering half of it.
     const roles: { id: string; name: string }[] = [];
@@ -250,7 +264,13 @@ function parseGroupDetail(value: unknown): GroupDetail | null {
         roles.push({ id, name: roleName });
       }
     }
-    parsed.push({ userId, name, role, roles });
+    parsed.push({
+      userId,
+      name,
+      role,
+      roles,
+      ...(rawHandle === undefined ? {} : { handle: rawHandle }),
+    });
   }
   // T-0108: the plain-members-may-create switch. Optional so older servers
   // still parse (treated as off).

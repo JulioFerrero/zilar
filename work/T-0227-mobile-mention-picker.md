@@ -1,7 +1,7 @@
 ---
 id: T-0227
 title: "Mobile: @mention picker in the group composer, and mentions sent with the message"
-status: planned
+status: merged
 milestone: M5
 branch: task/T-0227-mobile-mention-picker
 model: opencode/muse-spark-1.3-contributor-free
@@ -59,4 +59,69 @@ Highlighting received mentions in bubbles (next task), mentions in edits, topic 
 
 ## Report (written by the worker when done)
 
-## Review (written by Claude)
+Done. Group `@` mention picker + XEP-0372 mentions on send, mirroring web.
+
+What I did:
+- `lib/chat-api.ts`: parse optional `handle` (string; null/absent/'' = none, non-string rejects the detail) into `GroupMember.handle?`.
+- `store/types.ts`: `SendTextOptions.mentions?: UiMention[]`; new `groupMembers(chatId): MentionMember[]` on the store.
+- `store/real-store.ts`: `mentionMembersFor` builds members (`jid = localpart@domain`, name, handle) + group AIs from the shared detail cache (sender-name map untouched); `sendText` computes `mentionsForTrimmedText`, puts them on the optimistic message and passes `mentions: [{ jid, begin, end }]` to `core.sendMessage`.
+- `store/chat-store.ts` (mock): `groupMembers` from the mock group detail (fixed `zilar.test` domain, like the mock token); `sendText` keeps `mentions` on the optimistic bubble.
+- New `components/chat/mention-picker.tsx`: rows with 28px `Avatar`, name, muted `@handle`, `AiBadge` for AIs, `accessibilityRole="button"` + `Mention <name> [@handle]` label, above the composer.
+- New `components/chat/composer-mentions.ts`: pure helpers (open on `@`, filter+cap at `MENTION_MAX_ROWS = 6` like web, pick inserts `@handle `/`@Name `, backspace removes the token, send returns mentions). `composer.tsx` wires them: `mentionMembers?` prop (picker only when given, never in edit mode), `onSend(text, mentions?)`, picker closes on no-match and on send, `key={chat.id}` remount resets state on chat switch. Backspace-whole-token goes through `onChangeText` (RN has no reliable keypress backspace signal).
+- `app/chat/[id].tsx`: group chats pass `mentionMembers={groupMembers(chat.id)}` minus me via `isMentionOfMe`; all three composer sites forward `mentions` into `sendText`. Channel bars keep text-only send (mentions dropped there).
+
+Files changed: `lib/chat-api.ts`, `lib/chat-api.test.ts`, `store/types.ts`, `store/real-store.ts`, `store/chat-store.ts`, `store/real-store.mentions.test.ts` (new), `components/chat/mention-picker.tsx` (new), `components/chat/mention-picker.test.tsx` (new), `components/chat/composer.tsx`, `components/chat/composer-mentions.ts` (new), `components/chat/composer-mentions.test.ts` (new), `app/chat/[id].tsx`, this task file.
+
+Commands (real results):
+- `pnpm install`: done, 12s.
+- Focused tests `composer-mentions mention-picker chat-api real-store.mentions`: 4 files, 30 passed.
+- Regression `composer-gifs chat-store real-store`: 3 files, 112 passed.
+- `pnpm gate`: GATE PASS — install/lint/typecheck/tests pass, scope clean ("every changed file is inside the Allowed files"). Fixed on the way: prettier formatting, `MentionMember` import source, mock `createInitialState` missing `groupMembers`.
+
+Deviations: `composer-mentions.ts` helper module added (spec's optional path) since `composer.test.tsx` doesn't exist; `mention-picker.test.tsx` covers rows/handle/AI/label/onSelect via static markup (no RN test library); real-store test seeds one group chat (no DM row) — DM-no-picker is covered by the helper test (`enabled=false`) and the screen passing `undefined` for non-groups. Channel feed composer drops mentions (read-only/subscriber bar path, admins post via the same bar — text-only there).
+
+Security checklist: no secrets/tokens in logs or code; no deletes/updates touched; no caps/uniqueness rules added; permission checks unchanged; no new routes; no message text in audit paths.
+
+Blocked / needs a decision: none.
+
+## Round 2 (fix round, 2026-10-05)
+
+Fixed all 4 findings, one commit per finding. Nits N1–N3 untouched per instructions.
+
+- M1 (`36338186`): `app/chat/[id].tsx` subscribes the `mentionMembers` memo to the `groupDetail(groupId)` value, so a cold open re-resolves members when `ensureGroupDetail` lands. First attempt used `groupDetailsRevision` as the dep; `oxlint` flagged it as unnecessary, so switched to the `groupDetail` subscription the finding suggested as an alternative (with an `exhaustive-deps` disable comment, matching the existing pattern in `settings/approvals.tsx:199`). No new test (screen wiring; no RN renderer in repo).
+- S1 (`a99ef0ef`): new `caretAfterChange(previousText, nextText, previousCaret)` in `composer-mentions.ts`; `composer.tsx` `handleChange` uses it for both the backspace-token and query paths. Test: post-change caret + filter result for `@a`→`@al`, backspace shift, undefined-selection fallback, clamping.
+- S2 (`83515ea3`): `Composer` takes `chatKey={chat.id}` instead of `key={chat.id}` (both composer sites in `[id].tsx`); a render-keyed reset via `resetMentionStateForChatKey` clears tracked mentions/query on switch while the draft text stays (like web). Test: switch clears state, same chat keeps it. Prettier reformatted the touched files on the way.
+- S3 (`bcdbc118`): `mention-picker.test.tsx` renders `MentionPicker({...})` directly and invokes the first row's `onPress`, asserting one `onPress` per row and `onSelect` called with the member.
+
+Commands (real results):
+- Focused `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot mention-picker composer-mentions chat-api real-store.mentions`: 5 files, 37 passed (S1 check alone: `composer-mentions` 11 passed; S3 check alone: `mention-picker` 5 passed).
+- `pnpm gate`: GATE PASS — install/format/lint/typecheck/tests pass, scope clean ("every changed file is inside the Allowed files"). 13 changed files against main.
+
+Disagreements: none.
+
+## Round 3 (fix round, 2026-10-05)
+
+Fixed the one should-fix, one commit. Nits N1–N2 untouched (not on lines I changed).
+
+- S1 (`ec0d9c72`): new `groupIdForChat(chatId)` store selector (`store/types.ts`, real store backed by the existing `groupIdForChat` closure over the `groupIds` map at `real-store.ts:1857`, mock backed by its chat rows) so the chat screen resolves the group id of legacy rows too. `app/chat/[id].tsx` subscribes the `mentionMembers` memo through `groupDetail(groupIdForChat(chat.id))` instead of `chat?.groupId`, so a cold open of a legacy group row re-resolves members when `ensureGroupDetail` lands. Test: legacy row resolves to `g1`, unknown chat to `undefined` (`real-store.mentions.test.ts`).
+
+Commands (real results):
+- Focused `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot mention-picker composer-mentions chat-api real-store.mentions`: 5 files, 38 passed.
+- `pnpm gate`: GATE PASS — install/format/lint/typecheck/tests pass, scope clean ("every changed file is inside the Allowed files"). 13 changed files against main.
+
+Disagreements: none.
+
+## Round 4 (lead fix round, 2026-10-05)
+
+Fixed M1 + S1 + S2, one commit per finding. F1 untouched (lead follow-up, needs `channel-composer-bar.tsx` outside Allowed files). N1 untouched (manual-QA note, no change demanded).
+
+- M1 (`46586b5a`): new `isSingleCharBackspace(previousText, nextText, selection)` in `composer-mentions.ts` — collapsed pre-change selection plus `nextText === previousText.slice(0, caret) + previousText.slice(caret + 1)`; `composer.tsx` `handleChange` takes the mention-token path only then (pre-change caret, not the shifted one) and treats every other edit as normal typing. Test: `@ana ab` + select `ab` → type `c` keeps the mention, plus collapsed/range/undefined cases.
+- S1 (`842df3b4`): new pure `composerBarFor(chat)` in `composer-mentions.ts`; the `!isTopic` branch in `[id].tsx` renders the full `Composer` with `mentionMembers` + `chatKey` for non-channel group rows (legacy groups), channels/DMs keep `ChannelComposerBar`. Test: branch decision for group/channel/DM plus picker candidates in a legacy chat.
+- S2 (`d8e8f995`): real + mock `groupMembers` exclude self by `userId` against `currentUserId` (always set; `me?.jid` is undefined in mock mode and pre-boot). The screen's `me?.jid` filter stays as a second layer. Test: mock store with `me` undefined lists dev-team members without the viewer.
+- Format/import fixup (`883f87e2`): prettier on the three touched files; restored the `isSingleCharBackspace` import in `composer.tsx` that a bad edit had dropped (caught by typecheck).
+
+Commands (real results):
+- Focused `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot mention-picker composer-mentions chat-api real-store.mentions`: 5 files, 41 passed.
+- `pnpm gate`: GATE PASS — install/format/lint/typecheck/tests pass, scope clean ("every changed file is inside the Allowed files"). 13 changed files against main.
+
+Disagreements: none.

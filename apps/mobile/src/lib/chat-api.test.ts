@@ -230,6 +230,46 @@ describe('createChatApi', () => {
     await expect(api.getChats()).rejects.toMatchObject({ code: 'invalid_response' });
   });
 
+  it('parses member handles, absent or null on older servers', async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({
+        id: 'g1',
+        title: 'Team',
+        createdBy: 'u-me',
+        members: [
+          { userId: 'u-ana', name: 'Ana', role: 'member', handle: 'ana' },
+          { userId: 'u-luis', name: 'Luis', role: 'member' },
+          { userId: 'u-mia', name: 'Mia', role: 'member', handle: null },
+          { userId: 'u-noa', name: 'Noa', role: 'member', handle: '' },
+        ],
+      }),
+    );
+    const api = createChatApi(async () => 't', fetchImpl as unknown as typeof fetch);
+
+    await expect(api.getGroup('g1')).resolves.toMatchObject({
+      members: [
+        { userId: 'u-ana', name: 'Ana', role: 'member', handle: 'ana' },
+        { userId: 'u-luis', name: 'Luis', role: 'member' },
+        { userId: 'u-mia', name: 'Mia', role: 'member' },
+        { userId: 'u-noa', name: 'Noa', role: 'member' },
+      ],
+    });
+  });
+
+  it('rejects a group detail with a malformed member handle', async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({
+        id: 'g1',
+        title: 'Team',
+        createdBy: 'u-me',
+        members: [{ userId: 'u-ana', name: 'Ana', role: 'member', handle: 7 }],
+      }),
+    );
+    const api = createChatApi(async () => 't', fetchImpl as unknown as typeof fetch);
+
+    await expect(api.getGroup('g1')).rejects.toMatchObject({ code: 'invalid_response' });
+  });
+
   it('throws a typed error on a failed request', async () => {
     const fetchImpl = vi.fn(async () =>
       jsonResponse({ error: { code: 'unauthorized', message: 'No session' } }, 401),

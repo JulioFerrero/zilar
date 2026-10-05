@@ -1,4 +1,4 @@
-import type { MessageStatus, UiMessage } from '@zilar/chat-core';
+import type { MentionMember, MessageStatus, UiMessage } from '@zilar/chat-core';
 import { StickerSchema } from '@zilar/protocol';
 import { create, type StoreApi, type UseBoundStore } from 'zustand';
 
@@ -183,6 +183,10 @@ export function createInitialState(phase?: MockDraftPhase, load?: MockLoadScenar
     mediaTrustedHosts: undefined,
     topicNotice: undefined,
     groupDetailsRevision: 0,
+    // T-0227: the mock `groupMembers` reads the mock detail through
+    // `get()`, so the initial data needs no member list.
+    groupMembers: () => [],
+    groupIdForChat: (chatId) => chats.find((entry) => entry.id === chatId)?.groupId,
     ownedAis: mockDevteamOwnedAis(),
     pinsError: undefined,
   };
@@ -402,6 +406,40 @@ export function createChatStore(
       messages: (chatId) => get().messagesByChat[chatId] ?? NO_MESSAGES,
       hasMore: () => false,
       loadOlder: () => {},
+      groupMembers: (chatId) => {
+        // The mock twin of the real store's `mentionMembersFor` (T-0227):
+        // the members of the detail behind the chat's group id plus the
+        // group's AIs, never yourself (by `userId`: `me` is never set in
+        // mock mode, while `currentUserId` always is). The domain is fixed
+        // in mock mode, like the token's.
+        const chat = get().chats.find((entry) => entry.id === chatId);
+        const groupId = chat?.groupId;
+        if (groupId === undefined) {
+          return [];
+        }
+        const detail = get().groupDetail(groupId);
+        if (detail === undefined) {
+          return [];
+        }
+        const meId = get().currentUserId;
+        const members: MentionMember[] = [];
+        for (const member of detail.members) {
+          if (member.userId === meId) {
+            continue;
+          }
+          members.push({
+            jid: `${member.userId.toLowerCase()}@zilar.test`,
+            name: member.name,
+            ...(member.handle === undefined || member.handle === ''
+              ? {}
+              : { handle: member.handle }),
+          });
+        }
+        for (const ai of detail.ais) {
+          members.push({ jid: ai.jid, name: ai.name });
+        }
+        return members;
+      },
       reloadChats: () => set({ chatsLoad: 'loaded' }),
       retryHistory: (chatId) =>
         set((state) => ({ historyLoad: { ...state.historyLoad, [chatId]: 'loaded' } })),
@@ -916,6 +954,10 @@ export function createChatStore(
           return;
         }
         messageCounter += 1;
+        // T-0227: the composer forwards its tracked mentions; the mock keeps
+        // them on the optimistic bubble (offsets are already into `trimmed`
+        // in the tests, and the composer value is never padded here).
+        const mentions = options?.mentions ?? [];
         const message: UiMessage = {
           id: `local-${Date.now()}-${messageCounter}`,
           chatId,
@@ -924,6 +966,7 @@ export function createChatStore(
           text: trimmed,
           createdAt: new Date(),
           status: 'sending',
+          ...(mentions.length === 0 ? {} : { mentions: [...mentions] }),
           ...(options?.replyTo === undefined ? {} : { replyTo: options.replyTo }),
         };
         set((state) => ({

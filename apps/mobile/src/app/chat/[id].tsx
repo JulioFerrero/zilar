@@ -30,6 +30,8 @@ import type { TopicStatus } from '@/lib/topics-api';
 import type { ReplyRef, UiMessage } from '@/lib/types';
 import type { PickedFile } from '@/lib/attachment-ports';
 import type { SendAttachmentOptions, SendTextOptions, SendVoiceRecording } from '@/store/types';
+import { isMentionOfMe, type MentionMember, type UiMention } from '@zilar/chat-core';
+import { composerBarFor } from '@/components/chat/composer-mentions';
 import { mockDemoStickerPacks } from '@/mock/stickers';
 import { mockDemoAttachments } from '@/mock/attachments';
 import { mockDemoGifs } from '@/mock/gifs';
@@ -107,6 +109,39 @@ function Chat() {
   const refreshGroupRoles = useChatStore((state) => state.refreshGroupRoles);
   const me = useChatStore((state) => state.me);
   const topicNotice = useChatStore((state) => state.topicNotice);
+  // The `@` picker members (T-0227, like web): group and topic chats read
+  // the group's members and AIs, minus me; DMs pass nothing (no picker).
+  // Scalar deps only — `chat` itself is still loading above this line.
+  const groupMembers = useChatStore((state) => state.groupMembers);
+  // The group id behind this row, including legacy rows that carry no
+  // `groupId` (T-0227): the store resolves them through the remembered
+  // `/api/chats` entries, so the detail subscription below re-fires when a
+  // cold-open load lands — `chat?.groupId` alone stays `''` forever there.
+  const groupIdForChat = useChatStore((state) => state.groupIdForChat);
+  const mentionChatKind = chat?.kind;
+  const mentionChatId = chat?.id;
+  const mentionGroupId =
+    mentionChatKind === 'group' && mentionChatId !== undefined
+      ? groupIdForChat(mentionChatId)
+      : undefined;
+  // Subscribes the memo below to async detail loads: `groupMembers` is a
+  // stable function over a closure cache filled by `ensureGroupDetail`, so
+  // reading the detail value here re-runs the memo when it arrives — without
+  // it a cold open keeps returning `[]` forever.
+  const groupDetailForMentions = useChatStore((state) =>
+    mentionGroupId === undefined ? undefined : state.groupDetail(mentionGroupId),
+  );
+  const meJid = me?.jid ?? undefined;
+  const mentionMembers: MentionMember[] | undefined = useMemo(() => {
+    if (mentionChatKind !== 'group' || mentionChatId === undefined) {
+      return undefined;
+    }
+    void groupDetailForMentions;
+    return groupMembers(mentionChatId).filter((member) => !isMentionOfMe(member.jid, meJid));
+    // The memo reads the detail value above only to subscribe to its async
+    // loads: `groupMembers` resolves from the same cache.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mentionChatKind, mentionChatId, groupMembers, groupDetailForMentions, meJid]);
   const [replyTo, setReplyTo] = useState<ReplyRef | undefined>(undefined);
   // A search jump that gave up ("Message not found") lands here with
   // `?notFound=1`: the chat opens at its bottom with a short inline notice.
@@ -210,6 +245,23 @@ function Chat() {
 
   const sendVoiceNow = (recording: SendVoiceRecording, options?: SendTextOptions) => {
     sendVoice(chatId, recording, options ?? (replyTo === undefined ? undefined : { replyTo }));
+    cancelReply();
+  };
+
+  // Sending carries the composer's tracked mentions (T-0227, like web):
+  // the message text is unchanged, the ranges ride along. The channel bar
+  // takes a text-only send, so its wrapper below drops the mentions.
+  const sendTextNow = (text: string, mentions?: UiMention[]) => {
+    sendText(
+      chatId,
+      text,
+      replyTo === undefined && (mentions === undefined || mentions.length === 0)
+        ? undefined
+        : {
+            ...(replyTo === undefined ? {} : { replyTo }),
+            ...(mentions === undefined || mentions.length === 0 ? {} : { mentions }),
+          },
+    );
     cancelReply();
   };
 
@@ -414,6 +466,10 @@ function Chat() {
   };
 
   if (!isTopic) {
+    // A legacy group row (older server, no topics) uses the full composer
+    // with the `@` picker (T-0227 S1), like the topic path; channels keep
+    // their feed bar, DMs keep today's text-only send.
+    const legacyComposer = composerBarFor(chat) === 'composer';
     return (
       <View className="flex-1 bg-background">
         <ChatBackground />
@@ -516,32 +572,64 @@ function Chat() {
               </Pressable>
             </View>
           ) : null}
-          <ChannelComposerBar
-            chat={chat}
-            groupId={chat.groupId}
-            onSend={(text) => {
-              sendText(chat.id, text, replyTo === undefined ? undefined : { replyTo });
-              cancelReply();
-            }}
-            onSendSticker={(sticker) => {
-              sendSticker(chat.id, sticker, replyTo === undefined ? undefined : { replyTo });
-              cancelReply();
-            }}
-            onSendAttachment={(file: PickedFile, options?: SendAttachmentOptions) => {
-              sendAttachmentNow(
-                file,
-                options === undefined ? (replyTo === undefined ? undefined : { replyTo }) : options,
-              );
-              cancelReply();
-            }}
-            onSendVoice={sendVoiceNow}
-            demoAttachments={demoAttachments}
-            demoGifs={demoGifs}
-            replyTo={replyTo}
-            onCancelReply={cancelReply}
-            onTyping={() => sendTyping(chat.id)}
-            demoPacks={demoPacks}
-          />
+          {legacyComposer ? (
+            <Composer
+              chatKey={chat.id}
+              title={chat.title}
+              onSend={sendTextNow}
+              mentionMembers={mentionMembers}
+              onSendSticker={(sticker) => {
+                sendSticker(chat.id, sticker, replyTo === undefined ? undefined : { replyTo });
+                cancelReply();
+              }}
+              onSendAttachment={(file: PickedFile, options?: SendAttachmentOptions) => {
+                sendAttachmentNow(
+                  file,
+                  options === undefined
+                    ? replyTo === undefined
+                      ? undefined
+                      : { replyTo }
+                    : options,
+                );
+                cancelReply();
+              }}
+              onSendVoice={sendVoiceNow}
+              replyTo={replyTo}
+              onCancelReply={cancelReply}
+              onTyping={() => sendTyping(chat.id)}
+              demoPacks={demoPacks}
+              demoAttachments={demoAttachments}
+              demoGifs={demoGifs}
+            />
+          ) : (
+            <ChannelComposerBar
+              chat={chat}
+              groupId={chat.groupId}
+              onSend={(text) => sendTextNow(text)}
+              onSendSticker={(sticker) => {
+                sendSticker(chat.id, sticker, replyTo === undefined ? undefined : { replyTo });
+                cancelReply();
+              }}
+              onSendAttachment={(file: PickedFile, options?: SendAttachmentOptions) => {
+                sendAttachmentNow(
+                  file,
+                  options === undefined
+                    ? replyTo === undefined
+                      ? undefined
+                      : { replyTo }
+                    : options,
+                );
+                cancelReply();
+              }}
+              onSendVoice={sendVoiceNow}
+              demoAttachments={demoAttachments}
+              demoGifs={demoGifs}
+              replyTo={replyTo}
+              onCancelReply={cancelReply}
+              onTyping={() => sendTyping(chat.id)}
+              demoPacks={demoPacks}
+            />
+          )}
         </KeyboardAvoidingView>
         <PinsSheet
           open={pinsOpen}
@@ -667,10 +755,7 @@ function Chat() {
             <ChannelComposerBar
               chat={chat}
               groupId={chat.groupId}
-              onSend={(text) => {
-                sendText(chat.id, text, replyTo === undefined ? undefined : { replyTo });
-                cancelReply();
-              }}
+              onSend={(text) => sendTextNow(text)}
               onSendSticker={(sticker) => {
                 sendSticker(chat.id, sticker, replyTo === undefined ? undefined : { replyTo });
                 cancelReply();
@@ -696,11 +781,10 @@ function Chat() {
             />
           ) : (
             <Composer
+              chatKey={chat.id}
               title={chat.title}
-              onSend={(text) => {
-                sendText(chat.id, text, replyTo === undefined ? undefined : { replyTo });
-                cancelReply();
-              }}
+              onSend={sendTextNow}
+              mentionMembers={mentionMembers}
               onSendSticker={(sticker) => {
                 sendSticker(chat.id, sticker, replyTo === undefined ? undefined : { replyTo });
                 cancelReply();
@@ -901,11 +985,10 @@ function Chat() {
           </View>
         ) : null}
         <Composer
+          chatKey={chat.id}
           title={chat.title}
-          onSend={(text) => {
-            sendText(chat.id, text, replyTo === undefined ? undefined : { replyTo });
-            cancelReply();
-          }}
+          onSend={sendTextNow}
+          mentionMembers={mentionMembers}
           onSendSticker={(sticker) => {
             sendSticker(chat.id, sticker, replyTo === undefined ? undefined : { replyTo });
             cancelReply();
