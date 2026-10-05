@@ -172,6 +172,38 @@ describe('chat store', () => {
     expect(store.getState().activeFolder).toBe('all');
   });
 
+  it('creates, updates, reorders and deletes mock folders', async () => {
+    const store = createChatStore();
+    const created = await store.getState().createFolder({
+      name: 'Work',
+      icon: 'briefcase',
+      includeTypes: ['group'],
+    });
+    expect(created.id).toBe('mock-folder-1');
+    expect(store.getState().folders.map((folder) => folder.name)).toEqual([
+      'Personal',
+      'AIs',
+      'Work',
+    ]);
+
+    const updated = await store.getState().updateFolder(created.id, {
+      name: 'Job',
+      icon: 'code',
+    });
+    expect(updated.name).toBe('Job');
+    expect(updated.icon).toBe('code');
+    // Omitted fields keep the folder's current values.
+    expect(updated.includeTypes).toEqual(['group']);
+    expect(store.getState().folders.find((folder) => folder.id === created.id)?.name).toBe('Job');
+
+    const ids = store.getState().folders.map((folder) => folder.id);
+    await store.getState().reorderFolders([...ids].reverse());
+    expect(store.getState().folders.map((folder) => folder.id)).toEqual([...ids].reverse());
+
+    await store.getState().deleteFolder(created.id);
+    expect(store.getState().folders.some((folder) => folder.id === created.id)).toBe(false);
+  });
+
   it('shows typing after the mock delay and clears it again', () => {
     const store = createChatStore();
     expect(store.getState().typing).toEqual({});

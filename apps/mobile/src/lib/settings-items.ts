@@ -93,6 +93,14 @@ export const SETTINGS_ITEMS = [
     href: '/settings/blocked',
     group: 'account',
   },
+  {
+    id: 'folders',
+    title: 'Chat folders',
+    subtitle: 'Sort chats into folders.',
+    icon: 'folders',
+    href: '/settings/folders',
+    group: 'chats',
+  },
 ] as const satisfies readonly SettingsItemShape[];
 
 export type SettingsItem = (typeof SETTINGS_ITEMS)[number];

@@ -27,6 +27,7 @@ import type {
   TopicRole,
 } from '../lib/topics-api';
 import type { PutChatPrefInput } from '../lib/chat-prefs-api';
+import type { CreateChatFolderInput, PatchChatFolderInput } from '../lib/chat-folders-api';
 import type { Pin } from '../lib/pins-api';
 
 /** Connection state shown by the thin "Connecting…" bar in the chat list. */
@@ -466,6 +467,14 @@ export interface ChatStoreState {
   setSearch: (search: string) => void;
   setActiveFolder: (folder: string) => void;
   setFolders: (folders: ChatFolder[]) => void;
+  /** Creates a folder and merges the server's row. Rejects on failure. */
+  createFolder: (input: CreateChatFolderInput) => Promise<ChatFolder>;
+  /** Patches a folder and replaces it with the server's row. Rejects on failure. */
+  updateFolder: (id: string, input: PatchChatFolderInput) => Promise<ChatFolder>;
+  /** Deletes a folder and drops it from the list. Rejects on failure. */
+  deleteFolder: (id: string) => Promise<void>;
+  /** Saves a new order and takes the server's returned list. Rejects on failure. */
+  reorderFolders: (ids: string[]) => Promise<void>;
   start: () => void;
   stop: () => void;
 }

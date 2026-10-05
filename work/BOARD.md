@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-0255](T-0255-mobile-folders-editor.md) | Mobile: Chat folders settings and editor | in_progress | auto | T-0248, T-0247 | folders part 2a |
 | [T-0260](T-0260-auto-deploy-green-main.md) | Deploy: auto-deploy live after green CI on main | in_progress | auto | | Julio 2026-10-06 |
 | [T-0258](T-0258-web-kit-dialogs-1.md) | Web kit migration 2: four dialogs on the kit Dialog | in_progress | auto | T-0243, T-0253 | audit step 6, batch 1 |
 
@@ -289,3 +288,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0259](T-0259-ci-slow-folder-test.md) | CI: fast folder cap test; MachinesPage Copied check waits | 2026-10-05 |
 | [T-0256](T-0256-forwarding-plan.md) | Forwarding plan (docs/audit/forwarding-plan.md) | 2026-10-05 |
 | [T-0257](T-0257-media-gallery-plan.md) | Media gallery plan (docs/audit/media-gallery-plan.md) | 2026-10-05 |
+| [T-0255](T-0255-mobile-folders-editor.md) | Mobile: Chat folders settings and editor | 2026-10-05 |

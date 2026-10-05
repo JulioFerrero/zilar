@@ -463,6 +463,14 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         // Keep the last list; a retry happens on the next refresh.
       }
     }
+    /** The injected folders client; writes have no local fallback. */
+    function foldersApi(): ChatFoldersApi {
+      const api = deps.chatFoldersApi;
+      if (api === undefined) {
+        throw new Error('Chat folders are not available.');
+      }
+      return api;
+    }
     // Pins by chat id (T-0135), newest first. Loaded when a chat opens and
     // refreshed on focus and every 60 s while it is open.
     const pinsByChat = new Map<string, Pin[]>();
@@ -4018,6 +4026,24 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
               ? state.activeFolder
               : 'all',
         }));
+      },
+      createFolder: async (input) => {
+        const folder = await foldersApi().createChatFolder(input);
+        get().setFolders([...get().folders, folder]);
+        return folder;
+      },
+      updateFolder: async (id, input) => {
+        const folder = await foldersApi().patchChatFolder(id, input);
+        get().setFolders(get().folders.map((item) => (item.id === id ? folder : item)));
+        return folder;
+      },
+      deleteFolder: async (id) => {
+        await foldersApi().deleteChatFolder(id);
+        get().setFolders(get().folders.filter((item) => item.id !== id));
+      },
+      reorderFolders: async (ids) => {
+        const folders = await foldersApi().reorderChatFolders(ids);
+        get().setFolders(folders);
       },
       start: () => {
         if (started) {
