@@ -209,7 +209,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0178](T-0178-whistle-quiet-cut-chunks.md) | Whistle: quiet-point chunking from a native amplitude envelope | 2026-10-03 |
 | [T-0180](T-0180-signin-no-code-hint.md) | Sign-in hints for people without an invite (web + mobile) | 2026-10-03 |
 | [T-0227](T-0227-mobile-mention-picker.md) | Mobile: @mention picker in the group composer, mentions sent with the message | planned | opencode/muse-spark-1.3-contributor-free | — | T-0195 audit 7.2a |
-| [T-0228](T-0228-mobile-create-visibility.md) | Mobile: New group / New channel can be Public with an @handle | planned | opencode/muse-spark-1.3-contributor-free | T-0214 | T-0195 audit 7.2c |
 | [T-0230](T-0230-mobile-tool-sheet-keyboard.md) | Mobile: tool sheet keyboard and Tools list refresh after close | planned | opencode/muse-spark-1.3-contributor-free | T-0229 | Emulator QA run 2; launch after T-0229 merges |
 | [T-0232](T-0232-chat-folders-server.md) | Server: chat_folders table and API | planned | opencode/muse-spark-1.3-contributor-free | T-0231, T-0171 | Schema task; launch after T-0171 merges |
 | [T-0179](T-0179-mobile-transcribe-voice-notes.md) | Transcribe voice notes on the phone with Whistle: button in the bubble, consent for the 17 MB model, transcripts stored locally | 2026-10-03 |
@@ -261,3 +260,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0219](T-0219-mobile-tool-writes.md) | Mobile: Run now, Revert and Delete in the tool detail sheet | 2026-10-05 |
 | [T-0229](T-0229-mobile-ai-screen-polish.md) | Mobile: AI screen layout fixes found on the emulator | 2026-10-05 |
 | [T-0231](T-0231-folder-matcher.md) | chat-core: ChatFolder type and the pure folder matcher | 2026-10-05 |
+| [T-0228](T-0228-mobile-create-visibility.md) | Mobile: New group and New channel can be created Public with an @handle | 2026-10-05 |

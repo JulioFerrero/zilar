@@ -1,7 +1,7 @@
 ---
 id: T-0228
 title: "Mobile: New group and New channel can be created Public with an @handle (live availability check)"
-status: planned
+status: merged
 milestone: M5
 branch: task/T-0228-mobile-create-visibility
 model: opencode/muse-spark-1.3-contributor-free
@@ -65,4 +65,95 @@ Picking members for a channel, the description for a group, changing visibility 
 
 ## Report (written by the worker when done)
 
+### What I did
+- `groups-api.ts`: `createChannel` and `createGroup` accept optional
+  `visibility`/`handle` and send `{ visibility: 'public', handle }` only
+  when `visibility === 'public'`; private bodies are byte-identical to before.
+- Store (`types.ts`, `real-store.ts`, `chat-store.ts`): both create methods
+  accept and forward `visibility?`/`handle?`, trimmed in `real-store.ts`.
+- New `components/chat/visibility-fields.tsx`: `VisibilityFields`
+  (Private/Public segmented row, per-kind muted line, Handle field with
+  placeholder `hiking_club`, max 32, no autocapitalize/autocorrect,
+  accessibility label `Group handle`, live `@handle is available` / reason
+  text reusing `visibilityReasonText`), `useHandleCheck` (300 ms debounce,
+  `checkGroupHandle`, `rate_limited` → unavailable, other errors → null,
+  stale results ignored), `publicCreateError` (empty-handle guard per kind +
+  unavailable-check reason), `createErrorText` (four handle codes like
+  `visibilitySaveError`, per-kind fixed fallback, never server text), plus
+  `channelCreateGuard`/`buildChannelCreateInput` so the stateful channel
+  sheet is testable without a renderer.
+- `new-group-sheet.tsx` (name step) and `new-channel-sheet.tsx`: render
+  `VisibilityFields`, block Create on the guards, pass
+  `visibility`/`handle` in `onCreate`. Switching back to Private hides the
+  field and clears the check via `reset()`.
+- `new-chat-button.tsx`: `create`/`submitGroup` forward
+  `visibility`/`handle` to the store and show `createErrorText(error, kind)`
+  on failure (fixed sentences, never raw).
+- Tests: extended `groups-api.test.ts` (public body has both fields, private
+  has neither), new `visibility-fields.test.tsx` (lines, field visibility,
+  available/reason texts, `publicCreateError`, `createErrorText`),
+  extended `new-group-sheet.test.tsx` (guards + body render checks),
+  new `new-channel-sheet.test.tsx` (guard/payload builders + error lines),
+  extended `real-store.groups-create.test.ts` (forwarding + trim).
+
+### Checks
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot
+  <5 spec files>`: 5 passed, 57 passed (ran again after prettier: GATE PASS
+  implies the suite stayed green).
+- `new-chat-button.test.tsx` + `visibility-sheet.test.ts`: 2 passed,
+  6 passed (regression check on the touched wrapper/shared helper).
+- `pnpm gate`: GATE PASS — install PASS, format PASS, lint PASS, typecheck
+  PASS, tests @zilar/mobile PASS, scope: every changed file is inside the
+  Allowed files (14 changed files).
+
+### Problems / deviations
+- The new-channel sheet is stateful (hooks), and this repo has no RN
+  renderer, so its Node test covers the guard/payload builders and error
+  lines rather than pressing buttons; the sheet wires them unchanged.
+- Accidental stray edit to `directory-api.ts` (outside Allowed) during
+  planning was reverted immediately; `git diff` confirms it is clean.
+- Prettier reformatted 5 files; an edit duplicated the channel-sheet import
+  block once — fixed, gate is green.
+
+### Security checklist
+- No secrets/tokens in logs or errors; handle strings go only in the POST
+  body, never URLs. No deletes/updates touched. No caps/uniqueness logic
+  added (server owns the 409 race). No new routes. All errors are fixed
+  sentences; raw server text never reaches the UI.
+
+### Round 2 (fix round, PREREVIEW findings)
+- Finding 1 (must-fix, debounce loop): `useHandleCheck` no longer takes the
+  inline `check` closure in its effect deps — it runs through a ref
+  (`visibility-fields.tsx`), and both sheets pass a `useCallback`-memoized
+  checker keyed on the memoized `directoryApi`. Added a regression test in
+  `visibility-fields.test.tsx` (minimal React hook stub with dep
+  comparison: one check per handle, quiet after the result re-render;
+  verified it fails on the old code with `expected 2 to be 1`). Also fixed
+  the group-sheet guard order as a side effect of the wiring change below:
+  empty name now reports before the handle guard, matching web.
+- Finding 2 (should-fix, mocked wrapper test): `new-group-sheet.test.tsx`
+  no longer mocks `visibility-fields`; the wrapper's Create path is
+  extracted into `groupCreateGuard`/`buildGroupCreateInput` in
+  `visibility-fields.tsx` (mirroring the channel builders) and tested
+  against the real code, including that `onCreate` receives trimmed
+  `visibility: 'public'` + `handle` (a dropped field fails the test). The
+  body render test now asserts the real `VisibilityFields` output (Public
+  shows the name field + handle field).
+- Nits: `visibility-fields.test.tsx` and `new-channel-sheet.test.tsx` now
+  import the real `visibilityReasonText` instead of a hand copy (added the
+  missing `react-native-safe-area-context` mock the real chain needs);
+  `real-store.groups-create.test.ts` covers the `createChannel`
+  visibility/handle forwarding + trim. Guard-order nit resolved by the
+  finding-2 refactor (name first, like web).
+- Disagreements: none.
+- Checks: `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot
+  groups-api visibility-fields new-group-sheet new-channel-sheet
+  real-store.groups-create`: 5 passed, 59 passed. `pnpm gate`: (below).
+- Gate: GATE PASS — install PASS, format PASS, lint PASS, typecheck PASS,
+  tests @zilar/mobile PASS, scope: every changed file is inside the Allowed
+  files (14 changed files).
+
+
 ## Review (written by Claude)
+
+**Verdict:** Approved after one auto round (1 must-fix, 1 should-fix, fixed and verified). Final packet clean with 2 cosmetic nits (a stale comment; "Checking…" can stick for one check after toggling Private/Public mid-flight), left as is. Read `groups-api.ts`: `visibility`/`handle` are sent only for public creates; private bodies are unchanged. Emulator QA of both sheets (mock mode, nothing created on the server) runs in parallel in the QA subagent.

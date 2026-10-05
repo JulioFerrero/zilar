@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { Modal, Pressable, Share } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { createErrorText } from '@/components/chat/visibility-fields';
 import { InviteSheet } from '@/components/chat/invite-sheet';
 import { JoinLinkForm } from '@/components/chat/join-link';
 import { NewChannelSheet } from '@/components/chat/new-channel-sheet';
@@ -71,7 +72,14 @@ export function NewChatButton() {
   // T-0144: creating a channel refreshes the chat list first (the store
   // returns the new group id from the POST answer), then opens the
   // channel screen. A failure reads inline, never raw.
-  const create = (input: { title: string; description?: string }) => {
+  // T-0228: public creates carry the handle; failures map to fixed
+  // sentences.
+  const create = (input: {
+    title: string;
+    description?: string;
+    visibility?: 'public';
+    handle?: string;
+  }) => {
     setChannelBusy(true);
     setChannelError('');
     void createChannel(input)
@@ -79,14 +87,19 @@ export function NewChatButton() {
         setAction(undefined);
         router.push({ pathname: '/group/[id]', params: { id: groupId } });
       })
-      .catch(() => setChannelError('Could not create the channel. Try again.'))
+      .catch((error: unknown) => setChannelError(createErrorText(error, 'channel')))
       .finally(() => setChannelBusy(false));
   };
 
-  // T-0214: creating a private group mirrors the channel flow (the store
+  // T-0214: creating a group mirrors the channel flow (the store
   // returns the new group id from the POST answer), then opens the
   // group screen. A failure reads inline, never raw.
-  const submitGroup = (input: { title: string; memberIds: string[] }) => {
+  const submitGroup = (input: {
+    title: string;
+    memberIds: string[];
+    visibility?: 'public';
+    handle?: string;
+  }) => {
     setGroupBusy(true);
     setGroupError('');
     void createGroup(input)
@@ -94,7 +107,7 @@ export function NewChatButton() {
         setAction(undefined);
         router.push({ pathname: '/group/[id]', params: { id: groupId } });
       })
-      .catch(() => setGroupError('Could not create the group. Try again.'))
+      .catch((error: unknown) => setGroupError(createErrorText(error, 'group')))
       .finally(() => setGroupBusy(false));
   };
 

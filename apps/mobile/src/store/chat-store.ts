@@ -683,10 +683,20 @@ export function createChatStore(
       revokeInviteLink: async (groupId: string, linkId: string): Promise<void> => {
         inviteLinks.revoke(groupId, linkId);
       },
-      createChannel: async () => {
+      createChannel: async (_input: {
+        title: string;
+        description?: string;
+        visibility?: 'public';
+        handle?: string;
+      }) => {
         throw new Error('createChannel is not available in the mock store');
       },
-      createGroup: async () => {
+      createGroup: async (_input: {
+        title: string;
+        memberIds: string[];
+        visibility?: 'public';
+        handle?: string;
+      }) => {
         throw new Error('createGroup is not available in the mock store');
       },
       leaveChannel: async (chatId) => {

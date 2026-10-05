@@ -16,10 +16,20 @@ import type { GroupMember, TokenProvider } from './chat-api';
 export type ChannelMemberRole = 'admin' | 'member';
 
 export interface GroupsApi {
-  /** Creates a channel (title + optional description ≤ 300). */
-  createChannel(input: { title: string; description?: string }): Promise<{ id: string }>;
-  /** Creates a private group (title + member ids, no `kind`). */
-  createGroup(input: { title: string; memberIds: string[] }): Promise<{ id: string }>;
+  /** Creates a channel (title + optional description ≤ 300, optional public visibility). */
+  createChannel(input: {
+    title: string;
+    description?: string;
+    visibility?: 'public';
+    handle?: string;
+  }): Promise<{ id: string }>;
+  /** Creates a group (title + member ids, no `kind`; optional public visibility). */
+  createGroup(input: {
+    title: string;
+    memberIds: string[];
+    visibility?: 'public';
+    handle?: string;
+  }): Promise<{ id: string }>;
   /**
    * Reads the members slice for one group: the full audience for
    * owners/admins, the owner/admins slice for channel subscribers (never the
@@ -155,6 +165,11 @@ export function createGroupsApi(
             ...(input.description === undefined || input.description.trim() === ''
               ? {}
               : { description: input.description.trim() }),
+            // T-0228: visibility and handle go over the wire only on public
+            // creates (private requests stay exactly as before).
+            ...(input.visibility === 'public' && input.handle !== undefined
+              ? { visibility: 'public', handle: input.handle }
+              : {}),
           }),
         },
         (value) => {
@@ -170,7 +185,14 @@ export function createGroupsApi(
         {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ title: input.title, memberIds: input.memberIds }),
+          body: JSON.stringify({
+            title: input.title,
+            memberIds: input.memberIds,
+            // T-0228: public creates carry the handle in the same step.
+            ...(input.visibility === 'public' && input.handle !== undefined
+              ? { visibility: 'public', handle: input.handle }
+              : {}),
+          }),
         },
         (value) => {
           if (!isRecord(value) || !isString(value['id'])) return null;
