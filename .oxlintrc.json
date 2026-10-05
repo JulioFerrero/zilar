@@ -1,0 +1,13 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["eslint", "unicorn", "oxc", "typescript", "react"],
+  "categories": {
+    "correctness": "error"
+  },
+  "env": {
+    "builtin": true,
+    "browser": true,
+    "node": true
+  },
+  "ignorePatterns": ["dist", "coverage", ".turbo"]
+}

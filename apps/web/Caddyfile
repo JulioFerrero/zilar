@@ -1,0 +1,64 @@
+# Zilar production web app: static file server with SPA fallback.
+#
+# Serves the built Vite app, and forwards the API (`/api/*`), the XMPP
+# WebSocket (`/xmpp-ws/*`) and uploads (`/upload/*`) to the server and ejabberd.
+# deploy/docker-compose.yml routes those paths before they reach this
+# service; deploy/coolify/docker-compose.yml relies on the forwarding below.
+
+{
+  admin off
+}
+
+:80 {
+  root * /srv/zilar-web
+
+  # Security headers on every response.
+  header {
+    X-Content-Type-Options nosniff
+    Referrer-Policy strict-origin-when-cross-origin
+    # Same-origin API, the XMPP WebSocket, images/uploads: nothing needs a
+    # cross-origin frame, script, worker or connect target. `blob:` is needed
+    # for voice-message playback and attachment previews
+    # (apps/web/src/lib/attachments.ts); `data:` for inline avatar images.
+    Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' wss: ws:; font-src 'self' data:; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+    # Remove the Server version banner.
+    -Server
+  }
+
+  # Vite emits hashed filenames under /assets: cache them for a year.
+  @hashed path /assets/*
+  header @hashed Cache-Control "public, max-age=31536000, immutable"
+
+  # Never cache the entry point: index.html references the hashed assets.
+  @entry file /srv/zilar-web/index.html
+  handle @entry {
+    header Cache-Control "no-store"
+  }
+
+  # Behind a proxy that routes these paths itself (Caddy in deploy/docker-compose.yml)
+  # they never arrive here. Behind a proxy that only knows one domain per service
+  # (Coolify), this makes the web container the single entry point. Hosts resolve
+  # when a request arrives, so the plain stack never needs them from here.
+  handle /api/* {
+    reverse_proxy server:3000
+  }
+
+  handle /health {
+    reverse_proxy server:3000
+  }
+
+  handle /xmpp-ws/* {
+    uri strip_prefix /xmpp-ws
+    reverse_proxy ejabberd:5280
+  }
+
+  handle /upload/* {
+    reverse_proxy ejabberd:5280
+  }
+
+  handle {
+    # SPA fallback: every non-file path serves index.html.
+    try_files {path} /index.html
+    file_server
+  }
+}

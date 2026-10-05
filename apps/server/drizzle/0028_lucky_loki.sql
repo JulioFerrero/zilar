@@ -1,0 +1,1 @@
+ALTER TABLE "ai_tools" ADD COLUMN "approved_hosts" jsonb DEFAULT '[]'::jsonb NOT NULL;

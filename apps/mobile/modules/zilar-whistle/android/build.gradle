@@ -1,0 +1,72 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'app.zilar.whistle'
+version = '0.1.0'
+
+android {
+  namespace "expo.modules.whistle"
+  compileSdk 35
+
+  defaultConfig {
+    versionCode 1
+    versionName "0.1.0"
+    minSdk 24
+    // The prebuilt Needle engine is AArch64 only.
+    ndk {
+      abiFilters "arm64-v8a"
+    }
+    externalNativeBuild {
+      cmake {
+        arguments "-DANDROID_STL=c++_shared"
+        abiFilters "arm64-v8a"
+      }
+    }
+  }
+
+  externalNativeBuild {
+    cmake {
+      path "src/main/cpp/CMakeLists.txt"
+      version "3.22.1"
+    }
+  }
+
+  // Download the pinned Needle engine before the native build when its
+  // files are missing. Checksum failures fail the build loudly.
+  // The default Exec working dir is the module's android/ dir.
+  tasks.register('fetchNeedleEngine', Exec) {
+    description = "Downloads the pinned Needle engine (verified sha256)"
+    group = "build"
+    commandLine("bash", "../scripts/fetch-engine.sh")
+    outputs.files(
+      "third_party/needle/libneedle.a",
+      "third_party/needle/needle.h",
+    )
+    outputs.upToDateWhen {
+      file("third_party/needle/libneedle.a").exists() &&
+        file("third_party/needle/needle.h").exists()
+    }
+  }
+  tasks.matching { it.name == "preBuild" }.configureEach {
+    dependsOn("fetchNeedleEngine")
+  }
+  // Only fetch when the engine is missing: a present engine keeps
+  // offline builds working.
+  tasks.named("fetchNeedleEngine").configure {
+    onlyIf { !file("third_party/needle/libneedle.a").exists() || !file("third_party/needle/needle.h").exists() }
+  }
+
+  compileOptions {
+    sourceCompatibility JavaVersion.VERSION_17
+    targetCompatibility JavaVersion.VERSION_17
+  }
+  kotlinOptions {
+    jvmTarget = '17'
+  }
+}
+
+dependencies {
+  implementation "org.jetbrains.kotlin:kotlin-stdlib:2.1.20"
+}

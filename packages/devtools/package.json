@@ -1,0 +1,21 @@
+{
+  "name": "@zilar/devtools",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "smoke": "tsx src/smoke.ts",
+    "xmpp:e2e": "tsx src/xmpp-e2e.ts",
+    "lead": "tsx src/lead/cli.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "gate": "tsx src/gate/cli.ts"
+  },
+  "dependencies": {
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@xmpp/client": "^0.14.0",
+    "tsx": "^4.23.15"
+  }
+}

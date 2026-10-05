@@ -1,0 +1,60 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Zilar design tokens, from docs/design/ui-style.md §2 (D24). The app is dark
+ * only, so the D24 palette lives in `:root` and the `dark:` variant is inert.
+ * The legacy shadcn names are kept and mapped onto the D24 values so the My
+ * AIs, wizard and auth screens restyle themselves.
+ */
+@layer base {
+  :root {
+    --page: #000000;
+    --panel: #0a0a0a;
+    --surface: #111111;
+    --surface-raised: #171717;
+    --well: #0c0c0c;
+    --border: #1f1f1f;
+    --border-strong: #262626;
+    --edge: #050505;
+
+    --foreground: #ededed;
+    --muted-foreground: #a1a1a1;
+    --subtle-foreground: #8a8a8a;
+    --generating-foreground: #8f8f8f;
+
+    --accent: #ededed;
+    --accent-foreground: #0a0a0a;
+    --online: #22c55e;
+    --danger: #ef4444;
+
+    /* shadcn aliases mapped onto the D24 palette. */
+    --background: #0a0a0a;
+    --card: #0a0a0a;
+    --card-foreground: #ededed;
+    --popover: #111111;
+    --popover-foreground: #ededed;
+    --primary: #ededed;
+    --primary-foreground: #0a0a0a;
+    --secondary: #111111;
+    --secondary-foreground: #ededed;
+    --muted: #111111;
+    --destructive: #ef4444;
+    --destructive-foreground: #ffffff;
+    --input: #262626;
+    --ring: #a1a1a1;
+    --divider: #1f1f1f;
+    --list-hover: #171717;
+    --list-active: #171717;
+    --badge-muted: #333333;
+
+    --chat-background: #0a0a0a;
+    --bubble-in: #161616;
+    --bubble-out: #dedede;
+    --bubble-in-meta: #8a8a8a;
+    --bubble-out-meta: #525252;
+
+    --radius: 0.75rem;
+  }
+}

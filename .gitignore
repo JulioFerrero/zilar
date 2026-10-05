@@ -1,0 +1,53 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# builds and caches
+dist/
+build/
+.turbo/
+.vite/
+coverage/
+*.tsbuildinfo
+
+# expo / react native
+.expo/
+expo-env.d.ts
+ios/
+android/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# env and secrets
+.env
+.env.*
+!.env.example
+infra/**/.env
+# JWK signed keys generated at container start (never committed).
+infra/ejabberd/*.jwk
+
+# local data
+infra/data/
+*.log
+
+# os / editors
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# backup archives contain a live .env (T-0127)
+deploy/backups/
+/apps/server/data/
+
+# fetched native binaries, never committed (T-0177: Needle engine)
+apps/mobile/modules/zilar-whistle/android/third_party/
+
+# lead reviewer scratch files at the worktree root (T-0197)
+/PREREVIEW.md
+/DOCTOR.md
+/SCOUT.md
+/QA.md

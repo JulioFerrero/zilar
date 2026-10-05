@@ -1,0 +1,19 @@
+{
+  "name": "zilar-whistle",
+  "version": "0.1.0",
+  "description": "On-device speech-to-text for Zilar voice notes (Cactus Whistle via the Needle engine, Android arm64 only). Local Expo module, never published.",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "fetch-engine": "scripts/fetch-engine.sh"
+  },
+  "peerDependencies": {
+    "expo": "*",
+    "react": "*",
+    "react-native": "*"
+  },
+  "dependencies": {
+    "expo-file-system": "~57.0.7",
+    "zod": "^4.6.5"
+  }
+}

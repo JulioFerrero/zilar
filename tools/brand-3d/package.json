@@ -1,0 +1,14 @@
+{
+  "name": "zilar-brand-3d",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Renders the Zilar app icon with Three.js (silver planet with an orbit ring on a brushed-metal key, and the assets derived from it).",
+  "scripts": {
+    "serve": "python3 -m http.server 5199",
+    "render": "sh render.sh"
+  },
+  "dependencies": {
+    "three": "^0.170.0"
+  }
+}

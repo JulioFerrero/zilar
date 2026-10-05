@@ -1,0 +1,664 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+/*
+ * D24: a classic messenger layout, Vercel-dark look, skeuomorphic depth. Dark only for
+ * now, so tokens live in `:root` with no system-scheme switch. The `dark:`
+ * variant stays for the untouched part-2 components, but it is class-based and
+ * therefore inert.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme inline {
+  --font-sans: 'Geist Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'Geist Mono Variable', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --breakpoint-wide: 900px;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-page: var(--page);
+  --color-panel: var(--panel);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-well: var(--well);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-subtle-foreground: var(--subtle-foreground);
+  --color-generating-foreground: var(--generating-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-edge: var(--edge);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-danger: var(--danger);
+  --color-divider: var(--divider);
+  --color-list-hover: var(--list-hover);
+  --color-list-active: var(--list-active);
+  --color-list-active-foreground: var(--list-active-foreground);
+  --color-badge-muted: var(--badge-muted);
+  --color-bubble-in: var(--bubble-in);
+  --color-bubble-out: var(--bubble-out);
+  --color-bubble-in-meta: var(--bubble-in-meta);
+  --color-bubble-out-meta: var(--bubble-out-meta);
+  --color-voice-played: var(--voice-played);
+  --color-voice-unplayed: var(--voice-unplayed);
+  --color-online: var(--online);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+/* The D24 palette (ui-style.md §2). Dark only. */
+:root {
+  color-scheme: dark;
+
+  --page: #000000;
+  --panel: #0a0a0a;
+  --surface: #111111;
+  --surface-raised: #171717;
+  --well: #0c0c0c;
+  --border: #1f1f1f;
+  --border-strong: #262626;
+  --edge: #050505;
+
+  --foreground: #ededed;
+  --muted-foreground: #a1a1a1;
+  --subtle-foreground: #8a8a8a;
+  --generating-foreground: #8f8f8f;
+
+  --accent: #ededed;
+  --accent-foreground: #0a0a0a;
+  /* The primary key's text-shadow follows the accent's lightness. A future
+   * blue accent flips this to a dark shadow. */
+  --key-text-shadow: 0 1px 0 rgba(255, 255, 255, 0.7);
+  --online: #22c55e;
+  --danger: #ef4444;
+
+  /* The online dot's ring matches the row it sits on. */
+  --avatar-ring: var(--panel);
+
+  /* shadcn aliases, mapped onto the D24 values. */
+  --background: var(--panel);
+  --card: var(--panel);
+  --card-foreground: var(--foreground);
+  --popover: var(--surface);
+  --popover-foreground: var(--foreground);
+  --primary: var(--accent);
+  --primary-foreground: var(--accent-foreground);
+  --secondary: var(--surface);
+  --secondary-foreground: var(--foreground);
+  --muted: var(--surface);
+  --destructive: var(--danger);
+  --destructive-foreground: #ffffff;
+  --input: var(--border-strong);
+  --ring: var(--muted-foreground);
+  --divider: var(--border);
+  --list-hover: var(--surface-raised);
+  --list-active: var(--surface-raised);
+  --list-active-foreground: var(--foreground);
+  --badge-muted: #333333;
+
+  /* Bubble tokens (ui-style.md §5). The `--bubble-in`/`--bubble-out` colors
+   * are still used by the loading skeleton; the live bubbles use the
+   * `bubble-in`/`bubble-out`/`bubble-gen` utilities below. */
+  --bubble-in: #161616;
+  --bubble-out: #dedede;
+  --bubble-in-meta: var(--subtle-foreground);
+  --bubble-out-meta: #525252;
+
+  /*
+   * Voice waveform bars, resolved per bubble by the selectors below. Played
+   * bars use the bubble's own foreground; unplayed bars a muted step toward
+   * the bubble fill. Dark only for now, like the rest of this file.
+   */
+  --voice-played: #0a0a0a;
+  --voice-unplayed: #8a8a8a;
+
+  --radius: 0.75rem;
+  --chat-background: radial-gradient(#1c1c1c 1px, transparent 1px) 0 0 / 22px 22px var(--panel);
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  button {
+    font: inherit;
+  }
+
+  /* ui-style.md §4: every key and well shows an explicit focus ring on
+   * keyboard focus. Components may still override it; a plain `outline` is a
+   * weaker declaration than the utilities layer, so opt-outs and custom rings
+   * win. */
+  :focus-visible {
+    outline: 2px solid var(--muted-foreground);
+    outline-offset: 2px;
+  }
+}
+
+/*
+ * The four depth recipes from ui-style.md §4. Implemented once here and reused
+ * through the components.
+ */
+
+/* Reduced-motion markers declared in the utilities layer, next to the Tailwind
+ * animations they stop (index.css' reduced-motion block also matches them). */
+@utility skeleton-reduced {
+  animation: none;
+}
+
+@utility spinner-reduced {
+  animation: none;
+}
+
+/* Primary (accent) button, badge and FAB: a glossy key. */
+@utility key-primary {
+  --key-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.85), inset 0 -2px 0 rgba(0, 0, 0, 0.2),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.12), 0 1px 0 rgba(0, 0, 0, 0.95),
+    0 2px 3px rgba(0, 0, 0, 0.7), 0 10px 18px -8px rgba(0, 0, 0, 0.95);
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.4),
+      rgba(255, 255, 255, 0.08) 48%,
+      rgba(0, 0, 0, 0) 52%,
+      rgba(0, 0, 0, 0.14)
+    ),
+    var(--accent);
+  box-shadow: var(--key-shadow);
+  color: var(--accent-foreground);
+  text-shadow: var(--key-text-shadow);
+  transition:
+    transform 80ms,
+    box-shadow 80ms;
+
+  &:active {
+    transform: translateY(1px);
+    box-shadow:
+      inset 0 2px 5px rgba(0, 0, 0, 0.35),
+      0 1px 0 rgba(0, 0, 0, 0.95);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--muted-foreground);
+    outline-offset: 2px;
+  }
+}
+
+/* Icon button: a dark key. */
+@utility key-icon {
+  --key-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16), inset 0 -1px 0 rgba(0, 0, 0, 0.65),
+    0 1px 0 rgba(0, 0, 0, 0.95), 0 3px 6px -1px rgba(0, 0, 0, 0.75);
+  background: linear-gradient(180deg, #2c2c2c, #151515);
+  border: 1px solid var(--edge);
+  box-shadow: var(--key-shadow);
+  color: #d4d4d4;
+  transition:
+    transform 80ms,
+    box-shadow 80ms;
+
+  svg {
+    filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.95));
+  }
+
+  &:active {
+    transform: translateY(1px);
+    box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.9);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--muted-foreground);
+    outline-offset: 2px;
+  }
+}
+
+/* Well: recessed search, composer and segment track. */
+@utility well-surface {
+  --well-shadow:
+    inset 0 2px 6px rgba(0, 0, 0, 0.9), inset 0 1px 1px rgba(0, 0, 0, 0.8),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.4), 0 1px 0 rgba(255, 255, 255, 0.06);
+  background: var(--well);
+  border: 1px solid var(--border);
+  box-shadow: var(--well-shadow);
+
+  &:focus-within {
+    outline: 2px solid var(--muted-foreground);
+    outline-offset: 2px;
+  }
+}
+
+/* Raised segment / pill: active folder tab, date pill. */
+@utility raised-pill {
+  background: linear-gradient(180deg, #1f1f1f, #121212);
+  border: 1px solid var(--edge);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 1px 0 rgba(0, 0, 0, 0.9),
+    0 2px 4px rgba(0, 0, 0, 0.6);
+}
+
+/* The folder track's active tab. */
+@utility segment-raised {
+  background: linear-gradient(180deg, #333333, #1c1c1c);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.6),
+    0 1px 0 rgba(0, 0, 0, 0.9),
+    0 2px 4px rgba(0, 0, 0, 0.7);
+  text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.7);
+}
+
+/*
+ * XEP-0444 reaction chips (ui-style.md D24): a raised pill, and the pressed /
+ * active segment look on my own reaction.
+ */
+@utility reaction-chip {
+  background: linear-gradient(180deg, #1f1f1f, #121212);
+  border: 1px solid var(--edge);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 1px 0 rgba(0, 0, 0, 0.9),
+    0 2px 4px rgba(0, 0, 0, 0.6);
+  transition:
+    transform 80ms,
+    box-shadow 80ms;
+
+  &:active {
+    transform: translateY(1px);
+    box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.9);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--muted-foreground);
+    outline-offset: 2px;
+  }
+}
+
+@utility reaction-chip-mine {
+  background: linear-gradient(180deg, #333333, #1c1c1c);
+  box-shadow:
+    inset 0 2px 5px rgba(0, 0, 0, 0.55),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.06),
+    0 1px 0 rgba(0, 0, 0, 0.9);
+}
+
+/* A retracted message's slim tombstone (XEP-0424, ui-style.md D24). */
+@utility tombstone {
+  background: linear-gradient(180deg, var(--well), var(--well));
+  border: 1px dashed var(--border);
+  color: var(--muted-foreground);
+}
+
+/*
+ * The three bubble looks (ui-style.md §5). Outgoing is a glossy white key,
+ * incoming a dark card, and a reply that is still being written is recessed
+ * (the well look). They share a gradient's stop count and a box-shadow's
+ * inset pattern so the generating -> incoming change transitions smoothly.
+ */
+@utility bubble-out {
+  background: linear-gradient(180deg, #ffffff, #dedede);
+  color: #0a0a0a;
+  box-shadow:
+    inset 0 1px 0 #ffffff,
+    inset 0 -3px 6px rgba(0, 0, 0, 0.08),
+    0 1px 0 rgba(0, 0, 0, 0.95),
+    0 4px 10px -3px rgba(0, 0, 0, 0.85);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+@utility bubble-in {
+  background: linear-gradient(180deg, #252525, #161616);
+  border: 1px solid var(--edge);
+  color: var(--foreground);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.6),
+    0 1px 0 rgba(0, 0, 0, 0.95),
+    0 4px 10px -3px rgba(0, 0, 0, 0.85);
+  text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.7);
+}
+
+@utility bubble-gen {
+  background: linear-gradient(180deg, var(--well), var(--well));
+  border: 1px solid #1a1a1a;
+  color: var(--generating-foreground);
+  box-shadow:
+    inset 0 2px 6px rgba(0, 0, 0, 0.9),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.4),
+    0 1px 0 rgba(255, 255, 255, 0.06),
+    0 2px 6px -2px rgba(0, 0, 0, 0.5);
+}
+
+/* Links follow the bubble they sit in (ui-style.md §5). */
+.bubble-out a {
+  color: #0a0a0a;
+  text-decoration: underline;
+}
+
+.bubble-in a,
+.bubble-gen a {
+  color: #ededed;
+  text-decoration: underline;
+}
+
+/* The voice player's waveform inherits its bubble: played bars in the
+ * bubble's foreground, unplayed bars muted. The bubble class must wrap
+ * the player for the tokens to resolve. */
+.bubble-out {
+  --voice-played: #0a0a0a;
+  --voice-unplayed: #8a8a8a;
+}
+
+.bubble-in,
+.bubble-gen {
+  --voice-played: #ededed;
+  --voice-unplayed: #525252;
+}
+
+/* XEP-0372 mention chips (ui-style.md §5). */
+.mention-chip {
+  color: #ededed;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  padding: 0 3px;
+}
+
+.bubble-out .mention-chip {
+  color: #0a0a0a;
+  background: rgba(0, 0, 0, 0.08);
+}
+
+/* A mention of me uses the raised-pill recipe so it stands out in any bubble. */
+.mention-me {
+  color: #ededed;
+  font-weight: 600;
+  border-radius: 4px;
+  padding: 0 3px;
+}
+
+/*
+ * Markdown content inside AI reply bubbles (T-0049), scoped to `.md`. The
+ * colors come from the D24 tokens; the bubble sets the 14px/1.5 body already.
+ */
+.md {
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.md > :first-child {
+  margin-top: 0;
+}
+
+.md > :last-child {
+  margin-bottom: 0;
+}
+
+.md p {
+  margin: 0 0 8px;
+}
+
+.md a {
+  color: var(--foreground);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.md code {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  background: var(--well);
+  border: 1px solid var(--edge);
+  border-radius: 4px;
+  padding: 1px 4px;
+}
+
+.md pre {
+  margin: 0 0 8px;
+  padding: 10px 12px;
+  max-width: 100%;
+  overflow-x: auto;
+  background: var(--well);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow:
+    inset 0 2px 6px rgba(0, 0, 0, 0.9),
+    inset 0 1px 1px rgba(0, 0, 0, 0.8),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.4),
+    0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.md pre code {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  white-space: pre;
+}
+
+.md blockquote {
+  margin: 0 0 8px;
+  padding-left: 10px;
+  border-left: 2px solid #333;
+  color: var(--muted-foreground);
+}
+
+.md h1,
+.md h2,
+.md h3,
+.md h4,
+.md h5,
+.md h6 {
+  margin: 0 0 8px;
+  font-weight: 600;
+}
+
+.md h1 {
+  font-size: 16px;
+}
+
+.md h2 {
+  font-size: 15px;
+}
+
+.md h3,
+.md h4,
+.md h5,
+.md h6 {
+  font-size: 14px;
+}
+
+.md ul,
+.md ol {
+  margin: 0 0 8px;
+  padding-left: 20px;
+}
+
+.md ul {
+  list-style: disc;
+}
+
+.md ol {
+  list-style: decimal;
+}
+
+.md ul ul {
+  list-style: circle;
+}
+
+.md li {
+  margin: 0 0 2px;
+}
+
+.md li:last-child {
+  margin-bottom: 0;
+}
+
+.md li.task-list-item {
+  list-style: none;
+}
+
+.md input[type='checkbox'] {
+  margin-right: 6px;
+  accent-color: var(--muted-foreground);
+}
+
+.md table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  margin: 0 0 8px;
+  border-collapse: collapse;
+}
+
+.md th,
+.md td {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  text-align: left;
+}
+
+.md th {
+  font-weight: 600;
+  background: var(--surface);
+}
+
+.md hr {
+  margin: 10px 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+/*
+ * The generating caret and the floated time follow the Markdown content. When
+ * the reply ends in a paragraph, keep that paragraph inline so they sit on its
+ * last line; a trailing list, table or code block leaves them on the row right
+ * after it. The zero-width space gives that row a line box to sit on.
+ */
+.md p:has(+ .md-tail) {
+  display: inline;
+}
+
+.md-tail {
+  display: inline;
+  line-height: 1.5;
+}
+
+.md-tail::before {
+  content: '\200B';
+}
+
+.chat-background {
+  background: var(--chat-background);
+}
+
+/* The sticker editor previews every sticker on a checkerboard, so white
+ * and transparent edges stay visible on the dark page. */
+.checkerboard {
+  background-color: #2a2a2a;
+  background-image:
+    linear-gradient(45deg, #3a3a3a 25%, transparent 25%, transparent 75%, #3a3a3a 75%),
+    linear-gradient(45deg, #3a3a3a 25%, transparent 25%, transparent 75%, #3a3a3a 75%);
+  background-size: 16px 16px;
+  background-position:
+    0 0,
+    8px 8px;
+}
+
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--muted-foreground) 35%, transparent) transparent;
+}
+
+@keyframes zilar-typing {
+  0%,
+  80%,
+  100% {
+    opacity: 0.2;
+  }
+  40% {
+    opacity: 1;
+  }
+}
+
+@keyframes zilar-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.typing-dot {
+  animation: zilar-typing 1.2s infinite ease-in-out both;
+}
+
+.pulse-dot {
+  animation: zilar-pulse 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .key-primary,
+  .key-icon,
+  .reaction-chip {
+    transition: none;
+  }
+
+  .key-primary:active,
+  .key-icon:active,
+  .reaction-chip:active {
+    transform: none;
+  }
+
+  .typing-dot,
+  .pulse-dot {
+    animation: none;
+  }
+
+  /*
+   * The skeleton shimmer and the progress spinner: the components keep the
+   * loading meaning and only stop the motion. The marker classes are declared
+   * in the same block as the utilities (`@utility` in index.css), so the
+   * matching `animation: none` here wins by source order.
+   */
+  .skeleton-reduced,
+  .spinner-reduced {
+    animation: none;
+  }
+}
