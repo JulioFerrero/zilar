@@ -486,6 +486,57 @@ describe('mergeTask process cleanup', () => {
   });
 });
 
+describe('mergeTask squash failures', () => {
+  it('leaves main untouched when the board row is unparseable (board validated before squash)', async () => {
+    const harness = setup('todo', 'merged');
+    fs.writeFileSync(path.join(harness.worktree, 'feature.txt'), 'new\n');
+    git(harness.worktree, ['add', '.']);
+    git(harness.worktree, ['commit', '-qam', 'feature']);
+    // Hand-edited board row with no link, which `moveBoardRow` cannot parse.
+    const broken = fs
+      .readFileSync(path.join(harness.root, 'work', 'BOARD.md'), 'utf8')
+      .replace('| [T-0099](T-0099-demo.md) | Demo | in-progress |', '| T-0099 | Demo | in-progress |');
+    fs.writeFileSync(path.join(harness.root, 'work', 'BOARD.md'), broken);
+    git(harness.root, ['add', '.']);
+    git(harness.root, ['commit', '-qam', 'break board']);
+
+    await expect(mergeTask(options(harness))).rejects.toThrow(/board has no Active row/);
+    // Main is left with a clean tree: no staged squash changes, so a fixed
+    // board makes the merge re-runnable.
+    const porcelain = spawnSync('git', ['status', '--porcelain'], {
+      cwd: harness.root,
+      encoding: 'utf8',
+    }).stdout.trim();
+    expect(porcelain).toBe('');
+    expect(harness.dropped).toEqual([]);
+  });
+
+  it('refuses to push when the squash result differs from the branch', async () => {
+    const harness = setup('todo', 'merged');
+    fs.writeFileSync(path.join(harness.worktree, 'feature.txt'), 'new\n');
+    git(harness.worktree, ['add', '.']);
+    git(harness.worktree, ['commit', '-qam', 'feature']);
+    let pushCalled = false;
+    const runner = new (class extends RealGitRunner {
+      override run(cwd: string, args: string[]): { ok: boolean; stdout: string } {
+        if (args[0] === 'diff') {
+          return { ok: false, stdout: '' };
+        }
+        if (args[0] === 'push') {
+          pushCalled = true;
+        }
+        return super.run(cwd, args);
+      }
+    })();
+
+    await expect(mergeTask({ ...options(harness), runner })).rejects.toThrow(
+      /squash result differs from task\/T-0099-demo; nothing pushed/,
+    );
+    expect(pushCalled).toBe(false);
+    expect(harness.dropped).toEqual([]);
+  });
+});
+
 describe('mergeTask gate', () => {
   it('runs the gate in the rebased worktree and merges when it passes', async () => {
     const harness = setup('todo', 'merged');
