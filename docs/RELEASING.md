@@ -85,3 +85,51 @@ xcrun devicectl device install app --device <coredevice-id> <dir>/Build/Products
 ```
 
 Facts that cost time: `xcodebuild -destination` wants the hardware id (`00008140-…`), `devicectl` wants the CoreDevice id (a UUID); `expo prebuild --no-install` skips CocoaPods, so run `pod install`; the Whistle transcription module is Android only and does nothing on iOS.
+
+## 9. Auto-deploy on green main
+
+Since T-0260, the live install updates itself after every push to `main` whose CI passes, instead of waiting for a hand-made tag. The "Production images" workflow listens for the CI workflow finishing on `main` and does nothing unless that run concluded `success`:
+
+1. It checks out the exact commit CI verified (`workflow_run.head_sha`) and builds the four images for amd64 and arm64.
+2. It pushes each image as `latest` and as `sha-<first 12 characters of the commit>`, and bakes that commit into the server image as `ZILAR_COMMIT` (see `apps/server/Dockerfile`).
+3. The `deploy` job restarts the live Coolify service with "pull latest", so Coolify pulls the new `latest` images.
+4. It then polls `<ZILAR_PUBLIC_URL>/health` every 15 s for up to 10 minutes until the response has `"ok": true` and `"commit"` equal to the merged sha. The job fails if that never happens.
+
+Because merges land every few minutes, green-main builds overlap and can finish out of order, so before building a `tip` job compares the triggering sha with the current tip of `main` and a stale run skips building and deploying (it still ends green). A workflow-level `publish-main` concurrency group (`cancel-in-progress: false`) also serializes green-main runs so a newer one waits behind the run in flight, while tag and PR builds stay independent.
+
+A `deploy-live` concurrency group (`cancel-in-progress: false`) means two merges never deploy at once: the newer run waits for the one in flight.
+
+### Secrets and variables
+
+Set these as repository secrets (names only):
+
+- `COOLIFY_URL` — base URL of the Coolify instance, no trailing slash.
+- `COOLIFY_TOKEN` — a Coolify API token allowed to restart the service.
+- `COOLIFY_SERVICE_UUID` — the uuid of the live service.
+- `ZILAR_PUBLIC_URL` — optional; defaults to `https://chat.zilar.app`. A repository variable of the same name is also accepted.
+
+The `GITHUB_TOKEN` that Actions provides logs in to GHCR; no extra registry secret is needed.
+
+### Pause auto-deploy
+
+Any of these stops only the `deploy` job, while the images are still built and published:
+
+- set a repository variable `AUTO_DEPLOY=off`; or
+- delete (or rename) `COOLIFY_URL`, `COOLIFY_TOKEN` or `COOLIFY_SERVICE_UUID`.
+
+The job logs a clear line whenever it skips.
+
+### Roll back
+
+`latest` follows every green `main`, so a bad merge is live shortly after. Every green build also pushes an immutable `sha-…` tag:
+
+1. Pick the last good `sha-…` tag from the workflow run or the GHCR package page.
+2. In Coolify set the stack variable `IMAGE_TAG` to that tag and restart the service.
+3. Revert the bad commit on `main`; the revert's green CI publishes and deploys `latest` again.
+
+Migrations run at server start, so rolling back the image does not undo a migration. Restore the nightly backup if the migration was destructive (see §6).
+
+### Backups
+
+The Coolify API can queue an immediate database backup only for a standalone database (`PATCH /databases/{uuid}/backups/{scheduled_backup_uuid}` with `backup_now: true`). A database that lives inside a service — as Zilar's Postgres does — has no "backup now" endpoint at all: `POST /services/{uuid}/databases/{database_uuid}` exposes only start, restart, stop, update, logs and import, and the service's only immediate backup is a storage-volume backup, not an engine-aware dump. Auto-deploys therefore rely on the nightly Coolify schedule in `deploy/coolify/scheduled-backup.md`; a deploy that includes a migration (`apps/server/drizzle`) does not take an extra backup.
+

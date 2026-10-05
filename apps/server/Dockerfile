@@ -43,6 +43,11 @@ RUN pnpm --filter @zilar/server deploy --prod --legacy /opt/zilar-server
 
 FROM node:24.11.1-alpine AS runtime
 
+# The commit this image was built from. CI passes it as a build arg and
+# /health reports it, so a deploy can prove which build is live.
+ARG ZILAR_COMMIT=unknown
+ENV ZILAR_COMMIT=$ZILAR_COMMIT
+
 # The ConsoleMailer refuses NODE_ENV=production without a real provider, and
 # there is no SMTP provider yet, so document the mode the compose stack
 # actually runs the server in. The Dockerfile itself stays mode-agnostic:
