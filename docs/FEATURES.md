@@ -122,7 +122,7 @@ Task ids (`T-0042`) point to `work/T-XXXX-*.md`: the spec, the worker's report a
 | Mobile Telegram sticker import | Import a pack from a Telegram link or name, with counts and Import again on a partial import | mobile | 🟡 Merged | T-0207 |
 | Mobile owner integrations | Email, voice transcription and Telegram bot settings for the server owner; non-owners see one sentence | mobile | 🟡 Merged | T-0188 |
 | Mobile AI tools and routines | Tools and routines on the AI screen with plain-words schedules; pause, resume and two-step delete on each routine | mobile | 🟡 Merged (not seen on a device yet) | T-0189, T-0212 |
-| Mobile AI activity and tool detail | Activity feed on the AI screen; tappable tool rows open a read-only detail sheet (source, versions, recent runs) | mobile | 🟡 Merged (not seen on a device yet) | T-0213, T-0218 |
+| Mobile AI activity and tool detail | Activity feed on the AI screen; tappable tool rows open a detail sheet (source, versions, recent runs) with Run now, Revert and Delete | mobile | 🟡 Merged (activity and read-only sheet seen on the emulator in mock mode 2026-10-05; layout fixes in T-0229) | T-0213, T-0218, T-0219 |
 | Mobile invite sheet and New message box | Invite link sheet (Copy, Share) and a New message box that offers an invite instead of a dead end | mobile | 🟡 Merged | T-0190 |
 | Mobile New group sheet | Create a group from the `+` menu: add members, name it, land on the new group | mobile | 🟡 Merged | T-0214 |
 
