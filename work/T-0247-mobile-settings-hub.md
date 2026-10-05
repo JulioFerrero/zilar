@@ -1,7 +1,7 @@
 ---
 id: T-0247
 title: "Mobile: Settings hub redesign (grouped cards, monochrome icon tiles, header) plus a Blocked people row and the tab header padding"
-status: planned
+status: merged
 milestone: M5
 branch: task/T-0247-mobile-settings-hub
 model: deepseek/deepseek-flash
@@ -72,4 +72,57 @@ Chat folders row (comes with mobile folders), Notifications and other "later" ro
 
 ## Report (written by the worker when done)
 
+### What I did
+- `settings-items.ts`: added the `SettingsGroup` type and `SETTINGS_GROUP_ORDER`; added `group` to `SettingsItemShape` and to every existing row; appended the `blocked` row (title "Blocked people", subtitle "People you blocked. They are not told.", icon `blocked`, href `/settings/blocked`, group `account`). The array stays append-only and the `ais` row stays gone.
+- `hub.ts`: added `group` to `SettingsHubRow`, added `SettingsHubGroup` and `SETTINGS_GROUP_LABELS`, made `settingsHubRows()` return the rows grouped in account → ais → chats → server order, and added `settingsHubGroups()` (one card per group).
+- `(tabs)/settings.tsx`: mapped `HUB_ICONS.blocked = Ban`; the header card (avatar 64, name 18/600, `@handle` or email) opens `/settings/profile`; one card per group under an uppercase 11/600 label; rows use a 34×34 `iconKey` tile (radius 10, `ICON` glyph), title, one-line muted subtitle and a `ChevronRight`; the Contact requests row shows a pill with the pending count from the same source the requests screen uses (`listContactRequests()`, incoming + outgoing); subtitle is now "Your account, chats and AIs.".
+- Both screen shells: the title row is `px-4` when there is no back key and `px-2` when there is one (the back key brings its own spacing).
+- Tests: extended `settings-items.test.ts` and `hub.test.ts`, added `screen-shell.test.tsx` covering the padding switch for both shells.
+
+### Files changed
+- `apps/mobile/src/app/(tabs)/settings.tsx`
+- `apps/mobile/src/lib/settings-items.ts`
+- `apps/mobile/src/lib/settings-items.test.ts`
+- `apps/mobile/src/components/settings/hub.ts`
+- `apps/mobile/src/components/settings/hub.test.ts`
+- `apps/mobile/src/components/settings/screen-shell.tsx`
+- `apps/mobile/src/components/settings/screen-shell.test.tsx` (new)
+- `apps/mobile/src/components/ais/screen-shell.tsx`
+- `work/T-0247-mobile-settings-hub.md`
+
+### Commands run (real results)
+- `pnpm install` (start): exit 0, "Done in 15s". It appended 2 peer-metadata lines to `pnpm-lock.yaml`; I reverted that incidental change, and the gate's frozen install still passes.
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot settings-items hub screen-shell`: 3 files, 10 tests passed.
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot screen-shell` (after the lint fix): 1 file, 2 tests passed.
+- `pnpm gate` (repo root): first run ended `GATE FAIL` on lint — `react(no-children-prop)` in the new shell test; I passed children as JSX children and re-ran. The final run on the committed tree:
+  ```
+  gate: 9 changed file(s) against main
+  PASS  install (frozen)  (1.7s)
+  PASS  format  (18.2s)
+  PASS  lint  (0.7s)
+  PASS  typecheck  (0.6s)
+  PASS  tests @zilar/mobile  (2.6s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Deviations and notes
+- The spec says "foreground icon" on the tile; I used the existing icon-key glyph colour `ICON` (`#d4d4d4`), which is what the mockup's `.key` (`--soft`) and `IconButton` use. Say if `foreground` (`#ededed`) is preferred and I will switch it.
+- If the pending-count fetch fails, the hub simply shows no pill (count 0); the failure is not surfaced on the hub, matching the optimistic `UserCard` behaviour for a profile fetch failure.
+- Group labels live in `hub.ts` (presentation); the registry only owns the `group` value.
+
+### Open questions
+None blocking.
+
+### Security checklist
+No new network writes, logs or secrets; the hub only calls the existing read APIs (`getMe`, `listContactRequests`).
+
 ## Review (written by Claude)
+
+**Verdict:** Approved; the first pre-review was clean (2 nits) and the task ran on DeepSeek flash.
+- The groups have the brief's order, `blocked` is in Account, and the `ais` row is gone.
+- The tile glyph uses `ICON` (#d4d4d4), like `IconButton`, which is accepted.
+- The pending count matches the requests screen (incoming plus outgoing).
+- Both shells use `px-4` without a back button.
+
+The emulator look is in QA run 6, together with T-0244's blocking screens.

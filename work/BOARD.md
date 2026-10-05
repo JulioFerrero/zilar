@@ -208,7 +208,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0180](T-0180-signin-no-code-hint.md) | Sign-in hints for people without an invite (web + mobile) | 2026-10-03 |
 | [T-0234](T-0234-mobile-create-sheets-keyboard.md) | Mobile: create sheets above the keyboard; mock create and contacts | planned | opencode/muse-spark-1.3-contributor-free | T-0233 | Emulator QA run 3; launch after T-0233 |
 | [T-0246](T-0246-web-kit-2.md) | Web kit batch 2: SegmentedControl, ListRow, Card, StateMessage, Avatar fixture, Cosmos config | planned | deepseek/deepseek-flash | T-0243 | UI kit step 2b |
-| [T-0247](T-0247-mobile-settings-hub.md) | Mobile: Settings hub redesign, Blocked people row, tab header padding | planned | deepseek/deepseek-flash | T-0244 | Telegram brief c; QA run 5 |
 | [T-0248](T-0248-mobile-folders-chips.md) | Mobile: chat folders from the server as chips, store on the shared matcher | planned | deepseek/deepseek-flash | T-0233 | Telegram brief e step 4 |
 | [T-0249](T-0249-web-blocked-previews.md) | Web: no blocked person's message as a chat list preview; isBlockedSender helper; stale comments | planned | deepseek/deepseek-flash | T-0239 | Block follow-up |
 | [T-0250](T-0250-fallback-line-model.md) | Lead tooling: FALLBACK line names the failing model; models.ts breaks the import cycle | planned | auto | T-0245 | T-0245 follow-up |
@@ -279,3 +278,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0243](T-0243-web-cosmos-kit-1.md) | Web: React Cosmos catalog, kit fixtures, Dialog, TextInput, Badge, Switch | 2026-10-05 |
 | [T-0244](T-0244-mobile-block-users.md) | Mobile: block and unblock, Blocked people screen, 'blocked' relation fix (DeepSeek flash trial) | 2026-10-05 |
 | [T-0245](T-0245-model-by-peak-hours.md) | Lead tooling: model: auto picks DeepSeek flash off-peak, free Muse in DeepSeek peak hours | 2026-10-05 |
+| [T-0247](T-0247-mobile-settings-hub.md) | Mobile: Settings hub redesign, Blocked people row, tab header padding | 2026-10-05 |

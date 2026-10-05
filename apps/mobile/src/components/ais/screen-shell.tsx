@@ -8,6 +8,7 @@ import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
 import { asColorScheme } from '@/lib/color-scheme';
 import { ICON } from '@/lib/colors';
+import { cn } from '@/lib/utils';
 
 type AisScreenShellProps = {
   title: string;
@@ -35,7 +36,9 @@ export function AisScreenShell({
   const insets = useSafeAreaInsets();
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top']}>
-      <View className="flex-row items-center gap-1 px-2 py-2">
+      <View
+        className={cn('flex-row items-center gap-1 py-2', onBack === undefined ? 'px-4' : 'px-2')}
+      >
         {onBack === undefined ? null : (
           <IconButton label="Back" onPress={onBack}>
             <ChevronLeft size={24} color={ICON[scheme]} />

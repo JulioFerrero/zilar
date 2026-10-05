@@ -1,5 +1,6 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import {
+  Ban,
   ChevronRight,
   KeyRound,
   Plug,
@@ -20,9 +21,15 @@ import { Avatar } from '@/components/chat/avatar';
 import { Text } from '@/components/ui/text';
 import { ACCENT, ICON, MUTED_FOREGROUND } from '@/lib/colors';
 import { asColorScheme } from '@/lib/color-scheme';
+import { iconKey } from '@/lib/depth';
 import type { MyProfile } from '@/lib/profile-api';
 
-import { settingsHubRows, type SettingsHubRow } from '@/components/settings/hub';
+import { useContactsApi } from '@/components/contacts/use-contacts-api';
+import {
+  settingsHubGroups,
+  type SettingsHubGroup,
+  type SettingsHubRow,
+} from '@/components/settings/hub';
 import { SettingsScreenShell } from '@/components/settings/screen-shell';
 import { useProfileApi } from '@/components/settings/use-profile-api';
 import type { SettingsIconId } from '@/lib/settings-items';
@@ -40,6 +47,7 @@ export default function SettingsScreen() {
 const HUB_ICONS: Record<SettingsIconId, LucideIcon> = {
   profile: UserRound,
   requests: UserPlus,
+  blocked: Ban,
   approvals: ShieldCheck,
   machines: Server,
   connections: KeyRound,
@@ -49,41 +57,83 @@ const HUB_ICONS: Record<SettingsIconId, LucideIcon> = {
 
 function hubIcon(icon: SettingsIconId, scheme: 'light' | 'dark') {
   const Icon = HUB_ICONS[icon];
-  return <Icon size={22} color={ICON[scheme]} />;
+  return <Icon size={18} color={ICON[scheme]} />;
 }
 
-function UserCard({ profile }: { profile: MyProfile | null }) {
+/** The 34 px monochrome key that holds a row's icon. */
+function IconTile({
+  icon,
+  scheme,
+  testID,
+}: {
+  icon: SettingsIconId;
+  scheme: 'light' | 'dark';
+  testID: string;
+}) {
+  return (
+    <View
+      testID={testID}
+      className="items-center justify-center"
+      style={[iconKey, { width: 34, height: 34, borderRadius: 10 }]}
+    >
+      {hubIcon(icon, scheme)}
+    </View>
+  );
+}
+
+function ProfileHeaderCard({
+  profile,
+  onPress,
+}: {
+  profile: MyProfile | null;
+  onPress: () => void;
+}) {
   const me = useAuthStore((state) => state.me);
+  const scheme = asColorScheme(useColorScheme().colorScheme);
   const name = profile?.name ?? me?.name ?? '';
   if (name === '') {
     return null;
   }
   const handle = profile?.handle ?? null;
   return (
-    <View className="flex-row items-center gap-3 rounded-xl border border-border bg-surface px-3 py-2.5">
-      <Avatar id={profile?.id ?? me?.id ?? 'me'} name={name} size={52} />
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Your profile"
+      onPress={onPress}
+      className="flex-row items-center gap-3 rounded-2xl border border-border bg-surface px-4 py-3 active:bg-surface-raised"
+    >
+      <Avatar id={profile?.id ?? me?.id ?? 'me'} name={name} size={64} />
       <View className="min-w-0 flex-1">
-        <Text numberOfLines={1} className="text-[15px] font-semibold text-foreground">
+        <Text numberOfLines={1} className="text-[18px] font-semibold text-foreground">
           {name}
         </Text>
-        <Text numberOfLines={1} className="mt-0.5 text-[13px] text-muted-foreground">
+        <Text numberOfLines={1} className="mt-0.5 text-[14px] text-muted-foreground">
           {handle === null ? (me?.email ?? '') : `@${handle}`}
         </Text>
       </View>
-    </View>
+      <ChevronRight size={18} color={MUTED_FOREGROUND[scheme]} />
+    </Pressable>
   );
 }
 
-function SettingsRow({ row, onPress }: { row: SettingsHubRow; onPress: () => void }) {
+function SettingsRow({
+  row,
+  count,
+  onPress,
+}: {
+  row: SettingsHubRow;
+  count?: number | undefined;
+  onPress: () => void;
+}) {
   const scheme = asColorScheme(useColorScheme().colorScheme);
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={row.accessibilityLabel}
       onPress={onPress}
-      className="flex-row items-center gap-3 rounded-xl border border-border bg-surface px-3 py-2.5 active:bg-surface-raised"
+      className="flex-row items-center gap-3 px-3 py-2.5 active:bg-surface-raised"
     >
-      <View testID={row.iconTestId}>{hubIcon(row.icon, scheme)}</View>
+      <IconTile icon={row.icon} scheme={scheme} testID={row.iconTestId} />
       <View className="min-w-0 flex-1">
         <Text numberOfLines={1} className="text-[15px] font-medium text-foreground">
           {row.title}
@@ -92,8 +142,42 @@ function SettingsRow({ row, onPress }: { row: SettingsHubRow; onPress: () => voi
           {row.subtitle}
         </Text>
       </View>
+      {count !== undefined && count > 0 ? (
+        <View className="min-w-[20px] items-center rounded-full bg-accent px-1.5 py-0.5">
+          <Text className="text-[11px] font-semibold text-accent-foreground">{count}</Text>
+        </View>
+      ) : null}
       <ChevronRight size={18} color={MUTED_FOREGROUND[scheme]} />
     </Pressable>
+  );
+}
+
+function GroupCard({
+  group,
+  pendingRequests,
+  onOpen,
+}: {
+  group: SettingsHubGroup;
+  pendingRequests: number;
+  onOpen: (href: string) => void;
+}) {
+  return (
+    <View className="gap-2">
+      <Text className="px-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-subtle-foreground">
+        {group.label}
+      </Text>
+      <View className="overflow-hidden rounded-2xl border border-border bg-surface">
+        {group.rows.map((row, index) => (
+          <View key={row.id} className={index === 0 ? '' : 'border-t border-divider'}>
+            <SettingsRow
+              row={row}
+              {...(row.id === 'requests' ? { count: pendingRequests } : {})}
+              onPress={() => onOpen(row.href)}
+            />
+          </View>
+        ))}
+      </View>
+    </View>
   );
 }
 
@@ -101,9 +185,11 @@ function SettingsHub() {
   const router = useRouter();
   const scheme = asColorScheme(useColorScheme().colorScheme);
   const { api } = useProfileApi();
+  const { api: contactsApi } = useContactsApi();
   const [profile, setProfile] = useState<MyProfile | null>(null);
+  const [pendingRequests, setPendingRequests] = useState(0);
   const [loading, setLoading] = useState(true);
-  const rows = settingsHubRows();
+  const groups = settingsHubGroups();
 
   useFocusEffect(
     useCallback(() => {
@@ -130,21 +216,46 @@ function SettingsHub() {
     }, [api]),
   );
 
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      // The same source the requests screen counts: incoming plus outgoing.
+      void contactsApi
+        .listContactRequests()
+        .then((list) => {
+          if (active) {
+            setPendingRequests(list.incoming.length + list.outgoing.length);
+          }
+        })
+        .catch(() => {
+          if (active) {
+            setPendingRequests(0);
+          }
+        });
+      return () => {
+        active = false;
+      };
+    }, [contactsApi]),
+  );
+
   return (
-    <SettingsScreenShell title="Settings" subtitle="Your profile and your AIs.">
-      <View className="gap-3">
+    <SettingsScreenShell title="Settings" subtitle="Your account, chats and AIs.">
+      <View className="gap-6">
         {loading ? (
           <View className="items-center py-4">
             <ActivityIndicator color={ACCENT[scheme]} />
           </View>
         ) : (
-          <UserCard profile={profile} />
+          <ProfileHeaderCard profile={profile} onPress={() => router.push('/settings/profile')} />
         )}
-        <View className="gap-1">
-          {rows.map((row) => (
-            <SettingsRow key={row.id} row={row} onPress={() => router.push(row.href)} />
-          ))}
-        </View>
+        {groups.map((group) => (
+          <GroupCard
+            key={group.group}
+            group={group}
+            pendingRequests={pendingRequests}
+            onOpen={(href) => router.push(href)}
+          />
+        ))}
       </View>
     </SettingsScreenShell>
   );
