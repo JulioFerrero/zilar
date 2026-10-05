@@ -1,7 +1,7 @@
 ---
 id: T-0268
 title: "Mobile kit migration: Contact requests and Blocked people screens use Card, SectionLabel, ListRow and IconTile"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0268-mobile-kit-people-screens
 model: auto
@@ -54,4 +54,49 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+Moved the two people screens onto the mobile kit (`Card`, `SectionLabel`, `ListRow`, `IconTile`) with no behaviour change.
+
+`apps/mobile/src/app/settings/requests.tsx`
+- The "Incoming" and "Sent" headings are now `SectionLabel` (was a 16/600 `Text`); the section `accessibilityLabel`s (`Incoming requests`, `Outgoing requests`) are unchanged.
+- Each list is one `Card` with the `RequestRow`s as direct children (dividers come from the card); the per-row `rounded-xl border border-border bg-surface` box is gone, the row keeps `flex-row items-center gap-3 px-3 py-2.5`.
+- The "Blocked people" link is now a `ListRow` inside its own `Card`, with `icon={<IconTile><Ban size={18} …/></IconTile>}`, title/`accessibilityLabel` "Blocked people" and the default chevron. Navigation (`router.push('/settings/blocked')`) is unchanged.
+- Dropped the now-unused `ChevronRight` lucide import.
+
+`apps/mobile/src/app/settings/blocked.tsx`
+- The list is one `Card`; `BlockedRow` lost its box (`px-3 py-2.5` only). The Unblock `Pressable` and its texts are untouched, as is the `Blocked people` `accessibilityLabel` group.
+
+`apps/mobile/src/components/contacts/requests-screen.test.tsx`
+- Added `MUTED_FOREGROUND` to the mocked `@/lib/colors`; `ListRow` reads it for the chevron color. No assertions changed.
+
+`apps/mobile/src/components/contacts/blocked-screen.test.tsx`
+- Unchanged: no assertion depended on the removed row boxes.
+
+### Files changed
+- `apps/mobile/src/app/settings/requests.tsx`
+- `apps/mobile/src/app/settings/blocked.tsx`
+- `apps/mobile/src/components/contacts/requests-screen.test.tsx`
+- `work/T-0268-mobile-kit-people-screens.md` (this file)
+(`pnpm-lock.yaml` was touched by the initial `pnpm install`; I reverted it with `git checkout -- pnpm-lock.yaml` so the final tree does not touch it.)
+
+### Commands and results
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot requests-screen blocked-screen` → `Test Files 2 passed (2)`, `Tests 23 passed (23)`.
+- `pnpm gate` (first run, before the lockfile revert) → `gate: 5 changed file(s)`, all steps PASS, `scope: every changed file is inside the Allowed files`, `GATE PASS`.
+- `pnpm gate` (final run, after `git checkout -- pnpm-lock.yaml`) → `gate: 4 changed file(s) against main`; `PASS install (frozen)  (2.7s)`, `PASS format  (25.2s)`, `PASS lint  (0.8s)`, `PASS typecheck  (0.8s)`, `PASS tests @zilar/mobile  (3.5s)`; `scope: every changed file is inside the Allowed files`; `GATE PASS`.
+
+### Acceptance check
+- No `rounded-xl border border-border bg-surface` remains in either screen (grep over the two files returns nothing).
+- Texts, accessibility labels and behaviour unchanged.
+- Gate PASS with no file outside the Allowed files.
+
+### Deviations / notes
+- The spec left the `Ban` glyph size open; I used `size={18}` to match how the settings hub uses `IconTile` icons. The previous standalone link used 20.
+- No blockers, no open questions.
+
 ## Review (written by Claude)
+
+**Verdict:** Approved; the first pre-review was clean (0 findings).
+- No per-row boxes remain.
+- Sections use `SectionLabel` and `Card`.
+- The Blocked people link is a kit `ListRow` with an `IconTile`.
+- The emulator look goes into the next QA run.

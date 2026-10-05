@@ -1,12 +1,15 @@
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Ban, ChevronLeft, ChevronRight, RefreshCw, UserPlus } from 'lucide-react-native';
+import { Ban, ChevronLeft, RefreshCw, UserPlus } from 'lucide-react-native';
 import { useCallback, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useColorScheme } from 'nativewind';
 
 import { RequireAuth } from '@/auth/RequireAuth';
+import { Card, SectionLabel } from '@/components/ui/card';
 import { IconButton } from '@/components/ui/icon-button';
+import { IconTile } from '@/components/ui/icon-tile';
+import { ListRow } from '@/components/ui/list-row';
 import { Text } from '@/components/ui/text';
 import { asColorScheme } from '@/lib/color-scheme';
 import { ICON } from '@/lib/colors';
@@ -160,8 +163,8 @@ function RequestsList() {
 
           {status === 'ready' && incoming.length > 0 ? (
             <View accessibilityRole="none" accessibilityLabel="Incoming requests" className="gap-2">
-              <Text className="text-[16px] font-semibold text-foreground">Incoming</Text>
-              <View className="gap-2">
+              <SectionLabel>Incoming</SectionLabel>
+              <Card>
                 {incoming.map((request) => (
                   <RequestRow
                     key={request.id}
@@ -171,7 +174,7 @@ function RequestsList() {
                     onDecline={() => act(request.id, 'decline')}
                   />
                 ))}
-              </View>
+              </Card>
             </View>
           ) : null}
 
@@ -181,8 +184,8 @@ function RequestsList() {
               accessibilityLabel="Outgoing requests"
               className={incoming.length > 0 ? 'mt-4 gap-2' : 'gap-2'}
             >
-              <Text className="text-[16px] font-semibold text-foreground">Sent</Text>
-              <View className="gap-2">
+              <SectionLabel>Sent</SectionLabel>
+              <Card>
                 {outgoing.map((request) => (
                   <RequestRow
                     key={request.id}
@@ -192,7 +195,7 @@ function RequestsList() {
                     onCancel={() => act(request.id, 'cancel')}
                   />
                 ))}
-              </View>
+              </Card>
             </View>
           ) : null}
 
@@ -202,16 +205,20 @@ function RequestsList() {
             </Text>
           ) : null}
 
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Blocked people"
-            onPress={() => router.push('/settings/blocked')}
-            className="mt-6 flex-row items-center gap-3 rounded-xl border border-border bg-surface px-3 py-2.5 active:bg-surface-raised"
-          >
-            <Ban size={20} color={ICON[scheme]} />
-            <Text className="min-w-0 flex-1 text-[15px] text-foreground">Blocked people</Text>
-            <ChevronRight size={20} color={ICON[scheme]} />
-          </Pressable>
+          <View className="mt-6">
+            <Card>
+              <ListRow
+                icon={
+                  <IconTile>
+                    <Ban size={18} color={ICON[scheme]} />
+                  </IconTile>
+                }
+                title="Blocked people"
+                accessibilityLabel="Blocked people"
+                onPress={() => router.push('/settings/blocked')}
+              />
+            </Card>
+          </View>
         </View>
       </ScrollView>
       {scenario !== null ? (
@@ -239,7 +246,7 @@ function RequestRow({
   onCancel?: () => void;
 }) {
   return (
-    <View className="flex-row items-center gap-3 rounded-xl border border-border bg-surface px-3 py-2.5">
+    <View className="flex-row items-center gap-3 px-3 py-2.5">
       <Avatar id={request.other.userId} name={request.other.name} size={44} />
       <View className="min-w-0 flex-1">
         <Text numberOfLines={1} className="text-[15px] font-medium text-foreground">

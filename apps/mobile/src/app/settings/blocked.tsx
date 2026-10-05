@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useColorScheme } from 'nativewind';
 
 import { RequireAuth } from '@/auth/RequireAuth';
+import { Card } from '@/components/ui/card';
 import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
 import { asColorScheme } from '@/lib/color-scheme';
@@ -144,14 +145,16 @@ function BlockedList() {
 
           {status === 'ready' && people.length > 0 ? (
             <View accessibilityRole="none" accessibilityLabel="Blocked people" className="gap-2">
-              {people.map((person) => (
-                <BlockedRow
-                  key={person.userId}
-                  person={person}
-                  busy={busyId === person.userId}
-                  onUnblock={() => unblock(person.userId)}
-                />
-              ))}
+              <Card>
+                {people.map((person) => (
+                  <BlockedRow
+                    key={person.userId}
+                    person={person}
+                    busy={busyId === person.userId}
+                    onUnblock={() => unblock(person.userId)}
+                  />
+                ))}
+              </Card>
             </View>
           ) : null}
 
@@ -181,7 +184,7 @@ function BlockedRow({
   onUnblock: () => void;
 }) {
   return (
-    <View className="flex-row items-center gap-3 rounded-xl border border-border bg-surface px-3 py-2.5">
+    <View className="flex-row items-center gap-3 px-3 py-2.5">
       <Avatar id={person.userId} name={person.name} size={44} />
       <View className="min-w-0 flex-1">
         <Text numberOfLines={1} className="text-[15px] font-medium text-foreground">
