@@ -28,7 +28,7 @@ Usage: lead <command> [options]
   autopilot [--once] [--dry-run]                            watch sessions, answer permissions, nudge, pre-review
   doctor [--since <sha>]                                    audit main now with a Muse doctor session
   prereview <T-XXXX>                                        start a Muse pre-review manually
-  reply <T-XXXX> <prompt-file>                              interrupt the worker and re-prompt it
+  reply <T-XXXX> <prompt-file> [--fresh]                   interrupt the worker and re-prompt it
   merge <T-XXXX> --summary "<one line>" [--skip-gate]       rebase, run the gate, squash onto main, board, push, clean up
   spec-check <T-XXXX>                                       check a spec's paths, routes and web claims against the code
   snapshot                                                  JSON of every task in flight, its step and timings
@@ -159,16 +159,26 @@ async function runPrereview(positional: string[]): Promise<void> {
   console.log(`${task} pre-review ${sessionId} for ${head}`);
 }
 
-async function runReply(positional: string[]): Promise<void> {
+async function runReply(positional: string[], args: string[]): Promise<void> {
   const task = positional[0];
   const promptFile = positional[1];
   if (task === undefined || promptFile === undefined) {
-    throw new Error('usage: lead reply <T-XXXX> <prompt-file>');
+    throw new Error('usage: lead reply <T-XXXX> <prompt-file> [--fresh]');
   }
-  await replyToWorker(task, promptFile, {
-    client: new OpencodeCliClient(),
-    statePath: stateFilePath(),
-  });
+  const fresh = flag(args, '--fresh');
+  await replyToWorker(
+    task,
+    promptFile,
+    {
+      client: new OpencodeCliClient(),
+      statePath: stateFilePath(),
+      promptsDirPath: promptsDir(),
+      // The non-fresh path never uses the repo root, and finding it throws
+      // outside a checkout — so only look it up when --fresh needs it.
+      repoRoot: fresh ? findRepoRoot() : '',
+    },
+    { fresh },
+  );
   console.log(`${task} replied`);
 }
 
@@ -325,7 +335,7 @@ export async function main(argv: string[]): Promise<void> {
   } else if (command === 'prereview') {
     await runPrereview(positional);
   } else if (command === 'reply') {
-    await runReply(positional);
+    await runReply(positional, rest);
   } else if (command === 'snapshot') {
     await runSnapshot(positional, false);
   } else if (command === 'dashboard') {

@@ -22,6 +22,7 @@ import {
 import { startPrereviewSession } from './start-prereview.js';
 import { appendLog, loadState, updateState } from './state.js';
 import { extractBlockedText, parseFrontMatter } from './task-file.js';
+import { freshSessionRecord, startFreshWorkerSession } from './fresh-session.js';
 import type { DoctorRecord, TaskRecord } from './types.js';
 
 export const POLL_MS = 15_000;
@@ -149,8 +150,21 @@ async function applyActions(
         WORKTREE: current.worktree,
         BRANCH: info?.branch ?? '',
       });
-      deps.client.promptDetached(current.sessionId, prompt);
-      appendLog(deps.statePath, `${task} sent ${action.template} prompt`);
+      if (action.template === 'autofix') {
+        // Fix rounds start in a fresh session: the original one carries every
+        // file read and test log so far, which re-sends ~138k tokens per
+        // step. The old session is idle, so it needs no interrupt.
+        const round = current.autoFixRounds + 1;
+        const sessionId = await startFreshWorkerSession(
+          { client: deps.client, promptsDirPath: deps.promptsDirPath, repoRoot: deps.repoRoot },
+          { task, record: current, title: `${task} autofix round ${round}`, prompt },
+        );
+        current = freshSessionRecord(current, sessionId);
+        appendLog(deps.statePath, `${task} autofix round ${round} in fresh session ${sessionId}`);
+      } else {
+        deps.client.promptDetached(current.sessionId, prompt);
+        appendLog(deps.statePath, `${task} sent ${action.template} prompt`);
+      }
     } else if (action.kind === 'start-prereview') {
       const sessionId = await startPrereviewSession(
         {
