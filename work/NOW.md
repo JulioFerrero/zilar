@@ -2,20 +2,23 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
-Last updated: 2026-10-05, after merging T-0195 and the free-model benchmark.
+Last updated: 2026-10-05, after launching T-0208 (first task on the free Muse listing).
+
+Models (Julio, 2026-10-05): default `opencode/muse-spark-1.3-contributor-free`; MiniMax M3 only for the easiest exact tasks; billed `meta/muse-spark-1.3-contributor` is the fallback if the free listing hits limits.
 
 ## Running (max 4)
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0202 | Fix rounds in a fresh worker session (token saving A) | coding | Muse |
-| T-0194 | Mobile guard tests for the Android and Hermes pitfalls | coding | MiniMax M3 trial, `effort: default` |
-| T-0191 | Mobile sticker pack editor | coding | Muse; brief `docs/design/briefs/T-0191-sticker-editor.md`; needs phone:smoke |
+| T-0202 | Fix rounds in a fresh worker session (token saving A) | fix rounds | Muse (billed) |
+| T-0191 | Mobile sticker pack editor | coding | Muse (billed); brief `docs/design/briefs/T-0191-sticker-editor.md`; needs phone:smoke |
+| T-0208 | Pre-reviews and the doctor on the free Muse listing | coding | free Muse; restart the autopilot after merge |
 
 ## Next, in order
 
-1. T-0203 (B) after T-0202, then T-0204 (C): they share `prompts.test.ts`
-2. T-0207 Telegram import sheet on MiniMax (after T-0191; spec and brief ready)
+1. T-0203 (B) after T-0202, then T-0204 (C): they share `prompts.test.ts`; easy text edits, stay on MiniMax
+2. T-0207 Telegram import sheet on the free Muse (after T-0191; spec and brief ready)
+3. Specs for T-0189 and T-0190 from `docs/audit/mobile-parity-gaps.md` (re-check every fact in the code)
 
 ## MiniMax M3 scorecard (Julio, 2026-10-05: give it harder tasks, no replays)
 
