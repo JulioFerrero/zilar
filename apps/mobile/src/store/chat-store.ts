@@ -129,6 +129,10 @@ type ChatStoreData = Omit<
   | 'setSearch'
   | 'setActiveFolder'
   | 'setFolders'
+  | 'createFolder'
+  | 'updateFolder'
+  | 'deleteFolder'
+  | 'reorderFolders'
   | 'start'
   | 'stop'
 >;
@@ -280,6 +284,8 @@ export function createChatStore(
       { roles: TopicRole[]; approverRole: ApproverRole | null }
     >();
     let mockRoleSequence = 1;
+    // Mock folder ids, so a create can be deleted or renamed within a session.
+    let mockFolderSequence = 1;
 
     const bumpRolesRevision = () =>
       set((state) => ({ groupDetailsRevision: state.groupDetailsRevision + 1 }));
@@ -1343,6 +1349,63 @@ export function createChatStore(
               ? state.activeFolder
               : 'all',
         }));
+      },
+      createFolder: async (input) => {
+        const folder = {
+          id: `mock-folder-${mockFolderSequence}`,
+          name: input.name,
+          icon: input.icon,
+          position: get().folders.length,
+          includeTypes: input.includeTypes ?? [],
+          includeChats: input.includeChats ?? [],
+          excludeChats: input.excludeChats ?? [],
+          excludeMuted: input.excludeMuted ?? false,
+          excludeRead: input.excludeRead ?? false,
+        };
+        mockFolderSequence += 1;
+        get().setFolders([...get().folders, folder]);
+        return folder;
+      },
+      updateFolder: async (id, input) => {
+        const existing = get().folders.find((folder) => folder.id === id);
+        if (existing === undefined) {
+          throw new Error('This folder is not available.');
+        }
+        const folder = {
+          ...existing,
+          name: input.name ?? existing.name,
+          icon: input.icon ?? existing.icon,
+          includeTypes: input.includeTypes ?? existing.includeTypes,
+          includeChats: input.includeChats ?? existing.includeChats,
+          excludeChats: input.excludeChats ?? existing.excludeChats,
+          excludeMuted: input.excludeMuted ?? existing.excludeMuted,
+          excludeRead: input.excludeRead ?? existing.excludeRead,
+        };
+        get().setFolders(get().folders.map((item) => (item.id === id ? folder : item)));
+        return folder;
+      },
+      deleteFolder: async (id) => {
+        get().setFolders(get().folders.filter((item) => item.id !== id));
+      },
+      reorderFolders: async (ids) => {
+        const folders = get().folders;
+        const byId = new Map(folders.map((folder) => [folder.id, folder]));
+        const ordered: typeof folders = [];
+        const seen = new Set<string>();
+        for (const id of ids) {
+          const folder = byId.get(id);
+          if (folder !== undefined && !seen.has(id)) {
+            seen.add(id);
+            ordered.push({ ...folder, position: ordered.length });
+          }
+        }
+        for (const folder of folders) {
+          if (!seen.has(folder.id)) {
+            seen.add(folder.id);
+            ordered.push({ ...folder, position: ordered.length });
+          }
+        }
+        get().setFolders(ordered);
       },
     };
   });

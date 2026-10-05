@@ -32,6 +32,7 @@ describe('settingsHubRows', () => {
       'ais',
       'ais',
       'chats',
+      'chats',
       'server',
     ]);
   });
@@ -47,7 +48,7 @@ describe('settingsHubGroups', () => {
     );
     expect(ids.get('account')).toEqual(['profile', 'requests', 'blocked']);
     expect(ids.get('ais')).toEqual(['approvals', 'machines', 'connections']);
-    expect(ids.get('chats')).toEqual(['stickers']);
+    expect(ids.get('chats')).toEqual(['stickers', 'folders']);
     expect(ids.get('server')).toEqual(['integrations']);
     for (const group of groups) {
       expect(group.label).not.toBe('');

@@ -2,6 +2,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import {
   Ban,
   ChevronRight,
+  FolderOpen,
   KeyRound,
   Plug,
   Server,
@@ -53,6 +54,7 @@ const HUB_ICONS: Record<SettingsIconId, LucideIcon> = {
   connections: KeyRound,
   integrations: Plug,
   stickers: Sticker,
+  folders: FolderOpen,
 };
 
 function hubIcon(icon: SettingsIconId, scheme: 'light' | 'dark') {

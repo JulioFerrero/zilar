@@ -1,7 +1,7 @@
 ---
 id: T-0255
 title: "Mobile: Settings → Chat folders (list, reorder, delete) and a folder editor (name, icon, chat types, hide muted/read), through store actions"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0255-mobile-folders-editor
 model: auto
@@ -80,7 +80,7 @@ Mobile shows the server folders as chips (T-0248) but cannot edit them; web can 
 `AGENTS.md`, `apps/web/src/components/FolderEditorDialog.tsx`, `apps/web/src/routes/FoldersPage.tsx`, `apps/mobile/src/lib/chat-folders-api.ts`, `apps/mobile/src/app/settings/blocked.tsx` (a settings page pattern), `apps/mobile/src/lib/depth.ts`.
 
 ### Allowed files
-`apps/mobile/src/lib/chat-folders-api.ts`, `apps/mobile/src/lib/chat-folders-api.test.ts`, `apps/mobile/src/store/types.ts`, `apps/mobile/src/store/real-store.ts`, `apps/mobile/src/store/chat-store.ts`, `apps/mobile/src/store/chat-store.test.ts`, `apps/mobile/src/store/real-store.folders.test.ts` (new), `apps/mobile/src/lib/settings-items.ts`, `apps/mobile/src/lib/settings-items.test.ts`, `apps/mobile/src/app/(tabs)/settings.tsx`, `apps/mobile/src/app/settings/folders.tsx` (new), `apps/mobile/src/app/settings/folder/[id].tsx` (new), `apps/mobile/src/components/settings/folders.ts` (new), `apps/mobile/src/components/settings/folders.test.ts` (new), `work/T-0255-mobile-folders-editor.md`.
+`apps/mobile/src/lib/chat-folders-api.ts`, `apps/mobile/src/lib/chat-folders-api.test.ts`, `apps/mobile/src/store/types.ts`, `apps/mobile/src/store/real-store.ts`, `apps/mobile/src/store/chat-store.ts`, `apps/mobile/src/store/chat-store.test.ts`, `apps/mobile/src/store/real-store.folders.test.ts` (new), `apps/mobile/src/lib/settings-items.ts`, `apps/mobile/src/lib/settings-items.test.ts`, `apps/mobile/src/app/(tabs)/settings.tsx`, `apps/mobile/src/app/settings/folders.tsx` (new), `apps/mobile/src/app/settings/folder/[id].tsx` (new), `apps/mobile/src/components/settings/folders.ts` (new), `apps/mobile/src/components/settings/folders.test.ts` (new), `apps/mobile/src/components/settings/hub.test.ts` (added by the lead after the worker's question), `work/T-0255-mobile-folders-editor.md`.
 
 ### Checks
 ```bash
@@ -101,4 +101,77 @@ Picking single chats to include or exclude (later task), drag-to-reorder, and an
 
 ## Report (written by the worker when done)
 
+### What I did
+
+- **API** (`apps/mobile/src/lib/chat-folders-api.ts`): added `CreateChatFolderInput` /
+  `PatchChatFolderInput` (same fields as web) and `createChatFolder`,
+  `patchChatFolder`, `reorderChatFolders`, `deleteChatFolder` to `ChatFoldersApi`.
+  `request()` now takes an optional method and JSON body; write answers are parsed
+  with `parseChatFolder` and a bad envelope/row throws `invalid_response`; the list
+  still drops malformed rows.
+- **Store actions**: added `createFolder`, `updateFolder`, `deleteFolder`,
+  `reorderFolders` to `ChatStoreState` (`types.ts`). Real store calls
+  `deps.chatFoldersApi` then refreshes `folders` from the answer (create/patch merge
+  the returned row, reorder takes the returned list, delete drops the id); errors
+  reject with the API's message. Mock store applies the same changes locally with
+  `mock-folder-N` ids.
+- **Settings**: appended the `folders` registry row in `settings-items.ts` and
+  mapped `folders` → lucide `FolderOpen` in `HUB_ICONS`.
+- **Pages**: new `app/settings/folders.tsx` (list with icon/name/summary, up/down
+  reorder buttons, New folder row disabled at `FOLDERS_MAX`, "No folders yet."
+  empty state) and `app/settings/folder/[id].tsx` (`new` for create; name input +
+  counter, 6-column `FOLDER_ICONS` grid with the chosen one raised, four
+  "Show these chats" switches, Muted/Read hide switches, Save in the header `right`
+  slot, inline Delete confirm using the web sentence). Pure helpers in
+  `components/settings/folders.ts`.
+- Include/exclude chat lists are never sent, so an existing folder's lists are
+  kept unchanged.
+
+### Files changed
+
+All inside the Allowed files: `chat-folders-api.ts`/`.test.ts`, `store/types.ts`,
+`store/real-store.ts`, `store/chat-store.ts`, `store/chat-store.test.ts`,
+`store/real-store.folders.test.ts` (new), `settings-items.ts`/`.test.ts`,
+`app/(tabs)/settings.tsx`, `app/settings/folders.tsx` (new),
+`app/settings/folder/[id].tsx` (new), `components/settings/folders.ts`/`.test.ts`
+(new), `components/settings/hub.test.ts` (added to Allowed files by the lead after
+the worker's question), and this task file.
+
+### Commands and results
+
+- `pnpm install`: ok.
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot chat-folders-api chat-store real-store.folders settings-items components/settings/folders components/settings/hub`:
+  **8 test files, 78 tests passed.**
+- `pnpm gate` (final run):
+  ```
+  PASS  install (frozen)
+  PASS  format
+  PASS  lint
+  PASS  typecheck
+  PASS  tests @zilar/mobile
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+  Earlier gate runs caught and I fixed: 5 files that were not prettier-formatted
+  (targeted `prettier --write`); a `react(static-components)` lint error in
+  `folders.tsx` (extracted a lowercase `folderGlyph` helper, the `hubIcon`
+  pattern); two implicit `any` in `real-store.folders.test.ts` (annotated the fake
+  API method parameters).
+- `apps/mobile/src/components/settings/hub.test.ts` hardcodes the registry, so the
+  new `folders` row broke its two expectations. With the lead's approval I updated
+  both: the row-order array now has a second `chats` entry, and the `chats` group is
+  `['stickers', 'folders']`. The file was added to the Allowed files in this task.
+
+### Open questions
+
+None.
+
 ## Review (written by Claude)
+
+**Verdict:** Approved; the first pre-review was clean (2 nits).
+- The lead allowed `hub.test.ts` after the worker's question.
+- Store writes change state only after the API succeeds, and the UI shows fixed sentences.
+- Follow-up from nit 1: a deep link to `/settings/folder/<id>` before the folders have synced starts a blank form, and Save would PATCH `includeTypes: []`. The editor must wait for the folder (or show "Folder not found").
+- Nit 2 (mock position collision) is accepted, since the mock is the only thing affected.
+
+The emulator look goes to the next QA run.

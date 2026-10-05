@@ -10,6 +10,7 @@ const EXPECTED_GROUPS: Record<string, SettingsGroup> = {
   machines: 'ais',
   connections: 'ais',
   stickers: 'chats',
+  folders: 'chats',
   integrations: 'server',
 };
 
@@ -45,6 +46,17 @@ describe('SETTINGS_ITEMS', () => {
       icon: 'blocked',
       href: '/settings/blocked',
       group: 'account',
+    });
+  });
+
+  it('adds Chat folders to Chats', () => {
+    const folders = SETTINGS_ITEMS.find((item) => item.id === 'folders');
+    expect(folders).toMatchObject({
+      title: 'Chat folders',
+      subtitle: 'Sort chats into folders.',
+      icon: 'folders',
+      href: '/settings/folders',
+      group: 'chats',
     });
   });
 
