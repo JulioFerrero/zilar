@@ -12,7 +12,8 @@ import { API_URL } from './auth';
  * parsing the message again (404 = unknown handle, 429 = rate limited).
  */
 
-export type ContactRelation = 'none' | 'contact' | 'request_sent' | 'request_received' | 'self';
+export type ContactRelation =
+  'none' | 'contact' | 'request_sent' | 'request_received' | 'self' | 'blocked';
 
 export interface HandleProfile {
   userId: string;
@@ -58,6 +59,14 @@ export interface CreatedContactRequest {
   incoming?: boolean | undefined;
 }
 
+export interface BlockedPerson {
+  userId: string;
+  name: string;
+  handle: string | null;
+  image: string | null;
+  jid: string | null;
+}
+
 export interface ContactsApi {
   lookupByHandle(handle: string): Promise<HandleProfile>;
   sendContactRequest(handle: string): Promise<CreatedContactRequest>;
@@ -65,6 +74,9 @@ export interface ContactsApi {
   acceptContactRequest(id: string): Promise<{ request: ContactRequestRow }>;
   declineContactRequest(id: string): Promise<{ request: ContactRequestRow }>;
   cancelContactRequest(id: string): Promise<{ request: ContactRequestRow }>;
+  blockUser(userId: string): Promise<{ blocked: boolean }>;
+  unblockUser(userId: string): Promise<{ blocked: boolean }>;
+  listBlockedUsers(): Promise<BlockedPerson[]>;
 }
 
 export class ContactsApiError extends Error {
@@ -102,7 +114,8 @@ function isRelation(value: unknown): value is ContactRelation {
     value === 'contact' ||
     value === 'request_sent' ||
     value === 'request_received' ||
-    value === 'self'
+    value === 'self' ||
+    value === 'blocked'
   );
 }
 
@@ -214,6 +227,41 @@ function parseDecidedRequest(value: unknown): { request: ContactRequestRow } | n
   if (!isRecord(value)) return null;
   const request = parseRequestRow(value['request']);
   return request === null ? null : { request };
+}
+
+function parseBlockResult(value: unknown): { blocked: boolean } | null {
+  if (!isRecord(value) || typeof value['blocked'] !== 'boolean') return null;
+  return { blocked: value['blocked'] };
+}
+
+function parseBlockedPerson(value: unknown): BlockedPerson | null {
+  if (!isRecord(value)) return null;
+  const userId = value['userId'];
+  const name = value['name'];
+  if (!isString(userId) || !isString(name)) return null;
+  const handle = value['handle'];
+  const image = value['image'];
+  const jid = value['jid'];
+  return {
+    userId,
+    name,
+    handle: isString(handle) ? handle : null,
+    image: isString(image) ? image : null,
+    jid: isString(jid) ? jid : null,
+  };
+}
+
+function parseBlockedList(value: unknown): BlockedPerson[] | null {
+  if (!isRecord(value)) return null;
+  const blocked = value['blocked'];
+  if (!Array.isArray(blocked)) return null;
+  const parsed: BlockedPerson[] = [];
+  for (const item of blocked) {
+    const person = parseBlockedPerson(item);
+    if (person === null) return null;
+    parsed.push(person);
+  }
+  return parsed;
 }
 
 async function request(
@@ -345,6 +393,26 @@ export function createContactsApi(
         parseDecidedRequest,
       );
       return body as { request: ContactRequestRow };
+    },
+    async blockUser(userId) {
+      const body = await withToken(
+        `/api/blocks/${encodeURIComponent(userId)}`,
+        { method: 'PUT' },
+        parseBlockResult,
+      );
+      return body as { blocked: boolean };
+    },
+    async unblockUser(userId) {
+      const body = await withToken(
+        `/api/blocks/${encodeURIComponent(userId)}`,
+        { method: 'DELETE' },
+        parseBlockResult,
+      );
+      return body as { blocked: boolean };
+    },
+    async listBlockedUsers() {
+      const body = await withToken('/api/blocks', { method: 'GET' }, parseBlockedList);
+      return body as BlockedPerson[];
     },
   };
 }

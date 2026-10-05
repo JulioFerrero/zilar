@@ -18,6 +18,7 @@ import {
   NO_USER_MESSAGE,
   type AddContactState,
 } from './add-contact';
+import { performBlock, performUnblock } from './blocks';
 import { ProfileCard } from './profile-card';
 
 /**
@@ -167,6 +168,36 @@ export function AddContactSheet({
     onMessage(target);
   };
 
+  const block = (): void => {
+    if (profile === null) {
+      return;
+    }
+    const active = profile;
+    runAction(async () => {
+      const failure = await performBlock(api, active.userId, () => {
+        setProfile({ ...active, relation: 'blocked' });
+      });
+      if (failure !== null) {
+        setActionError(failure);
+      }
+    });
+  };
+
+  const unblock = (): void => {
+    if (profile === null) {
+      return;
+    }
+    const active = profile;
+    runAction(async () => {
+      const failure = await performUnblock(api, active.userId, () => {
+        setProfile({ ...active, relation: 'none' });
+      });
+      if (failure !== null) {
+        setActionError(failure);
+      }
+    });
+  };
+
   return (
     <Pressable
       onPress={() => {}}
@@ -228,6 +259,8 @@ export function AddContactSheet({
             onDecline={() => actOnRequest((id) => api.declineContactRequest(id))}
             onMessage={openMessage}
             onOpenRequests={onOpenRequests}
+            onBlock={block}
+            onUnblock={unblock}
           />
         ) : null}
       </View>

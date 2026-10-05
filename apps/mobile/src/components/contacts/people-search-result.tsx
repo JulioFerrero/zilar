@@ -80,6 +80,8 @@ export function PeopleSearchResult({
             onDecline={search.declineRequest}
             onMessage={search.openMessage}
             onOpenRequests={onOpenRequests}
+            onBlock={search.block}
+            onUnblock={search.unblock}
             onOpenProfile={() =>
               router.push({ pathname: '/u/[handle]', params: { handle: view.profile.handle } })
             }

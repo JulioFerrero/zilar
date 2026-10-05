@@ -72,6 +72,26 @@ describe('createMockContactsApi', () => {
     await expect(api.cancelContactRequest('req-dan')).rejects.toMatchObject({ status: 404 });
   });
 
+  it('blocks and unblocks idempotently, and 404s an unknown id', async () => {
+    const api = createMockContactsApi();
+    await expect(api.lookupByHandle('eve')).resolves.toMatchObject({ relation: 'blocked' });
+    await expect(api.listBlockedUsers()).resolves.toEqual([
+      { userId: 'u-eve', name: 'Eve', handle: 'eve', image: null, jid: null },
+    ]);
+
+    await api.blockUser('u-ada');
+    await api.blockUser('u-ada');
+    const blocked = await api.listBlockedUsers();
+    expect(blocked.filter((person) => person.userId === 'u-ada')).toHaveLength(1);
+    await expect(api.lookupByHandle('ada')).resolves.toMatchObject({ relation: 'blocked' });
+
+    await api.unblockUser('u-ada');
+    await expect(api.lookupByHandle('ada')).resolves.toMatchObject({ relation: 'none' });
+
+    await expect(api.blockUser('u-nobody')).rejects.toMatchObject({ status: 404 });
+    await expect(api.blockUser('u-me')).rejects.toMatchObject({ status: 400 });
+  });
+
   it('is empty in the empty scenario and fails in the error one', async () => {
     const empty = createMockContactsApi('empty');
     await expect(empty.listContactRequests()).resolves.toEqual({ incoming: [], outgoing: [] });

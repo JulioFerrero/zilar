@@ -1,3 +1,5 @@
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { ContactsApi, ContactRequestView, HandleProfile } from '@/lib/contacts-api';
@@ -8,10 +10,11 @@ import {
   addContactLookupFailure,
   addContactSendFailure,
 } from './add-contact';
+import { performBlock } from './blocks';
 import { requestsActionFailure, requestsLoadFailure } from './requests';
 import { ContactsApiError } from '@/lib/contacts-api';
 import { resolveContactChat } from './add-contact-sheet';
-import { ProfileCardActionRow } from './profile-card';
+import { ProfileCard, ProfileCardActionRow, shouldResetBlockConfirm } from './profile-card';
 
 // The mobile app has no React Native testing library, so the component is
 // rendered to a plain element tree with `react-native` stubbed (the
@@ -20,6 +23,10 @@ import { ProfileCardActionRow } from './profile-card';
 vi.mock('react-native', () => ({
   Pressable: 'Pressable',
   View: 'View',
+}));
+
+vi.mock('lucide-react-native', () => ({
+  Ban: 'Ban',
 }));
 
 vi.mock('@/components/ui/text', () => ({
@@ -97,13 +104,19 @@ const HANDLERS = {
   onDecline: () => {},
   onMessage: () => {},
   onOpenRequests: () => {},
+  onStartBlock: () => {},
+  onCancelBlock: () => {},
+  onBlock: () => {},
+  onUnblock: () => {},
 };
 
-function rowFor(relation: HandleProfile['relation'], sent = false) {
+function rowFor(relation: HandleProfile['relation'], sent = false, blockConfirming = false) {
   return ProfileCardActionRow({
+    name: 'Ada',
     relation,
     sent,
     busy: false,
+    blockConfirming,
     ...HANDLERS,
   });
 }
@@ -153,21 +166,88 @@ describe('ProfileCardActionRow', () => {
     expect(textOf(elements)).toContain('That is you.');
   });
 
-  it('renders the profile header through ProfileCard', async () => {
-    const { ProfileCard } = await import('./profile-card');
-    const elements = collect(
-      ProfileCard({ profile: profile(), sent: false, busy: false, error: null, ...HANDLERS }),
-    );
-    const all = textOf(elements);
-    expect(all).toContain('Ada');
-    expect(all).toContain('@ada');
-    expect(all).toContain('Send request');
+  it('shows Unblock and the blocked line for a blocked relation', () => {
+    const elements = collect(rowFor('blocked'));
+    expect(labels(elements)).toContain('Unblock');
+    expect(textOf(elements)).toContain('You blocked this person.');
+    expect(labels(elements)).not.toContain('Block');
   });
 
-  it('renders the inline error through ProfileCard', async () => {
-    const { ProfileCard } = await import('./profile-card');
-    const elements = collect(
-      ProfileCard({
+  it('offers Block for every other relation but not self or blocked', () => {
+    for (const relation of ['none', 'contact', 'request_sent', 'request_received'] as const) {
+      expect(labels(collect(rowFor(relation)))).toContain('Block');
+    }
+    expect(labels(collect(rowFor('self')))).not.toContain('Block');
+    expect(labels(collect(rowFor('blocked')))).not.toContain('Block');
+  });
+
+  it('opens the inline confirm with the web sentence', () => {
+    const elements = collect(rowFor('none', false, true));
+    const all = textOf(elements);
+    expect(all).toContain('Block Ada? They are not told.');
+    expect(all).toContain("You won't see their contact requests.");
+    expect(labels(elements)).toContain('Confirm block');
+    expect(labels(elements)).toContain('Cancel the block');
+    expect(labels(elements)).not.toContain('Block');
+  });
+
+  it('wires the Block button to open, and Confirm to block', () => {
+    const start = vi.fn();
+    const confirm = vi.fn();
+    const closedElements = collect(
+      ProfileCardActionRow({
+        name: 'Ada',
+        relation: 'none',
+        sent: false,
+        busy: false,
+        blockConfirming: false,
+        ...HANDLERS,
+        onStartBlock: start,
+      }),
+    );
+    const blockButton = closedElements.find(
+      (element) => element.type === 'Pressable' && element.props.accessibilityLabel === 'Block',
+    );
+    blockButton?.props.onPress?.();
+    expect(start).toHaveBeenCalledTimes(1);
+
+    const openElements = collect(
+      ProfileCardActionRow({
+        name: 'Ada',
+        relation: 'none',
+        sent: false,
+        busy: false,
+        blockConfirming: true,
+        ...HANDLERS,
+        onBlock: confirm,
+      }),
+    );
+    const confirmButton = openElements.find(
+      (element) =>
+        element.type === 'Pressable' && element.props.accessibilityLabel === 'Confirm block',
+    );
+    confirmButton?.props.onPress?.();
+    expect(confirm).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders the profile header through ProfileCard', () => {
+    const html = renderToStaticMarkup(
+      createElement(ProfileCard, {
+        profile: profile(),
+        sent: false,
+        busy: false,
+        error: null,
+        ...HANDLERS,
+      }),
+    );
+    expect(html).toContain('Ada');
+    expect(html).toContain('@ada');
+    expect(html).toContain('Send request');
+  });
+
+  it('renders the inline error through ProfileCard', () => {
+    const html = renderToStaticMarkup(
+      createElement(ProfileCard, {
         profile: profile(),
         sent: false,
         busy: false,
@@ -175,7 +255,32 @@ describe('ProfileCardActionRow', () => {
         ...HANDLERS,
       }),
     );
-    expect(textOf(elements)).toContain('Could not send the request. Try again.');
+    expect(html).toContain('Could not send the request. Try again.');
+  });
+
+  it('drops the block confirm when the relation changes after block or unblock', () => {
+    expect(shouldResetBlockConfirm({ userId: 'u-ada', relation: 'none' }, profile())).toBe(false);
+    expect(
+      shouldResetBlockConfirm(
+        { userId: 'u-ada', relation: 'none' },
+        profile({ relation: 'blocked' }),
+      ),
+    ).toBe(true);
+    expect(
+      shouldResetBlockConfirm(
+        { userId: 'u-ada', relation: 'blocked' },
+        profile({ relation: 'none' }),
+      ),
+    ).toBe(true);
+  });
+
+  it('drops the block confirm when a different person is shown', () => {
+    expect(
+      shouldResetBlockConfirm(
+        { userId: 'u-ada', relation: 'none' },
+        profile({ userId: 'u-bob', name: 'Bob', handle: 'bob' }),
+      ),
+    ).toBe(true);
   });
 });
 
@@ -212,6 +317,9 @@ describe('add-contact helpers', () => {
     );
     expect(addContactSendFailure(new ContactsApiError(409, 'request_exists', 'x'))).toBe(
       'A request is already pending.',
+    );
+    expect(addContactSendFailure(new ContactsApiError(409, 'blocked', 'x'))).toBe(
+      'Unblock this person first.',
     );
     expect(addContactSendFailure(new ContactsApiError(429, 'too_many_requests', 'x'))).toBe(
       'Too many pending requests — wait for some answers first.',
@@ -345,6 +453,19 @@ describe('actOnProfileRequest', () => {
           },
         };
       },
+      async blockUser(userId) {
+        calls.push(`block:${userId}`);
+        relation = 'blocked';
+        return { blocked: true };
+      },
+      async unblockUser(userId) {
+        calls.push(`unblock:${userId}`);
+        relation = 'none';
+        return { blocked: false };
+      },
+      async listBlockedUsers() {
+        return [];
+      },
     };
   }
 
@@ -423,5 +544,81 @@ describe('actOnProfileRequest', () => {
     );
     expect(api.calls).toEqual(['list', 'lookup']);
     expect(seen[0]?.relation).toBe('none');
+  });
+});
+
+describe('performBlock', () => {
+  function stub(overrides: Partial<ContactsApi>): ContactsApi {
+    const base: ContactsApi = {
+      async lookupByHandle() {
+        throw new ContactsApiError(404, 'not_found', 'x');
+      },
+      async sendContactRequest() {
+        throw new ContactsApiError(409, 'request_exists', 'x');
+      },
+      async listContactRequests() {
+        return { incoming: [], outgoing: [] };
+      },
+      async acceptContactRequest() {
+        throw new ContactsApiError(404, 'not_found', 'x');
+      },
+      async declineContactRequest() {
+        throw new ContactsApiError(404, 'not_found', 'x');
+      },
+      async cancelContactRequest() {
+        throw new ContactsApiError(404, 'not_found', 'x');
+      },
+      async blockUser() {
+        return { blocked: true };
+      },
+      async unblockUser() {
+        return { blocked: false };
+      },
+      async listBlockedUsers() {
+        return [];
+      },
+    };
+    return { ...base, ...overrides };
+  }
+
+  it('calls blockUser and runs onBlocked on success', async () => {
+    const calls: string[] = [];
+    let blocked = 0;
+    const api = stub({
+      async blockUser(id) {
+        calls.push(`block:${id}`);
+        return { blocked: true };
+      },
+    });
+    const failure = await performBlock(api, 'u-ada', () => {
+      blocked += 1;
+    });
+    expect(failure).toBeNull();
+    expect(calls).toEqual(['block:u-ada']);
+    expect(blocked).toBe(1);
+  });
+
+  it('maps a 429 to the retry sentence and does not run onBlocked', async () => {
+    let blocked = 0;
+    const api = stub({
+      async blockUser() {
+        throw new ContactsApiError(429, 'rate_limited', 'slow');
+      },
+    });
+    expect(
+      await performBlock(api, 'u-ada', () => {
+        blocked += 1;
+      }),
+    ).toBe('Too many tries — wait a little and try again.');
+    expect(blocked).toBe(0);
+  });
+
+  it('maps anything else to the block sentence', async () => {
+    const api = stub({
+      async blockUser() {
+        throw new Error('boom');
+      },
+    });
+    expect(await performBlock(api, 'u-ada', () => {})).toBe('Could not block. Try again.');
   });
 });

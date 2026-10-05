@@ -22,6 +22,7 @@ import {
   addContactSendFailure,
   NO_USER_MESSAGE,
 } from '@/components/contacts/add-contact';
+import { performBlock, performUnblock } from '@/components/contacts/blocks';
 import { ProfileCard } from '@/components/contacts/profile-card';
 import { useContactsApi } from '@/components/contacts/use-contacts-api';
 import { useChatStore } from '@/store/chat-store-provider';
@@ -139,6 +140,36 @@ function HandleProfileView() {
     runAction(() => actOnProfileRequest(api, target, work, setProfile, () => setSent(false)));
   };
 
+  const block = (): void => {
+    if (profile === null) {
+      return;
+    }
+    const active = profile;
+    runAction(async () => {
+      const failure = await performBlock(api, active.userId, () => {
+        setProfile({ ...active, relation: 'blocked' });
+      });
+      if (failure !== null) {
+        setActionError(failure);
+      }
+    });
+  };
+
+  const unblock = (): void => {
+    if (profile === null) {
+      return;
+    }
+    const active = profile;
+    runAction(async () => {
+      const failure = await performUnblock(api, active.userId, () => {
+        setProfile({ ...active, relation: 'none' });
+      });
+      if (failure !== null) {
+        setActionError(failure);
+      }
+    });
+  };
+
   const openMessage = (): void => {
     if (profile === null) {
       return;
@@ -211,6 +242,8 @@ function HandleProfileView() {
               onDecline={() => actOnRequest((id) => api.declineContactRequest(id))}
               onMessage={openMessage}
               onOpenRequests={() => router.push('/settings/requests')}
+              onBlock={block}
+              onUnblock={unblock}
             />
           ) : null}
         </View>

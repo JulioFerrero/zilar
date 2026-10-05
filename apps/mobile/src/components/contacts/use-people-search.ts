@@ -3,6 +3,7 @@ import { useEffect, useReducer, useRef, useState } from 'react';
 import { ContactsApiError, domainOfJid, type ContactsApi } from '../../lib/contacts-api';
 import { actOnProfileRequest, addContactSendFailure } from './add-contact';
 import { resolveContactChat } from './add-contact-sheet';
+import { performBlock, performUnblock } from './blocks';
 import { PeopleSearchController, type PeopleSearchView } from './people-search';
 
 /**
@@ -30,6 +31,8 @@ export function usePeopleSearch(options: {
   cancelRequest: () => void;
   acceptRequest: () => void;
   declineRequest: () => void;
+  block: () => void;
+  unblock: () => void;
   openMessage: () => void;
 } {
   const { api, text, chats, myJid, onMessage, submitRequest } = options;
@@ -120,6 +123,36 @@ export function usePeopleSearch(options: {
     cancelRequest: () => actOnRequest((id) => api.cancelContactRequest(id)),
     acceptRequest: () => actOnRequest((id) => api.acceptContactRequest(id)),
     declineRequest: () => actOnRequest((id) => api.declineContactRequest(id)),
+    block: () => {
+      const target = controller.actionTarget();
+      if (target === null) {
+        return;
+      }
+      const active = target.profile;
+      runAction(async () => {
+        const failure = await performBlock(api, active.userId, () => {
+          controller.setFound({ ...active, relation: 'blocked' }, false);
+        });
+        if (failure !== null) {
+          setActionError(failure);
+        }
+      });
+    },
+    unblock: () => {
+      const target = controller.actionTarget();
+      if (target === null) {
+        return;
+      }
+      const active = target.profile;
+      runAction(async () => {
+        const failure = await performUnblock(api, active.userId, () => {
+          controller.setFound({ ...active, relation: 'none' }, false);
+        });
+        if (failure !== null) {
+          setActionError(failure);
+        }
+      });
+    },
     openMessage: () => {
       const target = controller.actionTarget();
       if (target === null) {
