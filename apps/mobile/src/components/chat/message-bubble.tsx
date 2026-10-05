@@ -273,6 +273,7 @@ export function MessageBubble({
   const showMarkdown = useChatStore((state) =>
     rendersMarkdown(state.chats, message, currentUserId),
   );
+  const meJid = useChatStore((state) => state.me?.jid ?? undefined);
   // Edit/Delete are user-side limits: my own text message under 48 h, or my
   // own message of any kind. Tombstones and live drafts offer neither. An
   // attachment message keeps delete (and copy of the caption); a long-press
@@ -548,7 +549,13 @@ export function MessageBubble({
                   ) : (
                     <>
                       <Text className="text-[15px] leading-5" color={textColor}>
-                        <LinkText text={text} color={textColor} />
+                        <LinkText
+                          text={text}
+                          color={textColor}
+                          mentions={message.mentions}
+                          meJid={meJid}
+                          outgoing={outgoing}
+                        />
                         {generating ? <DraftCaret reduceMotion={reduceMotion} /> : null}
                         <Text
                           className="font-mono text-[10px]"
