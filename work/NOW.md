@@ -25,7 +25,9 @@ Models (Julio, 2026-10-05): default `opencode/muse-spark-1.3-contributor-free`; 
 | T-0219 | Mobile: Run now, Revert, Delete in the tool detail sheet | pre-review (paid Muse by FALLBACK) | worker on paid Muse; state fixed with `lead switch-model --in-place` (T-0222) |
 | T-0223 | Docs: FEATURES, mobile parity roadmap, README M5 line catch up with T-0181..T-0222 | coding | free Muse (fallback on 429). Julio asked "do we need to update the readme or some of the docs?"; lead updated `CLAUDE.md` and `LEAD_HANDOFF.md` itself (d70f6d36) |
 
-T-0222 merged. Doctor stalled on a 429 (the fallback does not cover it); lead switched it by hand. Next small lead task: cover the doctor in the fallback.
+| T-0224 | The doctor also switches in place on a 429 | coding | free Muse (fallback on 429) |
+
+T-0222 merged. Doctor stalled on a 429 (the fallback does not cover it); lead switched it by hand; T-0224 covers it. T-0219 got lead round 1 (disable every action while one runs, mock delete drops versions/runs, revert the stray lockfile lines).
 
 First live `LEAD: FALLBACK`: T-0220's pre-review (free 429 → paid, same session) worked. T-0220 merged; autopilot restarted.
 
