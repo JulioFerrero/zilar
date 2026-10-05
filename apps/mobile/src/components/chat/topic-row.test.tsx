@@ -1,8 +1,13 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { ChatSummary } from '@zilar/chat-core';
+import type { ChatSummary, UiMessage } from '@zilar/chat-core';
 
 import { TopicRow } from './topic-row';
+
+const state = vi.hoisted(() => ({
+  messages: [] as UiMessage[],
+  blocked: new Set<string>(),
+}));
 
 vi.mock('react-native', () => ({
   Pressable: 'Pressable',
@@ -11,10 +16,6 @@ vi.mock('react-native', () => ({
 
 vi.mock('nativewind', () => ({
   useColorScheme: () => ({ colorScheme: 'dark' }),
-}));
-
-vi.mock('../ui/text', () => ({
-  Text: 'Text',
 }));
 
 vi.mock('./avatar', () => ({
@@ -41,10 +42,6 @@ vi.mock('@/components/chat/avatar', () => ({
   Avatar: 'Avatar',
 }));
 
-vi.mock('@/components/chat/markdown-decision', () => ({
-  plainPreviewBody: () => '',
-}));
-
 vi.mock('@/components/chat/ticks', () => ({
   Ticks: 'Ticks',
 }));
@@ -57,9 +54,12 @@ vi.mock('@/components/ui/text', () => ({
   Text: 'Text',
 }));
 
-vi.mock('@/lib/format', () => ({
-  previewParts: () => ({}),
-  typingLabel: () => undefined,
+vi.mock('@/components/contacts/use-contacts-api', () => ({
+  useContactsApi: () => ({ api: {}, scenario: null }),
+}));
+
+vi.mock('@/lib/blocked-users', () => ({
+  useBlockedJids: () => state.blocked,
 }));
 
 vi.mock('@/lib/topics', () => ({
@@ -88,7 +88,13 @@ vi.mock('@/lib/types', () => ({
 }));
 
 vi.mock('@/store/chat-store-provider', () => ({
-  useChatStore: () => undefined,
+  useChatStore: (selector: (state: unknown) => unknown) =>
+    selector({
+      typing: {},
+      drafts: {},
+      currentUserId: 'me',
+      messages: () => state.messages,
+    }),
 }));
 
 vi.mock('lucide-react-native', () => ({
@@ -146,6 +152,18 @@ function textOf(node: unknown): string {
   return '';
 }
 
+function message(id: string, senderId: string, text: string): UiMessage {
+  return {
+    id,
+    chatId: 't-devteam-bug',
+    senderId,
+    senderName: senderId,
+    text,
+    createdAt: new Date(2026, 8, 28, 10, 0),
+    status: 'read',
+  };
+}
+
 function topicChat(overrides: Partial<ChatSummary> = {}): ChatSummary {
   return {
     id: 't-devteam-bug',
@@ -186,6 +204,11 @@ const BASE = {
 };
 
 describe('TopicRow', () => {
+  beforeEach(() => {
+    state.messages = [];
+    state.blocked = new Set();
+  });
+
   it('renders the title with no pin or muted icon by default', () => {
     const elements = collect(TopicRow({ ...BASE, chat: topicChat() }));
     expect(textOf(elements)).toContain('Checkout bug');
@@ -204,5 +227,19 @@ describe('TopicRow', () => {
   it('renders the muted unread badge in the grey style', () => {
     const elements = collect(TopicRow({ ...BASE, chat: topicChat({ unread: 3, muted: true }) }));
     expect(textOf(elements)).toContain('3');
+  });
+
+  it('previews the newest visible message when the last is from a blocked sender', () => {
+    state.blocked = new Set(['bea']);
+    state.messages = [
+      message('m1', 'carlos@zilar.test', 'visible message'),
+      message('m2', 'bea@zilar.test', 'blocked message'),
+    ];
+    const elements = collect(
+      TopicRow({ ...BASE, chat: topicChat({ lastMessage: state.messages[1] }) }),
+    );
+    const text = textOf(elements);
+    expect(text).toContain('visible message');
+    expect(text).not.toContain('blocked message');
   });
 });

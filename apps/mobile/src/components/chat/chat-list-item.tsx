@@ -1,4 +1,4 @@
-import { formatListTime } from '@zilar/chat-core';
+import { formatListTime, previewMessage } from '@zilar/chat-core';
 import { Pin, VolumeX } from 'lucide-react-native';
 import { Pressable, View } from 'react-native';
 
@@ -8,9 +8,11 @@ import { plainPreviewBody } from '@/components/chat/markdown-decision';
 import { Ticks } from '@/components/chat/ticks';
 import { PulseDot } from '@/components/chat/typing-dots';
 import { Text } from '@/components/ui/text';
+import { useContactsApi } from '@/components/contacts/use-contacts-api';
 import { asColorScheme } from '@/lib/color-scheme';
 import { MUTED_FOREGROUND } from '@/lib/colors';
 import { primaryKey, raisedPill } from '@/lib/depth';
+import { useBlockedJids } from '@/lib/blocked-users';
 import { previewParts, typingLabel } from '@/lib/format';
 import { CURRENT_USER_ID, type ChatSummary, type MessageStatus } from '@/lib/types';
 import { cn } from '@/lib/utils';
@@ -50,16 +52,21 @@ export function ChatListItem({ chat, onPress, onLongPress }: ChatListItemProps) 
   const names = useChatStore((state) => state.typing[chat.id]?.names);
   const hasDraft = useChatStore((state) => state.drafts[chat.id] !== undefined);
   const last = chat.lastMessage;
+  const messages = useChatStore((state) => state.messages(chat.id));
+  const currentUserId = useChatStore((state) => state.currentUserId);
+  const { api: contactsApi } = useContactsApi();
+  const blockedJids = useBlockedJids(contactsApi);
+  const previewed = previewMessage(chat, messages, blockedJids, currentUserId);
   const typing = typingLabel(chat, names ?? []);
   const label = chat.isAI && (typing !== undefined || hasDraft) ? 'writing…' : typing;
-  const preview = previewParts(last?.deleted === true ? undefined : last, {
+  const preview = previewParts(previewed?.deleted === true ? undefined : previewed, {
     isGroup: chat.kind === 'group',
-    currentUserId: CURRENT_USER_ID,
+    currentUserId,
   });
-  const deletedPreview = last?.deleted === true ? 'Message deleted' : undefined;
+  const deletedPreview = previewed?.deleted === true ? 'Message deleted' : undefined;
   // An incoming AI reply (a DM AI or a group AI reply) previews as plain text; a
   // human message or your own stays literal.
-  const body = plainPreviewBody(chat, last, preview.body, CURRENT_USER_ID);
+  const body = plainPreviewBody(chat, previewed, preview.body, currentUserId);
   const showTicks = chat.unread === 0 && last?.senderId === CURRENT_USER_ID;
   return (
     <Pressable

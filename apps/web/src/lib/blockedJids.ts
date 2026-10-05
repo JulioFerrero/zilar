@@ -1,5 +1,8 @@
 import { useEffect, useSyncExternalStore } from 'react';
+import { isBlockedSender, localpartOf } from '@zilar/chat-core';
 import { listBlockedUsers } from './api';
+
+export { isBlockedSender };
 
 // The lowercased localparts I blocked, kept outside React so every
 // MessageList reads the same set without a prop chain. Loads lazily on
@@ -9,17 +12,6 @@ let blocked: ReadonlySet<string> = new Set();
 let loading: Promise<void> | undefined;
 let focusListening = false;
 const listeners = new Set<() => void>();
-
-/** The localpart of a JID, lowercased (`Bob@zilar.test` becomes `bob`). */
-function localpartOf(value: string): string {
-  const at = value.indexOf('@');
-  return (at === -1 ? value : value.slice(0, at)).toLowerCase();
-}
-
-/** Whether `senderId` belongs to a blocked person, ignoring case and domain. */
-export function isBlockedSender(senderId: string, blocked: ReadonlySet<string>): boolean {
-  return blocked.has(localpartOf(senderId));
-}
 
 function emit(): void {
   for (const listener of listeners) {

@@ -15,7 +15,9 @@ import { MessageBubble } from '@/components/chat/message-bubble';
 import { MessageListSkeleton } from '@/components/chat/skeleton';
 import type { VoicePlayerHost } from '@/components/chat/voice-player';
 import { UnreadDivider } from '@/components/chat/unread-divider';
+import { useContactsApi } from '@/components/contacts/use-contacts-api';
 import { Text } from '@/components/ui/text';
+import { useBlockedJids, filterBlockedMessages } from '@/lib/blocked-users';
 import { useChatStore } from '@/store/chat-store-provider';
 import { draftEntryKey, messagesListView } from '@/store/types';
 
@@ -87,6 +89,16 @@ export function MessageList({
 }: MessageListProps) {
   const currentUserId = useChatStore((state) => state.currentUserId);
   const messages = useChatStore((state) => state.messages(chat.id));
+  const { api: contactsApi } = useContactsApi();
+  const blockedJids = useBlockedJids(contactsApi);
+  // A blocked person's group or channel messages are dropped before grouping,
+  // exactly as web does; my own messages always stay. DMs and AI chats are
+  // never filtered. The filter is memoised so a store update that leaves the
+  // inputs unchanged does not hand a new array to `groupMessages` and the list.
+  const visibleMessages = useMemo(
+    () => filterBlockedMessages(chat, messages, blockedJids, currentUserId),
+    [chat, messages, blockedJids, currentUserId],
+  );
   const jumpTarget = useChatStore((state) =>
     state.jumpTarget?.chatId === chat.id ? state.jumpTarget : undefined,
   );
@@ -120,8 +132,11 @@ export function MessageList({
     };
   }, [draft, draftText, chat.id, chat.title, messages]);
   const items = useMemo(
-    () => groupMessages(draftMessage === undefined ? messages : [...messages, draftMessage]),
-    [messages, draftMessage],
+    () =>
+      groupMessages(
+        draftMessage === undefined ? visibleMessages : [...visibleMessages, draftMessage],
+      ),
+    [visibleMessages, draftMessage],
   );
   // The divider position is fixed when the chat opens, before `openChat` clears
   // the unread count, so it does not move as new messages arrive.
@@ -153,7 +168,7 @@ export function MessageList({
   }, [items, dividerIndex, draftMessage, draft, finishedDraftMessages]);
 
   const listRef = useRef<FlatList<ListEntry>>(null);
-  const previousCount = useRef(messages.length);
+  const previousCount = useRef(visibleMessages.length);
   // True while the user is at (or near) the bottom, so a growing draft or a new
   // message keeps the view pinned; someone reading older messages is not moved.
   const atBottomRef = useRef(true);
@@ -180,11 +195,11 @@ export function MessageList({
   useEffect(() => {
     // A search jump owns the scroll while its target is set; a live message
     // arriving in that window must not yank the view to the bottom.
-    if (jumpTarget === undefined && messages.length > previousCount.current) {
+    if (jumpTarget === undefined && visibleMessages.length > previousCount.current) {
       listRef.current?.scrollToEnd({ animated: true });
     }
-    previousCount.current = messages.length;
-  }, [messages.length, jumpTarget]);
+    previousCount.current = visibleMessages.length;
+  }, [visibleMessages.length, jumpTarget]);
 
   // A search hit lands here: once the jump target's message is loaded, scroll
   // to it (centered) and confirm the target on the LAST retry so a later
