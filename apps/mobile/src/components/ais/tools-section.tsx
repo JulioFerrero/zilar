@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { hostsLine, toolLastRunText } from '@/lib/routines-format';
-import { ToolsApiError, type ToolListItem, type ToolsApi } from '@/lib/tools-api';
+import { ToolsApiError, type AiToolsApi, type ToolListItem, type ToolsApi } from '@/lib/tools-api';
+
+import { ToolDetailSheet } from './tool-detail-sheet';
 
 /** Fixed user-facing line when the tools list fails to load. */
 export const TOOLS_LOAD_FAILED_MESSAGE = 'Could not load the tools. Try again.';
@@ -36,9 +38,14 @@ export async function loadAiTools(api: ToolsApi, aiId: string): Promise<ToolList
   }
 }
 
-function ToolRow({ tool }: { tool: ToolListItem }) {
+function ToolRow({ tool, onOpen }: { tool: ToolListItem; onOpen: () => void }) {
   return (
-    <View className="px-2 py-1.5">
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Open ${tool.name}`}
+      onPress={onOpen}
+      className="px-2 py-1.5 active:bg-list-hover"
+    >
       <View className="flex-row items-center gap-1.5">
         <Text className="min-w-0 flex-1 truncate text-[14px] font-medium">{tool.name}</Text>
         <Text className="shrink-0 font-mono text-[12px] text-muted-foreground">
@@ -53,7 +60,7 @@ function ToolRow({ tool }: { tool: ToolListItem }) {
           : ''}{' '}
         · {toolLastRunText(tool)}
       </Text>
-    </View>
+    </Pressable>
   );
 }
 
@@ -64,9 +71,11 @@ function ToolRow({ tool }: { tool: ToolListItem }) {
 export function ToolsSectionContent({
   state,
   onRetry,
+  onOpenTool,
 }: {
   state: ToolsSectionState;
   onRetry: () => void;
+  onOpenTool?: (toolId: string) => void;
 }) {
   if (state.status === 'loading') {
     return <Text className="px-2 text-[13px] text-muted-foreground">Loading…</Text>;
@@ -89,7 +98,7 @@ export function ToolsSectionContent({
   return (
     <>
       {state.tools.map((tool) => (
-        <ToolRow key={tool.id} tool={tool} />
+        <ToolRow key={tool.id} tool={tool} onOpen={() => onOpenTool?.(tool.id)} />
       ))}
     </>
   );
@@ -98,15 +107,17 @@ export function ToolsSectionContent({
 /**
  * The Tools section of the AI edit screen (T-0189, read only): every tool
  * with name, version, description, hosts (declared, and approved when the
- * API gives them), and last run. Rows are not tappable yet.
+ * API gives them), and last run. Tapping a row opens the read-only detail
+ * sheet (T-0218).
  */
-export function ToolsSection({ api, aiId }: { api: ToolsApi; aiId: string }) {
+export function ToolsSection({ api, aiId }: { api: AiToolsApi; aiId: string }) {
   const [state, setState] = useState<ToolsSectionState>({
     status: 'loading',
     tools: [],
     message: '',
   });
   const [reloadTick, setReloadTick] = useState(0);
+  const [openId, setOpenId] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -128,7 +139,12 @@ export function ToolsSection({ api, aiId }: { api: ToolsApi; aiId: string }) {
   return (
     <View accessibilityLabel="Tools" className="gap-1">
       <Text className="px-2 text-[13px] font-semibold text-muted-foreground">Tools</Text>
-      <ToolsSectionContent state={state} onRetry={() => setReloadTick((tick) => tick + 1)} />
+      <ToolsSectionContent
+        state={state}
+        onRetry={() => setReloadTick((tick) => tick + 1)}
+        onOpenTool={setOpenId}
+      />
+      <ToolDetailSheet api={api} toolId={openId} onClose={() => setOpenId(null)} />
     </View>
   );
 }
