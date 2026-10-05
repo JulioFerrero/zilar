@@ -2,7 +2,7 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
-Last updated: 2026-10-05 ~13:10 local, after merging T-0217 (T-0216 unblocked: stubs in `launch.test.ts` and `watch.test.ts` allowed).
+Last updated: 2026-10-05 ~13:25 local, after launching T-0218; earlier merged T-0217 (T-0216 unblocked: stubs in `launch.test.ts` and `watch.test.ts` allowed).
 
 Autopilot restarted with `ZILAR_REVIEW_MODEL=meta/muse-spark-1.3-contributor` (free Muse still 429 at ~12:05). When the free listing answers again (`opencode2 run -m "opencode/muse-spark-1.3-contributor-free#low" "Reply OK."`), restart it without the variable.
 
@@ -24,11 +24,13 @@ Models (Julio, 2026-10-05): default `opencode/muse-spark-1.3-contributor-free`; 
 | --- | --- | --- | --- |
 | T-0211 | `lead watch` Ink redesign | lead round 2 (alternate screen + full clear on resize: Julio saw ghost lines when enlarging the old watcher; no crash without a TTY stdin) | billed Muse now. Look round done (icons, 10 changes). Branch rebased on main. Before merging: run it in Julio's Ghostty watch window and let him try a resize |
 | T-0216 | Autopilot switches a rate-limited free-Muse session to paid Muse in place | coding | paid Muse; restart the autopilot after merge |
+| T-0218 | Mobile: tool detail sheet (read only: source, versions, runs) | coding | paid Muse (free still 429) |
 | T-0214 | Mobile: New group sheet (private groups) | was BLOCKED (its store change broke `real-store.channels.test.ts`'s fake); lead allowed the one stub and added the file to Allowed | billed Muse; emulator check without creating a group on the live server |
 
 ## Next, in order
 
-1. From from the audit: tool writes and detail sheet (7.1b, T-0212 now merged), @mention picker (7.2a), New channel parity (7.2c). Re-check every fact in the code.
+1. Tool writes (Run now with JSON input max 4 KB, Revert confirm, Delete confirm; fixed sentences incl. 429 rate limit and 501 no runner) after T-0218 merges: web reference `ToolDetailPanel.tsx` lines 132-185, 304-335, 377-481.
+2. From the audit: @mention picker (7.2a), New channel parity (7.2c). Re-check every fact in the code.
 
 Waiting for Julio: the AI screen's Tools/Routines/Activity sections could not be seen on the emulator (the test account has no AI; creating one needs a provider key). Look at an AI on the phone after the next release.
 
