@@ -27,7 +27,9 @@ vi.mock('nativewind', () => ({
 vi.mock('react-native', () => ({
   ActivityIndicator: 'ActivityIndicator',
   Image: 'Image',
+  KeyboardAvoidingView: 'KeyboardAvoidingView',
   Modal: 'Modal',
+  Platform: { OS: 'ios' },
   Pressable: 'Pressable',
   TextInput: 'TextInput',
   View: 'View',
@@ -37,12 +39,16 @@ vi.mock('react-native', () => ({
 vi.mock('lucide-react-native', () => ({
   ChevronDown: 'ChevronDown',
   ChevronUp: 'ChevronUp',
+  Clock: 'Clock',
+  Download: 'Download',
+  Info: 'Info',
   Pencil: 'Pencil',
   Plus: 'Plus',
   RefreshCw: 'RefreshCw',
   Search: 'Search',
   Star: 'Star',
   Sticker: 'Sticker',
+  X: 'X',
 }));
 
 vi.mock('@/auth/RequireAuth', () => ({
@@ -268,6 +274,22 @@ describe('StickersScreen', () => {
     const html = await renderScreen({ packs: [], status: 'ready' });
     expect(html).toContain('No packs on your panel yet.');
     expect(html).toContain('Open Discover');
+  });
+
+  it('shows the Import from Telegram entry above the pack list', async () => {
+    const html = await renderScreen({ packs: [CATS, MOODS], status: 'ready' });
+    expect(html).toContain('Import from Telegram');
+    const entry = html.indexOf('Import from Telegram');
+    expect(entry).toBeGreaterThan(-1);
+    expect(entry).toBeLessThan(html.indexOf('Cats'));
+  });
+
+  it('shows the Import from Telegram entry above the empty block', async () => {
+    const html = await renderScreen({ packs: [], status: 'ready' });
+    expect(html).toContain('Import from Telegram');
+    const entry = html.indexOf('Import from Telegram');
+    expect(entry).toBeGreaterThan(-1);
+    expect(entry).toBeLessThan(html.indexOf('No packs on your panel yet.'));
   });
 
   it('shows the action error above the list', async () => {

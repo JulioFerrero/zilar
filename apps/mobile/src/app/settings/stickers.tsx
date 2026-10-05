@@ -2,6 +2,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import {
   ChevronDown,
   ChevronUp,
+  Download,
   Pencil,
   Plus,
   RefreshCw,
@@ -38,6 +39,7 @@ import {
 } from '@/lib/stickers';
 import { cn } from '@/lib/utils';
 import { useStickersApi } from '@/components/stickers/use-stickers-api';
+import { TelegramImportSheet } from '@/components/stickers/telegram-import-sheet';
 import { movedOrder, panelIdSet } from '@/components/stickers/order';
 import { SettingsScreenShell } from '@/components/settings/screen-shell';
 
@@ -62,7 +64,8 @@ const FAVORITE_ERROR = 'Could not remove the favorite. Try again.';
  * Settings → Stickers (T-0187, the mobile twin of web's `StickersPage`):
  * the panel packs in order with Remove and move up/down, the shared
  * Discover packs with search and Add, and the starred Favorites grid.
- * No pack editor and no Telegram import (T-0191).
+ * The pack editor lives at `/settings/sticker-pack` (T-0191) and the
+ * Telegram importer in `TelegramImportSheet` (T-0207).
  */
 export default function StickersScreen() {
   return (
@@ -102,6 +105,10 @@ function StickersBody() {
   const busyRef = useRef(false);
   const [confirming, setConfirming] = useState<StickerPack | null>(null);
   const [confirmError, setConfirmError] = useState('');
+  const [importOpen, setImportOpen] = useState(false);
+  // Remounts the import sheet on every open so earlier input, result and
+  // error clear (brief §1).
+  const [importNonce, setImportNonce] = useState(0);
   const [token, setToken] = useState<string | undefined>(undefined);
   const me = useAuthStore((state) => state.me);
   const discoverLoaded = useRef(false);
@@ -344,6 +351,19 @@ function StickersBody() {
                 <Text className="text-[14px] font-medium text-accent-foreground">New pack</Text>
               </Pressable>
             </View>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Import from Telegram"
+              disabled={busy}
+              onPress={() => {
+                setImportNonce((nonce) => nonce + 1);
+                setImportOpen(true);
+              }}
+              className="h-11 flex-row items-center justify-center gap-2 rounded-xl border border-border-strong active:bg-surface-raised disabled:opacity-60"
+            >
+              <Download size={16} color={ICON[scheme]} />
+              <Text className="text-[15px] text-foreground">Import from Telegram</Text>
+            </Pressable>
             {actionError !== '' ? (
               <Text accessibilityRole="alert" className="text-[14px] text-danger">
                 {actionError}
@@ -621,6 +641,17 @@ function StickersBody() {
           </View>
         </View>
       </Modal>
+
+      <TelegramImportSheet
+        key={`telegram-import-${importNonce}`}
+        visible={importOpen}
+        onClose={() => setImportOpen(false)}
+        onDone={reload}
+        onOpenPack={(packId) =>
+          router.push({ pathname: '/settings/sticker-pack', params: { id: packId } })
+        }
+        api={api}
+      />
     </SettingsScreenShell>
   );
 }

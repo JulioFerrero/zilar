@@ -107,6 +107,48 @@ export function parseStickerPack(value: unknown): StickerPack | null {
   };
 }
 
+/** The Telegram import outcome (web `TelegramImportResult`): `partial`
+ * is false when the server omits it. */
+export interface TelegramImportResult {
+  pack: StickerPack;
+  imported: number;
+  skippedAnimated: number;
+  skippedInvalid: number;
+  partial: boolean;
+}
+
+/** Parses the import result; malformed bodies return null. */
+export function parseTelegramImportResult(value: unknown): TelegramImportResult | null {
+  if (!isRecord(value)) return null;
+  const pack = parseStickerPack(value['pack']);
+  const imported = value['imported'];
+  const skippedAnimated = value['skippedAnimated'];
+  const skippedInvalid = value['skippedInvalid'];
+  const partial = value['partial'];
+  if (
+    pack === null ||
+    typeof imported !== 'number' ||
+    !Number.isInteger(imported) ||
+    imported < 0 ||
+    typeof skippedAnimated !== 'number' ||
+    !Number.isInteger(skippedAnimated) ||
+    skippedAnimated < 0 ||
+    typeof skippedInvalid !== 'number' ||
+    !Number.isInteger(skippedInvalid) ||
+    skippedInvalid < 0 ||
+    (partial !== undefined && typeof partial !== 'boolean')
+  ) {
+    return null;
+  }
+  return {
+    pack,
+    imported,
+    skippedAnimated,
+    skippedInvalid,
+    partial: partial === true,
+  };
+}
+
 /** Reads the bearer session token from secure storage. */
 export type TokenProvider = () => Promise<string | undefined>;
 
@@ -152,6 +194,8 @@ export interface StickersApi {
   reorderStickerPanelPacks(order: string[]): Promise<void>;
   listStickerFavorites(): Promise<StickerItem[]>;
   removeStickerFavorite(stickerId: string): Promise<void>;
+  /** Imports a Telegram pack as a new private pack (web `importTelegramStickers`). */
+  importTelegramStickers(input: string): Promise<TelegramImportResult>;
   /** Mints an empty pack (web `createStickerPack`). */
   createStickerPack(input: {
     title: string;
@@ -296,6 +340,22 @@ export function createStickersApi(
     async removeStickerFavorite(stickerId: string) {
       const params = new URLSearchParams({ sticker_id: stickerId });
       await withToken(`/api/sticker-favorites?${params.toString()}`, { method: 'DELETE' });
+    },
+    async importTelegramStickers(input: string) {
+      const body = await withToken('/api/sticker-packs/import/telegram', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ input }),
+      });
+      const result = parseTelegramImportResult(body);
+      if (result === null) {
+        throw new StickersApiError(
+          200,
+          'invalid_response',
+          'The server sent an unexpected response',
+        );
+      }
+      return result;
     },
     async createStickerPack(input) {
       const body = await withToken('/api/sticker-packs', {
