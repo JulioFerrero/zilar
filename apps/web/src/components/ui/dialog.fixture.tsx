@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { Button } from './button';
 import { Dialog } from './dialog';
 
@@ -42,6 +42,36 @@ function OpenDialog({
   );
 }
 
+function ConfirmLikeDialog() {
+  const [open, setOpen] = useState(false);
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  return (
+    <div>
+      <Button variant="outline" onClick={() => setOpen(true)}>
+        Open confirm dialog
+      </Button>
+      <Dialog
+        open={open}
+        onClose={() => setOpen(false)}
+        title="Delete message?"
+        description="This deletes it for everyone in the chat."
+        size="sm"
+        initialFocusRef={cancelRef}
+        actions={
+          <>
+            <Button ref={cancelRef} variant="ghost" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={() => setOpen(false)}>
+              Delete
+            </Button>
+          </>
+        }
+      />
+    </div>
+  );
+}
+
 export default {
   Default: (
     <OpenDialog title="Edit group" description="Change how this group looks to its members.">
@@ -58,4 +88,5 @@ export default {
       <p className="mt-3 text-[14px] text-muted-foreground">Pick who receives this contact.</p>
     </OpenDialog>
   ),
+  InitialFocus: <ConfirmLikeDialog />,
 };

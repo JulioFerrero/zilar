@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import { ApiError, lookupByHandle, type HandleProfile } from '@/lib/api';
 import { ContactProfileRow } from './ContactProfileRow';
+import { Dialog } from './ui/dialog';
 
 /** "Add contact" dialog: type a `@username`, see the card, send a request. */
 export function AddContactDialog({
@@ -70,93 +71,74 @@ export function AddContactDialog({
     };
   }, [trimmed]);
 
-  // Esc closes the dialog from any focus position, same as Close.
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') {
-        onClose();
-      }
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, [onClose]);
-
   const refreshRelation = (profile: HandleProfile): void => {
     setLookup({ state: 'found', profile });
   };
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Add contact"
-      onClick={onClose}
-      className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4"
+    <Dialog
+      open
+      onClose={onClose}
+      title="Add contact"
+      description="Type their @username to find them."
+      size="sm"
+      actions={
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-full bg-accent px-4 py-1.5 text-[15px] font-medium text-accent-foreground hover:bg-accent/90"
+        >
+          Close
+        </button>
+      }
     >
-      <div
-        onClick={(event) => event.stopPropagation()}
-        className="w-full max-w-sm rounded-2xl bg-background p-5 shadow-xl"
-      >
-        <h2 className="text-[18px] font-semibold">Add contact</h2>
-        <p className="mt-1 text-[14px] text-muted-foreground">Type their @username to find them.</p>
-        <label className="mt-4 block text-[14px] font-medium" htmlFor="add-contact-handle">
-          Username
-        </label>
-        <input
-          id="add-contact-handle"
-          value={query}
-          autoFocus
-          autoCapitalize="none"
-          autoCorrect="off"
-          spellCheck={false}
-          maxLength={33}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="@ada"
-          className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-[15px] outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40"
-        />
+      <label className="mt-4 block text-[14px] font-medium" htmlFor="add-contact-handle">
+        Username
+      </label>
+      <input
+        id="add-contact-handle"
+        value={query}
+        autoFocus
+        autoCapitalize="none"
+        autoCorrect="off"
+        spellCheck={false}
+        maxLength={33}
+        onChange={(event) => setQuery(event.target.value)}
+        placeholder="@ada"
+        className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-[15px] outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40"
+      />
 
-        <div aria-live="polite" className="mt-4">
-          {lookup.state === 'missing' && trimmed !== '' && (
-            <p className="text-[14px] text-muted-foreground">
-              No one with that username. Check the spelling.
-            </p>
-          )}
-          {lookup.state === 'error' && (
-            <p role="alert" className="text-[14px] text-danger">
-              {lookup.message}
-            </p>
-          )}
-          {lookup.state === 'found' && (
-            <>
-              <ContactProfileRow
-                key={lookup.profile.userId}
-                profile={lookup.profile}
-                onRelationChange={refreshRelation}
-              />
-              {lookup.profile.relation === 'request_received' && (
-                <div className="mt-2">
-                  <Link
-                    to="/settings/requests"
-                    className="inline-block rounded-full border border-border px-4 py-1.5 text-[14px] text-muted-foreground hover:bg-surface-raised"
-                  >
-                    Go to Requests
-                  </Link>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-
-        <div className="mt-5 flex justify-end">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-full bg-accent px-4 py-1.5 text-[15px] font-medium text-accent-foreground hover:bg-accent/90"
-          >
-            Close
-          </button>
-        </div>
+      <div aria-live="polite" className="mt-4">
+        {lookup.state === 'missing' && trimmed !== '' && (
+          <p className="text-[14px] text-muted-foreground">
+            No one with that username. Check the spelling.
+          </p>
+        )}
+        {lookup.state === 'error' && (
+          <p role="alert" className="text-[14px] text-danger">
+            {lookup.message}
+          </p>
+        )}
+        {lookup.state === 'found' && (
+          <>
+            <ContactProfileRow
+              key={lookup.profile.userId}
+              profile={lookup.profile}
+              onRelationChange={refreshRelation}
+            />
+            {lookup.profile.relation === 'request_received' && (
+              <div className="mt-2">
+                <Link
+                  to="/settings/requests"
+                  className="inline-block rounded-full border border-border px-4 py-1.5 text-[14px] text-muted-foreground hover:bg-surface-raised"
+                >
+                  Go to Requests
+                </Link>
+              </div>
+            )}
+          </>
+        )}
       </div>
-    </div>
+    </Dialog>
   );
 }

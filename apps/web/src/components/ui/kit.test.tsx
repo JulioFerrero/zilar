@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { Shield } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { MemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 import { Badge } from './badge';
@@ -134,6 +134,20 @@ describe('Dialog', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it('closes only the topmost dialog on Escape when two are open', () => {
+    const backgroundClose = vi.fn();
+    const topClose = vi.fn();
+    render(
+      <>
+        <Dialog open onClose={backgroundClose} title="Background dialog" />
+        <Dialog open onClose={topClose} title="Top dialog" />
+      </>,
+    );
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(topClose).toHaveBeenCalledTimes(1);
+    expect(backgroundClose).not.toHaveBeenCalled();
+  });
+
   it('renders nothing when closed', () => {
     const { container } = render(<Dialog open={false} onClose={() => {}} title="Hidden" />);
     expect(container.innerHTML).toBe('');
@@ -164,6 +178,31 @@ describe('Dialog', () => {
     expect(document.activeElement).toBe(first);
     fireEvent.keyDown(dialog, { key: 'Tab', shiftKey: true });
     expect(document.activeElement).toBe(last);
+  });
+
+  it('focuses initialFocusRef instead of the first focusable child', () => {
+    function Harness() {
+      const cancelRef = useRef<HTMLButtonElement>(null);
+      return (
+        <Dialog
+          open
+          onClose={() => {}}
+          title="Delete message?"
+          size="sm"
+          initialFocusRef={cancelRef}
+          actions={
+            <>
+              <button type="button" ref={cancelRef}>
+                Cancel
+              </button>
+              <button type="button">Delete</button>
+            </>
+          }
+        />
+      );
+    }
+    render(<Harness />);
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Cancel' }));
   });
 
   it('returns focus to the opener on close', () => {

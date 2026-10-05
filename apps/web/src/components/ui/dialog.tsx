@@ -1,4 +1,11 @@
-import { useEffect, useId, useRef, type KeyboardEvent, type ReactNode } from 'react';
+import {
+  useEffect,
+  useId,
+  useRef,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
+  type RefObject,
+} from 'react';
 import { cn } from '@/lib/utils';
 
 export interface DialogProps {
@@ -9,6 +16,8 @@ export interface DialogProps {
   children?: ReactNode;
   actions?: ReactNode;
   size?: 'sm' | 'md';
+  /** Element to focus on open instead of the first focusable child. */
+  initialFocusRef?: RefObject<HTMLElement | null>;
 }
 
 const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
@@ -27,6 +36,7 @@ export function Dialog({
   children,
   actions,
   size = 'md',
+  initialFocusRef,
 }: DialogProps) {
   const titleId = useId();
   const descriptionId = useId();
@@ -39,27 +49,37 @@ export function Dialog({
     }
     const active = document.activeElement;
     returnFocusRef.current = active instanceof HTMLElement ? active : null;
-    const focusable = panelRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE);
-    if (focusable !== undefined && focusable.length > 0) {
-      focusable[0]?.focus();
-    } else {
-      panelRef.current?.focus();
-    }
+    const firstFocusable = panelRef.current?.querySelector<HTMLElement>(FOCUSABLE);
+    const target = initialFocusRef?.current ?? firstFocusable ?? panelRef.current;
+    target?.focus();
     return () => {
       returnFocusRef.current?.focus();
     };
-  }, [open]);
+  }, [open, initialFocusRef]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') {
+        return;
+      }
+      const dialogs = document.querySelectorAll('[role="dialog"]');
+      if (dialogs[dialogs.length - 1] !== panelRef.current) {
+        return;
+      }
+      onClose();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [open, onClose]);
 
   if (!open) {
     return null;
   }
 
-  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
-    if (event.key === 'Escape') {
-      event.stopPropagation();
-      onClose();
-      return;
-    }
+  const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
     if (event.key !== 'Tab') {
       return;
     }
