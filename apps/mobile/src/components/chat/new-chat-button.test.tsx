@@ -2,7 +2,11 @@ import { createElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 
-import { NewChatButton, CREATE_SHEETS_SCROLL_TAPS_PERSIST } from './new-chat-button';
+import {
+  NewChatButton,
+  CREATE_SHEETS_SCROLL_TAPS_PERSIST,
+  createSheetBottomPadding,
+} from './new-chat-button';
 
 // The mobile app has no React Native testing library, so the button is
 // rendered to static markup with its seams stubbed (the `AuthFlow.test.tsx`
@@ -62,6 +66,10 @@ vi.mock('@/lib/depth', () => ({
   primaryKey: {},
 }));
 
+vi.mock('@/lib/use-keyboard-height', () => ({
+  useKeyboardHeight: () => 0,
+}));
+
 describe('NewChatButton', () => {
   it('renders the New chat entry', () => {
     const html = renderToStaticMarkup(createElement(NewChatButton));
@@ -82,5 +90,16 @@ describe('NewChatButton', () => {
     expect(CREATE_SHEETS_SCROLL_TAPS_PERSIST).toBe('handled');
     const html = renderToStaticMarkup(createElement(NewChatButton));
     expect(html).toContain('keyboardShouldPersistTaps="handled"');
+  });
+});
+
+describe('createSheetBottomPadding', () => {
+  it('pads the sheet by the keyboard height on Android', () => {
+    expect(createSheetBottomPadding('android', 0)).toBe(16);
+    expect(createSheetBottomPadding('android', 320)).toBe(336);
+  });
+
+  it('leaves the iOS padding to KeyboardAvoidingView', () => {
+    expect(createSheetBottomPadding('ios', 320)).toBeUndefined();
   });
 });
