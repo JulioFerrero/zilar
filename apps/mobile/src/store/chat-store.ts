@@ -107,6 +107,7 @@ type ChatStoreData = Omit<
   | 'createInviteLink'
   | 'revokeInviteLink'
   | 'createChannel'
+  | 'createGroup'
   | 'leaveChannel'
   | 'listChannelMembers'
   | 'changeChannelRole'
@@ -684,6 +685,9 @@ export function createChatStore(
       },
       createChannel: async () => {
         throw new Error('createChannel is not available in the mock store');
+      },
+      createGroup: async () => {
+        throw new Error('createGroup is not available in the mock store');
       },
       leaveChannel: async (chatId) => {
         // T-0144: mock channels are topic groups (see `mock/channel.ts`);

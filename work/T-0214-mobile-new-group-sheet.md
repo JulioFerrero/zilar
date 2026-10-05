@@ -1,7 +1,7 @@
 ---
 id: T-0214
 title: Mobile: New group sheet (pick contacts, name the group) replaces "Coming soon"
-status: planned
+status: merged
 milestone: M5
 branch: task/T-0214-mobile-new-group-sheet
 model: opencode/muse-spark-1.3-contributor-free
@@ -44,7 +44,7 @@ Julio, 2026-10-03: "implement all the features we have in web into the mobile ap
 `AGENTS.md`, `apps/web/src/components/NewGroupDialog.tsx` (lines 1-135 and 150-215), `apps/mobile/src/components/chat/new-chat-button.tsx`, `apps/mobile/src/components/chat/new-message-sheet.tsx`, `apps/mobile/src/lib/groups-api.ts`, `apps/mobile/src/store/real-store.ts` (lines 3785-3810), `apps/mobile/src/store/real-store.channels.test.ts` (lines 90-160).
 
 ### Allowed files
-`apps/mobile/src/lib/groups-api.ts`, `apps/mobile/src/lib/groups-api.test.ts`, `apps/mobile/src/store/types.ts`, `apps/mobile/src/store/real-store.ts`, `apps/mobile/src/store/chat-store.ts`, `apps/mobile/src/store/real-store.groups-create.test.ts` (new), `apps/mobile/src/components/chat/new-group-sheet.tsx` (new), `apps/mobile/src/components/chat/new-group-sheet.test.tsx` (new), `apps/mobile/src/components/chat/new-chat-button.tsx`, `work/T-0214-mobile-new-group-sheet.md`.
+`apps/mobile/src/lib/groups-api.ts`, `apps/mobile/src/lib/groups-api.test.ts`, `apps/mobile/src/store/types.ts`, `apps/mobile/src/store/real-store.ts`, `apps/mobile/src/store/chat-store.ts`, `apps/mobile/src/store/real-store.groups-create.test.ts` (new), `apps/mobile/src/components/chat/new-group-sheet.tsx` (new), `apps/mobile/src/components/chat/new-group-sheet.test.tsx` (new), `apps/mobile/src/components/chat/new-chat-button.tsx`, `apps/mobile/src/store/real-store.channels.test.ts` (lead, 2026-10-05: only the `createGroup` stub in `fakeGroups()`), `work/T-0214-mobile-new-group-sheet.md`.
 
 ### Checks
 ```bash
@@ -64,4 +64,83 @@ Public groups and handles, a description, adding AIs, the New channel sheet.
 
 ## Report (written by the worker when done)
 
+Implemented. The New group flow works end to end on the phone: pick contacts,
+name the group, create it, then the app opens `/group/<id>`.
+
+What I did (prior session: API `createGroup`, store `createGroup` in
+`types.ts` / `real-store.ts` / `chat-store.ts`, `NewGroupSheet`, and the
+`new-chat-button.tsx` wiring with the `Coming soon` placeholder removed; this
+session: verified that work and wrote the three test files):
+- `apps/mobile/src/lib/groups-api.ts`: `GroupsApi.createGroup` POSTs
+  `/api/groups` with `{ title, memberIds }` (no `kind`), parses `{ id }`.
+- `apps/mobile/src/store/types.ts` + `real-store.ts`: `createGroup` trims the
+  title, rejects with `Enter a group name.` when empty, calls the API,
+  `refreshChats()`, returns the id. `chat-store.ts` mock throws like
+  `createChannel` does.
+- `apps/mobile/src/components/chat/new-group-sheet.tsx`: two-step sheet with
+  the same container classes as the New message box; members step
+  (`Add members`, `Avatar` size 28, `accessibilityRole="checkbox"`, `Cancel` /
+  `Next` disabled until a selection, `Invite a friend first to start a
+  group.` when empty) and name step (`Group name` field, max 100, autofocus,
+  `Back` keeps selection, `Create` → `Creating…` while busy, box not
+  closable). Pure `toggleSelected` / `canGoNext` / `validateGroupName`
+  exported; hook-free `NewGroupSheetBody` for tests. Error sentences match
+  web (`Enter a group name`, `Could not create the group. Try again.` in the
+  button), never server text. `Check` from `lucide-react-native`, no emoji.
+- `apps/mobile/src/components/chat/new-chat-button.tsx`: `group` renders
+  `NewGroupSheet` with the store contacts and navigates to `/group/[id]` on
+  success, like the channel flow.
+- Tests: `groups-api.test.ts` (+2: body has no `kind`, malformed answer
+  rejects), `real-store.groups-create.test.ts` (new, 3: trims + passes member
+  ids + refreshes + returns id; blank name rejects without network; refresh
+  failure still resolves), `new-group-sheet.test.tsx` (new, 15: step logic +
+  body rendering, wiring, disabled states, busy).
+
+Commands (all from the repo root, real results):
+- `pnpm install`: ok (one pre-existing unmet-peer warning for
+  `@types/react-dom`).
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot
+  groups-api real-store.groups-create new-group-sheet`: 3 files, 26 tests,
+  all pass.
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot
+  real-store.channels new-chat-button`: 2 files, 10 tests, all pass
+  (regression check on the touched neighbours).
+- `pnpm gate`: install PASS, format PASS, lint PASS, typecheck FAIL —
+  `real-store.channels.test.ts(99,3): error TS2322: Property 'createGroup' is
+  missing` in its `fakeGroups()` (that file is outside my Allowed files, so
+  I did not touch it). scope check: every changed file is inside the Allowed
+  files. Overall: GATE FAIL on typecheck only.
+
+Blocked / needs a decision: none — the lead approved the one-stub fix in
+`real-store.channels.test.ts` and the gate now passes (GATE PASS).
+
+Security checklist: no secrets/tokens in logs or UI (fixed error sentences
+only, verified `new-chat-button.test.tsx` asserts no Bearer); `POST
+/api/groups` is the existing route with server-side validation; no deletes;
+no new route; group creation is authenticated like channel creation.
+
+## Round (fix round, 2026-10-05)
+
+Fixed findings 1 (must-fix), 2 (should-fix), 3 and 4 (nits) from PREREVIEW.md:
+- Finding 1: `new-group-sheet.tsx` check mark now uses `ICON_COLOR`
+  (`#d4d4d4`) instead of `ACCENT_FOREGROUND` (`#0a0a0a`), visible on the dark
+  sheet surface.
+- Finding 2: extracted `buildGroupCreateInput` / `nextGroupCreateInput` from
+  the wrapper's `create()` so the trim + `{ title, memberIds }` payload is
+  unit-tested; tests: payload trims and passes ids, blank name blocks,
+  check renders in the light color.
+- Finding 3: both stale comments in `new-chat-button.tsx` now say the store
+  returns the id from the POST answer.
+- Finding 4: `create()` returns early when `busy` (double-submit guard);
+  same commit line range as finding 2's refactor.
+
+Tests added: `new-group-sheet.test.tsx` +3 (18 total in that file).
+Single tests run: `pnpm --filter @zilar/mobile test --maxWorkers=2
+--reporter=dot groups-api real-store.groups-create new-group-sheet
+real-store.channels`: 4 files, 36 passed, 0 failed.
+Gate: GATE PASS (install PASS, format PASS, lint PASS, typecheck PASS,
+tests @zilar/mobile PASS; scope: every changed file inside Allowed files).
+
 ## Review (written by Claude)
+
+**Verdict:** Approved after one auto fix round (icon colour token, extracted and tested create-input helpers, stale comments, busy guard), then a clean re-check. `createGroup` posts `{ title, memberIds }` with no `kind`, the store trims and refreshes, the button opens `/group/<id>`; errors are fixed sentences. Lead allowed the one `createGroup` stub in `real-store.channels.test.ts`. Emulator (galena AVD): the `+` menu opens `New group`, `Add members` lists the contact, `Next` goes to `Group name` with Back and Create, Back and Cancel close it; no group was created on the live server. Accepted nit: tapping the dim backdrop closes the box mid-create (same as the channel flow).

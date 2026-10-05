@@ -18,6 +18,8 @@ export type ChannelMemberRole = 'admin' | 'member';
 export interface GroupsApi {
   /** Creates a channel (title + optional description ≤ 300). */
   createChannel(input: { title: string; description?: string }): Promise<{ id: string }>;
+  /** Creates a private group (title + member ids, no `kind`). */
+  createGroup(input: { title: string; memberIds: string[] }): Promise<{ id: string }>;
   /**
    * Reads the members slice for one group: the full audience for
    * owners/admins, the owner/admins slice for channel subscribers (never the
@@ -154,6 +156,21 @@ export function createGroupsApi(
               ? {}
               : { description: input.description.trim() }),
           }),
+        },
+        (value) => {
+          if (!isRecord(value) || !isString(value['id'])) return null;
+          return { id: value['id'] };
+        },
+      );
+      return body as { id: string };
+    },
+    async createGroup(input) {
+      const body = await withToken(
+        '/api/groups',
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ title: input.title, memberIds: input.memberIds }),
         },
         (value) => {
           if (!isRecord(value) || !isString(value['id'])) return null;

@@ -1,12 +1,13 @@
 import { useRouter } from 'expo-router';
 import { Plus } from 'lucide-react-native';
 import { useMemo, useState } from 'react';
-import { Modal, Pressable, Share, View } from 'react-native';
+import { Modal, Pressable, Share } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { InviteSheet } from '@/components/chat/invite-sheet';
 import { JoinLinkForm } from '@/components/chat/join-link';
 import { NewChannelSheet } from '@/components/chat/new-channel-sheet';
+import { NewGroupSheet } from '@/components/chat/new-group-sheet';
 import { NewMessageSheet } from '@/components/chat/new-message-sheet';
 import { createInvitesApi } from '@/lib/invites-api';
 import { getSessionToken } from '@/lib/session-token';
@@ -25,8 +26,12 @@ export function NewChatButton() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [action, setAction] = useState<NewChatAction | undefined>(undefined);
   const createChannel = useChatStore((state) => state.createChannel);
+  const createGroup = useChatStore((state) => state.createGroup);
+  const contacts = useChatStore((state) => state.contacts);
   const [channelBusy, setChannelBusy] = useState(false);
   const [channelError, setChannelError] = useState('');
+  const [groupBusy, setGroupBusy] = useState(false);
+  const [groupError, setGroupError] = useState('');
   // The invite box always talks to the real session API (a personal invite
   // link is meaningless offline): the mock-capable `useInvitesApi` hook stays
   // available for mock-mode surfaces, but this menu must stay importable
@@ -64,7 +69,7 @@ export function NewChatButton() {
   };
 
   // T-0144: creating a channel refreshes the chat list first (the store
-  // resolves the new group id from the refreshed entries), then opens the
+  // returns the new group id from the POST answer), then opens the
   // channel screen. A failure reads inline, never raw.
   const create = (input: { title: string; description?: string }) => {
     setChannelBusy(true);
@@ -76,6 +81,21 @@ export function NewChatButton() {
       })
       .catch(() => setChannelError('Could not create the channel. Try again.'))
       .finally(() => setChannelBusy(false));
+  };
+
+  // T-0214: creating a private group mirrors the channel flow (the store
+  // returns the new group id from the POST answer), then opens the
+  // group screen. A failure reads inline, never raw.
+  const submitGroup = (input: { title: string; memberIds: string[] }) => {
+    setGroupBusy(true);
+    setGroupError('');
+    void createGroup(input)
+      .then((groupId) => {
+        setAction(undefined);
+        router.push({ pathname: '/group/[id]', params: { id: groupId } });
+      })
+      .catch(() => setGroupError('Could not create the group. Try again.'))
+      .finally(() => setGroupBusy(false));
   };
 
   return (
@@ -183,6 +203,18 @@ export function NewChatButton() {
                 }
               }}
             />
+          ) : action === 'group' ? (
+            <NewGroupSheet
+              contacts={contacts}
+              busy={groupBusy}
+              error={groupError}
+              onCreate={submitGroup}
+              onClose={() => {
+                if (!groupBusy) {
+                  setAction(undefined);
+                }
+              }}
+            />
           ) : action === 'message' ? (
             <NewMessageSheet
               onInvite={() => setAction('invite')}
@@ -195,27 +227,7 @@ export function NewChatButton() {
               shareText={inviteShare.shareText}
               onClose={() => setAction(undefined)}
             />
-          ) : (
-            <Pressable
-              onPress={() => {}}
-              className="w-full max-w-xs rounded-2xl border border-border-strong bg-surface p-4"
-            >
-              <Text className="text-[16px] font-semibold text-foreground">
-                {action === 'group' ? 'New group' : 'New message'}
-              </Text>
-              <Text className="mt-1 text-[15px] text-muted-foreground">Coming soon</Text>
-              <View className="mt-4 flex-row justify-end">
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Close"
-                  onPress={() => setAction(undefined)}
-                  className="rounded-full bg-accent px-4 py-1.5 active:opacity-90"
-                >
-                  <Text className="text-[15px] font-medium text-accent-foreground">Close</Text>
-                </Pressable>
-              </View>
-            </Pressable>
-          )}
+          ) : null}
         </Pressable>
       </Modal>
     </>

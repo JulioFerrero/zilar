@@ -359,6 +359,11 @@ export interface ChatStoreState {
    */
   createChannel: (input: { title: string; description?: string }) => Promise<string>;
   /**
+   * Creates a private group (T-0214, title + member ids) and refreshes the
+   * chat list. Resolves with the new group id. Rejects on failure.
+   */
+  createGroup: (input: { title: string; memberIds: string[] }) => Promise<string>;
+  /**
    * Leaves a channel (T-0144): removes the caller through the member route
    * and refreshes the chat list. Rejects on failure.
    */
