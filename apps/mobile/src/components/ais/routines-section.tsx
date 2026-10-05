@@ -126,21 +126,21 @@ function RoutineRow({ routine, actions }: { routine: Routine; actions?: RoutineR
   const busyAny = actions?.busyId !== null && actions?.busyId !== undefined;
   const confirming = actions?.confirmingId === routine.id;
   return (
-    <View className="gap-1 px-2 py-1.5">
-      <View className="flex-row flex-wrap items-center gap-2">
-        <View className="min-w-0 flex-1">
-          <Text className="truncate text-[14px] font-medium">{routine.title}</Text>
-          <Text className="truncate text-[12px] text-muted-foreground">
-            {describeRoutineSchedule(routine.schedule)} · runs {routine.toolName} ·{' '}
-            {routineStatusText(routine)}
-          </Text>
-          <Text className="truncate text-[12px] text-muted-foreground">
-            {nextRunText(routine)} · {routineLastText(routine)}
-          </Text>
-          {explanation !== null ? (
-            <Text className="text-[12px] text-muted-foreground">{explanation}</Text>
-          ) : null}
-        </View>
+    <View className="gap-1.5 px-2 py-1.5">
+      <View className="min-w-0">
+        <Text className="truncate text-[14px] font-medium">{routine.title}</Text>
+        <Text className="truncate text-[12px] text-muted-foreground">
+          {describeRoutineSchedule(routine.schedule)} · runs {routine.toolName} ·{' '}
+          {routineStatusText(routine)}
+        </Text>
+        <Text className="truncate text-[12px] text-muted-foreground">
+          {nextRunText(routine)} · {routineLastText(routine)}
+        </Text>
+        {explanation !== null ? (
+          <Text className="text-[12px] text-muted-foreground">{explanation}</Text>
+        ) : null}
+      </View>
+      <View className="flex-row justify-end gap-2">
         {actions === undefined ? null : routine.status === 'active' ? (
           <Button
             variant="outline"
