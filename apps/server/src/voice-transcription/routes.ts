@@ -40,7 +40,7 @@
 
 import { createHash } from 'node:crypto';
 import { isIP } from 'node:net';
-import { asc, eq, sql } from 'drizzle-orm';
+import { asc, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import type { Logger } from 'pino';
 import { z } from 'zod';
@@ -51,15 +51,20 @@ import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
 import { user, voiceTranscripts } from '../db/schema';
 import { HttpError } from '../errors';
+import {
+  defaultAudioFetcher,
+  defaultTranscriber,
+  fetchAndTranscribe,
+  shareInFlight,
+  VOICE_FETCH_TIMEOUT_MS,
+  VOICE_TRANSCRIPT_MAX_BYTES,
+  type AudioFetcher,
+  type Transcriber,
+} from './pipeline';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
 import { classifyIp } from '../sandbox/ip-guard';
 import { settingsCipherFor, type SetupTransaction } from '../setup/settings';
-import {
-  silentVerificationWav,
-  transcribeAudio,
-  TranscriptionProviderError,
-  type TranscriptionFetch,
-} from './provider';
+import { silentVerificationWav, TranscriptionProviderError } from './provider';
 import {
   deleteVoiceTranscriptionSettings,
   getVoiceTranscriptionSettings,
@@ -73,8 +78,7 @@ export const VOICE_TRANSCRIPT_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
 export const VOICE_TRANSCRIPT_RATE_LIMIT_OWNER_MAX = 10;
 export const VOICE_TRANSCRIPT_RATE_LIMIT_OWNER_WINDOW_MS = 10 * 60 * 1000;
 
-const VOICE_TRANSCRIPT_MAX_BYTES = 10 * 1024 * 1024;
-const VOICE_FETCH_TIMEOUT_MS = 20_000;
+export { VOICE_FETCH_TIMEOUT_MS, VOICE_TRANSCRIPT_MAX_BYTES };
 
 const transcriptBodySchema = z
   .object({
@@ -122,30 +126,11 @@ export interface VoiceTranscriptionRoutesDependencies {
   transcribe?: Transcriber | undefined;
 }
 
-export interface FetchedAudio {
-  body: Uint8Array;
-  contentType: string;
-}
+export type { AudioFetcher, FetchedAudio, Transcriber } from './pipeline';
 
-export type AudioFetcher = (url: string) => Promise<FetchedAudio>;
-
-export type Transcriber = (input: {
-  baseUrl: string;
-  apiKey: string | null;
-  model: string;
-  audio: Uint8Array;
-  filename: string;
-  mime: string;
-}) => Promise<{ text: string; language: string | null }>;
-
-/** The audio-fetch leg failed (ejabberd down, slow, or refusing): fixed
- * 502, never the network's error text and never a bare 500. */
-export class AudioUnavailableError extends Error {
-  constructor() {
-    super('The voice file could not be fetched');
-    this.name = 'AudioUnavailableError';
-  }
-}
+// `AudioUnavailableError` lives in `./pipeline` now (the Effect spike owns
+// the fetch leg); re-exported here so existing importers keep working.
+export { AudioUnavailableError } from './pipeline';
 
 function notFound(): HttpError {
   return new HttpError(404, 'not_found', 'Not found');
@@ -166,81 +151,6 @@ export function voiceTranscriptUrlHash(url: string): string {
   return createHash('sha256').update(url, 'utf8').digest('hex');
 }
 
-interface FetchAndTranscribeInput {
-  db: ServerDatabase;
-  urlHash: string;
-  internalUrl: string;
-  settings: VoiceTranscriptionSettings;
-  fetchAudio: AudioFetcher;
-  transcribe: Transcriber;
-}
-
-/**
- * Fetches the audio and transcribes it, then stores the result — with no
- * transaction held across the network. Only the re-check + insert runs in
- * one transaction under an advisory lock on the hash (a duplicate that won
- * the race reads the winner's row; `onConflictDoNothing` covers the last
- * overlap). Fetch-leg failures (ejabberd down, slow, refusing) surface as
- * `AudioUnavailableError`, which the route maps to a fixed 502; size and
- * content-type refusals keep their 413/422.
- */
-async function fetchAndTranscribe(input: FetchAndTranscribeInput): Promise<string> {
-  const { db, urlHash, internalUrl, settings, fetchAudio, transcribe } = input;
-  let audio: FetchedAudio;
-  try {
-    audio = await fetchAudio(internalUrl);
-  } catch {
-    throw new AudioUnavailableError();
-  }
-  if (audio.body.byteLength > VOICE_TRANSCRIPT_MAX_BYTES) {
-    throw new HttpError(413, 'voice_too_large', 'The recording is too large');
-  }
-  if (audio.body.byteLength === 0 || !isAudioContentType(audio.contentType)) {
-    throw new HttpError(422, 'not_audio', 'The file is not a supported recording');
-  }
-  let result: { text: string; language: string | null };
-  try {
-    result = await transcribe({
-      baseUrl: settings.baseUrl,
-      apiKey: settings.apiKey,
-      model: settings.model,
-      audio: audio.body,
-      filename: 'voice.m4a',
-      mime: audio.contentType,
-    });
-  } catch (error) {
-    if (error instanceof TranscriptionProviderError) {
-      throw new HttpError(
-        502,
-        'transcription_failed',
-        'The transcription service failed, try again later',
-      );
-    }
-    throw error;
-  }
-  await db.transaction(async (tx: SetupTransaction) => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${'voice-transcript:' + urlHash}))`);
-    const [cached] = await tx
-      .select({ text: voiceTranscripts.text })
-      .from(voiceTranscripts)
-      .where(eq(voiceTranscripts.urlHash, urlHash))
-      .limit(1);
-    if (cached !== undefined) {
-      return;
-    }
-    await tx
-      .insert(voiceTranscripts)
-      .values({ urlHash, text: result.text, language: result.language })
-      .onConflictDoNothing({ target: voiceTranscripts.urlHash });
-  });
-  const [stored] = await db
-    .select({ text: voiceTranscripts.text })
-    .from(voiceTranscripts)
-    .where(eq(voiceTranscripts.urlHash, urlHash))
-    .limit(1);
-  return stored?.text ?? result.text;
-}
-
 export function createVoiceTranscriptionRoutes(deps: VoiceTranscriptionRoutesDependencies): Hono {
   const routes = new Hono();
   const now = deps.now ?? Date.now;
@@ -259,14 +169,14 @@ export function createVoiceTranscriptionRoutes(deps: VoiceTranscriptionRoutesDep
       now,
     });
   const fetchAudio = deps.audioFetcher ?? defaultAudioFetcher;
-  const transcribe =
-    deps.transcribe ?? (async (input) => transcribeAudio(input, defaultTranscriptionFetch));
+  const transcribe = deps.transcribe ?? defaultTranscriber();
   // In-flight transcripts by URL hash: two simultaneous taps on the same
   // voice message share one fetch + provider call instead of double-billing.
-  // The entry is removed in `finally`, so a failure never poisons the next
-  // tap; the DB row (re-checked under the lock at insert time) is the
-  // durable cache, this map only dedupes the overlap window.
-  const inFlight = new Map<string, Promise<string>>();
+  // `shareInFlight` removes the entry in `finally`, so a failure (or an
+  // interrupted request) never poisons the next tap; the DB row (re-checked
+  // under the lock at insert time) is the durable cache, this map only
+  // dedupes the overlap window.
+  const inFlight = shareInFlight();
 
   async function requireOwner(userId: string): Promise<void> {
     if (!(await isOwner(deps.db, userId))) {
@@ -326,9 +236,9 @@ export function createVoiceTranscriptionRoutes(deps: VoiceTranscriptionRoutesDep
     const urlHash = voiceTranscriptUrlHash(parsed.data.url);
 
     // Fast path: the durable cache, no lock. Misses share one in-flight
-    // fetch + provider call per URL hash (finding 4: no transaction and no
-    // advisory lock is held across the network — the lock only covers the
-    // re-check + insert below, with `onConflictDoNothing` as the backstop).
+    // fetch + provider call per URL hash (no transaction and no advisory
+    // lock is held across the network — the lock only covers the re-check
+    // + insert below, with `onConflictDoNothing` as the backstop).
     const [fastHit] = await deps.db
       .select({ text: voiceTranscripts.text })
       .from(voiceTranscripts)
@@ -355,40 +265,16 @@ export function createVoiceTranscriptionRoutes(deps: VoiceTranscriptionRoutesDep
       return c.json({ text: fastHit.text });
     }
 
-    let shared = inFlight.get(urlHash);
-    if (shared === undefined) {
-      shared = fetchAndTranscribe({
+    const text = await inFlight.run(urlHash, () =>
+      fetchAndTranscribe({
         db: deps.db,
         urlHash,
         internalUrl,
         settings,
         fetchAudio,
         transcribe,
-      });
-      inFlight.set(urlHash, shared);
-      // `.then` with both handlers (not `.finally`): the derived promise
-      // resolves either way, so a failed share never surfaces as an
-      // unhandled rejection — the awaiting requests already mapped it.
-      const cleanup = (): void => {
-        if (inFlight.get(urlHash) === shared) {
-          inFlight.delete(urlHash);
-        }
-      };
-      void shared.then(cleanup, cleanup);
-    }
-    let text: string;
-    try {
-      text = await shared;
-    } catch (error) {
-      if (error instanceof AudioUnavailableError) {
-        throw new HttpError(
-          502,
-          'audio_unavailable',
-          'The voice file could not be read, try again later',
-        );
-      }
-      throw error;
-    }
+      }),
+    );
 
     auditRequested();
     return c.json({ text });
@@ -598,42 +484,3 @@ function normalizeBaseUrl(raw: string): { normalized: string | null; problem?: s
   parsed.hash = '';
   return { normalized: parsed.toString().replace(/\/$/, '') };
 }
-
-function isAudioContentType(contentType: string): boolean {
-  const mime = contentType.split(';')[0]?.trim().toLowerCase() ?? '';
-  return mime.startsWith('audio/') || mime === 'video/mp4' || mime === 'application/octet-stream';
-}
-
-const defaultTranscriptionFetch: TranscriptionFetch = (url, init) => fetch(url, init);
-
-// The internal download leg: same path on ejabberd's API base, 10 MB cap,
-// 20 s timeout. Every fetch-leg failure (transport, abort, non-OK, unreadable
-// body) surfaces as `AudioUnavailableError` — the route maps it to a fixed
-// 502, never a bare 500 and never the network's error text. The content type
-// gates the provider call (`not_audio` without one); the bytes are never
-// logged.
-async function defaultAudioFetcher(url: string): Promise<FetchedAudio> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), VOICE_FETCH_TIMEOUT_MS);
-  try {
-    let response: Response;
-    try {
-      response = await fetch(url, { signal: controller.signal });
-    } catch {
-      throw new AudioUnavailableError();
-    }
-    if (!response.ok) {
-      throw new AudioUnavailableError();
-    }
-    const contentType = response.headers.get('content-type') ?? 'application/octet-stream';
-    const buffer = await response.arrayBuffer().catch(() => null);
-    if (buffer === null) {
-      throw new AudioUnavailableError();
-    }
-    return { body: new Uint8Array(buffer), contentType };
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-export { VOICE_TRANSCRIPT_MAX_BYTES, VOICE_FETCH_TIMEOUT_MS };

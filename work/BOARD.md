@@ -193,7 +193,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0167](T-0167-ejabberd-admin-password-log.md) | ejabberd admin password no longer printed in logs: quiet registration in our entrypoint, leak test, dev stack mirrored | 2026-10-03 |
 | [T-0171](T-0171-block-users.md) | Block users, part 1 (blocklist, requests, web UI) | planned | meta/muse-spark-1.3-contributor | T-0163 | Spec ready; schema task |
 | [T-0172](T-0172-push-component-host.md) | Push component dials the ejabberd service, not 127.0.0.1 | planned | meta/muse-spark-1.3-contributor | — | Spec ready; found by T-0159 |
-| [T-0173](T-0173-effect-spike.md) | Effect 4.0 spike on the voice transcription pipeline, and a worker guide (gate for docs/ROADMAP_EFFECT.md) | planned | meta/muse-spark-1.3-contributor | T-0170 | Spec ready; waits for Julio's go |
 | [T-0155](T-0155-web-ui-polish-2.md) | Web UI polish round 2: Machines and Approvals layout, notification cards, sticker nits | 2026-10-03 |
 | [T-0158](T-0158-scheduled-backups.md) | Scheduled backups with retention, a freshness check in doctor, offsite hint, bare-metal timer and a Coolify guide | 2026-10-03 |
 | [T-0168](T-0168-send-failure-state.md) | Failed voice/attachment sends show Not sent with Retry and Delete, 60 s timeout | 2026-10-03 |
@@ -227,3 +226,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0188](T-0188-mobile-integrations-owner.md) | Mobile owner integrations: Email, Voice and Telegram cards in settings, owner-only (2 auto rounds) | 2026-10-04 |
 | [T-0187](T-0187-mobile-sticker-packs.md) | Mobile sticker packs: my packs, discover, add and remove, reorder, favorites (2 auto rounds) | 2026-10-04 |
 | [T-0196](T-0196-lead-doctor.md) | The doctor: a Muse session that audits main after merges and writes DOCTOR.md | 2026-10-04 |
+| [T-0173](T-0173-effect-spike.md) | Effect 4.0 spike: voice transcription pipeline as Effect programs, worker guide docs/EFFECT_GUIDE.md | 2026-10-05 |
