@@ -11,13 +11,12 @@ Last updated: 2026-10-05, after merging T-0200 and launching T-0202, T-0194, T-0
 | T-0202 | Fix rounds in a fresh worker session (token saving A) | coding | Muse |
 | T-0194 | Mobile guard tests for the Android and Hermes pitfalls | coding | MiniMax M3 trial, `effort: default` |
 | T-0195 | Audit web vs mobile (docs only) | coding | MiniMax M3 trial |
-| T-0205 | Dashboard "merged today" after squash merges | coding | MiniMax M3; T-0200 follow-up |
 
 ## Next, in order
 
 1. T-0203 (B) after T-0202, then T-0204 (C): they share `prompts.test.ts`
 2. T-0191 sticker editor and Telegram import
-3. The first merge after T-0200 is the first squash merge: check main gets exactly one `T-XXXX:` commit.
+3. Waiting for Julio: OK to spec a scout task that trials RepoMapper (repo maps) on our repo.
 
 ## Blocked or waiting for Julio
 
@@ -26,6 +25,8 @@ Last updated: 2026-10-05, after merging T-0200 and launching T-0202, T-0194, T-0
 - Release: everything merged since v0.1.13 reaches the live web only with the next release.
 
 ## Recent events
+
+- 2026-10-05: merged T-0205, the first MiniMax M3 task (clean first round) and the first squash merge: main gained exactly one commit `T-0205: ...` with the branch commits in its body.
 
 - 2026-10-05: merged T-0200 (squash merges; its own merge still used the old flow). Follow-ups: T-0205 written; `docs/LEAD_PLAYBOOK.md` got a squash note. Checked for Julio: a shared warm start saves at most ~12k uncached tokens per session (first step of T-0201: input 12068, cache 0) and OpenCode forks keep the parent's folder, so not worth building.
 
