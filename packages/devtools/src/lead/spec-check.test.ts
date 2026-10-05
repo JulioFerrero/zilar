@@ -60,6 +60,24 @@ describe('checkSpec', () => {
     expect(checkSpec(spec('Same as web (`apps/web/src/A.tsx`).'), deps([]))).toEqual([]);
   });
 
+  it('accepts a task whose front matter says model: auto', () => {
+    const text = [
+      '---',
+      'id: T-0099',
+      'branch: task/T-0099-demo',
+      'model: auto',
+      'status: todo',
+      '---',
+      '',
+      '## Spec',
+      '### Read first',
+      '`docs/A.md`',
+      '',
+      '## Report',
+    ].join('\n');
+    expect(checkSpec(text, deps(['docs/A.md']))).toEqual([]);
+  });
+
   it('ignores the Report section', () => {
     const text = '## Spec\n### Read first\n`docs/A.md`\n\n## Report\n`docs/NOPE.md` mentioned here';
     expect(checkSpec(text, deps(['docs/A.md']))).toEqual([]);

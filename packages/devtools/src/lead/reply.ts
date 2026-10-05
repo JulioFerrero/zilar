@@ -65,14 +65,14 @@ export async function replyToWorker(
     );
   }
   const previousSessionId = record.sessionId;
-  const sessionId = await startFreshWorkerSession(
+  const { sessionId, model } = await startFreshWorkerSession(
     { client: deps.client, promptsDirPath: deps.promptsDirPath, repoRoot: deps.repoRoot },
     { task, record, title: `${task} reply`, prompt: `${head}\n\n${text}` },
   );
   updateState(deps.statePath, (fresh) => {
     const current = fresh.tasks[task];
     if (current !== undefined && current.sessionId === previousSessionId) {
-      fresh.tasks[task] = freshSessionRecord(current, sessionId);
+      fresh.tasks[task] = freshSessionRecord(current, sessionId, model);
     }
   });
 }

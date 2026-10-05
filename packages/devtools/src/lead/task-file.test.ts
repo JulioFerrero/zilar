@@ -35,6 +35,13 @@ describe('parseTaskFrontMatter', () => {
     expect(parsed.status).toBe('in-progress');
   });
 
+  it('accepts model: auto', () => {
+    const parsed = parseTaskFrontMatter(
+      FRONT_MATTER.replace('opencode-go/muse-spark-1.3-contributor', 'auto'),
+    );
+    expect(parsed.model).toBe('auto');
+  });
+
   it('rejects a missing branch', () => {
     expect(() => parseTaskFrontMatter('---\nid: T-0038\nmodel: a/b\nstatus: todo\n---\n')).toThrow(
       /branch/,
