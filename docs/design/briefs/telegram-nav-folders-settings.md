@@ -92,8 +92,10 @@ Telegram's Profile is "me as others see me". Content, using only existing data:
 
 Steps 1-3 can start at once after 2 is merged; 6-9 are independent of 4-5 apart from the Settings Folders row (8 links to a route made in 5; add the row in 5).
 
-## Open questions for Julio
-1. Coloured icon tiles like Telegram, or stay monochrome (proposal)? A faint tint per group is possible.
-2. Work folder: `space` is not real data today, so Work ships as an empty folder you fill by hand. OK?
-3. Drop the Contacts tab (proposal), since there is no contacts list?
-4. Keep "My AIs" as a Settings row as well as the AIs tab?
+## Decisions (Julio, 2026-10-05)
+1. Icon tiles: monochrome D24 keys (no colours).
+2. Work: NOT created. Defaults are only Personal (type: personal chats) and AIs (type: AIs); the user creates Work or any other folder. This overrides "Defaults" in section b.
+3. Tabs: Chats, AIs, Settings, Profile. No Contacts tab.
+4. Desktop (web): a slim folder rail on the left like Telegram Desktop (folders with counts, New; My AIs, Settings and the avatar at its foot). Chat folders settings page = one centered column; the editor opens in a dialog (sections: Name and icon, Show these chats, Hide; Delete apart from Save). See mockup v3.
+5. My AIs leaves the Settings list on mobile (it is a tab); the web rail has a My AIs key.
+6. Look: the approved D24 recipes (`docs/design/ui-style.md`, `apps/web/src/index.css` key-primary, key-icon, well-surface, segment-raised). The mockup `telegram-nav-folders-settings.html` v3 is the reference.
