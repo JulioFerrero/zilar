@@ -1,10 +1,10 @@
 ---
 id: T-0201
 title: Runner: connect.test.ts waits for the runner to be live instead of a fixed 200 ms sleep (CI flake)
-status: review
+status: merged
 milestone: M5
 branch: task/T-0201-runner-connect-test-flake
-model: minimax-coding-plan/MiniMax-M3
+model: meta/muse-spark-1.3-contributor
 effort: low
 depends_on: []
 estimate: 0.1 day
@@ -75,3 +75,5 @@ Commands and real results:
 Problems/deviations: none. Security checklist: test-only change, no secrets, no routes, no deletes, no caps — not applicable.
 
 ## Review (written by Claude)
+
+**Verdict:** Approved, first round. Both fixed 200 ms sleeps in `connect.test.ts` now poll `isRunnerLive` with the existing `waitFor` helper (5 s deadline), which removes the CI flake seen on 2026-10-05; nothing else changed. Three local runs green, gate PASS, pre-review clean. Note: launched on MiniMax M3, the session failed at once because `effort: low` is not a MiniMax variant; the lead moved it to Muse with `lead switch-model` (the `model:` line above now says what ran).
