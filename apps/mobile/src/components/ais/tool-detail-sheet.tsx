@@ -294,7 +294,7 @@ export function ToolDetailBody({
                 <Text numberOfLines={1} className="text-[14px] text-foreground">
                   v{version.version} · {version.message}
                 </Text>
-                <Text numberOfLines={1} className="text-[12px] text-muted-foreground">
+                <Text numberOfLines={2} className="text-[12px] text-muted-foreground">
                   {hostsLine(version.hosts)} · by {version.createdBy} ·{' '}
                   {new Date(version.createdAt).toLocaleString()}
                 </Text>
@@ -723,7 +723,10 @@ function ToolDetailLoader({
           <X size={20} color={MUTED_FOREGROUND[scheme]} />
         </Pressable>
       </View>
-      <ScrollView className="flex-1 py-2" style={{ paddingBottom: Math.max(insets.bottom, 16) }}>
+      <ScrollView
+        className="flex-1 py-2"
+        contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 16) + 16 }}
+      >
         <ToolDetailBody
           state={bodyState}
           actions={{

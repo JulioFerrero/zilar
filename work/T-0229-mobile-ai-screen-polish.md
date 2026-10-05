@@ -1,7 +1,7 @@
 ---
 id: T-0229
 title: "Mobile: AI screen layout fixes found on the emulator (routine rows, Activity header, tool sheet bottom padding)"
-status: planned
+status: merged
 milestone: M5
 branch: task/T-0229-mobile-ai-screen-polish
 model: opencode/muse-spark-1.3-contributor-free
@@ -52,4 +52,14 @@ Line numbers that scroll away with the source (minor), mock data texts.
 
 ## Report (written by the worker when done)
 
+- Routine row (`routines-section.tsx`): text block now on its own full-width line, action buttons on a `flex-row justify-end gap-2` row below, for both normal and confirm states. Accessibility labels and busy texts unchanged.
+- Activity header (`ai-activity.tsx`): heading now `px-2 text-[13px] font-semibold text-muted-foreground` (matches Tools/Routines); `RefreshCw` gets `color={ICON[scheme]}` with `scheme = asColorScheme(useColorScheme().colorScheme)`.
+- Tool sheet (`tool-detail-sheet.tsx`): bottom padding moved to `contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 16) + 16 }}`; version hosts/author/date line `numberOfLines={2}`.
+- Tests: added `nativewind` `useColorScheme` mock to `ai-activity.test.tsx` (needed since the header now reads the color scheme). No snapshot tests, no label changes.
+- Commands: `pnpm install` (13.6s, ok); targeted `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot routines-section ai-activity tool-detail-sheet`: 3 files, 65 tests passed. `pnpm gate`: PASS install / format / lint / typecheck / tests @zilar/mobile; scope: every changed file inside Allowed files; GATE PASS.
+- Problem hit: my first ternary re-indent broke JSX parse (extra `)}`); fixed, and prettier reformatted `routines-section.tsx`. Also `ai-activity.test.tsx` initially failed with `SyntaxError: Unexpected token 'typeof'` because `useColorScheme` was unmocked; added the mock matching `tool-detail-sheet.test.tsx`.
+- Security checklist: no secrets/tokens touched; no deletes/updates; no caps; no permission changes; no new routes; no audit entries. N/A otherwise.
+
 ## Review (written by Claude)
+
+**Verdict:** Approved, clean first pre-review. Diff read: routine text full width with actions in a right-aligned row under it; Activity heading matches Tools/Routines and the refresh icon uses `ICON[scheme]` (same `nativewind` hook as the composer); tool sheet padding moved to `contentContainerStyle`; version detail line allows 2 lines. Device check comes with T-0230's emulator QA run.
