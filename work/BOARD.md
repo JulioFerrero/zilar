@@ -13,6 +13,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0261](T-0261-forward-wire.md) | Forwarding step 1: protocol schema and xmpp-core element | in_progress | auto | T-0256 | plan T-A + T-B |
 | [T-0262](T-0262-mobile-ticks-folder-deeplink.md) | Mobile: list ticks use the real user id; folder editor waits | in_progress | auto | T-0252, T-0255 | pre-review follow-ups |
 | [T-0263](T-0263-web-kit-dialogs-2.md) | Web kit migration 3: three more dialogs | in_progress | auto | T-0258 | audit step 6, batch 2 |
+| [T-0264](T-0264-mobile-kit-1.md) | Mobile kit batch 1: IconTile, ListRow, Card, CountBadge; dev/kit catalog | in_progress | auto | T-0247, T-0255 | audit step 3 |
 
 ## Follow-ups
 
