@@ -209,6 +209,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0178](T-0178-whistle-quiet-cut-chunks.md) | Whistle: quiet-point chunking from a native amplitude envelope | 2026-10-03 |
 | [T-0180](T-0180-signin-no-code-hint.md) | Sign-in hints for people without an invite (web + mobile) | 2026-10-03 |
 | [T-0219](T-0219-mobile-tool-writes.md) | Mobile: Run now, Revert and Delete in the tool detail sheet | planned | opencode/muse-spark-1.3-contributor-free | T-0218 | T-0195 audit 7.1 T-0189b write half |
+| [T-0223](T-0223-docs-sync-1005.md) | Docs: FEATURES, mobile parity roadmap and README catch up with T-0181..T-0222 | planned | opencode/muse-spark-1.3-contributor-free | — | Julio asked 2026-10-05 |
 | [T-0179](T-0179-mobile-transcribe-voice-notes.md) | Transcribe voice notes on the phone with Whistle: button in the bubble, consent for the 17 MB model, transcripts stored locally | 2026-10-03 |
 | [T-0182](T-0182-mobile-contacts-requests.md) | Mobile contacts: find by @handle, profile card, contact requests | 2026-10-03 |
 | [T-0183](T-0183-mobile-explore-group-handles.md) | Mobile Explore, @group links and group visibility | 2026-10-03 |
