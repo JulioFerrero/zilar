@@ -2,7 +2,7 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
-Last updated: 2026-10-05, after merging T-0207 (Telegram import on the phone, emulator-checked; first mobile task on the free Muse, one auto round). T-0211 running. Julio approved the `lead watch` mockup (artifact https://claude.ai/artifact/8QujyLaobor35XDKHr7ZZG, copy in `docs/design/briefs/T-0211-lead-watch-mockup.html`).
+Last updated: 2026-10-05, after merging T-0207 (Telegram import on the phone, emulator-checked; first mobile task on the free Muse, one auto round). Then launched T-0189 and T-0190. Julio's watcher now runs in a floating Ghostty window. Julio approved the `lead watch` mockup (artifact https://claude.ai/artifact/8QujyLaobor35XDKHr7ZZG, copy in `docs/design/briefs/T-0211-lead-watch-mockup.html`).
 
 Emulator: run only the `galena` AVD (never `bicing_plus`, Julio's). Its DNS failed today (smoke screenshots stuck on the boot spinner); start it with `-dns-server 8.8.8.8,1.1.1.1`.
 
@@ -16,11 +16,14 @@ Models (Julio, 2026-10-05): default `opencode/muse-spark-1.3-contributor-free`; 
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0211 | `lead watch` Ink redesign | coding | free Muse, effort high. When its turn ends, BEFORE merging, send the approved look: `lead reply T-0211 <prompt> --fresh` with the prompt from `docs/design/briefs/T-0211-lead-watch-icons.md` (Nerd Font icons and 10 changes). Then set the watch window font to FiraCode Nerd Font Mono and check it |
+| T-0211 | `lead watch` Ink redesign | lead round "look" (icons, 10 changes from `docs/design/briefs/T-0211-lead-watch-icons.md`) | free Muse, high. Before merging: run it in Julio's Ghostty watch window (memory `lead-watch-window`; Ghostty has Nerd Font symbols built in) and compare with the mockup. The worker tried python edits and npx twice; rejected each time |
+| T-0189 | Mobile AI screen: tools and routines (read only) | coding | free Muse; needs the emulator check |
+| T-0190 | Mobile: Invite a friend + New message box | coding | free Muse; needs the emulator check |
 
 ## Next, in order
 
-1. Specs for T-0189 and T-0190 from `docs/audit/mobile-parity-gaps.md` (re-check every fact in the code)
+1. New group sheet (audit 7.2 T-0190b) after T-0190 merges: both edit `apps/mobile/src/components/chat/new-chat-button.tsx`
+2. Then from the audit: tool writes (7.1b), routine writes (7.1c), AI activity feed (7.1d), @mention picker (7.2a), New channel parity (7.2c). Re-check every fact in the code.
 
 ## MiniMax M3 scorecard (Julio, 2026-10-05: give it harder tasks, no replays)
 
