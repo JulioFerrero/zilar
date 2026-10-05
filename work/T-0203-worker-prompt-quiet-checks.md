@@ -20,7 +20,7 @@ Measured on 2026-10-05: worker sessions re-send their whole context on every ste
 ### Verified facts (do not re-derive)
 - `packages/devtools/prompts/worker.md` is the first message of every worker session. Its third paragraph (line 5) starts "Before you finish, run `pnpm gate` from the repo root."
 - `vitest` accepts `--reporter=dot` in this repo (the lead ran `pnpm --filter @zilar/devtools test --maxWorkers=2 --reporter=dot src/lead/board.test.ts`: dots plus a 4-line summary).
-- `packages/devtools/src/lead/prompts.test.ts` line 41-45 asserts the rendered worker prompt contains `work/T-0038-lead-autopilot.md`, `AGENTS.md`, `pnpm install`, `status: review` and `T-0038:`.
+- `packages/devtools/src/lead/prompts.test.ts` lines 42-46 assert the rendered worker prompt contains `work/T-0038-lead-autopilot.md`, `AGENTS.md`, `pnpm install`, `status: review` and `T-0038:`.
 
 ### What to build
 1. In `packages/devtools/prompts/worker.md`, add this paragraph right after the paragraph that starts "Before you finish" (keep every other line unchanged):
