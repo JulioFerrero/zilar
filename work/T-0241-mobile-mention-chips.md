@@ -1,7 +1,7 @@
 ---
 id: T-0241
 title: "Mobile: mentions in message bubbles render as chips, and a mention of me stands out"
-status: planned
+status: merged
 milestone: M5
 branch: task/T-0241-mobile-mention-chips
 model: opencode/muse-spark-1.3-contributor-free
@@ -62,4 +62,27 @@ Tapping a mention to open the profile, an "@" badge in the chat list, mention no
 
 ## Report (written by the worker when done)
 
+Done. Mobile bubbles now render mentions as chips, with a stronger look for a mention of me.
+
+What I did:
+- `apps/mobile/src/components/chat/link-text.tsx`: `LinkText({ text, color, mentions?, meJid?, outgoing? })`. Splits with `splitMentions` first, then `splitLinks` inside plain segments (link behavior unchanged). Mention segments are nested `RNText` with `Geist_600SemiBold` and flat backgrounds: `rgba(255,255,255,0.08)` incoming, `rgba(0,0,0,0.08)` outgoing, `rgba(255,255,255,0.18)` + `#ededed` for a mention of me via `isMentionOfMe` (incoming only; outgoing keeps the dark chip). Mention segments are not pressable.
+- `apps/mobile/src/components/chat/message-bubble.tsx`: reads `meJid` via `useChatStore((state) => state.me?.jid ?? undefined)` and passes `mentions={message.mentions}`, `meJid`, `outgoing` to `LinkText` at the plain-text render path.
+- `apps/mobile/src/components/chat/link-text.test.tsx` (new): 5 tests in the same stubbed-`Text` render style as the other chat component tests — plain text with links unchanged, mention chip style, mention-of-me stronger background, outgoing dark chip (even for self-mention), link after a mention stays pressable and opens via `Linking.openURL`.
+
+Commands (real results):
+- `pnpm install`: done, exit 0.
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot link-text`: 5 passed. (First run failed 5/5 with `LinkText.type is not a function` — I had copied the `MarkdownText` memo-object pattern, but `LinkText` is a plain function; fixed the helper to call `LinkText(...)` directly.)
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot message-bubble`: 7 passed.
+- `pnpm exec prettier --write` on my own two source files + the test (gate flagged the test file's formatting): fixed, `link-text` tests still 5 passed after.
+- `pnpm gate`: GATE PASS. Summary lines: `gate: 4 changed file(s) against main`, `PASS install (frozen)`, `PASS format`, `PASS lint`, `PASS typecheck`, `PASS tests @zilar/mobile`, `scope: every changed file is inside the Allowed files`, `GATE PASS`.
+
+Security checklist: no secrets/tokens touched; no deletes/updates, caps, permissions, routes, or audit entries involved. No deviations from the spec; no chat-core, web, or store changes.
+
+Blocked / needs a decision: none.
+
 ## Review (written by Claude)
+
+**Verdict:** Approved. The first pre-review was clean, with 1 test-hardening nit: the test mocks `safeLinkTarget` as identity. I read the `link-text.tsx` diff:
+- Mention segments come first, and links still go through `safeLinkTarget`.
+- Chips are flat backgrounds (incoming 0.08 white, outgoing 0.08 black), and a mention of me on an incoming bubble gets 0.18 white plus `#ededed`.
+- `meJid` comes from the store's `me`. In mock mode `me` is unset, so the "mine" look shows only in the real app.
