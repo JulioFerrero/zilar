@@ -24,9 +24,12 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0260 | Deploy: auto-deploy live after every green CI on main; /health shows the commit | coding (DeepSeek) | Julio 2026-10-06 chose "every green main push"; he must add secrets COOLIFY_URL, COOLIFY_TOKEN, COOLIFY_SERVICE_UUID (zilar service uuid zogjtvwnoh9rqo96h7e7ajz1) |
 | T-0272 | Tooling: pnpm install stops flipping the lockfile peers | coding | noise in every task |
-| T-0273 | Web kit migration 6: NewChatButton + GroupHandleRoute dialogs | coding | audit step 6 batch 4 |
+| T-0274 | Web kit migration 7: Explore + avatar crop dialogs | coding | audit step 6 batch 5 (last modal dialogs) |
+| T-0275 | Web kit migration 8: accent buttons on Connections/Integrations/Stickers | coding | removes `bg-accent px-` hand-rolls |
+| T-0276 | Web kit migration 9: accent buttons in machines, Telegram import, invite links | coding | same, batch 2 |
+
+~01:30 local 10-06: merged T-0260 (auto-deploy; images publish on every green main; the deploy step stays skipped until Julio adds the 3 secrets) and T-0273 (clean).
 
 Later the same night: merged T-0261 (forward wire), T-0262 (ticks + folder deep link), T-0263 (lead fix: kit Dialog 85vh + scrolling body), T-0264 (mobile kit batch 1 + `zilar://dev/kit`), T-0265, T-0266, T-0267 (SectionLabel heading), T-0268, T-0269 (CI flake: '535' in random requestId), T-0270 (folder editor on kit, browser-checked), T-0271. QA run 9 all PASS (qa9/). T-0260 got a lead fix round: tip-of-main guard + serialized publishing (overlapping CI runs could push an older `latest`).
 
@@ -36,7 +39,7 @@ Waiting for Julio:
 - Forwarding UI (plan T-D/T-E) needs his answers to `docs/audit/forwarding-plan.md` §5 (7 questions with recommendations).
 - Media gallery Task 1 (schema migration) needs his answers to `docs/audit/media-gallery-plan.md` §5 (8 questions).
 - Security note from T-0256: `/upload/*` is served with no auth (bearer URLs); anyone with a URL can read the file, even after a retraction.
-- Add the three Coolify secrets in GitHub once T-0260 merges.
+- T-0260 merged: add GitHub repo secrets `COOLIFY_URL`, `COOLIFY_TOKEN`, `COOLIFY_SERVICE_UUID` (= `zogjtvwnoh9rqo96h7e7ajz1`). Optional repo variable `AUTO_DEPLOY=off` pauses it. Until then live stays v0.1.13.
 
 2026-10-06 ~00:25 local: merged T-0246 (web kit 2; lead saw ListRow, SegmentedControl, Card render in Cosmos on 5100; first load takes a few seconds), T-0248 (mobile folder chips), T-0249 (web blocked previews), T-0234 (mobile create sheets + keyboard). QA run 6 done: Settings hub, Blocked people, block from search PASS; Integrations row hidden under the tab bar → T-0251. QA run 7 sent (T-0248 chips, T-0234 sheets). Cosmos running from main on http://localhost:5100 for Julio. Next specs: mobile folders part 2 (editor + Settings row), more web kit migrations (settings rows, dialogs), mobile kit.
 
