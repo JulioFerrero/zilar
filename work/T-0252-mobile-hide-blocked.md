@@ -1,7 +1,7 @@
 ---
 id: T-0252
 title: "Mobile: a blocked person's messages are hidden in groups and never show as a chat list preview; isBlockedSender and previewMessage move to chat-core"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0252-mobile-hide-blocked
 model: auto
@@ -75,4 +75,58 @@ Server changes, hiding blocked people's reactions or typing, and the row time an
 
 ## Report (written by the worker when done)
 
+### What I did
+- **chat-core**: new `blocked.ts` with `localpartOf` (exported), `isBlockedSender` and `previewMessage`, moved unchanged from web; exported from `index.ts`; new `blocked.test.ts` moves the web cases for both helpers.
+- **web**: `blockedJids.ts` now imports `isBlockedSender`/`localpartOf` from `@zilar/chat-core` and re-exports `isBlockedSender`; `preview-message.ts` is a one-line re-export. Web behaviour is unchanged and the existing web tests pass untouched.
+- **mobile blocked set**: new `apps/mobile/src/lib/blocked-users.ts` — module-level set of lowercased localparts, `useBlockedJids(api)` loads once through `api.listBlockedUsers()` and reloads when `AppState` becomes `active`, a failed load keeps the last good set, and `reloadBlockedJids(api)` is exported. `blocks.ts` awaits `reloadBlockedJids(api)` on the success path of block and unblock, so blocking takes effect without a restart.
+- **mobile hiding**: `message-list.tsx` drops a blocked sender's messages before grouping (only when `chat.kind === 'group' && chat.isAI !== true`; my own messages stay). The three rows (`chat-list-item`, `topic-row`, `group-list-item`) preview with `previewMessage(chat, store messages for that chat, blocked, currentUserId)`; time and ticks still follow `chat.lastMessage`, as on web.
+- **tests**: new `blocked-users.test.ts` (load, failed reload keeps the set, `reloadBlockedJids`), new `blocks.test.ts` (reload after block/unblock, no reload on failure), new `message-list.test.tsx` (the filter), and a blocked-sender fallback case in `topic-row.test.tsx`.
+
+### Deviations from the spec (with reasons)
+1. **`useBlockedJids(api)` takes the API instead of calling `useContactsApi()` itself.** `useContactsApi` imports `expo-router`, which cannot be loaded by the Node/vitest environment (`SyntaxError: Unexpected token 'typeof'`). `blocks.ts` must import `reloadBlockedJids` from `blocked-users.ts`, and `contacts.test.tsx` (not in Allowed files) imports `blocks.ts`; a static `useContactsApi` import in `blocked-users.ts` broke that test. The callers (`message-list` and the three rows) get the API from `useContactsApi().api` and pass it, so the load still goes through `useContactsApi().api.listBlockedUsers()` as specified.
+2. **`filterBlockedMessages` pure helper added to `blocked-users.ts`.** The mobile app has no React Native testing library, so the filter is extracted (and `message-list.tsx` calls it) to make the message-list filter testable, the same pattern as `markdown-decision.ts`.
+3. **`localpartOf` is exported from chat-core**, not private to `isBlockedSender`: web's `blockedJids.load()` still needs to normalise each `person.jid` when building the set, and keeping the rule in one place avoids duplicating it on web.
+4. I did not create `chat-list-item.test.tsx` / `group-list-item.test.tsx`; the requested "one row test where the last message is from a blocked sender" is the new case in `topic-row.test.tsx`. Their component changes are covered by the gate's mobile typecheck/tests.
+
+### Files changed
+- `packages/chat-core/src/blocked.ts` (new), `packages/chat-core/src/blocked.test.ts` (new), `packages/chat-core/src/index.ts`
+- `apps/web/src/lib/blockedJids.ts`, `apps/web/src/lib/preview-message.ts`
+- `apps/mobile/src/lib/blocked-users.ts` (new), `apps/mobile/src/lib/blocked-users.test.ts` (new)
+- `apps/mobile/src/components/contacts/blocks.ts`, `apps/mobile/src/components/contacts/blocks.test.ts` (new)
+- `apps/mobile/src/components/chat/message-list.tsx`, `apps/mobile/src/components/chat/message-list.test.tsx` (new)
+- `apps/mobile/src/components/chat/chat-list-item.tsx`, `apps/mobile/src/components/chat/topic-row.tsx`, `apps/mobile/src/components/chat/topic-row.test.tsx`, `apps/mobile/src/components/chat/group-list-item.tsx`
+
+### Commands run (real results)
+- `pnpm install` — completed.
+- `pnpm --filter @zilar/chat-core test --maxWorkers=2 --reporter=dot blocked` — 1 file, 11 passed.
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot blockedJids preview-message ChatListItem MessageList` — 4 files, 43 passed.
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot contacts.test blocked-screen blocked-users blocks message-list topic-row` — 6 files, 58 passed.
+- `pnpm gate` — ended with `GATE PASS` and `scope: every changed file is inside the Allowed files`:
+```
+gate: 16 changed file(s) against main
+PASS  install (frozen)  (1.3s)
+PASS  format  (18.7s)
+PASS  lint  (1.0s)
+PASS  typecheck  (10.5s)
+PASS  tests @zilar/chat-core  (0.8s)
+PASS  tests @zilar/mobile  (7.0s)
+PASS  tests @zilar/web  (38.5s)
+scope: every changed file is inside the Allowed files
+GATE PASS
+```
+
+### Blocked / needs a decision
+None.
+
+### Lead fix round
+- Wrapped `visibleMessages` in `message-list.tsx` in `useMemo(() => filterBlockedMessages(chat, messages, blockedJids, currentUserId), [chat, messages, blockedJids, currentUserId])`, so an active filter no longer returns a new array on every render and the `items`/`entries` memos and the `FlatList` data stay referentially stable when the inputs are unchanged.
+- The requested referential-stability test was **skipped**: the mobile package has no React renderer (no `@testing-library/react-native`, no `react-test-renderer`), and `MessageList` cannot be called as a plain function because it uses `useState`/`useRef`/`useEffect`/`useMemo`/`useSyncExternalStore`. `filterBlockedMessages` itself necessarily returns a new array when it filters, so a helper-level test cannot show the memoised stability; the `useMemo` is covered by typecheck and the existing filter tests. `message-list` + `blocked-users` tests: 8 passed. `pnpm gate`: `GATE PASS`, same scope line.
+
 ## Review (written by Claude)
+
+**Verdict:** Approved after one lead fix round.
+- The first packet was clean, but the lead found that `visibleMessages` was a new array on every render; it is now memoised (`99a3e7ee`).
+- The helpers moved byte-identical to chat-core, and web re-exports them.
+- Mobile reloads on foreground and after a block or unblock.
+
+Follow-up from the pre-review nit (pre-existing, not from this task): the mobile rows compare ticks against the `CURRENT_USER_ID` constant (`chat-list-item.tsx:70`, `topic-row.tsx:86`) rather than the store's `currentUserId`, so own-message ticks may not show under real auth.

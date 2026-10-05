@@ -1,4 +1,4 @@
-import { formatListTime } from '@zilar/chat-core';
+import { formatListTime, previewMessage } from '@zilar/chat-core';
 import { Megaphone, Pin } from 'lucide-react-native';
 import { Pressable, View } from 'react-native';
 import { useColorScheme } from 'nativewind';
@@ -6,13 +6,14 @@ import { useColorScheme } from 'nativewind';
 import { Avatar } from '@/components/chat/avatar';
 import { plainPreviewBody } from '@/components/chat/markdown-decision';
 import { Text } from '@/components/ui/text';
+import { useContactsApi } from '@/components/contacts/use-contacts-api';
 import { asColorScheme } from '@/lib/color-scheme';
 import { MUTED_FOREGROUND } from '@/lib/colors';
 import { primaryKey, raisedPill } from '@/lib/depth';
 import { channelSubscriberLabel } from '@/lib/channels';
+import { useBlockedJids } from '@/lib/blocked-users';
 import { previewParts } from '@/lib/format';
 import { groupRowFor, topicCountLabel, topicsOfGroup } from '@/lib/topics';
-import { CURRENT_USER_ID } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { useChatStore } from '@/store/chat-store-provider';
 
@@ -55,10 +56,8 @@ export function GroupListItem({
   const scheme = asColorScheme(useColorScheme().colorScheme);
   const chats = useChatStore((state) => state.chats);
   const row = groupRowFor(groupId, topicsOfGroup(chats, groupId));
-  if (row === undefined) {
-    return null;
-  }
-  const newest = row.topics.reduce<(typeof row.topics)[number] | undefined>(
+  const topics = row?.topics ?? [];
+  const newest = topics.reduce<(typeof topics)[number] | undefined>(
     (best, chat) =>
       (chat.lastMessage?.createdAt.getTime() ?? Number.NEGATIVE_INFINITY) >
       (best?.lastMessage?.createdAt.getTime() ?? Number.NEGATIVE_INFINITY)
@@ -66,14 +65,24 @@ export function GroupListItem({
         : best,
     undefined,
   );
-  const last = newest?.lastMessage;
+  const messages = useChatStore((state) => state.messages(newest?.id ?? ''));
+  const currentUserId = useChatStore((state) => state.currentUserId);
+  const { api: contactsApi } = useContactsApi();
+  const blockedJids = useBlockedJids(contactsApi);
+  if (row === undefined) {
+    return null;
+  }
+  const previewed =
+    newest === undefined ? undefined : previewMessage(newest, messages, blockedJids, currentUserId);
   // The preview names the topic's last sender ("Dev AI: Preview ready").
-  const preview = previewParts(last?.deleted === true ? undefined : last, {
+  const preview = previewParts(previewed?.deleted === true ? undefined : previewed, {
     isGroup: true,
-    currentUserId: CURRENT_USER_ID,
+    currentUserId,
   });
   const body =
-    last === undefined ? '' : plainPreviewBody(newest!, last, preview.body, CURRENT_USER_ID);
+    previewed === undefined
+      ? ''
+      : plainPreviewBody(newest!, previewed, preview.body, currentUserId);
   const subtitle =
     row.chatKind === 'channel'
       ? channelSubscriberLabel(row.subscriberCount ?? row.memberCount ?? 0)

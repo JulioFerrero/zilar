@@ -1,3 +1,4 @@
+import { reloadBlockedJids } from '../../lib/blocked-users';
 import { ContactsApiError, type ContactsApi } from '../../lib/contacts-api';
 
 /**
@@ -50,6 +51,7 @@ export async function performBlock(
 ): Promise<string | null> {
   try {
     await api.blockUser(userId);
+    await reloadBlockedJids(api);
     onBlocked();
     return null;
   } catch (error: unknown) {
@@ -69,6 +71,7 @@ export async function performUnblock(
 ): Promise<string | null> {
   try {
     await api.unblockUser(userId);
+    await reloadBlockedJids(api);
     onUnblocked();
     return null;
   } catch (error: unknown) {
