@@ -46,6 +46,19 @@ export const radius = {
 export type RadiusKey = keyof typeof radius;
 
 /**
+ * The chat dot grid both apps draw (ui-style.md §2): a 22 px cell with a
+ * 1 px `#1c1c1c` dot on the panel black. Mobile reads it directly in
+ * `components/chat/chat-background.tsx`; web pins `--chat-background` to it
+ * in the drift test.
+ */
+export const chatGrid = {
+  cell: 22,
+  dotRadius: 1,
+  dot: '#1c1c1c',
+  background: palette.panel,
+} as const;
+
+/**
  * The gradient and shadow strings exactly as in
  * `apps/mobile/src/lib/depth.ts` (which is also what the web utilities in
  * `apps/web/src/index.css` render, modulo CSS whitespace).
@@ -97,20 +110,14 @@ export interface PlatformDifference {
  */
 export const platformDifferences: readonly PlatformDifference[] = [
   {
-    name: 'chat-background',
-    web: 'radial-gradient(#1c1c1c 1px, transparent 1px) 0 0 / 22px 22px var(--panel)',
-    mobile: '#0a0a0a',
-    note: 'Web renders a dot grid; mobile is a flat panel color.',
-  },
-  {
-    name: 'chat-background-literal',
+    name: 'auth-gradient-background',
     web: 'var(--panel)',
     mobile: '#000000',
-    note: 'Mobile CHAT_BACKGROUND in colors.ts is page black, not panel.',
+    note: "Mobile CHAT_BACKGROUND in colors.ts is the auth screens' gradient (page black), not panel.",
   },
   {
     name: 'key-text-shadow',
-    web: '0 1px 0 rgba(255,255,255,.7)',
+    web: '0 1px 0 rgba(255, 255, 255, 0.7)',
     mobile: 'missing',
     note: 'Mobile primaryKey has no text shadow; web flips it dark on a future blue accent.',
   },

@@ -1,7 +1,7 @@
 ---
 id: T-0242
 title: "ui-tokens follow-up: the chat dot grid comes from the package, the wrong recorded difference goes, drift tests tightened"
-status: planned
+status: merged
 milestone: M5
 branch: task/T-0242-tokens-dot-grid-cleanup
 model: opencode/muse-spark-1.3-contributor-free
@@ -56,4 +56,36 @@ Custom chat backgrounds (images or coloured dots; a later feature), web CSS chan
 
 ## Report (written by the worker when done)
 
+### What I did
+- `packages/ui-tokens/src/index.ts`: added `chatGrid = { cell: 22, dotRadius: 1, dot: '#1c1c1c', background: palette.panel }`. Removed the `chat-background` entry from `platformDifferences` (the grid is shared now, not a difference). Renamed `chat-background-literal` to `auth-gradient-background` with a note that mobile `CHAT_BACKGROUND` is the auth screens' gradient (page black). Wrote the `key-text-shadow` web value exactly as the CSS writes it (`0 1px 0 rgba(255, 255, 255, 0.7)`, verified against `apps/web/src/index.css` line 88).
+- `apps/mobile/src/components/chat/chat-background.tsx`: reads cell/radius/dot/background from `chatGrid`. Rendered values identical (22, 1, `#1c1c1c`, `#0a0a0a`); no visual change.
+- `apps/web/src/lib/tokens-drift.test.ts`: `--chat-background` now asserts it contains `chatGrid.dot`, `1px`, `22px 22px` instead of a bare `radial-gradient` check. `iconColor` is checked inside the `key-icon` utility block only. Count guard is exact (`23`).
+- `apps/mobile/src/lib/tokens-drift.test.ts`: removed the vacuous `depth.keyPrimaryShadow.length > 0` assertion (and the now-unused `depth` import) and the `SKIPPED.has('chat-background')` skip check. Asserts `--chat-background` stays `#0a0a0a` with a comment that it is unused by the chat (the SVG draws the grid). Count guard is exact (`22`).
+- `CHAT_BACKGROUND` in mobile `colors.ts` untouched per spec. No CSS files changed.
+
+### Files changed
+`packages/ui-tokens/src/index.ts`, `apps/mobile/src/components/chat/chat-background.tsx`, `apps/web/src/lib/tokens-drift.test.ts`, `apps/mobile/src/lib/tokens-drift.test.ts`, `work/T-0242-tokens-dot-grid-cleanup.md`.
+
+### Commands and real results
+- `pnpm install`: exit 0.
+- `pnpm --filter @zilar/ui-tokens test --reporter=dot`: 1 file, 5 tests passed.
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot src/lib/tokens-drift.test.ts`: 1 file, 7 tests passed.
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot src/lib/tokens-drift.test.ts`: 1 file, 2 tests passed.
+- `pnpm gate` (first run): GATE FAIL on `format` only (prettier flagged my two hand-edited files). Fixed with `prettier --write` on those two Allowed files. Second run: `PASS install, PASS format, PASS lint, PASS typecheck, PASS tests @zilar/mobile, PASS tests @zilar/ui-tokens, PASS tests @zilar/web`, `scope: every changed file is inside the Allowed files`, `GATE PASS`.
+
+### Problems / deviations
+- None from the spec. Exact counts verified by passing runs: web checks 23 palette entries, mobile 22.
+
+### Security checklist
+- No secrets, no routes, no deletes/updates, no caps, no audit entries touched. N/A beyond that.
+
+### Blocked / needs a decision
+- None.
+
 ## Review (written by Claude)
+
+**Verdict:** Approved. The first pre-review was clean, with 2 nits:
+- the comment above `platformDifferences` still says Julio decides the dot grid later;
+- an uncommitted lockfile peer flip sits in the worktree, not in the branch.
+
+I read the `chat-background.tsx` diff: the same SVG, with its numbers now taken from `chatGrid`. Fix the stale comment the next time the tokens are touched.

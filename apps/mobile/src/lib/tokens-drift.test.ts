@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
-import { depth, palette, platformDifferences, type PaletteKey } from '@zilar/ui-tokens';
+import { palette, platformDifferences, type PaletteKey } from '@zilar/ui-tokens';
 
 // Fails when `global.css` drifts from `@zilar/ui-tokens`. Every palette value
 // must equal its `:root` variable; the recorded platform differences are
@@ -60,12 +60,12 @@ describe('ui tokens drift (global.css)', () => {
       expect(rootVariable(variable), `--${variable}`).toBe(expected);
       checked.push(variable);
     }
-    expect(checked.length).toBeGreaterThan(10);
+    expect(checked.length).toBe(22);
   });
 
   it('keeps the recorded differences', () => {
+    // The `--chat-background` variable is unused by the chat: the SVG grid in
+    // `components/chat/chat-background.tsx` draws the dots from `chatGrid`.
     expect(rootVariable('chat-background')).toBe('#0a0a0a');
-    expect(SKIPPED.has('chat-background')).toBe(true);
-    expect(depth.keyPrimaryShadow.length).toBeGreaterThan(0);
   });
 });

@@ -3,7 +3,14 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { depth, palette, platformDifferences, radius, type PaletteKey } from '@zilar/ui-tokens';
+import {
+  chatGrid,
+  depth,
+  palette,
+  platformDifferences,
+  radius,
+  type PaletteKey,
+} from '@zilar/ui-tokens';
 
 // Fails when `index.css` drifts from `@zilar/ui-tokens`. Every palette value
 // must equal its `:root` variable, and every depth string must appear in its
@@ -182,7 +189,7 @@ describe('ui tokens drift (index.css)', () => {
         continue;
       }
       if (variable === 'key-icon-color') {
-        expect(normalize(css).toLowerCase()).toContain(
+        expect(normalize(utilityBlock('key-icon')).toLowerCase()).toContain(
           normalize(`color:${palette[key as PaletteKey]}`),
         );
         checked.push(variable);
@@ -192,7 +199,7 @@ describe('ui tokens drift (index.css)', () => {
       expect(rootVariable(variable), `--${variable}`).toBe(expected);
       checked.push(variable);
     }
-    expect(checked.length).toBeGreaterThan(10);
+    expect(checked.length).toBe(23);
   });
 
   it('keeps the shadcn aliases on the D24 values', () => {
@@ -231,7 +238,10 @@ describe('ui tokens drift (index.css)', () => {
   });
 
   it('keeps the recorded differences', () => {
-    expect(rootVariable('chat-background')).toContain('radial-gradient');
+    const chatBackground = rootVariable('chat-background');
+    expect(chatBackground).toContain(chatGrid.dot);
+    expect(chatBackground).toContain(`${chatGrid.dotRadius}px`);
+    expect(chatBackground).toContain(`${chatGrid.cell}px ${chatGrid.cell}px`);
     for (const name of [
       'key-text-shadow',
       'avatar-ring',
