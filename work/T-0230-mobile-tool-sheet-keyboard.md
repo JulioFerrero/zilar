@@ -21,7 +21,7 @@ Emulator QA run 2 (mock build, 2026-10-05) of T-0219, screenshots seen by the le
 3. After "Revert to v1" (creates v4) and closing the sheet with X, the Tools list still shows "Morning briefing v3".
 
 ### Verified facts (do not re-derive)
-- `apps/mobile/src/components/ais/tool-detail-sheet.tsx`: `ToolDetailSheet` (lines 470-500) renders a `Modal` (`presentationStyle="pageSheet"`) with a `View` and `ToolDetailLoader`; the vertical `ScrollView` is at line 726 (no `keyboardShouldPersistTaps`); `revert` (lines 602-615) calls `api.revertTool` then bumps the sheet's own `reloadTick`. Line numbers are on main before T-0229, which edits line 726; find the same lines after it.
+- `apps/mobile/src/components/ais/tool-detail-sheet.tsx`: `ToolDetailSheet` (lines 470-500) renders a `Modal` (`presentationStyle="pageSheet"`) with a `View` and `ToolDetailLoader`; the vertical `ScrollView` is at line 726 (no `keyboardShouldPersistTaps`); `revert` (lines 602-615) calls `api.revertTool` then bumps the sheet's own `reloadTick`. Lines checked on main after T-0229 merged.
 - `apps/mobile/src/components/ais/tools-section.tsx` lines 121-167: `ToolsSection` reloads its list when `reloadTick` changes (effect at lines 130-145); the sheet gets `onClose={() => setOpenId(null)}` and `onDeleted` (removes the tool locally). Nothing reloads the list after a run or a revert.
 - Pattern in the app: `KeyboardAvoidingView` with `behavior={Platform.OS === 'ios' ? 'padding' : undefined}` (`apps/mobile/src/app/ais/[id].tsx` line 225). Inside a `Modal`, Android does not resize for the keyboard, so the sheet needs `'height'` on Android.
 
