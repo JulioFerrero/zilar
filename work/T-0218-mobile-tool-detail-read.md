@@ -1,7 +1,7 @@
 ---
 id: T-0218
 title: "Mobile: tapping a tool on the AI screen opens its detail sheet (source, versions, recent runs; read only)"
-status: planned
+status: merged
 milestone: M5
 branch: task/T-0218-mobile-tool-detail-read
 model: meta/muse-spark-1.3-contributor
@@ -73,4 +73,75 @@ Run now, Revert, Delete (next task), syntax highlighting, group and topic tools.
 
 ## Report (written by the worker when done)
 
+Done. Tapping a tool row in the AI edit screen's Tools section now opens a
+full-height read-only detail sheet (slide `Modal`, `pageSheet`,
+`onRequestClose` closes it) with header, hosts, numbered source, version
+history (tap shows that version's source) and recent runs.
+
+What I changed:
+- `apps/mobile/src/lib/tools-api.ts`: new types `ToolDetail`,
+  `ToolVersion`, `ToolVersionDetail`, `ToolRun` (+ trigger/status unions)
+  with guards matching the existing style (one bad item gives
+  `invalid_response`); new `ToolDetailsApi` (`getTool`, `listToolVersions`,
+  `getToolVersion`, `listToolRuns` on `/api/tools/<id>[/versions[/<n>]]`,
+  `[/runs]`, ids `encodeURIComponent`-ed); `AiToolsApi` is now
+  `ToolsApi & RoutineActionsApi & ToolDetailsApi`. All existing methods kept
+  (one edit accidentally dropped `pauseRoutine`/`resumeRoutine`; restored and
+  verified by the passing pause/resume tests).
+- `apps/mobile/src/mock/tools.ts`: per-version multi-line sources; `tool-1`
+  has 3 versions (v3 current, v2, v1 with no hosts) and 3 runs (ok with short
+  output, error `timeout`, ok with 2644-char output > 2000 preview cap);
+  `tool-2` has 1 version and no runs; unknown ids throw 404 `not_found`.
+- `apps/mobile/src/components/ais/tool-detail-format.ts` (new):
+  `runStatusText` (as web), `waitingHosts` (missing `approvedHosts` = none
+  approved), `numberedLines` (empty = no lines, trailing newline adds none).
+- `apps/mobile/src/components/ais/tool-detail-sheet.tsx` (new):
+  `ToolDetailSheet({ api, toolId, onClose })` (pageSheet slide Modal, `X`
+  close icon with `Close tool` label, loader keyed by `toolId` so switching
+  tools remounts fresh, `Promise.all` load with ignore-after-unmount) and
+  hook-free `ToolDetailBody` for tests. Fixed sentences only
+  (`Could not load the tool.`, `Could not load that version.`), never server
+  text. Dates via `toLocaleString()`. Output uses `truncateOutput` with
+  `Show all`/`Show less`. No Run now/Revert/Delete.
+- `apps/mobile/src/components/ais/tools-section.tsx`: prop is now
+  `api: AiToolsApi`; `ToolRow` is a `Pressable` (`button` role,
+  `Open <name>` label, `active:bg-list-hover`) opening the sheet;
+  `loadAiTools(api: ToolsApi, ...)` unchanged.
+- Tests: extended `tools-api.test.ts` (4 detail paths + bearer, bad
+  version/run item = `invalid_response`, 404 keeps status) and
+  `tools-section.test.tsx` (`Open <name>` labels, sheet import mocked);
+  new `tool-detail-format.test.ts` and `tool-detail-sheet.test.tsx`
+  (static-markup body tests: loading, error with Retry+Back, full ready
+  state, waiting line, older-version note, version error, empty
+  history/runs, output expand, Retry/Back/history-row wiring).
+
+Commands (real results):
+- `pnpm install`: done (11.8s).
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot
+  src/lib/tools-api.test.ts`: 16 passed.
+- `... tool-detail-format.test.ts`: 9 passed.
+- `... tool-detail-sheet.test.tsx src/components/ais/tools-section.test.tsx`:
+  23 passed (11 + 12).
+- `pnpm --filter @zilar/mobile exec tsc --noEmit -p tsconfig.json`: clean.
+- `pnpm gate`: `PASS install (frozen)`, `PASS format`, `PASS lint`,
+  `PASS typecheck`, `PASS tests @zilar/mobile`,
+  `scope: every changed file is inside the Allowed files`, `GATE PASS`
+  (10 changed files, all within scope).
+
+Problems: initial sheet effect reset state synchronously inside the effect
+(lint `set-state-in-effect`); fixed by splitting into `ToolDetailSheet`
+(Modal) + keyed `ToolDetailLoader`, which also removes stale state when
+switching tools. The `nativewind` `useColorScheme` import needed a test
+mock (`light`).
+
+Deviations: none. Security checklist: no secrets/tokens in logs or UI
+fixed sentences carry no server text; no deletes/updates added; no new
+routes; mock data only.
+
+Open questions: none.
+
+status: review
+
 ## Review (written by Claude)
+
+**Verdict:** Approved, clean on the first pre-review (paid Muse). Four read routes with bearer and `encodeURIComponent`, guards that make a bad version or run item `invalid_response`, mock detail data for both tools, the format helpers, `ToolDetailSheet` (page sheet, numbered source, version history, recent runs, fixed sentences only), and tappable tool rows labelled `Open <name>`. Emulator smoke PASS on home. Not seen on a device: the test account has no AI, and `?mock=1` through a deep link still loads the real AIs API in the smoke build ("That AI no longer exists."), like T-0189 and T-0213. Accepted nits: Retry keeps the error panel up while it reloads; the 404 test covers two of the four reads.

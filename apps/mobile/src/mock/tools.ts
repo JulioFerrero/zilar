@@ -1,4 +1,13 @@
-import { ToolsApiError, type Routine, type ToolListItem, type AiToolsApi } from '../lib/tools-api';
+import {
+  ToolsApiError,
+  type AiToolsApi,
+  type Routine,
+  type ToolDetail,
+  type ToolListItem,
+  type ToolRun,
+  type ToolVersion,
+  type ToolVersionDetail,
+} from '../lib/tools-api';
 
 /**
  * Mock tools and routines API for the AI edit screen (T-0189, actions in
@@ -101,6 +110,93 @@ const ROUTINES: Routine[] = [
   },
 ];
 
+const TOOL_SOURCES: Record<string, string> = {
+  'tool-1:3':
+    'export async function run(ctx) {\n  const headlines = await ctx.fetch("https://news.example.com/overnight");\n  return summarize(headlines);\n}',
+  'tool-1:2':
+    'export async function run(ctx) {\n  const headlines = await ctx.fetch("https://news.example.com/overnight");\n  return headlines;\n}',
+  'tool-1:1': 'export async function run(ctx) {\n  return "good morning";\n}',
+  'tool-2:1': 'export async function run(ctx) {\n  return draftReply(ctx.messages);\n}',
+};
+
+const TOOL_VERSIONS: ToolVersion[] = [
+  {
+    id: 'tool-1-v3',
+    toolId: 'tool-1',
+    version: 3,
+    message: 'Summarize the headlines',
+    hosts: ['news.example.com', 'api.example.com'],
+    createdBy: 'julio',
+    createdAt: '2026-10-03T10:00:00.000Z',
+  },
+  {
+    id: 'tool-1-v2',
+    toolId: 'tool-1',
+    version: 2,
+    message: 'Add the API host',
+    hosts: ['news.example.com', 'api.example.com'],
+    createdBy: 'julio',
+    createdAt: '2026-10-02T10:00:00.000Z',
+  },
+  {
+    id: 'tool-1-v1',
+    toolId: 'tool-1',
+    version: 1,
+    message: 'First draft',
+    hosts: [],
+    createdBy: 'julio',
+    createdAt: '2026-10-01T10:00:00.000Z',
+  },
+  {
+    id: 'tool-2-v1',
+    toolId: 'tool-2',
+    version: 1,
+    message: 'First draft',
+    hosts: [],
+    createdBy: 'julio',
+    createdAt: '2026-10-01T10:00:00.000Z',
+  },
+];
+
+const TOOL_RUNS: ToolRun[] = [
+  {
+    id: 'run-1',
+    toolId: 'tool-1',
+    version: 3,
+    trigger: 'manual',
+    status: 'ok',
+    errorKind: null,
+    durationMs: 120,
+    fetchCount: 1,
+    outputText: 'Overnight headlines: markets up, weather clear.',
+    createdAt: '2026-10-03T09:00:00.000Z',
+  },
+  {
+    id: 'run-2',
+    toolId: 'tool-1',
+    version: 2,
+    trigger: 'routine',
+    status: 'error',
+    errorKind: 'timeout',
+    durationMs: 5000,
+    fetchCount: 1,
+    outputText: null,
+    createdAt: '2026-10-02T09:00:00.000Z',
+  },
+  {
+    id: 'run-3',
+    toolId: 'tool-1',
+    version: 3,
+    trigger: 'manual',
+    status: 'ok',
+    errorKind: null,
+    durationMs: 200,
+    fetchCount: 2,
+    outputText: `${'Headline digest line. '.repeat(120)}end.`,
+    createdAt: '2026-10-03T08:00:00.000Z',
+  },
+];
+
 /** A `ToolsApi` backed by the mock data, for offline UI work and screenshots. */
 export function createMockToolsApi(): AiToolsApi {
   const tools = [...TOOLS];
@@ -118,6 +214,40 @@ export function createMockToolsApi(): AiToolsApi {
     },
     async listAiRoutines() {
       return routines.map((routine) => ({ ...routine }));
+    },
+    async getTool(id: string) {
+      const tool = tools.find((item) => item.id === id);
+      if (tool === undefined) {
+        throw new ToolsApiError(404, 'not_found', 'Tool not found');
+      }
+      return { ...tool, source: TOOL_SOURCES[`${id}:${tool.currentVersion}`] ?? '' } as ToolDetail;
+    },
+    async listToolVersions(id: string) {
+      const versions = TOOL_VERSIONS.filter((version) => version.toolId === id).map((version) => ({
+        ...version,
+        hosts: [...version.hosts],
+      }));
+      if (versions.length === 0 && tools.every((tool) => tool.id !== id)) {
+        throw new ToolsApiError(404, 'not_found', 'Tool not found');
+      }
+      return versions;
+    },
+    async getToolVersion(id: string, version: number) {
+      const found = TOOL_VERSIONS.find((item) => item.toolId === id && item.version === version);
+      if (found === undefined) {
+        throw new ToolsApiError(404, 'not_found', 'Tool version not found');
+      }
+      return {
+        ...found,
+        hosts: [...found.hosts],
+        source: TOOL_SOURCES[`${id}:${version}`] ?? '',
+      } as ToolVersionDetail;
+    },
+    async listToolRuns(id: string) {
+      if (tools.every((tool) => tool.id !== id)) {
+        throw new ToolsApiError(404, 'not_found', 'Tool not found');
+      }
+      return TOOL_RUNS.filter((run) => run.toolId === id).map((run) => ({ ...run }));
     },
     async pauseRoutine(id: string) {
       const routine = findRoutine(id);

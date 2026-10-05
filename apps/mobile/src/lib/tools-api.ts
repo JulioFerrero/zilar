@@ -28,7 +28,41 @@ export interface ToolListItem {
   scope?: 'personal' | 'group';
 }
 
-export type RoutineStatus = 'active' | 'paused' | 'needs_approval';
+export type ToolRunTrigger = 'manual' | 'routine' | 'ai';
+
+export type ToolRunStatus = 'ok' | 'error';
+
+export interface ToolDetail extends ToolListItem {
+  source: string;
+}
+
+export interface ToolVersion {
+  id: string;
+  toolId: string;
+  version: number;
+  message: string;
+  hosts: string[];
+  createdBy: string;
+  createdAt: string;
+  toolName?: string;
+}
+
+export interface ToolVersionDetail extends ToolVersion {
+  source: string;
+}
+
+export interface ToolRun {
+  id: string;
+  toolId: string;
+  version: number;
+  trigger: ToolRunTrigger;
+  status: ToolRunStatus;
+  errorKind: string | null;
+  durationMs: number;
+  fetchCount: number;
+  outputText: string | null;
+  createdAt: string;
+}
 
 export type RoutinePausedReason = 'user' | 'failures' | 'hosts_changed';
 
@@ -52,9 +86,22 @@ export interface Routine {
   scope?: 'personal' | 'group';
 }
 
+export type RoutineStatus = 'active' | 'paused' | 'needs_approval';
+
 export interface ToolsApi {
   listAiTools(aiId: string): Promise<ToolListItem[]>;
   listAiRoutines(aiId: string): Promise<Routine[]>;
+}
+
+/**
+ * The read-only tool detail calls (T-0218): one tool with its current
+ * source, its version history, one version with its source, recent runs.
+ */
+export interface ToolDetailsApi {
+  getTool(id: string): Promise<ToolDetail>;
+  listToolVersions(id: string): Promise<ToolVersion[]>;
+  getToolVersion(id: string, version: number): Promise<ToolVersionDetail>;
+  listToolRuns(id: string): Promise<ToolRun[]>;
 }
 
 /**
@@ -68,7 +115,7 @@ export interface RoutineActionsApi {
 }
 
 /** The full API the AI edit screen works against: lists plus mutations. */
-export type AiToolsApi = ToolsApi & RoutineActionsApi;
+export type AiToolsApi = ToolsApi & RoutineActionsApi & ToolDetailsApi;
 
 export class ToolsApiError extends Error {
   readonly status: number;
@@ -146,6 +193,102 @@ function parseToolListItem(value: unknown): ToolListItem | null {
 
 function isRoutineStatus(value: unknown): value is RoutineStatus {
   return value === 'active' || value === 'paused' || value === 'needs_approval';
+}
+
+function isToolRunTrigger(value: unknown): value is ToolRunTrigger {
+  return value === 'manual' || value === 'routine' || value === 'ai';
+}
+
+function isToolRunStatus(value: unknown): value is ToolRunStatus {
+  return value === 'ok' || value === 'error';
+}
+
+function parseToolDetail(value: unknown): ToolDetail | null {
+  const item = parseToolListItem(value);
+  if (item === null) return null;
+  if (!isRecord(value) || !isString(value['source'])) return null;
+  return { ...item, source: value['source'] };
+}
+
+function parseToolVersion(value: unknown): ToolVersion | null {
+  if (!isRecord(value)) return null;
+  const id = value['id'];
+  const toolId = value['toolId'];
+  const version = value['version'];
+  const message = value['message'];
+  const hosts = value['hosts'];
+  const createdBy = value['createdBy'];
+  const createdAt = value['createdAt'];
+  const toolName = value['toolName'];
+  if (
+    !isString(id) ||
+    !isString(toolId) ||
+    typeof version !== 'number' ||
+    !isString(message) ||
+    !isStringArray(hosts) ||
+    !isString(createdBy) ||
+    !isString(createdAt)
+  ) {
+    return null;
+  }
+  if (toolName !== undefined && !isString(toolName)) return null;
+  return {
+    id,
+    toolId,
+    version,
+    message,
+    hosts,
+    createdBy,
+    createdAt,
+    ...(toolName === undefined ? {} : { toolName }),
+  };
+}
+
+function parseToolVersionDetail(value: unknown): ToolVersionDetail | null {
+  const version = parseToolVersion(value);
+  if (version === null) return null;
+  if (!isRecord(value) || !isString(value['source'])) return null;
+  return { ...version, source: value['source'] };
+}
+
+function parseToolRun(value: unknown): ToolRun | null {
+  if (!isRecord(value)) return null;
+  const id = value['id'];
+  const toolId = value['toolId'];
+  const version = value['version'];
+  const trigger = value['trigger'];
+  const status = value['status'];
+  const errorKind = value['errorKind'];
+  const durationMs = value['durationMs'];
+  const fetchCount = value['fetchCount'];
+  const outputText = value['outputText'];
+  const createdAt = value['createdAt'];
+  if (
+    !isString(id) ||
+    !isString(toolId) ||
+    typeof version !== 'number' ||
+    !isToolRunTrigger(trigger) ||
+    !isToolRunStatus(status) ||
+    typeof durationMs !== 'number' ||
+    typeof fetchCount !== 'number' ||
+    !isString(createdAt)
+  ) {
+    return null;
+  }
+  if (errorKind !== null && !isString(errorKind)) return null;
+  if (outputText !== null && !isString(outputText)) return null;
+  return {
+    id,
+    toolId,
+    version,
+    trigger,
+    status,
+    errorKind,
+    durationMs,
+    fetchCount,
+    outputText,
+    createdAt,
+  };
 }
 
 function isRoutinePausedReason(value: unknown): value is RoutinePausedReason {
@@ -307,6 +450,38 @@ export function createToolsApi(
         parseRoutine,
       );
       return body as Routine;
+    },
+    async getTool(id) {
+      const body = await withToken(
+        `/api/tools/${encodeURIComponent(id)}`,
+        { method: 'GET' },
+        parseToolDetail,
+      );
+      return body as ToolDetail;
+    },
+    async listToolVersions(id) {
+      const body = await withToken(
+        `/api/tools/${encodeURIComponent(id)}/versions`,
+        { method: 'GET' },
+        (value) => parseList(value, parseToolVersion),
+      );
+      return body as ToolVersion[];
+    },
+    async getToolVersion(id, version) {
+      const body = await withToken(
+        `/api/tools/${encodeURIComponent(id)}/versions/${encodeURIComponent(String(version))}`,
+        { method: 'GET' },
+        parseToolVersionDetail,
+      );
+      return body as ToolVersionDetail;
+    },
+    async listToolRuns(id) {
+      const body = await withToken(
+        `/api/tools/${encodeURIComponent(id)}/runs`,
+        { method: 'GET' },
+        (value) => parseList(value, parseToolRun),
+      );
+      return body as ToolRun[];
     },
     async deleteRoutine(id) {
       const token = await getToken();

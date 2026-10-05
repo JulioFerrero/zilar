@@ -183,4 +183,102 @@ describe('createToolsApi', () => {
     await expect(api.deleteRoutine('routine-1')).rejects.toMatchObject({ status: 401 });
     expect(fetchImpl).not.toHaveBeenCalled();
   });
+
+  it('GETs the tool detail with the bearer header and URL-encodes the id', async () => {
+    const detail = { ...TOOL, source: 'export async function run() {}' };
+    const fetchImpl = vi.fn(async () => jsonResponse(detail));
+    const api = createToolsApi(async () => 't', fetchImpl as unknown as typeof fetch);
+
+    await expect(api.getTool('tool/1')).resolves.toEqual(detail);
+
+    const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('http://127.0.0.1:3188/api/tools/tool%2F1');
+    expect((init.headers as Record<string, string>)['authorization']).toBe('Bearer t');
+    expect(init.method).toBe('GET');
+  });
+
+  it('GETs versions, one version and runs with the bearer header', async () => {
+    const version = {
+      id: 'tool-1-v3',
+      toolId: 'tool-1',
+      version: 3,
+      message: 'Summarize',
+      hosts: ['news.example.com'],
+      createdBy: 'julio',
+      createdAt: '2026-10-03T10:00:00.000Z',
+    };
+    const run = {
+      id: 'run-1',
+      toolId: 'tool-1',
+      version: 3,
+      trigger: 'manual',
+      status: 'ok',
+      errorKind: null,
+      durationMs: 120,
+      fetchCount: 1,
+      outputText: 'headlines',
+      createdAt: '2026-10-03T09:00:00.000Z',
+    };
+    const apiFor = (
+      body: unknown,
+    ): { api: ReturnType<typeof createToolsApi>; fetchImpl: ReturnType<typeof vi.fn> } => {
+      const fetchImpl = vi.fn(async () => jsonResponse(body));
+      return {
+        api: createToolsApi(async () => 't', fetchImpl as unknown as typeof fetch),
+        fetchImpl,
+      };
+    };
+
+    const listed = apiFor([version]);
+    await expect(listed.api.listToolVersions('tool 1')).resolves.toEqual([version]);
+    expect((listed.fetchImpl.mock.calls[0] as unknown as [string])[0]).toBe(
+      'http://127.0.0.1:3188/api/tools/tool%201/versions',
+    );
+
+    const one = apiFor({ ...version, source: 'code' });
+    await expect(one.api.getToolVersion('tool-1', 3)).resolves.toEqual({
+      ...version,
+      source: 'code',
+    });
+    expect((one.fetchImpl.mock.calls[0] as unknown as [string])[0]).toBe(
+      'http://127.0.0.1:3188/api/tools/tool-1/versions/3',
+    );
+
+    const runs = apiFor([run]);
+    await expect(runs.api.listToolRuns('tool-1')).resolves.toEqual([run]);
+    expect((runs.fetchImpl.mock.calls[0] as unknown as [string])[0]).toBe(
+      'http://127.0.0.1:3188/api/tools/tool-1/runs',
+    );
+  });
+
+  it('throws invalid_response when one version or run item does not parse', async () => {
+    const badVersion = vi.fn(async () =>
+      jsonResponse([{ id: 'v', toolId: 'tool-1', version: 'three' }]),
+    );
+    const badRun = vi.fn(async () => jsonResponse([{ id: 'r', status: 'running' }]));
+    const forFetch = (fetchImpl: ReturnType<typeof vi.fn>): ReturnType<typeof createToolsApi> =>
+      createToolsApi(async () => 't', fetchImpl as unknown as typeof fetch);
+
+    await expect(forFetch(badVersion).listToolVersions('tool-1')).rejects.toMatchObject({
+      status: 200,
+      code: 'invalid_response',
+    });
+    await expect(forFetch(badRun).listToolRuns('tool-1')).rejects.toMatchObject({
+      status: 200,
+      code: 'invalid_response',
+    });
+  });
+
+  it('keeps the 404 status for a missing tool detail', async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({ error: { code: 'not_found', message: 'Tool not found' } }, 404),
+    );
+    const api = createToolsApi(async () => 't', fetchImpl as unknown as typeof fetch);
+
+    await expect(api.getTool('tool-gone')).rejects.toMatchObject({
+      status: 404,
+      code: 'not_found',
+    });
+    await expect(api.listToolVersions('tool-gone')).rejects.toMatchObject({ status: 404 });
+  });
 });

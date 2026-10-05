@@ -15,6 +15,9 @@ import {
 } from './tools-section';
 
 vi.mock('react-native', () => ({
+  Modal: 'Modal',
+  Pressable: 'Pressable',
+  ScrollView: 'ScrollView',
   View: 'View',
 }));
 
@@ -24,6 +27,10 @@ vi.mock('@/components/ui/text', () => ({
 
 vi.mock('@/components/ui/button', () => ({
   Button: 'Button',
+}));
+
+vi.mock('./tool-detail-sheet', () => ({
+  ToolDetailSheet: 'ToolDetailSheet',
 }));
 
 function content(state: ToolsSectionState, onRetry: () => void = () => {}): string {
@@ -48,6 +55,13 @@ describe('ToolsSectionContent', () => {
     expect(html).toContain('Draft helper');
     expect(html).toContain('no sites');
     expect(html).toContain('never run');
+  });
+
+  it('labels every row with Open <name> so it opens the detail sheet', async () => {
+    const tools = await createMockToolsApi().listAiTools('ai-1');
+    const html = content({ status: 'ready', tools, message: '' });
+    expect(html).toContain('Open Morning briefing');
+    expect(html).toContain('Open Draft helper');
   });
 
   it('does not show the approved suffix for the tool with no hosts', async () => {
