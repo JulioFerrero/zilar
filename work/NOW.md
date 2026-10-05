@@ -25,6 +25,7 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
 | T-0237 | Web: chat folders from the server, chips (narrow), left folder rail (wide) | coding | Telegram brief b, decision 4; part 2 (T-0238: Chat folders page + editor dialog) written after it |
+| T-0240 | packages/ui-tokens + drift tests (no visual change) | coding | UI kit step 1; dot-grid on mobile left for Julio |
 | T-0239 | Web: hide blocked people's group messages; Blocked page fix for null @handle | coding | the lead found the null-handle bug after merging T-0235 |
 | T-0227 | Mobile: @mention picker in the group composer, mentions sent | lead fix round 3 (M1 typed text lost on range replace, S1 legacy groups, S2 self in list) | F1 channel feed mentions = follow-up |
 | T-0233 | Mobile: floating bottom bar (Chats, AIs, Settings, Profile), search well, Profile tab | pre-review | Telegram brief a, d; uses `expo-router/ui` headless tabs |
