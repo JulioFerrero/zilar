@@ -6,10 +6,18 @@ export interface SwitchProps {
   onCheckedChange: (checked: boolean) => void;
   label: string;
   disabled?: boolean;
+  /** Hides the visible label and names the control with `label` instead. */
+  hideLabel?: boolean;
 }
 
 /** A labelled switch. Space and Enter toggle it via the native button. */
-export function Switch({ checked, onCheckedChange, label, disabled = false }: SwitchProps) {
+export function Switch({
+  checked,
+  onCheckedChange,
+  label,
+  disabled = false,
+  hideLabel = false,
+}: SwitchProps) {
   const id = useId();
   return (
     <div className="flex items-center gap-2">
@@ -18,6 +26,7 @@ export function Switch({ checked, onCheckedChange, label, disabled = false }: Sw
         type="button"
         role="switch"
         aria-checked={checked}
+        aria-label={hideLabel ? label : undefined}
         disabled={disabled}
         onClick={() => onCheckedChange(!checked)}
         className={cn(
@@ -33,9 +42,11 @@ export function Switch({ checked, onCheckedChange, label, disabled = false }: Sw
           )}
         />
       </button>
-      <label htmlFor={id} className="text-[14px]">
-        {label}
-      </label>
+      {!hideLabel && (
+        <label htmlFor={id} className="text-[14px]">
+          {label}
+        </label>
+      )}
     </div>
   );
 }

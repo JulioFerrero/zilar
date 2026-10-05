@@ -25,6 +25,7 @@ import { FieldError } from './ais/AiPageShell';
 import { describeAiError } from './ais/errors';
 import { Avatar } from './Avatar';
 import { Button } from './ui/button';
+import { Switch } from './ui/switch';
 import { InviteLinksSection } from './InviteLinksSection';
 import { RoutinesSection } from './tools/RoutinesSection';
 import { ToolsSection } from './tools/ToolsSection';
@@ -588,26 +589,13 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
                 <section aria-label="Topic settings" className="flex flex-col gap-2 px-2">
                   <label className="flex cursor-pointer items-center justify-between gap-3 rounded-xl px-2 py-1.5 hover:bg-list-hover">
                     <span className="text-[14px]">Members can create topics</span>
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={info.membersCanCreateTopics === true}
-                      aria-label="Members can create topics"
+                    <Switch
+                      checked={info.membersCanCreateTopics === true}
+                      onCheckedChange={() => void flipTopicSwitch()}
+                      label="Members can create topics"
+                      hideLabel
                       disabled={switchBusy}
-                      onClick={() => void flipTopicSwitch()}
-                      className={cn(
-                        'relative h-6 w-11 shrink-0 rounded-full transition-colors disabled:opacity-50',
-                        info.membersCanCreateTopics === true ? 'bg-accent' : 'bg-surface-raised',
-                      )}
-                    >
-                      <span
-                        aria-hidden="true"
-                        className={cn(
-                          'absolute top-0.5 size-5 rounded-full bg-foreground transition-all',
-                          info.membersCanCreateTopics === true ? 'left-[22px]' : 'left-0.5',
-                        )}
-                      />
-                    </button>
+                    />
                   </label>
                   {switchError !== '' && <FieldError>{switchError}</FieldError>}
                 </section>
