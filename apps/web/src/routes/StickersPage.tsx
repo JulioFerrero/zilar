@@ -5,6 +5,7 @@ import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { PackEditor } from '@/components/PackEditor';
 import { TelegramImportDialog } from '@/components/TelegramImportDialog';
+import { Button } from '@/components/ui/button';
 import { useIsServerOwner } from '@/lib/useIsServerOwner';
 import {
   addStickerPanelPack,
@@ -332,13 +333,9 @@ export function StickersPage() {
           <p role="alert" className="text-[15px] text-danger">
             {error}
           </p>
-          <button
-            type="button"
-            onClick={() => void load()}
-            className="rounded-full bg-accent px-4 py-2 text-[15px] font-medium text-accent-foreground hover:bg-accent/90"
-          >
+          <Button type="button" size="lg" onClick={() => void load()}>
             Retry
-          </button>
+          </Button>
         </div>
       )}
 
@@ -361,13 +358,9 @@ export function StickersPage() {
                 >
                   Import from Telegram
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setCreating(true)}
-                  className="rounded-full bg-accent px-4 py-1.5 text-[14px] font-medium text-accent-foreground hover:bg-accent/90"
-                >
+                <Button type="button" size="default" onClick={() => setCreating(true)}>
                   Create pack
-                </button>
+                </Button>
               </div>
             </div>
             {myPacks.length === 0 ? (
@@ -526,13 +519,9 @@ export function StickersPage() {
                 onChange={(event) => setQuery(event.target.value)}
                 className="min-w-0 flex-1 rounded-lg border border-input bg-background px-3 py-2 text-[15px] outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40"
               />
-              <button
-                type="submit"
-                disabled={discoverBusy}
-                className="rounded-full bg-accent px-4 py-2 text-[14px] font-medium text-accent-foreground hover:bg-accent/90 disabled:opacity-60"
-              >
+              <Button type="submit" size="lg" disabled={discoverBusy}>
                 Search
-              </button>
+              </Button>
             </form>
             {discover === undefined ? (
               <p className="text-[14px] text-muted-foreground">Loading…</p>
@@ -571,13 +560,14 @@ export function StickersPage() {
                           Remove
                         </button>
                       ) : (
-                        <button
+                        <Button
                           type="button"
+                          size="sm"
+                          className="shrink-0"
                           onClick={() => void addPack(pack.id)}
-                          className="shrink-0 rounded-full bg-accent px-3 py-1 text-[13px] font-medium text-accent-foreground hover:bg-accent/90"
                         >
                           Add
-                        </button>
+                        </Button>
                       )}
                     </li>
                   );

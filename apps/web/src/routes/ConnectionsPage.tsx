@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Eye, EyeOff, Link, Trash2, Zap } from 'lucide-react';
 import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
+import { Button } from '@/components/ui/button';
 import {
   type Connection,
   type ConnectionTestResult,
@@ -128,16 +129,16 @@ export function ConnectionsPage() {
             <p role="alert" className="text-[15px] text-danger">
               {errorMessage}
             </p>
-            <button
+            <Button
               type="button"
+              size="lg"
               onClick={() => {
                 setStatus('loading');
                 void reload();
               }}
-              className="rounded-full bg-accent px-4 py-2 text-[15px] font-medium text-accent-foreground hover:bg-accent/90"
             >
               Retry
-            </button>
+            </Button>
           </div>
         )}
 
@@ -145,13 +146,9 @@ export function ConnectionsPage() {
           <div className="flex flex-col items-center gap-3 text-center">
             <Link className="size-8 text-muted-foreground" aria-hidden="true" />
             <p className="text-[15px] text-muted-foreground">No provider connections yet</p>
-            <button
-              type="button"
-              onClick={() => setShowForm(true)}
-              className="rounded-full bg-accent px-5 py-2 text-[15px] font-medium text-accent-foreground hover:bg-accent/90"
-            >
+            <Button type="button" size="lg" onClick={() => setShowForm(true)}>
               Add a connection
-            </button>
+            </Button>
           </div>
         )}
 
@@ -162,13 +159,9 @@ export function ConnectionsPage() {
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <h2 className="text-[16px] font-semibold">Connections</h2>
                   {!showForm && (
-                    <button
-                      type="button"
-                      onClick={() => setShowForm(true)}
-                      className="rounded-full bg-accent px-4 py-1.5 text-[14px] font-medium text-accent-foreground hover:bg-accent/90"
-                    >
+                    <Button type="button" size="default" onClick={() => setShowForm(true)}>
                       Add a connection
-                    </button>
+                    </Button>
                   )}
                 </div>
                 <ul className="flex flex-col gap-2">
@@ -383,14 +376,9 @@ function AddConnectionForm({
         )}
 
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void submit()}
-            className="rounded-full bg-accent px-4 py-2 text-[15px] font-medium text-accent-foreground hover:bg-accent/90 disabled:opacity-60"
-          >
+          <Button type="button" size="lg" disabled={busy} onClick={() => void submit()}>
             Save
-          </button>
+          </Button>
           <button
             type="button"
             disabled={busy}

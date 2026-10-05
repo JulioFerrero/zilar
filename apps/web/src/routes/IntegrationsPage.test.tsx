@@ -165,7 +165,9 @@ describe('IntegrationsPage', () => {
 
     expect(await screen.findByText(/Only the person who runs this server/)).toBeTruthy();
     expect(await screen.findByRole('alert')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+    const retryButton = screen.getByRole('button', { name: 'Retry' });
+    expect(retryButton).toBeTruthy();
+    expect(retryButton.getAttribute('data-slot')).toBe('button');
   });
 
   it('saves the voice endpoint with the key and model, and shows 422 errors', async () => {

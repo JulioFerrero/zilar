@@ -135,7 +135,9 @@ describe('StickersPage', () => {
     renderPage(fetchMock);
 
     expect(await screen.findByRole('alert')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+    const retryButton = screen.getByRole('button', { name: 'Retry' });
+    expect(retryButton).toBeTruthy();
+    expect(retryButton.getAttribute('data-slot')).toBe('button');
   });
 
   it('searches discover and adds a pack', async () => {

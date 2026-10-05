@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Eye, EyeOff } from 'lucide-react';
 import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
+import { Button } from '@/components/ui/button';
 import {
   ApiError,
   getIntegrationsStatus,
@@ -125,13 +126,9 @@ export function IntegrationsPage() {
             )}
             {errorMessage !== '' && (
               <div>
-                <button
-                  type="button"
-                  onClick={() => void reload()}
-                  className="rounded-full bg-accent px-4 py-2 text-[15px] font-medium text-accent-foreground hover:bg-accent/90"
-                >
+                <Button type="button" size="lg" onClick={() => void reload()}>
                   Retry
-                </button>
+                </Button>
               </div>
             )}
           </div>
@@ -273,14 +270,9 @@ function EmailCard({
             </p>
           )}
           <div>
-            <button
-              type="button"
-              onClick={() => void save()}
-              disabled={busy}
-              className="rounded-full bg-accent px-4 py-1.5 text-[14px] font-medium text-accent-foreground hover:bg-accent/90 disabled:opacity-60"
-            >
+            <Button type="button" size="default" onClick={() => void save()} disabled={busy}>
               {busy ? 'Sending a test email…' : 'Save'}
-            </button>
+            </Button>
           </div>
         </>
       )}
@@ -436,14 +428,9 @@ function VoiceTranscriptionCard({
       )}
       {saved && <p className="text-[14px] text-online">Saved — transcripts are on.</p>}
       <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={() => void save()}
-          disabled={busy}
-          className="rounded-full bg-accent px-4 py-1.5 text-[14px] font-medium text-accent-foreground hover:bg-accent/90 disabled:opacity-60"
-        >
+        <Button type="button" size="default" onClick={() => void save()} disabled={busy}>
           {busy ? 'Checking…' : 'Save'}
-        </button>
+        </Button>
         {voiceTranscription.configured && (
           <button
             type="button"
@@ -571,14 +558,9 @@ function TelegramCard({
           )}
           {saved && <p className="text-[14px] text-online">Saved — imports are on.</p>}
           <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => void save()}
-              disabled={busy}
-              className="rounded-full bg-accent px-4 py-1.5 text-[14px] font-medium text-accent-foreground hover:bg-accent/90 disabled:opacity-60"
-            >
+            <Button type="button" size="default" onClick={() => void save()} disabled={busy}>
               {busy ? 'Checking…' : 'Save'}
-            </button>
+            </Button>
             {telegram.configured && (
               <button
                 type="button"
