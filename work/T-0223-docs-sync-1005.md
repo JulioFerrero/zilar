@@ -1,7 +1,7 @@
 ---
 id: T-0223
 title: "Docs: FEATURES, the mobile parity roadmap and the README catch up with T-0181..T-0222"
-status: planned
+status: merged
 milestone: M5
 branch: task/T-0223-docs-sync-1005
 model: opencode/muse-spark-1.3-contributor-free
@@ -56,4 +56,54 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+Synced `docs/FEATURES.md`, `docs/ROADMAP_MOBILE_PARITY.md` and the README M5 cell with T-0181..T-0222, writing only what the task files' Specs, Reports and Reviews say (Review wins on conflicts):
+
+- FEATURES.md section 1 (Chat): contacts row now cites T-0192/T-0193 (@handle person row in search, web + mobile).
+- FEATURES.md section 2 (Accounts): unchanged (T-0182 already there).
+- FEATURES.md section 3 (AIs): unchanged (T-0185 pickers folded into a new section-7 row).
+- FEATURES.md section 6 (tools/routines): unchanged (web-only rows still accurate; mobile AI-screen rows are new section-7 rows).
+- FEATURES.md section 7 (Design and clients): 12 new rows — mobile settings hub/profile (T-0181), approvals page (T-0184), machines/connections (T-0185), Explore/group links (T-0183), sticker management (T-0187), sticker editor (T-0191), Telegram import (T-0207), owner integrations (T-0188), AI tools+routines actions (T-0189/T-0212), AI activity+tool detail (T-0213/T-0218), invite sheet/New message (T-0190), New group sheet (T-0214).
+- FEATURES.md section 8 (Platform): 2 new lead-tooling rows (doctor/squash/free reviews; watch/race-fix/token savings; in-place fallback + review override) covering T-0196, T-0198, T-0200, T-0202..T-0204, T-0208..T-0211, T-0215, T-0216, T-0221, T-0222; "Mobile parity programme" row updated (waves merged, left: T-0186 blocked on server push, @mention picker, New channel parity); one Timeline line for 2026-10-04 to 2026-10-05.
+- ROADMAP_MOBILE_PARITY.md: new "State (2026-10-05)" section (merged with follow-ups T-0191→T-0207, T-0189→T-0212/T-0213/T-0218, T-0190→T-0214; open: T-0186 blocked, @mention picker, New channel parity, T-0219 in progress). Rest untouched.
+- README.md: only the M5 cell (line 115) rewritten, one cell. Nothing else.
+- Status marks: 🟡 Merged everywhere new, with "(not seen on a device yet)" where the Review says the AI screen or settings were not seen on a device (T-0181, T-0184, T-0185, T-0189, T-0212, T-0213, T-0218).
+
+### Commands and real results
+- `pnpm install`: ok (10.7s).
+- Single tests: none (docs-only task, no code touched; spec deviation from the AGENTS.md test guidance for this reason).
+- `pnpm gate`: GATE PASS (summary lines below).
+
+### Gate summary
+```
+gate: 4 changed file(s) against main
+PASS  install (frozen)  (1.4s)
+PASS  format  (16.6s)
+PASS  lint  (1.5s)
+PASS  typecheck  (1.6s)
+scope: every changed file is inside the Allowed files
+GATE PASS
+```
+
+### Problems / deviations
+- T-0219 is status `planned` (in progress per spec) — listed as open in the roadmap, no FEATURES row.
+- Docs-only/test-only tasks left out per spec.
+- No single-test runs: there is no code to test.
+
+### Security checklist
+- Docs-only change: no secrets, routes, deletes, caps, permissions or audit entries touched.
+
+### Open questions
+None.
+
+### Round 2 (fix round, 2026-10-05)
+- Finding 1 (must-fix): moved the T-0181/T-0184/T-0185 rows from FEATURES.md section 1 (Chat) to section 7 (Design and clients); separate commit.
+- Finding 2 (should-fix): corrected this Report — section 7 now says 12 new rows (was "10 new rows" spanning two sections).
+- Finding 3 (should-fix): dropped "`lead watch`" from the T-0196/T-0200/T-0208 row (lead watch is T-0209, covered in the next row); separate commit.
+- Finding 4 (nit): left untouched — the programme row was not in a line this round changed, and the fix-round instructions say not to touch nits outside changed lines.
+- Tests: none — docs-only change, no code touched, zero test files in diff. Gate run after the fixes (see below); no single-test runs for the same reason.
+- `pnpm gate`: GATE PASS (`PASS install (frozen) / PASS format / PASS lint / PASS typecheck / scope: every changed file is inside the Allowed files / GATE PASS`).
+
 ## Review (written by Claude)
+
+**Verdict:** Approved after one auto fix round, then clean. Read the whole diff: 14 new FEATURES rows (mobile parity, lead tooling grouped into three rows), the parity programme row and a 2026-10-04/05 timeline line; a "State (2026-10-05)" section in the parity roadmap; only the README M5 cell changed. Status marks are honest: the AI-screen, settings, approvals and machines rows say "not seen on a device yet", matching the Reviews.

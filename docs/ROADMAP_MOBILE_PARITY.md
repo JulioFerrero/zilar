@@ -24,6 +24,12 @@ Chat list with folders and search, chat and group screens, topics, channels, pin
 
 Not planned for mobile: `SetupPage` (the first-run owner setup is a web job), `TopicKeyboardNav` (keyboard only).
 
+## State (2026-10-05)
+
+Merged: T-0181 (settings hub, profile, handle step), T-0182 (contacts by @handle), T-0183 (Explore, `@group` links, visibility), T-0184 (approvals page), T-0185 (machines, model connections), T-0187 (sticker packs), T-0188 (owner integrations), T-0191 (sticker pack editor) with follow-up T-0207 (Telegram sticker import), T-0193 (mobile @handle people search; web side T-0192), T-0189 (AI tools and routines, read) with follow-ups T-0212 (routine pause/resume/delete), T-0213 (AI activity feed) and T-0218 (read-only tool detail sheet), T-0190 (invite link sheet, New message box) with follow-up T-0214 (New group sheet).
+
+Open: T-0186 notification settings (blocked on server push); the @mention picker and New channel parity from T-0190 (planned); tool writes T-0219 (in progress).
+
 ## Rules for every task
 - Mirror the web behaviour and API; do not change the server unless the spec says so.
 - Same layering as the existing mobile code: `src/lib/<area>-api.ts` (zod at the boundary, an error class with `status` and `code`), a hook that picks the real API or the mock, screens under `src/app`, components under `src/components/<area>`.

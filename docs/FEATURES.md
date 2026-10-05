@@ -56,7 +56,7 @@ Task ids (`T-0042`) point to `work/T-XXXX-*.md`: the spec, the worker's report a
 | Server-made XMPP accounts | JWT-only login, no passwords on the chat server, members-only rooms | server | ✅ Live | T-0003, T-0017 |
 | Contacts from invites | Roster and nicknames follow invites | server | ✅ Live | T-0020 |
 | Session in the OS keychain | Mobile stores the session securely | mobile | ✅ Live | T-0026 |
-| Contacts by @handle | Find a person by exact @handle, a profile card, and send, accept, decline or cancel contact requests (web, and now the phone) | server, web, mobile | 🟡 Merged | T-0163, T-0182 |
+| Contacts by @handle | Find a person by exact @handle, a profile card, and send, accept, decline or cancel contact requests (web, and now the phone); typing @handle in search shows the person with the right action | server, web, mobile | 🟡 Merged | T-0163, T-0182, T-0192, T-0193 |
 | Sign-in hints | The login screens tell people with no invite what to do, without revealing whether an email has an account; code requests are limited to 3 per minute | server, web, mobile | ✅ Live (limit) · 🟡 Merged (hints) | T-0180 |
 
 ## 3. AIs
@@ -113,6 +113,18 @@ Task ids (`T-0042`) point to `work/T-XXXX-*.md`: the spec, the worker's report a
 | Mobile app | Expo (SDK 57, React Native 0.86), Expo Router, iOS-verified; same design language | mobile | ✅ Live (chat) | T-0011, T-0019, T-0023, T-0048 |
 | Mock mode | `?mock=1` on web (dev builds only), `EXPO_PUBLIC_ZILAR_MOCK` on mobile, for design and demos without a server | web, mobile | ✅ | T-0063, T-0069 |
 | Mobile boot check | `pnpm --filter @zilar/mobile boot:ios`: pods, deps, own Metro, passes only when the JS app really runs | mobile | ✅ | T-0031 |
+| Mobile settings hub and profile | Settings hub with a user card; edit display name, avatar (square-cropped, PNG) and @handle with a live availability check; the handle step after sign-up | mobile | 🟡 Merged (not seen on a device yet) | T-0181 |
+| Mobile approvals page | Pending approvals with Approve once / Always / Deny, a short confirmation line after a decision, always-allowed rules with Revoke | mobile | 🟡 Merged (not seen on a device yet) | T-0184 |
+| Mobile machines and connections | Machines (approve, deny, rename, revoke, delete, pairing code with Copy) and model connections (add, test, delete); machine and connection pickers on the AI screen | mobile | 🟡 Merged (not seen on a device yet) | T-0185 |
+| Mobile Explore and group links | Explore public groups and channels with Join / Open, `zilar://at/<handle>` group cards, group visibility and @handle in group settings | mobile | 🟡 Merged | T-0183 |
+| Mobile sticker management | My packs (remove, reorder), Discover (search, Add), Favorites (remove); the composer panel refetches on every open | mobile | 🟡 Merged | T-0187 |
+| Mobile sticker pack editor | Create and edit packs (name, private or shared, photos prepared to the server limits), delete with a warning; imported packs stay private | mobile | 🟡 Merged | T-0191 |
+| Mobile Telegram sticker import | Import a pack from a Telegram link or name, with counts and Import again on a partial import | mobile | 🟡 Merged | T-0207 |
+| Mobile owner integrations | Email, voice transcription and Telegram bot settings for the server owner; non-owners see one sentence | mobile | 🟡 Merged | T-0188 |
+| Mobile AI tools and routines | Tools and routines on the AI screen with plain-words schedules; pause, resume and two-step delete on each routine | mobile | 🟡 Merged (not seen on a device yet) | T-0189, T-0212 |
+| Mobile AI activity and tool detail | Activity feed on the AI screen; tappable tool rows open a read-only detail sheet (source, versions, recent runs) | mobile | 🟡 Merged (not seen on a device yet) | T-0213, T-0218 |
+| Mobile invite sheet and New message box | Invite link sheet (Copy, Share) and a New message box that offers an invite instead of a dead end | mobile | 🟡 Merged | T-0190 |
+| Mobile New group sheet | Create a group from the `+` menu: add members, name it, land on the new group | mobile | 🟡 Merged | T-0214 |
 
 ## 8. Platform and engineering
 
@@ -125,9 +137,12 @@ Task ids (`T-0042`) point to `work/T-XXXX-*.md`: the spec, the worker's report a
 | Server configuration reference | Every env var, flag, migration, background job and health check | docs | ✅ | T-0094 → [`SERVER_CONFIG.md`](SERVER_CONFIG.md) |
 | Self-hosted install | Production images and compose (Caddy, Coolify; config baked into images, no bind mounts), SMTP sign-in codes, `./deploy/zilar init/up/doctor/backup/restore/create-admin`, bare-metal guide ([`INSTALL_DOCKER.md`](INSTALL_DOCKER.md)) | deploy | 🟡 Merged (wizard proven live on scratch containers) | T-0126, T-0128, T-0129, T-0127 |
 | Built by an AI team | A lead Claude writes specs and reviews every diff; workers implement in isolated worktrees; the `lead` CLI launches, supervises, reviews and merges; a fail-closed permission policy guards what workers may run | devtools | ✅ | T-0038, T-0051 → [`LEAD_PLAYBOOK.md`](LEAD_PLAYBOOK.md) |
+| Lead tooling: doctor, squash merges, cheap reviews | The `lead` CLI audits main after merges (doctor), lands each task as one commit, and runs pre-reviews on the free Muse listing | devtools | 🟡 Merged | T-0196, T-0200, T-0208 |
+| Lead tooling: live view, race fix, token savings | `lead watch` terminal view (Ink cards, speed line), a state race fix, fix rounds in fresh sessions, quiet checks, no duplicate check runs | devtools | 🟡 Merged | T-0198, T-0202, T-0203, T-0204, T-0209, T-0210, T-0211 |
+| In-place model fallback and review override | On a free-Muse rate limit the same session switches to the paid Muse and continues; `ZILAR_REVIEW_MODEL` overrides the review model; `lead switch-model --in-place` | devtools | 🟡 Merged | T-0215, T-0216, T-0221, T-0222 |
 | Mobile parity (chat prefs, pins, invites, roles, search, channels, stickers) | Per-user mute/archive/pin, pinned banner, invite links, roles, message search, channels, stickers — same features as web | mobile | 🟡 Merged (not run on a simulator or device yet) | T-0135, T-0136, T-0137, T-0138, T-0139, T-0140, T-0143, T-0144, T-0147 |
 | Connection resilience | The chat connection survives idle networks and blips: backoff retries, keepalive pings, server pings answered, a watchdog that replaces a client stuck on "Connecting" after 5, 8, 12, 20 s | xmpp-core, mobile, web | ✅ Live (reproduced and fixed on a device) | T-0174 |
-| Mobile parity programme | Every web feature on the phone, in waves: [`ROADMAP_MOBILE_PARITY.md`](ROADMAP_MOBILE_PARITY.md) | mobile | 🧭 In progress (T-0181 to T-0191) | T-0181 .. T-0191 |
+| Mobile parity programme | Waves 1 and 2 and the wave-3 AI screen merged (T-0181, T-0183 to T-0185, T-0187, T-0188, T-0191, T-0207, T-0189, T-0212, T-0213, T-0218, T-0190, T-0214); left: notification settings (T-0186, blocked on server push), the @mention picker, New channel parity | mobile | 🟡 Merged (several rows not seen on a device yet) | T-0181 .. T-0214 |
 
 ## Timeline
 
@@ -139,3 +154,4 @@ Task ids (`T-0042`) point to `work/T-XXXX-*.md`: the spec, the worker's report a
 | 2026-09-30 | Topics (server, web, mobile), chat preferences, message search, routines scheduler and tool adapters, keyless web tools, production images, SMTP mailer, install wizard, invite links, group roles, pinned messages, stickers, channels, tools UI, tool host approval, mobile parity |
 | 2026-10-01 | Web push + PWA, smarter search, GIFs, sticker creator, model side of AI tools, mobile stickers and channels |
 | 2026-10-02 to 2026-10-03 | Rename to Zilar, release v0.1.13, hold-to-record voice notes with a real waveform, one emoji sheet, connection watchdog, on-device voice transcripts (Whistle), contacts by @handle on the phone, mobile parity roadmap |
+| 2026-10-04 to 2026-10-05 | Mobile parity waves 1-3 (settings, Explore, approvals, machines, stickers, integrations, AI tools/routines/activity, invite and new-group sheets), @handle people search on web and mobile, lead tooling (doctor, squash merges, `lead watch`, in-place model fallback) |
