@@ -6,7 +6,7 @@ import {
   generateRunnerKeypair,
   TunnelServer,
 } from '@zilar/runner-tunnel';
-import { startFakeGateway } from '../../../packages/runner-tunnel/src/test-harness.ts';
+import { startFakeGateway, waitFor } from '../../../packages/runner-tunnel/src/test-harness.ts';
 import { mapFailure, hubUrlFromServer, runRunner, validateHubUrl } from './connect.ts';
 import { buildIdentity } from './identity.ts';
 
@@ -35,7 +35,7 @@ describe('runRunner', () => {
         hubUrl: server.wsUrl,
         signal: controller.signal,
       });
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      await waitFor(() => server.isRunnerLive(identity.machineId), 5_000, 'runner live');
       expect(server.isRunnerLive(identity.machineId)).toBe(true);
       controller.abort();
       const result = await done;
@@ -80,7 +80,7 @@ describe('runRunner', () => {
         signal: controller.signal,
         logger: (line) => states.push(line),
       });
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      await waitFor(() => server.isRunnerLive(identity.machineId), 5_000, 'runner live');
       expect(server.isRunnerLive(identity.machineId)).toBe(true);
       registry.revoke(identity.machineId);
       const result = await done;

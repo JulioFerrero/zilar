@@ -1,7 +1,7 @@
 ---
 id: T-0201
 title: Runner: connect.test.ts waits for the runner to be live instead of a fixed 200 ms sleep (CI flake)
-status: planned
+status: review
 milestone: M5
 branch: task/T-0201-runner-connect-test-flake
 model: minimax-coding-plan/MiniMax-M3
@@ -56,5 +56,22 @@ Any change to runner or tunnel source code, other test files, timeouts in `packa
 ---
 
 ## Report (written by the worker when done)
+
+Did exactly what the spec asked, nothing else:
+- `apps/runner/src/connect.test.ts` line 9: added `waitFor` to the existing `test-harness.ts` import.
+- Line 38 and line 83: replaced the fixed `await new Promise((resolve) => setTimeout(resolve, 200))` with `await waitFor(() => server.isRunnerLive(identity.machineId), 5_000, 'runner live');`. The `expect(...).toBe(true)` assertions on the next lines are unchanged.
+- No fixed sleep remains before any `isRunnerLive` assertion (verified with grep: only `waitFor` + `expect` remain).
+
+Files changed: `apps/runner/src/connect.test.ts`, `work/T-0201-runner-connect-test-flake.md`.
+
+Commands and real results:
+- `pnpm install`: pass (10.4s).
+- `pnpm --filter @zilar/runner test --maxWorkers=2 src/connect.test.ts`, three runs in a row: 13 passed each time (336ms / 268ms / 505ms).
+- `pnpm format:check`: pass ("All matched files use Prettier code style!").
+- `pnpm lint`: pass (oxlint clean).
+- `pnpm typecheck`: pass (11 tasks successful).
+- `pnpm gate`: GATE PASS — install/format/lint/typecheck/tests @zilar/runner all PASS, "every changed file is inside the Allowed files".
+
+Problems/deviations: none. Security checklist: test-only change, no secrets, no routes, no deletes, no caps — not applicable.
 
 ## Review (written by Claude)
