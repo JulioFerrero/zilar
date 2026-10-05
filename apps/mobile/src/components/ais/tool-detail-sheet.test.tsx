@@ -6,17 +6,32 @@ import { createMockToolsApi } from '@/mock/tools';
 import type { ToolDetail, ToolRun, ToolVersion } from '@/lib/tools-api';
 
 import {
+  SHEET_SCROLL_TAPS_PERSIST,
   TOOL_DETAIL_LOAD_FAILED_MESSAGE,
   ToolDetailBody,
+  ToolDetailSheet,
   type ToolDetailBodyActions,
   type ToolDetailBodyState,
 } from './tool-detail-sheet';
 import type { ToolRunResult } from '@/lib/tools-api';
 
 vi.mock('react-native', () => ({
+  KeyboardAvoidingView: 'KeyboardAvoidingView',
   Modal: 'Modal',
+  Platform: { OS: 'ios' },
   Pressable: 'Pressable',
-  ScrollView: 'ScrollView',
+  ScrollView: ({
+    children,
+    ...props
+  }: {
+    children?: ReactNode;
+    keyboardShouldPersistTaps?: string;
+  }) => {
+    if (props.keyboardShouldPersistTaps !== undefined) {
+      capturedScrollProps = props;
+    }
+    return createElement('ScrollView', props, children);
+  },
   TextInput: 'TextInput',
   View: 'View',
 }));
@@ -40,6 +55,8 @@ vi.mock('@/components/ui/text', () => ({
 vi.mock('@/components/ui/button', () => ({
   Button: 'Button',
 }));
+
+let capturedScrollProps: { keyboardShouldPersistTaps?: string } | undefined;
 
 function idleActions(overrides: Partial<ToolDetailBodyActions> = {}): ToolDetailBodyActions {
   return {
@@ -388,5 +405,22 @@ describe('ToolDetailBody', () => {
     );
     if (deleteTool === undefined) throw new Error('expected the Delete tool button');
     expect(deleteTool.props.disabled).toBe(true);
+  });
+
+  it('keeps Run taps while the keyboard is open (persisted taps)', () => {
+    expect(SHEET_SCROLL_TAPS_PERSIST).toBe('handled');
+    capturedScrollProps = undefined;
+    const html = renderToStaticMarkup(
+      createElement(ToolDetailSheet, {
+        api: createMockToolsApi(),
+        toolId: 'tool-1',
+        onClose: () => {},
+        onDeleted: () => {},
+      }),
+    );
+    if (capturedScrollProps === undefined) throw new Error('expected the vertical ScrollView');
+    const tapsProps: { keyboardShouldPersistTaps?: string } = capturedScrollProps;
+    expect(tapsProps.keyboardShouldPersistTaps).toBe('handled');
+    expect(html).toContain('keyboardShouldPersistTaps="handled"');
   });
 });

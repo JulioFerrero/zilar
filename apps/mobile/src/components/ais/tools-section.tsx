@@ -105,6 +105,16 @@ export function ToolsSectionContent({
 }
 
 /**
+ * Closes the detail sheet (T-0230): the list reloads so a run or a revert
+ * inside the sheet shows up once the sheet is gone. Pure so tests can cover
+ * it without mounting the section.
+ */
+export function closeDetailSheet(setOpenId: (id: string | null) => void, bump: () => void): void {
+  setOpenId(null);
+  bump();
+}
+
+/**
  * Removes a deleted tool from the list (the sheet's `onDeleted` callback).
  * Pure so tests can cover it without mounting the section.
  */
@@ -155,7 +165,7 @@ export function ToolsSection({ api, aiId }: { api: AiToolsApi; aiId: string }) {
       <ToolDetailSheet
         api={api}
         toolId={openId}
-        onClose={() => setOpenId(null)}
+        onClose={() => closeDetailSheet(setOpenId, () => setReloadTick((tick) => tick + 1))}
         onDeleted={(toolId) => {
           setOpenId(null);
           setState((current) => ({ ...current, tools: withoutTool(current.tools, toolId) }));

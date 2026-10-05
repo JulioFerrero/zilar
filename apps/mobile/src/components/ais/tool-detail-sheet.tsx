@@ -1,5 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
-import { Modal, Pressable, ScrollView, TextInput, View } from 'react-native';
+import {
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  TextInput,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { X } from 'lucide-react-native';
 import { useColorScheme } from 'nativewind';
@@ -33,6 +41,13 @@ export const TOOL_DETAIL_LOAD_FAILED_MESSAGE = 'Could not load the tool.';
 
 /** Fixed user-facing line when one version's source fails to load. */
 export const TOOL_VERSION_LOAD_FAILED_MESSAGE = 'Could not load that version.';
+
+/**
+ * The vertical sheet ScrollView keeps Run taps while the run-input keyboard
+ * is open (T-0230): a tap on Run runs at once instead of only dismissing
+ * the keyboard. Pure so tests can cover it without mounting the sheet.
+ */
+export const SHEET_SCROLL_TAPS_PERSIST = 'handled' as const;
 
 export type ToolDetailBodyState =
   | { status: 'loading' }
@@ -485,17 +500,22 @@ export function ToolDetailSheet({
       presentationStyle="pageSheet"
       onRequestClose={onClose}
     >
-      <View className="flex-1 bg-background" style={{ paddingTop: Math.max(insets.top, 16) }}>
-        {toolId !== null ? (
-          <ToolDetailLoader
-            key={toolId}
-            api={api}
-            toolId={toolId}
-            onClose={onClose}
-            onDeleted={onDeleted}
-          />
-        ) : null}
-      </View>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        className="flex-1"
+      >
+        <View className="flex-1 bg-background" style={{ paddingTop: Math.max(insets.top, 16) }}>
+          {toolId !== null ? (
+            <ToolDetailLoader
+              key={toolId}
+              api={api}
+              toolId={toolId}
+              onClose={onClose}
+              onDeleted={onDeleted}
+            />
+          ) : null}
+        </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -725,6 +745,7 @@ function ToolDetailLoader({
       </View>
       <ScrollView
         className="flex-1 py-2"
+        keyboardShouldPersistTaps={SHEET_SCROLL_TAPS_PERSIST}
         contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 16) + 16 }}
       >
         <ToolDetailBody
