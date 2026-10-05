@@ -12,7 +12,7 @@ import { MessageListSkeleton } from './Skeleton';
 import { UnreadDivider } from './UnreadDivider';
 import { Button } from './ui/button';
 import { IconButton } from './ui/icon-button';
-import { useBlockedJids } from '@/lib/blockedJids';
+import { isBlockedSender, useBlockedJids } from '@/lib/blockedJids';
 import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
 
 const NEAR_BOTTOM_PX = 80;
@@ -38,14 +38,7 @@ export function MessageList({
   const hideBlocked = chat.kind === 'group' && chat.isAI !== true && blockedJids.size > 0;
   const visibleMessages = hideBlocked
     ? messages.filter(
-        (message) =>
-          message.senderId === meId ||
-          !blockedJids.has(
-            (message.senderId.includes('@')
-              ? message.senderId.slice(0, message.senderId.indexOf('@'))
-              : message.senderId
-            ).toLowerCase(),
-          ),
+        (message) => message.senderId === meId || !isBlockedSender(message.senderId, blockedJids),
       )
     : messages;
   // The draft is rendered as the AI's next message, so grouping, styles and

@@ -14,7 +14,9 @@ import { Avatar } from './Avatar';
 import { ChatActionsMenu } from './ChatActionsMenu';
 import { MessageTicks } from './MessageTicks';
 import { useChatStore } from '@/store/ChatStoreProvider';
+import { useBlockedJids } from '@/lib/blockedJids';
 import { typingLabel } from '@/lib/format';
+import { previewMessage } from '@/lib/preview-message';
 import { cn } from '@/lib/utils';
 
 export function ChatListItem({
@@ -28,14 +30,16 @@ export function ChatListItem({
 }) {
   const store = useChatStore();
   const last = chat.lastMessage;
+  const blockedJids = useBlockedJids();
+  const preview = previewMessage(chat, store.messages(chat.id), blockedJids, store.currentUserId);
   const options = { isGroup: chat.kind === 'group', currentUserId: store.currentUserId };
-  const prefix = previewPrefix(last, options);
-  const rawBody = previewBody(last);
+  const prefix = previewPrefix(preview, options);
+  const rawBody = previewBody(preview);
   // Only an incoming AI reply is Markdown (shouldRenderMarkdown), in an AI
   // chat or in a group; your own message previews literally, exactly as its
   // bubble shows it.
   const body =
-    last !== undefined && shouldRenderMarkdown(chat, last, store.currentUserId)
+    preview !== undefined && shouldRenderMarkdown(chat, preview, store.currentUserId)
       ? markdownToPlain(rawBody)
       : rawBody;
   const own = last !== undefined && last.senderId === store.currentUserId;

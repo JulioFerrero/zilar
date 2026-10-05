@@ -1,4 +1,4 @@
-import type { ChatSummary } from '@zilar/chat-core';
+import type { ChatSummary, UiMessage } from '@zilar/chat-core';
 import { ChevronDown, ChevronRight, Lock, MoreHorizontal, Pin, VolumeX } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router';
@@ -7,18 +7,25 @@ import { ChatActionsMenu } from './ChatActionsMenu';
 import { cn } from '@/lib/utils';
 import { formatListTime, previewBody, previewPrefix, shouldRenderMarkdown } from '@zilar/chat-core';
 import { markdownToPlain } from '@zilar/chat-core';
+import { useBlockedJids } from '@/lib/blockedJids';
 import { typingLabel } from '@/lib/format';
+import { previewMessage } from '@/lib/preview-message';
 import { useChatStore } from '@/store/ChatStoreProvider';
 import { MessageTicks } from './MessageTicks';
 import { AiBadge } from './AiBadge';
 
-function rowPreview(chat: ChatSummary, currentUserId: string): { prefix: string; body: string } {
-  const last = chat.lastMessage;
+function rowPreview(
+  chat: ChatSummary,
+  currentUserId: string,
+  messages: readonly UiMessage[],
+  blocked: ReadonlySet<string>,
+): { prefix: string; body: string } {
+  const preview = previewMessage(chat, messages, blocked, currentUserId);
   const options = { isGroup: chat.kind === 'group', currentUserId };
-  const prefix = previewPrefix(last, options);
-  const rawBody = previewBody(last);
+  const prefix = previewPrefix(preview, options);
+  const rawBody = previewBody(preview);
   const body =
-    last !== undefined && shouldRenderMarkdown(chat, last, currentUserId)
+    preview !== undefined && shouldRenderMarkdown(chat, preview, currentUserId)
       ? markdownToPlain(rawBody)
       : rawBody;
   return { prefix, body };
@@ -37,7 +44,13 @@ export function TopicRow({
 }) {
   const store = useChatStore();
   const last = chat.lastMessage;
-  const { prefix, body } = rowPreview(chat, store.currentUserId);
+  const blockedJids = useBlockedJids();
+  const { prefix, body } = rowPreview(
+    chat,
+    store.currentUserId,
+    store.messages(chat.id),
+    blockedJids,
+  );
   const own = last !== undefined && last.senderId === store.currentUserId;
   const typing = typingLabel(chat, store.typing[chat.id]?.names ?? []);
   const hasDraft = store.drafts[chat.id] !== undefined;
