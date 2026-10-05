@@ -9,6 +9,9 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
+| [T-0277](T-0277-web-kit-accent-buttons-3.md) | Web kit migration 10: accent buttons in the chat dialogs | in_progress | auto | | audit §5 gate prep |
+| [T-0278](T-0278-web-kit-accent-buttons-4.md) | Web kit migration 11: accent buttons in profile, visibility, pack editor, contact rows | in_progress | auto | | audit §5 gate prep |
+| [T-0279](T-0279-web-kit-accent-buttons-5.md) | Web kit migration 12: accent buttons on sign-in and onboarding | in_progress | auto | | audit §5 gate prep |
 
 ## Follow-ups
 
