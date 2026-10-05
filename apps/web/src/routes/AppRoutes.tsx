@@ -14,6 +14,7 @@ import { InvitePage } from './InvitePage';
 import { JoinPage } from './JoinPage';
 import { LoginPage } from './LoginPage';
 import { BlockedPage } from './BlockedPage';
+import { FoldersPage } from './FoldersPage';
 import { RequestsPage } from './RequestsPage';
 import { SetupPage } from './SetupPage';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
@@ -192,6 +193,14 @@ export function AppRoutes() {
         }
       />
       <Route
+        path="/settings/folders"
+        element={
+          <RequireAuth>
+            <FoldersRoute />
+          </RequireAuth>
+        }
+      />
+      <Route
         path="/settings/blocked"
         element={
           <RequireAuth>
@@ -241,6 +250,11 @@ function JoinRoute() {
 function RequestsRoute() {
   const navigate = useNavigate();
   return <RequestsPage onBack={() => navigate('/')} />;
+}
+
+function FoldersRoute() {
+  const navigate = useNavigate();
+  return <FoldersPage onBack={() => navigate('/')} />;
 }
 
 function BlockedRoute() {
