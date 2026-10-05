@@ -25,6 +25,9 @@ Models (Julio, 2026-10-05): default `opencode/muse-spark-1.3-contributor-free`; 
 | T-0219 | Mobile: Run now, Revert, Delete in the tool detail sheet | after lead round 1, an auto round (1 should-fix) | paid Muse |
 | T-0224 | The doctor also switches in place on a 429 | lead round 1 (no FALLBACK line on a failed switch; second-tick assertion) | paid Muse; `state.ts` added to Allowed (doctor `model` was dropped by `loadState`) |
 | T-0225 | Doctor prompt accepts lead commits touching `CLAUDE.md` | coding | MiniMax |
+| T-0226 | `ZILAR_SMOKE_MOCK=1 pnpm phone:smoke` builds a mock-mode app (emulator only) | coding | free Muse; after merge: see T-0189/T-0213/T-0218 on the emulator via `/ais/ai-dev-1` |
+
+Parallelism: Julio asked (14:45) whether we can run more than 4; lead proposed 6 (max 3 mobile, one schema task); waiting for his answer.
 
 Merged: T-0222, T-0223 (docs sync: FEATURES 14 rows, parity roadmap state, README M5). Doctor flagged the lead's `CLAUDE.md` edit (d70f6d36) as must-fix; Julio chose "keep it, allow lead edits": `CLAUDE.md` line 10 updated (92190c62), T-0225 updates the doctor prompt. Doctor stalled twice on 429; lead switched it by hand both times until T-0224 merges.
 
