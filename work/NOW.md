@@ -11,12 +11,12 @@ Last updated: 2026-10-05, after merging T-0200 and launching T-0202, T-0194, T-0
 | T-0202 | Fix rounds in a fresh worker session (token saving A) | coding | Muse |
 | T-0194 | Mobile guard tests for the Android and Hermes pitfalls | coding | MiniMax M3 trial, `effort: default` |
 | T-0195 | Audit web vs mobile (docs only) | coding | MiniMax M3 trial |
+| T-0206 | Scout: RepoMapper trial (docs only) | coding | Muse; tool installed by the lead at `~/.zilar-lead/tools/RepoMapper` (uv, Python 3.13); its commands run outside the worktree, approve them |
 
 ## Next, in order
 
 1. T-0203 (B) after T-0202, then T-0204 (C): they share `prompts.test.ts`
 2. T-0191 sticker editor and Telegram import
-3. Waiting for Julio: OK to spec a scout task that trials RepoMapper (repo maps) on our repo.
 
 ## Blocked or waiting for Julio
 
