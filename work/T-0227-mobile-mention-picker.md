@@ -125,3 +125,16 @@ Commands (real results):
 - `pnpm gate`: GATE PASS — install/format/lint/typecheck/tests pass, scope clean ("every changed file is inside the Allowed files"). 13 changed files against main.
 
 Disagreements: none.
+
+## Review (written by Claude)
+
+**Verdict:** Approved after 2 auto rounds and 1 lead round; the final packet is clean with 3 nits. The lead round fixed:
+- M1 (`46586b5a`): a range replace that shrank the text by one character was deleting a mention and the typed text. Now only a collapsed single-character delete takes the mention path.
+- S1: older groups without topics get the picker.
+- S2: you are never in your own picker.
+
+Deferred nits: the mock `sendText` keeps untrimmed offsets; caption and edit sends leave a stale picker query; the row visuals need one emulator look (sent to the QA subagent).
+
+Follow-ups: mentions in channel feeds (`channel-composer-bar.tsx`); highlighting received mentions in mobile bubbles.
+
+(The Review was written after the merge: the pre-merge edit missed its anchor.)
