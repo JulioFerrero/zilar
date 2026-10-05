@@ -431,14 +431,14 @@ screen's test email failing (bad Resend key or unverified sender domain)
 — the setup stays open, so just retry with fixed values. With explicit
 SMTP env, compare `deploy/.env` against `deploy/.env.example` line by
 line. For a local trial only, run the server with `NODE_ENV=development`
-so the console mailer prints OTP codes to the server log.
+so the console mailer prints OTP codes to the server log. When probing sign-up with curl, send the invite code as the `x-zilar-invite` header on the send-code request: `x-invite-code` is silently ignored and the server answers a fake `{"success":true}` without storing a code.
 
 **Uploads fail.** The app PUTs files to `https://<domain>/upload/<slot>/<file>`
 (XEP-0363 slot URLs from ejabberd). Caddy proxies `/upload/*` to ejabberd
 with the path intact — the strip that used to be here broke every slot URL
 and is gone; a bare `404` with ejabberd's HTML body means the slot expired
 or never existed, while a Caddy-level failure would be a `502/503`. Check
-`docker compose ... logs ejabberd` for `mod_http_upload` errors. Proved in
+`docker compose ... logs ejabberd` for `mod_http_upload` errors. The XEP-0363 slot request itself goes to the `upload.` subhost (e.g. `upload.<domain>`), not the bare domain, which answers `service-unavailable`. Proved in
 the install test: slot request → `put`/`get` URLs under
 `https://localhost/upload/...`, `PUT` → `201 Upload successful.`, `GET` →
 the bytes back.

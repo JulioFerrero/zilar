@@ -25,6 +25,23 @@ describe('loadPushConfig', () => {
     expect(() => loadPushConfig({ PUSH_COMPONENT_PORT: 'abc' })).toThrow();
   });
 
+  it('defaults the component host to loopback for dev', () => {
+    expect(loadPushConfig({}).PUSH_COMPONENT_HOST).toBe('127.0.0.1');
+    expect(loadPushConfig({ PUSH_COMPONENT_HOST: '' }).PUSH_COMPONENT_HOST).toBe('127.0.0.1');
+  });
+
+  it('accepts a plain hostname as the component host', () => {
+    for (const host of ['ejabberd', 'xmpp.internal', 'ejabberd-2.relay-1']) {
+      expect(loadPushConfig({ PUSH_COMPONENT_HOST: host }).PUSH_COMPONENT_HOST).toBe(host);
+    }
+  });
+
+  it('rejects a component host with a scheme, port, slash or emptiness', () => {
+    for (const host of ['a:1', 'http://x', 'x/y', 'host name', 'host:5347']) {
+      expect(() => loadPushConfig({ PUSH_COMPONENT_HOST: host })).toThrow();
+    }
+  });
+
   it('reports a missing value by name when push is enabled', () => {
     const config = loadPushConfig({ PUSH_ENABLED: 'true' });
     expect(pushConfigError(config)).toMatch(/PUSH_/);

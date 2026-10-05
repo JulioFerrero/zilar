@@ -186,14 +186,21 @@ describe('push component', () => {
     ];
 
     const { fake, listeners, sentStanzas } = fakeComponent();
+    let seenService: string | undefined;
     const handle = startPushComponent({
       domain: 'push.zilar.localhost',
       secret: 'secret',
+      host: 'ejabberd',
       port: 5347,
       service: service(),
       logger: { info: vi.fn(), warn: vi.fn() },
-      createComponent: () => fake,
+      createComponent: (init) => {
+        seenService = init.service;
+        return fake;
+      },
     });
+
+    expect(seenService).toBe('xmpp://ejabberd:5347');
 
     for (const stanza of listeners.get('stanza') ?? []) {
       (stanza as (value: PushXmppElement) => void)(publishStanza('p-comp-1'));
@@ -214,6 +221,7 @@ describe('push component', () => {
     const handle = startPushComponent({
       domain: 'push.zilar.localhost',
       secret: 'secret',
+      host: '127.0.0.1',
       port: 5347,
       service: service(),
       logger: { info: vi.fn(), warn: vi.fn() },
@@ -312,6 +320,7 @@ describe('push component', () => {
     const handle = startPushComponent({
       domain: 'push.zilar.localhost',
       secret: 'secret',
+      host: '127.0.0.1',
       port: 5347,
       service: service(),
       logger: { info: vi.fn(), warn: vi.fn() },
