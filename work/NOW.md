@@ -24,10 +24,11 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0272 | Tooling: pnpm install stops flipping the lockfile peers | coding | noise in every task |
-| T-0274 | Web kit migration 7: Explore + avatar crop dialogs | coding | audit step 6 batch 5 (last modal dialogs) |
-| T-0275 | Web kit migration 8: accent buttons on Connections/Integrations/Stickers | coding | removes `bg-accent px-` hand-rolls |
-| T-0276 | Web kit migration 9: accent buttons in machines, Telegram import, invite links | coding | same, batch 2 |
+| T-0277 | Web kit migration 10: accent buttons in chat dialogs | coding | `bg-accent px-` batch 3 |
+| T-0278 | Web kit migration 11: accent buttons in profile/visibility/pack editor/contact rows | coding | batch 4 |
+| T-0279 | Web kit migration 12: accent buttons on sign-in and onboarding | coding | batch 5; after it, a gate check task (audit line 437) |
+
+~01:55 local: merged T-0272 (lockfile flip fixed with `packageExtensions`; pnpm changelog quotes not verified by the lead), T-0274 (no hand-rolled modal dialogs left on web), T-0275, T-0276. Images workflow verified: it skips non-tip commits ("no longer the tip of main") and will build when CI passes on the tip.
 
 ~01:30 local 10-06: merged T-0260 (auto-deploy; images publish on every green main; the deploy step stays skipped until Julio adds the 3 secrets) and T-0273 (clean).
 
