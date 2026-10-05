@@ -10,6 +10,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0272](T-0272-lockfile-peer-flip.md) | Tooling: pnpm install stops flipping the lockfile peers | in_progress | auto | | noise in every task |
+| [T-0274](T-0274-web-kit-dialogs-5.md) | Web kit migration 7: Explore and avatar crop dialogs on the kit | in_progress | auto | T-0273 | audit step 6 |
 
 ## Follow-ups
 
