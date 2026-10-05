@@ -1,7 +1,7 @@
 ---
 id: T-0231
 title: "chat-core: ChatFolder type and the pure folder matcher (shared by web and mobile)"
-status: planned
+status: merged
 milestone: M5
 branch: task/T-0231-folder-matcher
 model: opencode/muse-spark-1.3-contributor-free
@@ -62,5 +62,15 @@ Server table and API, web and mobile UI, wiring the matcher into the apps.
 ---
 
 ## Report (written by the worker when done)
+- What: added pure folder matcher `packages/chat-core/src/folders.ts` (types, FOLDER_ICONS, chatFolderType, folderMatches, folderUnreadTotal, sortFolders, defaultFolders), exported from `index.ts`, plus `folders.test.ts` (15 tests covering every spec branch).
+- Files changed: `packages/chat-core/src/folders.ts` (new), `packages/chat-core/src/folders.test.ts` (new), `packages/chat-core/src/index.ts` (1 line), `work/T-0231-folder-matcher.md`.
+- Commands:
+  - `pnpm install`: ok (13.8s).
+  - `pnpm --filter @zilar/chat-core test --maxWorkers=2 --reporter=dot src/folders.test.ts`: 15 passed.
+  - `pnpm gate` (first run): GATE FAIL on format only (prettier flagged the 2 new files); fixed with `prettier --write`, re-ran single test file (15 passed).
+  - `pnpm gate` (final): GATE PASS — install, format, lint, typecheck, tests @zilar/chat-core all PASS; scope: every changed file inside Allowed files.
+- Deviations: none. Security checklist: pure functions, no secrets/logging/routes; N/A items (scoping, atomicity, permissions, 404, rate limits, audit) do not apply.
 
 ## Review (written by Claude)
+
+**Verdict:** Approved, clean first pre-review. Read `folders.ts`: types, the 24 icons, limits, `chatFolderType`, `folderMatches` (archived, exclude, muted, read, then include by id or type), `folderUnreadTotal` (skips muted and archived), `sortFolders`, `defaultFolders` (Personal and AIs only, no Work, per Julio). Pure, exported from the package index.

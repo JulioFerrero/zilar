@@ -10,5 +10,6 @@ export * from './markdown';
 export * from './mentions';
 export * from './reactions';
 export * from './edits';
+export * from './folders';
 export * from './ai';
 export type { Attachment, Payload, VoiceMeta } from '@zilar/protocol';
