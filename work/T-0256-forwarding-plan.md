@@ -1,7 +1,7 @@
 ---
 id: T-0256
 title: "Audit and plan: forwarding messages, Telegram style (web first), docs only"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0256-forwarding-plan
 model: auto
@@ -64,4 +64,95 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+Wrote `docs/audit/forwarding-plan.md`, a document-only audit and plan for
+forwarding. No code, config or package change. The plan covers, per the spec:
+today's web send/store paths with `file:line`; Telegram behaviour with a
+now/later table; the design (wire format, per-kind copying, receiver display, AI
+view, blocks, topics); an ordered task split with Allowed files, tests and risks;
+and seven open questions with recommended answers.
+
+Key finding that changes the spec's premise: attachments have **no per-chat read
+ACL**. `/upload/*` is reverse-proxied straight to ejabberd with no auth
+(`deploy/caddy/Caddyfile:39-43`, `deploy/baremetal/nginx-zilar.conf:97-101`,
+`deploy/ejabberd/ejabberd.yml:233-251`) and the client trusts media by host, not
+membership (`apps/web/src/lib/attachments.ts:99-134`). So re-sending an
+attachment/voice/sticker URL to another chat works as-is; the real risk is the
+per-user upload quota deleting the uploader's oldest files (durability, not
+access). The plan recommends no server copy endpoint now and records it as a
+later, optional task.
+
+### Files changed
+- `docs/audit/forwarding-plan.md` (new)
+- `work/T-0256-forwarding-plan.md` (report + status)
+
+### Commands and real results
+- `pnpm install`: done in 12.4s, exit 0. Did not touch `pnpm-lock.yaml`
+  (`git status` shows only the two files above).
+- `pnpm gate` (repo root), summary lines:
+
+```
+gate: 2 changed file(s) against main
+PASS  install (frozen)  (1.3s)
+PASS  format  (29.6s)
+PASS  lint  (1.7s)
+PASS  typecheck  (1.4s)
+scope: every changed file is inside the Allowed files
+GATE PASS
+```
+
+No package source changed, so the gate ran no package tests. I ran no other test
+suites (the task is docs only).
+
+### Deviations from the spec
+- The spec's example of an attachment "URL that only members of the source chat
+  may read" does not hold in this codebase; I documented the verified access
+  model instead (§1.3, §3.2) rather than assuming it.
+- Nothing else deviated. `docs/PROJECT_PLAN.md`, `AGENTS.md` and `work/BOARD.md`
+  were read only, never edited.
+
+### Problems
+None. Gate is green and scope is clean.
+
+### Open questions for Julio
+Seven, each with a recommended answer, at the end of
+`docs/audit/forwarding-plan.md` (§5): comment handling, re-upload vs reuse URL,
+hide-original-name privacy, forwarding from private topics, forwarding into a
+channel as a non-admin, keeping reply/mentions, and the multi-select entry point.
+No code is blocked on them; they shape the follow-up tasks.
+
+### Round 2 — prereview fixes
+
+`PREREVIEW.md` findings: must-fix 0, should-fix 1, nits 3.
+
+- **Finding 1 (should-fix, `docs/audit/forwarding-plan.md:158`)** — fixed.
+  `chat_id` now carries the same "only for a public origin" qualifier as
+  `chat_name`, and §3.1 states the producer rule that both fields are set
+  together only for a public origin; a private-topic (or DM) origin omits both,
+  so target members never learn the private room JID. §3.6 repeats the rule
+  where forwarding from a private topic is discussed.
+- Nits 2-4 left untouched: the instruction is to leave nits alone unless they sit
+  on a line this round already changes.
+
+Tests: none added or adjusted. Docs-only task; finding 1 names no test and no
+source or test file changed, so there is no behaviour to cover.
+
+Commands: none beyond `pnpm gate` (docs only; no single test files were touched).
+
+`pnpm gate` from the repo root, after the edits:
+
+```
+gate: 2 changed file(s) against main
+PASS  install (frozen)  (1.2s)
+PASS  format  (16.3s)
+PASS  lint  (0.6s)
+PASS  typecheck  (0.6s)
+scope: every changed file is inside the Allowed files
+GATE PASS
+```
+
 ## Review (written by Claude)
+
+**Verdict:** Approved; clean after 1 auto round (4 nits).
+- The design is sound: a separate `<forward>` element keeps the payload untouched, and private-topic origins carry no room JID.
+- T-A and T-B (protocol and xmpp-core) do not depend on Julio's open questions, so they go first. The UI tasks wait for his answers to §5.
