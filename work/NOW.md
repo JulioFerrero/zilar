@@ -25,6 +25,7 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
 | T-0238 | Web: Chat folders page, reorder, folder editor dialog, rail New/Edit keys | coding | Telegram brief b, decision 4; also fixes the rail tablist nit |
+| T-0243 | Web: React Cosmos catalog + kit batch 1 (Dialog, TextInput, Badge, Switch, fixtures) | coding | UI kit step 2a; batch 2: SegmentedControl, ListRow, Avatar, states |
 | T-0242 | ui-tokens follow-up: dot grid values from the package, drift tests tightened | coding | mobile chat already draws the dot grid (`chat-background.tsx`); the audit compared an unused CSS var |
 | T-0233 | Mobile: floating bottom bar (Chats, AIs, Settings, Profile), search well, Profile tab | pre-review | Telegram brief a, d; uses `expo-router/ui` headless tabs |
 
