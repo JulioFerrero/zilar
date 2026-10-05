@@ -207,7 +207,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0178](T-0178-whistle-quiet-cut-chunks.md) | Whistle: quiet-point chunking from a native amplitude envelope | 2026-10-03 |
 | [T-0180](T-0180-signin-no-code-hint.md) | Sign-in hints for people without an invite (web + mobile) | 2026-10-03 |
 | [T-0234](T-0234-mobile-create-sheets-keyboard.md) | Mobile: create sheets above the keyboard; mock create and contacts | planned | opencode/muse-spark-1.3-contributor-free | T-0233 | Emulator QA run 3; launch after T-0233 |
-| [T-0243](T-0243-web-cosmos-kit-1.md) | Web: React Cosmos catalog, kit fixtures, Dialog, TextInput, Badge, Switch | planned | opencode/muse-spark-1.3-contributor-free | T-0240 | UI kit step 2a (audit section 5) |
 | [T-0244](T-0244-mobile-block-users.md) | Mobile: block/unblock, Blocked people screen, 'blocked' relation fix | planned | deepseek/deepseek-flash | T-0171 | Julio: DeepSeek flash trial vs Muse (web twin T-0235) |
 | [T-0179](T-0179-mobile-transcribe-voice-notes.md) | Transcribe voice notes on the phone with Whistle: button in the bubble, consent for the 17 MB model, transcripts stored locally | 2026-10-03 |
 | [T-0182](T-0182-mobile-contacts-requests.md) | Mobile contacts: find by @handle, profile card, contact requests | 2026-10-03 |
@@ -273,3 +272,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0242](T-0242-tokens-dot-grid-cleanup.md) | ui-tokens: dot grid from the package, drift tests tightened | 2026-10-05 |
 | [T-0233](T-0233-mobile-bottom-bar.md) | Mobile: floating bottom bar (Chats, AIs, Settings, Profile), search bar on Chats, Profile tab | 2026-10-05 |
 | [T-0238](T-0238-web-folders-page-editor.md) | Web: Chat folders page with reorder and the folder editor dialog | 2026-10-05 |
+| [T-0243](T-0243-web-cosmos-kit-1.md) | Web: React Cosmos catalog, kit fixtures, Dialog, TextInput, Badge, Switch | 2026-10-05 |
