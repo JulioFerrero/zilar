@@ -6,6 +6,7 @@ import { NewAiDialog } from './ais/NewAiDialog';
 import { NewGroupDialog } from './NewGroupDialog';
 import { NewTopicDialog } from './NewTopicDialog';
 import { Button } from './ui/button';
+import { Dialog } from './ui/dialog';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { useChatStore } from '@/store/ChatStoreProvider';
 import { cn } from '@/lib/utils';
@@ -138,22 +139,6 @@ export function NewChatButton({
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [menuOpen]);
 
-  // The inline "New message" dialog lives here, so Esc closes it and returns
-  // focus to the trigger the same way the extracted dialogs do.
-  useEffect(() => {
-    if (dialog !== 'message') {
-      return;
-    }
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') {
-        setDialog(undefined);
-        focusTrigger();
-      }
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, [dialog]);
-
   return (
     <div
       className={cn(
@@ -263,54 +248,39 @@ export function NewChatButton({
         (topicGroupId !== undefined ? (
           <NewTopicDialog groupId={topicGroupId} onClose={closeDialog} />
         ) : (
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-label="Choose a group"
-            onClick={closeDialog}
-            className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4"
+          <Dialog
+            open
+            onClose={closeDialog}
+            title="New topic in…"
+            ariaLabel="Choose a group"
+            size="sm"
           >
-            <div
-              onClick={(event) => event.stopPropagation()}
-              className="w-full max-w-xs rounded-2xl border border-border bg-panel p-4 shadow-xl"
-            >
-              <h2 className="text-[16px] font-semibold">New topic in…</h2>
-              <div className="mt-3 flex flex-col gap-1">
-                {topicGroups.map((group) => (
-                  <button
-                    key={group.chatId}
-                    type="button"
-                    onClick={() => {
-                      setTopicGroupId(group.chatId);
-                      setDialog('topic');
-                    }}
-                    className="rounded-xl px-3 py-2 text-left text-[15px] hover:bg-surface-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
-                  >
-                    {group.title}
-                  </button>
-                ))}
-              </div>
+            <div className="mt-3 flex flex-col gap-1">
+              {topicGroups.map((group) => (
+                <button
+                  key={group.chatId}
+                  type="button"
+                  onClick={() => {
+                    setTopicGroupId(group.chatId);
+                    setDialog('topic');
+                  }}
+                  className="rounded-xl px-3 py-2 text-left text-[15px] hover:bg-surface-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+                >
+                  {group.title}
+                </button>
+              ))}
             </div>
-          </div>
+          </Dialog>
         ))}
       {dialog === 'message' && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="New message"
-          onClick={closeDialog}
-          className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4"
-        >
-          <div
-            onClick={(event) => event.stopPropagation()}
-            className="w-full max-w-xs rounded-2xl border border-border bg-panel p-4 shadow-xl"
-          >
-            <h2 className="text-[16px] font-semibold">New message</h2>
-            <p className="mt-1 text-[15px] text-muted-foreground">
-              Invite a friend to start a conversation, or type their @username in the search bar
-              above.
-            </p>
-            <div className="mt-4 flex justify-end gap-2">
+        <Dialog
+          open
+          onClose={closeDialog}
+          title="New message"
+          description="Invite a friend to start a conversation, or type their @username in the search bar above."
+          size="sm"
+          actions={
+            <>
               <Button
                 type="button"
                 variant="outline"
@@ -326,9 +296,9 @@ export function NewChatButton({
               >
                 Invite a friend
               </Button>
-            </div>
-          </div>
-        </div>
+            </>
+          }
+        />
       )}
     </div>
   );

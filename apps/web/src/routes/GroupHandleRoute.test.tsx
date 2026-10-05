@@ -140,4 +140,25 @@ describe('GroupHandleRoute', () => {
     // handle URL afterwards through `state.from`).
     expect(await screen.findByText('Sign in page')).toBeTruthy();
   });
+
+  it('closes the group card with Escape', async () => {
+    lookupMock.mockResolvedValue(HIKING);
+    renderHandle('hiking_club');
+    expect(await screen.findByRole('dialog', { name: 'Join Hiking club' })).toBeTruthy();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    expect(screen.queryByRole('dialog', { name: 'Join Hiking club' })).toBeNull();
+  });
+
+  it('closes the error card with Escape', async () => {
+    const { ApiError } = await import('@/lib/api');
+    lookupMock.mockRejectedValue(new ApiError(500, 'internal_error', 'boom'));
+    renderHandle('hiking_club');
+    expect(await screen.findByRole('dialog', { name: 'Open @hiking_club' })).toBeTruthy();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    expect(screen.queryByRole('dialog', { name: 'Open @hiking_club' })).toBeNull();
+  });
 });

@@ -10,7 +10,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0272](T-0272-lockfile-peer-flip.md) | Tooling: pnpm install stops flipping the lockfile peers | in_progress | auto | | noise in every task |
-| [T-0273](T-0273-web-kit-dialogs-4.md) | Web kit migration 6: NewChatButton and GroupHandleRoute dialogs | in_progress | auto | T-0270 | audit step 6, batch 4 |
 
 ## Follow-ups
 
@@ -302,3 +301,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0271](T-0271-mobile-kit-connections-machines.md) | Mobile kit migration: Connections and Machines lists on SectionLabel/Card | 2026-10-05 |
 | [T-0270](T-0270-web-kit-dialogs-3.md) | Web kit migration 5: NewTopic and FolderEditor dialogs on the kit; size lg | 2026-10-05 |
 | [T-0260](T-0260-auto-deploy-green-main.md) | Deploy: auto-deploy live after green CI on main; /health reports the commit | 2026-10-05 |
+| [T-0273](T-0273-web-kit-dialogs-4.md) | Web kit: NewChatButton pickers and GroupHandleRoute dialogs on the kit Dialog | 2026-10-05 |
