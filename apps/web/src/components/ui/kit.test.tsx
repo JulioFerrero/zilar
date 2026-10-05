@@ -1,0 +1,180 @@
+import { fireEvent, render, screen } from '@testing-library/react';
+import { useState } from 'react';
+import { describe, expect, it, vi } from 'vitest';
+import { Badge } from './badge';
+import { Button } from './button';
+import { Dialog } from './dialog';
+import { Switch } from './switch';
+import { TextArea, TextInput } from './text-input';
+
+describe('Badge', () => {
+  it('renders nothing at zero', () => {
+    const { container } = render(<Badge count={0} />);
+    expect(container.innerHTML).toBe('');
+  });
+
+  it('caps above max', () => {
+    render(<Badge count={120} />);
+    expect(screen.getByText('99+')).toBeTruthy();
+  });
+
+  it('respects a custom max', () => {
+    render(<Badge count={120} max={9} />);
+    expect(screen.getByText('9+')).toBeTruthy();
+  });
+
+  it('renders the exact count below max', () => {
+    render(<Badge count={37} />);
+    expect(screen.getByText('37')).toBeTruthy();
+  });
+});
+
+describe('Switch', () => {
+  it('toggles on click and reports aria-checked', () => {
+    const onCheckedChange = vi.fn();
+    const { rerender } = render(
+      <Switch checked={false} onCheckedChange={onCheckedChange} label="Sounds" />,
+    );
+    const control = screen.getByRole('switch', { name: 'Sounds' });
+    expect(control.getAttribute('aria-checked')).toBe('false');
+    fireEvent.click(control);
+    expect(onCheckedChange).toHaveBeenCalledWith(true);
+    rerender(<Switch checked onCheckedChange={onCheckedChange} label="Sounds" />);
+    expect(screen.getByRole('switch', { name: 'Sounds' }).getAttribute('aria-checked')).toBe(
+      'true',
+    );
+  });
+
+  it('does not toggle when disabled', () => {
+    const onCheckedChange = vi.fn();
+    render(<Switch checked={false} onCheckedChange={onCheckedChange} label="Sounds" disabled />);
+    const control = screen.getByRole('switch', { name: 'Sounds' });
+    expect(control.hasAttribute('disabled')).toBe(true);
+    fireEvent.click(control);
+    expect(onCheckedChange).not.toHaveBeenCalled();
+  });
+});
+
+describe('TextInput and TextArea', () => {
+  it('links the label with htmlFor and id', () => {
+    render(<TextInput label="Group name" />);
+    const input = screen.getByLabelText('Group name');
+    expect(input.getAttribute('id')).toBeTruthy();
+  });
+
+  it('marks invalid fields and shows the hint in danger', () => {
+    render(<TextInput label="Group name" invalid hint="A name is required." />);
+    expect(screen.getByLabelText('Group name').getAttribute('aria-invalid')).toBe('true');
+    expect(screen.getByText('A name is required.').className).toContain('text-danger');
+  });
+
+  it('shows a counter for the text area', () => {
+    render(<TextArea label="Bio" counter={{ max: 200 }} defaultValue="Hello" />);
+    expect(screen.getByText('5/200')).toBeTruthy();
+  });
+
+  it('updates the counter when typing into an uncontrolled input', () => {
+    render(<TextInput label="Group name" counter={{ max: 64 }} defaultValue="Weekend" />);
+    expect(screen.getByText('7/64')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Group name'), {
+      target: { value: 'Weekend trip' },
+    });
+    expect(screen.getByText('12/64')).toBeTruthy();
+  });
+
+  it('shows the counter in danger when over the max without capping input', () => {
+    render(<TextInput label="Group name" counter={{ max: 5 }} defaultValue="Weekend trip" />);
+    const counter = screen.getByText('12/5');
+    expect(counter.className).toContain('text-danger');
+    expect(screen.getByLabelText('Group name').hasAttribute('maxlength')).toBe(false);
+  });
+
+  it('merges a caller className with the base field styles', () => {
+    render(<TextInput label="Group name" className="max-w-xs" />);
+    const input = screen.getByLabelText('Group name');
+    expect(input.className).toContain('max-w-xs');
+    expect(input.className).toContain('well-surface');
+    render(<TextArea label="Bio" className="max-w-xs" />);
+    const area = screen.getByLabelText('Bio');
+    expect(area.className).toContain('max-w-xs');
+    expect(area.className).toContain('well-surface');
+  });
+});
+
+describe('Dialog', () => {
+  it('labels the dialog with its title and closes on Escape', () => {
+    const onClose = vi.fn();
+    render(
+      <Dialog
+        open
+        onClose={onClose}
+        title="Edit group"
+        description="Change the look."
+        actions={<Button>Save</Button>}
+      >
+        <p>Body</p>
+      </Dialog>,
+    );
+    const dialog = screen.getByRole('dialog', { name: 'Edit group' });
+    expect(dialog.getAttribute('aria-modal')).toBe('true');
+    expect(screen.getByText('Change the look.')).toBeTruthy();
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders nothing when closed', () => {
+    const { container } = render(<Dialog open={false} onClose={() => {}} title="Hidden" />);
+    expect(container.innerHTML).toBe('');
+  });
+
+  it('focuses the first focusable element on open and wraps Tab at both ends', () => {
+    render(
+      <Dialog
+        open
+        onClose={() => {}}
+        title="Edit group"
+        actions={
+          <>
+            <Button>Cancel</Button>
+            <Button>Save</Button>
+          </>
+        }
+      >
+        <p>Body</p>
+      </Dialog>,
+    );
+    const first = screen.getByRole('button', { name: 'Cancel' });
+    const last = screen.getByRole('button', { name: 'Save' });
+    expect(document.activeElement).toBe(first);
+    const dialog = screen.getByRole('dialog', { name: 'Edit group' });
+    last.focus();
+    fireEvent.keyDown(dialog, { key: 'Tab' });
+    expect(document.activeElement).toBe(first);
+    fireEvent.keyDown(dialog, { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(last);
+  });
+
+  it('returns focus to the opener on close', () => {
+    function Harness() {
+      const [open, setOpen] = useState(false);
+      return (
+        <>
+          <button type="button" onClick={() => setOpen(true)}>
+            Open dialog
+          </button>
+          <Dialog open={open} onClose={() => setOpen(false)} title="Edit group">
+            <p>Body</p>
+          </Dialog>
+        </>
+      );
+    }
+    render(<Harness />);
+    const opener = screen.getByRole('button', { name: 'Open dialog' });
+    opener.focus();
+    fireEvent.click(opener);
+    expect(screen.getByRole('dialog', { name: 'Edit group' })).toBeTruthy();
+    fireEvent.keyDown(screen.getByRole('dialog', { name: 'Edit group' }), { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: 'Edit group' })).toBeNull();
+    expect(document.activeElement).toBe(opener);
+  });
+});

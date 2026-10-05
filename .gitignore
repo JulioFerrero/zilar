@@ -5,6 +5,7 @@ node_modules/
 # builds and caches
 dist/
 build/
+cosmos-export/
 .turbo/
 .vite/
 coverage/
