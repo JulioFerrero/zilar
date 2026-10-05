@@ -6,9 +6,12 @@ import type { FindingCounts } from './decide.js';
 import type { GitRunner } from './git.js';
 import { loadPrompt, loadRulesFile, renderPrompt } from './prompts.js';
 import type { SessionState } from './session.js';
+import { reviewModel } from './task-file.js';
 import type { DoctorRecord } from './types.js';
 
-// The doctor is always Muse: the strongest reader, like the pre-review.
+// The doctor is always Muse: the strongest reader, like the pre-review. The
+// exported default keeps the tests honest; the live call site uses
+// reviewModel() so ZILAR_REVIEW_MODEL can move it.
 export const DOCTOR_MODEL = { providerID: 'opencode', id: 'muse-spark-1.3-contributor-free' };
 
 // A quiet main HEAD becomes one audit. Merges landing within the window
@@ -125,7 +128,7 @@ export async function startDoctorSession(
   const sessionId = await deps.client.createSession({
     title: `doctor ${shortHead(input.head)}`,
     agent: 'build',
-    model: DOCTOR_MODEL,
+    model: reviewModel(),
     directory: worktree,
     permissions: loadRulesFile(path.join(deps.promptsDirPath, 'rules.json')),
   });

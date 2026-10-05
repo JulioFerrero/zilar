@@ -67,6 +67,23 @@ export function assertAllowedModel(model: string): void {
   }
 }
 
+// The pre-review and the doctor use the free Muse listing by default, but
+// T-0215 lets the lead point them at the billed fallback through
+// ZILAR_REVIEW_MODEL when the free listing is rate-limited (the autopilot
+// restarts pick it up on the next call). Read at call time so a restart with
+// the env set is enough.
+export function reviewModel(env: NodeJS.ProcessEnv = process.env): {
+  providerID: string;
+  id: string;
+} {
+  const override = env.ZILAR_REVIEW_MODEL;
+  if (override !== undefined && override !== '') {
+    assertAllowedModel(override);
+    return splitModel(override);
+  }
+  return { providerID: 'opencode', id: 'muse-spark-1.3-contributor-free' };
+}
+
 // Returns the text under the "Blocked / needs a decision" subsection of the
 // Report, or an empty string when there is none.
 export function extractBlockedText(text: string): string {
