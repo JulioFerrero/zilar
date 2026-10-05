@@ -200,7 +200,10 @@ describe('POST /api/setup', () => {
     // No provider detail and no secret in the response.
     expect(raw).not.toContain(SENTINEL_KEY);
     expect(raw).not.toContain('resend');
-    expect(raw).not.toContain('535');
+    // Match the provider's error text, not the random requestId: the id can
+    // contain the digits "535" by chance.
+    expect(raw).not.toContain('535 rejected');
+    expect(raw).not.toContain('bad key');
     expect(await getMailSettings(context.db, settingsCipherFor(context.config))).toBeNull();
     expect(swapped).toBeNull();
     // Setup stays open for a retry.

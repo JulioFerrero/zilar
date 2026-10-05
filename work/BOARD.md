@@ -12,7 +12,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0260](T-0260-auto-deploy-green-main.md) | Deploy: auto-deploy live after green CI on main | in_progress | auto | | Julio 2026-10-06 |
 | [T-0270](T-0270-web-kit-dialogs-3.md) | Web kit migration 5: NewTopic and FolderEditor dialogs | in_progress | auto | T-0263 | audit step 6, batch 3 |
 | [T-0271](T-0271-mobile-kit-connections-machines.md) | Mobile kit migration: Connections and Machines lists | in_progress | auto | T-0264, T-0267 | kit migration |
-| [T-0269](T-0269-flaky-535-assertion.md) | Server tests: '535' checks ignore the random requestId | in_progress | auto | | CI flake |
 
 ## Follow-ups
 
@@ -300,3 +299,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0266](T-0266-mobile-subpage-inset-folder-summary.md) | Mobile: sub-pages clear the gesture bar; folder summary matches web | 2026-10-05 |
 | [T-0267](T-0267-kit-section-label-heading.md) | Kit: SectionLabel is a heading on web and mobile | 2026-10-05 |
 | [T-0268](T-0268-mobile-kit-people-screens.md) | Mobile kit migration: Requests and Blocked screens on Card/ListRow | 2026-10-05 |
+| [T-0269](T-0269-flaky-535-assertion.md) | Server tests: 535 checks ignore the random requestId | 2026-10-05 |
