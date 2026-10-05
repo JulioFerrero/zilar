@@ -16,6 +16,8 @@ export type PushComponentOptions = {
   secret: string;
   /** Component listener port (ejabberd's `ejabberd_service`). */
   port: number;
+  /** Host of ejabberd's component listener: `ejabberd` in compose, `127.0.0.1` in dev. */
+  host: string;
   service: PushServiceDeps;
   logger: PushServiceDeps['logger'];
   createComponent?: PushComponentFactory;
@@ -35,7 +37,7 @@ export function startPushComponent(options: PushComponentOptions): PushComponent
   const createComponent: PushComponentFactory =
     options.createComponent ?? ((init) => component(init));
   const xmpp = createComponent({
-    service: `xmpp://127.0.0.1:${options.port}`,
+    service: `xmpp://${options.host}:${options.port}`,
     domain: options.domain,
     password: options.secret,
   });

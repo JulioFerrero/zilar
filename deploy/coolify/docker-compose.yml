@@ -179,6 +179,10 @@ services:
       PUSH_COMPONENT_JID: push.${SERVICE_FQDN_WEB}
       # Must equal ejabberd's EJABBERD_MACRO_PUSH_COMPONENT_SECRET above.
       PUSH_COMPONENT_SECRET: ${SERVICE_PASSWORD_PUSHCOMPONENT:-CHANGE_ME_PUSH_COMPONENT_SECRET}
+      # Host of ejabberd's XEP-0114 component listener (T-0172): the Compose
+      # service name, not 127.0.0.1 (inside this container loopback is the
+      # server itself, where nothing listens on 5347).
+      PUSH_COMPONENT_HOST: ejabberd
       PUSH_STORAGE_KEY: ${PUSH_STORAGE_KEY:-}
       TOOLS_ENABLED: ${TOOLS_ENABLED:-false}
       ROUTINES_ENABLED: ${ROUTINES_ENABLED:-false}

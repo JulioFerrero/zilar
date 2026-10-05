@@ -23,6 +23,20 @@ const pushEnvSchema = z.object({
       .transform((value) => Number.parseInt(value, 10))
       .refine((value) => value >= 1 && value <= 65535),
   ),
+  // Host of ejabberd's XEP-0114 component listener (T-0172). Compose sets
+  // `ejabberd` (the service name); dev keeps the 127.0.0.1 default. A
+  // scheme, port or path would build a broken service URL, so anything but
+  // letters, digits, dots and hyphens fails startup with the fixed message
+  // below (the value is never echoed).
+  PUSH_COMPONENT_HOST: z.preprocess(
+    (value) => value ?? '127.0.0.1',
+    z
+      .string()
+      .regex(
+        /^[A-Za-z0-9.-]+$/,
+        'PUSH_COMPONENT_HOST must be a plain hostname (letters, digits, dots, hyphens)',
+      ),
+  ),
   // Seals the Web Push subscription keys at rest (AES-256-GCM). At least 32
   // characters, like the provider-key master key. Rotating it orphans
   // existing rows: the component drops (never sends from) undecryptable
@@ -48,6 +62,27 @@ function emptyPushSettingsAsUnset(
 
 export function loadPushConfig(env: Record<string, string | undefined>): PushConfig {
   return pushEnvSchema.parse(emptyPushSettingsAsUnset(env));
+}
+
+// Like the server's `loadServerConfigOrExit`: an invalid push host refuses
+// to boot with one fixed message that names the variable, never its value
+// (a secret could be pasted there by mistake). Called before `createApp` so
+// no route or component starts on a broken config.
+export function loadPushConfigOrExit(env: Record<string, string | undefined>): PushConfig {
+  try {
+    return loadPushConfig(env);
+  } catch (error) {
+    const hostInvalid =
+      error instanceof z.ZodError &&
+      error.issues.some((issue) => issue.path.includes('PUSH_COMPONENT_HOST'));
+    if (!hostInvalid) {
+      throw error;
+    }
+    console.error(
+      'Invalid push configuration: PUSH_COMPONENT_HOST must be a plain hostname (letters, digits, dots, hyphens)',
+    );
+    process.exit(1);
+  }
 }
 
 // The enabled config, or null with the reason named when `PUSH_ENABLED=true`

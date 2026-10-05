@@ -33,7 +33,7 @@ import { createDb } from './db/client';
 import { runMigrations } from './db/migrate';
 import { createArchivePool } from './search/service';
 import { createPushCipher } from './push/crypto';
-import { loadPushConfig, pushConfigError, type PushConfig } from './push/config';
+import { loadPushConfigOrExit, pushConfigError, type PushConfig } from './push/config';
 import { startPushComponent, type PushComponentHandle } from './push/component';
 import { createWebPushSender } from './push/sender';
 import { reconcileRoomSubscriptionOptions } from './topics/rooms';
@@ -249,7 +249,9 @@ const archivePool =
     : createArchivePool(config.XMPP_ARCHIVE_DATABASE_URL);
 
 // Push env (T-0119): separate from the server config so push stays optional.
-const push: PushConfig = loadPushConfig(process.env);
+// An invalid PUSH_COMPONENT_HOST refuses to boot below (fixed message, no
+// value echoed) instead of dialling a broken URL — see push/config.ts.
+const push: PushConfig = loadPushConfigOrExit(process.env);
 
 const app = createApp({
   db,
@@ -300,6 +302,7 @@ let pushComponent: PushComponentHandle | null = null;
       pushComponent = startPushComponent({
         domain: push.PUSH_COMPONENT_JID as string,
         secret: push.PUSH_COMPONENT_SECRET as string,
+        host: push.PUSH_COMPONENT_HOST,
         port: push.PUSH_COMPONENT_PORT,
         service: {
           db,
