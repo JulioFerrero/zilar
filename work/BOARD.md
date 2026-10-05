@@ -211,7 +211,8 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0191](T-0191-mobile-sticker-editor-telegram.md) | Mobile: sticker pack editor and Telegram sticker import | planned | meta/muse-spark-1.3-contributor | T-0187 | Spec ready; mobile parity wave 2 |
 | [T-0194](T-0194-mobile-pitfall-guards.md) | Mobile: guard tests for the Android and Hermes pitfalls (Coroutine with Promise, crypto.subtle) | planned | minimax-coding-plan/MiniMax-M3 | — | Spec ready; process roadmap R3 |
 | [T-0195](T-0195-mobile-parity-audit.md) | Audit (docs only): web vs mobile for AI tools, routines, activity, @mentions, dialogs | planned | minimax-coding-plan/MiniMax-M3 | — | Spec ready; feeds the specs of T-0189 and T-0190 |
-| [T-0200](T-0200-lead-squash-merge.md) | Lead tooling: lead merge lands each task as ONE commit on main | planned | meta/muse-spark-1.3-contributor | — | First task after the history compaction and force push |
+| [T-0200](T-0200-lead-squash-merge.md) | Lead tooling: lead merge lands each task as ONE commit on main | in-progress | meta/muse-spark-1.3-contributor | — | First task after the history compaction and force push |
+| [T-0201](T-0201-runner-connect-test-flake.md) | Runner: connect.test.ts waits for the runner to be live instead of a fixed sleep (CI flake) | planned | minimax-coding-plan/MiniMax-M3 | — | CI failure 2026-10-05; test-only, first MiniMax trial |
 | [T-0179](T-0179-mobile-transcribe-voice-notes.md) | Transcribe voice notes on the phone with Whistle: button in the bubble, consent for the 17 MB model, transcripts stored locally | 2026-10-03 |
 | [T-0182](T-0182-mobile-contacts-requests.md) | Mobile contacts: find by @handle, profile card, contact requests | 2026-10-03 |
 | [T-0183](T-0183-mobile-explore-group-handles.md) | Mobile Explore, @group links and group visibility | 2026-10-03 |

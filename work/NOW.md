@@ -8,7 +8,8 @@ Last updated: 2026-10-05, after the history compaction and the T-0200 launch.
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0200 | `lead merge` lands each task as ONE commit on main | coding | runs alone: it changes how every later task merges |
+| T-0200 | `lead merge` lands each task as ONE commit on main | coding | Muse |
+| T-0201 | Runner connect test waits for "live" instead of a 200 ms sleep (CI flake) | coding | MiniMax M3, test-only; Julio asked |
 
 ## Next, in order
 
