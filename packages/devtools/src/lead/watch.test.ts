@@ -6,12 +6,15 @@ import {
   buildView,
   collectFiles,
   disableRawMode,
+  formatContext,
   frameText,
   liveStep,
   modelLabel,
   parseChangedFiles,
   parseWatchView,
   renderWatch,
+  sessionSpeed,
+  sparkline,
   type ChangedFile,
   type WatchEntry,
   type WatchView,
@@ -185,6 +188,7 @@ function entry(overrides: Partial<WatchEntry>): WatchEntry {
     running: true,
     step: 'editing foo.ts',
     files: [],
+    speed: null,
     ...overrides,
   };
 }
@@ -348,6 +352,157 @@ describe('renderWatch', () => {
     for (const line of lines) {
       expect(line.length).toBeLessThanOrEqual(60);
     }
+  });
+
+  it('shows the speed line at width 80', () => {
+    const lines = renderWatch(
+      view([
+        entry({
+          speed: {
+            tokPerSec: 18.234,
+            secPerStep: 9.612,
+            context: 158_705,
+            spark: [1, 2, 3, 4, 5, 4, 3, 2, 1],
+          },
+        }),
+      ]),
+      80,
+      0,
+      false,
+    );
+    const joined = lines.join('\n');
+    expect(joined).toContain('18.2 tok/s');
+    expect(joined).toContain('9.6 s/step');
+    expect(joined).toContain('ctx 158k');
+    expect(joined).toContain('▁▃▅▆█▆▅▃▁');
+  });
+
+  it('drops the sparkline at width 50', () => {
+    const lines = renderWatch(
+      view([
+        entry({
+          speed: {
+            tokPerSec: 18.234,
+            secPerStep: 9.612,
+            context: 158_705,
+            spark: [1, 2, 3, 4, 5, 4, 3, 2, 1],
+          },
+        }),
+      ]),
+      50,
+      0,
+      false,
+    );
+    const speedLine = lines.find((line) => line.includes('tok/s')) ?? '';
+    expect(speedLine).not.toContain('▁');
+    expect(speedLine).not.toContain('█');
+    expect(speedLine.length).toBeLessThanOrEqual(50);
+  });
+
+  it('shows "measuring…" when speed is null', () => {
+    const lines = renderWatch(view([entry({ speed: null })]), 80, 0, false);
+    const measuring = lines.find((line) => line.includes('measuring')) ?? '';
+    expect(measuring).toContain('measuring…');
+  });
+});
+
+describe('formatContext', () => {
+  it('formats thousands as "k"', () => {
+    expect(formatContext(158_705)).toBe('158k');
+  });
+  it('formats millions with one decimal', () => {
+    expect(formatContext(1_234_000)).toBe('1.2M');
+  });
+  it('keeps small integers as integers', () => {
+    expect(formatContext(123)).toBe('123');
+    expect(formatContext(0)).toBe('0');
+  });
+});
+
+describe('sparkline', () => {
+  it('returns all "▄" when every value is equal', () => {
+    expect(sparkline([3, 3, 3, 3])).toBe('▄▄▄▄');
+  });
+  it('maps the min to ▁ and the max to █', () => {
+    expect(sparkline([0, 10])).toBe('▁█');
+  });
+  it('scales monotonically with five values', () => {
+    expect(sparkline([1, 2, 3, 4, 5])).toBe('▁▃▅▆█');
+  });
+  it('returns an empty string for an empty list', () => {
+    expect(sparkline([])).toBe('');
+  });
+});
+
+describe('sessionSpeed', () => {
+  function step(
+    created: number,
+    completed: number,
+    output: number,
+    reasoning: number,
+    input: number,
+    cacheRead: number,
+  ): Record<string, unknown> {
+    return {
+      type: 'assistant',
+      time: { created, streamed: completed, completed },
+      tokens: {
+        input,
+        output,
+        reasoning,
+        cache: { read: cacheRead, write: 0 },
+      },
+    };
+  }
+
+  it('computes averages over four completed assistant steps', () => {
+    const messages = [
+      step(4_000, 10_000, 100, 0, 158_705, 0), // newest
+      step(3_000, 9_000, 100, 0, 120_000, 0),
+      step(2_000, 8_000, 100, 0, 100_000, 0),
+      step(1_000, 7_000, 100, 0, 80_000, 0), // oldest
+    ];
+    const speed = sessionSpeed(messages);
+    expect(speed).not.toBeNull();
+    expect(speed!.tokPerSec).toBeCloseTo(400 / 24, 4);
+    expect(speed!.secPerStep).toBeCloseTo(1.0, 4);
+    expect(speed!.context).toBe(158_705);
+    expect(speed!.spark).toEqual([100 / 6, 100 / 6, 100 / 6, 100 / 6]);
+  });
+
+  it('returns null when there are fewer than 2 completed steps', () => {
+    expect(sessionSpeed([])).toBeNull();
+    expect(
+      sessionSpeed([{ type: 'assistant', time: { created: 1, completed: 2 }, tokens: {} }]),
+    ).toBeNull();
+  });
+
+  it('skips idle messages and steps without completed', () => {
+    const messages = [
+      { type: 'idle' },
+      step(2_000, 3_000, 50, 0, 10, 0),
+      step(1_000, 2_000, 50, 0, 10, 0),
+      { type: 'assistant', time: { created: 500 }, tokens: {} },
+    ];
+    const speed = sessionSpeed(messages);
+    expect(speed).not.toBeNull();
+    expect(speed!.tokPerSec).toBeCloseTo(100 / 2, 4);
+    expect(speed!.secPerStep).toBeCloseTo(1.0, 4);
+    expect(speed!.context).toBe(10);
+  });
+
+  it('skips junk entries without throwing', () => {
+    const messages = [
+      null,
+      42,
+      'oops',
+      step(2_000, 3_000, 50, 0, 10, 0),
+      step(1_000, 2_000, 50, 0, 10, 0),
+    ];
+    expect(() => sessionSpeed(messages)).not.toThrow();
+    const speed = sessionSpeed(messages);
+    expect(speed).not.toBeNull();
+    expect(speed!.tokPerSec).toBeCloseTo(100 / 2, 4);
   });
 });
 
@@ -613,5 +768,46 @@ describe('parseWatchView', () => {
       ],
     });
     expect(parseWatchView(bad)).toBeNull();
+  });
+
+  it('parses speed back with the same numbers', () => {
+    const original = view([
+      entry({
+        speed: {
+          tokPerSec: 18.2,
+          secPerStep: 9.6,
+          context: 158_705,
+          spark: [1, 2, 3, 4, 5, 4, 3, 2, 1],
+        },
+      }),
+    ]);
+    const line = JSON.stringify(original);
+    const parsed = parseWatchView(line);
+    expect(parsed).not.toBeNull();
+    expect(parsed!.entries[0]!.speed).toEqual(original.entries[0]!.speed);
+  });
+
+  it('parses speed as null when the speed field is missing', () => {
+    const bad = JSON.stringify({
+      clock: '10:00:00',
+      refreshFailed: false,
+      entries: [
+        {
+          id: 'T-1',
+          title: 't',
+          modelLabel: 'm',
+          totalAge: '1m',
+          phaseId: 'coding',
+          phaseLabel: 'Coding',
+          needsLead: false,
+          running: true,
+          step: null,
+          files: [],
+        },
+      ],
+    });
+    const parsed = parseWatchView(bad);
+    expect(parsed).not.toBeNull();
+    expect(parsed!.entries[0]!.speed).toBeNull();
   });
 });
