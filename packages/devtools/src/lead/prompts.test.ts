@@ -93,6 +93,8 @@ describe('prompt templates', () => {
     expect(rendered).toContain('file:line');
     expect(rendered).toContain('Counts: must-fix=N, should-fix=N, nit=N, follow-up=N');
     expect(rendered).toContain('Follow-ups');
+    expect(rendered).toContain('--reporter=dot');
+    expect(rendered).toContain('Do NOT run install');
   });
 
   it('renders the doctor prompt with no placeholders left', () => {

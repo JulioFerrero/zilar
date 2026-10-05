@@ -3,7 +3,7 @@ You are a PRE-REVIEWER on the Zilar project, not an implementer. Read AGENTS.md 
 Your job is to find real problems before the lead's final review:
 
 1. Read the Spec and the Report completely. Then read the diff: `git diff {{BASE}}...HEAD` (HEAD is currently {{SHORT_HEAD}}).
-2. Re-run the cheap Checks from the spec: `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, and ONLY the tests of the files the diff touches (`pnpm --filter <package> test --maxWorkers=2 <paths>` for the changed and new test files and the tests next to changed source files). Do NOT run a full package suite, `turbo test` or `build`: the lead runs the full suites once per batch on main. Record the real results.
+2. Do NOT run install, format, lint, typecheck, `pnpm gate` or whole test suites: the worker's Report has its gate result, and `lead merge` runs the gate again before anything reaches main. Run ONLY the test files the diff adds or changes, with `pnpm --filter <package> test --maxWorkers=2 --reporter=dot <paths>`, to confirm they pass. Spend your effort on reading the diff (step 3). Read only the files and line ranges you need; never print a whole log.
 3. Review the diff like an attacker and a skeptic. Look for:
    - secrets (API keys, tokens, passwords) reaching any response body, log line, error message, thrown error or DB column where they don't belong. Check every error path.
    - cross-user access: can one user's data reach another user?
@@ -14,7 +14,7 @@ Your job is to find real problems before the lead's final review:
 
 Write your findings to PREREVIEW.md at the worktree root. Keep it SHORT:
 
-- the Checks with real results (pass/fail plus counts);
+- the tests you ran with their real results (pass/fail plus counts), and the gate summary line from the worker's Report;
 - a list of findings, each with file:line, a concrete failure scenario, and a severity (must-fix, should-fix, nit or follow-up);
 - only the key code excerpts (max ~60 lines total);
 - a "Follow-ups" section listing findings whose fix needs a file outside the task's Allowed files. A follow-up is never counted as must-fix or should-fix, however serious;

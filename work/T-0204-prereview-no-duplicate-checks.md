@@ -1,7 +1,7 @@
 ---
 id: T-0204
 title: Lead tooling: the pre-review stops re-running checks the merge gate runs anyway, and spends its effort on the diff (token saving)
-status: planned
+status: merged
 milestone: M5
 branch: task/T-0204-prereview-no-duplicate-checks
 model: minimax-coding-plan/MiniMax-M3
@@ -54,4 +54,43 @@ The doctor prompt (the doctor audits main and must run the full checks), the aut
 
 ## Report (written by the worker when done)
 
+### What I did
+
+1. Replaced step 2 of `packages/devtools/prompts/prereview.md` with the exact wording from the spec (no install, format, lint, typecheck, `pnpm gate`, or whole test suites; only the test files the diff adds or changes with `pnpm --filter <package> test --maxWorkers=2 --reporter=dot <paths>`; spend the effort on reading the diff).
+2. Replaced the line-17 bullet with `- the tests you ran with their real results (pass/fail plus counts), and the gate summary line from the worker's Report;`.
+3. Added two new assertions in the "keeps the pre-review short-format contract" test in `packages/devtools/src/lead/prompts.test.ts`: `expect(rendered).toContain('--reporter=dot')` and `expect(rendered).toContain('Do NOT run install')`.
+
+### Files changed
+
+- `packages/devtools/prompts/prereview.md` (allowed)
+- `packages/devtools/src/lead/prompts.test.ts` (allowed)
+- `work/T-0204-prereview-no-duplicate-checks.md` (task file, status + this Report)
+- `pnpm-lock.yaml` (lockfile bump from `pnpm install`; always allowed by the gate)
+
+### Commands run with real results
+
+- `pnpm install`: `Done in 10.5s`, peer warning about `@types/react-dom 19.3.0` vs `@types/react 19.2.18` (pre-existing on `main`, not introduced by this task).
+- `pnpm --filter @zilar/devtools test --maxWorkers=2 --reporter=dot src/lead/prompts.test.ts`: `Test Files 1 passed (1) / Tests 11 passed (11) / Duration 189ms`. All assertions, old and the two new ones, pass.
+- `pnpm gate` (from repo root):
+  ```
+  gate: 4 changed file(s) against main
+  PASS  install (frozen)  (1.0s)
+  PASS  format  (11.7s)
+  PASS  lint  (1.3s)
+  PASS  typecheck  (2.8s)
+  PASS  tests @zilar/devtools  (0.8s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Problems / deviations
+
+None. Spec was small and unambiguous.
+
+### Open questions
+
+None.
+
 ## Review (written by Claude)
+
+**Verdict:** Approved, clean on the first pre-review (MiniMax, easy task). Step 2 of `packages/devtools/prompts/prereview.md` now tells the pre-reviewer not to run install, format, lint, typecheck, the gate or whole suites, only the changed test files with `--reporter=dot`, and the packet lists the worker's gate line instead; `prompts.test.ts` asserts the new text. The lead read the diff. The `pnpm-lock.yaml` change removes the two peer entries T-0203 added: `pnpm install` flips them between worktrees, so the net effect on main is nil; the flip-flop is noted in `work/NOW.md` for a later fix. The autopilot is restarted after the merge.
