@@ -3805,6 +3805,18 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         await refreshChats().catch(() => {});
         return created.id;
       },
+      // T-0214: creating a private group mirrors the channel flow (trim the
+      // title, refresh the list, return the new group id from the POST
+      // answer). No `kind` goes over the wire: missing means group.
+      createGroup: async (input) => {
+        const trimmed = input.title.trim();
+        if (trimmed === '') {
+          throw new Error('Enter a group name.');
+        }
+        const created = await groupsApi.createGroup({ title: trimmed, memberIds: input.memberIds });
+        await refreshChats().catch(() => {});
+        return created.id;
+      },
       // T-0144: leaving a channel removes the caller through the member
       // route, then refreshes the list (the row disappears); the caller
       // navigates away.

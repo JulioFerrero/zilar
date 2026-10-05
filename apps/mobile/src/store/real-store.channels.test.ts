@@ -101,6 +101,9 @@ function fakeGroups(): GroupsApi & { calls: { role: { userId: string; role: stri
     createChannel: vi.fn(async (_input: { title: string; description?: string }) => ({
       id: 'g-new',
     })),
+    createGroup: vi.fn(async (_input: { title: string; memberIds: string[] }) => ({
+      id: 'g-new',
+    })),
     listGroupMembers: vi.fn(async () => [
       { userId: 'u-rita', name: 'Rita', role: 'owner' as const, roles: [] },
       { userId: 'u-ana', name: 'Ana', role: 'admin' as const, roles: [] },

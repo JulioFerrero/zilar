@@ -88,3 +88,31 @@ describe('createGroupsApi (T-0144)', () => {
     await expect(api.listGroupMembers('g-1')).rejects.toMatchObject({ code: 'invalid_response' });
   });
 });
+
+describe('createGroupsApi createGroup (T-0214)', () => {
+  it('posts the title with the member ids and no kind, then parses the id', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ id: 'g-9' }));
+    const api = createGroupsApi(async () => 'session-token', fetchImpl as unknown as typeof fetch);
+
+    await expect(
+      api.createGroup({ title: 'Weekend club', memberIds: ['u-ana', 'u-luis'] }),
+    ).resolves.toEqual({ id: 'g-9' });
+
+    const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('http://127.0.0.1:3188/api/groups');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body as string)).toEqual({
+      title: 'Weekend club',
+      memberIds: ['u-ana', 'u-luis'],
+    });
+  });
+
+  it('rejects a malformed answer instead of opening a nameless group', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ ok: true }));
+    const api = createGroupsApi(async () => 't', fetchImpl as unknown as typeof fetch);
+
+    await expect(api.createGroup({ title: 'Weekend club', memberIds: [] })).rejects.toMatchObject({
+      code: 'invalid_response',
+    });
+  });
+});
