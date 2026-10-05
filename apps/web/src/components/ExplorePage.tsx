@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router';
 import { ApiError, searchDirectory, type DirectoryEntry } from '@/lib/api';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
 import { Avatar } from '@/components/Avatar';
+import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 
@@ -141,13 +142,9 @@ export function ExplorePage({ onClose }: { onClose: () => void }) {
       size="md"
       initialFocusRef={searchRef}
       actions={
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded-full bg-accent px-4 py-1.5 text-[15px] font-medium text-accent-foreground hover:bg-accent/90"
-        >
+        <Button type="button" size="lg" onClick={onClose}>
           Close
-        </button>
+        </Button>
       }
     >
       <p className="mt-1 text-[14px] text-muted-foreground">
@@ -240,14 +237,14 @@ export function ExplorePage({ onClose }: { onClose: () => void }) {
                   {entry.kind === 'channel' ? ' · Channel' : ''}
                 </p>
               </div>
-              <button
+              <Button
                 type="button"
                 disabled={joiningId !== undefined}
                 onClick={() => void join(entry)}
-                className="shrink-0 rounded-full bg-accent px-4 py-1.5 text-[14px] font-medium text-accent-foreground hover:bg-accent/90 disabled:opacity-60"
+                className="shrink-0"
               >
                 {joiningId === entry.id ? 'Joining…' : entry.joined ? 'Open' : 'Join'}
-              </button>
+              </Button>
             </div>
           ))}
         {state === 'ready' && next !== null && (

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import { ApiError, lookupByHandle, type HandleProfile } from '@/lib/api';
 import { ContactProfileRow } from './ContactProfileRow';
+import { Button } from './ui/button';
 import { Dialog } from './ui/dialog';
 
 /** "Add contact" dialog: type a `@username`, see the card, send a request. */
@@ -83,13 +84,9 @@ export function AddContactDialog({
       description="Type their @username to find them."
       size="sm"
       actions={
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded-full bg-accent px-4 py-1.5 text-[15px] font-medium text-accent-foreground hover:bg-accent/90"
-        >
+        <Button type="button" size="lg" onClick={onClose}>
           Close
-        </button>
+        </Button>
       }
     >
       <label className="mt-4 block text-[14px] font-medium" htmlFor="add-contact-handle">

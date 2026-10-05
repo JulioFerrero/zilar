@@ -54,6 +54,9 @@ describe('AvatarUploader', () => {
   it('opens the crop dialog for an image and saves with a busy state', async () => {
     const onChanged = vi.fn();
     renderUploader({ onChanged });
+    expect(screen.getByRole('button', { name: 'Add picture' }).getAttribute('data-slot')).toBe(
+      'button',
+    );
     fireEvent.change(screen.getByLabelText('Choose a picture file'), {
       target: { files: [pngFile()] },
     });

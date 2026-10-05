@@ -30,6 +30,7 @@ describe('InviteDialog', () => {
 
     const dialog = await screen.findByRole('dialog', { name: 'Invite a friend' });
     expect(await screen.findByText('http://localhost:3000/invite/abc')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Close' }).getAttribute('data-slot')).toBe('button');
 
     fireEvent.keyDown(dialog, { key: 'Escape' });
     expect(onClose).toHaveBeenCalledTimes(1);

@@ -4,6 +4,7 @@ import { ApiError, checkGroupHandle } from '@/lib/api';
 import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { Avatar } from './Avatar';
 import { HandleSuffix } from './HandleSuffix';
+import { Button } from './ui/button';
 import { Dialog } from './ui/dialog';
 import { cn } from '@/lib/utils';
 
@@ -141,14 +142,14 @@ export function NewGroupDialog({
             >
               Cancel
             </button>
-            <button
+            <Button
               type="button"
+              size="lg"
               disabled={selected.length === 0}
               onClick={() => setStep('title')}
-              className="rounded-full bg-accent px-4 py-1.5 text-[15px] font-medium text-accent-foreground hover:bg-accent/90 disabled:opacity-60"
             >
               Next
-            </button>
+            </Button>
           </>
         ) : (
           <>
@@ -159,17 +160,9 @@ export function NewGroupDialog({
             >
               Back
             </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void create()}
-              className={cn(
-                'rounded-full bg-accent px-4 py-1.5 text-[15px] font-medium text-accent-foreground',
-                'hover:bg-accent/90 disabled:opacity-60',
-              )}
-            >
+            <Button type="button" size="lg" disabled={busy} onClick={() => void create()}>
               Create
-            </button>
+            </Button>
           </>
         )
       }

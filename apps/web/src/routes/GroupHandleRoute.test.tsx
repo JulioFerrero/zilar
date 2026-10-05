@@ -69,6 +69,9 @@ describe('GroupHandleRoute', () => {
     expect(screen.getByText('Trail talk every Sunday.')).toBeTruthy();
     expect(screen.getByText('12 members')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Join the group' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Join the group' }).getAttribute('data-slot')).toBe(
+      'button',
+    );
   });
 
   it('reads Open when already joined', async () => {

@@ -1,7 +1,7 @@
 ---
 id: T-0277
 title: "Web kit migration 10: hand-rolled accent buttons in the chat dialogs become the kit Button"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0277-web-kit-accent-buttons-3
 model: auto
@@ -66,4 +66,78 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+Replaced every hand-rolled `bg-accent px-…` button listed in the spec with the
+kit `Button` (`import { Button } from '@/components/ui/button'`), keeping
+`type`, `onClick`, `disabled`, `aria-label` and the text, and mapping size by
+font: `text-[15px]` → `size="lg"`, `text-[14px]` → `size="default"`,
+`text-[13px]` → `size="sm"`. Colour, padding, radius, font and gap classes are
+gone; only layout-only classes stay via `className`. Muted Cancel / Close /
+Back / Dismiss pills and the out-of-scope files were left untouched.
+
+- `InviteDialog.tsx`: the "Close" action is `Button size="lg"`; the copy button
+  (`aria-label="Copy invite link"`) is `Button size="sm"` with
+  `className="shrink-0"`, same `disabled` and `onClick`.
+- `AddContactDialog.tsx`: the "Close" action is `Button size="lg"`.
+- `NewGroupDialog.tsx`: "Next" (keeps `disabled={selected.length === 0}`) and
+  "Create" (keeps `disabled={busy}`) are `Button size="lg"`; Cancel and Back
+  stay muted pills.
+- `ExplorePage.tsx`: the "Close" action is `Button size="lg"`; each row's
+  Join/Open is `Button` (default size) with `className="shrink-0"` and the same
+  `disabled` and `onClick`.
+- `AvatarUploader.tsx`: "Add picture"/"Change picture" and "Save picture" are
+  `Button` (default size) with the same `disabled` and `onClick`; Cancel stays
+  muted.
+- `GroupHandleRoute.tsx`: the error-card "Retry" is `Button size="lg"`; the card
+  join button is `Button size="lg"` with `className="mt-5 w-full"`. Muted Close
+  pills stay.
+
+### Files changed
+- `apps/web/src/components/InviteDialog.tsx` + `.test.tsx`
+- `apps/web/src/components/AddContactDialog.tsx` + `.test.tsx`
+- `apps/web/src/components/NewGroupDialog.tsx` + `.test.tsx`
+- `apps/web/src/components/ExplorePage.tsx` + `.test.tsx`
+- `apps/web/src/components/AvatarUploader.tsx` + `.test.tsx`
+- `apps/web/src/routes/GroupHandleRoute.tsx` + `.test.tsx`
+- `work/T-0277-web-kit-accent-buttons-3.md`
+
+### Tests added
+One `data-slot="button"` assertion per test file, on a migrated button:
+`Close` (InviteDialog), `Close` (AddContactDialog), `Create` (NewGroupDialog),
+`Join` (ExplorePage), `Add picture` (AvatarUploader), `Join the group`
+(GroupHandleRoute). Existing queries were by role/text and needed no change.
+
+### Commands and results
+- `pnpm install` — Done. `pnpm-lock.yaml` is unchanged (`git status` lists only
+  the files above).
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot InviteDialog
+  AddContactDialog NewGroupDialog ExplorePage AvatarUploader GroupHandleRoute` —
+  `Test Files 6 passed (6)`, `Tests 33 passed (33)`.
+- First `pnpm gate` — `GATE FAIL`: `tests @zilar/web` failed at
+  `GroupHandleRoute.test.tsx:165` ("closes the error card with Escape"); the
+  error card was still in the DOM after Escape. This test does not use the old
+  markup and passes on re-runs, so I treated it as a flake under the shared
+  machine's parallel load. Re-ran the same suite the gate runs
+  (`pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot --changed main`)
+  — `Test Files 49 passed (49)`, `Tests 471 passed (471)`.
+- Second `pnpm gate` — `GATE PASS`:
+  - `gate: 13 changed file(s) against main`
+  - `PASS  install (frozen)  (0.9s)`
+  - `PASS  format  (11.9s)`
+  - `PASS  lint  (0.4s)`
+  - `PASS  typecheck  (0.6s)`
+  - `PASS  tests @zilar/web  (19.5s)`
+  - `scope: every changed file is inside the Allowed files`
+  - `GATE PASS`
+- Grep confirmed none of the six source files contains `bg-accent px-`.
+
+### Deviations / open questions
+- The first gate attempt failed on a flaky `GroupHandleRoute` Escape test
+  (unrelated to this migration); the second gate passed. Flagging it since the
+  lead's merge gate could hit the same flake. No spec deviation.
+
 ## Review (written by Claude)
+
+**Approved.** The pre-review was clean with 0 nits, and there were no fix rounds. No `bg-accent px-` is left in the six files.
+
+**Flaky test:** the `GroupHandleRoute` "closes with Escape" test also flaked in T-0273. It has its own follow-up task.

@@ -2,6 +2,7 @@ import { Check, Copy } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
 import { copyText } from '@/lib/clipboard';
+import { Button } from './ui/button';
 import { Dialog } from './ui/dialog';
 
 /** Creates an invite link and lets the user copy it. */
@@ -46,13 +47,9 @@ export function InviteDialog({ onClose }: { onClose: () => void }) {
       description="Send them this link. They join Zilar already connected to you."
       size="sm"
       actions={
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded-full bg-accent px-4 py-1.5 text-[15px] font-medium text-accent-foreground hover:bg-accent/90"
-        >
+        <Button type="button" size="lg" onClick={onClose}>
           Close
-        </button>
+        </Button>
       }
     >
       {error !== undefined ? (
@@ -62,12 +59,13 @@ export function InviteDialog({ onClose }: { onClose: () => void }) {
       ) : (
         <div className="mt-4 flex items-center gap-2 rounded-lg border border-divider bg-muted px-2 py-1.5">
           <span className="min-w-0 flex-1 truncate text-[13px]">{url ?? 'Creating link…'}</span>
-          <button
+          <Button
             type="button"
+            size="sm"
             aria-label="Copy invite link"
             disabled={url === undefined}
             onClick={copy}
-            className="flex shrink-0 items-center gap-1 rounded-md bg-accent px-2.5 py-1 text-[13px] font-medium text-accent-foreground hover:bg-accent/90 disabled:opacity-60"
+            className="shrink-0"
           >
             {copied ? (
               <Check className="size-4" aria-hidden="true" />
@@ -75,7 +73,7 @@ export function InviteDialog({ onClose }: { onClose: () => void }) {
               <Copy className="size-4" aria-hidden="true" />
             )}
             {copied ? 'Copied' : 'Copy'}
-          </button>
+          </Button>
         </div>
       )}
     </Dialog>

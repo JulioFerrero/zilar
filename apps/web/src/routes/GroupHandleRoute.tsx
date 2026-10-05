@@ -5,6 +5,7 @@ import { ApiError, lookupGroupByHandle, type DirectoryEntry } from '@/lib/api';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
 import { AddContactDialog } from '@/components/AddContactDialog';
 import { Avatar } from '@/components/Avatar';
+import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 
 /**
@@ -113,16 +114,16 @@ export function GroupHandleRoute({ atHandle }: { atHandle?: string | undefined }
         size="sm"
         actions={
           <>
-            <button
+            <Button
               type="button"
+              size="lg"
               onClick={() => {
                 setLookup({ state: 'checking' });
                 setAttempt((value) => value + 1);
               }}
-              className="rounded-full bg-accent px-4 py-1.5 text-[15px] font-medium text-accent-foreground hover:bg-accent/90"
             >
               Retry
-            </button>
+            </Button>
             <button
               type="button"
               onClick={close}
@@ -199,11 +200,12 @@ function GroupHandleCard({ entry, onClose }: { entry: DirectoryEntry; onClose: (
             {error}
           </p>
         )}
-        <button
+        <Button
           type="button"
+          size="lg"
           disabled={busy}
           onClick={() => void join()}
-          className="mt-5 w-full rounded-full bg-accent px-4 py-2.5 text-[15px] font-medium text-accent-foreground hover:bg-accent/90 disabled:opacity-60"
+          className="mt-5 w-full"
         >
           {busy
             ? 'Joining…'
@@ -212,7 +214,7 @@ function GroupHandleCard({ entry, onClose }: { entry: DirectoryEntry; onClose: (
               : entry.kind === 'channel'
                 ? 'Join the channel'
                 : 'Join the group'}
-        </button>
+        </Button>
         <div className="mt-3 flex justify-center">
           <button
             type="button"

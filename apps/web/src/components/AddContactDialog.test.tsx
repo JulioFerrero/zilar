@@ -65,6 +65,7 @@ describe('AddContactDialog', () => {
 
     fireEvent.change(screen.getByLabelText('Username'), { target: { value: '@bob_b' } });
     expect(await screen.findByText('Bob')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Close' }).getAttribute('data-slot')).toBe('button');
     fireEvent.click(screen.getByRole('button', { name: 'Add contact' }));
     await waitFor(() => expect(sendMock).toHaveBeenCalledWith('bob_b'));
     expect(await screen.findByText('Request sent.')).toBeTruthy();

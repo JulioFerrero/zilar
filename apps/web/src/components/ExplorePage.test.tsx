@@ -82,6 +82,7 @@ describe('ExplorePage', () => {
     expect(screen.getByText('Trail talk every Sunday.')).toBeTruthy();
     expect(screen.getByText('12 members')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Join' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Join' }).getAttribute('data-slot')).toBe('button');
     // T-0165: the directory entry's picture paints the row.
     expect(container.querySelector('img[src="/api/avatars/g-hiking"]')).not.toBeNull();
   });

@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import { Avatar } from '@/components/Avatar';
+import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { removeAvatar, uploadAvatar } from '@/lib/api';
 import {
@@ -276,14 +277,9 @@ export function AvatarUploader({
       <div className="flex items-center gap-3">
         <Avatar id={ownerId} name={ownerName} size={64} ai={kind === 'ai'} avatarUrl={currentUrl} />
         <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => fileRef.current?.click()}
-            disabled={busy}
-            className="rounded-full bg-accent px-4 py-1.5 text-[14px] font-medium text-accent-foreground hover:bg-accent/90 disabled:opacity-60"
-          >
+          <Button type="button" onClick={() => fileRef.current?.click()} disabled={busy}>
             {currentUrl === undefined ? 'Add picture' : 'Change picture'}
-          </button>
+          </Button>
           {currentUrl !== undefined && (
             <button
               type="button"
@@ -341,14 +337,9 @@ export function AvatarUploader({
               >
                 Cancel
               </button>
-              <button
-                type="button"
-                onClick={() => void save()}
-                disabled={busy}
-                className="rounded-full bg-accent px-4 py-1.5 text-[14px] font-medium text-accent-foreground hover:bg-accent/90 disabled:opacity-60"
-              >
+              <Button type="button" onClick={() => void save()} disabled={busy}>
                 {busy ? 'Saving…' : 'Save picture'}
-              </button>
+              </Button>
             </>
           }
         >
