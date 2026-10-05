@@ -9,6 +9,7 @@ export type PromptName =
   | 'resume'
   | 'nudge'
   | 'prereview'
+  | 'prereview-resume'
   | 'scout'
   | 'qa'
   | 'autofix'

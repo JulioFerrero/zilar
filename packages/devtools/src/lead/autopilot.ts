@@ -21,8 +21,7 @@ import {
 } from './doctor.js';
 import { startPrereviewSession } from './start-prereview.js';
 import { appendLog, loadState, updateState } from './state.js';
-import { extractBlockedText, parseFrontMatter } from './task-file.js';
-import { splitModel } from './task-file.js';
+import { extractBlockedText, parseFrontMatter, splitModel } from './task-file.js';
 import { freshSessionRecord, startFreshWorkerSession } from './fresh-session.js';
 import type { DoctorRecord, TaskRecord } from './types.js';
 
@@ -204,7 +203,7 @@ async function applyActions(
         }
         deps.client.promptDetached(
           prereview.sessionId,
-          renderPrompt(loadPrompt(deps.promptsDirPath, 'prereview-resume' as PromptName), vars),
+          renderPrompt(loadPrompt(deps.promptsDirPath, 'prereview-resume'), vars),
         );
         current = { ...current, prereview: { ...prereview, model: action.model } };
         appendLog(deps.statePath, `${task} switched prereview to ${action.model} in place`);

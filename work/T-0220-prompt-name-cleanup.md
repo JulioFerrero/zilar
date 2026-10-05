@@ -1,7 +1,7 @@
 ---
 id: T-0220
 title: "Lead tooling: 'prereview-resume' in PromptName (no cast) and one task-file import in autopilot.ts"
-status: planned
+status: merged
 milestone: M5
 branch: task/T-0220-prompt-name-cleanup
 model: minimax-coding-plan/MiniMax-M3
@@ -52,4 +52,28 @@ Any behaviour change.
 
 ## Report (written by the worker when done)
 
+### What I did
+Followed the spec verbatim:
+1. `packages/devtools/src/lead/prompts.ts`: added `| 'prereview-resume'` to `PromptName`, placed right after `'prereview'` so related variants stay adjacent.
+3. `packages/devtools/src/lead/autopilot.ts`: merged the two `task-file.js` imports (lines 24-25) into a single `import { extractBlockedText, parseFrontMatter, splitModel } from './task-file.js';`.
+2. `packages/devtools/src/lead/autopilot.ts`: dropped the `as PromptName` cast on the `'prereview-resume'` literal (now line 206). The `PromptName` type import is still used at line 177 (`const template: PromptName = 'resume';`), so the import stays as-is.
+
+### Files changed
+- `packages/devtools/src/lead/prompts.ts`
+- `packages/devtools/src/lead/autopilot.ts`
+- `work/T-0220-prompt-name-cleanup.md` (status + this report)
+
+### Commands run
+- `pnpm install`: done in 12.1s (1 warning about peer @types/react-dom vs @types/react, pre-existing, unrelated).
+- `pnpm --filter @zilar/devtools test --maxWorkers=2 --reporter=dot src/lead/prompts.test.ts src/lead/autopilot.test.ts`: 2 files, 33 tests passed, 0 failed.
+- `pnpm gate`: `PASS install (frozen)`, `PASS format`, `PASS lint`, `PASS typecheck`, `PASS tests @zilar/devtools`, `scope: every changed file is inside the Allowed files`, `GATE PASS`.
+
+### Problems / deviations
+None.
+
+### Blocked / needs a decision
+None.
+
 ## Review (written by Claude)
+
+**Verdict:** Approved, clean first pre-review (MiniMax worker; its pre-review was the first live `LEAD: FALLBACK`: free Muse 429, switched in place to the paid Muse). Diff is exactly the three spec items: `'prereview-resume'` in `PromptName`, the cast removed, one `task-file.js` import.
