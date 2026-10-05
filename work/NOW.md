@@ -2,7 +2,7 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
-Last updated: 2026-10-05 ~14:05 local, after merging T-0222 and launching T-0223 (docs); earlier merged T-0211 (Julio: "the resize is working great") and T-0221, and launching T-0222. Main checkout got `pnpm install` (T-0211 added Ink/React; the autopilot could not start without it). Julio's watcher reopened on the new version and floated; test window closed.
+Last updated: 2026-10-05 ~14:40 local, after merging T-0223 and launching T-0225; earlier merged T-0222, T-0211 (Julio: "the resize is working great") and T-0221, and launching T-0222. Main checkout got `pnpm install` (T-0211 added Ink/React; the autopilot could not start without it). Julio's watcher reopened on the new version and floated; test window closed.
 
 Autopilot restarted with `ZILAR_REVIEW_MODEL=meta/muse-spark-1.3-contributor` (free Muse still 429 at ~12:05). When the free listing answers again (`opencode2 run -m "opencode/muse-spark-1.3-contributor-free#low" "Reply OK."`), restart it without the variable.
 
@@ -22,12 +22,11 @@ Models (Julio, 2026-10-05): default `opencode/muse-spark-1.3-contributor-free`; 
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0219 | Mobile: Run now, Revert, Delete in the tool detail sheet | pre-review (paid Muse by FALLBACK) | worker on paid Muse; state fixed with `lead switch-model --in-place` (T-0222) |
-| T-0223 | Docs: FEATURES, mobile parity roadmap, README M5 line catch up with T-0181..T-0222 | coding | free Muse (fallback on 429). Julio asked "do we need to update the readme or some of the docs?"; lead updated `CLAUDE.md` and `LEAD_HANDOFF.md` itself (d70f6d36) |
+| T-0219 | Mobile: Run now, Revert, Delete in the tool detail sheet | after lead round 1, an auto round (1 should-fix) | paid Muse |
+| T-0224 | The doctor also switches in place on a 429 | lead round 1 (no FALLBACK line on a failed switch; second-tick assertion) | paid Muse; `state.ts` added to Allowed (doctor `model` was dropped by `loadState`) |
+| T-0225 | Doctor prompt accepts lead commits touching `CLAUDE.md` | coding | MiniMax |
 
-| T-0224 | The doctor also switches in place on a 429 | coding | free Muse (fallback on 429) |
-
-T-0222 merged. Doctor stalled on a 429 (the fallback does not cover it); lead switched it by hand; T-0224 covers it. T-0219 got lead round 1 (disable every action while one runs, mock delete drops versions/runs, revert the stray lockfile lines).
+Merged: T-0222, T-0223 (docs sync: FEATURES 14 rows, parity roadmap state, README M5). Doctor flagged the lead's `CLAUDE.md` edit (d70f6d36) as must-fix; Julio chose "keep it, allow lead edits": `CLAUDE.md` line 10 updated (92190c62), T-0225 updates the doctor prompt. Doctor stalled twice on 429; lead switched it by hand both times until T-0224 merges.
 
 First live `LEAD: FALLBACK`: T-0220's pre-review (free 429 → paid, same session) worked. T-0220 merged; autopilot restarted.
 
