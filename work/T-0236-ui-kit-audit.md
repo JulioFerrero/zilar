@@ -1,7 +1,7 @@
 ---
 id: T-0236
 title: "Audit: duplicated UI on web and mobile, the shared kit to build, and how React Cosmos fits (docs only)"
-status: planned
+status: merged
 milestone: M5
 branch: task/T-0236-ui-kit-audit
 model: opencode/muse-spark-1.3-contributor-free
@@ -73,4 +73,69 @@ Writing any component, installing Cosmos, changing tokens.
 
 ## Report (written by the worker when done)
 
+Wrote `docs/audit/ui-kit-audit.md` (docs only; no code, config or package changes).
+Contents: per-app inventory with `rg` counts + `file:line` examples (web: 67 files /
+249 raw `<button>` vs 13 kit `Button` users, 32 accent hand-roll files, 18 dialog
+shells, 30 input files, 0 shared Switch/Dialog/Row/Badge; mobile: 75 files / 342 raw
+`<Pressable>` vs 13 kit users, 0 `<Switch>` uses, 24 Modal files, 111 empty/loading
+files); kit tables per app with matching names + props sketches + D24 recipes +
+priorities; `packages/ui-tokens` proposal with a full diff table (8+ tokens differ:
+dot-grid vs flat chat bg, missing `key-text-shadow`/`avatar-ring`/
+`list-active-foreground`/voice tokens on mobile, alias-vs-literal shadcn names,
+radius scale, fonts); React Cosmos plan from reactcosmos.org docs + `pnpm view`
+(7.4.1 latest; Vite plugin + `*.fixture.tsx` for web; native renderer needs a
+manual Metro entry and Expo 57/RN 0.86/nativewind 4/expo-router support is marked
+unknown with the react-native-web + `src/app/dev/` fallback as recommended default;
+`cosmos.js.org` is an unrelated crypto framework — not used); ordered migration
+tasks with Allowed files + a `bg-accent px-` grep gate proposal; risks incl.
+T-0227/T-0233/T-0232/T-0235 overlap.
+
+Files changed: `docs/audit/ui-kit-audit.md` (new), `work/T-0236-ui-kit-audit.md`
+(this file). Single-test runs: none applicable (docs-only, no tests touched).
+`pnpm install`: done, 17.5s OK. `pnpm gate`: GATE PASS — install/lint/format/
+typecheck all PASS, "scope: every changed file is inside the Allowed files"
+(2 changed files). No deviations from spec. Open questions for the lead:
+(1) dot-grid chat bg on native vs intentional flat divergence (needs a decision in
+the tokens task); (2) whether to timebox or skip the native Cosmos renderer spike
+given the RNW fallback is cheap (`react-native-web ~0.21.0` already a mobile dep).
+
+### Round 2 (fix round, 2026-10-05)
+
+Findings addressed: finding 1 (should-fix) fixed — `docs/audit/ui-kit-audit.md:41`
+now cites `rg -l --glob '!**/*.test.*' 'ui/button'` (verified: 13 files) instead of
+the `components/ui/button` spelling that only matched 4 relative imports.
+Findings 2 and 3 are nits on lines I did not otherwise change, so per
+instructions I left them as-is (verified current values: mobile `avatar` 36,
+web switch/checkbox 4).
+
+Disagreements: none — all three findings reproduce as stated.
+
+Tests added: none (docs-only fix; no behaviour change, no test names a finding).
+Single-test runs: none applicable.
+`pnpm gate`: (result pasted below after run).
+GATE PASS — install/lint/format/typecheck all PASS, "scope: every changed file
+is inside the Allowed files" (2 changed files).
+
+### Round 3 (fix round, 2026-10-05)
+
+Findings addressed: finding 1 (should-fix) fixed — `docs/audit/ui-kit-audit.md`
+IconButton line now names the actual four `ui/icon-button` importers
+(`ChatHeader.tsx:9`, `ChatList.tsx:22`, `Composer.tsx:30`,
+`MessageList.tsx:14`), verified with `rg -n 'ui/icon-button'` on those files.
+Finding 4's `key-icon` nit was on the same line I changed, so folded into the
+same edit (now notes 5 files include `index.css` + kit itself, 3 consumers).
+Findings 2, 3, 5 are nits on lines I did not otherwise change, so per
+instructions left as-is (verified current values: web switch/checkbox 5 files
+including a `.test.tsx`, mobile `avatar` 37 counting via `rg -li -l` from
+`apps/web/src`/`apps/mobile/src`).
+
+Disagreements: none — all five findings reproduce as stated.
+
+Tests added: none (docs-only fix; no behaviour change, no test names a finding).
+Single-test runs: none applicable.
+`pnpm gate`: GATE PASS — install/lint/format/typecheck all PASS, "scope: every
+changed file is inside the Allowed files" (2 changed files).
+
 ## Review (written by Claude)
+
+**Verdict:** Approved after 2 auto rounds; packet clean, 3 count/citation nits left as they are. I read sections 2-6. The kit tables use the same names on both apps; the token differences are concrete (chat background, key text shadow, radius scale); the Cosmos plan cites reactcosmos.org (and notes cosmos.js.org is a different project). Mobile Cosmos on Expo 57 / expo-router is marked unknown, and the fallback (react-native-web inside the web Cosmos, plus a `src/app/dev/` catalog) is chosen up front. Next, after Julio sees the plan: `packages/ui-tokens`, then the web kit P1 with Cosmos, then the mobile kit, then one migration task per area once T-0227, T-0233 and T-0237 have landed.
