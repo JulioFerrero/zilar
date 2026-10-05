@@ -24,11 +24,12 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0171 | Block users part 1a: server | lead round 1 (GET limiter, dead `isBlocked`, block/request lock race) | schema task; T-0232 waits for it |
+| T-0232 | Server: chat_folders table and API | coding | the only schema task; migration 0040 |
+| T-0235 | Web: block and unblock people, Blocked people page | coding | builds on T-0171 (merged); hiding blocked messages is the next task |
 | T-0227 | Mobile: @mention picker in the group composer, mentions sent | auto round 1 (1 must-fix, 3 should-fix) | |
 | T-0233 | Mobile: floating bottom bar (Chats, AIs, Settings, Profile), search well, Profile tab | coding | Telegram brief a, d; uses `expo-router/ui` headless tabs |
 
-Queued: T-0232 (server chat folders, after T-0171), T-0234 (create sheets keyboard + mock create, after T-0233). Lead TODO: Docker compose rehearsal for T-0172 (push-deploy.test.sh already PASS 25/25).
+Merged: T-0171 (block users server, after lead round 1). Queued: T-0234 (create sheets keyboard + mock create, after T-0233). Lead TODO: Docker compose rehearsal for T-0172 (push-deploy.test.sh already PASS 25/25).
 
 Merged: T-0228 (public groups/channels), T-0230 (tool sheet keyboard), T-0172 (push component host), T-0231 (folder matcher), T-0225 (doctor accepts `CLAUDE.md` in lead commits), T-0224 (doctor in-place fallback; autopilot restarted), T-0226 (`ZILAR_SMOKE_MOCK=1 pnpm phone:smoke <ref>`: mock build, emulator only, leaves `.zilar-phone/commit` alone), T-0219 (tool Run/Revert/Delete; QA run 2 PASS, keyboard and stale-list issues → T-0230), T-0229 (AI screen layout fixes). Free slot (6th): block users web UI once T-0171 merges. Next: received mentions highlighted in mobile bubbles (after T-0227); New channel members step.
 
