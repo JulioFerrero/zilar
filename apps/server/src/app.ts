@@ -20,6 +20,7 @@ import { createIntegrationsRoutes, createGetBotToken } from './integrations/rout
 import { settingsCipherFor } from './setup/settings';
 import { createChatsRoutes } from './chats/routes';
 import { createChatPrefsRoutes } from './chat-prefs/routes';
+import { createChatFoldersRoutes } from './chat-folders/routes';
 import type { ServerConfig } from './config';
 import { loadPushConfig, type PushConfig } from './push/config';
 import { createDraftsRoutes } from './drafts/routes';
@@ -356,6 +357,7 @@ export function createApp({
   );
   app.route('/api', createChatsRoutes({ auth, db, config }));
   app.route('/api', createChatPrefsRoutes({ auth, db, config }));
+  app.route('/api', createChatFoldersRoutes({ auth, db, config }));
   // Push devices and settings (T-0119) mount always: with push off or
   // unconfigured every route answers 404/503 instead of disappearing, so
   // the web can show the matching state.

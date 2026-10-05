@@ -281,6 +281,13 @@
       "when": 1791203951467,
       "tag": "0039_workable_sunspot",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1791208108681,
+      "tag": "0040_majestic_legion",
+      "breakpoints": true
     }
   ]
 }

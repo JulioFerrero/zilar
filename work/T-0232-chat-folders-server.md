@@ -1,7 +1,7 @@
 ---
 id: T-0232
 title: "Server: chat_folders table and API (Telegram-style folders synced between web and phone)"
-status: planned
+status: merged
 milestone: M5
 branch: task/T-0232-chat-folders-server
 model: opencode/muse-spark-1.3-contributor-free
@@ -67,4 +67,24 @@ Web and mobile UI, realtime push of folder changes (clients refetch on focus), a
 
 ## Report (written by the worker when done)
 
+Built the `chat_folders` table + API per spec. `pnpm install` ok (12.5s).
+
+What I did:
+- `apps/server/src/db/schema.ts`: `chatFolders` table (uuid pk, user FK cascade, name check 1-24, icon, position, 3 text[] not null default '{}', 2 booleans default false, timestamptz created/updated, index on user_id) + `chatFolderSeeds` one-row-per-user table (`user_id` pk FK cascade, `seeded_at`). No reusable per-user settings table existed in schema.ts, so I added the seeds table as the spec allowed.
+- `apps/server/drizzle/0040_majestic_legion.sql` (+ journal/snapshot): generated via `pnpm --filter @zilar/server db:generate`. Matches spec exactly.
+- `apps/server/src/chat-folders/service.ts` (new): icon list + limits copied from chat-core with source comment (no new dependency); `listChatFolders` (seeds Personal/user+dm and AIs/bot+ai once, per-user advisory lock, re-reads inside tx, seed-row insert as race backstop); create (409 `folder_limit` / `You can have up to 20 folders.`), patch (404 same for foreign/unknown), reorder (400 `invalid_request` on missing/extra/duplicates), delete + position close-up. All writes scoped `WHERE user_id = caller`.
+- `apps/server/src/chat-folders/routes.ts` (new): GET/POST/PATCH/PUT-order/DELETE under `/api/chat-folders`, `requireSession`, own 60/min/user write limiter (injectable `now`), strict zod bodies (trimmed name 1-24, icon enum, unique types/jids, max 100 chats, `Nothing to update` on empty patch). PUT `/order` is registered before PATCH `/:id` so the method+path pair is unambiguous.
+- `apps/server/src/app.ts`: mounted `createChatFoldersRoutes` next to chat-prefs.
+- `apps/server/src/chat-folders/chat-folders.test.ts` (new): 10 tests covering seeding-once, create 201, 409 at 20, all 400 validations, patch own vs 404 foreign, order happy path + 3 (actually 4: missing/extra/dup/empty) 400 cases, delete close-up + 404s, cross-user isolation, 429 after 60 writes, 401s.
+
+Commands and real results:
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/chat-folders src/authz-sweep.test.ts`: 2 files, 15 tests passed (10 folder + 5 sweep; sweep shows all 5 folder routes answering 401 unauthenticated).
+- `pnpm gate`: GATE PASS — install PASS, format PASS (after one prettier --write on my own files), lint PASS (after removing one unused import), typecheck PASS, tests @zilar/server PASS; "scope: every changed file is inside the Allowed files".
+
+Security checklist: no secrets/tokens in logs (ids only, no message text); deletes/updates scoped by user_id+id; 20-folder cap enforced atomically under per-user advisory lock with state read inside the tx; unknown and foreign ids answer the same 404; new routes covered by the 401 sweep; writes rate-limited 60/min/user; no audit entries (out of scope per spec, like chat-prefs).
+
+Deviations: none. The `FolderTransaction` type is inferred from `ServerDatabase['transaction']` (works for both postgres-js and pglite unions); no `any`, no `@ts-ignore`.
+
 ## Review (written by Claude)
+
+**Verdict:** Approved, clean first pre-review (0 nits). Read migration 0040 (`chat_folders` with the name check and user index, `chat_folder_seeds` for seed-once) and the service: every read-modify-write (seed, create with the 20 limit, patch, order, delete) runs under the per-user `chat-folders:` advisory lock, so two concurrent first loads cannot seed twice and two creates cannot pass the limit. Next: web folder rail + Chat folders page, then mobile folders.
