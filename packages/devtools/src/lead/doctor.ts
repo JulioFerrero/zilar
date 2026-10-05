@@ -4,6 +4,7 @@ import { extractCounts, extractVerdict } from './autopilot.js';
 import { type OpenCodeClient } from './client.js';
 import type { FindingCounts } from './decide.js';
 import type { GitRunner } from './git.js';
+import { fallbackModel, FREE_MUSE } from './fallback.js';
 import { loadPrompt, loadRulesFile, renderPrompt } from './prompts.js';
 import type { SessionState } from './session.js';
 import { reviewModel } from './task-file.js';
@@ -153,18 +154,21 @@ export interface DecideDoctorInput {
   // From the `Counts:` line of DOCTOR.md; undefined when missing.
   counts: FindingCounts | undefined;
   verdict: string;
+  quotaError: boolean;
 }
 
 export type DoctorAction =
   | { kind: 'start-doctor'; head: string; since: string }
   | { kind: 'escalate'; line: string }
-  | { kind: 'record-doctor'; patch: DoctorRecordPatch };
+  | { kind: 'record-doctor'; patch: DoctorRecordPatch }
+  | { kind: 'fallback-doctor'; model: string };
 
 export interface DoctorRecordPatch {
   sessionId?: string;
   head?: string;
   since?: string;
   startedAt?: string;
+  model?: string;
   reportedForHead?: string;
   stalledReportedForHead?: string;
 }
@@ -179,6 +183,7 @@ export function applyDoctorRecordPatch(
     head: patch.head ?? record?.head ?? '',
     since: patch.since ?? record?.since ?? '',
     startedAt: patch.startedAt ?? record?.startedAt ?? now,
+    model: patch.model ?? record?.model,
     reportedForHead: patch.reportedForHead ?? record?.reportedForHead,
     stalledReportedForHead: patch.stalledReportedForHead ?? record?.stalledReportedForHead,
   };
@@ -198,6 +203,17 @@ export function decideDoctor(input: DecideDoctorInput): DoctorAction[] {
     actions.push({ kind: 'escalate', line });
   };
   if (input.mainHead === input.doctor?.head) {
+    // A quota-hit free doctor moves to the paid Muse in place, like workers
+    // and pre-reviews. Once there is nothing to fall back to, the idle
+    // checks below run the normal STALLED path.
+    if (input.quotaError) {
+      const fallback = fallbackModel(input.doctor.model ?? FREE_MUSE);
+      if (fallback !== undefined) {
+        actions.push({ kind: 'fallback-doctor', model: fallback });
+        escalate('LEAD: FALLBACK doctor continues on paid Muse');
+        return actions;
+      }
+    }
     // Same head already audited: report the findings once, then stay quiet.
     if (input.sessionState === 'idle') {
       if (input.reportFilePresent) {

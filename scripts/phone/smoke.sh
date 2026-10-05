@@ -3,6 +3,8 @@
 #
 #   pnpm phone:smoke task/T-0185-mobile-machines   (or any branch or commit)
 #
+#   ZILAR_SMOKE_MOCK=1 pnpm phone:smoke main
+#
 # Builds the branch into the build worktree, installs it on the emulator, opens
 # every static screen under apps/mobile/src/app that the branch changed (through
 # the zilar:// deep link), and FAILS if the app crashed on any of them. Pages
@@ -27,9 +29,19 @@ fi
 ROUTES="$(git -C "$REPO" diff --name-only "main...$REF" -- apps/mobile/src/app | python3 "$HERE/routes.py")"
 # ZILAR_ROUTES (space separated, e.g. "/ /settings /explore") replaces the changed-screen list.
 [ -n "${ZILAR_ROUTES:-}" ] && ROUTES="$(echo "$ZILAR_ROUTES" | tr ' ' '\n')"
-[ -z "$ROUTES" ] && ROUTES="/"
+# ZILAR_SMOKE_MOCK=1 builds a mock-mode app (emulator only) and opens the mock AI screens.
+if [ "${ZILAR_SMOKE_MOCK:-}" = "1" ] && [ -z "${ZILAR_ROUTES:-}" ]; then
+  ROUTES="/ /ais /ais/ai-dev-1"
+elif [ -z "$ROUTES" ]; then
+  ROUTES="/"
+fi
 
-echo "building $REF for $SERIAL"
+BUILD_LABEL="$REF for $SERIAL"
+if [ "${ZILAR_SMOKE_MOCK:-}" = "1" ]; then
+  BUILD_LABEL="mock build $REF for $SERIAL"
+  export ZILAR_MOCK=1
+fi
+echo "building $BUILD_LABEL"
 ZILAR_PHONE="$SERIAL" ZILAR_REF="$REF" bash "$HERE/install.sh" >"$OUT.build.log" 2>&1 || {
   echo "SMOKE FAIL: the build or install failed, see $OUT.build.log" >&2
   tail -20 "$OUT.build.log" >&2

@@ -21,8 +21,7 @@ import {
 } from './doctor.js';
 import { startPrereviewSession } from './start-prereview.js';
 import { appendLog, loadState, updateState } from './state.js';
-import { extractBlockedText, parseFrontMatter } from './task-file.js';
-import { splitModel } from './task-file.js';
+import { extractBlockedText, parseFrontMatter, splitModel } from './task-file.js';
 import { freshSessionRecord, startFreshWorkerSession } from './fresh-session.js';
 import type { DoctorRecord, TaskRecord } from './types.js';
 
@@ -204,7 +203,7 @@ async function applyActions(
         }
         deps.client.promptDetached(
           prereview.sessionId,
-          renderPrompt(loadPrompt(deps.promptsDirPath, 'prereview-resume' as PromptName), vars),
+          renderPrompt(loadPrompt(deps.promptsDirPath, 'prereview-resume'), vars),
         );
         current = { ...current, prereview: { ...prereview, model: action.model } };
         appendLog(deps.statePath, `${task} switched prereview to ${action.model} in place`);
@@ -430,9 +429,12 @@ async function tickDoctor(
     sinceFallback = firstAuditSince(deps, mainHead);
   }
   let sessionState: 'running' | 'idle' | 'unknown' | 'none' = 'none';
+  let quotaError = false;
   if (doctor !== undefined) {
     try {
-      sessionState = summarizeSession(await deps.client.listMessages(doctor.sessionId, 5)).state;
+      const summary = summarizeSession(await deps.client.listMessages(doctor.sessionId, 5));
+      sessionState = summary.state;
+      quotaError = summary.quotaError;
     } catch {
       sessionState = 'unknown';
     }
@@ -449,6 +451,7 @@ async function tickDoctor(
     reportFilePresent: report.present,
     counts: report.counts,
     verdict: report.verdict,
+    quotaError,
   });
   await applyDoctorActions(actions, deps, options.dryRun, doctor);
 }
@@ -481,6 +484,35 @@ async function applyDoctorActions(
         console.log(action.line);
         appendLog(deps.statePath, action.line);
       }
+      continue;
+    }
+    if (action.kind === 'fallback-doctor') {
+      if (dryRun) {
+        console.log(`DRY: would switch the doctor to ${action.model}`);
+        continue;
+      }
+      if (doctor === undefined) {
+        continue;
+      }
+      try {
+        await deps.client.switchModel(doctor.sessionId, splitModel(action.model));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        appendLog(deps.statePath, `doctor fallback failed: ${message}`);
+        return;
+      }
+      deps.client.promptDetached(
+        doctor.sessionId,
+        renderPrompt(loadPrompt(deps.promptsDirPath, 'doctor-resume'), {}),
+      );
+      const patch = { model: action.model };
+      const expectedSession = doctor.sessionId;
+      updateState(deps.statePath, (fresh) => {
+        if (fresh.doctor?.sessionId === expectedSession) {
+          fresh.doctor = applyDoctorRecordPatch(fresh.doctor, patch, isoNow);
+        }
+      });
+      appendLog(deps.statePath, `doctor switched to ${action.model} in place`);
       continue;
     }
     if (dryRun) {

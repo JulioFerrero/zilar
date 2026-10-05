@@ -112,7 +112,7 @@ Early and moving fast, built by one person with an AI team. Chat, AIs, streaming
 | M2 AIs that talk (create, keys, caps, streaming, groups) | ✅ done |
 | M3 Bring your own machine (registry, runner, tunnel) | 🟡 registry, runner and hub merged; desks and docker driver next |
 | M4 AIs that act (approvals, gateway, rules, tools) | 🟡 approvals, gateway, sandbox, routines and web tools merged (off by default); UI next |
-| M5 A complete daily messenger (topics, search, pins, stickers, install) | 🟡 topics, chat prefs, pins, search, invites, roles, channels, stickers, GIFs, push and the install wizard merged (several need keys, HTTPS or a device check); voice notes, on-device transcripts, mobile GIFs and contacts merged; the web settings screens on the phone, Telegram import and deploy push next ([`docs/ROADMAP_M5.md`](docs/ROADMAP_M5.md), [`docs/ROADMAP_MOBILE_PARITY.md`](docs/ROADMAP_MOBILE_PARITY.md)) |
+| M5 A complete daily messenger (topics, search, pins, stickers, install) | 🟡 topics, chat prefs, pins, search, invites, roles, channels, stickers, GIFs, push and the install wizard merged (several need keys, HTTPS or a device check); voice notes, on-device transcripts, mobile GIFs and contacts merged; the phone now has the settings screens, sticker management and import, approvals, machines, integrations, Explore, and the AI tools/routines/activity screens; notification settings blocked on server push ([`docs/ROADMAP_M5.md`](docs/ROADMAP_M5.md), [`docs/ROADMAP_MOBILE_PARITY.md`](docs/ROADMAP_MOBILE_PARITY.md)) |
 
 ## 🚀 Quick start
 

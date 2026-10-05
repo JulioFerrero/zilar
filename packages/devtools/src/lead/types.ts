@@ -45,6 +45,7 @@ export interface DoctorRecord {
   startedAt: string;
   reportedForHead: string | undefined;
   stalledReportedForHead: string | undefined;
+  model?: string | undefined;
 }
 
 export interface TaskRecord {
@@ -83,6 +84,7 @@ const doctorRecordSchema = z.object({
   startedAt: z.string(),
   reportedForHead: z.string().optional(),
   stalledReportedForHead: z.string().optional(),
+  model: z.string().optional(),
 });
 
 const taskRecordSchema = z.object({

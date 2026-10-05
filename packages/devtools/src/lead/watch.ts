@@ -1,10 +1,11 @@
-// `lead watch`: a live, full-terminal view of every running task. Pure
-// rendering helpers live here so they can be tested without a TTY; the
-// terminal-control loop is in `runWatch` at the bottom.
+// `lead watch`: a live, full-terminal view of every running task. Pure data
+// helpers live here so they can be tested without a TTY; the Ink app is in
+// `watch-app.tsx` and its pure mapping rules in `watch-format.ts`.
 
-import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import React from 'react';
+import { render as renderInk } from 'ink';
 import { z } from 'zod';
 import type { OpenCodeClient } from './client.js';
 import { OpencodeCliClient } from './client.js';
@@ -15,32 +16,7 @@ import { loadState, stateFilePath } from './state.js';
 import { findTaskFile } from './launch.js';
 import { parseFrontMatter } from './task-file.js';
 
-const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
-const DOT_TRAIL = ['', '.', '..', '...'];
-const MAX_FILES = 6;
-const TWO_COLUMN_MIN_WIDTH = 70;
-const SPARK_MIN_WIDTH = 60;
-const REFRESH_INTERVAL_MS = 3_000;
-const REDRAW_INTERVAL_MS = 120;
-
-const ESC = {
-  reset: '\u001b[0m',
-  bold: '\u001b[1m',
-  dim: '\u001b[2m',
-  cyan: '\u001b[36m',
-  yellow: '\u001b[33m',
-  magenta: '\u001b[35m',
-  red: '\u001b[31m',
-  green: '\u001b[32m',
-  altEnter: '\u001b[?1049h',
-  altExit: '\u001b[?1049l',
-  hideCursor: '\u001b[?25l',
-  showCursor: '\u001b[?25h',
-  cursorHome: '\u001b[H',
-  clearLine: '\u001b[K',
-  clearScreenBelow: '\u001b[J',
-  clearScreen: '\u001b[2J\u001b[H',
-};
+export const REFRESH_INTERVAL_MS = 3_000;
 
 export type FileKind = 'created' | 'modified' | 'deleted';
 
@@ -94,14 +70,16 @@ function stepFromTool(tool: Record<string, unknown>): string | null {
     if (typeof filePath === 'string') {
       return `editing ${path.basename(filePath)}`;
     }
-    return `editing <unknown>`;
+    // The step is read while the tool call is still arriving and its
+    // `input.path` is not there yet: never show `<unknown>`.
+    return 'editing…';
   }
   if (name === 'read') {
     const filePath = input['path'];
     if (typeof filePath === 'string') {
       return `reading ${path.basename(filePath)}`;
     }
-    return 'reading <unknown>';
+    return 'reading…';
   }
   if (name === 'shell') {
     const command = input['command'];
@@ -369,50 +347,14 @@ export function formatDuration(seconds: number): string {
   return `${minutes} min ${secs} s`;
 }
 
-function phaseColor(phaseId: string): string {
-  if (phaseId === 'coding' || phaseId === 'fixing') {
-    return ESC.cyan;
-  }
-  if (phaseId === 'prereview' || phaseId === 'starting-prereview') {
-    return ESC.magenta;
-  }
-  if (phaseId === 'waiting-lead' || phaseId === 'blocked' || phaseId === 'idle') {
-    return ESC.yellow;
-  }
-  if (phaseId === 'quota') {
-    return ESC.red;
-  }
-  return ESC.dim;
-}
-
-function fileColor(kind: FileKind, color: boolean): string {
-  if (!color) {
-    return '';
-  }
-  if (kind === 'created') {
-    return ESC.green;
-  }
-  if (kind === 'modified') {
-    return ESC.yellow;
-  }
-  return ESC.red;
-}
-
-function kindSymbol(kind: FileKind): string {
-  if (kind === 'created') {
-    return '+';
-  }
-  if (kind === 'modified') {
-    return '~';
-  }
-  return '-';
-}
-
 export interface WatchEntry {
   id: string;
   title: string;
   modelLabel: string;
+  model: string;
+  effort: string | undefined;
   totalAge: string;
+  autoFixRounds: number;
   phaseId: string;
   phaseLabel: string;
   needsLead: boolean;
@@ -425,6 +367,7 @@ export interface WatchEntry {
 export interface WatchView {
   clock: string;
   refreshFailed: boolean;
+  mergedToday: number;
   entries: WatchEntry[];
 }
 
@@ -447,7 +390,10 @@ const EntrySchema = z.object({
   id: z.string(),
   title: z.string(),
   modelLabel: z.string(),
+  model: z.string(),
+  effort: z.string().nullish(),
   totalAge: z.string(),
+  autoFixRounds: z.number(),
   phaseId: z.string(),
   phaseLabel: z.string(),
   needsLead: z.boolean(),
@@ -460,6 +406,7 @@ const EntrySchema = z.object({
 const ViewSchema = z.object({
   clock: z.string(),
   refreshFailed: z.boolean(),
+  mergedToday: z.number(),
   entries: z.array(EntrySchema),
 });
 
@@ -478,213 +425,10 @@ export function parseWatchView(line: string): WatchView | null {
     ...result.data,
     entries: result.data.entries.map((entry) => ({
       ...entry,
+      effort: entry.effort ?? undefined,
       speed: entry.speed ?? null,
     })),
   };
-}
-
-// Count visible characters, skipping ANSI escape sequences.
-function visibleLength(line: string): number {
-  let count = 0;
-  let inEscape = false;
-  for (const ch of line) {
-    if (inEscape) {
-      if (ch === 'm' || ch === 'K' || ch === 'h' || ch === 'l') {
-        inEscape = false;
-      }
-      continue;
-    }
-    if (ch === '\u001b') {
-      inEscape = true;
-      continue;
-    }
-    count += 1;
-  }
-  return count;
-}
-
-function pad(line: string, width: number): string {
-  const visible = visibleLength(line);
-  if (visible >= width) {
-    return line;
-  }
-  return `${line}${' '.repeat(width - visible)}`;
-}
-
-function clip(text: string, width: number): string {
-  if (width <= 0) {
-    return '';
-  }
-  if (text.length <= width) {
-    return text;
-  }
-  if (width === 1) {
-    return '…';
-  }
-  return `${text.slice(0, width - 1)}…`;
-}
-
-// Build one redraw frame: cursor home, each line followed by "clear to end of
-// line", and one "clear to end of screen" at the very end. No `\u001b[2J`
-// (the whole-screen clear) so the terminal only repaints what changed.
-export function frameText(lines: string[]): string {
-  if (lines.length === 0) {
-    return `${ESC.cursorHome}${ESC.clearScreenBelow}`;
-  }
-  const body = lines.map((line) => `${line}${ESC.clearLine}`).join('\n');
-  return `${ESC.cursorHome}${body}\n${ESC.clearScreenBelow}`;
-}
-
-function colorize(text: string, color: string, colorOn: boolean): string {
-  if (!colorOn) {
-    return text;
-  }
-  return `${color}${text}${ESC.reset}`;
-}
-
-// Render the full screen. `width` is the visible width the caller wants;
-// every returned line is at most that wide. `color: false` strips all
-// ANSI codes so the tests can match strings exactly.
-export function renderWatch(
-  view: WatchView,
-  width: number,
-  frame: number,
-  color: boolean,
-): string[] {
-  const safeWidth = Math.max(20, width);
-  const out: string[] = [];
-  out.push(renderHeaderLine(view.clock, safeWidth));
-  if (view.refreshFailed) {
-    out.push(colorize(pad('refresh failed, retrying', safeWidth), ESC.dim, color));
-  } else {
-    out.push(pad(renderCountsLine(view.entries), safeWidth));
-  }
-  if (view.entries.length === 0) {
-    out.push('');
-    out.push(colorize(pad('No tasks in flight.', safeWidth), ESC.dim, color));
-    return out;
-  }
-  for (const entry of view.entries) {
-    out.push('');
-    out.push(...renderEntry(entry, safeWidth, frame, color));
-  }
-  return out;
-}
-
-function renderHeaderLine(clock: string, width: number): string {
-  const left = 'zilar lead watch';
-  const gap = Math.max(1, width - visibleLength(left) - clock.length);
-  return `${left}${' '.repeat(gap)}${clock}`;
-}
-
-function renderCountsLine(entries: WatchEntry[]): string {
-  const running = entries.filter((entry) => entry.running).length;
-  const waiting = entries.filter((entry) => entry.needsLead).length;
-  return `${running} running · ${waiting} waiting for you`;
-}
-
-function renderEntry(entry: WatchEntry, width: number, frame: number, color: boolean): string[] {
-  const phaseColorCode = phaseColor(entry.phaseId);
-  const marker = entry.running
-    ? (SPINNER_FRAMES[frame % SPINNER_FRAMES.length] ?? SPINNER_FRAMES[0] ?? '⠋')
-    : '●';
-  const markerText = colorize(` ${marker}`, phaseColorCode, color);
-  const idText = colorize(entry.id, ESC.bold, color);
-  const idWidth = visibleLength(idText);
-  // ` ⠋  <id>  <title>` uses 2 (marker) + 2 + idWidth + 2 = idWidth + 6 of the width.
-  const titleWidth = Math.max(0, width - idWidth - 6);
-  const titleText = clip(entry.title, titleWidth);
-  const first = `${markerText}  ${idText}  ${titleText}`;
-  const metaSource = `${entry.modelLabel} · ${entry.totalAge}`;
-  const meta = clip(`     ${metaSource}`, width);
-  const trail = DOT_TRAIL[Math.floor(frame / 8) % DOT_TRAIL.length] ?? '';
-  const phaseText = colorize(entry.phaseLabel, phaseColorCode, color);
-  const stepText = entry.running && entry.step !== null ? `${entry.step}${trail}` : '';
-  const thirdPrefix = `     ${phaseText}`;
-  const thirdRaw =
-    stepText === ''
-      ? thirdPrefix
-      : `${thirdPrefix} · ${clip(stepText, Math.max(0, width - visibleLength(thirdPrefix) - 3))}`;
-  const third = clip(thirdRaw, width);
-  const speed = renderSpeedLine(entry.speed, width, color);
-  return [
-    first,
-    pad(meta, width),
-    pad(third, width),
-    speed,
-    ...renderFiles(entry.files, width, color),
-  ];
-}
-
-const CTX_YELLOW_THRESHOLD = 150_000;
-const CTX_RED_THRESHOLD = 200_000;
-
-function contextColor(context: number, color: boolean): string {
-  if (!color) {
-    return '';
-  }
-  if (context >= CTX_RED_THRESHOLD) {
-    return ESC.red;
-  }
-  if (context >= CTX_YELLOW_THRESHOLD) {
-    return ESC.yellow;
-  }
-  return '';
-}
-
-function renderSpeedLine(speed: SessionSpeed | null, width: number, color: boolean): string {
-  const prefix = '     ';
-  const budget = Math.max(0, width - prefix.length);
-  if (budget === 0) {
-    return '';
-  }
-  if (speed === null) {
-    const text = 'measuring…';
-    return clip(`${prefix}${colorize(text, ESC.dim, color)}`, width);
-  }
-  const tok = `${speed.tokPerSec.toFixed(1)} tok/s`;
-  const stepLabel = `${formatDuration(speed.secPerStep)}/step`;
-  const ctxText = formatContext(speed.context);
-  const ctx = colorize(`ctx ${ctxText}`, contextColor(speed.context, color), color);
-  // Sparkline dropped first at narrow widths.
-  const showSpark = width >= SPARK_MIN_WIDTH;
-  const sparkText = showSpark ? sparkline(speed.spark) : '';
-  const inner = `${tok} · ${stepLabel} · ${ctx}`;
-  const withSpark = sparkText === '' ? inner : `${inner}  ${sparkText}`;
-  const clipped = clip(withSpark, budget);
-  return `${prefix}${clipped}`;
-}
-
-function renderFiles(files: ChangedFile[], width: number, color: boolean): string[] {
-  if (files.length === 0) {
-    return [];
-  }
-  const shown = files.slice(0, MAX_FILES);
-  const overflow = files.length - shown.length;
-  const items = shown.map((file) => {
-    const base = path.basename(file.path);
-    return `${fileColor(file.kind, color)}${kindSymbol(file.kind)} ${base}${color ? ESC.reset : ''}`;
-  });
-  if (overflow > 0) {
-    items.push(`+${overflow} more`);
-  }
-  if (width >= TWO_COLUMN_MIN_WIDTH) {
-    const half = Math.ceil(items.length / 2);
-    const left = items.slice(0, half);
-    const right = items.slice(half);
-    const colWidth = Math.floor((width - 6) / 2);
-    const itemBudget = Math.max(0, colWidth - 1);
-    const rows = Math.max(left.length, right.length);
-    const out: string[] = [];
-    for (let i = 0; i < rows; i += 1) {
-      const l = clip(left[i] ?? '', itemBudget);
-      const r = clip(right[i] ?? '', itemBudget);
-      out.push(pad(`     ${pad(l, colWidth)}${r}`, width));
-    }
-    return out;
-  }
-  const itemBudget = Math.max(0, width - 6);
-  return items.map((item) => pad(`     ${clip(item, itemBudget)}`, width));
 }
 
 // Phase ids that mean the worker is still busy. `waiting-lead`, `blocked`,
@@ -714,7 +458,7 @@ function chooseSessionId(
   return workerSessionId;
 }
 
-function formatClock(date: Date): string {
+export function formatClock(date: Date): string {
   const hh = String(date.getHours()).padStart(2, '0');
   const mm = String(date.getMinutes()).padStart(2, '0');
   const ss = String(date.getSeconds()).padStart(2, '0');
@@ -787,13 +531,13 @@ export async function buildView(
       now,
     });
   } catch {
-    return { clock: previous.clock, refreshFailed: true, entries: previous.entries };
+    return { ...previous, refreshFailed: true };
   }
   let state;
   try {
     state = loadState(statePath);
   } catch {
-    return { clock: previous.clock, refreshFailed: true, entries: previous.entries };
+    return { ...previous, refreshFailed: true };
   }
   const entries: WatchEntry[] = [];
   for (const task of snapshot.active) {
@@ -819,11 +563,15 @@ export async function buildView(
         speed = null;
       }
     }
+    const effort = readEffort(record.worktree, task.id);
     entries.push({
       id: task.id,
       title: task.title,
-      modelLabel: modelLabel(record.model, readEffort(record.worktree, task.id)),
+      modelLabel: modelLabel(record.model, effort),
+      model: record.model,
+      effort,
       totalAge: task.totalAge,
+      autoFixRounds: task.autoFixRounds,
       phaseId,
       phaseLabel: task.phase.label,
       needsLead: task.phase.needsLead,
@@ -833,7 +581,7 @@ export async function buildView(
       speed,
     });
   }
-  return { clock, refreshFailed: false, entries };
+  return { clock, refreshFailed: false, mergedToday: snapshot.mergedToday.length, entries };
 }
 
 function findRepoRoot(): string {
@@ -850,23 +598,12 @@ function findRepoRoot(): string {
   }
 }
 
-// Turn raw mode off when restoring the terminal. Extracted so it can be
-// tested without spinning up `runWatch`: `q`/`Ctrl-C` call `process.exit`
-// before the `finally` block, so the cleanup has to happen inside `restore`.
-export function disableRawMode(stdin: NodeJS.ReadStream, ref: { raw: boolean }): void {
-  if (!ref.raw) {
-    return;
-  }
-  stdin.setRawMode?.(false);
-  ref.raw = false;
-}
-
 // One-shot mode used by the watcher's child process: build the view once
 // and print it as a single JSON line. Hidden `--data` flag on `lead watch`.
 export async function runWatchData(): Promise<void> {
   const root = findRepoRoot();
   const view = await buildView(
-    { clock: formatClock(new Date()), refreshFailed: false, entries: [] },
+    { clock: formatClock(new Date()), refreshFailed: false, mergedToday: 0, entries: [] },
     root,
     stateFilePath(),
     new OpencodeCliClient(),
@@ -877,115 +614,42 @@ export async function runWatchData(): Promise<void> {
   process.stdout.write(`${JSON.stringify(view)}\n`);
 }
 
-// The animation timer is decoupled from the refresh timer so the spinner
-// keeps ticking even when the snapshot is slow. Refresh runs in a child
-// process so its synchronous git/OpenCode calls never block the redraw loop,
-// and `q`/`Ctrl-C` are always read between frames.
-export function runWatch(): Promise<void> {
-  const out = process.stdout;
-  const startedFrame = Math.floor(Date.now() / REDRAW_INTERVAL_MS);
-  let view: WatchView = { clock: formatClock(new Date()), refreshFailed: false, entries: [] };
-  let stopped = false;
-  let needsClear = false;
-  let refreshing = false;
-  const stdin = process.stdin;
-  let stdinRaw = false;
+// Renders the live Ink app (`WatchLive` in `watch-app.tsx` owns the refresh
+// loop, the clock and the quit keys). Ink draws in the terminal's alternate
+// screen and restores the terminal when the app exits; a resize listener
+// ahead of Ink's own clears the whole screen, so growing the window never
+// leaves ghost lines behind. The app module is
+// imported lazily so `watch.ts` stays free of a render-time import cycle.
+// `lead watch --no-icons` (or `ZILAR_WATCH_ICONS=0`) falls back to plain
+// characters instead of the Nerd Font glyphs.
 
-  const restore = (): void => {
-    if (stopped) {
-      return;
-    }
-    stopped = true;
-    disableRawMode(stdin, { raw: stdinRaw });
-    stdinRaw = false;
-    out.write(`${ESC.altExit}${ESC.showCursor}${ESC.clearScreen}`);
+// Clears the whole screen and homes the cursor, then asks Ink to redraw
+// from a clean slate. Runs before Ink's own resize handler, which only
+// clears when the window shrinks.
+export function fullClearOnResize(out: { write(s: string): unknown }, clear: () => void): void {
+  const esc = String.fromCharCode(27);
+  out.write(`${esc}[2J${esc}[H`);
+  clear();
+}
+
+export async function runWatch(options?: { noIcons?: boolean }): Promise<void> {
+  const { iconsEnabled } = await import('./watch-format.js');
+  const { WatchLive } = await import('./watch-app.js');
+  const initial: WatchView = {
+    clock: formatClock(new Date()),
+    refreshFailed: false,
+    mergedToday: 0,
+    entries: [],
   };
-
-  const onSigint = (): void => {
-    restore();
-    process.exit(0);
-  };
-  const onExit = (): void => {
-    restore();
-  };
-
-  process.on('SIGINT', onSigint);
-  process.on('exit', onExit);
-
-  if (stdin.isTTY === true) {
-    stdin.setRawMode?.(true);
-    stdinRaw = true;
-    stdin.resume();
-    stdin.on('data', (chunk: Buffer | string) => {
-      const text = typeof chunk === 'string' ? chunk : chunk.toString('utf8');
-      if (text === 'q' || text === '\u0003') {
-        restore();
-        process.exit(0);
-      }
-    });
+  const app = renderInk(
+    React.createElement(WatchLive, { initial, icons: iconsEnabled(options?.noIcons ?? false) }),
+    { alternateScreen: true },
+  );
+  const onResize = (): void => fullClearOnResize(process.stdout, () => app.clear());
+  process.stdout.prependListener('resize', onResize);
+  try {
+    await app.waitUntilExit();
+  } finally {
+    process.stdout.removeListener('resize', onResize);
   }
-  out.on('resize', () => {
-    needsClear = true;
-  });
-
-  out.write(`${ESC.altEnter}${ESC.hideCursor}${ESC.clearScreen}`);
-
-  const redrawTimer = setInterval(() => {
-    if (stopped) {
-      return;
-    }
-    const frame = Math.floor(Date.now() / REDRAW_INTERVAL_MS) - startedFrame;
-    const width = out.columns ?? 80;
-    const height = out.rows ?? 25;
-    const liveView: WatchView = { ...view, clock: formatClock(new Date()) };
-    const rendered = renderWatch(liveView, width, frame, true);
-    const truncated = rendered.slice(0, height);
-    const prefix = needsClear ? ESC.clearScreen : '';
-    needsClear = false;
-    out.write(`${prefix}${frameText(truncated)}`);
-  }, REDRAW_INTERVAL_MS);
-
-  const scriptArg = process.argv[1];
-  const dataArgs =
-    scriptArg === undefined ? null : [...process.execArgv, scriptArg, 'watch', '--data'];
-
-  const refreshTimer = setInterval(() => {
-    if (stopped || refreshing || dataArgs === null) {
-      return;
-    }
-    refreshing = true;
-    execFile(
-      process.execPath,
-      dataArgs,
-      { cwd: process.cwd(), maxBuffer: 10 * 1024 * 1024 },
-      (error, stdout) => {
-        refreshing = false;
-        if (stopped) {
-          return;
-        }
-        if (error !== null) {
-          view = { ...view, refreshFailed: true };
-          return;
-        }
-        const lastLine = stdout.trim().split('\n').at(-1) ?? '';
-        const parsed = parseWatchView(lastLine);
-        if (parsed === null) {
-          view = { ...view, refreshFailed: true };
-          return;
-        }
-        view = parsed;
-      },
-    );
-  }, REFRESH_INTERVAL_MS);
-
-  return new Promise<void>((resolve) => {
-    const checkTimer = setInterval(() => {
-      if (stopped) {
-        clearInterval(redrawTimer);
-        clearInterval(refreshTimer);
-        clearInterval(checkTimer);
-        resolve();
-      }
-    }, 100);
-  });
 }

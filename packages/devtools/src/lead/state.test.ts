@@ -71,6 +71,39 @@ describe('state file', () => {
     expect(() => loadState(file)).toThrow(/invalid state file/);
   });
 
+  it('keeps the doctor model through load then save', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lead-state-'));
+    const file = path.join(dir, 'state.json');
+    const state = emptyState();
+    state.doctor = {
+      sessionId: 'ses_doc',
+      head: 'a'.repeat(40),
+      since: 'b'.repeat(40),
+      startedAt: '2026-10-04T00:00:00.000Z',
+      reportedForHead: undefined,
+      stalledReportedForHead: undefined,
+      model: 'meta/muse-spark-1.3-contributor',
+    };
+    saveState(file, state);
+    expect(loadState(file).doctor?.model).toBe('meta/muse-spark-1.3-contributor');
+  });
+
+  it('loads a doctor without a model as undefined', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lead-state-'));
+    const file = path.join(dir, 'state.json');
+    const state = emptyState();
+    state.doctor = {
+      sessionId: 'ses_doc',
+      head: 'a'.repeat(40),
+      since: 'b'.repeat(40),
+      startedAt: '2026-10-04T00:00:00.000Z',
+      reportedForHead: undefined,
+      stalledReportedForHead: undefined,
+    };
+    saveState(file, state);
+    expect(loadState(file).doctor?.model).toBeUndefined();
+  });
+
   it('keeps the doctor record through load then save', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lead-state-'));
     const file = path.join(dir, 'state.json');

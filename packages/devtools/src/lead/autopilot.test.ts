@@ -646,6 +646,133 @@ describe('tickOnce', () => {
     });
     expect(client.created).toHaveLength(1);
   });
+
+  it('switches a quota-hit free doctor in place and does not switch again', async () => {
+    const { deps, client, dir } = setup();
+    const session = client.sessions.get('ses_worker');
+    if (session === undefined) {
+      throw new Error('missing fake session');
+    }
+    session.messages = [{ id: 'm', type: 'text', time: { created: 1 } }];
+    const mainRoot = path.join(dir, 'zilar-main');
+    fs.mkdirSync(mainRoot, { recursive: true });
+    const head = 'f'.repeat(40);
+    const mainGit: GitRunner = {
+      run: (cwd, args) => {
+        if (args[0] === 'rev-parse' && args[1] === 'HEAD') {
+          return { ok: true, stdout: `${head}\n` };
+        }
+        if (args[0] === 'show') {
+          return { ok: true, stdout: '1000\n' };
+        }
+        void cwd;
+        return { ok: false, stdout: '' };
+      },
+    };
+    const doctorDeps: AutopilotDeps = { ...deps, runner: mainGit, repoRoot: mainRoot };
+    updateState(doctorDeps.statePath, (state) => {
+      state.doctor = {
+        sessionId: 'ses_doc',
+        head,
+        since: 'e'.repeat(40),
+        startedAt: 'x',
+        reportedForHead: undefined,
+        stalledReportedForHead: undefined,
+      };
+    });
+    client.addSession('ses_doc', {
+      messages: [
+        {
+          id: 'm',
+          type: 'error',
+          error: { type: 'provider.quota', message: 'Rate limit exceeded' },
+          time: { created: 2 },
+        },
+      ],
+      permissions: [],
+    });
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await tickOnce(doctorDeps, { dryRun: false, now: 1_000_000_000 });
+
+    expect(client.switched).toHaveLength(1);
+    expect(client.switched[0]).toEqual({
+      sessionId: 'ses_doc',
+      model: { providerID: 'meta', id: 'muse-spark-1.3-contributor' },
+    });
+    expect(client.prompted).toHaveLength(1);
+    expect(client.prompted[0]?.sessionId).toBe('ses_doc');
+    expect(loadState(doctorDeps.statePath).doctor?.model).toBe('meta/muse-spark-1.3-contributor');
+    expect(log.mock.calls.some((call) => String(call[0]).startsWith('LEAD: FALLBACK doctor'))).toBe(
+      true,
+    );
+
+    // The next tick sees the saved paid model and does not switch again.
+    client.prompted.length = 0;
+    await tickOnce(doctorDeps, { dryRun: false, now: 1_001_000_000 });
+    expect(client.switched).toHaveLength(1);
+    const fallbackLines = log.mock.calls.filter((call) =>
+      String(call[0]).startsWith('LEAD: FALLBACK doctor'),
+    );
+    expect(fallbackLines).toHaveLength(1);
+  });
+
+  it('logs a failed doctor switch without the FALLBACK line or a prompt', async () => {
+    const { deps, client, dir } = setup();
+    const session = client.sessions.get('ses_worker');
+    if (session === undefined) {
+      throw new Error('missing fake session');
+    }
+    session.messages = [{ id: 'm', type: 'text', time: { created: 1 } }];
+    const mainRoot = path.join(dir, 'zilar-main');
+    fs.mkdirSync(mainRoot, { recursive: true });
+    const head = 'f'.repeat(40);
+    const mainGit: GitRunner = {
+      run: (cwd, args) => {
+        if (args[0] === 'rev-parse' && args[1] === 'HEAD') {
+          return { ok: true, stdout: `${head}\n` };
+        }
+        if (args[0] === 'show') {
+          return { ok: true, stdout: '1000\n' };
+        }
+        void cwd;
+        return { ok: false, stdout: '' };
+      },
+    };
+    const doctorDeps: AutopilotDeps = { ...deps, runner: mainGit, repoRoot: mainRoot };
+    updateState(doctorDeps.statePath, (state) => {
+      state.doctor = {
+        sessionId: 'ses_doc',
+        head,
+        since: 'e'.repeat(40),
+        startedAt: 'x',
+        reportedForHead: undefined,
+        stalledReportedForHead: undefined,
+      };
+    });
+    client.addSession('ses_doc', {
+      messages: [
+        {
+          id: 'm',
+          type: 'error',
+          error: { type: 'provider.quota', message: 'Rate limit exceeded' },
+          time: { created: 2 },
+        },
+      ],
+      permissions: [],
+    });
+    client.switchModel = async () => {
+      throw new Error('cli down');
+    };
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    const result = await tickOnce(doctorDeps, { dryRun: false, now: 1_000_000_000 });
+
+    expect(result.escalations).toEqual([]);
+    expect(client.prompted).toEqual([]);
+    expect(log.mock.calls.some((call) => String(call[0]).startsWith('LEAD: FALLBACK'))).toBe(false);
+    expect(loadState(doctorDeps.statePath).doctor?.model).toBeUndefined();
+  });
 });
 
 describe('extractVerdict', () => {

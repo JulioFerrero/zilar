@@ -21,6 +21,7 @@ const NAMES = [
   'qa',
   'autofix',
   'doctor',
+  'doctor-resume',
   'fresh',
 ] as PromptName[];
 
@@ -110,6 +111,13 @@ describe('prompt templates', () => {
     expect(rendered).toContain('DOCTOR.md');
     expect(rendered).toContain('Counts: must-fix=N, should-fix=N, nit=N');
     expect(rendered).toContain('Verdict:');
+  });
+
+  it('renders the doctor-resume prompt with no placeholders left', () => {
+    const rendered = renderPrompt(loadPrompt(promptsDir(), 'doctor-resume'), {});
+    expect(unfilledPlaceholders(rendered)).toEqual([]);
+    expect(rendered).toMatch(/rate limit/i);
+    expect(rendered).toContain('DOCTOR.md');
   });
 
   it('renders the autofix prompt for a fresh session with no placeholders left', () => {

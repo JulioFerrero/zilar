@@ -9,10 +9,12 @@ export type PromptName =
   | 'resume'
   | 'nudge'
   | 'prereview'
+  | 'prereview-resume'
   | 'scout'
   | 'qa'
   | 'autofix'
   | 'doctor'
+  | 'doctor-resume'
   | 'fresh';
 
 export function promptsDir(): string {

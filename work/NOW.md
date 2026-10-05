@@ -2,7 +2,7 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
-Last updated: 2026-10-05 ~13:30 local, after merging T-0214 (emulator: both sheet steps, nothing created) and opening the T-0211 test window; earlier merged T-0217 (T-0216 unblocked: stubs in `launch.test.ts` and `watch.test.ts` allowed).
+Last updated: 2026-10-05 ~14:40 local, after merging T-0223 and launching T-0225; earlier merged T-0222, T-0211 (Julio: "the resize is working great") and T-0221, and launching T-0222. Main checkout got `pnpm install` (T-0211 added Ink/React; the autopilot could not start without it). Julio's watcher reopened on the new version and floated; test window closed.
 
 Autopilot restarted with `ZILAR_REVIEW_MODEL=meta/muse-spark-1.3-contributor` (free Muse still 429 at ~12:05). When the free listing answers again (`opencode2 run -m "opencode/muse-spark-1.3-contributor-free#low" "Reply OK."`), restart it without the variable.
 
@@ -18,17 +18,29 @@ Known issue: `pnpm install` flips two `transitivePeerDependencies` entries (`buf
 
 Models (Julio, 2026-10-05): default `opencode/muse-spark-1.3-contributor-free`; MiniMax M3 only for the easiest exact tasks; billed `meta/muse-spark-1.3-contributor` is the fallback if the free listing hits limits.
 
-## Running (max 4)
+## Running (max 6, at most 3 mobile; Julio 2026-10-05)
+
+Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's request): it builds, taps, screenshots and reports, never edits files. First run in progress: the AI screen (T-0189, T-0212, T-0213, T-0218) on a mock build (`EXPO_PUBLIC_ZILAR_MOCK=1 ZILAR_PHONE=emulator-5554 bash scripts/phone/install.sh`), then it reinstalls the real app and restores `.zilar-phone/commit` to b45684f1. The emulator is busy until it reports.
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0211 | `lead watch` Ink redesign | round 2 committed (Ink `alternateScreen: true` + `fullClearOnResize` listener ahead of Ink's, which clears only on shrink; `useInput` active only with raw mode). Julio priority. Test window open: `~/.claude/jobs/fcd95e40/tmp/lead-watch-test` runs `watch-test.sh` (branch code, main's data); waiting for Julio's resize check and the pre-review | billed Muse. After merge: close the test window, restart Julio's watcher |
-| T-0216 | Autopilot switches a rate-limited free-Muse session to paid Muse in place | coding | paid Muse; restart the autopilot after merge |
-| T-0218 | Mobile: tool detail sheet (read only: source, versions, runs) | coding | paid Muse (free still 429) |
+| T-0219 | Mobile: Run now, Revert, Delete in the tool detail sheet | after lead round 1, an auto round (1 should-fix) | paid Muse |
+| T-0224 | The doctor also switches in place on a 429 | lead round 1 (no FALLBACK line on a failed switch; second-tick assertion) | paid Muse; `state.ts` added to Allowed (doctor `model` was dropped by `loadState`) |
+| T-0227 | Mobile: @mention picker in the group composer, mentions sent | coding | free Muse (fallback) |
+| T-0228 | Mobile: New group / New channel can be Public with an @handle | coding | free Muse; touches `real-store.ts`/`types.ts` like T-0227 (different functions) |
+| T-0226 | `ZILAR_SMOKE_MOCK=1 pnpm phone:smoke` builds a mock-mode app (emulator only) | coding | free Muse; after merge: see T-0189/T-0213/T-0218 on the emulator via `/ais/ai-dev-1` |
+
+Merged: T-0225 (doctor accepts `CLAUDE.md` in lead commits). Next: received mentions highlighted in mobile bubbles (after T-0227); New channel members step.
+
+Merged: T-0222, T-0223 (docs sync: FEATURES 14 rows, parity roadmap state, README M5). Doctor flagged the lead's `CLAUDE.md` edit (d70f6d36) as must-fix; Julio chose "keep it, allow lead edits": `CLAUDE.md` line 10 updated (92190c62), T-0225 updates the doctor prompt. Doctor stalled twice on 429; lead switched it by hand both times until T-0224 merges.
+
+First live `LEAD: FALLBACK`: T-0220's pre-review (free 429 → paid, same session) worked. T-0220 merged; autopilot restarted.
+
+Merged since the last update: T-0214 (New group sheet), T-0216 (in-place fallback; autopilot restarted WITHOUT `ZILAR_REVIEW_MODEL`: new sessions start on free Muse and switch on a 429), T-0218 (tool detail sheet, read only).
 
 ## Next, in order
 
-1. Tool writes (Run now with JSON input max 4 KB, Revert confirm, Delete confirm; fixed sentences incl. 429 rate limit and 501 no runner) after T-0218 merges: web reference `ToolDetailPanel.tsx` lines 132-185, 304-335, 377-481.
+1. A mock-mode emulator build. Cause found: `scripts/phone/install.sh:46` builds `assembleRelease`, and `apps/mobile/src/mock/gate.ts:7-14` ignores `?mock=` outside `__DEV__` unless `EXPO_PUBLIC_ZILAR_MOCK` is baked in. So `zilar://ais/ai-dev-1?mock=1` hits the real API ("That AI no longer exists."). Idea: `pnpm phone:smoke --mock <branch>` builds with `EXPO_PUBLIC_ZILAR_MOCK=1` (emulator only, never the phone) and opens `/ais/ai-dev-1`. T-0189, T-0213, T-0218 were never seen on a device.
 2. From the audit: @mention picker (7.2a), New channel parity (7.2c). Re-check every fact in the code.
 
 Waiting for Julio: the AI screen's Tools/Routines/Activity sections could not be seen on the emulator (the test account has no AI; creating one needs a provider key). Look at an AI on the phone after the next release.

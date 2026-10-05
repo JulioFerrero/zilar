@@ -12,10 +12,14 @@
     "gate": "tsx src/gate/cli.ts"
   },
   "dependencies": {
+    "@types/react": "^19.3.0",
+    "ink": "^8.0.0",
+    "react": "^19.3.0",
     "zod": "^4.6.5"
   },
   "devDependencies": {
     "@xmpp/client": "^0.14.0",
+    "ink-testing-library": "^4.0.0",
     "tsx": "^4.23.15"
   }
 }
