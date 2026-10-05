@@ -13,6 +13,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0255](T-0255-mobile-folders-editor.md) | Mobile: Chat folders settings and editor | in_progress | auto | T-0248, T-0247 | folders part 2a |
 | [T-0256](T-0256-forwarding-plan.md) | Audit and plan: forwarding messages | in_progress | auto | | docs only (D28) |
 | [T-0257](T-0257-media-gallery-plan.md) | Audit and plan: shared media gallery | in_progress | auto | | docs only (D28) |
+| [T-0259](T-0259-ci-slow-folder-test.md) | CI: fast folder cap test, MachinesPage Copied wait | in_progress | auto | | main CI red since T-0244 |
 | [T-0258](T-0258-web-kit-dialogs-1.md) | Web kit migration 2: four dialogs on the kit Dialog | in_progress | auto | T-0243, T-0253 | audit step 6, batch 1 |
 
 ## Follow-ups
