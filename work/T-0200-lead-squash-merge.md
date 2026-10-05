@@ -1,7 +1,7 @@
 ---
 id: T-0200
 title: Lead tooling: lead merge lands each task as ONE commit on main (squash, board included)
-status: review
+status: merged
 milestone: M5
 branch: task/T-0200-lead-squash-merge
 model: meta/muse-spark-1.3-contributor
@@ -93,3 +93,5 @@ Round 2 commands: `pnpm --filter @zilar/devtools test --maxWorkers=2 src/lead/me
 Deviation / open question: `packages/devtools/src/lead/collect-snapshot.ts` (lines 168, 176) greps main's log for the old `board: T-… merged` subject to build the dashboard "merged today" list. After this change no new commit will match, so that list will go empty. Fixing it means matching `^T-\d+: ` subjects, but that file is outside my Allowed files — left for the lead to task separately.
 
 ## Review (written by Claude)
+
+**Verdict:** Approved after one automatic round. `lead merge` now lands a task as one commit `T-XXXX: <summary>` holding the task's changes and the board row, with the branch's commit subjects in the body. The lead read the safety path: the board text is computed before anything is staged, the squash result is compared with the branch (board excluded) before the push, and the branch is force-deleted only after a successful push; no reset, no force push. Pre-review clean after the round. Two follow-ups outside this task's files, both handled by the lead: the dashboard's "merged today" list looks for the old `board: ... merged` commits (new task T-0205), and `docs/LEAD_PLAYBOOK.md` still describes the fast-forward merge (lead doc fix).
