@@ -4,8 +4,8 @@ title: The push component dials the ejabberd service, not 127.0.0.1 (push never 
 status: planned
 milestone: M5
 branch: task/T-0172-push-component-host
-model: meta/muse-spark-1.3-contributor
-effort: medium
+model: opencode/muse-spark-1.3-contributor-free
+effort: low
 depends_on: []
 estimate: 0.5 day
 ---
@@ -22,7 +22,7 @@ The fresh-install rehearsal (T-0159) found that `apps/server/src/push/component.
 2. Both compose files set `PUSH_COMPONENT_HOST: ejabberd` on the server service (the Coolify file too); `deploy/.env.example` documents the variable in a comment.
 3. Tests (Vitest): the config accepts a hostname and rejects `a:1`, `http://x`, `x/y`, empty; `startPushComponent` builds the URL from host and port (use the injected `createComponent` factory, no network). A deploy test under `deploy/tests/` asserts both compose files set `PUSH_COMPONENT_HOST` for the server service.
 4. Docs, two sentences in `docs/INSTALL_DOCKER.md`: the invite header for the OTP curl example is `x-zilar-invite` (not `x-invite-code`, which the server silently ignores), and the XEP-0363 upload slot request goes to the `upload.` subhost, not the bare domain.
-5. Prove it: build the images locally if the machine is free (see T-0159's Report for the recipe: scratch copy, own project name `zilar-rehearsal`, ports 18080/18443, remove everything afterwards) and show that after `up` the server log has no ECONNREFUSED for the push component and `./zilar doctor` no longer FAILs the handshake check. If you cannot run docker, say so in the Report.
+5. Do NOT run docker or build images (lead note 2026-10-05: the machine is busy with emulator builds); the lead runs the compose rehearsal later. Say in the Report which commands would prove it.
 
 ### Read first
 `work/T-0159-install-rehearsal.md` (Report, Problems section 3), `apps/server/src/push/component.ts`, `apps/server/src/push/config.ts`, `apps/server/src/index.ts` (around line 300), `deploy/docker-compose.yml`, `deploy/coolify/docker-compose.yml`, `deploy/.env.example`.
@@ -32,11 +32,9 @@ The fresh-install rehearsal (T-0159) found that `apps/server/src/push/component.
 
 ### Checks
 ```bash
-pnpm format:check
-pnpm lint
-pnpm typecheck
-pnpm --filter @zilar/server test --maxWorkers=2 src/push src/startup.test.ts
+pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/push src/startup.test.ts
 sh deploy/tests/push-deploy.test.sh
+pnpm gate
 ```
 
 ### Acceptance

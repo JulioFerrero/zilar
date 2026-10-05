@@ -1,66 +1,59 @@
 ---
 id: T-0171
-title: Block users, part 1 (blocklist, requests, web UI)
+title: "Block users, part 1a: server (blocklist table, block/unblock API, silent effects on contact requests and handle lookup)"
 status: planned
 milestone: M5
 branch: task/T-0171-block-users
-model: meta/muse-spark-1.3-contributor
-effort: high
+model: opencode/muse-spark-1.3-contributor-free
+effort: low
 depends_on: [T-0163]
-estimate: 1.5 days
+estimate: 0.8 day
 ---
 
-# T-0171: Block users, part 1
+# T-0171: Block users, part 1a (server)
 
 ## Spec (written by Claude, do not edit)
 
 ### Why
-With `@usernames` and contact requests (T-0163) and public groups (T-0164), strangers can now reach people. Julio wants to block users. Decisions taken by the lead (change any by telling the lead): blocking is **silent** (the blocked person is never told); it is done in **two parts**: this part is the blocklist, contact requests and the web experience, part 2 (later task) enforces it at the ejabberd level (`mod_blocking` is already enabled in `deploy/ejabberd/ejabberd.yml`) so a blocked person's direct messages stop being delivered at all. Until part 2, delivery still happens but the blocker's apps hide it.
+With `@usernames`, contact requests (T-0163) and public groups (T-0164), strangers can reach people; Julio wants to block users. Lead decisions: blocking is **silent** (the blocked person is never told). Split (lead, 2026-10-05): this task is the server only; the web UI (block action, Blocked people list, hiding messages) is the next task; enforcement at ejabberd (`mod_blocking`) comes after. Schema task: the only one running.
+
+### Verified facts (do not re-derive)
+- `contact_requests` table: `apps/server/src/db/schema.ts` lines 155-185 (`status` enum `pending|accepted|declined|cancelled`, partial unique indexes on pending). Latest migration `apps/server/drizzle/0038_voice-transcripts.sql`, snapshots in `apps/server/drizzle/meta/`; generate with `pnpm --filter @zilar/server db:generate` (`apps/server/package.json` line 11).
+- Contact request routes `apps/server/src/contact-requests/routes.ts`: limiters built at lines 61-80 (`createRateLimiter({ max, windowMs, now })`), `POST /contact-requests` (lines 95-118, by `handle`, 201 or 200 `{ incoming: true }`), `GET /users/by-handle/:handle` (lines 167-173) → `profileForHandle`.
+- Service `apps/server/src/contact-requests/service.ts`: `createContactRequest(deps, fromId, handle)` (line 160, resolves the handle inside a transaction under an advisory lock), `relationFor` (line 550, returns `'self'|'contact'|'request_sent'|'request_received'|'none'`), `profileForHandle` (line 575, 404 `not_found` "No user with that username" for unknown handles). The audit helper takes an `action` string (line 82).
+- Routes are mounted in `apps/server/src/app.ts` (contact requests at lines 309-312). `apps/server/src/authz-sweep.test.ts` collects every route from `app.routes` (line 79), so new routes are swept automatically.
 
 ### What to build
-
-**1. Data (one migration).** `user_blocks(user_id text not null references user(id) on delete cascade, blocked_user_id text not null references user(id) on delete cascade, created_at timestamptz not null default now(), primary key (user_id, blocked_user_id))` with a check that the two ids differ and an index on `blocked_user_id`.
-
-**2. API (session required, rate limited, audit with ids only).**
-- `PUT /api/blocks/:userId`: block (idempotent, 200). Unknown id and blocking yourself: same 404 / 400 as the contact request routes use. Effects inside one transaction: the pair's pending contact requests in either direction become `cancelled`.
-- `DELETE /api/blocks/:userId`: unblock (idempotent).
-- `GET /api/blocks`: `{ blocked: [{ userId, name, handle, image }] }` newest first, capped at 500. Never an email.
-- 30 writes per 10 minutes per user. Audit `user.blocked` / `user.unblocked`, ids only.
-- `GET /api/users/by-handle/:handle` (T-0163) gains `relation: 'blocked'` when the caller blocked that person; and when the target blocked the caller it answers exactly as for an unknown handle (same 404), so a block cannot be probed.
-
-**3. Contact requests.** A request created BY a blocked person to the blocker answers the sender exactly like success (201, a normal-looking request) but is stored already `declined`, never appears in the blocker's list and never counts toward their badge. Blocking a person with whom a request is pending cancels it (above). The blocker cannot send a request to someone they blocked (409 `blocked`, message "Unblock this person first").
-
-**4. Web.**
-- A "Block" action in the person's profile card (the card shown from the member list and the contact dialog) and a "Blocked people" list in Settings with Unblock; both with a confirmation that explains what blocking does and does not do yet ("They are not told. Their messages are hidden from you.").
-- Hiding: in a direct chat with a blocked person the thread shows a banner "You blocked this person" with Unblock, incoming messages are not rendered and do not raise unread counts, notifications or the chat list preview; the composer is disabled with the same banner. In groups, a blocked person's messages collapse into one line "Message from a blocked person" with a "Show" toggle for that message. The blocklist is loaded once at start and kept in the store, updated on block/unblock.
-- Match the style of the neighbouring components; Vitest and Testing Library tests for each new component and flow.
-
-**5. Docs.** A short "Blocking" note in `docs/USER_GUIDE.md` (the page exists) that states plainly what part 1 does and does not do.
+1. **Table** `user_blocks` in `schema.ts` + one generated migration: `user_id` and `blocked_user_id` (text, not null, FK `user.id` on delete cascade), `created_at` (timestamptz, default now), primary key `(user_id, blocked_user_id)`, check `user_id <> blocked_user_id`, index on `blocked_user_id`.
+2. **New module** `apps/server/src/blocks/` (`routes.ts`, `service.ts`, `blocks.test.ts`), mounted under `/api` in `app.ts` next to contact requests. Session required on every route, 30 writes per 10 minutes per user (own limiter, injectable like contact requests), audit `user.blocked` / `user.unblocked` with ids only.
+   - PUT `/api/blocks/:userId` (new): idempotent, 200 `{ blocked: true }`. Unknown user → 404 `not_found`; yourself → 400 `invalid_request`. In the same transaction, every `pending` contact request between the two (either direction) becomes `cancelled` with `decided_at = now`.
+   - DELETE `/api/blocks/:userId` (new): idempotent, 200 `{ blocked: false }`, deletes only the row `(caller, userId)`.
+   - GET `/api/blocks` (new): `{ blocked: [{ userId, name, handle, image }] }` newest first, max 500, never an email (`handle` null when the person has none).
+3. **Contact requests** (`service.ts`):
+   - `createContactRequest`: if the TARGET blocked the sender, insert the request already `declined` (with `decided_at`) and answer exactly like a normal new request (the route still returns 201 with the same JSON shape, `status` shown as `pending` to the sender). If the SENDER blocked the target → 409 `blocked`, message `Unblock this person first`.
+   - `listContactRequests`: never list incoming requests from people the viewer blocked.
+4. **By-handle**: `profileForHandle` → when the target blocked the viewer, the same 404 as an unknown handle; `relationFor` gains `'blocked'` (checked first after `self`) when the viewer blocked the other.
+5. **Tests** (Vitest, the existing DB test setup of `contact-requests.test.ts`): block/unblock idempotent; 404 unknown, 400 self; pending requests cancelled both ways on block; GET list order, cap and no email; a blocked sender's request returns 201 but the blocker's list does not show it and its stored status is `declined`; the blocker's own request → 409 `blocked`; by-handle 404 when blocked by the target and `relation: 'blocked'` for the blocker; 401 for each route without a session (the sweep covers it; add nothing there unless it fails); limiter 429 after 30 writes; audit rows with ids only.
 
 ### Read first
-`AGENTS.md` (whole security checklist), `work/T-0163-usernames-and-contact-requests.md` (Report and Review), `apps/server/src/contact-requests/`, `apps/server/src/handles/`, `apps/server/src/authz-sweep.test.ts`, `apps/server/src/rate-limit.ts`, `apps/web/src/store/realStore.ts` (incoming message path, unread counts, notifications), the profile card and member list components, `apps/web/src/routes/ProfileSettingsSection.tsx`, `apps/web/src/lib/api.ts`.
+`AGENTS.md` (security checklist), `apps/server/src/contact-requests/routes.ts`, `apps/server/src/contact-requests/service.ts`, `apps/server/src/contact-requests/contact-requests.test.ts` (setup), `apps/server/src/db/schema.ts` (lines 80-190), `apps/server/src/app.ts` (lines 280-320).
 
 ### Allowed files
-`apps/server/src/blocks/**` (new), `apps/server/src/contact-requests/**`, `apps/server/src/handles/routes.ts` (only the by-handle relation), `apps/server/src/db/schema.ts` and exactly one new migration (+ journal and snapshot), `apps/server/src/app.ts`, `apps/server/src/authz-sweep.test.ts`, the web files for the blocklist state, profile card action, Settings list, direct chat banner, group collapse, unread and notification filtering, `apps/web/src/lib/api.ts` and its test, `apps/web/src/mock/**`, `docs/USER_GUIDE.md`, `work/T-0171-block-users.md`. No new dependencies, no mobile, no ejabberd changes.
+`apps/server/src/blocks/routes.ts` (new), `apps/server/src/blocks/service.ts` (new), `apps/server/src/blocks/blocks.test.ts` (new), `apps/server/src/contact-requests/service.ts`, `apps/server/src/contact-requests/routes.ts`, `apps/server/src/contact-requests/contact-requests.test.ts`, `apps/server/src/db/schema.ts`, `apps/server/src/app.ts`, `apps/server/src/authz-sweep.test.ts`, `apps/server/drizzle/0039_*.sql` (new, exactly one), `apps/server/drizzle/meta/_journal.json`, `apps/server/drizzle/meta/0039_snapshot.json` (new), `work/T-0171-block-users.md`.
 
 ### Checks
 ```bash
-pnpm install
-pnpm format:check
-pnpm lint
-pnpm typecheck
-pnpm --filter @zilar/server test --maxWorkers=2 src/blocks src/contact-requests src/handles src/authz-sweep.test.ts
-pnpm --filter @zilar/web test --maxWorkers=2 src/store src/components src/routes src/lib/api.test.ts
+pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/blocks src/contact-requests src/authz-sweep.test.ts
+pnpm gate
 ```
 
 ### Acceptance
-- Blocking is idempotent and silent: the blocked person's UI and API answers never reveal it (a request to the blocker looks successful, a by-handle lookup of the blocker answers 404).
-- A blocked person's direct messages are not rendered, not counted as unread and raise no notification for the blocker; in groups their messages collapse behind "Show".
-- Unblocking restores everything for new messages; the blocklist survives a reload.
-- Every new route is in the 401 sweep and rate limited; deletes and updates are scoped by both user ids; audit entries carry ids only.
+- Blocking is idempotent and silent: a blocked person's request looks successful to them, and their lookup of the blocker's handle answers 404.
+- Every new route needs a session, is rate limited, scopes writes by the caller's id, audits ids only.
+- No web, mobile or ejabberd change; no new dependency; `pnpm gate` ends with GATE PASS and lists no file outside the Allowed files.
 
 ### Out of scope
-Enforcement at ejabberd (part 2), blocking AIs, reporting abuse, mobile, hiding past messages of a person who is blocked later in groups beyond what the live filter does.
+Web UI and message hiding (next task), ejabberd enforcement, blocking AIs, abuse reports.
 
 ---
 
