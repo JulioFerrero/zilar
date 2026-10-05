@@ -1,7 +1,7 @@
 ---
 id: T-0171
 title: "Block users, part 1a: server (blocklist table, block/unblock API, silent effects on contact requests and handle lookup)"
-status: planned
+status: merged
 milestone: M5
 branch: task/T-0171-block-users
 model: opencode/muse-spark-1.3-contributor-free
@@ -59,4 +59,44 @@ Web UI and message hiding (next task), ejabberd enforcement, blocking AIs, abuse
 
 ## Report (written by the worker when done)
 
+### What I did
+- Added `user_blocks` table (`user_id`, `blocked_user_id` FK cascade, `created_at`, PK `(user_id, blocked_user_id)`, `user_id <> blocked_user_id` check, index on `blocked_user_id`) in `schema.ts` + generated migration `0039_workable_sunspot.sql` (exactly one).
+- New `apps/server/src/blocks/` module: `service.ts` (`blockUser` idempotent + cancels pending requests both ways in-tx under a per-blocker advisory lock; `unblockUser` idempotent scoped delete; `listBlockedUsers` newest-first, cap 500, no email, null handle; `isBlocked` helper), `routes.ts` (PUT/DELETE `/api/blocks/:userId`, GET `/api/blocks`; session required; own 30-per-10-min limiter, injectable; audit `user.blocked`/`user.unblocked` ids only), `blocks.test.ts` (13 tests).
+- `contact-requests/service.ts`: target-blocked-sender → stored `declined` with `decidedAt`, masked to `pending` in the returned row (route still 201, same JSON shape, no `decidedAt`); sender-blocked-target → 409 `blocked` "Unblock this person first"; silent declines skip the 7-day cooldown; `listContactRequests` filters incoming from blocked senders; `profileForHandle` 404s when target blocked viewer; `relationFor` gains `'blocked'` checked first after `self`.
+- Mounted blocks routes under `/api` in `app.ts` (audit wired). No authz-sweep change needed — new routes swept automatically and pass.
+- `contact-requests/routes.ts` untouched (no route change needed: 201 shape preserved by masking in service); existing `contact-requests.test.ts` untouched and passing.
+
+### Files changed
+`apps/server/src/db/schema.ts`, `apps/server/drizzle/0039_workable_sunspot.sql` (new), `apps/server/drizzle/meta/0039_snapshot.json` (new), `apps/server/drizzle/meta/_journal.json`, `apps/server/src/blocks/service.ts` (new), `apps/server/src/blocks/routes.ts` (new), `apps/server/src/blocks/blocks.test.ts` (new), `apps/server/src/contact-requests/service.ts`, `apps/server/src/app.ts`, `work/T-0171-block-users.md`.
+
+### Commands and real results
+- `pnpm install`: ok (15s).
+- `pnpm --filter @zilar/server db:generate`: ok, created `0039_workable_sunspot.sql`.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/blocks/blocks.test.ts`: 13 passed.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/contact-requests src/authz-sweep.test.ts`: 20 passed (2 files).
+- `pnpm exec prettier --write` on 5 gate-flagged files (first gate run failed format only): applied, no logic change.
+- `pnpm gate` (final): `gate: 10 changed file(s) against main` / `PASS install (frozen)` / `PASS format` / `PASS lint` / `PASS typecheck` / `PASS tests @zilar/server` / `scope: every changed file is inside the Allowed files` / `GATE PASS`.
+
+### Problems / deviations
+- Two test-only fixes during work: requestId differs per 404 (assert code+message only, not full body); standalone-routes limiter test needed the HttpError→429 mapper `app.ts` provides. No spec deviation.
+- `contact-requests/routes.ts` and `contact-requests.test.ts` listed in Allowed but needed no edits.
+
+### Security checklist
+- Audit rows carry ids only (`subjectId` = user id), `detail: null`; no tokens/emails logged; block log path has no secret segment.
+- Deletes/updates scoped: unblock deletes `(caller, userId)` only; cancel-on-block filtered to the pair + pending.
+- Uniqueness atomic: block PK + `onConflictDoNothing`; contact-request silent path reuses existing in-tx lock/indexes.
+- Unknown user and blocked-by-target handle both 404 `not_found` "No user with that username".
+- New routes session-required (sweep passes), writes rate-limited (30/10min per user).
+
+### Blocked / needs a decision
+None.
+
+### Lead round 1 (review, kept status: review)
+1. `GET /api/blocks` now has an injectable read limiter (120/min per user, 429 `rate_limited` like writes) + injected-limiter 429 test. Commit `81ff85d1`.
+2. Removed unused `isBlocked`. Commit `70cd482c`.
+3. `blockUser` now takes `contact-sender:<blockedUserId>` before `user-block:<blocker>` in the same tx, ahead of the cancel update, with a why-comment; no new test — a deterministic race test is not practical (PGlite serializes on one connection, and the existing block tests + gate cover the serialized paths: 14/14 blocks tests pass). Single-test runs for each item all passed 14/14. Commit `b19bfc37`.
+- Gate after review: first run failed format only (`blocks.test.ts`); fixed with prettier (commit `9b818b84`). Final: `gate: 10 changed file(s) against main` / PASS install, format, lint, typecheck, tests @zilar/server / `scope: every changed file is inside the Allowed files` / `GATE PASS`. Status stays review.
+
 ## Review (written by Claude)
+
+**Verdict:** Approved after lead round 1 (read limiter on GET `/api/blocks`, unused `isBlocked` removed, `blockUser` takes the blocked person's `contact-sender:` lock before `user-block:` so a racing request cannot survive the block). Re-review clean, 0 nits. Checked the lock order: no two transactions take the same pair in opposite order. Next: the web UI (block action, Blocked people list, hiding) and then T-0232 (chat folders, schema).

@@ -7,7 +7,7 @@ import { and, count, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
 import type { SetupTransaction } from '../setup/settings';
-import { contactRequests, contacts, handles, user } from '../db/schema';
+import { contactRequests, contacts, handles, user, userBlocks } from '../db/schema';
 import { HttpError } from '../errors';
 import { addContactPair, syncRoster } from '../contacts/service';
 import { normalizeHandle } from '../handles/rules';
@@ -182,6 +182,25 @@ export async function createContactRequest(
       if (target.id === fromId) {
         throw new HttpError(400, 'invalid_request', 'You cannot add yourself');
       }
+      // Block effects are silent: when the target blocked the sender, the
+      // request is stored `declined` but answers exactly like a normal new
+      // request (the route still returns 201 with `status: pending` to the
+      // sender). When the sender blocked the target, they must unblock
+      // first (409 `blocked`).
+      const [blockedByTarget] = await txDb
+        .select({ userId: userBlocks.userId })
+        .from(userBlocks)
+        .where(and(eq(userBlocks.userId, target.id), eq(userBlocks.blockedUserId, fromId)))
+        .limit(1);
+      const [blockedBySender] = await txDb
+        .select({ userId: userBlocks.userId })
+        .from(userBlocks)
+        .where(and(eq(userBlocks.userId, fromId), eq(userBlocks.blockedUserId, target.id)))
+        .limit(1);
+      if (blockedBySender) {
+        throw new HttpError(409, 'blocked', 'Unblock this person first');
+      }
+      const silentDecline = blockedByTarget !== undefined;
       // The duplicate check serializes on the sender lock taken above (same
       // critical section as the cap count), so no second lock order exists
       // to deadlock.
@@ -211,30 +230,44 @@ export async function createContactRequest(
       // The 7-day re-request cooldown: the single most recent decline of
       // this exact direction (`orderBy decidedAt desc limit 1` — no
       // unbounded read), INSIDE the transaction like every other row this
-      // decision depends on.
-      const [lastDeclined] = await txDb
-        .select({ decidedAt: contactRequests.decidedAt })
-        .from(contactRequests)
-        .where(
-          and(
-            eq(contactRequests.fromUserId, fromId),
-            eq(contactRequests.toUserId, target.id),
-            eq(contactRequests.status, 'declined'),
-          ),
-        )
-        .orderBy(desc(contactRequests.decidedAt))
-        .limit(1);
-      if (
-        lastDeclined?.decidedAt &&
-        now.getTime() - lastDeclined.decidedAt.getTime() <
-          RE_REQUEST_COOLDOWN_DAYS * 24 * 60 * 60 * 1000
-      ) {
-        throw new HttpError(429, 'declined_recently', 'That request was declined recently');
+      // decision depends on. Silent declines (the target blocked the sender)
+      // skip it: they must keep answering like fresh requests, never 429.
+      if (!silentDecline) {
+        const [lastDeclined] = await txDb
+          .select({ decidedAt: contactRequests.decidedAt })
+          .from(contactRequests)
+          .where(
+            and(
+              eq(contactRequests.fromUserId, fromId),
+              eq(contactRequests.toUserId, target.id),
+              eq(contactRequests.status, 'declined'),
+            ),
+          )
+          .orderBy(desc(contactRequests.decidedAt))
+          .limit(1);
+        if (
+          lastDeclined?.decidedAt &&
+          now.getTime() - lastDeclined.decidedAt.getTime() <
+            RE_REQUEST_COOLDOWN_DAYS * 24 * 60 * 60 * 1000
+        ) {
+          throw new HttpError(429, 'declined_recently', 'That request was declined recently');
+        }
       }
 
       const [row] = await tx
         .insert(contactRequests)
-        .values({ id: randomUUID(), fromUserId: fromId, toUserId: target.id, createdAt: now })
+        .values(
+          silentDecline
+            ? {
+                id: randomUUID(),
+                fromUserId: fromId,
+                toUserId: target.id,
+                status: 'declined',
+                createdAt: now,
+                decidedAt: now,
+              }
+            : { id: randomUUID(), fromUserId: fromId, toUserId: target.id, createdAt: now },
+        )
         .returning();
       if (!row) {
         throw new Error('contact request insert returned no row');
@@ -245,6 +278,15 @@ export async function createContactRequest(
     // Only a fresh row has no `reverseOf`.
     if (created.reverseOf === undefined) {
       auditFor(deps, 'contact_request.created', fromId, created.request.id);
+    }
+    // Silent to the sender: a request stored `declined` because the target
+    // blocked them answers like a normal new pending request — `pending`
+    // with no `decidedAt` — while the stored row stays `declined`.
+    if (created.request.status === 'declined') {
+      return {
+        ...created,
+        request: { ...created.request, status: 'pending' as const, decidedAt: null },
+      };
     }
     return created;
   } catch (error) {
@@ -334,26 +376,39 @@ function toView(
 }
 
 // Lists the viewer's pending requests, newest first: `{ incoming, outgoing }`
-// with the other person's name, handle and image. Never an email. Names,
-// images and handles resolve in ONE joined query over the distinct other
-// ids — never one select per row.
+// with the other person's name, handle and image. Never an email. Incoming
+// requests from people the viewer blocked are never listed. Names, images
+// and handles resolve in ONE joined query over the distinct other ids —
+// never one select per row.
 export async function listContactRequests(
   deps: ContactRequestsDeps,
   viewerId: string,
 ): Promise<{ incoming: ContactRequestView[]; outgoing: ContactRequestView[] }> {
-  const sent = (await deps.db
-    .select()
-    .from(contactRequests)
-    .where(and(eq(contactRequests.fromUserId, viewerId), eq(contactRequests.status, 'pending')))
-    .orderBy(desc(contactRequests.createdAt))
-    .limit(MAX_LIST_ROWS)) as ContactRequestRow[];
-  const received = (await deps.db
-    .select()
-    .from(contactRequests)
-    .where(and(eq(contactRequests.toUserId, viewerId), eq(contactRequests.status, 'pending')))
-    .orderBy(desc(contactRequests.createdAt))
-    .limit(MAX_LIST_ROWS)) as ContactRequestRow[];
-  const rows = [...sent, ...received].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  const [blockedSenders, sent, received] = await Promise.all([
+    deps.db
+      .select({ blockedUserId: userBlocks.blockedUserId })
+      .from(userBlocks)
+      .where(eq(userBlocks.userId, viewerId)),
+    deps.db
+      .select()
+      .from(contactRequests)
+      .where(and(eq(contactRequests.fromUserId, viewerId), eq(contactRequests.status, 'pending')))
+      .orderBy(desc(contactRequests.createdAt))
+      .limit(MAX_LIST_ROWS),
+    deps.db
+      .select()
+      .from(contactRequests)
+      .where(and(eq(contactRequests.toUserId, viewerId), eq(contactRequests.status, 'pending')))
+      .orderBy(desc(contactRequests.createdAt))
+      .limit(MAX_LIST_ROWS),
+  ]);
+  const blocked = new Set(blockedSenders.map((row) => row.blockedUserId));
+  const visibleIncoming = (received as ContactRequestRow[]).filter(
+    (row) => !blocked.has(row.fromUserId),
+  );
+  const rows = [...(sent as ContactRequestRow[]), ...visibleIncoming].sort(
+    (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
+  );
   const otherIds = [
     ...new Set(rows.map((row) => (row.fromUserId === viewerId ? row.toUserId : row.fromUserId))),
   ];
@@ -544,16 +599,25 @@ export async function cancelContactRequest(
 }
 
 // The relation between the viewer and the owner of a handle, for
-// `GET /api/users/by-handle/:handle`: `self`, `contact`, `request_sent`,
-// `request_received` or `none`. Unknown and retired handles answer the same
-// 404 as `resolveHandleUser`.
+// `GET /api/users/by-handle/:handle`: `self`, `blocked`, `contact`,
+// `request_sent`, `request_received` or `none`. `blocked` is checked first
+// after `self` and means the viewer blocked the other side. Unknown and
+// retired handles answer the same 404 as `resolveHandleUser`.
 export async function relationFor(
   db: ServerDatabase,
   viewerId: string,
   otherId: string,
-): Promise<'self' | 'contact' | 'request_sent' | 'request_received' | 'none'> {
+): Promise<'self' | 'blocked' | 'contact' | 'request_sent' | 'request_received' | 'none'> {
   if (viewerId === otherId) {
     return 'self';
+  }
+  const [block] = await db
+    .select({ userId: userBlocks.userId })
+    .from(userBlocks)
+    .where(and(eq(userBlocks.userId, viewerId), eq(userBlocks.blockedUserId, otherId)))
+    .limit(1);
+  if (block) {
+    return 'blocked';
   }
   if (await isContact(db, viewerId, otherId)) {
     return 'contact';
@@ -585,8 +649,17 @@ export async function profileForHandle(
     .where(eq(handles.handleLower, lower))
     .limit(1);
   // Reuse the row just read: an unknown handle and a retired handle answer
-  // the same 404.
+  // the same 404. So does a handle whose owner blocked the viewer: the
+  // blocked person is never told the account exists.
   if (!row || !row.userId) {
+    throw new HttpError(404, 'not_found', 'No user with that username');
+  }
+  const [blockedByTarget] = await db
+    .select({ userId: userBlocks.userId })
+    .from(userBlocks)
+    .where(and(eq(userBlocks.userId, row.userId), eq(userBlocks.blockedUserId, viewerId)))
+    .limit(1);
+  if (blockedByTarget) {
     throw new HttpError(404, 'not_found', 'No user with that username');
   }
   return {
