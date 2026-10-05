@@ -259,3 +259,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0226](T-0226-smoke-mock-build.md) | Phone tooling: pnpm phone:smoke can build a mock-mode app for the emulator | 2026-10-05 |
 | [T-0219](T-0219-mobile-tool-writes.md) | Mobile: Run now, Revert and Delete in the tool detail sheet | 2026-10-05 |
 | [T-0229](T-0229-mobile-ai-screen-polish.md) | Mobile: AI screen layout fixes found on the emulator | 2026-10-05 |
+| [T-0231](T-0231-folder-matcher.md) | chat-core: ChatFolder type and the pure folder matcher | 2026-10-05 |

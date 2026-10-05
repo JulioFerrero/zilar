@@ -24,13 +24,13 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0229 | Mobile: AI screen layout fixes from emulator QA run 1 | coding | paid Muse (fallback) |
+| T-0230 | Mobile: tool sheet keyboard (Run on first tap, input not covered), Tools list refresh after close | coding | from QA run 2; emulator check after merge (with T-0229's layout) |
 | T-0172 | Push component dials the ejabberd service, not 127.0.0.1 | coding | refreshed spec: no docker run; lead does the compose rehearsal later |
 | T-0171 | Block users part 1a: server (table, API, silent request/handle effects) | coding | schema task (the only one); rewritten server-only; web UI is the next task |
 | T-0227 | Mobile: @mention picker in the group composer, mentions sent | coding | free Muse (fallback) |
 | T-0228 | Mobile: New group / New channel can be Public with an @handle | coding | free Muse; touches `real-store.ts`/`types.ts` like T-0227 (different functions) |
 
-Merged: T-0225 (doctor accepts `CLAUDE.md` in lead commits), T-0224 (doctor in-place fallback; autopilot restarted), T-0226 (`ZILAR_SMOKE_MOCK=1 pnpm phone:smoke <ref>`: mock build, emulator only, leaves `.zilar-phone/commit` alone), T-0219 (tool Run/Revert/Delete). Free slot (6th): block users web UI once T-0171 merges. Next: received mentions highlighted in mobile bubbles (after T-0227); New channel members step.
+Merged: T-0225 (doctor accepts `CLAUDE.md` in lead commits), T-0224 (doctor in-place fallback; autopilot restarted), T-0226 (`ZILAR_SMOKE_MOCK=1 pnpm phone:smoke <ref>`: mock build, emulator only, leaves `.zilar-phone/commit` alone), T-0219 (tool Run/Revert/Delete; QA run 2 PASS, keyboard and stale-list issues → T-0230), T-0229 (AI screen layout fixes). Free slot (6th): block users web UI once T-0171 merges. Next: received mentions highlighted in mobile bubbles (after T-0227); New channel members step.
 
 Merged: T-0222, T-0223 (docs sync: FEATURES 14 rows, parity roadmap state, README M5). Doctor flagged the lead's `CLAUDE.md` edit (d70f6d36) as must-fix; Julio chose "keep it, allow lead edits": `CLAUDE.md` line 10 updated (92190c62), T-0225 updates the doctor prompt. Doctor stalled twice on 429; lead switched it by hand both times until T-0224 merges.
 
@@ -39,6 +39,8 @@ First live `LEAD: FALLBACK`: T-0220's pre-review (free 429 → paid, same sessio
 Merged since the last update: T-0214 (New group sheet), T-0216 (in-place fallback; autopilot restarted WITHOUT `ZILAR_REVIEW_MODEL`: new sessions start on free Muse and switch on a 429), T-0218 (tool detail sheet, read only).
 
 ## Next, in order
+
+0. Julio (2026-10-05, Telegram screenshots): folders (All/Personal/AIs/Work) fully editable and configurable like Telegram; AIs and the header options move to a floating bottom tab bar; redesign Settings and Profile. Today folders are hard-coded in `apps/mobile/src/lib/filter.ts` and `apps/web/src/components/FolderTabs.tsx`, nothing on the server. Brief and mockup v3 done (`docs/design/briefs/telegram-nav-folders-settings.{md,html}`, artifact https://claude.ai/artifact/BHee2ibwek1Q7ALdWjp38N). Julio's decisions are in the brief: monochrome keys, no Work default, tabs Chats/AIs/Settings/Profile, desktop folder rail. T-0231 (chat-core matcher) launched. Next: server `chat_folders` table + API (schema, after T-0171 merges), web rail + Chat folders page, mobile tabs, mobile folders, Settings, Profile. Julio: ask every question with the AskUserQuestion tool.
 
 1. A mock-mode emulator build. Cause found: `scripts/phone/install.sh:46` builds `assembleRelease`, and `apps/mobile/src/mock/gate.ts:7-14` ignores `?mock=` outside `__DEV__` unless `EXPO_PUBLIC_ZILAR_MOCK` is baked in. So `zilar://ais/ai-dev-1?mock=1` hits the real API ("That AI no longer exists."). Idea: `pnpm phone:smoke --mock <branch>` builds with `EXPO_PUBLIC_ZILAR_MOCK=1` (emulator only, never the phone) and opens `/ais/ai-dev-1`. T-0189, T-0213, T-0218 were never seen on a device.
 2. From the audit: @mention picker (7.2a), New channel parity (7.2c). Re-check every fact in the code.
