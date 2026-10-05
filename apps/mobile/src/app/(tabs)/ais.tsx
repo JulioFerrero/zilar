@@ -157,7 +157,6 @@ function AisList() {
       <AisScreenShell
         title="My AIs"
         subtitle="Your AIs, their model and their spending limits."
-        onBack={() => router.back()}
         scroll
         right={
           <IconButton label="Create AI" onPress={() => router.push('/ais/new')}>

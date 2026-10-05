@@ -177,6 +177,17 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
               role="menuitem"
               onClick={() => {
                 setMenuOpen(false);
+                navigate('/settings/folders');
+              }}
+              className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised"
+            >
+              Chat folders
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setMenuOpen(false);
                 navigate('/settings/blocked');
               }}
               className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised"

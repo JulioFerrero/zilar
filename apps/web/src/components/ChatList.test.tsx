@@ -261,6 +261,13 @@ describe('ChatList', () => {
     expect(screen.getByText('Machines')).toBeTruthy();
   });
 
+  it('navigates to the Chat folders page from the menu', () => {
+    renderApp('/');
+    fireEvent.click(screen.getByRole('button', { name: 'Open menu' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Chat folders' }));
+    expect(screen.getByText('Chat folders')).toBeTruthy();
+  });
+
   it('navigates to the Blocked people page from the menu', () => {
     renderApp('/');
     fireEvent.click(screen.getByRole('button', { name: 'Open menu' }));

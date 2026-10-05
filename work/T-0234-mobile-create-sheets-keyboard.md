@@ -21,9 +21,9 @@ Emulator QA run 3 of T-0228 (mock build, 2026-10-05; screenshots seen by the lea
 3. In mock mode, creating fails with "Could not create the channel. Try again." because the mock store throws on purpose. The group flow could not be tested at all: the mock store has no contacts.
 
 ### Verified facts (do not re-derive)
-- `apps/mobile/src/components/chat/new-chat-button.tsx`, the action `Modal` (lines 195-245): a full-screen `Pressable` (`accessibilityLabel="Close dialog"`, `className="flex-1 items-center justify-center bg-black/40 p-4"`, line 201-205) wraps `NewChannelSheet`, `NewGroupSheet`, `NewMessageSheet`, `InviteSheet` and `JoinLinkForm`. No `KeyboardAvoidingView` and no `ScrollView` with `keyboardShouldPersistTaps` around them. (T-0233 edits only the FAB offset in this file; check the lines after it merges.)
+- `apps/mobile/src/components/chat/new-chat-button.tsx`, the action `Modal` (lines 197-247, re-checked after T-0233 merged): a full-screen `Pressable` (`accessibilityLabel="Close dialog"` at line 204, `className="flex-1 items-center justify-center bg-black/40 p-4"`) wraps `NewChannelSheet`, `NewGroupSheet`, `NewMessageSheet`, `InviteSheet` and `JoinLinkForm` (from line 209). No `KeyboardAvoidingView` and no `ScrollView` with `keyboardShouldPersistTaps` around them.
 - Mock store `apps/mobile/src/store/chat-store.ts`:
-  - `createChannel` (lines 686-693) and `createGroup` (lines 694-701) throw `'... is not available in the mock store'`;
+  - `createChannel` (lines 724-731) and `createGroup` (lines 732-739) throw `'... is not available in the mock store'`;
   - the initial state has `contacts: []` (line 164).
 - `Contact { userId, name, jid, avatarUrl? }` (`apps/mobile/src/lib/chat-api.ts` lines 13-18). Mock data lives in `apps/mobile/src/mock/` (e.g. `chats.ts`).
 - The pattern used in T-0230 for a sheet in a Modal: `KeyboardAvoidingView` with `behavior={Platform.OS === 'ios' ? 'padding' : 'height'}` plus `keyboardShouldPersistTaps="handled"` on the scroll view (`apps/mobile/src/components/ais/tool-detail-sheet.tsx`).
@@ -39,7 +39,7 @@ Emulator QA run 3 of T-0228 (mock build, 2026-10-05; screenshots seen by the lea
    - A render test for the Modal content if practical (`apps/mobile/src/components/chat/new-chat-button.test.tsx`, only if that file exists; otherwise skip and say so).
 
 ### Read first
-`AGENTS.md`, `apps/mobile/src/components/chat/new-chat-button.tsx`, `apps/mobile/src/store/chat-store.ts` (lines 150-200 and 680-710), `apps/mobile/src/store/real-store.ts` (`createChannel`, `createGroup`), `apps/mobile/src/mock/chats.ts`, `apps/mobile/src/components/ais/tool-detail-sheet.tsx` (its `KeyboardAvoidingView`).
+`AGENTS.md`, `apps/mobile/src/components/chat/new-chat-button.tsx`, `apps/mobile/src/store/chat-store.ts` (lines 150-200 and 715-745), `apps/mobile/src/store/real-store.ts` (`createChannel`, `createGroup`), `apps/mobile/src/mock/chats.ts`, `apps/mobile/src/components/ais/tool-detail-sheet.tsx` (its `KeyboardAvoidingView`).
 
 ### Allowed files
 `apps/mobile/src/components/chat/new-chat-button.tsx`, `apps/mobile/src/components/chat/new-chat-button.test.tsx`, `apps/mobile/src/store/chat-store.ts`, `apps/mobile/src/store/chat-store.test.ts`, `apps/mobile/src/mock/contacts.ts` (new), `work/T-0234-mobile-create-sheets-keyboard.md`.

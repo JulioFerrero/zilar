@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Archive, Bot, Search, Settings, X } from 'lucide-react-native';
+import { Archive, Search, X } from 'lucide-react-native';
 import { useColorScheme } from 'nativewind';
 import { useMemo, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, ScrollView, TextInput, View } from 'react-native';
@@ -17,7 +17,6 @@ import { ChatListSkeleton } from '@/components/chat/skeleton';
 import { peopleHandleFor } from '@/components/contacts/people-search';
 import { PeopleSearchResult } from '@/components/contacts/people-search-result';
 import { useContactsApi } from '@/components/contacts/use-contacts-api';
-import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
 import { mutedUntilFor } from '@/lib/chat-prefs';
 import { asColorScheme } from '@/lib/color-scheme';
@@ -239,21 +238,27 @@ function ChatsList() {
       </Pressable>
     </View>
   ) : (
-    <View className="flex-row items-center justify-between px-4 py-2">
+    <View className="gap-2 px-4 py-2">
       <Text className="text-[28px] font-semibold leading-9 tracking-[-0.02em] text-foreground">
         Chats
       </Text>
-      <View className="flex-row items-center gap-2">
-        <IconButton label="My AIs" onPress={() => router.push('/ais')}>
-          <Bot size={20} color={ICON[scheme]} />
-        </IconButton>
-        <IconButton label="Search" onPress={() => setSearchOpen(true)}>
-          <Search size={20} color={ICON[scheme]} />
-        </IconButton>
-        <IconButton label="Settings" onPress={() => router.push('/settings')}>
-          <Settings size={20} color={ICON[scheme]} />
-        </IconButton>
-      </View>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Search chats and @usernames"
+        onPress={() => setSearchOpen(true)}
+        className="h-10 flex-row items-center gap-2 rounded-xl px-3"
+        style={well}
+      >
+        <Search size={16} color="#8a8a8a" />
+        <Text
+          numberOfLines={1}
+          ellipsizeMode="tail"
+          className="flex-1 text-[15px]"
+          style={{ color: MUTED_FOREGROUND[scheme] }}
+        >
+          Search chats and @usernames
+        </Text>
+      </Pressable>
     </View>
   );
 
@@ -353,7 +358,7 @@ function ChatsList() {
         className="flex-1"
         data={visibleRows}
         keyExtractor={(row) => (row.kind === 'chat' ? row.chat.id : `group:${row.groupId}`)}
-        contentContainerStyle={{ paddingBottom: 96 }}
+        contentContainerStyle={{ paddingBottom: 180 }}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
