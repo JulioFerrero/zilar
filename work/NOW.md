@@ -2,7 +2,11 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
-Last updated: 2026-10-05, after merging T-0207 (Telegram import on the phone, emulator-checked; first mobile task on the free Muse, one auto round). Then launched T-0189 and T-0190. Julio's watcher now runs in a floating Ghostty window. Julio approved the `lead watch` mockup (artifact https://claude.ai/artifact/8QujyLaobor35XDKHr7ZZG, copy in `docs/design/briefs/T-0211-lead-watch-mockup.html`).
+Last updated: 2026-10-05 ~10:55 UTC, after merging T-0213 and launching T-0215.
+
+FREE MUSE RATE-LIMITED since ~10:43 UTC (429 "Rate limit exceeded" for every session). Workers T-0211 and T-0214 moved to billed `meta/muse-spark-1.3-contributor` with `lead switch-model`. Pre-reviews and the doctor are hard-coded to the free listing, so they stall: T-0212's pre-review is waiting. T-0215 (MiniMax) adds `ZILAR_REVIEW_MODEL`; after it merges restart the autopilot with `ZILAR_REVIEW_MODEL=meta/muse-spark-1.3-contributor` until `opencode2 run -m "opencode/muse-spark-1.3-contributor-free#low" "Reply OK."` answers again, then `lead prereview T-0212`.
+
+Julio's watcher now runs in a floating Ghostty window. Julio approved the `lead watch` mockup (artifact https://claude.ai/artifact/8QujyLaobor35XDKHr7ZZG, copy in `docs/design/briefs/T-0211-lead-watch-mockup.html`).
 
 Emulator: run only the `galena` AVD (never `bicing_plus`, Julio's). Its DNS failed today (smoke screenshots stuck on the boot spinner); start it with `-dns-server 8.8.8.8,1.1.1.1`.
 
@@ -16,10 +20,10 @@ Models (Julio, 2026-10-05): default `opencode/muse-spark-1.3-contributor-free`; 
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0211 | `lead watch` Ink redesign | lead round "look" (icons, 10 changes from `docs/design/briefs/T-0211-lead-watch-icons.md`) | free Muse, high. Before merging: run it in Julio's Ghostty watch window (memory `lead-watch-window`; Ghostty has Nerd Font symbols built in) and compare with the mockup. The worker tried python edits and npx twice; rejected each time |
-| T-0212 | Mobile: pause, resume, delete a routine | coding | free Muse |
-| T-0213 | Mobile: AI activity feed | coding | free Muse |
-| T-0214 | Mobile: New group sheet (private groups) | coding | free Muse; emulator check without creating a group on the live server |
+| T-0211 | `lead watch` Ink redesign | lead round 2 (alternate screen + full clear on resize: Julio saw ghost lines when enlarging the old watcher; no crash without a TTY stdin) | billed Muse now. Look round done (icons, 10 changes). Branch rebased on main. Before merging: run it in Julio's Ghostty watch window and let him try a resize |
+| T-0212 | Mobile: pause, resume, delete a routine | pre-review stalled (rate limit) | free Muse |
+| T-0214 | Mobile: New group sheet (private groups) | coding | billed Muse now; emulator check without creating a group on the live server |
+| T-0215 | `ZILAR_REVIEW_MODEL` override for pre-review and doctor | coding | MiniMax; its own pre-review may stall too: if so the lead reviews the 2-file diff closely |
 
 ## Next, in order
 
