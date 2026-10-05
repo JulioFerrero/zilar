@@ -11,6 +11,8 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0252](T-0252-mobile-hide-blocked.md) | Mobile: hide blocked people in groups and previews | in_progress | auto | T-0239, T-0244, T-0249 | helpers move to chat-core |
 | [T-0255](T-0255-mobile-folders-editor.md) | Mobile: Chat folders settings and editor | in_progress | auto | T-0248, T-0247 | folders part 2a |
+| [T-0256](T-0256-forwarding-plan.md) | Audit and plan: forwarding messages | in_progress | auto | | docs only (D28) |
+| [T-0257](T-0257-media-gallery-plan.md) | Audit and plan: shared media gallery | in_progress | auto | | docs only (D28) |
 
 ## Follow-ups
 
