@@ -17,7 +17,10 @@ export function Card({ children }: { children: ReactNode }) {
 /** An uppercase muted section label (11/600, 0.08em tracking). */
 export function SectionLabel({ children }: { children: ReactNode }) {
   return (
-    <Text className="px-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-subtle-foreground">
+    <Text
+      accessibilityRole="header"
+      className="px-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-subtle-foreground"
+    >
       {children}
     </Text>
   );

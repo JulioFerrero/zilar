@@ -2,7 +2,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 
-import { Card } from './card';
+import { Card, SectionLabel } from './card';
 import { CountBadge } from './count-badge';
 import { ListRow } from './list-row';
 
@@ -65,6 +65,14 @@ describe('Card', () => {
       ),
     );
     expect(html.split('border-t border-divider')).toHaveLength(3);
+  });
+});
+
+describe('SectionLabel', () => {
+  it('renders as a header for screen readers', () => {
+    const html = renderToStaticMarkup(createElement(SectionLabel, null, 'Account'));
+    expect(html).toContain('Account');
+    expect(html).toContain('accessibilityRole="header"');
   });
 });
 

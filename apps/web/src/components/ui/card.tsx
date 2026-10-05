@@ -21,10 +21,16 @@ export function Card({ children, className }: CardProps) {
 }
 
 /** An uppercase muted section label (11/600, 0.06em tracking). */
-export function SectionLabel({ children }: { children: ReactNode }) {
+export function SectionLabel({
+  children,
+  as: As = 'h2',
+}: {
+  children: ReactNode;
+  as?: 'h2' | 'h3' | 'p';
+}) {
   return (
-    <p className="text-[11px] font-semibold tracking-[0.06em] text-muted-foreground uppercase">
+    <As className="m-0 text-[11px] font-semibold tracking-[0.06em] text-muted-foreground uppercase">
       {children}
-    </p>
+    </As>
   );
 }
