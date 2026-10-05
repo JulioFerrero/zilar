@@ -11,6 +11,8 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0260](T-0260-auto-deploy-green-main.md) | Deploy: auto-deploy live after green CI on main | in_progress | auto | | Julio 2026-10-06 |
 | [T-0263](T-0263-web-kit-dialogs-2.md) | Web kit migration 3: three more dialogs | in_progress | auto | T-0258 | audit step 6, batch 2 |
+| [T-0266](T-0266-mobile-subpage-inset-folder-summary.md) | Mobile: sub-pages clear the gesture bar; folder summary like web | in_progress | auto | T-0251, T-0262 | QA run 8 |
+| [T-0267](T-0267-kit-section-label-heading.md) | Kit: SectionLabel is a heading on web and mobile | in_progress | auto | T-0264, T-0265 | T-0265 review |
 
 ## Follow-ups
 
