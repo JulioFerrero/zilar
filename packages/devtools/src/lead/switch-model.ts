@@ -163,3 +163,50 @@ export async function switchModel(
   });
   return { sessionId, model: newModel };
 }
+
+// Switches the existing worker session to a new model without opening a new
+// session or interrupting the worker: the session keeps its context, as the
+// autopilot's fallback-model branch does. Records the model in the state
+// file. A client error propagates before anything is written.
+export async function switchModelInPlace(
+  task: string,
+  newModel: string,
+  deps: SwitchModelDeps,
+): Promise<SwitchModelResult> {
+  if (!/^T-\d+$/.test(task)) {
+    throw new Error(`task must look like T-0038, got ${JSON.stringify(task)}`);
+  }
+  const state = loadState(deps.statePath);
+  const previous = state.tasks[task];
+  if (previous === undefined) {
+    throw new Error(`unknown task ${task}: no session in the state file`);
+  }
+  if (previous.role !== 'worker') {
+    throw new Error(`task ${task} is a ${previous.role} session, not a worker`);
+  }
+  const worktree = worktreeFor(deps.repoRoot, task);
+  if (!fs.existsSync(worktree)) {
+    throw new Error(`worktree is missing for ${task}: ${worktree}`);
+  }
+  assertAllowedModel(newModel);
+  const { effort } = readTaskFrontMatter(deps.repoRoot, task);
+
+  await deps.client.switchModel(previous.sessionId, {
+    ...splitModel(newModel),
+    variant: effort,
+  });
+  const now = new Date().toISOString();
+  const previousSessionId = previous.sessionId;
+  // Re-read right before writing so a tick's bookkeeping recorded
+  // mid-switch is kept. Only the model and the stamp change: the session
+  // (and its nudges and prereview) stays the same. Guarded on the session
+  // id like `switchModel`: a relaunch mid-switch wins.
+  updateState(deps.statePath, (fresh) => {
+    const current = fresh.tasks[task];
+    if (current !== undefined && current.sessionId === previousSessionId) {
+      fresh.tasks[task] = { ...current, model: newModel, switchedAt: now };
+    }
+  });
+  appendLog(deps.statePath, `${task} switched worker to ${newModel} in place (lead)`);
+  return { sessionId: previousSessionId, model: newModel };
+}

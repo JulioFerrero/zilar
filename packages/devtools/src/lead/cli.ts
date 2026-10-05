@@ -12,7 +12,7 @@ import { replyToWorker } from './reply.js';
 import { collectSnapshot } from './collect-snapshot.js';
 import { checkSpec, formatProblems } from './spec-check.js';
 import { startPrereviewSession } from './start-prereview.js';
-import { switchModel } from './switch-model.js';
+import { switchModel, switchModelInPlace } from './switch-model.js';
 import { runWatch, runWatchData } from './watch.js';
 import { collectStatus, formatStatus } from './status.js';
 import { currentHead } from './git.js';
@@ -24,8 +24,9 @@ const HELP = `lead — zero-token supervision of OpenCode workers
 Usage: lead <command> [options]
 
   launch <T-XXXX> [--extra-rules <file>]                    create the worktree and worker session
-  switch-model <T-XXXX> <provider/model> [--extra-rules <file>]
+  switch-model <T-XXXX> <provider/model> [--extra-rules <file>] [--in-place]
                                                             move a tracked worker onto a new model (quota fallback)
+                                                            --in-place keeps the same session and its context; send lead reply after it if the worker is idle
   autopilot [--once] [--dry-run]                            watch sessions, answer permissions, nudge, pre-review
   doctor [--since <sha>]                                    audit main now with a Muse doctor session
   prereview <T-XXXX>                                        start a Muse pre-review manually
@@ -188,10 +189,26 @@ async function runSwitchModel(positional: string[], args: string[]): Promise<voi
   const task = positional[0];
   const model = positional[1];
   if (task === undefined || model === undefined) {
-    throw new Error('usage: lead switch-model <T-XXXX> <provider/model> [--extra-rules <file>]');
+    throw new Error(
+      'usage: lead switch-model <T-XXXX> <provider/model> [--extra-rules <file>] [--in-place] (--in-place keeps the same session and its context; send lead reply after it if the worker is idle)',
+    );
   }
   const extraRules = flagValue(args, '--extra-rules');
+  const inPlace = flag(args, '--in-place');
+  if (inPlace && extraRules !== undefined) {
+    throw new Error('--extra-rules needs a new session; drop --in-place');
+  }
   const root = findRepoRoot();
+  if (inPlace) {
+    const { sessionId, model: chosen } = await switchModelInPlace(task, model, {
+      repoRoot: root,
+      client: new OpencodeCliClient(),
+      promptsDirPath: promptsDir(),
+      statePath: stateFilePath(),
+    });
+    console.log(`${task} ${sessionId} ${chosen}`);
+    return;
+  }
   const { sessionId, model: chosen } = await switchModel(task, model, extraRules, {
     repoRoot: root,
     client: new OpencodeCliClient(),

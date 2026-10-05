@@ -6,7 +6,7 @@ import { FakeOpenCodeClient } from './client';
 import { launchTask } from './launch';
 import { promptsDir } from './prompts';
 import { loadState, saveState, updateState } from './state';
-import { switchModel } from './switch-model';
+import { switchModel, switchModelInPlace } from './switch-model';
 import { newTaskRecord } from './types';
 
 const TASK_MD = (model: string): string =>
@@ -422,5 +422,168 @@ describe('switchModel', () => {
     expect(client.interruptOutcomes).toHaveLength(0);
     expect(client.created).toHaveLength(1);
     expect(loadState(statePath).tasks['T-0099']).toEqual(stateBefore.tasks['T-0099']);
+  });
+});
+
+describe('switchModelInPlace', () => {
+  it('switches the same session, records the model, and keeps nudges and prereview', async () => {
+    const { repoRoot, worktree, statePath } = setupRepo('opencode/muse-spark-1.3-contributor-free');
+    const client = new FakeOpenCodeClient();
+    const { runner } = stubRunner();
+    const launched = await launchTask('T-0099', undefined, {
+      repoRoot,
+      client,
+      promptsDirPath: promptsDir(),
+      statePath,
+      runner,
+    });
+    // Give the record per-session bookkeeping and a prereview: both must survive.
+    updateState(statePath, (state) => {
+      const current = state.tasks['T-0099'];
+      if (current !== undefined) {
+        state.tasks['T-0099'] = {
+          ...current,
+          nudgesSent: 2,
+          prereview: { sessionId: 'ses_pre', head: 'abc', startedAt: current.startedAt },
+        };
+      }
+    });
+
+    const result = await switchModelInPlace('T-0099', 'meta/muse-spark-1.3-contributor', {
+      repoRoot,
+      client,
+      promptsDirPath: promptsDir(),
+      statePath,
+    });
+
+    expect(result).toEqual({
+      sessionId: launched.sessionId,
+      model: 'meta/muse-spark-1.3-contributor',
+    });
+    // One switch on the same session, with the task's effort as the variant.
+    expect(client.switched).toHaveLength(1);
+    expect(client.switched[0]).toEqual({
+      sessionId: launched.sessionId,
+      model: {
+        providerID: 'meta',
+        id: 'muse-spark-1.3-contributor',
+        variant: 'low',
+      },
+    });
+    // No interrupt, no new session, and no extra prompt beyond the launch one.
+    expect(client.interruptOutcomes).toHaveLength(0);
+    expect(client.interrupted).toHaveLength(0);
+    expect(client.created).toHaveLength(1);
+    expect(client.prompted).toHaveLength(1);
+
+    const record = loadState(statePath).tasks['T-0099'];
+    expect(record?.sessionId).toBe(launched.sessionId);
+    expect(record?.model).toBe('meta/muse-spark-1.3-contributor');
+    expect(record?.switchedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(record?.worktree).toBe(worktree);
+    expect(record?.nudgesSent).toBe(2);
+    expect(record?.prereview?.sessionId).toBe('ses_pre');
+    const log = fs.readFileSync(path.join(path.dirname(statePath), 'lead.log'), 'utf8');
+    expect(log).toMatch(
+      /T-0099 switched worker to meta\/muse-spark-1\.3-contributor in place \(lead\)/,
+    );
+  });
+
+  it('writes nothing when the client switch fails', async () => {
+    const { repoRoot, statePath } = setupRepo();
+    const client = new FakeOpenCodeClient();
+    const { runner } = stubRunner();
+    await launchTask('T-0099', undefined, {
+      repoRoot,
+      client,
+      promptsDirPath: promptsDir(),
+      statePath,
+      runner,
+    });
+    const stateBefore = loadState(statePath);
+    client.switchModel = async () => {
+      throw new Error('upstream down');
+    };
+
+    await expect(
+      switchModelInPlace('T-0099', 'meta/muse-spark-1.3-contributor', {
+        repoRoot,
+        client,
+        promptsDirPath: promptsDir(),
+        statePath,
+      }),
+    ).rejects.toThrow(/upstream down/);
+
+    expect(loadState(statePath).tasks['T-0099']).toEqual(stateBefore.tasks['T-0099']);
+  });
+
+  it('refuses an unknown task before any client call', async () => {
+    const { repoRoot, statePath } = setupRepo();
+    const client = new FakeOpenCodeClient();
+
+    await expect(
+      switchModelInPlace('T-0099', 'meta/muse-spark-1.3-contributor', {
+        repoRoot,
+        client,
+        promptsDirPath: promptsDir(),
+        statePath,
+      }),
+    ).rejects.toThrow(/unknown task T-0099/);
+    expect(client.switched).toHaveLength(0);
+  });
+
+  it('refuses a missing worktree before any client call', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lead-switch-'));
+    const repoRoot = path.join(dir, 'zilar');
+    fs.mkdirSync(path.join(repoRoot, 'work'), { recursive: true });
+    fs.writeFileSync(
+      path.join(repoRoot, 'work', 'T-0099-demo.md'),
+      TASK_MD('opencode-go/muse-spark-1.3-contributor'),
+    );
+    const statePath = path.join(dir, 'state.json');
+    const state = loadState(statePath);
+    state.tasks['T-0099'] = newTaskRecord({
+      task: 'T-0099',
+      sessionId: 'ses_old',
+      worktree: path.join(path.dirname(repoRoot), 'zilar-T-0099'),
+      model: 'opencode-go/muse-spark-1.3-contributor',
+      role: 'worker',
+      startedAt: '2026-09-28T00:00:00.000Z',
+    });
+    saveState(statePath, state);
+    const client = new FakeOpenCodeClient();
+
+    await expect(
+      switchModelInPlace('T-0099', 'meta/muse-spark-1.3-contributor', {
+        repoRoot,
+        client,
+        promptsDirPath: promptsDir(),
+        statePath,
+      }),
+    ).rejects.toThrow(/worktree is missing/);
+    expect(client.switched).toHaveLength(0);
+  });
+
+  it('refuses a banned model before any client call', async () => {
+    const { repoRoot, statePath } = setupRepo();
+    const client = new FakeOpenCodeClient();
+    const { runner } = stubRunner();
+    await launchTask('T-0099', undefined, {
+      repoRoot,
+      client,
+      promptsDirPath: promptsDir(),
+      statePath,
+      runner,
+    });
+
+    await expect(
+      switchModelInPlace('T-0099', 'opencode-go/deepseek-v4-pro', {
+        repoRoot,
+        client,
+        promptsDirPath: promptsDir(),
+        statePath,
+      }),
+    ).rejects.toThrow(/V4 Pro/);
+    expect(client.switched).toHaveLength(0);
   });
 });

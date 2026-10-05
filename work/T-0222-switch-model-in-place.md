@@ -1,7 +1,7 @@
 ---
 id: T-0222
 title: "Lead tooling: lead switch-model --in-place switches the same session and records the new model"
-status: planned
+status: merged
 milestone: M5
 branch: task/T-0222-switch-model-in-place
 model: opencode/muse-spark-1.3-contributor-free
@@ -53,4 +53,29 @@ Switching pre-review sessions by hand, switching back to free automatically.
 
 ## Report (written by the worker when done)
 
+Implemented `lead switch-model <T-XXXX> <provider/model> --in-place`.
+
+Files changed:
+- `packages/devtools/src/lead/switch-model.ts`: new exported `switchModelInPlace(task, newModel, deps)` — same checks as `switchModel` (task id shape, worker record, worktree, `assertAllowedModel`), then `client.switchModel(record.sessionId, { ...splitModel(newModel), variant: effort })` with `effort` from `readTaskFrontMatter`; no interrupt, no new session, no prompt. `updateState` sets only `model` and `switchedAt` when the record still points at the same `sessionId`; appends `${task} switched worker to ${newModel} in place (lead)` to lead.log. Client errors propagate before any write.
+- `packages/devtools/src/lead/cli.ts`: `runSwitchModel` handles `--in-place` (calls `switchModelInPlace`, prints `${task} ${sessionId} ${chosen}`); `--in-place` with `--extra-rules` errors with `--extra-rules needs a new session; drop --in-place`; usage text updated (`[--extra-rules <file>] [--in-place]`, in-place keeps the session and its context, send `lead reply` after if idle).
+- `packages/devtools/src/lead/switch-model.test.ts`: new `describe('switchModelInPlace')` with 5 tests — same-session switch with `{providerID, id, variant}` and task effort as variant, no interrupt/created entries, state keeps `sessionId`/nudges/prereview with new `model`+`switchedAt` and the log line; client failure writes nothing; unknown task, missing worktree, banned model refused with zero client calls.
+- `docs/LEAD_HANDOFF.md`: Models line extended with the `--in-place` command and the `lead reply` note.
+
+Commands:
+- `pnpm install`: ok (10.7s). Note: it touched `pnpm-lock.yaml` (optional native peer entries `bufferutil`, `utf-8-validate`); reverted with `git checkout -- pnpm-lock.yaml` so the tree has only Allowed files.
+- `pnpm --filter @zilar/devtools test --maxWorkers=2 --reporter=dot src/lead/switch-model.test.ts`: 16 passed, 16 total (11 existing + 5 new). One iteration: first run had 1 failure — I wrongly asserted `prompted` empty, but `launchTask` (test setup) prompts once; fixed the assertion to `toHaveLength(1)` with a comment.
+- `pnpm gate`: first run GATE FAIL on format (`switch-model.test.ts` prettier); ran `prettier --write` on the touched files, reverted the lockfile side effect, re-ran: `PASS install (frozen) (0.9s) / format (10.6s) / lint (0.9s) / typecheck (2.6s) / tests @zilar/devtools (0.8s)`, `scope: every changed file is inside the Allowed files`, GATE PASS. 5 changed files.
+
+### Round (fix round, 2026-10-05)
+- Fixed should-fix finding 1 (cli.ts HELP + usage error): usage text now says in-place "keeps the same session and its context" and to "send lead reply after it if the worker is idle". No behaviour change, so no new test (spec item 2 test coverage unchanged; existing 16 switch-model tests still pass).
+- Disagreements: none.
+- Single tests: `pnpm --filter @zilar/devtools test --maxWorkers=2 --reporter=dot src/lead/switch-model.test.ts` — 16 passed, 16 total.
+- Gate: `PASS install (frozen) (0.9s) / format (10.8s) / lint (0.6s) / typecheck (2.4s) / tests @zilar/devtools (1.0s)`, scope clean, GATE PASS. 5 changed files.
+
+Security checklist: no secrets/tokens logged (only task id, session id, model name in the log line); no deletes/updates outside the single scoped task record (guarded on unchanged `sessionId`); no caps/uniqueness involved; no permission gating (lead-internal CLI); no message text in the log; no new routes. N/A items do not apply.
+
+Deviations: none. The old `switchModel` path is unchanged.
+
 ## Review (written by Claude)
+
+**Verdict:** Approved after one auto fix round, then clean (worker and both pre-reviews moved to paid Muse in place by the T-0216/T-0221 fallback). `switchModelInPlace` does the same checks as `switchModel`, calls `client.switchModel` on the existing session with the task's effort, and writes only `model` and `switchedAt` under the same-session guard; `--in-place` refuses `--extra-rules`; usage and `LEAD_HANDOFF.md` updated. Read the whole code diff.
