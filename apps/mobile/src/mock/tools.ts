@@ -1,9 +1,11 @@
-import type { Routine, ToolListItem } from '../lib/tools-api';
+import { ToolsApiError, type Routine, type ToolListItem, type AiToolsApi } from '../lib/tools-api';
 
 /**
- * Mock tools and routines API for the AI edit screen (T-0189). Two tools
- * (one with hosts and approved hosts, one with no hosts and never run)
- * and two routines (one active, one paused with reason `failures`).
+ * Mock tools and routines API for the AI edit screen (T-0189, actions in
+ * T-0212). Two tools (one with hosts and approved hosts, one with no hosts
+ * and never run) and three routines: one active, one paused with reason
+ * `failures`, and one awaiting re-approval (resume answers `needs_approval`,
+ * like the server).
  */
 
 const UPDATED_AT = '2026-10-03T10:00:00.000Z';
@@ -80,19 +82,68 @@ const ROUTINES: Routine[] = [
     approvedHosts: [],
     scope: 'personal',
   },
+  {
+    id: 'routine-3',
+    aiId: 'ai-1',
+    groupId: null,
+    topicId: null,
+    toolId: 'tool-1',
+    title: 'Hosts changed digest',
+    toolName: 'Morning briefing',
+    schedule: { kind: 'interval', everyMinutes: 720 },
+    status: 'needs_approval',
+    pausedReason: 'hosts_changed',
+    nextRunAt: NEXT_RUN_AT,
+    lastRunAt: LAST_RUN_AT,
+    lastStatus: 'skipped',
+    approvedHosts: ['news.example.com'],
+    scope: 'personal',
+  },
 ];
 
 /** A `ToolsApi` backed by the mock data, for offline UI work and screenshots. */
-export function createMockToolsApi(): {
-  listAiTools(aiId: string): Promise<ToolListItem[]>;
-  listAiRoutines(aiId: string): Promise<Routine[]>;
-} {
+export function createMockToolsApi(): AiToolsApi {
+  const tools = [...TOOLS];
+  const routines = ROUTINES.map((routine) => ({ ...routine }));
+  const findRoutine = (id: string): Routine => {
+    const routine = routines.find((item) => item.id === id);
+    if (routine === undefined) {
+      throw new ToolsApiError(404, 'not_found', 'Routine not found');
+    }
+    return routine;
+  };
   return {
     async listAiTools() {
-      return [...TOOLS];
+      return [...tools];
     },
     async listAiRoutines() {
-      return [...ROUTINES];
+      return routines.map((routine) => ({ ...routine }));
+    },
+    async pauseRoutine(id: string) {
+      const routine = findRoutine(id);
+      if (routine.status === 'active') {
+        routine.status = 'paused';
+        routine.pausedReason = 'user';
+      }
+      return { ...routine };
+    },
+    async resumeRoutine(id: string) {
+      const routine = findRoutine(id);
+      if (routine.status === 'needs_approval') {
+        throw new ToolsApiError(409, 'needs_approval', 'The routine needs re-approval');
+      }
+      if (routine.status === 'paused') {
+        routine.status = 'active';
+        routine.pausedReason = null;
+      }
+      return { ...routine };
+    },
+    async deleteRoutine(id: string) {
+      const index = routines.findIndex((item) => item.id === id);
+      if (index === -1) {
+        throw new ToolsApiError(404, 'not_found', 'Routine not found');
+      }
+      routines.splice(index, 1);
     },
   };
 }
