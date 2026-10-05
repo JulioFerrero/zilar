@@ -20,7 +20,7 @@ Julio, 2026-10-04: main had 1,102 commits, 5 to 8 per task (the worker's commits
 ### Verified facts (do not re-derive)
 - `mergeTask` in `packages/devtools/src/lead/merge.ts` (line 117) does, in order: refuse a dirty main (line 118), require `status: merged` in the worktree's task file (line 124), refuse a dirty worktree (line 130), `git rebase main` in the worktree (line 136), run the gate (line 148), `git merge --ff-only <branch>` in main (line 156), rewrite `work/BOARD.md` with `moveBoardRow` (lines 160-170), `git commit -qam "board: <task> merged"` (line 171), `git push -q origin main` (line 179), stop worktree processes, `git worktree remove` (line 187), `git branch -d <branch>` (line 191), `dropFromState`.
 - `merge.test.ts` builds real temporary repos (a bare `origin`, a `root` on `main`, a worktree on the task branch) through the `git()` helper (line 41) and calls `mergeTask` with `RealGitRunner`. Copy that style.
-- The usage line for `merge` is `packages/devtools/src/lead/cli.ts` line 30.
+- The usage line for `merge` is `packages/devtools/src/lead/cli.ts` line 32.
 
 ### What to build
 1. In `mergeTask`, replace the fast-forward and the board commit (lines 156-178) with a squash, keeping every step before and after unchanged:
@@ -30,7 +30,7 @@ Julio, 2026-10-04: main had 1,102 commits, 5 to 8 per task (the worker's commits
    d. `git add work/BOARD.md`, then `git commit -q -m <subject> -m <body>` (two `-m` arguments through the runner): subject `<task>: <summary>` (the `--summary` text); body `Squashed from <branch>:` followed by one line `- <subject>` per commit from step a.
    e. Safety check before pushing: `git diff --quiet HEAD <branch> -- . ':(exclude)work/BOARD.md'` in `root` must succeed (main now has exactly the branch's files apart from the board). If it fails, throw `MergeError('squash result differs from <branch>; nothing pushed')` and do not push.
 2. Because the branch is no longer an ancestor of main, `git branch -d` (line 191) would refuse. Use `git branch -D <branch>`, and ONLY after step 1e passed and the push succeeded.
-3. Update the usage line in `cli.ts` (line 30) to say `squash` instead of `fast-forward main`.
+3. Update the usage line in `cli.ts` (line 32) to say `squash` instead of `fast-forward main`.
 4. Tests in `merge.test.ts`, same harness:
    - the happy path (line 210) now asserts main gained exactly ONE commit over its old HEAD, whose subject is `T-0099: <summary>`, whose body lists the branch's commit subjects in order, and which contains both the feature change and the board change; `origin/main` equals local `main`; the branch is deleted;
    - a branch with three commits still yields one commit on main;
