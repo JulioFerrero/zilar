@@ -64,6 +64,27 @@ export interface ToolRun {
   createdAt: string;
 }
 
+/**
+ * The answer of `POST /tools/:id/run` (T-0219): either the tool's own ok
+ * output or its own failure (`error.kind`/`message` plus logs). A failed
+ * run is still a 200 from the server, so this is data, not an error.
+ */
+export type ToolRunResult =
+  | {
+      ok: true;
+      output: { text: string; data?: unknown };
+      logs: string;
+      durationMs: number;
+      fetchCount: number;
+    }
+  | {
+      ok: false;
+      error: { kind: string; message: string };
+      logs: string;
+      durationMs: number;
+      fetchCount: number;
+    };
+
 export type RoutinePausedReason = 'user' | 'failures' | 'hosts_changed';
 
 export type RoutineLastStatus = 'ok' | 'error' | 'skipped';
@@ -114,8 +135,18 @@ export interface RoutineActionsApi {
   deleteRoutine(id: string): Promise<void>;
 }
 
+/**
+ * The tool mutations (T-0219): revert to an older version, run the current
+ * version now, delete the tool. Kept separate like `RoutineActionsApi`.
+ */
+export interface ToolActionsApi {
+  revertTool(id: string, version: number): Promise<ToolVersion>;
+  runToolNow(id: string, input?: unknown): Promise<ToolRunResult>;
+  deleteTool(id: string): Promise<void>;
+}
+
 /** The full API the AI edit screen works against: lists plus mutations. */
-export type AiToolsApi = ToolsApi & RoutineActionsApi & ToolDetailsApi;
+export type AiToolsApi = ToolsApi & RoutineActionsApi & ToolDetailsApi & ToolActionsApi;
 
 export class ToolsApiError extends Error {
   readonly status: number;
@@ -289,6 +320,47 @@ function parseToolRun(value: unknown): ToolRun | null {
     outputText,
     createdAt,
   };
+}
+
+function parseToolRunResult(value: unknown): ToolRunResult | null {
+  if (!isRecord(value)) return null;
+  const ok = value['ok'];
+  const logs = value['logs'];
+  const durationMs = value['durationMs'];
+  const fetchCount = value['fetchCount'];
+  if (
+    typeof logs !== 'string' ||
+    typeof durationMs !== 'number' ||
+    typeof fetchCount !== 'number'
+  ) {
+    return null;
+  }
+  if (ok === true) {
+    const output = value['output'];
+    if (!isRecord(output) || !isString(output['text'])) return null;
+    return {
+      ok: true,
+      output: {
+        text: output['text'],
+        ...(output['data'] === undefined ? {} : { data: output['data'] }),
+      },
+      logs,
+      durationMs,
+      fetchCount,
+    };
+  }
+  if (ok === false) {
+    const error = value['error'];
+    if (!isRecord(error) || !isString(error['kind']) || !isString(error['message'])) return null;
+    return {
+      ok: false,
+      error: { kind: error['kind'], message: error['message'] },
+      logs,
+      durationMs,
+      fetchCount,
+    };
+  }
+  return null;
 }
 
 function isRoutinePausedReason(value: unknown): value is RoutinePausedReason {
@@ -491,6 +563,45 @@ export function createToolsApi(
       await request(
         apiUrl,
         `/api/routines/${encodeURIComponent(id)}`,
+        token,
+        {
+          method: 'DELETE',
+        },
+        fetchImpl,
+      );
+    },
+    async revertTool(id, version) {
+      const body = await withToken(
+        `/api/tools/${encodeURIComponent(id)}/revert`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ version }),
+        },
+        parseToolVersion,
+      );
+      return body as ToolVersion;
+    },
+    async runToolNow(id, input) {
+      const body = await withToken(
+        `/api/tools/${encodeURIComponent(id)}/run`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(input === undefined ? {} : { input }),
+        },
+        parseToolRunResult,
+      );
+      return body as ToolRunResult;
+    },
+    async deleteTool(id) {
+      const token = await getToken();
+      if (token === undefined) {
+        throw new ToolsApiError(401, 'unauthorized', 'No session');
+      }
+      await request(
+        apiUrl,
+        `/api/tools/${encodeURIComponent(id)}`,
         token,
         {
           method: 'DELETE',

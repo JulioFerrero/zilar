@@ -1,4 +1,4 @@
-import { createElement } from 'react';
+import { Children, createElement, isValidElement, type ReactElement, type ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 
@@ -11,11 +11,13 @@ import {
   type ToolDetailBodyActions,
   type ToolDetailBodyState,
 } from './tool-detail-sheet';
+import type { ToolRunResult } from '@/lib/tools-api';
 
 vi.mock('react-native', () => ({
   Modal: 'Modal',
   Pressable: 'Pressable',
   ScrollView: 'ScrollView',
+  TextInput: 'TextInput',
   View: 'View',
 }));
 
@@ -46,6 +48,15 @@ function idleActions(overrides: Partial<ToolDetailBodyActions> = {}): ToolDetail
     onShowVersion: () => {},
     onToggleOutput: () => {},
     expandedOutputs: new Set(),
+    onAskRevert: () => {},
+    onCancelRevert: () => {},
+    onConfirmRevert: () => {},
+    onRunInput: () => {},
+    onRun: () => {},
+    onToggleResult: () => {},
+    onAskDelete: () => {},
+    onCancelDelete: () => {},
+    onConfirmDelete: () => {},
     ...overrides,
   };
 }
@@ -86,6 +97,18 @@ async function readyState(options: {
       shownSource,
       sourceError: options.sourceError ?? '',
       versionBusy: false,
+      confirmingRevert: null,
+      actionBusy: false,
+      actionError: '',
+      runInput: '',
+      runInputError: '',
+      runError: '',
+      runBusy: false,
+      runResult: null,
+      expandedResult: false,
+      confirmingDelete: false,
+      deleteBusy: false,
+      deleteError: '',
     },
     actions: idleActions({
       expandedOutputs: options.expandedOutputs ?? new Set(),
@@ -220,5 +243,150 @@ describe('ToolDetailBody', () => {
     expect(presses).toHaveLength(1);
     presses[0]?.();
     expect(onShowVersion).toHaveBeenCalledWith(2);
+  });
+
+  it('shows Revert only on non-current rows', async () => {
+    const { state, actions } = await readyState({});
+    const html = content(state, actions);
+    expect(html).toContain('Revert to v2');
+    expect(html).toContain('Revert to v1');
+    expect(html).not.toContain('Revert to v3');
+  });
+
+  it('shows the revert confirm with the copy text', async () => {
+    const { state, actions } = await readyState({});
+    const confirming = state.status === 'ready' ? { ...state, confirmingRevert: 2 } : state;
+    const html = content(confirming, actions);
+    expect(html).toContain('Revert to v2? This creates a new version copying that version');
+    expect(html).toContain('Cancel');
+  });
+
+  it('shows the Run now section with the input label and placeholder', async () => {
+    const { state, actions } = await readyState({});
+    const html = content(state, actions);
+    expect(html).toContain('Run now');
+    expect(html).toContain('Optional JSON input (max 4 KB)');
+    expect(html).toContain('Run input (JSON)');
+  });
+
+  it('disables autocapitalize and autocorrect on the run input', async () => {
+    const { state, actions } = await readyState({});
+    const tree = ToolDetailBody({ state, actions });
+    type InputProps = {
+      accessibilityLabel?: string;
+      autoCapitalize?: string;
+      autoCorrect?: boolean;
+      children?: ReactNode;
+    };
+    const inputs: ReactElement<InputProps>[] = [];
+    const visit = (node: ReactNode): void => {
+      Children.forEach(node, (child) => {
+        if (!isValidElement<InputProps>(child)) return;
+        if (child.type === 'TextInput') {
+          inputs.push(child as ReactElement<InputProps>);
+          return;
+        }
+        visit(child.props.children);
+      });
+    };
+    visit(tree);
+    const runInput = inputs.find((input) => input.props.accessibilityLabel === 'Run input (JSON)');
+    if (runInput === undefined) throw new Error('expected the run input');
+    expect(runInput.props.autoCapitalize).toBe('none');
+    expect(runInput.props.autoCorrect).toBe(false);
+  });
+
+  it('shows the run input error', async () => {
+    const { state, actions } = await readyState({});
+    const withError =
+      state.status === 'ready' ? { ...state, runInputError: 'Input must be valid JSON.' } : state;
+    expect(content(withError, actions)).toContain('Input must be valid JSON.');
+  });
+
+  it('shows the ok result with the timing line and output', async () => {
+    const { state, actions } = await readyState({});
+    const result: ToolRunResult = {
+      ok: true,
+      output: { text: 'headlines' },
+      logs: '',
+      durationMs: 120,
+      fetchCount: 1,
+    };
+    const withResult = state.status === 'ready' ? { ...state, runResult: result } : state;
+    const html = content(withResult, actions);
+    expect(html).toContain('Ok in 120 ms · 1 fetch');
+    expect(html).toContain('headlines');
+  });
+
+  it('shows the failed result with kind, message and logs', async () => {
+    const { state, actions } = await readyState({});
+    const result: ToolRunResult = {
+      ok: false,
+      error: { kind: 'timeout', message: 'The tool took too long.' },
+      logs: 'started',
+      durationMs: 5000,
+      fetchCount: 0,
+    };
+    const withResult = state.status === 'ready' ? { ...state, runResult: result } : state;
+    const html = content(withResult, actions);
+    expect(html).toContain('Failed: timeout');
+    expect(html).toContain('The tool took too long.');
+    expect(html).toContain('started');
+  });
+
+  it('shows the Running… and Reverting… busy labels', async () => {
+    const { state, actions } = await readyState({});
+    const running = state.status === 'ready' ? { ...state, runBusy: true } : state;
+    expect(content(running, actions)).toContain('Running…');
+    const reverting =
+      state.status === 'ready' ? { ...state, confirmingRevert: 2, actionBusy: true } : state;
+    expect(content(reverting, actions)).toContain('Reverting…');
+  });
+
+  it('shows the delete confirm with the irreversible text', async () => {
+    const { state, actions } = await readyState({});
+    const confirming = state.status === 'ready' ? { ...state, confirmingDelete: true } : state;
+    const html = content(confirming, actions);
+    expect(html).toContain(
+      'Delete Morning briefing? This deletes the tool and its routines. This cannot be undone.',
+    );
+    const idle = content(state, actions);
+    expect(idle).toContain('Delete tool');
+  });
+
+  it('shows the Deleting… busy label', async () => {
+    const { state, actions } = await readyState({});
+    const deleting =
+      state.status === 'ready' ? { ...state, confirmingDelete: true, deleteBusy: true } : state;
+    expect(content(deleting, actions)).toContain('Deleting…');
+  });
+
+  it('disables Run now and Delete tool while a revert runs', async () => {
+    const { state, actions } = await readyState({});
+    const busy = state.status === 'ready' ? { ...state, actionBusy: true } : state;
+    const tree = ToolDetailBody({ state: busy, actions });
+    type ButtonProps = { accessibilityLabel?: string; disabled?: boolean; children?: ReactNode };
+    const buttons: ReactElement<ButtonProps>[] = [];
+    const visit = (node: ReactNode): void => {
+      Children.forEach(node, (child) => {
+        if (!isValidElement<ButtonProps>(child)) return;
+        if (child.type === 'Button') {
+          buttons.push(child as ReactElement<ButtonProps>);
+          return;
+        }
+        visit(child.props.children);
+      });
+    };
+    visit(tree);
+    const runNow = buttons.find((button) => button.props.accessibilityLabel === 'Run now');
+    if (runNow === undefined) throw new Error('expected the Run now button');
+    expect(runNow.props.disabled).toBe(true);
+    const deleteTool = buttons.find(
+      (button) =>
+        button.props.accessibilityLabel === undefined &&
+        renderToStaticMarkup(button).includes('Delete tool'),
+    );
+    if (deleteTool === undefined) throw new Error('expected the Delete tool button');
+    expect(deleteTool.props.disabled).toBe(true);
   });
 });

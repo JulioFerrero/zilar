@@ -5,6 +5,7 @@ import {
   type ToolDetail,
   type ToolListItem,
   type ToolRun,
+  type ToolRunResult,
   type ToolVersion,
   type ToolVersionDetail,
 } from '../lib/tools-api';
@@ -201,6 +202,13 @@ const TOOL_RUNS: ToolRun[] = [
 export function createMockToolsApi(): AiToolsApi {
   const tools = [...TOOLS];
   const routines = ROUTINES.map((routine) => ({ ...routine }));
+  const sources: Record<string, string> = { ...TOOL_SOURCES };
+  const versions: ToolVersion[] = TOOL_VERSIONS.map((version) => ({
+    ...version,
+    hosts: [...version.hosts],
+  }));
+  const runs: ToolRun[] = TOOL_RUNS.map((run) => ({ ...run }));
+  let nextMockRunId = runs.length + 1;
   const findRoutine = (id: string): Routine => {
     const routine = routines.find((item) => item.id === id);
     if (routine === undefined) {
@@ -220,34 +228,33 @@ export function createMockToolsApi(): AiToolsApi {
       if (tool === undefined) {
         throw new ToolsApiError(404, 'not_found', 'Tool not found');
       }
-      return { ...tool, source: TOOL_SOURCES[`${id}:${tool.currentVersion}`] ?? '' } as ToolDetail;
+      return { ...tool, source: sources[`${id}:${tool.currentVersion}`] ?? '' } as ToolDetail;
     },
     async listToolVersions(id: string) {
-      const versions = TOOL_VERSIONS.filter((version) => version.toolId === id).map((version) => ({
-        ...version,
-        hosts: [...version.hosts],
-      }));
-      if (versions.length === 0 && tools.every((tool) => tool.id !== id)) {
+      const listed = versions
+        .filter((version) => version.toolId === id)
+        .map((version) => ({ ...version, hosts: [...version.hosts] }));
+      if (listed.length === 0 && tools.every((tool) => tool.id !== id)) {
         throw new ToolsApiError(404, 'not_found', 'Tool not found');
       }
-      return versions;
+      return listed;
     },
     async getToolVersion(id: string, version: number) {
-      const found = TOOL_VERSIONS.find((item) => item.toolId === id && item.version === version);
+      const found = versions.find((item) => item.toolId === id && item.version === version);
       if (found === undefined) {
         throw new ToolsApiError(404, 'not_found', 'Tool version not found');
       }
       return {
         ...found,
         hosts: [...found.hosts],
-        source: TOOL_SOURCES[`${id}:${version}`] ?? '',
+        source: sources[`${id}:${version}`] ?? '',
       } as ToolVersionDetail;
     },
     async listToolRuns(id: string) {
       if (tools.every((tool) => tool.id !== id)) {
         throw new ToolsApiError(404, 'not_found', 'Tool not found');
       }
-      return TOOL_RUNS.filter((run) => run.toolId === id).map((run) => ({ ...run }));
+      return runs.filter((run) => run.toolId === id).map((run) => ({ ...run }));
     },
     async pauseRoutine(id: string) {
       const routine = findRoutine(id);
@@ -274,6 +281,89 @@ export function createMockToolsApi(): AiToolsApi {
         throw new ToolsApiError(404, 'not_found', 'Routine not found');
       }
       routines.splice(index, 1);
+    },
+    async revertTool(id: string, version: number) {
+      const tool = tools.find((item) => item.id === id);
+      if (tool === undefined) {
+        throw new ToolsApiError(404, 'not_found', 'Tool not found');
+      }
+      const source = versions.find((item) => item.toolId === id && item.version === version);
+      if (source === undefined) {
+        throw new ToolsApiError(404, 'not_found', 'Tool version not found');
+      }
+      const nextVersion = tool.currentVersion + 1;
+      const reverted: ToolVersion = {
+        id: `${id}-v${nextVersion}`,
+        toolId: id,
+        version: nextVersion,
+        message: `Revert to v${version}`,
+        hosts: [...source.hosts],
+        createdBy: 'julio',
+        createdAt: '2026-10-04T10:00:00.000Z',
+      };
+      versions.unshift(reverted);
+      sources[`${id}:${nextVersion}`] = sources[`${id}:${version}`] ?? '';
+      tool.currentVersion = nextVersion;
+      return { ...reverted, hosts: [...reverted.hosts] };
+    },
+    async runToolNow(id: string, input?: unknown) {
+      const tool = tools.find((item) => item.id === id);
+      if (tool === undefined) {
+        throw new ToolsApiError(404, 'not_found', 'Tool not found');
+      }
+      const failed = id === 'tool-2';
+      const result: ToolRunResult = failed
+        ? {
+            ok: false,
+            error: { kind: 'timeout', message: 'The tool took too long.' },
+            logs: '',
+            durationMs: 5000,
+            fetchCount: 0,
+          }
+        : {
+            ok: true,
+            output: {
+              text: `Ran ${tool.name}${input === undefined ? '' : ` with ${JSON.stringify(input)}`}.`,
+            },
+            logs: '',
+            durationMs: 120,
+            fetchCount: 1,
+          };
+      runs.unshift({
+        id: `run-mock-${nextMockRunId++}`,
+        toolId: id,
+        version: tool.currentVersion,
+        trigger: 'manual',
+        status: result.ok ? 'ok' : 'error',
+        errorKind: result.ok ? null : result.error.kind,
+        durationMs: result.durationMs,
+        fetchCount: result.fetchCount,
+        outputText: result.ok ? result.output.text : null,
+        createdAt: '2026-10-04T09:00:00.000Z',
+      });
+      return result;
+    },
+    async deleteTool(id: string) {
+      const index = tools.findIndex((item) => item.id === id);
+      if (index === -1) {
+        throw new ToolsApiError(404, 'not_found', 'Tool not found');
+      }
+      tools.splice(index, 1);
+      for (let at = versions.length - 1; at >= 0; at -= 1) {
+        if (versions[at]?.toolId === id) {
+          versions.splice(at, 1);
+        }
+      }
+      for (const key of Object.keys(sources)) {
+        if (key === id || key.startsWith(`${id}:`)) {
+          delete sources[key];
+        }
+      }
+      for (let at = runs.length - 1; at >= 0; at -= 1) {
+        if (runs[at]?.toolId === id) {
+          runs.splice(at, 1);
+        }
+      }
     },
   };
 }

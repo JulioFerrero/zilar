@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import { createMockToolsApi } from '@/mock/tools';
 import { ToolsApiError, createToolsApi, type Routine, type ToolListItem } from './tools-api';
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -280,5 +281,122 @@ describe('createToolsApi', () => {
       code: 'not_found',
     });
     await expect(api.listToolVersions('tool-gone')).rejects.toMatchObject({ status: 404 });
+  });
+
+  it('POSTs a revert with the version and parses the tool version', async () => {
+    const reverted = {
+      id: 'tool-1-v4',
+      toolId: 'tool-1',
+      version: 4,
+      message: 'Revert to v2',
+      hosts: ['news.example.com'],
+      createdBy: 'julio',
+      createdAt: '2026-10-04T10:00:00.000Z',
+    };
+    const fetchImpl = vi.fn(async () => jsonResponse(reverted));
+    const api = createToolsApi(async () => 't', fetchImpl as unknown as typeof fetch);
+
+    await expect(api.revertTool('tool/1', 2)).resolves.toEqual(reverted);
+
+    const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('http://127.0.0.1:3188/api/tools/tool%2F1/revert');
+    expect((init.headers as Record<string, string>)['authorization']).toBe('Bearer t');
+    expect((init.headers as Record<string, string>)['content-type']).toBe('application/json');
+    expect(init.method).toBe('POST');
+    expect(init.body).toBe(JSON.stringify({ version: 2 }));
+  });
+
+  it('POSTs a run without a body input for empty input and parses the ok result', async () => {
+    const result = {
+      ok: true,
+      output: { text: 'headlines' },
+      logs: '',
+      durationMs: 120,
+      fetchCount: 1,
+    };
+    const fetchImpl = vi.fn(async () => jsonResponse(result));
+    const api = createToolsApi(async () => 't', fetchImpl as unknown as typeof fetch);
+
+    await expect(api.runToolNow('tool-1')).resolves.toEqual(result);
+
+    const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('http://127.0.0.1:3188/api/tools/tool-1/run');
+    expect((init.headers as Record<string, string>)['authorization']).toBe('Bearer t');
+    expect((init.headers as Record<string, string>)['content-type']).toBe('application/json');
+    expect(init.method).toBe('POST');
+    expect(init.body).toBe(JSON.stringify({}));
+  });
+
+  it('POSTs a run with the input and parses the failed result', async () => {
+    const result = {
+      ok: false,
+      error: { kind: 'timeout', message: 'The tool took too long.' },
+      logs: 'started',
+      durationMs: 5000,
+      fetchCount: 0,
+    };
+    const fetchImpl = vi.fn(async () => jsonResponse(result));
+    const api = createToolsApi(async () => 't', fetchImpl as unknown as typeof fetch);
+
+    await expect(api.runToolNow('tool-1', { city: 'Madrid' })).resolves.toEqual(result);
+
+    const [, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    expect(init.body).toBe(JSON.stringify({ input: { city: 'Madrid' } }));
+  });
+
+  it('throws invalid_response when the run result does not parse', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ ok: true, output: { text: 42 } }));
+    const api = createToolsApi(async () => 't', fetchImpl as unknown as typeof fetch);
+
+    await expect(api.runToolNow('tool-1')).rejects.toMatchObject({
+      status: 200,
+      code: 'invalid_response',
+    });
+  });
+
+  it('keeps the 429 status and code of a rate-limited run', async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({ error: { code: 'rate_limited', message: 'Too many runs' } }, 429),
+    );
+    const api = createToolsApi(async () => 't', fetchImpl as unknown as typeof fetch);
+
+    await expect(api.runToolNow('tool-1')).rejects.toMatchObject({
+      status: 429,
+      code: 'rate_limited',
+    });
+  });
+
+  it('DELETEs a tool and accepts the empty 204', async () => {
+    const fetchImpl = vi.fn(async () => new Response(null, { status: 204 }));
+    const api = createToolsApi(async () => 't', fetchImpl as unknown as typeof fetch);
+
+    await expect(api.deleteTool('tool 1')).resolves.toBeUndefined();
+
+    const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('http://127.0.0.1:3188/api/tools/tool%201');
+    expect((init.headers as Record<string, string>)['authorization']).toBe('Bearer t');
+    expect(init.method).toBe('DELETE');
+  });
+});
+
+describe('createMockToolsApi deleteTool', () => {
+  it('keeps mock run ids unique after a delete shrinks the run list', async () => {
+    const api = createMockToolsApi();
+    await api.runToolNow('tool-2');
+    await api.runToolNow('tool-2');
+    await api.deleteTool('tool-1');
+    await api.runToolNow('tool-2');
+    await api.runToolNow('tool-2');
+    const runs = await api.listToolRuns('tool-2');
+    expect(runs).toHaveLength(4);
+    expect(new Set(runs.map((run) => run.id)).size).toBe(4);
+  });
+  it('drops the tool, its versions and its runs so later reads answer 404', async () => {
+    const api = createMockToolsApi();
+    await api.deleteTool('tool-1');
+    await expect(api.getTool('tool-1')).rejects.toMatchObject({ status: 404 });
+    await expect(api.listToolVersions('tool-1')).rejects.toMatchObject({ status: 404 });
+    await expect(api.getToolVersion('tool-1', 3)).rejects.toMatchObject({ status: 404 });
+    await expect(api.listToolRuns('tool-1')).rejects.toMatchObject({ status: 404 });
   });
 });
