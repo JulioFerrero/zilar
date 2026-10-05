@@ -20,7 +20,7 @@ Measured on 2026-10-05: 29 pre-review sessions read about 33M tokens. Each pre-r
 ### Verified facts (do not re-derive)
 - `packages/devtools/prompts/prereview.md` line 6 is step 2: "Re-run the cheap Checks from the spec: `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, and ONLY the tests of the files the diff touches ... Record the real results."
 - Line 17 asks PREREVIEW.md for "the Checks with real results (pass/fail plus counts);".
-- `packages/devtools/src/lead/prompts.test.ts` lines 87-92 assert the rendered pre-review prompt contains `PREREVIEW.md`, `Verdict:`, `60 lines`, `file:line`, `Counts: must-fix=N, should-fix=N, nit=N, follow-up=N` and `Follow-ups`. Keep all of them true.
+- `packages/devtools/src/lead/prompts.test.ts` lines 90-95 assert the rendered pre-review prompt contains `PREREVIEW.md`, `Verdict:`, `60 lines`, `file:line`, `Counts: must-fix=N, should-fix=N, nit=N, follow-up=N` and `Follow-ups`. Keep all of them true.
 
 ### What to build
 1. Replace step 2 (line 6) of `packages/devtools/prompts/prereview.md` with exactly:
@@ -32,7 +32,7 @@ Measured on 2026-10-05: 29 pre-review sessions read about 33M tokens. Each pre-r
 3. In `packages/devtools/src/lead/prompts.test.ts`, in the pre-review prompt test, add assertions that the rendered prompt contains `--reporter=dot` and `Do NOT run install`.
 
 ### Read first
-`AGENTS.md`, `packages/devtools/prompts/prereview.md`, `packages/devtools/src/lead/prompts.test.ts` (lines 75-95).
+`AGENTS.md`, `packages/devtools/prompts/prereview.md`, `packages/devtools/src/lead/prompts.test.ts` (lines 78-98).
 
 ### Allowed files
 `packages/devtools/prompts/prereview.md`, `packages/devtools/src/lead/prompts.test.ts`, `work/T-0204-prereview-no-duplicate-checks.md`.
