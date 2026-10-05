@@ -1,7 +1,7 @@
 ---
 id: T-0276
 title: "Web kit migration 9: hand-rolled accent buttons in the machines, Telegram import and invite links UI become the kit Button"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0276-web-kit-accent-buttons-2
 model: auto
@@ -67,4 +67,66 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+Replaced every listed hand-rolled `bg-accent px-…` button with the kit `Button`
+(`import { Button } from '@/components/ui/button'`), keeping `type`, `onClick`,
+`disabled`, `aria-label`, `title`, the icons and the text, and mapping size by
+font: `text-[15px]` → `size="lg"`, `text-[14px]` → `size="default"`,
+`text-[13px]` → `size="sm"`. Colour, padding, radius, font and gap classes are
+gone; only layout-only classes stay via `className`.
+
+- `apps/web/src/components/machines/AddMachineDialog.tsx`: "Try again", "New code"
+  and "Done" are `Button size="lg"`; the copy button (`aria-label="Copy pairing
+  code"`) is `Button size="sm"` with the same title, disabled and `onClick`.
+- `apps/web/src/components/machines/PendingMachineCard.tsx`: the Approve button is
+  `Button` (default size) with the same `aria-label`, disabled and `onClick`.
+- `apps/web/src/components/TelegramImportDialog.tsx`: the two "Close" actions, the
+  "Done" action and the "Import" action are `Button size="lg"` (Import keeps
+  `disabled={busy}`).
+- `apps/web/src/components/InviteLinksSection.tsx`: the "Copy invite link" button is
+  `Button size="sm"` with `className="shrink-0"`; the "Create invite link" submit is
+  `Button` (default size) with `className="self-start"`.
+- Muted Close/Cancel pills, the ✕ close button, the Deny/Revoke buttons and every
+  other file with `bg-accent px-` were left alone (out of scope).
+
+### Files changed
+- `apps/web/src/components/machines/AddMachineDialog.tsx`
+- `apps/web/src/components/machines/AddMachineDialog.test.tsx`
+- `apps/web/src/components/machines/PendingMachineCard.tsx`
+- `apps/web/src/routes/MachinesPage.test.tsx`
+- `apps/web/src/components/TelegramImportDialog.tsx`
+- `apps/web/src/components/TelegramImportDialog.test.tsx`
+- `apps/web/src/components/InviteLinksSection.tsx`
+- `apps/web/src/components/InviteLinksSection.test.tsx`
+- `work/T-0276-web-kit-accent-buttons-2.md`
+
+### Tests added
+One `data-slot="button"` assertion per test file group: the copy button in
+`AddMachineDialog.test.tsx`, the Approve button in `MachinesPage.test.tsx`, the
+Import button in `TelegramImportDialog.test.tsx`, and the Create invite link
+button in `InviteLinksSection.test.tsx`. Existing queries are by role/text and
+needed no change.
+
+### Commands and results
+- `pnpm install` — Done (it modified `pnpm-lock.yaml`; I reverted that file with
+  `git checkout -- pnpm-lock.yaml`, since it is not in my Allowed files and the spec
+  says not to touch it).
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot AddMachineDialog MachinesPage TelegramImportDialog InviteLinksSection` — `Test Files 4 passed (4)`, `Tests 37 passed (37)`.
+- `pnpm gate` — `GATE PASS`:
+  - `gate: 9 changed file(s) against main`
+  - `PASS  install (frozen)  (1.3s)`
+  - `PASS  format  (23.4s)`
+  - `PASS  lint  (1.2s)`
+  - `PASS  typecheck  (20.0s)`
+  - `PASS  tests @zilar/web  (48.9s)`
+  - `scope: every changed file is inside the Allowed files`
+  - `GATE PASS`
+- Also confirmed by search that none of the four source files contains `bg-accent px-`.
+
+### Deviations / open questions
+- None. Sizes follow the spec's font mapping; only layout-only classes
+  (`shrink-0`, `self-start`) were kept through `className`.
+
 ## Review (written by Claude)
+
+Approved: clean pre-review with 0 nits and no fix rounds. All buttons in the four files are now the kit `Button`, with aria labels, icons and texts kept. Each file group has one `data-slot` assertion.

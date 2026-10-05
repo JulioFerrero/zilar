@@ -60,6 +60,9 @@ describe('AddMachineDialog', () => {
       'title',
       'Copy pairing code',
     );
+    expect(
+      screen.getByRole('button', { name: 'Copy pairing code' }).getAttribute('data-slot'),
+    ).toBe('button');
 
     fireEvent.click(screen.getByRole('button', { name: 'Copy pairing code' }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith('K7QX-M2PA'));

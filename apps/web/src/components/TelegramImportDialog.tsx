@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { ApiError, importTelegramStickers, type TelegramImportResult } from '@/lib/api';
 import { useIsServerOwner } from '@/lib/useIsServerOwner';
+import { Button } from '@/components/ui/button';
 import { Dialog } from './ui/dialog';
 
 type DialogStatus = 'idle' | 'busy' | 'done';
@@ -119,13 +120,9 @@ export function TelegramImportDialog({
         ariaLabel="Telegram import not set up"
         size="sm"
         actions={
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-full bg-accent px-4 py-1.5 text-[15px] font-medium text-accent-foreground hover:bg-accent/90"
-          >
+          <Button type="button" onClick={onClose} size="lg">
             Close
-          </button>
+          </Button>
         }
       >
         <div className="mt-2 flex items-start justify-between gap-2">
@@ -158,13 +155,9 @@ export function TelegramImportDialog({
         ariaLabel="Telegram token rejected"
         size="sm"
         actions={
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-full bg-accent px-4 py-1.5 text-[15px] font-medium text-accent-foreground hover:bg-accent/90"
-          >
+          <Button type="button" onClick={onClose} size="lg">
             Close
-          </button>
+          </Button>
         }
       >
         <div className="mt-2 flex items-start justify-between gap-2">
@@ -198,16 +191,16 @@ export function TelegramImportDialog({
         ariaLabel="Telegram import result"
         size="sm"
         actions={
-          <button
+          <Button
             type="button"
             onClick={() => {
               onDone();
               onClose();
             }}
-            className="rounded-full bg-accent px-4 py-1.5 text-[15px] font-medium text-accent-foreground hover:bg-accent/90"
+            size="lg"
           >
             Done
-          </button>
+          </Button>
         }
       >
         <div className="mt-2 flex items-start justify-between gap-2">
@@ -252,14 +245,9 @@ export function TelegramImportDialog({
           >
             Cancel
           </button>
-          <button
-            type="button"
-            onClick={() => void run()}
-            disabled={busy}
-            className="rounded-full bg-accent px-4 py-1.5 text-[15px] font-medium text-accent-foreground hover:bg-accent/90 disabled:opacity-60"
-          >
+          <Button type="button" onClick={() => void run()} disabled={busy} size="lg">
             {busy ? 'Importing…' : 'Import'}
-          </button>
+          </Button>
         </>
       }
     >

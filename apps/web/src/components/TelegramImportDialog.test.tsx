@@ -34,6 +34,7 @@ describe('TelegramImportDialog', () => {
     fireEvent.change(screen.getByLabelText('Pack link or name'), {
       target: { value: 'https://t.me/addstickers/FunCats' },
     });
+    expect(screen.getByRole('button', { name: 'Import' }).getAttribute('data-slot')).toBe('button');
     fireEvent.click(screen.getByRole('button', { name: 'Import' }));
 
     expect(await screen.findByText('Imported from Telegram: Fun Cats')).toBeTruthy();

@@ -215,6 +215,7 @@ describe('MachinesPage', () => {
     renderMachinesPage();
 
     const approve = await screen.findByRole('button', { name: 'Approve office-linux' });
+    expect(approve.getAttribute('data-slot')).toBe('button');
     fireEvent.click(approve);
 
     await waitFor(() =>

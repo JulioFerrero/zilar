@@ -1,5 +1,6 @@
 import { Check, Copy } from 'lucide-react';
 import { useState } from 'react';
+import { Button } from '@/components/ui/button';
 import { copyText } from '@/lib/clipboard';
 import type { GroupInviteLink } from '@/lib/api';
 
@@ -118,11 +119,12 @@ export function InviteLinksSection({
           <p className="text-[13px] font-medium">Share this link</p>
           <div className="flex items-center gap-2 rounded-lg border border-divider bg-muted px-2 py-1.5">
             <span className="min-w-0 flex-1 truncate text-[13px]">{created.url}</span>
-            <button
+            <Button
               type="button"
               aria-label="Copy invite link"
               onClick={copy}
-              className="flex shrink-0 items-center gap-1 rounded-md bg-accent px-2.5 py-1 text-[13px] font-medium text-accent-foreground hover:bg-accent/90"
+              size="sm"
+              className="shrink-0"
             >
               {copied ? (
                 <Check className="size-4" aria-hidden="true" />
@@ -130,7 +132,7 @@ export function InviteLinksSection({
                 <Copy className="size-4" aria-hidden="true" />
               )}
               {copied ? 'Copied' : 'Copy'}
-            </button>
+            </Button>
           </div>
           <p className="text-[12px] text-muted-foreground">
             Anyone with this link can join the group. It is shown once — copy it now.
@@ -181,13 +183,9 @@ export function InviteLinksSection({
             />
           </label>
         </div>
-        <button
-          type="submit"
-          disabled={busy}
-          className="self-start rounded-full bg-accent px-4 py-1.5 text-[14px] font-medium text-accent-foreground hover:bg-accent/90 disabled:opacity-60"
-        >
+        <Button type="submit" disabled={busy} className="self-start">
           {busy ? 'Creating…' : 'Create invite link'}
-        </button>
+        </Button>
         {formError !== undefined && (
           <p role="alert" className="text-[13px] text-danger">
             {formError}
