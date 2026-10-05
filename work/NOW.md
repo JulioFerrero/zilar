@@ -17,7 +17,17 @@ Last updated: 2026-10-05, after merging T-0200 and launching T-0202, T-0194, T-0
 ## Next, in order
 
 1. T-0203 (B) after T-0202, then T-0204 (C): they share `prompts.test.ts`
-2. T-0207 Telegram import sheet (after T-0191; brief `docs/design/briefs/T-0207-telegram-import.md`, spec not written yet)
+2. T-0207 Telegram import sheet on MiniMax (after T-0191; spec and brief ready)
+
+## MiniMax M3 scorecard (Julio, 2026-10-05: give it harder tasks, no replays)
+
+| Task | Difficulty | Rounds | Pre-review | Tokens in | Note |
+| --- | --- | --- | --- | --- | --- |
+| T-0205 | easy (devtools parse) | 0 | clean, 2 nits | 0.49M | exact to spec |
+| T-0194 | easy (guard tests) | 0 | clean, 0 nits | 1.4M | did the negative test properly |
+| T-0195 | medium (docs audit) | | | 8.1M | pre-review pending |
+| T-0203, T-0204 | easy (prompts) | | | | queued |
+| T-0207 | medium-hard (mobile sheet, state machine) | | | | after T-0191 |
 
 ## Blocked or waiting for Julio
 
