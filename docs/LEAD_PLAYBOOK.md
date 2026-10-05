@@ -4,6 +4,8 @@ This is for a Claude instance acting as **lead** (the "boss") on Zilar, or on an
 
 **Superseded where it conflicts.** `docs/LEAD_LOOP.md` (2026-10-04) is the process now: the lead never writes code, and every change, including small fixes and conflict resolutions, goes to a worker. Read this playbook for background and gotchas only; where it says the lead fixes, edits or resolves something by hand, follow the loop instead.
 
+**Merges are squash merges since T-0200 (2026-10-05).** `lead merge` lands a task as ONE commit `T-XXXX: <summary>` with the board row inside it; there is no fast-forward and no separate `board: T-XXXX merged` commit any more. Every passage below about fast-forward merges, the board commit or re-running a half-finished merge describes the old flow. If a squash merge stops after `git merge --squash` (main has staged changes), inspect `git status` in the main checkout and ask before cleaning up; never reset blindly.
+
 ---
 
 ## 1. Roles and authority

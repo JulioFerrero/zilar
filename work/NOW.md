@@ -2,20 +2,22 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
-Last updated: 2026-10-05, after the history compaction and the T-0200 launch.
+Last updated: 2026-10-05, after merging T-0200 and launching T-0202, T-0194, T-0195, T-0205.
 
 ## Running (max 4)
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0200 | `lead merge` lands each task as ONE commit on main | coding | Muse |
+| T-0202 | Fix rounds in a fresh worker session (token saving A) | coding | Muse |
+| T-0194 | Mobile guard tests for the Android and Hermes pitfalls | coding | MiniMax M3 trial, `effort: default` |
+| T-0195 | Audit web vs mobile (docs only) | coding | MiniMax M3 trial |
+| T-0205 | Dashboard "merged today" after squash merges | coding | MiniMax M3; T-0200 follow-up |
 
 ## Next, in order
 
-0. T-0202 fresh session for fix rounds (after T-0200; token saving A), then T-0203 (B) and T-0204 (C) in that order: they share `prompts.test.ts`
-1. T-0194 guard tests for the Android and Hermes pitfalls (MiniMax M3 trial), after T-0200 merges
-2. T-0195 audit of web vs mobile, feeds the specs of T-0189 and T-0190 (MiniMax M3 trial)
-3. T-0191 sticker editor and Telegram import
+1. T-0203 (B) after T-0202, then T-0204 (C): they share `prompts.test.ts`
+2. T-0191 sticker editor and Telegram import
+3. The first merge after T-0200 is the first squash merge: check main gets exactly one `T-XXXX:` commit.
 
 ## Blocked or waiting for Julio
 
@@ -24,6 +26,8 @@ Last updated: 2026-10-05, after the history compaction and the T-0200 launch.
 - Release: everything merged since v0.1.13 reaches the live web only with the next release.
 
 ## Recent events
+
+- 2026-10-05: merged T-0200 (squash merges; its own merge still used the old flow). Follow-ups: T-0205 written; `docs/LEAD_PLAYBOOK.md` got a squash note. Checked for Julio: a shared warm start saves at most ~12k uncached tokens per session (first step of T-0201: input 12068, cache 0) and OpenCode forks keep the parent's folder, so not worth building.
 
 - 2026-10-05: Julio approved the token-saving tasks: T-0202 (A), T-0203 (B), T-0204 (C) written. The lead updated `AGENTS.md` "Running tests" (quiet dot reporter, `pnpm gate` once, small sessions) and the spec rule in `CLAUDE.md` (Checks = single tests + `pnpm gate`); T-0194 and T-0195 Checks trimmed to match.
 
