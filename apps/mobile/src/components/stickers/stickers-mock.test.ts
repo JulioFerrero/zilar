@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { createMockStickersApi, resetStickersMock, stickersMockScenario } from './stickers-mock';
+import {
+  createMockStickersApi,
+  resetStickersMock,
+  setStickersMockTelegramImport,
+  stickersMockScenario,
+} from './stickers-mock';
 
 describe('stickersMockScenario', () => {
   it('stays on the real API without a mock request', () => {
@@ -117,5 +122,42 @@ describe('createMockStickersApi', () => {
         mimeType: 'image/webp',
       }),
     ).rejects.toMatchObject({ code: 'pack_full' });
+  });
+
+  it('imports a Telegram pack as a new private pack', async () => {
+    resetStickersMock();
+    const api = createMockStickersApi('default');
+    const before = await api.listStickerPacks();
+    const outcome = await api.importTelegramStickers('t.me/addstickers/FunCats');
+    expect(outcome.imported).toBe(5);
+    expect(outcome.partial).toBe(false);
+    expect(outcome.pack.visibility).toBe('private');
+    expect(outcome.pack.importedFrom).toContain('telegram:');
+    const after = await api.listStickerPacks();
+    expect(after).toHaveLength(before.length + 1);
+  });
+
+  it('switches the import outcome for tests', async () => {
+    resetStickersMock();
+    const api = createMockStickersApi('default');
+    setStickersMockTelegramImport('partial');
+    await expect(api.importTelegramStickers('cats')).resolves.toMatchObject({ partial: true });
+    setStickersMockTelegramImport('import_unavailable');
+    await expect(api.importTelegramStickers('cats')).rejects.toMatchObject({
+      status: 501,
+      code: 'import_unavailable',
+    });
+    setStickersMockTelegramImport('token_invalid');
+    await expect(api.importTelegramStickers('cats')).rejects.toMatchObject({
+      status: 409,
+      code: 'token_invalid',
+    });
+    setStickersMockTelegramImport('rate_limited');
+    await expect(api.importTelegramStickers('cats')).rejects.toMatchObject({
+      status: 429,
+      code: 'rate_limited',
+    });
+    resetStickersMock();
+    await expect(api.importTelegramStickers('cats')).resolves.toMatchObject({ partial: false });
   });
 });

@@ -1,4 +1,8 @@
-import { StickersApiError, type StickersApi } from '../../lib/stickers-api';
+import {
+  StickersApiError,
+  type StickersApi,
+  type TelegramImportResult,
+} from '../../lib/stickers-api';
 import type { StickerItem, StickerPack } from '../../lib/stickers';
 import { mockDemoStickerPacks } from '../../mock/stickers';
 
@@ -101,6 +105,18 @@ function favoritesFor(scenario: StickersMockScenario): StickerItem[] {
 export function resetStickersMock(): void {
   panelStates.clear();
   favoriteStates.clear();
+  telegramImportOutcome = 'success';
+}
+
+/** The mock Telegram import outcome, switched by tests and screenshots. */
+export type StickersMockTelegramImport =
+  'success' | 'partial' | 'import_unavailable' | 'token_invalid' | 'rate_limited';
+
+let telegramImportOutcome: StickersMockTelegramImport = 'success';
+
+/** Switches the mock `importTelegramStickers` outcome (tests only). */
+export function setStickersMockTelegramImport(outcome: StickersMockTelegramImport): void {
+  telegramImportOutcome = outcome;
 }
 
 /** A `StickersApi` backed by the mock data, for offline UI work and screenshots. */
@@ -261,6 +277,38 @@ export function createMockStickersApi(scenario: StickersMockScenario = 'default'
       };
       pack.stickers.push(item);
       return cloneItem(item);
+    },
+    async importTelegramStickers(input: string): Promise<TelegramImportResult> {
+      if (scenario === 'error') fail();
+      if (input.trim() === '') {
+        throw new StickersApiError(400, 'invalid_request', 'Bad link or name');
+      }
+      if (telegramImportOutcome === 'import_unavailable') {
+        throw new StickersApiError(501, 'import_unavailable', 'Telegram import is not set up');
+      }
+      if (telegramImportOutcome === 'token_invalid') {
+        throw new StickersApiError(409, 'token_invalid', 'The Telegram token was rejected');
+      }
+      if (telegramImportOutcome === 'rate_limited') {
+        throw new StickersApiError(429, 'rate_limited', 'Too many imports');
+      }
+      mockPackCounter += 1;
+      const created: StickerPack = {
+        id: `mock-import-${mockPackCounter}`,
+        ownerId: 'mock-user',
+        title: 'Imported',
+        visibility: 'private',
+        importedFrom: `telegram:${input.trim().slice(0, 32)}`,
+        stickers: [],
+      };
+      panel.push(created);
+      return {
+        pack: clonePack(created),
+        imported: 5,
+        skippedAnimated: 1,
+        skippedInvalid: 0,
+        partial: telegramImportOutcome === 'partial',
+      };
     },
   };
 }

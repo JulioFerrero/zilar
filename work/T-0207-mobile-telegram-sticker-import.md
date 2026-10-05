@@ -1,7 +1,7 @@
 ---
 id: T-0207
 title: Mobile: import a Telegram sticker pack from the Stickers screen
-status: planned
+status: merged
 milestone: M5
 branch: task/T-0207-mobile-telegram-sticker-import
 model: opencode/muse-spark-1.3-contributor-free
@@ -64,4 +64,93 @@ Choosing a visibility for imported packs, animated stickers, an import history, 
 
 ## Report (written by the worker when done)
 
+### What I did
+Built the mobile Telegram sticker import per the spec and brief T-0207:
+- `apps/mobile/src/lib/stickers-api.ts`: added `TelegramImportResult` (`partial` false
+  when absent), `parseTelegramImportResult` boundary validation, and
+  `StickersApi.importTelegramStickers(input)` (`POST /api/sticker-packs/import/telegram`,
+  body exactly `{ input }`; errors become `StickersApiError` with `status` + `code`).
+- `apps/mobile/src/components/stickers/telegram-import.ts` (new): pure error-to-state
+  mapping and singular/plural count sentences with the brief's exact fixed sentences.
+- `apps/mobile/src/components/stickers/telegram-import-sheet.tsx` (new): bottom sheet
+  with form, busy, result, not-set-up and token-rejected states; one request at a time
+  (ref guard); cannot close while busy (backdrop, Android back, Close/Cancel all
+  guarded); `Done` reloads + closes; `Open pack` reloads, pushes
+  `/settings/sticker-pack?id=<pack id>`, closes; `Import again` re-runs with the same
+  input on `partial`. Never shows server text.
+- `apps/mobile/src/app/settings/stickers.tsx`: `Import from Telegram` outline row under
+  the My packs heading row (visible in every My packs state incl. empty, disabled while
+  busy); opens the sheet; sheet remounts per open via `key` so earlier input/result/
+  error clear.
+- Mock (`stickers-mock.ts`): `importTelegramStickers` returning success, switchable via
+  `setStickersMockTelegramImport` to `partial`, `import_unavailable` (501),
+  `token_invalid` (409), `rate_limited` (429); `resetStickersMock` restores success.
+- Tests: API (path/method/body, with/without `partial`, malformed body, error mapping);
+  `telegram-import.ts` (every code, plurals); sheet (form copy, empty-input, import call,
+  success counts, singular forms, partial + `Import again`, not-set-up, rate-limit
+  sentence, token-rejected markup, busy blocks close + single request, idle close,
+  Done/Open-pack wiring); mock outcomes; screen entry-row placement.
+
+### Files changed
+`apps/mobile/src/lib/stickers-api.ts`, `apps/mobile/src/lib/stickers-api.test.ts`,
+`apps/mobile/src/components/stickers/stickers-mock.ts`,
+`apps/mobile/src/components/stickers/stickers-mock.test.ts`,
+`apps/mobile/src/components/stickers/telegram-import.ts` (new),
+`apps/mobile/src/components/stickers/telegram-import.test.ts` (new),
+`apps/mobile/src/components/stickers/telegram-import-sheet.tsx` (new),
+`apps/mobile/src/components/stickers/telegram-import-sheet.test.tsx` (new),
+`apps/mobile/src/components/stickers/stickers-screen.test.tsx`,
+`apps/mobile/src/app/settings/stickers.tsx`.
+
+### Commands and real results
+- `pnpm install`: ok (10.2s).
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot src/lib/stickers-api.test.ts src/components/stickers/telegram-import.test.ts`: 2 files, 36 tests passed.
+- Same with `src/components/stickers/stickers-mock.test.ts src/components/stickers/telegram-import-sheet.test.tsx`: 2 files, 24 tests passed.
+- Same with `src/components/stickers/stickers-screen.test.tsx`: 16 tests passed.
+- `pnpm exec prettier --write` on my 4 unformatted files (after gate flagged format).
+- `pnpm gate` (final): PASS install, PASS format, PASS lint, PASS typecheck,
+  PASS tests @zilar/mobile; `scope: every changed file is inside the Allowed files`;
+  `GATE PASS`. (11 changed files against main.)
+
+### Problems / deviations
+- The brief asks for `role="status"` on the busy line, but React Native's
+  `AccessibilityRole` type has no `status`, so typecheck fails. Used the repo's existing
+  pattern `accessibilityLiveRegion="polite"` (as in `sticker-pack.tsx`, `skeleton.tsx`)
+  on the busy `View` instead.
+- The brief's "opening clears state" was first implemented as a reset effect, but
+  `oxlint react(set-state-in-effect)` fails the gate. Implemented it as a per-open
+  remount (`key={telegram-import-<nonce>}`) from `stickers.tsx` instead; same behavior.
+
+### Open questions / security checklist
+- No secrets, logging, or new routes touched; no new dependency; no server change.
+  Client-side only: one POST with bearer auth, fixed user-facing sentences only.
+- Security checklist reviewed: nothing in scope adds deletes/updates scoping, caps,
+  permissions, audit entries, or new routes beyond the existing authenticated import
+  endpoint (rate-limited server-side per the spec).
+
+### Blocked / needs a decision
+Nothing. Ready for the lead's emulator check (`pnpm phone:smoke`).
+
+### Round 2 (fix round, PREREVIEW findings)
+- Finding 1 (should-fix, silent failed `Import again` + stale title on special): fixed in
+  `telegram-import-sheet.tsx` — the result view now renders the error line, and a
+  special-kind retry failure clears `result` before setting `special` so title and body
+  agree. Tests: new `surfaces a failed Import again as an error line on the result
+  card` (rate-limit retry sets the sentence + result view renders it) and `clears the
+  result card when Import again hits a special state` (retry `token_invalid` sets
+  `result` null + `special` token-rejected); result/special setters are now observed
+  in the `useState` mock.
+- Finding 2 (nit, untrimmed input): fixed on the same line the finding-1 fix touches
+  (`invoke(rawInput.trim())`); the existing import-call test now sends padded input
+  (`'  t.me/addstickers/FunCats \n'`) and asserts the trimmed value.
+- Finding 3 (nit, `run() → setSpecial` wiring untested): covered as a side effect of
+  the finding-1 tests — the special-state retry test drives `run()`'s catch branch
+  into `setSpecial` end to end.
+- Single tests: `telegram-import-sheet.test.tsx` — 14 passed (12 existing + 2 new).
+- `pnpm gate`: PASS install, PASS format, PASS lint, PASS typecheck, PASS tests
+  @zilar/mobile; scope clean; `GATE PASS` (11 changed files).
+- No disagreements. Status stays `review`.
+
 ## Review (written by Claude)
+
+**Verdict:** Approved after one automatic round (free Muse, first mobile task on it). `StickersApi.importTelegramStickers` with result validation and the error mapping in `telegram-import.ts`; the sheet `telegram-import-sheet.tsx` with form, busy, result, not-set-up and token-rejected states; the `Import from Telegram` row on the Stickers screen. Emulator (galena, signed in, live server): `pnpm phone:smoke` PASS; the lead opened the sheet and compared it with the brief (title and close, the explanation with the link format, the field with its placeholder, the personal-use note with the info icon, Cancel and Import), and pressing Import with an empty field shows "Paste a pack link or name first." without a request. A real import was not run: it would create a pack on the live server for the test account and count against its 3 imports per hour. No nits left.

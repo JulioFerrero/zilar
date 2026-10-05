@@ -329,4 +329,55 @@ describe('stickers api client', () => {
       client.uploadStickerFile(PACK.id, { uri: 'file:///cache/s.png', mimeType: 'image/png' }),
     ).rejects.toMatchObject({ status: 400, code: 'pack_full' });
   });
+
+  it('imports a Telegram pack with the input as the only body field', async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({ pack: PACK, imported: 5, skippedAnimated: 1, skippedInvalid: 0 }),
+    );
+    const result = await api(fetchImpl).importTelegramStickers('t.me/addstickers/FunCats');
+    expect(result).toEqual({
+      pack: expect.objectContaining({ id: PACK.id }),
+      imported: 5,
+      skippedAnimated: 1,
+      skippedInvalid: 0,
+      partial: false,
+    });
+    const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('http://127.0.0.1:3188/api/sticker-packs/import/telegram');
+    expect(init.method).toBe('POST');
+    expect(init.body).toBe(JSON.stringify({ input: 't.me/addstickers/FunCats' }));
+  });
+
+  it('reads partial true and defaults a missing partial to false', async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({
+        pack: PACK,
+        imported: 5,
+        skippedAnimated: 0,
+        skippedInvalid: 0,
+        partial: true,
+      }),
+    );
+    await expect(api(fetchImpl).importTelegramStickers('cats')).resolves.toMatchObject({
+      partial: true,
+    });
+  });
+
+  it('rejects a malformed import result', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ pack: PACK, imported: 'many' }));
+    await expect(api(fetchImpl).importTelegramStickers('cats')).rejects.toMatchObject({
+      status: 200,
+      code: 'invalid_response',
+    });
+  });
+
+  it('maps an import refusal to its status and code', async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({ error: { code: 'rate_limited', message: 'slow down' } }, 429),
+    );
+    await expect(api(fetchImpl).importTelegramStickers('cats')).rejects.toMatchObject({
+      status: 429,
+      code: 'rate_limited',
+    });
+  });
 });
