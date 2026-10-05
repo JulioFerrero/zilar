@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { ApiError, importTelegramStickers, type TelegramImportResult } from '@/lib/api';
 import { useIsServerOwner } from '@/lib/useIsServerOwner';
+import { Dialog } from './ui/dialog';
 
 type DialogStatus = 'idle' | 'busy' | 'done';
 
@@ -12,11 +13,10 @@ type DialogStatus = 'idle' | 'busy' | 'done';
  * form, and the summary repeats the attribution
  * ("Imported from Telegram: <pack title>").
  *
- * The dialog is an overlay like `InviteDialog`: a `fixed inset-0` backdrop
- * with a centered panel, `role="dialog"` + `aria-modal`, a close button,
- * close on Escape and on backdrop click (not while busy), and focus moved
- * into the dialog on open. A 501 never closes it: it shows the not-set-up
- * state instead (with a settings link for the server owner).
+ * It renders through the kit `Dialog`: Escape and the backdrop close it
+ * (not while busy), focus moves to the input on open, and a 501 never
+ * closes it — it shows the not-set-up state instead (with a settings link
+ * for the server owner).
  */
 export function TelegramImportDialog({
   onDone,
@@ -54,28 +54,6 @@ export function TelegramImportDialog({
   // which value is used.
   const hookOwner = useIsServerOwner();
   const ownerView = isOwner ?? hookOwner;
-
-  // Focus into the dialog on open, like the other overlay dialogs.
-  useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
-
-  // Esc closes the dialog from any focus position — but never while busy
-  // (the unavailable and token-invalid states have no in-flight request, so
-  // Esc closes those too). One listener covers every state, like
-  // `InviteDialog` and `NewGroupDialog`.
-  useEffect(() => {
-    if (busy) {
-      return;
-    }
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') {
-        onClose();
-      }
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, [busy, onClose]);
 
   const run = async (): Promise<void> => {
     if (input.trim() === '') {
@@ -116,46 +94,46 @@ export function TelegramImportDialog({
     }
   };
 
-  const overlay = (label: string, panel: React.ReactNode) => (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label={label}
-      onClick={() => {
-        if (!busy) {
-          onClose();
-        }
-      }}
-      className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4"
+  // The old panel header's ✕, now the first thing in the body. Escape and
+  // the backdrop are the kit `Dialog`'s job; this button is disabled while
+  // busy, and `dismissable={false}` blocks the other two exits then.
+  const closeButton = (
+    <button
+      type="button"
+      aria-label="Close"
+      title="Close"
+      onClick={onClose}
+      disabled={busy}
+      className="shrink-0 rounded-full p-1 text-muted-foreground hover:bg-muted disabled:opacity-60"
     >
-      <div
-        onClick={(event) => event.stopPropagation()}
-        className="w-full max-w-sm rounded-2xl bg-background p-5 shadow-xl"
-      >
-        {panel}
-      </div>
-    </div>
+      ✕
+    </button>
   );
 
   if (unavailable) {
-    return overlay(
-      'Telegram import not set up',
-      <>
-        <div className="flex items-start justify-between gap-2">
-          <h2 className="text-[18px] font-semibold">Telegram import is not set up</h2>
+    return (
+      <Dialog
+        open
+        onClose={onClose}
+        title="Telegram import is not set up"
+        ariaLabel="Telegram import not set up"
+        size="sm"
+        actions={
           <button
             type="button"
-            aria-label="Close"
-            title="Close"
             onClick={onClose}
-            className="rounded-full p-1 text-muted-foreground hover:bg-muted"
+            className="rounded-full bg-accent px-4 py-1.5 text-[15px] font-medium text-accent-foreground hover:bg-accent/90"
           >
-            ✕
+            Close
           </button>
+        }
+      >
+        <div className="mt-2 flex items-start justify-between gap-2">
+          <p className="text-[14px] text-muted-foreground">
+            Telegram import is not set up on this server.
+          </p>
+          {closeButton}
         </div>
-        <p className="mt-1 text-[14px] text-muted-foreground">
-          Telegram import is not set up on this server.
-        </p>
         {ownerView ? (
           <p className="mt-3 text-[14px]">
             <Link to="/settings/integrations" className="text-accent underline hover:no-underline">
@@ -167,48 +145,19 @@ export function TelegramImportDialog({
             Ask the person who runs this server to set it up.
           </p>
         )}
-        <div className="mt-5 flex justify-end">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-full bg-accent px-4 py-1.5 text-[15px] font-medium text-accent-foreground hover:bg-accent/90"
-          >
-            Close
-          </button>
-        </div>
-      </>,
+      </Dialog>
     );
   }
 
   if (tokenInvalid) {
-    return overlay(
-      'Telegram token rejected',
-      <>
-        <div className="flex items-start justify-between gap-2">
-          <h2 className="text-[18px] font-semibold">The Telegram token was rejected</h2>
-          <button
-            type="button"
-            aria-label="Close"
-            title="Close"
-            onClick={onClose}
-            className="rounded-full p-1 text-muted-foreground hover:bg-muted"
-          >
-            ✕
-          </button>
-        </div>
-        {ownerView ? (
-          <p className="mt-3 text-[14px]">
-            The Telegram token was rejected. The server owner needs to update it —{' '}
-            <Link to="/settings/integrations" className="text-accent underline hover:no-underline">
-              open the integrations settings.
-            </Link>
-          </p>
-        ) : (
-          <p className="mt-3 text-[14px] text-muted-foreground">
-            The Telegram token was rejected. The server owner needs to update it.
-          </p>
-        )}
-        <div className="mt-5 flex justify-end">
+    return (
+      <Dialog
+        open
+        onClose={onClose}
+        title="The Telegram token was rejected"
+        ariaLabel="Telegram token rejected"
+        size="sm"
+        actions={
           <button
             type="button"
             onClick={onClose}
@@ -216,45 +165,39 @@ export function TelegramImportDialog({
           >
             Close
           </button>
+        }
+      >
+        <div className="mt-2 flex items-start justify-between gap-2">
+          {ownerView ? (
+            <p className="text-[14px]">
+              The Telegram token was rejected. The server owner needs to update it —{' '}
+              <Link
+                to="/settings/integrations"
+                className="text-accent underline hover:no-underline"
+              >
+                open the integrations settings.
+              </Link>
+            </p>
+          ) : (
+            <p className="text-[14px] text-muted-foreground">
+              The Telegram token was rejected. The server owner needs to update it.
+            </p>
+          )}
+          {closeButton}
         </div>
-      </>,
+      </Dialog>
     );
   }
 
   if (status === 'done' && result !== undefined) {
-    return overlay(
-      'Telegram import result',
-      <>
-        <div className="flex items-start justify-between gap-2">
-          <h2 className="text-[18px] font-semibold">Imported from Telegram: {result.pack.title}</h2>
-          <button
-            type="button"
-            aria-label="Close"
-            title="Close"
-            onClick={onClose}
-            className="rounded-full p-1 text-muted-foreground hover:bg-muted"
-          >
-            ✕
-          </button>
-        </div>
-        <p className="mt-1 text-[14px]">
-          {result.imported} sticker{result.imported === 1 ? '' : 's'} added
-          {result.skippedAnimated > 0 &&
-            `, ${result.skippedAnimated} animated sticker${result.skippedAnimated === 1 ? ' was' : 's were'} skipped`}
-          {result.skippedInvalid > 0 &&
-            `, ${result.skippedInvalid} file${result.skippedInvalid === 1 ? ' was' : 's were'} skipped as invalid`}
-          .
-        </p>
-        {result.partial === true && (
-          <p className="mt-1 text-[14px] text-muted-foreground">
-            The import ran out of time — run it again to fill in the rest.
-          </p>
-        )}
-        <p className="mt-1 text-[13px] text-muted-foreground">
-          Imported packs are for personal use: this pack stays private and its art belongs to its
-          creators.
-        </p>
-        <div className="mt-5 flex justify-end">
+    return (
+      <Dialog
+        open
+        onClose={onClose}
+        title={`Imported from Telegram: ${result.pack.title}`}
+        ariaLabel="Telegram import result"
+        size="sm"
+        actions={
           <button
             type="button"
             onClick={() => {
@@ -265,32 +208,69 @@ export function TelegramImportDialog({
           >
             Done
           </button>
+        }
+      >
+        <div className="mt-2 flex items-start justify-between gap-2">
+          <p className="text-[14px]">
+            {result.imported} sticker{result.imported === 1 ? '' : 's'} added
+            {result.skippedAnimated > 0 &&
+              `, ${result.skippedAnimated} animated sticker${result.skippedAnimated === 1 ? ' was' : 's were'} skipped`}
+            {result.skippedInvalid > 0 &&
+              `, ${result.skippedInvalid} file${result.skippedInvalid === 1 ? ' was' : 's were'} skipped as invalid`}
+            .
+          </p>
+          {closeButton}
         </div>
-      </>,
+        {result.partial === true && (
+          <p className="mt-1 text-[14px] text-muted-foreground">
+            The import ran out of time — run it again to fill in the rest.
+          </p>
+        )}
+        <p className="mt-1 text-[13px] text-muted-foreground">
+          Imported packs are for personal use: this pack stays private and its art belongs to its
+          creators.
+        </p>
+      </Dialog>
     );
   }
 
-  return overlay(
-    'Import from Telegram',
-    <>
-      <div className="flex items-start justify-between gap-2">
-        <h2 className="text-[18px] font-semibold">Import from Telegram</h2>
-        <button
-          type="button"
-          aria-label="Close"
-          title="Close"
-          onClick={onClose}
-          disabled={busy}
-          className="rounded-full p-1 text-muted-foreground hover:bg-muted disabled:opacity-60"
-        >
-          ✕
-        </button>
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title="Import from Telegram"
+      size="sm"
+      dismissable={!busy}
+      initialFocusRef={inputRef}
+      actions={
+        <>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={busy}
+            className="rounded-full px-4 py-1.5 text-[15px] text-muted-foreground hover:bg-list-hover disabled:opacity-60"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => void run()}
+            disabled={busy}
+            className="rounded-full bg-accent px-4 py-1.5 text-[15px] font-medium text-accent-foreground hover:bg-accent/90 disabled:opacity-60"
+          >
+            {busy ? 'Importing…' : 'Import'}
+          </button>
+        </>
+      }
+    >
+      <div className="mt-2 flex items-start justify-between gap-2">
+        <p className="text-[13px] text-muted-foreground">
+          Paste a pack link (<code>t.me/addstickers/…</code>) or the bare pack name. Only static
+          stickers import — animated and video ones are skipped. Imported packs are for personal
+          use: they stay private and cannot be shared server-wide.
+        </p>
+        {closeButton}
       </div>
-      <p className="mt-1 text-[13px] text-muted-foreground">
-        Paste a pack link (<code>t.me/addstickers/…</code>) or the bare pack name. Only static
-        stickers import — animated and video ones are skipped. Imported packs are for personal use:
-        they stay private and cannot be shared server-wide.
-      </p>
       <label className="mt-3 flex flex-col gap-1 text-[14px]">
         Pack link or name
         <input
@@ -309,24 +289,6 @@ export function TelegramImportDialog({
           {error}
         </p>
       )}
-      <div className="mt-4 flex justify-end gap-2">
-        <button
-          type="button"
-          onClick={onClose}
-          disabled={busy}
-          className="rounded-full px-4 py-1.5 text-[15px] text-muted-foreground hover:bg-list-hover disabled:opacity-60"
-        >
-          Cancel
-        </button>
-        <button
-          type="button"
-          onClick={() => void run()}
-          disabled={busy}
-          className="rounded-full bg-accent px-4 py-1.5 text-[15px] font-medium text-accent-foreground hover:bg-accent/90 disabled:opacity-60"
-        >
-          {busy ? 'Importing…' : 'Import'}
-        </button>
-      </div>
-    </>,
+    </Dialog>
   );
 }

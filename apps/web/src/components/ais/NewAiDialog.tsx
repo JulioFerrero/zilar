@@ -18,6 +18,7 @@ import {
   DEFAULT_MONTHLY_USD,
   type AiFormState,
 } from './aiForm';
+import { Dialog } from '../ui/dialog';
 import { cn } from '@/lib/utils';
 
 type DialogStatus = 'loading' | 'ready' | 'unavailable' | 'error';
@@ -72,16 +73,8 @@ export function NewAiDialog({ onClose }: { onClose: () => void }) {
     };
   }, []);
 
-  // Esc closes the dialog from any focus position, same as Cancel or the overlay.
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') {
-        onClose();
-      }
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, [onClose]);
+  // Esc, the backdrop, Cancel and the actions footer all close via the kit
+  // `Dialog`; the focus effect below still moves focus into the name input.
 
   const effectiveConnection =
     connections.length === 1
@@ -165,168 +158,13 @@ export function NewAiDialog({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="New AI"
-      onClick={onClose}
-      className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4"
-    >
-      <div
-        onClick={(event) => event.stopPropagation()}
-        className="flex max-h-[85vh] w-full max-w-sm flex-col rounded-2xl bg-background p-5 shadow-xl"
-      >
-        <h2 className="text-[18px] font-semibold">New AI</h2>
-
-        <div className="mt-3 min-h-0 flex-1 overflow-y-auto">
-          {status === 'loading' && <p className="text-[15px] text-muted-foreground">Loading…</p>}
-
-          {(status === 'unavailable' || status === 'error') && (
-            <p role="alert" className="text-[15px] text-danger">
-              {errorMessage}
-            </p>
-          )}
-
-          {status === 'ready' && connections.length === 0 && (
-            <div className="flex flex-col items-start gap-3">
-              <p className="text-[15px] text-muted-foreground">
-                Add a provider key first, then come back to create an AI.
-              </p>
-              <Button
-                type="button"
-                size="lg"
-                className="rounded-full px-5"
-                onClick={() => {
-                  onClose();
-                  navigate('/settings/connections');
-                }}
-              >
-                Connections
-              </Button>
-            </div>
-          )}
-
-          {status === 'ready' && connections.length > 0 && (
-            <div className="flex flex-col gap-4">
-              <label className="flex flex-col gap-1">
-                <span className="text-[14px] font-medium">Name</span>
-                <input
-                  autoFocus
-                  aria-label="Name"
-                  value={name}
-                  maxLength={64}
-                  onChange={(event) => setName(event.target.value)}
-                  placeholder="Dev-1"
-                  className="rounded-lg border border-input bg-background px-3 py-2 text-[15px] outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40"
-                />
-              </label>
-
-              <div className="flex flex-col gap-2">
-                <span className="text-[14px] font-medium">Template</span>
-                <div role="radiogroup" aria-label="Template" className="flex flex-wrap gap-2">
-                  {AI_TEMPLATE_OPTIONS.map((option) => {
-                    const selected = option.id === template;
-                    return (
-                      <button
-                        key={option.id}
-                        type="button"
-                        role="radio"
-                        aria-checked={selected}
-                        onClick={() => chooseTemplate(option.id)}
-                        className={cn(
-                          'rounded-full border px-3 py-1.5 text-[14px] transition-colors',
-                          selected
-                            ? 'border-accent bg-accent/10 font-medium text-accent'
-                            : 'border-divider text-muted-foreground hover:bg-list-hover hover:text-foreground',
-                        )}
-                      >
-                        {option.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {connections.length === 1 && (
-                <p className="text-[13px] text-muted-foreground">
-                  Using {providerLabel(connections[0]!.provider)}.
-                </p>
-              )}
-
-              {connections.length > 1 && (
-                <div className="flex flex-col gap-2">
-                  <span className="text-[14px] font-medium">Provider</span>
-                  <ConnectionPicker
-                    connections={connections}
-                    value={selectedConnectionId}
-                    onChange={chooseConnection}
-                  />
-                </div>
-              )}
-
-              <div className="flex flex-col gap-3 border-t border-divider pt-3">
-                <button
-                  type="button"
-                  aria-expanded={moreOptionsOpen}
-                  onClick={() => setMoreOptionsOpen((value) => !value)}
-                  className="flex items-center gap-1 self-start text-[14px] font-medium text-accent"
-                >
-                  More options
-                  <ChevronDown
-                    className={cn('size-4 transition-transform', moreOptionsOpen && 'rotate-180')}
-                    aria-hidden="true"
-                  />
-                </button>
-
-                {moreOptionsOpen && (
-                  <div className="flex flex-col gap-4">
-                    <ModelPicker
-                      provider={effectiveConnection?.provider ?? ''}
-                      suggestions={
-                        effectiveConnection === null
-                          ? []
-                          : modelSuggestionsFor(effectiveConnection.provider)
-                      }
-                      value={model}
-                      onChange={(next) => {
-                        setModelDraft(next);
-                      }}
-                    />
-
-                    <label className="flex flex-col gap-1">
-                      <span className="text-[14px] font-medium">Persona</span>
-                      <textarea
-                        aria-label="Persona"
-                        rows={5}
-                        maxLength={4000}
-                        value={persona}
-                        onChange={(event) => {
-                          setPersona(event.target.value);
-                          setPersonaTouched(true);
-                        }}
-                        placeholder="Describe how this AI should behave…"
-                        className="rounded-lg border border-input bg-background px-3 py-2 text-[15px] outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40"
-                      />
-                    </label>
-
-                    <LimitsFields
-                      day={day}
-                      month={month}
-                      dayError={limits.dayError}
-                      monthError={limits.monthError}
-                      onDayChange={setDay}
-                      onMonthChange={setMonth}
-                    />
-                  </div>
-                )}
-              </div>
-
-              {submitError !== '' && <FieldError>{submitError}</FieldError>}
-            </div>
-          )}
-        </div>
-
-        <div className="mt-4 flex justify-end gap-2">
+    <Dialog
+      open
+      onClose={onClose}
+      title="New AI"
+      size="sm"
+      actions={
+        <>
           <button
             type="button"
             onClick={onClose}
@@ -344,8 +182,156 @@ export function NewAiDialog({ onClose }: { onClose: () => void }) {
               {submitting ? 'Creating…' : 'Create'}
             </Button>
           )}
-        </div>
+        </>
+      }
+    >
+      <div className="mt-3">
+        {status === 'loading' && <p className="text-[15px] text-muted-foreground">Loading…</p>}
+
+        {(status === 'unavailable' || status === 'error') && (
+          <p role="alert" className="text-[15px] text-danger">
+            {errorMessage}
+          </p>
+        )}
+
+        {status === 'ready' && connections.length === 0 && (
+          <div className="flex flex-col items-start gap-3">
+            <p className="text-[15px] text-muted-foreground">
+              Add a provider key first, then come back to create an AI.
+            </p>
+            <Button
+              type="button"
+              size="lg"
+              className="rounded-full px-5"
+              onClick={() => {
+                onClose();
+                navigate('/settings/connections');
+              }}
+            >
+              Connections
+            </Button>
+          </div>
+        )}
+
+        {status === 'ready' && connections.length > 0 && (
+          <div className="flex flex-col gap-4">
+            <label className="flex flex-col gap-1">
+              <span className="text-[14px] font-medium">Name</span>
+              <input
+                autoFocus
+                aria-label="Name"
+                value={name}
+                maxLength={64}
+                onChange={(event) => setName(event.target.value)}
+                placeholder="Dev-1"
+                className="rounded-lg border border-input bg-background px-3 py-2 text-[15px] outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40"
+              />
+            </label>
+
+            <div className="flex flex-col gap-2">
+              <span className="text-[14px] font-medium">Template</span>
+              <div role="radiogroup" aria-label="Template" className="flex flex-wrap gap-2">
+                {AI_TEMPLATE_OPTIONS.map((option) => {
+                  const selected = option.id === template;
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      onClick={() => chooseTemplate(option.id)}
+                      className={cn(
+                        'rounded-full border px-3 py-1.5 text-[14px] transition-colors',
+                        selected
+                          ? 'border-accent bg-accent/10 font-medium text-accent'
+                          : 'border-divider text-muted-foreground hover:bg-list-hover hover:text-foreground',
+                      )}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {connections.length === 1 && (
+              <p className="text-[13px] text-muted-foreground">
+                Using {providerLabel(connections[0]!.provider)}.
+              </p>
+            )}
+
+            {connections.length > 1 && (
+              <div className="flex flex-col gap-2">
+                <span className="text-[14px] font-medium">Provider</span>
+                <ConnectionPicker
+                  connections={connections}
+                  value={selectedConnectionId}
+                  onChange={chooseConnection}
+                />
+              </div>
+            )}
+
+            <div className="flex flex-col gap-3 border-t border-divider pt-3">
+              <button
+                type="button"
+                aria-expanded={moreOptionsOpen}
+                onClick={() => setMoreOptionsOpen((value) => !value)}
+                className="flex items-center gap-1 self-start text-[14px] font-medium text-accent"
+              >
+                More options
+                <ChevronDown
+                  className={cn('size-4 transition-transform', moreOptionsOpen && 'rotate-180')}
+                  aria-hidden="true"
+                />
+              </button>
+
+              {moreOptionsOpen && (
+                <div className="flex flex-col gap-4">
+                  <ModelPicker
+                    provider={effectiveConnection?.provider ?? ''}
+                    suggestions={
+                      effectiveConnection === null
+                        ? []
+                        : modelSuggestionsFor(effectiveConnection.provider)
+                    }
+                    value={model}
+                    onChange={(next) => {
+                      setModelDraft(next);
+                    }}
+                  />
+
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[14px] font-medium">Persona</span>
+                    <textarea
+                      aria-label="Persona"
+                      rows={5}
+                      maxLength={4000}
+                      value={persona}
+                      onChange={(event) => {
+                        setPersona(event.target.value);
+                        setPersonaTouched(true);
+                      }}
+                      placeholder="Describe how this AI should behave…"
+                      className="rounded-lg border border-input bg-background px-3 py-2 text-[15px] outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40"
+                    />
+                  </label>
+
+                  <LimitsFields
+                    day={day}
+                    month={month}
+                    dayError={limits.dayError}
+                    monthError={limits.monthError}
+                    onDayChange={setDay}
+                    onMonthChange={setMonth}
+                  />
+                </div>
+              )}
+            </div>
+
+            {submitError !== '' && <FieldError>{submitError}</FieldError>}
+          </div>
+        )}
       </div>
-    </div>
+    </Dialog>
   );
 }

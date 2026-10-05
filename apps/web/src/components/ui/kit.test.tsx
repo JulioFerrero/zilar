@@ -148,6 +148,42 @@ describe('Dialog', () => {
     expect(backgroundClose).not.toHaveBeenCalled();
   });
 
+  it('uses ariaLabel as the accessible name when it differs from the title', () => {
+    render(<Dialog open onClose={() => {}} title="Add members" ariaLabel="New group" />);
+    expect(screen.getByRole('dialog', { name: 'New group' })).toBeTruthy();
+    expect(screen.queryByRole('dialog', { name: 'Add members' })).toBeNull();
+  });
+
+  it('stays open on Escape and a backdrop click when not dismissable', () => {
+    const onClose = vi.fn();
+    render(<Dialog open onClose={onClose} title="Importing" dismissable={false} />);
+    const dialog = screen.getByRole('dialog', { name: 'Importing' });
+    fireEvent.keyDown(document, { key: 'Escape' });
+    fireEvent.click(dialog.parentElement as HTMLElement);
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('caps the panel height and scrolls the body between fixed title and actions', () => {
+    render(
+      <Dialog
+        open
+        onClose={() => {}}
+        title="Long dialog"
+        description="Scroll me."
+        actions={<Button>Save</Button>}
+      >
+        <p>Body</p>
+      </Dialog>,
+    );
+    const panel = screen.getByRole('dialog', { name: 'Long dialog' });
+    expect(panel.className).toContain('max-h-[85vh]');
+    expect(panel.className).toContain('flex-col');
+    const body = panel.querySelector('.overflow-y-auto');
+    expect(body?.className).toContain('flex-1');
+    expect(body?.textContent).toContain('Body');
+    expect(screen.getByRole('button', { name: 'Save' })).toBeTruthy();
+  });
+
   it('renders nothing when closed', () => {
     const { container } = render(<Dialog open={false} onClose={() => {}} title="Hidden" />);
     expect(container.innerHTML).toBe('');

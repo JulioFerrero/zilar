@@ -75,4 +75,13 @@ describe('NewGroupDialog visibility (T-0164)', () => {
     expect(await screen.findByText('Choose a handle for the public group.')).toBeTruthy();
     expect(createGroup).not.toHaveBeenCalled();
   });
+
+  it('closes on Escape', () => {
+    openCreateDialog();
+    expect(screen.getByRole('dialog', { name: 'New group' })).toBeTruthy();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    expect(screen.queryByRole('dialog', { name: 'New group' })).toBeNull();
+  });
 });

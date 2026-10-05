@@ -189,12 +189,45 @@ describe('TelegramImportDialog', () => {
     );
     const dialog = screen.getByRole('dialog', { name: 'Import from Telegram' });
     expect(dialog.getAttribute('aria-modal')).toBe('true');
-    expect(dialog.className).toContain('fixed');
-    expect(dialog.className).toContain('inset-0');
+    // The kit `Dialog` puts the backdrop on the panel's parent.
+    expect(dialog.parentElement?.className).toContain('fixed');
+    expect(dialog.parentElement?.className).toContain('inset-0');
     // Focus moves into the dialog on open.
     expect(document.activeElement?.getAttribute('aria-label')).toBe('Pack link or name');
     void container;
     void importFn;
+  });
+
+  it('closes on Escape', () => {
+    const onClose = vi.fn();
+    const importFn = vi.fn();
+    renderDialog(<TelegramImportDialog onDone={() => {}} onClose={onClose} importFn={importFn} />);
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not close on Escape or the backdrop while importing', async () => {
+    let release: (() => void) | undefined;
+    const importFn = vi.fn(
+      () =>
+        new Promise<never>((_, reject) => {
+          release = () => reject(new Error('cancelled'));
+        }),
+    );
+    const onClose = vi.fn();
+    renderDialog(<TelegramImportDialog onDone={() => {}} onClose={onClose} importFn={importFn} />);
+    fireEvent.change(screen.getByLabelText('Pack link or name'), { target: { value: 'FunCats' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Import' }));
+    expect(await screen.findByRole('button', { name: 'Importing…' })).toBeTruthy();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    const dialog = screen.getByRole('dialog', { name: 'Import from Telegram' });
+    fireEvent.click(dialog.parentElement as HTMLElement);
+
+    expect(onClose).not.toHaveBeenCalled();
+    release?.();
   });
 
   it('requires an input before importing', async () => {

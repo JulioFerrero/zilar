@@ -8,12 +8,16 @@ function OpenDialog({
   children,
   label = 'Open dialog',
   size,
+  ariaLabel,
+  dismissable,
 }: {
   title: string;
   description?: string;
   children?: ReactNode;
   label?: string;
   size?: 'sm' | 'md';
+  ariaLabel?: string;
+  dismissable?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   return (
@@ -27,6 +31,8 @@ function OpenDialog({
         title={title}
         {...(description === undefined ? {} : { description })}
         {...(size === undefined ? {} : { size })}
+        {...(ariaLabel === undefined ? {} : { ariaLabel })}
+        {...(dismissable === undefined ? {} : { dismissable })}
         actions={
           <>
             <Button variant="ghost" onClick={() => setOpen(false)}>
@@ -89,4 +95,27 @@ export default {
     </OpenDialog>
   ),
   InitialFocus: <ConfirmLikeDialog />,
+  AccessibleName: (
+    <OpenDialog title="Add members" ariaLabel="New group" label="Open named dialog">
+      <p className="mt-3 text-[14px] text-muted-foreground">The accessible name is the group.</p>
+    </OpenDialog>
+  ),
+  NotDismissable: (
+    <OpenDialog title="Importing…" dismissable={false} label="Open undismissable dialog">
+      <p className="mt-3 text-[14px] text-muted-foreground">
+        Escape and the backdrop do not close this one.
+      </p>
+    </OpenDialog>
+  ),
+  LongBody: (
+    <OpenDialog title="A long list" label="Open long dialog">
+      <div className="mt-3 flex flex-col gap-2">
+        {Array.from({ length: 40 }, (_, index) => (
+          <p key={index} className="text-[14px] text-muted-foreground">
+            Row {index + 1}
+          </p>
+        ))}
+      </div>
+    </OpenDialog>
+  ),
 };

@@ -10,7 +10,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0260](T-0260-auto-deploy-green-main.md) | Deploy: auto-deploy live after green CI on main | in_progress | auto | | Julio 2026-10-06 |
-| [T-0263](T-0263-web-kit-dialogs-2.md) | Web kit migration 3: three more dialogs | in_progress | auto | T-0258 | audit step 6, batch 2 |
 | [T-0266](T-0266-mobile-subpage-inset-folder-summary.md) | Mobile: sub-pages clear the gesture bar; folder summary like web | in_progress | auto | T-0251, T-0262 | QA run 8 |
 | [T-0268](T-0268-mobile-kit-people-screens.md) | Mobile kit migration: Requests and Blocked screens | in_progress | auto | T-0264 | twin of T-0265 |
 | [T-0267](T-0267-kit-section-label-heading.md) | Kit: SectionLabel is a heading on web and mobile | in_progress | auto | T-0264, T-0265 | T-0265 review |
@@ -297,3 +296,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0262](T-0262-mobile-ticks-folder-deeplink.md) | Mobile: list ticks use the signed-in id; folder editor waits for its folder | 2026-10-05 |
 | [T-0264](T-0264-mobile-kit-1.md) | Mobile kit batch 1: IconTile, ListRow, Card, SectionLabel, CountBadge; dev/kit catalog | 2026-10-05 |
 | [T-0265](T-0265-web-kit-people-pages.md) | Web kit migration 4: Blocked, Requests, Folders pages on Card/StateMessage/Button | 2026-10-05 |
+| [T-0263](T-0263-web-kit-dialogs-2.md) | Web kit migration 3: three dialogs on the kit; kit Dialog caps height and scrolls its body | 2026-10-05 |

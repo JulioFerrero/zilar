@@ -18,6 +18,10 @@ export interface DialogProps {
   size?: 'sm' | 'md';
   /** Element to focus on open instead of the first focusable child. */
   initialFocusRef?: RefObject<HTMLElement | null>;
+  /** Accessible name when it should differ from the visible title. */
+  ariaLabel?: string;
+  /** When false, Escape and a backdrop click do not close the dialog. */
+  dismissable?: boolean;
 }
 
 const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
@@ -37,6 +41,8 @@ export function Dialog({
   actions,
   size = 'md',
   initialFocusRef,
+  ariaLabel,
+  dismissable = true,
 }: DialogProps) {
   const titleId = useId();
   const descriptionId = useId();
@@ -58,7 +64,7 @@ export function Dialog({
   }, [open, initialFocusRef]);
 
   useEffect(() => {
-    if (!open) {
+    if (!open || !dismissable) {
       return;
     }
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -73,7 +79,7 @@ export function Dialog({
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [open, onClose]);
+  }, [open, onClose, dismissable]);
 
   if (!open) {
     return null;
@@ -103,34 +109,35 @@ export function Dialog({
 
   return (
     <div
-      onClick={onClose}
+      onClick={dismissable ? onClose : undefined}
       className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4"
     >
       <div
         ref={panelRef}
         role="dialog"
         aria-modal="true"
-        aria-labelledby={titleId}
+        aria-labelledby={ariaLabel === undefined ? titleId : undefined}
+        aria-label={ariaLabel}
         aria-describedby={description === undefined ? undefined : descriptionId}
         tabIndex={-1}
         onClick={(event) => event.stopPropagation()}
         onKeyDown={onKeyDown}
         className={cn(
-          'w-full rounded-2xl border border-border bg-panel p-5 shadow-xl outline-none',
+          'flex max-h-[85vh] w-full flex-col rounded-2xl border border-border bg-panel p-5 shadow-xl outline-none',
           size === 'sm' ? 'max-w-sm' : 'max-w-md',
         )}
       >
-        <h2 id={titleId} className="text-[18px] font-semibold tracking-[-0.02em]">
+        <h2 id={titleId} className="shrink-0 text-[18px] font-semibold tracking-[-0.02em]">
           {title}
         </h2>
         {description === undefined ? null : (
-          <p id={descriptionId} className="mt-1 text-[14px] text-muted-foreground">
+          <p id={descriptionId} className="mt-1 shrink-0 text-[14px] text-muted-foreground">
             {description}
           </p>
         )}
-        {children}
+        <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
         {actions === undefined ? null : (
-          <div className="mt-5 flex justify-end gap-2">{actions}</div>
+          <div className="mt-5 flex shrink-0 justify-end gap-2">{actions}</div>
         )}
       </div>
     </div>
