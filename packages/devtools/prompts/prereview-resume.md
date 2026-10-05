@@ -1,0 +1,1 @@
+The previous turn failed on a provider rate limit; the session now runs on another model and your work so far is intact. Continue the pre-review of {{TASK}} from where you stopped and write PREREVIEW.md as the first prompt asked.

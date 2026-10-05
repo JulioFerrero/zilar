@@ -33,6 +33,7 @@ export interface PrereviewRecord {
   sessionId: string;
   head: string;
   startedAt: string;
+  model?: string | undefined;
 }
 
 // The doctor's last audit of main. Bookkeeping fields keep the one-line
@@ -72,6 +73,7 @@ const prereviewRecordSchema = z.object({
   sessionId: z.string(),
   head: z.string(),
   startedAt: z.string(),
+  model: z.string().optional(),
 });
 
 const doctorRecordSchema = z.object({

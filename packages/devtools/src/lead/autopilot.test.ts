@@ -18,6 +18,7 @@ const TASK_MD = [
   'milestone: tooling',
   'branch: task/T-0099-demo',
   'model: opencode-go/muse-spark-1.3-contributor',
+  'effort: low',
   'depends_on: []',
   'estimate: 1 day',
   '---',
@@ -338,6 +339,99 @@ describe('tickOnce', () => {
     expect(client.prompted[0]?.sessionId).toBe('ses_worker');
     expect(loadState(deps.statePath).tasks['T-0099']?.sessionId).toBe('ses_worker');
     expect(loadState(deps.statePath).tasks['T-0099']?.nudgesSent).toBe(1);
+  });
+
+  it('switches a quota-hit free worker in place and does not switch again', async () => {
+    const { deps, client, dir } = setup();
+    fs.mkdirSync(path.join(dir, 'work'), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, 'work', 'T-0099-demo.md'),
+      TASK_MD.replace(
+        'model: opencode-go/muse-spark-1.3-contributor',
+        'model: opencode/muse-spark-1.3-contributor-free',
+      ),
+    );
+    updateState(deps.statePath, (state) => {
+      const record = state.tasks['T-0099'];
+      if (record !== undefined) {
+        record.model = 'opencode/muse-spark-1.3-contributor-free';
+      }
+    });
+    const session = client.sessions.get('ses_worker');
+    if (session === undefined) {
+      throw new Error('missing fake session');
+    }
+    session.messages = [
+      {
+        id: 'm',
+        type: 'error',
+        error: { type: 'provider.quota', message: 'Rate limit exceeded' },
+        time: { created: 2 },
+      },
+    ];
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await tickOnce(deps, { dryRun: false, now: 1000 });
+
+    expect(client.switched).toHaveLength(1);
+    expect(client.switched[0]).toEqual({
+      sessionId: 'ses_worker',
+      model: { providerID: 'meta', id: 'muse-spark-1.3-contributor', variant: 'low' },
+    });
+    expect(client.prompted).toHaveLength(1);
+    expect(client.prompted[0]?.sessionId).toBe('ses_worker');
+    expect(client.prompted[0]?.text).toMatch(/quota/i);
+    expect(loadState(deps.statePath).tasks['T-0099']?.model).toBe(
+      'meta/muse-spark-1.3-contributor',
+    );
+    expect(log.mock.calls.some((call) => String(call[0]).startsWith('LEAD: FALLBACK'))).toBe(true);
+
+    const second = await tickOnce(deps, { dryRun: false, now: 2000 });
+    expect(client.switched).toHaveLength(1);
+    expect(second.escalations.filter((line) => line.startsWith('LEAD: FALLBACK'))).toEqual([]);
+  });
+
+  it('logs a failed switch without the FALLBACK escalation or a prompt', async () => {
+    const { deps, client, dir } = setup();
+    fs.mkdirSync(path.join(dir, 'work'), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, 'work', 'T-0099-demo.md'),
+      TASK_MD.replace(
+        'model: opencode-go/muse-spark-1.3-contributor',
+        'model: opencode/muse-spark-1.3-contributor-free',
+      ),
+    );
+    updateState(deps.statePath, (state) => {
+      const record = state.tasks['T-0099'];
+      if (record !== undefined) {
+        record.model = 'opencode/muse-spark-1.3-contributor-free';
+      }
+    });
+    const session = client.sessions.get('ses_worker');
+    if (session === undefined) {
+      throw new Error('missing fake session');
+    }
+    session.messages = [
+      {
+        id: 'm',
+        type: 'error',
+        error: { type: 'provider.quota', message: 'Rate limit exceeded' },
+        time: { created: 2 },
+      },
+    ];
+    client.switchModel = async () => {
+      throw new Error('cli down');
+    };
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    const result = await tickOnce(deps, { dryRun: false, now: 1000 });
+
+    expect(result.escalations).toEqual([]);
+    expect(client.prompted).toEqual([]);
+    expect(log.mock.calls.some((call) => String(call[0]).startsWith('LEAD: FALLBACK'))).toBe(false);
+    expect(loadState(deps.statePath).tasks['T-0099']?.model).toBe(
+      'opencode/muse-spark-1.3-contributor-free',
+    );
   });
 
   it('runs an autofix round in a fresh session and keeps the round count', async () => {

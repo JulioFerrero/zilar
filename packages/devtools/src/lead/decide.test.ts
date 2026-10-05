@@ -49,6 +49,7 @@ function base(overrides: Partial<DecideInput> = {}): DecideInput {
     prereviewVerdict: '',
     prereviewCounts: undefined,
     prereviewSessionState: 'none',
+    prereviewQuotaError: false,
     ...overrides,
   };
 }
@@ -130,23 +131,56 @@ describe('decide question tool', () => {
 });
 
 describe('decide quota backoff', () => {
+  it('falls back in place on the free model with a quota error', () => {
+    const actions = decide(
+      base({
+        quotaError: true,
+        record: record({ model: 'opencode/muse-spark-1.3-contributor-free' }),
+      }),
+    );
+    expect(actions).toContainEqual({
+      kind: 'fallback-model',
+      session: 'worker',
+      model: 'meta/muse-spark-1.3-contributor',
+    });
+    expect(escalations(actions)).toEqual([
+      'LEAD: FALLBACK T-0038 free Muse rate-limited, worker continues on paid Muse',
+    ]);
+    expect(actions.some((action) => action.kind === 'send-prompt')).toBe(false);
+  });
+
+  it('keeps the resume path on the paid model', () => {
+    const actions = decide(
+      base({
+        quotaError: true,
+        record: record({ model: 'meta/muse-spark-1.3-contributor' }),
+      }),
+    );
+    expect(actions.some((action) => action.kind === 'fallback-model')).toBe(false);
+    expect(actions).toContainEqual({ kind: 'send-prompt', template: 'resume' });
+    expect(escalations(actions)[0]).toContain('QUOTA T-0038');
+  });
+
   it('re-prompts and escalates on the first quota error', () => {
-    const actions = decide(base({ quotaError: true }));
+    const paid = record({ model: 'meta/muse-spark-1.3-contributor' });
+    const actions = decide(base({ quotaError: true, record: paid }));
     expect(actions).toContainEqual({ kind: 'send-prompt', template: 'resume' });
     expect(escalations(actions)).toHaveLength(1);
     expect(escalations(actions)[0]).toContain('QUOTA T-0038');
   });
 
   it('does nothing again a minute later', () => {
-    const first = decide(base({ quotaError: true }));
-    const updated = applyAll(base().record, first);
+    const paid = record({ model: 'meta/muse-spark-1.3-contributor' });
+    const first = decide(base({ quotaError: true, record: paid }));
+    const updated = applyAll(paid, first);
     const second = decide(base({ now: 1_000_000 + 60_000, record: updated, quotaError: true }));
     expect(second.filter((action) => action.kind !== 'record')).toEqual([]);
   });
 
   it('retries after 10 minutes without re-escalating', () => {
-    const first = decide(base({ quotaError: true }));
-    const updated = applyAll(base().record, first);
+    const paid = record({ model: 'meta/muse-spark-1.3-contributor' });
+    const first = decide(base({ quotaError: true, record: paid }));
+    const updated = applyAll(paid, first);
     const later = decide(
       base({ now: 1_000_000 + QUOTA_RETRY_MS + 1, record: updated, quotaError: true }),
     );
@@ -155,8 +189,9 @@ describe('decide quota backoff', () => {
   });
 
   it('escalates again after an hour', () => {
-    const first = decide(base({ quotaError: true }));
-    const updated = applyAll(base().record, first);
+    const paid = record({ model: 'meta/muse-spark-1.3-contributor' });
+    const first = decide(base({ quotaError: true, record: paid }));
+    const updated = applyAll(paid, first);
     const later = decide(
       base({ now: 1_000_000 + QUOTA_ESCALATE_MS + 1, record: updated, quotaError: true }),
     );
@@ -164,7 +199,10 @@ describe('decide quota backoff', () => {
   });
 
   it('quota handling only applies to todo/in-progress', () => {
-    const actions = decide(base({ quotaError: true, taskStatus: 'review', sessionState: 'idle' }));
+    const paid = record({ model: 'meta/muse-spark-1.3-contributor' });
+    const actions = decide(
+      base({ quotaError: true, taskStatus: 'review', sessionState: 'idle', record: paid }),
+    );
     expect(actions.some((action) => action.kind === 'send-prompt')).toBe(false);
   });
 });
@@ -415,5 +453,64 @@ describe('decide pre-review sessions', () => {
 
   it('does not stall-escalate while the pre-review is still running', () => {
     expect(escalations(decide(reviewed({ prereviewFilePresent: false })))).toEqual([]);
+  });
+
+  it('falls back the pre-review in place on a quota error with the free model', () => {
+    const actions = decide(
+      reviewed({
+        prereviewSessionState: 'idle',
+        prereviewFilePresent: false,
+        prereviewQuotaError: true,
+      }),
+    );
+    expect(actions).toContainEqual({
+      kind: 'fallback-model',
+      session: 'prereview',
+      model: 'meta/muse-spark-1.3-contributor',
+    });
+    expect(escalations(actions)).toEqual([
+      'LEAD: FALLBACK T-0038 pre-review continues on paid Muse',
+    ]);
+  });
+
+  it('falls back a quota-hit pre-review whose session summarizes as running', () => {
+    const actions = decide(
+      reviewed({
+        prereviewSessionState: 'running',
+        prereviewFilePresent: false,
+        prereviewQuotaError: true,
+      }),
+    );
+    expect(actions).toContainEqual({
+      kind: 'fallback-model',
+      session: 'prereview',
+      model: 'meta/muse-spark-1.3-contributor',
+    });
+    expect(escalations(actions)).toEqual([
+      'LEAD: FALLBACK T-0038 pre-review continues on paid Muse',
+    ]);
+  });
+
+  it('does not fall back a pre-review already on the paid model', () => {
+    const paid = record({
+      prereview: {
+        sessionId: 'ses_pre',
+        head: 'deadbee',
+        startedAt: 'x',
+        model: 'meta/muse-spark-1.3-contributor',
+      },
+    });
+    const actions = decide(
+      reviewed({
+        record: paid,
+        prereviewSessionState: 'idle',
+        prereviewFilePresent: false,
+        prereviewQuotaError: true,
+      }),
+    );
+    expect(actions.some((action) => action.kind === 'fallback-model')).toBe(false);
+    expect(escalations(actions)).toEqual([
+      'LEAD: PRE-REVIEW STALLED T-0038 (idle, no PREREVIEW.md)',
+    ]);
   });
 });

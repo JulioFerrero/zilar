@@ -209,7 +209,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0178](T-0178-whistle-quiet-cut-chunks.md) | Whistle: quiet-point chunking from a native amplitude envelope | 2026-10-03 |
 | [T-0180](T-0180-signin-no-code-hint.md) | Sign-in hints for people without an invite (web + mobile) | 2026-10-03 |
 | [T-0211](T-0211-lead-watch-ink-redesign.md) | Lead tooling: `lead watch` redesigned as an Ink terminal app (cards, step tracker, model badges) | planned | opencode/muse-spark-1.3-contributor-free | T-0210 | Julio asked 2026-10-05 ("super ugly") |
-| [T-0216](T-0216-quota-fallback-in-place.md) | Lead tooling: on a free-Muse rate limit the autopilot switches the same session to the paid Muse | planned | meta/muse-spark-1.3-contributor | — | Julio asked 2026-10-05 |
 | [T-0218](T-0218-mobile-tool-detail-read.md) | Mobile: tool detail sheet on the AI screen (source, versions, recent runs; read only) | planned | meta/muse-spark-1.3-contributor | T-0217 | T-0195 audit 7.1 T-0189b read half; writes next |
 | [T-0179](T-0179-mobile-transcribe-voice-notes.md) | Transcribe voice notes on the phone with Whistle: button in the bubble, consent for the 17 MB model, transcripts stored locally | 2026-10-03 |
 | [T-0182](T-0182-mobile-contacts-requests.md) | Mobile contacts: find by @handle, profile card, contact requests | 2026-10-03 |
@@ -247,3 +246,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0215](T-0215-review-model-override.md) | Lead tooling: ZILAR_REVIEW_MODEL overrides the pre-review and doctor model | 2026-10-05 |
 | [T-0217](T-0217-routines-api-type.md) | Mobile: RoutinesSection takes AiToolsApi (no cast) and ignores a second tap | 2026-10-05 |
 | [T-0214](T-0214-mobile-new-group-sheet.md) | Mobile: New group sheet (pick contacts, name the group) | 2026-10-05 |
+| [T-0216](T-0216-quota-fallback-in-place.md) | Lead tooling: on a free-Muse rate limit the autopilot switches the same session to the paid Muse | 2026-10-05 |

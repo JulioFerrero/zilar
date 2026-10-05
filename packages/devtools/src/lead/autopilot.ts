@@ -3,8 +3,8 @@ import path from 'node:path';
 import { type OpenCodeClient } from './client.js';
 import { applyRecordPatch, decide, type Action, type FindingCounts } from './decide.js';
 import { currentHead, type GitRunner } from './git.js';
-import { findTaskFile } from './launch.js';
-import { loadPrompt, renderPrompt } from './prompts.js';
+import { findTaskFile, readTaskFrontMatter } from './launch.js';
+import { loadPrompt, renderPrompt, type PromptName } from './prompts.js';
 import {
   parsePermission,
   summarizeSession,
@@ -22,6 +22,7 @@ import {
 import { startPrereviewSession } from './start-prereview.js';
 import { appendLog, loadState, updateState } from './state.js';
 import { extractBlockedText, parseFrontMatter } from './task-file.js';
+import { splitModel } from './task-file.js';
 import { freshSessionRecord, startFreshWorkerSession } from './fresh-session.js';
 import type { DoctorRecord, TaskRecord } from './types.js';
 
@@ -165,6 +166,49 @@ async function applyActions(
         deps.client.promptDetached(current.sessionId, prompt);
         appendLog(deps.statePath, `${task} sent ${action.template} prompt`);
       }
+    } else if (action.kind === 'fallback-model') {
+      const vars = {
+        TASK: task,
+        TASK_FILE: info?.file ?? `${task}.md`,
+        WORKTREE: current.worktree,
+        BRANCH: info?.branch ?? '',
+      };
+      if (action.session === 'worker') {
+        const target = current.sessionId;
+        const template: PromptName = 'resume';
+        try {
+          const { effort } = readTaskFrontMatter(deps.repoRoot, task);
+          await deps.client.switchModel(target, { ...splitModel(action.model), variant: effort });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          appendLog(deps.statePath, `${task} fallback-model failed: ${message}`);
+          return current;
+        }
+        deps.client.promptDetached(
+          target,
+          renderPrompt(loadPrompt(deps.promptsDirPath, template), vars),
+        );
+        current = { ...current, model: action.model };
+        appendLog(deps.statePath, `${task} switched worker to ${action.model} in place`);
+      } else {
+        const prereview = current.prereview;
+        if (prereview === undefined) {
+          continue;
+        }
+        try {
+          await deps.client.switchModel(prereview.sessionId, splitModel(action.model));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          appendLog(deps.statePath, `${task} fallback-model failed: ${message}`);
+          return current;
+        }
+        deps.client.promptDetached(
+          prereview.sessionId,
+          renderPrompt(loadPrompt(deps.promptsDirPath, 'prereview-resume' as PromptName), vars),
+        );
+        current = { ...current, prereview: { ...prereview, model: action.model } };
+        appendLog(deps.statePath, `${task} switched prereview to ${action.model} in place`);
+      }
     } else if (action.kind === 'start-prereview') {
       const sessionId = await startPrereviewSession(
         {
@@ -229,11 +273,14 @@ export async function tickOnce(
       const review = prereviewInfo(record.worktree);
       let prereviewSessionState: SessionState | 'none' = 'none';
       let prereviewPermissions: ParsedPermission[] = [];
+      let prereviewQuotaError = false;
       if (record.prereview !== undefined) {
         try {
-          prereviewSessionState = summarizeSession(
+          const summary = summarizeSession(
             await deps.client.listMessages(record.prereview.sessionId, 5),
-          ).state;
+          );
+          prereviewSessionState = summary.state;
+          prereviewQuotaError = summary.quotaError;
         } catch {
           prereviewSessionState = 'unknown';
         }
@@ -265,6 +312,7 @@ export async function tickOnce(
         prereviewVerdict: review.verdict,
         prereviewCounts: review.counts,
         prereviewSessionState,
+        prereviewQuotaError,
       });
       if (options.dryRun) {
         for (const action of actions) {
@@ -276,6 +324,8 @@ export async function tickOnce(
             );
           } else if (action.kind === 'send-prompt') {
             console.log(`DRY: would send ${action.template} prompt to ${task}`);
+          } else if (action.kind === 'fallback-model') {
+            console.log(`DRY: would switch ${action.session} of ${task} to ${action.model}`);
           } else if (action.kind === 'start-prereview') {
             console.log(`DRY: would start pre-review for ${task} at ${action.head}`);
           }

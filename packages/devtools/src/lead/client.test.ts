@@ -34,6 +34,25 @@ describe('FakeOpenCodeClient', () => {
     ]);
     expect(await client.listPermissions('ses_1')).toEqual([]);
   });
+
+  it('switchModel posts the model to the session id', async () => {
+    const client = new FakeOpenCodeClient();
+    client.addSession('ses_1', { messages: [], permissions: [] });
+    await client.switchModel('ses_1', { providerID: 'meta', id: 'muse-spark-1.3-contributor' });
+    expect(client.switched).toEqual([
+      {
+        sessionId: 'ses_1',
+        model: { providerID: 'meta', id: 'muse-spark-1.3-contributor' },
+      },
+    ]);
+  });
+
+  it('switchModel throws for an unknown session', async () => {
+    const client = new FakeOpenCodeClient();
+    await expect(
+      client.switchModel('ses_missing', { providerID: 'meta', id: 'muse-spark-1.3-contributor' }),
+    ).rejects.toThrow(/unknown fake session/);
+  });
 });
 
 describe('OpencodeCliClient', () => {
@@ -87,6 +106,25 @@ describe('OpencodeCliClient', () => {
   it('interrupt re-throws an error outcome so old call sites still see the failure', async () => {
     const client = new OpencodeCliClient(fakeBinary('{"error":"upstream timeout"}', '42'));
     await expect(client.interrupt('ses_1')).rejects.toThrow(/42/);
+  });
+
+  it('switchModel calls api session.switchModel with the session id and model', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lead-bin-'));
+    const bin = path.join(dir, 'opencode2');
+    const capture = path.join(dir, 'args.txt');
+    fs.writeFileSync(bin, `#!/bin/sh\necho "$@" > ${capture}\nprintf '{}'\nexit 0\n`, {
+      mode: 0o755,
+    });
+    const client = new OpencodeCliClient(bin);
+    await client.switchModel('ses_9', {
+      providerID: 'meta',
+      id: 'muse-spark-1.3-contributor',
+      variant: 'low',
+    });
+    const args = fs.readFileSync(capture, 'utf8').trim();
+    expect(args).toBe(
+      'api session.switchModel --param sessionID=ses_9 -d {"model":{"providerID":"meta","id":"muse-spark-1.3-contributor","variant":"low"}}',
+    );
   });
 });
 
