@@ -11,6 +11,7 @@ import { ForwardPicker } from '@/components/ForwardPicker';
 import { Button } from '@/components/ui/button';
 import { GroupPanel } from '@/components/GroupPanel';
 import { MessageList } from '@/components/MessageList';
+import { SelectionBar } from '@/components/SelectionBar';
 import { PinnedBanner } from '@/components/PinnedBanner';
 import { PinsPanel } from '@/components/PinsPanel';
 import { TaskStrip } from '@/components/TaskStrip';
@@ -63,6 +64,14 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
   }
   const [replyTo, setReplyTo] = useState<ReplyRef | undefined>(undefined);
   const [forwarding, setForwarding] = useState<UiMessage[] | null>(null);
+  // The ids checked in select mode; null means not selecting. Reset when the
+  // chat changes so a selection can never leak from one chat to the next.
+  const [selectedIds, setSelectedIds] = useState<string[] | null>(null);
+  const [selectionChatId, setSelectionChatId] = useState(chat.id);
+  if (selectionChatId !== chat.id) {
+    setSelectionChatId(chat.id);
+    setSelectedIds(null);
+  }
   const editTarget = store.editTarget;
   // Edit mode and reply are exclusive: starting an edit clears the reply. The
   // reset happens during render (React's "adjust state when a prop changes"),
@@ -86,6 +95,30 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
 
   const cancelReply = (): void => {
     setReplyTo(undefined);
+  };
+
+  const startSelect = (message: UiMessage): void => {
+    setSelectedIds([message.id]);
+  };
+
+  const toggleSelect = (message: UiMessage): void => {
+    setSelectedIds((current) => {
+      if (current === null) {
+        return current;
+      }
+      return current.includes(message.id)
+        ? current.filter((id) => id !== message.id)
+        : [...current, message.id];
+    });
+  };
+
+  const forwardSelected = (): void => {
+    if (selectedIds === null) {
+      return;
+    }
+    const ids = new Set(selectedIds);
+    setForwarding(store.messages(chat.id).filter((message) => ids.has(message.id)));
+    setSelectedIds(null);
   };
 
   const notice = store.topicNotice?.chatId === chat.id ? store.topicNotice : undefined;
@@ -132,8 +165,20 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
         chat={chat}
         onReply={startReply}
         onForward={(message) => setForwarding([message])}
+        selection={{
+          ids: new Set(selectedIds ?? []),
+          onToggle: toggleSelect,
+          onStart: startSelect,
+        }}
+        selecting={selectedIds !== null}
       />
-      {chat.chatKind === 'channel' ? (
+      {selectedIds !== null ? (
+        <SelectionBar
+          count={selectedIds.length}
+          onForward={forwardSelected}
+          onCancel={() => setSelectedIds(null)}
+        />
+      ) : chat.chatKind === 'channel' ? (
         <ChannelComposerBar chat={chat} />
       ) : (
         <Composer

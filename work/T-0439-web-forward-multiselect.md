@@ -1,7 +1,7 @@
 ---
 id: T-0439
 title: "Forwarding (web): Select in the message menu starts select mode; check several messages; a bar forwards them together"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0439-web-forward-multiselect
 model: auto
@@ -92,4 +92,47 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+Implemented multi-select forwarding on web (T-E second half, T-0439). The message menu now has a **Select** item (shown whenever the message can be forwarded); it enters select mode with that message checked. In select mode every normal bubble shows a kit `Checkbox` (label "Select message"), clicking anywhere on the row toggles the message, and the context menu / hover action button are suppressed; tombstones never show a checkbox. A new `SelectionBar` replaces the composer: it shows "N selected" (`aria-live="polite"`), an outline **Cancel** and a primary **Forward** (disabled at 0), and Escape cancels. **Forward** opens the existing `ForwardPicker` with the checked messages in chat (chronological) order; Cancel/Escape and switching chat leave select mode.
+
+### Files changed (all inside Allowed files)
+- `apps/web/src/components/MessageActionsMenu.tsx` — new required `onSelectMessages` prop, `Select` item (`ListChecks`) right after Forward, shown only when `canForward`.
+- `apps/web/src/components/MessageActionsMenu.test.tsx` — default `onSelectMessages`, tests that Select is shown/called and hidden when `canForward` is false.
+- `apps/web/src/components/MessageBubble.tsx` — new optional props `selecting`, `selected`, `onToggleSelect`, `onStartSelect`; checkbox + row-click selection; selection-aware context menu, hover button and menu gating; both menus wire Select to `onStartSelect`.
+- `apps/web/src/components/MessageList.tsx` — new optional `selection` controller and `selecting` flag, passed to every bubble.
+- `apps/web/src/components/SelectionBar.tsx` (new) — the bottom bar.
+- `apps/web/src/components/SelectionBar.test.tsx` (new) — count text, Forward disabled at 0, Cancel, Escape.
+- `apps/web/src/routes/ChatView.tsx` — `selectedIds` state (null = not selecting, reset on chat change like `panelChatId`), start/toggle/forward handlers, SelectionBar rendered instead of the composer/channel bar.
+- `apps/web/src/routes/ChatView.test.tsx` — select mode: bar + checkboxes, checking a second message → "2 selected", Forward opens the picker and forwards both ids in chronological order, Cancel/Escape leave select mode.
+- `work/T-0439-web-forward-multiselect.md` — status/report.
+
+I did **not** need to touch `MessageBubble.forward.test.tsx` or `MessageList.test.tsx`; the new props are optional and their setup still passes.
+
+### Commands run (real results)
+- `pnpm install` — done, 1170 packages, exit 0.
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot MessageActionsMenu SelectionBar ChatView MessageList MessageBubble` — **5 files passed, 38 tests passed**.
+- `pnpm gate` — **GATE PASS**:
+  ```
+  gate: 9 changed file(s) against main
+  PASS  install (frozen)  (0.9s)
+  PASS  format  (11.6s)
+  PASS  lint  (0.5s)
+  PASS  typecheck  (6.1s)
+  PASS  tests @zilar/web  (20.2s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Deviations from the spec
+- **MessageList needs a `selecting` flag separate from `selection`.** The spec's item 3 makes `selection` present only while selecting, but the menu's Select has to *start* select mode, so `onStartSelect` must already reach the bubble on the first Select. I kept the `selection` object exactly as specified (`ids`, `onToggle`, `onStart`) and added one sibling boolean prop `selecting` to `MessageList`; `ChatView` always passes the controller (empty set when idle) plus `selecting={selectedIds !== null}`. Without it the first Select is a no-op.
+- **`generating` bubbles are excluded from selection** (in addition to tombstones): an unsent AI draft cannot be forwarded, so it shows no checkbox and its row does not toggle. The spec only named tombstones.
+- `SelectionBar` buttons do not render a fixed width/aria-label beyond the visible text ("Cancel"/"Forward"), matching the surrounding bars.
+
+### Blocked / needs a decision
+None.
+
+**status: review**
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-06). Select in the message menu (ListChecks, only when the message can be forwarded) starts select mode: kit checkboxes on normal bubbles, row click toggles, no menus while selecting, tombstones without a box. The SelectionBar replaces the composer with the count, Cancel and Forward; Escape cancels and a chat switch resets. Forward opens the picker with the chosen messages in chat order. Nits for a later pass: the order test selects in chat order already, and no test covers the reset on chat change.
