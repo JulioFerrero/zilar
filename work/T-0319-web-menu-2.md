@@ -1,7 +1,7 @@
 ---
 id: T-0319
 title: "Web kit migration: the message actions and chat actions menus use the kit Menu shell"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0319-web-menu-2
 model: auto
@@ -77,4 +77,29 @@ The two `ChatHeader` menus and the two `TaskStrip` menus.
 
 ## Report (written by the worker when done)
 
+Both floating menus now render through the kit `Menu` shell; item markup and texts are unchanged.
+
+Files changed:
+- `apps/web/src/components/ui/menu.tsx`: added optional `backdropClassName?: string`, merged with `cn` into the backdrop button classes.
+- `apps/web/src/components/ui/menu.test.tsx`: added test that a custom backdrop class merges with the defaults.
+- `apps/web/src/components/MessageActionsMenu.tsx`: renders `<Menu open onClose label="Message actions" closeLabel="Close message menu" backdropClassName="z-20" className={…top-6 z-30 min-w-[196px] rounded-[12px] shadow-… + align}>` around the existing reaction row and items; removed own backdrop, div, Escape handler, `firstItemRef` and focus effect.
+- `apps/web/src/components/ChatActionsMenu.tsx`: same shell with `label={`Actions for ${chat.title}`}` and `closeLabel="Close chat menu"`; `ChatPrefMenuItems` and `CHAT_MENU_ITEM_CLASS` unchanged.
+- `apps/web/src/components/MessageActions.test.tsx`: added test that Escape pressed while focus is outside the menu (on `document.body`, dispatched on document) closes it.
+
+Deviations: none. The old menus had `fixed inset-0 z-20` backdrops with no `cursor-default`; the spec pins `backdropClassName="z-20"`, so the new backdrop is `fixed inset-0 z-20 cursor-default` (extra cursor class from `Menu`). Container classes keep `border-border-strong bg-surface py-1` from `Menu` merged with the caller's placement/rounding/shadow overrides, matching the old look.
+
+Commands (real results):
+- `pnpm install`: exit 0.
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot menu MessageActions ReactionChips StickerPanel ChatListItem`: 6 files passed, 68 tests passed.
+- `pnpm gate`: GATE PASS — install PASS, format PASS, lint PASS, typecheck PASS, tests @zilar/web PASS, scope: every changed file is inside the Allowed files.
+
+Security checklist: N/A — no secrets, no deletes/updates, no caps, no permissions, no new routes, no audit entries; menus only render existing actions.
+
 ## Review (written by Claude)
+
+**Approved.** Clean pre-review (1 nit), no fix rounds (the paid Muse fallback did the work and the pre-review).
+- `MessageActionsMenu` and `ChatActionsMenu` render through `Menu`, keeping the `z-30` card and the `z-20` backdrop (new `backdropClassName`).
+- The items are unchanged.
+- The new test shows that Escape from outside the menu now closes it.
+
+**Nit, accepted:** the backdrop test could also assert that `z-10` is gone. The implementation uses `cn` (tailwind-merge), so it is correct.

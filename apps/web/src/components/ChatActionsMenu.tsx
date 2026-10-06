@@ -4,6 +4,7 @@ import { useState, type ReactNode } from 'react';
 import { MUTE_DURATIONS, type MuteDurationId } from '@/lib/chatPrefs';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
 import { cn } from '@/lib/utils';
+import { Menu } from './ui/menu';
 
 export const CHAT_MENU_ITEM_CLASS =
   'flex w-full items-center gap-2 px-3 py-2 text-left text-[15px] hover:bg-surface-raised focus-visible:bg-surface-raised focus-visible:outline-none disabled:opacity-50';
@@ -129,30 +130,18 @@ export function ChatActionsMenu({
   align?: 'left' | 'right';
 }) {
   return (
-    <>
-      <button
-        type="button"
-        tabIndex={-1}
-        aria-label="Close chat menu"
-        onClick={onClose}
-        className="fixed inset-0 z-20 cursor-default"
-      />
-      <div
-        role="menu"
-        aria-label={`Actions for ${chat.title}`}
-        onKeyDown={(event) => {
-          if (event.key === 'Escape') {
-            event.stopPropagation();
-            onClose();
-          }
-        }}
-        className={cn(
-          'absolute top-6 z-30 min-w-[196px] rounded-[12px] border border-border-strong bg-surface py-1 shadow-[0_8px_24px_-8px_rgba(0,0,0,0.9)]',
-          align === 'right' ? 'right-0' : 'left-0',
-        )}
-      >
-        <ChatPrefMenuItems chat={chat} onDone={() => onClose()} />
-      </div>
-    </>
+    <Menu
+      open
+      onClose={onClose}
+      label={`Actions for ${chat.title}`}
+      closeLabel="Close chat menu"
+      backdropClassName="z-20"
+      className={cn(
+        'top-6 z-30 min-w-[196px] rounded-[12px] shadow-[0_8px_24px_-8px_rgba(0,0,0,0.9)]',
+        align === 'right' ? 'right-0' : 'left-0',
+      )}
+    >
+      <ChatPrefMenuItems chat={chat} onDone={() => onClose()} />
+    </Menu>
   );
 }

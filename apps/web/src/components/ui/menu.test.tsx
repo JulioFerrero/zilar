@@ -114,4 +114,23 @@ describe('Menu', () => {
     expect(third.className).toContain('text-danger');
     expect(third.querySelector('svg')).toBeTruthy();
   });
+
+  it('merges a custom backdrop class with the default ones', () => {
+    render(
+      <div>
+        <Menu
+          open
+          onClose={() => {}}
+          label="Sample actions"
+          closeLabel="Close sample menu"
+          backdropClassName="z-20"
+        >
+          <MenuItem onSelect={() => {}}>First</MenuItem>
+        </Menu>
+      </div>,
+    );
+    const backdrop = screen.getByRole('button', { name: 'Close sample menu' });
+    expect(backdrop.className).toContain('fixed');
+    expect(backdrop.className).toContain('z-20');
+  });
 });

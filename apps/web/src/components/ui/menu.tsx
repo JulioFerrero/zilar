@@ -17,6 +17,8 @@ export interface MenuProps {
   closeLabel: string;
   /** Placement classes such as `top-full right-0 mt-1`. */
   className?: string;
+  /** Extra classes for the backdrop button (e.g. a higher `z-index`). */
+  backdropClassName?: string;
   children?: ReactNode;
 }
 
@@ -33,7 +35,15 @@ function enabledItems(menu: HTMLElement | null): HTMLElement[] {
  * jump to the ends, Escape closes and returns focus to the opener, and Tab
  * closes.
  */
-export function Menu({ open, onClose, label, closeLabel, className, children }: MenuProps) {
+export function Menu({
+  open,
+  onClose,
+  label,
+  closeLabel,
+  className,
+  backdropClassName,
+  children,
+}: MenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
   const onCloseRef = useRef(onClose);
@@ -122,7 +132,7 @@ export function Menu({ open, onClose, label, closeLabel, className, children }: 
         tabIndex={-1}
         aria-label={closeLabel}
         onClick={onClose}
-        className="fixed inset-0 z-10 cursor-default"
+        className={cn('fixed inset-0 z-10 cursor-default', backdropClassName)}
       />
       <div
         ref={menuRef}
