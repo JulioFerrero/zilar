@@ -49,7 +49,8 @@ It also fixes an Escape problem in the kit `Dialog`. `apps/web/src/routes/ChatSh
    - a right-side drawer with the same behaviour as `Dialog`: topmost-only Escape that stops propagation, focus in and back, Tab trap, backdrop click, `dismissable`, `ariaLabel`, `initialFocusRef`;
    - layout from today's panels: full height, `w-full sm:w-[380px]`, `bg-surface`, a `bg-black/40` backdrop;
    - **no built-in header**: children render the panel content, because each panel has its own header;
-   - share the logic with `Dialog` (for example a small hook in `ui/`) instead of copying it.
+   - share the logic with `Dialog` (for example a small hook in `ui/use-modal.ts`) instead of copying it;
+   - attach the Escape listener and the initial focus in a `useLayoutEffect`, not `useEffect`. T-0280 found that Escape can be lost between the commit and a passive effect; see its Report. The `GroupHandleRoute` tests must still pass.
    - Kit tests: Escape closes; Escape in a `Dialog` opened on top of a `Sheet` closes only the `Dialog`; backdrop click closes; `dismissable={false}` blocks both.
 3. **`PinsPanel` on the `Sheet`:**
    - delete its own Escape effect, Tab-trap effect and shell markup;
