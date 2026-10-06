@@ -1,7 +1,7 @@
 ---
 id: T-0371
 title: "Web kit: the sticker pack editor's move, retry, remove and Cancel buttons use the kit Button"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0371-web-pack-editor-buttons-kit
 model: auto
@@ -58,5 +58,15 @@ pnpm gate
 ---
 
 ## Report (written by the worker when done)
+Replaced the five hand-rolled `<button>` controls in `PackEditor.tsx` with the kit `<Button type="button" …>`: move up/down (`variant="ghost" size="icon-sm"`, `className="text-muted-foreground"`), Retry (`variant="ghost" size="sm"`), Remove (`variant="ghost" size="icon-sm"` with `hover:bg-danger/10 hover:text-danger`), and footer Cancel (`variant="ghost" size="lg"`). Kept all icons (`size-4`, `aria-hidden`), texts, `aria-label`s, `disabled` conditions and handlers. No `<button` remains in `PackEditor.tsx` (verified with grep).
+Files changed: `apps/web/src/components/PackEditor.tsx`; task file only.
+Commands:
+- `pnpm install`: pass (29.5s).
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot PackEditor StickersPage`: 2 files, 26 tests passed.
+- `pnpm prettier --write apps/web/src/components/PackEditor.tsx`: fixed formatting after first gate run flagged the file.
+- `pnpm gate`: GATE PASS — install, format, lint, typecheck, tests @zilar/web all PASS; scope: every changed file inside Allowed files.
+Security checklist: no secrets/tokens touched; no data deletes/updates; no caps/permissions/routes involved — not applicable.
 
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-06). The pack editor move, retry, remove and Cancel buttons are kit `Button` as specified, with labels, disabled and handlers kept. Pre-review clean (0 findings).

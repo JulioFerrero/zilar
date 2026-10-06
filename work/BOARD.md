@@ -397,8 +397,8 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0367](T-0367-web-pinned-banner-buttons-kit.md) | Web kit: pinned banner buttons on Button | 2026-10-06 |
 | [T-0365](T-0365-web-connections-folder-taskstrip-buttons-kit.md) | Web kit: Connections, folder editor and task link buttons on Button | 2026-10-06 |
 | [T-0373](T-0373-web-dialog-cancel-back-close-kit.md) | Web kit: group handle, Telegram import and New group dialog Cancel/Back/Close on Button | in-progress | auto | | |
-| [T-0371](T-0371-web-pack-editor-buttons-kit.md) | Web kit: sticker pack editor buttons on Button | in-progress | auto | | |
 | [T-0372](T-0372-web-panel-close-buttons-kit.md) | Web kit: panel close buttons on Button | 2026-10-06 |
 | [T-0368](T-0368-web-machine-cards-buttons-kit.md) | Web kit: machine card buttons on Button | 2026-10-06 |
 | [T-0369](T-0369-web-ais-integrations-buttons-kit.md) | Web kit: AIs page and Integrations Remove buttons on Button | 2026-10-06 |
 | [T-0370](T-0370-web-dialog-footers-buttons-kit.md) | Web kit: ConfirmDialog, New AI and avatar uploader buttons on Button | 2026-10-06 |
+| [T-0371](T-0371-web-pack-editor-buttons-kit.md) | Web kit: sticker pack editor buttons on Button | 2026-10-06 |
