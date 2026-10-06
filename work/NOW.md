@@ -54,7 +54,7 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| (none) | | | |
+| T-0340 | Mobile kit: Add machine dialog on the kit surface and Buttons | coding (DeepSeek flash) | also fixes the `#fff` icon on the accent Copy button in light mode |
 
 Time correction (checked with `date`): it is 04:42 local, Tue 10-06. The "~04:xx–05:50 local" stamps below were estimated and run up to about an hour ahead; their order is right.
 
