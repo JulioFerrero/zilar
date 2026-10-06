@@ -30,6 +30,14 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 Time correction (checked with `date`): it is 04:42 local, Tue 10-06. The "~04:xx–05:50 local" stamps below were estimated and run up to about an hour ahead; their order is right.
 
+05:01 local: lead browser check on main, mock, wide; all four PASS:
+- the chat list and topic unread Badges render;
+- New topic, Private: the kit Checkbox rows toggle when the row is clicked, and "You" stays checked and dimmed;
+- Who can see it is a segmented control (that one was already on the kit);
+- Explore: the All/Groups/Channels segmented control filters, and Channels shows Acme Announcements.
+
+New group shows "Invite a friend first", because the mock has no contacts, so its checkboxes were not seen.
+
 04:59 local: merged T-0322 (page states on StateMessage), T-0324 (SegmentedControl radio mode: Explore filter, group Visibility) and T-0323 (kit Checkbox; 1 nit accepted), all with clean pre-reviews. Launched T-0325 and T-0326.
 
 04:54 local: merged T-0321 (unread pills on the kit Badge; pre-review clean, 0 nits). Board rows need the `[T-XXXX](file.md)` link format, or `lead merge` refuses.
