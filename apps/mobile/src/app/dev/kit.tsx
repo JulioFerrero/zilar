@@ -20,6 +20,7 @@ import { IconButton } from '@/components/ui/icon-button';
 import { IconTile } from '@/components/ui/icon-tile';
 import { ListRow } from '@/components/ui/list-row';
 import { Text } from '@/components/ui/text';
+import { TextField } from '@/components/ui/text-field';
 import { asColorScheme } from '@/lib/color-scheme';
 import { ICON } from '@/lib/colors';
 
@@ -124,6 +125,25 @@ function KitCatalog() {
             <ListRow title="A row without a chevron" subtitle="No action" chevron={false} />
             <ListRow title="A row that does not act" subtitle="Renders a View" />
           </Card>
+        </View>
+
+        <View className="mt-6 gap-2">
+          <SectionLabel>Text field</SectionLabel>
+          <View className="gap-3">
+            <TextField placeholder="A plain field" accessibilityLabel="Plain text field" />
+            <TextField
+              label="With a label"
+              placeholder="A labeled field"
+              accessibilityLabel="Labeled text field"
+            />
+            <TextField
+              label="Multiline"
+              placeholder="Several lines…"
+              accessibilityLabel="Multiline text field"
+              multiline
+              className="min-h-[100px]"
+            />
+          </View>
         </View>
 
         <View className="mt-6 gap-2">

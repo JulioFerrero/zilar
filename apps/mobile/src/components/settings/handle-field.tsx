@@ -1,9 +1,7 @@
-import { useColorScheme } from 'nativewind';
-import { Pressable, TextInput, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import { Text } from '@/components/ui/text';
-import { asColorScheme } from '@/lib/color-scheme';
-import { MUTED_FOREGROUND } from '@/lib/colors';
+import { TextField } from '@/components/ui/text-field';
 
 import { handleAvailabilityText, type HandleAvailability } from './profile-logic';
 
@@ -35,13 +33,12 @@ export function HandleField({
   onChange,
   onSave,
 }: HandleFieldProps) {
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   const line = handleAvailabilityText(availability);
   const unavailable = availability.state === 'unavailable';
   return (
     <View className="gap-2 rounded-xl border border-border bg-surface px-3 py-2.5">
       <Text className="text-[14px] font-medium text-foreground">Your @username</Text>
-      <TextInput
+      <TextField
         accessibilityLabel="Your username"
         autoCapitalize="none"
         autoCorrect={false}
@@ -51,8 +48,7 @@ export function HandleField({
         value={value}
         onChangeText={onChange}
         placeholder="ada_lovelace"
-        placeholderTextColor={MUTED_FOREGROUND[scheme]}
-        className="mt-1 rounded-lg border border-input bg-background px-3 py-2 text-[15px] text-foreground"
+        className="mt-1"
       />
       <View accessibilityLiveRegion="polite" className="min-h-[20px]">
         {line !== null ? (

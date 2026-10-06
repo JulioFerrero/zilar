@@ -1,12 +1,13 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useColorScheme } from 'nativewind';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, View } from 'react-native';
 
 import { RequireAuth } from '@/auth/RequireAuth';
 import { useAuthStore } from '@/auth/session';
 import { Text } from '@/components/ui/text';
-import { ACCENT, MUTED_FOREGROUND } from '@/lib/colors';
+import { TextField } from '@/components/ui/text-field';
+import { ACCENT } from '@/lib/colors';
 import { asColorScheme } from '@/lib/color-scheme';
 import { getSessionToken } from '@/lib/session-token';
 import { ProfileApiError, type MyProfile } from '@/lib/profile-api';
@@ -343,7 +344,7 @@ function ProfileSettings() {
 
           <View className="gap-2 rounded-xl border border-border bg-surface px-3 py-2.5">
             <Text className="text-[16px] font-semibold text-foreground">Display name</Text>
-            <TextInput
+            <TextField
               accessibilityLabel="Display name"
               maxLength={64}
               editable={!nameBusy}
@@ -353,8 +354,7 @@ function ProfileSettings() {
                 setNameSaved(false);
               }}
               placeholder="Your name"
-              placeholderTextColor={MUTED_FOREGROUND[scheme]}
-              className="mt-1 rounded-lg border border-input bg-background px-3 py-2 text-[15px] text-foreground"
+              className="mt-1"
             />
             {nameError !== undefined ? (
               <Text accessibilityRole="alert" className="text-[14px] text-danger">

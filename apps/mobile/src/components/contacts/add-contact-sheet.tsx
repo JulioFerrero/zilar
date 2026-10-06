@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, View } from 'react-native';
 
 import { Text } from '@/components/ui/text';
+import { TextField } from '@/components/ui/text-field';
 import {
   contactChatId,
   ContactsApiError,
@@ -208,19 +209,16 @@ export function AddContactSheet({
         Type their @username to find them.
       </Text>
       <View className="mt-3 flex-row items-center gap-2">
-        <View className="flex-1 rounded-[10px] border border-border-strong bg-well px-3 py-2">
-          <TextInput
-            value={query}
-            onChangeText={setQuery}
-            autoCapitalize="none"
-            autoCorrect={false}
-            placeholder="@ada"
-            placeholderTextColor="#8a8a8a"
-            accessibilityLabel="Username"
-            maxLength={33}
-            className="text-[15px] text-foreground"
-          />
-        </View>
+        <TextField
+          value={query}
+          onChangeText={setQuery}
+          autoCapitalize="none"
+          autoCorrect={false}
+          placeholder="@ada"
+          accessibilityLabel="Username"
+          maxLength={33}
+          className="flex-1"
+        />
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Look up"

@@ -8,12 +8,15 @@ import { Card, SectionLabel } from './card';
 import { ConfirmDialog } from './confirm-dialog';
 import { CountBadge } from './count-badge';
 import { ListRow } from './list-row';
+import { TextField } from './text-field';
+import { MUTED_FOREGROUND } from '@/lib/colors';
 
 // The kit is hook- and native-free enough to render with `react-native`
 // stubbed (same pattern as `settings-ui.test.tsx`): Node only, no simulator.
 vi.mock('react-native', () => ({
   Modal: 'Modal',
   Pressable: 'Pressable',
+  TextInput: 'TextInput',
   View: 'View',
 }));
 
@@ -203,5 +206,35 @@ describe('ConfirmDialog', () => {
     );
     expect(html).toContain('Removing…');
     expect(html.match(/disabled=""/g)).toHaveLength(2);
+  });
+});
+
+describe('TextField', () => {
+  it('uses the muted foreground colour for the placeholder by default', () => {
+    const html = renderToStaticMarkup(createElement(TextField, { placeholder: 'Type here' }));
+    expect(html).toContain(MUTED_FOREGROUND.dark);
+  });
+
+  it('keeps a caller placeholder colour', () => {
+    const html = renderToStaticMarkup(
+      createElement(TextField, { placeholder: 'Type here', placeholderTextColor: '#123456' }),
+    );
+    expect(html).toContain('#123456');
+    expect(html).not.toContain(MUTED_FOREGROUND.dark);
+  });
+
+  it('renders a label above the field and only the input without one', () => {
+    const labeled = renderToStaticMarkup(createElement(TextField, { label: 'Display name' }));
+    expect(labeled).toContain('Display name');
+    const plain = renderToStaticMarkup(createElement(TextField, { placeholder: 'Type here' }));
+    expect(plain.startsWith('<TextInput')).toBe(true);
+  });
+
+  it('merges the caller className with the well look', () => {
+    const html = renderToStaticMarkup(
+      createElement(TextField, { className: 'flex-1', accessibilityLabel: 'Username' }),
+    );
+    expect(html).toContain('bg-well');
+    expect(html).toContain('flex-1');
   });
 });

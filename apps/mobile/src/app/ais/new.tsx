@@ -1,7 +1,7 @@
 import { useRouter } from 'expo-router';
 import { Plus, Zap } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, TextInput, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, View } from 'react-native';
 import { useColorScheme } from 'nativewind';
 
 import { RequireAisAuth } from '@/components/ais/require-ais-auth';
@@ -19,8 +19,9 @@ import { useAisApi } from '@/components/ais/use-ais-api';
 import { WizardSteps } from '@/components/ais/wizard-steps';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
+import { TextField } from '@/components/ui/text-field';
 import type { AiLimits, AiTemplate, Connection } from '@/lib/ais-api';
-import { ACCENT, MUTED_FOREGROUND } from '@/lib/colors';
+import { ACCENT } from '@/lib/colors';
 import { asColorScheme } from '@/lib/color-scheme';
 
 const LAST_STEP = 6;
@@ -222,14 +223,12 @@ function CreateAiWizard() {
             <View className="gap-4">
               <View className="gap-1">
                 <Text className="text-[14px] font-medium text-foreground">Name</Text>
-                <TextInput
+                <TextField
                   value={form.name}
                   onChangeText={(name) => setForm((previous) => ({ ...previous, name }))}
                   accessibilityLabel="Name"
                   placeholder="Dev-1"
-                  placeholderTextColor={MUTED_FOREGROUND[scheme]}
                   maxLength={64}
-                  className="rounded-lg border border-input bg-background px-3 py-2.5 text-[15px] text-foreground"
                 />
               </View>
               <View className="gap-2">
@@ -242,7 +241,7 @@ function CreateAiWizard() {
           {step === 2 && (
             <View className="gap-2">
               <Text className="text-[14px] font-medium text-foreground">Persona</Text>
-              <TextInput
+              <TextField
                 value={form.persona}
                 onChangeText={(persona) =>
                   setForm((previous) => ({ ...previous, persona, personaTouched: true }))
@@ -251,8 +250,7 @@ function CreateAiWizard() {
                 multiline
                 maxLength={4000}
                 placeholder="Describe how this AI should behave…"
-                placeholderTextColor={MUTED_FOREGROUND[scheme]}
-                className="min-h-[150px] rounded-lg border border-input bg-background px-3 py-2.5 text-[15px] text-foreground"
+                className="min-h-[150px]"
               />
               {form.template === 'custom' ? (
                 <Text className="text-[13px] text-muted-foreground">
