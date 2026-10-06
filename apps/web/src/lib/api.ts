@@ -922,6 +922,63 @@ export async function unpinMessage(id: string): Promise<void> {
   await request(`/pins/${encodeURIComponent(id)}`, pinSchema, { method: 'DELETE' });
 }
 
+// --- Media gallery (T-0434) --------------------------------------------------
+// The wire contract lives in apps/server/src/media/routes.ts. `chat` is a room
+// bare JID for groups/topics, or a DM peer's bare JID. `type` maps to a panel
+// tab; `before` is the `next` cursor of the previous page (microseconds as a
+// string). Items arrive newest first.
+
+export const mediaTabSchema = z.enum(['media', 'files', 'links', 'voice']);
+
+export type MediaTab = z.infer<typeof mediaTabSchema>;
+
+export const mediaItemSchema = z.object({
+  messageId: z.string(),
+  chat: z.string(),
+  at: z.string(),
+  senderName: z.string(),
+  kind: z.enum(['image', 'file', 'gif', 'voice', 'link']),
+  url: z.string().optional(),
+  name: z.string().optional(),
+  size: z.number().optional(),
+  mime: z.string().optional(),
+  width: z.number().optional(),
+  height: z.number().optional(),
+  durationMs: z.number().optional(),
+  waveform: z.array(z.number()).optional(),
+  linkUrl: z.string().optional(),
+  linkHost: z.string().optional(),
+});
+
+export type MediaItem = z.infer<typeof mediaItemSchema>;
+
+export const mediaPageSchema = z.object({
+  items: z.array(mediaItemSchema),
+  next: z.string().nullable(),
+});
+
+export type MediaPage = z.infer<typeof mediaPageSchema>;
+
+export interface ListChatMediaInput {
+  chat: string;
+  type: MediaTab;
+  before?: string;
+  limit?: number;
+}
+
+export function listChatMedia(input: ListChatMediaInput): Promise<MediaPage> {
+  const params = new URLSearchParams();
+  params.set('chat', input.chat);
+  params.set('type', input.type);
+  if (input.before !== undefined) {
+    params.set('before', input.before);
+  }
+  if (input.limit !== undefined) {
+    params.set('limit', String(input.limit));
+  }
+  return request(`/media?${params.toString()}`, mediaPageSchema);
+}
+
 // --- AIs (T-0032) --------------------------------------------------------
 // The wire contract lives in apps/server/src/ais/routes.ts and service.ts.
 // `ApiError` already carries the server's `code` and `status`, so callers can

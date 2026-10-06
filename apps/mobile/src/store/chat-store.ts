@@ -77,6 +77,7 @@ type ChatStoreData = Omit<
   | 'cancelVoice'
   | 'sendSticker'
   | 'retrySticker'
+  | 'forwardMessages'
   | 'sendTyping'
   | 'react'
   | 'startEdit'
@@ -1160,6 +1161,60 @@ export function createChatStore(
         }));
         setTimeout(() => setStatus(chatId, message.id, 'sent'), SENT_DELAY_MS);
         setTimeout(() => setStatus(chatId, message.id, 'read'), READ_DELAY_MS);
+      },
+      forwardMessages: (targets, messages, options) => {
+        const comment = options?.comment?.trim();
+        const visited = new Set<string>();
+        for (const targetId of targets) {
+          if (visited.has(targetId)) {
+            continue;
+          }
+          visited.add(targetId);
+          if (!get().chats.some((chat) => chat.id === targetId)) {
+            continue;
+          }
+          let queued = false;
+          for (const message of messages) {
+            if (message.deleted === true) {
+              continue;
+            }
+            messageCounter += 1;
+            const copy: UiMessage = {
+              id: `local-${Date.now()}-${messageCounter}`,
+              chatId: targetId,
+              senderId: get().currentUserId,
+              senderName: CURRENT_USER_NAME,
+              createdAt: new Date(),
+              status: 'sending',
+              forward: {
+                sender_id: message.senderId,
+                sender_name: message.senderName,
+                original_at: message.createdAt.toISOString(),
+              },
+              ...(message.text === undefined ? {} : { text: message.text }),
+              ...(message.card === undefined ? {} : { card: message.card }),
+              ...(message.attachment === undefined ? {} : { attachment: message.attachment }),
+              ...(message.voice === undefined ? {} : { voice: message.voice }),
+            };
+            set((state) => ({
+              messagesByChat: {
+                ...state.messagesByChat,
+                [targetId]: [...(state.messagesByChat[targetId] ?? NO_MESSAGES), copy],
+              },
+              chats: state.chats.map((chat) =>
+                chat.id === targetId ? { ...chat, lastMessage: copy } : chat,
+              ),
+            }));
+            setTimeout(() => setStatus(targetId, copy.id, 'sent'), SENT_DELAY_MS);
+            setTimeout(() => setStatus(targetId, copy.id, 'read'), READ_DELAY_MS);
+            queued = true;
+          }
+          // The comment is a separate normal text message, only when this
+          // target received at least one copy.
+          if (queued && comment !== undefined && comment.length > 0) {
+            get().sendText(targetId, comment);
+          }
+        }
       },
       retrySticker: (chatId, messageId) => {
         const message = get().messagesByChat[chatId]?.find((item) => item.id === messageId);

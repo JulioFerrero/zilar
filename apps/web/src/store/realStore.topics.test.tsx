@@ -194,6 +194,7 @@ function topicApi(overrides: Partial<ApiClient> = {}): ApiClient {
     listChatPrefs: vi.fn(async () => []),
     putChatPref: vi.fn(async () => null),
     listPins: vi.fn(async () => []),
+    listChatMedia: vi.fn(async () => ({ items: [], next: null })),
     pinMessage: vi.fn(nope),
     unpinMessage: vi.fn(async () => {}),
     ...overrides,

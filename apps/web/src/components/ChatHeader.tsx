@@ -17,11 +17,13 @@ export function ChatHeader({
   onOpenAiPanel,
   onOpenGroupPanel,
   onOpenTopicPanel,
+  onOpenMedia,
 }: {
   chat: ChatSummary;
   onOpenAiPanel?: () => void;
   onOpenGroupPanel?: () => void;
   onOpenTopicPanel?: () => void;
+  onOpenMedia?: () => void;
 }) {
   const navigate = useNavigate();
   const store = useChatStore();
@@ -196,6 +198,14 @@ export function ChatHeader({
             <MenuItem
               onSelect={() => {
                 setMenuOpen(false);
+                onOpenMedia?.();
+              }}
+            >
+              Media, files and links
+            </MenuItem>
+            <MenuItem
+              onSelect={() => {
+                setMenuOpen(false);
                 startChatSearch();
               }}
             >
@@ -232,6 +242,14 @@ export function ChatHeader({
               }}
             >
               Pinned messages
+            </MenuItem>
+            <MenuItem
+              onSelect={() => {
+                setMenuOpen(false);
+                onOpenMedia?.();
+              }}
+            >
+              Media, files and links
             </MenuItem>
             <ChatPrefMenuItems chat={chat} onDone={(failed) => !failed && setMenuOpen(false)} />
           </Menu>

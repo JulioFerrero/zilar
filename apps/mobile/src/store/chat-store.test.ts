@@ -87,6 +87,32 @@ describe('chat store', () => {
     expect(store.getState().messages('ana').at(-1)?.status).toBe('sent');
   });
 
+  it('forwards a copy into the target chat with the forward origin', () => {
+    const store = createChatStore();
+    const original = store.getState().messages('ana').at(-1);
+    expect(original).toBeDefined();
+    if (original === undefined) {
+      return;
+    }
+
+    store.getState().forwardMessages(['luis'], [original]);
+
+    const copy = store.getState().messages('luis').at(-1);
+    expect(copy?.text).toBe(original.text);
+    expect(copy?.forward).toEqual({
+      sender_id: original.senderId,
+      sender_name: original.senderName,
+      original_at: original.createdAt.toISOString(),
+    });
+    expect(copy?.status).toBe('sending');
+    expect(store.getState().chats.find((chat) => chat.id === 'luis')?.lastMessage?.id).toBe(
+      copy?.id,
+    );
+
+    vi.advanceTimersByTime(SENT_DELAY_MS);
+    expect(store.getState().messages('luis').at(-1)?.status).toBe('sent');
+  });
+
   it('refuses a hostile sticker choice with a visible error and no bubble', () => {
     const store = createChatStore();
     const before = store.getState().messages('ana').length;

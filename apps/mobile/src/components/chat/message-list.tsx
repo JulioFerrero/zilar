@@ -38,6 +38,7 @@ type MessageListProps = {
   onReact?: (message: UiMessage, emoji: string) => void;
   onEdit?: (message: UiMessage) => void;
   onDelete?: (message: UiMessage) => void;
+  onForward?: (message: UiMessage) => void;
   onPin?: (message: UiMessage) => void;
   onUnpin?: (message: UiMessage) => void;
   /** Message ids with a pin, from the screen's single pins subscription. */
@@ -73,6 +74,7 @@ export function MessageList({
   onReact,
   onEdit,
   onDelete,
+  onForward,
   onPin,
   onUnpin,
   pinnedIds,
@@ -321,6 +323,7 @@ export function MessageList({
             {...(onReact === undefined ? {} : { onReact })}
             {...(onEdit === undefined ? {} : { onEdit })}
             {...(onDelete === undefined ? {} : { onDelete })}
+            {...(onForward === undefined ? {} : { onForward })}
             canPin={canPinChat}
             isPinned={pinnedIds.includes(item.item.message.id)}
             {...(onPin === undefined ? {} : { onPin })}

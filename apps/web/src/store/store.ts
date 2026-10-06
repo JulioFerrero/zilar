@@ -16,6 +16,7 @@ import {
   canEditMessage,
   canDeleteMessage,
   sortFolders,
+  splitLinks,
 } from '@zilar/chat-core';
 import type { ChatFolder } from '@zilar/chat-core';
 import type {
@@ -24,6 +25,9 @@ import type {
   CreateTopicInput,
   GroupDetail,
   Me,
+  MediaItem,
+  MediaPage,
+  MediaTab,
   PatchTopicInput,
   Pin,
   PinMessageInput,
@@ -258,6 +262,12 @@ export interface ChatStore {
   pinsLoaded: (chatId: string) => boolean;
   /** Loads the pins of a chat from the server. Never rejects. */
   loadPins: (chatId: string) => Promise<void>;
+  /**
+   * Loads one page of a chat's media gallery for a tab (T-0434). `before` is
+   * the previous page's `next` cursor. Image items on an untrusted host come
+   * back without a `url` (the panel shows a file row instead).
+   */
+  loadChatMedia: (chatId: string, tab: MediaTab, before?: string) => Promise<MediaPage>;
   /** Whether the caller may pin in a chat: DMs either side, topics a manager. */
   canPin: (chatId: string) => boolean;
   /** The pin for a message, when the message is pinned. */
@@ -509,6 +519,114 @@ function mockPinSnapshot(
             : 'text';
   const text = kind === 'text' ? (message.text ?? '').slice(0, 300) : '';
   return { senderName: message.senderName.slice(0, 80) || 'Someone', text, kind };
+}
+
+// The mock media gallery page size (T-0434). The mock bundle is small, so the
+// first page is always the last: `next` is null.
+const MOCK_MEDIA_PAGE_SIZE = 50;
+
+function mockLinkHost(url: string): string {
+  try {
+    return new URL(url).hostname.toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+// One mock message as zero or more media items for the active tab. Images go
+// to `media`, files to `files`, voice to `voice`, and links found in the text
+// to `links`, mirroring the server indexer's extraction.
+function mockMediaItems(message: UiMessage, chatId: string, tab: MediaTab): MediaItem[] {
+  const base = {
+    messageId: message.id,
+    chat: chatId,
+    at: message.createdAt.toISOString(),
+    senderName: message.senderName,
+  };
+  const attachment = message.attachment;
+  if (tab === 'media') {
+    if (attachment?.kind === 'image') {
+      return [
+        {
+          ...base,
+          kind: 'image',
+          url: attachment.url,
+          name: attachment.name,
+          size: attachment.size,
+          mime: attachment.mime,
+          ...(attachment.width === undefined ? {} : { width: attachment.width }),
+          ...(attachment.height === undefined ? {} : { height: attachment.height }),
+        },
+      ];
+    }
+    if (message.image !== undefined) {
+      return [
+        {
+          ...base,
+          kind: 'image',
+          url: message.image.url,
+          width: message.image.width,
+          height: message.image.height,
+        },
+      ];
+    }
+    return [];
+  }
+  if (tab === 'files') {
+    if (attachment?.kind !== 'file') {
+      return [];
+    }
+    return [
+      {
+        ...base,
+        kind: 'file',
+        url: attachment.url,
+        name: attachment.name,
+        size: attachment.size,
+        mime: attachment.mime,
+      },
+    ];
+  }
+  if (tab === 'voice') {
+    if (message.voice === undefined) {
+      return [];
+    }
+    return [
+      {
+        ...base,
+        kind: 'voice',
+        ...(message.voice.url === undefined ? {} : { url: message.voice.url }),
+        mime: message.voice.mime,
+        durationMs: message.voice.duration_ms,
+        waveform: message.voice.waveform,
+      },
+    ];
+  }
+  const items: MediaItem[] = [];
+  for (const segment of splitLinks(message.text ?? '')) {
+    if (segment.kind !== 'link') {
+      continue;
+    }
+    items.push({
+      ...base,
+      kind: 'link',
+      linkUrl: segment.href,
+      linkHost: mockLinkHost(segment.href),
+    });
+  }
+  return items;
+}
+
+function mockMediaPage(state: ChatStoreState, chatId: string, tab: MediaTab): MediaPage {
+  const newestFirst = [...(state.messagesByChat[chatId] ?? [])].reverse();
+  const items: MediaItem[] = [];
+  for (const message of newestFirst) {
+    if (message.deleted === true) {
+      continue;
+    }
+    items.push(...mockMediaItems(message, chatId, tab));
+  }
+  return { items: items.slice(0, MOCK_MEDIA_PAGE_SIZE), next: null };
 }
 
 // Toggles my reaction on a mock message. Mock data carries the chips directly
@@ -1005,6 +1123,7 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
           // Mock pins are best-effort; the chat works without them.
         }
       },
+      loadChatMedia: async (chatId, tab) => mockMediaPage(get(), chatId, tab),
       canPin: (chatId) => mockCanPin(get(), chatId),
       pinFor: (chatId, messageId) =>
         (get().pinsByChat[chatId] ?? []).find((pin) => pin.messageId === messageId),

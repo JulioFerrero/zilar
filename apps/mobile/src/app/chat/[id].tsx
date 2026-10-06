@@ -9,6 +9,7 @@ import { ChannelComposerBar } from '@/components/chat/channel-composer-bar';
 import { ChatHeader } from '@/components/chat/chat-header';
 import { Composer } from '@/components/chat/composer';
 import { DismissBanner } from '@/components/chat/dismiss-banner';
+import { ForwardSheet } from '@/components/chat/forward-sheet';
 import { MessageList } from '@/components/chat/message-list';
 import { MessageListSkeleton } from '@/components/chat/skeleton';
 import { PinnedBanner } from '@/components/chat/pinned-banner';
@@ -168,6 +169,7 @@ function Chat() {
   const [infoError, setInfoError] = useState('');
   const [infoRolesError, setInfoRolesError] = useState('');
   const [infoGroupRolesError, setInfoGroupRolesError] = useState('');
+  const [forwarding, setForwarding] = useState<UiMessage[] | null>(null);
   // Demo packs in mock mode, so the sticker panel works without a server
   // (real mode loads the user's packs from the API instead).
   const demoPacks = useMemo(
@@ -507,6 +509,7 @@ function Chat() {
             onReact={(message, emoji) => react(chat.id, message.id, emoji)}
             onEdit={(message) => startEdit(chat.id, message.id)}
             onDelete={(message) => deleteForEveryone(chat.id, message.id)}
+            onForward={(message) => setForwarding([message])}
             onPin={pin}
             onUnpin={unpin}
             pinnedIds={pinnedIds}
@@ -610,6 +613,9 @@ function Chat() {
           onJump={jumpToPin}
           onClose={() => setPinsOpen(false)}
         />
+        {forwarding !== null ? (
+          <ForwardSheet messages={forwarding} onClose={() => setForwarding(null)} />
+        ) : null}
       </View>
     );
   }
@@ -654,6 +660,7 @@ function Chat() {
             onReact={(message, emoji) => react(chat.id, message.id, emoji)}
             onEdit={(message) => startEdit(chat.id, message.id)}
             onDelete={(message) => deleteForEveryone(chat.id, message.id)}
+            onForward={(message) => setForwarding([message])}
             onPin={pin}
             onUnpin={unpin}
             pinnedIds={pinnedIds}
@@ -757,6 +764,9 @@ function Chat() {
           onJump={jumpToPin}
           onClose={() => setPinsOpen(false)}
         />
+        {forwarding !== null ? (
+          <ForwardSheet messages={forwarding} onClose={() => setForwarding(null)} />
+        ) : null}
       </View>
     );
   }
@@ -855,6 +865,7 @@ function Chat() {
           onReact={(message, emoji) => react(chat.id, message.id, emoji)}
           onEdit={(message) => startEdit(chat.id, message.id)}
           onDelete={(message) => deleteForEveryone(chat.id, message.id)}
+          onForward={(message) => setForwarding([message])}
           onPin={pin}
           onUnpin={unpin}
           pinnedIds={pinnedIds}
@@ -983,6 +994,9 @@ function Chat() {
         onJump={jumpToPin}
         onClose={() => setPinsOpen(false)}
       />
+      {forwarding !== null ? (
+        <ForwardSheet messages={forwarding} onClose={() => setForwarding(null)} />
+      ) : null}
     </View>
   );
 }

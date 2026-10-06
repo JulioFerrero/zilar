@@ -1,6 +1,6 @@
 import type { UiReaction } from '@zilar/chat-core';
 import { QUICK_REACTIONS } from '@zilar/chat-core';
-import { Copy, Pencil, Pin, PinOff, Reply, Trash2 } from 'lucide-react-native';
+import { Copy, Forward, Pencil, Pin, PinOff, Reply, Trash2 } from 'lucide-react-native';
 import { Pressable, View } from 'react-native';
 
 import { Text } from '@/components/ui/text';
@@ -13,6 +13,8 @@ type MessageActionsSheetProps = {
   canCopy: boolean;
   canEdit: boolean;
   canDelete: boolean;
+  /** Forward for a forwardable message (undefined/false hides the row). */
+  canForward?: boolean | undefined;
   /** Pin/Unpin for those allowed (undefined hides the row). */
   canPin?: boolean | undefined;
   isPinned?: boolean | undefined;
@@ -22,6 +24,7 @@ type MessageActionsSheetProps = {
   onEdit: () => void;
   onCopy: () => void;
   onDelete: () => void;
+  onForward?: () => void;
   onPin?: () => void;
   /** Confirm-delete dialog state, controlled by the parent so the bubble can
    *  restore focus on close. */
@@ -42,6 +45,7 @@ export function MessageActionsSheet({
   canCopy,
   canEdit,
   canDelete,
+  canForward,
   canPin,
   isPinned,
   myReactions,
@@ -49,6 +53,7 @@ export function MessageActionsSheet({
   onEdit,
   onCopy,
   onDelete,
+  onForward,
   onPin,
   confirmOpen,
   onCloseConfirm,
@@ -94,6 +99,14 @@ export function MessageActionsSheet({
         }
       >
         <ActionSheetItem label="Reply" onPress={onReply} icon={Reply} />
+        {canForward === true ? (
+          <ActionSheetItem
+            label="Forward"
+            accessibilityLabel="Forward message"
+            onPress={onForward ?? (() => {})}
+            icon={Forward}
+          />
+        ) : null}
         {canEdit ? (
           <ActionSheetItem
             label="Edit"

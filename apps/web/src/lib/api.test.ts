@@ -23,6 +23,7 @@ import {
   listAis,
   listApprovals,
   listAudit,
+  listChatMedia,
   listGroupApprovalRules,
   listGroupRoles,
   listMachines,
@@ -1590,5 +1591,51 @@ describe('handles and contact requests API', () => {
 
     const { sendContactRequest } = await import('@/lib/api');
     await expect(sendContactRequest('bob_b')).rejects.toMatchObject({ code: 'blocked' });
+  });
+});
+
+describe('media API (T-0434)', () => {
+  it('listChatMedia builds the query and parses the page', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      jsonResponse(200, {
+        items: [
+          {
+            messageId: 'm-1',
+            chat: 'ana@zilar.test',
+            at: '2026-10-05T10:00:00.000Z',
+            senderName: 'Ana',
+            kind: 'image',
+            url: 'https://upload.zilar.test/stage.png',
+            width: 640,
+            height: 420,
+          },
+        ],
+        next: '12345',
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const page = await listChatMedia({
+      chat: 'ana@zilar.test',
+      type: 'media',
+      before: '999',
+      limit: 25,
+    });
+
+    const [url] = fetchMock.mock.calls[0] as [string];
+    expect(url).toBe('/api/media?chat=ana%40zilar.test&type=media&before=999&limit=25');
+    expect(page.next).toBe('12345');
+    expect(page.items[0]?.kind).toBe('image');
+    expect(page.items[0]?.width).toBe(640);
+  });
+
+  it('listChatMedia omits before and limit when absent', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(200, { items: [], next: null }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await listChatMedia({ chat: 'team@rooms.zilar.test', type: 'links' });
+
+    const [url] = fetchMock.mock.calls[0] as [string];
+    expect(url).toBe('/api/media?chat=team%40rooms.zilar.test&type=links');
   });
 });

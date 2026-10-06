@@ -1283,3 +1283,90 @@ export const mediaIndexState = pgTable(
   },
   (table) => [primaryKey({ columns: [table.archiveOwner, table.chatJid] })],
 );
+
+// The mirror of one chat's log for an AI's long-term memory (T-0433,
+// docs/audit/ai-memory-plan.md §3.1). Text messages only, numbered by `seq`
+// (the OptMem position the summary tree is built over) and deduped by the
+// origin `message_id` so a re-read inserts nothing. The AI's own messages are
+// stored too (`sender` "AI"); a retraction marks a row `deleted` instead of
+// removing it, so summaries that cover it can be dropped and rebuilt without
+// it.
+export const aiMemoryMessages = pgTable(
+  'ai_memory_messages',
+  {
+    aiId: text('ai_id')
+      .notNull()
+      .references(() => ais.id, { onDelete: 'cascade' }),
+    chatKey: text('chat_key').notNull(),
+    seq: integer('seq').notNull(),
+    messageId: text('message_id').notNull(),
+    at: timestamp('at', { withTimezone: true }).notNull(),
+    sender: text('sender').notNull(),
+    text: text('text').notNull(),
+    deleted: boolean('deleted').notNull().default(false),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.aiId, table.chatKey, table.seq] }),
+    // The indexer's dedup key: re-reading an archive row inserts nothing.
+    uniqueIndex('ai_memory_messages_unique_idx').on(table.aiId, table.chatKey, table.messageId),
+  ],
+);
+
+// The summary tree cache for one chat (T-0433, plan §3). `hi - lo` is a power
+// of two ≥ 16 and `lo` is aligned, so every row is an aligned dyadic block of
+// the mirror. A row compresses its two halves (a child summary, or raw rows
+// when `hi - lo` is 16). The tree is a cache: dropping a row only costs one
+// rebuild from `ai_memory_messages`.
+export const aiMemoryNodes = pgTable(
+  'ai_memory_nodes',
+  {
+    aiId: text('ai_id')
+      .notNull()
+      .references(() => ais.id, { onDelete: 'cascade' }),
+    chatKey: text('chat_key').notNull(),
+    lo: integer('lo').notNull(),
+    hi: integer('hi').notNull(),
+    summary: text('summary').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.aiId, table.chatKey, table.lo, table.hi] })],
+);
+
+// Pinned facts from the `remember` tool (T-0433, plan §3.1). At most 50 per
+// chat and the oldest are dropped; `id` is generated so a fact can be deleted
+// by id, and the index serves the newest-first read for one chat.
+export const aiMemoryFacts = pgTable(
+  'ai_memory_facts',
+  {
+    id: text('id').primaryKey(),
+    aiId: text('ai_id')
+      .notNull()
+      .references(() => ais.id, { onDelete: 'cascade' }),
+    chatKey: text('chat_key').notNull(),
+    text: text('text').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('ai_memory_facts_chat_created_idx').on(table.aiId, table.chatKey, table.createdAt),
+  ],
+);
+
+// The per-chat memory cursor (T-0433, plan §3.1): the archive position the
+// mirror has read through (`indexed_through_micros`, the same shape as
+// `media_index_state`) and the "clear memory" floor (`floor_seq`, default 0,
+// below which messages are never summarised again). A missing row means
+// "nothing indexed yet".
+export const aiMemoryState = pgTable(
+  'ai_memory_state',
+  {
+    aiId: text('ai_id')
+      .notNull()
+      .references(() => ais.id, { onDelete: 'cascade' }),
+    chatKey: text('chat_key').notNull(),
+    indexedThroughMicros: bigint('indexed_through_micros', { mode: 'number' }).notNull().default(0),
+    floorSeq: integer('floor_seq').notNull().default(0),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.aiId, table.chatKey] })],
+);

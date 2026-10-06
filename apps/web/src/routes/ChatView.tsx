@@ -5,6 +5,7 @@ import { AiPanel } from '@/components/ais/AiPanel';
 import { ChannelComposerBar } from '@/components/ChannelComposerBar';
 import { ChannelPanel } from '@/components/ChannelPanel';
 import { ChatHeader } from '@/components/ChatHeader';
+import { ChatMediaPanel } from '@/components/ChatMediaPanel';
 import { Composer } from '@/components/Composer';
 import { ForwardPicker } from '@/components/ForwardPicker';
 import { Button } from '@/components/ui/button';
@@ -52,6 +53,14 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
     setPanelChatId(chat.id);
     setPanel(initialPanel(searchParams.get('panel'), chat));
   }
+  // The media panel is opened from the header menu, not the URL; it resets
+  // like the info panel when the chat changes so it cannot leak between chats.
+  const [mediaOpen, setMediaOpen] = useState(false);
+  const [mediaChatId, setMediaChatId] = useState(chat.id);
+  if (mediaChatId !== chat.id) {
+    setMediaChatId(chat.id);
+    setMediaOpen(false);
+  }
   const [replyTo, setReplyTo] = useState<ReplyRef | undefined>(undefined);
   const [forwarding, setForwarding] = useState<UiMessage[] | null>(null);
   const editTarget = store.editTarget;
@@ -92,6 +101,7 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
     <div className="flex h-full min-h-0 flex-col">
       <ChatHeader
         chat={chat}
+        onOpenMedia={() => setMediaOpen(true)}
         {...(chat.isAI ? { onOpenAiPanel: () => setPanel('ai') } : {})}
         {...(chat.kind === 'group' && chat.topic === undefined
           ? { onOpenGroupPanel: () => setPanel('group') }
@@ -146,6 +156,7 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
       {pinsPanel !== undefined && (
         <PinsPanel chatId={chat.id} onClose={() => storeApi.getState().setPinsPanel(undefined)} />
       )}
+      {mediaOpen && <ChatMediaPanel chatId={chat.id} onClose={() => setMediaOpen(false)} />}
       {forwarding !== null && (
         <ForwardPicker messages={forwarding} onClose={() => setForwarding(null)} />
       )}

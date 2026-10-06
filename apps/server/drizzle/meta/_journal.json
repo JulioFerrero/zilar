@@ -295,6 +295,13 @@
       "when": 1791286103807,
       "tag": "0041_blue_magneto",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1791297569573,
+      "tag": "0042_lethal_tattoo",
+      "breakpoints": true
     }
   ]
 }
