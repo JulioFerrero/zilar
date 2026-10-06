@@ -366,4 +366,5 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0332](T-0332-mobile-new-topic-sheet.md) | Mobile: New topic sheet on BottomSheet; long Private form scrolls | 2026-10-06 |
 | [T-0336](T-0336-mobile-inline-ticks.md) | Mobile: inline bubble ticks as icons | 2026-10-06 |
 | [T-0337](T-0337-mobile-ai-bubble-layout.md) | Mobile: AI markdown list and code block layout fixed; tick nudge | 2026-10-06 |
+| [T-0339](T-0339-mobile-settings-confirms.md) | Mobile kit: Stickers, Sticker pack, Integrations confirms on ConfirmDialog | in-progress | auto | none | |
 | [T-0338](T-0338-mobile-bubble-meta-wrap.md) | Mobile: tick never wraps away from the time; list items without extra height | 2026-10-06 |
