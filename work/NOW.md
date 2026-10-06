@@ -54,12 +54,14 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0391 | Mobile guard: no hand-rolled solid bg-accent/bg-danger Pressable | pre-review | |
-| T-0392 | Mobile kit: SegmentedControl from the Stickers tabs | coding (DeepSeek flash) | |
-| T-0393 | Mobile kit: sticker and GIF panel states on StateMessage | coding (DeepSeek flash) | |
-| T-0394 | Web kit: eight Loading/Searching lines on StateMessage | coding (DeepSeek flash) | |
-| T-0395 | Web kit: chat and message list errors on StateMessage | coding (DeepSeek flash) | |
-| T-0396 | Web kit: Connections icon buttons | coding (DeepSeek flash) | |
+| T-0398 | Mobile: Requests/Blocked/Connections states on StateMessage | coding (DeepSeek flash) | |
+| T-0399 | Mobile: Integrations/Machines/Stickers states on StateMessage | coding (DeepSeek flash) | |
+| T-0400 | Mobile kit: Switch in the catalog, SegmentedControl press test | coding (DeepSeek flash) | |
+| T-0401 | Web kit: MenuRadioItem; TaskStrip menus | coding (DeepSeek flash) | |
+| T-0402 | Web kit: four small leftovers | coding (DeepSeek flash) | |
+| T-0403 | Web kit: SecretInput toggle with a label | coding (DeepSeek flash) | |
+
+Launched 10:38 UTC (off-peak, DeepSeek flash). Merged 10:35-10:38 UTC: T-0391 to T-0397 (mobile guard, SegmentedControl, panel states, Switch; web loading lines, list errors, Connections icons). QA run 32 (T-0392, T-0393, T-0397) running.
 
 Merged 10:15-10:35 UTC: T-0384, T-0386 (mobile StateMessage), T-0387, T-0388 (Captions icon instead of "Aa"), T-0389 (web SecretInput), T-0390. QA run 31 (main e298c4d6): T-0383, T-0386 catalog, T-0387 PASS; T-0384 Blocked PASS, Explore Show more not reachable in mock (3 rows), panel Retry not forceable. Marker restored to b45684f1.
 
