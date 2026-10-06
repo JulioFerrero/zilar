@@ -24,7 +24,10 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0290 | Web kit: New group + invite-link fields on TextInput/TextArea | coding | batch 2 |
+| T-0293 | Web kit: setup, new-AI, AI panel, limits fields on TextInput | coding | batch 4 |
+| T-0294 | Mobile kit: TextField (well look) + 5 fields | coding | QA on emulator after merge |
+
+~02:50 local: merged T-0290, T-0291, T-0292 (bare field without label/hint/counter). `lead merge` pushes main, so each merge restarts CI; with T-0289 the older runs cancel. Lead plan: hold one merge until CI on the tip finishes so the images workflow builds once and proves the pipeline.
 
 ~02:30 local: merged T-0287 (mobile ConfirmDialog), T-0289 (CI cancels superseded main runs, so the tip finishes and images can build), T-0288 (first TextInput users; lead browser check of the recessed field + focus outline). QA run 11 PASS (qa11/): Open group icon aligned, topic actions sheet, AI delete and machine confirms, kit confirm sample; always-allowed revoke not reachable in mock. The QA agent pinned a mock topic by accident (mock only).
 
