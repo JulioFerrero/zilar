@@ -11,7 +11,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0410](T-0410-server-media-index.md) | Media gallery 1a (server): index tables + indexer | running | auto | — | the only schema task |
 | [T-0419](T-0419-web-forward-picker.md) | Forwarding step 4 (web UI): Forward menu item and picker | running | auto | T-0414 | |
-| [T-0429](T-0429-mobile-dismiss-banner.md) | Mobile kit: DismissBanner on the chat screen | running | auto | — | |
 
 ## Follow-ups
 
@@ -458,3 +457,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0426](T-0426-mobile-ai-sheet-buttons-kit.md) | Mobile: AI activity Refresh, tool sheet Show all/less and Close on the kit Button | 2026-10-06 |
 | [T-0427](T-0427-mobile-forwarded-header.md) | Mobile: forwarded messages show 'Forwarded from X [in Y]' | 2026-10-06 |
 | [T-0428](T-0428-mobile-new-chat-menu-sheet.md) | Mobile: New chat menu on the kit ActionSheet with icons | 2026-10-06 |
+| [T-0429](T-0429-mobile-dismiss-banner.md) | Mobile: DismissBanner replaces 12 copied chat screen banners | 2026-10-06 |

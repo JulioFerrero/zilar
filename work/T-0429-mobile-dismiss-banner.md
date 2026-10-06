@@ -1,7 +1,7 @@
 ---
 id: T-0429
 title: "Mobile kit: one DismissBanner component replaces the 12 copied error and notice banners on the chat screen, with a kit Dismiss button"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0429-mobile-dismiss-banner
 model: auto
@@ -67,4 +67,39 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- Added `apps/mobile/src/components/chat/dismiss-banner.tsx`: `DismissBanner({ message, tone, onDismiss })`. The View and message `Text` classes are copied from the old markup and selected by `tone` (`bg-danger/20` + `text-danger` for error, `bg-surface-raised` + `text-muted-foreground` for notice). The message `Text` gets `accessibilityRole="alert"` for the error tone only. The Dismiss control is a kit `Button variant="ghost" size="sm" className="ml-2 h-7 px-2"` with `accessibilityLabel` "Dismiss error"/"Dismiss notice" and a `<Text>` label styled by tone.
+- Replaced all 12 hand-rolled banners in `apps/mobile/src/app/chat/[id].tsx` (three layouts × four banners) with `{cond ? <DismissBanner tone=… message=… onDismiss=… /> : null}`, keeping every condition and handler exactly (`setPinError('')`, `dismissActionError()`, `setOpenError('')`, `setJumpMissed(false)`).
+- Dropped `Pressable` from the `react-native` import, since those were the file's only uses.
+- Added `apps/mobile/src/components/chat/dismiss-banner.test.tsx` (static markup, mocks as in `ai-activity.test.tsx`): error tone shows the message, "Dismiss error", `text-danger` and `accessibilityRole="alert"`; notice tone shows "Dismiss notice" and `text-muted-foreground` with no alert role.
+- Ran `pnpm exec prettier --write` on the three changed source files so formatting matches the gate.
+
+### Files changed
+- `apps/mobile/src/components/chat/dismiss-banner.tsx` (new)
+- `apps/mobile/src/components/chat/dismiss-banner.test.tsx` (new)
+- `apps/mobile/src/app/chat/[id].tsx`
+- `work/T-0429-mobile-dismiss-banner.md` (status + this report)
+
+### Commands and results
+- `pnpm install`: done (already satisfied, 15.3s).
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot dismiss-banner composer-layout`: first run 6 passed, 1 failed (my test asserted `accessibilityrole`; React keeps the camelCase `accessibilityRole` attribute for the string mock). Fixed the assertion; re-run: **2 files passed, 7 tests passed**.
+- `pnpm gate` (from repo root):
+  ```
+  gate: 4 changed file(s) against main
+  PASS  install (frozen)  (2.4s)
+  PASS  format  (24.5s)
+  PASS  lint  (0.9s)
+  PASS  typecheck  (7.3s)
+  PASS  tests @zilar/mobile  (1.9s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Deviations / notes
+- None from the spec. The "12 banners" is confirmed: the only `<Pressable` uses in `[id].tsx` were those Dismiss controls, now removed (`grep` shows no `Pressable`).
+- The `composer-layout` test still passes untouched.
+- No new dependencies, no changes outside Allowed files.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-06). The new DismissBanner (error and notice tones, alert role on errors, kit ghost sm Dismiss) replaces the 12 copied banners in chat/[id].tsx with the same conditions and handlers. Pressable is gone from that file. Nit accepted: the test does not assert onPress wiring; the code wires it.
