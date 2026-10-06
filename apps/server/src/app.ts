@@ -40,6 +40,7 @@ import { createPinsRoutes } from './pins/routes';
 import { createPushRoutes } from './push/routes';
 import { createRolesRoutes } from './roles/routes';
 import { createSearchRoutes, type SearchRoutesDependencies } from './search/routes';
+import { createMediaRoutes } from './media/routes';
 import { createGifsRoutes } from './gifs/routes';
 import { createAvatarsRoutes } from './avatars/routes';
 import { createStickersRoutes } from './stickers/routes';
@@ -378,6 +379,19 @@ export function createApp({
   app.route(
     '/api',
     createSearchRoutes({
+      auth,
+      db,
+      config,
+      logger,
+      ...(archive === undefined ? {} : { archive }),
+      ...(searchNow === undefined ? {} : { now: searchNow }),
+    }),
+  );
+  // Media gallery (T-0431) mounts the same way: without an archive pool every
+  // request answers 501 `media_unavailable` instead of 404ing.
+  app.route(
+    '/api',
+    createMediaRoutes({
       auth,
       db,
       config,

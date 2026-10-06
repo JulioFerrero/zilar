@@ -1,7 +1,7 @@
 ---
 id: T-0431
 title: "Media gallery 1b (server): GET /api/media?chat&type&before&limit, which indexes the chat on demand and returns paged items, members only, with a block check"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0431-server-media-route
 model: auto
@@ -98,4 +98,64 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- Added `apps/server/src/media/routes.ts` with `createMediaRoutes(deps)` and `GET /media`,
+  mirroring search's order of operations: session → 501 `media_unavailable` without an
+  archive → 30/min rate limit → strict zod query → `allowedArchives`/`resolveChatFilter`
+  (404 on null) → either-way `userBlocks` check for DMs → `indexChat` on demand → select
+  `mediaItems` where `deleted = false` and `kind` in the tab's kinds, `atMicros < before`
+  when given, ordered `atMicros DESC, id ASC`, `limit + 1` → map to `MediaItem`.
+  - `type` defaults to `media` (`image` + `gif`); `files`/`links`/`voice` map to `file`/
+    `link`/`voice`. `limit` default 50, max 100. `before` is a positive microsecond cursor.
+  - `next` is the `atMicros` of the last returned item as a string when a `limit + 1` row
+    exists, else `null`.
+  - Sender names: room → the part after `/` (or "Unknown"); DM → "You" for the caller's own
+    bare JID, else `peerNames.get(peer) ?? "Unknown"`.
+  - Absent fields are omitted, never sent as `null`.
+  - A DM peer is resolved to a user through `xmppAccounts.jid` (case-insensitive); an AI
+    peer with no row has no block. A block in either direction answers the same 404.
+  - An `indexChat` failure is logged as `{ userId, err: errorName(error) }` (ids and the
+    error class only, never message contents) and the stored rows still answer.
+- Mounted it in `apps/server/src/app.ts` right after search, passing the existing `archive`
+  and `searchNow` options; no new `createApp` option.
+- Added `apps/server/src/media/routes.test.ts` (10 tests): 401; 501 without archive; 404 for
+  unknown chat / stranger DM / private topic not a member; 404 for a blocked DM in either
+  direction; image/file/link/voice per type with `media` as default; `limit=1` paging with
+  `next`/`before` and a final `next: null`; retracted image hidden; sender names (You / peer
+  / room nick); 400 for bad `type`, `limit > 100`, `limit=0`, missing `chat`; 429 after 30
+  requests a minute.
+
+### Files changed
+- `apps/server/src/media/routes.ts` (new)
+- `apps/server/src/media/routes.test.ts` (new)
+- `apps/server/src/app.ts` (mount + import)
+- `work/T-0431-server-media-route.md`
+
+### Commands run (real results)
+- `pnpm install` → done, 0 exit.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot media/routes authz-sweep`
+  → 2 test files passed, 15 tests passed, 0 failed. The authz sweep prints
+  `GET /api/media -> 401`, so the new route is covered.
+- `pnpm gate` (first run) → `PASS install`, `FAIL format` on
+  `apps/server/src/media/routes.ts` and `apps/server/src/media/routes.test.ts` (Prettier),
+  scope already inside Allowed. Fixed with
+  `pnpm exec prettier --write apps/server/src/media/routes.ts apps/server/src/media/routes.test.ts`.
+- `pnpm gate` (second run) → `PASS install (frozen)`, `PASS format`, `PASS lint`,
+  `PASS typecheck`, `PASS tests @zilar/server`, `scope: every changed file is inside the
+  Allowed files`, `GATE PASS`.
+
+### Deviations / decisions
+- `chat` is required: a request without it fails the strict zod schema with 400. The spec's
+  URL always carries `chat`, and there is no cross-chat gallery to answer, so I treated a
+  missing chat as a bad request rather than an empty list.
+- Secondary ordering is `id ASC` (the spec says "then `id`" without a direction).
+- I ran Prettier on the two new files only, after the gate's format step failed; I did not
+  run format/lint/typecheck as separate checks before the gate.
+
+### Open questions
+- None.
+
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-06). GET /api/media works in this order: session, 501 without an archive, 30/min limit, strict query, allowedArchives and resolveChatFilter (404), an either-way block check for DMs (404), then indexChat on demand (a failure is logged by error name only and the stored rows still answer). The select is scoped to archiveOwner and chatJid, skips deleted rows, filters by the tab kinds, pages with limit+1 and a microsecond cursor. Sender names follow search (You, peer name, room nick). Nit accepted: the mount comment says every request gets 501, but an unauthenticated one gets 401 first.
