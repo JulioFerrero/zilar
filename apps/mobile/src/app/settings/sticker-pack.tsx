@@ -23,6 +23,7 @@ import {
 
 import { useAuthStore } from '@/auth/session';
 import { RequireStickersAuth } from '@/components/stickers/require-stickers-auth';
+import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
@@ -468,15 +469,15 @@ function StickerPackBody({ picker, preparer }: StickerPackScreenDeps) {
           <Text accessibilityRole="alert" className="text-center text-[15px] text-danger">
             {LOAD_ERROR}
           </Text>
-          <Pressable
-            accessibilityRole="button"
+          <Button
+            variant="outline"
+            size="sm"
             accessibilityLabel="Retry loading pack"
             onPress={load}
-            className="flex-row items-center gap-2 rounded-full border border-border-strong px-4 py-2 active:bg-surface-raised"
           >
             <RefreshCw size={16} color={ICON[scheme]} />
-            <Text className="text-[15px] text-foreground">Retry</Text>
-          </Pressable>
+            <Text>Retry</Text>
+          </Button>
         </View>
       ) : null}
 
@@ -485,14 +486,14 @@ function StickerPackBody({ picker, preparer }: StickerPackScreenDeps) {
           <Text accessibilityRole="alert" className="text-center text-[15px] text-danger">
             {status === 'not-found' ? NOT_FOUND : FORBIDDEN}
           </Text>
-          <Pressable
-            accessibilityRole="button"
+          <Button
+            variant="outline"
+            size="sm"
             accessibilityLabel="Back to stickers"
             onPress={() => router.back()}
-            className="rounded-full border border-border-strong px-4 py-2 active:bg-surface-raised"
           >
-            <Text className="text-[15px] text-foreground">Back to stickers</Text>
-          </Pressable>
+            <Text>Back to stickers</Text>
+          </Button>
         </View>
       ) : null}
 
@@ -723,15 +724,15 @@ function StickerPackBody({ picker, preparer }: StickerPackScreenDeps) {
                     </View>
                     <View className="shrink-0 flex-row items-center gap-1">
                       {item.status === 'uploadFailed' ? (
-                        <Pressable
-                          accessibilityRole="button"
+                        <Button
+                          variant="outline"
+                          size="sm"
                           accessibilityLabel={`Retry sticker ${index + 1}`}
                           disabled={saving}
                           onPress={() => retryItem(item.key)}
-                          className="rounded-full border border-border-strong px-3 py-1 active:bg-surface-raised disabled:opacity-60"
                         >
-                          <Text className="text-[14px] text-foreground">Retry</Text>
-                        </Pressable>
+                          <Text>Retry</Text>
+                        </Button>
                       ) : null}
                       <Pressable
                         accessibilityRole="button"
@@ -763,26 +764,24 @@ function StickerPackBody({ picker, preparer }: StickerPackScreenDeps) {
           ) : null}
 
           <View className="flex-row items-center gap-2">
-            <Pressable
-              accessibilityRole="button"
+            <Button
+              variant="default"
+              size="sm"
               accessibilityLabel={isCreate ? 'Create pack' : 'Save'}
               disabled={saveDisabled}
               onPress={save}
-              className="rounded-full bg-accent px-5 py-2.5 active:opacity-90 disabled:opacity-60"
             >
-              <Text className="text-[15px] font-medium text-accent-foreground">
-                {saving ? 'Saving…' : isCreate ? 'Create pack' : 'Save'}
-              </Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
+              <Text>{saving ? 'Saving…' : isCreate ? 'Create pack' : 'Save'}</Text>
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
               accessibilityLabel="Cancel"
               disabled={saving}
               onPress={onBack}
-              className="rounded-full px-4 py-2.5 disabled:opacity-60"
             >
-              <Text className="text-[15px] text-muted-foreground">Cancel</Text>
-            </Pressable>
+              <Text>Cancel</Text>
+            </Button>
           </View>
 
           {packId !== undefined ? (

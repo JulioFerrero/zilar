@@ -130,6 +130,9 @@ vi.mock('@/lib/color-scheme', () => ({
 
 vi.mock('@/lib/depth', () => ({
   well: {},
+  primaryKey: {},
+  KEY_PRIMARY_PRESSED_SHADOW: '0 0 #000',
+  pressStyle: () => undefined,
 }));
 
 vi.mock('@/components/stickers/sticker-native', () => ({
