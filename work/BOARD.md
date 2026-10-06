@@ -11,6 +11,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0302](T-0302-mobile-text-field-5.md) | Mobile kit migration: join link and visibility handle fields use the kit TextField | todo | auto | T-0300 | batch 5 |
 | [T-0303](T-0303-mobile-integrations-mock.md) | Mobile mock mode: Integrations owner mock | todo | auto | | QA run 13 could not test Integrations |
+| [T-0304](T-0304-web-image-native-builder.md) | Images: web builder stage runs natively, not under QEMU | todo | auto | | first web image took 28+ min |
 
 ## Follow-ups
 
