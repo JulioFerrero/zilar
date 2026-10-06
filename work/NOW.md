@@ -24,9 +24,9 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0302 | Mobile: join link and visibility handle fields on TextField | coding (Muse, peak) | batch 5 |
-| T-0305 | Mobile: AI model, spend limit, tool run-input fields on TextField | coding (Muse, peak) | batch 6 |
-| T-0306 | Mobile: machine rename and sticker pack name on TextField | coding (Muse, peak) | batch 7 |
+| (none) | | | merges held until CI + images finish on c1837ca3 |
+
+~03:50 local: merged T-0302, T-0306, T-0305 (nit waived: the close icon keeps `MUTED_FOREGROUND`; my acceptance line was too broad). Cancelled images run 37396257689 (zilar-web still under QEMU after 55 min, stale code, and it held the `publish-main` group, so newer image runs queued behind it were cancelled). Timing the images run for tip c1837ca3, the first with the T-0304 native builder; merges are held until it finishes. QA run 15 sent (qa15/).
 
 ~03:40 local: QA run 14 PASS (qa14/): invite links sheet sits above the numeric keyboard (lead saw 02.png), backdrop closes and inside taps do not; the create-sheet, roles and task-strip link fields show the well look and typing works. No crash. Phone marker restored to b45684f1 (lead checked).
 
