@@ -54,10 +54,15 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0354 | Mobile kit: join-link card and Invite a friend sheet buttons on Button | coding (paid Muse fallback) | T-0353 merged |
-| T-0356 | Mobile fix: Profile settings buttons show their labels again | coding | QA run 27 bug from T-0349 |
+| (none) | | | night finished; waiting for Julio |
 
 Time correction (checked with `date`): it is 04:42 local, Tue 10-06. The "~04:xx–05:50 local" stamps below were estimated and run up to about an hour ahead; their order is right.
+
+08:48 local: night finished.
+- **Merged:** T-0354 (2 nits; the lead checked every label is inside `<Text>`) and T-0356.
+- **QA run 28 PASS:** the Profile labels show, and Save name enables on edit. The lead saw qa28/01.png.
+- **No workers running.** 116 tasks were merged since 22:00 on 10-05.
+- **CI on main:** the last completed green run is T-0352. Later pushes cancel older runs by design (T-0289); the run for T-0354 is in progress.
 
 08:35 local: merged T-0353 and T-0355. QA run 27 (qa27/; the lead saw 11.png):
 - **ISSUE:** the Settings → Profile buttons are blank pills. T-0349 passed the labels as bare strings with no `<Text>` around them; the lead scan finds them in those 3 files only → T-0356, launched.
