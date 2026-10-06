@@ -24,10 +24,16 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0338 | Mobile: tick never wraps away from the time; list item without extra height | coding (DeepSeek flash) | QA run 23 follow-up; emulator QA after the merge |
-| (doctor) | | | audit 3 running |
+| (none) | | | QA run 24 (T-0338) on the emulator |
 
 Time correction (checked with `date`): it is 04:42 local, Tue 10-06. The "~04:xx–05:50 local" stamps below were estimated and run up to about an hour ahead; their order is right.
+
+06:51 local:
+- **Doctor audit 3 (since 21297ac): clean.** must-fix 0, should-fix 0, 3 test and wording nits, no task. It confirmed the T-0337 causes.
+- **T-0338 merged,** after 1 automatic round whose should-fix the pre-review later withdrew; 1 nit.
+  - The tick view now sits inside the time's Text behind ` ⁠`.
+  - Each list item is one Text with an inline marker.
+- **QA run 24 sent** (qa24/).
 
 06:34 local: QA run 23 (qa23/; the lead saw 01.png).
 - **PASS:**
