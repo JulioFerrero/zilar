@@ -137,7 +137,7 @@ export function ChatListItem({
               <Badge
                 count={chat.unread}
                 muted={chat.muted}
-                label={`${chat.unread} unread`}
+                labelSuffix="unread"
                 className="ml-auto shrink-0"
               />
             ) : (

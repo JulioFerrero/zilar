@@ -4,12 +4,12 @@ export interface BadgeProps {
   count: number;
   max?: number;
   muted?: boolean;
-  label?: string;
+  labelSuffix?: string;
   className?: string;
 }
 
 /** Unread-count pill (ui-style.md §5): a primary key pill, 20 px tall, 11/600. */
-export function Badge({ count, max = 99, muted = false, label, className }: BadgeProps) {
+export function Badge({ count, max = 99, muted = false, labelSuffix, className }: BadgeProps) {
   if (count <= 0) {
     return null;
   }
@@ -22,7 +22,7 @@ export function Badge({ count, max = 99, muted = false, label, className }: Badg
         muted ? 'bg-badge-muted text-foreground' : 'key-primary',
         className,
       )}
-      aria-label={label}
+      aria-label={labelSuffix === undefined ? undefined : `${text} ${labelSuffix}`}
     >
       {text}
     </span>

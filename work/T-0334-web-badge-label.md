@@ -1,7 +1,7 @@
 ---
 id: T-0334
 title: "Web kit: Badge's accessible label follows the visible count (99+), not the raw number"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0334-web-badge-label
 model: auto
@@ -62,4 +62,26 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- `apps/web/src/components/ui/badge.tsx`: replaced `label?: string` with `labelSuffix?: string`; `aria-label` is now `${text} ${labelSuffix}` where `text` is the visible capped text, and omitted when no suffix is passed.
+- `apps/web/src/components/ChatListItem.tsx:140`: passes `labelSuffix="unread"`.
+- `apps/web/src/components/TopicRow.tsx:134,254,262`: passes `labelSuffix="unread"` / `labelSuffix={`unread in ${groupTitle}`}`.
+- `apps/web/src/components/ui/kit.test.tsx`: updated line 39 to `labelSuffix="unread"` (still expects `2 unread`); added test that `<Badge count={150} labelSuffix="unread" />` has label `99+ unread` and shows `99+`.
+
+### Files changed
+`apps/web/src/components/ui/badge.tsx`, `apps/web/src/components/ui/kit.test.tsx`, `apps/web/src/components/ChatListItem.tsx`, `apps/web/src/components/TopicRow.tsx`, `work/T-0334-web-badge-label.md`.
+
+### Commands and results
+- `pnpm install`: done (11.3s).
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot kit ChatList TopicsSidebar ChatPrefs`: 7 files, 121 tests passed.
+- `pnpm gate`: GATE PASS — install, format, lint, typecheck, tests @zilar/web all PASS; 5 changed files, scope check confirms every changed file is inside the Allowed files.
+
+### Problems / deviations
+None. No changes outside Allowed files.
+
+### Security checklist
+N/A — no secrets, routes, caps, permissions, or audit entries involved; aria-label change only.
+
 ## Review (written by Claude)
+
+**Approved** (pre-review clean, 0 nits). `Badge` takes `labelSuffix` and builds its aria-label from the visible text, so 150 unread reads "99+ unread". The four callers pass the suffix only. A new kit test proves the capped case, and the existing unread label tests pass unchanged. This fixes the doctor's should-fix from audit 2.

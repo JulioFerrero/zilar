@@ -36,8 +36,13 @@ describe('Badge', () => {
   });
 
   it('applies the label as aria-label', () => {
-    render(<Badge count={2} label="2 unread" />);
+    render(<Badge count={2} labelSuffix="unread" />);
     expect(screen.getByLabelText('2 unread').textContent).toBe('2');
+  });
+
+  it('labels the visible capped text above max', () => {
+    render(<Badge count={150} labelSuffix="unread" />);
+    expect(screen.getByLabelText('99+ unread').textContent).toBe('99+');
   });
 
   it('merges a caller className', () => {

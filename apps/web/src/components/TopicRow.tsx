@@ -131,7 +131,7 @@ export function TopicRow({
               <Badge
                 count={chat.unread}
                 muted={chat.muted}
-                label={`${chat.unread} unread`}
+                labelSuffix="unread"
                 className="ml-auto shrink-0"
               />
             ) : (
@@ -251,7 +251,7 @@ export function GroupHeaderRow({
               {unread > 0 && (
                 <Badge
                   count={unread}
-                  label={`${unread} unread in ${groupTitle}`}
+                  labelSuffix={`unread in ${groupTitle}`}
                   className="ml-auto shrink-0"
                 />
               )}
@@ -259,7 +259,7 @@ export function GroupHeaderRow({
                 <Badge
                   count={mutedUnread}
                   muted
-                  label={`${mutedUnread} unread in ${groupTitle}`}
+                  labelSuffix={`unread in ${groupTitle}`}
                   className="ml-auto shrink-0"
                 />
               )}
