@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
+import { Button } from '@/components/ui/button';
 import { Text } from '../../components/ui/text';
 import { TextField } from '../ui/text-field';
 import { extractJoinToken, joinFailureMessage } from '../../lib/invite-links-api';
@@ -154,14 +155,14 @@ export function JoinLinkBody(props: {
         <Text className="mt-2 text-center text-[15px] text-muted-foreground">
           Check your connection and try again.
         </Text>
-        <Pressable
-          accessibilityRole="button"
+        <Button
+          variant="default"
+          className="mt-5"
           accessibilityLabel="Retry loading the link"
           onPress={onRetry}
-          className="mt-5 items-center rounded-full bg-accent px-4 py-2.5 active:opacity-90"
         >
-          <Text className="text-[15px] font-medium text-accent-foreground">Try again</Text>
-        </Pressable>
+          <Text>Try again</Text>
+        </Button>
         <Pressable accessibilityRole="button" accessibilityLabel="Cancel" onPress={onCancel}>
           <Text className="mt-3 text-center text-[14px] text-muted-foreground">Cancel</Text>
         </Pressable>
@@ -177,14 +178,9 @@ export function JoinLinkBody(props: {
         <Text className="mt-2 text-center text-[15px] text-muted-foreground">
           {view.error === undefined ? 'This link does not work' : view.error}
         </Text>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Cancel"
-          onPress={onCancel}
-          className="mt-5 items-center rounded-full bg-accent px-4 py-2.5 active:opacity-90"
-        >
-          <Text className="text-[15px] font-medium text-accent-foreground">Back to chats</Text>
-        </Pressable>
+        <Button variant="default" className="mt-5" accessibilityLabel="Cancel" onPress={onCancel}>
+          <Text>Back to chats</Text>
+        </Button>
       </View>
     );
   }
@@ -207,17 +203,15 @@ export function JoinLinkBody(props: {
           {view.error}
         </Text>
       ) : null}
-      <Pressable
-        accessibilityRole="button"
+      <Button
+        variant="default"
+        className="mt-5"
         accessibilityLabel={preview.alreadyMember ? 'Open the group' : joinButtonTitle(preview)}
         disabled={busy}
         onPress={onJoin}
-        className="mt-5 items-center rounded-full bg-accent px-4 py-2.5 active:opacity-90 disabled:opacity-60"
       >
-        <Text className="text-[15px] font-medium text-accent-foreground">
-          {busy ? 'Joining…' : joinButtonTitle(preview)}
-        </Text>
-      </Pressable>
+        <Text>{busy ? 'Joining…' : joinButtonTitle(preview)}</Text>
+      </Button>
       <Pressable accessibilityRole="button" accessibilityLabel="Cancel" onPress={onCancel}>
         <Text className="mt-3 text-center text-[14px] text-muted-foreground">Cancel</Text>
       </Pressable>
@@ -265,14 +259,14 @@ export function JoinLinkForm({ onSubmit }: { onSubmit: (token: string) => void }
           {error}
         </Text>
       ) : null}
-      <Pressable
-        accessibilityRole="button"
+      <Button
+        variant="default"
+        className="mt-3"
         accessibilityLabel="Continue with link"
         onPress={submit}
-        className="mt-3 items-center rounded-full bg-accent px-4 py-2.5 active:opacity-90"
       >
-        <Text className="text-[15px] font-medium text-accent-foreground">Continue</Text>
-      </Pressable>
+        <Text>Continue</Text>
+      </Button>
     </View>
   );
 }

@@ -1,7 +1,7 @@
 ---
 id: T-0354
 title: "Mobile kit migration: the join-link card and the Invite a friend sheet use the kit Button"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0354-mobile-join-invite-buttons-kit
 model: auto
@@ -74,4 +74,43 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**Status:** done, ready for review.
+
+**What I did**
+Replaced the nine hand-rolled pill `Pressable`s with the kit `Button` (`apps/mobile/src/components/ui/button.tsx`), following the spec table:
+- `apps/mobile/src/components/chat/join-link.tsx`: "Retry loading the link" → `variant="default" className="mt-5"`; "Cancel" ("Back to chats") → `variant="default" className="mt-5"`; join/open (`disabled={busy}`, busy text `Joining…`) → `variant="default" className="mt-5"`; "Continue with link" → `variant="default" className="mt-3"`. Left the two text-only "Cancel" `Pressable`s alone, so `Pressable` stays in the import.
+- `apps/mobile/src/components/chat/invite-sheet.tsx`: "Close" → `variant="ghost"` (×2); "Try again" → `variant="default"`; "Copy invite link" (icon + text, `disabled`) → `variant="default" className="flex-1"` with `Check`/`Copy` in `ACCENT_FOREGROUND[scheme]` from `@/lib/colors` (T-0341/T-0346 pattern, via `asColorScheme(useColorScheme().colorScheme)`); "Share invite link" (icon + text, `disabled`) → `variant="outline" className="flex-1"`, `Share2` keeps `#8a8a8a`. Left the card wrapper `Pressable` alone, so `Pressable` stays in the import.
+- Kept every `accessibilityLabel`, `disabled`, `onPress`, visible text, busy text and icons in all nine. Dropped the old pill classes and the child `Text` colour/size classes (kit `TextClassContext` sets them). Dropped `accessibilityRole="button"` since the kit `Button` sets `role="button"` (T-0348/T-0351/T-0353 pattern).
+- Tests, mocks only: `join-link.test.tsx` — added `Platform.select` to the `react-native` mock, a `react-native-reanimated` `useReducedMotion` mock, `TextClassContext` on the `../../components/ui/text` mock, and an `@/components/ui/use-key-press` mock (needed because the test calls the body as a plain function, so the real `Button`'s hook would throw an invalid-hook-call; same reason as T-0353). Its `@/components/ui/text` mock (the `@/` path) was unused by the component and left untouched. `invite-sheet.test.tsx` — added `Platform.select`, `@/lib/color-scheme` (`asColorScheme`), `@/lib/colors` (`ACCENT_FOREGROUND`), `TextClassContext`, `use-key-press`, `nativewind` `useColorScheme`, and `useReducedMotion`. `new-chat-button.test.tsx` needed no changes: it already has `Platform.select`, `TextClassContext`, reanimated and `@/lib/depth` mocks since T-0353, and it renders sheets through the mocked `@/components/chat/join-link` stub. No `@/lib/depth` mock was added to either test: `invite-sheet.tsx` no longer imports `@/lib/depth`.
+
+**Files changed**
+- `apps/mobile/src/components/chat/join-link.tsx` — four `Pressable`s now kit `Button`s; `Button` imported.
+- `apps/mobile/src/components/chat/invite-sheet.tsx` — five `Pressable`s now kit `Button`s; `Button`, `useColorScheme`, `asColorScheme`, `@/lib/colors` imported; `@/lib/depth` import replaced.
+- `apps/mobile/src/components/chat/join-link.test.tsx` — mocks only (see above).
+- `apps/mobile/src/components/chat/invite-sheet.test.tsx` — mocks only (see above).
+- `work/T-0354-mobile-join-invite-buttons-kit.md` — status and this Report.
+
+**Commands run and results**
+- `pnpm install` (worktree) — succeeded (`Done in 13.1s`).
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot join-link invite-sheet new-chat-button` — `Test Files 3 passed (3)`, `Tests 38 passed (38)` (only the usual string-mock casing warnings on stderr). Re-ran after the prettier fix: same 38 passed.
+- `pnpm gate` (repo root) — first run failed `format` (same short-`<Button>`-line collapse as T-0353); after `pnpm exec prettier --write` on the two source files, final output:
+  ```
+  gate: 5 changed file(s) against main
+  PASS  install (frozen)  (1.0s)
+  PASS  format  (12.7s)
+  PASS  lint  (0.8s)
+  PASS  typecheck  (6.7s)
+  PASS  tests @zilar/mobile  (1.6s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+**Deviations from the spec:** none.
+
+**Blocked / needs a decision:** none.
+
+**Security checklist:** no secrets, routes, deletes, caps, permissions, or audit entries touched — UI button migration only; `disabled`/`busy` guards unchanged. Invite URLs render as before; the token never enters logs or errors.
+
 ## Review (written by Claude)
+
+**Approved** (pre-review clean, 2 nits accepted, one of them a stale "hook-free" comment on `InviteSheetBody`). The nine buttons are kit `Button`s. After the T-0349 bug, the lead checked that every label is inside `<Text>`. The tests changed mocks only.

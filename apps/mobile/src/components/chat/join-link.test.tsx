@@ -14,9 +14,18 @@ import type { JoinPreview } from '@/lib/invite-links-api';
 // stubbed (same pattern as `markdown-text.test.tsx`): Node only, no
 // simulator, no new dependency.
 vi.mock('react-native', () => ({
+  Platform: { OS: 'ios', select: (options: Record<string, unknown>) => options['ios'] },
   Pressable: 'Pressable',
   TextInput: 'TextInput',
   View: 'View',
+}));
+
+vi.mock('react-native-reanimated', () => ({
+  useReducedMotion: () => false,
+}));
+
+vi.mock('@/components/ui/use-key-press', () => ({
+  useKeyPress: () => ({ pressed: false, reduceMotion: false, setPressed: () => {} }),
 }));
 
 vi.mock('react-native-safe-area-context', () => ({
@@ -29,6 +38,7 @@ vi.mock('@/components/ui/text', () => ({
 
 vi.mock('../../components/ui/text', () => ({
   Text: 'Text',
+  TextClassContext: { Provider: 'TextClassContextProvider' },
 }));
 
 vi.mock('nativewind', () => ({
