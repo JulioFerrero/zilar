@@ -1,6 +1,6 @@
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, View } from 'react-native';
+import { ActivityIndicator, View } from 'react-native';
 
 import { LoadingScreen } from '@/auth/RequireAuth';
 import { useSession } from '@/auth/session';
@@ -13,6 +13,7 @@ import {
   type HandleView,
 } from '@/components/directory/handle-helpers';
 import { useDirectoryApi } from '@/components/directory/use-directory-api';
+import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import type { DirectoryEntry } from '@/lib/directory-api';
 import { useChatStore } from '@/store/chat-store-provider';
@@ -135,14 +136,15 @@ function HandleCard({ handle }: { handle: string | undefined }) {
             <Text className="mt-2 text-center text-[15px] text-muted-foreground">
               This link is for a group that doesn&apos;t exist or isn&apos;t public.
             </Text>
-            <Pressable
-              accessibilityRole="button"
+            <Button
               accessibilityLabel="Close"
               onPress={close}
-              className="mt-5 rounded-full bg-accent px-4 py-2 active:opacity-90"
+              variant="default"
+              size="default"
+              className="mt-5"
             >
-              <Text className="text-[15px] font-medium text-accent-foreground">Close</Text>
-            </Pressable>
+              <Text>Close</Text>
+            </Button>
           </>
         )}
         {view.state === 'error' && (
@@ -157,22 +159,12 @@ function HandleCard({ handle }: { handle: string | undefined }) {
               {view.message}
             </Text>
             <View className="mt-5 flex-row gap-2">
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Retry"
-                onPress={retry}
-                className="rounded-full bg-accent px-4 py-2 active:opacity-90"
-              >
-                <Text className="text-[15px] font-medium text-accent-foreground">Retry</Text>
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Close"
-                onPress={close}
-                className="rounded-full border border-border-strong px-4 py-2 active:bg-surface-raised"
-              >
-                <Text className="text-[15px] text-foreground">Close</Text>
-              </Pressable>
+              <Button accessibilityLabel="Retry" onPress={retry} variant="default" size="default">
+                <Text>Retry</Text>
+              </Button>
+              <Button accessibilityLabel="Close" onPress={close} variant="outline" size="default">
+                <Text>Close</Text>
+              </Button>
             </View>
           </>
         )}
@@ -198,25 +190,25 @@ function HandleCard({ handle }: { handle: string | undefined }) {
                 {joinError}
               </Text>
             )}
-            <Pressable
-              accessibilityRole="button"
+            <Button
               accessibilityLabel={handleJoinLabel(view.entry)}
               disabled={busy}
               onPress={() => join(view.entry)}
-              className="mt-5 w-full items-center rounded-full bg-accent px-4 py-2.5 active:opacity-90 disabled:opacity-60"
+              variant="default"
+              size="lg"
+              className="mt-5 w-full"
             >
-              <Text className="text-[15px] font-medium text-accent-foreground">
-                {busy ? 'Joining…' : handleJoinLabel(view.entry)}
-              </Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
+              <Text>{busy ? 'Joining…' : handleJoinLabel(view.entry)}</Text>
+            </Button>
+            <Button
               accessibilityLabel="Close"
               onPress={close}
-              className="mt-3 rounded-full px-4 py-1.5 active:bg-surface-raised"
+              variant="ghost"
+              size="default"
+              className="mt-3"
             >
-              <Text className="text-[15px] text-muted-foreground">Close</Text>
-            </Pressable>
+              <Text>Close</Text>
+            </Button>
           </>
         )}
       </View>
