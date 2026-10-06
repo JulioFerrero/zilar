@@ -379,6 +379,32 @@ describe('pinned messages (T-0114)', () => {
     await waitFor(() => expect(store.getState().pins('c-x')).toHaveLength(0));
   });
 
+  it('closes the pins panel on Escape', async () => {
+    stubPinsApi([
+      stubPin({
+        id: 'pin-1',
+        chat: 'c-x',
+        messageId: 'm-1',
+        senderName: 'Ana',
+        text: 'Read this',
+        kind: 'text',
+      }),
+    ]);
+    renderApp('/c/c-x', {
+      chats: [dm('c-x', 'Ana')],
+      messagesByChat: { 'c-x': [textMessage('c-x', 'm-1', 'Read this', 'u-ana', 'Ana')] },
+    });
+    await waitFor(() => expect(screen.getByText('Read this')).toBeTruthy());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open pinned messages, 1 pinned' }));
+    expect(screen.getByRole('dialog', { name: 'Pinned messages in Ana' })).toBeTruthy();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Pinned messages in Ana' })).toBeNull(),
+    );
+  });
+
   it('hides the panel unpin button for plain topic members', async () => {
     stubPinsApi([
       stubPin({

@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-0282](T-0282-web-kit-sheet.md) | Web kit: right-side Sheet (PinsPanel first); kit Escape stops propagating | in_progress | auto | T-0280 | same files as T-0280 |
 | [T-0284](T-0284-mobile-topic-actions-sheet.md) | Mobile kit migration: topic actions sheet on ActionSheet | todo | auto | T-0283 | launch after QA run 10 passes |
 
 ## Follow-ups
@@ -313,3 +312,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0281](T-0281-web-accent-pill-guard.md) | Web guard: a test fails when a hand-rolled solid bg-accent button or link comes back outside the kit | 2026-10-05 |
 | [T-0280](T-0280-grouphandle-escape-flake.md) | Web tests: GroupHandleRoute Escape tests wait for the dialog effect; no more flake under load | 2026-10-06 |
 | [T-0283](T-0283-mobile-kit-action-sheet.md) | Mobile kit: ActionSheet; the AI and chat long-press sheets use it | 2026-10-06 |
+| [T-0282](T-0282-web-kit-sheet.md) | Web kit: right-side Sheet (PinsPanel on it); modal Escape stops at the topmost overlay and attaches in a layout effect | 2026-10-06 |

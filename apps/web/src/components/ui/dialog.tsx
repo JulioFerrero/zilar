@@ -1,12 +1,6 @@
-import {
-  useEffect,
-  useId,
-  useRef,
-  type KeyboardEvent as ReactKeyboardEvent,
-  type ReactNode,
-  type RefObject,
-} from 'react';
+import { useId, useRef, type ReactNode, type RefObject } from 'react';
 import { cn } from '@/lib/utils';
+import { useModal } from './use-modal';
 
 export interface DialogProps {
   open: boolean;
@@ -23,8 +17,6 @@ export interface DialogProps {
   /** When false, Escape and a backdrop click do not close the dialog. */
   dismissable?: boolean;
 }
-
-const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
 /**
  * A generic dialog shell with the same focus behaviour as ConfirmDialog:
@@ -47,65 +39,11 @@ export function Dialog({
   const titleId = useId();
   const descriptionId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
-  const returnFocusRef = useRef<HTMLElement | null>(null);
-
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-    const active = document.activeElement;
-    returnFocusRef.current = active instanceof HTMLElement ? active : null;
-    const firstFocusable = panelRef.current?.querySelector<HTMLElement>(FOCUSABLE);
-    const target = initialFocusRef?.current ?? firstFocusable ?? panelRef.current;
-    target?.focus();
-    return () => {
-      returnFocusRef.current?.focus();
-    };
-  }, [open, initialFocusRef]);
-
-  useEffect(() => {
-    if (!open || !dismissable) {
-      return;
-    }
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key !== 'Escape') {
-        return;
-      }
-      const dialogs = document.querySelectorAll('[role="dialog"]');
-      if (dialogs[dialogs.length - 1] !== panelRef.current) {
-        return;
-      }
-      onClose();
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, [open, onClose, dismissable]);
+  const onKeyDown = useModal({ open, onClose, dismissable, panelRef, initialFocusRef });
 
   if (!open) {
     return null;
   }
-
-  const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
-    if (event.key !== 'Tab') {
-      return;
-    }
-    const focusable = panelRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE);
-    if (focusable === undefined || focusable.length === 0) {
-      return;
-    }
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    if (first === undefined || last === undefined) {
-      return;
-    }
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first.focus();
-    }
-  };
 
   return (
     <div

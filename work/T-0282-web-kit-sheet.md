@@ -1,7 +1,7 @@
 ---
 id: T-0282
 title: "Web kit: a right-side Sheet for the chat panels (PinsPanel first), and kit Escape stops at the topmost dialog"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0282-web-kit-sheet
 model: auto
@@ -83,4 +83,118 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+
+- Added `apps/web/src/components/ui/use-modal.ts`: one `useModal` hook shared by
+  `Dialog` and `Sheet`. It moves focus in on open and back on close, attaches the
+  topmost-only Escape listener that calls `event.stopPropagation()` before
+  `onClose()`, and returns the Tab-trap `onKeyDown`. Both effects use
+  `useLayoutEffect`, so an Escape arriving right after the commit is not lost
+  (the T-0280 race).
+- `apps/web/src/components/ui/dialog.tsx` now calls `useModal` and dropped its
+  own `useEffect`s, local Tab handler and `FOCUSABLE` copy. Escape now stops
+  propagation, so it no longer reaches `ChatShell`'s window listener.
+- Added `apps/web/src/components/ui/sheet.tsx`: a right-side drawer (`fixed
+  inset-0 z-40 flex justify-end bg-black/40`; panel `h-full w-full bg-surface
+  shadow-xl sm:w-[380px]`), with `role="dialog"`, `aria-modal`, `ariaLabel`,
+  `dismissable`, `initialFocusRef` and no built-in header. It shares `useModal`
+  with `Dialog`.
+- Added `apps/web/src/components/ui/sheet.fixture.tsx` (default, accessible
+  name, not dismissable, initial focus, long body), picked up by
+  `fixtures.test.tsx` via `import.meta.glob`.
+- `apps/web/src/components/PinsPanel.tsx` now renders inside `Sheet`: removed its
+  Escape effect, narrow-layout Tab-trap effect, `FOCUSABLE`, `panelRef`,
+  `useMediaQuery` and the hand-rolled shell. Header, list, texts and the
+  `Pinned messages in …` accessible name are unchanged.
+- Tests: in `kit.test.tsx` a Dialog Escape stops before a `window` keydown spy
+  while it closes (and the spy fires once with no dialog); a new `Sheet` suite
+  (Escape closes, a Dialog over a Sheet closes only the Dialog, backdrop click
+  and Tab trap, `dismissable={false}` blocks both, focus returns, closed renders
+  nothing). In `PinnedMessages.test.tsx`, a new test closes the panel with
+  Escape.
+
+Files changed (all inside Allowed files):
+`apps/web/src/components/ui/use-modal.ts` (new),
+`apps/web/src/components/ui/sheet.tsx` (new),
+`apps/web/src/components/ui/sheet.fixture.tsx` (new),
+`apps/web/src/components/ui/dialog.tsx`,
+`apps/web/src/components/ui/kit.test.tsx`,
+`apps/web/src/components/PinsPanel.tsx`,
+`apps/web/src/components/PinnedMessages.test.tsx`,
+`work/T-0282-web-kit-sheet.md`.
+
+### Commands and results
+
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot kit PinnedMessages ChatShell fixtures`
+  → `Test Files 4 passed (4)`, `Tests 128 passed (128)`.
+- `pnpm gate` from the repo root:
+
+```
+gate: 8 changed file(s) against main
+PASS  install (frozen)  (0.9s)
+PASS  format  (11.1s)
+PASS  lint  (0.8s)
+PASS  typecheck  (6.7s)
+PASS  tests @zilar/web  (22.1s)
+scope: every changed file is inside the Allowed files
+GATE PASS
+```
+
+### Deviations / notes
+
+- I kept `Dialog`'s `FOCUSABLE` selector (`button, [href], …` without
+  `:not([disabled])`) in the shared hook, so Dialog's Tab behaviour is byte-for-
+  byte the same. `PinsPanel` previously excluded disabled buttons; the only
+  disabled control is the transient "Unpinning…" button and no test depends on
+  the difference.
+- `PinsPanel` is only mounted while open (`ChatView.tsx:136-138`), so it passes
+  `open` as a constant `true`; close is driven by `onClose` like before.
+- I ran `prettier --write` on the seven changed/added source files so
+  `format:check` stays green; no whole-suite checks were run before `pnpm gate`.
+
+### Open questions
+
+None.
+
+### Fix round 1
+
+- `ui/use-modal.ts`: the Escape listener now attaches whenever a modal is open,
+  not only when `dismissable`. When the panel is the topmost `[role="dialog"]`
+  it always calls `event.stopPropagation()`; it calls `onClose()` only when
+  `dismissable`. An undismissable modal therefore neither closes nor lets Escape
+  reach window listeners (ChatShell's narrow-layout handler). New kit test:
+  `keeps an undismissable dialog open and still stops Escape before window
+  listeners` (asserts open, no close, window spy not called).
+- `ui/sheet.fixture.tsx`: the `WithoutHeader` variant now uses an
+  `OpenPlainSheet` wrapper that renders `Sheet` with children only, so its name
+  matches what it shows (no header). `fixtures.test.tsx` still passes.
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot kit PinnedMessages
+  GroupHandleRoute fixtures` → `Test Files 4 passed (4)`, `Tests 135 passed
+  (135)`.
+- `pnpm gate` from the repo root:
+
+```
+gate: 8 changed file(s) against main
+PASS  install (frozen)  (1.4s)
+PASS  format  (20.3s)
+PASS  lint  (0.7s)
+PASS  typecheck  (6.7s)
+PASS  tests @zilar/web  (23.0s)
+scope: every changed file is inside the Allowed files
+GATE PASS
+```
+
 ## Review (written by Claude)
+
+**Approved** after one lead fix round.
+
+**What changed:**
+- `use-modal.ts` now holds the shared logic for `Dialog` and `Sheet`: focus and the Escape listener are attached in layout effects, which closes the T-0280 race;
+- the topmost modal swallows Escape (`stopPropagation`), so ChatShell's narrow-layout window handler no longer leaves the chat;
+- `PinsPanel` is on the `Sheet`, with no keydown listener of its own.
+
+**Fix round 1:**
+- an undismissable modal also swallows Escape, without closing;
+- the `WithoutHeader` fixture now renders children only.
+
+**Next:** the other four panels (Group, Topic, Channel, AI) move to the `Sheet` in a follow-up task.
