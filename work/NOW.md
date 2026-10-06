@@ -54,9 +54,11 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0341 | Mobile: empty-state Plus icon (Machines, Connections) in accent foreground | coding (DeepSeek flash) | a white Plus on the #ededed accent is almost invisible |
+| (none) | | | QA run 25 (T-0339, T-0340, T-0341) on the emulator |
 
 Time correction (checked with `date`): it is 04:42 local, Tue 10-06. The "~04:xx–05:50 local" stamps below were estimated and run up to about an hour ahead; their order is right.
+
+07:15 local: merged T-0341 (clean). QA run 25 sent (qa25/) for the settings confirms, the Add machine dialog and the Plus icons.
 
 07:10 local: merged T-0340 (Add machine dialog on the kit; 1 nit → T-0341, launched).
 
