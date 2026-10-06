@@ -6,7 +6,6 @@ import {
   Pencil,
   Plus,
   RefreshCw,
-  Search,
   Star,
   Sticker,
 } from 'lucide-react-native';
@@ -17,13 +16,13 @@ import {
   Image,
   Modal,
   Pressable,
-  TextInput,
   View,
   useWindowDimensions,
 } from 'react-native';
 
 import { RequireStickersAuth } from '@/components/stickers/require-stickers-auth';
 import { Text } from '@/components/ui/text';
+import { SearchField } from '@/components/ui/search-field';
 import { useAuthStore } from '@/auth/session';
 import { API_URL } from '@/lib/auth';
 import { asColorScheme } from '@/lib/color-scheme';
@@ -454,22 +453,17 @@ function StickersBody() {
             <Text className="text-[14px] text-muted-foreground">
               Find shared packs from anyone on this server and add them to your panel.
             </Text>
-            <View className="h-10 flex-row items-center gap-2 rounded-xl px-3" style={well}>
-              <Search size={16} color={MUTED_FOREGROUND[scheme]} />
-              <TextInput
-                value={query}
-                onChangeText={setQuery}
-                onSubmitEditing={() => loadDiscover(query)}
-                maxLength={60}
-                returnKeyType="search"
-                placeholder="Search shared packs"
-                placeholderTextColor={MUTED_FOREGROUND[scheme]}
-                accessibilityLabel="Search sticker packs"
-                autoCapitalize="none"
-                autoCorrect={false}
-                className="flex-1 text-[15px] text-foreground"
-              />
-            </View>
+            <SearchField
+              value={query}
+              onChangeText={setQuery}
+              onSubmitEditing={() => loadDiscover(query)}
+              maxLength={60}
+              returnKeyType="search"
+              placeholder="Search shared packs"
+              accessibilityLabel="Search sticker packs"
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
             {actionError !== '' ? (
               <Text accessibilityRole="alert" className="text-[14px] text-danger">
                 {actionError}

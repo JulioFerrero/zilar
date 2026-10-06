@@ -1,7 +1,7 @@
 ---
 id: T-0309
 title: "Mobile kit migration: chat list search and Stickers discover search use the kit SearchField"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0309-mobile-search-field-2
 model: auto
@@ -65,4 +65,53 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Done. Both remaining hand-rolled search bars now render through the kit `SearchField`.
+
+What I did:
+- `apps/mobile/src/app/(tabs)/index.tsx`: open search header replaced with
+  `<SearchField containerClassName="flex-1" autoFocus value={search}
+  onChangeText={onSearchChange} onSubmitEditing={...} placeholder="Search, or type @username"
+  accessibilityLabel="Search chats, messages and people" returnKeyType="search"
+  autoCapitalize="none" autoCorrect={false} onClear={() => onSearchChange('')} />`
+  (clear label stays the default "Clear search"). Closed pill left unchanged apart from
+  recolouring its `Search` icon from `#8a8a8a` to `MUTED_FOREGROUND[scheme]`. Removed the
+  now-unused `TextInput` import; `Search`, `X`, `well`, `MUTED_FOREGROUND`, `Pressable`
+  all still used elsewhere in the file, so kept.
+- `apps/mobile/src/app/settings/stickers.tsx`: discover bar replaced with
+  `<SearchField value={query} onChangeText={setQuery} onSubmitEditing={() => loadDiscover(query)}
+  maxLength={60} returnKeyType="search" placeholder="Search shared packs"
+  accessibilityLabel="Search sticker packs" autoCapitalize="none" autoCorrect={false} />`.
+  Removed now-unused `Search` (lucide) and `TextInput` (react-native) imports; `well`,
+  `MUTED_FOREGROUND`, `scheme` still used elsewhere, so kept.
+- `stickers-screen.test.tsx`: no changes needed — `SearchField`'s deps (`nativewind`,
+  `react-native`, `lucide-react-native`, `@/lib/colors`, `@/lib/color-scheme`) are all
+  already mocked in that file, and `@/lib/depth` / `@/lib/utils` are pure modules.
+
+Files changed:
+- `apps/mobile/src/app/(tabs)/index.tsx`
+- `apps/mobile/src/app/settings/stickers.tsx`
+- `work/T-0309-mobile-search-field-2.md` (this report)
+
+Commands and real results:
+- `pnpm install`: exit 0 (~12 s).
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot stickers-screen`:
+  1 test file passed, 16 tests passed.
+- `pnpm gate`: `PASS install (frozen)`, `PASS format`, `PASS lint`, `PASS typecheck`,
+  `PASS tests @zilar/mobile`, `scope: every changed file is inside the Allowed files`,
+  `GATE PASS` (3 changed files against main).
+- Verified: no `#8a8a8a` remains in `(tabs)/index.tsx` (grep hit only the `SearchField`
+  usage line); texts, labels, `maxLength`, `autoCapitalize`, `autoCorrect` unchanged.
+
+Security checklist: no secrets/tokens touched; no deletes/updates; no caps; no permission
+changes; no new routes; no audit entries. N/A in full — UI-only change.
+
 ## Review (written by Claude)
+
+**Approved.** Clean pre-review (0 nits), no fix rounds (Muse, peak).
+- The chat list search uses `SearchField` with `onClear`, which keeps the "Clear search" label by default.
+- The Stickers discover search uses `SearchField`.
+- No `#8a8a8a` is left in `(tabs)/index.tsx`; the closed pill's icon now uses `MUTED_FOREGROUND`.
+
+With this, no hand-rolled search bars are left on mobile.
+
+**Still to do:** emulator QA in the next run.

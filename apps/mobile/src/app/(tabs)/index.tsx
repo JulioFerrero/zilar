@@ -2,7 +2,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Archive, Search, X } from 'lucide-react-native';
 import { useColorScheme } from 'nativewind';
 import { useMemo, useState } from 'react';
-import { FlatList, Pressable, RefreshControl, ScrollView, TextInput, View } from 'react-native';
+import { FlatList, Pressable, RefreshControl, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { RequireAuth } from '@/auth/RequireAuth';
@@ -18,6 +18,7 @@ import { peopleHandleFor } from '@/components/contacts/people-search';
 import { PeopleSearchResult } from '@/components/contacts/people-search-result';
 import { useContactsApi } from '@/components/contacts/use-contacts-api';
 import { Text } from '@/components/ui/text';
+import { SearchField } from '@/components/ui/search-field';
 import { mutedUntilFor } from '@/lib/chat-prefs';
 import { asColorScheme } from '@/lib/color-scheme';
 import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
@@ -206,31 +207,19 @@ function ChatsList() {
 
   const searchHeader = searchOpen ? (
     <View className="flex-row items-center gap-3 px-4 py-2">
-      <View className="h-10 flex-1 flex-row items-center gap-2 rounded-xl px-3" style={well}>
-        <Search size={16} color="#8a8a8a" />
-        <TextInput
-          autoFocus
-          value={search}
-          onChangeText={onSearchChange}
-          onSubmitEditing={() => setSubmitRequest((count) => count + 1)}
-          placeholder="Search, or type @username"
-          placeholderTextColor={MUTED_FOREGROUND[scheme]}
-          accessibilityLabel="Search chats, messages and people"
-          returnKeyType="search"
-          autoCapitalize="none"
-          autoCorrect={false}
-          className="flex-1 text-[15px] text-foreground"
-        />
-        {search.length > 0 ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Clear search"
-            onPress={() => onSearchChange('')}
-          >
-            <X size={16} color={MUTED_FOREGROUND[scheme]} />
-          </Pressable>
-        ) : null}
-      </View>
+      <SearchField
+        containerClassName="flex-1"
+        autoFocus
+        value={search}
+        onChangeText={onSearchChange}
+        onSubmitEditing={() => setSubmitRequest((count) => count + 1)}
+        placeholder="Search, or type @username"
+        accessibilityLabel="Search chats, messages and people"
+        returnKeyType="search"
+        autoCapitalize="none"
+        autoCorrect={false}
+        onClear={() => onSearchChange('')}
+      />
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Cancel search"
@@ -251,7 +240,7 @@ function ChatsList() {
         className="h-10 flex-row items-center gap-2 rounded-xl px-3"
         style={well}
       >
-        <Search size={16} color="#8a8a8a" />
+        <Search size={16} color={MUTED_FOREGROUND[scheme]} />
         <Text
           numberOfLines={1}
           ellipsizeMode="tail"
