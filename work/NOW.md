@@ -30,6 +30,10 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 Time correction (checked with `date`): it is 04:42 local, Tue 10-06. The "~04:xx–05:50 local" stamps below were estimated and run up to about an hour ahead; their order is right.
 
+05:12 local: read the doctor audit (`../zilar-doctor/DOCTOR.md`, range d8259fe..fc0be5e, 193 commits). The full suites of every package are green: web 1500, mobile 1982, server 1886. The loop and scope checks are clean. One should-fix:
+- **What:** `isBlockedSender` (`packages/chat-core/src/blocked.ts:10-12`) matches the localpart only, so `bea@other.test` would be hidden when `bea` is blocked.
+- **Lead decision: no task now.** Federation is off (`infra/ejabberd/ejabberd.yml:49`: no s2s listener, every s2s denied), so every sender shares one domain and nobody can be over-blocked today. The test pins this behaviour on purpose. Revisit if federation is ever turned on. Morning note for Julio.
+
 05:09 local: merged T-0325, T-0326, T-0327 and T-0328, all with clean pre-reviews. Their effect:
 - the Stickers page uses the kit;
 - no raw radios are left on web;
