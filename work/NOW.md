@@ -28,6 +28,8 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 Time correction (checked with `date`): it is 04:42 local, Tue 10-06. The "~04:xx–05:50 local" stamps below were estimated and run up to about an hour ahead; their order is right.
 
+06:03 local: QA run 21 PASS (qa21/). The New topic sheet is a kit bottom sheet. With Private chosen, Cancel and Create are reachable after one swipe. The keyboard keeps the field visible, and Create is reachable with it open. The backdrop and the back button close the sheet. No crash. QA reported Create clipped before scrolling (02.png); the lead looked, and it is the scroll area's edge with more content below, which is normal for a sheet. Phone marker b45684f1 (lead checked).
+
 05:59 local: merged T-0332 (the New topic sheet uses the kit BottomSheet, so the long Private form scrolls; clean after the fix round). QA run 21 sent (qa21/). No workers run now.
 
 05:58 local: merged T-0335 (in review status, a worker that hits a rate limit now falls back in place to the paid Muse; 0 nits) and restarted the autopilot on it. One instance runs, and lead.log is ticking.
