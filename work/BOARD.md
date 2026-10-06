@@ -9,6 +9,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
+| [T-0309](T-0309-mobile-search-field-2.md) | Mobile kit migration: chat list and Stickers discover search use SearchField | todo | auto | T-0308 | |
 | [T-0308](T-0308-mobile-kit-search-field.md) | Mobile kit: SearchField; group topics search and Explore use it | todo | auto | T-0306 | |
 | [T-0307](T-0307-mobile-text-field-8.md) | Mobile kit migration: sign-in email, name and username fields use the kit TextField | todo | auto | T-0305 | batch 8 |
 
