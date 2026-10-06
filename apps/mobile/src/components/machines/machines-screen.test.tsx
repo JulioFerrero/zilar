@@ -71,6 +71,7 @@ vi.mock('@/components/machines/use-machines-api', () => ({
 
 vi.mock('@/lib/colors', () => ({
   ACCENT: { dark: '#ededed', light: '#ededed' },
+  ACCENT_FOREGROUND: { dark: '#ededed', light: '#ededed' },
   ICON: { dark: '#d4d4d4', light: '#d4d4d4' },
 }));
 

@@ -7,13 +7,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useColorScheme } from 'nativewind';
 
 import { RequireAuth } from '@/auth/RequireAuth';
+import { Button } from '@/components/ui/button';
 import { Card, SectionLabel } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import { asColorScheme } from '@/lib/color-scheme';
-import { ACCENT, ICON } from '@/lib/colors';
+import { ACCENT, ACCENT_FOREGROUND, ICON } from '@/lib/colors';
 import type { Machine, PairingCode } from '@/lib/machines-api';
 import { describeMachinesError, type MachinesErrorInfo } from '@/components/machines/errors';
 import { useMachinesApi } from '@/components/machines/use-machines-api';
@@ -562,6 +563,7 @@ function AddMachineSheet({
   onClose: () => void;
 }) {
   const [copied, setCopied] = useState(false);
+  const scheme = asColorScheme(useColorScheme().colorScheme);
 
   const copy = (): void => {
     if (pairing === null) {
@@ -576,7 +578,7 @@ function AddMachineSheet({
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View className="flex-1 items-center justify-center bg-black/40 p-6">
-        <View className="w-full max-w-xs rounded-2xl bg-background p-4">
+        <View className="w-full max-w-xs rounded-2xl border border-border-strong bg-surface p-4">
           <Text className="text-[16px] font-semibold text-foreground">Add machine</Text>
           <Text className="mt-1 text-[14px] leading-5 text-muted-foreground">
             Pair a new computer where your AIs can work.
@@ -595,22 +597,17 @@ function AddMachineSheet({
                 {error}
               </Text>
               <View className="mt-4 flex-row justify-end gap-2">
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Close"
-                  onPress={onClose}
-                  className="rounded-full px-3 py-1.5 active:bg-surface-raised"
-                >
-                  <Text className="text-[14px] text-muted-foreground">Close</Text>
-                </Pressable>
-                <Pressable
-                  accessibilityRole="button"
+                <Button variant="ghost" size="sm" accessibilityLabel="Close" onPress={onClose}>
+                  <Text>Close</Text>
+                </Button>
+                <Button
+                  variant="default"
+                  size="sm"
                   accessibilityLabel="Try again"
                   onPress={onRetry}
-                  className="rounded-full bg-accent px-3 py-1.5 active:opacity-90"
                 >
-                  <Text className="text-[14px] font-medium text-accent-foreground">Try again</Text>
-                </Pressable>
+                  <Text>Try again</Text>
+                </Button>
               </View>
             </>
           ) : null}
@@ -625,17 +622,19 @@ function AddMachineSheet({
                   {pairing.code}
                 </Text>
                 <View className="mt-2 flex-row items-center justify-center">
-                  <Pressable
-                    accessibilityRole="button"
+                  <Button
+                    variant="default"
+                    size="sm"
                     accessibilityLabel="Copy pairing code"
                     onPress={copy}
-                    className="flex-row items-center gap-1 rounded-md bg-accent px-2.5 py-1 active:opacity-90"
                   >
-                    {copied ? <Check size={14} color="#fff" /> : <Copy size={14} color="#fff" />}
-                    <Text className="text-[13px] font-medium text-accent-foreground">
-                      {copied ? 'Copied' : 'Copy'}
-                    </Text>
-                  </Pressable>
+                    {copied ? (
+                      <Check size={14} color={ACCENT_FOREGROUND[scheme]} />
+                    ) : (
+                      <Copy size={14} color={ACCENT_FOREGROUND[scheme]} />
+                    )}
+                    <Text>{copied ? 'Copied' : 'Copy'}</Text>
+                  </Button>
                 </View>
               </View>
               <Text className="mt-3 text-[14px] leading-5 text-foreground">
@@ -646,14 +645,9 @@ function AddMachineSheet({
                 The desktop runner is not published yet — this code is ready for when it is.
               </Text>
               <View className="mt-4 flex-row justify-end">
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Done"
-                  onPress={onClose}
-                  className="rounded-full bg-accent px-4 py-1.5 active:opacity-90"
-                >
-                  <Text className="text-[15px] font-medium text-accent-foreground">Done</Text>
-                </Pressable>
+                <Button variant="default" size="sm" accessibilityLabel="Done" onPress={onClose}>
+                  <Text>Done</Text>
+                </Button>
               </View>
             </>
           ) : null}
