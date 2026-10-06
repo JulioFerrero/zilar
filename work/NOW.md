@@ -24,10 +24,16 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0331 | Web: disabled Share on an imported pack shows its reason again | coding | the T-0327 polish note |
+| T-0332 | Mobile: New topic sheet on BottomSheet (long Private form scrolls) | coding | from QA run 20 |
 | (doctor) | | | audit running (paid Muse fallback) |
 
 Time correction (checked with `date`): it is 04:42 local, Tue 10-06. The "~04:xx–05:50 local" stamps below were estimated and run up to about an hour ahead; their order is right.
+
+05:21 local:
+- **T-0331 merged.** On an imported pack, the disabled Share button shows its reason again: a hover title on a wrapper span, plus `aria-describedby`. 2 form nits accepted.
+- **QA run 20: PASS** (qa20/). The kit Checkbox works in New topic (members, AIs, the locked "You") and in the roles holders. The approver tick is a Check icon. No ✓ glyphs are left. Phone marker b45684f1 (lead checked).
+- **Box shape:** QA calls the boxes round. They were already round before T-0329 (`rounded-md` on a 20 px box), so this is not a regression.
+- **Overflow:** the lead saw in 03.png that with Private plus 4 people plus 2 AIs, the Cancel / Create row spills below the New topic card. The card is `max-h-[85%]` with no ScrollView → T-0332, launched.
 
 05:15 local: merged T-0329 (mobile kit Checkbox with a Check icon; the ✓ glyphs in the topic and roles pickers are now icons; 1 cosmetic nit). QA run 20 sent (qa20/).
 
