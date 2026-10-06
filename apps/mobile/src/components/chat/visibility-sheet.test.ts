@@ -6,8 +6,12 @@ import { DirectoryApiError } from '@/lib/directory-api';
 // The sheet imports `react-native` (Modal/Pressable), so it is stubbed like
 // `invite-links-sheet.test.tsx` — the helpers under test are pure.
 vi.mock('react-native', () => ({
+  Keyboard: { addListener: () => ({ remove: () => {} }) },
+  KeyboardAvoidingView: 'KeyboardAvoidingView',
   Modal: 'Modal',
+  Platform: { OS: 'ios' },
   Pressable: 'Pressable',
+  ScrollView: 'ScrollView',
   TextInput: 'TextInput',
   View: 'View',
 }));

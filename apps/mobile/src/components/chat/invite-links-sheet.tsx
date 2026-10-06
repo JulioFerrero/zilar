@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import type { GroupInviteLink } from '@/lib/invite-links-api';
-import { useKeyboardHeight } from '@/lib/use-keyboard-height';
+import { sheetBottomPadding, useKeyboardHeight } from '@/lib/use-keyboard-height';
 
 export type InviteLinkState = 'active' | 'expired' | 'exhausted' | 'revoked';
 
@@ -84,22 +84,6 @@ export function validateInviteLinkForm(input: {
       ...(maxUses === undefined ? {} : { maxUses }),
     },
   };
-}
-
-/**
- * T-0299 (follows T-0254): the bottom padding of the invite links sheet. On
- * Android the window no longer resizes for the keyboard (edge-to-edge, Expo
- * SDK 57), so the sheet is padded by the keyboard height on top of the safe
- * area minimum, letting the form, Create button and links scroll into view.
- * On iOS `KeyboardAvoidingView` keeps its own `padding` behaviour.
- */
-export function inviteSheetBottomPadding(
-  platform: string,
-  insetBottom: number,
-  keyboardHeight: number,
-): number {
-  const base = Math.max(insetBottom, 16);
-  return platform === 'android' ? base + keyboardHeight : base;
 }
 
 /**
@@ -190,7 +174,7 @@ export function InviteLinksSheet({
             onPress={() => {}}
             className="max-h-[85%] rounded-t-2xl border-t border-border-strong bg-surface px-4 pt-3"
             style={{
-              paddingBottom: inviteSheetBottomPadding(Platform.OS, insets.bottom, keyboardHeight),
+              paddingBottom: sheetBottomPadding(Platform.OS, insets.bottom, keyboardHeight),
             }}
           >
             <ScrollView keyboardShouldPersistTaps="handled">

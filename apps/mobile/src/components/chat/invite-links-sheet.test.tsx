@@ -5,7 +5,6 @@ import {
   describeInviteLink,
   InviteLinkRow,
   inviteLinkState,
-  inviteSheetBottomPadding,
   validateInviteLinkForm,
 } from './invite-links-sheet';
 import type { GroupInviteLink } from '@/lib/invite-links-api';
@@ -263,19 +262,5 @@ describe('CreatedInviteLinkView', () => {
       (onPress as () => void)();
     }
     expect(calls).toEqual(['copy', 'share', 'done']);
-  });
-});
-
-describe('inviteSheetBottomPadding', () => {
-  it('keeps the 16 px minimum with no keyboard on Android', () => {
-    expect(inviteSheetBottomPadding('android', 0, 0)).toBe(16);
-  });
-
-  it('adds the keyboard height on Android', () => {
-    expect(inviteSheetBottomPadding('android', 24, 300)).toBe(324);
-  });
-
-  it('ignores the keyboard height on iOS', () => {
-    expect(inviteSheetBottomPadding('ios', 34, 300)).toBe(34);
   });
 });
