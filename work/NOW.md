@@ -24,10 +24,13 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0315 | Mobile: visibility, members/roles, topic info sheets on BottomSheet | coding (Muse, peak) | the roles sheet gains scroll and keyboard handling |
-| (none) | | | doctor audit running (paid Muse fallback) |
+| T-0321 | Web kit: unread count pills on Badge | coding (paid Muse fallback) | ChatListItem, TopicRow, MessageList; counts over 99 show 99+ |
+| T-0322 | Web kit: AIs, Connections, Machines page states on StateMessage | coding (Muse, peak) | StateMessage gains an `icon` prop |
+| (doctor) | | | audit running (paid Muse fallback) |
 
 Time correction (checked with `date`): it is 04:42 local, Tue 10-06. The "~04:xx–05:50 local" stamps below were estimated and run up to about an hour ahead; their order is right.
+
+04:50 local: launched T-0321 (Badge) and T-0322 (StateMessage), the next web kit adoptions. Neither kit piece had app users before (StateMessage had 3).
 
 04:42 local: merged T-0320, after a lead fix round: the regression test threw inside a listener, which jsdom swallows; it now uses a spy plus a control test. No hand-rolled web menus are left. Bug fixed: on narrow screens, Escape in the chat header or task strip menus used to leave the chat.
 
