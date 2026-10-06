@@ -166,20 +166,11 @@ export function NewAiDialog({ onClose }: { onClose: () => void }) {
       size="sm"
       actions={
         <>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-full px-4 py-1.5 text-[15px] text-muted-foreground hover:bg-list-hover"
-          >
+          <Button type="button" variant="ghost" size="lg" onClick={onClose}>
             Cancel
-          </button>
+          </Button>
           {status === 'ready' && connections.length > 0 && (
-            <Button
-              type="button"
-              disabled={!canSubmit}
-              onClick={() => void submit()}
-              className="rounded-full px-4 py-1.5 text-[15px]"
-            >
+            <Button type="button" size="lg" disabled={!canSubmit} onClick={() => void submit()}>
               {submitting ? 'Creating…' : 'Create'}
             </Button>
           )}

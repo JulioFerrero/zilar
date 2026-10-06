@@ -1,7 +1,7 @@
 ---
 id: T-0370
 title: "Web kit: ConfirmDialog, New AI dialog and avatar uploader footer buttons use the kit Button"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0370-web-dialog-footers-buttons-kit
 model: auto
@@ -72,5 +72,16 @@ pnpm gate
 ---
 
 ## Report (written by the worker when done)
+- ConfirmDialog: Cancel -> `<Button ref={cancelRef} variant="ghost" size="lg">`, confirm -> `<Button variant="destructive" size="lg">`; removed `cn` import, added `Button` import.
+- NewAiDialog: Cancel -> `<Button variant="ghost" size="lg">`; Create -> `size="lg"`, dropped `className` override. Kept existing `Button` import; template radio chips and "More options" remain plain `<button>`.
+- AvatarUploader: Remove -> `variant="outline"`; Dismiss -> `variant="link" size="sm" className="h-auto px-0 text-inherit"`; Cancel -> `variant="ghost"`. All texts, `disabled`, `ref`, handlers unchanged.
+- Files changed: `apps/web/src/components/ConfirmDialog.tsx`, `apps/web/src/components/ais/NewAiDialog.tsx`, `apps/web/src/components/AvatarUploader.tsx`.
+- Commands:
+  - `pnpm install`: pass.
+  - `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot ConfirmDialog NewAiDialog AvatarUploader`: 3 files, 19 tests passed.
+  - `pnpm gate`: GATE PASS — install PASS, format PASS, lint PASS, typecheck PASS, tests @zilar/web PASS; scope clean (4 changed files incl. task file, all inside Allowed files).
+- Security checklist: N/A (no secrets, routes, deletes, caps, or audit entries touched).
 
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-06). ConfirmDialog Cancel (keeps `ref={cancelRef}`) and confirm are kit ghost/destructive `lg`; New AI Cancel is ghost `lg` and Create drops its override for `lg`; avatar uploader Remove outline, Dismiss inline link, Cancel ghost. Pre-review clean (0 findings).
