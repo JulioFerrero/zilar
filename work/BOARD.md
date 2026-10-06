@@ -10,7 +10,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0325](T-0325-web-stickers-kit.md) | Web kit: Stickers page states and pill buttons | in-progress | auto | none | |
-| [T-0324](T-0324-web-segmented.md) | Web kit: SegmentedControl radio mode (Explore filter, group Visibility) | in-progress | auto | none | |
 | [T-0323](T-0323-web-checkbox.md) | Web kit: Checkbox for the pickers | in-progress | auto | none | folder editor look |
 
 ## Follow-ups
@@ -354,3 +353,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0320](T-0320-web-menu-3.md) | Web kit: ChatHeader and TaskStrip menus on Menu; Escape no longer leaves the chat on narrow screens | 2026-10-06 |
 | [T-0321](T-0321-web-badge.md) | Web kit: unread count pills on Badge | 2026-10-06 |
 | [T-0322](T-0322-web-state-message.md) | Web kit: AIs, Connections and Machines page states on StateMessage | 2026-10-06 |
+| [T-0324](T-0324-web-segmented.md) | Web kit: SegmentedControl radio mode for the Explore filter and group Visibility | 2026-10-06 |

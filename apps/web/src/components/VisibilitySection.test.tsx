@@ -80,7 +80,9 @@ describe('VisibilitySection', () => {
     checkMock.mockResolvedValue({ available: true });
     renderSection();
 
-    expect(screen.getByRole('radio', { name: 'Private' })).toHaveProperty('checked', true);
+    expect(screen.getByRole('radio', { name: 'Private' }).getAttribute('aria-checked')).toBe(
+      'true',
+    );
     fireEvent.click(screen.getByRole('radio', { name: 'Public' }));
     expect(screen.getByText('Anyone can find and join “Hiking club”.')).toBeTruthy();
 

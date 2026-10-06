@@ -13,13 +13,20 @@ export interface SegmentedControlProps {
   value: string;
   onChange: (value: string) => void;
   ariaLabel: string;
+  mode?: 'tabs' | 'radio';
 }
 
 /**
  * A well track with the active option raised (`ui-style.md` §5). Arrow keys,
  * Home and End move the selection, following the tablist pattern in §7.
  */
-export function SegmentedControl({ options, value, onChange, ariaLabel }: SegmentedControlProps) {
+export function SegmentedControl({
+  options,
+  value,
+  onChange,
+  ariaLabel,
+  mode = 'tabs',
+}: SegmentedControlProps) {
   const optionRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   const move = (event: KeyboardEvent<HTMLButtonElement>, index: number): void => {
@@ -46,9 +53,11 @@ export function SegmentedControl({ options, value, onChange, ariaLabel }: Segmen
     optionRefs.current[next]?.focus();
   };
 
+  const isRadio = mode === 'radio';
+
   return (
     <div
-      role="tablist"
+      role={isRadio ? 'radiogroup' : 'tablist'}
       aria-label={ariaLabel}
       className="well-surface flex gap-1 rounded-[10px] p-[3px]"
     >
@@ -61,8 +70,8 @@ export function SegmentedControl({ options, value, onChange, ariaLabel }: Segmen
               optionRefs.current[index] = element;
             }}
             type="button"
-            role="tab"
-            aria-selected={active}
+            role={isRadio ? 'radio' : 'tab'}
+            {...(isRadio ? { 'aria-checked': active } : { 'aria-selected': active })}
             tabIndex={active ? 0 : -1}
             onClick={() => onChange(option.value)}
             onKeyDown={(event) => move(event, index)}

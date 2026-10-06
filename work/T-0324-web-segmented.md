@@ -1,7 +1,7 @@
 ---
 id: T-0324
 title: "Web kit: SegmentedControl radio mode, used by the Explore kind filter and the group Visibility switch"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0324-web-segmented
 model: auto
@@ -69,4 +69,15 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+- Added `mode?: 'tabs' | 'radio'` (default `'tabs'`) to `SegmentedControl`; radio mode renders `radiogroup`/`radio` with `aria-checked`. Keyboard, roving tabIndex, and styles unchanged.
+- New `segmented-control.test.tsx`: radio roles + `aria-checked`, ArrowRight selects next, tabs mode still exposes `tab`.
+- `ExplorePage`: kind pills replaced with `<SegmentedControl mode="radio" ariaLabel="Kind filter" …/>` in `div.mt-2`; `onChange` looks up the value in a typed `KIND_OPTIONS` constant (no blind cast). Removed unused `cn` import.
+- `VisibilitySection`: pills replaced with `SegmentedControl mode="radio" ariaLabel="Visibility"`; `onChange` guards to `'private' | 'public'` then runs the same five setters. Removed unused `cn` import.
+- `VisibilitySection.test.tsx:83`: `toHaveProperty('checked', true)` -> `getAttribute('aria-checked')` is `'true'`. Only test line changed; `kit.test.tsx` and `ExplorePage.test.tsx` untouched.
+- Files changed: `ui/segmented-control.tsx`, `ui/segmented-control.test.tsx` (new), `ExplorePage.tsx`, `VisibilitySection.tsx`, `VisibilitySection.test.tsx`, this task file.
+- Checks: `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot segmented-control kit ExplorePage VisibilitySection` — 4 files, 65 tests, all passed. `pnpm gate` — GATE PASS (install, format, lint, typecheck, tests @zilar/web all PASS; scope: every changed file inside Allowed files).
+- Security checklist: no secrets/tokens; no deletes/updates touched; no caps/uniqueness; no permission changes (presentational change only); no new routes; no audit entries.
+
 ## Review (written by Claude)
+
+**Approved** (pre-review clean, 0 nits). `SegmentedControl` gains `mode="radio"`, which renders `radiogroup` and `radio` with `aria-checked`; tabs mode is unchanged. The Explore kind filter and the group Visibility switch use it, and both narrow the string value safely without a cast. The only test change is `VisibilitySection.test.tsx:83`, which now checks `aria-checked`, as the spec allowed. The look changes from bordered pills to the well track with a raised segment. NewGroupDialog's switch follows once T-0323 merges.

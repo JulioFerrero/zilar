@@ -5,10 +5,16 @@ import { useChatStoreApi } from '@/store/ChatStoreProvider';
 import { Avatar } from '@/components/Avatar';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
+import { SegmentedControl } from '@/components/ui/segmented-control';
 import { TextInput } from '@/components/ui/text-input';
-import { cn } from '@/lib/utils';
 
 type KindFilter = 'all' | 'group' | 'channel';
+
+const KIND_OPTIONS: { value: KindFilter; label: string }[] = [
+  { value: 'all', label: 'All' },
+  { value: 'group', label: 'Groups' },
+  { value: 'channel', label: 'Channels' },
+];
 
 const PAGE_TITLE = 'Explore public groups and channels';
 
@@ -160,34 +166,19 @@ export function ExplorePage({ onClose }: { onClose: () => void }) {
         aria-label="Search public groups and channels"
         className="mt-3"
       />
-      <div className="mt-2 flex gap-2" role="radiogroup" aria-label="Kind filter">
-        {(
-          [
-            { value: 'all', label: 'All' },
-            { value: 'group', label: 'Groups' },
-            { value: 'channel', label: 'Channels' },
-          ] as const
-        ).map((option) => (
-          <label
-            key={option.value}
-            className={cn(
-              'cursor-pointer rounded-full border px-3 py-1 text-[14px]',
-              kind === option.value
-                ? 'border-accent bg-accent/10 font-medium'
-                : 'border-input text-muted-foreground',
-            )}
-          >
-            <input
-              type="radio"
-              name="explore-kind"
-              value={option.value}
-              checked={kind === option.value}
-              onChange={() => setKind(option.value)}
-              className="sr-only"
-            />
-            {option.label}
-          </label>
-        ))}
+      <div className="mt-2">
+        <SegmentedControl
+          mode="radio"
+          ariaLabel="Kind filter"
+          options={KIND_OPTIONS}
+          value={kind}
+          onChange={(next) => {
+            const match = KIND_OPTIONS.find((option) => option.value === next);
+            if (match !== undefined) {
+              setKind(match.value);
+            }
+          }}
+        />
       </div>
 
       <div aria-live="polite" className="mt-3 min-h-0 flex-1 overflow-y-auto">
