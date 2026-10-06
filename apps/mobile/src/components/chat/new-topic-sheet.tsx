@@ -255,7 +255,11 @@ export function NewTopicSheet({
         <Button variant="ghost" accessibilityLabel="Cancel" onPress={onClose}>
           <Text>Cancel</Text>
         </Button>
-        <Button accessibilityLabel="Create topic" disabled={busy} onPress={create}>
+        <Button
+          accessibilityLabel="Create topic"
+          disabled={busy || name.trim() === ''}
+          onPress={create}
+        >
           <Text>{busy ? 'Creating…' : 'Create'}</Text>
         </Button>
       </View>

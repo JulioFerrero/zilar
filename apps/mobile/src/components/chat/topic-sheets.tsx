@@ -406,28 +406,24 @@ export function TopicInfoSheet({
 
           <View className="flex-row justify-end gap-2">
             {topic.visibility === 'private' && isMember && !topic.isGeneral ? (
-              <Pressable
-                accessibilityRole="button"
+              <Button
+                variant="ghost"
                 accessibilityLabel="Leave topic"
                 disabled={busy}
                 onPress={onLeave}
-                className="rounded-[10px] px-4 py-2 active:bg-surface-raised disabled:opacity-50"
               >
-                <Text className="text-[15px] text-foreground">Leave</Text>
-              </Pressable>
+                <Text>Leave</Text>
+              </Button>
             ) : null}
             {canArchive ? (
-              <Pressable
-                accessibilityRole="button"
+              <Button
+                variant="destructive"
                 accessibilityLabel="Archive topic"
                 disabled={busy}
                 onPress={onArchive}
-                className="rounded-[10px] bg-danger px-4 py-2 active:opacity-80 disabled:opacity-50"
               >
-                <Text className="text-[15px] font-semibold text-accent-foreground">
-                  {busy ? 'Working…' : 'Archive'}
-                </Text>
-              </Pressable>
+                <Text>{busy ? 'Working…' : 'Archive'}</Text>
+              </Button>
             ) : null}
           </View>
         </View>

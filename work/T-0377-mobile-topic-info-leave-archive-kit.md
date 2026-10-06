@@ -1,7 +1,7 @@
 ---
 id: T-0377
 title: "Mobile kit: the topic info sheet's Leave and Archive buttons use the kit Button; New topic Create is disabled while the name is empty"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0377-mobile-topic-info-leave-archive-kit
 model: auto
@@ -63,5 +63,18 @@ pnpm gate
 ---
 
 ## Report (written by the worker when done)
+- Changed `topic-sheets.tsx` TopicInfoSheet footer: Leave is now `<Button variant="ghost" ...><Text>Leave</Text></Button>`; Archive is now `<Button variant="destructive" ...><Text>{busy ? 'Working…' : 'Archive'}</Text></Button>`. Labels inside `<Text>`; kit supplies white text on destructive. `Pressable` import kept (still used at lines 337-393).
+- Changed `new-topic-sheet.tsx` Create button to `disabled={busy || name.trim() === ''}`; kept the `create()` trim guard and 'Enter a topic name' error.
+- No test files changed; no mocks needed (existing suites passed as-is).
+- Files changed: `apps/mobile/src/components/chat/topic-sheets.tsx`, `apps/mobile/src/components/chat/new-topic-sheet.tsx`, `work/T-0377-mobile-topic-info-leave-archive-kit.md`.
+- Commands:
+  - `pnpm install`: pass (14.2s).
+  - `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot new-topic-sheet topic-sheets-roles topic-actions-sheet`: 3 files, 14 tests passed.
+  - `pnpm gate` (first run): FAIL on format (`new-topic-sheet.tsx` line too long); fixed by wrapping Button props over multiple lines (manual edit, no formatter run).
+  - `pnpm gate` (final): GATE PASS — install, format, lint, typecheck, tests @zilar/mobile all PASS; scope: every changed file inside Allowed files.
+- Security checklist: no secrets/tokens touched; no deletes/updates, permission checks, routes, caps, or audit entries involved. N/A.
+- No deviations; no open questions.
 
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-06). Leave is kit ghost and Archive kit destructive (white text), labels inside `<Text>`; New topic Create is disabled while the trimmed name is empty, and `create()` keeps its guard. No test changes needed. Pre-review clean (0 findings). Emulator check in the next QA run.
