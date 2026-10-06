@@ -1,7 +1,7 @@
 ---
 id: T-0437
 title: "AI memory M2a (server): the mirror indexer copies an AI chat's archive into ai_memory_messages, incrementally, with corrections and retractions"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0437-ai-memory-indexer
 model: auto
@@ -81,4 +81,41 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**What I did**
+
+Added `apps/server/src/agents/memory/indexer.ts` with `indexMemory(input)`, mirroring an AI chat's archive into `ai_memory_messages` with the media indexer's shape:
+
+- DM scope is `username = <AI localpart> AND bare_peer = <owner bare JID>`; a room is `username = <room JID>`. The cursor comes from `aiMemoryState`, clamped to a 12-month window, and at most 5 000 rows are read ascending.
+- One transaction takes `pg_advisory_xact_lock(hashtext(aiId || '|' || chatKey))` first and reads the cursor inside it, so two passes of one chat never interleave.
+- A correction rewrites the target's `text` (cut to 1 000 chars); a retraction sets `deleted = true` and blanks the text. Both drop every `ai_memory_nodes` row with `lo <= target.seq < hi`. Neither edit row is stored.
+- A normal row skips an already-mirrored `originId` via the unique key (`onConflictDoNothing`); `seq = max(seq) + 1` is consumed only by an insert that actually happened, so seqs stay dense.
+- Text from `extractMediaItems`: `[image: <name>]`, `[file: <name>]`, `[gif]`, `[voice m:ss]`; a link-only message keeps its body; a sticker payload becomes `[sticker]`; an empty result is skipped; everything is cut to 1 000 chars.
+- Sender: "AI" when the bare `from` equals `aiBareJid`, else the room nick, else `ownerName ?? 'Owner'`.
+- The state upsert moves `indexedThroughMicros` to the last row read. Nothing is logged.
+
+Added `apps/server/src/agents/memory/indexer.test.ts` (10 tests) with the PGlite fake archive copied from `media/indexer.test.ts`: DM order/dense seqs/senders, DM default sender, room nicks, cursor + forced-back dedup, media placeholders + empty-row skip, 1 000-char cut, correction dropping only the covering node, retraction, 12-month window, and other-chat scope.
+
+**Files changed**
+
+- `apps/server/src/agents/memory/indexer.ts` (new)
+- `apps/server/src/agents/memory/indexer.test.ts` (new)
+- `work/T-0437-ai-memory-indexer.md` (status + this Report)
+
+**Commands and results**
+
+- `pnpm install` — done, 1170 packages added.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot memory/indexer` — 1 test file passed, 10 tests passed.
+- `pnpm gate` — `PASS install (frozen)`, `PASS format`, `PASS lint`, `PASS typecheck`, `PASS tests @zilar/server`; `scope: every changed file is inside the Allowed files`; `GATE PASS`.
+
+**Notes / deviations**
+
+- `extractMediaItems` is imported from `media/indexer.ts` as the spec lists it under Helpers. Stickers are the one payload kind it drops, so the indexer decodes the agent payload itself (same namespace and XML unescape as the media indexer) to emit `[sticker]`.
+- `buildIndexQuery` is a local copy of the media one, since the spec lists it as the model to copy rather than a helper. The scope type is local (`MemoryScope`).
+
+**Open questions**
+
+- None.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-06). indexMemory mirrors a DM (AI archive, owner bare_peer) or a room incrementally: an advisory lock per chat, a cursor clamped to 12 months, at most 5000 rows, dense seqs (duplicates consume no seq), placeholders for media, sender AI, nick or owner name, corrections replacing text and retractions blanking it, both dropping the covering nodes. Nothing is logged. Nit, carried to M3: the header comment wrongly says "a retraction always leaves the summaries".
