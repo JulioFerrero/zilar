@@ -262,6 +262,17 @@ export interface ChatStoreState {
   sendSticker: (chatId: string, sticker: SendStickerChoice, options?: SendTextOptions) => void;
   /** Retries a failed sticker send (the payload is already on the message). */
   retrySticker: (chatId: string, messageId: string) => void;
+  /**
+   * Forwards copies of `messages` into each target chat (T-0432): one
+   * optimistic copy per message per target with a validated forward origin,
+   * then the optional `comment` as one text message per target that queued a
+   * copy. Deleted, failed and still-sending messages are skipped.
+   */
+  forwardMessages: (
+    targets: string[],
+    messages: UiMessage[],
+    options?: { comment?: string },
+  ) => void;
   /** Toggle my reaction of `emoji` on a message (XEP-0444). */
   react: (chatId: string, messageId: string, emoji: string) => void;
   /** Begin editing `messageId`: composer switches to edit mode with its text. */

@@ -1,7 +1,7 @@
 ---
 id: T-0432
 title: "Forwarding (mobile store): forwardMessages(targets, messages, { comment }) sends copies with a <forward> origin, mirroring web T-0414"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0432-mobile-forward-store-action
 model: auto
@@ -89,4 +89,63 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+Ported the web `forwardMessages` store action (T-0414) to mobile:
+
+- `types.ts`: added the `forwardMessages(targets, messages, options?)` member to
+  `ChatStoreState` with a one-line doc comment.
+- `real-store.ts`: imported `AttachmentSchema`, `ForwardOriginSchema`,
+  `PayloadSchema`, `VoiceMetaSchema` and the `ForwardOrigin` type from
+  `@zilar/protocol`; ported `forwardPublicRoomFor`, `forwardOriginFor`,
+  `forwardedPayloadFor`, `forwardedUiFieldsFor`, `runForwardSend` and the
+  `forwardMessages` action. Mobile differences applied: `runForwardSend` uses
+  the `runStickerSend` shape (`sendMessage(...)` → link ids →
+  `updateMessageStatus(…, 'sent')`; `.catch`/no core → `markStickerFailed`),
+  and there is no send-timeout machinery or `rememberBaseText`.
+- `chat-store.ts` (mock/QA mode): added `forwardMessages` to the `ChatStoreData`
+  `Omit` list and implemented the action. It inserts one copy per known target
+  per non-deleted message with `forward: { sender_id, sender_name, original_at }`
+  and the same text/card/attachment/voice, `status: 'sending'` then the same
+  `sendText` timers, then sends the comment through the mock `sendText`.
+- `real-store.forward.test.ts` (new): 7 tests mirroring the web suite.
+- `chat-store.test.ts`: one test that the mock inserts a copy with `forward`.
+
+### Files changed
+- `apps/mobile/src/store/types.ts`
+- `apps/mobile/src/store/real-store.ts`
+- `apps/mobile/src/store/chat-store.ts`
+- `apps/mobile/src/store/real-store.forward.test.ts` (new)
+- `apps/mobile/src/store/chat-store.test.ts`
+- `work/T-0432-mobile-forward-store-action.md`
+
+### Commands and results
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot real-store.forward chat-store.test`
+  → 2 files passed, 43 tests passed. (First run had 1 failing sticker test
+  because my test used non-UUID `pack_id`/`sticker_id`; fixed the test data.)
+- `pnpm gate` (from repo root):
+  ```
+  gate: 6 changed file(s) against main
+  PASS  install (frozen)  (0.9s)
+  PASS  format  (11.8s)
+  PASS  lint  (0.9s)
+  PASS  typecheck  (6.1s)
+  PASS  tests @zilar/mobile  (4.4s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+  The first gate run failed format on `types.ts` (a long signature); I ran
+  `pnpm exec prettier --write apps/mobile/src/store/types.ts` and re-ran gate,
+  which then passed.
+
+### Deviations / notes
+- The spec's test list says a rejected send marks the copy `failed: true`. On
+  mobile the failure style is `markStickerFailed`, which sets only `failed: true`
+  (no `failureReason`); the test asserts that, not web's `failureReason`.
+- The sticker-forward test uses the required UUID `pack_id`/`sticker_id` shape
+  from `StickerSchema`.
+- No file outside the Allowed files changed; no test/fake elsewhere builds a
+  full `ChatStoreState`, so no typecheck blocker.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-06). A faithful port of web T-0414 to the mobile real store: validated origin, public-room-only chat_id, reused payloads, skips, echo signatures, and a comment only after a queued copy. Mobile differences per spec: the runStickerSend shape, and a failed copy is marked failed: true. The mock store really inserts forwarded copies for QA. The pre-review was clean.
