@@ -9,6 +9,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
+| [T-0320](T-0320-web-menu-3.md) | Web kit migration: ChatHeader and TaskStrip menus on Menu (Escape no longer leaves the chat on narrow) | todo | auto | T-0319 | |
 | [T-0319](T-0319-web-menu-2.md) | Web kit migration: message actions and chat actions menus on the kit Menu | todo | auto | T-0318 | |
 
 ## Follow-ups
