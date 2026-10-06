@@ -1,7 +1,7 @@
 ---
 id: T-0299
 title: "Mobile fix: the invite links sheet moves above the keyboard and scrolls"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0299-mobile-invite-links-keyboard
 model: auto
@@ -80,5 +80,22 @@ pnpm gate
 ---
 
 ## Report (written by the worker when done)
+- Added `inviteSheetBottomPadding(platform, insetBottom, keyboardHeight)` to `apps/mobile/src/components/chat/invite-links-sheet.tsx` (returns `Math.max(insetBottom, 16)` plus keyboard height on android).
+- Wrapped the backdrop `Pressable` in `KeyboardAvoidingView` (`behavior` `'padding'` on iOS, `undefined` otherwise, `className="flex-1"`); sheet `Pressable` keeps `max-h-[85%]` and now uses the helper for `paddingBottom`; sheet content (handle through links list) is inside a `ScrollView` with `keyboardShouldPersistTaps="handled"`. Backdrop tap still closes, inner tap does not. Wired `useKeyboardHeight()`.
+- Extended the `react-native` mock (`Keyboard`, `KeyboardAvoidingView`, `Platform`, `ScrollView`) and added 3 `inviteSheetBottomPadding` cases: android/0/0 -> 16, android/24/300 -> 324, ios/34/300 -> 34.
+- Files changed: `apps/mobile/src/components/chat/invite-links-sheet.tsx`, `apps/mobile/src/components/chat/invite-links-sheet.test.tsx`, `work/T-0299-mobile-invite-links-keyboard.md`.
+- Commands:
+  - `pnpm install`: pass.
+  - `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot invite-links-sheet`: 15 passed (12 existing + 3 new).
+  - `pnpm exec prettier --write` on the two touched source files: fixed format fail flagged by first gate run.
+  - `pnpm gate`: GATE PASS. Summary: `3 changed file(s) against main; PASS install (frozen); PASS format; PASS lint; PASS typecheck; PASS tests @zilar/mobile; scope: every changed file is inside the Allowed files; GATE PASS`.
+- Security checklist: no secrets/tokens logged; no deletes/updates; no caps; no new routes; no audit entries. No deviations from spec.
 
 ## Review (written by Claude)
+
+**Approved.** Clean pre-review (0 nits), no fix rounds (Muse, peak).
+- The sheet sits in a `KeyboardAvoidingView` (`padding` on iOS).
+- Its content scrolls inside a `ScrollView` with `keyboardShouldPersistTaps="handled"`.
+- `inviteSheetBottomPadding` adds the keyboard height on Android, with 3 tests.
+
+**Still to do:** emulator QA in the next run.
