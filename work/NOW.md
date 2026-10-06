@@ -24,9 +24,20 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| (none) | | | QA run 23 (T-0337) on the emulator; doctor audit 3 running |
+| T-0338 | Mobile: tick never wraps away from the time; list item without extra height | coding (DeepSeek flash) | QA run 23 follow-up; emulator QA after the merge |
+| (doctor) | | | audit 3 running |
 
 Time correction (checked with `date`): it is 04:42 local, Tue 10-06. The "~04:xx–05:50 local" stamps below were estimated and run up to about an hour ahead; their order is right.
+
+06:34 local: QA run 23 (qa23/; the lead saw 01.png).
+- **PASS:**
+  - the long "1) …" message wraps normally;
+  - the Launch checklist markdown shows every part in a normal-height bubble;
+  - the ticks are now centred on the time digits.
+- **Two follow-ups** → T-0338, launched:
+  - in "Draft three taglines…", the tick wraps alone onto a second line, because the time and the tick are separate inline pieces since T-0336;
+  - the "1) …" bubble has about 2 empty lines under its time (the ListBlock row's measuring).
+- No crash. Phone marker b45684f1 (lead checked).
 
 06:30 local: merged T-0337 (2 nits). Both causes are in `MarkdownText`:
 - "1) …" parses as a one-item list, whose text had `flex: 1` (basis 0) → it is now `flexShrink: 1`;
