@@ -1,4 +1,4 @@
-import { PayloadSchema, type Payload } from '@zilar/protocol';
+import { ForwardOriginSchema, PayloadSchema, type Payload } from '@zilar/protocol';
 
 import { gradientImage } from '../lib/image-presets';
 import { CURRENT_USER_ID, CURRENT_USER_NAME, type UiMessage } from '../lib/types';
@@ -21,7 +21,9 @@ const PAPA: Sender = { id: 'papa', name: 'Papá' };
 const DEV_AI: Sender = { id: 'dev-ai', name: 'Dev AI' };
 const MARKETING_AI: Sender = { id: 'marketing-ai', name: 'Marketing AI' };
 
-type Content = Partial<Pick<UiMessage, 'text' | 'voice' | 'image' | 'card' | 'replyTo' | 'status'>>;
+type Content = Partial<
+  Pick<UiMessage, 'text' | 'voice' | 'image' | 'card' | 'replyTo' | 'status' | 'forward'>
+>;
 
 function message(
   chatId: string,
@@ -94,6 +96,13 @@ export const mockMessagesByChat: Record<string, UiMessage[]> = {
     message('ana', 'ana-11', ME, at(1, 21, 22), { text: 'Booked for 21:00 ✅' }),
     message('ana', 'ana-12', ANA, at(0, 12, 30), {
       text: 'I found that other place with the terrace 🌿',
+      forward: ForwardOriginSchema.parse({
+        sender_id: 'luis@zilar.test',
+        sender_name: 'Luis',
+        chat_id: 'viernes@conference.zilar.test',
+        chat_name: 'Friday plans',
+        original_at: '2026-08-30T18:00:00.000Z',
+      }),
     }),
     message('ana', 'ana-13', ME, at(0, 12, 31), { text: 'Even better. Same time?' }),
     message('ana', 'ana-14', ME, at(0, 12, 35), { text: 'Also bringing the camera 📷' }),
