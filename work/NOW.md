@@ -25,7 +25,9 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
 | T-0315 | Mobile: visibility, members/roles, topic info sheets on BottomSheet | coding (Muse, peak) | the roles sheet gains scroll and keyboard handling |
-| T-0318 | Web kit Menu (Escape, arrow keys, focus); main menu + New chat menu use it | coding (paid Muse fallback) | then 5 more web menus |
+| T-0319 | Web: message actions and chat actions menus on the kit Menu shell (+ `backdropClassName`) | coding (Muse, peak) | then ChatHeader ×2 + TaskStrip ×2 |
+
+~05:20 local: merged T-0318 (web kit Menu). Lead browser check, mock, wide: the main menu opens; ArrowDown, End and Escape all work.
 
 ~05:10 local: QA run 19 PASS (qa19/).
 - Search: `dev` shows a Chats section (Dev AI, Dev team) above Messages, and tapping Dev team opens it.
