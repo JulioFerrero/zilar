@@ -12,6 +12,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0410](T-0410-server-media-index.md) | Media gallery 1a (server): index tables + indexer | running | auto | — | the only schema task |
 | [T-0414](T-0414-web-forward-store-action.md) | Forwarding step 3 (web store): forwardMessages action | running | auto | T-0409 | |
 | [T-0416](T-0416-mobile-stickers-auth-buttons-kit.md) | Mobile kit: Stickers and sign-in buttons | running | auto | — | |
+| [T-0417](T-0417-mobile-screen-states-kit.md) | Mobile: Explore, user page, Profile tab, New AI states on StateMessage | running | auto | — | |
 
 ## Follow-ups
 
