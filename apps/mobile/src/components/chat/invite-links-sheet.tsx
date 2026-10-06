@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { BottomSheet } from '@/components/ui/bottom-sheet';
+import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import type { GroupInviteLink } from '@/lib/invite-links-api';
@@ -212,17 +213,14 @@ export function InviteLinksSheet({
           />
         </View>
       </View>
-      <Pressable
-        accessibilityRole="button"
+      <Button
         accessibilityLabel="Create invite link"
         disabled={busy}
         onPress={submit}
-        className="mt-3 items-center rounded-full bg-accent px-4 py-2.5 active:opacity-90 disabled:opacity-50"
+        className="mt-3"
       >
-        <Text className="text-[15px] font-medium text-accent-foreground">
-          {busy ? 'Creating…' : 'Create invite link'}
-        </Text>
-      </Pressable>
+        <Text>{busy ? 'Creating…' : 'Create invite link'}</Text>
+      </Button>
       {shownError !== '' ? (
         <Text accessibilityRole="alert" className="mt-2 text-[14px] text-danger">
           {shownError}
@@ -272,17 +270,16 @@ function InviteLinkRowView({
         </Text>
       </View>
       {state !== 'revoked' ? (
-        <Pressable
-          accessibilityRole="button"
+        <Button
+          variant="outline"
+          size="sm"
           accessibilityLabel={`Revoke invite link ${link.label ?? link.tokenHint}`}
           disabled={revoking}
           onPress={() => onRevoke(link.id)}
-          className="shrink-0 rounded-full border border-border-strong px-3 py-1 active:bg-surface-raised disabled:opacity-50"
+          className="shrink-0"
         >
-          <Text className="text-[13px] font-medium text-foreground">
-            {revoking ? 'Revoking…' : 'Revoke'}
-          </Text>
-        </Pressable>
+          <Text>{revoking ? 'Revoking…' : 'Revoke'}</Text>
+        </Button>
       ) : (
         <Text className="shrink-0 px-2 text-[12px] text-muted-foreground">revoked</Text>
       )}
@@ -337,24 +334,17 @@ export function CreatedInviteLinkView({
         </Text>
       </View>
       <View className="flex-row gap-2">
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Copy invite link"
-          onPress={onCopy}
-          className="flex-1 items-center rounded-full bg-accent px-4 py-2 active:opacity-90"
-        >
-          <Text className="text-[15px] font-medium text-accent-foreground">
-            {copied ? 'Copied' : 'Copy'}
-          </Text>
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
+        <Button accessibilityLabel="Copy invite link" onPress={onCopy} className="flex-1">
+          <Text>{copied ? 'Copied' : 'Copy'}</Text>
+        </Button>
+        <Button
+          variant="outline"
           accessibilityLabel="Share invite link"
           onPress={onShare}
-          className="flex-1 items-center rounded-full border border-border-strong px-4 py-2 active:bg-surface-raised"
+          className="flex-1"
         >
-          <Text className="text-[15px] font-medium text-foreground">Share</Text>
-        </Pressable>
+          <Text>Share</Text>
+        </Button>
       </View>
       <Text className="text-[13px] text-muted-foreground">
         Anyone with this link can join the group. It is shown once — copy it now.

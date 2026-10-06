@@ -381,6 +381,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0350](T-0350-mobile-telegram-import-buttons-kit.md) | Mobile kit: Telegram import sheet text pill buttons on Button | 2026-10-06 |
 | [T-0351](T-0351-mobile-auth-buttons-kit.md) | Mobile kit: sign-in and onboarding buttons on Button | 2026-10-06 |
 | [T-0352](T-0352-mobile-join-handle-buttons-kit.md) | Mobile kit: join link and @handle screen buttons on Button | 2026-10-06 |
-| [T-0355](T-0355-mobile-invite-links-buttons-kit.md) | Mobile kit: invite links sheet buttons on Button | in-progress | auto | T-0353 | |
 | [T-0354](T-0354-mobile-join-invite-buttons-kit.md) | Mobile kit: join-link card and Invite a friend sheet buttons on Button | in-progress | auto | T-0353 | |
 | [T-0353](T-0353-mobile-new-group-explore-buttons-kit.md) | Mobile kit: New group sheet and Explore join buttons on Button | 2026-10-06 |
+| [T-0355](T-0355-mobile-invite-links-buttons-kit.md) | Mobile kit: invite links sheet buttons on Button | 2026-10-06 |
