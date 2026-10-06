@@ -12,6 +12,18 @@ vi.mock('../ui/text', () => ({
   Text: 'Text',
 }));
 
+// `PinsSheet` renders through the kit `BottomSheet`, which owns hooks
+// (`useSafeAreaInsets`, `useKeyboardHeight`) that cannot run in this
+// function-call walk. Stub it as a pass-through that keeps the title and the
+// rows visible to `collect`/`textOf`; the real shell is covered by
+// `bottom-sheet.test.tsx`.
+vi.mock('../ui/bottom-sheet', () => ({
+  BottomSheet: ({ title, children }: { title?: string; children?: unknown }) => ({
+    type: 'BottomSheet',
+    props: { children: [title, children] },
+  }),
+}));
+
 interface TestElement {
   type: unknown;
   props: { children?: unknown; accessibilityLabel?: string; onPress?: () => void };

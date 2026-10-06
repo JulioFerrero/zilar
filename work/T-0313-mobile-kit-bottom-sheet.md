@@ -1,7 +1,7 @@
 ---
 id: T-0313
 title: "Mobile kit: BottomSheet (keyboard-aware panel sheet); pins list and invite links sheets use it"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0313-mobile-kit-bottom-sheet
 model: auto
@@ -91,4 +91,36 @@ The other panel sheets (visibility, new topic, group roles, attach, emoji, teleg
 
 ## Report (written by the worker when done)
 
+Done. Kit `BottomSheet` built; pins and invite-links sheets render through it.
+
+What I did:
+- New `apps/mobile/src/components/ui/bottom-sheet.tsx`: `BottomSheet` (`visible`, `onClose`, `closeLabel`, `title?`, `maxHeightClassName?` default `'max-h-[85%]'`, `children`) rendering exactly the T-0299/T-0310 keyboard-aware layout (Modal > KeyboardAvoidingView padding-on-iOS > backdrop Pressable > sheet Pressable with `sheetBottomPadding` > ScrollView with handle, optional header `Text` at `text-[18px]`, children). Doc comment names T-0299/T-0310. One deviation: `children` is optional (`children?: ReactNode`, like `ActionSheet`) because oxlint `react(no-children-prop)` forbids passing children as a prop in tests while TS requires it in the props object when passed as a `createElement` argument; callers still pass it.
+- New `apps/mobile/src/components/ui/bottom-sheet.test.tsx` (`renderToStaticMarkup` + `vi.mock` style): title-as-header, backdrop `closeLabel`, children render, default `max-h-[85%]` + custom class applied.
+- `apps/mobile/src/app/dev/kit.tsx`: new "Bottom sheet" section with a button opening a sample sheet holding a labeled `TextField` (keyboard case triable).
+- `apps/mobile/src/components/chat/pins-sheet.tsx`: renders through `BottomSheet` with `closeLabel="Close pins list"`, `title=Pinned messages (n)`, `maxHeightClassName="max-h-[70%]"`; header is now the kit 18 px (was 17 px); rows/empty/error unchanged.
+- `apps/mobile/src/components/chat/invite-links-sheet.tsx`: renders through `BottomSheet` (`closeLabel="Close invite links"`, `title="Invite links"`, default max height); its own KeyboardAvoidingView/ScrollView/padding/handle code and now-unused imports removed. Form/labels/buttons/rows unchanged.
+- `apps/mobile/src/components/chat/pins-sheet.test.tsx`: added a `../ui/bottom-sheet` stub (pass-through rendering title + children) because the real shell owns hooks that cannot run in that test's function-call walk; all assertions check the same things. `invite-links-sheet.test.tsx` needed no change (it only exercises the pure helpers/views).
+
+Files changed (all inside Allowed files):
+`components/ui/bottom-sheet.tsx` (new), `components/ui/bottom-sheet.test.tsx` (new), `app/dev/kit.tsx`, `components/chat/pins-sheet.tsx`, `components/chat/pins-sheet.test.tsx`, `components/chat/invite-links-sheet.tsx`, plus this task file.
+
+Commands (real results):
+- `pnpm install`: ok (13.6 s).
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot bottom-sheet pins-sheet invite-links-sheet`: 3 files, 19 tests passed (string-stub casing warnings only, same as `kit.test.tsx`).
+- `pnpm gate` (final): GATE PASS — install PASS, format PASS, lint PASS, typecheck PASS, tests @zilar/mobile PASS; "scope: every changed file is inside the Allowed files". Intermediate gate runs caught: prettier formatting in the two sheets (fixed with `prettier --write` on those files), oxlint `react(no-children-prop)` in the new test (fixed via `createElement` child args), and a TS overload error from required `children` (fixed by making it optional). No other test files import the migrated modules (checked: only `chat/[id].tsx`, `group/[id].tsx`, `channel-screen.tsx` use them at runtime).
+
+Problems / open questions: none. Security checklist: no secrets, no deletes/updates, no caps, no new routes, no audit entries; invite-link tokens still shown once and never logged.
+
 ## Review (written by Claude)
+
+**Approved.** Clean pre-review (3 nits), no fix rounds (Muse, peak).
+- `BottomSheet` (`components/ui/bottom-sheet.tsx`) is the T-0299/T-0310 layout in one place: `KeyboardAvoidingView`, the backdrop with `closeLabel`, the panel with `maxHeightClassName`, `sheetBottomPadding`, then a `ScrollView` with the handle and an optional header.
+- It has its own test file and a catalog sample with a field.
+- The pins and invite links sheets use it.
+
+**Nits, accepted:**
+- the pins test stub drops the shell props (the shell is covered by `bottom-sheet.test.tsx`);
+- the string-presence assertions follow the kit style;
+- the pins header lost its `py-2`. QA will check the spacing.
+
+**Next:** move the remaining panel sheets onto it.

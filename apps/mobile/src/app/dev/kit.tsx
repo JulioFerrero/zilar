@@ -12,6 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { RequireAuth } from '@/auth/RequireAuth';
 import { ActionSheet, ActionSheetItem } from '@/components/ui/action-sheet';
+import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Button } from '@/components/ui/button';
 import { Card, SectionLabel } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -38,6 +39,7 @@ export default function KitDevScreen() {
 function KitCatalog() {
   const scheme = asColorScheme(useColorScheme().colorScheme);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [bottomOpen, setBottomOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [search, setSearch] = useState('Try clearing me');
   return (
@@ -187,6 +189,26 @@ function KitCatalog() {
             />
             <ActionSheetItem label="A disabled action" disabled onPress={noop} />
           </ActionSheet>
+        </View>
+
+        <View className="mt-6 gap-2">
+          <SectionLabel>Bottom sheet</SectionLabel>
+          <Button onPress={() => setBottomOpen(true)}>
+            <Text>Open bottom sheet</Text>
+          </Button>
+          <BottomSheet
+            visible={bottomOpen}
+            onClose={() => setBottomOpen(false)}
+            closeLabel="Close sample bottom sheet"
+            title="Sample bottom sheet"
+          >
+            <TextField
+              label="A field in a sheet"
+              placeholder="Type with the keyboard up"
+              accessibilityLabel="Sample bottom sheet field"
+              className="mt-2"
+            />
+          </BottomSheet>
         </View>
 
         <View className="mt-6 gap-2">
