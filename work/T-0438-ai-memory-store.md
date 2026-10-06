@@ -1,7 +1,7 @@
 ---
 id: T-0438
 title: "AI memory M2b (server): memory store helpers: render the memory block, recall, zoom, facts, pending nodes, compaction prompt, clear"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0438-ai-memory-store
 model: auto
@@ -100,4 +100,78 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+
+Built `apps/server/src/agents/memory/store.ts` as the database layer over the
+`aiMemory*` tables, plus `store.test.ts`. No schema change, no gateway or route
+wiring, and `agents/memory/indexer.ts` was not touched (it does not exist in
+this worktree yet).
+
+Exports:
+
+- `MEMORY_WINDOW` (50), `MEMORY_FACTS_MAX` (50), `MEMORY_RECALL_MAX` (30).
+- `memoryRange` → `{ total, floor, end }` with `end = max(floor, total − 50)`.
+- `renderMemoryBlock` — `cover(end, budget)` (`budget` defaults to
+  `MEMORY_WAKE_LINES` 48), blocks below `floor` dropped and a straddling block
+  opened into halves until none straddle; a block renders as a node summary, a
+  size-16 block as its raw rows, or is opened into its halves; deleted rows are
+  skipped. Collected newest-first so it stops once the budget is met, then the
+  newest `budget` lines are returned oldest-first.
+- `recallMemory` — words split and capped at 8, every word a case-insensitive
+  `ILIKE` with `%`, `_` and `\` escaped (`ESCAPE '\'`), never a regex; `seq >=
+  floor` and not deleted; newest 30, oldest-first, plus `Newest 30 of N matches.`
+  when more matched; empty query → `[]`.
+- `zoomMemory` — `parseBlockId`, then its two halves as a summary or raw rows;
+  `null` for a malformed id, a block below `floor`, or one past `total`.
+- `listFacts`, `addFact`, `deleteFact`; `pendingNodes`; `compactionInput`;
+  `putNode` (cut to 280, `onConflictDoNothing`); pure `buildCompactionPrompt`;
+  `clearMemory`.
+
+### Files changed
+
+- `apps/server/src/agents/memory/store.ts` (new)
+- `apps/server/src/agents/memory/store.test.ts` (new)
+- `work/T-0438-ai-memory-store.md` (status + this Report)
+
+### Commands I ran
+
+- `pnpm install` — done in 13.7s, no lockfile change.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot memory/store`
+  — 1 file, 23 tests passed. (Ran once mid-work and once after the final edit;
+  both green.)
+- `pnpm gate` — ends with:
+  - `gate: 3 changed file(s) against main`
+  - `PASS  install (frozen)  (0.9s)`
+  - `PASS  format  (13.6s)`
+  - `PASS  lint  (0.5s)`
+  - `PASS  typecheck  (6.5s)`
+  - `PASS  tests @zilar/server  (8.5s)`
+  - `scope: every changed file is inside the Allowed files`
+  - `GATE PASS`
+- I ran `pnpm exec prettier --write` on my two new files before the gate so its
+  `format:check` passed; no other file was touched.
+
+### Deviations / decisions (small, spec-ambiguous)
+
+- `compactionInput` for a block larger than 16 returns the two child summaries
+  as plain lines (no `#lo-hi` prefix), matching the plan wording "the two child
+  summaries" (OptMem feeds the child summaries straight into the prompt). If the
+  lead wants ids there, it is a one-line change.
+- The tree's `splitBlock` is private, so the floor straddle and the
+  no-node expansion use a local `halves(block)` (literal midpoint). For the
+  valid cover sizes (1 or ≥ 16) this yields the same lines as the tree's
+  one-block rule; a straddling size-16 block still ends up as raw singles.
+- `addFact`'s duplicate check and 50-fact cap run in one transaction under a
+  per-chat `pg_advisory_xact_lock`, re-reading inside it, per the AGENTS
+  atomicity rule (the literal spec did not mention a lock).
+- `listFacts` returns `{ id, text }` oldest-first; that is what the routes need.
+- `clearMemory` returns `void` and leaves the mirror messages in place (the plan
+  says they stay for recall and the recent window).
+
+### Blocked / needs a decision
+
+None.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-06). store.ts reads the mirror for the gateway: memoryRange (window 50 above the floor), renderMemoryBlock (newest lines within 48, summaries as #lo-hi, raw rows where no node exists), recallMemory (all words ILIKE with escaped wildcards, newest 30 plus a count note), zoomMemory, facts (trim, one line, case-insensitive duplicate, cap 50 under an advisory lock), pendingNodes, compactionInput, putNode, buildCompactionPrompt and clearMemory (floor moves to the end). Every query is scoped by AI and chat; nothing is logged. Nits, carried to M3: compactionInput gives child summaries without their #lo-hi id; putNode cuts by UTF-16 units.
