@@ -1,7 +1,7 @@
 ---
 id: T-0435
 title: "Forwarding (mobile UI): Forward in the message sheet opens a forward sheet; pick chats, optional comment, send"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0435-mobile-forward-sheet
 model: auto
@@ -87,4 +87,43 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**What I did**
+- `message-actions-sheet.tsx`: added `canForward?: boolean` and `onForward?: () => void` props; when `canForward === true` a `Forward` row (`label="Forward"`, `accessibilityLabel="Forward message"`, `icon={Forward}` from lucide) renders right after Reply.
+- `message-bubble.tsx`: added optional `onForward?: (message: UiMessage) => void`; computed `canForward` as "not deleted, not `status === 'sending'`, and not my own (`outgoing`) failed message"; passed `canForward={onForward !== undefined && canForward}` and an `onForward` handler that closes the menu (`setMenuOpen(false)`) then calls the prop.
+- `message-list.tsx`: added optional `onForward` and passed it through like `onDelete`.
+- New `forward-sheet.tsx`: exports the pure `forwardTargets(chats, query)` (web rules: hide archived, hide channels the viewer cannot post to, search `title` and `groupTitle`) and `forwardSendLabel(count)` (`Send`, or `Send to N chats` for N>1); `ForwardSheet({ messages, onClose })` renders on `BottomSheet` (`title="Forward"`, `closeLabel="Close forward"`) with a `SearchField` ("Search chats"), checkbox rows (Pressable + `Checkbox` + `Avatar` + `targetLabel`, topics read `Group › Topic`), a `TextField` labelled "Add a comment (optional)", and Cancel/primary buttons. Send calls `forwardMessages(selected, messages, trimmed === '' ? undefined : { comment: trimmed })` then `onClose()`.
+- `app/chat/[id].tsx`: `forwarding` state, `onForward={(message) => setForwarding([message])}` on all three `MessageList`s, and the `ForwardSheet` rendered once in each of the three layouts next to `PinsSheet`.
+- Tests: new `forward-sheet.test.tsx` (pure helpers + a static render with rows/breadcrumb and one disabled Send) and new `message-actions-sheet.test.tsx` (Forward row shown only when `canForward` is true).
+
+**Files changed** (all inside Allowed files)
+- `apps/mobile/src/components/chat/message-actions-sheet.tsx`
+- `apps/mobile/src/components/chat/message-bubble.tsx`
+- `apps/mobile/src/components/chat/message-list.tsx`
+- `apps/mobile/src/components/chat/forward-sheet.tsx` (new)
+- `apps/mobile/src/app/chat/[id].tsx`
+- `apps/mobile/src/components/chat/forward-sheet.test.tsx` (new)
+- `apps/mobile/src/components/chat/message-actions-sheet.test.tsx` (new)
+- `work/T-0435-mobile-forward-sheet.md`
+
+No changes were needed to the "Mocks only" test files: the bubble tests already stub `Forward` in their lucide mock, and `canForward` needs the new `onForward` prop, so the row stays hidden in their renders.
+
+**Commands and results**
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot forward-sheet message-actions-sheet message-bubble message-list` → 6 files passed, 25 tests passed.
+- `pnpm gate` (first run) → GATE FAIL: format flagged the two new test files, scope was fine.
+- `pnpm exec prettier --write` on those two files, then `pnpm gate` again:
+  - `PASS install (frozen)`, `PASS format`, `PASS lint`, `PASS typecheck`, `PASS tests @zilar/mobile`
+  - `scope: every changed file is inside the Allowed files`
+  - `GATE PASS`
+
+**Deviations / notes**
+- `targetLabel` is kept module-private (the spec only asks to export `forwardTargets` and `forwardSendLabel`); the `Group › Topic` label is covered through the static render assertion.
+- Following the spec exactly, `canForward` did not add a `!draft` guard beyond the three listed conditions.
+- The send press path itself is not exercised by a unit test (the spec's test list only asks for the pure helpers and static renders); it mirrors web's `ForwardPicker` call.
+
+**Blocked / needs a decision**
+- None.
+
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-06). The mobile message sheet has a Forward item (shown only when canForward), the bubble computes canForward the way web does, and MessageList passes onForward through. ForwardSheet is on the kit BottomSheet with search, checkbox rows, an optional comment and "Send to N chats", using the same rules as web ForwardPicker (pure helpers, tested). The chat screen holds the forwarding state in all three layouts. The pre-review was clean.

@@ -454,7 +454,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0425](T-0425-mobile-profile-buttons-kit.md) | Mobile: profile and contact card buttons on the kit Button | 2026-10-06 |
 | [T-0426](T-0426-mobile-ai-sheet-buttons-kit.md) | Mobile: AI activity Refresh, tool sheet Show all/less and Close on the kit Button | 2026-10-06 |
 | [T-0434](T-0434-web-chat-media-panel.md) | Media gallery 2 (web): media panel | running | auto | T-0431 | |
-| [T-0435](T-0435-mobile-forward-sheet.md) | Forwarding (mobile UI): forward sheet | running | auto | T-0432 | |
 | [T-0436](T-0436-mobile-media-sheet.md) | Media gallery 3 (mobile): media sheet | running | auto | T-0431 | |
 | [T-0437](T-0437-ai-memory-indexer.md) | AI memory M2a (server): mirror indexer | running | auto | T-0433 | |
 | [T-0438](T-0438-ai-memory-store.md) | AI memory M2b (server): store helpers | running | auto | T-0433 | |
@@ -467,3 +466,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0431](T-0431-server-media-route.md) | Server: GET /api/media gallery route (members only, block check, paged by type) | 2026-10-06 |
 | [T-0432](T-0432-mobile-forward-store-action.md) | Mobile store: forwardMessages with forward origin (real and mock) | 2026-10-06 |
 | [T-0433](T-0433-ai-memory-schema-core.md) | AI memory M1: memory tables (migration 0042) and the summary-tree core | 2026-10-06 |
+| [T-0435](T-0435-mobile-forward-sheet.md) | Mobile: Forward in the message sheet opens a forward sheet | 2026-10-06 |

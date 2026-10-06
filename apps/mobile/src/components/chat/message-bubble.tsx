@@ -206,6 +206,8 @@ type MessageBubbleProps = {
   onEdit?: (message: UiMessage) => void;
   /** Called when the user confirms a delete-for-everyone. */
   onDelete?: (message: UiMessage) => void;
+  /** Called when the sheet asks to forward the message. */
+  onForward?: (message: UiMessage) => void;
   /** Called when the sticker Retry is tapped on a failed sticker send. */
   onRetrySticker?: (message: UiMessage) => void;
   /** Called when the Retry is tapped on a failed attachment upload. */
@@ -242,6 +244,7 @@ export function MessageBubble({
   onReact,
   onEdit,
   onDelete,
+  onForward,
   onRetrySticker,
   onRetryAttachment,
   onCancelAttachment,
@@ -279,6 +282,12 @@ export function MessageBubble({
     message.voice === undefined &&
     canEditMessage(message, currentUserId, new Date());
   const canDelete = !draft && message.deleted !== true && canDeleteMessage(message, currentUserId);
+  // A forward copies what is already on screen: tombstones, still-sending
+  // copies and my own failed sends have nothing to forward.
+  const canForward =
+    message.deleted !== true &&
+    message.status !== 'sending' &&
+    !(outgoing && message.status === 'failed');
   const myReactions = (message.reactions ?? []).filter((entry) => entry.mine);
   const react = onReact ?? (() => {});
   const metaColor = outgoing ? colors.outgoingMeta : colors.incomingMeta;
@@ -641,6 +650,7 @@ export function MessageBubble({
         canCopy={hasText && sticker === undefined}
         canEdit={sticker === undefined && message.voice === undefined && canEdit}
         canDelete={canDelete}
+        canForward={onForward !== undefined && canForward}
         canPin={canPin}
         isPinned={isPinned}
         myReactions={myReactions}
@@ -659,6 +669,10 @@ export function MessageBubble({
         }}
         onDelete={() => {
           setConfirmOpen(true);
+        }}
+        onForward={() => {
+          setMenuOpen(false);
+          onForward?.(message);
         }}
         onPin={() => {
           setMenuOpen(false);
