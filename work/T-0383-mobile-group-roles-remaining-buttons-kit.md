@@ -1,7 +1,7 @@
 ---
 id: T-0383
 title: "Mobile kit: the group roles sheet's Cancel rename, Confirm delete, Cancel delete, Rename and Delete use the kit Button"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0383-mobile-group-roles-remaining-buttons-kit
 model: auto
@@ -67,4 +67,24 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Replaced the five raw `Pressable` text buttons in `group-roles-sheet.tsx` with kit `Button` (`size="sm"`), keeping every `accessibilityLabel`, label and handler:
+- "Cancel rename" -> `variant="ghost"`.
+- Confirm delete -> `variant="destructive"` (kit white-on-destructive, fixes the dark-on-red contrast).
+- "Cancel delete" -> `variant="ghost"`.
+- Rename -> `variant="ghost"`.
+- Delete -> `variant="ghost"` with `<Text className="text-danger">`.
+Every label is inside `<Text>`; the member checkbox row `Pressable` (line ~248) is untouched and remains the only `Pressable` in the file. No test changes needed.
+
+Files changed:
+- `apps/mobile/src/components/chat/group-roles-sheet.tsx`
+
+Commands:
+- `pnpm install`: pass (18.8s).
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot group-roles-sheet group-roles-mounted group-roles-load`: 3 files, 13 tests passed.
+- `pnpm gate`: GATE PASS — PASS install (3.2s), PASS format (28.8s), PASS lint (1.7s), PASS typecheck (23.7s), PASS tests @zilar/mobile (10.7s); scope: every changed file is inside the Allowed files.
+
+Security checklist: no secrets/tokens touched; no deletes/updates, permissions, caps, routes, or audit entries involved — UI-only button swap with unchanged handlers.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-06). The five Pressables are kit `Button` `sm` (ghost ×4, destructive Confirm delete with white text), every label inside `<Text>`; only the member row Pressable remains. Pre-review clean (0 findings). Emulator check in the next QA run.

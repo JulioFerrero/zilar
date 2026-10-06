@@ -166,40 +166,38 @@ export function GroupRolesSheet({
                     >
                       <Text>Save</Text>
                     </Button>
-                    <Pressable
-                      accessibilityRole="button"
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       accessibilityLabel="Cancel rename"
                       disabled={busy}
                       onPress={() => setRenamingId(undefined)}
-                      className="rounded-[10px] px-3 py-1.5 active:bg-surface-raised disabled:opacity-50"
                     >
-                      <Text className="text-[14px] text-foreground">Cancel</Text>
-                    </Pressable>
+                      <Text>Cancel</Text>
+                    </Button>
                   </>
                 ) : confirming ? (
                   <>
-                    <Pressable
-                      accessibilityRole="button"
+                    <Button
+                      variant="destructive"
+                      size="sm"
                       accessibilityLabel={`Confirm deleting ${role.name}`}
                       disabled={busy}
                       onPress={() => {
                         void onDeleteRole(role.id).then(() => setConfirmingId(undefined));
                       }}
-                      className="rounded-[10px] bg-danger px-3 py-1.5 active:opacity-80 disabled:opacity-50"
                     >
-                      <Text className="text-[14px] font-semibold text-accent-foreground">
-                        Delete
-                      </Text>
-                    </Pressable>
-                    <Pressable
-                      accessibilityRole="button"
+                      <Text>Delete</Text>
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       accessibilityLabel="Cancel delete"
                       disabled={busy}
                       onPress={() => setConfirmingId(undefined)}
-                      className="rounded-[10px] px-3 py-1.5 active:bg-surface-raised disabled:opacity-50"
                     >
-                      <Text className="text-[14px] text-foreground">Cancel</Text>
-                    </Pressable>
+                      <Text>Cancel</Text>
+                    </Button>
                   </>
                 ) : (
                   <>
@@ -212,27 +210,27 @@ export function GroupRolesSheet({
                     >
                       <Text>Assign</Text>
                     </Button>
-                    <Pressable
-                      accessibilityRole="button"
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       accessibilityLabel={`Rename ${role.name}`}
                       disabled={busy}
                       onPress={() => {
                         setRenameValue(role.name);
                         setRenamingId(role.id);
                       }}
-                      className="rounded-[10px] px-3 py-1.5 active:bg-surface-raised disabled:opacity-50"
                     >
-                      <Text className="text-[14px] text-foreground">Rename</Text>
-                    </Pressable>
-                    <Pressable
-                      accessibilityRole="button"
+                      <Text>Rename</Text>
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       accessibilityLabel={`Delete ${role.name}`}
                       disabled={busy}
                       onPress={() => setConfirmingId(role.id)}
-                      className="rounded-[10px] px-3 py-1.5 active:bg-surface-raised disabled:opacity-50"
                     >
-                      <Text className="text-[14px] text-danger">Delete</Text>
-                    </Pressable>
+                      <Text className="text-danger">Delete</Text>
+                    </Button>
                   </>
                 )
               ) : null}
