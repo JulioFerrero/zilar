@@ -194,7 +194,7 @@ describe('TelegramImportDialog', () => {
     expect(dialog.parentElement?.className).toContain('fixed');
     expect(dialog.parentElement?.className).toContain('inset-0');
     // Focus moves into the dialog on open.
-    expect(document.activeElement?.getAttribute('aria-label')).toBe('Pack link or name');
+    expect(document.activeElement).toBe(screen.getByLabelText('Pack link or name'));
     void container;
     void importFn;
   });

@@ -1,7 +1,7 @@
 ---
 id: T-0344
 title: "Web kit migration: the Telegram import link field and the Group roles name fields use the kit TextInput"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0344-web-inputs-kit
 model: auto
@@ -66,4 +66,49 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- **TelegramImportDialog:** replaced the hand-rolled `<label>` + `<input>` with `<TextInput label="Pack link or name" ref={inputRef} …>` (kept `value`, `placeholder`, `maxLength={512}`, `disabled={busy}`, `onChange`). Dropped `aria-label` because the visible label now names the field. Wrapped it in `<div className="mt-3">` to keep the original top spacing. The old `border-input bg-background` styling is gone.
+- **GroupPanel:** both role inputs (rename role, new role name) now render through `<TextInput>` with their existing `aria-label`, `value`, `maxLength={30}`, `onChange` and placeholder, and `className="min-w-0 flex-1"` to keep the flex sizing. Let the kit default padding (`py-2`, `rounded-lg`, `text-sm`) apply instead of the hand-copied `well-surface` classes, as the spec allows when row height does not require it.
+- **Test update:** `TelegramImportDialog.test.tsx` line 197 asserted the focused element's `aria-label` was `'Pack link or name'`. With the visible label that attribute is intentionally gone, so I changed the assertion to `expect(document.activeElement).toBe(screen.getByLabelText('Pack link or name'))`. It still verifies the dialog's `initialFocusRef` moves focus to the field, and now also verifies the label association.
+
+### Files changed
+- `apps/web/src/components/TelegramImportDialog.tsx`
+- `apps/web/src/components/GroupPanel.tsx`
+- `apps/web/src/components/TelegramImportDialog.test.tsx`
+- `work/T-0344-web-inputs-kit.md`
+
+No other files changed.
+
+### Commands and real results
+- `pnpm install`: done, exit 0 (1170 packages, 11.6s).
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot TelegramImportDialog GroupPanel`: first run **31 passed, 1 failed** — `TelegramImportDialog.test.tsx > renders as an overlay like the other dialogs` expected the focused element's `aria-label` to be `'Pack link or name'` (null after the change). Fixed the stale assertion in the test (see above). Second run: **32 passed, 0 failed** (2 files).
+- `pnpm gate`: **GATE PASS**. Summary lines:
+  - `gate: 4 changed file(s) against main`
+  - `PASS  install (frozen)  (1.0s)`
+  - `PASS  format  (16.9s)`
+  - `PASS  lint  (1.5s)`
+  - `PASS  typecheck  (7.8s)`
+  - `PASS  tests @zilar/web  (17.6s)`
+  - `scope: every changed file is inside the Allowed files`
+  - `GATE PASS`
+
+### Acceptance check
+- The three inputs render through `TextInput`: yes (`TelegramImportDialog.tsx:265`, `GroupPanel.tsx:703` area, `GroupPanel.tsx:831`).
+- No `border-input bg-background` input remains in `TelegramImportDialog.tsx`: confirmed by grep (`<input` no longer present there).
+- Tests pass: yes, 32/32 in the focused run and `PASS tests @zilar/web` in the gate.
+- `pnpm gate` ends with `GATE PASS` and lists no file outside the Allowed files: yes.
+
+### Deviations from the spec
+- Only the one stale test assertion needed changing; the GroupPanel tests, `Channels.test.tsx` and `InviteLinksSection.test.tsx` were untouched and pass unchanged.
+- I used the kit default `py-2` for both GroupPanel role inputs (the rename input previously had `py-1.5`). The spec says keep `py-1.5`/`py-2` only if needed for row height; nothing in the tests or layout required it, so I kept the default. If the lead wants the tighter rename row height, adding `py-1.5` to that one `className` is a one-line change.
+
+### Blocked / needs a decision
+None.
+
+### Open questions
+None.
+
 ## Review (written by Claude)
+
+
+**Approved** (pre-review clean, 0 nits). The Telegram import field is now `<TextInput label="Pack link or name">`, so it gets the kit well look instead of the old `border-input bg-background`. Both Group roles fields are `TextInput` with `min-w-0 flex-1`. The one test change keeps the autofocus check by querying the label instead of `aria-label`.
