@@ -2,6 +2,8 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**PAUSED 2026-10-06 (Julio needs the computer):** the lead stopped the autopilot, `lead watch`, opencode (workers), local dev (vite 5173, server 3188), the site preview, the emulator and the zilar-dev docker containers. Since the last update: T-0427, T-0428, T-0429 and T-0410 were merged. T-0419 is PACKET READY (clean, 3 nits) and not merged; review it on resume. Next: the gallery 1b route spec, then the mobile `forwardMessages` (mobile has no send timeout machinery; use the `markStickerFailed` style `failed: true`). To resume, follow the CLAUDE.md first actions (start the autopilot).
+
 Last updated: 2026-10-06 ~12:40 UTC, after the manual deploy, merging T-0414/T-0425/T-0426 and launching T-0419/T-0427/T-0428/T-0429.
 
 Older: 2026-10-05 ~14:40 local, after merging T-0223 and launching T-0225; earlier merged T-0222, T-0211 (Julio: "the resize is working great") and T-0221, and launching T-0222. Main checkout got `pnpm install` (T-0211 added Ink/React; the autopilot could not start without it). Julio's watcher reopened on the new version and floated; test window closed.
