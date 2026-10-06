@@ -58,7 +58,7 @@ export function ConfirmDialog({
       accessibilityLabel={accessibilityLabel}
     >
       <View className="flex-1 items-center justify-center bg-black/40 p-6">
-        <View className="w-full max-w-xs rounded-2xl bg-background p-4">
+        <View className="w-full max-w-xs rounded-2xl border border-border-strong bg-surface p-4">
           <Text className="text-[16px] font-semibold text-foreground">{title}</Text>
           <Text className="mt-1 text-[14px] leading-5 text-muted-foreground">{message}</Text>
           {hasError ? (

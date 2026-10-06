@@ -10,7 +10,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0318](T-0318-web-kit-menu.md) | Web kit: Menu with keyboard support; main menu and New chat menu use it | todo | auto | | |
-| [T-0317](T-0317-mobile-kit-card-contrast.md) | Mobile kit polish: ActionSheet and ConfirmDialog cards on bg-surface with a border | todo | auto | T-0313 | QA run 18 |
 
 ## Follow-ups
 
@@ -347,3 +346,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0314](T-0314-mobile-search-chat-matches.md) | Mobile: chat search shows matching chats and groups above message hits | 2026-10-06 |
 | [T-0315](T-0315-mobile-bottom-sheet-2.md) | Mobile kit: visibility, members/roles and topic info sheets on BottomSheet | 2026-10-06 |
 | [T-0316](T-0316-web-search-group-name.md) | Web: chat list search also matches a group by its own name | 2026-10-06 |
+| [T-0317](T-0317-mobile-kit-card-contrast.md) | Mobile kit polish: ActionSheet and ConfirmDialog cards on bg-surface with a border | 2026-10-06 |

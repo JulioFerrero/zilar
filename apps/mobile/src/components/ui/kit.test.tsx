@@ -157,6 +157,18 @@ describe('ActionSheet / ActionSheetItem', () => {
     );
     expect(html.split('border-b border-divider')).toHaveLength(3);
   });
+
+  it('uses the sheet surface with a strong border so the card stands out', () => {
+    const html = renderToStaticMarkup(
+      createElement(
+        ActionSheet,
+        { visible: true, onClose: noop, closeLabel: 'Close actions' },
+        createElement(ActionSheetItem, { key: 'one', label: 'One', onPress: noop }),
+      ),
+    );
+    expect(html).toContain('bg-surface');
+    expect(html).toContain('border-border-strong');
+  });
 });
 
 describe('ConfirmDialog', () => {
@@ -227,6 +239,23 @@ describe('ConfirmDialog', () => {
       }),
     );
     expect(html).toContain('accessibilityLabel="Cancel delete"');
+  });
+
+  it('uses the sheet surface with a strong border so the card stands out', () => {
+    const html = renderToStaticMarkup(
+      createElement(ConfirmDialog, {
+        visible: true,
+        title: 'Delete this AI?',
+        message: 'This removes the chat account.',
+        confirmLabel: 'Remove',
+        busyLabel: 'Removing…',
+        busy: false,
+        onCancel: noop,
+        onConfirm: noop,
+      }),
+    );
+    expect(html).toContain('bg-surface');
+    expect(html).toContain('border-border-strong');
   });
 });
 
