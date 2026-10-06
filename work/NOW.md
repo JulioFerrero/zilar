@@ -24,9 +24,10 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0280 | Web tests: GroupHandleRoute Escape flake | pre-review | flaked in T-0273 and T-0277 gates |
-| T-0283 | Mobile kit: ActionSheet; AI + chat long-press sheets use it | coding | first mobile Modal family; QA on emulator after merge |
-| T-0282 | Web kit Sheet (PinsPanel first) + kit Escape stops propagating | queued after T-0280 | probable bug: on < 900 px, Escape in a kit dialog inside a chat also runs ChatShell's window handler (navigates to /) |
+| T-0282 | Web kit Sheet (PinsPanel first) + kit Escape stops propagating + layout-effect listener | coding | probable bug: on < 900 px, Escape in a kit dialog inside a chat also runs ChatShell's window handler (navigates to /) |
+| T-0284 | Mobile: topic actions sheet on the kit ActionSheet | queued | launch after QA run 10 passes |
+
+~02:10 local: merged T-0280 (cause: Escape fired before the Dialog's passive effect attached its listener; test now waits) and T-0283 (mobile kit ActionSheet). QA run 10 sent to the Sonnet subagent (T-0283 sheets + kit catalog, screenshots in job tmp `qa10/`).
 
 ~02:00 local: merged T-0281 (accent pill guard, after a lead fix round: no vacuous pass).
 
