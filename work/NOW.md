@@ -24,13 +24,14 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0321 | Web kit: unread count pills on Badge | coding (paid Muse fallback) | ChatListItem, TopicRow, MessageList; counts over 99 show 99+ |
 | T-0322 | Web kit: AIs, Connections, Machines page states on StateMessage | coding (Muse, peak) | StateMessage gains an `icon` prop |
 | T-0323 | Web kit: Checkbox for the pickers (folder editor look) | coding (paid Muse fallback) | 6 checkboxes in 4 files |
 | T-0324 | Web kit: SegmentedControl radio mode (Explore filter, group Visibility) | coding | NewGroupDialog's switch waits for T-0323 |
 | (doctor) | | | audit running (paid Muse fallback) |
 
 Time correction (checked with `date`): it is 04:42 local, Tue 10-06. The "~04:xx–05:50 local" stamps below were estimated and run up to about an hour ahead; their order is right.
+
+04:54 local: merged T-0321 (unread pills on the kit Badge; pre-review clean, 0 nits). Board rows need the `[T-XXXX](file.md)` link format, or `lead merge` refuses.
 
 04:48 local: launched T-0323 (Checkbox) and T-0324 (SegmentedControl radio mode). The free Muse is still rate-limited, so the workers run on the paid fallback.
 
