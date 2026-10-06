@@ -58,6 +58,8 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 Time correction (checked with `date`): it is 04:42 local, Tue 10-06. The "~04:xx–05:50 local" stamps below were estimated and run up to about an hour ahead; their order is right.
 
+07:52 local: QA run 26 PASS (qa26/; the lead saw 14.png). The kit Buttons on Machines, Connections, Stickers and the New pack editor are consistent and work. Edit on owned packs cannot be reached in mock. No crash. Phone marker b45684f1 (lead checked).
+
 07:40 local: merged T-0345 (Connections buttons) and T-0346 (Stickers buttons).
 
 T-0346 blocked once, validly: `sticker-pack.tsx` imports from `stickers.tsx`, so its test needed the same mocks. That was a lead spec miss; the "one level up" grep in LEAD_HANDOFF was skipped. The lead allowed the test file (mocks only) and the worker finished. T-0347 launched.
