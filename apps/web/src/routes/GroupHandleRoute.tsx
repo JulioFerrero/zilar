@@ -5,6 +5,8 @@ import { ApiError, lookupGroupByHandle, type DirectoryEntry } from '@/lib/api';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
 import { AddContactDialog } from '@/components/AddContactDialog';
 import { Avatar } from '@/components/Avatar';
+import { Button } from '@/components/ui/button';
+import { Dialog } from '@/components/ui/dialog';
 
 /**
  * The `/@handle` share entry (T-0164): resolves a person or a public group.
@@ -104,32 +106,24 @@ export function GroupHandleRoute({ atHandle }: { atHandle?: string | undefined }
   }
   if (lookup.state === 'error') {
     return (
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={`Open @${handle}`}
-        onClick={close}
-        className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4"
-      >
-        <div
-          onClick={(event) => event.stopPropagation()}
-          className="w-full max-w-sm rounded-2xl bg-background p-6 text-center shadow-xl"
-        >
-          <h2 className="text-[18px] font-semibold">Couldn&apos;t open this link</h2>
-          <p role="alert" className="mt-2 text-[14px] text-muted-foreground">
-            {lookup.message}
-          </p>
-          <div className="mt-5 flex justify-center gap-2">
-            <button
+      <Dialog
+        open
+        onClose={close}
+        title="Couldn't open this link"
+        ariaLabel={`Open @${handle}`}
+        size="sm"
+        actions={
+          <>
+            <Button
               type="button"
+              size="lg"
               onClick={() => {
                 setLookup({ state: 'checking' });
                 setAttempt((value) => value + 1);
               }}
-              className="rounded-full bg-accent px-4 py-1.5 text-[15px] font-medium text-accent-foreground hover:bg-accent/90"
             >
               Retry
-            </button>
+            </Button>
             <button
               type="button"
               onClick={close}
@@ -137,9 +131,13 @@ export function GroupHandleRoute({ atHandle }: { atHandle?: string | undefined }
             >
               Close
             </button>
-          </div>
-        </div>
-      </div>
+          </>
+        }
+      >
+        <p role="alert" className="mt-2 text-center text-[14px] text-muted-foreground">
+          {lookup.message}
+        </p>
+      </Dialog>
     );
   }
   return null;
@@ -150,17 +148,6 @@ function GroupHandleCard({ entry, onClose }: { entry: DirectoryEntry; onClose: (
   const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
-
-  // Esc closes the card from any focus position, same as Close.
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') {
-        onClose();
-      }
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, [onClose]);
 
   const join = async (): Promise<void> => {
     if (busy) {
@@ -195,21 +182,11 @@ function GroupHandleCard({ entry, onClose }: { entry: DirectoryEntry; onClose: (
   };
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label={`Join ${entry.title}`}
-      onClick={onClose}
-      className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4"
-    >
-      <div
-        onClick={(event) => event.stopPropagation()}
-        className="w-full max-w-sm rounded-2xl bg-background p-6 text-center shadow-xl"
-      >
+    <Dialog open onClose={onClose} title={entry.title} ariaLabel={`Join ${entry.title}`} size="sm">
+      <div className="text-center">
         <div className="flex justify-center">
           <Avatar id={entry.id} name={entry.title} size={56} avatarUrl={entry.avatarUrl} />
         </div>
-        <h2 className="mt-3 text-[20px] font-semibold">{entry.title}</h2>
         <p className="mt-1 text-[14px] text-muted-foreground">@{entry.handle}</p>
         {entry.description !== null && entry.description !== '' && (
           <p className="mt-2 text-[15px] text-muted-foreground">{entry.description}</p>
@@ -223,11 +200,12 @@ function GroupHandleCard({ entry, onClose }: { entry: DirectoryEntry; onClose: (
             {error}
           </p>
         )}
-        <button
+        <Button
           type="button"
+          size="lg"
           disabled={busy}
           onClick={() => void join()}
-          className="mt-5 w-full rounded-full bg-accent px-4 py-2.5 text-[15px] font-medium text-accent-foreground hover:bg-accent/90 disabled:opacity-60"
+          className="mt-5 w-full"
         >
           {busy
             ? 'Joining…'
@@ -236,7 +214,7 @@ function GroupHandleCard({ entry, onClose }: { entry: DirectoryEntry; onClose: (
               : entry.kind === 'channel'
                 ? 'Join the channel'
                 : 'Join the group'}
-        </button>
+        </Button>
         <div className="mt-3 flex justify-center">
           <button
             type="button"
@@ -247,6 +225,6 @@ function GroupHandleCard({ entry, onClose }: { entry: DirectoryEntry; onClose: (
           </button>
         </div>
       </div>
-    </div>
+    </Dialog>
   );
 }

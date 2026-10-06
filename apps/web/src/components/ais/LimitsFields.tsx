@@ -1,3 +1,4 @@
+import { TextInput } from '@/components/ui/text-input';
 import { FieldError } from './AiPageShell';
 
 /** Step 5: the USD daily and monthly caps, with the server's validation rules. */
@@ -22,13 +23,13 @@ export function LimitsFields({
         <span className="text-[14px] font-medium">Per day (USD)</span>
         <div className="flex items-center gap-2">
           <span className="text-[15px] text-muted-foreground">$</span>
-          <input
+          <TextInput
             aria-label="Per day amount"
             inputMode="decimal"
             value={day}
             onChange={(event) => onDayChange(event.target.value)}
             placeholder="2"
-            className="w-32 rounded-lg border border-input bg-background px-3 py-2 text-[15px] outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40"
+            className="w-32"
           />
         </div>
         {dayError !== '' && <FieldError>{dayError}</FieldError>}
@@ -38,13 +39,13 @@ export function LimitsFields({
         <span className="text-[14px] font-medium">Per month (USD)</span>
         <div className="flex items-center gap-2">
           <span className="text-[15px] text-muted-foreground">$</span>
-          <input
+          <TextInput
             aria-label="Per month amount"
             inputMode="decimal"
             value={month}
             onChange={(event) => onMonthChange(event.target.value)}
             placeholder="20"
-            className="w-32 rounded-lg border border-input bg-background px-3 py-2 text-[15px] outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40"
+            className="w-32"
           />
         </div>
         {monthError !== '' && <FieldError>{monthError}</FieldError>}

@@ -8,6 +8,9 @@ import {
   type ContactRequestView,
 } from '@/lib/api';
 import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
+import { Button } from '@/components/ui/button';
+import { Card, SectionLabel } from '@/components/ui/card';
+import { StateMessage } from '@/components/ui/state-message';
 
 /** Settings → Requests: incoming (Accept/Decline) and outgoing (Cancel). */
 export function RequestsPage({ onBack }: { onBack: () => void }) {
@@ -65,83 +68,85 @@ export function RequestsPage({ onBack }: { onBack: () => void }) {
   return (
     <SettingsShell title="Requests" subtitle="People who want to add you." onBack={onBack}>
       <div className={SETTINGS_COLUMN}>
-        {!loaded && <p className="text-[14px] text-muted-foreground">Loading requests…</p>}
+        {!loaded && <StateMessage kind="loading" title="Loading requests…" />}
         {loaded && incoming.length === 0 && outgoing.length === 0 && (
-          <p className="text-[14px] text-muted-foreground">No pending requests.</p>
+          <StateMessage kind="empty" title="No pending requests." />
         )}
         {incoming.length > 0 && (
           <section aria-label="Incoming requests" className="flex flex-col gap-2">
-            <h2 className="text-[16px] font-semibold">Incoming</h2>
-            <ul className="flex flex-col gap-2">
-              {incoming.map((request) => (
-                <li
-                  key={request.id}
-                  className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-surface px-3 py-2.5"
-                >
-                  <span className="min-w-0 flex-1 basis-40 text-[14px]">
-                    <span className="block truncate text-[15px] font-medium">
-                      {request.other.name}{' '}
-                      {request.other.handle !== null && (
-                        <span className="font-normal text-muted-foreground">
-                          @{request.other.handle}
-                        </span>
-                      )}
+            <SectionLabel>Incoming</SectionLabel>
+            <Card>
+              <ul className="divide-y divide-divider">
+                {incoming.map((request) => (
+                  <li key={request.id} className="flex flex-wrap items-center gap-3 px-3 py-2.5">
+                    <span className="min-w-0 flex-1 basis-40 text-[14px]">
+                      <span className="block truncate text-[15px] font-medium">
+                        {request.other.name}{' '}
+                        {request.other.handle !== null && (
+                          <span className="font-normal text-muted-foreground">
+                            @{request.other.handle}
+                          </span>
+                        )}
+                      </span>
                     </span>
-                  </span>
-                  <span className="flex gap-2">
-                    <button
-                      type="button"
-                      disabled={busyId === request.id}
-                      onClick={() => void act(request.id, 'accept')}
-                      className="rounded-full bg-accent px-3 py-1 text-[14px] font-medium text-accent-foreground hover:bg-accent/90 disabled:opacity-60"
-                    >
-                      Accept
-                    </button>
-                    <button
-                      type="button"
-                      disabled={busyId === request.id}
-                      onClick={() => void act(request.id, 'decline')}
-                      className="rounded-full border border-border px-3 py-1 text-[14px] hover:bg-surface-raised disabled:opacity-60"
-                    >
-                      Decline
-                    </button>
-                  </span>
-                </li>
-              ))}
-            </ul>
+                    <span className="flex gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={busyId === request.id}
+                        onClick={() => void act(request.id, 'accept')}
+                      >
+                        Accept
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={busyId === request.id}
+                        onClick={() => void act(request.id, 'decline')}
+                      >
+                        Decline
+                      </Button>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </Card>
           </section>
         )}
         {outgoing.length > 0 && (
           <section aria-label="Outgoing requests" className="flex flex-col gap-2">
-            <h2 className="text-[16px] font-semibold">Sent</h2>
-            <ul className="flex flex-col gap-2">
-              {outgoing.map((request) => (
-                <li
-                  key={request.id}
-                  className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-surface px-3 py-2.5"
-                >
-                  <span className="min-w-0 flex-1 basis-40 text-[14px]">
-                    <span className="block truncate text-[15px] font-medium">
-                      {request.other.name}{' '}
-                      {request.other.handle !== null && (
-                        <span className="font-normal text-muted-foreground">
-                          @{request.other.handle}
-                        </span>
-                      )}
+            <SectionLabel>Sent</SectionLabel>
+            <Card>
+              <ul className="divide-y divide-divider">
+                {outgoing.map((request) => (
+                  <li key={request.id} className="flex flex-wrap items-center gap-3 px-3 py-2.5">
+                    <span className="min-w-0 flex-1 basis-40 text-[14px]">
+                      <span className="block truncate text-[15px] font-medium">
+                        {request.other.name}{' '}
+                        {request.other.handle !== null && (
+                          <span className="font-normal text-muted-foreground">
+                            @{request.other.handle}
+                          </span>
+                        )}
+                      </span>
+                      <span className="text-[13px] text-muted-foreground">
+                        Waiting for an answer
+                      </span>
                     </span>
-                    <span className="text-[13px] text-muted-foreground">Waiting for an answer</span>
-                  </span>
-                  <button
-                    type="button"
-                    disabled={busyId === request.id}
-                    onClick={() => void act(request.id, 'cancel')}
-                    className="rounded-full border border-border px-3 py-1 text-[14px] hover:bg-surface-raised disabled:opacity-60"
-                  >
-                    Cancel
-                  </button>
-                </li>
-              ))}
-            </ul>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={busyId === request.id}
+                      onClick={() => void act(request.id, 'cancel')}
+                    >
+                      Cancel
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            </Card>
           </section>
         )}
         {error !== undefined && (

@@ -30,10 +30,25 @@ export interface FolderForm {
   excludeRead: boolean;
 }
 
-/** The list's one-line summary: the selected types or "No chat types". */
+/**
+ * The list's one-line summary, mirroring the web `summary`: the selected type
+ * labels, the included chat count, both joined by ", ", whatever is present,
+ * or "No rules yet" when neither is.
+ */
 export function folderSummary(folder: ChatFolder): string {
-  const labels = folder.includeTypes.map((type) => FOLDER_TYPE_LABELS[type]);
-  return labels.length === 0 ? 'No chat types' : labels.join(', ');
+  const typePart = folder.includeTypes.map((type) => FOLDER_TYPE_LABELS[type]).join(', ');
+  const count = folder.includeChats.length;
+  if (typePart === '' && count === 0) {
+    return 'No rules yet';
+  }
+  if (count === 0) {
+    return typePart;
+  }
+  const chatPart = count === 1 ? '1 chat' : `${count} chats`;
+  if (typePart === '') {
+    return chatPart;
+  }
+  return `${typePart}, ${chatPart}`;
 }
 
 /**

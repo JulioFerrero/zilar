@@ -8,7 +8,9 @@
 # stage serves the static files with SPA fallback, caching and security
 # headers (see the Caddyfile in this directory).
 
-FROM node:24.11.1-alpine AS builder
+# dist/ is platform-independent static files, so the builder runs on the
+# native build platform; only the Caddy runtime stage is built per platform.
+FROM --platform=$BUILDPLATFORM node:24.11.1-alpine AS builder
 
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 RUN corepack enable && corepack prepare pnpm@10.32.1 --activate

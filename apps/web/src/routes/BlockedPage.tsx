@@ -3,6 +3,9 @@ import { ApiError, listBlockedUsers, unblockUser, type BlockedPerson } from '@/l
 import { refreshBlockedJids } from '@/lib/blockedJids';
 import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
 import { Avatar } from '@/components/Avatar';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { StateMessage } from '@/components/ui/state-message';
 
 /** Settings → Blocked people: who you blocked, with an Unblock per row. */
 export function BlockedPage({ onBack }: { onBack: () => void }) {
@@ -52,42 +55,42 @@ export function BlockedPage({ onBack }: { onBack: () => void }) {
       onBack={onBack}
     >
       <div className={SETTINGS_COLUMN}>
-        {!loaded && <p className="text-[14px] text-muted-foreground">Loading blocked people…</p>}
+        {!loaded && <StateMessage kind="loading" title="Loading blocked people…" />}
         {loaded && people.length === 0 && error === undefined && (
-          <p className="text-[14px] text-muted-foreground">You haven&apos;t blocked anyone.</p>
+          <StateMessage kind="empty" title="You haven't blocked anyone." />
         )}
         {people.length > 0 && (
-          <ul className="flex flex-col gap-2">
-            {people.map((person) => (
-              <li
-                key={person.userId}
-                className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-surface px-3 py-2.5"
-              >
-                <Avatar
-                  id={person.userId}
-                  name={person.name}
-                  size={36}
-                  avatarUrl={person.image ?? undefined}
-                />
-                <span className="min-w-0 flex-1 basis-40 text-[14px]">
-                  <span className="block truncate text-[15px] font-medium">
-                    {person.name}
-                    {person.handle !== null && (
-                      <span className="font-normal text-muted-foreground"> @{person.handle}</span>
-                    )}
+          <Card>
+            <ul className="divide-y divide-divider">
+              {people.map((person) => (
+                <li key={person.userId} className="flex flex-wrap items-center gap-3 px-3 py-2.5">
+                  <Avatar
+                    id={person.userId}
+                    name={person.name}
+                    size={36}
+                    avatarUrl={person.image ?? undefined}
+                  />
+                  <span className="min-w-0 flex-1 basis-40 text-[14px]">
+                    <span className="block truncate text-[15px] font-medium">
+                      {person.name}
+                      {person.handle !== null && (
+                        <span className="font-normal text-muted-foreground"> @{person.handle}</span>
+                      )}
+                    </span>
                   </span>
-                </span>
-                <button
-                  type="button"
-                  disabled={busyId === person.userId}
-                  onClick={() => void unblock(person.userId)}
-                  className="rounded-full border border-border px-3 py-1 text-[14px] hover:bg-surface-raised disabled:opacity-60"
-                >
-                  {busyId === person.userId ? 'Unblocking…' : 'Unblock'}
-                </button>
-              </li>
-            ))}
-          </ul>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={busyId === person.userId}
+                    onClick={() => void unblock(person.userId)}
+                  >
+                    {busyId === person.userId ? 'Unblocking…' : 'Unblock'}
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          </Card>
         )}
         {error !== undefined && (
           <p role="alert" className="text-[14px] text-danger">

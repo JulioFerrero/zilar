@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, TextInput, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import { Text } from '@/components/ui/text';
+import { TextField } from '@/components/ui/text-field';
 import { DirectoryApiError, type HandleCheck } from '@/lib/directory-api';
 import { GroupsApiError } from '@/lib/groups-api';
 import { visibilityReasonText } from '@/components/chat/visibility-sheet';
@@ -81,19 +82,16 @@ export function VisibilityFields({
       {visibility === 'public' ? (
         <>
           <Text className="mt-2 text-[14px] font-medium text-foreground">Handle</Text>
-          <View className="mt-1 rounded-[10px] border border-border-strong bg-well px-3 py-2">
-            <TextInput
-              value={handle}
-              onChangeText={onHandle}
-              maxLength={32}
-              autoCapitalize="none"
-              autoCorrect={false}
-              placeholder="hiking_club"
-              placeholderTextColor="#8a8a8a"
-              accessibilityLabel="Group handle"
-              className="text-[15px] text-foreground"
-            />
-          </View>
+          <TextField
+            value={handle}
+            onChangeText={onHandle}
+            maxLength={32}
+            autoCapitalize="none"
+            autoCorrect={false}
+            placeholder="hiking_club"
+            accessibilityLabel="Group handle"
+            className="mt-1"
+          />
           <View className="min-h-[20px]">
             {checking ? (
               <Text className="text-[14px] text-muted-foreground">Checking…</Text>

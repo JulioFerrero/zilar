@@ -7,6 +7,7 @@ import { Badge } from './badge';
 import { Button } from './button';
 import { Card, SectionLabel } from './card';
 import { Dialog } from './dialog';
+import { Sheet } from './sheet';
 import { ListRow } from './list-row';
 import { SegmentedControl } from './segmented-control';
 import { StateMessage } from './state-message';
@@ -111,6 +112,20 @@ describe('TextInput and TextArea', () => {
     expect(area.className).toContain('max-w-xs');
     expect(area.className).toContain('well-surface');
   });
+
+  it('renders a bare field with no wrapper when there is no label, hint or counter', () => {
+    const { container } = render(<TextInput aria-label="Search" />);
+    const input = screen.getByLabelText('Search');
+    expect(input.parentElement).toBe(container);
+    expect(container.querySelector('div.flex-col')).toBeNull();
+  });
+
+  it('keeps the wrapper and the label for a labelled field', () => {
+    render(<TextInput label="Group name" />);
+    const input = screen.getByLabelText('Group name');
+    expect(screen.getByText('Group name').tagName).toBe('LABEL');
+    expect(input.parentElement?.className).toContain('flex-col');
+  });
 });
 
 describe('Dialog', () => {
@@ -148,9 +163,87 @@ describe('Dialog', () => {
     expect(backgroundClose).not.toHaveBeenCalled();
   });
 
+  it('stops Escape before window listeners while a dialog is open', () => {
+    const onClose = vi.fn();
+    const windowSpy = vi.fn();
+    window.addEventListener('keydown', windowSpy);
+    try {
+      const { unmount } = render(<Dialog open onClose={onClose} title="Edit group" />);
+      fireEvent.keyDown(document, { key: 'Escape' });
+      expect(onClose).toHaveBeenCalledTimes(1);
+      expect(windowSpy).not.toHaveBeenCalled();
+
+      unmount();
+      fireEvent.keyDown(document, { key: 'Escape' });
+      expect(windowSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      window.removeEventListener('keydown', windowSpy);
+    }
+  });
+
+  it('keeps an undismissable dialog open and still stops Escape before window listeners', () => {
+    const onClose = vi.fn();
+    const windowSpy = vi.fn();
+    window.addEventListener('keydown', windowSpy);
+    try {
+      render(<Dialog open onClose={onClose} title="Importing" dismissable={false} />);
+      const dialog = screen.getByRole('dialog', { name: 'Importing' });
+      fireEvent.keyDown(document, { key: 'Escape' });
+      expect(dialog).toBeTruthy();
+      expect(onClose).not.toHaveBeenCalled();
+      expect(windowSpy).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener('keydown', windowSpy);
+    }
+  });
+
+  it('uses ariaLabel as the accessible name when it differs from the title', () => {
+    render(<Dialog open onClose={() => {}} title="Add members" ariaLabel="New group" />);
+    expect(screen.getByRole('dialog', { name: 'New group' })).toBeTruthy();
+    expect(screen.queryByRole('dialog', { name: 'Add members' })).toBeNull();
+  });
+
+  it('stays open on Escape and a backdrop click when not dismissable', () => {
+    const onClose = vi.fn();
+    render(<Dialog open onClose={onClose} title="Importing" dismissable={false} />);
+    const dialog = screen.getByRole('dialog', { name: 'Importing' });
+    fireEvent.keyDown(document, { key: 'Escape' });
+    fireEvent.click(dialog.parentElement as HTMLElement);
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('caps the panel height and scrolls the body between fixed title and actions', () => {
+    render(
+      <Dialog
+        open
+        onClose={() => {}}
+        title="Long dialog"
+        description="Scroll me."
+        actions={<Button>Save</Button>}
+      >
+        <p>Body</p>
+      </Dialog>,
+    );
+    const panel = screen.getByRole('dialog', { name: 'Long dialog' });
+    expect(panel.className).toContain('max-h-[85vh]');
+    expect(panel.className).toContain('flex-col');
+    const body = panel.querySelector('.overflow-y-auto');
+    expect(body?.className).toContain('flex-1');
+    expect(body?.textContent).toContain('Body');
+    expect(screen.getByRole('button', { name: 'Save' })).toBeTruthy();
+  });
+
   it('renders nothing when closed', () => {
     const { container } = render(<Dialog open={false} onClose={() => {}} title="Hidden" />);
     expect(container.innerHTML).toBe('');
+  });
+
+  it('applies the panel width for each size', () => {
+    const { unmount } = render(<Dialog open onClose={() => {}} title="Small" size="sm" />);
+    expect(screen.getByRole('dialog', { name: 'Small' }).className).toContain('max-w-sm');
+    unmount();
+    render(<Dialog open onClose={() => {}} title="Large" size="lg" />);
+    expect(screen.getByRole('dialog', { name: 'Large' }).className).toContain('max-w-lg');
   });
 
   it('focuses the first focusable element on open and wraps Tab at both ends', () => {
@@ -227,6 +320,101 @@ describe('Dialog', () => {
     fireEvent.keyDown(screen.getByRole('dialog', { name: 'Edit group' }), { key: 'Escape' });
     expect(screen.queryByRole('dialog', { name: 'Edit group' })).toBeNull();
     expect(document.activeElement).toBe(opener);
+  });
+});
+
+describe('Sheet', () => {
+  it('closes on Escape', () => {
+    const onClose = vi.fn();
+    render(
+      <Sheet open onClose={onClose} ariaLabel="Pinned messages">
+        <p>Body</p>
+      </Sheet>,
+    );
+    expect(screen.getByRole('dialog', { name: 'Pinned messages' })).toBeTruthy();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('closes only the topmost overlay when a dialog sits on a sheet', () => {
+    const sheetClose = vi.fn();
+    const dialogClose = vi.fn();
+    render(
+      <>
+        <Sheet open onClose={sheetClose} ariaLabel="Pinned messages">
+          <p>Sheet body</p>
+        </Sheet>
+        <Dialog open onClose={dialogClose} title="Confirm" />
+      </>,
+    );
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(dialogClose).toHaveBeenCalledTimes(1);
+    expect(sheetClose).not.toHaveBeenCalled();
+  });
+
+  it('closes on a backdrop click and keeps focus inside on Tab', () => {
+    const onClose = vi.fn();
+    render(
+      <Sheet open onClose={onClose} ariaLabel="Pinned messages">
+        <button type="button">First</button>
+        <button type="button">Last</button>
+      </Sheet>,
+    );
+    const panel = screen.getByRole('dialog', { name: 'Pinned messages' });
+    const first = screen.getByRole('button', { name: 'First' });
+    const last = screen.getByRole('button', { name: 'Last' });
+    expect(document.activeElement).toBe(first);
+    last.focus();
+    fireEvent.keyDown(panel, { key: 'Tab' });
+    expect(document.activeElement).toBe(first);
+    fireEvent.click(panel.parentElement as HTMLElement);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('stays open on Escape and a backdrop click when not dismissable', () => {
+    const onClose = vi.fn();
+    render(
+      <Sheet open onClose={onClose} ariaLabel="Uploading" dismissable={false}>
+        <p>Body</p>
+      </Sheet>,
+    );
+    const panel = screen.getByRole('dialog', { name: 'Uploading' });
+    fireEvent.keyDown(document, { key: 'Escape' });
+    fireEvent.click(panel.parentElement as HTMLElement);
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('returns focus to the opener on close', () => {
+    function Harness() {
+      const [open, setOpen] = useState(false);
+      return (
+        <>
+          <button type="button" onClick={() => setOpen(true)}>
+            Open sheet
+          </button>
+          <Sheet open={open} onClose={() => setOpen(false)} ariaLabel="Pinned messages">
+            <p>Body</p>
+          </Sheet>
+        </>
+      );
+    }
+    render(<Harness />);
+    const opener = screen.getByRole('button', { name: 'Open sheet' });
+    opener.focus();
+    fireEvent.click(opener);
+    expect(screen.getByRole('dialog', { name: 'Pinned messages' })).toBeTruthy();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: 'Pinned messages' })).toBeNull();
+    expect(document.activeElement).toBe(opener);
+  });
+
+  it('renders nothing when closed', () => {
+    const { container } = render(
+      <Sheet open={false} onClose={() => {}} ariaLabel="Hidden">
+        <p>Body</p>
+      </Sheet>,
+    );
+    expect(container.innerHTML).toBe('');
   });
 });
 

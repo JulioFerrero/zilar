@@ -1,5 +1,7 @@
 import { Check, Copy } from 'lucide-react';
 import { useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { TextInput } from '@/components/ui/text-input';
 import { copyText } from '@/lib/clipboard';
 import type { GroupInviteLink } from '@/lib/api';
 
@@ -118,11 +120,12 @@ export function InviteLinksSection({
           <p className="text-[13px] font-medium">Share this link</p>
           <div className="flex items-center gap-2 rounded-lg border border-divider bg-muted px-2 py-1.5">
             <span className="min-w-0 flex-1 truncate text-[13px]">{created.url}</span>
-            <button
+            <Button
               type="button"
               aria-label="Copy invite link"
               onClick={copy}
-              className="flex shrink-0 items-center gap-1 rounded-md bg-accent px-2.5 py-1 text-[13px] font-medium text-accent-foreground hover:bg-accent/90"
+              size="sm"
+              className="shrink-0"
             >
               {copied ? (
                 <Check className="size-4" aria-hidden="true" />
@@ -130,7 +133,7 @@ export function InviteLinksSection({
                 <Copy className="size-4" aria-hidden="true" />
               )}
               {copied ? 'Copied' : 'Copy'}
-            </button>
+            </Button>
           </div>
           <p className="text-[12px] text-muted-foreground">
             Anyone with this link can join the group. It is shown once — copy it now.
@@ -146,48 +149,39 @@ export function InviteLinksSection({
       )}
 
       <form onSubmit={submit} className="flex flex-col gap-2 rounded-xl px-2 py-1">
-        <label className="flex flex-col gap-1 text-[13px]">
-          <span className="text-muted-foreground">Label (optional, up to 60 characters)</span>
-          <input
-            value={label}
-            maxLength={60}
-            onChange={(event) => setLabel(event.target.value)}
-            placeholder="e.g. Friends"
-            aria-label="Link label"
-            className="w-full rounded-lg border border-input bg-background px-3 py-1.5 text-[14px] outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40"
-          />
-        </label>
+        <TextInput
+          value={label}
+          maxLength={60}
+          onChange={(event) => setLabel(event.target.value)}
+          placeholder="e.g. Friends"
+          label="Label (optional, up to 60 characters)"
+          aria-label="Link label"
+        />
         <div className="flex gap-2">
-          <label className="flex flex-1 flex-col gap-1 text-[13px]">
-            <span className="text-muted-foreground">Expires in (hours, optional)</span>
-            <input
+          <div className="min-w-0 flex-1">
+            <TextInput
               value={expiry}
               inputMode="numeric"
               onChange={(event) => setExpiry(event.target.value)}
               placeholder="e.g. 48"
+              label="Expires in (hours, optional)"
               aria-label="Expiry in hours"
-              className="w-full rounded-lg border border-input bg-background px-3 py-1.5 text-[14px] outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40"
             />
-          </label>
-          <label className="flex flex-1 flex-col gap-1 text-[13px]">
-            <span className="text-muted-foreground">Max uses (optional)</span>
-            <input
+          </div>
+          <div className="min-w-0 flex-1">
+            <TextInput
               value={maxUses}
               inputMode="numeric"
               onChange={(event) => setMaxUses(event.target.value)}
               placeholder="e.g. 10"
+              label="Max uses (optional)"
               aria-label="Max uses"
-              className="w-full rounded-lg border border-input bg-background px-3 py-1.5 text-[14px] outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40"
             />
-          </label>
+          </div>
         </div>
-        <button
-          type="submit"
-          disabled={busy}
-          className="self-start rounded-full bg-accent px-4 py-1.5 text-[14px] font-medium text-accent-foreground hover:bg-accent/90 disabled:opacity-60"
-        >
+        <Button type="submit" disabled={busy} className="self-start">
           {busy ? 'Creating…' : 'Create invite link'}
-        </button>
+        </Button>
         {formError !== undefined && (
           <p role="alert" className="text-[13px] text-danger">
             {formError}

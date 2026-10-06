@@ -22,10 +22,10 @@ export const TAB_BAR_SIDE_MARGIN = 12;
 /**
  * Bottom padding for a screen's scroll body. A tab screen scrolls clear of the
  * floating tab bar, so its last row stays tappable; a pushed page with a back
- * key keeps the plain 32.
+ * key clears the gesture bar by adding the bottom inset to the plain 32.
  */
 export function tabScreenBottomPadding(hasBack: boolean, insetBottom: number): number {
-  return hasBack ? 32 : TAB_BAR_HEIGHT + TAB_BAR_BOTTOM_GAP + insetBottom + 16;
+  return hasBack ? 32 + insetBottom : TAB_BAR_HEIGHT + TAB_BAR_BOTTOM_GAP + insetBottom + 16;
 }
 
 export interface FloatingTab {

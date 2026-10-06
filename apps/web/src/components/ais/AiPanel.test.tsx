@@ -230,6 +230,16 @@ describe('AiPanel', () => {
     expect(screen.getByDisplayValue('gpt-4o')).toBeTruthy();
   });
 
+  it('closes with Escape', async () => {
+    mockPanelFetch();
+
+    const { onClose } = renderPanel();
+
+    expect(await screen.findByDisplayValue('Dev-1')).toBeTruthy();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalled();
+  });
+
   it('shows the AI picture when the server sends one', async () => {
     const pictured = { ...ai, avatarUrl: '/api/avatars/a-1' };
     mockPanelFetch([openaiConnection], pictured, undefined, pictured, pictured);
@@ -262,6 +272,7 @@ describe('AiPanel', () => {
     // The usage block sits above the per-day/per-month fields.
     const usageHeading = screen.getByText('Usage');
     const dayField = screen.getByLabelText('Per day amount');
+    expect(dayField.className).toContain('well-surface');
     expect(usageHeading.compareDocumentPosition(dayField)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 

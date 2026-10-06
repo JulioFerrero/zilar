@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
 import type { PatchTopicInput, TopicStatus } from '@/lib/api';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
+import { TextInput } from '@/components/ui/text-input';
 
 const STATUS_ORDER: TopicStatus[] = ['open', 'in_progress', 'in_review', 'blocked', 'done'];
 
@@ -407,22 +408,22 @@ export function TaskStrip({ chat }: { chat: ChatSummary }) {
           <div className="absolute top-full left-0 z-20 mt-1 flex w-64 flex-col gap-2 rounded-xl border border-border bg-popover p-3 shadow-lg">
             <label className="flex flex-col gap-1">
               <span className="text-[12px] font-medium">URL (https only)</span>
-              <input
+              <TextInput
                 value={linkUrl}
                 onChange={(event) => setLinkUrl(event.target.value)}
                 placeholder="https://…"
                 inputMode="url"
-                className="well-surface rounded-[8px] px-2.5 py-1.5 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+                className="rounded-[8px] px-2.5 py-1.5 text-[13px]"
               />
             </label>
             <label className="flex flex-col gap-1">
               <span className="text-[12px] font-medium">Label (optional)</span>
-              <input
+              <TextInput
                 value={linkLabel}
                 onChange={(event) => setLinkLabel(event.target.value)}
                 maxLength={40}
                 placeholder="PR #42"
-                className="well-surface rounded-[8px] px-2.5 py-1.5 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+                className="rounded-[8px] px-2.5 py-1.5 text-[13px]"
               />
             </label>
             <div className="flex justify-end gap-1.5">

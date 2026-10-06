@@ -89,6 +89,9 @@ describe('JoinPage (T-0115)', () => {
 
     expect(await screen.findByText('Hiking club')).toBeTruthy();
     expect(screen.getByText('4 members')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Join the group' }).getAttribute('data-slot')).toBe(
+      'button',
+    );
 
     fireEvent.click(screen.getByRole('button', { name: 'Join the group' }));
     await waitFor(() => expect(screen.getByText('Group chat')).toBeTruthy());

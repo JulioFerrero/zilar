@@ -20,6 +20,8 @@ import {
 import { AiBadge } from '@/components/AiBadge';
 import { Avatar } from '@/components/Avatar';
 import { AvatarUploader } from '@/components/AvatarUploader';
+import { Sheet } from '@/components/ui/sheet';
+import { TextArea, TextInput } from '@/components/ui/text-input';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
 import { cn } from '@/lib/utils';
 import { Button, FieldError } from './AiPageShell';
@@ -480,17 +482,8 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
   };
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label={`${chat.title} AI settings`}
-      onClick={onClose}
-      className="fixed inset-0 z-40 flex justify-end bg-black/40"
-    >
-      <div
-        onClick={(event) => event.stopPropagation()}
-        className="flex h-full w-full max-w-sm flex-col bg-background shadow-xl sm:w-[380px]"
-      >
+    <>
+      <Sheet open onClose={onClose} ariaLabel={`${chat.title} AI settings`}>
         <header className="flex shrink-0 items-center gap-3 border-b border-divider p-4">
           <Avatar
             id={ai?.id ?? chat.id}
@@ -541,7 +534,7 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
             <>
               <label className="flex flex-col gap-1">
                 <span className="text-[14px] font-medium">Name</span>
-                <input
+                <TextInput
                   aria-label="Name"
                   value={name}
                   maxLength={64}
@@ -549,13 +542,12 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
                     setName(event.target.value);
                     markEdited();
                   }}
-                  className="rounded-lg border border-input bg-background px-3 py-2 text-[15px] outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40"
                 />
               </label>
 
               <label className="flex flex-col gap-1">
                 <span className="text-[14px] font-medium">Persona</span>
-                <textarea
+                <TextArea
                   aria-label="Persona"
                   rows={10}
                   maxLength={4000}
@@ -565,7 +557,7 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
                     markEdited();
                   }}
                   placeholder="Describe how this AI should behave…"
-                  className="rounded-lg border border-input bg-background px-3 py-2 text-[15px] outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40"
+                  className="min-h-0"
                 />
               </label>
 
@@ -809,7 +801,7 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
             </Button>
           </footer>
         )}
-      </div>
-    </div>
+      </Sheet>
+    </>
   );
 }

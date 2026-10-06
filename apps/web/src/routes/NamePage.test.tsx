@@ -29,6 +29,11 @@ describe('NamePage', () => {
       </AuthProvider>,
     );
 
+    expect(screen.getByRole('button', { name: 'Continue' }).getAttribute('data-slot')).toBe(
+      'button',
+    );
+    expect(screen.getByLabelText('Name').className).toContain('well-surface');
+
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: '  Ada  ' } });
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
 

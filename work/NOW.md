@@ -24,10 +24,44 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0260 | Deploy: auto-deploy live after every green CI on main; /health shows the commit | coding (DeepSeek) | Julio 2026-10-06 chose "every green main push"; he must add secrets COOLIFY_URL, COOLIFY_TOKEN, COOLIFY_SERVICE_UUID (zilar service uuid zogjtvwnoh9rqo96h7e7ajz1) |
-| T-0261 | Forwarding step 1: ForwardOriginSchema + xmpp-core `<forward xmlns="urn:zilar:forward:0">` | coding | plan T-A + T-B |
-| T-0262 | Mobile: list ticks use the real user id (never showed in the real app); folder editor waits for its folder | coding | pre-review follow-ups |
-| T-0263 | Web kit migration 3: TelegramImport, NewAi, NewGroup dialogs | coding | audit step 6 batch 2 |
+| T-0307 | Mobile: sign-in email, name, username on TextField | reviewed, merge held | batch 8 |
+| T-0308 | Mobile kit SearchField; group topics search + Explore | reviewed, merge held | |
+| T-0310 | Mobile: visibility sheet above the keyboard; shared `sheetBottomPadding` | coding (Muse, peak) | QA run 15 finding |
+| T-0309 | Mobile: chat list + Stickers search on SearchField | spec written, launches after T-0308 merges | |
+
+~03:40 local: QA run 15 (qa15/): PASS for Integrations (cards show in mock; `?mock=not-owner` shows the lock), Join link field, AI Model, $ limits, tool Run input, machine rename, new sticker pack name. ISSUE: the visibility sheet is fully hidden by the keyboard (lead saw 10.png) → T-0310. Editing an owned sticker pack's name is not reachable in mock. Phone marker b45684f1 (lead checked).
+
+~03:50 local: merged T-0302, T-0306, T-0305 (nit waived: the close icon keeps `MUTED_FOREGROUND`; my acceptance line was too broad). Cancelled images run 37396257689 (zilar-web still under QEMU after 55 min, stale code, and it held the `publish-main` group, so newer image runs queued behind it were cancelled). Timing the images run for tip c1837ca3, the first with the T-0304 native builder; merges are held until it finishes. QA run 15 sent (qa15/).
+
+~03:40 local: QA run 14 PASS (qa14/): invite links sheet sits above the numeric keyboard (lead saw 02.png), backdrop closes and inside taps do not; the create-sheet, roles and task-strip link fields show the well look and typing works. No crash. Phone marker restored to b45684f1 (lead checked).
+
+~03:30 local: merged T-0304 (web image builder runs natively; local amd64 cross-build passed) and T-0303 (Integrations owner mock: `?mock=1` shows the cards, `?mock=not-owner` the lock). First images run 37396257689: zilar-web still building under QEMU after 32 min; the next images run on the tip uses the T-0304 Dockerfile (lead is timing it).
+
+~03:22 local: merged T-0299 (invite links sheet keyboard), T-0300, T-0301 (all clean, 0 nits). QA run 14 sent for all three (qa14/).
+
+~03:14 local: merged T-0297 (mobile TextField batch 2) and T-0298 (web TextInput batch 6, the last plain web fields). QA run 13 (qa13/): T-0297 fields PASS. Integrations was not testable, because the mock user is not the owner and gets the lock page. Finding: the invite links sheet never avoided the keyboard → T-0299. Still to migrate after T-0300/T-0301: join-link and visibility-sheet (their tests overlap with T-0300), sticker pack, stickers, explore, machines, folder editor, telegram import, AI pickers. Images run 37396257689 is still building zilar-web.
+
+~03:05 local: merged T-0293, T-0294 (mobile TextField; QA run 12 PASS, qa12/), T-0295, T-0296 (removed dead mobile AddContactSheet, found by QA 12). First production image build is running (images run 37396257689: server, postgres, ejabberd built OK; web still building at 00:59 UTC); deploy skips until the Coolify secrets exist.
+
+~02:50 local: merged T-0290, T-0291, T-0292 (bare field without label/hint/counter). `lead merge` pushes main, so each merge restarts CI; with T-0289 the older runs cancel. Lead plan: hold one merge until CI on the tip finishes so the images workflow builds once and proves the pipeline.
+
+~02:30 local: merged T-0287 (mobile ConfirmDialog), T-0289 (CI cancels superseded main runs, so the tip finishes and images can build), T-0288 (first TextInput users; lead browser check of the recessed field + focus outline). QA run 11 PASS (qa11/): Open group icon aligned, topic actions sheet, AI delete and machine confirms, kit confirm sample; always-allowed revoke not reachable in mock. The QA agent pinned a mock topic by accident (mock only).
+
+~02:20 local: merged T-0284 (topic actions sheet + Open group icon), T-0285, T-0286. All 5 web chat panels are now on the kit Sheet; no hand-rolled `role="dialog"` left on web except `StickerPanel` (non-modal popover). Lead browser check (mock, wide): channel panel opens on the right, Escape closes it, focus returns to the header. Narrow check not done (window would not resize); covered by the kit test.
+
+~02:20 local: merged T-0282 (kit Sheet + `use-modal.ts`; modal Escape stops at the topmost overlay, also when undismissable; listeners in layout effects). QA run 10 PASS in dark mode (T-0283 sheets + kit catalog; light mode not checked: `cmd uimode night no` did not switch the app). One finding: "Open group" row has no icon, so it is out of line → in T-0284.
+
+~02:10 local: merged T-0280 (cause: Escape fired before the Dialog's passive effect attached its listener; test now waits) and T-0283 (mobile kit ActionSheet). QA run 10 sent to the Sonnet subagent (T-0283 sheets + kit catalog, screenshots in job tmp `qa10/`).
+
+~02:00 local: merged T-0281 (accent pill guard, after a lead fix round: no vacuous pass).
+
+~01:55 local: merged T-0277, T-0278, T-0279. No hand-rolled accent buttons left on web (only 2 badge spans). Images workflow has only skipped so far (main moves faster than CI); the first build comes when merges pause.
+
+~01:40 local: merged T-0272 (lockfile flip fixed with `packageExtensions`; pnpm changelog quotes not verified by the lead), T-0274 (no hand-rolled modal dialogs left on web), T-0275, T-0276. Images workflow verified: it skips non-tip commits ("no longer the tip of main") and will build when CI passes on the tip.
+
+~01:30 local 10-06: merged T-0260 (auto-deploy; images publish on every green main; the deploy step stays skipped until Julio adds the 3 secrets) and T-0273 (clean).
+
+Later the same night: merged T-0261 (forward wire), T-0262 (ticks + folder deep link), T-0263 (lead fix: kit Dialog 85vh + scrolling body), T-0264 (mobile kit batch 1 + `zilar://dev/kit`), T-0265, T-0266, T-0267 (SectionLabel heading), T-0268, T-0269 (CI flake: '535' in random requestId), T-0270 (folder editor on kit, browser-checked), T-0271. QA run 9 all PASS (qa9/). T-0260 got a lead fix round: tip-of-main guard + serialized publishing (overlapping CI runs could push an older `latest`).
 
 Night 10-06 (Julio asleep, `caffeinate -dimsu` running): merged T-0251, T-0252 (after a lead memo fix round), T-0253 (lead browser check), T-0254, T-0255 (lead allowed hub.test.ts), T-0256 (forwarding plan), T-0257 (media gallery plan), T-0258 (4 dialogs on kit), T-0259 (CI red since T-0244: slow folder cap test; fixed). QA run 8 sent (T-0251, T-0252, T-0254, T-0255). Live chat.zilar.app is still v0.1.13: Julio said no manual release tonight; T-0260 automates it.
 
@@ -35,7 +69,7 @@ Waiting for Julio:
 - Forwarding UI (plan T-D/T-E) needs his answers to `docs/audit/forwarding-plan.md` §5 (7 questions with recommendations).
 - Media gallery Task 1 (schema migration) needs his answers to `docs/audit/media-gallery-plan.md` §5 (8 questions).
 - Security note from T-0256: `/upload/*` is served with no auth (bearer URLs); anyone with a URL can read the file, even after a retraction.
-- Add the three Coolify secrets in GitHub once T-0260 merges.
+- T-0260 merged: add GitHub repo secrets `COOLIFY_URL`, `COOLIFY_TOKEN`, `COOLIFY_SERVICE_UUID` (= `zogjtvwnoh9rqo96h7e7ajz1`). Optional repo variable `AUTO_DEPLOY=off` pauses it. Until then live stays v0.1.13.
 
 2026-10-06 ~00:25 local: merged T-0246 (web kit 2; lead saw ListRow, SegmentedControl, Card render in Cosmos on 5100; first load takes a few seconds), T-0248 (mobile folder chips), T-0249 (web blocked previews), T-0234 (mobile create sheets + keyboard). QA run 6 done: Settings hub, Blocked people, block from search PASS; Integrations row hidden under the tab bar → T-0251. QA run 7 sent (T-0248 chips, T-0234 sheets). Cosmos running from main on http://localhost:5100 for Julio. Next specs: mobile folders part 2 (editor + Settings row), more web kit migrations (settings rows, dialogs), mobile kit.
 

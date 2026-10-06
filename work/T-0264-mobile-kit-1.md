@@ -1,7 +1,7 @@
 ---
 id: T-0264
 title: "Mobile kit batch 1: IconTile, ListRow, Card, SectionLabel and CountBadge in components/ui, used by the Settings hub and Chat folders, plus a hidden kit catalog screen"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0264-mobile-kit-1
 model: auto
@@ -63,4 +63,49 @@ Other screens (later migration tasks), react-cosmos-native, and the react-native
 
 ## Report (written by the worker when done)
 
+### What I did
+- Added four kit files under `apps/mobile/src/components/ui/`:
+  - `icon-tile.tsx` — `IconTile({ children, size = 34, radius = 10, testID? })` using the `iconKey` depth recipe.
+  - `list-row.tsx` — `ListRow({ icon?, title, subtitle?, count?, chevron = true, onPress?, accessibilityLabel?, trailing?, disabled?, className? })`. It is a `Pressable` (role button) when `onPress` is set, else a `View`. `count` renders `CountBadge`; `chevron` defaults to true.
+  - `card.tsx` — `Card({ children })` (a divider before every child after the first, no `first` prop) and `SectionLabel({ children })`.
+  - `count-badge.tsx` — `CountBadge({ count })`, which returns `null` at 0 or below.
+- Migrated `(tabs)/settings.tsx`: the local `IconTile`, `SettingsRow` and `GroupCard` are deleted. `GroupCard` now uses `SectionLabel` + `Card` + `ListRow`, and passes `<IconTile testID={row.iconTestId}>` as the row's leading node. Every accessibility label and `testID` is preserved.
+- Migrated `settings/folders.tsx`: the list is a `Card`; `FolderRow` keeps the up/down `IconButton`s around a `ListRow`, whose leading node is `<IconTile size={36} radius={12}>`. `ListRow` gets `className="min-w-0 flex-1 rounded-xl px-1 py-1"` so the row keeps its previous `rounded-xl px-1 py-1` pressable look exactly.
+- Added the hidden catalog `apps/mobile/src/app/dev/kit.tsx` (`zilar://dev/kit`, unlinked, doc comment mirroring `whistle.tsx`) rendering Button variants, IconButton, IconTile, ListRow variants, Card + SectionLabel and CountBadge in a ScrollView.
+- Added `apps/mobile/src/components/ui/kit.test.tsx` with the requested cases.
+
+### Deviation from the spec (please confirm)
+- `ListRow` has one extra optional prop, `className`, not in the spec's signature. It is needed so `FolderRow` can keep its identical `rounded-xl px-1 py-1` pressable styling; without it the folders rows would take the SettingsRow padding and `look as before` would fail. `settings.tsx` does not use it.
+- `settings.tsx` does not import `CountBadge` directly: `ListRow` owns the `count` prop and renders `CountBadge`, so the hub count pill is the kit component but composed transitively. I read the spec's "settings uses ... CountBadge" this way because a direct use plus `ListRow.count` would leave one of them dead.
+
+### Files changed
+`apps/mobile/src/components/ui/icon-tile.tsx`, `apps/mobile/src/components/ui/list-row.tsx`, `apps/mobile/src/components/ui/card.tsx`, `apps/mobile/src/components/ui/count-badge.tsx`, `apps/mobile/src/components/ui/kit.test.tsx`, `apps/mobile/src/app/dev/kit.tsx`, `apps/mobile/src/app/(tabs)/settings.tsx`, `apps/mobile/src/app/settings/folders.tsx`, `work/T-0264-mobile-kit-1.md`.
+
+### Commands and results
+- `pnpm install` — done in 22.6s. It rewrote two transitive peer lines in `pnpm-lock.yaml`; I reverted that file (`git checkout -- pnpm-lock.yaml`) since the task forbids touching it.
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot kit settings-items hub folders` — **6 files passed, 36 tests passed**.
+- `pnpm gate` (first run): FAIL at `format` on `apps/mobile/src/app/settings/folders.tsx` and `apps/mobile/src/components/ui/kit.test.tsx`; fixed with `pnpm exec prettier --write <those two files>`.
+- `pnpm gate` (final):
+  ```
+  gate: 9 changed file(s) against main
+  PASS  install (frozen)  (1.5s)
+  PASS  format  (17.3s)
+  PASS  lint  (0.9s)
+  PASS  typecheck  (6.7s)
+  PASS  tests @zilar/mobile  (1.5s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Notes
+- No new dependency, no `any`/`@ts-ignore`, no emoji (lucide only).
+- `pnpm-lock.yaml` is back to its committed state; `git status` shows only the 9 allowed files.
+
 ## Review (written by Claude)
+
+**Verdict:** Approved; the first pre-review was clean (4 nits, all accepted).
+- The kit has `IconTile`, `ListRow`, `Card` (dividers between children), `SectionLabel` and `CountBadge`; the hub and Chat folders use them.
+- The folders card radius is now 2xl, matching the hub.
+- Rows dim while a move is in flight, which is safer.
+- The `dev/kit` catalog screen is reachable only by URL.
+- The emulator look goes into the next QA run.

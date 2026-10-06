@@ -72,16 +72,22 @@ export function TextInput({
     setUncontrolledLength(event.target.value.length);
     onChange?.(event);
   };
+  const field = (
+    <input
+      id={fieldId}
+      aria-invalid={invalid === true ? true : undefined}
+      maxLength={maxLength}
+      className={cn(FIELD_INPUT, invalid === true && 'border-destructive', className)}
+      {...props}
+      onChange={handleChange}
+    />
+  );
+  if (label === undefined && hint === undefined && counter === undefined) {
+    return field;
+  }
   return (
     <Field id={fieldId} label={label} hint={hint} invalid={invalid}>
-      <input
-        id={fieldId}
-        aria-invalid={invalid === true ? true : undefined}
-        maxLength={maxLength}
-        className={cn(FIELD_INPUT, invalid === true && 'border-destructive', className)}
-        {...props}
-        onChange={handleChange}
-      />
+      {field}
       {counter === undefined ? null : (
         <p
           className={cn(
@@ -117,16 +123,22 @@ export function TextArea({
     setUncontrolledLength(event.target.value.length);
     onChange?.(event);
   };
+  const field = (
+    <textarea
+      id={fieldId}
+      aria-invalid={invalid === true ? true : undefined}
+      maxLength={maxLength}
+      className={cn(FIELD_INPUT, 'min-h-20', invalid === true && 'border-destructive', className)}
+      {...props}
+      onChange={handleChange}
+    />
+  );
+  if (label === undefined && hint === undefined && counter === undefined) {
+    return field;
+  }
   return (
     <Field id={fieldId} label={label} hint={hint} invalid={invalid}>
-      <textarea
-        id={fieldId}
-        aria-invalid={invalid === true ? true : undefined}
-        maxLength={maxLength}
-        className={cn(FIELD_INPUT, 'min-h-20', invalid === true && 'border-destructive', className)}
-        {...props}
-        onChange={handleChange}
-      />
+      {field}
       {counter === undefined ? null : (
         <p
           className={cn(

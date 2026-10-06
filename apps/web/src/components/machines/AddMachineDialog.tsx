@@ -5,6 +5,7 @@ import { copyText } from '@/lib/clipboard';
 import { machineErrorMessage } from './errors';
 import { FieldError } from '@/components/ais/AiPageShell';
 import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 
 type DialogStatus = 'loading' | 'ready' | 'expired' | 'error';
@@ -108,32 +109,20 @@ export function AddMachineDialog({ onClose }: { onClose: () => void }) {
         >
           Close
         </button>
-        <button
-          type="button"
-          onClick={refresh}
-          className="rounded-full bg-accent px-4 py-1.5 text-[15px] font-medium text-accent-foreground hover:bg-accent/90"
-        >
+        <Button type="button" onClick={refresh} size="lg">
           Try again
-        </button>
+        </Button>
       </>
     ) : (status === 'ready' || status === 'expired') && pairing !== null ? (
       <>
         {status === 'expired' ? (
-          <button
-            type="button"
-            onClick={refresh}
-            className="rounded-full bg-accent px-4 py-1.5 text-[15px] font-medium text-accent-foreground hover:bg-accent/90"
-          >
+          <Button type="button" onClick={refresh} size="lg">
             New code
-          </button>
+          </Button>
         ) : null}
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded-full bg-accent px-4 py-1.5 text-[15px] font-medium text-accent-foreground hover:bg-accent/90"
-        >
+        <Button type="button" onClick={onClose} size="lg">
           Done
-        </button>
+        </Button>
       </>
     ) : undefined;
 
@@ -176,13 +165,13 @@ export function AddMachineDialog({ onClose }: { onClose: () => void }) {
                     : `Expires in ${formatRemaining(remainingMs)}`}
                 </span>
               </p>
-              <button
+              <Button
                 type="button"
                 aria-label="Copy pairing code"
                 title="Copy pairing code"
                 disabled={status === 'expired'}
                 onClick={copy}
-                className="flex items-center gap-1 rounded-md bg-accent px-2.5 py-1 text-[13px] font-medium text-accent-foreground hover:bg-accent/90 disabled:opacity-60"
+                size="sm"
               >
                 {copied ? (
                   <Check className="size-4" aria-hidden="true" />
@@ -190,7 +179,7 @@ export function AddMachineDialog({ onClose }: { onClose: () => void }) {
                   <Copy className="size-4" aria-hidden="true" />
                 )}
                 {copied ? 'Copied' : 'Copy'}
-              </button>
+              </Button>
             </div>
           </div>
 

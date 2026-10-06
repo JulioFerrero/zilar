@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { Modal, Pressable, TextInput, View } from 'react-native';
+import { Modal, Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Avatar } from '@/components/chat/avatar';
 import { RoleChips } from '@/components/chat/role-chips';
 import { Text } from '@/components/ui/text';
+import { TextField } from '@/components/ui/text-field';
 import type { GroupRole } from '@/lib/chat-api';
 import { deleteRoleConfirmText } from '@/lib/roles';
 import type { CustomGroupRole } from '@/lib/roles-api';
@@ -152,13 +153,12 @@ export function GroupRolesSheet({
               <View key={role.id} className="py-1">
                 <View className="flex-row items-center gap-2">
                   {renaming ? (
-                    <TextInput
+                    <TextField
                       value={renameValue}
                       onChangeText={setRenameValue}
                       maxLength={30}
                       accessibilityLabel={`Rename ${role.name}`}
-                      placeholderTextColor="#8a8a8a"
-                      className="min-w-0 flex-1 rounded-[10px] border border-border-strong bg-well px-3 py-1.5 text-[14px] text-foreground"
+                      className="min-w-0 flex-1 py-1.5 text-[14px]"
                     />
                   ) : (
                     <Text numberOfLines={1} className="min-w-0 flex-1 text-[15px] text-foreground">
@@ -298,14 +298,13 @@ export function GroupRolesSheet({
           })}
           {isManager && roles !== undefined ? (
             <View className="flex-row items-center gap-2 py-2">
-              <TextInput
+              <TextField
                 value={newName}
                 onChangeText={setNewName}
                 maxLength={30}
                 accessibilityLabel="New role name"
                 placeholder="e.g. Designers"
-                placeholderTextColor="#8a8a8a"
-                className="min-w-0 flex-1 rounded-[10px] border border-border-strong bg-well px-3 py-2 text-[14px] text-foreground"
+                className="min-w-0 flex-1 text-[14px]"
               />
               <Pressable
                 accessibilityRole="button"

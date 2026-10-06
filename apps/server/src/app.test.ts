@@ -69,6 +69,18 @@ describe('createApp', () => {
     expect(await res.json()).toMatchObject({ ok: false, db: 'down' });
   });
 
+  it('reports the build commit from ZILAR_COMMIT in /health', async () => {
+    vi.stubEnv('ZILAR_COMMIT', 'abcdef123456');
+    try {
+      const res = await testApp().request('/health');
+
+      expect(res.status).toBe(200);
+      expect(await res.json()).toMatchObject({ commit: 'abcdef123456' });
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it('returns a 404 JSON body with a request id for unknown routes', async () => {
     const res = await testApp().request('/does-not-exist');
 

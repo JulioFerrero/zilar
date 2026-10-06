@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { useMemo, useState } from 'react';
 import { Check, Search, X } from 'lucide-react';
 import {
   FOLDER_CHATS_MAX,
@@ -18,6 +18,7 @@ import {
 import { useChatStore } from '@/store/ChatStoreProvider';
 import { folderIconComponent } from './folderIcon';
 import { ConfirmDialog } from './ConfirmDialog';
+import { Dialog } from './ui/dialog';
 import { Switch } from './ui/switch';
 import { cn } from '@/lib/utils';
 
@@ -27,8 +28,6 @@ const TYPE_SWITCHES: { type: FolderChatType; label: string }[] = [
   { type: 'channel', label: 'Channels' },
   { type: 'ai', label: 'AIs' },
 ];
-
-const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
 const SECTION_LABEL = 'text-[11px] font-semibold tracking-[0.08em] text-muted-foreground uppercase';
 
@@ -47,8 +46,6 @@ export function FolderEditorDialog({
   onClose: () => void;
 }) {
   const store = useChatStore();
-  const dialogRef = useRef<HTMLDivElement>(null);
-  const returnFocusRef = useRef<HTMLElement | null>(null);
 
   const [name, setName] = useState(folder?.name ?? '');
   const [icon, setIcon] = useState<FolderIcon>(folder?.icon ?? 'folder');
@@ -62,44 +59,6 @@ export function FolderEditorDialog({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
-
-  useEffect(() => {
-    const active = document.activeElement;
-    returnFocusRef.current = active instanceof HTMLElement ? active : null;
-    dialogRef.current?.querySelector<HTMLElement>('input')?.focus();
-    return () => {
-      returnFocusRef.current?.focus();
-    };
-  }, []);
-
-  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
-    if (event.key === 'Escape') {
-      event.stopPropagation();
-      if (!confirmingDelete) {
-        onClose();
-      }
-      return;
-    }
-    if (event.key !== 'Tab') {
-      return;
-    }
-    const focusable = dialogRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE);
-    if (focusable === undefined || focusable.length === 0) {
-      return;
-    }
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    if (first === undefined || last === undefined) {
-      return;
-    }
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first.focus();
-    }
-  };
 
   const trimmed = name.trim();
   const somethingIncluded = includeTypes.length > 0 || includeChats.length > 0;
@@ -160,157 +119,14 @@ export function FolderEditorDialog({
 
   return (
     <>
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={folder === null ? 'New folder' : `Edit folder ${folder.name}`}
-        onClick={onClose}
-        className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4"
-      >
-        <div
-          ref={dialogRef}
-          onClick={(event) => event.stopPropagation()}
-          onKeyDown={onKeyDown}
-          className="flex max-h-full w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-border-strong bg-surface shadow-xl"
-        >
-          <div className="shrink-0 border-b border-border px-5 py-4">
-            <h2 className="text-[18px] font-semibold">
-              {folder === null ? 'New folder' : 'Edit folder'}
-            </h2>
-          </div>
-
-          <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-            <section aria-label="Name and icon">
-              <h3 className={SECTION_LABEL}>Name and icon</h3>
-              <div className="mt-2 rounded-xl border border-border bg-surface">
-                <div className="flex items-center gap-2 px-3 py-2.5">
-                  <label htmlFor="folder-name" className="sr-only">
-                    Name
-                  </label>
-                  <input
-                    id="folder-name"
-                    type="text"
-                    value={name}
-                    maxLength={FOLDER_NAME_MAX}
-                    onChange={(event) => setName(event.target.value)}
-                    placeholder="Folder name"
-                    className="min-w-0 flex-1 bg-transparent text-[15px] focus-visible:outline-none"
-                  />
-                  <span
-                    data-testid="folder-name-counter"
-                    className="shrink-0 text-[13px] text-muted-foreground tabular-nums"
-                  >
-                    {Math.min(name.length, FOLDER_NAME_MAX)}/{FOLDER_NAME_MAX}
-                  </span>
-                </div>
-                <div className="border-t border-border px-3 py-2.5">
-                  <div role="radiogroup" aria-label="Icon" className="grid grid-cols-6 gap-1">
-                    {FOLDER_ICONS.map((iconName) => {
-                      const Icon = folderIconComponent(iconName);
-                      const selected = icon === iconName;
-                      return (
-                        <button
-                          key={iconName}
-                          type="button"
-                          role="radio"
-                          aria-checked={selected}
-                          aria-label={iconName}
-                          title={iconName}
-                          onClick={() => setIcon(iconName)}
-                          className={cn(
-                            'flex items-center justify-center rounded-xl p-2 transition-colors hover:text-foreground',
-                            selected ? 'key-icon text-foreground' : 'text-muted-foreground',
-                          )}
-                        >
-                          <Icon className="h-5 w-5" aria-hidden="true" />
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            <section aria-label="Show these chats" className="mt-5">
-              <h3 className={SECTION_LABEL}>Show these chats</h3>
-              <div className="mt-2 divide-y divide-border rounded-xl border border-border bg-surface">
-                {TYPE_SWITCHES.map(({ type, label }) => {
-                  const checked = includeTypes.includes(type);
-                  return (
-                    <div key={type} className="flex items-center gap-2 px-3 py-2 text-[15px]">
-                      <span className="min-w-0 flex-1">{label}</span>
-                      <Switch
-                        checked={checked}
-                        label={label}
-                        hideLabel
-                        onCheckedChange={() =>
-                          setIncludeTypes((types) =>
-                            types.includes(type)
-                              ? types.filter((item) => item !== type)
-                              : [...types, type],
-                          )
-                        }
-                      />
-                    </div>
-                  );
-                })}
-              </div>
-              <div className="mt-2 rounded-xl border border-border bg-surface px-3 py-2.5">
-                <ChatPicker
-                  id="include"
-                  label="Add chats"
-                  picked={includeChats}
-                  chats={store.chats}
-                  search={includeSearch}
-                  onSearch={setIncludeSearch}
-                  onToggle={(id) => setIncludeChats((list) => toggle(list, id))}
-                />
-              </div>
-            </section>
-
-            <section aria-label="Hide" className="mt-5">
-              <h3 className={SECTION_LABEL}>Hide</h3>
-              <div className="mt-2 divide-y divide-border rounded-xl border border-border bg-surface">
-                <div className="flex items-center gap-2 px-3 py-2 text-[15px]">
-                  <span className="min-w-0 flex-1">Muted chats</span>
-                  <Switch
-                    checked={excludeMuted}
-                    label="Muted chats"
-                    hideLabel
-                    onCheckedChange={() => setExcludeMuted((value) => !value)}
-                  />
-                </div>
-                <div className="flex items-center gap-2 px-3 py-2 text-[15px]">
-                  <span className="min-w-0 flex-1">Read chats</span>
-                  <Switch
-                    checked={excludeRead}
-                    label="Read chats"
-                    hideLabel
-                    onCheckedChange={() => setExcludeRead((value) => !value)}
-                  />
-                </div>
-              </div>
-              <div className="mt-2 rounded-xl border border-border bg-surface px-3 py-2.5">
-                <ChatPicker
-                  id="exclude"
-                  label="Exclude chats"
-                  picked={excludeChats}
-                  chats={store.chats}
-                  search={excludeSearch}
-                  onSearch={setExcludeSearch}
-                  onToggle={(id) => setExcludeChats((list) => toggle(list, id))}
-                />
-              </div>
-            </section>
-
-            {error !== undefined && (
-              <p role="alert" className="mt-4 text-[14px] text-danger">
-                {error}
-              </p>
-            )}
-          </div>
-
-          <div className="flex shrink-0 items-center gap-2 border-t border-border bg-surface px-5 py-3">
+      <Dialog
+        open
+        onClose={onClose}
+        title={folder === null ? 'New folder' : 'Edit folder'}
+        ariaLabel={folder === null ? 'New folder' : `Edit folder ${folder.name}`}
+        size="lg"
+        actions={
+          <>
             {folder !== null && (
               <button
                 type="button"
@@ -337,9 +153,138 @@ export function FolderEditorDialog({
                 {busy ? 'Saving…' : 'Save'}
               </button>
             </div>
+          </>
+        }
+      >
+        <section aria-label="Name and icon">
+          <h3 className={SECTION_LABEL}>Name and icon</h3>
+          <div className="mt-2 rounded-xl border border-border bg-surface">
+            <div className="flex items-center gap-2 px-3 py-2.5">
+              <label htmlFor="folder-name" className="sr-only">
+                Name
+              </label>
+              <input
+                id="folder-name"
+                type="text"
+                value={name}
+                maxLength={FOLDER_NAME_MAX}
+                onChange={(event) => setName(event.target.value)}
+                placeholder="Folder name"
+                className="min-w-0 flex-1 bg-transparent text-[15px] focus-visible:outline-none"
+              />
+              <span
+                data-testid="folder-name-counter"
+                className="shrink-0 text-[13px] text-muted-foreground tabular-nums"
+              >
+                {Math.min(name.length, FOLDER_NAME_MAX)}/{FOLDER_NAME_MAX}
+              </span>
+            </div>
+            <div className="border-t border-border px-3 py-2.5">
+              <div role="radiogroup" aria-label="Icon" className="grid grid-cols-6 gap-1">
+                {FOLDER_ICONS.map((iconName) => {
+                  const Icon = folderIconComponent(iconName);
+                  const selected = icon === iconName;
+                  return (
+                    <button
+                      key={iconName}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      aria-label={iconName}
+                      title={iconName}
+                      onClick={() => setIcon(iconName)}
+                      className={cn(
+                        'flex items-center justify-center rounded-xl p-2 transition-colors hover:text-foreground',
+                        selected ? 'key-icon text-foreground' : 'text-muted-foreground',
+                      )}
+                    >
+                      <Icon className="h-5 w-5" aria-hidden="true" />
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
+        </section>
+
+        <section aria-label="Show these chats" className="mt-5">
+          <h3 className={SECTION_LABEL}>Show these chats</h3>
+          <div className="mt-2 divide-y divide-border rounded-xl border border-border bg-surface">
+            {TYPE_SWITCHES.map(({ type, label }) => {
+              const checked = includeTypes.includes(type);
+              return (
+                <div key={type} className="flex items-center gap-2 px-3 py-2 text-[15px]">
+                  <span className="min-w-0 flex-1">{label}</span>
+                  <Switch
+                    checked={checked}
+                    label={label}
+                    hideLabel
+                    onCheckedChange={() =>
+                      setIncludeTypes((types) =>
+                        types.includes(type)
+                          ? types.filter((item) => item !== type)
+                          : [...types, type],
+                      )
+                    }
+                  />
+                </div>
+              );
+            })}
+          </div>
+          <div className="mt-2 rounded-xl border border-border bg-surface px-3 py-2.5">
+            <ChatPicker
+              id="include"
+              label="Add chats"
+              picked={includeChats}
+              chats={store.chats}
+              search={includeSearch}
+              onSearch={setIncludeSearch}
+              onToggle={(id) => setIncludeChats((list) => toggle(list, id))}
+            />
+          </div>
+        </section>
+
+        <section aria-label="Hide" className="mt-5">
+          <h3 className={SECTION_LABEL}>Hide</h3>
+          <div className="mt-2 divide-y divide-border rounded-xl border border-border bg-surface">
+            <div className="flex items-center gap-2 px-3 py-2 text-[15px]">
+              <span className="min-w-0 flex-1">Muted chats</span>
+              <Switch
+                checked={excludeMuted}
+                label="Muted chats"
+                hideLabel
+                onCheckedChange={() => setExcludeMuted((value) => !value)}
+              />
+            </div>
+            <div className="flex items-center gap-2 px-3 py-2 text-[15px]">
+              <span className="min-w-0 flex-1">Read chats</span>
+              <Switch
+                checked={excludeRead}
+                label="Read chats"
+                hideLabel
+                onCheckedChange={() => setExcludeRead((value) => !value)}
+              />
+            </div>
+          </div>
+          <div className="mt-2 rounded-xl border border-border bg-surface px-3 py-2.5">
+            <ChatPicker
+              id="exclude"
+              label="Exclude chats"
+              picked={excludeChats}
+              chats={store.chats}
+              search={excludeSearch}
+              onSearch={setExcludeSearch}
+              onToggle={(id) => setExcludeChats((list) => toggle(list, id))}
+            />
+          </div>
+        </section>
+
+        {error !== undefined && (
+          <p role="alert" className="mt-4 text-[14px] text-danger">
+            {error}
+          </p>
+        )}
+      </Dialog>
       {confirmingDelete && folder !== null && (
         <ConfirmDialog
           title="Delete folder"

@@ -425,7 +425,10 @@ describe('PUT /api/settings/integrations/email', () => {
     const raw = await response.text();
     expect(JSON.parse(raw)).toMatchObject({ error: { code: 'mail_send_failed' } });
     expect(raw).not.toContain(SENTINEL_KEY);
-    expect(raw).not.toContain('535');
+    // Match the provider's error text, not the random requestId: the id can
+    // contain the digits "535" by chance.
+    expect(raw).not.toContain('535 rejected');
+    expect(raw).not.toContain('bad key');
     const rows = await context.db.select().from(instanceSettings);
     expect(rows).toHaveLength(0);
   });

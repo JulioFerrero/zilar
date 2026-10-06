@@ -554,6 +554,7 @@ export function createApp({
         ok: up,
         name: 'zilar-server',
         version: serverVersion,
+        commit: process.env.ZILAR_COMMIT ?? 'unknown',
         protocolVersion,
         db: up ? 'ok' : 'down',
       },

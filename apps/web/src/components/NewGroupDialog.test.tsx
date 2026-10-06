@@ -36,7 +36,9 @@ describe('NewGroupDialog visibility (T-0164)', () => {
   it('defaults to Private and creates without visibility options', async () => {
     const createGroup = openCreateDialog();
 
+    expect(screen.getByLabelText('Group name').className).toContain('well-surface');
     expect(screen.getByRole('radio', { name: 'Private' })).toHaveProperty('checked', true);
+    expect(screen.getByRole('button', { name: 'Create' }).getAttribute('data-slot')).toBe('button');
     fireEvent.change(screen.getByLabelText('Group name'), { target: { value: 'Hiking club' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create' }));
 
@@ -74,5 +76,14 @@ describe('NewGroupDialog visibility (T-0164)', () => {
 
     expect(await screen.findByText('Choose a handle for the public group.')).toBeTruthy();
     expect(createGroup).not.toHaveBeenCalled();
+  });
+
+  it('closes on Escape', () => {
+    openCreateDialog();
+    expect(screen.getByRole('dialog', { name: 'New group' })).toBeTruthy();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    expect(screen.queryByRole('dialog', { name: 'New group' })).toBeNull();
   });
 });

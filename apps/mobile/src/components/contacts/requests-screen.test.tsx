@@ -63,6 +63,7 @@ vi.mock('@/components/contacts/use-contacts-api', () => ({
 
 vi.mock('@/lib/colors', () => ({
   ICON: { dark: '#d4d4d4', light: '#d4d4d4' },
+  MUTED_FOREGROUND: { dark: '#a1a1a1', light: '#a1a1a1' },
 }));
 
 vi.mock('@/lib/color-scheme', () => ({

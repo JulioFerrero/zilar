@@ -7,3 +7,17 @@ overrides:
 
 onlyBuiltDependencies:
   - esbuild
+
+# T-0272: pnpm 10 resolves ws's optional peers non-deterministically for the
+# metro <-> metro-config cycle, flipping bufferutil/utf-8-validate in the
+# lockfile. Declaring them here pins the resolution. Drop after pnpm >= 11.8.
+packageExtensions:
+  '@react-native/metro-config':
+    peerDependencies:
+      bufferutil: '*'
+      utf-8-validate: '*'
+    peerDependenciesMeta:
+      bufferutil:
+        optional: true
+      utf-8-validate:
+        optional: true

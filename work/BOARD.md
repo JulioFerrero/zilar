@@ -9,10 +9,8 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-0260](T-0260-auto-deploy-green-main.md) | Deploy: auto-deploy live after green CI on main | in_progress | auto | | Julio 2026-10-06 |
-| [T-0263](T-0263-web-kit-dialogs-2.md) | Web kit migration 3: three more dialogs | in_progress | auto | T-0258 | audit step 6, batch 2 |
-| [T-0265](T-0265-web-kit-people-pages.md) | Web kit migration 4: Blocked, Requests, Folders pages on Card/StateMessage | in_progress | auto | T-0253 | audit step 4 |
-| [T-0264](T-0264-mobile-kit-1.md) | Mobile kit batch 1: IconTile, ListRow, Card, CountBadge; dev/kit catalog | in_progress | auto | T-0247, T-0255 | audit step 3 |
+| [T-0310](T-0310-mobile-visibility-sheet-keyboard.md) | Mobile fix: visibility sheet moves above the keyboard; shared sheet padding helper | todo | auto | T-0299 | QA run 15 |
+| [T-0309](T-0309-mobile-search-field-2.md) | Mobile kit migration: chat list and Stickers discover search use SearchField | todo | auto | T-0308 | |
 
 ## Follow-ups
 
@@ -294,3 +292,50 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0258](T-0258-web-kit-dialogs-1.md) | Web kit migration 2: four dialogs on the kit Dialog | 2026-10-05 |
 | [T-0261](T-0261-forward-wire.md) | Forwarding step 1: ForwardOriginSchema and the xmpp-core forward element | 2026-10-05 |
 | [T-0262](T-0262-mobile-ticks-folder-deeplink.md) | Mobile: list ticks use the signed-in id; folder editor waits for its folder | 2026-10-05 |
+| [T-0264](T-0264-mobile-kit-1.md) | Mobile kit batch 1: IconTile, ListRow, Card, SectionLabel, CountBadge; dev/kit catalog | 2026-10-05 |
+| [T-0265](T-0265-web-kit-people-pages.md) | Web kit migration 4: Blocked, Requests, Folders pages on Card/StateMessage/Button | 2026-10-05 |
+| [T-0263](T-0263-web-kit-dialogs-2.md) | Web kit migration 3: three dialogs on the kit; kit Dialog caps height and scrolls its body | 2026-10-05 |
+| [T-0266](T-0266-mobile-subpage-inset-folder-summary.md) | Mobile: sub-pages clear the gesture bar; folder summary matches web | 2026-10-05 |
+| [T-0267](T-0267-kit-section-label-heading.md) | Kit: SectionLabel is a heading on web and mobile | 2026-10-05 |
+| [T-0268](T-0268-mobile-kit-people-screens.md) | Mobile kit migration: Requests and Blocked screens on Card/ListRow | 2026-10-05 |
+| [T-0269](T-0269-flaky-535-assertion.md) | Server tests: 535 checks ignore the random requestId | 2026-10-05 |
+| [T-0271](T-0271-mobile-kit-connections-machines.md) | Mobile kit migration: Connections and Machines lists on SectionLabel/Card | 2026-10-05 |
+| [T-0270](T-0270-web-kit-dialogs-3.md) | Web kit migration 5: NewTopic and FolderEditor dialogs on the kit; size lg | 2026-10-05 |
+| [T-0260](T-0260-auto-deploy-green-main.md) | Deploy: auto-deploy live after green CI on main; /health reports the commit | 2026-10-05 |
+| [T-0273](T-0273-web-kit-dialogs-4.md) | Web kit: NewChatButton pickers and GroupHandleRoute dialogs on the kit Dialog | 2026-10-05 |
+| [T-0275](T-0275-web-kit-accent-buttons-1.md) | Web kit: accent buttons on Connections, Integrations and Stickers pages use the kit Button | 2026-10-05 |
+| [T-0272](T-0272-lockfile-peer-flip.md) | Tooling: pnpm install no longer flips the bufferutil/utf-8-validate lockfile peers | 2026-10-05 |
+| [T-0274](T-0274-web-kit-dialogs-5.md) | Web kit: Explore and avatar crop dialogs on the kit Dialog | 2026-10-05 |
+| [T-0276](T-0276-web-kit-accent-buttons-2.md) | Web kit: accent buttons in machines, Telegram import and invite links use the kit Button | 2026-10-05 |
+| [T-0279](T-0279-web-kit-accent-buttons-5.md) | Web kit: sign-in and onboarding call-to-action buttons and links use the kit Button | 2026-10-05 |
+| [T-0278](T-0278-web-kit-accent-buttons-4.md) | Web kit: accent buttons in profile, visibility, pack editor and contact rows use the kit Button | 2026-10-05 |
+| [T-0277](T-0277-web-kit-accent-buttons-3.md) | Web kit: accent buttons in the chat dialogs use the kit Button | 2026-10-05 |
+| [T-0281](T-0281-web-accent-pill-guard.md) | Web guard: a test fails when a hand-rolled solid bg-accent button or link comes back outside the kit | 2026-10-05 |
+| [T-0280](T-0280-grouphandle-escape-flake.md) | Web tests: GroupHandleRoute Escape tests wait for the dialog effect; no more flake under load | 2026-10-06 |
+| [T-0283](T-0283-mobile-kit-action-sheet.md) | Mobile kit: ActionSheet; the AI and chat long-press sheets use it | 2026-10-06 |
+| [T-0282](T-0282-web-kit-sheet.md) | Web kit: right-side Sheet (PinsPanel on it); modal Escape stops at the topmost overlay and attaches in a layout effect | 2026-10-06 |
+| [T-0284](T-0284-mobile-topic-actions-sheet.md) | Mobile kit: topic actions sheet on the kit ActionSheet; Open group row gets its icon | 2026-10-06 |
+| [T-0286](T-0286-web-sheet-topic-ai.md) | Web kit: TopicPanel and AiPanel on the kit Sheet; AiPanel closes on Escape | 2026-10-06 |
+| [T-0285](T-0285-web-sheet-group-channel.md) | Web kit: GroupPanel and ChannelPanel on the kit Sheet | 2026-10-06 |
+| [T-0287](T-0287-mobile-kit-confirm-dialog.md) | Mobile kit: ConfirmDialog; AI delete, rule revoke and machine confirms use it | 2026-10-06 |
+| [T-0289](T-0289-ci-cancel-superseded.md) | CI: a newer push cancels the older in-progress run, so the tip is verified and auto-deployed sooner | 2026-10-06 |
+| [T-0288](T-0288-web-kit-text-input-1.md) | Web kit: name, username and add-contact fields use the kit TextInput | 2026-10-06 |
+| [T-0290](T-0290-web-kit-text-input-2.md) | Web kit: New group and invite-link fields use the kit TextInput and TextArea | 2026-10-06 |
+| [T-0291](T-0291-web-kit-text-input-3.md) | Web kit: Integrations, Connections, topic name and group handle fields use the kit TextInput | 2026-10-06 |
+| [T-0292](T-0292-web-kit-field-no-wrapper.md) | Web kit: TextInput and TextArea render the bare field without a label, hint or counter | 2026-10-06 |
+| [T-0293](T-0293-web-kit-text-input-4.md) | Web kit: setup, new-AI, AI panel and spending-limit fields use the kit TextInput and TextArea | 2026-10-06 |
+| [T-0294](T-0294-mobile-kit-text-field.md) | Mobile kit: TextField (well look); profile name, handle, add-contact and new-AI fields use it | 2026-10-06 |
+| [T-0295](T-0295-web-kit-text-input-5.md) | Web kit: sticker pack, machine rename and model picker fields use the kit TextInput | 2026-10-06 |
+| [T-0296](T-0296-mobile-remove-add-contact-sheet.md) | Mobile cleanup: remove the unused AddContactSheet; resolveContactChat moves to add-contact.ts | 2026-10-06 |
+| [T-0297](T-0297-mobile-text-field-2.md) | Mobile kit: integrations, connections, AI edit and invite-link fields use the kit TextField | 2026-10-06 |
+| [T-0298](T-0298-web-kit-text-input-6.md) | Web kit: Explore search, sticker pack search and task-strip link fields use the kit TextInput | 2026-10-06 |
+| [T-0299](T-0299-mobile-invite-links-keyboard.md) | Mobile: invite links sheet moves above the keyboard and scrolls | 2026-10-06 |
+| [T-0300](T-0300-mobile-text-field-3.md) | Mobile kit: create-sheet fields use the kit TextField | 2026-10-06 |
+| [T-0301](T-0301-mobile-text-field-4.md) | Mobile kit: role name and topic link fields use the kit TextField | 2026-10-06 |
+| [T-0304](T-0304-web-image-native-builder.md) | Images: web builder stage runs natively, not under QEMU | 2026-10-06 |
+| [T-0303](T-0303-mobile-integrations-mock.md) | Mobile mock mode: Integrations owner mock | 2026-10-06 |
+| [T-0302](T-0302-mobile-text-field-5.md) | Mobile kit: join link and visibility handle fields use the kit TextField | 2026-10-06 |
+| [T-0306](T-0306-mobile-text-field-7.md) | Mobile kit: machine rename and sticker pack name use the kit TextField | 2026-10-06 |
+| [T-0305](T-0305-mobile-text-field-6.md) | Mobile kit: AI model, spend limit and tool run-input fields use the kit TextField | 2026-10-06 |
+| [T-0307](T-0307-mobile-text-field-8.md) | Mobile kit: sign-in email, name and username fields use the kit TextField | 2026-10-06 |
+| [T-0308](T-0308-mobile-kit-search-field.md) | Mobile kit: SearchField; group topics search and Explore use it | 2026-10-06 |

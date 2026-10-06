@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import { useAuth } from '@/auth/AuthProvider';
+import { Button } from '@/components/ui/button';
+import { TextInput } from '@/components/ui/text-input';
 import { updateMe } from '@/lib/api';
 
 export function NamePage() {
@@ -45,30 +47,25 @@ export function NamePage() {
         <p className="mt-1 text-center text-[15px] text-muted-foreground">
           Your friends will see this name.
         </p>
-        <label className="mt-6 block text-[14px] font-medium" htmlFor="auth-name">
-          Name
-        </label>
-        <input
-          id="auth-name"
-          value={name}
-          autoFocus
-          maxLength={64}
-          onChange={(event) => setName(event.target.value)}
-          placeholder="Your name"
-          className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-[15px] outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40"
-        />
+        <div className="mt-6">
+          <TextInput
+            id="auth-name"
+            label="Name"
+            value={name}
+            autoFocus
+            maxLength={64}
+            onChange={(event) => setName(event.target.value)}
+            placeholder="Your name"
+          />
+        </div>
         {error !== undefined && (
           <p role="alert" className="mt-2 text-[14px] text-danger">
             {error}
           </p>
         )}
-        <button
-          type="submit"
-          disabled={busy}
-          className="mt-4 w-full rounded-full bg-accent px-4 py-2.5 text-[15px] font-medium text-accent-foreground hover:bg-accent/90 disabled:opacity-60"
-        >
+        <Button type="submit" disabled={busy} size="lg" className="mt-4 w-full">
           Continue
-        </button>
+        </Button>
       </form>
     </div>
   );

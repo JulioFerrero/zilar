@@ -121,6 +121,9 @@ describe('AuthFlow sign-in hints (T-0180)', () => {
   it('shows the email-step hint without an invite code, not with one', () => {
     renderFlow({});
     expect(screen.getByText(EMAIL_HINT)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Continue' }).getAttribute('data-slot')).toBe(
+      'button',
+    );
     cleanup();
 
     renderFlow({ inviteCode: 'CODE123' });

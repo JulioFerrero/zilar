@@ -49,6 +49,10 @@ describe('HandlePage', () => {
     expect(await screen.findByDisplayValue('ada')).toBeTruthy();
     await waitFor(() => expect(checkMock).toHaveBeenCalledWith('ada'));
     expect(await screen.findByText('@ada is available')).toBeTruthy();
+    expect(screen.getByLabelText('Username').className).toContain('well-surface');
+    expect(screen.getByRole('button', { name: 'Continue' }).getAttribute('data-slot')).toBe(
+      'button',
+    );
 
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
     await waitFor(() => expect(claimMock).toHaveBeenCalledWith('ada'));

@@ -1,6 +1,6 @@
 import type { ChatSummary } from '@zilar/chat-core';
 import { Lock, X } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Avatar } from './Avatar';
 import { AiBadge } from './AiBadge';
@@ -11,7 +11,7 @@ import { FieldError } from './ais/AiPageShell';
 import { PinsSection } from './PinsPanel';
 import { AlwaysAllowedList } from './approvals/AlwaysAllowedList';
 import { Button } from './ui/button';
-import { useMediaQuery } from '@/lib/useMediaQuery';
+import { Sheet } from './ui/sheet';
 import { cn } from '@/lib/utils';
 import {
   ApiError,
@@ -31,9 +31,6 @@ import {
 } from '@/lib/api';
 import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
 
-const FOCUSABLE =
-  'button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
-
 type PanelStatus = 'loading' | 'ready' | 'error';
 
 function visibilityLabel(visibility: 'public' | 'private'): string {
@@ -52,8 +49,6 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
   const storeApi = useChatStoreApi();
   const store = useChatStore();
   const navigate = useNavigate();
-  const isWide = useMediaQuery('(min-width: 900px)');
-  const panelRef = useRef<HTMLDivElement>(null);
 
   const topic = chat.topic;
   const groupTitle = chat.groupTitle ?? store.groupInfo(chat.id)?.title ?? '';
@@ -158,50 +153,6 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
       active = false;
     };
   }, [storeApi]);
-
-  // Esc closes the panel.
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') {
-        event.stopPropagation();
-        onClose();
-      }
-    };
-    document.addEventListener('keydown', onKeyDown, true);
-    return () => document.removeEventListener('keydown', onKeyDown, true);
-  }, [onClose]);
-
-  // On a narrow layout the panel is the whole screen: keep Tab inside it.
-  useEffect(() => {
-    if (isWide) {
-      return;
-    }
-    const root = panelRef.current;
-    if (root === null) {
-      return;
-    }
-    root.focus();
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key !== 'Tab') {
-        return;
-      }
-      const focusable = Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE));
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (first === undefined || last === undefined) {
-        return;
-      }
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-    root.addEventListener('keydown', onKeyDown);
-    return () => root.removeEventListener('keydown', onKeyDown);
-  }, [isWide]);
 
   if (topic === undefined) {
     return null;
@@ -433,19 +384,8 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
   const iAmMember = membersState.members.some((member) => member.userId === me);
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label={`${chat.title} topic info`}
-      onClick={onClose}
-      className="fixed inset-0 z-40 flex justify-end bg-black/40"
-    >
-      <div
-        ref={panelRef}
-        tabIndex={-1}
-        onClick={(event) => event.stopPropagation()}
-        className="flex h-full w-full flex-col bg-surface shadow-xl outline-none sm:w-[380px]"
-      >
+    <>
+      <Sheet open onClose={onClose} ariaLabel={`${chat.title} topic info`}>
         <header className="flex shrink-0 items-center gap-3 border-b border-divider p-4">
           <Avatar id={chat.id} name={chat.title} size={44} avatarUrl={chat.avatarUrl} />
           <div className="min-w-0 flex-1">
@@ -865,7 +805,7 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
 
           {errorMessage !== '' && <FieldError>{errorMessage}</FieldError>}
         </div>
-      </div>
+      </Sheet>
 
       {confirmingVisibility && topic.visibility === 'private' && (
         <ConfirmDialog
@@ -885,7 +825,7 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
           onCancel={() => setConfirmingArchive(false)}
         />
       )}
-    </div>
+    </>
   );
 }
 

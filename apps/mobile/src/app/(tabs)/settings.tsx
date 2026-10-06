@@ -19,18 +19,16 @@ import { ActivityIndicator, Pressable, View } from 'react-native';
 import { RequireAuth } from '@/auth/RequireAuth';
 import { useAuthStore } from '@/auth/session';
 import { Avatar } from '@/components/chat/avatar';
+import { Card, SectionLabel } from '@/components/ui/card';
+import { IconTile } from '@/components/ui/icon-tile';
+import { ListRow } from '@/components/ui/list-row';
 import { Text } from '@/components/ui/text';
 import { ACCENT, ICON, MUTED_FOREGROUND } from '@/lib/colors';
 import { asColorScheme } from '@/lib/color-scheme';
-import { iconKey } from '@/lib/depth';
 import type { MyProfile } from '@/lib/profile-api';
 
 import { useContactsApi } from '@/components/contacts/use-contacts-api';
-import {
-  settingsHubGroups,
-  type SettingsHubGroup,
-  type SettingsHubRow,
-} from '@/components/settings/hub';
+import { settingsHubGroups, type SettingsHubGroup } from '@/components/settings/hub';
 import { SettingsScreenShell } from '@/components/settings/screen-shell';
 import { useProfileApi } from '@/components/settings/use-profile-api';
 import type { SettingsIconId } from '@/lib/settings-items';
@@ -60,27 +58,6 @@ const HUB_ICONS: Record<SettingsIconId, LucideIcon> = {
 function hubIcon(icon: SettingsIconId, scheme: 'light' | 'dark') {
   const Icon = HUB_ICONS[icon];
   return <Icon size={18} color={ICON[scheme]} />;
-}
-
-/** The 34 px monochrome key that holds a row's icon. */
-function IconTile({
-  icon,
-  scheme,
-  testID,
-}: {
-  icon: SettingsIconId;
-  scheme: 'light' | 'dark';
-  testID: string;
-}) {
-  return (
-    <View
-      testID={testID}
-      className="items-center justify-center"
-      style={[iconKey, { width: 34, height: 34, borderRadius: 10 }]}
-    >
-      {hubIcon(icon, scheme)}
-    </View>
-  );
 }
 
 function ProfileHeaderCard({
@@ -118,42 +95,6 @@ function ProfileHeaderCard({
   );
 }
 
-function SettingsRow({
-  row,
-  count,
-  onPress,
-}: {
-  row: SettingsHubRow;
-  count?: number | undefined;
-  onPress: () => void;
-}) {
-  const scheme = asColorScheme(useColorScheme().colorScheme);
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={row.accessibilityLabel}
-      onPress={onPress}
-      className="flex-row items-center gap-3 px-3 py-2.5 active:bg-surface-raised"
-    >
-      <IconTile icon={row.icon} scheme={scheme} testID={row.iconTestId} />
-      <View className="min-w-0 flex-1">
-        <Text numberOfLines={1} className="text-[15px] font-medium text-foreground">
-          {row.title}
-        </Text>
-        <Text numberOfLines={1} className="mt-0.5 text-[13px] text-muted-foreground">
-          {row.subtitle}
-        </Text>
-      </View>
-      {count !== undefined && count > 0 ? (
-        <View className="min-w-[20px] items-center rounded-full bg-accent px-1.5 py-0.5">
-          <Text className="text-[11px] font-semibold text-accent-foreground">{count}</Text>
-        </View>
-      ) : null}
-      <ChevronRight size={18} color={MUTED_FOREGROUND[scheme]} />
-    </Pressable>
-  );
-}
-
 function GroupCard({
   group,
   pendingRequests,
@@ -163,22 +104,23 @@ function GroupCard({
   pendingRequests: number;
   onOpen: (href: string) => void;
 }) {
+  const scheme = asColorScheme(useColorScheme().colorScheme);
   return (
     <View className="gap-2">
-      <Text className="px-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-subtle-foreground">
-        {group.label}
-      </Text>
-      <View className="overflow-hidden rounded-2xl border border-border bg-surface">
-        {group.rows.map((row, index) => (
-          <View key={row.id} className={index === 0 ? '' : 'border-t border-divider'}>
-            <SettingsRow
-              row={row}
-              {...(row.id === 'requests' ? { count: pendingRequests } : {})}
-              onPress={() => onOpen(row.href)}
-            />
-          </View>
+      <SectionLabel>{group.label}</SectionLabel>
+      <Card>
+        {group.rows.map((row) => (
+          <ListRow
+            key={row.id}
+            icon={<IconTile testID={row.iconTestId}>{hubIcon(row.icon, scheme)}</IconTile>}
+            title={row.title}
+            subtitle={row.subtitle}
+            {...(row.id === 'requests' ? { count: pendingRequests } : {})}
+            accessibilityLabel={row.accessibilityLabel}
+            onPress={() => onOpen(row.href)}
+          />
         ))}
-      </View>
+      </Card>
     </View>
   );
 }

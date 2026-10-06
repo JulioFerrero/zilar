@@ -98,7 +98,8 @@ describe('IntegrationsPage', () => {
     });
     renderApp('/settings/integrations');
 
-    expect(await screen.findByLabelText('From address')).toBeTruthy();
+    const fromInput = await screen.findByLabelText('From address');
+    expect(fromInput.className).toContain('well-surface');
     fireEvent.click(screen.getAllByRole('button', { name: 'Save' })[0]!);
     expect(await screen.findByRole('alert')).toBeTruthy();
     expect(screen.getByRole('alert').textContent).toMatch(/test email could not be sent/);
@@ -165,7 +166,9 @@ describe('IntegrationsPage', () => {
 
     expect(await screen.findByText(/Only the person who runs this server/)).toBeTruthy();
     expect(await screen.findByRole('alert')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+    const retryButton = screen.getByRole('button', { name: 'Retry' });
+    expect(retryButton).toBeTruthy();
+    expect(retryButton.getAttribute('data-slot')).toBe('button');
   });
 
   it('saves the voice endpoint with the key and model, and shows 422 errors', async () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { GroupHandleRoute } from './GroupHandleRoute';
 import { lookupGroupByHandle } from '@/lib/api';
@@ -69,6 +69,9 @@ describe('GroupHandleRoute', () => {
     expect(screen.getByText('Trail talk every Sunday.')).toBeTruthy();
     expect(screen.getByText('12 members')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Join the group' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Join the group' }).getAttribute('data-slot')).toBe(
+      'button',
+    );
   });
 
   it('reads Open when already joined', async () => {
@@ -139,5 +142,32 @@ describe('GroupHandleRoute', () => {
     // The guest lands on the login stub (the real route returns to the
     // handle URL afterwards through `state.from`).
     expect(await screen.findByText('Sign in page')).toBeTruthy();
+  });
+
+  it('closes the group card with Escape', async () => {
+    lookupMock.mockResolvedValue(HIKING);
+    renderHandle('hiking_club');
+    const join = await screen.findByRole('button', { name: 'Join the group' });
+    // Escape is handled by a document listener the Dialog attaches in an
+    // effect; wait for that effect to run (it also focuses the first
+    // control) before pressing Escape, or the keypress races the mount.
+    await waitFor(() => expect(document.activeElement).toBe(join));
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    expect(screen.queryByRole('dialog', { name: 'Join Hiking club' })).toBeNull();
+  });
+
+  it('closes the error card with Escape', async () => {
+    const { ApiError } = await import('@/lib/api');
+    lookupMock.mockRejectedValue(new ApiError(500, 'internal_error', 'boom'));
+    renderHandle('hiking_club');
+    const retry = await screen.findByRole('button', { name: 'Retry' });
+    // Same as above: wait for the error card's effect before Escape.
+    await waitFor(() => expect(document.activeElement).toBe(retry));
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    expect(screen.queryByRole('dialog', { name: 'Open @hiking_club' })).toBeNull();
   });
 });

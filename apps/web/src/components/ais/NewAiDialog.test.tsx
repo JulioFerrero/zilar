@@ -108,6 +108,7 @@ describe('NewAiDialog', () => {
 
     const { store } = renderDialog();
     const name = await screen.findByLabelText('Name');
+    expect(name.className).toContain('well-surface');
 
     // One active connection: the provider is hidden and used.
     expect(screen.queryByRole('radiogroup', { name: 'Provider connection' })).toBeNull();

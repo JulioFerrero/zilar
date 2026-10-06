@@ -53,11 +53,13 @@ describe('ProfileSettingsSection', () => {
     claimMock.mockResolvedValue({ handle: 'ada_new' });
     renderSection('ada');
 
+    expect(screen.getByLabelText('Your @username').className).toContain('well-surface');
     fireEvent.change(screen.getByLabelText('Your @username'), {
       target: { value: 'ada_new' },
     });
     await waitFor(() => expect(checkMock).toHaveBeenCalledWith('ada_new'));
     const saveButton = screen.getByRole('button', { name: 'Save username' });
+    expect(saveButton.getAttribute('data-slot')).toBe('button');
     expect(saveButton.hasAttribute('disabled')).toBe(false);
     fireEvent.click(saveButton);
     await waitFor(() => expect(claimMock).toHaveBeenCalledWith('ada_new'));

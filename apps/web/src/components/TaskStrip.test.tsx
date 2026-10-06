@@ -130,6 +130,7 @@ describe('Topic header and task strip (T-0111)', () => {
     renderApp('/c/c-devteam-ideas');
     const strip = screen.getByLabelText('Topic details');
     fireEvent.click(within(strip).getByRole('button', { name: 'Add topic link' }));
+    expect(screen.getByPlaceholderText('https://…').className).toContain('well-surface');
     fireEvent.change(screen.getByPlaceholderText('https://…'), {
       target: { value: 'javascript:alert(1)' },
     });

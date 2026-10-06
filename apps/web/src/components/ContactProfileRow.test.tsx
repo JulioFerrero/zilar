@@ -109,7 +109,8 @@ describe('ContactProfileRow block actions', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(blockMock).not.toHaveBeenCalled();
     expect(onRelationChange).not.toHaveBeenCalled();
-    expect(screen.getByRole('button', { name: 'Add contact' })).toBeTruthy();
+    const addButton = screen.getByRole('button', { name: 'Add contact' });
+    expect(addButton.getAttribute('data-slot')).toBe('button');
 
     unblockMock.mockResolvedValue({ blocked: false });
     const changed = vi.fn();

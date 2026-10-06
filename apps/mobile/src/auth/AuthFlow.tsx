@@ -2,10 +2,11 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { useColorScheme } from 'nativewind';
 import { useEffect, useState } from 'react';
-import { Pressable, TextInput, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Text } from '@/components/ui/text';
+import { TextField } from '@/components/ui/text-field';
 import { asColorScheme } from '@/lib/color-scheme';
 import { CHAT_BACKGROUND } from '@/lib/colors';
 
@@ -114,7 +115,7 @@ export function AuthFlow({
           {step === 'email' ? (
             <View className="mt-6 gap-3">
               <Text className="text-[14px] font-medium text-foreground">Email</Text>
-              <TextInput
+              <TextField
                 accessibilityLabel="Email"
                 keyboardType="email-address"
                 autoCapitalize="none"
@@ -126,8 +127,6 @@ export function AuthFlow({
                 onChangeText={setEmail}
                 onSubmitEditing={submitEmail}
                 placeholder="you@example.com"
-                placeholderTextColor="#a1a1a1"
-                className="rounded-lg border border-input bg-background px-3 py-2 text-[15px] text-foreground"
               />
               {inviteCode === undefined && (
                 <Text className="text-[13px] text-muted-foreground">

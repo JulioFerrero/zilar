@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { Pressable, TextInput, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import { Text } from '../../components/ui/text';
+import { TextField } from '../ui/text-field';
 import { extractJoinToken, joinFailureMessage } from '../../lib/invite-links-api';
 import type { GroupChatTarget, JoinPreview } from '../../lib/invite-links-api';
 
@@ -249,19 +250,16 @@ export function JoinLinkForm({ onSubmit }: { onSubmit: (token: string) => void }
       <Text className="mt-1 text-[14px] text-muted-foreground">
         Paste the invite link a group admin shared with you.
       </Text>
-      <View className="mt-3 rounded-[10px] border border-border-strong bg-well px-3 py-2">
-        <TextInput
-          value={raw}
-          onChangeText={setRaw}
-          autoCapitalize="none"
-          autoCorrect={false}
-          editable={true}
-          placeholder="zilar://join/…"
-          placeholderTextColor="#8a8a8a"
-          accessibilityLabel="Invite link"
-          className="text-[15px] text-foreground"
-        />
-      </View>
+      <TextField
+        value={raw}
+        onChangeText={setRaw}
+        autoCapitalize="none"
+        autoCorrect={false}
+        editable={true}
+        placeholder="zilar://join/…"
+        accessibilityLabel="Invite link"
+        className="mt-3"
+      />
       {error !== '' ? (
         <Text accessibilityRole="alert" className="mt-2 text-[14px] text-danger">
           {error}

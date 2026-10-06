@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AvatarUploader } from './AvatarUploader';
 import { removeAvatar, uploadAvatar } from '@/lib/api';
 
@@ -47,9 +47,16 @@ describe('AvatarUploader', () => {
     removeMock.mockResolvedValue(undefined);
   });
 
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it('opens the crop dialog for an image and saves with a busy state', async () => {
     const onChanged = vi.fn();
     renderUploader({ onChanged });
+    expect(screen.getByRole('button', { name: 'Add picture' }).getAttribute('data-slot')).toBe(
+      'button',
+    );
     fireEvent.change(screen.getByLabelText('Choose a picture file'), {
       target: { files: [pngFile()] },
     });
@@ -114,5 +121,24 @@ describe('AvatarUploader', () => {
     expect(container.querySelector('img')).toBeNull();
     expect(screen.queryByText('No picture')).toBeNull();
     expect(container.textContent).toContain('A');
+  });
+
+  it('closes the crop dialog with Escape and revokes the preview URL', async () => {
+    const revoke = vi.fn();
+    vi.stubGlobal('URL', { createObjectURL: () => 'blob:preview', revokeObjectURL: revoke });
+    renderUploader();
+    fireEvent.change(screen.getByLabelText('Choose a picture file'), {
+      target: { files: [pngFile()] },
+    });
+    await waitFor(() =>
+      expect(screen.getByRole('dialog', { name: 'Crop your picture' })).toBeTruthy(),
+    );
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Crop your picture' })).toBeNull(),
+    );
+    expect(revoke).toHaveBeenCalledWith('blob:preview');
   });
 });

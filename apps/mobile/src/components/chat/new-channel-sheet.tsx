@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { Pressable, TextInput, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import {
   buildChannelCreateInput,
@@ -9,6 +9,7 @@ import {
 } from '@/components/chat/visibility-fields';
 import { useDirectoryApi } from '@/components/directory/use-directory-api';
 import { Text } from '@/components/ui/text';
+import { TextField } from '@/components/ui/text-field';
 /**
  * The new-channel sheet (T-0144): a title plus an optional description
  * (≤ 300, the channel's short blurb). The screen creates the channel
@@ -72,30 +73,24 @@ export function NewChannelSheet({
       <Text className="mt-1 text-[14px] text-muted-foreground">
         Only you and the admins you add will post. Everyone else subscribes.
       </Text>
-      <View className="mt-3 rounded-[10px] border border-border-strong bg-well px-3 py-2">
-        <TextInput
-          value={title}
-          onChangeText={setTitle}
-          autoCapitalize="sentences"
-          placeholder="Channel name"
-          placeholderTextColor="#8a8a8a"
-          accessibilityLabel="Channel name"
-          maxLength={100}
-          className="text-[15px] text-foreground"
-        />
-      </View>
-      <View className="mt-2 rounded-[10px] border border-border-strong bg-well px-3 py-2">
-        <TextInput
-          value={description}
-          onChangeText={setDescription}
-          autoCapitalize="sentences"
-          placeholder="Description (optional)"
-          placeholderTextColor="#8a8a8a"
-          accessibilityLabel="Channel description"
-          multiline
-          className="text-[15px] text-foreground"
-        />
-      </View>
+      <TextField
+        value={title}
+        onChangeText={setTitle}
+        autoCapitalize="sentences"
+        placeholder="Channel name"
+        accessibilityLabel="Channel name"
+        maxLength={100}
+        className="mt-3"
+      />
+      <TextField
+        value={description}
+        onChangeText={setDescription}
+        autoCapitalize="sentences"
+        placeholder="Description (optional)"
+        accessibilityLabel="Channel description"
+        multiline
+        className="mt-2"
+      />
       {tooLong ? (
         <Text accessibilityRole="alert" className="mt-2 text-[14px] text-danger">
           The description must be at most 300 characters.

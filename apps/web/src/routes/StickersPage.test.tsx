@@ -135,7 +135,9 @@ describe('StickersPage', () => {
     renderPage(fetchMock);
 
     expect(await screen.findByRole('alert')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+    const retryButton = screen.getByRole('button', { name: 'Retry' });
+    expect(retryButton).toBeTruthy();
+    expect(retryButton.getAttribute('data-slot')).toBe('button');
   });
 
   it('searches discover and adds a pack', async () => {
@@ -153,6 +155,7 @@ describe('StickersPage', () => {
     renderPage(fetchMock);
 
     await screen.findByText('Cats');
+    expect(screen.getByLabelText('Search sticker packs').className).toContain('well-surface');
     fireEvent.click(screen.getByRole('button', { name: 'Add' }));
     await waitFor(() => {
       expect(calls.some((call) => call.startsWith('PUT /api/sticker-panel/'))).toBe(true);

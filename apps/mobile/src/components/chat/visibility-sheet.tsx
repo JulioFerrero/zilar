@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Modal, Pressable, TextInput, View } from 'react-native';
+import { Modal, Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Text } from '@/components/ui/text';
+import { TextField } from '@/components/ui/text-field';
 import { DirectoryApiError, type GroupVisibility } from '@/lib/directory-api';
 
 /**
@@ -182,20 +183,17 @@ export function VisibilitySheet({
                 Anyone can find and join {groupTitle === '' ? 'this group' : `"${groupTitle}"`}.
               </Text>
               <Text className="mt-2 text-[14px] font-medium text-foreground">Handle</Text>
-              <View className="mt-1 rounded-[10px] border border-border-strong bg-well px-3 py-2">
-                <TextInput
-                  value={live.typed}
-                  onChangeText={onHandleChange}
-                  maxLength={32}
-                  editable={!busy}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  placeholder="hiking_club"
-                  placeholderTextColor="#8a8a8a"
-                  accessibilityLabel="Group handle"
-                  className="text-[15px] text-foreground"
-                />
-              </View>
+              <TextField
+                value={live.typed}
+                onChangeText={onHandleChange}
+                maxLength={32}
+                editable={!busy}
+                autoCapitalize="none"
+                autoCorrect={false}
+                placeholder="hiking_club"
+                accessibilityLabel="Group handle"
+                className="mt-1"
+              />
               <View className="min-h-[20px]">
                 {checking ? (
                   <Text className="text-[14px] text-muted-foreground">Checking…</Text>

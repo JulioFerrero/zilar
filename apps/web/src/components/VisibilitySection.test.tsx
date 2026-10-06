@@ -85,6 +85,7 @@ describe('VisibilitySection', () => {
     expect(screen.getByText('Anyone can find and join “Hiking club”.')).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText('Handle'), { target: { value: 'hiking_club' } });
+    expect(screen.getByLabelText('Handle').className).toContain('well-surface');
     expect(await screen.findByText('@hiking_club is available')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Save visibility' }));
@@ -119,10 +120,9 @@ describe('VisibilitySection', () => {
 
   it('disables Save while unchanged', async () => {
     renderSection('public', 'hiking_club');
-    expect(screen.getByRole('button', { name: 'Save visibility' })).toHaveProperty(
-      'disabled',
-      true,
-    );
+    const saveButton = screen.getByRole('button', { name: 'Save visibility' });
+    expect(saveButton.getAttribute('data-slot')).toBe('button');
+    expect(saveButton).toHaveProperty('disabled', true);
   });
 
   it('waits for the debounce and shows the error alert', async () => {

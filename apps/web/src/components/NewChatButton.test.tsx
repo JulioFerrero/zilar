@@ -122,6 +122,35 @@ describe('NewChatButton Escape handling (T-0062)', () => {
     expect(document.activeElement).toBe(trigger);
   });
 
+  it('closes the Choose a group picker with Escape and returns focus to the trigger', () => {
+    const alpha: ChatSummary = {
+      id: 'c-alpha',
+      title: 'Alpha',
+      kind: 'group',
+      isAI: false,
+      space: 'personal',
+      unread: 0,
+      muted: false,
+      groupId: 'g-alpha',
+    };
+    // Two topic-capable groups make the menu ask which one, so the picker
+    // (not the New topic dialog) opens.
+    renderApp('/', {
+      chats: [alpha, { ...alpha, id: 'c-bravo', title: 'Bravo', groupId: 'g-bravo' }],
+      groupInfos: {},
+    });
+
+    const trigger = screen.getByLabelText('New chat');
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'New topic' }));
+    expect(screen.getByRole('dialog', { name: 'Choose a group' })).toBeTruthy();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    expect(screen.queryByRole('dialog', { name: 'Choose a group' })).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+
   it('closes the New group dialog with Escape and returns focus to the trigger', () => {
     renderApp('/', {
       contacts: [{ userId: 'u-ana', name: 'Ana', jid: 'ana@zilar.test' }],

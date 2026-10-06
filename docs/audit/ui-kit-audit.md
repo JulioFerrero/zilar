@@ -434,13 +434,13 @@ independently.
 8. **T-new: sweep + P2.** Allowed: whatever remains; adds `Menu`, `Card`,
    `SectionLabel`, `PageHeader`. Removes: last raw buttons/rows/headers.
 
-**Gate check proposal (hand-rolled accent buttons):** add a gate step that fails
-on `bg-accent px-` outside `apps/web/src/components/ui/` (the flat hand-roll
-shape; the kit's primary uses `key-primary` instead):
-
-```
-rg --glob '!**/*.test.*' -l 'bg-accent px-' apps/web/src | grep -v 'components/ui/' && exit 1 || exit 0
-```
+**Gate check (hand-rolled accent buttons):** implemented as
+`apps/web/src/components/ui/no-accent-pill.test.ts`. It scans every `*.tsx`
+under `apps/web/src` outside `components/ui/`, matches the solid `bg-accent`
+class token (tints such as `bg-accent/10` and prefixed ones such as
+`hover:bg-accent/90` stay allowed), and fails when the nearest JSX tag is
+`button`, `a` or `Link`. This replaces the earlier `rg 'bg-accent px-'`
+proposal, which missed solid pills without a `px-` size class.
 
 Mobile mirror: fail on new `<Pressable` with an inline accent background outside
 `apps/mobile/src/components/ui/` (exact pattern TBD in the mobile kit task once

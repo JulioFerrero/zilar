@@ -9,6 +9,8 @@ import {
 } from '@/lib/api';
 import { formatStickerSize, prepareStickerImage, PrepError } from '@/lib/sticker-images';
 import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { TextInput } from '@/components/ui/text-input';
 
 export type PackEditorItemStatus = 'ready' | 'uploading' | 'done' | 'error';
 
@@ -417,13 +419,12 @@ export function PackEditor({
     <div className="flex flex-col gap-4">
       <label className="flex flex-col gap-1">
         <span className="text-[14px] font-medium">Pack name</span>
-        <input
+        <TextInput
           value={title}
           maxLength={60}
           placeholder="My stickers"
           disabled={busy}
           onChange={(event) => setTitle(event.target.value)}
-          className="rounded-lg border border-input bg-background px-3 py-2 text-[15px] outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40 disabled:opacity-60"
         />
       </label>
 
@@ -566,19 +567,15 @@ export function PackEditor({
                 {item.error === undefined && item.blob !== undefined && (
                   <label className="flex items-center gap-1 text-[13px]">
                     <span className="text-muted-foreground">Emoji</span>
-                    <input
+                    <TextInput
                       value={item.emoji}
                       maxLength={8}
                       placeholder="🐱"
                       disabled={busy}
                       aria-label={`Emoji for ${item.name}`}
                       onChange={(event) => setEmoji(item.key, event.target.value)}
-                      className={cn(
-                        'w-14 rounded-md border border-input bg-background px-2 py-1 text-[15px] outline-none',
-                        'focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40',
-                        'disabled:opacity-60',
-                        item.emoji !== '' && !isEmojiLike(item.emoji) && 'border-danger',
-                      )}
+                      invalid={item.emoji !== '' && !isEmojiLike(item.emoji)}
+                      className="w-14 px-2 py-1"
                     />
                   </label>
                 )}
@@ -642,16 +639,16 @@ export function PackEditor({
       )}
 
       <div className="flex items-center gap-2">
-        <button
+        <Button
           type="button"
           disabled={
             busy || preparing > 0 || errorCount > 0 || (packId === undefined && readyCount === 0)
           }
           onClick={save}
-          className="rounded-full bg-accent px-4 py-2 text-[15px] font-medium text-accent-foreground hover:bg-accent/90 disabled:opacity-60"
+          size="lg"
         >
           {packId === undefined ? 'Create pack' : 'Save'}
-        </button>
+        </Button>
         <button
           type="button"
           disabled={busy}

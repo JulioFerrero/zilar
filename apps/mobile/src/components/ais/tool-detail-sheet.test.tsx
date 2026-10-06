@@ -56,6 +56,10 @@ vi.mock('@/components/ui/button', () => ({
   Button: 'Button',
 }));
 
+vi.mock('@/components/ui/text-field', () => ({
+  TextField: 'TextInput',
+}));
+
 let capturedScrollProps: { keyboardShouldPersistTaps?: string } | undefined;
 
 function idleActions(overrides: Partial<ToolDetailBodyActions> = {}): ToolDetailBodyActions {

@@ -56,6 +56,7 @@ describe('RequestsPage', () => {
 
     expect(await screen.findByText('Bob')).toBeTruthy();
     expect(screen.getByText('Carol')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: /incoming/i })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Accept' }));
     await waitFor(() => expect(acceptMock).toHaveBeenCalledWith('r-1'));
     expect(screen.queryByText('Bob')).toBeNull();

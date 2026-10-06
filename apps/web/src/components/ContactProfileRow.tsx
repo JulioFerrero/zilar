@@ -14,6 +14,7 @@ import {
 } from '@/lib/api';
 import { useChatStore } from '@/store/ChatStoreProvider';
 import { refreshBlockedJids } from '@/lib/blockedJids';
+import { Button } from '@/components/ui/button';
 import { Avatar } from './Avatar';
 
 /**
@@ -198,14 +199,10 @@ export function ContactProfileRow({
           </button>
         ) : profile.relation === 'self' ? null : profile.relation === 'contact' &&
           dmChatId !== undefined ? (
-          <button
-            type="button"
-            onClick={openChat}
-            className="flex shrink-0 items-center gap-1.5 rounded-full bg-accent px-3 py-1.5 text-[13px] font-medium text-accent-foreground hover:bg-accent/90"
-          >
+          <Button type="button" onClick={openChat} size="sm" className="shrink-0">
             <MessageSquare className="size-3.5" aria-hidden="true" />
             Message
-          </button>
+          </Button>
         ) : profile.relation === 'none' ? (
           sentLabel ? (
             <span className="flex shrink-0 items-center gap-1.5 px-1 text-[13px] text-muted-foreground">
@@ -213,15 +210,16 @@ export function ContactProfileRow({
               Request sent
             </span>
           ) : (
-            <button
+            <Button
               type="button"
               onClick={() => void send()}
               disabled={busy}
-              className="flex shrink-0 items-center gap-1.5 rounded-full bg-accent px-3 py-1.5 text-[13px] font-medium text-accent-foreground hover:bg-accent/90 disabled:opacity-60"
+              size="sm"
+              className="shrink-0"
             >
               <UserPlus className="size-3.5" aria-hidden="true" />
               {busy ? 'Sending…' : 'Add contact'}
-            </button>
+            </Button>
           )
         ) : profile.relation === 'request_sent' ? (
           <button
@@ -235,15 +233,10 @@ export function ContactProfileRow({
           </button>
         ) : (
           <span className="flex shrink-0 gap-2">
-            <button
-              type="button"
-              onClick={() => void decide('accept')}
-              disabled={busy}
-              className="flex items-center gap-1.5 rounded-full bg-accent px-3 py-1.5 text-[13px] font-medium text-accent-foreground hover:bg-accent/90 disabled:opacity-60"
-            >
+            <Button type="button" onClick={() => void decide('accept')} disabled={busy} size="sm">
               <UserCheck className="size-3.5" aria-hidden="true" />
               Accept
-            </button>
+            </Button>
             <button
               type="button"
               onClick={() => void decide('decline')}

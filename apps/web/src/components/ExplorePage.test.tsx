@@ -48,7 +48,7 @@ const RELEASES = {
   joined: true,
 };
 
-function renderExplore() {
+function renderExplore(onClose: () => void = () => {}) {
   const store = createChatStore();
   return render(
     <MemoryRouter>
@@ -60,7 +60,7 @@ function renderExplore() {
         }}
       >
         <ChatStoreProvider store={store}>
-          <ExplorePage onClose={() => {}} />
+          <ExplorePage onClose={onClose} />
         </ChatStoreProvider>
       </AuthProvider>
     </MemoryRouter>,
@@ -82,6 +82,7 @@ describe('ExplorePage', () => {
     expect(screen.getByText('Trail talk every Sunday.')).toBeTruthy();
     expect(screen.getByText('12 members')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Join' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Join' }).getAttribute('data-slot')).toBe('button');
     // T-0165: the directory entry's picture paints the row.
     expect(container.querySelector('img[src="/api/avatars/g-hiking"]')).not.toBeNull();
   });
@@ -149,5 +150,22 @@ describe('ExplorePage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
     expect(await screen.findByText('Releases')).toBeTruthy();
     expect(searchMock).toHaveBeenLastCalledWith(expect.objectContaining({ cursor: 'cursor-1' }));
+  });
+
+  it('closes with Escape', () => {
+    const onClose = vi.fn();
+    renderExplore(onClose);
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders the search as the kit TextInput and focuses it initially', async () => {
+    renderExplore();
+
+    const search = screen.getByLabelText('Search public groups and channels');
+    expect(search.className).toContain('well-surface');
+    await waitFor(() => expect(document.activeElement).toBe(search));
   });
 });

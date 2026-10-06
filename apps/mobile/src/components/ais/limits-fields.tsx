@@ -1,9 +1,7 @@
-import { TextInput, View } from 'react-native';
-import { useColorScheme } from 'nativewind';
+import { View } from 'react-native';
 
 import { Text } from '@/components/ui/text';
-import { asColorScheme } from '@/lib/color-scheme';
-import { MUTED_FOREGROUND } from '@/lib/colors';
+import { TextField } from '@/components/ui/text-field';
 
 function AmountField({
   label,
@@ -20,20 +18,18 @@ function AmountField({
   error: string;
   onChange: (value: string) => void;
 }) {
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   return (
     <View className="gap-1">
       <Text className="text-[14px] font-medium text-foreground">{label}</Text>
       <View className="flex-row items-center gap-2">
         <Text className="text-[15px] text-muted-foreground">$</Text>
-        <TextInput
+        <TextField
           value={value}
           onChangeText={onChange}
           accessibilityLabel={accessibilityLabel}
           keyboardType="decimal-pad"
           placeholder={placeholder}
-          placeholderTextColor={MUTED_FOREGROUND[scheme]}
-          className="w-32 rounded-lg border border-input bg-background px-3 py-2.5 text-[15px] text-foreground"
+          className="w-32 py-2.5"
         />
       </View>
       {error !== '' ? (

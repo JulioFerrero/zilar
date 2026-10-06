@@ -4,6 +4,7 @@ import { Modal, Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Avatar } from '@/components/chat/avatar';
+import { ActionSheet, ActionSheetItem } from '@/components/ui/action-sheet';
 import { Text } from '@/components/ui/text';
 import { asColorScheme } from '@/lib/color-scheme';
 import { MUTE_DURATIONS, type MuteDurationId } from '@/lib/chat-prefs';
@@ -46,98 +47,77 @@ export function TopicActionsSheet({
   onPref: (action: TopicPrefAction) => void;
   onClose: () => void;
 }) {
+  const scheme = asColorScheme(useColorScheme().colorScheme);
   const pinned = chat?.pinnedAt !== undefined;
   const archived = chat?.archived === true;
   const muted = chat?.muted === true;
   return (
-    <Modal visible={chat !== null} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable
-        accessibilityLabel="Close topic actions"
-        onPress={onClose}
-        className="flex-1 justify-end bg-black/40 px-2"
-        style={{ paddingBottom: 16 }}
-      >
-        <Pressable onPress={() => {}} className="overflow-hidden rounded-2xl bg-background">
-          {chat !== null ? (
-            <View className="flex-row items-center gap-3 border-b border-divider px-4 py-3">
-              <View className="h-9 w-9 items-center justify-center rounded-[10px] border border-edge bg-surface-raised">
-                <Text className="text-[16px] font-semibold text-foreground">
-                  {chat.topic?.glyph ?? 'G'}
-                </Text>
-              </View>
-              <Text numberOfLines={1} className="min-w-0 flex-1 text-[16px] font-semibold">
-                {chat.title}
+    <ActionSheet
+      visible={chat !== null}
+      onClose={onClose}
+      closeLabel="Close topic actions"
+      header={
+        chat !== null ? (
+          <View className="flex-row items-center gap-3 px-4 py-3">
+            <View className="h-9 w-9 items-center justify-center rounded-[10px] border border-edge bg-surface-raised">
+              <Text className="text-[16px] font-semibold text-foreground">
+                {chat.topic?.glyph ?? 'G'}
               </Text>
-              {chat.topic?.visibility === 'private' ? <Lock size={16} color="#8a8a8a" /> : null}
             </View>
-          ) : null}
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={pinned ? 'Unpin topic' : 'Pin topic'}
-            onPress={() => onPref({ kind: 'pin', pinned: !pinned })}
-            className="border-b border-divider px-4 py-3.5 active:bg-surface-raised"
-          >
-            <Text className="text-[16px] text-foreground">{pinned ? 'Unpin' : 'Pin'}</Text>
-          </Pressable>
-          {muteOpen ? (
-            <>
-              {MUTE_DURATIONS.map((option) => (
-                <Pressable
-                  key={option.id}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Mute for ${option.label.toLowerCase()}`}
-                  onPress={() => onPref({ kind: 'mute', duration: option.id })}
-                  className="border-b border-divider px-4 py-3 active:bg-surface-raised"
-                >
-                  <Text className="text-[16px] text-foreground">{option.label}</Text>
-                </Pressable>
-              ))}
-              {muted ? (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Unmute topic"
-                  onPress={() => onPref({ kind: 'unmute' })}
-                  className="border-b border-divider px-4 py-3 active:bg-surface-raised"
-                >
-                  <Text className="text-[16px] text-foreground">Unmute</Text>
-                </Pressable>
-              ) : null}
-            </>
-          ) : (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Mute topic"
-              onPress={onOpenMute}
-              className="border-b border-divider px-4 py-3.5 active:bg-surface-raised"
-            >
-              <Text className="text-[16px] text-foreground">
-                {muted ? 'Muted: change' : 'Mute'}
-              </Text>
-            </Pressable>
-          )}
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={archived ? 'Unarchive chat' : 'Archive chat'}
-            onPress={() => onPref({ kind: 'archive', archived: !archived })}
-            className="border-b border-divider px-4 py-3.5 active:bg-surface-raised"
-          >
-            <Text className="text-[16px] text-foreground">
-              {archived ? 'Unarchive' : 'Archive'}
+            <Text numberOfLines={1} className="min-w-0 flex-1 text-[16px] font-semibold">
+              {chat.title}
             </Text>
-          </Pressable>
-          {canArchive ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Archive topic for everyone"
-              onPress={() => onAction('archive')}
-              className="px-4 py-3.5 active:bg-surface-raised"
-            >
-              <Text className="text-[16px] text-danger">Archive topic for everyone</Text>
-            </Pressable>
+            {chat.topic?.visibility === 'private' ? (
+              <Lock size={16} color={MUTED_FOREGROUND[scheme]} />
+            ) : null}
+          </View>
+        ) : undefined
+      }
+    >
+      <ActionSheetItem
+        label={pinned ? 'Unpin' : 'Pin'}
+        accessibilityLabel={pinned ? 'Unpin topic' : 'Pin topic'}
+        onPress={() => onPref({ kind: 'pin', pinned: !pinned })}
+      />
+      {muteOpen ? (
+        <>
+          {MUTE_DURATIONS.map((option) => (
+            <ActionSheetItem
+              key={option.id}
+              label={option.label}
+              accessibilityLabel={`Mute for ${option.label.toLowerCase()}`}
+              onPress={() => onPref({ kind: 'mute', duration: option.id })}
+            />
+          ))}
+          {muted ? (
+            <ActionSheetItem
+              label="Unmute"
+              accessibilityLabel="Unmute topic"
+              onPress={() => onPref({ kind: 'unmute' })}
+            />
           ) : null}
-        </Pressable>
-      </Pressable>
-    </Modal>
+        </>
+      ) : (
+        <ActionSheetItem
+          label={muted ? 'Muted: change' : 'Mute'}
+          accessibilityLabel="Mute topic"
+          onPress={onOpenMute}
+        />
+      )}
+      <ActionSheetItem
+        label={archived ? 'Unarchive' : 'Archive'}
+        accessibilityLabel={archived ? 'Unarchive chat' : 'Archive chat'}
+        onPress={() => onPref({ kind: 'archive', archived: !archived })}
+      />
+      {canArchive ? (
+        <ActionSheetItem
+          label="Archive topic for everyone"
+          accessibilityLabel="Archive topic for everyone"
+          onPress={() => onAction('archive')}
+          destructive
+        />
+      ) : null}
+    </ActionSheet>
   );
 }
 

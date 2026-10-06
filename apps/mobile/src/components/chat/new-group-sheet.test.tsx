@@ -29,6 +29,10 @@ vi.mock('@/components/ui/text', () => ({
   Text: 'Text',
 }));
 
+vi.mock('nativewind', () => ({
+  useColorScheme: () => ({ colorScheme: 'dark' }),
+}));
+
 vi.mock('@/components/chat/avatar', () => ({
   Avatar: 'Avatar',
 }));

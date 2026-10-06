@@ -2,13 +2,16 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import { Check, ChevronLeft, Copy, Plus, RefreshCw, Server } from 'lucide-react-native';
 import { useCallback, useRef, useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, ScrollView, TextInput, View } from 'react-native';
+import { ActivityIndicator, Modal, Pressable, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useColorScheme } from 'nativewind';
 
 import { RequireAuth } from '@/auth/RequireAuth';
+import { Card, SectionLabel } from '@/components/ui/card';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
+import { TextField } from '@/components/ui/text-field';
 import { asColorScheme } from '@/lib/color-scheme';
 import { ACCENT, ICON } from '@/lib/colors';
 import type { Machine, PairingCode } from '@/lib/machines-api';
@@ -314,10 +317,8 @@ function MachinesList() {
 
           {status === 'ready' && pending.length > 0 ? (
             <View accessibilityLabel="Waiting for approval" className="gap-2">
-              <Text className="text-[16px] font-semibold text-foreground">
-                Waiting for approval
-              </Text>
-              <View className="gap-2">
+              <SectionLabel>Waiting for approval</SectionLabel>
+              <Card>
                 {pending.map((machine) => (
                   <MachineCard
                     key={machine.id}
@@ -350,28 +351,24 @@ function MachinesList() {
                     }
                   />
                 ))}
-              </View>
+              </Card>
             </View>
           ) : null}
 
           {status === 'ready' && approved.length > 0 ? (
             <View accessibilityLabel="Your machines" className="gap-2">
-              <Text className="text-[16px] font-semibold text-foreground">Your machines</Text>
-              <View className="gap-2">
+              <SectionLabel>Your machines</SectionLabel>
+              <Card>
                 {approved.map((machine) =>
                   renamingId === machine.id ? (
-                    <View
-                      key={machine.id}
-                      className="gap-2 rounded-xl border border-border bg-surface px-3 py-2.5"
-                    >
+                    <View key={machine.id} className="gap-2 px-3 py-2.5">
                       <Text className="text-[14px] font-medium text-foreground">Rename</Text>
-                      <TextInput
+                      <TextField
                         value={renameDraft}
                         onChangeText={setRenameDraft}
                         accessibilityLabel={`Name for ${machine.name}`}
                         maxLength={64}
                         autoFocus
-                        className="rounded-lg border border-input bg-background px-3 py-2 text-[15px] text-foreground"
                       />
                       {actionErrors[machine.id] !== undefined && actionErrors[machine.id] !== '' ? (
                         <Text accessibilityRole="alert" className="text-[13px] text-danger">
@@ -432,7 +429,7 @@ function MachinesList() {
                     />
                   ),
                 )}
-              </View>
+              </Card>
             </View>
           ) : null}
 
@@ -449,7 +446,7 @@ function MachinesList() {
                 </Text>
               </Pressable>
               {showRevoked ? (
-                <View className="gap-2">
+                <Card>
                   {revoked.map((machine) => (
                     <MachineCard
                       key={machine.id}
@@ -469,7 +466,7 @@ function MachinesList() {
                       }
                     />
                   ))}
-                </View>
+                </Card>
               ) : null}
             </View>
           ) : null}
@@ -485,58 +482,24 @@ function MachinesList() {
         onClose={closeAdd}
       />
 
-      <Modal
+      <ConfirmDialog
         visible={confirming !== null}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setConfirming(null)}
-      >
-        <View className="flex-1 items-center justify-center bg-black/40 p-6">
-          <View className="w-full max-w-xs rounded-2xl bg-background p-4">
-            <Text className="text-[16px] font-semibold text-foreground">
-              {confirming?.kind === 'revoke' ? 'Revoke this machine?' : 'Delete this machine?'}
-            </Text>
-            <Text className="mt-1 text-[14px] leading-5 text-muted-foreground">
-              {confirming?.kind === 'revoke'
-                ? 'The machine loses access at once. AIs running there move back to the platform.'
-                : 'This removes the machine for good. This cannot be undone.'}
-            </Text>
-            {confirmError !== '' ? (
-              <Text accessibilityRole="alert" className="mt-2 text-[13px] text-danger">
-                {confirmError}
-              </Text>
-            ) : null}
-            <View className="mt-4 flex-row justify-end gap-2">
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Cancel"
-                disabled={busyId !== null}
-                onPress={() => setConfirming(null)}
-                className="rounded-full px-3 py-1.5 active:bg-surface-raised disabled:opacity-60"
-              >
-                <Text className="text-[14px] text-muted-foreground">Cancel</Text>
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={
-                  confirming?.kind === 'revoke' ? 'Confirm revoke' : 'Confirm delete'
-                }
-                disabled={busyId !== null}
-                onPress={confirmAction}
-                className="rounded-full bg-destructive px-3 py-1.5 active:opacity-90 disabled:opacity-60"
-              >
-                <Text className="text-[14px] font-medium text-white">
-                  {busyId !== null
-                    ? 'Working…'
-                    : confirming?.kind === 'revoke'
-                      ? 'Revoke'
-                      : 'Delete'}
-                </Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
+        title={confirming?.kind === 'revoke' ? 'Revoke this machine?' : 'Delete this machine?'}
+        message={
+          confirming?.kind === 'revoke'
+            ? 'The machine loses access at once. AIs running there move back to the platform.'
+            : 'This removes the machine for good. This cannot be undone.'
+        }
+        error={confirmError}
+        confirmLabel={confirming?.kind === 'revoke' ? 'Revoke' : 'Delete'}
+        busyLabel="Working…"
+        busy={busyId !== null}
+        onCancel={() => setConfirming(null)}
+        onConfirm={confirmAction}
+        confirmAccessibilityLabel={
+          confirming?.kind === 'revoke' ? 'Confirm revoke' : 'Confirm delete'
+        }
+      />
     </SafeAreaView>
   );
 }
@@ -553,7 +516,7 @@ function MachineCard({
   actions: React.ReactNode;
 }) {
   return (
-    <View className="gap-1 rounded-xl border border-border bg-surface px-3 py-2.5">
+    <View className="gap-1 px-3 py-2.5">
       <View className="flex-row items-center gap-3">
         <View className="min-w-0 flex-1">
           <Text numberOfLines={1} className="text-[15px] font-medium text-foreground">

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Pencil, PowerOff } from 'lucide-react';
 import type { Machine } from '@/lib/api';
 import { FieldError } from '@/components/ais/AiPageShell';
+import { TextInput } from '@/components/ui/text-input';
 import { cn } from '@/lib/utils';
 import { hardwareLine } from './PendingMachineCard';
 
@@ -86,7 +87,7 @@ export function ApprovedMachineCard({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           {editing ? (
-            <input
+            <TextInput
               ref={inputRef}
               aria-label={`Rename ${machine.name}`}
               value={draft}
@@ -102,7 +103,7 @@ export function ApprovedMachineCard({
                 }
               }}
               onBlur={() => void commitEdit()}
-              className="w-full rounded-md border border-input bg-background px-2 py-1 text-[16px] font-semibold outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40"
+              className="px-2 py-1 text-[16px] font-semibold"
             />
           ) : (
             <div className="flex items-center gap-2">

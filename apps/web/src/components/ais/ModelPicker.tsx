@@ -3,6 +3,7 @@ import { useRef } from 'react';
 import { Check } from 'lucide-react';
 import { providerLabel } from './ConnectionPicker';
 import { cn } from '@/lib/utils';
+import { TextInput } from '@/components/ui/text-input';
 
 /** The wizard's model picker: short per-provider hints, always overridable. */
 export function ModelPicker({
@@ -52,14 +53,13 @@ export function ModelPicker({
     <div className="flex flex-col gap-3">
       <label className="flex flex-col gap-1">
         <span className="text-[14px] font-medium">Model</span>
-        <input
+        <TextInput
           id={inputId}
           value={value}
           onChange={(event) => onChange(event.target.value)}
           placeholder={`${providerLabel(provider)} model name`}
           maxLength={256}
           autoComplete="off"
-          className="well-surface rounded-lg px-3 py-2 text-[15px] outline-none"
         />
       </label>
 

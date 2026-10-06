@@ -1,19 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import {
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Pressable,
-  ScrollView,
-  TextInput,
-  View,
-} from 'react-native';
+import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { X } from 'lucide-react-native';
 import { useColorScheme } from 'nativewind';
 
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
+import { TextField } from '@/components/ui/text-field';
 import { asColorScheme } from '@/lib/color-scheme';
 import { MUTED_FOREGROUND } from '@/lib/colors';
 import { hostsLine, truncateOutput } from '@/lib/routines-format';
@@ -367,20 +360,17 @@ export function ToolDetailBody({
         <Text className="px-2 text-[13px] font-semibold text-muted-foreground">Run now</Text>
         <View className="gap-1 px-2">
           <Text className="text-[13px] text-muted-foreground">Optional JSON input (max 4 KB)</Text>
-          <View className="rounded-[10px] border border-border-strong bg-well px-3 py-2">
-            <TextInput
-              value={state.runInput}
-              onChangeText={actions.onRunInput}
-              multiline
-              numberOfLines={3}
-              autoCapitalize="none"
-              autoCorrect={false}
-              placeholder='e.g. {"city": "Madrid"}'
-              placeholderTextColor="#8a8a8a"
-              accessibilityLabel="Run input (JSON)"
-              className="min-h-[60px] font-mono text-[13px] text-foreground"
-            />
-          </View>
+          <TextField
+            value={state.runInput}
+            onChangeText={actions.onRunInput}
+            multiline
+            numberOfLines={3}
+            autoCapitalize="none"
+            autoCorrect={false}
+            placeholder='e.g. {"city": "Madrid"}'
+            accessibilityLabel="Run input (JSON)"
+            className="min-h-[60px] font-mono text-[13px]"
+          />
         </View>
         {state.runInputError !== '' ? (
           <Text accessibilityRole="alert" className="px-2 text-[13px] text-danger">

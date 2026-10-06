@@ -22,8 +22,24 @@ describe('folderSummary', () => {
     );
   });
 
-  it('says so when no type is selected', () => {
-    expect(folderSummary({ ...FOLDER, includeTypes: [] })).toBe('No chat types');
+  it('shows only the chat count when no type is selected', () => {
+    expect(folderSummary({ ...FOLDER, includeTypes: [], includeChats: ['c-1'] })).toBe('1 chat');
+    expect(folderSummary({ ...FOLDER, includeTypes: [], includeChats: ['c-1', 'c-2'] })).toBe(
+      '2 chats',
+    );
+  });
+
+  it('joins the type labels and the chat count', () => {
+    expect(folderSummary({ ...FOLDER, includeTypes: ['dm'], includeChats: ['c-1'] })).toBe(
+      'Personal chats, 1 chat',
+    );
+    expect(folderSummary({ ...FOLDER, includeTypes: ['dm'], includeChats: ['c-1', 'c-2'] })).toBe(
+      'Personal chats, 2 chats',
+    );
+  });
+
+  it('says so when neither a type nor a chat is selected', () => {
+    expect(folderSummary({ ...FOLDER, includeTypes: [], includeChats: [] })).toBe('No rules yet');
   });
 });
 

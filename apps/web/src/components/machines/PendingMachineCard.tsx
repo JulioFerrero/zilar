@@ -1,6 +1,7 @@
 import { Check, X } from 'lucide-react';
 import type { Machine } from '@/lib/api';
 import { FieldError } from '@/components/ais/AiPageShell';
+import { Button } from '@/components/ui/button';
 
 interface PendingMachineCardProps {
   machine: Machine;
@@ -103,16 +104,15 @@ export function PendingMachineCard({
 
       {!confirmingDeny && (
         <div className="flex items-center gap-2">
-          <button
+          <Button
             type="button"
             aria-label={`Approve ${machine.name}`}
             disabled={approving || denying}
             onClick={onApprove}
-            className="flex items-center gap-1 rounded-full bg-accent px-3 py-1.5 text-[14px] font-medium text-accent-foreground hover:bg-accent/90 disabled:opacity-60"
           >
             <Check className="size-4" aria-hidden="true" />
             {approving ? 'Approving…' : 'Approve'}
-          </button>
+          </Button>
           <button
             type="button"
             aria-label={`Deny ${machine.name}`}

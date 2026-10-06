@@ -57,7 +57,9 @@ describe('ConnectionsPage', () => {
     renderPage();
 
     expect(await screen.findByText('No provider connections yet')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Add a connection' })).toBeTruthy();
+    const addButton = screen.getByRole('button', { name: 'Add a connection' });
+    expect(addButton).toBeTruthy();
+    expect(addButton.getAttribute('data-slot')).toBe('button');
   });
 
   it('renders the list of connections with their provider, status and actions', async () => {
@@ -116,6 +118,7 @@ describe('ConnectionsPage', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Add a connection' }));
 
     const input = screen.getByLabelText('API key');
+    expect(input.className).toContain('well-surface');
     expect(input.getAttribute('type')).toBe('password');
 
     fireEvent.click(screen.getByRole('button', { name: 'Show key' }));
