@@ -10,7 +10,9 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0400](T-0400-mobile-kit-catalog-switch-segmented.md) | Mobile kit: Switch in the catalog, SegmentedControl press test | running | auto | — | |
-| [T-0404](T-0404-mobile-switch-on-colors.md) | Mobile kit: Switch ON keeps a light thumb (QA run 32) | planned | auto | — | next mobile slot |
+| [T-0404](T-0404-mobile-switch-on-colors.md) | Mobile kit: Switch ON keeps a light thumb (QA run 32) | running | auto | — | |
+| [T-0405](T-0405-mobile-ai-approvals-states.md) | Mobile: AIs, AI detail and Approvals states on StateMessage | running | auto | — | |
+| [T-0406](T-0406-ui-kit-leftovers-audit.md) | Audit: UI kit leftovers on web and mobile | running | auto | — | docs only |
 
 ## Follow-ups
 
