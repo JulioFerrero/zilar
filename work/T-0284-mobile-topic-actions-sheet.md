@@ -1,7 +1,7 @@
 ---
 id: T-0284
 title: "Mobile kit migration: the topic actions sheet uses the kit ActionSheet"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0284-mobile-topic-actions-sheet
 model: auto
@@ -60,4 +60,40 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**What I did**
+
+- `TopicActionsSheet` renders through the kit `ActionSheet` (`closeLabel="Close topic actions"`), so it no longer renders a `Modal` or owns the dividers. Its glyph tile, title and private `Lock` row are passed as `header`; the lock is now drawn with `MUTED_FOREGROUND[scheme]` (`asColorScheme(useColorScheme().colorScheme)`), not `#8a8a8a`. Every row is an `ActionSheetItem` with the same label, accessibility label and callback; the mute-duration rows keep no indent (no `inset`); "Archive topic for everyone" is `destructive`. `TopicInfoSheet` is untouched.
+- `chat-actions-sheet.tsx`: imported lucide `Users` and gave the "Open group" item `icon={Users}` (QA run 10). `chat-actions-sheet.test.tsx`: added `Users` to the `lucide-react-native` mock.
+- `topic-actions-sheet.test.tsx`: keeps all its assertions. The safe-area and nativewind mocks were already present; I added the `../../lib/utils` `cn` mock to match the T-0283 chat-sheet test.
+
+**Files changed** (all inside the Allowed files)
+
+- `apps/mobile/src/components/chat/topic-sheets.tsx`
+- `apps/mobile/src/components/chat/topic-actions-sheet.test.tsx`
+- `apps/mobile/src/components/chat/chat-actions-sheet.tsx`
+- `apps/mobile/src/components/chat/chat-actions-sheet.test.tsx`
+- `work/T-0284-mobile-topic-actions-sheet.md`
+
+**Commands and results**
+
+- `pnpm install`: finished, no lockfile change (1 peer-dependency warning, pre-existing).
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot topic-actions-sheet topic-sheets chat-actions-sheet`: 3 test files passed, 22 tests passed. The stderr text is the pre-existing `renderToStaticMarkup` DOM warnings from `topic-sheets-roles.test.tsx`, not failures.
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot topic-actions-sheet` (re-run after the last mock edit): 1 file passed, 4 tests passed.
+- `pnpm gate` from the repo root: `gate: 5 changed file(s) against main`; `PASS install (frozen) (2.3s)`, `PASS format (24.5s)`, `PASS lint (1.4s)`, `PASS typecheck (8.8s)`, `PASS tests @zilar/mobile (2.6s)`; scope `every changed file is inside the Allowed files`; ends with `GATE PASS`.
+
+**Deviations**
+
+- The header's `border-b border-divider` now comes from `ActionSheet`'s header wrapper, so the `header` node keeps `px-4 py-3` without its own border (avoids a double divider). Texts and labels are unchanged.
+- Shared `ActionSheetItem` uses `py-3.5` and `active:bg-list-hover`; the mute rows were `py-3` and the old rows used `active:bg-surface-raised`. Same visual token (`list-hover`/`surface-raised` are both `#171717`) and the same accepted change T-0283 made for the chat sheet.
+- With `canArchive` false the Archive row is now the last item, so the kit draws no divider after it (the old hand-rolled sheet always had one). This follows the kit's "divider between items, none after the last" rule.
+
+**Open questions**
+
+- None.
+
 ## Review (written by Claude)
+
+Approved. Clean pre-review, no fix rounds.
+- `TopicActionsSheet` is on the kit `ActionSheet`, and its lock icon uses the muted colour.
+- "Open group" now has the `Users` icon, which fixes the QA run 10 finding.
+- One nit accepted: the doc comment at `topic-sheets.tsx:26-31` still says "no hooks", which is stale. It gets fixed the next time this file is touched.

@@ -1,4 +1,4 @@
-import { Archive, Bell, BellOff, Pin, PinOff } from 'lucide-react-native';
+import { Archive, Bell, BellOff, Pin, PinOff, Users } from 'lucide-react-native';
 
 import { ActionSheet, ActionSheetItem } from '../ui/action-sheet';
 import { MUTE_DURATIONS, type MuteDurationId } from '../../lib/chat-prefs';
@@ -111,6 +111,7 @@ export function ChatActionsSheet({
           accessibilityLabel="Open group"
           disabled={busy}
           onPress={() => onOpenGroup(groupId)}
+          icon={Users}
         />
       ) : null}
     </ActionSheet>

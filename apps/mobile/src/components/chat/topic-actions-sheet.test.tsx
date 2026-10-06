@@ -22,6 +22,10 @@ vi.mock('../ui/text', () => ({
   Text: 'Text',
 }));
 
+vi.mock('../../lib/utils', () => ({
+  cn: (...parts: unknown[]) => parts.filter(Boolean).join(' '),
+}));
+
 vi.mock('./avatar', () => ({
   Avatar: 'Avatar',
 }));

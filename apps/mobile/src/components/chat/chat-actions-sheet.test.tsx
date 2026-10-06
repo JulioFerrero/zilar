@@ -36,6 +36,7 @@ vi.mock('lucide-react-native', () => ({
   BellOff: 'BellOff',
   Pin: 'Pin',
   PinOff: 'PinOff',
+  Users: 'Users',
 }));
 
 interface TestElement {
