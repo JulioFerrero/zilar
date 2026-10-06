@@ -1,9 +1,9 @@
 import * as Clipboard from 'expo-clipboard';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Archive, ChevronLeft, Eye, Link2, Plus, Search, Users } from 'lucide-react-native';
+import { Archive, ChevronLeft, Eye, Link2, Plus, Users } from 'lucide-react-native';
 import { useColorScheme } from 'nativewind';
 import { useEffect, useMemo, useState } from 'react';
-import { FlatList, Pressable, Share, TextInput, View } from 'react-native';
+import { FlatList, Pressable, Share, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { RequireAuth } from '@/auth/RequireAuth';
@@ -25,10 +25,10 @@ import {
 } from '@/components/chat/topic-sheets';
 import { TopicRow } from '@/components/chat/topic-row';
 import { IconButton } from '@/components/ui/icon-button';
+import { SearchField } from '@/components/ui/search-field';
 import { Text } from '@/components/ui/text';
 import { asColorScheme } from '@/lib/color-scheme';
-import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
-import { well } from '@/lib/depth';
+import { ICON } from '@/lib/colors';
 import { DirectoryApiError, type GroupVisibility } from '@/lib/directory-api';
 import { mutedUntilFor } from '@/lib/chat-prefs';
 import type { GroupInviteLink } from '@/lib/invite-links-api';
@@ -529,17 +529,13 @@ function GroupTopics() {
       ) : null}
 
       <View className="flex-row items-center gap-2 px-4 py-2">
-        <View className="h-10 flex-1 flex-row items-center gap-2 rounded-xl px-3" style={well}>
-          <Search size={16} color="#8a8a8a" />
-          <TextInput
-            value={search}
-            onChangeText={setSearch}
-            placeholder="Search topics"
-            placeholderTextColor={MUTED_FOREGROUND[scheme]}
-            accessibilityLabel="Search topics"
-            className="flex-1 text-[15px] text-foreground"
-          />
-        </View>
+        <SearchField
+          containerClassName="flex-1"
+          value={search}
+          onChangeText={setSearch}
+          placeholder="Search topics"
+          accessibilityLabel="Search topics"
+        />
       </View>
 
       <FlatList

@@ -1,7 +1,7 @@
 ---
 id: T-0308
 title: "Mobile kit: SearchField (icon + well + optional clear); group topics search and Explore use it"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0308-mobile-kit-search-field
 model: auto
@@ -84,4 +84,69 @@ The chat list search (`app/(tabs)/index.tsx`) and the Stickers discover search (
 
 ## Report (written by the worker when done)
 
+Done. New kit `SearchField` with tests, catalog entry, and both screens migrated.
+
+What I did:
+- New `apps/mobile/src/components/ui/search-field.tsx`: exports `SearchField`. Props are every
+  `TextInput` prop plus `icon?: LucideIcon` (default `Search`), `onClear?: () => void`,
+  `clearLabel` (default `"Clear search"`), `containerClassName?: string`. Renders a `View` with
+  `cn('h-10 flex-row items-center gap-2 rounded-xl px-3', containerClassName)` + `style={well}`,
+  icon at 16 px in `MUTED_FOREGROUND[scheme]`, `TextInput` with
+  `cn('flex-1 text-[15px] text-foreground', className)` and placeholder defaulting to
+  `MUTED_FOREGROUND[scheme]`, plus a `Pressable` clear button (`accessibilityRole="button"`,
+  `accessibilityLabel={clearLabel}`) with `X` at 16 px only when `onClear` is set and `value`
+  is a non-empty string. Doc comment in the `text-field.tsx` style.
+- `kit.test.tsx`: extended the `lucide-react-native` mock with `Compass`, `Search`, `X`; added
+  `describe('SearchField')` with 3 tests (default placeholder colour, custom icon instead of
+  `Search`, clear button only with `onClear` + non-empty value).
+- `app/dev/kit.tsx`: "Search field" section after "Text field" with a plain one and one with a
+  working clear (local state `search`/`setSearch`, initial `'Try clearing me'`).
+- `app/group/[id].tsx`: topics bar replaced with
+  `<SearchField containerClassName="flex-1" value={search} onChangeText={setSearch}
+  placeholder="Search topics" accessibilityLabel="Search topics" />`. Removed now-unused imports:
+  `Search` (lucide), `TextInput` (react-native), `MUTED_FOREGROUND` (kept `ICON`), `well`
+  (removed the whole `@/lib/depth` line — its only use). `scheme` still used via `ICON[scheme]`.
+- `app/explore.tsx`: bar replaced with `<SearchField icon={Compass} value={query}
+  onChangeText={setQuery} maxLength={100} placeholder="Search by name or @handle"
+  accessibilityLabel="Search public groups and channels" autoCapitalize="none"
+  autoCorrect={false} />`. `Compass` stays imported (used as the `icon` prop). Removed
+  `TextInput`, `MUTED_FOREGROUND` (kept `ICON`), and the `@/lib/depth` line.
+- No changes to the three listed test files: they don't import the group screen as a module
+  (`group-roles-*.test.tsx` read `app/group/[id].tsx` as text / mirror its logic;
+  `handle-route.test.ts` imports only `handle-helpers`), so no new mocks were needed.
+
+Files changed:
+- `apps/mobile/src/components/ui/search-field.tsx` (new)
+- `apps/mobile/src/components/ui/kit.test.tsx`
+- `apps/mobile/src/app/dev/kit.tsx`
+- `apps/mobile/src/app/group/[id].tsx`
+- `apps/mobile/src/app/explore.tsx`
+- `work/T-0308-mobile-kit-search-field.md` (this report)
+
+Commands and real results:
+- `pnpm install`: done, exit 0 (~12 s).
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot kit group-roles handle-route`:
+  5 test files passed, 38 tests passed (the `<View /> is using incorrect casing` lines are
+  pre-existing mock noise, not failures).
+- `pnpm gate` (first run): FAIL on `format` only — my 2 files needed Prettier; fixed with
+  `pnpm exec prettier --write` on those 2 files.
+- `pnpm gate` (final): `PASS install (frozen)`, `PASS format`, `PASS lint`, `PASS typecheck`,
+  `PASS tests @zilar/mobile`, `scope: every changed file is inside the Allowed files`,
+  `GATE PASS`.
+- Verified: no `#8a8a8a` remains in `app/group/[id].tsx` or `app/explore.tsx` (grep hit only the
+  two `SearchField` usages); placeholder texts, labels, `maxLength`, `autoCapitalize`,
+  `autoCorrect` unchanged.
+
+Security checklist: no secrets/tokens touched; no deletes/updates; no caps; no permission
+changes; no new routes; no audit entries. N/A in full — UI-only change.
+
 ## Review (written by Claude)
+
+**Approved.** Clean pre-review (0 nits), no fix rounds (Muse, peak).
+- `SearchField` (`components/ui/search-field.tsx`) is a well row with a muted icon (default `Search`). It shows a clear button only with `onClear` and a non-empty value, and `className` and `containerClassName` merge with `cn`.
+- Kit tests and a catalog section were added.
+- Group topics search and Explore (with `Compass`) use it, and no `#8a8a8a` is left in those bars.
+
+**Still to do:**
+- the chat list search (clear button) and the Stickers discover search, in a follow-up;
+- emulator QA in the next run.

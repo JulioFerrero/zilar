@@ -19,6 +19,7 @@ import { CountBadge } from '@/components/ui/count-badge';
 import { IconButton } from '@/components/ui/icon-button';
 import { IconTile } from '@/components/ui/icon-tile';
 import { ListRow } from '@/components/ui/list-row';
+import { SearchField } from '@/components/ui/search-field';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import { asColorScheme } from '@/lib/color-scheme';
@@ -38,6 +39,7 @@ function KitCatalog() {
   const scheme = asColorScheme(useColorScheme().colorScheme);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [search, setSearch] = useState('Try clearing me');
   return (
     <SafeAreaView className="flex-1 bg-background">
       <ScrollView
@@ -142,6 +144,20 @@ function KitCatalog() {
               accessibilityLabel="Multiline text field"
               multiline
               className="min-h-[100px]"
+            />
+          </View>
+        </View>
+
+        <View className="mt-6 gap-2">
+          <SectionLabel>Search field</SectionLabel>
+          <View className="gap-3">
+            <SearchField placeholder="Search" accessibilityLabel="Sample search" />
+            <SearchField
+              value={search}
+              onChangeText={setSearch}
+              onClear={() => setSearch('')}
+              placeholder="Search"
+              accessibilityLabel="Sample search with clear"
             />
           </View>
         </View>

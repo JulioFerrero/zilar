@@ -1,4 +1,4 @@
-import { Bell } from 'lucide-react-native';
+import { Bell, Compass } from 'lucide-react-native';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
@@ -8,6 +8,7 @@ import { Card, SectionLabel } from './card';
 import { ConfirmDialog } from './confirm-dialog';
 import { CountBadge } from './count-badge';
 import { ListRow } from './list-row';
+import { SearchField } from './search-field';
 import { TextField } from './text-field';
 import { MUTED_FOREGROUND } from '@/lib/colors';
 
@@ -31,6 +32,9 @@ vi.mock('nativewind', () => ({
 vi.mock('lucide-react-native', () => ({
   Bell: 'Bell',
   ChevronRight: 'ChevronRight',
+  Compass: 'Compass',
+  Search: 'Search',
+  X: 'X',
 }));
 
 vi.mock('@/components/ui/text', () => ({
@@ -236,5 +240,32 @@ describe('TextField', () => {
     );
     expect(html).toContain('bg-well');
     expect(html).toContain('flex-1');
+  });
+});
+
+describe('SearchField', () => {
+  it('uses the muted foreground colour for the placeholder by default', () => {
+    const html = renderToStaticMarkup(createElement(SearchField, { placeholder: 'Search' }));
+    expect(html).toContain(MUTED_FOREGROUND.dark);
+  });
+
+  it('renders a custom icon instead of Search', () => {
+    const html = renderToStaticMarkup(
+      createElement(SearchField, { icon: Compass, placeholder: 'Search' }),
+    );
+    expect(html).toContain('<Compass');
+    expect(html).not.toContain('<Search');
+  });
+
+  it('shows the clear button only with onClear and a non-empty value', () => {
+    expect(
+      renderToStaticMarkup(createElement(SearchField, { value: 'hello', onClear: noop })),
+    ).toContain('Clear search');
+    expect(
+      renderToStaticMarkup(createElement(SearchField, { value: '', onClear: noop })),
+    ).not.toContain('Clear search');
+    expect(renderToStaticMarkup(createElement(SearchField, { value: 'hello' }))).not.toContain(
+      'Clear search',
+    );
   });
 });

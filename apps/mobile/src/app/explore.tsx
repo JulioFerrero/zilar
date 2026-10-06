@@ -1,8 +1,9 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { ChevronLeft, Compass, RefreshCw } from 'lucide-react-native';
+
 import { useColorScheme } from 'nativewind';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, TextInput, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { RequireAuth } from '@/auth/RequireAuth';
@@ -15,10 +16,10 @@ import {
 } from '@/components/directory/explore-helpers';
 import { useDirectoryApi } from '@/components/directory/use-directory-api';
 import { IconButton } from '@/components/ui/icon-button';
+import { SearchField } from '@/components/ui/search-field';
 import { Text } from '@/components/ui/text';
 import { asColorScheme } from '@/lib/color-scheme';
-import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
-import { well } from '@/lib/depth';
+import { ICON } from '@/lib/colors';
 import type { DirectoryEntry, DirectoryKind } from '@/lib/directory-api';
 import { postJoinTarget } from '@/components/directory/handle-helpers';
 import { useChatStore } from '@/store/chat-store-provider';
@@ -196,20 +197,16 @@ function ExploreList() {
       </View>
 
       <View className="px-4 pt-3">
-        <View className="h-10 flex-row items-center gap-2 rounded-xl px-3" style={well}>
-          <Compass size={16} color="#8a8a8a" />
-          <TextInput
-            value={query}
-            onChangeText={setQuery}
-            maxLength={100}
-            placeholder="Search by name or @handle"
-            placeholderTextColor={MUTED_FOREGROUND[scheme]}
-            accessibilityLabel="Search public groups and channels"
-            autoCapitalize="none"
-            autoCorrect={false}
-            className="flex-1 text-[15px] text-foreground"
-          />
-        </View>
+        <SearchField
+          icon={Compass}
+          value={query}
+          onChangeText={setQuery}
+          maxLength={100}
+          placeholder="Search by name or @handle"
+          accessibilityLabel="Search public groups and channels"
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
         <View
           accessibilityRole="radiogroup"
           accessibilityLabel="Kind filter"
