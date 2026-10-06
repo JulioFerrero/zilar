@@ -19,6 +19,7 @@ import {
   type AiFormState,
 } from './aiForm';
 import { Dialog } from '../ui/dialog';
+import { TextArea, TextInput } from '../ui/text-input';
 import { cn } from '@/lib/utils';
 
 type DialogStatus = 'loading' | 'ready' | 'unavailable' | 'error';
@@ -217,14 +218,13 @@ export function NewAiDialog({ onClose }: { onClose: () => void }) {
           <div className="flex flex-col gap-4">
             <label className="flex flex-col gap-1">
               <span className="text-[14px] font-medium">Name</span>
-              <input
+              <TextInput
                 autoFocus
                 aria-label="Name"
                 value={name}
                 maxLength={64}
                 onChange={(event) => setName(event.target.value)}
                 placeholder="Dev-1"
-                className="rounded-lg border border-input bg-background px-3 py-2 text-[15px] outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40"
               />
             </label>
 
@@ -302,7 +302,7 @@ export function NewAiDialog({ onClose }: { onClose: () => void }) {
 
                   <label className="flex flex-col gap-1">
                     <span className="text-[14px] font-medium">Persona</span>
-                    <textarea
+                    <TextArea
                       aria-label="Persona"
                       rows={5}
                       maxLength={4000}
@@ -312,7 +312,7 @@ export function NewAiDialog({ onClose }: { onClose: () => void }) {
                         setPersonaTouched(true);
                       }}
                       placeholder="Describe how this AI should behave…"
-                      className="rounded-lg border border-input bg-background px-3 py-2 text-[15px] outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40"
+                      className="min-h-0"
                     />
                   </label>
 

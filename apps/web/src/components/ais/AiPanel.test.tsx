@@ -272,6 +272,7 @@ describe('AiPanel', () => {
     // The usage block sits above the per-day/per-month fields.
     const usageHeading = screen.getByText('Usage');
     const dayField = screen.getByLabelText('Per day amount');
+    expect(dayField.className).toContain('well-surface');
     expect(usageHeading.compareDocumentPosition(dayField)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 

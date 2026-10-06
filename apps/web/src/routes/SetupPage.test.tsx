@@ -76,6 +76,7 @@ describe('SetupPage (T-0161)', () => {
 
     // Step 1: email only — no key field yet.
     await waitFor(() => expect(screen.getByLabelText('Admin email')).toBeTruthy());
+    expect(screen.getByLabelText('Admin email').className).toContain('well-surface');
     expect(screen.queryByLabelText('Resend API key')).toBeNull();
     expect(screen.getByRole('button', { name: 'Next' }).getAttribute('data-slot')).toBe('button');
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));

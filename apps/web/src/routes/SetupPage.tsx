@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Navigate } from 'react-router';
 import { AuthFlow } from '@/components/auth/AuthFlow';
 import { Button } from '@/components/ui/button';
+import { TextInput } from '@/components/ui/text-input';
 import { ApiError, getSetupStatus, postSetup } from '@/lib/api';
 
 function isEmailValid(email: string): boolean {
@@ -9,9 +10,6 @@ function isEmailValid(email: string): boolean {
 }
 
 const DEFAULT_FROM = 'Zilar <onboarding@resend.dev>';
-
-const inputClassName =
-  'rounded-lg border border-input bg-background px-3 py-2 text-[15px] outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40';
 
 /**
  * First-run setup (T-0161) in three steps. Step 1 asks for the admin
@@ -161,17 +159,14 @@ export function SetupPage() {
 
         {step === 1 ? (
           <form onSubmit={submitEmail} className="mt-6 flex flex-col gap-3">
-            <label className="text-[14px] font-medium" htmlFor="setup-admin-email">
-              Admin email
-            </label>
-            <input
+            <TextInput
               id="setup-admin-email"
+              label="Admin email"
               type="email"
               autoComplete="email"
               value={adminEmail}
               onChange={(event) => setAdminEmail(event.target.value)}
               placeholder="you@example.com"
-              className={inputClassName}
             />
             {error !== undefined && (
               <p role="alert" className="text-[14px] text-danger">
@@ -184,37 +179,26 @@ export function SetupPage() {
           </form>
         ) : (
           <form onSubmit={submitSetup} className="mt-6 flex flex-col gap-3">
-            <label className="text-[14px] font-medium" htmlFor="setup-resend-key">
-              Resend API key
-            </label>
-            <input
+            <TextInput
               id="setup-resend-key"
+              label="Resend API key"
+              hint="Create one at resend.com/api-keys."
               type="password"
               autoComplete="off"
               value={resendApiKey}
               onChange={(event) => setResendApiKey(event.target.value)}
               placeholder="re_…"
-              className={inputClassName}
             />
-            <p className="-mt-1 text-[13px] text-muted-foreground">
-              Create one at resend.com/api-keys.
-            </p>
 
-            <label className="text-[14px] font-medium" htmlFor="setup-from">
-              From address
-            </label>
-            <input
+            <TextInput
               id="setup-from"
+              label="From address"
+              hint="This address works for testing and sends only to the email of your own Resend account; once your domain is verified in Resend, use an address on that domain."
               type="text"
               autoComplete="email"
               value={from}
               onChange={(event) => setFrom(event.target.value)}
-              className={inputClassName}
             />
-            <p className="-mt-1 text-[13px] text-muted-foreground">
-              This address works for testing and sends only to the email of your own Resend account;
-              once your domain is verified in Resend, use an address on that domain.
-            </p>
 
             {error !== undefined && (
               <p role="alert" className="text-[14px] text-danger">

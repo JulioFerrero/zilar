@@ -1,7 +1,7 @@
 ---
 id: T-0293
 title: "Web kit migration 16: setup, new-AI, AI panel and spending-limit fields use the kit TextInput / TextArea"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0293-web-kit-text-input-4
 model: auto
@@ -71,4 +71,58 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- `apps/web/src/routes/SetupPage.tsx`: imported `TextInput`, deleted the now-unused `inputClassName`.
+  - "Admin email", "Resend API key" and "From address" each became a single `<TextInput id label …>` (the hand-rolled `<label>` + `<input>` pairs are gone). Kept `type`, `autoComplete`, `value`, `onChange`, `placeholder`.
+  - The two help paragraphs moved into the kit `hint` prop, which preserves the exact same sentences ("Create one at resend.com/api-keys." and the long From-address note). No `<p>` left for them.
+- `apps/web/src/components/ais/NewAiDialog.tsx`: imported `TextInput`/`TextArea`; replaced the `Name` `<input>` (kept the wrapping `<label>`, `autoFocus`, `aria-label`, `maxLength={64}`, `value`, `onChange`, `placeholder`) and the `Persona` `<textarea>` (`rows={5}`, `maxLength={4000}`, handler, placeholder, `className="min-h-0"`). Dropped the old hand-rolled class string.
+- `apps/web/src/components/ais/AiPanel.tsx`: same replacement for `Name` (`maxLength={64}`, `markEdited` handler) and `Persona` (`rows={10}`, `maxLength={4000}`, `className="min-h-0"`), keeping the wrapping labels and `aria-label`s.
+- `apps/web/src/components/ais/LimitsFields.tsx`: imported `TextInput`; the "Per day amount" / "Per month amount" fields became `TextInput` with `inputMode="decimal"`, `className="w-32"` (tailwind-merge drops the kit `w-full`); the `$` span, wrapping labels and `FieldError`s stay.
+- Tests: added one `well-surface` assertion per file — `SetupPage.test.tsx` on "Admin email", `NewAiDialog.test.tsx` on "Name", `AiPanel.test.tsx` on "Per day amount". No other assertion needed changing.
+
+### Files changed
+- `apps/web/src/routes/SetupPage.tsx`
+- `apps/web/src/routes/SetupPage.test.tsx`
+- `apps/web/src/components/ais/NewAiDialog.tsx`
+- `apps/web/src/components/ais/NewAiDialog.test.tsx`
+- `apps/web/src/components/ais/AiPanel.tsx`
+- `apps/web/src/components/ais/AiPanel.test.tsx`
+- `apps/web/src/components/ais/LimitsFields.tsx`
+- `work/T-0293-web-kit-text-input-4.md` (status/Report)
+
+### Commands and real results
+- `pnpm install` → Done, exit 0.
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot SetupPage NewAiDialog AiPanel` → `Test Files 3 passed (3)`, `Tests 51 passed (51)`, exit 0.
+- `pnpm gate` (repo root) summary lines:
+  ```
+  gate: 8 changed file(s) against main
+  PASS  install (frozen)  (1.0s)
+  PASS  format  (23.3s)
+  PASS  lint  (1.0s)
+  PASS  typecheck  (11.0s)
+  PASS  tests @zilar/web  (23.5s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Acceptance
+- No raw `<input>` or `<textarea>` remains in the four files. Verified by grep over the four files (only the kit's own file matches now).
+- Ids, accessible names, texts and behaviour are unchanged: SetupPage keeps `id`s `setup-admin-email`/`setup-resend-key`/`setup-from` (now via the kit `label` prop, so the existing `getByLabelText` tests pass); NewAiDialog/AiPanel/LimitsFields keep their `aria-label`s and handlers; the 51 focused tests pass.
+- `pnpm gate` ends with `GATE PASS` and lists no file outside the Allowed list.
+
+### Problems / deviations
+- Spec item 1 said to put the help paragraphs in the kit `hint` "only if that keeps the same text". The text is identical, so I moved both into `hint` and dropped the `-mt-1 text-[13px] text-muted-foreground` `<p>`s. Visually the hint now sits inside the kit's field wrapper (`text-[12px]`) instead of as a form-level paragraph; the sentences are unchanged.
+- As in T-0291/T-0292, the kit input now supplies `well-surface`, `text-sm` and the accent focus ring instead of the old `text-[15px]` / `border-input` hand-rolled styling; accepted as the point of the migration.
+
+### Blocked / needs a decision
+- None.
+
 ## Review (written by Claude)
+
+**Approved.** The pre-review was clean (0 nits), with no fix rounds.
+- No raw text field is left in the four files.
+- SetupPage uses the kit label.
+- The AI fields keep their wrapping labels (bare kit fields since T-0292).
+- LimitsFields keeps `w-32`.
+
+**Merge timing:** the lead held this merge until CI finished on the tip, so the images workflow could build once.
