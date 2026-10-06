@@ -8,6 +8,7 @@ import {
   type StickerPack,
 } from '@/lib/api';
 import { formatStickerSize, prepareStickerImage, PrepError } from '@/lib/sticker-images';
+import { ChevronDown, ChevronUp, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { SegmentedControl } from '@/components/ui/segmented-control';
@@ -589,7 +590,7 @@ export function PackEditor({
                   onClick={() => moveItem(item.key, -1)}
                   className="rounded-md px-2 py-1 text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40"
                 >
-                  ↑
+                  <ChevronUp className="size-4" aria-hidden="true" />
                 </button>
                 <button
                   type="button"
@@ -598,7 +599,7 @@ export function PackEditor({
                   onClick={() => moveItem(item.key, 1)}
                   className="rounded-md px-2 py-1 text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40"
                 >
-                  ↓
+                  <ChevronDown className="size-4" aria-hidden="true" />
                 </button>
                 {item.status === 'error' && item.blob !== undefined ? (
                   <button
@@ -617,7 +618,7 @@ export function PackEditor({
                   onClick={() => removeItem(item.key)}
                   className="rounded-md px-2 py-1 text-[13px] text-muted-foreground hover:bg-danger/10 hover:text-danger disabled:opacity-40"
                 >
-                  ✕
+                  <X className="size-4" aria-hidden="true" />
                 </button>
               </span>
             </li>

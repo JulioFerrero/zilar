@@ -45,6 +45,43 @@ describe('SegmentedControl radio mode', () => {
     expect(onChange).toHaveBeenCalledWith('groups');
   });
 
+  it('clicking the active option does not call onChange, clicking another does', () => {
+    const onChange = vi.fn();
+    render(
+      <SegmentedControl
+        mode="radio"
+        ariaLabel="Kind filter"
+        options={OPTIONS}
+        value="all"
+        onChange={onChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('radio', { name: 'All' }));
+    expect(onChange).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('radio', { name: 'Groups' }));
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenCalledWith('groups');
+  });
+
+  it('Home on the first option does not call onChange', () => {
+    const onChange = vi.fn();
+    render(
+      <SegmentedControl
+        mode="radio"
+        ariaLabel="Kind filter"
+        options={OPTIONS}
+        value="all"
+        onChange={onChange}
+      />,
+    );
+
+    fireEvent.keyDown(screen.getByRole('radio', { name: 'All' }), {
+      key: 'Home',
+    });
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   it('tabs mode still exposes tab roles', () => {
     render(
       <SegmentedControl

@@ -49,7 +49,9 @@ export function SegmentedControl({
     if (option === undefined) {
       return;
     }
-    onChange(option.value);
+    if (option.value !== value) {
+      onChange(option.value);
+    }
     optionRefs.current[next]?.focus();
   };
 
@@ -73,7 +75,11 @@ export function SegmentedControl({
             role={isRadio ? 'radio' : 'tab'}
             {...(isRadio ? { 'aria-checked': active } : { 'aria-selected': active })}
             tabIndex={active ? 0 : -1}
-            onClick={() => onChange(option.value)}
+            onClick={() => {
+              if (option.value !== value) {
+                onChange(option.value);
+              }
+            }}
             onKeyDown={(event) => move(event, index)}
             className={cn(
               'flex h-[30px] flex-1 items-center justify-center gap-1.5 rounded-[7px] px-3 text-[13px] font-medium transition-colors',

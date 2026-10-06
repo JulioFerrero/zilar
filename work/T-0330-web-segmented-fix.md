@@ -1,7 +1,7 @@
 ---
 id: T-0330
 title: "Web kit: SegmentedControl ignores clicks on the active option; PackEditor glyph buttons become icons"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0330-web-segmented-fix
 model: auto
@@ -65,4 +65,13 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+- `apps/web/src/components/ui/segmented-control.tsx`: `onClick` now skips `onChange` when the clicked option equals `value`; `move` skips `onChange` when the target equals `value` but always moves focus.
+- `apps/web/src/components/ui/segmented-control.test.tsx`: added test that clicking the active option does not call `onChange` while clicking another does (called once with 'groups'); added test that Home on the first option does not call `onChange`.
+- `apps/web/src/components/PackEditor.tsx`: replaced `↑`/`↓`/`✕` glyphs with lucide `ChevronUp`/`ChevronDown`/`X` (`className="size-4" aria-hidden="true"`); added the lucide import. Button classes, labels, `disabled`, handlers unchanged. Grep for `[↑↓✕]` in PackEditor.tsx: no matches.
+- Checks: `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot segmented-control kit PackEditor NewGroupDialog VisibilitySection ExplorePage` — 6 files, 88 tests, all passed. `pnpm gate` — GATE PASS (install PASS, format PASS, lint PASS, typecheck PASS, tests @zilar/web PASS; scope: every changed file inside the Allowed files; 4 changed files against main).
+- Security checklist: no secrets/tokens; no deletes/updates touched; no caps/uniqueness; no permission changes (presentational + no-op-on-reselect change only); no new routes; no audit entries.
+- No deviations from the spec; no open questions.
+
 ## Review (written by Claude)
+
+**Approved** (pre-review clean, 0 nits). `SegmentedControl` calls `onChange` only when the target option differs from `value`, both on click and on Arrow, Home and End; keyboard focus still moves. New tests prove that a re-click and Home on the first option are no-ops. This fixes the handle check resetting when the active Public option was clicked again (New group, group panel). PackEditor's move and remove buttons draw ChevronUp, ChevronDown and X instead of glyphs.
