@@ -32,9 +32,9 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 Time correction (checked with `date`): it is 04:42 local, Tue 10-06. The "~04:xx–05:50 local" stamps below were estimated and run up to about an hour ahead; their order is right.
 
-05:00 local: launched T-0323 (Checkbox) and T-0324 (SegmentedControl radio mode). The free Muse is still rate-limited, so the workers run on the paid fallback.
+04:48 local: launched T-0323 (Checkbox) and T-0324 (SegmentedControl radio mode). The free Muse is still rate-limited, so the workers run on the paid fallback.
 
-04:50 local: launched T-0321 (Badge) and T-0322 (StateMessage), the next web kit adoptions. Neither kit piece had app users before (StateMessage had 3).
+04:45 local: launched T-0321 (Badge) and T-0322 (StateMessage), the next web kit adoptions. Neither kit piece had app users before (StateMessage had 3).
 
 04:42 local: merged T-0320, after a lead fix round: the regression test threw inside a listener, which jsdom swallows; it now uses a spy plus a control test. No hand-rolled web menus are left. Bug fixed: on narrow screens, Escape in the chat header or task strip menus used to leave the chat.
 
