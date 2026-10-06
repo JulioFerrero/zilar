@@ -1,7 +1,7 @@
 ---
 id: T-0325
 title: "Web kit migration: Stickers page states on StateMessage, raw pill buttons on Button"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0325-web-stickers-kit
 model: auto
@@ -59,4 +59,12 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+- Loading state is `<StateMessage kind="loading" title="Loading…" />`; error state is `<StateMessage kind="error" title={error} action={{ label: 'Retry', onClick: () => void load() }} />`. Handlers and texts unchanged.
+- "Import from Telegram" is now `<Button type="button" variant="outline" size="default">`; both "Remove" actions (My packs row in "Packs I added" and Discover row) are now `<Button type="button" variant="outline" size="sm" className="shrink-0">`. The spec named one "Remove" but the same raw pill markup existed in both rows with the same handler, so I converted both; remaining raw `<button>`s are move up/down, Share/Make private, Edit, Remove from panel, Delete, and the Unfavorite star, all out of scope.
+- Files changed: `apps/web/src/routes/StickersPage.tsx`, `work/T-0325-web-stickers-kit.md`.
+- Checks: `pnpm install` ok (12.8s); `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot StickersPage`: 1 file, 12 tests passed, `StickersPage.test.tsx` unchanged. First `pnpm gate` failed on format (Prettier flagged StickersPage.tsx); fixed with `prettier --write` on that file only. Final `pnpm gate`: PASS install (1.2s), format (14.4s), lint (1.0s), typecheck (7.5s), tests @zilar/web (17.7s); scope ok; GATE PASS.
+- Security checklist: no secrets touched, no routes/permissions/caps/audit changes (UI-only); N/A.
+
 ## Review (written by Claude)
+
+**Approved** (pre-review clean, 0 nits). The Stickers page loading and error states use `StateMessage`. "Import from Telegram" and the Remove buttons are kit `Button variant="outline"`. The worker also converted the identical Remove button in My packs, which matches the spec's intent. `StickersPage.test.tsx` passes unchanged.

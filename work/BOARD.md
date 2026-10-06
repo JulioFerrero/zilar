@@ -10,7 +10,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0326](T-0326-web-segmented-2.md) | Web kit: New group and sticker pack visibility on SegmentedControl | in-progress | auto | T-0324 | last raw radios |
-| [T-0325](T-0325-web-stickers-kit.md) | Web kit: Stickers page states and pill buttons | in-progress | auto | none | |
 
 ## Follow-ups
 
@@ -355,3 +354,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0322](T-0322-web-state-message.md) | Web kit: AIs, Connections and Machines page states on StateMessage | 2026-10-06 |
 | [T-0324](T-0324-web-segmented.md) | Web kit: SegmentedControl radio mode for the Explore filter and group Visibility | 2026-10-06 |
 | [T-0323](T-0323-web-checkbox.md) | Web kit: Checkbox for the group, topic, roles and folder pickers | 2026-10-06 |
+| [T-0325](T-0325-web-stickers-kit.md) | Web kit: Stickers page states on StateMessage and pill buttons on Button | 2026-10-06 |
