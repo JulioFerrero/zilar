@@ -54,9 +54,22 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0342 | Web kit: New topic "Who can see it" on SegmentedControl (radio) | coding (DeepSeek flash) | QA run 25 (T-0339 to T-0341) on the emulator |
+| (none) | | | |
 
 Time correction (checked with `date`): it is 04:42 local, Tue 10-06. The "~04:xx–05:50 local" stamps below were estimated and run up to about an hour ahead; their order is right.
+
+07:25 local: merged T-0342 (web New topic visibility on SegmentedControl; 1 a11y nit, polish only).
+
+QA run 25 (qa25/; the lead saw 14.png), no crash:
+- **PASS:**
+  - "Remove this pack?" and the Integrations "Remove" confirm are the kit ConfirmDialog;
+  - the Add machine dialog has the bordered card and kit buttons, with a dark Copy icon and a dark "Copied" check.
+- **Not reachable in mock:**
+  - "Delete this pack?" and "Discard changes?": mock owned-pack rows are not tappable;
+  - the T-0341 empty states: the mock lists are not empty.
+- **New pack, back after typing only a name:** no prompt. That is by design: for a new pack, `changed` counts only ready stickers (`sticker-pack.tsx:187-188`).
+
+Phone marker b45684f1 (lead checked).
 
 07:15 local: merged T-0341 (clean). QA run 25 sent (qa25/) for the settings confirms, the Add machine dialog and the Plus icons.
 
