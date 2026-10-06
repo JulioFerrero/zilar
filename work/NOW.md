@@ -24,12 +24,13 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0322 | Web kit: AIs, Connections, Machines page states on StateMessage | coding (Muse, peak) | StateMessage gains an `icon` prop |
-| T-0323 | Web kit: Checkbox for the pickers (folder editor look) | coding (paid Muse fallback) | 6 checkboxes in 4 files |
-| T-0324 | Web kit: SegmentedControl radio mode (Explore filter, group Visibility) | coding | NewGroupDialog's switch waits for T-0323 |
+| T-0325 | Web kit: Stickers page states and pill buttons | coding (paid Muse fallback) | StickersPage only |
+| T-0326 | Web kit: New group and sticker pack visibility on SegmentedControl | coding | the last raw radios on web |
 | (doctor) | | | audit running (paid Muse fallback) |
 
 Time correction (checked with `date`): it is 04:42 local, Tue 10-06. The "~04:xx–05:50 local" stamps below were estimated and run up to about an hour ahead; their order is right.
+
+04:59 local: merged T-0322 (page states on StateMessage), T-0324 (SegmentedControl radio mode: Explore filter, group Visibility) and T-0323 (kit Checkbox; 1 nit accepted), all with clean pre-reviews. Launched T-0325 and T-0326.
 
 04:54 local: merged T-0321 (unread pills on the kit Badge; pre-review clean, 0 nits). Board rows need the `[T-XXXX](file.md)` link format, or `lead merge` refuses.
 
