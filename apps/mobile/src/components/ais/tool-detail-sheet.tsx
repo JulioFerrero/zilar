@@ -111,15 +111,17 @@ function RunRow({
             {expanded ? (run.outputText ?? '') : cut.preview}
           </Text>
           {cut.truncated ? (
-            <Pressable
-              accessibilityRole="button"
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 self-start px-0"
               accessibilityLabel={expanded ? 'Show less' : 'Show all'}
               onPress={onToggleOutput}
             >
               <Text className="text-[13px] text-foreground">
                 {expanded ? 'Show less' : 'Show all'}
               </Text>
-            </Pressable>
+            </Button>
           ) : null}
         </View>
       ) : null}
@@ -152,15 +154,17 @@ function RunResultBlock({
           {expanded ? text : cut.preview}
         </Text>
         {cut.truncated ? (
-          <Pressable
-            accessibilityRole="button"
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 self-start px-0"
             accessibilityLabel={expanded ? 'Show less' : 'Show all'}
             onPress={onToggle}
           >
             <Text className="text-[13px] text-foreground">
               {expanded ? 'Show less' : 'Show all'}
             </Text>
-          </Pressable>
+          </Button>
         ) : null}
       </View>
     );
@@ -175,13 +179,15 @@ function RunResultBlock({
         {expanded ? result.output.text : cut.preview}
       </Text>
       {cut.truncated ? (
-        <Pressable
-          accessibilityRole="button"
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 self-start px-0"
           accessibilityLabel={expanded ? 'Show less' : 'Show all'}
           onPress={onToggle}
         >
           <Text className="text-[13px] text-foreground">{expanded ? 'Show less' : 'Show all'}</Text>
-        </Pressable>
+        </Button>
       ) : null}
     </View>
   );
@@ -725,14 +731,15 @@ function ToolDetailLoader({
         <Text numberOfLines={1} className="min-w-0 flex-1 text-[16px] font-semibold">
           {loaded?.tool.name ?? 'Tool'}
         </Text>
-        <Pressable
-          accessibilityRole="button"
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-9 w-9"
           accessibilityLabel="Close tool"
           onPress={onClose}
-          className="p-2 active:bg-list-hover"
         >
           <X size={20} color={MUTED_FOREGROUND[scheme]} />
-        </Pressable>
+        </Button>
       </View>
       <ScrollView
         className="flex-1 py-2"

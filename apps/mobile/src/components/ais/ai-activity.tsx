@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
 import { RefreshCw } from 'lucide-react-native';
 
 import { useColorScheme } from 'nativewind';
@@ -148,14 +148,15 @@ export function AiActivityHeader({ ready, onRefresh }: { ready: boolean; onRefre
     <View className="flex-row items-center justify-between">
       <Text className="px-2 text-[13px] font-semibold text-muted-foreground">Activity</Text>
       {ready ? (
-        <Pressable
-          accessibilityRole="button"
+        <Button
+          variant="ghost"
+          size="icon"
+          className="mr-2 h-7 w-7 rounded-full"
           accessibilityLabel="Refresh activity"
           onPress={onRefresh}
-          className="mr-2 size-7 items-center justify-center rounded-full"
         >
           <RefreshCw size={16} color={ICON[scheme]} />
-        </Pressable>
+        </Button>
       ) : null}
     </View>
   );
