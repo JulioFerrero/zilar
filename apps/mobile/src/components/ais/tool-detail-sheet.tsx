@@ -5,6 +5,7 @@ import { X } from 'lucide-react-native';
 import { useColorScheme } from 'nativewind';
 
 import { Button } from '@/components/ui/button';
+import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import { asColorScheme } from '@/lib/color-scheme';
@@ -286,7 +287,7 @@ export function ToolDetailBody({
           Version history
         </Text>
         {versions.length === 0 ? (
-          <Text className="px-2 text-[13px] text-muted-foreground">No versions yet.</Text>
+          <StateMessage kind="empty" size="inline" title="No versions yet." />
         ) : null}
         {versions.map((version) => {
           const confirming = state.confirmingRevert === version.version;
@@ -404,7 +405,7 @@ export function ToolDetailBody({
       <View accessibilityLabel="Recent runs" className="gap-1">
         <Text className="px-2 text-[13px] font-semibold text-muted-foreground">Recent runs</Text>
         {runs.length === 0 ? (
-          <Text className="px-2 text-[13px] text-muted-foreground">No runs yet.</Text>
+          <StateMessage kind="empty" size="inline" title="No runs yet." />
         ) : null}
         {runs.map((run) => (
           <RunRow

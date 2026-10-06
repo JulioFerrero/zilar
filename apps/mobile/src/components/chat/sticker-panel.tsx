@@ -178,9 +178,7 @@ export function StickerGrid({
         </View>
       ) : choices.length === 0 ? (
         <View className="h-[180px] items-center justify-center px-4">
-          <Text className="text-center text-[13px] text-muted-foreground">
-            No stickers here yet.
-          </Text>
+          <StateMessage kind="empty" title="No stickers here yet." />
         </View>
       ) : (
         <ScrollView

@@ -1,7 +1,7 @@
 ---
 id: T-0423
 title: "Mobile kit: the empty chat, the tool versions and runs lists, and the empty sticker pack use StateMessage"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0423-mobile-list-empty-lines
 model: auto
@@ -63,4 +63,67 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+Applied the table in the Spec:
+- `apps/mobile/src/components/chat/message-list.tsx`: kept the centering `View`
+  (`flex-1 items-center justify-center p-8`), replaced its `Text` child with
+  `<StateMessage kind="empty" title="No messages yet" />`. Added the
+  `StateMessage` import and removed the now-unused `Text` import (its only use
+  in the file was this line).
+- `apps/mobile/src/components/ais/tool-detail-sheet.tsx`: the version-history
+  and recent-runs empty lines are now
+  `<StateMessage kind="empty" size="inline" title="No versions yet." />` and
+  `<StateMessage kind="empty" size="inline" title="No runs yet." />`. Added the
+  `StateMessage` import (`Text` is still used elsewhere in the file, so it
+  stays).
+- `apps/mobile/src/components/chat/sticker-panel.tsx`: kept the
+  `h-[180px]` `View`, replaced its `Text` child with
+  `<StateMessage kind="empty" title="No stickers here yet." />`. The
+  `StateMessage` import was already present from T-0393.
+
+Mocks: `tool-detail-sheet.test.tsx` is the only test that needed new mocks.
+Added `ActivityIndicator: 'ActivityIndicator'` to the `react-native` mock and
+`CircleAlert`/`Inbox` to the `lucide-react-native` mock, matching
+`tools-section.test.tsx`. `sticker-panel.test.tsx` already had all the
+`StateMessage` mocks from T-0393. `message-list.test.tsx` does not import
+`message-list.tsx` (it only tests `filterBlockedMessages` from
+`@/lib/blocked-users`), so it needed no mock. No assertion was changed in any
+test. No test outside the Allowed files imports `message-list.tsx`, so nothing
+broke.
+
+### Files changed
+- `apps/mobile/src/components/chat/message-list.tsx`
+- `apps/mobile/src/components/ais/tool-detail-sheet.tsx`
+- `apps/mobile/src/components/chat/sticker-panel.tsx`
+- `apps/mobile/src/components/ais/tool-detail-sheet.test.tsx`
+- `work/T-0423-mobile-list-empty-lines.md`
+
+### Commands and real results
+- `pnpm install`: completed, exit 0.
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot message-list tool-detail-sheet sticker-panel`:
+  `Test Files 3 passed (3)`, `Tests 37 passed (37)`. (The stderr output is the
+  pre-existing "incorrect casing" React warnings from the string component
+  mocks; no failures.)
+- `pnpm gate` (from repo root) summary:
+  ```
+  gate: 5 changed file(s) against main
+  PASS  install (frozen)  (1.4s)
+  PASS  format  (20.3s)
+  PASS  lint  (1.9s)
+  PASS  typecheck  (11.4s)
+  PASS  tests @zilar/mobile  (4.1s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Deviations / notes
+- None from the Spec. One extra change beyond the table row: removed the
+  unused `Text` import in `message-list.tsx` (required for lint; its only use
+  was the replaced line). This is inside the Allowed files.
+- Security checklist: no secrets, no routes, no deletes/updates, no logging
+  changes — this is a pure UI-copy change, so the checklist items are not
+  applicable.
+
 ## Review (written by Claude)
+
+**2026-10-06, lead:** approved. The pre-review was clean. The four places are empty StateMessages with the same texts. The chat and sticker-panel wrappers are kept; the tool lists are inline.

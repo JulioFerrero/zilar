@@ -13,7 +13,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0414](T-0414-web-forward-store-action.md) | Forwarding step 3 (web store): forwardMessages action | running | auto | T-0409 | |
 | [T-0424](T-0424-mobile-stickers-machines-empty.md) | Mobile: Stickers and Machines empty states on StateMessage | running | auto | — | |
 | [T-0422](T-0422-mobile-sheet-empty-lines.md) | Mobile: topic, invite links, roles sheets empty lines | running | auto | — | |
-| [T-0423](T-0423-mobile-list-empty-lines.md) | Mobile: empty chat, tool versions/runs, empty sticker pack | running | auto | — | |
 
 ## Follow-ups
 
@@ -452,3 +451,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0418](T-0418-mobile-settings-states-c.md) | Mobile: Profile settings, Discover, sticker pack and Add machine states on StateMessage | 2026-10-06 |
 | [T-0420](T-0420-mobile-empty-lines-kit.md) | Mobile: AI sections, Connections, Folders and Explore empty lines on StateMessage | 2026-10-06 |
 | [T-0421](T-0421-mobile-revoked-chevron.md) | Mobile: Revoked machines disclosure shows a chevron and expanded state | 2026-10-06 |
+| [T-0423](T-0423-mobile-list-empty-lines.md) | Mobile: empty chat, tool versions/runs and empty sticker pack on StateMessage | 2026-10-06 |
