@@ -1,9 +1,10 @@
 import { useRouter } from 'expo-router';
-import { Plus } from 'lucide-react-native';
+import { Compass, Link, Megaphone, MessageSquarePlus, Plus, Users } from 'lucide-react-native';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Share } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { ActionSheet, ActionSheetItem } from '@/components/ui/action-sheet';
 import { createErrorText } from '@/components/chat/visibility-fields';
 import { InviteSheet } from '@/components/chat/invite-sheet';
 import { JoinLinkForm } from '@/components/chat/join-link';
@@ -13,7 +14,6 @@ import { NewMessageSheet } from '@/components/chat/new-message-sheet';
 import { createInvitesApi } from '@/lib/invites-api';
 import { getSessionToken } from '@/lib/session-token';
 import { useKeyboardHeight } from '@/lib/use-keyboard-height';
-import { Text } from '@/components/ui/text';
 import { useKeyPress } from '@/components/ui/use-key-press';
 import { ACCENT_FOREGROUND, KEY_PRIMARY_PRESSED_SHADOW, pressStyle, primaryKey } from '@/lib/depth';
 import { useChatStore } from '@/store/chat-store-provider';
@@ -167,67 +167,33 @@ export function NewChatButton() {
         <Plus size={24} color={ACCENT_FOREGROUND} />
       </Pressable>
 
-      <Modal
+      <ActionSheet
         visible={menuOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setMenuOpen(false)}
+        onClose={() => setMenuOpen(false)}
+        closeLabel="Close new chat menu"
       >
-        <Pressable
-          accessibilityLabel="Close new chat menu"
-          onPress={() => setMenuOpen(false)}
-          className="flex-1 justify-end bg-black/40 px-2 pb-4"
-        >
-          <Pressable
-            onPress={() => {}}
-            className="overflow-hidden rounded-2xl border border-border-strong bg-surface"
-          >
-            <Pressable
-              accessibilityRole="menuitem"
-              accessibilityLabel="New channel"
-              onPress={() => openDialog('channel')}
-              className="border-b border-divider px-4 py-3.5 active:bg-surface-raised"
-            >
-              <Text className="text-[16px] text-foreground">New channel</Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="menuitem"
-              accessibilityLabel="New group"
-              onPress={() => openDialog('group')}
-              className="border-b border-divider px-4 py-3.5 active:bg-surface-raised"
-            >
-              <Text className="text-[16px] text-foreground">New group</Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="menuitem"
-              accessibilityLabel="New message"
-              onPress={() => openDialog('message')}
-              className="border-b border-divider px-4 py-3.5 active:bg-surface-raised"
-            >
-              <Text className="text-[16px] text-foreground">New message</Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="menuitem"
-              accessibilityLabel="Explore public groups"
-              onPress={() => {
-                setMenuOpen(false);
-                router.push('/explore');
-              }}
-              className="border-b border-divider px-4 py-3.5 active:bg-surface-raised"
-            >
-              <Text className="text-[16px] text-foreground">Explore</Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="menuitem"
-              accessibilityLabel="Join with a link"
-              onPress={() => openDialog('join')}
-              className="px-4 py-3.5 active:bg-surface-raised"
-            >
-              <Text className="text-[16px] text-foreground">Join with a link</Text>
-            </Pressable>
-          </Pressable>
-        </Pressable>
-      </Modal>
+        <ActionSheetItem
+          label="New channel"
+          icon={Megaphone}
+          onPress={() => openDialog('channel')}
+        />
+        <ActionSheetItem label="New group" icon={Users} onPress={() => openDialog('group')} />
+        <ActionSheetItem
+          label="New message"
+          icon={MessageSquarePlus}
+          onPress={() => openDialog('message')}
+        />
+        <ActionSheetItem
+          label="Explore"
+          accessibilityLabel="Explore public groups"
+          icon={Compass}
+          onPress={() => {
+            setMenuOpen(false);
+            router.push('/explore');
+          }}
+        />
+        <ActionSheetItem label="Join with a link" icon={Link} onPress={() => openDialog('join')} />
+      </ActionSheet>
 
       <Modal
         visible={action !== undefined}

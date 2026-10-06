@@ -1,7 +1,7 @@
 ---
 id: T-0428
 title: "Mobile kit: the New chat menu (New channel, New group, New message, Explore, Join with a link) uses the kit ActionSheet with icons"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0428-mobile-new-chat-menu-sheet
 model: auto
@@ -64,4 +64,42 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- `apps/mobile/src/components/chat/new-chat-button.tsx`: replaced the hand-rolled menu `<Modal>` with the kit `<ActionSheet visible={menuOpen} onClose={() => setMenuOpen(false)} closeLabel="Close new chat menu">` and five `<ActionSheetItem>`s in the same order, with the same labels, accessibility labels and handlers ("New channel" → `openDialog('channel')`, "New group" → `openDialog('group')`, "New message" → `openDialog('message')`, "Explore" with `accessibilityLabel="Explore public groups"` → close + `router.push('/explore')`, "Join with a link" → `openDialog('join')`). Icons in order: `Megaphone`, `Users`, `MessageSquarePlus`, `Compass`, `Link`.
+- Removed the now-unused `Text` import from the component: the menu was its only consumer, and oxlint's `no-unused-vars` failed the gate with it present.
+- Left the FAB, the create-sheets `Modal` and everything else unchanged.
+- `apps/mobile/src/components/chat/new-chat-button.test.tsx`: added the five icons to the `lucide-react-native` mock and one test ("offers the New chat menu rows") asserting the markup contains each of the five labels plus "Explore public groups". No other assertion changed.
+- Prettier reformatted `new-chat-button.tsx` (menu block + the long lucide import). These are the only changes in the file.
+
+### Files changed
+- `apps/mobile/src/components/chat/new-chat-button.tsx`
+- `apps/mobile/src/components/chat/new-chat-button.test.tsx`
+- `work/T-0428-mobile-new-chat-menu-sheet.md` (status + this Report)
+
+### Commands and results
+- `pnpm install`: done, 13 workspace projects, exit 0.
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot new-chat-button`: 1 file passed, 7 tests passed. (The only stderr is the pre-existing React DOM attribute warnings from the string-tag React Native mock.)
+- `pnpm gate` (first run): FAIL on `format` (prettier wanted the component reformatted), exit 1.
+- `pnpm exec prettier --write` on the two changed mobile files, then a manual fix removing the unused `Text` import (the second gate run failed `lint` with `no-unused-vars` for `Text`).
+- `pnpm gate` (final), from the repo root:
+  ```
+  gate: 3 changed file(s) against main
+  PASS  install (frozen)  (2.2s)
+  PASS  format  (27.7s)
+  PASS  lint  (1.3s)
+  PASS  typecheck  (10.5s)
+  PASS  tests @zilar/mobile  (2.9s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Problems / deviations
+- The spec said "Leave ... everything else unchanged"; I had to delete the component's unused `Text` import because the removed menu was its only use and `pnpm gate`'s lint failed otherwise. No behavior change. Everything else matches the spec.
+- No other test broke through the import.
+
+### Security checklist
+- No secrets or tokens added; no logging, routes, deletes, updates, caps or audit entries touched. Not applicable to this UI-only change.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-06). The New chat menu is now the kit ActionSheet, with five icon rows (Megaphone, Users, MessageSquarePlus, Compass, Link). Labels, accessibility labels and handlers are unchanged. The row role is now button, the kit standard. Nit accepted: the test does not pin the icon mapping.
