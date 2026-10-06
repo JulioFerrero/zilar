@@ -1,7 +1,7 @@
 ---
 id: T-0288
 title: "Web kit migration 13: name, username and add-contact text fields use the kit TextInput"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0288-web-kit-text-input-1
 model: auto
@@ -68,4 +68,47 @@ Every other `<input>`, including checkboxes, radios, file inputs, the composer a
 
 ## Report (written by the worker when done)
 
+### What I did
+- Replaced the four hand-rolled label + input pairs with the kit `<TextInput>`:
+  - `apps/web/src/routes/NamePage.tsx` — `id="auth-name"`, label "Name", wrapped in `<div className="mt-6">` (old label top margin).
+  - `apps/web/src/routes/HandlePage.tsx` — `id="auth-handle"`, label "Username", wrapped in `<div className="mt-6">`.
+  - `apps/web/src/components/AddContactDialog.tsx` — `id="add-contact-handle"`, label "Username", wrapped in `<div className="mt-4">`.
+  - `apps/web/src/components/ProfileSettingsSection.tsx` — `id="profile-handle"`, label "Your @username", no top margin existed so no wrapper was added.
+- Kept every prop: `id`, `value`, `onChange`, `autoFocus`, `maxLength`, `autoCapitalize`, `autoCorrect`, `spellCheck`, `placeholder`. Deleted the old `<label>` and the input style classes. Error/hint lines after each field stayed where they were.
+- Added one `well-surface` class assertion per test file (NamePage, HandlePage, AddContactDialog, ProfileSettingsSection).
+
+### Files changed
+- `apps/web/src/routes/NamePage.tsx`, `apps/web/src/routes/NamePage.test.tsx`
+- `apps/web/src/routes/HandlePage.tsx`, `apps/web/src/routes/HandlePage.test.tsx`
+- `apps/web/src/components/AddContactDialog.tsx`, `apps/web/src/components/AddContactDialog.test.tsx`
+- `apps/web/src/components/ProfileSettingsSection.tsx`, `apps/web/src/components/ProfileSettingsSection.test.tsx`
+- `work/T-0288-web-kit-text-input-1.md` (status/Report)
+
+### Commands and real results
+- `pnpm install` → Done, exit 0.
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot NamePage HandlePage AddContactDialog ProfileSettingsSection` → 4 files passed, 15 tests passed.
+- `pnpm gate` (repo root) summary lines:
+  ```
+  gate: 9 changed file(s) against main
+  PASS  install (frozen)  (1.5s)
+  PASS  format  (22.2s)
+  PASS  lint  (2.5s)
+  PASS  typecheck  (16.3s)
+  PASS  tests @zilar/web  (31.5s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Problems / deviations
+- None. No files outside the Allowed list were touched.
+- Note: the kit input uses `text-sm` where the old fields used `text-[15px]`; the spec's acceptance only requires that ids, texts and behaviour are unchanged, so this is intended by the migration.
+
+### Blocked / needs a decision
+- None.
+
 ## Review (written by Claude)
+
+Approved. Clean pre-review, 0 nits, no fix rounds.
+- The four fields now use the kit `TextInput`. Ids and labels are kept, and the spacing moved to a wrapper div.
+- Lead browser check in mock mode on Settings → Profile: the field renders as the recessed well, typing works, and the focus outline is clear.
+- The first TextInput users look right, so further batches can follow.

@@ -53,6 +53,7 @@ describe('ProfileSettingsSection', () => {
     claimMock.mockResolvedValue({ handle: 'ada_new' });
     renderSection('ada');
 
+    expect(screen.getByLabelText('Your @username').className).toContain('well-surface');
     fireEvent.change(screen.getByLabelText('Your @username'), {
       target: { value: 'ada_new' },
     });

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import { useAuth } from '@/auth/AuthProvider';
 import { Button } from '@/components/ui/button';
+import { TextInput } from '@/components/ui/text-input';
 import { ApiError } from '@/lib/api';
 import { checkHandle, claimHandle, suggestHandleFor } from '@/lib/handles';
 import { dismissHandleGate } from '@/lib/handleGate';
@@ -110,24 +111,23 @@ export function HandlePage() {
         <p className="mt-1 text-center text-[15px] text-muted-foreground">
           Friends add you with it, like @ada. You can change it later.
         </p>
-        <label className="mt-6 block text-[14px] font-medium" htmlFor="auth-handle">
-          Username
-        </label>
-        <input
-          id="auth-handle"
-          value={handle}
-          autoFocus
-          maxLength={32}
-          autoCapitalize="none"
-          autoCorrect="off"
-          spellCheck={false}
-          onChange={(event) => {
-            setHandle(event.target.value);
-            setTyped(true);
-          }}
-          placeholder="ada_lovelace"
-          className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-[15px] outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40"
-        />
+        <div className="mt-6">
+          <TextInput
+            id="auth-handle"
+            label="Username"
+            value={handle}
+            autoFocus
+            maxLength={32}
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            onChange={(event) => {
+              setHandle(event.target.value);
+              setTyped(true);
+            }}
+            placeholder="ada_lovelace"
+          />
+        </div>
         <div aria-live="polite" className="mt-2 min-h-[20px] text-[14px]">
           {check.state === 'done' &&
             (check.available ? (

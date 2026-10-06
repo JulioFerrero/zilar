@@ -3,6 +3,7 @@ import { ApiError, claimHandle, checkHandle } from '@/lib/api';
 import { useAuth } from '@/auth/AuthProvider';
 import { copyText } from '@/lib/clipboard';
 import { Button } from '@/components/ui/button';
+import { TextInput } from '@/components/ui/text-input';
 import { AvatarUploader } from './AvatarUploader';
 
 /** The caller's own picture, inside Settings → Profile. */
@@ -125,11 +126,9 @@ export function ProfileSettingsSection() {
       <h2 className="text-[16px] font-semibold">Username</h2>
       <ProfilePictureSection />
       <div className="rounded-xl border border-border bg-surface px-3 py-2.5">
-        <label className="block text-[14px] font-medium" htmlFor="profile-handle">
-          Your @username
-        </label>
-        <input
+        <TextInput
           id="profile-handle"
+          label="Your @username"
           value={handle}
           autoCapitalize="none"
           autoCorrect="off"
@@ -141,7 +140,6 @@ export function ProfileSettingsSection() {
             setSaved(false);
           }}
           placeholder="ada_lovelace"
-          className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-[15px] outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40"
         />
         <div aria-live="polite" className="mt-1 min-h-[20px] text-[14px]">
           {check.state === 'done' &&
