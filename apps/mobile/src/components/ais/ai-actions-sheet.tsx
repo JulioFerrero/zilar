@@ -1,7 +1,7 @@
-import { Modal, Pressable, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { View } from 'react-native';
 
 import { Avatar } from '@/components/chat/avatar';
+import { ActionSheet, ActionSheetItem } from '@/components/ui/action-sheet';
 import { Text } from '@/components/ui/text';
 
 import type { PublicAi } from '../../lib/ais-api';
@@ -38,78 +38,37 @@ export function AiActionsSheet({
   runError: string;
   onClose: () => void;
 }) {
-  const insets = useSafeAreaInsets();
   const action = ai === null ? null : runAction(ai);
   return (
-    <Modal visible={ai !== null} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable
-        accessibilityLabel="Close AI actions"
-        onPress={onClose}
-        className="flex-1 justify-end bg-black/40 px-2"
-        style={{ paddingBottom: Math.max(insets.bottom, 16) }}
-      >
-        <Pressable onPress={() => {}} className="overflow-hidden rounded-2xl bg-background">
-          {ai !== null ? (
-            <View className="flex-row items-center gap-3 border-b border-divider px-4 py-3">
-              <Avatar id={ai.id} name={ai.name} size={36} />
-              <Text numberOfLines={1} className="min-w-0 flex-1 text-[16px] font-semibold">
-                {ai.name}
-              </Text>
-            </View>
-          ) : null}
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Open chat"
-            onPress={onOpenChat}
-            className="border-b border-divider px-4 py-3.5 active:bg-list-hover"
-          >
-            <Text className="text-[16px] text-foreground">Open chat</Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Edit"
-            onPress={onEdit}
-            className="border-b border-divider px-4 py-3.5 active:bg-list-hover"
-          >
-            <Text className="text-[16px] text-foreground">Edit</Text>
-          </Pressable>
-          {action !== null ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={action === 'stop' ? 'Stop AI' : 'Resume AI'}
-              disabled={runBusy}
-              onPress={() => onToggleRun(action)}
-              className="border-b border-divider px-4 py-3.5 active:bg-list-hover disabled:opacity-50"
-            >
-              <Text className="text-[16px] text-foreground">
-                {action === 'stop'
-                  ? runBusy
-                    ? 'Stopping…'
-                    : 'Stop'
-                  : runBusy
-                    ? 'Resuming…'
-                    : 'Resume'}
-              </Text>
-            </Pressable>
-          ) : null}
-          {runError !== '' ? (
-            <Text
-              accessibilityRole="alert"
-              className="border-b border-divider px-4 pb-3 pt-1 text-[13px] text-danger"
-            >
-              {runError}
+    <ActionSheet
+      visible={ai !== null}
+      onClose={onClose}
+      closeLabel="Close AI actions"
+      error={runError}
+      header={
+        ai === null ? undefined : (
+          <View className="flex-row items-center gap-3 px-4 py-3">
+            <Avatar id={ai.id} name={ai.name} size={36} />
+            <Text numberOfLines={1} className="min-w-0 flex-1 text-[16px] font-semibold">
+              {ai.name}
             </Text>
-          ) : null}
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Delete"
-            onPress={onDelete}
-            className="px-4 py-3.5 active:bg-list-hover"
-          >
-            <Text className="text-[16px] text-danger">Delete</Text>
-          </Pressable>
-        </Pressable>
-      </Pressable>
-    </Modal>
+          </View>
+        )
+      }
+    >
+      <ActionSheetItem label="Open chat" onPress={onOpenChat} />
+      <ActionSheetItem label="Edit" onPress={onEdit} />
+      {action !== null ? (
+        <ActionSheetItem
+          label={
+            action === 'stop' ? (runBusy ? 'Stopping…' : 'Stop') : runBusy ? 'Resuming…' : 'Resume'
+          }
+          accessibilityLabel={action === 'stop' ? 'Stop AI' : 'Resume AI'}
+          disabled={runBusy}
+          onPress={() => onToggleRun(action)}
+        />
+      ) : null}
+      <ActionSheetItem label="Delete" onPress={onDelete} destructive />
+    </ActionSheet>
   );
 }

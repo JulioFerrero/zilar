@@ -1,7 +1,7 @@
 ---
 id: T-0283
 title: "Mobile kit: ActionSheet + ActionSheetItem; the AI and chat long-press sheets use it"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0283-mobile-kit-action-sheet
 model: auto
@@ -81,4 +81,49 @@ The other 22 `Modal` files: sheets with inputs and keyboard handling, pickers, c
 
 ## Report (written by the worker when done)
 
+**What I did**
+
+- Added `ActionSheet` + `ActionSheetItem` in `apps/mobile/src/components/ui/action-sheet.tsx`.
+  - `ActionSheet` owns the shell: fade `Modal` (`transparent`, `onRequestClose`), a full-screen `Pressable` backdrop closed on tap with the caller's `closeLabel`, `paddingBottom: Math.max(insets.bottom, 16)`, an optional `header` node or `title` string, the items, and an optional `error` alert line. Dividers come from `Children.toArray(children)` plus a wrapper `View` (`border-b border-divider`) after every item except the last; when an `error` line is present the last item is also separated, so no caller manages borders.
+  - `ActionSheetItem` props: `label`, `accessibilityLabel` (defaults to `label`), `onPress`, `disabled`, optional lucide `icon` (18 px, `MUTED_FOREGROUND[scheme]`), `destructive` (`text-danger`), `inset` (`pl-9`). Row style `flex-row items-center gap-3 px-4 py-3.5 active:bg-list-hover disabled:opacity-50`, label `text-[16px]`.
+- Added an "Action sheet" section to `apps/mobile/src/app/dev/kit.tsx`: a button that opens a sample sheet with a title, two icon items, a destructive item, a disabled item and an error line.
+- Migrated `AiActionsSheet` and `ChatActionsSheet` onto the kit. Every label, accessibility label, disabled rule and callback is unchanged. `AiActionsSheet` keeps its `Avatar` header via the `header` node; its error still renders with `accessibilityRole="alert"`. `ChatActionsSheet` now uses the safe-area padding (was hard-coded `16`) and its icons go through `ActionSheetItem`, so `#8a8a8a` is gone.
+- Tests: `kit.test.tsx` gained `Modal` in the `react-native` stub, stubs for `react-native-safe-area-context` and `nativewind`, and an ActionSheet describe block (labels, disabled pass-through, destructive style, icon at 18 px, divider count). `chat-actions-sheet.test.tsx` gained the safe-area and nativewind stubs; all its existing assertions are untouched.
+- Acceptance check: neither migrated sheet imports `Modal` from `react-native` and neither hard-codes a colour.
+
+**Files changed** (all inside the Allowed files)
+
+- `apps/mobile/src/components/ui/action-sheet.tsx` (new)
+- `apps/mobile/src/components/ui/kit.test.tsx`
+- `apps/mobile/src/app/dev/kit.tsx`
+- `apps/mobile/src/components/ais/ai-actions-sheet.tsx`
+- `apps/mobile/src/components/chat/chat-actions-sheet.tsx`
+- `apps/mobile/src/components/chat/chat-actions-sheet.test.tsx`
+- `work/T-0283-mobile-kit-action-sheet.md`
+
+**Commands and results**
+
+- `pnpm install`: finished, no lockfile change.
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot kit chat-actions-sheet`: 2 test files passed, 21 tests passed.
+- `pnpm gate`: `gate: 7 changed file(s) against main`; ends with `GATE PASS`; scope line "every changed file is inside the Allowed files". Summary lines: `PASS install (frozen) (1.1s)`, `PASS format (15.4s)`, `PASS lint (1.2s)`, `PASS typecheck (6.8s)`, `PASS tests @zilar/mobile (1.4s)`.
+
+**Deviations**
+
+- The spec lists the `error` line after the items, so `ActionSheet` renders it at the bottom of the card. In `AiActionsSheet` this puts the error below the `Delete` row (it used to sit between Stop/Resume and Delete). Text, `alert` role, labels and callbacks are unchanged; the sheet still stays open on failure. Flagging in case the exact order matters.
+- The mute submenu rows used `py-3` while other rows used `py-3.5`; the shared `ActionSheetItem` uses `py-3.5`. The `pl-9` indent is preserved via `inset`.
+- Shared row press style is `active:bg-list-hover` (the AI sheet's token). `list-hover` and `surface-raised` are both `#171717` in `global.css`, so the choice is visually neutral.
+
+**Open questions**
+
+- None.
+
 ## Review (written by Claude)
+
+**Approved.** Clean pre-review, no fix rounds. Neither sheet imports `Modal` any more or hard-codes a colour, and the chat sheet now respects the safe area.
+
+**Accepted nits:**
+- the AI run error now sits under Delete, because the error line belongs to the sheet;
+- mute rows are 2 px taller;
+- inset and icon would stack if a caller ever set both.
+
+**Next step:** emulator QA runs after the merge.

@@ -4,12 +4,14 @@
  * sample content so the kit can be eyeballed on-device. It stays unlinked in
  * release builds too: no tab, no button, no router push.
  */
-import { Bell, FolderOpen, UserRound } from 'lucide-react-native';
+import { Bell, FolderOpen, MessageCircle, Trash2, UserRound } from 'lucide-react-native';
 import { useColorScheme } from 'nativewind';
+import { useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { RequireAuth } from '@/auth/RequireAuth';
+import { ActionSheet, ActionSheetItem } from '@/components/ui/action-sheet';
 import { Button } from '@/components/ui/button';
 import { Card, SectionLabel } from '@/components/ui/card';
 import { CountBadge } from '@/components/ui/count-badge';
@@ -32,6 +34,7 @@ export default function KitDevScreen() {
 
 function KitCatalog() {
   const scheme = asColorScheme(useColorScheme().colorScheme);
+  const [sheetOpen, setSheetOpen] = useState(false);
   return (
     <SafeAreaView className="flex-1 bg-background">
       <ScrollView
@@ -119,6 +122,33 @@ function KitCatalog() {
             <ListRow title="A row without a chevron" subtitle="No action" chevron={false} />
             <ListRow title="A row that does not act" subtitle="Renders a View" />
           </Card>
+        </View>
+
+        <View className="mt-6 gap-2">
+          <SectionLabel>Action sheet</SectionLabel>
+          <Button onPress={() => setSheetOpen(true)}>
+            <Text>Open action sheet</Text>
+          </Button>
+          <ActionSheet
+            visible={sheetOpen}
+            onClose={() => setSheetOpen(false)}
+            closeLabel="Close sample actions"
+            title="Sample actions"
+            error="Something went wrong."
+          >
+            <ActionSheetItem
+              label="Open chat"
+              icon={MessageCircle}
+              onPress={() => setSheetOpen(false)}
+            />
+            <ActionSheetItem
+              label="Delete"
+              icon={Trash2}
+              destructive
+              onPress={() => setSheetOpen(false)}
+            />
+            <ActionSheetItem label="A disabled action" disabled onPress={noop} />
+          </ActionSheet>
         </View>
       </ScrollView>
     </SafeAreaView>

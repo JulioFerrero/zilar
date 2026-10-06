@@ -1,10 +1,8 @@
 import { Archive, Bell, BellOff, Pin, PinOff } from 'lucide-react-native';
-import { Modal, Pressable, View } from 'react-native';
 
-import { Text } from '../ui/text';
+import { ActionSheet, ActionSheetItem } from '../ui/action-sheet';
 import { MUTE_DURATIONS, type MuteDurationId } from '../../lib/chat-prefs';
 import type { ChatSummary } from '../../lib/types';
-import { cn } from '../../lib/utils';
 
 /**
  * The long-press action sheet on a chat or group row (T-0135): Pin/Unpin,
@@ -57,112 +55,64 @@ export function ChatActionsSheet({
   const ready = chat !== null;
 
   return (
-    <Modal
+    <ActionSheet
       visible={ready || groupTitle !== undefined}
-      transparent
-      animationType="fade"
-      onRequestClose={onClose}
+      onClose={onClose}
+      closeLabel="Close chat actions"
+      title={title}
+      error={error}
     >
-      <Pressable
-        accessibilityLabel="Close chat actions"
-        onPress={onClose}
-        className="flex-1 justify-end bg-black/40 px-2"
-        style={{ paddingBottom: 16 }}
-      >
-        <Pressable onPress={() => {}} className="overflow-hidden rounded-2xl bg-background">
-          <View className="border-b border-divider px-4 py-3">
-            <Text numberOfLines={1} className="text-[16px] font-semibold text-foreground">
-              {title}
-            </Text>
-          </View>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={pinned ? 'Unpin chat' : 'Pin chat'}
+      <ActionSheetItem
+        label={pinned ? 'Unpin' : 'Pin'}
+        accessibilityLabel={pinned ? 'Unpin chat' : 'Pin chat'}
+        disabled={busy || !ready}
+        onPress={onTogglePin}
+        icon={pinned ? PinOff : Pin}
+      />
+      {muteOpen ? (
+        MUTE_DURATIONS.map((option) => (
+          <ActionSheetItem
+            key={option.id}
+            label={option.label}
+            accessibilityLabel={`Mute for ${option.label.toLowerCase()}`}
             disabled={busy || !ready}
-            onPress={onTogglePin}
-            className="flex-row items-center gap-3 border-b border-divider px-4 py-3.5 active:bg-surface-raised disabled:opacity-50"
-          >
-            {pinned ? <PinOff size={18} color="#8a8a8a" /> : <Pin size={18} color="#8a8a8a" />}
-            <Text className="text-[16px] text-foreground">{pinned ? 'Unpin' : 'Pin'}</Text>
-          </Pressable>
-          {muteOpen ? (
-            <>
-              {MUTE_DURATIONS.map((option) => (
-                <Pressable
-                  key={option.id}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Mute for ${option.label.toLowerCase()}`}
-                  disabled={busy || !ready}
-                  onPress={() => onMute(option.id)}
-                  className="border-b border-divider px-4 py-3 active:bg-surface-raised disabled:opacity-50"
-                >
-                  <Text className="pl-9 text-[16px] text-foreground">{option.label}</Text>
-                </Pressable>
-              ))}
-              {muted ? (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Unmute chat"
-                  disabled={busy || !ready}
-                  onPress={onUnmute}
-                  className="border-b border-divider px-4 py-3 active:bg-surface-raised disabled:opacity-50"
-                >
-                  <Text className="pl-9 text-[16px] text-foreground">Unmute</Text>
-                </Pressable>
-              ) : null}
-            </>
-          ) : (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={muted ? 'Change mute' : 'Mute chat'}
-              disabled={busy || !ready}
-              onPress={onOpenMute}
-              className="flex-row items-center gap-3 border-b border-divider px-4 py-3.5 active:bg-surface-raised disabled:opacity-50"
-            >
-              {muted ? <BellOff size={18} color="#8a8a8a" /> : <Bell size={18} color="#8a8a8a" />}
-              <Text className="text-[16px] text-foreground">
-                {muted ? 'Muted: change' : 'Mute'}
-              </Text>
-            </Pressable>
-          )}
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={archived ? 'Unarchive chat' : 'Archive chat'}
-            disabled={busy || !ready}
-            onPress={onToggleArchive}
-            className={cn(
-              'flex-row items-center gap-3 px-4 py-3.5 active:bg-surface-raised disabled:opacity-50',
-              error === '' && onOpenGroup === undefined ? null : 'border-b border-divider',
-            )}
-          >
-            <Archive size={18} color="#8a8a8a" />
-            <Text className="text-[16px] text-foreground">
-              {archived ? 'Unarchive' : 'Archive'}
-            </Text>
-          </Pressable>
-          {groupId !== undefined && onOpenGroup !== undefined ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Open group"
-              disabled={busy}
-              onPress={() => onOpenGroup(groupId)}
-              className={cn(
-                'flex-row items-center gap-3 px-4 py-3.5 active:bg-surface-raised disabled:opacity-50',
-                error === '' ? null : 'border-b border-divider',
-              )}
-            >
-              <Text className="text-[16px] text-foreground">Open group</Text>
-            </Pressable>
-          ) : null}
-          {error !== '' ? (
-            <View className="px-4 py-2">
-              <Text accessibilityRole="alert" className="text-[13px] text-danger">
-                {error}
-              </Text>
-            </View>
-          ) : null}
-        </Pressable>
-      </Pressable>
-    </Modal>
+            onPress={() => onMute(option.id)}
+            inset
+          />
+        ))
+      ) : (
+        <ActionSheetItem
+          label={muted ? 'Muted: change' : 'Mute'}
+          accessibilityLabel={muted ? 'Change mute' : 'Mute chat'}
+          disabled={busy || !ready}
+          onPress={onOpenMute}
+          icon={muted ? BellOff : Bell}
+        />
+      )}
+      {muteOpen && muted ? (
+        <ActionSheetItem
+          label="Unmute"
+          accessibilityLabel="Unmute chat"
+          disabled={busy || !ready}
+          onPress={onUnmute}
+          inset
+        />
+      ) : null}
+      <ActionSheetItem
+        label={archived ? 'Unarchive' : 'Archive'}
+        accessibilityLabel={archived ? 'Unarchive chat' : 'Archive chat'}
+        disabled={busy || !ready}
+        onPress={onToggleArchive}
+        icon={Archive}
+      />
+      {groupId !== undefined && onOpenGroup !== undefined ? (
+        <ActionSheetItem
+          label="Open group"
+          accessibilityLabel="Open group"
+          disabled={busy}
+          onPress={() => onOpenGroup(groupId)}
+        />
+      ) : null}
+    </ActionSheet>
   );
 }
