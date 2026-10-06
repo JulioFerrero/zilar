@@ -12,6 +12,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0410](T-0410-server-media-index.md) | Media gallery 1a (server): index tables + indexer | running | auto | — | the only schema task |
 | [T-0419](T-0419-web-forward-picker.md) | Forwarding step 4 (web UI): Forward menu item and picker | running | auto | T-0414 | |
 | [T-0428](T-0428-mobile-new-chat-menu-sheet.md) | Mobile kit: New chat menu on ActionSheet | running | auto | — | |
+| [T-0429](T-0429-mobile-dismiss-banner.md) | Mobile kit: DismissBanner on the chat screen | running | auto | — | |
 | [T-0427](T-0427-mobile-forwarded-header.md) | Forwarding receive side (mobile): forwarded header | running | auto | — | |
 
 ## Follow-ups
