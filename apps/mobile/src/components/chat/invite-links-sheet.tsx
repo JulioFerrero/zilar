@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Modal, Pressable, TextInput, View } from 'react-native';
+import { Modal, Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Text } from '@/components/ui/text';
+import { TextField } from '@/components/ui/text-field';
 import type { GroupInviteLink } from '@/lib/invite-links-api';
 
 export type InviteLinkState = 'active' | 'expired' | 'exhausted' | 'revoked';
@@ -187,48 +188,39 @@ export function InviteLinksSheet({
           ) : null}
 
           <Text className="mt-4 text-[14px] font-medium text-foreground">Label (optional)</Text>
-          <View className="mt-1 rounded-[10px] border border-border-strong bg-well px-3 py-2">
-            <TextInput
-              value={label}
-              onChangeText={setLabel}
-              maxLength={60}
-              editable={!busy}
-              placeholder="e.g. Friends"
-              placeholderTextColor="#8a8a8a"
-              accessibilityLabel="Link label"
-              className="text-[15px] text-foreground"
-            />
-          </View>
+          <TextField
+            value={label}
+            onChangeText={setLabel}
+            maxLength={60}
+            editable={!busy}
+            placeholder="e.g. Friends"
+            accessibilityLabel="Link label"
+            className="mt-1"
+          />
           <View className="mt-2 flex-row gap-2">
             <View className="flex-1">
               <Text className="text-[14px] font-medium text-foreground">Expires in (hours)</Text>
-              <View className="mt-1 rounded-[10px] border border-border-strong bg-well px-3 py-2">
-                <TextInput
-                  value={expiry}
-                  onChangeText={setExpiry}
-                  keyboardType="numeric"
-                  editable={!busy}
-                  placeholder="e.g. 48"
-                  placeholderTextColor="#8a8a8a"
-                  accessibilityLabel="Expiry in hours"
-                  className="text-[15px] text-foreground"
-                />
-              </View>
+              <TextField
+                value={expiry}
+                onChangeText={setExpiry}
+                keyboardType="numeric"
+                editable={!busy}
+                placeholder="e.g. 48"
+                accessibilityLabel="Expiry in hours"
+                className="mt-1"
+              />
             </View>
             <View className="flex-1">
               <Text className="text-[14px] font-medium text-foreground">Max uses</Text>
-              <View className="mt-1 rounded-[10px] border border-border-strong bg-well px-3 py-2">
-                <TextInput
-                  value={maxUses}
-                  onChangeText={setMaxUses}
-                  keyboardType="numeric"
-                  editable={!busy}
-                  placeholder="e.g. 10"
-                  placeholderTextColor="#8a8a8a"
-                  accessibilityLabel="Max uses"
-                  className="text-[15px] text-foreground"
-                />
-              </View>
+              <TextField
+                value={maxUses}
+                onChangeText={setMaxUses}
+                keyboardType="numeric"
+                editable={!busy}
+                placeholder="e.g. 10"
+                accessibilityLabel="Max uses"
+                className="mt-1"
+              />
             </View>
           </View>
           <Pressable

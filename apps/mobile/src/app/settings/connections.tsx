@@ -11,7 +11,7 @@ import {
   Zap,
 } from 'lucide-react-native';
 import { useCallback, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useColorScheme } from 'nativewind';
 
@@ -26,8 +26,9 @@ import { useConnectionsApi } from '@/components/connections/use-connections-api'
 import { Card, SectionLabel } from '@/components/ui/card';
 import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
+import { TextField } from '@/components/ui/text-field';
 import { asColorScheme } from '@/lib/color-scheme';
-import { ACCENT, ICON, MUTED_FOREGROUND } from '@/lib/colors';
+import { ACCENT, ICON } from '@/lib/colors';
 import type { ProviderConnection } from '@/lib/connections-api';
 
 type PageStatus = 'loading' | 'ready' | 'error';
@@ -443,7 +444,7 @@ function AddConnectionForm({
       <View className="gap-1">
         <Text className="text-[14px] font-medium text-foreground">API key</Text>
         <View className="flex-row items-center gap-1">
-          <TextInput
+          <TextField
             value={key}
             onChangeText={setKey}
             accessibilityLabel="API key"
@@ -452,8 +453,7 @@ function AddConnectionForm({
             autoCorrect={false}
             maxLength={16384}
             placeholder="Paste your key"
-            placeholderTextColor={MUTED_FOREGROUND[scheme]}
-            className="min-w-0 flex-1 rounded-lg border border-input bg-background px-3 py-2 text-[15px] text-foreground"
+            className="min-w-0 flex-1"
           />
           <Pressable
             accessibilityRole="button"
@@ -472,14 +472,12 @@ function AddConnectionForm({
 
       <View className="gap-1">
         <Text className="text-[14px] font-medium text-foreground">Label (optional)</Text>
-        <TextInput
+        <TextField
           value={label}
           onChangeText={setLabel}
           accessibilityLabel="Label"
           maxLength={256}
           placeholder="Work project"
-          placeholderTextColor={MUTED_FOREGROUND[scheme]}
-          className="rounded-lg border border-input bg-background px-3 py-2 text-[15px] text-foreground"
         />
       </View>
 

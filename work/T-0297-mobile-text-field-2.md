@@ -1,7 +1,7 @@
 ---
 id: T-0297
 title: "Mobile kit migration: integrations, connections, AI edit and invite-link fields use the kit TextField"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0297-mobile-text-field-2
 model: auto
@@ -75,4 +75,88 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### Status: ready for review
+
+All eleven fields now render through the kit `TextField`, and none of the
+four source files hard-codes a placeholder colour.
+
+### What I did
+
+- **`apps/mobile/src/app/settings/integrations.tsx`** — `SecretField`
+  (covers the secret/token/key fields), "From address", "Base URL" and
+  "Model" are now `TextField`. Kept every prop (`secureTextEntry`,
+  `autoCapitalize`, `autoCorrect`, `autoComplete`, `maxLength`, `editable`,
+  `returnKeyType`, `keyboardType`, `placeholder`, `value`/handlers,
+  `accessibilityLabel`); kept only the layout class `min-w-0 flex-1` on the
+  toggle-row field. Removed the now-unused `TextInput` and
+  `MUTED_FOREGROUND` imports.
+- **`apps/mobile/src/app/settings/connections.tsx`** — "API key"
+  (`secureTextEntry` + toggle kept, `className="min-w-0 flex-1"`) and "Label"
+  are now `TextField`. Same import cleanup.
+- **`apps/mobile/src/app/ais/[id].tsx`** — "Name" and "Persona"
+  (`multiline`, `className="min-h-[150px]"` kept) are now `TextField`;
+  removed the `TextInput` import. These two fields had no placeholder, so
+  behaviour is unchanged apart from the well look.
+- **`apps/mobile/src/components/chat/invite-links-sheet.tsx`** — the three
+  fields ("Link label", "Expiry in hours", "Max uses") are now `TextField`;
+  removed the well wrapper `View`s (the `TextField` is the well), kept the
+  `flex-1` columns for the side-by-side pair, kept `className="mt-1"` for
+  the label-to-field spacing, and removed the three `#8a8a8a`
+  `placeholderTextColor`s.
+- **`apps/mobile/src/components/chat/invite-links-sheet.test.tsx`** —
+  added only the `nativewind` mock (`useColorScheme: () => ({ colorScheme:
+  'dark' })`, same as `kit.test.tsx`), since the sheet now imports
+  `TextField`, which imports `nativewind`. No assertion changed. The other
+  three test files needed no change: both screen tests already mock
+  `nativewind`, and `integrations-api.test.ts` does not import the screen.
+- Verified with `grep` that none of the four source files contains
+  `TextInput`, `MUTED_FOREGROUND` or `#8a8a8a` any more.
+
+### Security checklist
+
+- No secrets, tokens or keys in logs, errors or URLs; fields are
+  write-only as before, only the input component changed.
+- No new routes, deletes, caps or audit entries. No permission logic
+  touched.
+
+### Files changed
+
+`apps/mobile/src/app/settings/integrations.tsx`,
+`apps/mobile/src/app/settings/connections.tsx`,
+`apps/mobile/src/app/ais/[id].tsx`,
+`apps/mobile/src/components/chat/invite-links-sheet.tsx`,
+`apps/mobile/src/components/chat/invite-links-sheet.test.tsx` (mock only),
+`work/T-0297-mobile-text-field-2.md`.
+
+### Commands run (real results)
+
+- `pnpm install` → done, no errors.
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot
+  invite-links-sheet connections-screen integrations` → **6 files passed,
+  63 tests passed** (the `<Text /> is using incorrect casing` lines are the
+  pre-existing string-mock noise).
+- `pnpm gate` (final run):
+  ```
+  gate: 6 changed file(s) against main
+  PASS  install (frozen)  (1.0s)
+  PASS  format  (10.9s)
+  PASS  lint  (0.8s)
+  PASS  typecheck  (5.9s)
+  PASS  tests @zilar/mobile  (1.4s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Open questions
+
+None.
+
 ## Review (written by Claude)
+
+**Approved.** Clean pre-review, 0 nits, no fix rounds (Muse, peak hours).
+- The eleven fields are on `TextField`.
+- None of the four files has a raw `TextInput` or a hard-coded placeholder colour left.
+- The invite-link well wrappers are gone.
+- Only one test needed a mock.
+
+**Still to do:** emulator QA in the next run.

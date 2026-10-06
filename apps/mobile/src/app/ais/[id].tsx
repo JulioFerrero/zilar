@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, TextInput, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, View } from 'react-native';
 import { useColorScheme } from 'nativewind';
 
 import { RequireAisAuth } from '@/components/ais/require-ais-auth';
@@ -24,6 +24,7 @@ import { applyMachineChange } from '@/components/machines/machine-change';
 import { useMachinesApi } from '@/components/machines/use-machines-api';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
+import { TextField } from '@/components/ui/text-field';
 import { ACCENT } from '@/lib/colors';
 import { asColorScheme } from '@/lib/color-scheme';
 import type { Connection as AisConnection, PublicAi, UpdateAiInput } from '@/lib/ais-api';
@@ -257,24 +258,23 @@ function EditAi() {
           <View className="gap-4">
             <View className="gap-1">
               <Text className="text-[14px] font-medium text-foreground">Name</Text>
-              <TextInput
+              <TextField
                 value={name}
                 onChangeText={setName}
                 accessibilityLabel="Name"
                 maxLength={64}
-                className="rounded-lg border border-input bg-background px-3 py-2.5 text-[15px] text-foreground"
               />
             </View>
 
             <View className="gap-1">
               <Text className="text-[14px] font-medium text-foreground">Persona</Text>
-              <TextInput
+              <TextField
                 value={persona}
                 onChangeText={setPersona}
                 accessibilityLabel="Persona"
                 multiline
                 maxLength={4000}
-                className="min-h-[150px] rounded-lg border border-input bg-background px-3 py-2.5 text-[15px] text-foreground"
+                className="min-h-[150px]"
               />
             </View>
 

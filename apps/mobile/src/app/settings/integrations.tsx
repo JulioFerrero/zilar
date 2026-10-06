@@ -1,7 +1,7 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Eye, EyeOff, Lock, Mail, Mic, RefreshCw, Send } from 'lucide-react-native';
 import { useCallback, useRef, useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, TextInput, View } from 'react-native';
+import { ActivityIndicator, Modal, Pressable, View } from 'react-native';
 import { useColorScheme } from 'nativewind';
 
 import { RequireAuth } from '@/auth/RequireAuth';
@@ -14,8 +14,9 @@ import {
 import { useIntegrationsApi } from '@/components/integrations/use-integrations-api';
 import { SettingsScreenShell } from '@/components/settings/screen-shell';
 import { Text } from '@/components/ui/text';
+import { TextField } from '@/components/ui/text-field';
 import { asColorScheme } from '@/lib/color-scheme';
-import { ACCENT, ICON, MUTED_FOREGROUND } from '@/lib/colors';
+import { ACCENT, ICON } from '@/lib/colors';
 import type {
   EmailIntegrationStatus,
   IntegrationsApi,
@@ -179,7 +180,7 @@ function SecretField({
     <View className="gap-1">
       <Text className="text-[14px] font-medium text-foreground">{label}</Text>
       <View className="flex-row items-center gap-1">
-        <TextInput
+        <TextField
           value={value}
           onChangeText={onChange}
           accessibilityLabel={label}
@@ -191,8 +192,7 @@ function SecretField({
           editable={editable}
           returnKeyType={returnKeyType}
           placeholder={placeholder}
-          placeholderTextColor={MUTED_FOREGROUND[scheme]}
-          className="min-w-0 flex-1 rounded-lg border border-input bg-background px-3 py-2 text-[15px] text-foreground"
+          className="min-w-0 flex-1"
         />
         <Pressable
           accessibilityRole="button"
@@ -387,7 +387,7 @@ function EmailCard({
         <>
           <View className="gap-1">
             <Text className="text-[14px] font-medium text-foreground">From address</Text>
-            <TextInput
+            <TextField
               value={from}
               onChangeText={setFrom}
               accessibilityLabel="From address"
@@ -398,8 +398,6 @@ function EmailCard({
               editable={!busy}
               returnKeyType="next"
               placeholder="Zilar <no-reply@mail.example.com>"
-              placeholderTextColor={MUTED_FOREGROUND[scheme]}
-              className="rounded-lg border border-input bg-background px-3 py-2 text-[15px] text-foreground"
             />
           </View>
           <Text className="text-[13px] leading-5 text-muted-foreground">
@@ -535,7 +533,7 @@ function VoiceCard({
       </Text>
       <View className="gap-1">
         <Text className="text-[14px] font-medium text-foreground">Base URL</Text>
-        <TextInput
+        <TextField
           value={baseUrl}
           onChangeText={setBaseUrl}
           accessibilityLabel="Base URL"
@@ -546,13 +544,11 @@ function VoiceCard({
           editable={!busy}
           returnKeyType="next"
           placeholder="https://api.openai.com/v1"
-          placeholderTextColor={MUTED_FOREGROUND[scheme]}
-          className="rounded-lg border border-input bg-background px-3 py-2 text-[15px] text-foreground"
         />
       </View>
       <View className="gap-1">
         <Text className="text-[14px] font-medium text-foreground">Model</Text>
-        <TextInput
+        <TextField
           value={model}
           onChangeText={setModel}
           accessibilityLabel="Model"
@@ -562,8 +558,6 @@ function VoiceCard({
           editable={!busy}
           returnKeyType="next"
           placeholder="whisper-1"
-          placeholderTextColor={MUTED_FOREGROUND[scheme]}
-          className="rounded-lg border border-input bg-background px-3 py-2 text-[15px] text-foreground"
         />
       </View>
       <SecretField
