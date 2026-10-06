@@ -286,15 +286,15 @@ function MachinesList() {
               <Text accessibilityRole="alert" className="text-center text-[15px] text-danger">
                 {errorInfo.message}
               </Text>
-              <Pressable
-                accessibilityRole="button"
+              <Button
+                variant="outline"
+                size="sm"
                 accessibilityLabel="Retry loading machines"
                 onPress={reload}
-                className="flex-row items-center gap-2 rounded-full border border-border-strong px-4 py-2 active:bg-surface-raised"
               >
                 <RefreshCw size={16} color={ICON[scheme]} />
-                <Text className="text-[15px] text-foreground">Retry</Text>
-              </Pressable>
+                <Text>Retry</Text>
+              </Button>
             </View>
           ) : null}
 
@@ -304,15 +304,15 @@ function MachinesList() {
               <Text className="px-4 text-center text-[15px] text-muted-foreground">
                 No machines yet. Add one to let your AIs work on your own computers.
               </Text>
-              <Pressable
-                accessibilityRole="button"
+              <Button
+                variant="default"
+                size="sm"
                 accessibilityLabel="Add a machine"
                 onPress={openAdd}
-                className="flex-row items-center gap-2 rounded-full bg-accent px-5 py-2 active:opacity-90"
               >
                 <Plus size={16} color={ACCENT_FOREGROUND[scheme]} />
-                <Text className="text-[15px] font-medium text-accent-foreground">Add machine</Text>
-              </Pressable>
+                <Text>Add machine</Text>
+              </Button>
             </View>
           ) : null}
 
@@ -328,26 +328,24 @@ function MachinesList() {
                     error={actionErrors[machine.id] ?? ''}
                     actions={
                       <>
-                        <Pressable
-                          accessibilityRole="button"
+                        <Button
+                          variant="default"
+                          size="sm"
                           accessibilityLabel={`Approve ${machine.name}`}
                           disabled={busyId === machine.id}
                           onPress={() => approve(machine.id)}
-                          className="rounded-full bg-accent px-3 py-1 active:opacity-90 disabled:opacity-60"
                         >
-                          <Text className="text-[14px] font-medium text-accent-foreground">
-                            Approve
-                          </Text>
-                        </Pressable>
-                        <Pressable
-                          accessibilityRole="button"
+                          <Text>Approve</Text>
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
                           accessibilityLabel={`Deny ${machine.name}`}
                           disabled={busyId === machine.id}
                           onPress={() => deny(machine.id)}
-                          className="rounded-full border border-border-strong px-3 py-1 active:bg-surface-raised disabled:opacity-60"
                         >
-                          <Text className="text-[14px] text-foreground">Deny</Text>
-                        </Pressable>
+                          <Text>Deny</Text>
+                        </Button>
                       </>
                     }
                   />
@@ -377,26 +375,24 @@ function MachinesList() {
                         </Text>
                       ) : null}
                       <View className="flex-row justify-end gap-2">
-                        <Pressable
-                          accessibilityRole="button"
+                        <Button
+                          variant="ghost"
+                          size="sm"
                           accessibilityLabel="Cancel renaming"
                           disabled={busyId === machine.id}
                           onPress={() => setRenamingId(null)}
-                          className="rounded-full px-3 py-1 active:bg-surface-raised disabled:opacity-60"
                         >
-                          <Text className="text-[14px] text-muted-foreground">Cancel</Text>
-                        </Pressable>
-                        <Pressable
-                          accessibilityRole="button"
+                          <Text>Cancel</Text>
+                        </Button>
+                        <Button
+                          variant="default"
+                          size="sm"
                           accessibilityLabel="Save the new name"
                           disabled={busyId === machine.id}
                           onPress={() => saveRename(machine.id)}
-                          className="rounded-full bg-accent px-3 py-1 active:opacity-90 disabled:opacity-60"
                         >
-                          <Text className="text-[14px] font-medium text-accent-foreground">
-                            {busyId === machine.id ? 'Saving…' : 'Save'}
-                          </Text>
-                        </Pressable>
+                          <Text>{busyId === machine.id ? 'Saving…' : 'Save'}</Text>
+                        </Button>
                       </View>
                     </View>
                   ) : (
@@ -407,24 +403,24 @@ function MachinesList() {
                       error={actionErrors[machine.id] ?? ''}
                       actions={
                         <>
-                          <Pressable
-                            accessibilityRole="button"
+                          <Button
+                            variant="outline"
+                            size="sm"
                             accessibilityLabel={`Rename ${machine.name}`}
                             disabled={busyId === machine.id}
                             onPress={() => openRename(machine)}
-                            className="rounded-full border border-border-strong px-3 py-1 active:bg-surface-raised disabled:opacity-60"
                           >
-                            <Text className="text-[14px] text-foreground">Rename</Text>
-                          </Pressable>
-                          <Pressable
-                            accessibilityRole="button"
+                            <Text>Rename</Text>
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
                             accessibilityLabel={`Revoke ${machine.name}`}
                             disabled={busyId === machine.id}
                             onPress={() => askConfirm('revoke', machine.id)}
-                            className="rounded-full border border-border-strong px-3 py-1 active:bg-surface-raised disabled:opacity-60"
                           >
-                            <Text className="text-[14px] text-foreground">Revoke</Text>
-                          </Pressable>
+                            <Text>Revoke</Text>
+                          </Button>
                         </>
                       }
                     />
@@ -455,15 +451,15 @@ function MachinesList() {
                       busy={busyId === machine.id}
                       error={actionErrors[machine.id] ?? ''}
                       actions={
-                        <Pressable
-                          accessibilityRole="button"
+                        <Button
+                          variant="outline"
+                          size="sm"
                           accessibilityLabel={`Delete ${machine.name}`}
                           disabled={busyId === machine.id}
                           onPress={() => askConfirm('delete', machine.id)}
-                          className="rounded-full border border-border-strong px-3 py-1 active:bg-surface-raised disabled:opacity-60"
                         >
-                          <Text className="text-[14px] text-foreground">Delete</Text>
-                        </Pressable>
+                          <Text>Delete</Text>
+                        </Button>
                       }
                     />
                   ))}

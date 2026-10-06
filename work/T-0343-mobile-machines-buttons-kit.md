@@ -1,7 +1,7 @@
 ---
 id: T-0343
 title: "Mobile kit migration: every pill button on the Machines screen uses the kit Button"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0343-mobile-machines-buttons-kit
 model: auto
@@ -73,4 +73,54 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**Status:** done, ready for review.
+
+**What I did**
+Replaced the nine hand-rolled pill `Pressable`s in `MachinesList` (`apps/mobile/src/app/settings/machines.tsx`) with the kit `Button`, per the table:
+- Retry (line 291) → `<Button variant="outline" size="sm">`, kept the `RefreshCw` icon at `ICON[scheme]`;
+- Add a machine (line 309) → `variant="default"`, kept the `Plus` icon at `ACCENT_FOREGROUND[scheme]`;
+- Approve (line 333) → `variant="default"`;
+- Deny (line 344) → `variant="outline"`;
+- Cancel renaming (line 382) → `variant="ghost"`;
+- Save the new name (line 391) → `variant="default"`, kept the `Saving…` / `Save` busy text;
+- Rename (line 412) → `variant="outline"`;
+- Revoke (line 421) → `variant="outline"`;
+- Delete (line 460) → `variant="outline"`.
+
+For every button I kept the `accessibilityLabel`, `disabled` and `onPress`; kept the visible text and the icons/colours; dropped the old pill `className` and the child `Text` colour classes (`text-[1x]/font-medium/text-*`), which the kit's `TextClassContext` now sets. None of the nine had layout classes (`mt-*`/`self-start`), so no `className` remains on any of them. `accessibilityRole="button"` was dropped because the kit `Button` already sets `role="button"` on its `Pressable`.
+
+**Pressable that remains:** the "Revoked (n)" section toggle at line 435 is still a `Pressable`. It is not one of the nine (no pill styling: `flex-row items-center gap-1 self-start active:opacity-70`) and the spec's table does not list it, so I left it as-is. `Pressable` therefore stays in the react-native import.
+
+**Files changed**
+- `apps/mobile/src/app/settings/machines.tsx` — the nine `Pressable`s above replaced with kit `Button`s.
+- `work/T-0343-mobile-machines-buttons-kit.md` — status and this Report.
+
+No test changes were needed: `machines-screen.test.tsx` already renders through `Button` (the text mock includes `TextClassContext`) and no assertion depended on a class I removed. All six test cases still pass unchanged.
+
+**Commands run and results**
+- `pnpm install` (worktree) — succeeded (Done in 12s; only pre-existing peer/deprecation warnings).
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot machines-screen` — `Test Files 1 passed (1)`, `Tests 6 passed (6)` (only the usual React DOM casing warnings on stderr).
+- `pnpm gate` (repo root) — final output:
+  ```
+  gate: 2 changed file(s) against main
+  PASS  install (frozen)  (1.0s)
+  PASS  format  (17.7s)
+  PASS  lint  (0.9s)
+  PASS  typecheck  (6.4s)
+  PASS  tests @zilar/mobile  (1.5s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+**Deviations from the spec**
+- None. Prettier/wrapping was already compliant, so `format` passed on the first gate run.
+
+**Acceptance check**
+- `grep -n "rounded-full\|Pressable" apps/mobile/src/app/settings/machines.tsx` → no `rounded-full` anywhere; `Pressable` only at the import (line 5) and the Revoked toggle (lines 435/444). So no `rounded-full bg-accent` and no `rounded-full border border-border-strong` `Pressable` remain.
+- Tests pass; `pnpm gate` ends GATE PASS with no file outside the Allowed files.
+
+**Blocked / needs a decision:** none.
+
 ## Review (written by Claude)
+
+**Approved** (pre-review clean, 0 nits). All nine pill `Pressable`s in `MachinesList` are now kit `Button`s (size `sm`) with the variants from the spec table. The lead grep found that all 13 Buttons in the file keep their accessibility label and handler, and no `rounded-full bg-accent` or `border-border-strong` pill remains. No test changes were needed.
