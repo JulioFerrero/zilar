@@ -286,18 +286,16 @@ export function ProfileCardActionRow({
             Block {name}? They are not told. You won&apos;t see their contact requests.
           </Text>
           <View className="mt-2 flex-row gap-2">
-            <Pressable
-              accessibilityRole="button"
+            <Button
+              variant="destructive"
+              size="sm"
               accessibilityLabel="Confirm block"
               disabled={busy}
               onPress={onBlock}
-              className="flex-row items-center gap-1.5 rounded-full bg-danger px-3 py-1.5 active:opacity-90 disabled:opacity-60"
             >
               <Ban size={14} color="#ffffff" />
-              <Text className="text-[14px] font-medium text-white">
-                {busy ? 'Blocking…' : 'Block'}
-              </Text>
-            </Pressable>
+              <Text>{busy ? 'Blocking…' : 'Block'}</Text>
+            </Button>
             <Button
               accessibilityLabel="Cancel the block"
               disabled={busy}
