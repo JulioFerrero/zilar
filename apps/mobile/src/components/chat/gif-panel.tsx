@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Image } from 'expo-image';
-import { ActivityIndicator, Modal, Pressable, ScrollView, View } from 'react-native';
+import { Modal, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { SearchField } from '@/components/ui/search-field';
+import { StateMessage } from '@/components/ui/state-message';
 
 import { Text } from '@/components/ui/text';
 import { API_URL } from '@/lib/auth';
@@ -249,19 +250,19 @@ export function GifPanel({ open, mockItems, api, onPick }: GifPanelProps) {
       </View>
       {loading ? (
         <View className="h-[180px] items-center justify-center">
-          <ActivityIndicator accessibilityLabel="Loading GIFs" />
+          <StateMessage kind="loading" title="Loading GIFs" />
         </View>
       ) : error !== undefined ? (
         <View className="h-[180px] items-center justify-center gap-2 px-4">
-          <Text className="text-center text-[13px] text-muted-foreground">{error}</Text>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Retry loading GIFs"
-            onPress={() => load(queryRef.current, undefined, false)}
-            className="rounded-[10px] px-4 py-2 active:bg-surface-raised"
-          >
-            <Text className="text-[15px] font-semibold text-foreground">Retry</Text>
-          </Pressable>
+          <StateMessage
+            kind="error"
+            title={error}
+            action={{
+              label: 'Retry',
+              accessibilityLabel: 'Retry loading GIFs',
+              onPress: () => load(queryRef.current, undefined, false),
+            }}
+          />
           {rateLimited ? (
             <Text className="text-center text-[12px] text-muted-foreground">{GIF_ATTRIBUTION}</Text>
           ) : null}

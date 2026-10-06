@@ -281,14 +281,9 @@ export function AvatarUploader({
             {currentUrl === undefined ? 'Add picture' : 'Change picture'}
           </Button>
           {currentUrl !== undefined && (
-            <button
-              type="button"
-              onClick={() => void remove()}
-              disabled={busy}
-              className="rounded-full border border-border px-4 py-1.5 text-[14px] hover:bg-surface-raised disabled:opacity-60"
-            >
+            <Button type="button" variant="outline" onClick={() => void remove()} disabled={busy}>
               {busy ? 'Removing…' : 'Remove'}
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -311,13 +306,15 @@ export function AvatarUploader({
       {phase.name === 'error' && (
         <p role="alert" className="text-[14px] text-danger">
           {phase.message}{' '}
-          <button
+          <Button
             type="button"
+            variant="link"
+            size="sm"
             onClick={() => setPhase({ name: 'idle' })}
-            className="underline hover:no-underline"
+            className="h-auto px-0 text-inherit"
           >
             Dismiss
-          </button>
+          </Button>
         </p>
       )}
       {phase.name === 'crop' && fitted !== null && zoomed !== null && (
@@ -329,14 +326,9 @@ export function AvatarUploader({
           dismissable={!busy}
           actions={
             <>
-              <button
-                type="button"
-                onClick={closeCrop}
-                disabled={busy}
-                className="rounded-full px-4 py-1.5 text-[14px] text-muted-foreground hover:bg-list-hover disabled:opacity-60"
-              >
+              <Button type="button" variant="ghost" onClick={closeCrop} disabled={busy}>
                 Cancel
-              </button>
+              </Button>
               <Button type="button" onClick={() => void save()} disabled={busy}>
                 {busy ? 'Saving…' : 'Save picture'}
               </Button>

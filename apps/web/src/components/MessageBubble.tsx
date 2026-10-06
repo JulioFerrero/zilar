@@ -18,6 +18,7 @@ import { ApprovalCard } from './ApprovalCard';
 import { Avatar } from './Avatar';
 import { ConfirmDialog } from './ConfirmDialog';
 import { FileMessage } from './FileMessage';
+import { ForwardedHeader } from './ForwardedHeader';
 import { GifMessage, isGifVideoAttachment } from './GifMessage';
 import { ImageMessage } from './ImageMessage';
 import { LinkText } from './LinkText';
@@ -29,6 +30,7 @@ import { ReactionChips } from './ReactionChips';
 import { ReplyQuote } from './ReplyQuote';
 import { StickerMessage } from './StickerMessage';
 import { VoiceMessage } from './VoiceMessage';
+import { Button } from './ui/button';
 import { copyText } from '@/lib/clipboard';
 import { useSmoothText } from '@/lib/useSmoothText';
 import { cn } from '@/lib/utils';
@@ -183,6 +185,8 @@ export interface MessageBubbleProps {
   /** My bare JID, for highlighting a mention of me. */
   meJid?: string | undefined;
   onReply: (message: UiMessage) => void;
+  /** Opens the forward picker for this message. Omitted callers hide the item. */
+  onForward?: (message: UiMessage) => void;
   /** A live AI draft: same bubble, but recessed while it is written. */
   draft?: boolean;
   /**
@@ -201,6 +205,7 @@ export function MessageBubble({
   currentUserId,
   meJid,
   onReply,
+  onForward,
   draft = false,
   revealTurnId,
 }: MessageBubbleProps) {
@@ -224,6 +229,7 @@ export function MessageBubble({
   // the change to the normal look fades instead of jumping.
   const transitioning = draft || revealTurnId !== undefined;
   const isSending = own && message.status === 'sending';
+  const canForward = !deleted && !isSending && !(own && message.failed === true);
   const sticker =
     message.card !== undefined && message.card.type === 'sticker' ? message.card.data : undefined;
   const bigEmoji =
@@ -350,6 +356,11 @@ export function MessageBubble({
                 {senderIsAi && <AiBadge />}
               </div>
             )}
+            {message.forward !== undefined && (
+              <div className="mb-1">
+                <ForwardedHeader origin={message.forward} />
+              </div>
+            )}
             {message.replyTo !== undefined && (
               <div className="mb-1 w-full max-w-[200px]">
                 <ReplyQuote quote={message.replyTo} />
@@ -370,17 +381,19 @@ export function MessageBubble({
               </div>
             ) : (
               !generating && (
-                <button
+                <Button
                   ref={menuButtonRef}
                   type="button"
+                  variant="ghost"
+                  size="icon-sm"
                   aria-label="Message actions"
                   aria-haspopup="menu"
                   aria-expanded={menuOpen}
                   onClick={() => setMenuOpen(true)}
-                  className="absolute top-0.5 right-0.5 z-10 flex size-6 items-center justify-center rounded-full bg-surface/80 text-muted-foreground opacity-0 shadow-sm transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+                  className="absolute top-0.5 right-0.5 z-10 size-6 rounded-full bg-surface/80 text-muted-foreground opacity-0 shadow-sm transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
                 >
                   <MoreHorizontal className="size-4" aria-hidden="true" />
-                </button>
+                </Button>
               )
             )}
             {!generating && message.failed !== true && menuOpen && (
@@ -390,6 +403,7 @@ export function MessageBubble({
                 canDelete={canDelete}
                 canPin={canPin}
                 isPinned={pin !== undefined}
+                canForward={canForward}
                 onReact={(emoji) => {
                   setMenuOpen(false);
                   handleReact(emoji);
@@ -397,6 +411,10 @@ export function MessageBubble({
                 onReply={() => {
                   setMenuOpen(false);
                   onReply(message);
+                }}
+                onForward={() => {
+                  setMenuOpen(false);
+                  onForward?.(message);
                 }}
                 onEdit={() => setMenuOpen(false)}
                 onCopy={() => setMenuOpen(false)}
@@ -464,6 +482,12 @@ export function MessageBubble({
               >
                 <span className="truncate">{message.senderName}</span>
                 {senderIsAi && <AiBadge />}
+              </div>
+            )}
+
+            {message.forward !== undefined && (
+              <div className="px-3 pt-2">
+                <ForwardedHeader origin={message.forward} />
               </div>
             )}
 
@@ -677,17 +701,19 @@ export function MessageBubble({
             )}
 
             {!generating && (
-              <button
+              <Button
                 ref={menuButtonRef}
                 type="button"
+                variant="ghost"
+                size="icon-sm"
                 aria-label="Message actions"
                 aria-haspopup="menu"
                 aria-expanded={menuOpen}
                 onClick={() => setMenuOpen(true)}
-                className="absolute top-0.5 right-0.5 z-10 flex size-6 items-center justify-center rounded-full bg-surface/80 text-muted-foreground opacity-0 shadow-sm transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+                className="absolute top-0.5 right-0.5 z-10 size-6 rounded-full bg-surface/80 text-muted-foreground opacity-0 shadow-sm transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
               >
                 <MoreHorizontal className="size-4" aria-hidden="true" />
-              </button>
+              </Button>
             )}
           </div>
         )}
@@ -699,6 +725,7 @@ export function MessageBubble({
             canDelete={canDelete}
             canPin={canPin}
             isPinned={pin !== undefined}
+            canForward={canForward}
             onReact={(emoji) => {
               setMenuOpen(false);
               handleReact(emoji);
@@ -706,6 +733,10 @@ export function MessageBubble({
             onReply={() => {
               setMenuOpen(false);
               onReply(message);
+            }}
+            onForward={() => {
+              setMenuOpen(false);
+              onForward?.(message);
             }}
             onEdit={() => {
               setMenuOpen(false);

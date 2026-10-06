@@ -16,7 +16,7 @@ import { MessageListSkeleton } from '@/components/chat/skeleton';
 import type { VoicePlayerHost } from '@/components/chat/voice-player';
 import { UnreadDivider } from '@/components/chat/unread-divider';
 import { useContactsApi } from '@/components/contacts/use-contacts-api';
-import { Text } from '@/components/ui/text';
+import { StateMessage } from '@/components/ui/state-message';
 import { useBlockedJids, filterBlockedMessages } from '@/lib/blocked-users';
 import { useChatStore } from '@/store/chat-store-provider';
 import { draftEntryKey, messagesListView } from '@/store/types';
@@ -257,7 +257,7 @@ export function MessageList({
     }
     return (
       <View className="flex-1 items-center justify-center p-8">
-        <Text className="text-[15px] text-muted-foreground">No messages yet</Text>
+        <StateMessage kind="empty" title="No messages yet" />
       </View>
     );
   }

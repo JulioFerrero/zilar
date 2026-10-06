@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { KeyboardAvoidingView, Pressable, View } from 'react-native';
+import { KeyboardAvoidingView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { RequireAuth } from '@/auth/RequireAuth';
@@ -8,6 +8,7 @@ import { ChatBackground } from '@/components/chat/chat-background';
 import { ChannelComposerBar } from '@/components/chat/channel-composer-bar';
 import { ChatHeader } from '@/components/chat/chat-header';
 import { Composer } from '@/components/chat/composer';
+import { DismissBanner } from '@/components/chat/dismiss-banner';
 import { MessageList } from '@/components/chat/message-list';
 import { MessageListSkeleton } from '@/components/chat/skeleton';
 import { PinnedBanner } from '@/components/chat/pinned-banner';
@@ -521,56 +522,24 @@ function Chat() {
             voiceHost={voiceHost}
           />
           {pinError !== '' ? (
-            <View className="mx-2 flex-row items-center justify-between rounded-[10px] bg-danger/20 px-3 py-2">
-              <Text className="flex-1 text-[13px] text-danger">{pinError}</Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Dismiss error"
-                onPress={() => setPinError('')}
-                className="ml-2 rounded px-2 py-1 active:bg-surface-raised"
-              >
-                <Text className="text-[13px] font-semibold text-danger">Dismiss</Text>
-              </Pressable>
-            </View>
+            <DismissBanner tone="error" message={pinError} onDismiss={() => setPinError('')} />
           ) : null}
           {actionError !== undefined ? (
-            <View className="mx-2 flex-row items-center justify-between rounded-[10px] bg-danger/20 px-3 py-2">
-              <Text className="flex-1 text-[13px] text-danger">{actionError.message}</Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Dismiss error"
-                onPress={() => dismissActionError()}
-                className="ml-2 rounded px-2 py-1 active:bg-surface-raised"
-              >
-                <Text className="text-[13px] font-semibold text-danger">Dismiss</Text>
-              </Pressable>
-            </View>
+            <DismissBanner
+              tone="error"
+              message={actionError.message}
+              onDismiss={() => dismissActionError()}
+            />
           ) : null}
           {openError !== '' ? (
-            <View className="mx-2 flex-row items-center justify-between rounded-[10px] bg-danger/20 px-3 py-2">
-              <Text className="flex-1 text-[13px] text-danger">{openError}</Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Dismiss error"
-                onPress={() => setOpenError('')}
-                className="ml-2 rounded px-2 py-1 active:bg-surface-raised"
-              >
-                <Text className="text-[13px] font-semibold text-danger">Dismiss</Text>
-              </Pressable>
-            </View>
+            <DismissBanner tone="error" message={openError} onDismiss={() => setOpenError('')} />
           ) : null}
           {jumpMissed ? (
-            <View className="mx-2 flex-row items-center justify-between rounded-[10px] bg-surface-raised px-3 py-2">
-              <Text className="flex-1 text-[13px] text-muted-foreground">Message not found</Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Dismiss notice"
-                onPress={() => setJumpMissed(false)}
-                className="ml-2 rounded px-2 py-1 active:bg-surface-raised"
-              >
-                <Text className="text-[13px] font-semibold text-muted-foreground">Dismiss</Text>
-              </Pressable>
-            </View>
+            <DismissBanner
+              tone="notice"
+              message="Message not found"
+              onDismiss={() => setJumpMissed(false)}
+            />
           ) : null}
           {legacyComposer ? (
             <Composer
@@ -700,56 +669,24 @@ function Chat() {
             voiceHost={voiceHost}
           />
           {pinError !== '' ? (
-            <View className="mx-2 flex-row items-center justify-between rounded-[10px] bg-danger/20 px-3 py-2">
-              <Text className="flex-1 text-[13px] text-danger">{pinError}</Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Dismiss error"
-                onPress={() => setPinError('')}
-                className="ml-2 rounded px-2 py-1 active:bg-surface-raised"
-              >
-                <Text className="text-[13px] font-semibold text-danger">Dismiss</Text>
-              </Pressable>
-            </View>
+            <DismissBanner tone="error" message={pinError} onDismiss={() => setPinError('')} />
           ) : null}
           {actionError !== undefined ? (
-            <View className="mx-2 flex-row items-center justify-between rounded-[10px] bg-danger/20 px-3 py-2">
-              <Text className="flex-1 text-[13px] text-danger">{actionError.message}</Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Dismiss error"
-                onPress={() => dismissActionError()}
-                className="ml-2 rounded px-2 py-1 active:bg-surface-raised"
-              >
-                <Text className="text-[13px] font-semibold text-danger">Dismiss</Text>
-              </Pressable>
-            </View>
+            <DismissBanner
+              tone="error"
+              message={actionError.message}
+              onDismiss={() => dismissActionError()}
+            />
           ) : null}
           {openError !== '' ? (
-            <View className="mx-2 flex-row items-center justify-between rounded-[10px] bg-danger/20 px-3 py-2">
-              <Text className="flex-1 text-[13px] text-danger">{openError}</Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Dismiss error"
-                onPress={() => setOpenError('')}
-                className="ml-2 rounded px-2 py-1 active:bg-surface-raised"
-              >
-                <Text className="text-[13px] font-semibold text-danger">Dismiss</Text>
-              </Pressable>
-            </View>
+            <DismissBanner tone="error" message={openError} onDismiss={() => setOpenError('')} />
           ) : null}
           {jumpMissed ? (
-            <View className="mx-2 flex-row items-center justify-between rounded-[10px] bg-surface-raised px-3 py-2">
-              <Text className="flex-1 text-[13px] text-muted-foreground">Message not found</Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Dismiss notice"
-                onPress={() => setJumpMissed(false)}
-                className="ml-2 rounded px-2 py-1 active:bg-surface-raised"
-              >
-                <Text className="text-[13px] font-semibold text-muted-foreground">Dismiss</Text>
-              </Pressable>
-            </View>
+            <DismissBanner
+              tone="notice"
+              message="Message not found"
+              onDismiss={() => setJumpMissed(false)}
+            />
           ) : null}
           {channelBar ? (
             <ChannelComposerBar
@@ -933,56 +870,24 @@ function Chat() {
           voiceHost={voiceHost}
         />
         {pinError !== '' ? (
-          <View className="mx-2 flex-row items-center justify-between rounded-[10px] bg-danger/20 px-3 py-2">
-            <Text className="flex-1 text-[13px] text-danger">{pinError}</Text>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Dismiss error"
-              onPress={() => setPinError('')}
-              className="ml-2 rounded px-2 py-1 active:bg-surface-raised"
-            >
-              <Text className="text-[13px] font-semibold text-danger">Dismiss</Text>
-            </Pressable>
-          </View>
+          <DismissBanner tone="error" message={pinError} onDismiss={() => setPinError('')} />
         ) : null}
         {actionError !== undefined ? (
-          <View className="mx-2 flex-row items-center justify-between rounded-[10px] bg-danger/20 px-3 py-2">
-            <Text className="flex-1 text-[13px] text-danger">{actionError.message}</Text>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Dismiss error"
-              onPress={() => dismissActionError()}
-              className="ml-2 rounded px-2 py-1 active:bg-surface-raised"
-            >
-              <Text className="text-[13px] font-semibold text-danger">Dismiss</Text>
-            </Pressable>
-          </View>
+          <DismissBanner
+            tone="error"
+            message={actionError.message}
+            onDismiss={() => dismissActionError()}
+          />
         ) : null}
         {openError !== '' ? (
-          <View className="mx-2 flex-row items-center justify-between rounded-[10px] bg-danger/20 px-3 py-2">
-            <Text className="flex-1 text-[13px] text-danger">{openError}</Text>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Dismiss error"
-              onPress={() => setOpenError('')}
-              className="ml-2 rounded px-2 py-1 active:bg-surface-raised"
-            >
-              <Text className="text-[13px] font-semibold text-danger">Dismiss</Text>
-            </Pressable>
-          </View>
+          <DismissBanner tone="error" message={openError} onDismiss={() => setOpenError('')} />
         ) : null}
         {jumpMissed ? (
-          <View className="mx-2 flex-row items-center justify-between rounded-[10px] bg-surface-raised px-3 py-2">
-            <Text className="flex-1 text-[13px] text-muted-foreground">Message not found</Text>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Dismiss notice"
-              onPress={() => setJumpMissed(false)}
-              className="ml-2 rounded px-2 py-1 active:bg-surface-raised"
-            >
-              <Text className="text-[13px] font-semibold text-muted-foreground">Dismiss</Text>
-            </Pressable>
-          </View>
+          <DismissBanner
+            tone="notice"
+            message="Message not found"
+            onDismiss={() => setJumpMissed(false)}
+          />
         ) : null}
         <Composer
           chatKey={chat.id}

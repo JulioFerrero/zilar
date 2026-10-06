@@ -22,7 +22,7 @@ vi.mock('react-native', () => ({
   Image: 'Image',
   KeyboardAvoidingView: ({ children }: { children: ReactNode }) => children,
   Modal: ({ children }: { children: ReactNode }) => children,
-  Platform: { OS: 'ios' },
+  Platform: { OS: 'ios', select: (options: Record<string, unknown>) => options['ios'] },
   Pressable: ({
     accessibilityLabel,
     children,
@@ -44,6 +44,10 @@ vi.mock('react-native', () => ({
   useWindowDimensions: () => ({ width: 390, height: 844 }),
 }));
 
+vi.mock('react-native-reanimated', () => ({
+  useReducedMotion: () => false,
+}));
+
 vi.mock('lucide-react-native', () => ({
   Clock: 'Clock',
   Info: 'Info',
@@ -52,6 +56,7 @@ vi.mock('lucide-react-native', () => ({
 
 vi.mock('@/components/ui/text', () => ({
   Text: 'Text',
+  TextClassContext: { Provider: 'TextClassContextProvider' },
 }));
 
 vi.mock('@/lib/auth', () => ({
@@ -74,6 +79,9 @@ vi.mock('@/lib/color-scheme', () => ({
 
 vi.mock('@/lib/depth', () => ({
   well: {},
+  primaryKey: {},
+  KEY_PRIMARY_PRESSED_SHADOW: '0 0 #000',
+  pressStyle: () => undefined,
 }));
 
 let forcedInput = '';

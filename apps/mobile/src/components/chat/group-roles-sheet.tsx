@@ -4,7 +4,9 @@ import { Pressable, View } from 'react-native';
 import { Avatar } from '@/components/chat/avatar';
 import { RoleChips } from '@/components/chat/role-chips';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
+import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import type { GroupRole } from '@/lib/chat-api';
@@ -117,21 +119,23 @@ export function GroupRolesSheet({
           <Text accessibilityRole="alert" className="text-[13px] text-danger">
             {rolesError}
           </Text>
-          <Pressable
-            accessibilityRole="button"
+          <Button
+            variant="outline"
             accessibilityLabel="Retry loading roles"
             disabled={busy}
             onPress={onRetryRoles}
-            className="self-start rounded-[10px] border border-border-strong px-4 py-2 active:bg-surface-raised disabled:opacity-50"
+            className="self-start"
           >
-            <Text className="text-[15px] text-foreground">Retry</Text>
-          </Pressable>
+            <Text>Retry</Text>
+          </Button>
         </View>
       ) : null}
       {roles !== undefined && roles.length === 0 ? (
-        <Text className="py-1 text-[14px] text-muted-foreground">
-          No roles yet. Roles grant private-topic access and approver rights.
-        </Text>
+        <StateMessage
+          kind="empty"
+          size="inline"
+          title="No roles yet. Roles grant private-topic access and approver rights."
+        />
       ) : null}
       {roles?.map((role) => {
         const renaming = renamingId === role.id;
@@ -156,82 +160,80 @@ export function GroupRolesSheet({
               {isManager ? (
                 renaming ? (
                   <>
-                    <Pressable
-                      accessibilityRole="button"
+                    <Button
+                      variant="outline"
+                      size="sm"
                       accessibilityLabel={`Save ${role.name}`}
                       disabled={busy}
                       onPress={() => rename(role.id)}
-                      className="rounded-[10px] border border-border-strong px-3 py-1.5 active:bg-surface-raised disabled:opacity-50"
                     >
-                      <Text className="text-[14px] text-foreground">Save</Text>
-                    </Pressable>
-                    <Pressable
-                      accessibilityRole="button"
+                      <Text>Save</Text>
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       accessibilityLabel="Cancel rename"
                       disabled={busy}
                       onPress={() => setRenamingId(undefined)}
-                      className="rounded-[10px] px-3 py-1.5 active:bg-surface-raised disabled:opacity-50"
                     >
-                      <Text className="text-[14px] text-foreground">Cancel</Text>
-                    </Pressable>
+                      <Text>Cancel</Text>
+                    </Button>
                   </>
                 ) : confirming ? (
                   <>
-                    <Pressable
-                      accessibilityRole="button"
+                    <Button
+                      variant="destructive"
+                      size="sm"
                       accessibilityLabel={`Confirm deleting ${role.name}`}
                       disabled={busy}
                       onPress={() => {
                         void onDeleteRole(role.id).then(() => setConfirmingId(undefined));
                       }}
-                      className="rounded-[10px] bg-danger px-3 py-1.5 active:opacity-80 disabled:opacity-50"
                     >
-                      <Text className="text-[14px] font-semibold text-accent-foreground">
-                        Delete
-                      </Text>
-                    </Pressable>
-                    <Pressable
-                      accessibilityRole="button"
+                      <Text>Delete</Text>
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       accessibilityLabel="Cancel delete"
                       disabled={busy}
                       onPress={() => setConfirmingId(undefined)}
-                      className="rounded-[10px] px-3 py-1.5 active:bg-surface-raised disabled:opacity-50"
                     >
-                      <Text className="text-[14px] text-foreground">Cancel</Text>
-                    </Pressable>
+                      <Text>Cancel</Text>
+                    </Button>
                   </>
                 ) : (
                   <>
-                    <Pressable
-                      accessibilityRole="button"
+                    <Button
+                      variant="outline"
+                      size="sm"
                       accessibilityLabel={`Assign ${role.name}`}
                       disabled={busy}
                       onPress={() => setAssigningId(assigning ? undefined : role.id)}
-                      className="rounded-[10px] border border-border-strong px-3 py-1.5 active:bg-surface-raised disabled:opacity-50"
                     >
-                      <Text className="text-[14px] text-foreground">Assign</Text>
-                    </Pressable>
-                    <Pressable
-                      accessibilityRole="button"
+                      <Text>Assign</Text>
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       accessibilityLabel={`Rename ${role.name}`}
                       disabled={busy}
                       onPress={() => {
                         setRenameValue(role.name);
                         setRenamingId(role.id);
                       }}
-                      className="rounded-[10px] px-3 py-1.5 active:bg-surface-raised disabled:opacity-50"
                     >
-                      <Text className="text-[14px] text-foreground">Rename</Text>
-                    </Pressable>
-                    <Pressable
-                      accessibilityRole="button"
+                      <Text>Rename</Text>
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       accessibilityLabel={`Delete ${role.name}`}
                       disabled={busy}
                       onPress={() => setConfirmingId(role.id)}
-                      className="rounded-[10px] px-3 py-1.5 active:bg-surface-raised disabled:opacity-50"
                     >
-                      <Text className="text-[14px] text-danger">Delete</Text>
-                    </Pressable>
+                      <Text className="text-danger">Delete</Text>
+                    </Button>
                   </>
                 )
               ) : null}
@@ -280,17 +282,14 @@ export function GroupRolesSheet({
             placeholder="e.g. Designers"
             className="min-w-0 flex-1 text-[14px]"
           />
-          <Pressable
-            accessibilityRole="button"
+          <Button
             accessibilityLabel="Add role"
             disabled={busy || newName.trim() === ''}
             onPress={create}
-            className="shrink-0 rounded-full bg-accent px-4 py-2 active:opacity-90 disabled:opacity-50"
+            className="shrink-0"
           >
-            <Text className="text-[14px] font-semibold text-accent-foreground">
-              {busy ? 'Saving…' : 'Add role'}
-            </Text>
-          </Pressable>
+            <Text>{busy ? 'Saving…' : 'Add role'}</Text>
+          </Button>
         </View>
       ) : null}
       {error !== '' ? (

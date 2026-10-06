@@ -1,3 +1,4 @@
+import type { ForwardOrigin } from '@zilar/protocol';
 import type { ChatMessage, Occupant, XmppCore, XmppCoreOptions } from '@zilar/xmpp-core';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -808,6 +809,40 @@ describe('createRealChatStore', () => {
     await flushUntil(() => store.getState().status === 'online');
     expect(api.getXmppToken).toHaveBeenCalledTimes(2);
     expect(xmpp.core.connect).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('forwarded messages (T-0427)', () => {
+  const CHAT = 'ana@zilar.test';
+  const FORWARD: ForwardOrigin = {
+    sender_id: 'luis@zilar.test',
+    sender_name: 'Luis',
+    chat_id: 'viernes@conference.zilar.test',
+    chat_name: 'Friday plans',
+    original_at: '2026-08-30T18:00:00.000Z',
+  };
+
+  it('keeps the forward origin on an incoming message', async () => {
+    const { store, xmpp } = await setup();
+    xmpp.emit('message', message({ chatJid: CHAT, body: 'terraza', forward: FORWARD }));
+
+    const stored = store
+      .getState()
+      .messages(CHAT)
+      .find((item) => item.text === 'terraza');
+    expect(stored?.forward).toEqual(FORWARD);
+  });
+
+  it('leaves a plain message without a forward key', async () => {
+    const { store, xmpp } = await setup();
+    xmpp.emit('message', message({ chatJid: CHAT, body: 'plain' }));
+
+    const stored = store
+      .getState()
+      .messages(CHAT)
+      .find((item) => item.text === 'plain');
+    expect(stored).toBeDefined();
+    expect(stored).not.toHaveProperty('forward');
   });
 });
 

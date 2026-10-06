@@ -12,7 +12,8 @@ import { ListRow } from './list-row';
 import { SegmentedControl } from './segmented-control';
 import { StateMessage } from './state-message';
 import { Switch } from './switch';
-import { TextArea, TextInput } from './text-input';
+import { SecretInput, TextArea, TextInput } from './text-input';
+import { SearchField } from './search-field';
 
 describe('Badge', () => {
   it('renders nothing at zero', () => {
@@ -143,6 +144,58 @@ describe('TextInput and TextArea', () => {
     const input = screen.getByLabelText('Group name');
     expect(screen.getByText('Group name').tagName).toBe('LABEL');
     expect(input.parentElement?.className).toContain('flex-col');
+  });
+
+  it('starts a SecretInput as a password field labelled Show key', () => {
+    render(<SecretInput label="API key" defaultValue="sk-secret" />);
+    expect(screen.getByLabelText('API key').getAttribute('type')).toBe('password');
+    expect(screen.getByRole('button', { name: 'Show key' })).toBeTruthy();
+  });
+
+  it('reveals and re-hides a SecretInput', () => {
+    render(<SecretInput label="API key" defaultValue="sk-secret" />);
+    const input = screen.getByLabelText('API key');
+    fireEvent.click(screen.getByRole('button', { name: 'Show key' }));
+    expect(input.getAttribute('type')).toBe('text');
+    fireEvent.click(screen.getByRole('button', { name: 'Hide key' }));
+    expect(input.getAttribute('type')).toBe('password');
+  });
+
+  it('uses a custom revealLabel for the SecretInput toggle', () => {
+    render(
+      <SecretInput label="Bot token" revealLabel={{ show: 'Show token', hide: 'Hide token' }} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Show token' }));
+    expect(screen.getByRole('button', { name: 'Hide token' })).toBeTruthy();
+  });
+
+  it('keeps the eye toggle on the input when a labelled SecretInput has a hint', () => {
+    render(<SecretInput label="API key" hint="Starts with sk-" defaultValue="sk-secret" />);
+    const input = screen.getByLabelText('API key');
+    expect(screen.getByText('Starts with sk-').tagName).toBe('P');
+    const toggle = screen.getByRole('button', { name: 'Show key' });
+    expect(toggle.parentElement).toBe(input.parentElement);
+    expect(toggle.parentElement?.className).toContain('relative');
+    expect(toggle.parentElement?.className).not.toContain('flex-col');
+    expect(input.parentElement?.parentElement?.className).toContain('flex-col');
+    fireEvent.click(toggle);
+    expect(input.getAttribute('type')).toBe('text');
+    expect(screen.getByRole('button', { name: 'Hide key' })).toBeTruthy();
+  });
+});
+
+describe('SearchField', () => {
+  it('renders type search, keeps the aria-label, and puts className on the wrapper', () => {
+    const { container } = render(
+      <SearchField aria-label="Search groups" placeholder="Search" className="mt-3" />,
+    );
+    const input = screen.getByLabelText('Search groups');
+    expect(input.getAttribute('type')).toBe('search');
+    const wrapper = container.firstElementChild as HTMLElement;
+    expect(wrapper.tagName).toBe('DIV');
+    expect(wrapper.className).toContain('relative');
+    expect(wrapper.className).toContain('mt-3');
+    expect(input.parentElement).toBe(wrapper);
   });
 });
 

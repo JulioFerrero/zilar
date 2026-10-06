@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { z } from 'zod';
 import {
+  bigint,
   boolean,
   check,
   date,
@@ -1218,4 +1219,67 @@ export const routines = pgTable(
     // Personal scope is both ids null; group scope is both set.
     check('routines_topic_scope_check', sql`("group_id" IS NULL) = ("topic_id" IS NULL)`),
   ],
+);
+
+// Shared media gallery (T-0410): one row per media item or link extracted
+// from the ejabberd MAM archive. The indexer (`media/indexer.ts`) fills it
+// incrementally per chat and the read endpoint (a later task) serves it from
+// here. `archive_owner`/`chat_jid` mirror search's archive scope; `message_id`
+// is the origin id clients jump by. `ref` carries the URL or link URL so the
+// unique index names one plain column instead of an expression index on
+// `coalesce(url, link_url)`.
+export const mediaItems = pgTable(
+  'media_items',
+  {
+    id: text('id').primaryKey(),
+    archiveOwner: text('archive_owner').notNull(),
+    chatJid: text('chat_jid').notNull(),
+    messageId: text('message_id').notNull(),
+    atMicros: bigint('at_micros', { mode: 'number' }).notNull(),
+    senderJid: text('sender_jid').notNull(),
+    kind: text('kind', { enum: ['image', 'file', 'gif', 'voice', 'link'] }).notNull(),
+    url: text('url'),
+    name: text('name'),
+    mime: text('mime'),
+    size: integer('size'),
+    width: integer('width'),
+    height: integer('height'),
+    durationMs: integer('duration_ms'),
+    waveform: jsonb('waveform').$type<number[]>(),
+    linkUrl: text('link_url'),
+    linkHost: text('link_host'),
+    ref: text('ref').notNull(),
+    deleted: boolean('deleted').notNull().default(false),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    // The indexer's dedup key: re-reading an archive row inserts nothing.
+    uniqueIndex('media_items_unique_idx').on(
+      table.archiveOwner,
+      table.chatJid,
+      table.messageId,
+      table.kind,
+      table.ref,
+    ),
+    // The gallery read: one chat + tab, newest first.
+    index('media_items_chat_kind_at_idx').on(
+      table.archiveOwner,
+      table.chatJid,
+      table.kind,
+      table.atMicros,
+    ),
+  ],
+);
+
+// The per-chat incremental cursor (T-0410): the timestamp the indexer has read
+// through. A missing row means "read from the 12-month window start".
+export const mediaIndexState = pgTable(
+  'media_index_state',
+  {
+    archiveOwner: text('archive_owner').notNull(),
+    chatJid: text('chat_jid').notNull(),
+    indexedThroughMicros: bigint('indexed_through_micros', { mode: 'number' }).notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.archiveOwner, table.chatJid] })],
 );

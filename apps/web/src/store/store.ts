@@ -303,6 +303,17 @@ export interface ChatStore {
   sendAttachment: (chatId: string, file: File, options?: SendAttachmentOptions) => void;
   /** Sends a sticker payload in the chat (T-0120). */
   sendSticker: (chatId: string, sticker: SendStickerInput, options?: SendTextOptions) => void;
+  /**
+   * Forwards `messages` to each target chat (T-0414): one copy per message per
+   * target, carrying a `<forward>` origin and the source's reused body/payload.
+   * An optional comment is sent as a separate text message after a target's
+   * copies. Deleted, failed and still-sending messages are skipped.
+   */
+  forwardMessages: (
+    targets: string[],
+    messages: UiMessage[],
+    options?: { comment?: string },
+  ) => void;
   /** Re-sends a failed sticker. */
   retrySticker: (chatId: string, messageId: string) => void;
   /** Re-runs a failed attachment upload, keeping the original file. */
@@ -1367,6 +1378,10 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
         }));
         window.setTimeout(() => setStatus(chatId, message.id, 'sent'), 300);
         window.setTimeout(() => setStatus(chatId, message.id, 'read'), 1500);
+      },
+      forwardMessages: () => {
+        // The mock store does not model forwards; the action exists so the
+        // picker and other mock UI compile and call it.
       },
       retrySticker: (chatId, messageId) => {
         set((state) => ({

@@ -11,13 +11,25 @@ import { visibilityReasonText } from './visibility-sheet';
 // a hand copy. `react-native` and `react-native-safe-area-context` are
 // stubbed so the real module never parses the native/safe-area layers.
 vi.mock('react-native', () => ({
+  Platform: { OS: 'ios', select: (options: Record<string, unknown>) => options['ios'] },
   Pressable: 'Pressable',
   TextInput: 'TextInput',
   View: 'View',
 }));
 
+vi.mock('react-native-reanimated', () => ({
+  useReducedMotion: () => false,
+}));
+
 vi.mock('@/components/ui/text', () => ({
   Text: 'Text',
+  TextClassContext: { Provider: 'TextClassContextProvider' },
+}));
+
+vi.mock('@/lib/depth', () => ({
+  KEY_PRIMARY_PRESSED_SHADOW: {},
+  pressStyle: () => ({}),
+  primaryKey: {},
 }));
 
 // The reason text comes from the real `visibility-sheet`, which renders

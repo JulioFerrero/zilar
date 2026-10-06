@@ -102,13 +102,9 @@ export function AddMachineDialog({ onClose }: { onClose: () => void }) {
   const actions =
     status === 'error' ? (
       <>
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded-full px-4 py-1.5 text-[15px] text-muted-foreground hover:bg-list-hover"
-        >
+        <Button type="button" variant="ghost" size="lg" onClick={onClose}>
           Close
-        </button>
+        </Button>
         <Button type="button" onClick={refresh} size="lg">
           Try again
         </Button>

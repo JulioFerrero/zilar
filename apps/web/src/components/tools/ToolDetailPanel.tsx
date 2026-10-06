@@ -16,6 +16,8 @@ import {
 import { truncateOutput } from '@/lib/routines';
 import { Button, FieldError } from '@/components/ais/AiPageShell';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { StateMessage } from '@/components/ui/state-message';
+import { TextArea } from '@/components/ui/text-input';
 import { CodeBlock, TruncatedText } from './CodeBlock';
 
 type DetailStatus = 'loading' | 'ready' | 'error';
@@ -185,7 +187,7 @@ export function ToolDetailPanel({
   };
 
   if (status === 'loading') {
-    return <p className="px-2 text-[13px] text-muted-foreground">Loading…</p>;
+    return <StateMessage kind="loading" size="inline" title="Loading…" />;
   }
 
   if (status === 'error' || tool === null) {
@@ -308,13 +310,13 @@ export function ToolDetailPanel({
             <span className="text-[13px] text-muted-foreground">
               Optional JSON input (max 4 KB)
             </span>
-            <textarea
+            <TextArea
               aria-label="Run input (JSON)"
               rows={3}
               value={runInput}
               onChange={(event) => setRunInput(event.target.value)}
               placeholder='e.g. {"city": "Madrid"}'
-              className="well-surface min-w-0 rounded-[10px] px-3 py-2 font-mono text-[13px] text-foreground outline-none placeholder:text-subtle-foreground focus-visible:ring-2 focus-visible:ring-accent/40"
+              className="min-h-0 font-mono text-[13px]"
             />
           </label>
           {runInputError !== '' && <FieldError>{runInputError}</FieldError>}

@@ -1,5 +1,5 @@
 import { useRef } from 'react';
-import { cn } from '@/lib/utils';
+import { Button } from './ui/button';
 import { Dialog } from './ui/dialog';
 
 export interface ConfirmDialogProps {
@@ -35,24 +35,12 @@ export function ConfirmDialog({
       initialFocusRef={cancelRef}
       actions={
         <>
-          <button
-            ref={cancelRef}
-            type="button"
-            onClick={onCancel}
-            className="rounded-full px-4 py-1.5 text-[15px] text-muted-foreground hover:bg-list-hover focus-visible:outline-none"
-          >
+          <Button ref={cancelRef} type="button" variant="ghost" size="lg" onClick={onCancel}>
             Cancel
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            className={cn(
-              'rounded-full bg-danger px-4 py-1.5 text-[15px] font-medium text-white',
-              'hover:bg-danger/90 focus-visible:outline-none',
-            )}
-          >
+          </Button>
+          <Button type="button" variant="destructive" size="lg" onClick={onConfirm}>
             {confirmLabel}
-          </button>
+          </Button>
         </>
       }
     />

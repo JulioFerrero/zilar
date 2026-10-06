@@ -1,7 +1,6 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, View } from 'react-native';
-import { useColorScheme } from 'nativewind';
+import { KeyboardAvoidingView, Platform, View } from 'react-native';
 
 import { RequireAisAuth } from '@/components/ais/require-ais-auth';
 import { describeAisError } from '@/components/ais/errors';
@@ -23,10 +22,9 @@ import { useConnectionsApi } from '@/components/connections/use-connections-api'
 import { applyMachineChange } from '@/components/machines/machine-change';
 import { useMachinesApi } from '@/components/machines/use-machines-api';
 import { Button } from '@/components/ui/button';
+import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
-import { ACCENT } from '@/lib/colors';
-import { asColorScheme } from '@/lib/color-scheme';
 import type { Connection as AisConnection, PublicAi, UpdateAiInput } from '@/lib/ais-api';
 import type { Machine } from '@/lib/machines-api';
 
@@ -40,7 +38,6 @@ export default function EditAiScreen() {
 
 function EditAi() {
   const router = useRouter();
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   const { api } = useAisApi();
   const { api: connectionsApi } = useConnectionsApi();
   const { api: machinesApi } = useMachinesApi();
@@ -241,19 +238,13 @@ function EditAi() {
         }
       >
         {status === 'loading' ? (
-          <View className="items-center gap-3 pt-16">
-            <ActivityIndicator color={ACCENT[scheme]} />
-            <Text className="text-[15px] text-muted-foreground">Loading…</Text>
-          </View>
+          <StateMessage kind="loading" title="Loading…" />
         ) : status === 'error' ? (
-          <View className="items-center gap-3 px-2 pt-12">
-            <Text accessibilityRole="alert" className="text-center text-[15px] text-danger">
-              {loadError}
-            </Text>
-            <Button variant="outline" onPress={retry}>
-              <Text>Retry</Text>
-            </Button>
-          </View>
+          <StateMessage
+            kind="error"
+            title={loadError}
+            action={{ label: 'Retry', onPress: retry }}
+          />
         ) : (
           <View className="gap-4">
             <View className="gap-1">

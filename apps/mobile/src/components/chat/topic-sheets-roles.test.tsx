@@ -6,7 +6,9 @@ import { TopicInfoSheet } from './topic-sheets';
 import type { ChatSummary } from '@/lib/types';
 
 vi.mock('react-native', () => ({
+  ActivityIndicator: 'ActivityIndicator',
   Modal: 'Modal',
+  Platform: { OS: 'ios', select: (options: Record<string, unknown>) => options['ios'] },
   Pressable: 'Pressable',
   View: 'View',
 }));
@@ -19,9 +21,15 @@ vi.mock('nativewind', () => ({
   useColorScheme: () => ({ colorScheme: 'dark' }),
 }));
 
+vi.mock('react-native-reanimated', () => ({
+  useReducedMotion: () => false,
+}));
+
 vi.mock('lucide-react-native', () => ({
   Check: 'Check',
   Lock: 'Lock',
+  CircleAlert: 'CircleAlert',
+  Inbox: 'Inbox',
 }));
 
 vi.mock('@/components/chat/avatar', () => ({
@@ -30,6 +38,7 @@ vi.mock('@/components/chat/avatar', () => ({
 
 vi.mock('@/components/ui/text', () => ({
   Text: 'Text',
+  TextClassContext: { Provider: 'TextClassContextProvider' },
 }));
 
 // The info sheet renders through the kit `BottomSheet` (T-0315); stub it
@@ -48,6 +57,7 @@ vi.mock('@/lib/color-scheme', () => ({
 }));
 
 vi.mock('@/lib/colors', () => ({
+  DANGER: { dark: '#ef4444', light: '#ef4444' },
   FOREGROUND: { dark: '#fafafa', light: '#fafafa' },
   MUTED_FOREGROUND: { dark: '#8a8a8a', light: '#8a8a8a' },
 }));

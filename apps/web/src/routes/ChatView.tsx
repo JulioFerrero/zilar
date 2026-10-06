@@ -6,6 +6,8 @@ import { ChannelComposerBar } from '@/components/ChannelComposerBar';
 import { ChannelPanel } from '@/components/ChannelPanel';
 import { ChatHeader } from '@/components/ChatHeader';
 import { Composer } from '@/components/Composer';
+import { ForwardPicker } from '@/components/ForwardPicker';
+import { Button } from '@/components/ui/button';
 import { GroupPanel } from '@/components/GroupPanel';
 import { MessageList } from '@/components/MessageList';
 import { PinnedBanner } from '@/components/PinnedBanner';
@@ -51,6 +53,7 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
     setPanel(initialPanel(searchParams.get('panel'), chat));
   }
   const [replyTo, setReplyTo] = useState<ReplyRef | undefined>(undefined);
+  const [forwarding, setForwarding] = useState<UiMessage[] | null>(null);
   const editTarget = store.editTarget;
   // Edit mode and reply are exclusive: starting an edit clears the reply. The
   // reset happens during render (React's "adjust state when a prop changes"),
@@ -102,17 +105,24 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
           <p role="status" className="text-[13px] text-muted-foreground">
             {notice.message}
           </p>
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
             aria-label="Dismiss notice"
             onClick={() => storeApi.getState().dismissTopicNotice()}
-            className="shrink-0 rounded-full px-2 py-1 text-[13px] text-muted-foreground hover:bg-surface-raised hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+            className="shrink-0 rounded-full text-[13px] text-muted-foreground"
           >
             Dismiss
-          </button>
+          </Button>
         </div>
       )}
-      <MessageList key={chat.id} chat={chat} onReply={startReply} />
+      <MessageList
+        key={chat.id}
+        chat={chat}
+        onReply={startReply}
+        onForward={(message) => setForwarding([message])}
+      />
       {chat.chatKind === 'channel' ? (
         <ChannelComposerBar chat={chat} />
       ) : (
@@ -135,6 +145,9 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
       )}
       {pinsPanel !== undefined && (
         <PinsPanel chatId={chat.id} onClose={() => storeApi.getState().setPinsPanel(undefined)} />
+      )}
+      {forwarding !== null && (
+        <ForwardPicker messages={forwarding} onClose={() => setForwarding(null)} />
       )}
     </div>
   );

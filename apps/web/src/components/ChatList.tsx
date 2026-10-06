@@ -20,6 +20,7 @@ import { usePendingApprovalCount } from '@/lib/usePendingApprovalCount';
 import { useContactRequestCount } from '@/lib/useContactRequestCount';
 import { Button } from './ui/button';
 import { IconButton } from './ui/icon-button';
+import { StateMessage } from './ui/state-message';
 import { Menu, MenuItem } from './ui/menu';
 import { useInstallPrompt } from '@/lib/push';
 import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
@@ -312,11 +313,12 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
         {store.chatsState === 'loading' && !hasAnyChats ? (
           <ChatListSkeleton />
         ) : store.chatsState === 'error' && !hasAnyChats ? (
-          <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center">
-            <p className="text-[15px] text-muted-foreground">{"Couldn't load chats"}</p>
-            <Button type="button" size="lg" className="rounded-full px-5" onClick={retryChats}>
-              Retry
-            </Button>
+          <div className="flex h-full flex-col items-center justify-center p-8">
+            <StateMessage
+              kind="error"
+              title="Couldn't load chats"
+              action={{ label: 'Retry', onClick: retryChats }}
+            />
           </div>
         ) : (
           <>
@@ -391,18 +393,20 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
                     AI chats and legacy groups. */}
                 {archived.length > 0 && (
                   <>
-                    <button
+                    <Button
                       type="button"
+                      variant="ghost"
+                      size="sm"
                       aria-expanded={showArchived}
                       onClick={() => setShowArchived((value) => !value)}
                       className={cn(
-                        'flex shrink-0 items-center gap-2 px-3 py-2 text-left text-[13px] text-muted-foreground hover:text-foreground',
+                        'w-full justify-start gap-2 text-[13px] font-normal text-muted-foreground hover:text-foreground',
                         isWide && 'rounded-[12px]',
                       )}
                     >
                       <Archive className="size-4" aria-hidden="true" />
                       <span className="flex-1">Archived ({archived.length})</span>
-                    </button>
+                    </Button>
                     {showArchived &&
                       archived.map((chat) => (
                         <ChatListItem

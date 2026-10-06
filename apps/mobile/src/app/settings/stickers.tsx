@@ -1,34 +1,20 @@
 import { useFocusEffect, useRouter } from 'expo-router';
-import {
-  ChevronDown,
-  ChevronUp,
-  Download,
-  Pencil,
-  Plus,
-  RefreshCw,
-  Star,
-  Sticker,
-} from 'lucide-react-native';
+import { ChevronDown, ChevronUp, Download, Pencil, Plus, Star, Sticker } from 'lucide-react-native';
 import { useColorScheme } from 'nativewind';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  Image,
-  Modal,
-  Pressable,
-  View,
-  useWindowDimensions,
-} from 'react-native';
+import { Image, Pressable, View, useWindowDimensions } from 'react-native';
 
 import { RequireStickersAuth } from '@/components/stickers/require-stickers-auth';
+import { Button } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { SearchField } from '@/components/ui/search-field';
+import { SegmentedControl } from '@/components/ui/segmented-control';
 import { useAuthStore } from '@/auth/session';
 import { API_URL } from '@/lib/auth';
 import { asColorScheme } from '@/lib/color-scheme';
-import { ACCENT, FOREGROUND, ICON, MUTED_FOREGROUND } from '@/lib/colors';
-import { ACCENT_FOREGROUND } from '@/lib/depth';
-import { segment, well } from '@/lib/depth';
+import { ACCENT_FOREGROUND, FOREGROUND, ICON, MUTED_FOREGROUND } from '@/lib/colors';
 import { getSessionToken } from '@/lib/session-token';
 import {
   isSameOriginStickerUrl,
@@ -49,6 +35,9 @@ const TABS: readonly { key: StickerTab; label: string }[] = [
   { key: 'discover', label: 'Discover' },
   { key: 'favorites', label: 'Favorites' },
 ];
+
+const isStickerTab = (value: string): value is StickerTab =>
+  TABS.some((entry) => entry.key === value);
 
 type PageStatus = 'loading' | 'ready' | 'error';
 
@@ -282,140 +271,110 @@ function StickersBody() {
       onBack={() => router.back()}
     >
       <View className="gap-4">
-        <View
-          className="mb-2 flex-row gap-0.5 rounded-[10px] p-[3px]"
-          style={[well, { borderColor: '#1a1a1a' }]}
-        >
-          {TABS.map((entry) => {
-            const selected = entry.key === tab;
-            return (
-              <Pressable
-                key={`${entry.key}-${selected ? 'on' : 'off'}`}
-                accessibilityRole="tab"
-                accessibilityState={{ selected }}
-                accessibilityLabel={entry.label}
-                onPress={() => openTab(entry.key)}
-                className="h-[34px] flex-1 items-center justify-center rounded-[7px]"
-                style={selected ? segment : undefined}
-              >
-                <Text
-                  className={cn(
-                    'text-[13px] font-medium',
-                    selected ? 'text-foreground' : 'text-muted-foreground',
-                  )}
-                >
-                  {entry.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
+        <SegmentedControl
+          options={TABS.map((entry) => ({ value: entry.key, label: entry.label }))}
+          value={tab}
+          onChange={(next) => {
+            if (isStickerTab(next)) {
+              openTab(next);
+            }
+          }}
+          accessibilityLabel="Sticker sections"
+          className="mb-2"
+        />
 
-        {status === 'loading' ? (
-          <View className="items-center gap-3 pt-16">
-            <ActivityIndicator color={ACCENT[scheme]} />
-            <Text className="text-[15px] text-muted-foreground">Loading stickers…</Text>
-          </View>
-        ) : null}
+        {status === 'loading' ? <StateMessage kind="loading" title="Loading stickers…" /> : null}
 
         {status === 'error' ? (
-          <View className="items-center gap-3 pt-12">
-            <Text accessibilityRole="alert" className="text-center text-[15px] text-danger">
-              {LOAD_ERROR}
-            </Text>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Retry loading stickers"
-              onPress={reload}
-              className="flex-row items-center gap-2 rounded-full border border-border-strong px-4 py-2 active:bg-surface-raised"
-            >
-              <RefreshCw size={16} color={ICON[scheme]} />
-              <Text className="text-[15px] text-foreground">Retry</Text>
-            </Pressable>
-          </View>
+          <StateMessage
+            kind="error"
+            title={LOAD_ERROR}
+            action={{
+              label: 'Retry',
+              accessibilityLabel: 'Retry loading stickers',
+              onPress: reload,
+            }}
+          />
         ) : null}
 
         {status === 'ready' && tab === 'packs' ? (
           <View className="gap-2">
             <View className="flex-row items-center justify-between">
               <Text className="text-[16px] font-semibold text-foreground">My packs</Text>
-              <Pressable
-                accessibilityRole="button"
+              <Button
+                variant="default"
+                size="sm"
                 accessibilityLabel="Create a new sticker pack"
                 disabled={busy}
                 onPress={() => router.push('/settings/sticker-pack')}
-                className="flex-row items-center gap-1.5 rounded-full bg-accent px-3 py-1.5 active:opacity-90 disabled:opacity-60"
               >
-                <Plus size={16} color={ACCENT_FOREGROUND} />
-                <Text className="text-[14px] font-medium text-accent-foreground">New pack</Text>
-              </Pressable>
+                <Plus size={16} color={ACCENT_FOREGROUND[scheme]} />
+                <Text>New pack</Text>
+              </Button>
             </View>
-            <Pressable
-              accessibilityRole="button"
+            <Button
+              variant="outline"
+              className="h-11 rounded-xl"
               accessibilityLabel="Import from Telegram"
               disabled={busy}
               onPress={() => {
                 setImportNonce((nonce) => nonce + 1);
                 setImportOpen(true);
               }}
-              className="h-11 flex-row items-center justify-center gap-2 rounded-xl border border-border-strong active:bg-surface-raised disabled:opacity-60"
             >
               <Download size={16} color={ICON[scheme]} />
               <Text className="text-[15px] text-foreground">Import from Telegram</Text>
-            </Pressable>
+            </Button>
             {actionError !== '' ? (
               <Text accessibilityRole="alert" className="text-[14px] text-danger">
                 {actionError}
               </Text>
             ) : null}
             {packs.length === 0 ? (
-              <View className="items-center gap-3 pt-16">
-                <Sticker size={32} color={ICON[scheme]} />
-                <Text className="px-4 text-center text-[15px] text-muted-foreground">
-                  No packs on your panel yet. Look in Discover for shared packs to add.
-                </Text>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Open Discover"
-                  onPress={() => openTab('discover')}
-                  className="rounded-full bg-accent px-5 py-2 active:opacity-90"
-                >
-                  <Text className="text-[15px] font-medium text-accent-foreground">
-                    Open Discover
-                  </Text>
-                </Pressable>
-              </View>
+              <StateMessage
+                kind="empty"
+                icon={Sticker}
+                title="No packs on your panel yet. Look in Discover for shared packs to add."
+                action={{
+                  label: 'Open Discover',
+                  accessibilityLabel: 'Open Discover',
+                  onPress: () => openTab('discover'),
+                }}
+              />
             ) : (
               <View className="gap-2">
                 {packs.map((pack, index) => (
                   <PackCard key={pack.id} pack={pack} token={token} meId={me?.id}>
                     <View className="mt-2 flex-row items-center justify-between border-t border-divider pt-2">
                       <View className="flex-row gap-1">
-                        <Pressable
-                          accessibilityRole="button"
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-9 w-9 rounded-lg"
+                          hitSlop={4}
                           accessibilityLabel={`Move ${pack.title} up`}
                           disabled={busy || index === 0}
-                          hitSlop={4}
                           onPress={() => movePack(pack.id, -1)}
-                          className="h-9 w-9 items-center justify-center rounded-lg active:bg-surface-raised disabled:opacity-40"
                         >
                           <ChevronUp size={20} color={ICON[scheme]} />
-                        </Pressable>
-                        <Pressable
-                          accessibilityRole="button"
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-9 w-9 rounded-lg"
+                          hitSlop={4}
                           accessibilityLabel={`Move ${pack.title} down`}
                           disabled={busy || index === packs.length - 1}
-                          hitSlop={4}
                           onPress={() => movePack(pack.id, 1)}
-                          className="h-9 w-9 items-center justify-center rounded-lg active:bg-surface-raised disabled:opacity-40"
                         >
                           <ChevronDown size={20} color={ICON[scheme]} />
-                        </Pressable>
+                        </Button>
                       </View>
                       <View className="flex-row items-center gap-2">
                         {me !== null && pack.ownerId !== undefined && pack.ownerId === me.id ? (
-                          <Pressable
-                            accessibilityRole="button"
+                          <Button
+                            variant="outline"
+                            size="sm"
                             accessibilityLabel={`Edit ${pack.title}`}
                             disabled={busy}
                             onPress={() =>
@@ -424,21 +383,20 @@ function StickersBody() {
                                 params: { id: pack.id },
                               })
                             }
-                            className="flex-row items-center gap-1 rounded-full border border-border-strong px-3 py-1 active:bg-surface-raised disabled:opacity-60"
                           >
                             <Pencil size={14} color={ICON[scheme]} />
-                            <Text className="text-[14px] text-foreground">Edit</Text>
-                          </Pressable>
+                            <Text>Edit</Text>
+                          </Button>
                         ) : null}
-                        <Pressable
-                          accessibilityRole="button"
+                        <Button
+                          variant="outline"
+                          size="sm"
                           accessibilityLabel={`Remove ${pack.title}`}
                           disabled={busy}
                           onPress={() => askRemove(pack)}
-                          className="rounded-full border border-border-strong px-3 py-1 active:bg-surface-raised disabled:opacity-60"
                         >
-                          <Text className="text-[14px] text-foreground">Remove</Text>
-                        </Pressable>
+                          <Text>Remove</Text>
+                        </Button>
                       </View>
                     </View>
                   </PackCard>
@@ -470,25 +428,17 @@ function StickersBody() {
               </Text>
             ) : null}
             {discoverBusy ? (
-              <View className="items-center gap-3 pt-16">
-                <ActivityIndicator color={ACCENT[scheme]} />
-                <Text className="text-[15px] text-muted-foreground">Searching…</Text>
-              </View>
+              <StateMessage kind="loading" title="Searching…" />
             ) : discover === undefined || discoverError !== '' ? (
-              <View className="items-center gap-3 pt-12">
-                <Text accessibilityRole="alert" className="text-center text-[15px] text-danger">
-                  {discoverError === '' ? DISCOVER_ERROR : discoverError}
-                </Text>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Retry loading shared packs"
-                  onPress={() => loadDiscover(query)}
-                  className="flex-row items-center gap-2 rounded-full border border-border-strong px-4 py-2 active:bg-surface-raised"
-                >
-                  <RefreshCw size={16} color={ICON[scheme]} />
-                  <Text className="text-[15px] text-foreground">Retry</Text>
-                </Pressable>
-              </View>
+              <StateMessage
+                kind="error"
+                title={discoverError === '' ? DISCOVER_ERROR : discoverError}
+                action={{
+                  label: 'Retry',
+                  accessibilityLabel: 'Retry loading shared packs',
+                  onPress: () => loadDiscover(query),
+                }}
+              />
             ) : discover.length === 0 ? (
               <View className="items-center px-6 pt-12">
                 <Text className="text-center text-[15px] text-muted-foreground">
@@ -506,27 +456,27 @@ function StickersBody() {
                       token={token}
                       action={
                         added ? (
-                          <Pressable
-                            accessibilityRole="button"
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="shrink-0"
                             accessibilityLabel={`Remove ${pack.title}`}
                             disabled={busy}
                             onPress={() => askRemove(pack)}
-                            className="shrink-0 rounded-full border border-border-strong px-3 py-1 active:bg-surface-raised disabled:opacity-60"
                           >
-                            <Text className="text-[14px] text-foreground">Remove</Text>
-                          </Pressable>
+                            <Text>Remove</Text>
+                          </Button>
                         ) : (
-                          <Pressable
-                            accessibilityRole="button"
+                          <Button
+                            variant="default"
+                            size="sm"
+                            className="shrink-0"
                             accessibilityLabel={`Add ${pack.title}`}
                             disabled={busy}
                             onPress={() => addPack(pack.id)}
-                            className="shrink-0 rounded-full bg-accent px-3 py-1 active:opacity-90 disabled:opacity-60"
                           >
-                            <Text className="text-[14px] font-medium text-accent-foreground">
-                              {busyId === pack.id ? 'Adding…' : 'Add'}
-                            </Text>
-                          </Pressable>
+                            <Text>{busyId === pack.id ? 'Adding…' : 'Add'}</Text>
+                          </Button>
                         )
                       }
                     />
@@ -546,11 +496,7 @@ function StickersBody() {
               </Text>
             ) : null}
             {favorites.length === 0 ? (
-              <View className="items-center px-6 pt-12">
-                <Text className="text-center text-[15px] text-muted-foreground">
-                  No favorites yet. Starred stickers show up here.
-                </Text>
-              </View>
+              <StateMessage kind="empty" title="No favorites yet. Starred stickers show up here." />
             ) : (
               <View accessibilityLabel="Favorite stickers" className="flex-row flex-wrap gap-2">
                 {favorites.map((sticker) => (
@@ -589,52 +535,25 @@ function StickersBody() {
         ) : null}
       </View>
 
-      <Modal
+      <ConfirmDialog
         visible={confirming !== null}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setConfirming(null)}
-      >
-        <View className="flex-1 items-center justify-center bg-black/40 p-6">
-          <View className="w-full max-w-xs rounded-2xl bg-background p-4">
-            <Text className="text-[16px] font-semibold text-foreground">Remove this pack?</Text>
-            <Text className="mt-1 text-[14px] leading-5 text-muted-foreground">
-              {confirming === null
-                ? ''
-                : `${confirming.title} leaves your sticker panel. You can add it again from Discover if it is still shared.`}
-            </Text>
-            {confirmError !== '' ? (
-              <Text accessibilityRole="alert" className="mt-2 text-[13px] text-danger">
-                {confirmError}
-              </Text>
-            ) : null}
-            <View className="mt-4 flex-row justify-end gap-2">
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Cancel"
-                disabled={busy}
-                onPress={() => setConfirming(null)}
-                className="rounded-full px-3 py-1.5 active:bg-surface-raised disabled:opacity-60"
-              >
-                <Text className="text-[14px] text-muted-foreground">Cancel</Text>
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={
-                  confirming === null ? 'Remove pack' : `Remove ${confirming.title}`
-                }
-                disabled={busy}
-                onPress={confirmRemove}
-                className="rounded-full bg-destructive px-3 py-1.5 active:opacity-90 disabled:opacity-60"
-              >
-                <Text className="text-[14px] font-medium text-white">
-                  {busy ? 'Removing…' : 'Remove'}
-                </Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
+        title="Remove this pack?"
+        message={
+          confirming === null
+            ? ''
+            : `${confirming.title} leaves your sticker panel. You can add it again from Discover if it is still shared.`
+        }
+        error={confirmError}
+        confirmLabel="Remove"
+        busyLabel="Removing…"
+        busy={busy}
+        onCancel={() => setConfirming(null)}
+        onConfirm={confirmRemove}
+        confirmAccessibilityLabel={
+          confirming === null ? 'Remove pack' : `Remove ${confirming.title}`
+        }
+        destructive
+      />
 
       <TelegramImportSheet
         key={`telegram-import-${importNonce}`}

@@ -1,5 +1,6 @@
 import { FileText, X } from 'lucide-react';
 import { formatFileSize, type PendingAttachment } from '@/lib/attachments';
+import { Button } from './ui/button';
 import { Well } from './ui/well';
 
 export interface AttachmentPreviewProps {
@@ -30,14 +31,16 @@ export function AttachmentPreview({ attachment, previewUrl, onCancel }: Attachme
           {formatFileSize(attachment.file.size)}
         </div>
       </div>
-      <button
+      <Button
         type="button"
+        variant="ghost"
+        size="icon-lg"
         aria-label="Remove attachment"
         onClick={onCancel}
-        className="flex size-9 shrink-0 items-center justify-center rounded-[8px] text-muted-foreground hover:bg-surface-raised"
+        className="shrink-0 rounded-[8px] text-muted-foreground"
       >
         <X className="size-4" aria-hidden="true" />
-      </button>
+      </Button>
     </Well>
   );
 }

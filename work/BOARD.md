@@ -367,3 +367,94 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0336](T-0336-mobile-inline-ticks.md) | Mobile: inline bubble ticks as icons | 2026-10-06 |
 | [T-0337](T-0337-mobile-ai-bubble-layout.md) | Mobile: AI markdown list and code block layout fixed; tick nudge | 2026-10-06 |
 | [T-0338](T-0338-mobile-bubble-meta-wrap.md) | Mobile: tick never wraps away from the time; list items without extra height | 2026-10-06 |
+| [T-0339](T-0339-mobile-settings-confirms.md) | Mobile kit: Stickers, Sticker pack and Integrations confirms on ConfirmDialog | 2026-10-06 |
+| [T-0340](T-0340-mobile-add-machine-kit.md) | Mobile kit: Add machine dialog on the kit surface and Buttons | 2026-10-06 |
+| [T-0341](T-0341-mobile-empty-state-plus.md) | Mobile: empty-state Plus icons in accent foreground | 2026-10-06 |
+| [T-0342](T-0342-web-new-topic-visibility-segmented.md) | Web kit: New topic visibility on SegmentedControl | 2026-10-06 |
+| [T-0343](T-0343-mobile-machines-buttons-kit.md) | Mobile kit: Machines screen pill buttons on Button | 2026-10-06 |
+| [T-0344](T-0344-web-inputs-kit.md) | Web kit: Telegram import and Group roles fields on TextInput | 2026-10-06 |
+| [T-0345](T-0345-mobile-connections-buttons-kit.md) | Mobile kit: Connections screen text pill buttons on Button | 2026-10-06 |
+| [T-0346](T-0346-mobile-stickers-buttons-kit.md) | Mobile kit: Stickers screen text pill buttons on Button | 2026-10-06 |
+| [T-0347](T-0347-mobile-sticker-pack-buttons-kit.md) | Mobile kit: Sticker pack editor text pill buttons on Button | 2026-10-06 |
+| [T-0348](T-0348-mobile-integrations-requests-buttons-kit.md) | Mobile kit: Integrations and Requests text pill buttons on Button | 2026-10-06 |
+| [T-0349](T-0349-mobile-profile-buttons-kit.md) | Mobile kit: Profile settings, avatar and handle buttons on Button | 2026-10-06 |
+| [T-0350](T-0350-mobile-telegram-import-buttons-kit.md) | Mobile kit: Telegram import sheet text pill buttons on Button | 2026-10-06 |
+| [T-0351](T-0351-mobile-auth-buttons-kit.md) | Mobile kit: sign-in and onboarding buttons on Button | 2026-10-06 |
+| [T-0352](T-0352-mobile-join-handle-buttons-kit.md) | Mobile kit: join link and @handle screen buttons on Button | 2026-10-06 |
+| [T-0353](T-0353-mobile-new-group-explore-buttons-kit.md) | Mobile kit: New group sheet and Explore join buttons on Button | 2026-10-06 |
+| [T-0355](T-0355-mobile-invite-links-buttons-kit.md) | Mobile kit: invite links sheet buttons on Button | 2026-10-06 |
+| [T-0356](T-0356-mobile-profile-button-labels.md) | Mobile fix: Profile settings buttons show their labels again | 2026-10-06 |
+| [T-0354](T-0354-mobile-join-invite-buttons-kit.md) | Mobile kit: join-link card and Invite a friend sheet buttons on Button | 2026-10-06 |
+| [T-0358](T-0358-web-inline-loading-state.md) | Web kit: StateMessage inline size; panel Loading lines use it | 2026-10-06 |
+| [T-0357](T-0357-web-kit-search-field.md) | Web kit: SearchField; GIF, folder editor, Explore and sticker searches use it | 2026-10-06 |
+| [T-0359](T-0359-web-chat-menu-items-kit.md) | Web kit: MenuItem aria-label; chat row, header and topic menus on MenuItem | 2026-10-06 |
+| [T-0361](T-0361-mobile-roles-topics-buttons-kit.md) | Mobile kit: Group roles, topic sheets and task strip buttons on Button | 2026-10-06 |
+| [T-0362](T-0362-mobile-profile-card-channel-buttons-kit.md) | Mobile kit: profile card, Profile tab and channel screen buttons on Button | 2026-10-06 |
+| [T-0363](T-0363-web-message-menu-items-kit.md) | Web kit: message actions menu items on MenuItem | 2026-10-06 |
+| [T-0364](T-0364-web-gif-stickers-states-kit.md) | Web kit: GIF and Stickers states on StateMessage; SearchField shares FIELD_INPUT | 2026-10-06 |
+| [T-0360](T-0360-mobile-create-sheets-buttons-kit.md) | Mobile kit: create and visibility sheet buttons on Button | 2026-10-06 |
+| [T-0366](T-0366-web-contact-row-buttons-kit.md) | Web kit: contact profile row buttons on Button | 2026-10-06 |
+| [T-0367](T-0367-web-pinned-banner-buttons-kit.md) | Web kit: pinned banner buttons on Button | 2026-10-06 |
+| [T-0365](T-0365-web-connections-folder-taskstrip-buttons-kit.md) | Web kit: Connections, folder editor and task link buttons on Button | 2026-10-06 |
+| [T-0372](T-0372-web-panel-close-buttons-kit.md) | Web kit: panel close buttons on Button | 2026-10-06 |
+| [T-0368](T-0368-web-machine-cards-buttons-kit.md) | Web kit: machine card buttons on Button | 2026-10-06 |
+| [T-0369](T-0369-web-ais-integrations-buttons-kit.md) | Web kit: AIs page and Integrations Remove buttons on Button | 2026-10-06 |
+| [T-0370](T-0370-web-dialog-footers-buttons-kit.md) | Web kit: ConfirmDialog, New AI and avatar uploader buttons on Button | 2026-10-06 |
+| [T-0371](T-0371-web-pack-editor-buttons-kit.md) | Web kit: sticker pack editor buttons on Button | 2026-10-06 |
+| [T-0373](T-0373-web-dialog-cancel-back-close-kit.md) | Web kit: dialog Cancel, Back and Close on Button | 2026-10-06 |
+| [T-0377](T-0377-mobile-topic-info-leave-archive-kit.md) | Mobile kit: topic info Leave/Archive on Button; New topic Create guard | 2026-10-06 |
+| [T-0378](T-0378-mobile-group-fab-key.md) | Mobile: group New topic FAB as a raised key | 2026-10-06 |
+| [T-0374](T-0374-web-visibility-invite-buttons-kit.md) | Web kit: visibility and invite link buttons on Button | 2026-10-06 |
+| [T-0375](T-0375-web-plus-glyphs-icons-kit.md) | Web: Plus icons for + glyphs; New topic, Manage stickers, folder Edit on Button | 2026-10-06 |
+| [T-0376](T-0376-web-fab-voice-key-guard.md) | Web kit: FAB and voice play on Button; guard flags key-primary and solid bg-danger | 2026-10-06 |
+| [T-0379](T-0379-web-explore-states-kit.md) | Web kit: Explore states on StateMessage and Button | 2026-10-06 |
+| [T-0383](T-0383-mobile-group-roles-remaining-buttons-kit.md) | Mobile kit: last group roles sheet buttons on Button | 2026-10-06 |
+| [T-0381](T-0381-web-auth-setup-text-buttons-kit.md) | Web kit: Setup, handle, Add machine, profile and sign-in text buttons on Button | 2026-10-06 |
+| [T-0382](T-0382-web-picker-rows-outline-kit.md) | Web kit: panel picker rows on outline Button | 2026-10-06 |
+| [T-0385](T-0385-web-hover-action-buttons-kit.md) | Web kit: hover Chat/Message actions and attachment Remove on Button | 2026-10-06 |
+| [T-0380](T-0380-web-shell-back-icons-kit.md) | Web kit: settings Back, AI close and refresh on Button; drop unused AiPageShell frame | 2026-10-06 |
+| [T-0387](T-0387-mobile-profile-card-confirm-block-kit.md) | Mobile kit: profile card Confirm block on destructive Button | 2026-10-06 |
+| [T-0384](T-0384-mobile-explore-blocked-retry-buttons-kit.md) | Mobile kit: Explore, Blocked and panel Retry buttons on Button | 2026-10-06 |
+| [T-0390](T-0390-web-disclosure-toggles-kit.md) | Web kit: Revoked and More options disclosure toggles on Button | 2026-10-06 |
+| [T-0386](T-0386-mobile-kit-state-message.md) | Mobile kit: StateMessage component, catalog and kit test | 2026-10-06 |
+| [T-0388](T-0388-web-voice-file-key-icons-kit.md) | Web kit: transcript toggle as Captions IconButton; file Retry IconButton; transcript states on kit | 2026-10-06 |
+| [T-0389](T-0389-web-kit-secret-input.md) | Web kit: SecretInput replaces four hand-rolled key/token fields | 2026-10-06 |
+| [T-0391](T-0391-mobile-no-solid-pill-guard.md) | Mobile guard: no hand-rolled solid bg-accent/bg-danger Pressable | 2026-10-06 |
+| [T-0395](T-0395-web-chat-message-list-errors-kit.md) | Web kit: chat and message list errors on StateMessage | 2026-10-06 |
+| [T-0396](T-0396-web-connections-icon-buttons-kit.md) | Web kit: Connections icon buttons on Button | 2026-10-06 |
+| [T-0393](T-0393-mobile-panels-state-message.md) | Mobile kit: sticker and GIF panel states on StateMessage | 2026-10-06 |
+| [T-0394](T-0394-web-inline-loading-lines-kit.md) | Web kit: eight Loading/Searching lines on StateMessage | 2026-10-06 |
+| [T-0392](T-0392-mobile-kit-segmented-control.md) | Mobile kit: SegmentedControl from the Stickers tabs | 2026-10-06 |
+| [T-0397](T-0397-mobile-kit-switch.md) | Mobile kit: themed Switch row replaces the folder editor's SwitchRow | 2026-10-06 |
+| [T-0401](T-0401-web-kit-menu-radio-item.md) | Web kit: MenuRadioItem; TaskStrip status and owner menus use it | 2026-10-06 |
+| [T-0403](T-0403-web-secret-input-label-safe.md) | Web kit: SecretInput toggle stays on the input with a label or hint | 2026-10-06 |
+| [T-0402](T-0402-web-small-leftovers-kit.md) | Web kit: four small leftovers on the kit | 2026-10-06 |
+| [T-0398](T-0398-mobile-settings-states-a.md) | Mobile: Requests, Blocked and Connections states on StateMessage | 2026-10-06 |
+| [T-0399](T-0399-mobile-settings-states-b.md) | Mobile: Integrations, Machines and Stickers states on StateMessage | 2026-10-06 |
+| [T-0400](T-0400-mobile-kit-catalog-switch-segmented.md) | Mobile kit: Switch in the catalog; SegmentedControl press tests | 2026-10-06 |
+| [T-0404](T-0404-mobile-switch-on-colors.md) | Mobile kit: Switch ON keeps a light thumb on a grey track | 2026-10-06 |
+| [T-0405](T-0405-mobile-ai-approvals-states.md) | Mobile: AIs, AI detail and Approvals states on StateMessage | 2026-10-06 |
+| [T-0406](T-0406-ui-kit-leftovers-audit.md) | Audit: UI kit leftovers on web and mobile (docs/audit/ui-kit-leftovers.md) | 2026-10-06 |
+| [T-0407](T-0407-web-archived-dismiss-kit.md) | Web kit: Archived disclosure and Dismiss notice on Button | 2026-10-06 |
+| [T-0408](T-0408-mobile-pins-buttons-kit.md) | Mobile kit: pins banner and sheet buttons on Button | 2026-10-06 |
+| [T-0409](T-0409-web-forwarded-header.md) | Forwarding step 2 (web): received forwards show 'Forwarded from' header | 2026-10-06 |
+| [T-0412](T-0412-mobile-connections-icon-buttons.md) | Mobile kit: Connections icon buttons on Button | 2026-10-06 |
+| [T-0411](T-0411-web-fields-empty-kit.md) | Web kit: Run input, sign-in email and two empty lines on the kit | 2026-10-06 |
+| [T-0413](T-0413-web-empty-error-lines-kit.md) | Web kit: Tools, Always-allowed, Approvals empty lines and people search errors on StateMessage | 2026-10-06 |
+| [T-0415](T-0415-mobile-settings-buttons-kit.md) | Mobile kit: folder, integrations and machines buttons on Button | 2026-10-06 |
+| [T-0416](T-0416-mobile-stickers-auth-buttons-kit.md) | Mobile kit: Stickers import/move and sign-in links on Button | 2026-10-06 |
+| [T-0417](T-0417-mobile-screen-states-kit.md) | Mobile: Explore, user page, Profile tab and New AI states on StateMessage | 2026-10-06 |
+| [T-0418](T-0418-mobile-settings-states-c.md) | Mobile: Profile settings, Discover, sticker pack and Add machine states on StateMessage | 2026-10-06 |
+| [T-0420](T-0420-mobile-empty-lines-kit.md) | Mobile: AI sections, Connections, Folders and Explore empty lines on StateMessage | 2026-10-06 |
+| [T-0421](T-0421-mobile-revoked-chevron.md) | Mobile: Revoked machines disclosure shows a chevron and expanded state | 2026-10-06 |
+| [T-0423](T-0423-mobile-list-empty-lines.md) | Mobile: empty chat, tool versions/runs and empty sticker pack on StateMessage | 2026-10-06 |
+| [T-0424](T-0424-mobile-stickers-machines-empty.md) | Mobile: Stickers and Machines empty states on StateMessage | 2026-10-06 |
+| [T-0422](T-0422-mobile-sheet-empty-lines.md) | Mobile: topic, invite links and roles sheets empty lines on StateMessage | 2026-10-06 |
+| [T-0414](T-0414-web-forward-store-action.md) | Web store: forwardMessages sends copies with a forward origin, optional comment | 2026-10-06 |
+| [T-0425](T-0425-mobile-profile-buttons-kit.md) | Mobile: profile and contact card buttons on the kit Button | 2026-10-06 |
+| [T-0426](T-0426-mobile-ai-sheet-buttons-kit.md) | Mobile: AI activity Refresh, tool sheet Show all/less and Close on the kit Button | 2026-10-06 |
+| [T-0427](T-0427-mobile-forwarded-header.md) | Mobile: forwarded messages show 'Forwarded from X [in Y]' | 2026-10-06 |
+| [T-0428](T-0428-mobile-new-chat-menu-sheet.md) | Mobile: New chat menu on the kit ActionSheet with icons | 2026-10-06 |
+| [T-0429](T-0429-mobile-dismiss-banner.md) | Mobile: DismissBanner replaces 12 copied chat screen banners | 2026-10-06 |
+| [T-0410](T-0410-server-media-index.md) | Server: media_items and media_index_state tables with an incremental MAM media indexer | 2026-10-06 |
+| [T-0419](T-0419-web-forward-picker.md) | Web: Forward in the message menu opens a chat picker with an optional comment | 2026-10-06 |

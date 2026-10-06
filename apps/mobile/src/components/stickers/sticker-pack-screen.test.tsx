@@ -26,6 +26,7 @@ vi.mock('react-native', () => ({
   ActivityIndicator: 'ActivityIndicator',
   Image: 'Image',
   Modal: 'Modal',
+  Platform: { OS: 'ios', select: (options: Record<string, unknown>) => options['ios'] },
   Pressable: ({
     accessibilityLabel,
     children,
@@ -45,12 +46,18 @@ vi.mock('react-native', () => ({
   useWindowDimensions: () => ({ width: 390, height: 844 }),
 }));
 
+vi.mock('react-native-reanimated', () => ({
+  useReducedMotion: () => false,
+}));
+
 vi.mock('lucide-react-native', () => ({
   Circle: 'Circle',
+  CircleAlert: 'CircleAlert',
   CircleDot: 'CircleDot',
   Globe: 'Globe',
   Image: 'Image',
   ImagePlus: 'ImagePlus',
+  Inbox: 'Inbox',
   Lock: 'Lock',
   RefreshCw: 'RefreshCw',
   Trash2: 'Trash2',
@@ -68,6 +75,26 @@ vi.mock('@/auth/session', () => ({
 
 vi.mock('@/components/ui/text', () => ({
   Text: 'Text',
+  TextClassContext: { Provider: 'TextClassContextProvider' },
+}));
+
+vi.mock('@/components/ui/confirm-dialog', () => ({
+  ConfirmDialog: ({
+    visible,
+    title,
+    message,
+    error,
+    confirmAccessibilityLabel,
+  }: {
+    visible: boolean;
+    title: string;
+    message: string;
+    error?: string;
+    confirmAccessibilityLabel?: string;
+  }) =>
+    visible
+      ? createElement('Text', null, title, message, error ?? '', confirmAccessibilityLabel ?? '')
+      : null,
 }));
 
 vi.mock('@/components/settings/screen-shell', () => ({
@@ -92,6 +119,7 @@ vi.mock('@/lib/session-token', () => ({
 
 vi.mock('@/lib/colors', () => ({
   ACCENT: { dark: '#ededed', light: '#ededed' },
+  ACCENT_FOREGROUND: { dark: '#0a0a0a', light: '#0a0a0a' },
   DANGER: '#ef4444',
   FOREGROUND: { dark: '#ededed', light: '#ededed' },
   ICON: { dark: '#d4d4d4', light: '#d4d4d4' },
@@ -104,6 +132,9 @@ vi.mock('@/lib/color-scheme', () => ({
 
 vi.mock('@/lib/depth', () => ({
   well: {},
+  primaryKey: {},
+  KEY_PRIMARY_PRESSED_SHADOW: '0 0 #000',
+  pressStyle: () => undefined,
 }));
 
 vi.mock('@/components/stickers/sticker-native', () => ({

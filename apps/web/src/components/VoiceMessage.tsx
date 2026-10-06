@@ -1,6 +1,9 @@
 import { formatDuration, type VoiceMeta } from '@zilar/chat-core';
-import { Pause, Play } from 'lucide-react';
+import { Captions, Pause, Play } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
+import { StateMessage } from '@/components/ui/state-message';
 import { cn } from '@/lib/utils';
 import { ApiError, getVoiceTranscript } from '@/lib/api';
 import { useVoiceTranscriptionEnabled } from '@/lib/useVoiceTranscription';
@@ -218,23 +221,21 @@ export function VoiceMessage({ voice, own }: { voice: VoiceMeta; own: boolean })
         />
       )}
       <div className="flex items-center gap-2">
-        <button
+        <Button
           type="button"
+          size="icon-lg"
           aria-label={playing ? 'Pause voice message' : 'Play voice message'}
           aria-disabled={!playable}
           {...(!playable ? { title: 'Audio unavailable' } : {})}
           onClick={togglePlay}
-          className={cn(
-            'key-primary flex size-10 shrink-0 items-center justify-center rounded-full',
-            !playable && 'opacity-50',
-          )}
+          className={cn('size-10 shrink-0 rounded-full', !playable && 'opacity-50')}
         >
           {playing ? (
             <Pause className="size-4" aria-hidden="true" />
           ) : (
             <Play className="size-4 translate-x-px" aria-hidden="true" />
           )}
-        </button>
+        </Button>
         <span className="flex h-8 flex-1 items-center gap-[2px]" aria-hidden="true">
           {voice.waveform.map((value, index) => {
             const played = index / voice.waveform.length <= progress;
@@ -260,19 +261,21 @@ export function VoiceMessage({ voice, own }: { voice: VoiceMeta; own: boolean })
           {formatDuration(voice.duration_ms)}
         </span>
         {showControl && (
-          <button
-            type="button"
+          <IconButton
+            size={24}
+            radius={6}
             aria-label={transcriptOpen ? 'Hide transcript' : 'Show transcript'}
             aria-pressed={transcriptOpen}
             onClick={toggleTranscript}
-            className="key-icon shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-bold"
           >
-            Aa
-          </button>
+            <Captions className="size-3.5" aria-hidden="true" />
+          </IconButton>
         )}
       </div>
       {transcriptOpen && showControl && transcript.kind === 'loading' && (
-        <p className="mt-1.5 text-[14px] text-muted-foreground">Transcribing…</p>
+        <div className="mt-1.5">
+          <StateMessage kind="loading" size="inline" title="Transcribing…" />
+        </div>
       )}
       {transcriptOpen && showControl && transcript.kind === 'ready' && (
         <p className="mt-1.5 max-w-[420px] text-[14px] leading-5 whitespace-pre-wrap">
@@ -280,16 +283,12 @@ export function VoiceMessage({ voice, own }: { voice: VoiceMeta; own: boolean })
         </p>
       )}
       {transcriptOpen && showControl && transcript.kind === 'error' && (
-        <p className="mt-1.5 text-[14px]">
-          <span className="text-danger">{transcript.message}</span>{' '}
-          <button
-            type="button"
-            onClick={retryTranscript}
-            className="key-icon rounded-md px-1.5 py-0.5 text-[13px] font-medium"
-          >
+        <div className="mt-1.5 flex items-center gap-2 text-[14px]">
+          <span className="text-danger">{transcript.message}</span>
+          <Button type="button" variant="secondary" size="sm" onClick={retryTranscript}>
             Retry
-          </button>
-        </p>
+          </Button>
+        </div>
       )}
     </div>
   );

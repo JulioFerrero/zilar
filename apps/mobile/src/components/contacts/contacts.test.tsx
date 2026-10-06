@@ -21,8 +21,23 @@ import { ProfileCard, ProfileCardActionRow, shouldResetBlockConfirm } from './pr
 // `markdown-text.test.tsx` pattern). This keeps the test in Node (no
 // simulator, no new dependency) while still exercising the real component.
 vi.mock('react-native', () => ({
+  Platform: { OS: 'ios', select: (options: Record<string, unknown>) => options['ios'] },
   Pressable: 'Pressable',
   View: 'View',
+}));
+
+vi.mock('react-native-reanimated', () => ({
+  useReducedMotion: () => false,
+}));
+
+vi.mock('@/components/ui/use-key-press', () => ({
+  useKeyPress: () => ({ pressed: false, reduceMotion: false, setPressed: () => {} }),
+}));
+
+vi.mock('@/lib/depth', () => ({
+  KEY_PRIMARY_PRESSED_SHADOW: {},
+  pressStyle: () => ({}),
+  primaryKey: {},
 }));
 
 vi.mock('lucide-react-native', () => ({
@@ -31,6 +46,7 @@ vi.mock('lucide-react-native', () => ({
 
 vi.mock('@/components/ui/text', () => ({
   Text: 'Text',
+  TextClassContext: { Provider: 'TextClassContextProvider' },
 }));
 
 vi.mock('../chat/avatar', () => ({

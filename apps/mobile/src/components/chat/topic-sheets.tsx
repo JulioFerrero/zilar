@@ -5,6 +5,8 @@ import { Pressable, View } from 'react-native';
 import { Avatar } from '@/components/chat/avatar';
 import { ActionSheet, ActionSheetItem } from '@/components/ui/action-sheet';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
+import { Button } from '@/components/ui/button';
+import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { asColorScheme } from '@/lib/color-scheme';
 import { MUTE_DURATIONS, type MuteDurationId } from '@/lib/chat-prefs';
@@ -251,7 +253,7 @@ export function TopicInfoSheet({
               </View>
             ))}
             {ais.length === 0 ? (
-              <Text className="py-1 text-[14px] text-muted-foreground">No AIs here yet.</Text>
+              <StateMessage kind="empty" size="inline" title="No AIs here yet." />
             ) : null}
           </View>
 
@@ -269,23 +271,25 @@ export function TopicInfoSheet({
                   <Text accessibilityRole="alert" className="text-[13px] text-danger">
                     {rolesError}
                   </Text>
-                  <Pressable
-                    accessibilityRole="button"
+                  <Button
+                    variant="outline"
                     accessibilityLabel="Retry loading topic roles"
                     onPress={onRetryRoles}
-                    className="self-start rounded-[10px] border border-border-strong px-4 py-2 active:bg-surface-raised disabled:opacity-50"
+                    className="self-start"
                   >
-                    <Text className="text-[14px] text-foreground">Retry</Text>
-                  </Pressable>
+                    <Text>Retry</Text>
+                  </Button>
                 </View>
               ) : rolesLoading ? (
                 <Text className="py-1 text-[14px] text-muted-foreground">Checking your role…</Text>
               ) : (
                 <View>
                   {roles.length === 0 ? (
-                    <Text className="py-1 text-[14px] text-muted-foreground">
-                      No roles here yet — only the people above can see this topic.
-                    </Text>
+                    <StateMessage
+                      kind="empty"
+                      size="inline"
+                      title="No roles here yet — only the people above can see this topic."
+                    />
                   ) : null}
                   {attachedRows.map((row) => (
                     <View key={row.id} className="flex-row items-center gap-2 py-1">
@@ -293,14 +297,14 @@ export function TopicInfoSheet({
                         {row.label}
                       </Text>
                       {canManageRoles ? (
-                        <Pressable
-                          accessibilityRole="button"
+                        <Button
+                          variant="outline"
+                          size="sm"
                           accessibilityLabel={`Remove ${row.label} from the topic`}
                           onPress={() => onToggleTopicRole(row.id)}
-                          className="rounded-[10px] border border-border-strong px-3 py-1.5 active:bg-surface-raised disabled:opacity-50"
                         >
-                          <Text className="text-[14px] text-foreground">Remove</Text>
-                        </Pressable>
+                          <Text>Remove</Text>
+                        </Button>
                       ) : null}
                     </View>
                   ))}
@@ -309,31 +313,29 @@ export function TopicInfoSheet({
                       <Text accessibilityRole="alert" className="text-[13px] text-danger">
                         {groupRolesError}
                       </Text>
-                      <Pressable
-                        accessibilityRole="button"
+                      <Button
+                        variant="outline"
                         accessibilityLabel="Retry loading group roles"
                         onPress={onRetryGroupRoles}
-                        className="self-start rounded-[10px] border border-border-strong px-4 py-2 active:bg-surface-raised disabled:opacity-50"
+                        className="self-start"
                       >
-                        <Text className="text-[14px] text-foreground">Retry</Text>
-                      </Pressable>
+                        <Text>Retry</Text>
+                      </Button>
                     </View>
                   ) : null}
                   {canManageRoles ? (
                     pickerOpen ? (
                       <View className="gap-1 py-1">
                         {addableRows.map((row) => (
-                          <Pressable
+                          <Button
                             key={row.id}
-                            accessibilityRole="button"
+                            variant="outline"
+                            size="sm"
                             accessibilityLabel={`Add ${row.label} to the topic`}
                             onPress={() => onToggleTopicRole(row.id)}
-                            className="flex-row items-center gap-2 rounded-xl border border-border-strong px-2 py-1.5 active:bg-surface-raised disabled:opacity-50"
                           >
-                            <Text numberOfLines={1} className="min-w-0 flex-1 text-[14px]">
-                              {row.label}
-                            </Text>
-                          </Pressable>
+                            <Text>{row.label}</Text>
+                          </Button>
                         ))}
                         <Pressable
                           accessibilityRole="button"
@@ -345,16 +347,13 @@ export function TopicInfoSheet({
                         </Pressable>
                       </View>
                     ) : addableRows.length > 0 ? (
-                      <Pressable
-                        accessibilityRole="button"
+                      <Button
                         accessibilityLabel="Add roles to the topic"
                         onPress={() => setPickerOpen(true)}
-                        className="self-start rounded-full bg-accent px-4 py-2 active:opacity-90 disabled:opacity-50"
+                        className="self-start"
                       >
-                        <Text className="text-[14px] font-semibold text-accent-foreground">
-                          Add roles
-                        </Text>
-                      </Pressable>
+                        <Text>Add roles</Text>
+                      </Button>
                     ) : null
                   ) : null}
                   {canManageRoles ? (
@@ -410,28 +409,24 @@ export function TopicInfoSheet({
 
           <View className="flex-row justify-end gap-2">
             {topic.visibility === 'private' && isMember && !topic.isGeneral ? (
-              <Pressable
-                accessibilityRole="button"
+              <Button
+                variant="ghost"
                 accessibilityLabel="Leave topic"
                 disabled={busy}
                 onPress={onLeave}
-                className="rounded-[10px] px-4 py-2 active:bg-surface-raised disabled:opacity-50"
               >
-                <Text className="text-[15px] text-foreground">Leave</Text>
-              </Pressable>
+                <Text>Leave</Text>
+              </Button>
             ) : null}
             {canArchive ? (
-              <Pressable
-                accessibilityRole="button"
+              <Button
+                variant="destructive"
                 accessibilityLabel="Archive topic"
                 disabled={busy}
                 onPress={onArchive}
-                className="rounded-[10px] bg-danger px-4 py-2 active:opacity-80 disabled:opacity-50"
               >
-                <Text className="text-[15px] font-semibold text-accent-foreground">
-                  {busy ? 'Working…' : 'Archive'}
-                </Text>
-              </Pressable>
+                <Text>{busy ? 'Working…' : 'Archive'}</Text>
+              </Button>
             ) : null}
           </View>
         </View>

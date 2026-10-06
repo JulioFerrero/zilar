@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { Eye, EyeOff, Link, Trash2, X, Zap } from 'lucide-react';
+import { Link, Trash2, X, Zap } from 'lucide-react';
 import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
 import { Button } from '@/components/ui/button';
 import { StateMessage } from '@/components/ui/state-message';
-import { TextInput } from '@/components/ui/text-input';
+import { SecretInput, TextInput } from '@/components/ui/text-input';
 import {
   type Connection,
   type ConnectionTestResult,
@@ -205,45 +205,46 @@ export function ConnectionsPage() {
                       <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
                         {confirmingId === connection.id ? (
                           <>
-                            <button
+                            <Button
                               type="button"
+                              variant="destructive"
+                              size="sm"
                               onClick={() => void confirmRemove(connection.id)}
-                              className="rounded-full bg-danger px-3 py-1.5 text-[14px] font-medium text-white hover:bg-danger/90"
                             >
                               Remove
-                            </button>
-                            <button
-                              type="button"
-                              onClick={cancelRemove}
-                              className="rounded-full px-3 py-1.5 text-[14px] text-muted-foreground hover:bg-muted hover:text-foreground"
-                            >
+                            </Button>
+                            <Button type="button" variant="ghost" size="sm" onClick={cancelRemove}>
                               Cancel
-                            </button>
+                            </Button>
                           </>
                         ) : (
                           <>
-                            <button
+                            <Button
                               type="button"
+                              variant="ghost"
+                              size="icon"
                               disabled={testingId === connection.id}
                               aria-label={`Test ${providerLabel(connection.provider)} key`}
                               title={`Test ${providerLabel(connection.provider)} key`}
                               onClick={() => void testConnection(connection.id)}
-                              className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+                              className="rounded-full text-muted-foreground"
                             >
                               <Zap className="size-4" aria-hidden="true" />
-                            </button>
-                            <button
+                            </Button>
+                            <Button
                               type="button"
+                              variant="ghost"
+                              size="icon"
                               aria-label={`Remove ${providerLabel(connection.provider)} connection`}
                               title={`Remove ${providerLabel(connection.provider)} connection`}
                               onClick={() => {
                                 setConfirmingId(connection.id);
                                 setRemoveError('');
                               }}
-                              className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-danger/10 hover:text-danger"
+                              className="rounded-full text-muted-foreground hover:bg-danger/10 hover:text-danger"
                             >
                               <Trash2 className="size-4" aria-hidden="true" />
-                            </button>
+                            </Button>
                           </>
                         )}
                       </div>
@@ -276,7 +277,6 @@ function AddConnectionForm({
   const [provider, setProvider] = useState<string>(PROVIDERS[0].id);
   const [key, setKey] = useState('');
   const [label, setLabel] = useState('');
-  const [showKey, setShowKey] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -304,15 +304,17 @@ function AddConnectionForm({
     <div className="rounded-xl border border-border bg-surface p-4">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-[16px] font-semibold">New connection</h2>
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="icon-sm"
           aria-label="Close"
           title="Close"
           onClick={onCancel}
-          className="rounded-full p-1 text-muted-foreground hover:bg-muted"
+          className="rounded-full text-muted-foreground"
         >
           <X className="size-4" aria-hidden="true" />
-        </button>
+        </Button>
       </div>
 
       <div className="flex flex-col gap-3">
@@ -333,26 +335,13 @@ function AddConnectionForm({
 
         <label className="flex flex-col gap-1">
           <span className="text-[14px] font-medium">API key</span>
-          <div className="relative">
-            <TextInput
-              type={showKey ? 'text' : 'password'}
-              value={key}
-              placeholder="sk-…"
-              maxLength={16384}
-              autoComplete="off"
-              onChange={(event) => setKey(event.target.value)}
-              className="pr-10"
-            />
-            <button
-              type="button"
-              aria-label={showKey ? 'Hide key' : 'Show key'}
-              title={showKey ? 'Hide key' : 'Show key'}
-              onClick={() => setShowKey((value) => !value)}
-              className="absolute top-1/2 right-1 -translate-y-1/2 rounded-full p-1.5 text-muted-foreground hover:bg-muted"
-            >
-              {showKey ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-            </button>
-          </div>
+          <SecretInput
+            value={key}
+            placeholder="sk-…"
+            maxLength={16384}
+            autoComplete="off"
+            onChange={(event) => setKey(event.target.value)}
+          />
         </label>
 
         <label className="flex flex-col gap-1">
@@ -375,14 +364,9 @@ function AddConnectionForm({
           <Button type="button" size="lg" disabled={busy} onClick={() => void submit()}>
             Save
           </Button>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={onCancel}
-            className="rounded-full px-4 py-2 text-[15px] text-muted-foreground hover:text-foreground disabled:opacity-60"
-          >
+          <Button type="button" variant="ghost" size="lg" disabled={busy} onClick={onCancel}>
             Cancel
-          </button>
+          </Button>
         </div>
       </div>
     </div>

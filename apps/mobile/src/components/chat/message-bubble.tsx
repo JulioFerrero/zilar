@@ -14,6 +14,7 @@ import Svg, { Path } from 'react-native-svg';
 
 import { Avatar } from '@/components/chat/avatar';
 import { AttachmentBody } from '@/components/chat/attachment-body';
+import { ForwardedHeader } from '@/components/chat/forwarded-header';
 import { ImageMessage } from '@/components/chat/image-message';
 import { LinkText } from '@/components/chat/link-text';
 import { rendersMarkdown } from '@/components/chat/markdown-decision';
@@ -404,6 +405,9 @@ export function MessageBubble({
                       {message.senderName}
                     </Text>
                   ) : null}
+                  {message.forward !== undefined ? (
+                    <ForwardedHeader origin={message.forward} />
+                  ) : null}
                   {message.replyTo ? <ReplyQuote reply={message.replyTo} /> : null}
                   <StickerMessage
                     sticker={sticker}
@@ -425,14 +429,19 @@ export function MessageBubble({
                   ) : null}
                 </>
               ) : bigEmoji ? (
-                <BigEmoji
-                  message={message}
-                  text={text}
-                  outgoing={outgoing}
-                  generating={generating}
-                  reduceMotion={reduceMotion}
-                  onLongPress={generating ? () => {} : openMenu}
-                />
+                <>
+                  {message.forward !== undefined ? (
+                    <ForwardedHeader origin={message.forward} />
+                  ) : null}
+                  <BigEmoji
+                    message={message}
+                    text={text}
+                    outgoing={outgoing}
+                    generating={generating}
+                    reduceMotion={reduceMotion}
+                    onLongPress={generating ? () => {} : openMenu}
+                  />
+                </>
               ) : (
                 <Pressable
                   onLongPress={generating ? undefined : openMenu}
@@ -460,6 +469,9 @@ export function MessageBubble({
                     >
                       {message.senderName}
                     </Text>
+                  ) : null}
+                  {message.forward !== undefined ? (
+                    <ForwardedHeader origin={message.forward} />
                   ) : null}
                   {message.replyTo ? <ReplyQuote reply={message.replyTo} /> : null}
                   {hasAttachment ? (

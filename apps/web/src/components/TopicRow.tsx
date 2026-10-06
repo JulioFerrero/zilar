@@ -1,5 +1,5 @@
 import type { ChatSummary, UiMessage } from '@zilar/chat-core';
-import { ChevronDown, ChevronRight, Lock, MoreHorizontal, Pin, VolumeX } from 'lucide-react';
+import { ChevronDown, ChevronRight, Lock, MoreHorizontal, Pin, Plus, VolumeX } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { Avatar } from './Avatar';
@@ -14,6 +14,7 @@ import { useChatStore } from '@/store/ChatStoreProvider';
 import { MessageTicks } from './MessageTicks';
 import { AiBadge } from './AiBadge';
 import { Badge } from './ui/badge';
+import { Button } from './ui/button';
 
 function rowPreview(
   chat: ChatSummary,
@@ -142,8 +143,10 @@ export function TopicRow({
                 </span>
               )
             )}
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="icon-sm"
               aria-label={`Chat actions for ${chat.title}`}
               aria-haspopup="menu"
               aria-expanded={menuOpen}
@@ -152,10 +155,10 @@ export function TopicRow({
                 event.stopPropagation();
                 setMenuOpen((value) => !value);
               }}
-              className="shrink-0 rounded-md p-1 text-subtle-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none"
+              className="size-6 shrink-0 text-subtle-foreground opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
             >
               <MoreHorizontal className="size-4" aria-hidden="true" />
-            </button>
+            </Button>
           </span>
         </span>
       </Link>
@@ -267,15 +270,17 @@ export function GroupHeaderRow({
           </span>
         </button>
         {onOpenNewTopic !== undefined && (
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="icon-sm"
             onClick={onOpenNewTopic}
             aria-label={`New topic in ${groupTitle}`}
             title={`New topic in ${groupTitle}`}
-            className="flex size-7 shrink-0 items-center justify-center rounded-full text-[18px] leading-none text-muted-foreground hover:bg-surface-raised hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+            className="shrink-0 rounded-full text-muted-foreground"
           >
-            +
-          </button>
+            <Plus className="size-4" aria-hidden="true" />
+          </Button>
         )}
       </div>
       {!collapsed && (

@@ -1,14 +1,13 @@
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useColorScheme } from 'nativewind';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, View } from 'react-native';
+import { View } from 'react-native';
 
 import { RequireAuth } from '@/auth/RequireAuth';
 import { useAuthStore } from '@/auth/session';
+import { Button } from '@/components/ui/button';
+import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
-import { ACCENT } from '@/lib/colors';
-import { asColorScheme } from '@/lib/color-scheme';
 import { getSessionToken } from '@/lib/session-token';
 import { ProfileApiError, type MyProfile } from '@/lib/profile-api';
 
@@ -40,7 +39,6 @@ export default function ProfileSettingsScreen() {
 
 function ProfileSettings() {
   const router = useRouter();
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   const { api } = useProfileApi();
   const setName = useAuthStore((state) => state.setName);
 
@@ -305,27 +303,14 @@ function ProfileSettings() {
       subtitle="Your picture and username, seen by your contacts."
       onBack={() => router.back()}
     >
-      {status === 'loading' ? (
-        <View className="items-center gap-3 pt-16">
-          <ActivityIndicator color={ACCENT[scheme]} />
-          <Text className="text-[15px] text-muted-foreground">Loading…</Text>
-        </View>
-      ) : null}
+      {status === 'loading' ? <StateMessage kind="loading" title="Loading…" /> : null}
 
       {status === 'error' ? (
-        <View className="items-center gap-3 px-2 pt-12">
-          <Text accessibilityRole="alert" className="text-center text-[15px] text-danger">
-            Could not load your profile.
-          </Text>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Retry"
-            onPress={reload}
-            className="items-center rounded-full border border-border-strong bg-surface px-4 py-2 active:bg-surface-raised"
-          >
-            <Text className="text-[14px] text-foreground">Retry</Text>
-          </Pressable>
-        </View>
+        <StateMessage
+          kind="error"
+          title="Could not load your profile."
+          action={{ label: 'Retry', onPress: reload }}
+        />
       ) : null}
 
       {status === 'ready' && profile !== null ? (
@@ -362,17 +347,16 @@ function ProfileSettings() {
               </Text>
             ) : null}
             {nameSaved ? <Text className="text-[14px] text-muted-foreground">Saved.</Text> : null}
-            <Pressable
-              accessibilityRole="button"
+            <Button
+              variant="default"
+              size="sm"
+              className="mt-1 self-start"
               accessibilityLabel="Save name"
               disabled={nameBusy || nameUnchanged}
               onPress={saveName}
-              className="mt-1 items-center self-start rounded-full bg-accent px-4 py-2 active:opacity-90 disabled:opacity-60"
             >
-              <Text className="text-[14px] font-medium text-accent-foreground">
-                {nameBusy ? 'Saving…' : 'Save name'}
-              </Text>
-            </Pressable>
+              <Text>{nameBusy ? 'Saving…' : 'Save name'}</Text>
+            </Button>
           </View>
 
           <HandleField

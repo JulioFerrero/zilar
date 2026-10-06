@@ -23,7 +23,7 @@ vi.mock('nativewind', () => ({
 vi.mock('react-native', () => ({
   KeyboardAvoidingView: 'KeyboardAvoidingView',
   Modal: 'Modal',
-  Platform: { OS: 'ios' },
+  Platform: { OS: 'ios', select: (options: Record<string, unknown>) => options['ios'] },
   Pressable: 'Pressable',
   ScrollView: 'ScrollView',
   Share: { share: () => Promise.resolve({ action: 'dismissedAction' }) },
@@ -39,11 +39,17 @@ vi.mock('react-native-reanimated', () => ({
 }));
 
 vi.mock('lucide-react-native', () => ({
+  Compass: 'Compass',
+  Link: 'Link',
+  Megaphone: 'Megaphone',
+  MessageSquarePlus: 'MessageSquarePlus',
   Plus: 'Plus',
+  Users: 'Users',
 }));
 
 vi.mock('@/components/ui/text', () => ({
   Text: 'Text',
+  TextClassContext: { Provider: 'TextClassContextProvider' },
 }));
 
 vi.mock('@/components/chat/join-link', () => ({
@@ -74,6 +80,20 @@ describe('NewChatButton', () => {
   it('renders the New chat entry', () => {
     const html = renderToStaticMarkup(createElement(NewChatButton));
     expect(html).toContain('New chat');
+  });
+
+  it('offers the New chat menu rows', () => {
+    const html = renderToStaticMarkup(createElement(NewChatButton));
+    for (const label of [
+      'New channel',
+      'New group',
+      'New message',
+      'Explore',
+      'Join with a link',
+    ]) {
+      expect(html).toContain(label);
+    }
+    expect(html).toContain('Explore public groups');
   });
 
   it('no longer lists Add contact: people search lives in the search bar', () => {

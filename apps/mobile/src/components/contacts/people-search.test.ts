@@ -5,12 +5,28 @@ import { ContactsApiError, type ContactsApi, type HandleProfile } from '../../li
 // rendered to a plain element tree with `react-native` stubbed (the
 // `contacts.test.tsx` pattern). Top-level so vitest hoists them.
 vi.mock('react-native', () => ({
+  Platform: { OS: 'ios', select: (options: Record<string, unknown>) => options['ios'] },
   Pressable: 'Pressable',
   View: 'View',
 }));
 
+vi.mock('react-native-reanimated', () => ({
+  useReducedMotion: () => false,
+}));
+
+vi.mock('@/components/ui/use-key-press', () => ({
+  useKeyPress: () => ({ pressed: false, reduceMotion: false, setPressed: () => {} }),
+}));
+
+vi.mock('@/lib/depth', () => ({
+  KEY_PRIMARY_PRESSED_SHADOW: {},
+  pressStyle: () => ({}),
+  primaryKey: {},
+}));
+
 vi.mock('@/components/ui/text', () => ({
   Text: 'Text',
+  TextClassContext: { Provider: 'TextClassContextProvider' },
 }));
 
 vi.mock('lucide-react-native', () => ({

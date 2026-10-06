@@ -31,9 +31,18 @@ vi.mock('nativewind', () => ({
 vi.mock('react-native', () => ({
   ActivityIndicator: 'ActivityIndicator',
   Modal: 'Modal',
+  Platform: { OS: 'ios', select: (options: Record<string, unknown>) => options['ios'] },
   Pressable: 'Pressable',
   TextInput: 'TextInput',
   View: 'View',
+}));
+
+vi.mock('react-native-reanimated', () => ({
+  useReducedMotion: () => false,
+}));
+
+vi.mock('@/components/ui/use-key-press', () => ({
+  useKeyPress: () => ({ pressed: false, reduceMotion: false, setPressed: () => {} }),
 }));
 
 vi.mock('react-native-safe-area-context', () => ({
@@ -41,8 +50,10 @@ vi.mock('react-native-safe-area-context', () => ({
 }));
 
 vi.mock('lucide-react-native', () => ({
+  CircleAlert: 'CircleAlert',
   Eye: 'Eye',
   EyeOff: 'EyeOff',
+  Inbox: 'Inbox',
   Lock: 'Lock',
   Mail: 'Mail',
   Mic: 'Mic',
@@ -60,6 +71,12 @@ vi.mock('@/components/settings/screen-shell', () => ({
 
 vi.mock('@/components/ui/text', () => ({
   Text: 'Text',
+  TextClassContext: { Provider: 'TextClassContextProvider' },
+}));
+
+vi.mock('@/components/ui/confirm-dialog', () => ({
+  ConfirmDialog: ({ visible, title }: { visible: boolean; title: string }) =>
+    visible ? createElement('Text', null, title) : null,
 }));
 
 vi.mock('@/components/integrations/use-integrations-api', () => ({
@@ -68,6 +85,7 @@ vi.mock('@/components/integrations/use-integrations-api', () => ({
 
 vi.mock('@/lib/colors', () => ({
   ACCENT: { dark: '#ededed', light: '#ededed' },
+  DANGER: { dark: '#dc2626', light: '#dc2626' },
   ICON: { dark: '#d4d4d4', light: '#d4d4d4' },
   MUTED_FOREGROUND: { dark: '#a1a1a1', light: '#a1a1a1' },
 }));

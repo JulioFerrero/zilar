@@ -2,7 +2,11 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
-Last updated: 2026-10-05 ~14:40 local, after merging T-0223 and launching T-0225; earlier merged T-0222, T-0211 (Julio: "the resize is working great") and T-0221, and launching T-0222. Main checkout got `pnpm install` (T-0211 added Ink/React; the autopilot could not start without it). Julio's watcher reopened on the new version and floated; test window closed.
+**PAUSED 2026-10-06 (Julio needs the computer):** the lead stopped the autopilot, `lead watch`, opencode (workers), local dev (vite 5173, server 3188), the site preview, the emulator and the zilar-dev docker containers. Since the last update: T-0427, T-0428, T-0429 and T-0410 were merged. T-0419 is PACKET READY (clean, 3 nits) and not merged; review it on resume. Next: the gallery 1b route spec, then the mobile `forwardMessages` (mobile has no send timeout machinery; use the `markStickerFailed` style `failed: true`). To resume, follow the CLAUDE.md first actions (start the autopilot).
+
+Last updated: 2026-10-06 ~12:40 UTC, after the manual deploy, merging T-0414/T-0425/T-0426 and launching T-0419/T-0427/T-0428/T-0429.
+
+Older: 2026-10-05 ~14:40 local, after merging T-0223 and launching T-0225; earlier merged T-0222, T-0211 (Julio: "the resize is working great") and T-0221, and launching T-0222. Main checkout got `pnpm install` (T-0211 added Ink/React; the autopilot could not start without it). Julio's watcher reopened on the new version and floated; test window closed.
 
 Autopilot restarted with `ZILAR_REVIEW_MODEL=meta/muse-spark-1.3-contributor` (free Muse still 429 at ~12:05). When the free listing answers again (`opencode2 run -m "opencode/muse-spark-1.3-contributor-free#low" "Reply OK."`), restart it without the variable.
 
@@ -18,16 +22,151 @@ Known issue: `pnpm install` flips two `transitivePeerDependencies` entries (`buf
 
 Models (Julio, 2026-10-05): default `opencode/muse-spark-1.3-contributor-free`; MiniMax M3 only for the easiest exact tasks; billed `meta/muse-spark-1.3-contributor` is the fallback if the free listing hits limits.
 
+## Morning summary for Julio (2026-10-06, written 06:55 local)
+
+**Overnight:** about 95 tasks merged since 22:00, mostly the UI kit migration on web and mobile.
+- Every web field, menu, dialog, checkbox and radio switch is now on the kit.
+- On web, the ★ ✕ ↑ ↓ glyphs are now icons. On mobile, the ✓ glyphs are icons and the message bubbles draw tick icons.
+- Emulator QA ran in mock mode, runs 14-24, all on the `galena` AVD only. Every finding became a task and was fixed.
+
+**Bugs found and fixed tonight:**
+- mobile: the visibility and invite sheets were hidden under the keyboard;
+- mobile and web: search never found groups by name;
+- web, narrow screens: Escape in the chat header and task menus left the chat;
+- mobile: long AI messages collapsed to a narrow column, and the markdown reply showed as a huge empty block;
+- mobile: the New topic form overflowed its card;
+- web: the handle check reset when the active Public option was clicked again;
+- autopilot: a fix round that hit a rate limit stalled silently (T-0335; the autopilot was restarted on it).
+
+**Doctor audits:**
+- Audit 1: full suites green (web 1500, mobile 1982, server 1886).
+- Audit 2: one should-fix (Badge aria-label), fixed in T-0334.
+- Audit 3: clean.
+
+**Needs you:**
+1. **Auto-deploy:** add the GitHub secrets `COOLIFY_URL`, `COOLIFY_TOKEN` and `COOLIFY_SERVICE_UUID` (= `zogjtvwnoh9rqo96h7e7ajz1`).
+   - The images pipeline is green: the web image builds in 40 s.
+   - Until the secrets exist, live chat.zilar.app stays on v0.1.13.
+2. ~~Forwarding UI questions~~: answered on 10-06 (all recommendations).
+3. ~~Media gallery questions~~: answered on 10-06 (all recommendations).
+4. **Security, for you to decide:** `/upload/*` has no auth. Anyone who has a file URL can read the file, even after the message is retracted.
+5. **For later:** blocking matches the localpart only (doctor audit 1). That is harmless while federation is off, but revisit it before turning federation on.
+
 ## Running (max 6, at most 3 mobile; Julio 2026-10-05)
 
 Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's request): it builds, taps, screenshots and reports, never edits files. Run 1 done: T-0189, T-0212, T-0213, T-0218 PASS on a mock build, no crash; layout issues (routine row squeeze on Delete confirm, Activity header/icon, "Show all" under the gesture bar, version date cut) → T-0229 (written, launches after T-0219). Run 2 done (T-0219 PASS; keyboard + stale list → T-0230, merged). Run 3 done (T-0228: channel Private/Public and handle checks PASS; the sheets sit under the keyboard and mock create throws by design → T-0234). Julio: never wait for the QA subagent; merge on code review, QA findings go to a polish task.
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0338 | Mobile: tick never wraps away from the time; list item without extra height | coding (DeepSeek flash) | QA run 23 follow-up; emulator QA after the merge |
-| (doctor) | | | audit 3 running |
+| T-0410 | Media gallery 1a (server): index tables + indexer | pre-review after fix round | the only schema task; then the `/api/media` route (1b) |
+| T-0419 | Forwarding step 4 (web): Forward menu item + picker | coding | then multi-select |
+| T-0427 | Mobile forwarded header | fix round (big-emoji branch) | |
+| T-0428 | Mobile New chat menu on ActionSheet | coding | audit batch 23 part |
+| T-0429 | Mobile DismissBanner on the chat screen | coding | audit batch 17 |
+
+The sixth (web) slot waits for T-0419 (then multi-select) or T-0410 (then the gallery route). Remaining audit batches: 11 (tab chrome, no tests), 19 and 20 (in-bubble controls: lead leaves them raw, bubble colours), the rest of 23.
+
+**Deploy 2026-10-06 12:24 UTC (Julio: "Deploy now, by hand"):** CI green on eeaddee3, images run 37462477607 built all four, Coolify service restarted with pull. Live `/health` shows `commit: eeaddee3…`, and the live web bundle contains the T-0409 "Forwarded from" header. Auto-deploy still needs the 3 GitHub secrets. Merged after the deploy: T-0414, T-0425, T-0426.
+
+Merged 11:30-12:10 UTC: T-0407, T-0408, T-0409, T-0411, T-0412, T-0413, T-0415, T-0416, T-0417, T-0418.
+- **Forwarded header (T-0409):** the lead checked it in the browser (mock, Ana chat). "Forwarded from Luis in Friday plans" shows above the text.
+- **QA run 34** (main dd4e6a07, mock) PASS for the pins banner and sheet, the Connections icons, New folder, Delete folder, the Integrations eye, Stickers Import and Move, and the AIs tab. No crash. Marker b45684f1.
+  - Finding: "Revoked (1)" shows no tap hint (lead saw `qa34/16.png`) → T-0421.
+- **Lead decision:** the mobile `LoadError` component keeps its quiet raised Retry key (its comment says this is on purpose), so audit batch 27 is not migrated.
+
+Earlier: T-0407 to T-0412 were launched 11:05-11:28 UTC on DeepSeek flash (off-peak).
+
+**Julio, 2026-10-06 ~11:15 UTC:** he accepted every recommendation in the forwarding plan §5 and the media gallery plan §5 (recorded in both docs).
+- **Forwarding order:** T-0409 (receive and header), then the `forwardMessages` store action, then the picker and multi-select UI, then mobile.
+- **Gallery order:** T-0410 (1a), then the `/api/media` route (1b), then the web panel, then mobile.
+
+Merged 10:40-11:20 UTC: T-0398 to T-0406.
+- T-0400 had one lead fix round: a test could pass without pressing anything.
+- T-0406 wrote the `docs/audit/ui-kit-leftovers.md` batches, the source of the next kit tasks.
+
+QA run 33 (main d2b455fc, mock) PASS. The ON Switch now has a light thumb on a grey track (the lead saw `qa33/02_on_off.png`), and the catalog Switch works. The settings screens load straight to content in mock, so their states cannot be seen. No crash. Marker b45684f1.
+
+Earlier: launched 10:38 UTC (off-peak, DeepSeek flash). Merged 10:35-10:38 UTC: T-0391 to T-0397 (mobile guard, SegmentedControl, panel states, Switch; web loading lines, list errors, Connections icons). QA run 32 (main b4763d36, mock, qa32/):
+- **PASS:** the Stickers tabs and the catalog segmented control.
+- **ISSUE:** an ON Switch has a dark thumb that overhangs the light track and vanishes into the card (lead saw 23z.png) → T-0404, which launches in the next mobile slot.
+- **Inconclusive:** the T-0393 panels. Their states could not be forced. The sticker panel showed an empty grid and its pack tabs did not switch. T-0393 did not touch the tabs, so this is likely mock data; check it later.
+- No crash. Marker b45684f1.
+
+Merged 10:15-10:35 UTC: T-0384, T-0386 (mobile StateMessage), T-0387, T-0388 (Captions icon instead of "Aa"), T-0389 (web SecretInput), T-0390. QA run 31 (main e298c4d6): T-0383, T-0386 catalog, T-0387 PASS; T-0384 Blocked PASS, Explore Show more not reachable in mock (3 rows), panel Retry not forceable. Marker restored to b45684f1.
+
+Merged 10:00-10:15 UTC: T-0380 (settings Back/AI icons, unused AiPageShell frame removed), T-0381, T-0382 (picker rows), T-0383 (mobile group roles), T-0385 (hover actions). The free Muse started rate-limiting at ~10:05 UTC; the autopilot switches those sessions to the paid Muse. Off-peak launches go to DeepSeek flash.
+
+Next after this batch: mobile kit Switch (web has one); adopt the mobile StateMessage and SegmentedControl in more screens (folder tabs, other loading/error states); QA run 32 for T-0392, T-0393.
+
+QA run 30 (main a15f1213, mock): T-0377 and T-0378 PASS (dark theme; the light theme was not checked because the app keeps its own theme). Marker restored to b45684f1.
+
+Merged since the morning report (2026-10-06): T-0357 to T-0379; T-0374 to T-0379 added the visibility/invite buttons, Plus icons for the "+" glyphs, the FAB/voice play on Button with the guard now also flagging `key-primary` and solid `bg-danger`, the topic info Leave/Archive and New topic Create guard (mobile), the raised group FAB (mobile) and the Explore states. Earlier (web: SearchField, inline StateMessage, MenuItem on the chat and message menus, GIF/Stickers states, and kit Buttons on Connections, folders, task link, contact row, pinned banner, machine cards, AIs, Integrations, ConfirmDialog, New AI, avatar uploader, pack editor, panel close buttons and dialog Cancel/Back/Close; mobile: the create, visibility, roles, topic, task strip, profile and channel buttons). No hand-rolled solid `bg-danger` button is left on web.
+
+QA run 29 (main b0931985, mock): T-0360, T-0361, T-0362 PASS, no blank pills. Findings → T-0377 (Archive red with dark text; New topic Create enabled with empty name). Not checked: the visibility share-link buttons (no share link in mock), profile card states eve/bob/ada. One ANR came from the QA agent's own key flood in Chats search, not reproduced by normal typing. Marker restored to b45684f1.
+
+Still raw on web after this batch: MessageBubble inline Retry/Delete links, FolderRail keys, TaskStrip chips, EditBar strip, FileMessage key-icon retry, list rows and tabs (rows, tabs, radios and grid cells stay raw by design). Mobile: the image viewer Close (black overlay) and the AI wizard/option rows.
 
 Time correction (checked with `date`): it is 04:42 local, Tue 10-06. The "~04:xx–05:50 local" stamps below were estimated and run up to about an hour ahead; their order is right.
+
+~11:05 local (09:04 UTC): Julio asked for 6 workers and to watch the peak hours.
+- **Launched:** T-0357 to T-0359 (web) and T-0360 to T-0362 (mobile, the last accent pills).
+- **Model:** all six are on the free Muse, because DeepSeek's peak runs until 10:00 UTC; a failure falls back to the paid Muse.
+- **Specs:** every spec now says that labels go inside `<Text>`, after the T-0349 blank-button bug.
+- **Doctor audit 4:** clean.
+
+08:48 local: night finished.
+- **Merged:** T-0354 (2 nits; the lead checked every label is inside `<Text>`) and T-0356.
+- **QA run 28 PASS:** the Profile labels show, and Save name enables on edit. The lead saw qa28/01.png.
+- **No workers running.** 116 tasks were merged since 22:00 on 10-05.
+- **CI on main:** the last completed green run is T-0352. Later pushes cancel older runs by design (T-0289); the run for T-0354 is in progress.
+
+08:35 local: merged T-0353 and T-0355. QA run 27 (qa27/; the lead saw 11.png):
+- **ISSUE:** the Settings → Profile buttons are blank pills. T-0349 passed the labels as bare strings with no `<Text>` around them; the lead scan finds them in those 3 files only → T-0356, launched.
+- **PASS:** Integrations, Requests, Telegram import, New group, Explore and the @handle screen.
+
+Julio is awake (08:2x) and asked to finish the running tasks and then get the night report. No new work after T-0354 and T-0356.
+
+07:52 local: QA run 26 PASS (qa26/; the lead saw 14.png). The kit Buttons on Machines, Connections, Stickers and the New pack editor are consistent and work. Edit on owned packs cannot be reached in mock. No crash. Phone marker b45684f1 (lead checked).
+
+07:40 local: merged T-0345 (Connections buttons) and T-0346 (Stickers buttons).
+
+T-0346 blocked once, validly: `sticker-pack.tsx` imports from `stickers.tsx`, so its test needed the same mocks. That was a lead spec miss; the "one level up" grep in LEAD_HANDOFF was skipped. The lead allowed the test file (mocks only) and the worker finished. T-0347 launched.
+
+07:28 local: merged T-0343 (Machines pill buttons on Button, clean) and T-0344 (web TextInput, clean). Lead browser check in mock mode: the Telegram import field has the kit well style with its label. PASS.
+
+07:20 local: merged T-0342 (web New topic visibility on SegmentedControl; 1 a11y nit, polish only).
+
+QA run 25 (qa25/; the lead saw 14.png), no crash:
+- **PASS:**
+  - "Remove this pack?" and the Integrations "Remove" confirm are the kit ConfirmDialog;
+  - the Add machine dialog has the bordered card and kit buttons, with a dark Copy icon and a dark "Copied" check.
+- **Not reachable in mock:**
+  - "Delete this pack?" and "Discard changes?": mock owned-pack rows are not tappable;
+  - the T-0341 empty states: the mock lists are not empty.
+- **New pack, back after typing only a name:** no prompt. That is by design: for a new pack, `changed` counts only ready stickers (`sticker-pack.tsx:187-188`).
+
+Phone marker b45684f1 (lead checked).
+
+07:15 local: merged T-0341 (clean). QA run 25 sent (qa25/) for the settings confirms, the Add machine dialog and the Plus icons.
+
+07:10 local: merged T-0340 (Add machine dialog on the kit; 1 nit → T-0341, launched).
+
+07:03 local: merged T-0339 (4 mobile settings confirms on the kit ConfirmDialog; 0 nits). It is not checked on the emulator yet; next QA run.
+
+06:55 local: QA run 24 PASS (qa24/; the lead saw 01.png).
+- The time and tick stay together on one line, including in "Draft three taglines…".
+- The "1) …" bubble fits its content.
+- The Launch checklist list reads as a list.
+- The ticks are centred on the digits.
+
+No crash. Phone marker b45684f1 (lead checked). The mobile bubble chain T-0336, T-0337 and T-0338 is done.
+
+06:51 local:
+- **Doctor audit 3 (since 21297ac): clean.** must-fix 0, should-fix 0, 3 test and wording nits, no task. It confirmed the T-0337 causes.
+- **T-0338 merged,** after 1 automatic round whose should-fix the pre-review later withdrew; 1 nit.
+  - The tick view now sits inside the time's Text behind ` ⁠`.
+  - Each list item is one Text with an inline marker.
+- **QA run 24 sent** (qa24/).
 
 06:34 local: QA run 23 (qa23/; the lead saw 01.png).
 - **PASS:**

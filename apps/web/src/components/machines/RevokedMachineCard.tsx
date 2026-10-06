@@ -1,6 +1,7 @@
 import { Trash2 } from 'lucide-react';
 import type { Machine } from '@/lib/api';
 import { FieldError } from '@/components/ais/AiPageShell';
+import { Button } from '@/components/ui/button';
 import { hardwareLine } from './PendingMachineCard';
 
 interface RevokedMachineCardProps {
@@ -43,35 +44,38 @@ export function RevokedMachineCard({
           <p className="text-[13px] text-danger">Delete {machine.name}? This is permanent.</p>
           {actionError !== '' && <FieldError>{actionError}</FieldError>}
           <div className="flex items-center gap-2">
-            <button
+            <Button
               type="button"
+              variant="destructive"
+              size="sm"
               onClick={onConfirmDelete}
               disabled={deleting}
-              className="rounded-full bg-danger px-3 py-1.5 text-[14px] font-medium text-white hover:bg-danger/90 disabled:opacity-50"
             >
               Delete
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              variant="ghost"
+              size="sm"
               onClick={onCancelDelete}
               disabled={deleting}
-              className="rounded-full px-3 py-1.5 text-[14px] text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
             >
               Cancel
-            </button>
+            </Button>
           </div>
         </div>
       ) : (
         <div className="flex items-center gap-2">
-          <button
+          <Button
             type="button"
+            variant="ghost"
             aria-label={`Delete ${machine.name}`}
             onClick={onAskDelete}
-            className="flex items-center gap-1 rounded-full px-3 py-1.5 text-[14px] text-danger hover:bg-danger/10"
+            className="text-danger hover:bg-danger/10 hover:text-danger"
           >
             <Trash2 className="size-4" aria-hidden="true" />
             Delete
-          </button>
+          </Button>
           {actionError !== '' && <FieldError>{actionError}</FieldError>}
         </div>
       )}

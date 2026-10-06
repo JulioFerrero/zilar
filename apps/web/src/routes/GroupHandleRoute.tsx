@@ -124,13 +124,9 @@ export function GroupHandleRoute({ atHandle }: { atHandle?: string | undefined }
             >
               Retry
             </Button>
-            <button
-              type="button"
-              onClick={close}
-              className="rounded-full px-4 py-1.5 text-[15px] text-muted-foreground hover:bg-list-hover"
-            >
+            <Button type="button" variant="ghost" size="lg" onClick={close}>
               Close
-            </button>
+            </Button>
           </>
         }
       >
@@ -216,13 +212,9 @@ function GroupHandleCard({ entry, onClose }: { entry: DirectoryEntry; onClose: (
                 : 'Join the group'}
         </Button>
         <div className="mt-3 flex justify-center">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-full px-4 py-1.5 text-[15px] text-muted-foreground hover:bg-list-hover"
-          >
+          <Button type="button" variant="ghost" size="lg" onClick={onClose}>
             Close
-          </button>
+          </Button>
         </div>
       </div>
     </Dialog>

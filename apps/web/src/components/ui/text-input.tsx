@@ -1,3 +1,4 @@
+import { Eye, EyeOff } from 'lucide-react';
 import {
   useId,
   useState,
@@ -7,6 +8,7 @@ import {
   type TextareaHTMLAttributes,
 } from 'react';
 import { cn } from '@/lib/utils';
+import { Button } from './button';
 
 interface FieldProps {
   label?: string;
@@ -15,7 +17,7 @@ interface FieldProps {
   counter?: { max: number };
 }
 
-type TextInputProps = ComponentProps<'input'> & FieldProps;
+type TextInputProps = ComponentProps<'input'> & FieldProps & { trailing?: ReactNode };
 type TextAreaProps = TextareaHTMLAttributes<HTMLTextAreaElement> & FieldProps;
 
 function Field({
@@ -48,7 +50,7 @@ function Field({
   );
 }
 
-const FIELD_INPUT =
+export const FIELD_INPUT =
   'well-surface w-full rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-subtle-foreground disabled:pointer-events-none disabled:opacity-50';
 
 export function TextInput({
@@ -56,6 +58,7 @@ export function TextInput({
   hint,
   invalid,
   counter,
+  trailing,
   id,
   maxLength,
   onChange,
@@ -72,7 +75,7 @@ export function TextInput({
     setUncontrolledLength(event.target.value.length);
     onChange?.(event);
   };
-  const field = (
+  const input = (
     <input
       id={fieldId}
       aria-invalid={invalid === true ? true : undefined}
@@ -82,6 +85,15 @@ export function TextInput({
       onChange={handleChange}
     />
   );
+  const field =
+    trailing === undefined ? (
+      input
+    ) : (
+      <div className="relative">
+        {input}
+        {trailing}
+      </div>
+    );
   if (label === undefined && hint === undefined && counter === undefined) {
     return field;
   }
@@ -99,6 +111,41 @@ export function TextInput({
         </p>
       )}
     </Field>
+  );
+}
+
+export function SecretInput({
+  revealLabel = { show: 'Show key', hide: 'Hide key' },
+  className,
+  ...props
+}: Omit<TextInputProps, 'type' | 'trailing'> & {
+  revealLabel?: { show: string; hide: string };
+}) {
+  const [shown, setShown] = useState(false);
+  const label = shown ? revealLabel.hide : revealLabel.show;
+  return (
+    <TextInput
+      {...props}
+      type={shown ? 'text' : 'password'}
+      className={cn('pr-10', className)}
+      trailing={
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          aria-label={label}
+          title={label}
+          onClick={() => setShown((value) => !value)}
+          className="absolute top-1/2 right-1 -translate-y-1/2 rounded-full text-muted-foreground"
+        >
+          {shown ? (
+            <EyeOff className="size-4" aria-hidden="true" />
+          ) : (
+            <Eye className="size-4" aria-hidden="true" />
+          )}
+        </Button>
+      }
+    />
   );
 }
 

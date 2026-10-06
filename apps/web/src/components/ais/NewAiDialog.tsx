@@ -21,6 +21,7 @@ import {
 import { Dialog } from '../ui/dialog';
 import { TextArea, TextInput } from '../ui/text-input';
 import { cn } from '@/lib/utils';
+import { StateMessage } from '@/components/ui/state-message';
 
 type DialogStatus = 'loading' | 'ready' | 'unavailable' | 'error';
 
@@ -166,20 +167,11 @@ export function NewAiDialog({ onClose }: { onClose: () => void }) {
       size="sm"
       actions={
         <>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-full px-4 py-1.5 text-[15px] text-muted-foreground hover:bg-list-hover"
-          >
+          <Button type="button" variant="ghost" size="lg" onClick={onClose}>
             Cancel
-          </button>
+          </Button>
           {status === 'ready' && connections.length > 0 && (
-            <Button
-              type="button"
-              disabled={!canSubmit}
-              onClick={() => void submit()}
-              className="rounded-full px-4 py-1.5 text-[15px]"
-            >
+            <Button type="button" size="lg" disabled={!canSubmit} onClick={() => void submit()}>
               {submitting ? 'Creating…' : 'Create'}
             </Button>
           )}
@@ -187,7 +179,7 @@ export function NewAiDialog({ onClose }: { onClose: () => void }) {
       }
     >
       <div className="mt-3">
-        {status === 'loading' && <p className="text-[15px] text-muted-foreground">Loading…</p>}
+        {status === 'loading' && <StateMessage kind="loading" size="inline" title="Loading…" />}
 
         {(status === 'unavailable' || status === 'error') && (
           <p role="alert" className="text-[15px] text-danger">
@@ -272,18 +264,20 @@ export function NewAiDialog({ onClose }: { onClose: () => void }) {
             )}
 
             <div className="flex flex-col gap-3 border-t border-divider pt-3">
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="sm"
                 aria-expanded={moreOptionsOpen}
                 onClick={() => setMoreOptionsOpen((value) => !value)}
-                className="flex items-center gap-1 self-start text-[14px] font-medium text-accent"
+                className="self-start px-1 text-[14px] font-medium text-accent hover:text-accent"
               >
                 More options
                 <ChevronDown
                   className={cn('size-4 transition-transform', moreOptionsOpen && 'rotate-180')}
                   aria-hidden="true"
                 />
-              </button>
+              </Button>
 
               {moreOptionsOpen && (
                 <div className="flex flex-col gap-4">

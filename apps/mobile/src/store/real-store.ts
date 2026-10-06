@@ -2070,6 +2070,11 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       if (message.payload !== undefined && message.payload.type === 'voice') {
         ui.voice = sanitizeVoice(message.payload.data, mediaToken);
       }
+      // A forward keeps its captured origin so the bubble can show the
+      // "Forwarded from ..." header (T-0427).
+      if (message.forward !== undefined) {
+        ui.forward = message.forward;
+      }
       if (message.replyTo !== undefined) {
         const referenced = get().messagesByChat[message.chatJid]?.find(
           (item) => item.id === message.replyTo?.id,

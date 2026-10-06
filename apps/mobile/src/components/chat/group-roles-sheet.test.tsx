@@ -6,7 +6,9 @@ import { GroupRolesSheet } from './group-roles-sheet';
 import type { CustomGroupRole } from '@/lib/roles-api';
 
 vi.mock('react-native', () => ({
+  ActivityIndicator: 'ActivityIndicator',
   Modal: 'Modal',
+  Platform: { OS: 'ios', select: (options: Record<string, unknown>) => options['ios'] },
   Pressable: 'Pressable',
   TextInput: 'TextInput',
   View: 'View',
@@ -20,8 +22,14 @@ vi.mock('nativewind', () => ({
   useColorScheme: () => ({ colorScheme: 'dark' }),
 }));
 
+vi.mock('react-native-reanimated', () => ({
+  useReducedMotion: () => false,
+}));
+
 vi.mock('lucide-react-native', () => ({
   Check: 'Check',
+  CircleAlert: 'CircleAlert',
+  Inbox: 'Inbox',
 }));
 
 vi.mock('@/components/chat/avatar', () => ({
@@ -35,6 +43,7 @@ vi.mock('@/components/chat/role-chips', () => ({
 
 vi.mock('@/components/ui/text', () => ({
   Text: 'Text',
+  TextClassContext: { Provider: 'TextClassContextProvider' },
 }));
 
 // The sheet renders through the kit `BottomSheet` (T-0315), which owns

@@ -1,5 +1,7 @@
 import { Pressable, View } from 'react-native';
 
+import { Button } from '@/components/ui/button';
+
 import { Text } from '@/components/ui/text';
 
 /**
@@ -25,22 +27,12 @@ export function NewMessageSheet({
         Invite a friend to start a conversation, or type their @username in the search bar above.
       </Text>
       <View className="mt-4 flex-row justify-end gap-2">
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Close"
-          onPress={onClose}
-          className="rounded-full px-4 py-2 active:bg-surface-raised"
-        >
-          <Text className="text-[15px] text-muted-foreground">Close</Text>
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Invite a friend"
-          onPress={onInvite}
-          className="rounded-full bg-accent px-4 py-2 active:opacity-90"
-        >
-          <Text className="text-[15px] font-medium text-accent-foreground">Invite a friend</Text>
-        </Pressable>
+        <Button variant="ghost" accessibilityLabel="Close" onPress={onClose}>
+          <Text>Close</Text>
+        </Button>
+        <Button accessibilityLabel="Invite a friend" onPress={onInvite}>
+          <Text>Invite a friend</Text>
+        </Button>
       </View>
     </Pressable>
   );

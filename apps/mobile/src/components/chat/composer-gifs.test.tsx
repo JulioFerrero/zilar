@@ -19,6 +19,7 @@ vi.mock('react-native', () => ({
   Image: 'Image',
   Keyboard: { dismiss: () => {} },
   Modal: 'Modal',
+  Platform: { OS: 'ios', select: (options: Record<string, unknown>) => options['ios'] },
   Pressable: 'Pressable',
   ScrollView: 'ScrollView',
   TextInput: 'TextInput',
@@ -40,11 +41,13 @@ vi.mock('nativewind', () => ({
 
 vi.mock('lucide-react-native', () => ({
   ArrowUp: 'ArrowUp',
+  CircleAlert: 'CircleAlert',
   Clock: 'Clock',
   Film: 'Film',
   Hand: 'Hand',
   Hash: 'Hash',
   Heart: 'Heart',
+  Inbox: 'Inbox',
   Lightbulb: 'Lightbulb',
   Mic: 'Mic',
   Paperclip: 'Paperclip',
@@ -59,6 +62,7 @@ vi.mock('lucide-react-native', () => ({
 
 vi.mock('@/components/ui/text', () => ({
   Text: 'Text',
+  TextClassContext: { Provider: 'TextClassContextProvider' },
 }));
 
 vi.mock('@/components/ui/icon-button', () => ({
@@ -67,6 +71,13 @@ vi.mock('@/components/ui/icon-button', () => ({
 
 vi.mock('@/components/ui/use-key-press', () => ({
   useKeyPress: () => ({ pressed: false, reduceMotion: false, setPressed: () => {} }),
+}));
+
+vi.mock('@/lib/depth', () => ({
+  KEY_PRIMARY_PRESSED_SHADOW: {},
+  pressStyle: () => ({}),
+  primaryKey: {},
+  well: {},
 }));
 
 vi.mock('@/store/chat-store-provider', () => ({

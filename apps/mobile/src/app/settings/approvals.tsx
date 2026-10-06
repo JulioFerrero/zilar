@@ -1,13 +1,14 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { ShieldCheck } from 'lucide-react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, RefreshControl, ScrollView, View } from 'react-native';
+import { RefreshControl, ScrollView, View } from 'react-native';
 import { useColorScheme } from 'nativewind';
 
 import { RequireAuth } from '@/auth/RequireAuth';
 import { AisScreenShell } from '@/components/ais/screen-shell';
 import { useApprovalsApi } from '@/components/chat/use-approvals-api';
 import { Button } from '@/components/ui/button';
+import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { createAisApi } from '@/lib/ais-api';
 import type { ApprovalDecision, ApprovalRule, PublicApproval } from '@/lib/approvals-api';
@@ -319,22 +320,14 @@ function ApprovalsBody() {
         </Text>
       ) : null}
 
-      {status === 'loading' ? (
-        <View className="items-center gap-3 pt-16">
-          <ActivityIndicator color={ACCENT[scheme]} />
-          <Text className="text-[15px] text-muted-foreground">Loading…</Text>
-        </View>
-      ) : null}
+      {status === 'loading' ? <StateMessage kind="loading" title="Loading…" /> : null}
 
       {status === 'error' ? (
-        <View className="items-center gap-3 px-2 pt-12">
-          <Text accessibilityRole="alert" className="text-center text-[15px] text-danger">
-            {errorMessage}
-          </Text>
-          <Button variant="outline" onPress={() => void load(true)}>
-            <Text>Retry</Text>
-          </Button>
-        </View>
+        <StateMessage
+          kind="error"
+          title={errorMessage}
+          action={{ label: 'Retry', onPress: () => void load(true) }}
+        />
       ) : null}
 
       {status === 'ready' ? (
@@ -444,11 +437,7 @@ function RulesSection({
   return (
     <View className="mt-6 gap-2 border-t border-divider pt-4">
       <Text className="text-[16px] font-semibold">Always allowed</Text>
-      {status === 'loading' ? (
-        <Text role="status" className="text-[13px] text-muted-foreground">
-          Loading…
-        </Text>
-      ) : null}
+      {status === 'loading' ? <StateMessage kind="loading" size="inline" title="Loading…" /> : null}
       {status === 'error' ? (
         <View className="gap-2">
           <Text accessibilityRole="alert" className="text-[14px] text-danger">

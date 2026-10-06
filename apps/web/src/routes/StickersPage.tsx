@@ -8,7 +8,7 @@ import { PackEditor } from '@/components/PackEditor';
 import { TelegramImportDialog } from '@/components/TelegramImportDialog';
 import { Button } from '@/components/ui/button';
 import { StateMessage } from '@/components/ui/state-message';
-import { TextInput } from '@/components/ui/text-input';
+import { SearchField } from '@/components/ui/search-field';
 import { useIsServerOwner } from '@/lib/useIsServerOwner';
 import {
   addStickerPanelPack,
@@ -533,7 +533,7 @@ export function StickersPage() {
                 void search();
               }}
             >
-              <TextInput
+              <SearchField
                 value={query}
                 aria-label="Search sticker packs"
                 placeholder="Search shared packs"
@@ -546,7 +546,7 @@ export function StickersPage() {
               </Button>
             </form>
             {discover === undefined ? (
-              <p className="text-[14px] text-muted-foreground">Loading…</p>
+              <StateMessage kind="loading" size="inline" title="Loading…" />
             ) : discover.length === 0 ? (
               <p className="text-[14px] text-muted-foreground">
                 No shared packs found. Try another search, or make your own with Create pack.
@@ -603,7 +603,7 @@ export function StickersPage() {
           <section aria-label="Favorites" className="flex flex-col gap-2">
             <h2 className="text-[16px] font-semibold">Favorites</h2>
             {favorites === undefined ? (
-              <p className="text-[14px] text-muted-foreground">Loading…</p>
+              <StateMessage kind="loading" size="inline" title="Loading…" />
             ) : favorites.length === 0 ? (
               <p className="text-[14px] text-muted-foreground">
                 No favorites yet. Open the sticker panel in any chat and tap the star on a sticker

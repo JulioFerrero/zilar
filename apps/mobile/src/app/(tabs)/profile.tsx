@@ -1,8 +1,7 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useColorScheme } from 'nativewind';
 
 import { RequireAuth } from '@/auth/RequireAuth';
 import { ProfileView } from '@/components/profile/profile-view';
@@ -10,8 +9,7 @@ import { createPicturePicker, createAvatarFileUploader } from '@/components/sett
 import type { PickedPicture } from '@/components/settings/avatar-native';
 import { friendlyAvatarError } from '@/components/settings/profile-logic';
 import { Text } from '@/components/ui/text';
-import { ACCENT } from '@/lib/colors';
-import { asColorScheme } from '@/lib/color-scheme';
+import { StateMessage } from '@/components/ui/state-message';
 import { getSessionToken } from '@/lib/session-token';
 import { ProfileApiError, type MyProfile } from '@/lib/profile-api';
 import { useProfileApi } from '@/components/settings/use-profile-api';
@@ -35,7 +33,6 @@ export default function ProfileTabScreen() {
  */
 function ProfileTab() {
   const router = useRouter();
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   const insets = useSafeAreaInsets();
   const { api } = useProfileApi();
   const [status, setStatus] = useState<ProfileStatus>('loading');
@@ -161,26 +158,13 @@ function ProfileTab() {
       </View>
       <ScrollView className="flex-1" keyboardShouldPersistTaps="handled">
         <View className="px-4">
-          {status === 'loading' ? (
-            <View className="items-center gap-3 pt-16">
-              <ActivityIndicator color={ACCENT[scheme]} />
-              <Text className="text-[15px] text-muted-foreground">Loading…</Text>
-            </View>
-          ) : null}
+          {status === 'loading' ? <StateMessage kind="loading" title="Loading…" /> : null}
           {status === 'error' ? (
-            <View className="items-center gap-3 px-2 pt-12">
-              <Text accessibilityRole="alert" className="text-center text-[15px] text-danger">
-                Could not load your profile.
-              </Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Retry"
-                onPress={load}
-                className="items-center rounded-full border border-border-strong bg-surface px-4 py-2 active:bg-surface-raised"
-              >
-                <Text className="text-[14px] text-foreground">Retry</Text>
-              </Pressable>
-            </View>
+            <StateMessage
+              kind="error"
+              title="Could not load your profile."
+              action={{ label: 'Retry', onPress: load }}
+            />
           ) : null}
           {status === 'ready' && profile !== null ? (
             <View>

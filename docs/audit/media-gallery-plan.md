@@ -407,6 +407,8 @@ schema task (1) at a time.
 
 ## 5. Open questions for Julio
 
+**Answered 2026-10-06: Julio accepted every recommendation below** (server index, last 12 months first, a DM menu item, hide deleted and blocked media, http(s) links only, the four tabs, a 20 000-item cap per chat).
+
 1. **Index source.** Server index built from MAM (recommended) vs a client scan of
    loaded history. *Recommend:* server index; the client scan is incomplete and
    cannot enforce permissions.

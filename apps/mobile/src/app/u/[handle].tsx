@@ -1,12 +1,13 @@
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { ChevronLeft, RefreshCw } from 'lucide-react-native';
+import { ChevronLeft } from 'lucide-react-native';
 import { useCallback, useRef, useState } from 'react';
-import { ActivityIndicator, ScrollView, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useColorScheme } from 'nativewind';
 
 import { RequireAuth } from '@/auth/RequireAuth';
 import { IconButton } from '@/components/ui/icon-button';
+import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { asColorScheme } from '@/lib/color-scheme';
 import { ICON } from '@/lib/colors';
@@ -207,28 +208,18 @@ function HandleProfileView() {
         automaticallyAdjustKeyboardInsets
       >
         <View className="p-4">
-          {loading ? (
-            <View className="items-center gap-3 pt-16">
-              <ActivityIndicator />
-              <Text className="text-[15px] text-muted-foreground">Loading…</Text>
-            </View>
-          ) : null}
-          {!loading && missing ? (
-            <View className="items-center pt-16">
-              <Text className="px-4 text-center text-[15px] text-muted-foreground">
-                {NO_USER_MESSAGE}
-              </Text>
-            </View>
-          ) : null}
+          {loading ? <StateMessage kind="loading" title="Loading…" /> : null}
+          {!loading && missing ? <StateMessage kind="empty" title={NO_USER_MESSAGE} /> : null}
           {!loading && !missing && error !== '' ? (
-            <View className="items-center gap-3 pt-12">
-              <Text accessibilityRole="alert" className="text-center text-[15px] text-danger">
-                {error}
-              </Text>
-              <IconButton label="Retry loading the profile" onPress={load}>
-                <RefreshCw size={24} color={ICON[scheme]} />
-              </IconButton>
-            </View>
+            <StateMessage
+              kind="error"
+              title={error}
+              action={{
+                label: 'Retry',
+                onPress: load,
+                accessibilityLabel: 'Retry loading the profile',
+              }}
+            />
           ) : null}
           {!loading && !missing && error === '' && profile !== null ? (
             <ProfileCard

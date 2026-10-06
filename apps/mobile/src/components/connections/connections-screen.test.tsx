@@ -30,10 +30,15 @@ vi.mock('nativewind', () => ({
 
 vi.mock('react-native', () => ({
   ActivityIndicator: 'ActivityIndicator',
+  Platform: { OS: 'ios', select: (options: Record<string, unknown>) => options['ios'] },
   Pressable: 'Pressable',
   ScrollView: 'ScrollView',
   TextInput: 'TextInput',
   View: 'View',
+}));
+
+vi.mock('react-native-reanimated', () => ({
+  useReducedMotion: () => false,
 }));
 
 vi.mock('react-native-safe-area-context', () => ({
@@ -42,11 +47,12 @@ vi.mock('react-native-safe-area-context', () => ({
 
 vi.mock('lucide-react-native', () => ({
   ChevronLeft: 'ChevronLeft',
+  CircleAlert: 'CircleAlert',
   Eye: 'Eye',
   EyeOff: 'EyeOff',
+  Inbox: 'Inbox',
   KeyRound: 'KeyRound',
   Plus: 'Plus',
-  RefreshCw: 'RefreshCw',
   Trash2: 'Trash2',
   Zap: 'Zap',
 }));
@@ -61,6 +67,7 @@ vi.mock('@/components/ui/icon-button', () => ({
 
 vi.mock('@/components/ui/text', () => ({
   Text: 'Text',
+  TextClassContext: { Provider: 'TextClassContextProvider' },
 }));
 
 vi.mock('@/components/connections/use-connections-api', () => ({
@@ -69,6 +76,8 @@ vi.mock('@/components/connections/use-connections-api', () => ({
 
 vi.mock('@/lib/colors', () => ({
   ACCENT: { dark: '#ededed', light: '#ededed' },
+  ACCENT_FOREGROUND: { dark: '#0a0a0a', light: '#0a0a0a' },
+  DANGER: '#ef4444',
   ICON: { dark: '#d4d4d4', light: '#d4d4d4' },
   MUTED_FOREGROUND: { dark: '#a1a1a1', light: '#a1a1a1' },
 }));
@@ -150,6 +159,7 @@ describe('ConnectionsScreen', () => {
     const html = await renderScreen({ connections: [], status: 'ready' });
     expect(html).toContain('No provider connections yet');
     expect(html).toContain('Add a connection');
+    expect(html).not.toContain('color="#fff"');
   });
 
   it('shows connection rows with the provider, label and status', async () => {

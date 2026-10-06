@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router';
 import { ShieldCheck } from 'lucide-react';
 import { ApiError, decideApproval, listApprovals, type PublicApproval } from '@/lib/api';
 import { Button, FieldError } from '@/components/ais/AiPageShell';
+import { StateMessage } from '@/components/ui/state-message';
 import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
 import { ApprovalRow } from '@/components/approvals/ApprovalRow';
 import { ApprovalsListSkeleton } from '@/components/approvals/ApprovalsListSkeleton';
@@ -263,10 +264,7 @@ export function ApprovalsPage() {
                 Refresh
               </Button>
             </div>
-            <div className="flex flex-col items-center gap-3 py-10 text-center">
-              <ShieldCheck className="size-8 text-muted-foreground" aria-hidden="true" />
-              <p className="text-[15px] text-muted-foreground">Nothing is waiting for you.</p>
-            </div>
+            <StateMessage kind="empty" icon={ShieldCheck} title="Nothing is waiting for you." />
           </section>
         )}
 

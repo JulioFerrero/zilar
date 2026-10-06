@@ -9,17 +9,43 @@ vi.mock('react-native', () => ({
   ActivityIndicator: 'ActivityIndicator',
   Image: 'Image',
   Modal: 'Modal',
+  Platform: { OS: 'ios', select: (options: Record<string, unknown>) => options['ios'] },
   Pressable: 'Pressable',
   ScrollView: 'ScrollView',
   View: 'View',
+}));
+
+vi.mock('react-native-reanimated', () => ({
+  useReducedMotion: () => false,
 }));
 
 vi.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
 
+vi.mock('nativewind', () => ({
+  useColorScheme: () => ({ colorScheme: 'dark' }),
+}));
+
+vi.mock('lucide-react-native', () => ({
+  CircleAlert: 'CircleAlert',
+  Inbox: 'Inbox',
+}));
+
 vi.mock('@/components/ui/text', () => ({
   Text: 'Text',
+  TextClassContext: { Provider: 'TextClassContextProvider' },
+}));
+
+vi.mock('@/components/ui/use-key-press', () => ({
+  useKeyPress: () => ({ pressed: false, reduceMotion: false, setPressed: () => {} }),
+}));
+
+vi.mock('@/lib/depth', () => ({
+  KEY_PRIMARY_PRESSED_SHADOW: {},
+  pressStyle: () => ({}),
+  primaryKey: {},
+  well: {},
 }));
 
 vi.mock('@/lib/auth', () => ({

@@ -1,9 +1,9 @@
 import { useFocusEffect, useRouter } from 'expo-router';
-import { ChevronLeft, Compass, RefreshCw } from 'lucide-react-native';
+import { ChevronLeft, Compass } from 'lucide-react-native';
 
 import { useColorScheme } from 'nativewind';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, View } from 'react-native';
+import { FlatList, Pressable, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { RequireAuth } from '@/auth/RequireAuth';
@@ -15,8 +15,10 @@ import {
   exploreActionTitle,
 } from '@/components/directory/explore-helpers';
 import { useDirectoryApi } from '@/components/directory/use-directory-api';
+import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { SearchField } from '@/components/ui/search-field';
+import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { asColorScheme } from '@/lib/color-scheme';
 import { ICON } from '@/lib/colors';
@@ -235,28 +237,14 @@ function ExploreList() {
         </View>
       </View>
 
-      {status === 'loading' && (
-        <View className="items-center gap-3 pt-16">
-          <ActivityIndicator color="#ededed" />
-          <Text className="text-[15px] text-muted-foreground">Searching…</Text>
-        </View>
-      )}
+      {status === 'loading' && <StateMessage kind="loading" title="Searching…" />}
 
       {status === 'error' && (
-        <View className="items-center gap-3 px-6 pt-12">
-          <Text accessibilityRole="alert" className="text-center text-[15px] text-danger">
-            {errorMessage}
-          </Text>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Retry"
-            onPress={reload}
-            className="flex-row items-center gap-2 rounded-full border border-border-strong px-4 py-1.5 active:bg-surface-raised"
-          >
-            <RefreshCw size={16} color={ICON[scheme]} />
-            <Text className="text-[14px] text-foreground">Retry</Text>
-          </Pressable>
-        </View>
+        <StateMessage
+          kind="error"
+          title={errorMessage}
+          action={{ label: 'Retry', onPress: reload }}
+        />
       )}
 
       {status === 'ready' && (
@@ -282,38 +270,31 @@ function ExploreList() {
                 )}
                 <Text className="text-[13px] text-muted-foreground">{directorySubtitle(item)}</Text>
               </View>
-              <Pressable
-                accessibilityRole="button"
+              <Button
+                variant="default"
+                size="sm"
+                className="shrink-0"
                 accessibilityLabel={`${exploreActionTitle(item)} ${item.title}`}
                 disabled={joiningId !== undefined}
                 onPress={() => join(item)}
-                className="shrink-0 rounded-full bg-accent px-4 py-1.5 active:opacity-90 disabled:opacity-60"
               >
-                <Text className="text-[14px] font-medium text-accent-foreground">
-                  {joiningId === item.id ? 'Joining…' : exploreActionTitle(item)}
-                </Text>
-              </Pressable>
+                <Text>{joiningId === item.id ? 'Joining…' : exploreActionTitle(item)}</Text>
+              </Button>
             </View>
           )}
-          ListEmptyComponent={
-            <View className="items-center px-6 pt-12">
-              <Text className="text-center text-[15px] text-muted-foreground">{emptyLine}</Text>
-            </View>
-          }
+          ListEmptyComponent={<StateMessage kind="empty" title={emptyLine} />}
           ListFooterComponent={
             <View className="items-center gap-2 py-2">
               {next !== null && entries.length > 0 && (
-                <Pressable
-                  accessibilityRole="button"
+                <Button
+                  variant="outline"
+                  size="sm"
                   accessibilityLabel="Show more"
                   disabled={loadingMore}
                   onPress={loadMore}
-                  className="rounded-full border border-border-strong px-4 py-1.5 active:bg-surface-raised disabled:opacity-60"
                 >
-                  <Text className="text-[14px] text-foreground">
-                    {loadingMore ? 'Loading…' : 'Show more'}
-                  </Text>
-                </Pressable>
+                  <Text>{loadingMore ? 'Loading…' : 'Show more'}</Text>
+                </Button>
               )}
               {moreError !== '' && (
                 <Text accessibilityRole="alert" className="text-center text-[14px] text-danger">

@@ -20,10 +20,22 @@ vi.mock('react-native', () => ({
   Pressable: 'Pressable',
   TextInput: 'TextInput',
   View: 'View',
+  Platform: { OS: 'ios', select: (options: Record<string, unknown>) => options['ios'] },
+}));
+
+vi.mock('react-native-reanimated', () => ({
+  useReducedMotion: () => false,
 }));
 
 vi.mock('@/components/ui/text', () => ({
   Text: 'Text',
+  TextClassContext: { Provider: 'TextClassContextProvider' },
+}));
+
+vi.mock('@/lib/depth', () => ({
+  KEY_PRIMARY_PRESSED_SHADOW: {},
+  pressStyle: () => ({}),
+  primaryKey: {},
 }));
 
 // `visibilityReasonText` is read from the real `visibility-sheet`, which

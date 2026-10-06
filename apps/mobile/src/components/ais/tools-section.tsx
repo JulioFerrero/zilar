@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
+import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { hostsLine, toolLastRunText } from '@/lib/routines-format';
 import { ToolsApiError, type AiToolsApi, type ToolListItem, type ToolsApi } from '@/lib/tools-api';
@@ -78,7 +79,7 @@ export function ToolsSectionContent({
   onOpenTool?: (toolId: string) => void;
 }) {
   if (state.status === 'loading') {
-    return <Text className="px-2 text-[13px] text-muted-foreground">Loading…</Text>;
+    return <StateMessage kind="loading" size="inline" title="Loading…" />;
   }
   if (state.status === 'error') {
     return (
@@ -93,7 +94,7 @@ export function ToolsSectionContent({
     );
   }
   if (state.tools.length === 0) {
-    return <Text className="px-2 text-[13px] text-muted-foreground">{TOOLS_EMPTY_MESSAGE}</Text>;
+    return <StateMessage kind="empty" size="inline" title={TOOLS_EMPTY_MESSAGE} />;
   }
   return (
     <>

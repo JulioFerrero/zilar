@@ -2,9 +2,10 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { useColorScheme } from 'nativewind';
 import { useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import { asColorScheme } from '@/lib/color-scheme';
@@ -80,15 +81,16 @@ export function NameForm() {
               {error}
             </Text>
           )}
-          <Pressable
-            accessibilityRole="button"
+          <Button
             accessibilityLabel="Continue"
             disabled={busy}
             onPress={() => void submit()}
-            className="mt-4 items-center rounded-full bg-accent px-4 py-3 active:bg-accent/90"
+            variant="default"
+            size="lg"
+            className="mt-4"
           >
-            <Text className="text-[15px] font-medium text-accent-foreground">Continue</Text>
-          </Pressable>
+            <Text>Continue</Text>
+          </Button>
         </View>
       </SafeAreaView>
     </View>

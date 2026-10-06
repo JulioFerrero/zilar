@@ -144,13 +144,15 @@ export function HandlePage() {
         <Button type="submit" disabled={busy} size="lg" className="mt-4 w-full">
           Continue
         </Button>
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="lg"
           onClick={skip}
-          className="mt-2 w-full rounded-full px-4 py-2 text-[15px] text-muted-foreground hover:text-foreground"
+          className="mt-2 w-full text-muted-foreground"
         >
           Skip for now
-        </button>
+        </Button>
       </form>
     </div>
   );

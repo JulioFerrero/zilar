@@ -1,9 +1,12 @@
+import { useColorScheme } from 'nativewind';
 import { Check, Copy, Share2 } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
+import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
-import { ACCENT_FOREGROUND } from '@/lib/depth';
+import { asColorScheme } from '@/lib/color-scheme';
+import { ACCENT_FOREGROUND } from '@/lib/colors';
 import type { InvitesApi } from '@/lib/invites-api';
 
 /**
@@ -111,6 +114,7 @@ export function InviteSheetBody({
   onRetry: () => void;
   onClose: () => void;
 }) {
+  const scheme = asColorScheme(useColorScheme().colorScheme);
   return (
     <Pressable
       onPress={() => {}}
@@ -127,22 +131,12 @@ export function InviteSheetBody({
             Could not create an invite link. Try again.
           </Text>
           <View className="mt-3 flex-row justify-end gap-2">
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Close"
-              onPress={onClose}
-              className="rounded-full px-4 py-2 active:bg-surface-raised"
-            >
-              <Text className="text-[15px] text-muted-foreground">Close</Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Try again"
-              onPress={onRetry}
-              className="rounded-full bg-accent px-4 py-2 active:opacity-90"
-            >
-              <Text className="text-[15px] font-medium text-accent-foreground">Try again</Text>
-            </Pressable>
+            <Button variant="ghost" accessibilityLabel="Close" onPress={onClose}>
+              <Text>Close</Text>
+            </Button>
+            <Button variant="default" accessibilityLabel="Try again" onPress={onRetry}>
+              <Text>Try again</Text>
+            </Button>
           </View>
         </>
       ) : (
@@ -153,42 +147,35 @@ export function InviteSheetBody({
             </Text>
           </View>
           <View className="mt-2 flex-row gap-2">
-            <Pressable
-              accessibilityRole="button"
+            <Button
+              variant="default"
+              className="flex-1"
               accessibilityLabel="Copy invite link"
               disabled={url === undefined}
               onPress={onCopy}
-              className="flex-1 flex-row items-center justify-center gap-1 rounded-full bg-accent px-4 py-2 active:opacity-90 disabled:opacity-60"
             >
               {copied ? (
-                <Check size={16} color={ACCENT_FOREGROUND} />
+                <Check size={16} color={ACCENT_FOREGROUND[scheme]} />
               ) : (
-                <Copy size={16} color={ACCENT_FOREGROUND} />
+                <Copy size={16} color={ACCENT_FOREGROUND[scheme]} />
               )}
-              <Text className="text-[15px] font-medium text-accent-foreground">
-                {copied ? 'Copied' : 'Copy'}
-              </Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
+              <Text>{copied ? 'Copied' : 'Copy'}</Text>
+            </Button>
+            <Button
+              variant="outline"
+              className="flex-1"
               accessibilityLabel="Share invite link"
               disabled={url === undefined}
               onPress={onShare}
-              className="flex-1 flex-row items-center justify-center gap-1 rounded-full border border-border-strong px-4 py-2 active:bg-surface-raised disabled:opacity-60"
             >
               <Share2 size={16} color="#8a8a8a" />
-              <Text className="text-[15px] font-medium text-foreground">Share</Text>
-            </Pressable>
+              <Text>Share</Text>
+            </Button>
           </View>
           <View className="mt-4 flex-row justify-end">
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Close"
-              onPress={onClose}
-              className="rounded-full px-4 py-2 active:bg-surface-raised"
-            >
-              <Text className="text-[15px] text-muted-foreground">Close</Text>
-            </Pressable>
+            <Button variant="ghost" accessibilityLabel="Close" onPress={onClose}>
+              <Text>Close</Text>
+            </Button>
           </View>
         </>
       )}

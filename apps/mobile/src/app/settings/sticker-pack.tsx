@@ -5,30 +5,24 @@ import {
   Globe,
   ImagePlus,
   Lock,
-  RefreshCw,
   Trash2,
   TriangleAlert,
   X,
 } from 'lucide-react-native';
 import { useColorScheme } from 'nativewind';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  Image as RNImage,
-  Modal,
-  Pressable,
-  TextInput,
-  View,
-  useWindowDimensions,
-} from 'react-native';
+import { Image as RNImage, Pressable, TextInput, View, useWindowDimensions } from 'react-native';
 
 import { useAuthStore } from '@/auth/session';
 import { RequireStickersAuth } from '@/components/stickers/require-stickers-auth';
+import { Button } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import { API_URL } from '@/lib/auth';
 import { asColorScheme } from '@/lib/color-scheme';
-import { ACCENT, DANGER, FOREGROUND, ICON } from '@/lib/colors';
+import { DANGER, FOREGROUND, ICON } from '@/lib/colors';
 import { well } from '@/lib/depth';
 import { getSessionToken } from '@/lib/session-token';
 import { isSameOriginStickerUrl, stickerImageSource, type StickerItem } from '@/lib/stickers';
@@ -456,28 +450,18 @@ function StickerPackBody({ picker, preparer }: StickerPackScreenDeps) {
       }
       onBack={onBack}
     >
-      {status === 'loading' ? (
-        <View className="items-center gap-3 pt-16">
-          <ActivityIndicator color={ACCENT[scheme]} />
-          <Text className="text-[15px] text-muted-foreground">Loading pack…</Text>
-        </View>
-      ) : null}
+      {status === 'loading' ? <StateMessage kind="loading" title="Loading pack…" /> : null}
 
       {status === 'load-error' ? (
-        <View className="items-center gap-3 pt-12">
-          <Text accessibilityRole="alert" className="text-center text-[15px] text-danger">
-            {LOAD_ERROR}
-          </Text>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Retry loading pack"
-            onPress={load}
-            className="flex-row items-center gap-2 rounded-full border border-border-strong px-4 py-2 active:bg-surface-raised"
-          >
-            <RefreshCw size={16} color={ICON[scheme]} />
-            <Text className="text-[15px] text-foreground">Retry</Text>
-          </Pressable>
-        </View>
+        <StateMessage
+          kind="error"
+          title={LOAD_ERROR}
+          action={{
+            label: 'Retry',
+            accessibilityLabel: 'Retry loading pack',
+            onPress: load,
+          }}
+        />
       ) : null}
 
       {status === 'not-found' || status === 'forbidden' ? (
@@ -485,14 +469,14 @@ function StickerPackBody({ picker, preparer }: StickerPackScreenDeps) {
           <Text accessibilityRole="alert" className="text-center text-[15px] text-danger">
             {status === 'not-found' ? NOT_FOUND : FORBIDDEN}
           </Text>
-          <Pressable
-            accessibilityRole="button"
+          <Button
+            variant="outline"
+            size="sm"
             accessibilityLabel="Back to stickers"
             onPress={() => router.back()}
-            className="rounded-full border border-border-strong px-4 py-2 active:bg-surface-raised"
           >
-            <Text className="text-[15px] text-foreground">Back to stickers</Text>
-          </Pressable>
+            <Text>Back to stickers</Text>
+          </Button>
         </View>
       ) : null}
 
@@ -652,12 +636,11 @@ function StickerPackBody({ picker, preparer }: StickerPackScreenDeps) {
               </Text>
             ) : null}
             {preparing > 0 ? (
-              <View className="flex-row items-center gap-2">
-                <ActivityIndicator size="small" color={ACCENT[scheme]} />
-                <Text className="text-[13px] text-muted-foreground">
-                  {preparing === 1 ? 'Preparing 1 image…' : `Preparing ${preparing} images…`}
-                </Text>
-              </View>
+              <StateMessage
+                kind="loading"
+                size="inline"
+                title={preparing === 1 ? 'Preparing 1 image…' : `Preparing ${preparing} images…`}
+              />
             ) : null}
             {fresh.length > 0 ? (
               <View className="gap-2">
@@ -723,15 +706,15 @@ function StickerPackBody({ picker, preparer }: StickerPackScreenDeps) {
                     </View>
                     <View className="shrink-0 flex-row items-center gap-1">
                       {item.status === 'uploadFailed' ? (
-                        <Pressable
-                          accessibilityRole="button"
+                        <Button
+                          variant="outline"
+                          size="sm"
                           accessibilityLabel={`Retry sticker ${index + 1}`}
                           disabled={saving}
                           onPress={() => retryItem(item.key)}
-                          className="rounded-full border border-border-strong px-3 py-1 active:bg-surface-raised disabled:opacity-60"
                         >
-                          <Text className="text-[14px] text-foreground">Retry</Text>
-                        </Pressable>
+                          <Text>Retry</Text>
+                        </Button>
                       ) : null}
                       <Pressable
                         accessibilityRole="button"
@@ -763,26 +746,24 @@ function StickerPackBody({ picker, preparer }: StickerPackScreenDeps) {
           ) : null}
 
           <View className="flex-row items-center gap-2">
-            <Pressable
-              accessibilityRole="button"
+            <Button
+              variant="default"
+              size="sm"
               accessibilityLabel={isCreate ? 'Create pack' : 'Save'}
               disabled={saveDisabled}
               onPress={save}
-              className="rounded-full bg-accent px-5 py-2.5 active:opacity-90 disabled:opacity-60"
             >
-              <Text className="text-[15px] font-medium text-accent-foreground">
-                {saving ? 'Saving…' : isCreate ? 'Create pack' : 'Save'}
-              </Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
+              <Text>{saving ? 'Saving…' : isCreate ? 'Create pack' : 'Save'}</Text>
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
               accessibilityLabel="Cancel"
               disabled={saving}
               onPress={onBack}
-              className="rounded-full px-4 py-2.5 disabled:opacity-60"
             >
-              <Text className="text-[15px] text-muted-foreground">Cancel</Text>
-            </Pressable>
+              <Text>Cancel</Text>
+            </Button>
           </View>
 
           {packId !== undefined ? (
@@ -802,86 +783,36 @@ function StickerPackBody({ picker, preparer }: StickerPackScreenDeps) {
         </View>
       ) : null}
 
-      <Modal
+      <ConfirmDialog
         visible={confirmingDelete}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setConfirmingDelete(false)}
-      >
-        <View className="flex-1 items-center justify-center bg-black/40 p-6">
-          <View className="w-full max-w-xs rounded-2xl bg-background p-4">
-            <Text className="text-[16px] font-semibold text-foreground">Delete this pack?</Text>
-            <Text className="mt-1 text-[14px] leading-5 text-muted-foreground">
-              The pack and its files are deleted. Messages already sent keep their sticker URL,
-              which no longer loads a sticker.
-            </Text>
-            {deleteError !== '' ? (
-              <Text accessibilityRole="alert" className="mt-2 text-[13px] text-danger">
-                {deleteError}
-              </Text>
-            ) : null}
-            <View className="mt-4 flex-row justify-end gap-2">
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Cancel"
-                disabled={deleting}
-                onPress={() => setConfirmingDelete(false)}
-                className="rounded-full px-3 py-1.5 active:bg-surface-raised disabled:opacity-60"
-              >
-                <Text className="text-[14px] text-muted-foreground">Cancel</Text>
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={title === '' ? 'Delete pack' : `Delete ${title}`}
-                disabled={deleting}
-                onPress={confirmDelete}
-                className="rounded-full bg-destructive px-3 py-1.5 active:opacity-90 disabled:opacity-60"
-              >
-                <Text className="text-[14px] font-medium text-white">
-                  {deleting ? 'Deleting…' : 'Delete'}
-                </Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
+        title="Delete this pack?"
+        message="The pack and its files are deleted. Messages already sent keep their sticker URL, which no longer loads a sticker."
+        error={deleteError}
+        confirmLabel="Delete"
+        busyLabel="Deleting…"
+        busy={deleting}
+        onCancel={() => setConfirmingDelete(false)}
+        onConfirm={confirmDelete}
+        confirmAccessibilityLabel={title === '' ? 'Delete pack' : `Delete ${title}`}
+        destructive
+      />
 
-      <Modal
+      <ConfirmDialog
         visible={discardAsk}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setDiscardAsk(false)}
-      >
-        <View className="flex-1 items-center justify-center bg-black/40 p-6">
-          <View className="w-full max-w-xs rounded-2xl bg-background p-4">
-            <Text className="text-[16px] font-semibold text-foreground">Discard changes?</Text>
-            <Text className="mt-1 text-[14px] leading-5 text-muted-foreground">
-              Your changes to this pack are not saved.
-            </Text>
-            <View className="mt-4 flex-row justify-end gap-2">
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Keep editing"
-                onPress={() => setDiscardAsk(false)}
-                className="rounded-full px-3 py-1.5 active:bg-surface-raised"
-              >
-                <Text className="text-[14px] text-muted-foreground">Keep editing</Text>
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Discard"
-                onPress={() => {
-                  setDiscardAsk(false);
-                  router.back();
-                }}
-                className="rounded-full bg-destructive px-3 py-1.5 active:opacity-90"
-              >
-                <Text className="text-[14px] font-medium text-white">Discard</Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
+        title="Discard changes?"
+        message="Your changes to this pack are not saved."
+        confirmLabel="Discard"
+        busyLabel="Discard"
+        busy={false}
+        onCancel={() => setDiscardAsk(false)}
+        onConfirm={() => {
+          setDiscardAsk(false);
+          router.back();
+        }}
+        cancelLabel="Keep editing"
+        cancelAccessibilityLabel="Keep editing"
+        destructive
+      />
     </SettingsScreenShell>
   );
 }

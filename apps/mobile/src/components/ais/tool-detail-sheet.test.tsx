@@ -16,6 +16,7 @@ import {
 import type { ToolRunResult } from '@/lib/tools-api';
 
 vi.mock('react-native', () => ({
+  ActivityIndicator: 'ActivityIndicator',
   KeyboardAvoidingView: 'KeyboardAvoidingView',
   Modal: 'Modal',
   Platform: { OS: 'ios' },
@@ -45,6 +46,8 @@ vi.mock('nativewind', () => ({
 }));
 
 vi.mock('lucide-react-native', () => ({
+  CircleAlert: 'CircleAlert',
+  Inbox: 'Inbox',
   X: 'X',
 }));
 

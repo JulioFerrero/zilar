@@ -14,6 +14,7 @@ import { Avatar } from './Avatar';
 import { ChatActionsMenu } from './ChatActionsMenu';
 import { MessageTicks } from './MessageTicks';
 import { Badge } from './ui/badge';
+import { Button } from './ui/button';
 import { useChatStore } from '@/store/ChatStoreProvider';
 import { useBlockedJids } from '@/lib/blockedJids';
 import { typingLabel } from '@/lib/format';
@@ -148,8 +149,10 @@ export function ChatListItem({
                 </span>
               )
             )}
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="icon-sm"
               aria-label={`Chat actions for ${chat.title}`}
               aria-haspopup="menu"
               aria-expanded={menuOpen}
@@ -158,10 +161,10 @@ export function ChatListItem({
                 event.stopPropagation();
                 setMenuOpen((value) => !value);
               }}
-              className="shrink-0 rounded-md p-1 text-subtle-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none"
+              className="size-6 shrink-0 text-subtle-foreground opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
             >
               <MoreHorizontal className="size-4" aria-hidden="true" />
-            </button>
+            </Button>
           </div>
         </div>
       </Link>

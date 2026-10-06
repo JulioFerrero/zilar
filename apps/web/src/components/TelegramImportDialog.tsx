@@ -4,6 +4,7 @@ import { Link } from 'react-router';
 import { ApiError, importTelegramStickers, type TelegramImportResult } from '@/lib/api';
 import { useIsServerOwner } from '@/lib/useIsServerOwner';
 import { Button } from '@/components/ui/button';
+import { TextInput } from '@/components/ui/text-input';
 import { Dialog } from './ui/dialog';
 
 type DialogStatus = 'idle' | 'busy' | 'done';
@@ -100,16 +101,18 @@ export function TelegramImportDialog({
   // the backdrop are the kit `Dialog`'s job; this button is disabled while
   // busy, and `dismissable={false}` blocks the other two exits then.
   const closeButton = (
-    <button
+    <Button
       type="button"
+      variant="ghost"
+      size="icon-sm"
       aria-label="Close"
       title="Close"
       onClick={onClose}
       disabled={busy}
-      className="shrink-0 rounded-full p-1 text-muted-foreground hover:bg-muted disabled:opacity-60"
+      className="shrink-0 rounded-full text-muted-foreground"
     >
       <X className="size-4" aria-hidden="true" />
-    </button>
+    </Button>
   );
 
   if (unavailable) {
@@ -238,14 +241,9 @@ export function TelegramImportDialog({
       initialFocusRef={inputRef}
       actions={
         <>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={busy}
-            className="rounded-full px-4 py-1.5 text-[15px] text-muted-foreground hover:bg-list-hover disabled:opacity-60"
-          >
+          <Button type="button" variant="ghost" size="lg" onClick={onClose} disabled={busy}>
             Cancel
-          </button>
+          </Button>
           <Button type="button" onClick={() => void run()} disabled={busy} size="lg">
             {busy ? 'Importing…' : 'Import'}
           </Button>
@@ -260,19 +258,17 @@ export function TelegramImportDialog({
         </p>
         {closeButton}
       </div>
-      <label className="mt-3 flex flex-col gap-1 text-[14px]">
-        Pack link or name
-        <input
+      <div className="mt-3">
+        <TextInput
+          label="Pack link or name"
           ref={inputRef}
           value={input}
-          aria-label="Pack link or name"
           placeholder="t.me/addstickers/FunCats"
           maxLength={512}
           disabled={busy}
           onChange={(event) => setInput(event.target.value)}
-          className="rounded-lg border border-input bg-background px-3 py-2 text-[15px] outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40 disabled:opacity-60"
         />
-      </label>
+      </div>
       {error !== '' && (
         <p role="alert" className="mt-2 text-[14px] text-danger">
           {error}

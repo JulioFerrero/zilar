@@ -583,43 +583,51 @@ export function PackEditor({
                 )}
               </span>
               <span className="flex shrink-0 items-center gap-1">
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
+                  size="icon-sm"
                   aria-label={`Move ${item.name} up`}
                   disabled={index === 0 || busy}
                   onClick={() => moveItem(item.key, -1)}
-                  className="rounded-md px-2 py-1 text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40"
+                  className="text-muted-foreground"
                 >
                   <ChevronUp className="size-4" aria-hidden="true" />
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
+                  variant="ghost"
+                  size="icon-sm"
                   aria-label={`Move ${item.name} down`}
                   disabled={index === items.length - 1 || busy}
                   onClick={() => moveItem(item.key, 1)}
-                  className="rounded-md px-2 py-1 text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40"
+                  className="text-muted-foreground"
                 >
                   <ChevronDown className="size-4" aria-hidden="true" />
-                </button>
+                </Button>
                 {item.status === 'error' && item.blob !== undefined ? (
-                  <button
+                  <Button
                     type="button"
+                    variant="ghost"
+                    size="sm"
                     disabled={busy}
                     onClick={() => retryItem(item.key)}
-                    className="rounded-full px-3 py-1 text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40"
+                    className="text-muted-foreground"
                   >
                     Retry
-                  </button>
+                  </Button>
                 ) : null}
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
+                  size="icon-sm"
                   aria-label={`Remove ${item.name}`}
                   disabled={busy}
                   onClick={() => removeItem(item.key)}
-                  className="rounded-md px-2 py-1 text-[13px] text-muted-foreground hover:bg-danger/10 hover:text-danger disabled:opacity-40"
+                  className="text-muted-foreground hover:bg-danger/10 hover:text-danger"
                 >
                   <X className="size-4" aria-hidden="true" />
-                </button>
+                </Button>
               </span>
             </li>
           ))}
@@ -648,14 +656,9 @@ export function PackEditor({
         >
           {packId === undefined ? 'Create pack' : 'Save'}
         </Button>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={onCancel}
-          className="rounded-full px-4 py-2 text-[15px] text-muted-foreground hover:text-foreground disabled:opacity-60"
-        >
+        <Button type="button" variant="ghost" size="lg" disabled={busy} onClick={onCancel}>
           Cancel
-        </button>
+        </Button>
       </div>
     </div>
   );

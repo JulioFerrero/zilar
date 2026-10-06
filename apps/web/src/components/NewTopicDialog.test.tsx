@@ -40,7 +40,7 @@ describe('New topic dialog (T-0111)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'New chat' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'New topic' }));
     fireEvent.change(screen.getByLabelText('Topic name'), { target: { value: 'Secret work' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Private' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'Private' }));
     // The creator is ticked and locked.
     const creator = screen.getByLabelText('You (you, always included)') as HTMLInputElement;
     expect(creator.checked).toBe(true);
@@ -96,7 +96,7 @@ describe('New topic dialog (T-0111)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'New chat' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'New topic' }));
     fireEvent.change(screen.getByLabelText('Topic name'), { target: { value: 'Secret work' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Private' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'Private' }));
 
     fireEvent.click(await screen.findByLabelText('Designers (2)'));
     const approvers = (await screen.findByLabelText('Approvers')) as HTMLSelectElement;
@@ -109,5 +109,23 @@ describe('New topic dialog (T-0111)', () => {
         approverRoleId: 'role-designers',
       });
     });
+  });
+
+  it('uses a radio group for visibility (T-0342)', () => {
+    renderApp('/');
+    fireEvent.click(screen.getByRole('button', { name: 'New chat' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'New topic' }));
+    expect(screen.getByRole('radiogroup', { name: 'Who can see it' })).toBeTruthy();
+    const publicOption = screen.getByRole('radio', { name: 'Public' });
+    expect(publicOption.getAttribute('aria-checked')).toBe('true');
+    expect(screen.getByRole('radio', { name: 'Private' }).getAttribute('aria-checked')).toBe(
+      'false',
+    );
+    fireEvent.click(screen.getByRole('radio', { name: 'Private' }));
+    expect(publicOption.getAttribute('aria-checked')).toBe('false');
+    expect(screen.getByRole('radio', { name: 'Private' }).getAttribute('aria-checked')).toBe(
+      'true',
+    );
+    expect(screen.getByText(/Only the people you pick/)).toBeTruthy();
   });
 });

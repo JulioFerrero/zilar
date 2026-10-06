@@ -25,11 +25,24 @@ vi.mock('nativewind', () => ({
   useColorScheme: () => ({ colorScheme: 'dark' }),
 }));
 
+// `Pressable` is a function so the test can read the `accessibilityState` prop
+// off the `Button` it backs: `renderToStaticMarkup` stringifies object props to
+// `[object Object]` on custom elements, so the value cannot be read otherwise.
+type PressableProps = {
+  accessibilityLabel?: string;
+  accessibilityState?: { expanded?: boolean };
+  children?: unknown;
+};
+const pressableProps: PressableProps[] = [];
+
 vi.mock('react-native', () => ({
   ActivityIndicator: 'ActivityIndicator',
   Modal: 'Modal',
   Platform: { OS: 'ios', select: (options: Record<string, unknown>) => options['ios'] },
-  Pressable: 'Pressable',
+  Pressable: (props: PressableProps) => {
+    pressableProps.push(props);
+    return props.children ?? null;
+  },
   ScrollView: 'ScrollView',
   TextInput: 'TextInput',
   View: 'View',
@@ -45,8 +58,12 @@ vi.mock('react-native-safe-area-context', () => ({
 
 vi.mock('lucide-react-native', () => ({
   Check: 'Check',
+  ChevronDown: 'ChevronDown',
   ChevronLeft: 'ChevronLeft',
+  ChevronUp: 'ChevronUp',
+  CircleAlert: 'CircleAlert',
   Copy: 'Copy',
+  Inbox: 'Inbox',
   Plus: 'Plus',
   RefreshCw: 'RefreshCw',
   Server: 'Server',
@@ -71,7 +88,10 @@ vi.mock('@/components/machines/use-machines-api', () => ({
 
 vi.mock('@/lib/colors', () => ({
   ACCENT: { dark: '#ededed', light: '#ededed' },
+  ACCENT_FOREGROUND: { dark: '#0a0a0a', light: '#0a0a0a' },
+  DANGER: { dark: '#dc2626', light: '#dc2626' },
   ICON: { dark: '#d4d4d4', light: '#d4d4d4' },
+  MUTED_FOREGROUND: { dark: '#a1a1a1', light: '#a1a1a1' },
 }));
 
 vi.mock('@/lib/color-scheme', () => ({
@@ -107,7 +127,9 @@ const REVOKED = machine({ id: 'm-revoked', name: 'Old box', status: 'revoked' })
 let forcedArrays: Machine[][] = [];
 let forcedStatus: 'loading' | 'ready' | 'error' = 'loading';
 let forcedError: string | undefined = undefined;
+let forcedBooleans: boolean[] = [];
 let arrayCursor = 0;
+let booleanCursor = 0;
 
 vi.mock('react', async (importOriginal) => {
   const actual = await importOriginal<typeof import('react')>();
@@ -133,6 +155,11 @@ vi.mock('react', async (importOriginal) => {
           (() => {}) as Dispatch<SetStateAction<T>>,
         ];
       }
+      if (typeof initial === 'boolean' && booleanCursor < forcedBooleans.length) {
+        const forced = forcedBooleans[booleanCursor] as unknown as T;
+        booleanCursor += 1;
+        return [forced, (() => {}) as Dispatch<SetStateAction<T>>];
+      }
       return actual.useState(initial);
     },
   };
@@ -142,11 +169,16 @@ async function renderScreen(input: {
   machines: Machine[];
   status: 'loading' | 'ready' | 'error';
   error?: string | undefined;
+  /** Boolean states forced in hook order (add sheet, pairing loading, revoked disclosure). */
+  booleans?: boolean[] | undefined;
 }): Promise<string> {
   forcedArrays = [input.machines];
   forcedStatus = input.status;
   forcedError = input.error;
+  forcedBooleans = input.booleans ?? [];
   arrayCursor = 0;
+  booleanCursor = 0;
+  pressableProps.length = 0;
   try {
     const module = await import('@/app/settings/machines');
     return renderToStaticMarkup(createElement(module.default));
@@ -154,6 +186,7 @@ async function renderScreen(input: {
     forcedArrays = [];
     forcedStatus = 'loading';
     forcedError = undefined;
+    forcedBooleans = [];
   }
 }
 
@@ -167,6 +200,7 @@ describe('MachinesScreen', () => {
     const html = await renderScreen({ machines: [], status: 'ready' });
     expect(html).toContain('No machines yet');
     expect(html).toContain('Add machine');
+    expect(html).not.toContain('color="#fff"');
   });
 
   it('shows pending rows with Approve and Deny', async () => {
@@ -189,6 +223,28 @@ describe('MachinesScreen', () => {
     const html = await renderScreen({ machines: [REVOKED], status: 'ready' });
     expect(html).toContain('Revoked (1)');
     expect(html).not.toContain('Delete Old box');
+  });
+
+  it('reports the revoked disclosure as collapsed then expanded with the chevron', async () => {
+    const collapsedHtml = await renderScreen({ machines: [REVOKED], status: 'ready' });
+    const collapsed = pressableProps.find(
+      (props) => props.accessibilityLabel === 'Show revoked machines',
+    );
+    expect(collapsed?.accessibilityState).toEqual({ expanded: false });
+    expect(collapsedHtml).toContain('ChevronDown');
+    expect(collapsedHtml).not.toContain('ChevronUp');
+
+    const expandedHtml = await renderScreen({
+      machines: [REVOKED],
+      status: 'ready',
+      booleans: [false, false, true],
+    });
+    const expanded = pressableProps.find(
+      (props) => props.accessibilityLabel === 'Hide revoked machines',
+    );
+    expect(expanded?.accessibilityState).toEqual({ expanded: true });
+    expect(expandedHtml).toContain('ChevronUp');
+    expect(expandedHtml).not.toContain('ChevronDown');
   });
 
   it('shows the error state with Retry', async () => {

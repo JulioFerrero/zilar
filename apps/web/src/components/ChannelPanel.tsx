@@ -19,6 +19,7 @@ import { describeAiError } from './ais/errors';
 import { Avatar } from './Avatar';
 import { Button } from './ui/button';
 import { Sheet } from './ui/sheet';
+import { StateMessage } from './ui/state-message';
 import { InviteLinksSection } from './InviteLinksSection';
 import { VisibilitySection } from './VisibilitySection';
 
@@ -278,14 +279,16 @@ export function ChannelPanel({ chat, onClose }: { chat: ChatSummary; onClose: ()
             {count} {count === 1 ? 'subscriber' : 'subscribers'}
           </p>
         </div>
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="icon-lg"
           aria-label="Close channel panel"
           onClick={onClose}
-          className="flex size-9 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-list-hover"
+          className="shrink-0 rounded-full text-muted-foreground"
         >
           <X className="size-5" aria-hidden="true" />
-        </button>
+        </Button>
       </header>
 
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
@@ -295,7 +298,7 @@ export function ChannelPanel({ chat, onClose }: { chat: ChatSummary; onClose: ()
           </section>
         )}
 
-        {info === undefined && <p className="text-[15px] text-muted-foreground">Loading…</p>}
+        {info === undefined && <StateMessage kind="loading" size="inline" title="Loading…" />}
 
         {info !== undefined && (
           <>
@@ -355,7 +358,7 @@ export function ChannelPanel({ chat, onClose }: { chat: ChatSummary; onClose: ()
               <section aria-label="Admins" className="flex flex-col gap-1">
                 <h2 className="px-2 text-[13px] font-semibold text-muted-foreground">Admins</h2>
                 {adminsState.status === 'loading' && (
-                  <p className="px-2 text-[13px] text-muted-foreground">Loading…</p>
+                  <StateMessage kind="loading" size="inline" title="Loading…" />
                 )}
                 {adminsState.status === 'error' && <FieldError>{adminsState.message}</FieldError>}
                 {adminsState.status === 'ready' && admins.length === 0 && (
@@ -453,12 +456,13 @@ export function ChannelPanel({ chat, onClose }: { chat: ChatSummary; onClose: ()
                   {pickerOpen ? (
                     <div className="flex flex-col gap-1">
                       {eligibleAis.map((ai) => (
-                        <button
+                        <Button
                           key={ai.id}
                           type="button"
+                          variant="outline"
                           disabled={addingId !== undefined}
                           onClick={() => void add(ai.id)}
-                          className="flex items-center gap-2 rounded-xl border border-border-strong bg-surface px-2 py-1.5 text-left text-[14px] hover:bg-surface-raised disabled:opacity-50"
+                          className="h-auto justify-start gap-2 rounded-xl px-2 py-1.5 text-left text-[14px] font-normal"
                         >
                           <Avatar
                             id={ai.jid}
@@ -472,7 +476,7 @@ export function ChannelPanel({ chat, onClose }: { chat: ChatSummary; onClose: ()
                           {addingId === ai.id && (
                             <span className="text-[12px] text-muted-foreground">Adding…</span>
                           )}
-                        </button>
+                        </Button>
                       ))}
                       <Button
                         type="button"

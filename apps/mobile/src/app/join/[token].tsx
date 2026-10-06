@@ -2,7 +2,7 @@ import { Redirect, useLocalSearchParams, useRouter, type Href } from 'expo-route
 import { LinearGradient } from 'expo-linear-gradient';
 import { useColorScheme } from 'nativewind';
 import { useEffect, useState, type ReactNode } from 'react';
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
 
 import { LoadingScreen } from '@/auth/RequireAuth';
 import { useSession } from '@/auth/session';
@@ -14,6 +14,7 @@ import {
   resolveGroupChat,
   type JoinLinkView,
 } from '@/components/chat/join-link';
+import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { asColorScheme } from '@/lib/color-scheme';
 import { CHAT_BACKGROUND } from '@/lib/colors';
@@ -76,14 +77,15 @@ function NameGate({ raw }: { raw: string | undefined }) {
         <Text className="mt-2 text-center text-[15px] text-muted-foreground">
           Choose a display name first — your new group will see it.
         </Text>
-        <Pressable
-          accessibilityRole="button"
+        <Button
           accessibilityLabel="Choose a name"
           onPress={() => router.replace(`/welcome/name?from=${encodeURIComponent(from)}` as Href)}
-          className="mt-5 items-center rounded-full bg-accent px-4 py-2.5 active:opacity-90"
+          variant="default"
+          size="default"
+          className="mt-5"
         >
-          <Text className="text-[15px] font-medium text-accent-foreground">Choose a name</Text>
-        </Pressable>
+          <Text>Choose a name</Text>
+        </Button>
       </View>
     </JoinBackground>
   );

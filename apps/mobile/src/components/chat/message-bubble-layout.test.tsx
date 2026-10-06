@@ -86,6 +86,7 @@ vi.mock('lucide-react-native', () => ({
   Check: 'Check',
   CheckCheck: 'CheckCheck',
   Clock: 'Clock',
+  Forward: 'Forward',
   Mic: 'Mic',
   Paperclip: 'Paperclip',
   Smile: 'Smile',
@@ -130,6 +131,7 @@ vi.mock('@/lib/color-scheme', () => ({ asColorScheme: () => 'dark' }));
 vi.mock('@/lib/colors', () => ({
   BUBBLE_COLORS: { dark: { outgoingMeta: '#555', incomingMeta: '#555' } },
   ICON: { dark: '#d4d4d4' },
+  MUTED_FOREGROUND: { dark: '#888888' },
 }));
 vi.mock('@/lib/depth', () => ({
   WELL_BACKGROUND: '#0c0c0c',
@@ -195,5 +197,40 @@ describe('MessageBubble layout', () => {
     expect(beforeTicks.slice(viewOpen - 2, viewOpen)).toBe('\u00a0\u2060');
     // ...inside the meta `Text`: it has not closed before the tick.
     expect(beforeTicks.slice(0, viewOpen)).not.toContain('</Text>');
+  });
+
+  it('shows the forwarded header for a message with a forward origin', () => {
+    const html = renderToStaticMarkup(
+      createElement(MessageBubble, {
+        ...BASE,
+        message: textMessage({
+          forward: {
+            sender_id: 'luis@zilar.test',
+            sender_name: 'Luis',
+            chat_id: 'viernes@conference.zilar.test',
+            chat_name: 'Friday plans',
+            original_at: '2026-08-30T18:00:00.000Z',
+          },
+        }),
+      }),
+    );
+    expect(html).toContain('Forwarded from Luis in Friday plans');
+  });
+
+  it('shows the forwarded header on a single-emoji message', () => {
+    const html = renderToStaticMarkup(
+      createElement(MessageBubble, {
+        ...BASE,
+        message: textMessage({
+          text: '🎉',
+          forward: {
+            sender_id: 'luis@zilar.test',
+            sender_name: 'Luis',
+            original_at: '2026-08-30T18:00:00.000Z',
+          },
+        }),
+      }),
+    );
+    expect(html).toContain('Forwarded from');
   });
 });

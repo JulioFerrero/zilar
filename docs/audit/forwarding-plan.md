@@ -365,6 +365,8 @@ Ordered, small, one concern each. Each task touches only the files listed.
 
 ## 5. Open questions for Julio
 
+**Answered 2026-10-06: Julio accepted every recommendation below.** T-A and T-B shipped in T-0261. Next come T-D (web store) and T-E (web UI), then T-F (mobile). T-C stays out.
+
 1. **What is the optional comment?** Recommended: a separate text message per
    target, sent after the forward(s) (matches multi-forward, leaves content
    untouched). Alternative: a caption on a single-message forward.

@@ -138,13 +138,15 @@ export function InviteLinksSection({
           <p className="text-[12px] text-muted-foreground">
             Anyone with this link can join the group. It is shown once — copy it now.
           </p>
-          <button
+          <Button
             type="button"
+            variant="link"
+            size="sm"
             onClick={onDismissCreated}
-            className="self-start text-[13px] font-medium text-accent hover:underline"
+            className="self-start px-0 text-accent"
           >
             Done
-          </button>
+          </Button>
         </div>
       )}
 
@@ -237,15 +239,17 @@ function LinkStatesList({
               </p>
             </div>
             {state !== 'revoked' ? (
-              <button
+              <Button
                 type="button"
+                variant="outline"
+                size="sm"
                 aria-label={`Revoke invite link ${link.label ?? link.tokenHint}`}
                 disabled={revoking}
                 onClick={() => onRevoke(link.id)}
-                className="shrink-0 rounded-full border border-border-strong px-3 py-1 text-[13px] font-medium hover:bg-surface-raised disabled:opacity-50"
+                className="shrink-0"
               >
                 {revoking ? 'Revoking…' : 'Revoke'}
-              </button>
+              </Button>
             ) : (
               <span className="shrink-0 px-2 text-[12px] text-muted-foreground">revoked</span>
             )}

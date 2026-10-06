@@ -1,7 +1,7 @@
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { Plus, RefreshCw, Zap } from 'lucide-react-native';
+import { Plus, Zap } from 'lucide-react-native';
 import { useCallback, useRef, useState } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { View } from 'react-native';
 import { useColorScheme } from 'nativewind';
 
 import { RequireAisAuth } from '@/components/ais/require-ais-auth';
@@ -14,6 +14,7 @@ import { AisScreenShell } from '@/components/ais/screen-shell';
 import { useAisApi } from '@/components/ais/use-ais-api';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
+import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { ACCENT, ICON } from '@/lib/colors';
 import { asColorScheme } from '@/lib/color-scheme';
@@ -164,28 +165,17 @@ function AisList() {
           </IconButton>
         }
       >
-        {status === 'loading' && (
-          <View className="items-center gap-3 pt-16">
-            <ActivityIndicator color={ACCENT[scheme]} />
-            <Text className="text-[15px] text-muted-foreground">Loading…</Text>
-          </View>
-        )}
+        {status === 'loading' && <StateMessage kind="loading" title="Loading…" />}
 
         {status === 'error' && (
-          <View className="items-center gap-3 px-2 pt-12">
-            <Text accessibilityRole="alert" className="text-center text-[15px] text-danger">
-              {errorInfo.message}
-            </Text>
-            {errorInfo.unavailable ? (
-              <Text className="text-center text-[14px] text-muted-foreground">
-                AI management is not available on this server.
-              </Text>
-            ) : null}
-            <Button variant="outline" onPress={reload}>
-              <RefreshCw size={16} color={ICON[scheme]} />
-              <Text>Retry</Text>
-            </Button>
-          </View>
+          <StateMessage
+            kind="error"
+            title={errorInfo.message}
+            hint={
+              errorInfo.unavailable ? 'AI management is not available on this server.' : undefined
+            }
+            action={{ label: 'Retry', onPress: reload }}
+          />
         )}
 
         {status === 'ready' && ais.length === 0 && (

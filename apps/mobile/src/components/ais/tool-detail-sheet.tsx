@@ -5,6 +5,7 @@ import { X } from 'lucide-react-native';
 import { useColorScheme } from 'nativewind';
 
 import { Button } from '@/components/ui/button';
+import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import { asColorScheme } from '@/lib/color-scheme';
@@ -110,15 +111,17 @@ function RunRow({
             {expanded ? (run.outputText ?? '') : cut.preview}
           </Text>
           {cut.truncated ? (
-            <Pressable
-              accessibilityRole="button"
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 self-start px-0"
               accessibilityLabel={expanded ? 'Show less' : 'Show all'}
               onPress={onToggleOutput}
             >
               <Text className="text-[13px] text-foreground">
                 {expanded ? 'Show less' : 'Show all'}
               </Text>
-            </Pressable>
+            </Button>
           ) : null}
         </View>
       ) : null}
@@ -151,15 +154,17 @@ function RunResultBlock({
           {expanded ? text : cut.preview}
         </Text>
         {cut.truncated ? (
-          <Pressable
-            accessibilityRole="button"
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 self-start px-0"
             accessibilityLabel={expanded ? 'Show less' : 'Show all'}
             onPress={onToggle}
           >
             <Text className="text-[13px] text-foreground">
               {expanded ? 'Show less' : 'Show all'}
             </Text>
-          </Pressable>
+          </Button>
         ) : null}
       </View>
     );
@@ -174,13 +179,15 @@ function RunResultBlock({
         {expanded ? result.output.text : cut.preview}
       </Text>
       {cut.truncated ? (
-        <Pressable
-          accessibilityRole="button"
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 self-start px-0"
           accessibilityLabel={expanded ? 'Show less' : 'Show all'}
           onPress={onToggle}
         >
           <Text className="text-[13px] text-foreground">{expanded ? 'Show less' : 'Show all'}</Text>
-        </Pressable>
+        </Button>
       ) : null}
     </View>
   );
@@ -286,7 +293,7 @@ export function ToolDetailBody({
           Version history
         </Text>
         {versions.length === 0 ? (
-          <Text className="px-2 text-[13px] text-muted-foreground">No versions yet.</Text>
+          <StateMessage kind="empty" size="inline" title="No versions yet." />
         ) : null}
         {versions.map((version) => {
           const confirming = state.confirmingRevert === version.version;
@@ -404,7 +411,7 @@ export function ToolDetailBody({
       <View accessibilityLabel="Recent runs" className="gap-1">
         <Text className="px-2 text-[13px] font-semibold text-muted-foreground">Recent runs</Text>
         {runs.length === 0 ? (
-          <Text className="px-2 text-[13px] text-muted-foreground">No runs yet.</Text>
+          <StateMessage kind="empty" size="inline" title="No runs yet." />
         ) : null}
         {runs.map((run) => (
           <RunRow
@@ -724,14 +731,15 @@ function ToolDetailLoader({
         <Text numberOfLines={1} className="min-w-0 flex-1 text-[16px] font-semibold">
           {loaded?.tool.name ?? 'Tool'}
         </Text>
-        <Pressable
-          accessibilityRole="button"
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-9 w-9"
           accessibilityLabel="Close tool"
           onPress={onClose}
-          className="p-2 active:bg-list-hover"
         >
           <X size={20} color={MUTED_FOREGROUND[scheme]} />
-        </Pressable>
+        </Button>
       </View>
       <ScrollView
         className="flex-1 py-2"

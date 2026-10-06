@@ -12,7 +12,6 @@ import {
   revokeGroupInviteLink,
   setGroupRoleMembers,
 } from '@/lib/api';
-import { cn } from '@/lib/utils';
 import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { HandleSuffix } from './HandleSuffix';
 import { ActivitySection } from './ais/AiActivity';
@@ -26,7 +25,9 @@ import { Avatar } from './Avatar';
 import { Button } from './ui/button';
 import { Checkbox } from './ui/checkbox';
 import { Sheet } from './ui/sheet';
+import { StateMessage } from './ui/state-message';
 import { Switch } from './ui/switch';
+import { TextInput } from './ui/text-input';
 import { InviteLinksSection } from './InviteLinksSection';
 import { RoutinesSection } from './tools/RoutinesSection';
 import { ToolsSection } from './tools/ToolsSection';
@@ -280,18 +281,20 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
             {memberCount} {memberCount === 1 ? 'member' : 'members'}
           </p>
         </div>
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="icon-lg"
           aria-label="Close group panel"
           onClick={onClose}
-          className="flex size-9 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-list-hover"
+          className="shrink-0 rounded-full text-muted-foreground"
         >
           <X className="size-5" aria-hidden="true" />
-        </button>
+        </Button>
       </header>
 
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
-        {info === undefined && <p className="text-[15px] text-muted-foreground">Loading…</p>}
+        {info === undefined && <StateMessage kind="loading" size="inline" title="Loading…" />}
 
         {info !== undefined && (
           <>
@@ -427,15 +430,13 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
                   {pickerOpen ? (
                     <div className="flex flex-col gap-1">
                       {eligibleAis.map((ai) => (
-                        <button
+                        <Button
                           key={ai.id}
                           type="button"
+                          variant="outline"
                           disabled={addingId !== undefined}
                           onClick={() => void add(ai.id)}
-                          className={cn(
-                            'flex items-center gap-2 rounded-xl border border-border-strong bg-surface px-2 py-1.5 text-left text-[14px]',
-                            'hover:bg-surface-raised disabled:opacity-50',
-                          )}
+                          className="h-auto justify-start gap-2 rounded-xl px-2 py-1.5 text-left text-[14px] font-normal"
                         >
                           <Avatar
                             id={ai.jid}
@@ -449,7 +450,7 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
                           {addingId === ai.id && (
                             <span className="text-[12px] text-muted-foreground">Adding…</span>
                           )}
-                        </button>
+                        </Button>
                       ))}
                       <Button
                         type="button"
@@ -671,7 +672,7 @@ function RolesSection({
     <section aria-label="Roles" className="flex flex-col gap-1">
       <h2 className="px-2 text-[13px] font-semibold text-muted-foreground">Roles</h2>
       {rolesState.status === 'loading' && (
-        <p className="px-2 text-[13px] text-muted-foreground">Loading…</p>
+        <StateMessage kind="loading" size="inline" title="Loading…" />
       )}
       {rolesState.status === 'error' && (
         <div className="flex flex-col gap-2 px-2">
@@ -700,12 +701,12 @@ function RolesSection({
             <div key={role.id} className="flex flex-col gap-1 rounded-xl px-2 py-1.5">
               <div className="flex items-center gap-2">
                 {renaming ? (
-                  <input
+                  <TextInput
                     aria-label={`Rename ${role.name}`}
                     value={renameValue}
                     maxLength={30}
                     onChange={(event) => setRenameValue(event.target.value)}
-                    className="well-surface min-w-0 flex-1 rounded-[10px] px-3 py-1.5 text-[14px] text-foreground outline-none placeholder:text-subtle-foreground focus-visible:ring-2 focus-visible:ring-accent/40"
+                    className="min-w-0 flex-1"
                   />
                 ) : (
                   <span className="min-w-0 flex-1 truncate text-[14px] font-medium">
@@ -827,13 +828,13 @@ function RolesSection({
           );
         })}
       <div className="mt-1 flex items-center gap-2 px-2">
-        <input
+        <TextInput
           aria-label="New role name"
           value={newName}
           maxLength={30}
           onChange={(event) => setNewName(event.target.value)}
           placeholder="e.g. Designers"
-          className="well-surface min-w-0 flex-1 rounded-[10px] px-3 py-2 text-[14px] text-foreground outline-none placeholder:text-subtle-foreground focus-visible:ring-2 focus-visible:ring-accent/40"
+          className="min-w-0 flex-1"
         />
         <Button
           type="button"

@@ -1,7 +1,7 @@
 import { useRouter } from 'expo-router';
 import { Plus, Zap } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, View } from 'react-native';
 import { useColorScheme } from 'nativewind';
 
 import { RequireAisAuth } from '@/components/ais/require-ais-auth';
@@ -18,6 +18,7 @@ import { defaultPersonaFor, templateLabel } from '@/components/ais/templates';
 import { useAisApi } from '@/components/ais/use-ais-api';
 import { WizardSteps } from '@/components/ais/wizard-steps';
 import { Button } from '@/components/ui/button';
+import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import type { AiLimits, AiTemplate, Connection } from '@/lib/ais-api';
@@ -164,10 +165,7 @@ function CreateAiWizard() {
   if (loading) {
     return (
       <AisScreenShell title="Create an AI" onBack={() => router.back()}>
-        <View className="items-center gap-3 pt-16">
-          <ActivityIndicator color={ACCENT[scheme]} />
-          <Text className="text-[15px] text-muted-foreground">Loading…</Text>
-        </View>
+        <StateMessage kind="loading" title="Loading…" />
       </AisScreenShell>
     );
   }
@@ -175,14 +173,11 @@ function CreateAiWizard() {
   if (loadError.message !== '' && connections.length === 0) {
     return (
       <AisScreenShell title="Create an AI" onBack={() => router.back()}>
-        <View className="items-center gap-3 px-4 pt-12">
-          <Text accessibilityRole="alert" className="text-center text-[15px] text-danger">
-            {loadError.message}
-          </Text>
-          <Button variant="outline" onPress={retryConnections}>
-            <Text>Retry</Text>
-          </Button>
-        </View>
+        <StateMessage
+          kind="error"
+          title={loadError.message}
+          action={{ label: 'Retry', onPress: retryConnections }}
+        />
       </AisScreenShell>
     );
   }

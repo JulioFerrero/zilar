@@ -10,12 +10,38 @@ import { InviteSheet, InviteSheetBody } from './invite-sheet';
 // under `react-dom/server`, so its initial loading render is asserted there
 // and every later state through the body.
 vi.mock('react-native', () => ({
+  Platform: { OS: 'ios', select: (options: Record<string, unknown>) => options['ios'] },
   Pressable: 'Pressable',
   View: 'View',
 }));
 
+vi.mock('@/lib/color-scheme', () => ({
+  asColorScheme: () => 'dark' as const,
+}));
+
+vi.mock('@/lib/colors', () => ({
+  ACCENT_FOREGROUND: { dark: '#0a0a0a', light: '#0a0a0a' },
+}));
+
 vi.mock('@/components/ui/text', () => ({
   Text: 'Text',
+  TextClassContext: { Provider: 'TextClassContextProvider' },
+}));
+
+// No `@/lib/depth` mock: `InviteSheetBody` no longer reads it (the icon
+// color comes from `@/lib/colors`), and mocking only part of what the real
+// kit `Button` needs would break the transitive `Button` import.
+
+vi.mock('@/components/ui/use-key-press', () => ({
+  useKeyPress: () => ({ pressed: false, reduceMotion: false, setPressed: () => {} }),
+}));
+
+vi.mock('nativewind', () => ({
+  useColorScheme: () => ({ colorScheme: 'dark' }),
+}));
+
+vi.mock('react-native-reanimated', () => ({
+  useReducedMotion: () => false,
 }));
 
 vi.mock('lucide-react-native', () => ({

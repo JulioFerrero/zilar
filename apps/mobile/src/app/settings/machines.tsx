@@ -1,19 +1,29 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
-import { Check, ChevronLeft, Copy, Plus, RefreshCw, Server } from 'lucide-react-native';
+import {
+  Check,
+  ChevronDown,
+  ChevronLeft,
+  ChevronUp,
+  Copy,
+  Plus,
+  Server,
+} from 'lucide-react-native';
 import { useCallback, useRef, useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, ScrollView, View } from 'react-native';
+import { Modal, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useColorScheme } from 'nativewind';
 
 import { RequireAuth } from '@/auth/RequireAuth';
+import { Button } from '@/components/ui/button';
 import { Card, SectionLabel } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { IconButton } from '@/components/ui/icon-button';
+import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import { asColorScheme } from '@/lib/color-scheme';
-import { ACCENT, ICON } from '@/lib/colors';
+import { ACCENT_FOREGROUND, ICON } from '@/lib/colors';
 import type { Machine, PairingCode } from '@/lib/machines-api';
 import { describeMachinesError, type MachinesErrorInfo } from '@/components/machines/errors';
 import { useMachinesApi } from '@/components/machines/use-machines-api';
@@ -273,46 +283,31 @@ function MachinesList() {
         keyboardShouldPersistTaps="handled"
       >
         <View className="gap-4 p-4">
-          {status === 'loading' ? (
-            <View className="items-center gap-3 pt-16">
-              <ActivityIndicator color={ACCENT[scheme]} />
-              <Text className="text-[15px] text-muted-foreground">Loading machines…</Text>
-            </View>
-          ) : null}
+          {status === 'loading' ? <StateMessage kind="loading" title="Loading machines…" /> : null}
 
           {status === 'error' ? (
-            <View className="items-center gap-3 pt-12">
-              <Text accessibilityRole="alert" className="text-center text-[15px] text-danger">
-                {errorInfo.message}
-              </Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Retry loading machines"
-                onPress={reload}
-                className="flex-row items-center gap-2 rounded-full border border-border-strong px-4 py-2 active:bg-surface-raised"
-              >
-                <RefreshCw size={16} color={ICON[scheme]} />
-                <Text className="text-[15px] text-foreground">Retry</Text>
-              </Pressable>
-            </View>
+            <StateMessage
+              kind="error"
+              title={errorInfo.message}
+              action={{
+                label: 'Retry',
+                accessibilityLabel: 'Retry loading machines',
+                onPress: reload,
+              }}
+            />
           ) : null}
 
           {status === 'ready' && machines.length === 0 ? (
-            <View className="items-center gap-3 pt-16">
-              <Server size={32} color={ICON[scheme]} />
-              <Text className="px-4 text-center text-[15px] text-muted-foreground">
-                No machines yet. Add one to let your AIs work on your own computers.
-              </Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Add a machine"
-                onPress={openAdd}
-                className="flex-row items-center gap-2 rounded-full bg-accent px-5 py-2 active:opacity-90"
-              >
-                <Plus size={16} color="#fff" />
-                <Text className="text-[15px] font-medium text-accent-foreground">Add machine</Text>
-              </Pressable>
-            </View>
+            <StateMessage
+              kind="empty"
+              icon={Server}
+              title="No machines yet. Add one to let your AIs work on your own computers."
+              action={{
+                label: 'Add machine',
+                accessibilityLabel: 'Add a machine',
+                onPress: openAdd,
+              }}
+            />
           ) : null}
 
           {status === 'ready' && pending.length > 0 ? (
@@ -327,26 +322,24 @@ function MachinesList() {
                     error={actionErrors[machine.id] ?? ''}
                     actions={
                       <>
-                        <Pressable
-                          accessibilityRole="button"
+                        <Button
+                          variant="default"
+                          size="sm"
                           accessibilityLabel={`Approve ${machine.name}`}
                           disabled={busyId === machine.id}
                           onPress={() => approve(machine.id)}
-                          className="rounded-full bg-accent px-3 py-1 active:opacity-90 disabled:opacity-60"
                         >
-                          <Text className="text-[14px] font-medium text-accent-foreground">
-                            Approve
-                          </Text>
-                        </Pressable>
-                        <Pressable
-                          accessibilityRole="button"
+                          <Text>Approve</Text>
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
                           accessibilityLabel={`Deny ${machine.name}`}
                           disabled={busyId === machine.id}
                           onPress={() => deny(machine.id)}
-                          className="rounded-full border border-border-strong px-3 py-1 active:bg-surface-raised disabled:opacity-60"
                         >
-                          <Text className="text-[14px] text-foreground">Deny</Text>
-                        </Pressable>
+                          <Text>Deny</Text>
+                        </Button>
                       </>
                     }
                   />
@@ -376,26 +369,24 @@ function MachinesList() {
                         </Text>
                       ) : null}
                       <View className="flex-row justify-end gap-2">
-                        <Pressable
-                          accessibilityRole="button"
+                        <Button
+                          variant="ghost"
+                          size="sm"
                           accessibilityLabel="Cancel renaming"
                           disabled={busyId === machine.id}
                           onPress={() => setRenamingId(null)}
-                          className="rounded-full px-3 py-1 active:bg-surface-raised disabled:opacity-60"
                         >
-                          <Text className="text-[14px] text-muted-foreground">Cancel</Text>
-                        </Pressable>
-                        <Pressable
-                          accessibilityRole="button"
+                          <Text>Cancel</Text>
+                        </Button>
+                        <Button
+                          variant="default"
+                          size="sm"
                           accessibilityLabel="Save the new name"
                           disabled={busyId === machine.id}
                           onPress={() => saveRename(machine.id)}
-                          className="rounded-full bg-accent px-3 py-1 active:opacity-90 disabled:opacity-60"
                         >
-                          <Text className="text-[14px] font-medium text-accent-foreground">
-                            {busyId === machine.id ? 'Saving…' : 'Save'}
-                          </Text>
-                        </Pressable>
+                          <Text>{busyId === machine.id ? 'Saving…' : 'Save'}</Text>
+                        </Button>
                       </View>
                     </View>
                   ) : (
@@ -406,24 +397,24 @@ function MachinesList() {
                       error={actionErrors[machine.id] ?? ''}
                       actions={
                         <>
-                          <Pressable
-                            accessibilityRole="button"
+                          <Button
+                            variant="outline"
+                            size="sm"
                             accessibilityLabel={`Rename ${machine.name}`}
                             disabled={busyId === machine.id}
                             onPress={() => openRename(machine)}
-                            className="rounded-full border border-border-strong px-3 py-1 active:bg-surface-raised disabled:opacity-60"
                           >
-                            <Text className="text-[14px] text-foreground">Rename</Text>
-                          </Pressable>
-                          <Pressable
-                            accessibilityRole="button"
+                            <Text>Rename</Text>
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
                             accessibilityLabel={`Revoke ${machine.name}`}
                             disabled={busyId === machine.id}
                             onPress={() => askConfirm('revoke', machine.id)}
-                            className="rounded-full border border-border-strong px-3 py-1 active:bg-surface-raised disabled:opacity-60"
                           >
-                            <Text className="text-[14px] text-foreground">Revoke</Text>
-                          </Pressable>
+                            <Text>Revoke</Text>
+                          </Button>
                         </>
                       }
                     />
@@ -435,16 +426,23 @@ function MachinesList() {
 
           {status === 'ready' && revoked.length > 0 ? (
             <View accessibilityLabel="Revoked machines" className="gap-2">
-              <Pressable
-                accessibilityRole="button"
+              <Button
+                variant="ghost"
+                size="sm"
+                className="self-start gap-1 px-0"
                 accessibilityLabel={showRevoked ? 'Hide revoked machines' : 'Show revoked machines'}
+                accessibilityState={{ expanded: showRevoked }}
                 onPress={() => setShowRevoked((value) => !value)}
-                className="flex-row items-center gap-1 self-start active:opacity-70"
               >
+                {showRevoked ? (
+                  <ChevronUp size={16} color={ICON[scheme]} />
+                ) : (
+                  <ChevronDown size={16} color={ICON[scheme]} />
+                )}
                 <Text className="text-[15px] font-semibold text-foreground">
                   Revoked ({revoked.length})
                 </Text>
-              </Pressable>
+              </Button>
               {showRevoked ? (
                 <Card>
                   {revoked.map((machine) => (
@@ -454,15 +452,15 @@ function MachinesList() {
                       busy={busyId === machine.id}
                       error={actionErrors[machine.id] ?? ''}
                       actions={
-                        <Pressable
-                          accessibilityRole="button"
+                        <Button
+                          variant="outline"
+                          size="sm"
                           accessibilityLabel={`Delete ${machine.name}`}
                           disabled={busyId === machine.id}
                           onPress={() => askConfirm('delete', machine.id)}
-                          className="rounded-full border border-border-strong px-3 py-1 active:bg-surface-raised disabled:opacity-60"
                         >
-                          <Text className="text-[14px] text-foreground">Delete</Text>
-                        </Pressable>
+                          <Text>Delete</Text>
+                        </Button>
                       }
                     />
                   ))}
@@ -562,6 +560,7 @@ function AddMachineSheet({
   onClose: () => void;
 }) {
   const [copied, setCopied] = useState(false);
+  const scheme = asColorScheme(useColorScheme().colorScheme);
 
   const copy = (): void => {
     if (pairing === null) {
@@ -576,18 +575,13 @@ function AddMachineSheet({
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View className="flex-1 items-center justify-center bg-black/40 p-6">
-        <View className="w-full max-w-xs rounded-2xl bg-background p-4">
+        <View className="w-full max-w-xs rounded-2xl border border-border-strong bg-surface p-4">
           <Text className="text-[16px] font-semibold text-foreground">Add machine</Text>
           <Text className="mt-1 text-[14px] leading-5 text-muted-foreground">
             Pair a new computer where your AIs can work.
           </Text>
 
-          {loading ? (
-            <View className="items-center gap-2 py-6">
-              <ActivityIndicator />
-              <Text className="text-[14px] text-muted-foreground">Creating code…</Text>
-            </View>
-          ) : null}
+          {loading ? <StateMessage kind="loading" title="Creating code…" /> : null}
 
           {!loading && error !== '' ? (
             <>
@@ -595,22 +589,17 @@ function AddMachineSheet({
                 {error}
               </Text>
               <View className="mt-4 flex-row justify-end gap-2">
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Close"
-                  onPress={onClose}
-                  className="rounded-full px-3 py-1.5 active:bg-surface-raised"
-                >
-                  <Text className="text-[14px] text-muted-foreground">Close</Text>
-                </Pressable>
-                <Pressable
-                  accessibilityRole="button"
+                <Button variant="ghost" size="sm" accessibilityLabel="Close" onPress={onClose}>
+                  <Text>Close</Text>
+                </Button>
+                <Button
+                  variant="default"
+                  size="sm"
                   accessibilityLabel="Try again"
                   onPress={onRetry}
-                  className="rounded-full bg-accent px-3 py-1.5 active:opacity-90"
                 >
-                  <Text className="text-[14px] font-medium text-accent-foreground">Try again</Text>
-                </Pressable>
+                  <Text>Try again</Text>
+                </Button>
               </View>
             </>
           ) : null}
@@ -625,17 +614,19 @@ function AddMachineSheet({
                   {pairing.code}
                 </Text>
                 <View className="mt-2 flex-row items-center justify-center">
-                  <Pressable
-                    accessibilityRole="button"
+                  <Button
+                    variant="default"
+                    size="sm"
                     accessibilityLabel="Copy pairing code"
                     onPress={copy}
-                    className="flex-row items-center gap-1 rounded-md bg-accent px-2.5 py-1 active:opacity-90"
                   >
-                    {copied ? <Check size={14} color="#fff" /> : <Copy size={14} color="#fff" />}
-                    <Text className="text-[13px] font-medium text-accent-foreground">
-                      {copied ? 'Copied' : 'Copy'}
-                    </Text>
-                  </Pressable>
+                    {copied ? (
+                      <Check size={14} color={ACCENT_FOREGROUND[scheme]} />
+                    ) : (
+                      <Copy size={14} color={ACCENT_FOREGROUND[scheme]} />
+                    )}
+                    <Text>{copied ? 'Copied' : 'Copy'}</Text>
+                  </Button>
                 </View>
               </View>
               <Text className="mt-3 text-[14px] leading-5 text-foreground">
@@ -646,14 +637,9 @@ function AddMachineSheet({
                 The desktop runner is not published yet — this code is ready for when it is.
               </Text>
               <View className="mt-4 flex-row justify-end">
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Done"
-                  onPress={onClose}
-                  className="rounded-full bg-accent px-4 py-1.5 active:opacity-90"
-                >
-                  <Text className="text-[15px] font-medium text-accent-foreground">Done</Text>
-                </Pressable>
+                <Button variant="default" size="sm" accessibilityLabel="Done" onPress={onClose}>
+                  <Text>Done</Text>
+                </Button>
               </View>
             </>
           ) : null}

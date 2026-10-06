@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
+import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import {
   describeRoutineSchedule,
@@ -212,7 +213,7 @@ export function RoutinesSectionContent({
   action?: RoutineActionMessage | null;
 }) {
   if (state.status === 'loading') {
-    return <Text className="px-2 text-[13px] text-muted-foreground">Loading…</Text>;
+    return <StateMessage kind="loading" size="inline" title="Loading…" />;
   }
   if (state.status === 'error') {
     return (
@@ -227,7 +228,7 @@ export function RoutinesSectionContent({
     );
   }
   if (state.routines.length === 0) {
-    return <Text className="px-2 text-[13px] text-muted-foreground">{ROUTINES_EMPTY_MESSAGE}</Text>;
+    return <StateMessage kind="empty" size="inline" title={ROUTINES_EMPTY_MESSAGE} />;
   }
   return (
     <>

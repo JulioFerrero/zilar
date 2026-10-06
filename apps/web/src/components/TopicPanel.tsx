@@ -12,7 +12,7 @@ import { PinsSection } from './PinsPanel';
 import { AlwaysAllowedList } from './approvals/AlwaysAllowedList';
 import { Button } from './ui/button';
 import { Sheet } from './ui/sheet';
-import { cn } from '@/lib/utils';
+import { StateMessage } from './ui/state-message';
 import {
   ApiError,
   getTopic,
@@ -404,14 +404,16 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
               {!isPrivate && info !== undefined ? ` · All ${info.members.length} members` : ''}
             </p>
           </div>
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="icon-lg"
             aria-label="Close topic panel"
             onClick={onClose}
-            className="flex size-9 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-list-hover"
+            className="shrink-0 rounded-full text-muted-foreground"
           >
             <X className="size-5" aria-hidden="true" />
-          </button>
+          </Button>
         </header>
 
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
@@ -420,7 +422,7 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
             {isPrivate ? (
               <>
                 {membersState.status === 'loading' && (
-                  <p className="px-2 text-[13px] text-muted-foreground">Loading…</p>
+                  <StateMessage kind="loading" size="inline" title="Loading…" />
                 )}
                 {membersState.status === 'error' && (
                   <div className="flex flex-col gap-2 px-2">
@@ -519,15 +521,13 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
                     {memberPickerOpen ? (
                       <>
                         {addableMembers.map((member) => (
-                          <button
+                          <Button
                             key={member.userId}
                             type="button"
+                            variant="outline"
                             disabled={busyId !== undefined}
                             onClick={() => void addMember(member.userId)}
-                            className={cn(
-                              'flex items-center gap-2 rounded-xl border border-border-strong bg-surface px-2 py-1.5 text-left text-[14px]',
-                              'hover:bg-surface-raised disabled:opacity-50',
-                            )}
+                            className="h-auto justify-start gap-2 rounded-xl px-2 py-1.5 text-left text-[14px] font-normal"
                           >
                             <Avatar
                               id={member.userId}
@@ -539,7 +539,7 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
                             {busyId === `add:${member.userId}` && (
                               <span className="text-[12px] text-muted-foreground">Adding…</span>
                             )}
-                          </button>
+                          </Button>
                         ))}
                         <Button
                           type="button"
@@ -589,7 +589,7 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
               AIs in this topic
             </h2>
             {aisState.status === 'loading' && (
-              <p className="px-2 text-[13px] text-muted-foreground">Loading…</p>
+              <StateMessage kind="loading" size="inline" title="Loading…" />
             )}
             {aisState.status === 'error' && (
               <div className="flex flex-col gap-2 px-2">
@@ -679,15 +679,13 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
                 {aiPickerOpen ? (
                   <>
                     {addableAis.map((ai) => (
-                      <button
+                      <Button
                         key={ai.id}
                         type="button"
+                        variant="outline"
                         disabled={busyId !== undefined}
                         onClick={() => void addAi(ai.id)}
-                        className={cn(
-                          'flex items-center gap-2 rounded-xl border border-border-strong bg-surface px-2 py-1.5 text-left text-[14px]',
-                          'hover:bg-surface-raised disabled:opacity-50',
-                        )}
+                        className="h-auto justify-start gap-2 rounded-xl px-2 py-1.5 text-left text-[14px] font-normal"
                       >
                         <Avatar id={ai.jid} name={ai.name} size={28} ai avatarUrl={ai.avatarUrl} />
                         <span className="min-w-0 flex-1 truncate">{ai.name}</span>
@@ -695,7 +693,7 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
                         {busyId === `addAi:${ai.id}` && (
                           <span className="text-[12px] text-muted-foreground">Adding…</span>
                         )}
-                      </button>
+                      </Button>
                     ))}
                     <Button
                       type="button"
@@ -965,7 +963,7 @@ function TopicRolesSection({
     <section aria-label="Roles" className="flex flex-col gap-1">
       <h2 className="px-2 text-[13px] font-semibold text-muted-foreground">Roles</h2>
       {rolesState.status === 'loading' && (
-        <p className="px-2 text-[13px] text-muted-foreground">Loading…</p>
+        <StateMessage kind="loading" size="inline" title="Loading…" />
       )}
       {rolesState.status === 'error' && (
         <div className="flex flex-col gap-2 px-2">
@@ -1018,21 +1016,19 @@ function TopicRolesSection({
                   {groupRoles
                     .filter((role) => !rolesState.roles.some((item) => item.id === role.id))
                     .map((role) => (
-                      <button
+                      <Button
                         key={role.id}
                         type="button"
+                        variant="outline"
                         disabled={busy}
                         onClick={() => void toggleRole(role.id)}
-                        className={cn(
-                          'flex items-center gap-2 rounded-xl border border-border-strong bg-surface px-2 py-1.5 text-left text-[14px]',
-                          'hover:bg-surface-raised disabled:opacity-50',
-                        )}
+                        className="h-auto justify-start gap-2 rounded-xl px-2 py-1.5 text-left text-[14px] font-normal"
                       >
                         <span className="min-w-0 flex-1 truncate">{role.name}</span>
                         <span className="text-[12px] text-muted-foreground">
                           {role.members.length}
                         </span>
-                      </button>
+                      </Button>
                     ))}
                   <Button
                     type="button"

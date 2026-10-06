@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Image, Modal, Pressable, ScrollView, View } from 'react-native';
+import { Image, Modal, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { API_URL } from '@/lib/auth';
 import { getSessionToken } from '@/lib/session-token';
@@ -155,21 +156,19 @@ export function StickerGrid({
       </View>
       {state === 'loading' ? (
         <View className="h-[180px] items-center justify-center">
-          <ActivityIndicator accessibilityLabel="Loading stickers" />
+          <StateMessage kind="loading" title="Loading stickers" />
         </View>
       ) : state === 'error' ? (
         <View className="h-[180px] items-center justify-center gap-2 px-4">
-          <Text className="text-center text-[13px] text-muted-foreground">
-            Couldn&apos;t load stickers.
-          </Text>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Retry loading stickers"
-            onPress={onRetry}
-            className="rounded-[10px] px-4 py-2 active:bg-surface-raised"
-          >
-            <Text className="text-[15px] font-semibold text-foreground">Retry</Text>
-          </Pressable>
+          <StateMessage
+            kind="error"
+            title="Couldn't load stickers."
+            action={{
+              label: 'Retry',
+              accessibilityLabel: 'Retry loading stickers',
+              onPress: onRetry,
+            }}
+          />
         </View>
       ) : rows.length === 0 && recentChoices.length === 0 ? (
         <View className="h-[180px] items-center justify-center px-4">
@@ -179,9 +178,7 @@ export function StickerGrid({
         </View>
       ) : choices.length === 0 ? (
         <View className="h-[180px] items-center justify-center px-4">
-          <Text className="text-center text-[13px] text-muted-foreground">
-            No stickers here yet.
-          </Text>
+          <StateMessage kind="empty" title="No stickers here yet." />
         </View>
       ) : (
         <ScrollView

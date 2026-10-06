@@ -9,12 +9,15 @@ import { ConfirmDialog } from './confirm-dialog';
 import { CountBadge } from './count-badge';
 import { ListRow } from './list-row';
 import { SearchField } from './search-field';
+import { SegmentedControl } from './segmented-control';
+import { StateMessage } from './state-message';
 import { TextField } from './text-field';
-import { MUTED_FOREGROUND } from '@/lib/colors';
+import { DANGER, MUTED_FOREGROUND } from '@/lib/colors';
 
 // The kit is hook- and native-free enough to render with `react-native`
 // stubbed (same pattern as `settings-ui.test.tsx`): Node only, no simulator.
 vi.mock('react-native', () => ({
+  ActivityIndicator: 'ActivityIndicator',
   Modal: 'Modal',
   Pressable: 'Pressable',
   TextInput: 'TextInput',
@@ -32,7 +35,9 @@ vi.mock('nativewind', () => ({
 vi.mock('lucide-react-native', () => ({
   Bell: 'Bell',
   ChevronRight: 'ChevronRight',
+  CircleAlert: 'CircleAlert',
   Compass: 'Compass',
+  Inbox: 'Inbox',
   Search: 'Search',
   X: 'X',
 }));
@@ -44,6 +49,37 @@ vi.mock('@/components/ui/text', () => ({
 vi.mock('@/components/ui/button', () => ({
   Button: 'Button',
 }));
+
+interface TestElement {
+  type: unknown;
+  props: { children?: unknown; accessibilityLabel?: string; onPress?: () => void };
+}
+
+// Widgets are rendered to a plain element tree by calling them as functions, so
+// their `onPress` handlers can be invoked without a React Native test renderer
+// (same pattern as the `collect` helper in `contacts.test.tsx`).
+function collect(node: unknown, out: TestElement[] = []): TestElement[] {
+  if (Array.isArray(node)) {
+    for (const child of node) {
+      collect(child, out);
+    }
+    return out;
+  }
+  if (node === null || node === undefined || typeof node !== 'object') {
+    return out;
+  }
+  const element = node as { type?: unknown; props?: { children?: unknown } };
+  if (element.props === undefined) {
+    return out;
+  }
+  if (typeof element.type === 'function') {
+    const Component = element.type as (props: unknown) => unknown;
+    return collect(Component(element.props), out);
+  }
+  out.push(element as TestElement);
+  collect(element.props.children, out);
+  return out;
+}
 
 describe('ListRow', () => {
   it('renders the title and the subtitle', () => {
@@ -313,5 +349,164 @@ describe('SearchField', () => {
     expect(renderToStaticMarkup(createElement(SearchField, { value: 'hello' }))).not.toContain(
       'Clear search',
     );
+  });
+});
+
+describe('StateMessage', () => {
+  it('renders the title and the hint', () => {
+    const html = renderToStaticMarkup(
+      createElement(StateMessage, {
+        kind: 'empty',
+        title: 'No chats yet',
+        hint: 'Start a chat to see it here.',
+      }),
+    );
+    expect(html).toContain('No chats yet');
+    expect(html).toContain('Start a chat to see it here.');
+  });
+
+  it('shows the Inbox icon at 20 px for empty by default', () => {
+    const html = renderToStaticMarkup(
+      createElement(StateMessage, { kind: 'empty', title: 'No chats yet' }),
+    );
+    expect(html).toContain('<Inbox');
+    expect(html).toContain('size="20"');
+  });
+
+  it('carries the alert role and the danger icon for errors', () => {
+    const html = renderToStaticMarkup(
+      createElement(StateMessage, { kind: 'error', title: 'Could not load chats.' }),
+    );
+    expect(html).toContain('accessibilityRole="alert"');
+    expect(html).toContain('<CircleAlert');
+    expect(html).toContain(DANGER);
+  });
+
+  it('renders the spinner labelled with the title while loading', () => {
+    const html = renderToStaticMarkup(
+      createElement(StateMessage, { kind: 'loading', title: 'Loading chats…' }),
+    );
+    expect(html).toContain('<ActivityIndicator');
+    expect(html).toContain('accessibilityLabel="Loading chats…"');
+    expect(html).not.toContain('accessibilityRole="alert"');
+  });
+
+  it('puts the action label in Text inside Button', () => {
+    const html = renderToStaticMarkup(
+      createElement(StateMessage, {
+        kind: 'error',
+        title: 'Could not load chats.',
+        action: { label: 'Try again', onPress: noop },
+      }),
+    );
+    expect(html).toContain('<Button');
+    expect(html).toContain('<Text>Try again</Text>');
+  });
+
+  it('passes the action accessibility label to the Button', () => {
+    const html = renderToStaticMarkup(
+      createElement(StateMessage, {
+        kind: 'error',
+        title: 'Could not load chats.',
+        action: {
+          label: 'Try again',
+          accessibilityLabel: 'Retry loading chats',
+          onPress: noop,
+        },
+      }),
+    );
+    expect(html).toContain('accessibilityLabel="Retry loading chats"');
+  });
+
+  it('renders a muted inline row for the inline size', () => {
+    const html = renderToStaticMarkup(
+      createElement(StateMessage, { kind: 'loading', title: 'Loading more…', size: 'inline' }),
+    );
+    expect(html).toContain('<ActivityIndicator');
+    expect(html).toContain('Loading more…');
+    expect(html).toContain('text-[13px] text-muted-foreground');
+  });
+});
+
+describe('SegmentedControl', () => {
+  const options = [
+    { value: 'one', label: 'One' },
+    { value: 'two', label: 'Two' },
+  ];
+
+  it('uses the tablist and tab roles by default', () => {
+    const html = renderToStaticMarkup(
+      createElement(SegmentedControl, {
+        options,
+        value: 'one',
+        onChange: noop,
+        accessibilityLabel: 'Sections',
+      }),
+    );
+    expect(html).toContain('accessibilityRole="tablist"');
+    expect(html).toContain('accessibilityLabel="Sections"');
+    expect(html.match(/accessibilityRole="tab"/g)).toHaveLength(2);
+  });
+
+  it('uses the radiogroup and radio roles in radio mode', () => {
+    const html = renderToStaticMarkup(
+      createElement(SegmentedControl, {
+        options,
+        value: 'one',
+        onChange: noop,
+        accessibilityLabel: 'Sections',
+        mode: 'radio',
+      }),
+    );
+    expect(html).toContain('accessibilityRole="radiogroup"');
+    expect(html.match(/accessibilityRole="radio"/g)).toHaveLength(2);
+  });
+
+  it('renders every label and marks only the active option', () => {
+    const html = renderToStaticMarkup(
+      createElement(SegmentedControl, {
+        options,
+        value: 'two',
+        onChange: noop,
+        accessibilityLabel: 'Sections',
+      }),
+    );
+    expect(html).toContain('One');
+    expect(html).toContain('Two');
+    expect(html.match(/text-foreground/g)).toHaveLength(1);
+    expect(html.match(/text-muted-foreground/g)).toHaveLength(1);
+  });
+
+  it('does not call onChange when the selected option is pressed', () => {
+    const onChange = vi.fn();
+    const tree = SegmentedControl({
+      options,
+      value: 'one',
+      onChange,
+      accessibilityLabel: 'Sections',
+    });
+    const selected = collect(tree).find(
+      (element) => element.type === 'Pressable' && element.props.accessibilityLabel === 'One',
+    );
+    expect(selected).toBeDefined();
+    selected?.props.onPress?.();
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('calls onChange once with the value of another pressed option', () => {
+    const onChange = vi.fn();
+    const tree = SegmentedControl({
+      options,
+      value: 'one',
+      onChange,
+      accessibilityLabel: 'Sections',
+    });
+    const other = collect(tree).find(
+      (element) => element.type === 'Pressable' && element.props.accessibilityLabel === 'Two',
+    );
+    expect(other).toBeDefined();
+    other?.props.onPress?.();
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenCalledWith('two');
   });
 });

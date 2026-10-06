@@ -31,6 +31,8 @@ vi.mock('@/components/ui/button', () => ({
 }));
 
 vi.mock('lucide-react-native', () => ({
+  CircleAlert: 'CircleAlert',
+  Inbox: 'Inbox',
   RefreshCw: 'RefreshCw',
 }));
 

@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { Text } from '@/components/ui/text';
+import { Button } from '@/components/ui/button';
 import { asColorScheme } from '@/lib/color-scheme';
 import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
 
@@ -174,15 +175,15 @@ export function ProfileViewContent({
               </Text>
             </View>
             {onCopyUsername === undefined ? null : (
-              <Pressable
-                accessibilityRole="button"
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9 rounded-lg"
                 accessibilityLabel="Copy username"
                 onPress={onCopyUsername}
-                hitSlop={8}
-                className="rounded-lg p-2 active:bg-surface-raised"
               >
                 <Copy size={18} color={MUTED_FOREGROUND[scheme]} />
-              </Pressable>
+              </Button>
             )}
           </View>
         )}
@@ -215,26 +216,24 @@ export function PhotoEditRow({ edit, stagedName }: { edit: PhotoEdit; stagedName
           contentFit="cover"
         />
         <View className="flex-row gap-2">
-          <Pressable
-            accessibilityRole="button"
+          <Button
             accessibilityLabel="Save picture"
             disabled={edit.busy}
             onPress={edit.onSave}
-            className="items-center rounded-full bg-accent px-4 py-2 active:opacity-90 disabled:opacity-60"
+            variant="default"
+            size="default"
           >
-            <Text className="text-[14px] font-medium text-accent-foreground">
-              {edit.busy ? 'Saving…' : 'Save picture'}
-            </Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
+            <Text>{edit.busy ? 'Saving…' : 'Save picture'}</Text>
+          </Button>
+          <Button
+            variant="outline"
+            className="rounded-full"
             accessibilityLabel="Discard picture"
             disabled={edit.busy}
             onPress={edit.onDiscard}
-            className="items-center rounded-full border border-border-strong bg-surface px-4 py-2 active:bg-surface-raised disabled:opacity-60"
           >
             <Text className="text-[14px] text-foreground">Discard</Text>
-          </Pressable>
+          </Button>
         </View>
       </View>
     );
@@ -244,17 +243,17 @@ export function PhotoEditRow({ edit, stagedName }: { edit: PhotoEdit; stagedName
   }
   return (
     <View className="items-center">
-      <Pressable
-        accessibilityRole="button"
+      <Button
+        variant="outline"
+        className="rounded-full"
         accessibilityLabel="Remove picture"
         disabled={edit.busy}
         onPress={edit.onRemove}
-        className="items-center rounded-full border border-border-strong bg-surface px-4 py-2 active:bg-surface-raised disabled:opacity-60"
       >
         <Text className="text-[14px] text-foreground">
           {edit.busy ? 'Working…' : 'Remove picture'}
         </Text>
-      </Pressable>
+      </Button>
     </View>
   );
 }
