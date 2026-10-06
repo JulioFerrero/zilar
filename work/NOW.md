@@ -2,6 +2,13 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-06 afternoon (resumed):**
+- **Merged:** T-0419 (web forward picker), T-0430 (MAM newest page), T-0431 (`/api/media`) and T-0432 (mobile forwardMessages).
+- **T-0430** proved and fixed Julio's AI bug: without a cursor, MAM returned the OLDEST page. The deep test archive has 33 rows, and the AI saw rows 1-30, ending at "are you still running?". His two vanished Spanish messages were retracted from his own session (12:17:49 and :53); the only path that sends a retraction is the Delete menu plus its confirm.
+- **AI memory:** Julio chose automatic, always-on memory per chat, with members viewing room memory and the owner and admins deleting it, and a 50-message window. The plan is `docs/audit/ai-memory-plan.md` (v2). M1 = T-0433 (the only schema task), running.
+- **Running:** T-0433 and T-0434 (web media panel).
+- **Local dev:** `pnpm infra:up`, then the server with `pnpm --filter @zilar/server dev` and `ZILAR_API_URL=http://localhost:3188 pnpm --filter @zilar/web dev`. Never use turbo dev, because port 3000 is Julio's gmail-mcp. In dev the OTP is in the server log (`dev-mailer`).
+
 **PAUSED 2026-10-06 (Julio needs the computer):** the lead stopped the autopilot, `lead watch`, opencode (workers), local dev (vite 5173, server 3188), the site preview, the emulator and the zilar-dev docker containers. Since the last update: T-0427, T-0428, T-0429 and T-0410 were merged. T-0419 is PACKET READY (clean, 3 nits) and not merged; review it on resume. Next: the gallery 1b route spec, then the mobile `forwardMessages` (mobile has no send timeout machinery; use the `markStickerFailed` style `failed: true`). To resume, follow the CLAUDE.md first actions (start the autopilot).
 
 Last updated: 2026-10-06 ~12:40 UTC, after the manual deploy, merging T-0414/T-0425/T-0426 and launching T-0419/T-0427/T-0428/T-0429.
