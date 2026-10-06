@@ -356,6 +356,34 @@ describe('chat store', () => {
     expect(store.getState().jumpTarget).toBeUndefined();
   });
 
+  it('builds the mock media gallery from the chat messages (T-0436)', async () => {
+    const store = createChatStore();
+
+    // Ana's messages carry only text, so her gallery tabs are empty.
+    expect(await store.getState().loadChatMedia('ana', 'media')).toEqual({
+      items: [],
+      next: null,
+    });
+    expect((await store.getState().loadChatMedia('ana', 'files')).items).toEqual([]);
+
+    // The Viernes chat has the image and the voice message.
+    const media = await store.getState().loadChatMedia('viernes', 'media');
+    expect(media.next).toBeNull();
+    expect(media.items[0]).toMatchObject({ messageId: 'viernes-08', kind: 'image' });
+    expect(media.items[0]?.url).toBe('gradient:sunset');
+
+    const voice = await store.getState().loadChatMedia('viernes', 'voice');
+    expect(voice.items[0]).toMatchObject({ messageId: 'viernes-06', kind: 'voice' });
+    expect(voice.items[0]?.durationMs).toBe(12_400);
+
+    const links = await store.getState().loadChatMedia('marketing-ai', 'links');
+    expect(links.items[0]).toMatchObject({
+      kind: 'link',
+      linkUrl: 'https://zilar.test/launch',
+      linkHost: 'zilar.test',
+    });
+  });
+
   it('ships mock contacts for the group flow', () => {
     const store = createChatStore();
     const contacts = store.getState().contacts;

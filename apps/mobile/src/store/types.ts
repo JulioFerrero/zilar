@@ -29,6 +29,7 @@ import type {
 import type { PutChatPrefInput } from '../lib/chat-prefs-api';
 import type { CreateChatFolderInput, PatchChatFolderInput } from '../lib/chat-folders-api';
 import type { Pin } from '../lib/pins-api';
+import type { MediaPage, MediaTab } from '../lib/media-api';
 
 /** Connection state shown by the thin "Connecting…" bar in the chat list. */
 export type ConnectionStatus = 'offline' | 'connecting' | 'online' | 'reconnecting';
@@ -351,6 +352,14 @@ export interface ChatStoreState {
    * stops it when another chat opens, the app goes idle, or it stops.
    */
   stopPinsPoll: () => void;
+  /**
+   * One page of a chat's media gallery (T-0436): the items of `tab`, newest
+   * first, plus the paging cursor. The mock store builds it from its own
+   * messages; the real store reads `GET /api/media` and resolves relative
+   * URLs. Image and gif rows come back without a `url` when the host is not
+   * trusted, so the sheet renders them as file rows.
+   */
+  loadChatMedia: (chatId: string, tab: MediaTab, before?: string) => Promise<MediaPage>;
   /**
    * Creates a topic in the group that owns `chatId` and opens it. Rejects on
    * failure. Returns the new topic's chat id (its room JID).

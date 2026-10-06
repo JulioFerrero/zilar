@@ -1,4 +1,4 @@
-import { ChevronLeft, Lock, Megaphone, MoreVertical, Search } from 'lucide-react-native';
+import { ChevronLeft, Images, Lock, Megaphone, MoreVertical, Search } from 'lucide-react-native';
 import { Pressable, View } from 'react-native';
 
 import { AiBadge } from '@/components/chat/ai-badge';
@@ -19,6 +19,8 @@ type ChatHeaderProps = {
   onBack: () => void;
   /** Opens the full-screen search scoped to this chat ("Search in chat"). */
   onSearchInChat?: () => void;
+  /** Opens the media/files/links/voice sheet for this chat (T-0436). */
+  onOpenMedia?: () => void;
   /** The group name shown small above a topic name (T-0112). */
   topicGroupName?: string;
   /** Opens the topic-info sheet when the header is tapped (topics only). */
@@ -40,6 +42,7 @@ export function ChatHeader({
   chat,
   onBack,
   onSearchInChat,
+  onOpenMedia,
   topicGroupName,
   onOpenInfo,
   onOpenGroup,
@@ -117,6 +120,11 @@ export function ChatHeader({
       ) : (
         title
       )}
+      {onOpenMedia !== undefined ? (
+        <IconButton label="Media, files and links" onPress={onOpenMedia}>
+          <Images size={20} color={iconColor} />
+        </IconButton>
+      ) : null}
       {onSearchInChat !== undefined ? (
         <IconButton label="Search in chat" onPress={onSearchInChat}>
           <Search size={20} color={iconColor} />

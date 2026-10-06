@@ -66,6 +66,7 @@ import {
   type Pin,
   type PinsApi,
 } from '../lib/pins-api';
+import { createMediaApi, type MediaApi, type MediaItem, type MediaPage } from '../lib/media-api';
 import { API_URL } from '../lib/auth';
 import { createInviteLinksApi, type InviteLinksApi } from '../lib/invite-links-api';
 import {
@@ -168,6 +169,8 @@ export interface RealStoreDeps {
   /** The chat-folders API (T-0248); tests inject a fake. */
   chatFoldersApi?: ChatFoldersApi;
   pinsApi?: PinsApi;
+  /** The chat media gallery API (T-0436); tests inject a fake. */
+  mediaApi?: MediaApi;
   ownedAis?: { id: string; name: string }[];
   createXmpp?: (options: XmppCoreOptions) => XmppCore;
   /** Uploads picked bytes to a XEP-0363 slot (T-0150); tests inject a fake. */
@@ -205,6 +208,25 @@ function pinsApi2(deps: RealStoreDeps): PinsApi {
     return deps.pinsApi;
   }
   return createPinsApi(getSessionToken, fetch, API_URL);
+}
+
+function mediaApi2(deps: RealStoreDeps): MediaApi {
+  if (deps.mediaApi !== undefined) {
+    return deps.mediaApi;
+  }
+  return createMediaApi(getSessionToken, fetch, API_URL);
+}
+
+/**
+ * Resolves a server-relative media URL (`/api/media/<id>`) against the API
+ * origin, like the attachments store does (AGENTS pitfall: server URLs may
+ * be relative on native). An absolute URL is left untouched.
+ */
+function resolveMediaUrl(url: string, apiUrl: string): string {
+  if (!url.startsWith('/') || url.startsWith('//')) {
+    return url;
+  }
+  return `${apiUrl.replace(/\/+$/, '')}${url}`;
 }
 
 function coreKind(chat: ChatSummary): 'chat' | 'groupchat' {
@@ -365,6 +387,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
 
   const rolesApi = rolesApi2(deps);
   const pinsApi = pinsApi2(deps);
+  const mediaApi = mediaApi2(deps);
   const groupsApi = deps.groupsApi ?? createGroupsApi(getSessionToken, fetch, API_URL);
   // The trusted media hosts (T-0150): the service host, the XMPP domain and
   // `upload.<domain>`, from the latest XMPP token. Incoming image (and
@@ -372,6 +395,26 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
   // downgraded to a file row that never fetches without a tap.
   let mediaToken: MediaTokenShape | undefined;
   let mediaTrustedHosts: ReadonlySet<string> = new Set();
+
+  // The gallery never auto-loads an image or gif from a host outside the
+  // trusted set: the row keeps its metadata but loses `url`, so the sheet
+  // renders it as a file row (T-0436, mirroring the attachments rule above).
+  function sanitizeMediaItem(item: MediaItem): MediaItem {
+    if (item.url === undefined) {
+      return item;
+    }
+    const resolved = resolveMediaUrl(item.url, API_URL);
+    if (
+      (item.kind === 'image' || item.kind === 'gif') &&
+      !isTrustedMediaUrl(resolved, mediaTrustedHosts)
+    ) {
+      const copy: MediaItem = { ...item };
+      delete copy.url;
+      return copy;
+    }
+    return { ...item, url: resolved };
+  }
+
   // The local bytes of an outgoing attachment, kept for a Retry after a
   // failed upload (like web's `pendingAttachments`).
   const pendingUploads = new Map<string, PickedFile>();
@@ -3971,6 +4014,17 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       },
       stopPinsPoll: () => {
         stopPinsPolling();
+      },
+      loadChatMedia: async (chatId, tab, before) => {
+        const page: MediaPage = await mediaApi.listChatMedia({
+          chat: chatId,
+          type: tab,
+          ...(before === undefined ? {} : { before }),
+        });
+        return {
+          items: page.items.map((item) => sanitizeMediaItem(item)),
+          next: page.next,
+        };
       },
       createTopic: async (chatId, input) => {
         const chat = get().chats.find((entry) => entry.id === chatId);
