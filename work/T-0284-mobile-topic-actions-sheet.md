@@ -36,17 +36,18 @@ T-0283 added `ActionSheet` and `ActionSheetItem` to the mobile kit (`apps/mobile
    - its glyph, title and lock row passed as `header`, with the lock drawn in the kit's muted colour instead of `#8a8a8a`;
    - every row is an `ActionSheetItem` with the same label, accessibility label and callback; "Archive topic for everyone" is `destructive`.
    - The mute duration rows keep no indent: do not set `inset`.
-2. `topic-actions-sheet.test.tsx` keeps all its assertions, with mocks updated as T-0283 did for `chat-actions-sheet.test.tsx`.
+2. **QA run 10 finding:** in `apps/mobile/src/components/chat/chat-actions-sheet.tsx`, the "Open group" `ActionSheetItem` (line 110) has no icon. Its text therefore starts at the left edge, out of line with Pin, Mute and Archive, which have icons. Give it the lucide `Users` icon, and add `Users` to the `lucide-react-native` mock in `chat-actions-sheet.test.tsx` (line 33).
+3. `topic-actions-sheet.test.tsx` keeps all its assertions, with mocks updated as T-0283 did for `chat-actions-sheet.test.tsx`.
 
 ### Read first
 `AGENTS.md`, `apps/mobile/src/components/ui/action-sheet.tsx`, `apps/mobile/src/components/chat/chat-actions-sheet.tsx` and its test (the T-0283 migration), `apps/mobile/src/components/chat/topic-sheets.tsx` lines 1-148, and `apps/mobile/src/components/chat/topic-actions-sheet.test.tsx`.
 
 ### Allowed files
-`apps/mobile/src/components/chat/topic-sheets.tsx`, `apps/mobile/src/components/chat/topic-actions-sheet.test.tsx`, `apps/mobile/src/components/chat/topic-sheets-roles.test.tsx` (only if its mocks need the new imports), `work/T-0284-mobile-topic-actions-sheet.md`.
+`apps/mobile/src/components/chat/topic-sheets.tsx`, `apps/mobile/src/components/chat/topic-actions-sheet.test.tsx`, `apps/mobile/src/components/chat/topic-sheets-roles.test.tsx` (only if its mocks need the new imports), `apps/mobile/src/components/chat/chat-actions-sheet.tsx`, `apps/mobile/src/components/chat/chat-actions-sheet.test.tsx`, `work/T-0284-mobile-topic-actions-sheet.md`.
 
 ### Checks
 ```bash
-pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot topic-actions-sheet topic-sheets
+pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot topic-actions-sheet topic-sheets chat-actions-sheet
 pnpm gate
 ```
 

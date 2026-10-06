@@ -9,7 +9,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-0284](T-0284-mobile-topic-actions-sheet.md) | Mobile kit migration: topic actions sheet on ActionSheet | todo | auto | T-0283 | launch after QA run 10 passes |
+| [T-0284](T-0284-mobile-topic-actions-sheet.md) | Mobile kit migration: topic actions sheet on ActionSheet | in_progress | auto | T-0283 | + "Open group" icon (QA run 10) |
 
 ## Follow-ups
 
