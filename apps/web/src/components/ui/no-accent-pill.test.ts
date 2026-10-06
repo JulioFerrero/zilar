@@ -17,10 +17,23 @@ const REPO_ROOT = join(here, '..', '..', '..', '..', '..');
 // (`bg-accent-foreground`). Prefixed tints like `hover:bg-accent/90` stay allowed.
 const SOLID_ACCENT = /(^|[\s'"`])bg-accent(?![/-])/;
 
+// A hand-rolled primary key on an interactive tag, as a whole class token.
+const KEY_PRIMARY = /(^|[\s'"`])key-primary(?![-\w/])/;
+
+// The solid danger background as a whole class token: `bg-danger/10` and
+// prefixed tints like `hover:bg-danger/90` stay allowed.
+const SOLID_DANGER = /(^|[\s'"`])bg-danger(?![/-])/;
+
+const SOLID_PATTERNS = [
+  { name: 'bg-accent', pattern: SOLID_ACCENT, token: 'bg-accent' },
+  { name: 'key-primary', pattern: KEY_PRIMARY, token: 'key-primary' },
+  { name: 'bg-danger', pattern: SOLID_DANGER, token: 'bg-danger' },
+];
+
 const INTERACTIVE_TAGS = new Set(['button', 'a', 'Link']);
 
 const KIT_BUTTON_HINT =
-  "use the kit Button from '@/components/ui/button' (variant default = key-primary)";
+  "use the kit Button from '@/components/ui/button' (variant default = key-primary, destructive for danger)";
 
 // Every source file under `apps/web/src` (`here` is the kit directory itself).
 const sourceModules = import.meta.glob(['../../**/*.tsx', '../../*.tsx']);
@@ -64,19 +77,22 @@ function nearestTag(lines: string[], index: number, column: number): string | nu
   return null;
 }
 
-/** Interactive tags carrying a solid accent pill in `source`. */
+/** Interactive tags carrying a solid accent pill, key-primary or solid danger in `source`. */
 function findAccentPills(source: string): AccentPill[] {
   const lines = source.split('\n');
   const hits: AccentPill[] = [];
   lines.forEach((line, index) => {
-    const accent = SOLID_ACCENT.exec(line);
-    if (accent === null) {
-      return;
-    }
-    const column = accent.index + accent[0].indexOf('bg-accent');
-    const tag = nearestTag(lines, index, column);
-    if (tag !== null && INTERACTIVE_TAGS.has(tag)) {
-      hits.push({ line: index + 1, tag });
+    for (const { pattern, token } of SOLID_PATTERNS) {
+      const match = pattern.exec(line);
+      if (match === null) {
+        continue;
+      }
+      const column = match.index + match[0].indexOf(token);
+      const tag = nearestTag(lines, index, column);
+      if (tag !== null && INTERACTIVE_TAGS.has(tag)) {
+        hits.push({ line: index + 1, tag });
+        break;
+      }
     }
   });
   return hits;
@@ -125,11 +141,43 @@ describe('no-accent-pill guard', () => {
     ]);
   });
 
+  it('flags a hand-rolled key-primary on a button, an anchor or a Link', () => {
+    expect(findAccentPills('<button className="key-primary px-2">Go</button>')).toEqual([
+      { line: 1, tag: 'button' },
+    ]);
+    expect(findAccentPills('<a className="key-primary px-3">Go</a>')).toEqual([
+      { line: 1, tag: 'a' },
+    ]);
+    expect(findAccentPills('<Link className="key-primary px-3">Go</Link>')).toEqual([
+      { line: 1, tag: 'Link' },
+    ]);
+  });
+
+  it('flags a solid danger background on a button, an anchor or a Link', () => {
+    expect(findAccentPills('<button className="bg-danger px-2">Go</button>')).toEqual([
+      { line: 1, tag: 'button' },
+    ]);
+    expect(findAccentPills('<a className="bg-danger px-3">Go</a>')).toEqual([
+      { line: 1, tag: 'a' },
+    ]);
+    expect(findAccentPills('<Link className="bg-danger px-3">Go</Link>')).toEqual([
+      { line: 1, tag: 'Link' },
+    ]);
+  });
+
   it('allows spans, other tags and tinted or prefixed accent classes', () => {
     expect(findAccentPills('<span className="bg-accent px-1">3</span>')).toEqual([]);
     expect(findAccentPills('<button className="bg-accent/10 px-2">Go</button>')).toEqual([]);
     expect(findAccentPills('<button className="hover:bg-accent/90">Go</button>')).toEqual([]);
     expect(findAccentPills('<div className="bg-accent-foreground">x</div>')).toEqual([]);
+  });
+
+  it('allows spans and tinted or prefixed danger and key classes', () => {
+    expect(findAccentPills('<span className="bg-danger px-1">3</span>')).toEqual([]);
+    expect(findAccentPills('<span className="key-primary px-1">3</span>')).toEqual([]);
+    expect(findAccentPills('<button className="bg-danger/10 px-2">Go</button>')).toEqual([]);
+    expect(findAccentPills('<button className="hover:bg-danger/90">Go</button>')).toEqual([]);
+    expect(findAccentPills('<div className="bg-danger-foreground">x</div>')).toEqual([]);
   });
 
   it('finds the tag across a multi-line class string', () => {

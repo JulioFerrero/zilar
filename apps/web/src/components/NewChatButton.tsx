@@ -167,17 +167,18 @@ export function NewChatButton({
           </kbd>
         </Button>
       ) : (
-        <button
-          type="button"
+        <Button
           ref={triggerRef}
+          type="button"
+          size="icon-lg"
           aria-label="New chat"
           aria-haspopup="menu"
           aria-expanded={menuOpen}
           onClick={toggleMenu}
-          className="key-primary flex size-14 items-center justify-center rounded-[18px]"
+          className="size-14 rounded-[18px]"
         >
           <Plus className="size-[22px]" aria-hidden="true" />
-        </button>
+        </Button>
       )}
 
       {dialog === 'group' && <NewGroupDialog onClose={closeDialog} />}

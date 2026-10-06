@@ -1,6 +1,7 @@
 import { formatDuration, type VoiceMeta } from '@zilar/chat-core';
 import { Pause, Play } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
+import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { ApiError, getVoiceTranscript } from '@/lib/api';
 import { useVoiceTranscriptionEnabled } from '@/lib/useVoiceTranscription';
@@ -218,23 +219,21 @@ export function VoiceMessage({ voice, own }: { voice: VoiceMeta; own: boolean })
         />
       )}
       <div className="flex items-center gap-2">
-        <button
+        <Button
           type="button"
+          size="icon-lg"
           aria-label={playing ? 'Pause voice message' : 'Play voice message'}
           aria-disabled={!playable}
           {...(!playable ? { title: 'Audio unavailable' } : {})}
           onClick={togglePlay}
-          className={cn(
-            'key-primary flex size-10 shrink-0 items-center justify-center rounded-full',
-            !playable && 'opacity-50',
-          )}
+          className={cn('size-10 shrink-0 rounded-full', !playable && 'opacity-50')}
         >
           {playing ? (
             <Pause className="size-4" aria-hidden="true" />
           ) : (
             <Play className="size-4 translate-x-px" aria-hidden="true" />
           )}
-        </button>
+        </Button>
         <span className="flex h-8 flex-1 items-center gap-[2px]" aria-hidden="true">
           {voice.waveform.map((value, index) => {
             const played = index / voice.waveform.length <= progress;

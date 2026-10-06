@@ -1,7 +1,7 @@
 ---
 id: T-0376
 title: "Web kit: the New chat FAB and the voice play button use the kit Button; the pill guard also flags hand-rolled key-primary and solid bg-danger buttons"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0376-web-fab-voice-key-guard
 model: auto
@@ -62,4 +62,20 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Did steps 1–4 of the spec; nothing else touched.
+
+- `apps/web/src/components/NewChatButton.tsx`: FAB is now `<Button ref={triggerRef} type="button" size="icon-lg" className="size-14 rounded-[18px]" …>` with the same aria props, `onClick` and `<Plus className="size-[22px]" />`. No `key-primary` left in the file.
+- `apps/web/src/components/VoiceMessage.tsx`: play button is now `<Button type="button" size="icon-lg" className={cn('size-10 shrink-0 rounded-full', !playable && 'opacity-50')} …>` with the same `aria-label`, `aria-disabled`, `title` spread and `onClick`; added `import { Button } from '@/components/ui/button'`. No `key-primary` left in the file. Other `<button>`s in the file (transcript toggles) were already plain text buttons, untouched.
+- `apps/web/src/components/ui/no-accent-pill.test.ts`: added `KEY_PRIMARY` (whole token) and `SOLID_DANGER` (whole token, `bg-danger/10`, `hover:bg-danger/90` and `bg-danger-foreground` stay allowed) alongside `SOLID_ACCENT`; `findAccentPills` reuses `nearestTag` and checks all three patterns against `button`/`a`/`Link`. Added unit cases: key-primary flagged on button/a/Link, solid bg-danger flagged on button/a/Link, spans/tints/prefixed forms allowed. Kept the existing test names and messages; hint now reads "use the kit Button … (variant default = key-primary, destructive for danger)".
+- Security checklist: no secrets/tokens touched; no deletes/updates, caps, permissions, routes, rate limits or audit entries involved — UI-only change plus a test-only guard.
+
+Commands (real results):
+- `pnpm install`: done, exit 0.
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot no-accent-pill NewChatButton VoiceMessage`: 4 files, 29 tests passed, exit 0.
+- `pnpm gate` (repo root): `PASS install (frozen)`, `PASS format`, `PASS lint`, `PASS typecheck`, `PASS tests @zilar/web`, `scope: every changed file is inside the Allowed files`, `GATE PASS`. Changed files listed: the 3 source/test files above plus this task file — all within Allowed files.
+
+No deviations, no open questions.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-06). The New chat FAB and the voice play button are kit `Button` (default = key-primary) with size overrides; no hand-rolled `key-primary` is left outside the kit. The guard now also flags whole-token `key-primary` and solid `bg-danger` on button/a/Link, with positive and negative unit cases, and the scan passes. Pre-review clean (0 findings).
