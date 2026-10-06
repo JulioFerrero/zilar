@@ -24,7 +24,9 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0311 | Mobile: GIF search on SearchField, Telegram import field on TextField | coding (Muse, peak) | last plain mobile fields |
+| (none) | | | |
+
+~04:15 local: merged T-0311, after a lead unblock: `emoji-sheet.test.tsx` reaches `GifPanel` through another file, and the transitive pitfall is now in `docs/LEAD_HANDOFF.md`. The plain mobile fields are all on the kit (TextField and SearchField). QA run 17 sent (qa17/).
 
 ~04:05 local: QA run 16 PASS (qa16/). With the keyboard open, the visibility sheet shows the Handle field, the availability line and Save (lead saw 02.png). The invite links sheet is still OK. Kit SearchField: topic search filters, Explore with a compass icon, catalog clear works. T-0307 sign-in fields not reachable, because mock mode starts signed in. Phone marker b45684f1 (lead checked).
 
