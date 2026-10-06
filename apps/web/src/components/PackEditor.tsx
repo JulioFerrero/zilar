@@ -8,8 +8,10 @@ import {
   type StickerPack,
 } from '@/lib/api';
 import { formatStickerSize, prepareStickerImage, PrepError } from '@/lib/sticker-images';
+import { ChevronDown, ChevronUp, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { SegmentedControl } from '@/components/ui/segmented-control';
 import { TextInput } from '@/components/ui/text-input';
 
 export type PackEditorItemStatus = 'ready' | 'uploading' | 'done' | 'error';
@@ -430,24 +432,21 @@ export function PackEditor({
 
       <fieldset className="flex flex-col gap-1" disabled={busy}>
         <legend className="text-[14px] font-medium">Who can find this pack</legend>
-        <label className="flex items-center gap-2 text-[14px]">
-          <input
-            type="radio"
-            name="pack-visibility"
-            checked={visibility === 'private'}
-            onChange={() => setVisibility('private')}
-          />
-          Private
-        </label>
-        <label className="flex items-center gap-2 text-[14px]">
-          <input
-            type="radio"
-            name="pack-visibility"
-            checked={visibility === 'server'}
-            onChange={() => setVisibility('server')}
-          />
-          Shared on this server
-        </label>
+        <SegmentedControl
+          mode="radio"
+          ariaLabel="Who can find this pack"
+          options={[
+            { value: 'private', label: 'Private' },
+            { value: 'server', label: 'Shared on this server' },
+          ]}
+          value={visibility}
+          onChange={(next) => {
+            if (next !== 'private' && next !== 'server') {
+              return;
+            }
+            setVisibility(next);
+          }}
+        />
         <p className="text-[13px] text-muted-foreground">
           {visibility === 'server'
             ? 'Shared packs can be found and added by anyone on this server.'
@@ -591,7 +590,7 @@ export function PackEditor({
                   onClick={() => moveItem(item.key, -1)}
                   className="rounded-md px-2 py-1 text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40"
                 >
-                  ↑
+                  <ChevronUp className="size-4" aria-hidden="true" />
                 </button>
                 <button
                   type="button"
@@ -600,7 +599,7 @@ export function PackEditor({
                   onClick={() => moveItem(item.key, 1)}
                   className="rounded-md px-2 py-1 text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40"
                 >
-                  ↓
+                  <ChevronDown className="size-4" aria-hidden="true" />
                 </button>
                 {item.status === 'error' && item.blob !== undefined ? (
                   <button
@@ -619,7 +618,7 @@ export function PackEditor({
                   onClick={() => removeItem(item.key)}
                   className="rounded-md px-2 py-1 text-[13px] text-muted-foreground hover:bg-danger/10 hover:text-danger disabled:opacity-40"
                 >
-                  ✕
+                  <X className="size-4" aria-hidden="true" />
                 </button>
               </span>
             </li>

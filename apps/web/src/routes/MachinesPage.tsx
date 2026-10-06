@@ -11,8 +11,9 @@ import {
   revokeMachine,
 } from '@/lib/api';
 import type { Machine, PublicAi } from '@/lib/api';
-import { Button, FieldError } from '@/components/ais/AiPageShell';
+import { Button } from '@/components/ais/AiPageShell';
 import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
+import { StateMessage } from '@/components/ui/state-message';
 import { AddMachineDialog } from '@/components/machines/AddMachineDialog';
 import { ApprovedMachineCard } from '@/components/machines/ApprovedMachineCard';
 import { MachineListSkeleton } from '@/components/machines/MachineListSkeleton';
@@ -281,31 +282,23 @@ export function MachinesPage() {
         {status === 'loading' && <MachineListSkeleton />}
 
         {status === 'error' && (
-          <div className="flex flex-col items-center gap-3 py-8 text-center">
-            <FieldError>{errorMessage}</FieldError>
-            <Button type="button" size="lg" className="rounded-full px-5" onClick={retry}>
-              Retry
-            </Button>
-          </div>
+          <StateMessage
+            kind="error"
+            title={errorMessage}
+            action={{ label: 'Retry', onClick: retry }}
+          />
         )}
 
         {status === 'ready' && (
           <>
             {machines.length === 0 ? (
-              <div className="flex flex-col items-center gap-3 py-10 text-center">
-                <Server className="size-8 text-muted-foreground" aria-hidden="true" />
-                <p className="text-[15px] text-muted-foreground">
-                  No machines yet. Add one to let your AIs work on your own computers.
-                </p>
-                <Button
-                  type="button"
-                  size="lg"
-                  className="rounded-full px-5"
-                  onClick={() => setAdding(true)}
-                >
-                  Add machine
-                </Button>
-              </div>
+              <StateMessage
+                kind="empty"
+                icon={Server}
+                title="No machines yet."
+                hint="Add one to let your AIs work on your own computers."
+                action={{ label: 'Add machine', onClick: () => setAdding(true) }}
+              />
             ) : (
               <>
                 {pendingMachines.length > 0 && (

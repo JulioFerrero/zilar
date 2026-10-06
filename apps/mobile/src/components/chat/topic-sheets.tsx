@@ -1,4 +1,4 @@
-import { Lock } from 'lucide-react-native';
+import { Check, Lock } from 'lucide-react-native';
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
@@ -8,7 +8,7 @@ import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Text } from '@/components/ui/text';
 import { asColorScheme } from '@/lib/color-scheme';
 import { MUTE_DURATIONS, type MuteDurationId } from '@/lib/chat-prefs';
-import { MUTED_FOREGROUND } from '@/lib/colors';
+import { MUTED_FOREGROUND, FOREGROUND } from '@/lib/colors';
 import { approverLine, approverOptions, topicAccessRows } from '@/lib/roles';
 import type { CustomGroupRole } from '@/lib/roles-api';
 import type { ApproverRole, TopicMember, TopicRole } from '@/lib/topics-api';
@@ -374,8 +374,10 @@ export function TopicInfoSheet({
                           >
                             <Text numberOfLines={1} className="min-w-0 flex-1 text-[14px]">
                               {option.label}
-                              {option.selected ? ' ✓' : ''}
                             </Text>
+                            {option.selected ? (
+                              <Check size={16} color={FOREGROUND[scheme]} />
+                            ) : null}
                           </Pressable>
                         ))}
                       </View>

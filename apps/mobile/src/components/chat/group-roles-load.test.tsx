@@ -20,6 +20,10 @@ vi.mock('nativewind', () => ({
   useColorScheme: () => ({ colorScheme: 'dark' }),
 }));
 
+vi.mock('lucide-react-native', () => ({
+  Check: 'Check',
+}));
+
 vi.mock('@/components/chat/avatar', () => ({
   Avatar: 'Avatar',
 }));

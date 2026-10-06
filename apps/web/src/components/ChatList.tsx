@@ -1,4 +1,4 @@
-import { Archive, Loader2, Menu } from 'lucide-react';
+import { Archive, Loader2, Menu as MenuIcon } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { ChatListItem } from './ChatListItem';
@@ -20,6 +20,7 @@ import { usePendingApprovalCount } from '@/lib/usePendingApprovalCount';
 import { useContactRequestCount } from '@/lib/useContactRequestCount';
 import { Button } from './ui/button';
 import { IconButton } from './ui/icon-button';
+import { Menu, MenuItem } from './ui/menu';
 import { useInstallPrompt } from '@/lib/push';
 import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { useIsServerOwner } from '@/lib/useIsServerOwner';
@@ -126,207 +127,153 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
         radius={isWide ? 10 : 12}
         onClick={() => setMenuOpen((value) => !value)}
       >
-        <Menu className="size-[18px]" aria-hidden="true" />
+        <MenuIcon className="size-[18px]" aria-hidden="true" />
       </IconButton>
       {menuOpen && (
-        <>
-          <button
-            type="button"
-            tabIndex={-1}
-            aria-label="Close menu"
-            onClick={() => setMenuOpen(false)}
-            className="fixed inset-0 z-10 cursor-default"
-          />
-          <div
-            role="menu"
-            aria-label="Main menu"
-            className="absolute top-full right-0 z-20 mt-1 min-w-[180px] rounded-xl border border-border bg-popover py-1 shadow-lg wide:left-0 wide:right-auto"
+        <Menu
+          open={menuOpen}
+          onClose={() => setMenuOpen(false)}
+          label="Main menu"
+          closeLabel="Close menu"
+          className="top-full right-0 mt-1 wide:left-0 wide:right-auto"
+        >
+          <MenuItem
+            onSelect={() => {
+              setMenuOpen(false);
+              setInviteOpen(true);
+            }}
           >
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                setMenuOpen(false);
-                setInviteOpen(true);
-              }}
-              className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised"
-            >
-              Invite a friend
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                setMenuOpen(false);
-                navigate('/settings/requests');
-              }}
-              className="flex w-full items-center gap-2 px-3 py-2 text-left text-[15px] hover:bg-surface-raised"
-            >
-              <span className="flex-1">Requests</span>
-              {incomingRequests !== null && incomingRequests > 0 && (
-                <span
-                  aria-label={`${incomingRequests} incoming contact requests`}
-                  className="shrink-0 rounded-full bg-badge-muted px-1.5 text-[11px] font-semibold text-foreground"
-                >
-                  {incomingRequests > 9 ? '9+' : String(incomingRequests)}
-                </span>
-              )}
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                setMenuOpen(false);
-                navigate('/settings/folders');
-              }}
-              className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised"
-            >
-              Chat folders
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                setMenuOpen(false);
-                navigate('/settings/blocked');
-              }}
-              className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised"
-            >
-              Blocked people
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                setMenuOpen(false);
-                setExploreOpen(true);
-              }}
-              className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised"
-            >
-              Explore groups
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                setMenuOpen(false);
-                navigate('/settings/profile');
-              }}
-              className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised"
-            >
-              Profile
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                setMenuOpen(false);
-                navigate('/settings/connections');
-              }}
-              className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised"
-            >
-              Connections
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                setMenuOpen(false);
-                navigate('/settings/machines');
-              }}
-              className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised"
-            >
-              Machines
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                setMenuOpen(false);
-                navigate('/settings/approvals');
-              }}
-              className="flex w-full items-center gap-2 px-3 py-2 text-left text-[15px] hover:bg-surface-raised"
-            >
-              <span className="flex-1">Approvals</span>
-              {approvalsBadge !== null && (
-                <span
-                  aria-label={`${approvalsBadge} pending approvals`}
-                  className="shrink-0 rounded-full bg-badge-muted px-1.5 text-[11px] font-semibold text-foreground"
-                >
-                  {approvalsBadge}
-                </span>
-              )}
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                setMenuOpen(false);
-                navigate('/settings/ais');
-              }}
-              className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised"
-            >
-              My AIs
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                setMenuOpen(false);
-                navigate('/settings/notifications');
-              }}
-              className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised"
-            >
-              Notifications
-            </button>
-            {installEvent !== null && (
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setMenuOpen(false);
-                  setInstallFailed(false);
-                  promptInstall().catch(() => setInstallFailed(true));
-                }}
-                className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised"
+            Invite a friend
+          </MenuItem>
+          <MenuItem
+            onSelect={() => {
+              setMenuOpen(false);
+              navigate('/settings/requests');
+            }}
+          >
+            <span className="flex-1">Requests</span>
+            {incomingRequests !== null && incomingRequests > 0 && (
+              <span
+                aria-label={`${incomingRequests} incoming contact requests`}
+                className="shrink-0 rounded-full bg-badge-muted px-1.5 text-[11px] font-semibold text-foreground"
               >
-                {installFailed ? 'Install failed — try again' : 'Install app'}
-              </button>
+                {incomingRequests > 9 ? '9+' : String(incomingRequests)}
+              </span>
             )}
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                setMenuOpen(false);
-                navigate('/settings/stickers');
-              }}
-              className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised"
-            >
-              Stickers
-            </button>
-            {isServerOwner && (
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setMenuOpen(false);
-                  navigate('/settings/integrations');
-                }}
-                className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised"
+          </MenuItem>
+          <MenuItem
+            onSelect={() => {
+              setMenuOpen(false);
+              navigate('/settings/folders');
+            }}
+          >
+            Chat folders
+          </MenuItem>
+          <MenuItem
+            onSelect={() => {
+              setMenuOpen(false);
+              navigate('/settings/blocked');
+            }}
+          >
+            Blocked people
+          </MenuItem>
+          <MenuItem
+            onSelect={() => {
+              setMenuOpen(false);
+              setExploreOpen(true);
+            }}
+          >
+            Explore groups
+          </MenuItem>
+          <MenuItem
+            onSelect={() => {
+              setMenuOpen(false);
+              navigate('/settings/profile');
+            }}
+          >
+            Profile
+          </MenuItem>
+          <MenuItem
+            onSelect={() => {
+              setMenuOpen(false);
+              navigate('/settings/connections');
+            }}
+          >
+            Connections
+          </MenuItem>
+          <MenuItem
+            onSelect={() => {
+              setMenuOpen(false);
+              navigate('/settings/machines');
+            }}
+          >
+            Machines
+          </MenuItem>
+          <MenuItem
+            onSelect={() => {
+              setMenuOpen(false);
+              navigate('/settings/approvals');
+            }}
+          >
+            <span className="flex-1">Approvals</span>
+            {approvalsBadge !== null && (
+              <span
+                aria-label={`${approvalsBadge} pending approvals`}
+                className="shrink-0 rounded-full bg-badge-muted px-1.5 text-[11px] font-semibold text-foreground"
               >
-                Integrations
-              </button>
+                {approvalsBadge}
+              </span>
             )}
-            <button
-              type="button"
-              role="menuitem"
-              onClick={signOut}
-              className="flex w-full items-center px-3 py-2 text-left text-[15px] text-danger hover:bg-surface-raised"
+          </MenuItem>
+          <MenuItem
+            onSelect={() => {
+              setMenuOpen(false);
+              navigate('/settings/ais');
+            }}
+          >
+            My AIs
+          </MenuItem>
+          <MenuItem
+            onSelect={() => {
+              setMenuOpen(false);
+              navigate('/settings/notifications');
+            }}
+          >
+            Notifications
+          </MenuItem>
+          {installEvent !== null && (
+            <MenuItem
+              onSelect={() => {
+                setMenuOpen(false);
+                setInstallFailed(false);
+                promptInstall().catch(() => setInstallFailed(true));
+              }}
             >
-              Sign out
-            </button>
-          </div>
-        </>
+              {installFailed ? 'Install failed — try again' : 'Install app'}
+            </MenuItem>
+          )}
+          <MenuItem
+            onSelect={() => {
+              setMenuOpen(false);
+              navigate('/settings/stickers');
+            }}
+          >
+            Stickers
+          </MenuItem>
+          {isServerOwner && (
+            <MenuItem
+              onSelect={() => {
+                setMenuOpen(false);
+                navigate('/settings/integrations');
+              }}
+            >
+              Integrations
+            </MenuItem>
+          )}
+          <MenuItem destructive onSelect={signOut}>
+            Sign out
+          </MenuItem>
+        </Menu>
       )}
     </div>
   );

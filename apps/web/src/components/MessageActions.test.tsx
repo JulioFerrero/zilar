@@ -25,6 +25,17 @@ describe('message actions', () => {
     expect(screen.queryByRole('menu', { name: 'Message actions' })).toBeNull();
   });
 
+  it('closes with Escape pressed outside the menu', () => {
+    renderApp('/c/c-viernes');
+
+    fireEvent.contextMenu(screen.getByText('Friday plans?'));
+    expect(screen.getByRole('menu', { name: 'Message actions' })).toBeTruthy();
+
+    (document.body as HTMLElement).focus();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('menu', { name: 'Message actions' })).toBeNull();
+  });
+
   it('shows the reply bar and cancels it with the × button', () => {
     renderApp('/c/c-viernes');
 

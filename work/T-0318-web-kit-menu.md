@@ -1,7 +1,7 @@
 ---
 id: T-0318
 title: "Web kit: Menu (dropdown with keyboard support); the main menu and the New chat menu use it"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0318-web-kit-menu
 model: auto
@@ -100,4 +100,58 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Added the kit `Menu`/`MenuItem` and moved the ChatList main menu and the
+NewChatButton menu onto it.
+
+Files changed:
+- `apps/web/src/components/ui/menu.tsx` (new): `Menu` with backdrop,
+  initial focus, Escape/arrow/Home/End/Tab handling and focus restore;
+  `MenuItem` with `onSelect`, optional lucide `icon`, `destructive`,
+  `disabled`.
+- `apps/web/src/components/ui/menu.fixture.tsx` (new): trigger opening a
+  three-item sample menu with one destructive entry (auto-covered by
+  `ui/fixtures.test.tsx`).
+- `apps/web/src/components/ui/menu.test.tsx` (new): 7 tests — first-item
+  focus, ArrowDown/Up wrap, Home/End, Escape + focus restore, backdrop
+  close, disabled skipped, destructive class + icon.
+- `apps/web/src/components/ChatList.tsx`: main menu renders through
+  `<Menu … label="Main menu" closeLabel="Close menu" …>` with one
+  `MenuItem` per entry; same order, texts, actions; Requests/Approvals
+  badges stay as item children; `Menu` lucide import renamed to
+  `MenuIcon` to avoid colliding with the kit `Menu`.
+- `apps/web/src/components/ChatList.test.tsx`: added Escape-closes-main-menu
+  test with focus restore.
+- `apps/web/src/components/NewChatButton.tsx`: menu renders through
+  `<Menu … label="New chat actions" …>`; removed its own Escape listener
+  and `MENU_ITEM_CLASS`; kept `closeMenu`/`focusTrigger` for the dialogs.
+
+Deviations: none. The `Menu` container class differs from the old menus
+(`border-border-strong bg-surface` per spec vs the old
+`border-border bg-popover`); items use `hover:bg-list-hover` per spec.
+
+Commands (real results):
+- `pnpm install`: exit 0.
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot
+  src/components/ui/menu.test.tsx src/components/ChatList.test.tsx
+  src/components/NewChatButton.test.tsx src/components/ui/kit.test.tsx`:
+  4 files passed, 88 tests passed (after fixing a `Menu` name collision
+  with the lucide icon in ChatList).
+- `pnpm gate`: GATE PASS — install PASS, format PASS, lint PASS
+  (after moving a ref write out of render into an effect), typecheck
+  PASS, tests @zilar/web PASS, scope: every changed file is inside the
+  Allowed files.
+
+Security checklist: N/A — no secrets, no deletes/updates, no caps, no
+permissions, no new routes, no audit entries; menus only render existing
+actions.
+
 ## Review (written by Claude)
+
+**Approved.** Clean pre-review (0 nits), no fix rounds (paid Muse fallback for both the worker and the pre-review).
+- Kit `Menu` and `MenuItem` (`components/ui/menu.tsx`), with tests and a Cosmos fixture.
+  - Focus moves to the first item on open; the arrows wrap, and Home and End jump to the ends; Tab closes the menu.
+  - Escape uses a document listener with `stopPropagation`, so it never reaches ChatShell's window handler, and focus returns to the opener.
+- The main menu and the New chat menu use it; `NewChatButton` lost its own Escape listener.
+- **Lead browser check** (mock, wide): the main menu opens with all its items; ArrowDown ×2 highlights Chat folders, End highlights Sign out, and Escape closes the menu.
+
+**Next:** the other five menus (message actions, chat actions, the two ChatHeader menus, the two TaskStrip menus).

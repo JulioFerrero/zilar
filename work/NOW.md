@@ -24,8 +24,74 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0315 | Mobile: visibility, members/roles, topic info sheets on BottomSheet | coding (Muse, peak) | the roles sheet gains scroll and keyboard handling |
-| T-0316 | Web fix: the chat list search also matches a group by its own name | coding (Muse, peak) | same bug as mobile (`groupChats` matches only topic titles) |
+| T-0332 | Mobile: New topic sheet on BottomSheet (long Private form scrolls) | autofix round 1 | from QA run 20 |
+| T-0334 | Web kit: Badge label follows the visible count (99+) | coding | doctor should-fix |
+| (doctor) | | | audit running (paid Muse fallback) |
+
+Time correction (checked with `date`): it is 04:42 local, Tue 10-06. The "~04:xx–05:50 local" stamps below were estimated and run up to about an hour ahead; their order is right.
+
+05:45 local: doctor audit 2 (since fc0be5e) found must-fix 0, should-fix 1, nits 2.
+- **Should-fix:** the Badge aria-label used the raw count while the badge showed 99+. The lead's T-0321 spec caused it → T-0334, launched.
+- **Nit:** the Discover Share button lacks the T-0331 reason. It is unreachable today (imported packs never appear in Discover), so no task.
+- **Nit:** the roles checkbox has no `disabled`. It is moot: the whole row already gets `disabled:opacity-50` while busy.
+
+T-0332 is in an autopilot fix round (1 should-fix).
+
+05:26 local: merged T-0333 (sticker panel tabs on SegmentedControl, with arrow keys; 0 nits).
+
+05:21 local:
+- **T-0331 merged.** On an imported pack, the disabled Share button shows its reason again: a hover title on a wrapper span, plus `aria-describedby`. 2 form nits accepted.
+- **QA run 20: PASS** (qa20/). The kit Checkbox works in New topic (members, AIs, the locked "You") and in the roles holders. The approver tick is a Check icon. No ✓ glyphs are left. Phone marker b45684f1 (lead checked).
+- **Box shape:** QA calls the boxes round. They were already round before T-0329 (`rounded-md` on a 20 px box), so this is not a regression.
+- **Overflow:** the lead saw in 03.png that with Private plus 4 people plus 2 AIs, the Cancel / Create row spills below the New topic card. The card is `max-h-[85%]` with no ScrollView → T-0332, launched.
+
+05:15 local: merged T-0329 (mobile kit Checkbox with a Check icon; the ✓ glyphs in the topic and roles pickers are now icons; 1 cosmetic nit). QA run 20 sent (qa20/).
+
+05:13 local: merged T-0330 (SegmentedControl ignores re-clicks; PackEditor ↑ ↓ ✕ become icons). No glyph buttons are left on web. Launched T-0331.
+
+05:12 local: read the doctor audit (`../zilar-doctor/DOCTOR.md`, range d8259fe..fc0be5e, 193 commits). The full suites of every package are green: web 1500, mobile 1982, server 1886. The loop and scope checks are clean. One should-fix:
+- **What:** `isBlockedSender` (`packages/chat-core/src/blocked.ts:10-12`) matches the localpart only, so `bea@other.test` would be hidden when `bea` is blocked.
+- **Lead decision: no task now.** Federation is off (`infra/ejabberd/ejabberd.yml:49`: no s2s listener, every s2s denied), so every sender shares one domain and nobody can be over-blocked today. The test pins this behaviour on purpose. Revisit if federation is ever turned on. Morning note for Julio.
+
+05:09 local: merged T-0325, T-0326, T-0327 and T-0328, all with clean pre-reviews. Their effect:
+- the Stickers page uses the kit;
+- no raw radios are left on web;
+- the ↑ ↓ ★ ✕ glyphs on the Stickers page, the sticker panel, Telegram import and Connections are now icons.
+
+Bug found in the T-0326 pre-review: SegmentedControl fires `onChange` on a click of the active option, so the handle check resets → T-0330. Polish note from T-0327: a disabled kit Button hides its hover title (Share on an imported pack). Launched T-0329 (mobile ✓ glyphs, kit Checkbox) and T-0330.
+
+05:01 local: lead browser check on main, mock, wide; all four PASS:
+- the chat list and topic unread Badges render;
+- New topic, Private: the kit Checkbox rows toggle when the row is clicked, and "You" stays checked and dimmed;
+- Who can see it is a segmented control (that one was already on the kit);
+- Explore: the All/Groups/Channels segmented control filters, and Channels shows Acme Announcements.
+
+New group shows "Invite a friend first", because the mock has no contacts, so its checkboxes were not seen.
+
+04:59 local: merged T-0322 (page states on StateMessage), T-0324 (SegmentedControl radio mode: Explore filter, group Visibility) and T-0323 (kit Checkbox; 1 nit accepted), all with clean pre-reviews. Launched T-0325 and T-0326.
+
+04:54 local: merged T-0321 (unread pills on the kit Badge; pre-review clean, 0 nits). Board rows need the `[T-XXXX](file.md)` link format, or `lead merge` refuses.
+
+04:48 local: launched T-0323 (Checkbox) and T-0324 (SegmentedControl radio mode). The free Muse is still rate-limited, so the workers run on the paid fallback.
+
+04:45 local: launched T-0321 (Badge) and T-0322 (StateMessage), the next web kit adoptions. Neither kit piece had app users before (StateMessage had 3).
+
+04:42 local: merged T-0320, after a lead fix round: the regression test threw inside a listener, which jsdom swallows; it now uses a spy plus a control test. No hand-rolled web menus are left. Bug fixed: on narrow screens, Escape in the chat header or task strip menus used to leave the chat.
+
+~05:35 local: merged T-0319 (message and chat actions menus on Menu; Escape works from anywhere).
+
+~05:20 local: merged T-0318 (web kit Menu). Lead browser check, mock, wide: the main menu opens; ArrowDown, End and Escape all work.
+
+~05:10 local: QA run 19 PASS (qa19/).
+- Search: `dev` shows a Chats section (Dev AI, Dev team) above Messages, and tapping Dev team opens it.
+- The visibility, members/roles and topic info sheets on BottomSheet stay above the keyboard; the roles field also checked.
+- T-0317 cards: the border now gives a clear edge (lead saw qa19/12.png). The dark fill stays close to the dimmed chat. The lead compared qa18/04.png, where the bubbles are near-white with no menu, against qa19/12.png, where they are grey: the dim works. No further task.
+- Topic info opens from the topic's ⋮ menu, not from long-press.
+- Phone marker b45684f1 (lead checked).
+
+~05:00 local: merged T-0317 (card contrast). QA run 19 sent (qa19/) for T-0314, T-0315 and T-0317.
+
+~04:55 local: merged T-0315 (3 sheets on BottomSheet) and T-0316 (web search finds groups by name; lead checked in mock: "dev" shows Dev team with all 7 topics). QA run 18 PASS (qa18/): the message menu and the centred delete dialog work, and so do pins, invite links and the kit BottomSheet. In dark mode the floating cards barely stand out (lead saw 02/03.png) → T-0317. The voice download prompt is not reachable in mock. The free Muse is rate-limited again; workers fall back to the paid Muse.
 
 ~04:40 local: merged T-0314 (mobile search shows a Chats section above Messages; groups are found by name).
 

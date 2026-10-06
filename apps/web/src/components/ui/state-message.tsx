@@ -1,10 +1,11 @@
-import { CircleAlert, Inbox, Loader2 } from 'lucide-react';
+import { CircleAlert, Inbox, Loader2, type LucideIcon } from 'lucide-react';
 import { Button } from './button';
 
 export interface StateMessageProps {
   kind: 'empty' | 'loading' | 'error';
   title: string;
   hint?: string;
+  icon?: LucideIcon;
   action?: { label: string; onClick: () => void };
 }
 
@@ -14,9 +15,9 @@ const ICONS = {
 } as const;
 
 /** A centered empty, loading or error message with an optional action. */
-export function StateMessage({ kind, title, hint, action }: StateMessageProps) {
+export function StateMessage({ kind, title, hint, icon, action }: StateMessageProps) {
   const role = kind === 'error' ? 'alert' : kind === 'loading' ? 'status' : undefined;
-  const Icon = kind === 'loading' ? undefined : ICONS[kind];
+  const Icon = kind === 'loading' ? undefined : (icon ?? ICONS[kind]);
 
   return (
     <div role={role} className="flex flex-col items-center gap-2 px-6 py-10 text-center">

@@ -3,8 +3,8 @@ import { ApiError, checkGroupHandle } from '@/lib/api';
 import { copyText } from '@/lib/clipboard';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
 import { FieldError } from './ais/AiPageShell';
-import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { SegmentedControl } from '@/components/ui/segmented-control';
 import { TextInput } from './ui/text-input';
 
 /**
@@ -125,40 +125,25 @@ export function VisibilitySection({
     <section aria-label="Visibility" className="flex flex-col gap-2 px-2">
       <h2 className="px-2 text-[13px] font-semibold text-muted-foreground">Visibility</h2>
       <div className="flex flex-col gap-2 rounded-xl px-2 py-1.5">
-        <div className="flex gap-2" role="radiogroup" aria-label="Visibility">
-          {(
-            [
-              { value: 'private', label: 'Private' },
-              { value: 'public', label: 'Public' },
-            ] as const
-          ).map((option) => (
-            <label
-              key={option.value}
-              className={cn(
-                'flex-1 cursor-pointer rounded-lg border px-3 py-2 text-center text-[14px]',
-                picked === option.value
-                  ? 'border-accent bg-accent/10 font-medium'
-                  : 'border-input text-muted-foreground',
-              )}
-            >
-              <input
-                type="radio"
-                name={`visibility-${groupId}`}
-                value={option.value}
-                checked={picked === option.value}
-                onChange={() => {
-                  setPicked(option.value);
-                  setCheck({ state: 'idle' });
-                  setError(undefined);
-                  setSaved(false);
-                  setConfirmingPrivate(false);
-                }}
-                className="sr-only"
-              />
-              {option.label}
-            </label>
-          ))}
-        </div>
+        <SegmentedControl
+          mode="radio"
+          ariaLabel="Visibility"
+          options={[
+            { value: 'private', label: 'Private' },
+            { value: 'public', label: 'Public' },
+          ]}
+          value={picked}
+          onChange={(next) => {
+            if (next !== 'private' && next !== 'public') {
+              return;
+            }
+            setPicked(next);
+            setCheck({ state: 'idle' });
+            setError(undefined);
+            setSaved(false);
+            setConfirmingPrivate(false);
+          }}
+        />
         {picked === 'public' ? (
           <>
             <p className="text-[13px] text-muted-foreground">

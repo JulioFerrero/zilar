@@ -49,7 +49,10 @@ export function ActionSheet({
         className="flex-1 justify-end bg-black/40 px-2"
         style={{ paddingBottom: Math.max(insets.bottom, 16) }}
       >
-        <Pressable onPress={() => {}} className="overflow-hidden rounded-2xl bg-background">
+        <Pressable
+          onPress={() => {}}
+          className="overflow-hidden rounded-2xl border border-border-strong bg-surface"
+        >
           {header !== undefined ? (
             <View className="border-b border-divider">{header}</View>
           ) : title !== undefined ? (

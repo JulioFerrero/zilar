@@ -35,6 +35,7 @@ vi.mock('@/components/chat/avatar', () => ({
 }));
 
 vi.mock('lucide-react-native', () => ({
+  Check: 'Check',
   Lock: 'Lock',
 }));
 

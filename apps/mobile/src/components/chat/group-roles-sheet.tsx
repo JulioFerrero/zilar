@@ -4,6 +4,7 @@ import { Pressable, View } from 'react-native';
 import { Avatar } from '@/components/chat/avatar';
 import { RoleChips } from '@/components/chat/role-chips';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import type { GroupRole } from '@/lib/chat-api';
@@ -256,19 +257,7 @@ export function GroupRolesSheet({
                       }}
                       className="flex-row items-center gap-3 rounded-lg px-2 py-1.5 active:bg-surface-raised disabled:opacity-50"
                     >
-                      <View
-                        className={
-                          checked
-                            ? 'h-5 w-5 items-center justify-center rounded-[6px] bg-accent'
-                            : 'h-5 w-5 rounded-[6px] border border-border-strong'
-                        }
-                      >
-                        {checked ? (
-                          <Text className="text-[12px] font-semibold text-accent-foreground">
-                            ✓
-                          </Text>
-                        ) : null}
-                      </View>
+                      <Checkbox checked={checked} />
                       <Avatar id={member.userId} name={member.name} size={28} />
                       <Text numberOfLines={1} className="min-w-0 flex-1 text-[14px]">
                         {member.name}

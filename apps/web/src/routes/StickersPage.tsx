@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { ChevronDown, ChevronUp, Star } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '@/auth/AuthProvider';
 import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
@@ -6,6 +7,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { PackEditor } from '@/components/PackEditor';
 import { TelegramImportDialog } from '@/components/TelegramImportDialog';
 import { Button } from '@/components/ui/button';
+import { StateMessage } from '@/components/ui/state-message';
 import { TextInput } from '@/components/ui/text-input';
 import { useIsServerOwner } from '@/lib/useIsServerOwner';
 import {
@@ -327,17 +329,14 @@ export function StickersPage() {
       subtitle="Make packs from your images, share them, and star favorites."
       onBack={() => navigate('/')}
     >
-      {status === 'loading' && <p className="text-[15px] text-muted-foreground">Loading…</p>}
+      {status === 'loading' && <StateMessage kind="loading" title="Loading…" />}
 
       {status === 'error' && (
-        <div className="flex flex-col items-center gap-3 text-center">
-          <p role="alert" className="text-[15px] text-danger">
-            {error}
-          </p>
-          <Button type="button" size="lg" onClick={() => void load()}>
-            Retry
-          </Button>
-        </div>
+        <StateMessage
+          kind="error"
+          title={error}
+          action={{ label: 'Retry', onClick: () => void load() }}
+        />
       )}
 
       {status === 'ready' && (
@@ -352,13 +351,14 @@ export function StickersPage() {
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-[16px] font-semibold">My packs</h2>
               <div className="flex flex-wrap gap-2">
-                <button
+                <Button
                   type="button"
+                  variant="outline"
+                  size="default"
                   onClick={() => setImporting(true)}
-                  className="rounded-full border border-border-strong bg-surface px-4 py-1.5 text-[14px] font-medium text-foreground hover:bg-surface-raised"
                 >
                   Import from Telegram
-                </button>
+                </Button>
                 <Button type="button" size="default" onClick={() => setCreating(true)}>
                   Create pack
                 </Button>
@@ -378,6 +378,20 @@ export function StickersPage() {
                       url: sticker.url,
                       alt: sticker.emoji ?? `Sticker ${index + 1}`,
                     }));
+                  const importedShareLocked = pack.importedFrom !== undefined;
+                  const shareReasonId = `share-reason-${pack.id}`;
+                  const shareButton = (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void toggleVisibility(pack)}
+                      disabled={importedShareLocked}
+                      aria-describedby={importedShareLocked ? shareReasonId : undefined}
+                    >
+                      {pack.visibility === 'server' ? 'Make private' : 'Share'}
+                    </Button>
+                  );
                   return (
                     <li
                       key={pack.id}
@@ -401,60 +415,65 @@ export function StickersPage() {
                         </span>
                       </span>
                       <span className="flex min-w-0 flex-wrap items-center justify-end gap-1">
-                        <button
+                        <Button
                           type="button"
+                          variant="ghost"
+                          size="icon-sm"
                           aria-label={`Move ${pack.title} up`}
                           title={`Move ${pack.title} up`}
                           disabled={movingPackId !== undefined}
                           onClick={() => void movePack(pack.id, -1)}
-                          className="rounded-md px-2 py-1 text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40"
                         >
-                          ↑
-                        </button>
-                        <button
+                          <ChevronUp aria-hidden="true" />
+                        </Button>
+                        <Button
                           type="button"
+                          variant="ghost"
+                          size="icon-sm"
                           aria-label={`Move ${pack.title} down`}
                           title={`Move ${pack.title} down`}
                           disabled={movingPackId !== undefined}
                           onClick={() => void movePack(pack.id, 1)}
-                          className="rounded-md px-2 py-1 text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40"
                         >
-                          ↓
-                        </button>
-                        <button
+                          <ChevronDown aria-hidden="true" />
+                        </Button>
+                        {importedShareLocked ? (
+                          <span
+                            title="Imported packs stay private for personal use"
+                            className="inline-flex"
+                          >
+                            {shareButton}
+                            <span id={shareReasonId} className="sr-only">
+                              Imported packs stay private for personal use
+                            </span>
+                          </span>
+                        ) : (
+                          shareButton
+                        )}
+                        <Button
                           type="button"
-                          onClick={() => void toggleVisibility(pack)}
-                          disabled={pack.importedFrom !== undefined}
-                          title={
-                            pack.importedFrom !== undefined
-                              ? 'Imported packs stay private for personal use'
-                              : undefined
-                          }
-                          className="rounded-full border border-border-strong bg-surface-raised px-3 py-1 text-[13px] font-medium text-foreground hover:bg-muted disabled:opacity-40"
-                        >
-                          {pack.visibility === 'server' ? 'Make private' : 'Share'}
-                        </button>
-                        <button
-                          type="button"
+                          variant="outline"
+                          size="sm"
                           onClick={() => setEditingPackId(pack.id)}
-                          className="rounded-full border border-border-strong bg-surface-raised px-3 py-1 text-[13px] font-medium text-foreground hover:bg-muted"
                         >
                           Edit
-                        </button>
-                        <button
+                        </Button>
+                        <Button
                           type="button"
+                          variant="outline"
+                          size="sm"
                           onClick={() => void removePack(pack.id)}
-                          className="rounded-full border border-border-strong bg-surface-raised px-3 py-1 text-[13px] font-medium text-foreground hover:bg-muted"
                         >
                           Remove from panel
-                        </button>
-                        <button
+                        </Button>
+                        <Button
                           type="button"
+                          variant="destructive"
+                          size="sm"
                           onClick={() => setDeletingPack(pack)}
-                          className="rounded-full border border-danger/40 bg-danger/10 px-3 py-1 text-[13px] font-medium text-danger hover:bg-danger/20"
                         >
                           Delete
-                        </button>
+                        </Button>
                       </span>
                     </li>
                   );
@@ -486,13 +505,15 @@ export function StickersPage() {
                           {pack.stickers.length} sticker{pack.stickers.length === 1 ? '' : 's'}
                         </span>
                       </span>
-                      <button
+                      <Button
                         type="button"
+                        variant="outline"
+                        size="sm"
+                        className="shrink-0"
                         onClick={() => void removePack(pack.id)}
-                        className="shrink-0 rounded-full border border-border-strong bg-surface-raised px-3 py-1 text-[13px] font-medium text-foreground hover:bg-muted"
                       >
                         Remove
-                      </button>
+                      </Button>
                     </li>
                   );
                 })}
@@ -553,13 +574,15 @@ export function StickersPage() {
                         </span>
                       </span>
                       {added ? (
-                        <button
+                        <Button
                           type="button"
+                          variant="outline"
+                          size="sm"
+                          className="shrink-0"
                           onClick={() => void removePack(pack.id)}
-                          className="shrink-0 rounded-full border border-border-strong bg-surface-raised px-3 py-1 text-[13px] font-medium text-foreground hover:bg-muted"
                         >
                           Remove
-                        </button>
+                        </Button>
                       ) : (
                         <Button
                           type="button"
@@ -608,7 +631,7 @@ export function StickersPage() {
                       onClick={() => void unstar(sticker.id)}
                       className="absolute top-0.5 right-0.5 flex size-5 items-center justify-center rounded-full border border-edge bg-black/70 text-[10px] leading-none text-white"
                     >
-                      ★
+                      <Star className="size-3 fill-current" aria-hidden="true" />
                     </button>
                   </li>
                 ))}

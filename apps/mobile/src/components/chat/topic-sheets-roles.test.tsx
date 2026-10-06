@@ -20,6 +20,7 @@ vi.mock('nativewind', () => ({
 }));
 
 vi.mock('lucide-react-native', () => ({
+  Check: 'Check',
   Lock: 'Lock',
 }));
 
@@ -47,6 +48,7 @@ vi.mock('@/lib/color-scheme', () => ({
 }));
 
 vi.mock('@/lib/colors', () => ({
+  FOREGROUND: { dark: '#fafafa', light: '#fafafa' },
   MUTED_FOREGROUND: { dark: '#8a8a8a', light: '#8a8a8a' },
 }));
 

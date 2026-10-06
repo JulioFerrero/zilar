@@ -9,8 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-0318](T-0318-web-kit-menu.md) | Web kit: Menu with keyboard support; main menu and New chat menu use it | todo | auto | | |
-| [T-0317](T-0317-mobile-kit-card-contrast.md) | Mobile kit polish: ActionSheet and ConfirmDialog cards on bg-surface with a border | todo | auto | T-0313 | QA run 18 |
 
 ## Follow-ups
 
@@ -347,3 +345,21 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0314](T-0314-mobile-search-chat-matches.md) | Mobile: chat search shows matching chats and groups above message hits | 2026-10-06 |
 | [T-0315](T-0315-mobile-bottom-sheet-2.md) | Mobile kit: visibility, members/roles and topic info sheets on BottomSheet | 2026-10-06 |
 | [T-0316](T-0316-web-search-group-name.md) | Web: chat list search also matches a group by its own name | 2026-10-06 |
+| [T-0317](T-0317-mobile-kit-card-contrast.md) | Mobile kit polish: ActionSheet and ConfirmDialog cards on bg-surface with a border | 2026-10-06 |
+| [T-0318](T-0318-web-kit-menu.md) | Web kit: Menu with keyboard support; main menu and New chat menu use it | 2026-10-06 |
+| [T-0319](T-0319-web-menu-2.md) | Web kit: message actions and chat actions menus on the kit Menu | 2026-10-06 |
+| [T-0320](T-0320-web-menu-3.md) | Web kit: ChatHeader and TaskStrip menus on Menu; Escape no longer leaves the chat on narrow screens | 2026-10-06 |
+| [T-0321](T-0321-web-badge.md) | Web kit: unread count pills on Badge | 2026-10-06 |
+| [T-0322](T-0322-web-state-message.md) | Web kit: AIs, Connections and Machines page states on StateMessage | 2026-10-06 |
+| [T-0324](T-0324-web-segmented.md) | Web kit: SegmentedControl radio mode for the Explore filter and group Visibility | 2026-10-06 |
+| [T-0323](T-0323-web-checkbox.md) | Web kit: Checkbox for the group, topic, roles and folder pickers | 2026-10-06 |
+| [T-0325](T-0325-web-stickers-kit.md) | Web kit: Stickers page states on StateMessage and pill buttons on Button | 2026-10-06 |
+| [T-0326](T-0326-web-segmented-2.md) | Web kit: New group and sticker pack visibility on SegmentedControl | 2026-10-06 |
+| [T-0327](T-0327-web-stickers-buttons.md) | Web kit: Stickers pack actions on Button; glyph arrows and star become icons | 2026-10-06 |
+| [T-0328](T-0328-web-glyph-icons.md) | Web: star and close glyphs become lucide icons | 2026-10-06 |
+| [T-0330](T-0330-web-segmented-fix.md) | Web kit: SegmentedControl ignores re-clicks; PackEditor glyphs become icons | 2026-10-06 |
+| [T-0329](T-0329-mobile-checkbox.md) | Mobile kit: Checkbox with a Check icon; ✓ glyphs become icons | 2026-10-06 |
+| [T-0332](T-0332-mobile-new-topic-sheet.md) | Mobile: New topic sheet on BottomSheet (long Private form scrolls) | in-progress | auto | T-0329 | QA run 20 |
+| [T-0331](T-0331-web-share-tooltip.md) | Web: disabled Share on an imported sticker pack shows its reason again | 2026-10-06 |
+| [T-0333](T-0333-web-panel-tabs.md) | Web kit: sticker panel tabs on SegmentedControl | 2026-10-06 |
+| [T-0334](T-0334-web-badge-label.md) | Web kit: Badge label follows the visible count (99+) | 2026-10-06 |

@@ -1,6 +1,6 @@
 import { QUICK_REACTIONS } from '@zilar/chat-core';
-import { useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
+import { Menu } from './ui/menu';
 
 export interface MessageActionsMenuProps {
   canCopy: boolean;
@@ -43,125 +43,106 @@ export function MessageActionsMenu({
   onClose,
   align = 'right',
 }: MessageActionsMenuProps) {
-  const firstItemRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    firstItemRef.current?.focus();
-  }, []);
-
   return (
-    <>
+    <Menu
+      open
+      onClose={onClose}
+      label="Message actions"
+      closeLabel="Close message menu"
+      backdropClassName="z-20"
+      className={cn(
+        'top-6 z-30 min-w-[196px] rounded-[12px] shadow-[0_8px_24px_-8px_rgba(0,0,0,0.9)]',
+        align === 'right' ? 'right-0' : 'left-0',
+      )}
+    >
+      <div className="flex items-center justify-between gap-0.5 px-2 pb-1">
+        {QUICK_REACTIONS.map((emoji) => (
+          <button
+            key={emoji}
+            type="button"
+            role="menuitem"
+            aria-label={`React with ${emoji}`}
+            onClick={() => onReact(emoji)}
+            className="key-icon flex size-7 items-center justify-center rounded-full text-[17px] leading-none focus-visible:outline-none"
+          >
+            <span aria-hidden="true">{emoji}</span>
+          </button>
+        ))}
+      </div>
       <button
         type="button"
-        tabIndex={-1}
-        aria-label="Close message menu"
-        onClick={onClose}
-        className="fixed inset-0 z-20 cursor-default"
-      />
-      <div
-        role="menu"
-        aria-label="Message actions"
-        onKeyDown={(event) => {
-          if (event.key === 'Escape') {
-            event.stopPropagation();
-            onClose();
-          }
-        }}
+        role="menuitem"
+        onClick={onReply}
         className={cn(
-          'absolute top-6 z-30 min-w-[196px] rounded-[12px] border border-border-strong bg-surface py-1 shadow-[0_8px_24px_-8px_rgba(0,0,0,0.9)]',
-          align === 'right' ? 'right-0' : 'left-0',
+          ITEM_CLASS,
+          'hover:bg-list-hover focus-visible:bg-list-hover focus-visible:outline-none',
         )}
       >
-        <div className="flex items-center justify-between gap-0.5 px-2 pb-1">
-          {QUICK_REACTIONS.map((emoji, index) => (
-            <button
-              key={emoji}
-              ref={index === 0 ? firstItemRef : undefined}
-              type="button"
-              role="menuitem"
-              aria-label={`React with ${emoji}`}
-              onClick={() => onReact(emoji)}
-              className="key-icon flex size-7 items-center justify-center rounded-full text-[17px] leading-none focus-visible:outline-none"
-            >
-              <span aria-hidden="true">{emoji}</span>
-            </button>
-          ))}
-        </div>
+        Reply
+      </button>
+      {canEdit && (
         <button
           type="button"
           role="menuitem"
-          onClick={onReply}
+          onClick={onEdit}
           className={cn(
             ITEM_CLASS,
             'hover:bg-list-hover focus-visible:bg-list-hover focus-visible:outline-none',
           )}
         >
-          Reply
+          Edit
         </button>
-        {canEdit && (
+      )}
+      <button
+        type="button"
+        role="menuitem"
+        disabled={!canCopy}
+        onClick={onCopy}
+        className={cn(
+          ITEM_CLASS,
+          'hover:bg-list-hover focus-visible:bg-list-hover focus-visible:outline-none disabled:opacity-50',
+        )}
+      >
+        Copy text
+      </button>
+      <button
+        type="button"
+        role="menuitem"
+        disabled={!canDelete}
+        onClick={onDelete}
+        className={cn(
+          ITEM_CLASS,
+          'text-danger hover:bg-list-hover focus-visible:bg-list-hover focus-visible:outline-none disabled:opacity-50',
+        )}
+      >
+        Delete for everyone
+      </button>
+      {canPin &&
+        (isPinned ? (
           <button
             type="button"
             role="menuitem"
-            onClick={onEdit}
+            onClick={onUnpin}
             className={cn(
               ITEM_CLASS,
               'hover:bg-list-hover focus-visible:bg-list-hover focus-visible:outline-none',
             )}
           >
-            Edit
+            Unpin
           </button>
-        )}
-        <button
-          type="button"
-          role="menuitem"
-          disabled={!canCopy}
-          onClick={onCopy}
-          className={cn(
-            ITEM_CLASS,
-            'hover:bg-list-hover focus-visible:bg-list-hover focus-visible:outline-none disabled:opacity-50',
-          )}
-        >
-          Copy text
-        </button>
-        <button
-          type="button"
-          role="menuitem"
-          disabled={!canDelete}
-          onClick={onDelete}
-          className={cn(
-            ITEM_CLASS,
-            'text-danger hover:bg-list-hover focus-visible:bg-list-hover focus-visible:outline-none disabled:opacity-50',
-          )}
-        >
-          Delete for everyone
-        </button>
-        {canPin &&
-          (isPinned ? (
-            <button
-              type="button"
-              role="menuitem"
-              onClick={onUnpin}
-              className={cn(
-                ITEM_CLASS,
-                'hover:bg-list-hover focus-visible:bg-list-hover focus-visible:outline-none',
-              )}
-            >
-              Unpin
-            </button>
-          ) : (
-            <button
-              type="button"
-              role="menuitem"
-              onClick={onPin}
-              className={cn(
-                ITEM_CLASS,
-                'hover:bg-list-hover focus-visible:bg-list-hover focus-visible:outline-none',
-              )}
-            >
-              Pin
-            </button>
-          ))}
-      </div>
-    </>
+        ) : (
+          <button
+            type="button"
+            role="menuitem"
+            onClick={onPin}
+            className={cn(
+              ITEM_CLASS,
+              'hover:bg-list-hover focus-visible:bg-list-hover focus-visible:outline-none',
+            )}
+          >
+            Pin
+          </button>
+        ))}
+    </Menu>
   );
 }

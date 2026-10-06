@@ -6,6 +6,7 @@ import { AiBadge } from '@/components/AiBadge';
 import { Avatar } from '@/components/Avatar';
 import { Button, FieldError } from '@/components/ais/AiPageShell';
 import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
+import { StateMessage } from '@/components/ui/state-message';
 import { providerLabel } from '@/components/ais/ConnectionPicker';
 import { describeAiError } from '@/components/ais/errors';
 import { formatLimit } from '@/components/ais/limits';
@@ -94,34 +95,24 @@ export function AisPage() {
       onBack={() => navigate('/')}
     >
       <div className={SETTINGS_COLUMN}>
-        {status === 'loading' && <p className="text-[15px] text-muted-foreground">Loading…</p>}
+        {status === 'loading' && <StateMessage kind="loading" title="Loading…" />}
 
         {status === 'error' && (
-          <div className="flex flex-col items-center gap-3 text-center">
-            <p role="alert" className="text-[15px] text-danger">
-              {errorMessage}
-            </p>
-            <Button type="button" size="lg" className="rounded-full px-5" onClick={retry}>
-              Retry
-            </Button>
-          </div>
+          <StateMessage
+            kind="error"
+            title={errorMessage}
+            action={{ label: 'Retry', onClick: retry }}
+          />
         )}
 
         {status === 'ready' && ais.length === 0 && (
-          <div className="flex flex-col items-center gap-3 py-10 text-center">
-            <Zap className="size-8 text-muted-foreground" aria-hidden="true" />
-            <p className="text-[15px] text-muted-foreground">
-              You have no AIs yet. Create one to give it a chat account and a budget.
-            </p>
-            <Button
-              type="button"
-              size="lg"
-              className="rounded-full px-5"
-              onClick={() => setCreating(true)}
-            >
-              Create an AI
-            </Button>
-          </div>
+          <StateMessage
+            kind="empty"
+            icon={Zap}
+            title="You have no AIs yet."
+            hint="Create one to give it a chat account and a budget."
+            action={{ label: 'Create an AI', onClick: () => setCreating(true) }}
+          />
         )}
 
         {status === 'ready' && ais.length > 0 && (

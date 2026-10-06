@@ -34,6 +34,24 @@ describe('Badge', () => {
     render(<Badge count={37} />);
     expect(screen.getByText('37')).toBeTruthy();
   });
+
+  it('applies the label as aria-label', () => {
+    render(<Badge count={2} labelSuffix="unread" />);
+    expect(screen.getByLabelText('2 unread').textContent).toBe('2');
+  });
+
+  it('labels the visible capped text above max', () => {
+    render(<Badge count={150} labelSuffix="unread" />);
+    expect(screen.getByLabelText('99+ unread').textContent).toBe('99+');
+  });
+
+  it('merges a caller className', () => {
+    render(<Badge count={2} className="ml-auto shrink-0" />);
+    const badge = screen.getByText('2');
+    expect(badge.className).toContain('ml-auto');
+    expect(badge.className).toContain('shrink-0');
+    expect(badge.className).toContain('rounded-full');
+  });
 });
 
 describe('Switch', () => {
@@ -586,5 +604,11 @@ describe('StateMessage', () => {
   it('announces errors with role alert', () => {
     render(<StateMessage kind="error" title="Something went wrong." />);
     expect(screen.getByRole('alert')).toBeTruthy();
+  });
+
+  it('renders a custom icon instead of the default for empty', () => {
+    const { container } = render(<StateMessage kind="empty" title="Nothing here" icon={Shield} />);
+    expect(container.querySelector('.lucide-shield')).toBeTruthy();
+    expect(container.querySelector('.lucide-inbox')).toBeNull();
   });
 });

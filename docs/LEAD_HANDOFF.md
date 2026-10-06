@@ -62,5 +62,7 @@ The autopilot starts a Muse doctor session once main stays quiet 10 minutes: it 
   - **Go one level up as well (T-0311).** Also grep for the files that import the migrated file, then for the tests of those files. Example: `gif-panel` is imported by `emoji-sheet.tsx` and `composer.tsx`, so `emoji-sheet.test.tsx` broke on a missing lucide `Search` mock.
   - **Check the mocks of the new component too.** A component with a default icon, such as `SearchField`, needs that icon (and `X`) in every `lucide-react-native` mock that reaches it.
 
+- **Web tests: never prove "X did not happen" by throwing inside an event listener (T-0320).** jsdom reports an exception thrown in a listener through `window` error and the console, and does not rethrow it into the test, so the test passes even when the event arrived. Use a `vi.fn()` spy with `not.toHaveBeenCalled()`, plus a control test showing that the spy does see the event.
+
 ## Server and deploy facts
 Coolify service `zilar` uuid `zogjtvwnoh9rqo96h7e7ajz1` (restart with `pull_latest: true`, verify the server `hostname` in the logs changes and an authed route answers 401). CI on main has a known flaky test (`packages/runner-tunnel`/runner `connect.test.ts`) and a legacy-name guard (`packages/devtools/src/no-legacy-name.test.ts`: the old product name must not appear in tracked files).

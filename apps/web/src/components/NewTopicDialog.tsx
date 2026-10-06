@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router';
 import { Avatar } from './Avatar';
 import { AiBadge } from './AiBadge';
 import { Button } from './ui/button';
+import { Checkbox } from './ui/checkbox';
 import { Dialog } from './ui/dialog';
 import { TextInput } from './ui/text-input';
 import { cn } from '@/lib/utils';
@@ -297,13 +298,11 @@ export function NewTopicDialog({
                 key={member.userId}
                 className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 hover:bg-list-hover"
               >
-                <input
-                  type="checkbox"
+                <Checkbox
                   checked={checked}
                   disabled={locked}
-                  aria-label={`${member.name}${locked ? ' (you, always included)' : ''}`}
-                  onChange={() => toggleMember(member.userId)}
-                  className="size-4 accent-white"
+                  label={`${member.name}${locked ? ' (you, always included)' : ''}`}
+                  onCheckedChange={() => toggleMember(member.userId)}
                 />
                 <Avatar
                   id={member.userId}
@@ -333,12 +332,10 @@ export function NewTopicDialog({
                     key={ai.id}
                     className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 hover:bg-list-hover"
                   >
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       checked={checked}
-                      aria-label={ai.name}
-                      onChange={() => toggleAi(ai.id)}
-                      className="size-4 accent-white"
+                      label={ai.name}
+                      onCheckedChange={() => toggleAi(ai.id)}
                     />
                     <Avatar id={ai.jid} name={ai.name} size={28} ai />
                     <span className="min-w-0 flex-1 truncate text-[14px]">{ai.name}</span>
@@ -361,12 +358,10 @@ export function NewTopicDialog({
                     key={role.id}
                     className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 hover:bg-list-hover"
                   >
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       checked={checked}
-                      aria-label={`${role.name} (${role.members.length})`}
-                      onChange={() => toggleRole(role.id)}
-                      className="size-4 accent-white"
+                      label={`${role.name} (${role.members.length})`}
+                      onCheckedChange={() => toggleRole(role.id)}
                     />
                     <span className="min-w-0 flex-1 truncate text-[14px]">{role.name}</span>
                     <span className="text-[12px] text-muted-foreground">{role.members.length}</span>
