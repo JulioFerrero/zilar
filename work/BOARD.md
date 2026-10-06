@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-0310](T-0310-mobile-visibility-sheet-keyboard.md) | Mobile fix: visibility sheet moves above the keyboard; shared sheet padding helper | todo | auto | T-0299 | QA run 15 |
 | [T-0309](T-0309-mobile-search-field-2.md) | Mobile kit migration: chat list and Stickers discover search use SearchField | todo | auto | T-0308 | |
 
 ## Follow-ups
@@ -339,3 +338,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0305](T-0305-mobile-text-field-6.md) | Mobile kit: AI model, spend limit and tool run-input fields use the kit TextField | 2026-10-06 |
 | [T-0307](T-0307-mobile-text-field-8.md) | Mobile kit: sign-in email, name and username fields use the kit TextField | 2026-10-06 |
 | [T-0308](T-0308-mobile-kit-search-field.md) | Mobile kit: SearchField; group topics search and Explore use it | 2026-10-06 |
+| [T-0310](T-0310-mobile-visibility-sheet-keyboard.md) | Mobile: visibility sheet moves above the keyboard; shared sheetBottomPadding | 2026-10-06 |

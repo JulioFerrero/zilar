@@ -1,7 +1,7 @@
 ---
 id: T-0310
 title: "Mobile fix: the group visibility sheet moves above the keyboard; the sheet padding helper moves to lib"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0310-mobile-visibility-sheet-keyboard
 model: auto
@@ -70,5 +70,22 @@ pnpm gate
 ---
 
 ## Report (written by the worker when done)
+- Moved `inviteSheetBottomPadding` to `apps/mobile/src/lib/use-keyboard-height.ts` as `sheetBottomPadding(platform, insetBottom, keyboardHeight)` with the same body and an updated doc comment naming T-0310/T-0299/T-0254. `invite-links-sheet.tsx` imports it from lib; `inviteSheetBottomPadding` is gone.
+- Moved the three padding cases from `invite-links-sheet.test.tsx` to `use-keyboard-height.test.ts` under `describe('sheetBottomPadding')`; removed the old import and describe block.
+- Gave `visibility-sheet.tsx` the T-0299 layout: backdrop wrapped in `KeyboardAvoidingView` (`behavior` `'padding'` on iOS, `undefined` otherwise, `className="flex-1"`), sheet `Pressable` keeps `max-h-[85%]` and uses `paddingBottom: sheetBottomPadding(Platform.OS, insets.bottom, keyboardHeight)` via `useKeyboardHeight()`, content inside `ScrollView` with `keyboardShouldPersistTaps="handled"`. Backdrop tap still closes (`onClose`), inner tap is a no-op.
+- Extended the `react-native` mock in `visibility-sheet.test.ts` with `ScrollView`, `KeyboardAvoidingView`, `Platform`, and `Keyboard` with `addListener` returning `{ remove }`.
+- Files changed: `apps/mobile/src/lib/use-keyboard-height.ts`, `apps/mobile/src/lib/use-keyboard-height.test.ts`, `apps/mobile/src/components/chat/invite-links-sheet.tsx`, `apps/mobile/src/components/chat/invite-links-sheet.test.tsx`, `apps/mobile/src/components/chat/visibility-sheet.tsx`, `apps/mobile/src/components/chat/visibility-sheet.test.ts`, `work/T-0310-mobile-visibility-sheet-keyboard.md`.
+- Commands:
+  - `pnpm install`: pass.
+  - `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot use-keyboard-height invite-links-sheet visibility-sheet`: 3 files, 20 tests passed.
+  - `pnpm exec prettier --write apps/mobile/src/components/chat/visibility-sheet.tsx`: fixed format fail flagged by first gate run.
+  - `pnpm gate`: GATE PASS. Summary: `7 changed file(s) against main; PASS install (frozen); PASS format; PASS lint; PASS typecheck; PASS tests @zilar/mobile; scope: every changed file is inside the Allowed files; GATE PASS`.
+- Security checklist: no secrets/tokens logged; no deletes/updates; no caps; no new routes; no audit entries. No deviations from spec.
 
 ## Review (written by Claude)
+
+**Approved.** Clean pre-review (0 nits), no fix rounds (Muse, peak).
+- `sheetBottomPadding` now lives in `lib/use-keyboard-height.ts`, with its 3 tests moved there; `inviteSheetBottomPadding` is gone (checked with the lead's grep).
+- The visibility sheet has the T-0299 layout: `KeyboardAvoidingView`, keyboard-height padding, and a `ScrollView` that keeps taps.
+
+**Still to do:** emulator QA in the next run.
