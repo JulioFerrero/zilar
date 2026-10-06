@@ -24,7 +24,8 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0332 | Mobile: New topic sheet on BottomSheet (long Private form scrolls) | coding | from QA run 20 |
+| T-0332 | Mobile: New topic sheet on BottomSheet (long Private form scrolls) | coding (paid Muse fallback) | from QA run 20 |
+| T-0333 | Web kit: sticker panel Stickers/GIFs/Emoji tabs on SegmentedControl | coding | adds arrow keys |
 | (doctor) | | | audit running (paid Muse fallback) |
 
 Time correction (checked with `date`): it is 04:42 local, Tue 10-06. The "~04:xx–05:50 local" stamps below were estimated and run up to about an hour ahead; their order is right.
