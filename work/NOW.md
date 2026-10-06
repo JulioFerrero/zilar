@@ -24,10 +24,12 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0313 | Mobile kit BottomSheet (keyboard-aware); pins + invite links sheets use it | coding (Muse, peak) | then move the other ~8 panel sheets |
+| T-0315 | Mobile: visibility, members/roles, topic info sheets on BottomSheet | coding (Muse, peak) | the roles sheet gains scroll and keyboard handling |
 | T-0314 | Mobile fix: chat search shows matching chats and groups above message hits | coding (Muse, peak) | QA run 17 |
 
 ~04:30 local: QA run 17 PASS (qa17/): chat list search well, clear, People view; Stickers Discover search filters; GIF search bar (the mock GIFs are blank tiles); Telegram import field. Older bug found (lead saw 03.png and read the code): with 2+ characters the search shows only messages, never matching chats, and `filterChats` ignores `groupTitle`, so groups are never found by name → T-0314. Phone marker b45684f1 (lead checked).
+
+~04:35 local: merged T-0313 (kit BottomSheet; 3 nits accepted). QA run 18 sent (qa18/) for T-0312 and T-0313.
 
 ~04:25 local: merged T-0312 (message actions on the kit ActionSheet with icons, centred delete ConfirmDialog; voice download prompt on ConfirmDialog; 2 nits accepted).
 
