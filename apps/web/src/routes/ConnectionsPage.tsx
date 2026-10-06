@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { Eye, EyeOff, Link, Trash2, Zap } from 'lucide-react';
+import { Eye, EyeOff, Link, Trash2, X, Zap } from 'lucide-react';
 import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
 import { Button } from '@/components/ui/button';
 import { StateMessage } from '@/components/ui/state-message';
@@ -311,7 +311,7 @@ function AddConnectionForm({
           onClick={onCancel}
           className="rounded-full p-1 text-muted-foreground hover:bg-muted"
         >
-          ✕
+          <X className="size-4" aria-hidden="true" />
         </button>
       </div>
 

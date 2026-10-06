@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { X } from 'lucide-react';
 import { Link } from 'react-router';
 import { ApiError, importTelegramStickers, type TelegramImportResult } from '@/lib/api';
 import { useIsServerOwner } from '@/lib/useIsServerOwner';
@@ -95,7 +96,7 @@ export function TelegramImportDialog({
     }
   };
 
-  // The old panel header's ✕, now the first thing in the body. Escape and
+  // The old panel header's close icon, now the first thing in the body. Escape and
   // the backdrop are the kit `Dialog`'s job; this button is disabled while
   // busy, and `dismissable={false}` blocks the other two exits then.
   const closeButton = (
@@ -107,7 +108,7 @@ export function TelegramImportDialog({
       disabled={busy}
       className="shrink-0 rounded-full p-1 text-muted-foreground hover:bg-muted disabled:opacity-60"
     >
-      ✕
+      <X className="size-4" aria-hidden="true" />
     </button>
   );
 

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Star } from 'lucide-react';
 import { GifPanel, gifsAvailability, probeGifsAvailability, type GifChoice } from './GifPanel';
 import type { Sticker, StickerPack } from '@/lib/api';
 import {
@@ -450,7 +451,10 @@ export function StickerPanel({
                   : 'text-muted-foreground',
               )}
             >
-              ★
+              <Star
+                className={cn('size-3.5', activePackId === 'favorites' && 'fill-current')}
+                aria-hidden="true"
+              />
             </button>
             {onCreate !== undefined && (
               <button
@@ -524,7 +528,10 @@ export function StickerPanel({
                         starred ? 'text-white' : 'text-muted-foreground opacity-80',
                       )}
                     >
-                      ★
+                      <Star
+                        className={cn('size-3', starred && 'fill-current')}
+                        aria-hidden="true"
+                      />
                     </button>
                   </span>
                 );
