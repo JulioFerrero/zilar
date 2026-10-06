@@ -18,7 +18,7 @@ Known issue: `pnpm install` flips two `transitivePeerDependencies` entries (`buf
 
 Models (Julio, 2026-10-05): default `opencode/muse-spark-1.3-contributor-free`; MiniMax M3 only for the easiest exact tasks; billed `meta/muse-spark-1.3-contributor` is the fallback if the free listing hits limits.
 
-## Morning summary for Julio (2026-10-06, written 07:00 local)
+## Morning summary for Julio (2026-10-06, written 06:55 local)
 
 **Overnight:** about 95 tasks merged since 22:00, mostly the UI kit migration on web and mobile.
 - Every web field, menu, dialog, checkbox and radio switch is now on the kit.
