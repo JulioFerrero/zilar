@@ -24,9 +24,9 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0284 | Mobile: topic actions sheet on the kit ActionSheet + "Open group" icon | coding | QA run 10 finding |
-| T-0285 | Web: GroupPanel + ChannelPanel on the kit Sheet | coding | |
-| T-0286 | Web: TopicPanel + AiPanel on the kit Sheet | coding | AiPanel gains Escape |
+| T-0287 | Mobile kit ConfirmDialog; AI delete, rule revoke, machine confirms | coding | lead allowed `machines-screen.test.tsx` stubs after BLOCKED |
+
+~02:35 local: merged T-0284 (topic actions sheet + Open group icon), T-0285, T-0286. All 5 web chat panels are now on the kit Sheet; no hand-rolled `role="dialog"` left on web except `StickerPanel` (non-modal popover). Lead browser check (mock, wide): channel panel opens on the right, Escape closes it, focus returns to the header. Narrow check not done (window would not resize); covered by the kit test.
 
 ~02:20 local: merged T-0282 (kit Sheet + `use-modal.ts`; modal Escape stops at the topmost overlay, also when undismissable; listeners in layout effects). QA run 10 PASS in dark mode (T-0283 sheets + kit catalog; light mode not checked: `cmd uimode night no` did not switch the app). One finding: "Open group" row has no icon, so it is out of line → in T-0284.
 
