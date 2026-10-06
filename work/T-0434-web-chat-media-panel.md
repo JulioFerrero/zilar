@@ -1,7 +1,7 @@
 ---
 id: T-0434
 title: "Media gallery 2 (web): 'Media, files and links' in the chat menu opens a panel with Media / Files / Links / Voice tabs from GET /api/media"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0434-web-chat-media-panel
 model: auto
@@ -75,7 +75,7 @@ To keep `GroupPanel` untouched, the lead chose a standalone panel opened from th
 `AGENTS.md`, `docs/audit/media-gallery-plan.md` §3b and §3d and §4 Task 2, `apps/server/src/media/routes.ts`, `apps/web/src/components/PinsPanel.tsx`, `apps/web/src/components/ChatHeader.tsx:160-240`, `apps/web/src/routes/ChatView.tsx:40-150`, `apps/web/src/store/store.ts:250-305` and `:990-1000`, `apps/web/src/store/realStore.ts:440-480` and `:3745-3760`, `apps/web/src/lib/api.ts:890-925`, `apps/web/src/lib/attachments.ts:90-135`.
 
 ### Allowed files
-`apps/web/src/lib/api.ts`, `apps/web/src/lib/api.test.ts`, `apps/web/src/store/store.ts`, `apps/web/src/store/realStore.ts`, `apps/web/src/store/realStore.media.test.tsx`, `apps/web/src/components/ChatMediaPanel.tsx`, `apps/web/src/components/ChatMediaPanel.test.tsx`, `apps/web/src/components/ChatHeader.tsx`, `apps/web/src/routes/ChatView.tsx`, `apps/web/src/routes/ChatView.test.tsx`, `work/T-0434-web-chat-media-panel.md`.
+`apps/web/src/lib/api.ts`, `apps/web/src/lib/api.test.ts`, `apps/web/src/store/store.ts`, `apps/web/src/store/realStore.ts`, `apps/web/src/store/realStore.media.test.tsx`, `apps/web/src/components/ChatMediaPanel.tsx`, `apps/web/src/components/ChatMediaPanel.test.tsx`, `apps/web/src/components/ChatHeader.tsx`, `apps/web/src/routes/ChatView.tsx`, `apps/web/src/routes/ChatView.test.tsx`, `work/T-0434-web-chat-media-panel.md`. Added by the lead on 2026-10-06, for the fake `ApiClient` doubles only (one `listChatMedia` line each): `apps/web/src/store/realStore.test.tsx`, `apps/web/src/store/realStore.forward.test.tsx`, `apps/web/src/store/realStore.topics.test.tsx`, `apps/web/src/store/reload.test.tsx`.
 
 If another test breaks because it builds a full store object, stop and report BLOCKED with the file name.
 
@@ -95,4 +95,96 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### Status: review
+
+Resolved via lead decision **A**: the four existing fake-`ApiClient` test
+doubles were added to the Allowed files and each got one
+`listChatMedia: vi.fn(async () => ({ items: [], next: null }))` line. Nothing
+else changed in them. `ApiClient.listChatMedia` stays required.
+
+### What I did (all spec items)
+
+1. **`apps/web/src/lib/api.ts`**: added `mediaTabSchema` / `MediaTab`
+   (`media | files | links | voice`), `mediaItemSchema` / `MediaItem`,
+   `mediaPageSchema` / `MediaPage`, `ListChatMediaInput` and
+   `listChatMedia({ chat, type, before?, limit? })` → `GET /api/media`, built
+   like `listPins` with `URLSearchParams` + `request(...)`.
+2. **`apps/web/src/store/store.ts`**: added
+   `loadChatMedia(chatId, tab, before?)` to the `ChatStore` interface. The mock
+   implementation builds a page from `messagesByChat[chatId]` (`mockMediaPage`
+   / `mockMediaItems`): image → media, file → files, voice → voice, links in
+   text via `splitLinks` (exported by `@zilar/chat-core`) → links; newest
+   first, page size 50, `next: null`.
+3. **`apps/web/src/store/realStore.ts`**: added `listChatMedia` to `ApiClient`
+   and `realApi`; `loadChatMedia` calls it and runs `sanitizeMediaPage`, which
+   drops the `url` of `image` / `gif` items unless
+   `isTrustedMediaUrl(url, trustedMediaHosts(mediaToken))`; with no token every
+   such url is dropped. Files/voice/links are untouched.
+4. **`apps/web/src/components/ChatMediaPanel.tsx`** (new): a `Sheet` with
+   `ariaLabel` `Media, files and links in <title>`, a `SegmentedControl`
+   (Media / Files / Links / Voice), loads the active tab on open and on change,
+   "Load more" via `next`. Media = 3-column lazy `<img>` grid for items with a
+   `url`; an item without a `url` renders a file row. Files = name/size/sender/
+   date rows. Links = host + URL as `<a target="_blank" rel="noopener
+   noreferrer">` (guarded by `safeHttpUrl`). Voice = duration/sender/date rows.
+   Every item has a "Show in chat" action that jumps exactly like `PinsPanel`
+   (`openAtMessage` → `onClose` → rAF scroll to `[data-message-id=…]`, else
+   "Message not found"). Loading / error-with-Retry / per-tab empty states via
+   `StateMessage`. The async load keeps its `setState` in promise callbacks (no
+   `react(set-state-in-effect)`).
+5. **`apps/web/src/components/ChatHeader.tsx`**: added a new optional
+   `onOpenMedia` prop and a `Media, files and links` `MenuItem` right after
+   "Pinned messages" in both menus (topic and non-topic).
+6. **`apps/web/src/routes/ChatView.tsx`**: added `mediaOpen` state reset on chat
+   change (mirroring `panelChatId`), passed `onOpenMedia` to `ChatHeader`, and
+   renders `<ChatMediaPanel>` while open.
+7. **Tests**: new `ChatMediaPanel.test.tsx` (tabs+load, grid images, no `<img>`
+   when url is dropped, per-tab empty states, error+Retry, Load more appends,
+   Show in chat calls `openAtMessage` + closes); `ChatView.test.tsx` (menu opens
+   the panel, Escape closes); `api.test.ts` (`listChatMedia` query + parse);
+   new `realStore.media.test.tsx` (untrusted image/gif url dropped, trusted
+   kept, files kept, no-token drops).
+
+8. **Existing fakes updated (option A)**: added one
+   `listChatMedia: vi.fn(async () => ({ items: [], next: null }))` line to the
+   fake `ApiClient` in each of `store/realStore.test.tsx`,
+   `store/realStore.forward.test.tsx`, `store/realStore.topics.test.tsx` and
+   `store/reload.test.tsx`; no other change in those files.
+
+### Commands and real results
+
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot ChatMediaPanel ChatView api.test realStore.media`
+  → **5 files / 156 tests passed**.
+- `pnpm gate` (final):
+  - `gate: 15 changed file(s) against main`
+  - `PASS install (frozen)`, `PASS format`, `PASS lint`, `PASS typecheck`,
+    `PASS tests @zilar/web` (30.0s)
+  - `scope: every changed file is inside the Allowed files`
+  - `GATE PASS`
+
+### Notes / deviations
+
+- I did not add a full media viewer overlay or sub-tabs; the spec only asked for
+  a grid/list + jump.
+- Links are rendered only when `safeHttpUrl` accepts them (defence in depth on
+  top of the server's http(s)-only extraction).
+- The mock store's `loadChatMedia` always returns `next: null` (bundle small),
+  as specified.
+- `ApiClient.listChatMedia` is required; the four doubles now satisfy it.
+
+### Fix round 1 (review)
+
+- **Key collision fixed** in `ChatMediaPanel.tsx`: every list/grid map now uses
+  `mediaItemKey(item, index)` =
+  `` `${item.messageId}-${item.kind}-${item.url ?? item.linkUrl ?? ''}-${index}` ``
+  (index from `map`), so two links from one message no longer share a key.
+- **New test** in `ChatMediaPanel.test.tsx`: one message with two links renders
+  both rows (`one.example.com` and `two.example.com`). `ChatMediaPanel` suite:
+  **7 tests passed**.
+- `pnpm gate` (fix round): `PASS install / format / lint / typecheck`, `PASS
+  tests @zilar/web`, `scope: every changed file is inside the Allowed files`,
+  **`GATE PASS`**.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-06). "Media, files and links" is in both chat menus and opens ChatMediaPanel (a kit Sheet with SegmentedControl tabs, a lazy image grid, file, link and voice rows, Show in chat as in PinsPanel, Load more, and the states). The real store drops untrusted image and gif URLs, and all of them with no token (tested). The mock store builds pages from mock messages. One lead unblock (the ApiClient fake doubles), and one lead fix round (unique keys for multi-item messages, with a two-links test). Nit accepted: a failed Load more shows the error view and Retry restarts from page 1.

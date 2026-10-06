@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import type { ChatSummary, UiMessage } from '@zilar/chat-core';
 import { AuthProvider, type AuthState } from '@/auth/AuthProvider';
@@ -101,5 +101,21 @@ describe('ChatView forwarding (T-0419)', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: 'Forward' }));
 
     expect(screen.getByRole('dialog', { name: 'Forward' })).toBeTruthy();
+  });
+});
+
+describe('ChatView media panel (T-0434)', () => {
+  it('opens the media panel from the chat menu and closes it on Escape', async () => {
+    renderView(dm, '/c/c-ana');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Chat menu' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Media, files and links' }));
+
+    expect(
+      await screen.findByRole('dialog', { name: 'Media, files and links in Ana' }),
+    ).toBeTruthy();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   });
 });

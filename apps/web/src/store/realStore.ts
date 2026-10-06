@@ -76,6 +76,7 @@ import {
   listGroupTopics as listGroupTopicsRequest,
   lookupGroupByHandle as lookupGroupByHandleRequest,
   listPins as listPinsRequest,
+  listChatMedia as listChatMediaRequest,
   listTopicAis as listTopicAisRequest,
   listTopicMembers as listTopicMembersRequest,
   patchTopic as patchTopicRequest,
@@ -106,7 +107,9 @@ import {
   type Invite,
   type JoinPreview,
   type JoinResult,
+  type ListChatMediaInput,
   type Me,
+  type MediaPage,
   type PatchTopicInput,
   type Pin,
   type PinMessageInput,
@@ -318,6 +321,7 @@ export interface ApiClient {
   listChatPrefs(): Promise<ChatPref[]>;
   putChatPref(chatJid: string, input: PutChatPrefInput): Promise<ChatPref | null>;
   listPins(chat: string): Promise<Pin[]>;
+  listChatMedia(input: ListChatMediaInput): Promise<MediaPage>;
   pinMessage(input: PinMessageInput): Promise<Pin>;
   unpinMessage(id: string): Promise<void>;
 }
@@ -383,6 +387,7 @@ const realApi: ApiClient = {
   listChatPrefs: listChatPrefsRequest,
   putChatPref: putChatPrefRequest,
   listPins: listPinsRequest,
+  listChatMedia: listChatMediaRequest,
   pinMessage: pinMessageRequest,
   unpinMessage: unpinMessageRequest,
 };
@@ -2084,6 +2089,31 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       return get().activeChatId;
     }
 
+    // An image or GIF item on an untrusted host is downgraded to a file-style
+    // item by dropping its `url`, so the panel never auto-loads it (T-0434).
+    // With no XMPP token yet, nothing is trusted and every such url is dropped.
+    function sanitizeMediaPage(page: MediaPage): MediaPage {
+      const trusted = mediaToken === undefined ? undefined : trustedMediaHosts(mediaToken);
+      return {
+        ...page,
+        items: page.items.map((item) => {
+          if (item.kind !== 'image' && item.kind !== 'gif') {
+            return item;
+          }
+          if (
+            item.url === undefined ||
+            trusted === undefined ||
+            !isTrustedMediaUrl(item.url, trusted)
+          ) {
+            const { url: _dropped, ...rest } = item;
+            void _dropped;
+            return rest;
+          }
+          return item;
+        }),
+      };
+    }
+
     async function refreshPinsFor(chatId: string): Promise<void> {
       try {
         const pins = await api.listPins(chatId);
@@ -3750,6 +3780,14 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       pinsLoaded: (chatId) => get().pinsReady[chatId] === true,
       loadPins: async (chatId) => {
         await refreshPinsFor(chatId);
+      },
+      loadChatMedia: async (chatId, tab, before) => {
+        const page = await api.listChatMedia({
+          chat: chatId,
+          type: tab,
+          ...(before === undefined ? {} : { before }),
+        });
+        return sanitizeMediaPage(page);
       },
       canPin: (chatId) => {
         const state = get();
