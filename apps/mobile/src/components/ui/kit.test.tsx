@@ -9,12 +9,14 @@ import { ConfirmDialog } from './confirm-dialog';
 import { CountBadge } from './count-badge';
 import { ListRow } from './list-row';
 import { SearchField } from './search-field';
+import { StateMessage } from './state-message';
 import { TextField } from './text-field';
-import { MUTED_FOREGROUND } from '@/lib/colors';
+import { DANGER, MUTED_FOREGROUND } from '@/lib/colors';
 
 // The kit is hook- and native-free enough to render with `react-native`
 // stubbed (same pattern as `settings-ui.test.tsx`): Node only, no simulator.
 vi.mock('react-native', () => ({
+  ActivityIndicator: 'ActivityIndicator',
   Modal: 'Modal',
   Pressable: 'Pressable',
   TextInput: 'TextInput',
@@ -32,7 +34,9 @@ vi.mock('nativewind', () => ({
 vi.mock('lucide-react-native', () => ({
   Bell: 'Bell',
   ChevronRight: 'ChevronRight',
+  CircleAlert: 'CircleAlert',
   Compass: 'Compass',
+  Inbox: 'Inbox',
   Search: 'Search',
   X: 'X',
 }));
@@ -313,5 +317,66 @@ describe('SearchField', () => {
     expect(renderToStaticMarkup(createElement(SearchField, { value: 'hello' }))).not.toContain(
       'Clear search',
     );
+  });
+});
+
+describe('StateMessage', () => {
+  it('renders the title and the hint', () => {
+    const html = renderToStaticMarkup(
+      createElement(StateMessage, {
+        kind: 'empty',
+        title: 'No chats yet',
+        hint: 'Start a chat to see it here.',
+      }),
+    );
+    expect(html).toContain('No chats yet');
+    expect(html).toContain('Start a chat to see it here.');
+  });
+
+  it('shows the Inbox icon at 20 px for empty by default', () => {
+    const html = renderToStaticMarkup(
+      createElement(StateMessage, { kind: 'empty', title: 'No chats yet' }),
+    );
+    expect(html).toContain('<Inbox');
+    expect(html).toContain('size="20"');
+  });
+
+  it('carries the alert role and the danger icon for errors', () => {
+    const html = renderToStaticMarkup(
+      createElement(StateMessage, { kind: 'error', title: 'Could not load chats.' }),
+    );
+    expect(html).toContain('accessibilityRole="alert"');
+    expect(html).toContain('<CircleAlert');
+    expect(html).toContain(DANGER);
+  });
+
+  it('renders the spinner labelled with the title while loading', () => {
+    const html = renderToStaticMarkup(
+      createElement(StateMessage, { kind: 'loading', title: 'Loading chats…' }),
+    );
+    expect(html).toContain('<ActivityIndicator');
+    expect(html).toContain('accessibilityLabel="Loading chats…"');
+    expect(html).not.toContain('accessibilityRole="alert"');
+  });
+
+  it('puts the action label in Text inside Button', () => {
+    const html = renderToStaticMarkup(
+      createElement(StateMessage, {
+        kind: 'error',
+        title: 'Could not load chats.',
+        action: { label: 'Try again', onPress: noop },
+      }),
+    );
+    expect(html).toContain('<Button');
+    expect(html).toContain('<Text>Try again</Text>');
+  });
+
+  it('renders a muted inline row for the inline size', () => {
+    const html = renderToStaticMarkup(
+      createElement(StateMessage, { kind: 'loading', title: 'Loading more…', size: 'inline' }),
+    );
+    expect(html).toContain('<ActivityIndicator');
+    expect(html).toContain('Loading more…');
+    expect(html).toContain('text-[13px] text-muted-foreground');
   });
 });

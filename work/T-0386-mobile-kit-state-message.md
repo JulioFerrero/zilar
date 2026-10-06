@@ -1,7 +1,7 @@
 ---
 id: T-0386
 title: "Mobile kit: a StateMessage component (empty, loading, error, optional action) like the web one, in the dev catalog and the kit test"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0386-mobile-kit-state-message
 model: auto
@@ -72,4 +72,33 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- Added `apps/mobile/src/components/ui/state-message.tsx`: exports `StateMessage` with the web API, except `action` uses `onPress`. `block` is a centered `View`; `empty`/`error` show `Inbox`/`CircleAlert` (or a custom `icon`) at 20 px, muted except `DANGER` for `error`; `loading` shows an `ActivityIndicator` coloured `MUTED_FOREGROUND[scheme]` and labelled with the title; then the title `Text`, optional hint `Text`, and an optional `Button size="sm"` whose label is wrapped in `Text`. `error` roots get `accessibilityRole="alert"`. `inline` is a muted 13 px row with a 14 px icon or a small spinner.
+- Added a "State messages" section to `apps/mobile/src/app/dev/kit.tsx` with the three block kinds and one inline loading.
+- Added `describe('StateMessage')` to `apps/mobile/src/components/ui/kit.test.tsx` and extended the `react-native` and `lucide-react-native` mocks with `ActivityIndicator`, `Inbox` and `CircleAlert`.
+
+### Files changed
+- `apps/mobile/src/components/ui/state-message.tsx` (new)
+- `apps/mobile/src/app/dev/kit.tsx`
+- `apps/mobile/src/components/ui/kit.test.tsx`
+- `work/T-0386-mobile-kit-state-message.md`
+
+### Commands and results
+- `pnpm install` -> done, 13 workspace projects, no errors.
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot kit` -> `Test Files 1 passed (1)`, `Tests 30 passed (30)`.
+- `pnpm gate` -> `GATE PASS`:
+  - `PASS  install (frozen)  (1.5s)`
+  - `PASS  format  (20.2s)`
+  - `PASS  lint  (1.0s)`
+  - `PASS  typecheck  (9.1s)`
+  - `PASS  tests @zilar/mobile  (2.7s)`
+  - `scope: every changed file is inside the Allowed files`
+  The first gate run failed on `format` (`apps/mobile/src/app/dev/kit.tsx`); I fixed it with `pnpm exec prettier --write apps/mobile/src/app/dev/kit.tsx` and re-ran the gate, which passed.
+
+### Deviations / open questions
+- The spec asks only for the `error` alert role (web also sets a `status` role for loading); I implemented only the alert role, as written.
+- No dependencies added, nothing blocked.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-06). New mobile `StateMessage` mirrors the web API (`onPress` action), block and inline sizes, alert role on errors, action label inside `<Text>`; shown in the dev catalog and covered by kit tests. Pre-review clean (0 findings). Screen adoption comes in later tasks.

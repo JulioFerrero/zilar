@@ -21,6 +21,7 @@ import { IconButton } from '@/components/ui/icon-button';
 import { IconTile } from '@/components/ui/icon-tile';
 import { ListRow } from '@/components/ui/list-row';
 import { SearchField } from '@/components/ui/search-field';
+import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import { asColorScheme } from '@/lib/color-scheme';
@@ -227,6 +228,21 @@ function KitCatalog() {
             onCancel={() => setConfirmOpen(false)}
             onConfirm={() => setConfirmOpen(false)}
           />
+        </View>
+
+        <View className="mt-6 gap-2">
+          <SectionLabel>State messages</SectionLabel>
+          <View className="gap-3">
+            <StateMessage kind="empty" title="No chats yet" hint="Start a chat to see it here." />
+            <StateMessage kind="loading" title="Loading chats…" />
+            <StateMessage
+              kind="error"
+              title="Could not load chats."
+              hint="Check your connection and try again."
+              action={{ label: 'Try again', onPress: noop }}
+            />
+            <StateMessage kind="loading" title="Loading more…" size="inline" />
+          </View>
         </View>
       </ScrollView>
     </SafeAreaView>
