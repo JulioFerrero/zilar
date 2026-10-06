@@ -1,7 +1,7 @@
 ---
 id: T-0410
 title: "Media gallery step 1a (server): media_items and media_index_state tables, and an incremental indexer that fills them from the message archive"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0410-server-media-index
 model: auto
@@ -115,4 +115,56 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- Added two tables to `apps/server/src/db/schema.ts` and generated one migration:
+  - `media_items` (20 columns) with a unique `(archive_owner, chat_jid, message_id, kind, ref)` index and a `(archive_owner, chat_jid, kind, at_micros)` index.
+  - `media_index_state` with a composite pk `(archive_owner, chat_jid)` and `indexed_through_micros`.
+- Wrote `apps/server/src/media/indexer.ts`:
+  - `extractMediaItems(row)` is pure/total: parses the `<agent xmlns="urn:zilar:agent:0">` payload (regex reader + five-entity unescape + `decodePayload`), maps `attachment` → `image`/`file` (or `gif` when the name starts `gif-` and the mime is `video/*`) and `voice` → `voice`, and adds one `link` per http(s) URL in the body with `linkHost` from `new URL`. Malformed XML/invalid JSON/unknown payload never throws.
+  - `extractLinks(text)` copies the `links.ts` pattern and punctuation-trim rule locally (no `@zilar/chat-core` dependency).
+  - `indexChat({ archive, db, archiveOwner, chatJid, scope, now, maxRows? })` reads rows newer than the stored cursor, inside the 12-month window, ascending, up to 5 000 per call, with search's scope SQL (room = `username = <room JID>`; DM = `username = <own localpart> AND bare_peer = <peer>`). It upserts with `ON CONFLICT DO NOTHING`, applies corrections (delete target `link` rows, insert the new text's links), marks retractions `deleted = true` on all target rows, advances the cursor to the last row read, and prunes the chat to the cap in one atomic `DELETE ... WHERE id IN (SELECT ... OFFSET cap)`.
+  - Exports `MEDIA_INDEX_MAX_ROWS = 5000`, `MEDIA_ITEMS_CAP_PER_CHAT = 20000`, `MEDIA_WINDOW_MONTHS = 12`.
+- Wrote `apps/server/src/media/indexer.test.ts` (13 tests): extraction of image/file/gif/voice/links, invalid JSON, malformed XML, unknown payload, invalid URL; `indexChat` insert + idempotent second run + cursor advance, 12-month window, correction replaces links, retraction marks all target rows deleted, cap prunes the oldest (via `maxRows = 3`).
+
+### Files changed (all inside Allowed files)
+- `apps/server/src/db/schema.ts`
+- `apps/server/drizzle/0041_blue_magneto.sql` (new, generated)
+- `apps/server/drizzle/meta/_journal.json`
+- `apps/server/drizzle/meta/0041_snapshot.json` (new, generated)
+- `apps/server/src/media/indexer.ts` (new)
+- `apps/server/src/media/indexer.test.ts` (new)
+- `work/T-0410-server-media-index.md`
+
+### Commands and real results
+- `pnpm install`: done, 13.5 s, no lockfile change.
+- `pnpm --filter @zilar/server db:generate`: wrote `drizzle/0041_blue_magneto.sql` (the next number after 0040).
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot media/indexer`: **13 passed / 13**.
+- `pnpm gate`: **GATE PASS**, 7 changed files, all inside scope. Summary:
+  ```
+  gate: 7 changed file(s) against main
+  PASS  install (frozen)  (1.3s)
+  PASS  format  (12.3s)
+  PASS  lint  (1.0s)
+  PASS  typecheck  (6.5s)
+  PASS  tests @zilar/server  (285.1s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+  The first gate run failed only on `format` (prettier wanted the two generated drizzle JSON files and my test reformatted); I ran `pnpm exec prettier --write` on those three files and re-ran the gate, which passed.
+
+### Deviations / notes
+- **`ref` column.** Drizzle cannot express the `coalesce(url, link_url)` unique index, so I used the spec's fallback: a not-null `ref` set to the URL, else the link URL, else `''` (a voice note without a URL). The unique index is on `(archive_owner, chat_jid, message_id, kind, ref)`.
+- **`maxRows` parameter.** `indexChat` takes an optional `maxRows` (default `MEDIA_ITEMS_CAP_PER_CHAT`) so the cap test can lower it, as the spec asked.
+- **`scope` type.** `scope` is `{ kind: 'dm'; peer } | { kind: 'room'; room }`, matching search's branch SQL; `archiveOwner`/`chatJid` are stored on the row.
+- **`inserted` on a same-pass correction.** Because the pass is ascending, an original link row is inserted and then replaced by its correction in the same batch, so `inserted` counts both while the final stored state is correct (only the corrected link remains). The test asserts the final state.
+- No HTTP route, no rate limit and no 401 sweep were added — that is Task 1b, out of scope here, as the spec says.
+
+### Security checklist
+- Uniqueness is enforced by a unique index with `ON CONFLICT DO NOTHING`; the cap is a single atomic `DELETE` (no check-then-insert).
+- Every delete/update is scoped by `archive_owner` **and** `chat_jid` **and** `message_id`.
+- Reads use parameterized `$n` bindings only; no SQL is built from archive data. No secrets are logged (nothing logged at all).
+- No new route, so no change to the 401 sweep or write rate limits.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-06). Migration 0041 only adds media_items (unique key archive_owner, chat_jid, message_id, kind, ref; index by chat, kind and time) and media_index_state (cursor per archive and chat). The incremental MAM indexer handles a 12-month window, a cap prune, corrections and retractions. A lead fix round added: the link host rule mirroring chat-core toHref, a room scope test, and a real dedup test with the cursor forced back. Nits accepted: the Report test count is stale (15, not 13), and the edit/target cross-pass ordering. Follow-up for the gallery: a correction after a retraction can bring back link rows (retraction should win). Handle it in the 1b route or the indexer later.
