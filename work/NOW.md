@@ -24,7 +24,9 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0287 | Mobile kit ConfirmDialog; AI delete, rule revoke, machine confirms | coding | lead allowed `machines-screen.test.tsx` stubs after BLOCKED |
+| T-0290 | Web kit: New group + invite-link fields on TextInput/TextArea | coding | batch 2 |
+
+~02:40 local: merged T-0287 (mobile ConfirmDialog), T-0289 (CI cancels superseded main runs, so the tip finishes and images can build), T-0288 (first TextInput users; lead browser check of the recessed field + focus outline). QA run 11 PASS (qa11/): Open group icon aligned, topic actions sheet, AI delete and machine confirms, kit confirm sample; always-allowed revoke not reachable in mock. The QA agent pinned a mock topic by accident (mock only).
 
 ~02:20 local: merged T-0284 (topic actions sheet + Open group icon), T-0285, T-0286. All 5 web chat panels are now on the kit Sheet; no hand-rolled `role="dialog"` left on web except `StickerPanel` (non-modal popover). Lead browser check (mock, wide): channel panel opens on the right, Escape closes it, focus returns to the header. Narrow check not done (window would not resize); covered by the kit test.
 
