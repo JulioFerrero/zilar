@@ -54,7 +54,7 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0350 | Mobile kit: Telegram import sheet text pill buttons on Button | coding (DeepSeek flash) | 7 Pressables; T-0349 merged |
+| T-0351 | Mobile kit: sign-in and onboarding Continue/Skip buttons on Button | coding (free Muse, DeepSeek peak) | 5 Pressables; T-0350 merged |
 
 Time correction (checked with `date`): it is 04:42 local, Tue 10-06. The "~04:xx–05:50 local" stamps below were estimated and run up to about an hour ahead; their order is right.
 
