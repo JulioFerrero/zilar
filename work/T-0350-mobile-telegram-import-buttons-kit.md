@@ -1,7 +1,7 @@
 ---
 id: T-0350
 title: "Mobile kit migration: the text pill buttons in the Telegram import sheet use the kit Button"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0350-mobile-telegram-import-buttons-kit
 model: auto
@@ -74,4 +74,50 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**Status:** done, ready for review.
+
+**What I did**
+Replaced the seven text pill `Pressable`s in `apps/mobile/src/components/stickers/telegram-import-sheet.tsx` with the kit `Button` (`apps/mobile/src/components/ui/button.tsx`), size `sm` for every one, matching the spec table:
+
+- "Close" in the not-set-up state (was line 162) → `variant="default"`, kept `accessibilityLabel="Close"` and `onPress={close}`.
+- "Close" in the token-rejected state (was 178) → `variant="default"`, kept `accessibilityLabel="Close"` and `onPress={close}`.
+- "Import again" in the partial result (was 218) → `variant="outline"`, kept `accessibilityLabel="Import again"`, `disabled={busy}`, `onPress={() => run(input)}` and the busy text `busy ? 'Importing…' : 'Import again'`.
+- "Done" on the result card (was 230) → `variant="outline"`, kept `accessibilityLabel="Done"`, `disabled={busy}`, `onPress={done}`.
+- "Open pack" on the result card (was 239) → `variant="default"`, kept `accessibilityLabel="Open pack"`, `disabled={busy}`, `onPress={openPack}`.
+- "Cancel" on the form (was 319) → `variant="ghost"`, kept `accessibilityLabel="Cancel"`, `disabled={busy}`, `onPress={close}`.
+- "Import" on the form (was 328) → `variant="default"`, kept `accessibilityLabel="Import"`, `disabled={busy}`, `onPress={() => run(input)}` and the busy text `busy ? 'Importing…' : 'Import'`.
+
+For every button I dropped the old pill classes and the child `Text` colour/size classes; the kit `TextClassContext` now sets them. I dropped `accessibilityRole="button"` because the kit `Button` sets `role="button"` on its own `Pressable` (the T-0345/T-0346/T-0347/T-0348 pattern). Added `import { Button } from '@/components/ui/button';` and kept the `Pressable` import, which is still used by the two `Pressable`s the spec says to leave alone (backdrop "Dismiss import" at 124 and the icon-only "Close" at 142).
+
+**Files changed**
+- `apps/mobile/src/components/stickers/telegram-import-sheet.tsx` — seven `Pressable`s now kit `Button`s; `Button` imported.
+- `apps/mobile/src/components/stickers/telegram-import-sheet.test.tsx` — mocks only: added `Platform.select`, the `react-native-reanimated` `useReducedMotion` mock, `TextClassContext` on the `@/components/ui/text` mock, and `primaryKey`, `KEY_PRIMARY_PRESSED_SHADOW`, `pressStyle` to the `@/lib/depth` mock.
+- `work/T-0350-mobile-telegram-import-buttons-kit.md` — status and this Report.
+
+**Why the mock changes**
+The kit `Button` chain pulls in `@/components/ui/use-key-press` (which calls `useReducedMotion`), `@/lib/depth` (`primaryKey`, `KEY_PRIMARY_PRESSED_SHADOW`, `pressStyle`) and `TextClassContext` from `@/components/ui/text`, plus `Platform.select` at module scope in `button.tsx`'s `cva` calls. `telegram-import-sheet.test.tsx` mocked none of those. The `use-key-press` hook itself did **not** need its own mock: that test's `useState` mock returns `forcedBusy` for every boolean initial with a noop setter, so the extra `useState(false)` the hook adds renders correctly and does not shift the sheet's string/null cursors (the parent's hooks run before any child's, so `input` stays the first string and `result`/`special` keep their order).
+
+I did **not** change `stickers-screen.test.tsx` or `sticker-pack-screen.test.tsx`: both already mock `Platform.select`, `react-native-reanimated` and `TextClassContext` (T-0346), and `sticker-pack-screen.test.tsx` already mocks the depth key exports (T-0347). `stickers-screen.test.tsx` does not mock `@/lib/depth`, but the real module loads fine in the test (type-only `react-native` import; already used by `stickers.tsx`), and the sheet renders through `apps/mobile/src/app/settings/stickers.tsx` without a depth mock. Both files passed unchanged.
+
+**Commands run and results**
+- `pnpm install` (worktree) — succeeded, `Done in 11.2s` (only the usual peer/deprecation warnings).
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot telegram-import-sheet stickers-screen sticker-pack-screen` — `Test Files 3 passed (3)`, `Tests 41 passed (41)` (usual React DOM casing warnings on stderr only).
+- `pnpm gate` (repo root) — final output:
+  ```
+  gate: 3 changed file(s) against main
+  PASS  install (frozen)  (1.0s)
+  PASS  format  (10.8s)
+  PASS  lint  (0.8s)
+  PASS  typecheck  (5.5s)
+  PASS  tests @zilar/mobile  (1.5s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+**Deviations from the spec:** none. All mock additions are within the spec's listed pattern.
+
+**Blocked / needs a decision:** none.
+
 ## Review (written by Claude)
+
+**Approved** (pre-review clean, 0 nits). All seven pills are kit `Button`s with the variants from the table, and the lead grep found the labels kept. Only the sheet's own test needed mock changes; the two screen tests already had the Button mocks.

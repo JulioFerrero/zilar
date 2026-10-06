@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 
+import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import { asColorScheme } from '@/lib/color-scheme';
@@ -159,14 +160,9 @@ export function TelegramImportSheet({
                   The server owner can turn it on in Settings &gt; Integrations.
                 </Text>
                 <View className="mt-4 flex-row justify-end gap-2">
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel="Close"
-                    onPress={close}
-                    className="rounded-full bg-accent px-5 py-2 active:opacity-90"
-                  >
-                    <Text className="text-[15px] font-medium text-accent-foreground">Close</Text>
-                  </Pressable>
+                  <Button variant="default" size="sm" accessibilityLabel="Close" onPress={close}>
+                    <Text>Close</Text>
+                  </Button>
                 </View>
               </View>
             ) : special === 'token-rejected' ? (
@@ -175,14 +171,9 @@ export function TelegramImportSheet({
                   The Telegram token was rejected. The server owner needs to update it.
                 </Text>
                 <View className="mt-4 flex-row justify-end gap-2">
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel="Close"
-                    onPress={close}
-                    className="rounded-full bg-accent px-5 py-2 active:opacity-90"
-                  >
-                    <Text className="text-[15px] font-medium text-accent-foreground">Close</Text>
-                  </Pressable>
+                  <Button variant="default" size="sm" accessibilityLabel="Close" onPress={close}>
+                    <Text>Close</Text>
+                  </Button>
                 </View>
               </View>
             ) : result !== null ? (
@@ -215,38 +206,34 @@ export function TelegramImportSheet({
                 </View>
                 <View className="mt-4 flex-row justify-end gap-2">
                   {result.partial ? (
-                    <Pressable
-                      accessibilityRole="button"
+                    <Button
+                      variant="outline"
+                      size="sm"
                       accessibilityLabel="Import again"
                       disabled={busy}
                       onPress={() => run(input)}
-                      className="rounded-full border border-border-strong px-4 py-2 active:bg-surface-raised disabled:opacity-60"
                     >
-                      <Text className="text-[15px] text-foreground">
-                        {busy ? 'Importing…' : 'Import again'}
-                      </Text>
-                    </Pressable>
+                      <Text>{busy ? 'Importing…' : 'Import again'}</Text>
+                    </Button>
                   ) : null}
-                  <Pressable
-                    accessibilityRole="button"
+                  <Button
+                    variant="outline"
+                    size="sm"
                     accessibilityLabel="Done"
                     disabled={busy}
                     onPress={done}
-                    className="rounded-full border border-border-strong px-4 py-2 active:bg-surface-raised disabled:opacity-60"
                   >
-                    <Text className="text-[15px] text-foreground">Done</Text>
-                  </Pressable>
-                  <Pressable
-                    accessibilityRole="button"
+                    <Text>Done</Text>
+                  </Button>
+                  <Button
+                    variant="default"
+                    size="sm"
                     accessibilityLabel="Open pack"
                     disabled={busy}
                     onPress={openPack}
-                    className="rounded-full bg-accent px-5 py-2 active:opacity-90 disabled:opacity-60"
                   >
-                    <Text className="text-[15px] font-medium text-accent-foreground">
-                      Open pack
-                    </Text>
-                  </Pressable>
+                    <Text>Open pack</Text>
+                  </Button>
                 </View>
                 {busy ? (
                   <View
@@ -316,26 +303,24 @@ export function TelegramImportSheet({
                   </Text>
                 ) : null}
                 <View className="mt-4 flex-row justify-end gap-2">
-                  <Pressable
-                    accessibilityRole="button"
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     accessibilityLabel="Cancel"
                     disabled={busy}
                     onPress={close}
-                    className="rounded-full px-4 py-2 active:bg-surface-raised disabled:opacity-60"
                   >
-                    <Text className="text-[15px] text-muted-foreground">Cancel</Text>
-                  </Pressable>
-                  <Pressable
-                    accessibilityRole="button"
+                    <Text>Cancel</Text>
+                  </Button>
+                  <Button
+                    variant="default"
+                    size="sm"
                     accessibilityLabel="Import"
                     disabled={busy}
                     onPress={() => run(input)}
-                    className="rounded-full bg-accent px-5 py-2 active:opacity-90 disabled:opacity-60"
                   >
-                    <Text className="text-[15px] font-medium text-accent-foreground">
-                      {busy ? 'Importing…' : 'Import'}
-                    </Text>
-                  </Pressable>
+                    <Text>{busy ? 'Importing…' : 'Import'}</Text>
+                  </Button>
                 </View>
               </View>
             )}
