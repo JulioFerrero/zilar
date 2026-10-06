@@ -14,6 +14,12 @@ import { groupRowFor, groupTopicChats } from './topics';
 
 export type ChatListRow = { kind: 'chat'; chat: ChatSummary } | { kind: 'group'; groupId: string };
 
+export const CHAT_SEARCH_LIMIT = 5;
+
+export function chatSearchMatches(rows: readonly ChatListRow[]): ChatListRow[] {
+  return rows.slice(0, CHAT_SEARCH_LIMIT);
+}
+
 export interface ChatListModel {
   rows: ChatListRow[];
   /** The archived chats shown under the Archived entry. */

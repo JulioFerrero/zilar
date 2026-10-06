@@ -24,7 +24,7 @@ import { asColorScheme } from '@/lib/color-scheme';
 import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
 import { connectionLabel } from '@/lib/connection';
 import { well } from '@/lib/depth';
-import { chatListModel } from '@/lib/chat-list';
+import { chatListModel, chatSearchMatches } from '@/lib/chat-list';
 import { unreadCount } from '@/lib/filter';
 import { createSearchApi } from '@/lib/search-api';
 import { getSessionToken } from '@/lib/session-token';
@@ -203,6 +203,7 @@ function ChatsList() {
   // Only a handle the lookup accepts switches to the People view; a bare `@`
   // keeps showing the normal chat list.
   const peopleSearch = peopleHandleFor(search) !== null;
+  const chatMatches = searchChat === undefined ? chatSearchMatches(visibleRows) : [];
   const { api: contactsApi } = useContactsApi();
 
   const searchHeader = searchOpen ? (
@@ -288,6 +289,36 @@ function ChatsList() {
             }}
             submitRequest={submitRequest}
           />
+        ) : null}
+        {chatMatches.length > 0 ? (
+          <View className="px-2">
+            <Text className="px-[10px] pt-2 text-[12px] font-semibold text-muted-foreground">
+              Chats
+            </Text>
+            {chatMatches.map((row) =>
+              row.kind === 'chat' ? (
+                <ChatListItem
+                  key={row.chat.id}
+                  chat={row.chat}
+                  onPress={() => {
+                    closeSearch();
+                    router.push({ pathname: '/chat/[id]', params: { id: row.chat.id } });
+                  }}
+                  onLongPress={() => openActions(row.chat.id)}
+                />
+              ) : (
+                <GroupListItem
+                  key={`group:${row.groupId}`}
+                  groupId={row.groupId}
+                  onPress={() => {
+                    closeSearch();
+                    router.push({ pathname: '/group/[id]', params: { id: row.groupId } });
+                  }}
+                  onLongPress={() => openActions(`group:${row.groupId}`)}
+                />
+              ),
+            )}
+          </View>
         ) : null}
         <MessageSearchList
           searchApi={searchApi}

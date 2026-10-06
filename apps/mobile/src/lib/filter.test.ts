@@ -83,6 +83,13 @@ describe('filterChats', () => {
       'Dev AI',
     ]);
   });
+
+  it('matches a topic chat by its group name', () => {
+    const general = chat('general@g', { kind: 'group', title: 'General', groupTitle: 'Dev team' });
+    const random = chat('random@g', { kind: 'group', title: 'Random', groupTitle: 'Hiking club' });
+    expect(filterChats([general, random], { folder: undefined, search: 'dev' })).toEqual([general]);
+    expect(filterChats([general, random], { folder: undefined, search: 'DEV' })).toEqual([general]);
+  });
 });
 
 describe('unreadCount', () => {
