@@ -1,7 +1,7 @@
 ---
 id: T-0373
 title: "Web kit: Cancel, Back and Close in the group handle, Telegram import and New group dialogs use the kit Button"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0373-web-dialog-cancel-back-close-kit
 model: auto
@@ -65,4 +65,34 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Replaced all six hand-rolled `<button>` elements with the kit `Button`, keeping every
+text, `aria-label`/`title`, `disabled` and handler:
+
+- `apps/web/src/routes/GroupHandleRoute.tsx`: both "Close" buttons → `<Button
+  type="button" variant="ghost" size="lg" …>`.
+- `apps/web/src/components/TelegramImportDialog.tsx`: "Cancel" → ghost/lg (kept
+  `disabled={busy}`); the X close icon → `<Button variant="ghost" size="icon-sm"
+  className="shrink-0 rounded-full text-muted-foreground">` keeping `aria-label="Close"`,
+  `title="Close"`, `disabled={busy}` and the `size-4` icon.
+- `apps/web/src/components/NewGroupDialog.tsx`: "Cancel" → ghost/lg; "Back" → ghost/lg
+  (kept `setStep('members')` handler).
+
+Files changed: the three files above plus this task file (front matter only).
+No test files needed changes. Verified `grep -n "<button"` returns nothing in the three
+files.
+
+Commands and real results:
+- `pnpm install`: pass (21.1s).
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot GroupHandleRoute HandleGate TelegramImportDialog NewGroupDialog`: 5 files, 41 tests, all passed.
+- `pnpm gate` (first run): GATE FAIL on format only (`NewGroupDialog.tsx` Prettier
+  line-wrap on the Back button); fixed the wrapping by hand, did not run format --write.
+- `pnpm gate` (final): GATE PASS — PASS install, format, lint, typecheck,
+  tests @zilar/web; "scope: every changed file is inside the Allowed files";
+  4 changed files against main.
+
+Security checklist: no secrets touched; no data deletes/updates; no new routes;
+no permission or audit changes — N/A for this pure UI-button migration.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-06). The five Cancel/Back/Close text buttons are kit ghost `lg` matching their `lg` siblings; the Telegram X is ghost `icon-sm`. Texts, labels, disabled and handlers kept. Pre-review clean (0 findings).

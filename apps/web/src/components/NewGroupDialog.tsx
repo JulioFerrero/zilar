@@ -137,13 +137,9 @@ export function NewGroupDialog({
       actions={
         step === 'members' ? (
           <>
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-full px-4 py-1.5 text-[15px] text-muted-foreground hover:bg-list-hover"
-            >
+            <Button type="button" variant="ghost" size="lg" onClick={onClose}>
               Cancel
-            </button>
+            </Button>
             <Button
               type="button"
               size="lg"
@@ -155,13 +151,9 @@ export function NewGroupDialog({
           </>
         ) : (
           <>
-            <button
-              type="button"
-              onClick={() => setStep('members')}
-              className="rounded-full px-4 py-1.5 text-[15px] text-muted-foreground hover:bg-list-hover"
-            >
+            <Button type="button" variant="ghost" size="lg" onClick={() => setStep('members')}>
               Back
-            </button>
+            </Button>
             <Button type="button" size="lg" disabled={busy} onClick={() => void create()}>
               Create
             </Button>
