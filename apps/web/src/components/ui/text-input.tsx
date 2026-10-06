@@ -48,7 +48,7 @@ function Field({
   );
 }
 
-const FIELD_INPUT =
+export const FIELD_INPUT =
   'well-surface w-full rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-subtle-foreground disabled:pointer-events-none disabled:opacity-50';
 
 export function TextInput({

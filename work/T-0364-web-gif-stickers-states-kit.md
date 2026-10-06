@@ -1,7 +1,7 @@
 ---
 id: T-0364
 title: "Web kit: GIF panel and Stickers page loading/error states on StateMessage; SearchField shares the TextInput field class"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0364-web-gif-stickers-states-kit
 model: auto
@@ -64,4 +64,17 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+- Replaced both `Loading…` `<p>` lines in `StickersPage.tsx` (discover, favorites) with `<StateMessage kind="loading" size="inline" title="Loading…" />` (`StateMessage` was already imported).
+- `GifPanel.tsx`: loading now renders `<StateMessage kind="loading" title="Loading GIFs…" />` inside the existing `h-[180px]` centering box; error now renders `<StateMessage kind="error" title={error} action={{ label: 'Retry', onClick: () => void load(query, undefined, false) }} />` inside the same fixed-height box. Left the `loadingMore` footer span alone. Visible texts ("Loading GIFs…", error text, "Retry" button name) unchanged.
+- Exported `FIELD_INPUT` from `text-input.tsx`; `search-field.tsx` now imports it and uses `cn(FIELD_INPUT, 'pl-9')`. No visual change.
+- Files changed: `apps/web/src/routes/StickersPage.tsx`, `apps/web/src/components/GifPanel.tsx`, `apps/web/src/components/ui/text-input.tsx`, `apps/web/src/components/ui/search-field.tsx`, plus this task file.
+- Commands:
+  - `pnpm install`: ok (14.2s).
+  - `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot GifPanel StickerPanel StickersPage kit`: 4 files, 99 passed.
+  - `pnpm gate`: GATE PASS — install ok, format ok (after collapsing the `search-field.tsx` input to one line via `prettier --write` on that file only), lint ok, typecheck ok, tests @zilar/web ok, scope: every changed file is inside the Allowed files.
+- Security checklist: no secrets/tokens touched; no deletes/updates; no caps/uniqueness logic; no permission changes; no new routes; no audit entries. Nothing renders raw server text beyond the existing error-title behavior the spec required (`title={error}` per spec).
+- No deviations from the spec; no open questions.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-06). StickersPage's two loading lines are inline `StateMessage`; GifPanel loading and error are `StateMessage` inside the 180px box, and Retry is the kit action with the same call; `FIELD_INPUT` is exported and reused by `SearchField` (identical string). Pre-review clean (0 findings).

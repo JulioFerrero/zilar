@@ -3,6 +3,7 @@ import { ApiError, gifMediaUrl, searchGifs, trendingGifs, type GifResult } from 
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { cn } from '@/lib/utils';
 import { SearchField } from '@/components/ui/search-field';
+import { StateMessage } from '@/components/ui/state-message';
 
 export interface GifChoice {
   /** The provider item id (for attribution keys, never fetched). */
@@ -288,19 +289,16 @@ export function GifPanel({ onPick, mockItems }: GifPanelProps) {
         />
       </div>
       {loading ? (
-        <div className="flex h-[180px] items-center justify-center text-[13px] text-muted-foreground">
-          Loading GIFs…
+        <div className="flex h-[180px] items-center justify-center">
+          <StateMessage kind="loading" title="Loading GIFs…" />
         </div>
       ) : error !== undefined ? (
-        <div className="flex h-[180px] flex-col items-center justify-center gap-2 px-4 text-center">
-          <p className="text-[13px] text-muted-foreground">{error}</p>
-          <button
-            type="button"
-            onClick={() => void load(query, undefined, false)}
-            className="rounded-[8px] bg-surface-raised px-3 py-1.5 text-[13px] font-medium"
-          >
-            Retry
-          </button>
+        <div className="flex h-[180px] items-center justify-center">
+          <StateMessage
+            kind="error"
+            title={error}
+            action={{ label: 'Retry', onClick: () => void load(query, undefined, false) }}
+          />
         </div>
       ) : items.length === 0 ? (
         <div className="flex h-[180px] flex-col items-center justify-center gap-1 px-4 text-center">
