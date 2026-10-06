@@ -24,11 +24,18 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0325 | Web kit: Stickers page states and pill buttons | coding (paid Muse fallback) | StickersPage only |
-| T-0326 | Web kit: New group and sticker pack visibility on SegmentedControl | coding | the last raw radios on web |
+| T-0329 | Mobile kit: Checkbox with a Check icon; ✓ glyphs become icons | coding (paid Muse fallback) | mobile; mocks-only files allowed |
+| T-0330 | Web kit: SegmentedControl ignores re-clicks; PackEditor glyphs become icons | coding (paid Muse fallback) | bug from the T-0326 pre-review |
 | (doctor) | | | audit running (paid Muse fallback) |
 
 Time correction (checked with `date`): it is 04:42 local, Tue 10-06. The "~04:xx–05:50 local" stamps below were estimated and run up to about an hour ahead; their order is right.
+
+05:09 local: merged T-0325, T-0326, T-0327 and T-0328, all with clean pre-reviews. Their effect:
+- the Stickers page uses the kit;
+- no raw radios are left on web;
+- the ↑ ↓ ★ ✕ glyphs on the Stickers page, the sticker panel, Telegram import and Connections are now icons.
+
+Bug found in the T-0326 pre-review: SegmentedControl fires `onChange` on a click of the active option, so the handle check resets → T-0330. Polish note from T-0327: a disabled kit Button hides its hover title (Share on an imported pack). Launched T-0329 (mobile ✓ glyphs, kit Checkbox) and T-0330.
 
 05:01 local: lead browser check on main, mock, wide; all four PASS:
 - the chat list and topic unread Badges render;
