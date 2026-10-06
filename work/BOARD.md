@@ -15,6 +15,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0401](T-0401-web-kit-menu-radio-item.md) | Web kit: MenuRadioItem; TaskStrip menus use it | running | auto | — | |
 | [T-0402](T-0402-web-small-leftovers-kit.md) | Web kit: four small leftovers | running | auto | — | |
 | [T-0403](T-0403-web-secret-input-label-safe.md) | Web kit: SecretInput toggle stays on the input with a label | running | auto | — | |
+| [T-0404](T-0404-mobile-switch-on-colors.md) | Mobile kit: Switch ON keeps a light thumb (QA run 32) | planned | auto | — | next mobile slot |
 
 ## Follow-ups
 

@@ -61,7 +61,11 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 | T-0402 | Web kit: four small leftovers | coding (DeepSeek flash) | |
 | T-0403 | Web kit: SecretInput toggle with a label | coding (DeepSeek flash) | |
 
-Launched 10:38 UTC (off-peak, DeepSeek flash). Merged 10:35-10:38 UTC: T-0391 to T-0397 (mobile guard, SegmentedControl, panel states, Switch; web loading lines, list errors, Connections icons). QA run 32 (T-0392, T-0393, T-0397) running.
+Launched 10:38 UTC (off-peak, DeepSeek flash). Merged 10:35-10:38 UTC: T-0391 to T-0397 (mobile guard, SegmentedControl, panel states, Switch; web loading lines, list errors, Connections icons). QA run 32 (main b4763d36, mock, qa32/):
+- **PASS:** the Stickers tabs and the catalog segmented control.
+- **ISSUE:** an ON Switch has a dark thumb that overhangs the light track and vanishes into the card (lead saw 23z.png) → T-0404, which launches in the next mobile slot.
+- **Inconclusive:** the T-0393 panels. Their states could not be forced. The sticker panel showed an empty grid and its pack tabs did not switch. T-0393 did not touch the tabs, so this is likely mock data; check it later.
+- No crash. Marker b45684f1.
 
 Merged 10:15-10:35 UTC: T-0384, T-0386 (mobile StateMessage), T-0387, T-0388 (Captions icon instead of "Aa"), T-0389 (web SecretInput), T-0390. QA run 31 (main e298c4d6): T-0383, T-0386 catalog, T-0387 PASS; T-0384 Blocked PASS, Explore Show more not reachable in mock (3 rows), panel Retry not forceable. Marker restored to b45684f1.
 
