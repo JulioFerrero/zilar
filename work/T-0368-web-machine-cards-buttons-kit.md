@@ -1,7 +1,7 @@
 ---
 id: T-0368
 title: "Web kit: the machine cards' Rename, Revoke, Delete, Deny and confirm buttons use the kit Button"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0368-web-machine-cards-buttons-kit
 model: auto
@@ -64,5 +64,15 @@ pnpm gate
 ---
 
 ## Report (written by the worker when done)
+Migrated all ten hand-rolled `<button>`s in the three machine cards to the kit `<Button type="button" …>` per the spec table; kept all icons (`size-4`, `aria-hidden`), texts, `aria-label`s, `title`, `disabled` props and handlers. Added `Button` imports to `ApprovedMachineCard.tsx` and `RevokedMachineCard.tsx` (`PendingMachineCard.tsx` already had it). No test files changed.
+Files changed: `apps/web/src/components/machines/ApprovedMachineCard.tsx`, `apps/web/src/components/machines/RevokedMachineCard.tsx`, `apps/web/src/components/machines/PendingMachineCard.tsx`, plus this task file.
+Commands:
+- `pnpm install`: pass (12.5s).
+- `grep -n "<button" <three card files>`: no matches (exit 1 = none found), confirms acceptance criterion.
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot RevokedMachineCard MachinesPage`: 2 files, 18 tests passed.
+- `pnpm gate`: GATE PASS — PASS install (3.0s), PASS format (56.4s), PASS lint (2.0s), PASS typecheck (1.1s), PASS tests @zilar/web (75.4s); "scope: every changed file is inside the Allowed files"; 4 changed files against main.
+No deviations, no open questions. Security checklist: n/a (presentational button swap only, no routes, data, secrets, or permissions touched).
 
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-06). All ten machine card buttons are kit `Button`: confirm pairs destructive/ghost `sm`, the danger text buttons ghost with `text-danger`, Rename ghost `icon-sm`. Labels, titles, disabled and handlers kept. Pre-review clean (0 findings).

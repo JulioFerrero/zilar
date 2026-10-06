@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Pencil, PowerOff } from 'lucide-react';
 import type { Machine } from '@/lib/api';
 import { FieldError } from '@/components/ais/AiPageShell';
+import { Button } from '@/components/ui/button';
 import { TextInput } from '@/components/ui/text-input';
 import { cn } from '@/lib/utils';
 import { hardwareLine } from './PendingMachineCard';
@@ -108,16 +109,18 @@ export function ApprovedMachineCard({
           ) : (
             <div className="flex items-center gap-2">
               <span className="truncate text-[16px] font-semibold">{machine.name}</span>
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="icon-sm"
                 aria-label={`Rename ${machine.name}`}
                 title={`Rename ${machine.name}`}
                 disabled={renaming || revoking}
                 onClick={startEdit}
-                className="rounded-full p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+                className="text-muted-foreground"
               >
                 <Pencil className="size-4" aria-hidden="true" />
-              </button>
+              </Button>
             </div>
           )}
         </div>
@@ -182,38 +185,41 @@ export function ApprovedMachineCard({
           </p>
           {actionError !== '' && <FieldError>{actionError}</FieldError>}
           <div className="flex items-center gap-2">
-            <button
+            <Button
               type="button"
+              variant="destructive"
+              size="sm"
               onClick={onConfirmRevoke}
               disabled={renaming}
-              className="rounded-full bg-danger px-3 py-1.5 text-[14px] font-medium text-white hover:bg-danger/90 disabled:opacity-50"
             >
               Revoke
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              variant="ghost"
+              size="sm"
               onClick={onCancelRevoke}
               disabled={renaming}
-              className="rounded-full px-3 py-1.5 text-[14px] text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
             >
               Cancel
-            </button>
+            </Button>
           </div>
         </div>
       )}
 
       {!confirmingRevoke && (
         <div className="flex items-center gap-2">
-          <button
+          <Button
             type="button"
+            variant="ghost"
             aria-label={`Revoke ${machine.name}`}
             disabled={renaming || revoking || confirmingRevoke}
             onClick={onAskRevoke}
-            className="flex items-center gap-1 rounded-full px-3 py-1.5 text-[14px] text-danger hover:bg-danger/10 disabled:opacity-60"
+            className="text-danger hover:bg-danger/10 hover:text-danger"
           >
             <PowerOff className="size-4" aria-hidden="true" />
             Revoke
-          </button>
+          </Button>
           {actionError !== '' && <FieldError>{actionError}</FieldError>}
         </div>
       )}

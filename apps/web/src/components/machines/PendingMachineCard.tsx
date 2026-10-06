@@ -82,22 +82,24 @@ export function PendingMachineCard({
           </p>
           {actionError !== '' && <FieldError>{actionError}</FieldError>}
           <div className="flex items-center gap-2">
-            <button
+            <Button
               type="button"
+              variant="destructive"
+              size="sm"
               onClick={onConfirmDeny}
               disabled={denying}
-              className="rounded-full bg-danger px-3 py-1.5 text-[14px] font-medium text-white hover:bg-danger/90 disabled:opacity-50"
             >
               Deny
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              variant="ghost"
+              size="sm"
               onClick={onCancelDeny}
               disabled={denying}
-              className="rounded-full px-3 py-1.5 text-[14px] text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
             >
               Cancel
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -113,16 +115,17 @@ export function PendingMachineCard({
             <Check className="size-4" aria-hidden="true" />
             {approving ? 'Approving…' : 'Approve'}
           </Button>
-          <button
+          <Button
             type="button"
+            variant="ghost"
             aria-label={`Deny ${machine.name}`}
             disabled={approving || denying}
             onClick={onAskDeny}
-            className="flex items-center gap-1 rounded-full px-3 py-1.5 text-[14px] text-danger hover:bg-danger/10 disabled:opacity-60"
+            className="text-danger hover:bg-danger/10 hover:text-danger"
           >
             <X className="size-4" aria-hidden="true" />
             Deny
-          </button>
+          </Button>
         </div>
       )}
 
