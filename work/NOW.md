@@ -25,10 +25,11 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
 | T-0332 | Mobile: New topic sheet on BottomSheet (long Private form scrolls) | coding (paid Muse fallback) | from QA run 20 |
-| T-0333 | Web kit: sticker panel Stickers/GIFs/Emoji tabs on SegmentedControl | coding | adds arrow keys |
 | (doctor) | | | audit running (paid Muse fallback) |
 
 Time correction (checked with `date`): it is 04:42 local, Tue 10-06. The "~04:xx–05:50 local" stamps below were estimated and run up to about an hour ahead; their order is right.
+
+05:26 local: merged T-0333 (sticker panel tabs on SegmentedControl, with arrow keys; 0 nits).
 
 05:21 local:
 - **T-0331 merged.** On an imported pack, the disabled Share button shows its reason again: a hover title on a wrapper span, plus `aria-describedby`. 2 form nits accepted.
