@@ -414,3 +414,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0381](T-0381-web-auth-setup-text-buttons-kit.md) | Web kit: Setup, handle, Add machine, profile and sign-in text buttons on Button | 2026-10-06 |
 | [T-0382](T-0382-web-picker-rows-outline-kit.md) | Web kit: panel picker rows on outline Button | 2026-10-06 |
 | [T-0385](T-0385-web-hover-action-buttons-kit.md) | Web kit: hover Chat/Message actions and attachment Remove on Button | 2026-10-06 |
+| [T-0386](T-0386-mobile-kit-state-message.md) | Mobile kit: StateMessage component, catalog and kit test | in-progress | auto | | |
+| [T-0387](T-0387-mobile-profile-card-confirm-block-kit.md) | Mobile kit: profile card Confirm block on destructive Button | in-progress | auto | | |
+| [T-0388](T-0388-web-voice-file-key-icons-kit.md) | Web kit: transcript toggle as Captions IconButton; file Retry IconButton; transcript states on kit | in-progress | auto | | |
