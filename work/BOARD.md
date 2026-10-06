@@ -11,6 +11,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0410](T-0410-server-media-index.md) | Media gallery 1a (server): index tables + indexer | running | auto | — | the only schema task |
 | [T-0414](T-0414-web-forward-store-action.md) | Forwarding step 3 (web store): forwardMessages action | running | auto | T-0409 | |
+| [T-0421](T-0421-mobile-revoked-chevron.md) | Mobile: Revoked machines disclosure chevron (QA run 34) | running | auto | — | |
 | [T-0420](T-0420-mobile-empty-lines-kit.md) | Mobile: AI sections, Connections, Folders, Explore empty lines on StateMessage | running | auto | — | |
 
 ## Follow-ups
