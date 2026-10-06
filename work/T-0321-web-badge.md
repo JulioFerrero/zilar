@@ -1,7 +1,7 @@
 ---
 id: T-0321
 title: "Web kit migration: unread count pills use the kit Badge"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0321-web-badge
 model: auto
@@ -71,4 +71,28 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- `Badge` (`ui/badge.tsx`): added optional `label?: string` (rendered as `aria-label` on the span) and `className?: string` (merged last with `cn`).
+- Replaced hand-rolled pills with `<Badge>` in `ChatListItem.tsx` (spec line, `ml-auto shrink-0`), `TopicRow.tsx` (row pill + the two group pills, keeping `unread > 0` / `unread === 0 && mutedUnread > 0` conditions and labels), and `MessageList.tsx` (`absolute -top-1 -right-1 px-1`).
+- Added Badge imports to the three call sites. No `cn` import became unused (`ChatListItem` and `TopicRow` still use `cn` elsewhere; `MessageList` never imported it), so step 5 required no removals.
+- Added two tests in `kit.test.tsx`: label applied as `aria-label`, caller `className` merged with base pill classes.
+- Intended behaviour change: counts above 99 now show `99+` in these four places (previously raw numbers).
+
+### Files changed
+`apps/web/src/components/ui/badge.tsx`, `apps/web/src/components/ui/kit.test.tsx`, `apps/web/src/components/ChatListItem.tsx`, `apps/web/src/components/TopicRow.tsx`, `apps/web/src/components/MessageList.tsx`, `work/T-0321-web-badge.md`.
+
+### Commands and results
+- `pnpm install`: pass (Done in 14.7s).
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot kit ChatList TopicsSidebar ChatPrefs MessageList`: 8 files, 138 tests, all passed.
+- `pnpm gate`: GATE PASS — install/lint/format/typecheck/tests all PASS, 5 changed files, scope check "every changed file is inside the Allowed files". Existing unread tests (ChatList, TopicsSidebar, ChatPrefs) passed unchanged.
+- Acceptance grep: no `h-5 min-w-5` count pill remains in the three files (remaining `rounded-full` hits are typing dots, icon buttons, and a jump button).
+
+### Security checklist
+N/A for this task (no routes, auth, secrets, deletes, caps, or audit entries touched). `aria-label` strings are counts/titles already rendered in the UI.
+
+### Blocked / needs a decision
+None.
+
 ## Review (written by Claude)
+
+**Approved** (pre-review clean, 0 nits). The unread pills in ChatListItem, TopicRow (topic row and group header) and the scroll-to-bottom count in MessageList render through the kit `Badge`, which gains `label` (aria-label) and `className` (merged last, so `px-1` wins). Counts over 99 now show `99+`. The existing unread tests pass unchanged.

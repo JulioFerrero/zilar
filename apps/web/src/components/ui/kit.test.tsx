@@ -34,6 +34,19 @@ describe('Badge', () => {
     render(<Badge count={37} />);
     expect(screen.getByText('37')).toBeTruthy();
   });
+
+  it('applies the label as aria-label', () => {
+    render(<Badge count={2} label="2 unread" />);
+    expect(screen.getByLabelText('2 unread').textContent).toBe('2');
+  });
+
+  it('merges a caller className', () => {
+    render(<Badge count={2} className="ml-auto shrink-0" />);
+    const badge = screen.getByText('2');
+    expect(badge.className).toContain('ml-auto');
+    expect(badge.className).toContain('shrink-0');
+    expect(badge.className).toContain('rounded-full');
+  });
 });
 
 describe('Switch', () => {

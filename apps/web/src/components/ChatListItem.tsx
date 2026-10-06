@@ -13,6 +13,7 @@ import { AiBadge } from './AiBadge';
 import { Avatar } from './Avatar';
 import { ChatActionsMenu } from './ChatActionsMenu';
 import { MessageTicks } from './MessageTicks';
+import { Badge } from './ui/badge';
 import { useChatStore } from '@/store/ChatStoreProvider';
 import { useBlockedJids } from '@/lib/blockedJids';
 import { typingLabel } from '@/lib/format';
@@ -133,15 +134,12 @@ export function ChatListItem({
               </span>
             )}
             {chat.unread > 0 ? (
-              <span
-                className={cn(
-                  'ml-auto flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold',
-                  chat.muted ? 'bg-badge-muted text-foreground' : 'key-primary',
-                )}
-                aria-label={`${chat.unread} unread`}
-              >
-                {chat.unread}
-              </span>
+              <Badge
+                count={chat.unread}
+                muted={chat.muted}
+                label={`${chat.unread} unread`}
+                className="ml-auto shrink-0"
+              />
             ) : (
               own &&
               last !== undefined && (

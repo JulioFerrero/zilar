@@ -12,6 +12,7 @@ import { MessageListSkeleton } from './Skeleton';
 import { UnreadDivider } from './UnreadDivider';
 import { Button } from './ui/button';
 import { IconButton } from './ui/icon-button';
+import { Badge } from './ui/badge';
 import { isBlockedSender, useBlockedJids } from '@/lib/blockedJids';
 import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
 
@@ -268,11 +269,7 @@ export function MessageList({
           className="absolute right-4 bottom-4"
         >
           <ArrowDown className="size-5" aria-hidden="true" />
-          {pending > 0 && (
-            <span className="key-primary absolute -top-1 -right-1 flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[11px] font-semibold">
-              {pending}
-            </span>
-          )}
+          {pending > 0 && <Badge count={pending} className="absolute -top-1 -right-1 px-1" />}
         </IconButton>
       )}
     </div>

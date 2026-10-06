@@ -13,6 +13,7 @@ import { previewMessage } from '@/lib/preview-message';
 import { useChatStore } from '@/store/ChatStoreProvider';
 import { MessageTicks } from './MessageTicks';
 import { AiBadge } from './AiBadge';
+import { Badge } from './ui/badge';
 
 function rowPreview(
   chat: ChatSummary,
@@ -127,15 +128,12 @@ export function TopicRow({
               </span>
             )}
             {chat.unread > 0 ? (
-              <span
-                className={cn(
-                  'ml-auto flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold',
-                  chat.muted ? 'bg-badge-muted text-foreground' : 'key-primary',
-                )}
-                aria-label={`${chat.unread} unread`}
-              >
-                {chat.unread}
-              </span>
+              <Badge
+                count={chat.unread}
+                muted={chat.muted}
+                label={`${chat.unread} unread`}
+                className="ml-auto shrink-0"
+              />
             ) : (
               own &&
               last !== undefined && (
@@ -251,20 +249,19 @@ export function GroupHeaderRow({
                 {active.length} {active.length === 1 ? 'topic' : 'topics'}
               </span>
               {unread > 0 && (
-                <span
-                  className="key-primary ml-auto flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold"
-                  aria-label={`${unread} unread in ${groupTitle}`}
-                >
-                  {unread}
-                </span>
+                <Badge
+                  count={unread}
+                  label={`${unread} unread in ${groupTitle}`}
+                  className="ml-auto shrink-0"
+                />
               )}
               {unread === 0 && mutedUnread > 0 && (
-                <span
-                  className="ml-auto flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-badge-muted px-1.5 text-[11px] font-semibold text-foreground"
-                  aria-label={`${mutedUnread} unread in ${groupTitle}`}
-                >
-                  {mutedUnread}
-                </span>
+                <Badge
+                  count={mutedUnread}
+                  muted
+                  label={`${mutedUnread} unread in ${groupTitle}`}
+                  className="ml-auto shrink-0"
+                />
               )}
             </span>
           </span>
