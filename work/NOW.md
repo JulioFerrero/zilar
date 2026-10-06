@@ -55,9 +55,15 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
 | T-0354 | Mobile kit: join-link card and Invite a friend sheet buttons on Button | coding (paid Muse fallback) | T-0353 merged |
-| T-0355 | Mobile kit: invite links sheet buttons on Button | coding (free Muse) | QA run 27 (T-0348 to T-0353) running |
+| T-0356 | Mobile fix: Profile settings buttons show their labels again | coding | QA run 27 bug from T-0349 |
 
 Time correction (checked with `date`): it is 04:42 local, Tue 10-06. The "~04:xx–05:50 local" stamps below were estimated and run up to about an hour ahead; their order is right.
+
+08:35 local: merged T-0353 and T-0355. QA run 27 (qa27/; the lead saw 11.png):
+- **ISSUE:** the Settings → Profile buttons are blank pills. T-0349 passed the labels as bare strings with no `<Text>` around them; the lead scan finds them in those 3 files only → T-0356, launched.
+- **PASS:** Integrations, Requests, Telegram import, New group, Explore and the @handle screen.
+
+Julio is awake (08:2x) and asked to finish the running tasks and then get the night report. No new work after T-0354 and T-0356.
 
 07:52 local: QA run 26 PASS (qa26/; the lead saw 14.png). The kit Buttons on Machines, Connections, Stickers and the New pack editor are consistent and work. Edit on owned packs cannot be reached in mock. No crash. Phone marker b45684f1 (lead checked).
 
