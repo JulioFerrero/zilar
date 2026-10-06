@@ -9,6 +9,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
+| [T-0295](T-0295-web-kit-text-input-5.md) | Web kit migration 17: sticker pack, machine rename, model picker fields on TextInput | in_progress | auto | T-0293 | |
 
 ## Follow-ups
 
