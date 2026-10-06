@@ -1,7 +1,7 @@
 ---
 id: T-0404
 title: "Mobile kit: Switch ON state keeps a light thumb so it does not vanish into the dark card"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0404-mobile-switch-on-colors
 model: auto
@@ -62,4 +62,23 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- `switch.tsx`: thumb is now `ACCENT[scheme]` in both states; track is `{ false: BORDER_STRONG, true: MUTED_FOREGROUND[scheme] }`; `ios_backgroundColor` kept. Dropped the now-unused `ACCENT_FOREGROUND` import and updated the doc comment to describe the grey track + light thumb.
+- `switch.test.tsx`: the `react-native` mock now records the props passed to the native switch (an object like `trackColor` does not survive HTML serialisation, so the existing `renderToStaticMarkup` HTML assertions cannot see it). Added one test that renders off and on and checks the thumb is `ACCENT.dark` for both values and the track is `{ false: BORDER_STRONG, true: MUTED_FOREGROUND.dark }` (the suite mocks the scheme as dark). The existing render style (`createElement` + `renderToStaticMarkup`) and the other tests are unchanged.
+
+### Files changed
+- `apps/mobile/src/components/ui/switch.tsx`
+- `apps/mobile/src/components/ui/switch.test.tsx`
+- `work/T-0404-mobile-switch-on-colors.md` (this report + status)
+
+### Commands and real results
+- `pnpm install` -> done, exit 0.
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot switch` -> 4 passed (1 file).
+- `pnpm gate` (final run, after this report was written) -> `gate: 3 changed file(s) against main`; `PASS install (frozen)`, `PASS format`, `PASS lint`, `PASS typecheck`, `PASS tests @zilar/mobile`; `scope: every changed file is inside the Allowed files`; `GATE PASS`.
+
+### Problems / deviations
+- None. The spec's colour requirements are met; no dependencies added; no files outside Allowed files touched.
+
 ## Review (written by Claude)
+
+**2026-10-06, lead:** approved. The thumb is `ACCENT` in both states, and the track is `BORDER_STRONG` when off and `MUTED_FOREGROUND` when on. The test reads the real props. One nit is accepted without a round: the prop accumulator is not cleared between tests, but `.at(-1)` makes that safe today. It will be checked on the emulator in the next QA run.

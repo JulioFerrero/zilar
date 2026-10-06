@@ -3,11 +3,22 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 
 import { Switch } from './switch';
+import { ACCENT, MUTED_FOREGROUND } from '@/lib/colors';
+import { BORDER_STRONG } from '@/lib/depth';
+
+// Captures the props handed to the native switch so the colour test can read
+// them; objects like `trackColor` do not survive HTML serialisation.
+const { switchProps } = vi.hoisted(() => ({
+  switchProps: [] as Array<Record<string, unknown>>,
+}));
 
 // The kit is hook- and native-free enough to render with `react-native`
 // stubbed (same pattern as `kit.test.tsx`): Node only, no simulator.
 vi.mock('react-native', () => ({
-  Switch: 'Switch',
+  Switch: (props: Record<string, unknown>) => {
+    switchProps.push(props);
+    return createElement('Switch', props);
+  },
   View: 'View',
 }));
 
@@ -52,5 +63,21 @@ describe('Switch', () => {
       createElement(Switch, { label: 'Muted chats', value: false, onValueChange: noop }),
     );
     expect(off).toContain('value="false"');
+  });
+
+  it('keeps a light thumb and a grey track that brightens when on', () => {
+    const expectedTrack = { false: BORDER_STRONG, true: MUTED_FOREGROUND.dark };
+
+    renderToStaticMarkup(
+      createElement(Switch, { label: 'Muted chats', value: false, onValueChange: noop }),
+    );
+    expect(switchProps.at(-1)?.thumbColor).toBe(ACCENT.dark);
+    expect(switchProps.at(-1)?.trackColor).toEqual(expectedTrack);
+
+    renderToStaticMarkup(
+      createElement(Switch, { label: 'Muted chats', value: true, onValueChange: noop }),
+    );
+    expect(switchProps.at(-1)?.thumbColor).toBe(ACCENT.dark);
+    expect(switchProps.at(-1)?.trackColor).toEqual(expectedTrack);
   });
 });

@@ -3,7 +3,7 @@ import { Switch as NativeSwitch, View } from 'react-native';
 
 import { Text } from '@/components/ui/text';
 import { asColorScheme } from '@/lib/color-scheme';
-import { ACCENT, ACCENT_FOREGROUND } from '@/lib/colors';
+import { ACCENT, MUTED_FOREGROUND } from '@/lib/colors';
 import { BORDER_STRONG } from '@/lib/depth';
 
 export interface SwitchProps {
@@ -16,9 +16,9 @@ export interface SwitchProps {
 }
 
 /**
- * The mobile kit switch: a labelled row with the React Native switch drawn in
- * the accent colour of the scheme. The label names the control for screen
- * readers even when it is hidden.
+ * The mobile kit switch: a labelled row with the React Native switch drawn with
+ * a grey track and a light thumb, so the thumb stands out from the dark card in
+ * both states. The label names the control for screen readers even when hidden.
  */
 export function Switch({ label, value, onValueChange, disabled, hideLabel = false }: SwitchProps) {
   const scheme = asColorScheme(useColorScheme().colorScheme);
@@ -32,9 +32,9 @@ export function Switch({ label, value, onValueChange, disabled, hideLabel = fals
         value={value}
         disabled={disabled}
         onValueChange={onValueChange}
-        trackColor={{ false: BORDER_STRONG, true: ACCENT[scheme] }}
+        trackColor={{ false: BORDER_STRONG, true: MUTED_FOREGROUND[scheme] }}
         ios_backgroundColor={BORDER_STRONG}
-        thumbColor={value ? ACCENT_FOREGROUND[scheme] : undefined}
+        thumbColor={ACCENT[scheme]}
       />
     </View>
   );
