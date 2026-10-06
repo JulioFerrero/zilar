@@ -1,7 +1,7 @@
 ---
 id: T-0351
 title: "Mobile kit migration: the Continue and Skip buttons in sign-in, name and username onboarding use the kit Button"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0351-mobile-auth-buttons-kit
 model: auto
@@ -71,4 +71,42 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**Status:** done, ready for review.
+
+**What I did**
+Replaced the five hand-rolled accent-pill `Pressable`s with the kit `Button` (`apps/mobile/src/components/ui/button.tsx`), following the spec table:
+- `apps/mobile/src/auth/AuthFlow.tsx`: email-step "Continue" → `variant="default" size="lg" className="mt-1"`; code-step "Continue" → `variant="default" size="default"`. Left "Resend code" and "Use a different email" `Pressable`s alone, so `Pressable` stays in the import.
+- `apps/mobile/src/auth/NameForm.tsx`: "Continue" → `variant="default" size="lg" className="mt-4"`. No `Pressable` remains, dropped it from the import.
+- `apps/mobile/src/app/welcome/handle.tsx`: "Continue" → `variant="default" size="lg" className="mt-4"`; "Skip for now" → `variant="ghost" size="default" className="mt-2"`. No `Pressable` remains, dropped it from the import.
+- Kept every `accessibilityLabel`, `disabled`, `onPress`, and the visible text. Dropped the old pill classes and the child `Text` colour/size classes (kit `TextClassContext` sets them). Dropped `accessibilityRole="button"` since the kit `Button` sets `role="button"` (T-0348 pattern).
+- `apps/mobile/src/auth/AuthFlow.test.tsx` — mocks only: added `Platform.select` to the `react-native` mock, a `react-native-reanimated` `useReducedMotion` mock, `TextClassContext` on the `@/components/ui/text` mock, and an `@/components/ui/use-key-press` mock (stops its extra `useState` shifting the forced `useState` order, the T-0348 finding).
+
+**Files changed**
+- `apps/mobile/src/auth/AuthFlow.tsx` — two `Pressable`s now kit `Button`s; `Button` imported.
+- `apps/mobile/src/auth/NameForm.tsx` — one `Pressable` now kit `Button`; `Button` imported, unused `Pressable` import removed.
+- `apps/mobile/src/app/welcome/handle.tsx` — two `Pressable`s now kit `Button`s; `Button` imported, unused `Pressable` import removed.
+- `apps/mobile/src/auth/AuthFlow.test.tsx` — mocks only (see above).
+- `work/T-0351-mobile-auth-buttons-kit.md` — status and this Report.
+
+**Commands run and results**
+- `pnpm install` (worktree) — succeeded (`Done in 10.5s`).
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot AuthFlow` — `Test Files 1 passed (1)`, `Tests 3 passed (3)` (only the usual string-mock casing warnings on stderr).
+- `pnpm gate` (repo root) — final output:
+  ```
+  gate: 5 changed file(s) against main
+  PASS  install (frozen)  (1.2s)
+  PASS  format  (15.0s)
+  PASS  lint  (1.0s)
+  PASS  typecheck  (8.2s)
+  PASS  tests @zilar/mobile  (2.2s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+**Deviations from the spec:** none.
+
+**Blocked / needs a decision:** none.
+
 ## Review (written by Claude)
+
+**Approved** (pre-review clean, 0 nits). The five buttons are kit `Button`s with the variant, size and layout class from the table: the full-width Continue buttons are `default` `lg`, the code-step Continue is `default` `default`, and Skip is `ghost`. The lead grep found the labels and `disabled` kept. `AuthFlow.test.tsx` changed mocks only. The worker started on the free Muse and fell back to the paid Muse.

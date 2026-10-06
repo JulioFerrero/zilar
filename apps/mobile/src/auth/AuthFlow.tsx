@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import { asColorScheme } from '@/lib/color-scheme';
@@ -138,15 +139,16 @@ export function AuthFlow({
                   {error}
                 </Text>
               )}
-              <Pressable
-                accessibilityRole="button"
+              <Button
                 accessibilityLabel="Continue"
                 disabled={busy}
                 onPress={submitEmail}
-                className="mt-1 items-center rounded-full bg-accent px-4 py-3 active:bg-accent/90"
+                variant="default"
+                size="lg"
+                className="mt-1"
               >
-                <Text className="text-[15px] font-medium text-accent-foreground">Continue</Text>
-              </Pressable>
+                <Text>Continue</Text>
+              </Button>
             </View>
           ) : (
             <View className="mt-6 items-center gap-4">
@@ -172,15 +174,15 @@ export function AuthFlow({
                 </Text>
               )}
               <View className="flex-row items-center gap-3">
-                <Pressable
-                  accessibilityRole="button"
+                <Button
                   accessibilityLabel="Continue"
                   disabled={busy}
                   onPress={() => void verify(code)}
-                  className="rounded-full bg-accent px-5 py-2.5 active:bg-accent/90"
+                  variant="default"
+                  size="default"
                 >
-                  <Text className="text-[15px] font-medium text-accent-foreground">Continue</Text>
-                </Pressable>
+                  <Text>Continue</Text>
+                </Button>
                 {secondsLeft > 0 ? (
                   <Text className="text-[14px] text-muted-foreground">
                     Resend in {secondsLeft}s

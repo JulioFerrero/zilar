@@ -1,13 +1,14 @@
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { useColorScheme } from 'nativewind';
 import { useEffect, useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 
 import { RequireUser } from '@/auth/RequireAuth';
 import { safeTarget } from '@/auth/guard';
 import { useAuthStore } from '@/auth/session';
+import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import { asColorScheme } from '@/lib/color-scheme';
@@ -169,24 +170,26 @@ function HandleStep() {
               {error}
             </Text>
           ) : null}
-          <Pressable
-            accessibilityRole="button"
+          <Button
             accessibilityLabel="Continue"
             disabled={busy}
             onPress={submit}
-            className="mt-4 items-center rounded-full bg-accent px-4 py-3 active:bg-accent/90 disabled:opacity-60"
+            variant="default"
+            size="lg"
+            className="mt-4"
           >
-            <Text className="text-[15px] font-medium text-accent-foreground">Continue</Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
+            <Text>Continue</Text>
+          </Button>
+          <Button
             accessibilityLabel="Skip for now"
             disabled={busy}
             onPress={skip}
-            className="mt-2 items-center rounded-full px-4 py-2 active:opacity-70 disabled:opacity-60"
+            variant="ghost"
+            size="default"
+            className="mt-2"
           >
-            <Text className="text-[15px] text-muted-foreground">Skip for now</Text>
-          </Pressable>
+            <Text>Skip for now</Text>
+          </Button>
         </View>
       </SafeAreaView>
     </View>
