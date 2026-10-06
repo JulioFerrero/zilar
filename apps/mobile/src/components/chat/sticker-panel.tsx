@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Image, Modal, Pressable, ScrollView, View } from 'react-native';
+import { Image, Modal, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Button } from '@/components/ui/button';
+import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { API_URL } from '@/lib/auth';
 import { getSessionToken } from '@/lib/session-token';
@@ -156,16 +156,19 @@ export function StickerGrid({
       </View>
       {state === 'loading' ? (
         <View className="h-[180px] items-center justify-center">
-          <ActivityIndicator accessibilityLabel="Loading stickers" />
+          <StateMessage kind="loading" title="Loading stickers" />
         </View>
       ) : state === 'error' ? (
         <View className="h-[180px] items-center justify-center gap-2 px-4">
-          <Text className="text-center text-[13px] text-muted-foreground">
-            Couldn&apos;t load stickers.
-          </Text>
-          <Button variant="ghost" accessibilityLabel="Retry loading stickers" onPress={onRetry}>
-            <Text>Retry</Text>
-          </Button>
+          <StateMessage
+            kind="error"
+            title="Couldn't load stickers."
+            action={{
+              label: 'Retry',
+              accessibilityLabel: 'Retry loading stickers',
+              onPress: onRetry,
+            }}
+          />
         </View>
       ) : rows.length === 0 && recentChoices.length === 0 ? (
         <View className="h-[180px] items-center justify-center px-4">

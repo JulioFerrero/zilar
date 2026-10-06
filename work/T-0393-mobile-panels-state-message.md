@@ -1,7 +1,7 @@
 ---
 id: T-0393
 title: "Mobile kit: the sticker and GIF panels' loading and error states use StateMessage; StateMessage's action takes an accessibilityLabel"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0393-mobile-panels-state-message
 model: auto
@@ -67,4 +67,43 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- `state-message.tsx`: widened `action` to `{ label: string; onPress: () => void; accessibilityLabel?: string }` and passed `accessibilityLabel` to the action `Button`.
+- `kit.test.tsx`: added a `StateMessage` case asserting `accessibilityLabel="Retry loading chats"` reaches the `Button`. No existing assertion changed.
+- `sticker-panel.tsx`: loading/error states now render `StateMessage` inside the same `h-[180px]` wrappers; error uses `title="Couldn't load stickers."` with the retry action `{ label: 'Retry', accessibilityLabel: 'Retry loading stickers', onPress: onRetry }`. Removed the now-unused `ActivityIndicator` and `Button` imports.
+- `gif-panel.tsx`: loading/error states now render `StateMessage`; error uses `title={error}` with the retry action `{ label: 'Retry', accessibilityLabel: 'Retry loading GIFs', onPress: … }`, keeping the `rateLimited` attribution line after it. Removed the now-unused `ActivityIndicator` and `Button` imports.
+- Test mocks added only where the new `StateMessage` dependency required them: `sticker-panel.test.tsx` and `stickers-storage.test.ts` gained `nativewind` (`useColorScheme`) and `lucide-react-native` (`CircleAlert`, `Inbox`) mocks; `gif-panel.test.tsx`, `emoji-sheet.test.tsx` and `composer-gifs.test.tsx` gained `CircleAlert`/`Inbox` in their existing lucide mocks. No assertion changed.
+
+### Files changed
+All ten under Allowed files (gate reports "every changed file is inside the Allowed files"):
+`apps/mobile/src/components/ui/state-message.tsx`, `apps/mobile/src/components/ui/kit.test.tsx`,
+`apps/mobile/src/components/chat/sticker-panel.tsx`, `apps/mobile/src/components/chat/gif-panel.tsx`,
+`apps/mobile/src/components/chat/sticker-panel.test.tsx`, `apps/mobile/src/components/chat/gif-panel.test.tsx`,
+`apps/mobile/src/components/chat/emoji-sheet.test.tsx`, `apps/mobile/src/components/chat/composer-gifs.test.tsx`,
+`apps/mobile/src/lib/stickers-storage.test.ts`, `work/T-0393-mobile-panels-state-message.md`.
+
+### Checks (real results)
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot kit sticker-panel gif-panel` → 31 passed (kit passed; sticker-panel/gif-panel first failed on missing mocks, fixed).
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot sticker-panel gif-panel emoji-sheet composer-gifs stickers-storage` → 5 files passed, 42 tests passed.
+- `pnpm gate` (from repo root): exit 0, summary lines:
+  - `gate: 10 changed file(s) against main`
+  - `PASS  install (frozen)  (2.5s)`
+  - `PASS  format  (31.4s)`
+  - `PASS  lint  (1.9s)`
+  - `PASS  typecheck  (15.3s)`
+  - `PASS  tests @zilar/mobile  (5.3s)`
+  - `scope: every changed file is inside the Allowed files`
+  - `GATE PASS`
+
+### Acceptance
+- No `ActivityIndicator` remains in `sticker-panel.tsx` or `gif-panel.tsx` (removed from imports and states).
+- Retry labels kept (`Retry loading stickers`, `Retry loading GIFs`).
+- Tests pass.
+- `pnpm gate` ends with GATE PASS and lists no out-of-scope file.
+
+### Problems / deviations / open questions
+- None. No visible text or label was changed; the only spec-driven additions were test mocks where `StateMessage`'s imports otherwise failed to resolve.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-06). The sticker and GIF panel loading and error states use the mobile StateMessage, with the same titles and retry labels via the new optional `action.accessibilityLabel` (kit-tested). The GIF rate-limit attribution stays. Test changes are mocks only. Pre-review clean (0 findings).

@@ -41,6 +41,8 @@ vi.mock('nativewind', () => ({
 }));
 
 vi.mock('lucide-react-native', () => ({
+  CircleAlert: 'CircleAlert',
+  Inbox: 'Inbox',
   Search: 'Search',
   X: 'X',
 }));

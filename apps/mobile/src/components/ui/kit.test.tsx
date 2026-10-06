@@ -371,6 +371,21 @@ describe('StateMessage', () => {
     expect(html).toContain('<Text>Try again</Text>');
   });
 
+  it('passes the action accessibility label to the Button', () => {
+    const html = renderToStaticMarkup(
+      createElement(StateMessage, {
+        kind: 'error',
+        title: 'Could not load chats.',
+        action: {
+          label: 'Try again',
+          accessibilityLabel: 'Retry loading chats',
+          onPress: noop,
+        },
+      }),
+    );
+    expect(html).toContain('accessibilityLabel="Retry loading chats"');
+  });
+
   it('renders a muted inline row for the inline size', () => {
     const html = renderToStaticMarkup(
       createElement(StateMessage, { kind: 'loading', title: 'Loading more…', size: 'inline' }),

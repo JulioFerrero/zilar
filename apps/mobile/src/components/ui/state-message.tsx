@@ -13,7 +13,7 @@ export interface StateMessageProps {
   title: string;
   hint?: string;
   icon?: LucideIcon;
-  action?: { label: string; onPress: () => void };
+  action?: { label: string; onPress: () => void; accessibilityLabel?: string };
   size?: 'block' | 'inline';
 }
 
@@ -71,7 +71,12 @@ export function StateMessage({
         <Text className="text-center text-[13px] text-muted-foreground">{hint}</Text>
       )}
       {action === undefined ? null : (
-        <Button size="sm" className="mt-1" onPress={action.onPress}>
+        <Button
+          size="sm"
+          className="mt-1"
+          accessibilityLabel={action.accessibilityLabel}
+          onPress={action.onPress}
+        >
           <Text>{action.label}</Text>
         </Button>
       )}

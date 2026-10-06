@@ -41,11 +41,13 @@ vi.mock('nativewind', () => ({
 
 vi.mock('lucide-react-native', () => ({
   ArrowUp: 'ArrowUp',
+  CircleAlert: 'CircleAlert',
   Clock: 'Clock',
   Film: 'Film',
   Hand: 'Hand',
   Hash: 'Hash',
   Heart: 'Heart',
+  Inbox: 'Inbox',
   Lightbulb: 'Lightbulb',
   Mic: 'Mic',
   Paperclip: 'Paperclip',
