@@ -1,4 +1,4 @@
-import type { Attachment, Payload, VoiceMeta } from '@zilar/protocol';
+import type { Attachment, ForwardOrigin, Payload, VoiceMeta } from '@zilar/protocol';
 
 export type ChatKind = 'dm' | 'group' | 'ai';
 
@@ -61,6 +61,8 @@ export interface UiMessage {
   createdAt: Date;
   status: MessageStatus;
   replyTo?: ReplyRef;
+  /** Where the message was forwarded from, when it is a forward (T-0409). */
+  forward?: ForwardOrigin;
   mentions?: UiMention[];
   voice?: VoiceMeta;
   image?: UiImage;

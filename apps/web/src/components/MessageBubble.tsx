@@ -18,6 +18,7 @@ import { ApprovalCard } from './ApprovalCard';
 import { Avatar } from './Avatar';
 import { ConfirmDialog } from './ConfirmDialog';
 import { FileMessage } from './FileMessage';
+import { ForwardedHeader } from './ForwardedHeader';
 import { GifMessage, isGifVideoAttachment } from './GifMessage';
 import { ImageMessage } from './ImageMessage';
 import { LinkText } from './LinkText';
@@ -351,6 +352,11 @@ export function MessageBubble({
                 {senderIsAi && <AiBadge />}
               </div>
             )}
+            {message.forward !== undefined && (
+              <div className="mb-1">
+                <ForwardedHeader origin={message.forward} />
+              </div>
+            )}
             {message.replyTo !== undefined && (
               <div className="mb-1 w-full max-w-[200px]">
                 <ReplyQuote quote={message.replyTo} />
@@ -467,6 +473,12 @@ export function MessageBubble({
               >
                 <span className="truncate">{message.senderName}</span>
                 {senderIsAi && <AiBadge />}
+              </div>
+            )}
+
+            {message.forward !== undefined && (
+              <div className="px-3 pt-2">
+                <ForwardedHeader origin={message.forward} />
               </div>
             )}
 

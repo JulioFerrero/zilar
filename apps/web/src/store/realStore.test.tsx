@@ -3282,6 +3282,40 @@ describe('attachments (T-0065)', () => {
   });
 });
 
+describe('forwarded messages (T-0409)', () => {
+  it('keeps the forward origin on an incoming message', async () => {
+    const { store, xmpp } = await setup();
+
+    xmpp.emit(
+      'message',
+      message({
+        id: 'fwd-in',
+        chatJid: 'ana@zilar.test',
+        body: 'hello there',
+        forward: {
+          sender_id: 'luis@zilar.test',
+          sender_name: 'Luis',
+          chat_id: 'c-viernes@conference.zilar.test',
+          chat_name: 'Friday plans',
+          original_at: '2026-08-30T18:00:00.000Z',
+        },
+      }),
+    );
+
+    const incoming = store
+      .getState()
+      .messages('ana@zilar.test')
+      .find((m) => m.id === 'fwd-in');
+    expect(incoming?.forward).toEqual({
+      sender_id: 'luis@zilar.test',
+      sender_name: 'Luis',
+      chat_id: 'c-viernes@conference.zilar.test',
+      chat_name: 'Friday plans',
+      original_at: '2026-08-30T18:00:00.000Z',
+    });
+  });
+});
+
 describe('stickers (T-0120)', () => {
   const stickerInput = {
     stickerId: '223e4567-e89b-12d3-a456-426614174001',

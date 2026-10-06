@@ -2289,6 +2289,9 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           ...(referenced?.text === undefined ? {} : { text: referenced.text }),
         };
       }
+      if (message.forward !== undefined) {
+        ui.forward = message.forward;
+      }
       const mentions = mentionsFor(message);
       if (mentions.length > 0) {
         ui.mentions = mentions;

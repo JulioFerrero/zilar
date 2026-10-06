@@ -42,6 +42,13 @@ const anaMessages: UiMessage[] = [
     senderName: ana.name,
     text: 'Amazing. Which **entrance**?',
     createdAt: atHour(3, 18, 34),
+    forward: {
+      sender_id: 'luis@zilar.test',
+      sender_name: 'Luis',
+      chat_id: 'c-viernes@conference.zilar.test',
+      chat_name: 'Friday plans',
+      original_at: '2026-08-30T18:00:00.000Z',
+    },
   }),
   message({
     id: 'ana-4',

@@ -1,7 +1,7 @@
 ---
 id: T-0409
 title: "Forwarding step 2 (web): received forwards keep their origin and the bubble shows a 'Forwarded from …' header"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0409-web-forwarded-header
 model: auto
@@ -73,4 +73,28 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- `packages/chat-core/src/types.ts`: added `forward?: ForwardOrigin` to `UiMessage` (imported the type from `@zilar/protocol`) with a one-line doc comment. No chat-core types test exists, so no test was added there.
+- `apps/web/src/store/realStore.ts`: `toUiMessage` now copies `message.forward` onto `ui.forward` when present (guarded, same shape as the other optional fields).
+- `apps/web/src/components/ForwardedHeader.tsx`: new component. Renders a muted italic line (`flex items-center gap-1 text-[12px] italic text-muted-foreground`) with a lucide `Forward` icon (`size-3.5`, `aria-hidden`) and the text `Forwarded from {sender_name}`, or `Forwarded from {sender_name} in {chat_name}` when a public `chat_name` is present. Plain text, no link.
+- `apps/web/src/components/MessageBubble.tsx`: renders `<ForwardedHeader origin={message.forward} />` when `message.forward !== undefined`, with the text-layout wrapper `px-3 pt-2` and the sticker-layout wrapper `mb-1`, directly above the reply-quote position in both layouts.
+- `apps/web/src/mock/messages.ts`: added `forward` to one existing incoming text message (`ana-3`, "Amazing. Which **entrance**?") with `sender_name: 'Luis'` and a public `chat_name: 'Friday plans'`, visible in `?mock=1`.
+- `apps/web/src/components/MessageBubble.forward.test.tsx`: new test using the `MessageList.test.tsx` render setup. Asserts the sender name shows, that `in {chat}` appears only when `chat_name` is set, and that a message without `forward` has no header.
+- `apps/web/src/store/realStore.test.tsx`: added a `forwarded messages (T-0409)` case that emits an incoming `ChatMessage` with `forward` and asserts the resulting `UiMessage.forward` equals it.
+
+### Commands and results
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot MessageBubble.forward realStore.test` → `Test Files 2 passed (2)`, `Tests 130 passed (130)`.
+- `pnpm gate` (repo root) → `gate: 8 changed file(s) against main`; `PASS install (frozen)`, `PASS format`, `PASS lint`, `PASS typecheck`, `PASS tests @zilar/chat-core`, `PASS tests @zilar/web`; `scope: every changed file is inside the Allowed files`; `GATE PASS`.
+
+### Deviations / problems
+- None. No dependencies added.
+
+### Open questions
+- None.
+
 ## Review (written by Claude)
+
+**2026-10-06, lead:** approved. The pre-review had one nit, accepted: the sticker-layout header has no test.
+- `UiMessage.forward` is copied in `toUiMessage`.
+- `ForwardedHeader` is plain text with a Forward icon, rendered above the reply quote in both layouts.
+- The mock has one forward (Luis in Friday plans).
