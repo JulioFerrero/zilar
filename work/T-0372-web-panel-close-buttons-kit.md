@@ -1,7 +1,7 @@
 ---
 id: T-0372
 title: "Web kit: the Group, Channel, Topic and Pins panel close buttons use the kit Button"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0372-web-panel-close-buttons-kit
 model: auto
@@ -66,5 +66,21 @@ pnpm gate
 ---
 
 ## Report (written by the worker when done)
+Replaced the hand-rolled round X close button in all four side panels with the kit `Button` (`variant="ghost" size="icon-lg"`, `className="shrink-0 rounded-full text-muted-foreground"`), keeping each `aria-label`, `onClick={onClose}` and the `X` icon at `size-5`. All four files already imported `Button`; no other buttons touched.
+
+Files changed:
+- `apps/web/src/components/GroupPanel.tsx` (close button ~line 285)
+- `apps/web/src/components/ChannelPanel.tsx` (close button ~line 282)
+- `apps/web/src/components/TopicPanel.tsx` (close button ~line 408)
+- `apps/web/src/components/PinsPanel.tsx` (close button ~line 78)
+
+Commands:
+- `pnpm install`: pass (26.7s).
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot GroupPanel InviteLinksSection Channels ChatView`: 4 files, 40 tests passed.
+- `pnpm gate`: GATE PASS — install, format, lint, typecheck, tests @zilar/web all PASS; scope check: every changed file inside Allowed files (5 changed files: 4 components + task file).
+
+Acceptance: grep confirms no `size-9 shrink-0 items-center justify-center rounded-full` close button remains in the four files (remaining matches are `ConnectionPicker.tsx` span and `AiPanel.tsx`, both out of scope). Security checklist: no secrets, no route/data changes; N/A.
 
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-06). The four panel close buttons are kit `Button` ghost `icon-lg` with `shrink-0 rounded-full text-muted-foreground`; labels, handlers and the size-5 X kept. Hover moves from `bg-list-hover` to the kit `bg-surface-raised`. Pre-review clean (0 findings).

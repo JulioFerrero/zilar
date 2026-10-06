@@ -279,14 +279,16 @@ export function ChannelPanel({ chat, onClose }: { chat: ChatSummary; onClose: ()
             {count} {count === 1 ? 'subscriber' : 'subscribers'}
           </p>
         </div>
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="icon-lg"
           aria-label="Close channel panel"
           onClick={onClose}
-          className="flex size-9 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-list-hover"
+          className="shrink-0 rounded-full text-muted-foreground"
         >
           <X className="size-5" aria-hidden="true" />
-        </button>
+        </Button>
       </header>
 
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
