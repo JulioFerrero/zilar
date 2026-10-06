@@ -421,6 +421,70 @@ describe('decide review', () => {
     expect(actions).toEqual([]);
   });
 
+  it('falls back in place when a fix round hits a quota error on the free model', () => {
+    const actions = decide(
+      base({
+        ...reviewBase,
+        head: 'deadbee',
+        quotaError: true,
+        record: record({
+          model: 'opencode/muse-spark-1.3-contributor-free',
+          prereview: { sessionId: 'ses_pre', head: 'deadbee', startedAt: 'x' },
+        }),
+        prereviewSessionState: 'idle',
+        prereviewFilePresent: true,
+        prereviewVerdict: 'Verdict: needs work',
+        prereviewCounts: { mustFix: 1, shouldFix: 0, nit: 0, followUp: 0 },
+      }),
+    );
+    expect(actions).toContainEqual({
+      kind: 'fallback-model',
+      session: 'worker',
+      model: 'meta/muse-spark-1.3-contributor',
+    });
+    expect(escalations(actions)).toEqual([
+      'LEAD: FALLBACK T-0038 free Muse failed or rate-limited, worker continues on paid Muse',
+    ]);
+    expect(actions.some((action) => action.kind === 'send-prompt')).toBe(false);
+  });
+
+  it('falls back in place when a fix round hits a quota error on DeepSeek flash', () => {
+    const actions = decide(
+      base({
+        ...reviewBase,
+        head: 'deadbee',
+        quotaError: true,
+        record: record({
+          model: 'deepseek/deepseek-flash',
+          prereview: { sessionId: 'ses_pre', head: 'deadbee', startedAt: 'x' },
+        }),
+        prereviewSessionState: 'idle',
+        prereviewFilePresent: false,
+      }),
+    );
+    expect(actions).toContainEqual({
+      kind: 'fallback-model',
+      session: 'worker',
+      model: 'meta/muse-spark-1.3-contributor',
+    });
+    expect(escalations(actions)).toEqual([
+      'LEAD: FALLBACK T-0038 DeepSeek flash failed or rate-limited, worker continues on paid Muse',
+    ]);
+  });
+
+  it('does not fall back in review without a quota error', () => {
+    const actions = decide(
+      base({
+        ...reviewBase,
+        head: 'deadbee',
+        quotaError: false,
+        record: record({ model: 'opencode/muse-spark-1.3-contributor-free' }),
+      }),
+    );
+    expect(actions.some((action) => action.kind === 'fallback-model')).toBe(false);
+    expect(actions).toContainEqual({ kind: 'start-prereview', head: 'deadbee' });
+  });
+
   it('does nothing while the worker is still running', () => {
     expect(decide(base({ taskStatus: 'review', sessionState: 'running' }))).toEqual([]);
   });

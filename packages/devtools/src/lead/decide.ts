@@ -186,6 +186,15 @@ export function decide(input: DecideInput): Action[] {
   // 4. Review: start one pre-review per HEAD, then report the packet once.
   // A pre-review that goes idle without writing PREREVIEW.md failed; say so once.
   if (input.taskStatus === 'review' && input.sessionState === 'idle') {
+    // Fix rounds: the worker stays on the task while status is review, so a
+    // quota error here must fall back in place just like todo/in-progress.
+    if (input.quotaError) {
+      const workerFallback = fallbackModel(input.record.model);
+      if (workerFallback !== undefined) {
+        pushWorkerFallback(input.record.model, workerFallback);
+        return actions;
+      }
+    }
     if (input.head !== undefined && input.record.prereview?.head !== input.head) {
       actions.push({ kind: 'start-prereview', head: input.head });
       return actions;
