@@ -24,8 +24,11 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0282 | Web kit Sheet (PinsPanel first) + kit Escape stops propagating + layout-effect listener | coding | probable bug: on < 900 px, Escape in a kit dialog inside a chat also runs ChatShell's window handler (navigates to /) |
-| T-0284 | Mobile: topic actions sheet on the kit ActionSheet | queued | launch after QA run 10 passes |
+| T-0284 | Mobile: topic actions sheet on the kit ActionSheet + "Open group" icon | coding | QA run 10 finding |
+| T-0285 | Web: GroupPanel + ChannelPanel on the kit Sheet | coding | |
+| T-0286 | Web: TopicPanel + AiPanel on the kit Sheet | coding | AiPanel gains Escape |
+
+~02:20 local: merged T-0282 (kit Sheet + `use-modal.ts`; modal Escape stops at the topmost overlay, also when undismissable; listeners in layout effects). QA run 10 PASS in dark mode (T-0283 sheets + kit catalog; light mode not checked: `cmd uimode night no` did not switch the app). One finding: "Open group" row has no icon, so it is out of line → in T-0284.
 
 ~02:10 local: merged T-0280 (cause: Escape fired before the Dialog's passive effect attached its listener; test now waits) and T-0283 (mobile kit ActionSheet). QA run 10 sent to the Sonnet subagent (T-0283 sheets + kit catalog, screenshots in job tmp `qa10/`).
 
