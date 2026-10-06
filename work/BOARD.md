@@ -12,7 +12,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0330](T-0330-web-segmented-fix.md) | Web kit: SegmentedControl ignores re-clicks; PackEditor glyphs become icons | in-progress | auto | T-0326 | bug from the T-0326 pre-review |
 | [T-0329](T-0329-mobile-checkbox.md) | Mobile kit: Checkbox with a Check icon; ✓ glyphs become icons | in-progress | auto | none | mobile |
 | [T-0328](T-0328-web-glyph-icons.md) | Web: ★ and ✕ glyphs become icons (sticker panel, Telegram import, Connections) | in-progress | auto | none | |
-| [T-0327](T-0327-web-stickers-buttons.md) | Web kit: Stickers pack actions on Button, glyphs become icons | in-progress | auto | T-0325 | |
 
 ## Follow-ups
 
@@ -359,3 +358,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0323](T-0323-web-checkbox.md) | Web kit: Checkbox for the group, topic, roles and folder pickers | 2026-10-06 |
 | [T-0325](T-0325-web-stickers-kit.md) | Web kit: Stickers page states on StateMessage and pill buttons on Button | 2026-10-06 |
 | [T-0326](T-0326-web-segmented-2.md) | Web kit: New group and sticker pack visibility on SegmentedControl | 2026-10-06 |
+| [T-0327](T-0327-web-stickers-buttons.md) | Web kit: Stickers pack actions on Button; glyph arrows and star become icons | 2026-10-06 |

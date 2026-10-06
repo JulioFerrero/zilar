@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { ChevronDown, ChevronUp, Star } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '@/auth/AuthProvider';
 import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
@@ -400,28 +401,32 @@ export function StickersPage() {
                         </span>
                       </span>
                       <span className="flex min-w-0 flex-wrap items-center justify-end gap-1">
-                        <button
+                        <Button
                           type="button"
+                          variant="ghost"
+                          size="icon-sm"
                           aria-label={`Move ${pack.title} up`}
                           title={`Move ${pack.title} up`}
                           disabled={movingPackId !== undefined}
                           onClick={() => void movePack(pack.id, -1)}
-                          className="rounded-md px-2 py-1 text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40"
                         >
-                          ↑
-                        </button>
-                        <button
+                          <ChevronUp aria-hidden="true" />
+                        </Button>
+                        <Button
                           type="button"
+                          variant="ghost"
+                          size="icon-sm"
                           aria-label={`Move ${pack.title} down`}
                           title={`Move ${pack.title} down`}
                           disabled={movingPackId !== undefined}
                           onClick={() => void movePack(pack.id, 1)}
-                          className="rounded-md px-2 py-1 text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40"
                         >
-                          ↓
-                        </button>
-                        <button
+                          <ChevronDown aria-hidden="true" />
+                        </Button>
+                        <Button
                           type="button"
+                          variant="outline"
+                          size="sm"
                           onClick={() => void toggleVisibility(pack)}
                           disabled={pack.importedFrom !== undefined}
                           title={
@@ -429,31 +434,33 @@ export function StickersPage() {
                               ? 'Imported packs stay private for personal use'
                               : undefined
                           }
-                          className="rounded-full border border-border-strong bg-surface-raised px-3 py-1 text-[13px] font-medium text-foreground hover:bg-muted disabled:opacity-40"
                         >
                           {pack.visibility === 'server' ? 'Make private' : 'Share'}
-                        </button>
-                        <button
+                        </Button>
+                        <Button
                           type="button"
+                          variant="outline"
+                          size="sm"
                           onClick={() => setEditingPackId(pack.id)}
-                          className="rounded-full border border-border-strong bg-surface-raised px-3 py-1 text-[13px] font-medium text-foreground hover:bg-muted"
                         >
                           Edit
-                        </button>
-                        <button
+                        </Button>
+                        <Button
                           type="button"
+                          variant="outline"
+                          size="sm"
                           onClick={() => void removePack(pack.id)}
-                          className="rounded-full border border-border-strong bg-surface-raised px-3 py-1 text-[13px] font-medium text-foreground hover:bg-muted"
                         >
                           Remove from panel
-                        </button>
-                        <button
+                        </Button>
+                        <Button
                           type="button"
+                          variant="destructive"
+                          size="sm"
                           onClick={() => setDeletingPack(pack)}
-                          className="rounded-full border border-danger/40 bg-danger/10 px-3 py-1 text-[13px] font-medium text-danger hover:bg-danger/20"
                         >
                           Delete
-                        </button>
+                        </Button>
                       </span>
                     </li>
                   );
@@ -611,7 +618,7 @@ export function StickersPage() {
                       onClick={() => void unstar(sticker.id)}
                       className="absolute top-0.5 right-0.5 flex size-5 items-center justify-center rounded-full border border-edge bg-black/70 text-[10px] leading-none text-white"
                     >
-                      ★
+                      <Star className="size-3 fill-current" aria-hidden="true" />
                     </button>
                   </li>
                 ))}

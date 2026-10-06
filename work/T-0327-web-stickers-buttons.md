@@ -1,7 +1,7 @@
 ---
 id: T-0327
 title: "Web kit: Stickers page pack actions on Button, glyph arrows and star become icons"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0327-web-stickers-buttons
 model: auto
@@ -62,4 +62,23 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+- Move up/down are now `<Button type="button" variant="ghost" size="icon-sm">` with `<ChevronUp />` / `<ChevronDown />` (lucide, `aria-hidden="true"`); aria-label, title, disabled and onClick kept.
+- Share/Make private, Edit, Remove from panel are now `<Button type="button" variant="outline" size="sm">`; handlers, disabled and title kept.
+- Delete is now `<Button type="button" variant="destructive" size="sm">`.
+- Unfavorite keeps its raw button and positioning classes; the `★` glyph is now `<Star className="size-3 fill-current" aria-hidden="true" />`.
+- Texts and handlers unchanged. `StickersPage.test.tsx` untouched.
+- Files changed: `apps/web/src/routes/StickersPage.tsx`, `work/T-0327-web-stickers-buttons.md`.
+- Checks: `pnpm install` ok (12.4s); `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot StickersPage`: 1 file, 12 tests passed, test file unchanged. `pnpm gate`: PASS install (1.5s), format (17.2s), lint (1.5s), typecheck (11.9s), tests @zilar/web (30.4s); scope ok; GATE PASS.
+- Acceptance: verified via grep — no `↑`, `↓`, `★` remain in StickersPage.tsx; only one raw `<button` left (Unfavorite, line 614).
+- Security checklist: UI-only change, no secrets/routes/permissions/caps/audit touched; N/A.
+
 ## Review (written by Claude)
+
+**Approved** (pre-review clean, 0 nits). The pack actions on the Stickers page are kit Buttons:
+- move up and down are ghost `icon-sm` buttons with ChevronUp and ChevronDown;
+- Share / Make private, Edit and Remove from panel are `outline sm`;
+- Delete is `destructive sm`;
+- Unfavorite keeps its round button, with a filled `Star` icon.
+
+No `↑`, `↓` or `★` glyphs are left in the file.
+- **Lead note:** the kit Button has `disabled:pointer-events-none`, so on an imported pack the disabled Share button no longer shows its hover title ("Imported packs stay private for personal use"). This is minor and stays on the polish list.
