@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
 import type { PatchTopicInput, TopicStatus } from '@/lib/api';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
-import { Menu } from '@/components/ui/menu';
+import { Menu, MenuRadioItem } from '@/components/ui/menu';
 import { Button } from '@/components/ui/button';
 import { TextInput } from '@/components/ui/text-input';
 
@@ -263,20 +263,18 @@ export function TaskStrip({ chat }: { chat: ChatSummary }) {
           className="top-full left-0 mt-1 min-w-[160px]"
         >
           {STATUS_ORDER.map((option) => (
-            <button
+            <MenuRadioItem
               key={option}
-              type="button"
-              role="menuitemradio"
-              aria-checked={option === status}
-              onClick={() => chooseStatus(option)}
-              className="flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] hover:bg-surface-raised focus-visible:bg-surface-raised focus-visible:outline-none"
+              checked={option === status}
+              onSelect={() => chooseStatus(option)}
+              className="text-[13px]"
             >
               <span
                 className={cn('size-2 shrink-0 rounded-full', STATUS_DOT[option])}
                 aria-hidden="true"
               />
               {STATUS_LABEL[option]}
-            </button>
+            </MenuRadioItem>
           ))}
         </Menu>
       </div>
@@ -303,43 +301,37 @@ export function TaskStrip({ chat }: { chat: ChatSummary }) {
           closeLabel="Close owner picker"
           className="top-full left-0 mt-1 max-h-64 min-w-[180px] overflow-y-auto"
         >
-          <button
-            type="button"
-            role="menuitemradio"
-            aria-checked={topic.owner === null}
-            onClick={() => chooseOwner(null)}
-            className="flex w-full items-center px-3 py-2 text-left text-[13px] hover:bg-surface-raised focus-visible:bg-surface-raised focus-visible:outline-none"
+          <MenuRadioItem
+            checked={topic.owner === null}
+            onSelect={() => chooseOwner(null)}
+            className="text-[13px]"
           >
             No owner
-          </button>
+          </MenuRadioItem>
           {members.map((member) => {
             const userId = ownerIdFor(member.jid);
             return (
-              <button
+              <MenuRadioItem
                 key={member.jid}
-                type="button"
-                role="menuitemradio"
-                aria-checked={topic.owner?.kind === 'user' && topic.owner.id === userId}
-                onClick={() => chooseOwner({ kind: 'user', id: userId, name: member.name })}
-                className="flex w-full items-center px-3 py-2 text-left text-[13px] hover:bg-surface-raised focus-visible:bg-surface-raised focus-visible:outline-none"
+                checked={topic.owner?.kind === 'user' && topic.owner.id === userId}
+                onSelect={() => chooseOwner({ kind: 'user', id: userId, name: member.name })}
+                className="text-[13px]"
               >
                 {member.name}
-              </button>
+              </MenuRadioItem>
             );
           })}
           {aiCandidates.map((member) => {
             const aiId = ownerIdFor(member.jid);
             return (
-              <button
+              <MenuRadioItem
                 key={member.jid}
-                type="button"
-                role="menuitemradio"
-                aria-checked={topic.owner?.kind === 'ai' && topic.owner.id === aiId}
-                onClick={() => chooseOwner({ kind: 'ai', id: aiId, name: member.name })}
-                className="flex w-full items-center px-3 py-2 text-left text-[13px] hover:bg-surface-raised focus-visible:bg-surface-raised focus-visible:outline-none"
+                checked={topic.owner?.kind === 'ai' && topic.owner.id === aiId}
+                onSelect={() => chooseOwner({ kind: 'ai', id: aiId, name: member.name })}
+                className="text-[13px]"
               >
                 {member.name} (AI)
-              </button>
+              </MenuRadioItem>
             );
           })}
         </Menu>

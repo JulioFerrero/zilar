@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { LogOut } from 'lucide-react';
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { Menu, MenuItem } from './menu';
+import { Menu, MenuItem, MenuRadioItem } from './menu';
 
 function Harness({
   onClose,
@@ -152,6 +152,24 @@ describe('Menu', () => {
     const third = screen.getByRole('menuitem', { name: 'Third' });
     expect(third.className).toContain('text-danger');
     expect(third.querySelector('svg')).toBeTruthy();
+  });
+
+  it('renders a radio item with its role, checked state, custom class and onSelect', () => {
+    const onSelect = vi.fn();
+    render(
+      <div>
+        <Menu open onClose={() => {}} label="Sample actions" closeLabel="Close sample menu">
+          <MenuRadioItem checked onSelect={onSelect} className="text-[13px]">
+            In progress
+          </MenuRadioItem>
+        </Menu>
+      </div>,
+    );
+    const item = screen.getByRole('menuitemradio', { name: 'In progress' });
+    expect(item.getAttribute('aria-checked')).toBe('true');
+    expect(item.className).toContain('text-[13px]');
+    fireEvent.click(item);
+    expect(onSelect).toHaveBeenCalledTimes(1);
   });
 
   it('merges a custom backdrop class with the default ones', () => {

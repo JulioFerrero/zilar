@@ -12,7 +12,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0398](T-0398-mobile-settings-states-a.md) | Mobile: Requests/Blocked/Connections states on StateMessage | running | auto | — | |
 | [T-0399](T-0399-mobile-settings-states-b.md) | Mobile: Integrations/Machines/Stickers states on StateMessage | running | auto | — | |
 | [T-0400](T-0400-mobile-kit-catalog-switch-segmented.md) | Mobile kit: Switch in the catalog, SegmentedControl press test | running | auto | — | |
-| [T-0401](T-0401-web-kit-menu-radio-item.md) | Web kit: MenuRadioItem; TaskStrip menus use it | running | auto | — | |
 | [T-0402](T-0402-web-small-leftovers-kit.md) | Web kit: four small leftovers | running | auto | — | |
 | [T-0403](T-0403-web-secret-input-label-safe.md) | Web kit: SecretInput toggle stays on the input with a label | running | auto | — | |
 | [T-0404](T-0404-mobile-switch-on-colors.md) | Mobile kit: Switch ON keeps a light thumb (QA run 32) | planned | auto | — | next mobile slot |
@@ -433,3 +432,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0394](T-0394-web-inline-loading-lines-kit.md) | Web kit: eight Loading/Searching lines on StateMessage | 2026-10-06 |
 | [T-0392](T-0392-mobile-kit-segmented-control.md) | Mobile kit: SegmentedControl from the Stickers tabs | 2026-10-06 |
 | [T-0397](T-0397-mobile-kit-switch.md) | Mobile kit: themed Switch row replaces the folder editor's SwitchRow | 2026-10-06 |
+| [T-0401](T-0401-web-kit-menu-radio-item.md) | Web kit: MenuRadioItem; TaskStrip status and owner menus use it | 2026-10-06 |
