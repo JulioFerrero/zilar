@@ -1,7 +1,7 @@
 ---
 id: T-0307
 title: "Mobile kit migration: sign-in email, name and username fields use the kit TextField"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0307-mobile-text-field-8
 model: auto
@@ -67,4 +67,49 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### Status: ready for review
+
+The three sign-in/onboarding fields now render through the kit `TextField`. No raw `<TextInput`, `#a1a1a1`, or field `placeholderTextColor` remains in the three files.
+
+### What I did
+
+- **`apps/mobile/src/auth/AuthFlow.tsx`** — the "Email" field is now `TextField`. Kept all props except `placeholderTextColor` and the look classes (no `className` needed). Removed `TextInput` from the `react-native` import, added the `TextField` import.
+- **`apps/mobile/src/auth/NameForm.tsx`** — the "Name" field is now `TextField` with `className="mt-1"`. Dropped `placeholderTextColor="#a1a1a1"` and the look classes. Removed `TextInput` from the import, added `TextField`.
+- **`apps/mobile/src/app/welcome/handle.tsx`** — the "Username" field is now `TextField` with `className="mt-1"`. Dropped `placeholderTextColor={MUTED_FOREGROUND[scheme]}` (TextField defaults to it). Removed `TextInput` from the import, dropped `MUTED_FOREGROUND` from the colors import (`scheme` stays for `CHAT_BACKGROUND`), added `TextField`.
+- **Tests (no changes needed):** `AuthFlow.test.tsx` already mocks `nativewind` (which `TextField` pulls in via `useColorScheme`), so no mock edits were required. The stale `TextInput: 'TextInput'` mock key is harmless string noise.
+
+### Security checklist
+
+- No secrets, tokens or keys in logs, errors or URLs; only input components changed, no logic touched.
+- No new routes, deletes, caps or audit entries. No permission logic touched.
+
+### Files changed
+
+`apps/mobile/src/auth/AuthFlow.tsx`, `apps/mobile/src/auth/NameForm.tsx`, `apps/mobile/src/app/welcome/handle.tsx`, `work/T-0307-mobile-text-field-8.md`.
+
+### Commands run (real results)
+
+- `pnpm install` → done, no errors.
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot AuthFlow` → **1 file passed, 3 tests passed** (the casing lines are pre-existing string-mock noise). No test changes needed.
+- `pnpm gate` (final run):
+  ```
+  gate: 4 changed file(s) against main
+  PASS  install (frozen)  (1.1s)
+  PASS  format  (16.6s)
+  PASS  lint  (2.1s)
+  PASS  typecheck  (10.2s)
+  PASS  tests @zilar/mobile  (3.2s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Open questions
+
+None.
+
 ## Review (written by Claude)
+
+**Approved.** Clean pre-review (0 nits), no fix rounds (Muse, peak).
+- The Email, Name and Username fields are on `TextField`.
+- No `#a1a1a1`, no field `placeholderTextColor` and no raw `<TextInput` is left in the three files (checked with the lead's grep).
+- No test changes were needed.

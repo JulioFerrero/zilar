@@ -12,7 +12,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0310](T-0310-mobile-visibility-sheet-keyboard.md) | Mobile fix: visibility sheet moves above the keyboard; shared sheet padding helper | todo | auto | T-0299 | QA run 15 |
 | [T-0309](T-0309-mobile-search-field-2.md) | Mobile kit migration: chat list and Stickers discover search use SearchField | todo | auto | T-0308 | |
 | [T-0308](T-0308-mobile-kit-search-field.md) | Mobile kit: SearchField; group topics search and Explore use it | todo | auto | T-0306 | |
-| [T-0307](T-0307-mobile-text-field-8.md) | Mobile kit migration: sign-in email, name and username fields use the kit TextField | todo | auto | T-0305 | batch 8 |
 
 ## Follow-ups
 
@@ -339,3 +338,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0302](T-0302-mobile-text-field-5.md) | Mobile kit: join link and visibility handle fields use the kit TextField | 2026-10-06 |
 | [T-0306](T-0306-mobile-text-field-7.md) | Mobile kit: machine rename and sticker pack name use the kit TextField | 2026-10-06 |
 | [T-0305](T-0305-mobile-text-field-6.md) | Mobile kit: AI model, spend limit and tool run-input fields use the kit TextField | 2026-10-06 |
+| [T-0307](T-0307-mobile-text-field-8.md) | Mobile kit: sign-in email, name and username fields use the kit TextField | 2026-10-06 |

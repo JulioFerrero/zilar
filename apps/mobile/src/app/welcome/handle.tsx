@@ -1,7 +1,7 @@
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { useColorScheme } from 'nativewind';
 import { useEffect, useState } from 'react';
-import { Pressable, TextInput, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 
@@ -9,8 +9,9 @@ import { RequireUser } from '@/auth/RequireAuth';
 import { safeTarget } from '@/auth/guard';
 import { useAuthStore } from '@/auth/session';
 import { Text } from '@/components/ui/text';
+import { TextField } from '@/components/ui/text-field';
 import { asColorScheme } from '@/lib/color-scheme';
-import { CHAT_BACKGROUND, MUTED_FOREGROUND } from '@/lib/colors';
+import { CHAT_BACKGROUND } from '@/lib/colors';
 
 import { useProfileApi } from '@/components/settings/use-profile-api';
 import {
@@ -136,7 +137,7 @@ function HandleStep() {
             Friends add you with it, like @ada. You can change it later.
           </Text>
           <Text className="mt-6 text-[14px] font-medium text-foreground">Username</Text>
-          <TextInput
+          <TextField
             accessibilityLabel="Username"
             autoFocus
             maxLength={32}
@@ -150,8 +151,7 @@ function HandleStep() {
               setTyped(true);
             }}
             placeholder="ada_lovelace"
-            placeholderTextColor={MUTED_FOREGROUND[scheme]}
-            className="mt-1 rounded-lg border border-input bg-background px-3 py-2 text-[15px] text-foreground"
+            className="mt-1"
           />
           <View accessibilityLiveRegion="polite" className="mt-2 min-h-[20px]">
             {line !== null ? (
