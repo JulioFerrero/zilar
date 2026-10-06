@@ -1,7 +1,7 @@
 ---
 id: T-0359
 title: "Web kit: MenuItem takes an aria-label; the chat row, header and topic menus use MenuItem"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0359-web-chat-menu-items-kit
 model: auto
@@ -65,5 +65,17 @@ pnpm gate
 ---
 
 ## Report (written by the worker when done)
+- Added optional `ariaLabel?: string` to `MenuItemProps` in `ui/menu.tsx`, passed as `aria-label` on the button.
+- Replaced the 5 hand-rolled `role="menuitem"` buttons in `ChatPrefMenuItems` (Pin/Unpin, mute durations, Unmute, Mute/Mute…, Archive/Unarchive) with `MenuItem`, keeping every `aria-label` (as `ariaLabel`), handler, text, and icon; `Pin`/`PinOff` and `Bell`/`BellOff` chosen via `PinIcon`/`BellIcon` variables passed as `icon`.
+- Replaced the 4 hand-rolled items in `ChatHeader.tsx` (Topic info, Pinned messages x2, Search) plus `TopicArchiveItem` with `MenuItem`, keeping `disabled`, `ariaLabel`, handlers, and text.
+- Removed `CHAT_MENU_ITEM_CLASS` export and its import (grep confirms no remaining users outside `MessageActionsMenu.tsx`, which is out of scope).
+- Added `menu.test.tsx` case: a `MenuItem` with `ariaLabel="Pin General"` is found by that name.
+- Files changed: `apps/web/src/components/ui/menu.tsx`, `apps/web/src/components/ui/menu.test.tsx`, `apps/web/src/components/ChatActionsMenu.tsx`, `apps/web/src/components/ChatHeader.tsx`.
+- Commands:
+  - `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot menu ChatHeader ChatList`: 6 files, 60 tests passed.
+  - `pnpm gate`: PASS install, PASS format (after prettier --write on the 2 touched files), PASS lint, PASS typecheck, PASS tests @zilar/web; scope: every changed file inside Allowed files; GATE PASS.
+- Security checklist: no secrets/tokens touched; no deletes/updates, permissions, caps, routes, or audit entries involved — N/A.
 
 ## Review (written by Claude)
+
+**Approved** (pre-review clean, 0 nits). `MenuItem` takes `ariaLabel`, and a new test covers it. The lead grep found no hand-rolled `role="menuitem"` button left in `ChatActionsMenu.tsx` or `ChatHeader.tsx`, and `CHAT_MENU_ITEM_CLASS` is gone. The existing menu tests pass unchanged, so the accessible names are kept.

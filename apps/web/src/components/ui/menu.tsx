@@ -161,15 +161,25 @@ export interface MenuItemProps {
   /** A dangerous action (sign out): the label turns red. */
   destructive?: boolean;
   disabled?: boolean;
+  /** Accessible name override when the visible text is not enough. */
+  ariaLabel?: string;
   children?: ReactNode;
 }
 
-export function MenuItem({ onSelect, icon: Icon, destructive, disabled, children }: MenuItemProps) {
+export function MenuItem({
+  onSelect,
+  icon: Icon,
+  destructive,
+  disabled,
+  ariaLabel,
+  children,
+}: MenuItemProps) {
   return (
     <button
       type="button"
       role="menuitem"
       disabled={disabled}
+      aria-label={ariaLabel}
       onClick={onSelect}
       className={cn(
         'flex w-full items-center gap-2 px-3 py-2 text-left text-[15px] hover:bg-list-hover focus-visible:bg-list-hover focus-visible:outline-none disabled:opacity-50',

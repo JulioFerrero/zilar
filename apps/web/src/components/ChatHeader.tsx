@@ -4,10 +4,10 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { AiBadge } from './AiBadge';
 import { Avatar } from './Avatar';
-import { ChatPrefMenuItems, CHAT_MENU_ITEM_CLASS } from './ChatActionsMenu';
+import { ChatPrefMenuItems } from './ChatActionsMenu';
 import { TypingDots } from './TypingDots';
 import { IconButton } from './ui/icon-button';
-import { Menu } from './ui/menu';
+import { Menu, MenuItem } from './ui/menu';
 import { chatSubtitle, typingLabel } from '@/lib/format';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
@@ -177,39 +177,30 @@ export function ChatHeader({
             closeLabel="Close chat menu"
             className="top-full right-0 mt-1 min-w-[180px]"
           >
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
+            <MenuItem
+              onSelect={() => {
                 setMenuOpen(false);
                 openPanel?.();
               }}
-              className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised focus-visible:bg-surface-raised focus-visible:outline-none"
             >
               Topic info
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
+            </MenuItem>
+            <MenuItem
+              onSelect={() => {
                 setMenuOpen(false);
                 storeApi.getState().setPinsPanel(chat.id);
               }}
-              className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised focus-visible:bg-surface-raised focus-visible:outline-none"
             >
               Pinned messages
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
+            </MenuItem>
+            <MenuItem
+              onSelect={() => {
                 setMenuOpen(false);
                 startChatSearch();
               }}
-              className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised focus-visible:bg-surface-raised focus-visible:outline-none"
             >
               Search
-            </button>
+            </MenuItem>
             <ChatPrefMenuItems
               chat={chat}
               onDone={(failed) => {
@@ -234,17 +225,14 @@ export function ChatHeader({
             closeLabel="Close chat menu"
             className="top-full right-0 mt-1 min-w-[196px]"
           >
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
+            <MenuItem
+              onSelect={() => {
                 setMenuOpen(false);
                 storeApi.getState().setPinsPanel(chat.id);
               }}
-              className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised focus-visible:bg-surface-raised focus-visible:outline-none"
             >
               Pinned messages
-            </button>
+            </MenuItem>
             <ChatPrefMenuItems chat={chat} onDone={(failed) => !failed && setMenuOpen(false)} />
           </Menu>
         )}
@@ -279,16 +267,13 @@ function TopicArchiveItem({
   return (
     <>
       <div aria-hidden="true" className="mx-3 my-1 border-t border-border" />
-      <button
-        type="button"
-        role="menuitem"
+      <MenuItem
         disabled={archiving}
-        aria-label={`Archive topic ${chat.title} for everyone`}
-        onClick={onArchive}
-        className={CHAT_MENU_ITEM_CLASS}
+        ariaLabel={`Archive topic ${chat.title} for everyone`}
+        onSelect={onArchive}
       >
         {archiving ? 'Archiving…' : 'Archive topic for everyone'}
-      </button>
+      </MenuItem>
     </>
   );
 }

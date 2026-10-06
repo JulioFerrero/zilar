@@ -134,6 +134,19 @@ describe('Menu', () => {
     expect(document.activeElement).toBe(first);
   });
 
+  it('finds a MenuItem by its aria-label', () => {
+    render(
+      <div>
+        <Menu open onClose={() => {}} label="Sample actions" closeLabel="Close sample menu">
+          <MenuItem ariaLabel="Pin General" onSelect={() => {}}>
+            Pin
+          </MenuItem>
+        </Menu>
+      </div>,
+    );
+    expect(screen.getByRole('menuitem', { name: 'Pin General' })).toBeTruthy();
+  });
+
   it('marks a destructive item and renders its icon', () => {
     openMenu();
     const third = screen.getByRole('menuitem', { name: 'Third' });

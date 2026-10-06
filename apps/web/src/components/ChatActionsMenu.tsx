@@ -4,10 +4,7 @@ import { useState, type ReactNode } from 'react';
 import { MUTE_DURATIONS, type MuteDurationId } from '@/lib/chatPrefs';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
 import { cn } from '@/lib/utils';
-import { Menu } from './ui/menu';
-
-export const CHAT_MENU_ITEM_CLASS =
-  'flex w-full items-center gap-2 px-3 py-2 text-left text-[15px] hover:bg-surface-raised focus-visible:bg-surface-raised focus-visible:outline-none disabled:opacity-50';
+import { Menu, MenuItem } from './ui/menu';
 
 /** Pin / Mute / Archive items for one chat row, shared by the row menu, the
  *  header menu and the topic menu. `children` renders after the Archive
@@ -27,6 +24,8 @@ export function ChatPrefMenuItems({
   const [error, setError] = useState<string | undefined>(undefined);
   const pinned = chat.pinnedAt !== undefined;
   const archived = chat.archived === true;
+  const PinIcon = pinned ? PinOff : Pin;
+  const BellIcon = chat.muted ? Bell : BellOff;
 
   async function run(action: () => Promise<void>): Promise<void> {
     setError(undefined);
@@ -45,70 +44,42 @@ export function ChatPrefMenuItems({
 
   return (
     <>
-      <button
-        type="button"
-        role="menuitem"
-        aria-label={pinned ? `Unpin ${chat.title}` : `Pin ${chat.title}`}
-        onClick={() => void run(() => storeApi.getState().setPinned(chat.id, !pinned))}
-        className={CHAT_MENU_ITEM_CLASS}
+      <MenuItem
+        icon={PinIcon}
+        ariaLabel={pinned ? `Unpin ${chat.title}` : `Pin ${chat.title}`}
+        onSelect={() => void run(() => storeApi.getState().setPinned(chat.id, !pinned))}
       >
-        {pinned ? (
-          <PinOff className="size-4" aria-hidden="true" />
-        ) : (
-          <Pin className="size-4" aria-hidden="true" />
-        )}
         {pinned ? 'Unpin' : 'Pin'}
-      </button>
+      </MenuItem>
       {muteOpen ? (
         <div aria-label="Mute duration" className="border-t border-border">
           {MUTE_DURATIONS.map((option) => (
-            <button
-              key={option.id}
-              type="button"
-              role="menuitem"
-              onClick={() => mute(option.id)}
-              className={CHAT_MENU_ITEM_CLASS}
-            >
+            <MenuItem key={option.id} onSelect={() => mute(option.id)}>
               {option.label}
-            </button>
+            </MenuItem>
           ))}
           {chat.muted && (
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => void run(() => storeApi.getState().setMuted(chat.id, null))}
-              className={CHAT_MENU_ITEM_CLASS}
-            >
+            <MenuItem onSelect={() => void run(() => storeApi.getState().setMuted(chat.id, null))}>
               Unmute
-            </button>
+            </MenuItem>
           )}
         </div>
       ) : (
-        <button
-          type="button"
-          role="menuitem"
-          aria-label={chat.muted ? `Change mute for ${chat.title}` : `Mute ${chat.title}`}
-          onClick={() => setMuteOpen(true)}
-          className={CHAT_MENU_ITEM_CLASS}
+        <MenuItem
+          icon={BellIcon}
+          ariaLabel={chat.muted ? `Change mute for ${chat.title}` : `Mute ${chat.title}`}
+          onSelect={() => setMuteOpen(true)}
         >
-          {chat.muted ? (
-            <Bell className="size-4" aria-hidden="true" />
-          ) : (
-            <BellOff className="size-4" aria-hidden="true" />
-          )}
           {chat.muted ? 'Mute…' : 'Mute'}
-        </button>
+        </MenuItem>
       )}
-      <button
-        type="button"
-        role="menuitem"
-        aria-label={archived ? `Unarchive chat ${chat.title}` : `Archive chat ${chat.title}`}
-        onClick={() => void run(() => storeApi.getState().setArchived(chat.id, !archived))}
-        className={CHAT_MENU_ITEM_CLASS}
+      <MenuItem
+        icon={Archive}
+        ariaLabel={archived ? `Unarchive chat ${chat.title}` : `Archive chat ${chat.title}`}
+        onSelect={() => void run(() => storeApi.getState().setArchived(chat.id, !archived))}
       >
-        <Archive className="size-4" aria-hidden="true" />
         {archived ? 'Unarchive chat' : 'Archive chat'}
-      </button>
+      </MenuItem>
       {error !== undefined && (
         <p role="alert" className="px-3 py-1 text-[13px] text-danger">
           {error}
