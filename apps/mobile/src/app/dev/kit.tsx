@@ -14,6 +14,7 @@ import { RequireAuth } from '@/auth/RequireAuth';
 import { ActionSheet, ActionSheetItem } from '@/components/ui/action-sheet';
 import { Button } from '@/components/ui/button';
 import { Card, SectionLabel } from '@/components/ui/card';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { CountBadge } from '@/components/ui/count-badge';
 import { IconButton } from '@/components/ui/icon-button';
 import { IconTile } from '@/components/ui/icon-tile';
@@ -35,6 +36,7 @@ export default function KitDevScreen() {
 function KitCatalog() {
   const scheme = asColorScheme(useColorScheme().colorScheme);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   return (
     <SafeAreaView className="flex-1 bg-background">
       <ScrollView
@@ -149,6 +151,24 @@ function KitCatalog() {
             />
             <ActionSheetItem label="A disabled action" disabled onPress={noop} />
           </ActionSheet>
+        </View>
+
+        <View className="mt-6 gap-2">
+          <SectionLabel>Confirm dialog</SectionLabel>
+          <Button onPress={() => setConfirmOpen(true)}>
+            <Text>Open confirm dialog</Text>
+          </Button>
+          <ConfirmDialog
+            visible={confirmOpen}
+            title="Delete this item?"
+            message="This removes the item for good. This cannot be undone."
+            error="Something went wrong."
+            confirmLabel="Delete"
+            busyLabel="Working…"
+            busy={false}
+            onCancel={() => setConfirmOpen(false)}
+            onConfirm={() => setConfirmOpen(false)}
+          />
         </View>
       </ScrollView>
     </SafeAreaView>

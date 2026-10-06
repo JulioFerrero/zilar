@@ -1,6 +1,7 @@
-import { Modal, View } from 'react-native';
+import { View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Text } from '@/components/ui/text';
 import type { ApprovalRule } from '@/lib/approvals-api';
 
@@ -78,36 +79,17 @@ export function RevokeConfirmDialog({
   onConfirm: () => void;
 }) {
   return (
-    <Modal
+    <ConfirmDialog
       visible={rule !== null}
-      transparent
-      animationType="fade"
-      onRequestClose={onCancel}
+      title={`Stop always allowing ${rule?.action ?? 'this action'}?`}
+      message="The AI will ask for approval again next time."
+      error={error}
+      confirmLabel="Revoke"
+      busyLabel="Revoking…"
+      busy={busy}
+      onCancel={onCancel}
+      onConfirm={onConfirm}
       accessibilityLabel="Confirm revoke"
-    >
-      <View className="flex-1 items-center justify-center bg-black/40 p-6">
-        <View className="w-full max-w-xs rounded-2xl bg-background p-4">
-          <Text className="text-[16px] font-semibold text-foreground">
-            Stop always allowing {rule?.action ?? 'this action'}?
-          </Text>
-          <Text className="mt-1 text-[14px] leading-5 text-muted-foreground">
-            The AI will ask for approval again next time.
-          </Text>
-          {error !== '' ? (
-            <Text accessibilityRole="alert" className="mt-2 text-[13px] text-danger">
-              {error}
-            </Text>
-          ) : null}
-          <View className="mt-4 flex-row justify-end gap-2">
-            <Button variant="ghost" size="sm" disabled={busy} onPress={onCancel}>
-              <Text>Cancel</Text>
-            </Button>
-            <Button variant="destructive" size="sm" disabled={busy} onPress={onConfirm}>
-              <Text>{busy ? 'Revoking…' : 'Revoke'}</Text>
-            </Button>
-          </View>
-        </View>
-      </View>
-    </Modal>
+    />
   );
 }

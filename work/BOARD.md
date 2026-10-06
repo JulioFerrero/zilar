@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-0287](T-0287-mobile-kit-confirm-dialog.md) | Mobile kit: ConfirmDialog; AI delete, rule revoke, machine confirms use it | in_progress | auto | | audit step 6, mobile |
 
 ## Follow-ups
 
@@ -316,3 +315,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0284](T-0284-mobile-topic-actions-sheet.md) | Mobile kit: topic actions sheet on the kit ActionSheet; Open group row gets its icon | 2026-10-06 |
 | [T-0286](T-0286-web-sheet-topic-ai.md) | Web kit: TopicPanel and AiPanel on the kit Sheet; AiPanel closes on Escape | 2026-10-06 |
 | [T-0285](T-0285-web-sheet-group-channel.md) | Web kit: GroupPanel and ChannelPanel on the kit Sheet | 2026-10-06 |
+| [T-0287](T-0287-mobile-kit-confirm-dialog.md) | Mobile kit: ConfirmDialog; AI delete, rule revoke and machine confirms use it | 2026-10-06 |

@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { ActionSheet, ActionSheetItem } from './action-sheet';
 import { Card, SectionLabel } from './card';
+import { ConfirmDialog } from './confirm-dialog';
 import { CountBadge } from './count-badge';
 import { ListRow } from './list-row';
 
@@ -31,6 +32,10 @@ vi.mock('lucide-react-native', () => ({
 
 vi.mock('@/components/ui/text', () => ({
   Text: 'Text',
+}));
+
+vi.mock('@/components/ui/button', () => ({
+  Button: 'Button',
 }));
 
 describe('ListRow', () => {
@@ -144,5 +149,59 @@ describe('ActionSheet / ActionSheetItem', () => {
       ),
     );
     expect(html.split('border-b border-divider')).toHaveLength(3);
+  });
+});
+
+describe('ConfirmDialog', () => {
+  it('renders the title and the message', () => {
+    const html = renderToStaticMarkup(
+      createElement(ConfirmDialog, {
+        visible: true,
+        title: 'Delete this AI?',
+        message: 'This removes the chat account.',
+        confirmLabel: 'Remove',
+        busyLabel: 'Removing…',
+        busy: false,
+        onCancel: noop,
+        onConfirm: noop,
+      }),
+    );
+    expect(html).toContain('Delete this AI?');
+    expect(html).toContain('This removes the chat account.');
+  });
+
+  it('renders the error as an alert', () => {
+    const html = renderToStaticMarkup(
+      createElement(ConfirmDialog, {
+        visible: true,
+        title: 'Delete this AI?',
+        message: 'This removes the chat account.',
+        error: 'Could not delete the AI.',
+        confirmLabel: 'Remove',
+        busyLabel: 'Removing…',
+        busy: false,
+        onCancel: noop,
+        onConfirm: noop,
+      }),
+    );
+    expect(html).toContain('accessibilityRole="alert"');
+    expect(html).toContain('Could not delete the AI.');
+  });
+
+  it('disables both buttons and shows the busy label while busy', () => {
+    const html = renderToStaticMarkup(
+      createElement(ConfirmDialog, {
+        visible: true,
+        title: 'Delete this AI?',
+        message: 'This removes the chat account.',
+        confirmLabel: 'Remove',
+        busyLabel: 'Removing…',
+        busy: true,
+        onCancel: noop,
+        onConfirm: noop,
+      }),
+    );
+    expect(html).toContain('Removing…');
+    expect(html.match(/disabled=""/g)).toHaveLength(2);
   });
 });
