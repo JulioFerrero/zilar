@@ -457,7 +457,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0445](T-0445-mobile-forward-multiselect.md) | Forwarding (mobile): multi-select + selection bar | running | auto | T-0435, T-0439 | |
 | [T-0444](T-0444-ai-memory-tools.md) | AI memory M3b: recall, memory_zoom, remember tools + secret check | running | auto | T-0440 | |
 | [T-0443](T-0443-web-ai-memory-dm.md) | AI memory M5a (web): Memory section in the AI panel | running | auto | T-0441 | |
-| [T-0442](T-0442-ai-memory-room-cleanup.md) | AI memory M4b: removing an AI from a room deletes that room's memory | running | auto | T-0438 | |
 | [T-0427](T-0427-mobile-forwarded-header.md) | Mobile: forwarded messages show 'Forwarded from X [in Y]' | 2026-10-06 |
 | [T-0428](T-0428-mobile-new-chat-menu-sheet.md) | Mobile: New chat menu on the kit ActionSheet with icons | 2026-10-06 |
 | [T-0429](T-0429-mobile-dismiss-banner.md) | Mobile: DismissBanner replaces 12 copied chat screen banners | 2026-10-06 |
@@ -474,3 +473,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0439](T-0439-web-forward-multiselect.md) | Web: multi-select forwarding (Select, selection bar, forward in chat order) | 2026-10-06 |
 | [T-0440](T-0440-ai-memory-gateway-context.md) | AI memory M3a: turns index the chat and read facts + memory block; window 50 | 2026-10-06 |
 | [T-0436](T-0436-mobile-media-sheet.md) | Mobile: media sheet (Media / Files / Links / Voice) | 2026-10-06 |
+| [T-0442](T-0442-ai-memory-room-cleanup.md) | AI memory M4b: removing an AI from a room deletes that room's memory | 2026-10-06 |

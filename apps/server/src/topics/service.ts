@@ -37,6 +37,7 @@ import {
 import { emitTopicAi } from '../groups/events';
 import { revokeActiveRulesForAiInTopic } from '../approvals/rules';
 import { deleteRoutinesForAiInTopic } from '../routines/service';
+import { deleteRoomMemory } from '../agents/memory/store';
 import { deleteToolsForAiInTopic } from '../tools/service';
 import { syncTopicRoom } from './rooms';
 
@@ -996,6 +997,9 @@ export async function removeTopicAi(
   await revokeActiveRulesForAiInTopic(deps.db, { aiId, topicId: topic.id, actorId, now });
   await deleteToolsForAiInTopic(deps.db, { aiId, topicId: topic.id, now });
   await deleteRoutinesForAiInTopic(deps.db, { aiId, topicId: topic.id, now });
+  // T-0442: the AI's memory of this topic room dies with the membership
+  // (plan §3.5). Its DM memory and other rooms are unaffected.
+  await deleteRoomMemory(deps.db, aiId, [topic.roomLocalpart]);
   const [updated] = await deps.db.select().from(topics).where(eq(topics.id, topic.id)).limit(1);
   if (!updated) {
     throw toMissingTopic();
