@@ -1,7 +1,7 @@
 ---
 id: T-0391
 title: "Mobile guard test: a hand-rolled Pressable with a solid bg-accent or bg-danger fails the tests (radios excepted); use the kit Button"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0391-mobile-no-solid-pill-guard
 model: auto
@@ -64,4 +64,61 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+Added `apps/mobile/src/components/ui/no-solid-pill.test.ts`, the mobile twin of the
+web guard `apps/web/src/components/ui/no-accent-pill.test.ts`:
+
+- Walks every `.tsx` under `apps/mobile/src` with `readdirSync`/`join` (the
+  `src/lib/routes-dir.test.ts` pattern), skipping `*.test.*` files and the whole
+  `components/ui/` kit folder.
+- Flags a whole-token solid `bg-accent` or `bg-danger` (`(^|[\s'"`])bg-(accent|danger)(?![/-])`,
+  so `/opacity`, `-foreground` and prefixed `active:bg-accent/90` stay allowed)
+  whose nearest tag is `Pressable`, `TouchableOpacity` or `Link`.
+- Attributes the class to the nearest `<Tag` on the same line before the column,
+  else the first tag on the lines above (same as the web guard).
+- Skips a hit when the element's opening tag (from `<Tag` to the first line ending
+  in `>`) carries `accessibilityRole="radio"`, `"tab"` or `"checkbox"`.
+- The hit message is `<file>:<line>: <Tag> use the kit Button from '@/components/ui/button' (variant default or destructive)`.
+- Unit cases: flags a single-line `Pressable` accent pill; flags a multi-line
+  `bg-danger`; allows a `View`, `bg-accent/10`, `active:bg-accent/90` and
+  `bg-danger-foreground`; allows a radio/tab/checkbox solid fill; and a scan case
+  asserting no hits and more than 100 files scanned.
+
+No production files were changed, so no UI behaviour changed.
+
+### Files changed
+- `apps/mobile/src/components/ui/no-solid-pill.test.ts` (new)
+- `work/T-0391-mobile-no-solid-pill-guard.md` (status + this report)
+
+### Commands and results
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot no-solid-pill`
+  → `Test Files 1 passed (1)`, `Tests 5 passed (5)`.
+- `pnpm gate` (first run) → `GATE FAIL` on `format`: prettier wanted to reformat the
+  new test file. Scope line: `scope: every changed file is inside the Allowed files`.
+- `pnpm exec prettier --write apps/mobile/src/components/ui/no-solid-pill.test.ts`
+  (formatting only on the allowed file) then `pnpm gate` (second run):
+  ```
+  gate: 2 changed file(s) against main
+  PASS  install (frozen)  (0.9s)
+  PASS  format  (14.6s)
+  PASS  lint  (1.0s)
+  PASS  typecheck  (7.9s)
+  PASS  tests @zilar/mobile  (1.4s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Notes / deviations
+- The first gate run only failed on prettier formatting of the new file; fixed by
+  running prettier on that one file (no logic change).
+- The scan currently finds no hand-rolled solid pill: the only interactive hit today
+  is `app/settings/connections.tsx:422` (the selected provider chip), which the
+  radio skip correctly allows; the other solid tokens listed in the spec are `View`s
+  or class-map constants and are not attributed to an interactive tag.
+
+### Blocked / needs a decision
+None.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-06). The mobile guard flags whole-token solid `bg-accent`/`bg-danger` on Pressable, TouchableOpacity or Link outside the kit, skips selected radio, tab and checkbox roles, and has unit cases plus a scan of more than 100 files with no hits. Pre-review clean (0 findings).
