@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router';
 import { Eye, EyeOff, Link, Trash2, Zap } from 'lucide-react';
 import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
 import { Button } from '@/components/ui/button';
+import { StateMessage } from '@/components/ui/state-message';
 import { TextInput } from '@/components/ui/text-input';
 import {
   type Connection,
@@ -123,34 +124,29 @@ export function ConnectionsPage() {
       onBack={() => navigate('/')}
     >
       <div className={SETTINGS_COLUMN}>
-        {status === 'loading' && <p className="text-[15px] text-muted-foreground">Loading…</p>}
+        {status === 'loading' && <StateMessage kind="loading" title="Loading…" />}
 
         {status === 'error' && (
-          <div className="flex flex-col items-center gap-3 text-center">
-            <p role="alert" className="text-[15px] text-danger">
-              {errorMessage}
-            </p>
-            <Button
-              type="button"
-              size="lg"
-              onClick={() => {
+          <StateMessage
+            kind="error"
+            title={errorMessage}
+            action={{
+              label: 'Retry',
+              onClick: () => {
                 setStatus('loading');
                 void reload();
-              }}
-            >
-              Retry
-            </Button>
-          </div>
+              },
+            }}
+          />
         )}
 
         {status === 'ready' && connections.length === 0 && !showForm && (
-          <div className="flex flex-col items-center gap-3 text-center">
-            <Link className="size-8 text-muted-foreground" aria-hidden="true" />
-            <p className="text-[15px] text-muted-foreground">No provider connections yet</p>
-            <Button type="button" size="lg" onClick={() => setShowForm(true)}>
-              Add a connection
-            </Button>
-          </div>
+          <StateMessage
+            kind="empty"
+            icon={Link}
+            title="No provider connections yet"
+            action={{ label: 'Add a connection', onClick: () => setShowForm(true) }}
+          />
         )}
 
         {status === 'ready' && (connections.length > 0 || showForm) && (

@@ -600,4 +600,10 @@ describe('StateMessage', () => {
     render(<StateMessage kind="error" title="Something went wrong." />);
     expect(screen.getByRole('alert')).toBeTruthy();
   });
+
+  it('renders a custom icon instead of the default for empty', () => {
+    const { container } = render(<StateMessage kind="empty" title="Nothing here" icon={Shield} />);
+    expect(container.querySelector('.lucide-shield')).toBeTruthy();
+    expect(container.querySelector('.lucide-inbox')).toBeNull();
+  });
 });

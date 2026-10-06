@@ -1,7 +1,7 @@
 ---
 id: T-0322
 title: "Web kit migration: AIs, Connections and Machines pages use StateMessage for loading, error and empty"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0322-web-state-message
 model: auto
@@ -78,4 +78,16 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+- Added optional `icon?: LucideIcon` prop to `StateMessage` (`state-message.tsx`); it replaces the default icon for `empty`/`error`, `loading` always shows the spinner.
+- Migrated `AisPage`, `ConnectionsPage` to `StateMessage` for loading/error/empty; migrated `MachinesPage` error and empty to `StateMessage` and kept `MachineListSkeleton` for loading. MachinesPage no longer imports `FieldError` (still used in AisPage for the delete-confirm inline error). ConnectionsPage still imports `Button` for the list/form sections.
+- Kept all user-visible strings identical: empty titles/hints split per spec (e.g. AisPage title "You have no AIs yet." + hint); error title uses the server message; Retry handlers unchanged (ConnectionsPage keeps `setStatus('loading'); void reload();`).
+- Commands:
+  - `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot kit AisPage ConnectionsPage MachinesPage`: 4 files, 87 tests passed (run both before and after the prettier fix).
+  - `pnpm gate` (first run): GATE FAIL on `format` (3 files: kit.test.tsx, AisPage.tsx, MachinesPage.tsx); fixed with `prettier --write` on the touched files.
+  - `pnpm gate` (final): GATE PASS — install, format, lint, typecheck, tests @zilar/web all PASS; scope: every changed file is inside the Allowed files.
+- Security checklist: no secrets/tokens touched; no deletes/updates, caps, permissions, routes, or audit entries changed. UI-only change.
+- Deviations: none.
+
 ## Review (written by Claude)
+
+**Approved** (pre-review clean, 0 nits). On the AIs, Connections and Machines pages, the loading, error and empty states render through `StateMessage`, which gains an optional `icon` (used here for Zap, Link and Server). The Machines loading state keeps its skeleton. The three page tests pass unchanged.
