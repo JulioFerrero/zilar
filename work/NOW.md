@@ -55,9 +55,10 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
 | T-0345 | Mobile kit: Connections screen text pill buttons on Button | coding (DeepSeek flash) | 6 Pressables; T-0343 (Machines) merged |
-| T-0344 | Web kit: Telegram import link field and Group roles fields on TextInput | coding (DeepSeek flash) | |
 
 Time correction (checked with `date`): it is 04:42 local, Tue 10-06. The "~04:xx–05:50 local" stamps below were estimated and run up to about an hour ahead; their order is right.
+
+07:28 local: merged T-0343 (Machines pill buttons on Button, clean) and T-0344 (web TextInput, clean). Lead browser check in mock mode: the Telegram import field has the kit well style with its label. PASS.
 
 07:20 local: merged T-0342 (web New topic visibility on SegmentedControl; 1 a11y nit, polish only).
 
