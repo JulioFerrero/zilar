@@ -24,9 +24,15 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0337 | Mobile: long AI messages collapse / markdown reply renders as an empty block; tick nudge | coding (DeepSeek flash, off-peak) | from QA run 22; emulator QA after the merge |
+| (none) | | | QA run 23 (T-0337) on the emulator; doctor audit 3 running |
 
 Time correction (checked with `date`): it is 04:42 local, Tue 10-06. The "~04:xx–05:50 local" stamps below were estimated and run up to about an hour ahead; their order is right.
+
+06:30 local: merged T-0337 (2 nits). Both causes are in `MarkdownText`:
+- "1) …" parses as a one-item list, whose text had `flex: 1` (basis 0) → it is now `flexShrink: 1`;
+- the code block's horizontal ScrollView grew to fill the free height → it now has `flexGrow: 0`.
+
+The ticks get `translateY: 2`. The worker ran on DeepSeek flash (off-peak). QA run 23 sent (qa23/).
 
 06:16 local: QA run 22 (qa22/).
 - **Ticks:** the tick icons show; no ✓ or ○ glyphs are left. They sit about a third of the digit height too high (lead saw z1.png).
