@@ -205,20 +205,17 @@ export function ConnectionsPage() {
                       <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
                         {confirmingId === connection.id ? (
                           <>
-                            <button
+                            <Button
                               type="button"
+                              variant="destructive"
+                              size="sm"
                               onClick={() => void confirmRemove(connection.id)}
-                              className="rounded-full bg-danger px-3 py-1.5 text-[14px] font-medium text-white hover:bg-danger/90"
                             >
                               Remove
-                            </button>
-                            <button
-                              type="button"
-                              onClick={cancelRemove}
-                              className="rounded-full px-3 py-1.5 text-[14px] text-muted-foreground hover:bg-muted hover:text-foreground"
-                            >
+                            </Button>
+                            <Button type="button" variant="ghost" size="sm" onClick={cancelRemove}>
                               Cancel
-                            </button>
+                            </Button>
                           </>
                         ) : (
                           <>
@@ -375,14 +372,9 @@ function AddConnectionForm({
           <Button type="button" size="lg" disabled={busy} onClick={() => void submit()}>
             Save
           </Button>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={onCancel}
-            className="rounded-full px-4 py-2 text-[15px] text-muted-foreground hover:text-foreground disabled:opacity-60"
-          >
+          <Button type="button" variant="ghost" size="lg" disabled={busy} onClick={onCancel}>
             Cancel
-          </button>
+          </Button>
         </div>
       </div>
     </div>

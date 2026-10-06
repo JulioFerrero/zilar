@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 import type { PatchTopicInput, TopicStatus } from '@/lib/api';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
 import { Menu } from '@/components/ui/menu';
+import { Button } from '@/components/ui/button';
 import { TextInput } from '@/components/ui/text-input';
 
 const STATUS_ORDER: TopicStatus[] = ['open', 'in_progress', 'in_review', 'blocked', 'done'];
@@ -410,20 +411,12 @@ export function TaskStrip({ chat }: { chat: ChatSummary }) {
               />
             </label>
             <div className="flex justify-end gap-1.5">
-              <button
-                type="button"
-                onClick={() => setLinkOpen(false)}
-                className="rounded-full px-3 py-1.5 text-[13px] text-muted-foreground hover:bg-surface-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
-              >
+              <Button type="button" variant="ghost" size="sm" onClick={() => setLinkOpen(false)}>
                 Cancel
-              </button>
-              <button
-                type="button"
-                onClick={saveLink}
-                className="key-primary rounded-full px-3 py-1.5 text-[13px] font-semibold"
-              >
+              </Button>
+              <Button type="button" variant="default" size="sm" onClick={saveLink}>
                 Save
-              </button>
+              </Button>
             </div>
           </div>
         )}

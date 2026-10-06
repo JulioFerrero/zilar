@@ -19,6 +19,7 @@ import { useChatStore } from '@/store/ChatStoreProvider';
 import { folderIconComponent } from './folderIcon';
 import { ConfirmDialog } from './ConfirmDialog';
 import { Dialog } from './ui/dialog';
+import { Button } from './ui/button';
 import { Checkbox } from './ui/checkbox';
 import { Switch } from './ui/switch';
 import { SearchField } from './ui/search-field';
@@ -130,30 +131,28 @@ export function FolderEditorDialog({
         actions={
           <>
             {folder !== null && (
-              <button
+              <Button
                 type="button"
+                variant="destructive"
+                size="lg"
                 onClick={() => setConfirmingDelete(true)}
-                className="rounded-full px-4 py-1.5 text-[15px] font-medium text-danger hover:bg-list-hover focus-visible:outline-none"
               >
                 Delete folder
-              </button>
+              </Button>
             )}
             <div className="ml-auto flex gap-2">
-              <button
-                type="button"
-                onClick={onClose}
-                className="rounded-full px-4 py-1.5 text-[15px] text-muted-foreground hover:bg-list-hover focus-visible:outline-none"
-              >
+              <Button type="button" variant="ghost" size="lg" onClick={onClose}>
                 Cancel
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
+                variant="default"
+                size="lg"
                 disabled={!canSave || busy}
                 onClick={() => void save()}
-                className="key-primary rounded-full px-4 py-1.5 text-[15px] font-medium disabled:opacity-60"
               >
                 {busy ? 'Saving…' : 'Save'}
-              </button>
+              </Button>
             </div>
           </>
         }

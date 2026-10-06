@@ -1,7 +1,7 @@
 ---
 id: T-0365
 title: "Web kit: the Connections remove/cancel buttons, the folder editor footer and the task link editor use the kit Button"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0365-web-connections-folder-taskstrip-buttons-kit
 model: auto
@@ -70,4 +70,22 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Replaced the eight hand-rolled text buttons with kit `Button`s, keeping all text, aria-labels, disabled states and handlers. No tests changed.
+
+Files changed:
+- `apps/web/src/routes/ConnectionsPage.tsx`: Remove -> `Button destructive sm`; Cancel (confirm) -> `Button ghost sm`; Cancel (form) -> `Button ghost lg`.
+- `apps/web/src/components/FolderEditorDialog.tsx`: added `Button` import; Delete folder -> `Button destructive lg`; Cancel -> `Button ghost lg`; Save/Saving… -> `Button default lg`.
+- `apps/web/src/components/TaskStrip.tsx`: added `Button` import; Cancel -> `Button ghost sm`; Save -> `Button default sm`.
+- Verified `grep key-primary` finds nothing in TaskStrip.tsx, FolderEditorDialog.tsx or ConnectionsPage.tsx (kit `default` variant supplies `key-primary` internally).
+
+Commands (real results):
+- `pnpm install`: done, exit 0.
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot ConnectionsPage FolderEditorDialog TaskStrip`: 3 files, 29 tests passed.
+- `pnpm gate` (first run): GATE FAIL on format (FolderEditorDialog.tsx prettier); fixed with `prettier --write` on that one allowed file.
+- `pnpm gate` (final): PASS install (1.4s→2.2s), PASS format, PASS lint, PASS typecheck, PASS tests @zilar/web; scope: every changed file is inside the Allowed files; GATE PASS.
+
+Security checklist: N/A — pure UI button swap, no routes, secrets, deletes, caps or audit changes.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-06). All eight buttons are kit `Button` with the specified variants and sizes; texts, `disabled` and handlers kept; no `key-primary` left in TaskStrip or FolderEditorDialog. Pre-review clean (0 findings).

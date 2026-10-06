@@ -389,10 +389,10 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0357](T-0357-web-kit-search-field.md) | Web kit: SearchField; GIF, folder editor, Explore and sticker searches use it | 2026-10-06 |
 | [T-0359](T-0359-web-chat-menu-items-kit.md) | Web kit: MenuItem aria-label; chat row, header and topic menus on MenuItem | 2026-10-06 |
 | [T-0361](T-0361-mobile-roles-topics-buttons-kit.md) | Mobile kit: Group roles, topic sheets and task strip buttons on Button | 2026-10-06 |
-| [T-0365](T-0365-web-connections-folder-taskstrip-buttons-kit.md) | Web kit: Connections, folder editor and task link buttons on Button | in-progress | auto | | |
 | [T-0362](T-0362-mobile-profile-card-channel-buttons-kit.md) | Mobile kit: profile card, Profile tab and channel screen buttons on Button | 2026-10-06 |
 | [T-0363](T-0363-web-message-menu-items-kit.md) | Web kit: message actions menu items on MenuItem | 2026-10-06 |
 | [T-0364](T-0364-web-gif-stickers-states-kit.md) | Web kit: GIF and Stickers states on StateMessage; SearchField shares FIELD_INPUT | 2026-10-06 |
 | [T-0360](T-0360-mobile-create-sheets-buttons-kit.md) | Mobile kit: create and visibility sheet buttons on Button | 2026-10-06 |
 | [T-0366](T-0366-web-contact-row-buttons-kit.md) | Web kit: contact profile row buttons on Button | 2026-10-06 |
 | [T-0367](T-0367-web-pinned-banner-buttons-kit.md) | Web kit: pinned banner buttons on Button | 2026-10-06 |
+| [T-0365](T-0365-web-connections-folder-taskstrip-buttons-kit.md) | Web kit: Connections, folder editor and task link buttons on Button | 2026-10-06 |
