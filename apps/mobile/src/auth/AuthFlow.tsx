@@ -2,7 +2,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { useColorScheme } from 'nativewind';
 import { useEffect, useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button } from '@/components/ui/button';
@@ -188,18 +188,22 @@ export function AuthFlow({
                     Resend in {secondsLeft}s
                   </Text>
                 ) : (
-                  <Pressable
-                    accessibilityRole="button"
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="px-0"
                     accessibilityLabel="Resend code"
                     disabled={busy}
                     onPress={() => void requestCode()}
                   >
                     <Text className="text-[14px] text-accent">Resend code</Text>
-                  </Pressable>
+                  </Button>
                 )}
               </View>
-              <Pressable
-                accessibilityRole="button"
+              <Button
+                variant="link"
+                size="sm"
+                className="px-0"
                 accessibilityLabel="Use a different email"
                 onPress={() => {
                   setStep('email');
@@ -207,7 +211,7 @@ export function AuthFlow({
                 }}
               >
                 <Text className="text-[14px] text-muted-foreground">Use a different email</Text>
-              </Pressable>
+              </Button>
             </View>
           )}
         </View>

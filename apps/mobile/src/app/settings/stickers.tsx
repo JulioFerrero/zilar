@@ -321,19 +321,19 @@ function StickersBody() {
                 <Text>New pack</Text>
               </Button>
             </View>
-            <Pressable
-              accessibilityRole="button"
+            <Button
+              variant="outline"
+              className="h-11 rounded-xl"
               accessibilityLabel="Import from Telegram"
               disabled={busy}
               onPress={() => {
                 setImportNonce((nonce) => nonce + 1);
                 setImportOpen(true);
               }}
-              className="h-11 flex-row items-center justify-center gap-2 rounded-xl border border-border-strong active:bg-surface-raised disabled:opacity-60"
             >
               <Download size={16} color={ICON[scheme]} />
               <Text className="text-[15px] text-foreground">Import from Telegram</Text>
-            </Pressable>
+            </Button>
             {actionError !== '' ? (
               <Text accessibilityRole="alert" className="text-[14px] text-danger">
                 {actionError}
@@ -360,26 +360,28 @@ function StickersBody() {
                   <PackCard key={pack.id} pack={pack} token={token} meId={me?.id}>
                     <View className="mt-2 flex-row items-center justify-between border-t border-divider pt-2">
                       <View className="flex-row gap-1">
-                        <Pressable
-                          accessibilityRole="button"
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-9 w-9 rounded-lg"
+                          hitSlop={4}
                           accessibilityLabel={`Move ${pack.title} up`}
                           disabled={busy || index === 0}
-                          hitSlop={4}
                           onPress={() => movePack(pack.id, -1)}
-                          className="h-9 w-9 items-center justify-center rounded-lg active:bg-surface-raised disabled:opacity-40"
                         >
                           <ChevronUp size={20} color={ICON[scheme]} />
-                        </Pressable>
-                        <Pressable
-                          accessibilityRole="button"
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-9 w-9 rounded-lg"
+                          hitSlop={4}
                           accessibilityLabel={`Move ${pack.title} down`}
                           disabled={busy || index === packs.length - 1}
-                          hitSlop={4}
                           onPress={() => movePack(pack.id, 1)}
-                          className="h-9 w-9 items-center justify-center rounded-lg active:bg-surface-raised disabled:opacity-40"
                         >
                           <ChevronDown size={20} color={ICON[scheme]} />
-                        </Pressable>
+                        </Button>
                       </View>
                       <View className="flex-row items-center gap-2">
                         {me !== null && pack.ownerId !== undefined && pack.ownerId === me.id ? (

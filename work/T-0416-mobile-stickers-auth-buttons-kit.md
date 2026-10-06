@@ -1,7 +1,7 @@
 ---
 id: T-0416
 title: "Mobile kit: Import from Telegram, the pack Move up/down keys and the sign-in Resend / different-email links use the kit Button"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0416-mobile-stickers-auth-buttons-kit
 model: auto
@@ -61,4 +61,39 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+Replaced the five raw `Pressable` controls with the kit `Button`:
+
+1. `stickers.tsx` — "Import from Telegram" is now `<Button variant="outline" className="h-11 rounded-xl" accessibilityLabel="Import from Telegram" disabled={busy} onPress=…>` with the same `Download` icon and `<Text>` label.
+2. `stickers.tsx` — the pack "Move up" / "Move down" controls are now `<Button variant="ghost" size="icon" className="h-9 w-9 rounded-lg" hitSlop={4} …>` with the same `ChevronUp`/`ChevronDown` icons; `disabled` conditions unchanged.
+3. `AuthFlow.tsx` — "Resend code" is now `<Button variant="ghost" size="sm" className="px-0" accessibilityLabel="Resend code" disabled={busy} …>` with the same `<Text>`.
+4. `AuthFlow.tsx` — "Use a different email" is now `<Button variant="link" size="sm" className="px-0" accessibilityLabel="Use a different email" …>` with the same `<Text>`.
+5. `AuthFlow.tsx` — `Pressable` became unused there, so it was dropped from the `react-native` import. In `stickers.tsx` `Pressable` is still used by the favorite star overlay (`stickers.tsx:543`), so its import stayed.
+
+No assertion was changed and no new mocks were added; the existing test mocks already cover the `Button` (Pressable + TextClassContext).
+
+### Files changed
+- `apps/mobile/src/app/settings/stickers.tsx`
+- `apps/mobile/src/auth/AuthFlow.tsx`
+- `work/T-0416-mobile-stickers-auth-buttons-kit.md` (status)
+
+### Commands and results
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot src/components/stickers/stickers-screen.test.tsx src/components/stickers/sticker-pack-screen.test.tsx src/auth/AuthFlow.test.tsx` → `Test Files 3 passed (3)`, `Tests 30 passed (30)`.
+- `pnpm gate` (from repo root) →
+  ```
+  gate: 3 changed file(s) against main
+  PASS  install (frozen)  (1.5s)
+  PASS  format  (19.1s)
+  PASS  lint  (1.1s)
+  PASS  typecheck  (11.0s)
+  PASS  tests @zilar/mobile  (2.7s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Problems / deviations
+None. The test run prints React "incorrect casing" warnings for the mocked string components; these are pre-existing and were present before this change.
+
 ## Review (written by Claude)
+
+**2026-10-06, lead:** approved. The pre-review had one nit, accepted: disabled opacity is now the kit 50% instead of 40/60%. The five controls are kit Buttons with their labels inside `<Text>`. The favorite-star overlay stays raw, as the spec says.
