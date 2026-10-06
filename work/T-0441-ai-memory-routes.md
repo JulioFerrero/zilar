@@ -1,7 +1,7 @@
 ---
 id: T-0441
 title: "AI memory M4a (server): GET /api/ai-memory, delete a fact, clear memory; DM owner only, room members view, AI owner and room managers change"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0441-ai-memory-routes
 model: auto
@@ -101,4 +101,60 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+Built the three AI-memory routes and mounted them.
+
+- `apps/server/src/agents/memory/routes.ts` (new): `createAiMemoryRoutes({ auth, db, config, now? })`, plus the shared `resolveMemoryChat(db, config, userId, chat, aiId)`.
+  - Loads the `ais` row first; a missing one is the same `404 not_found 'Chat not found'` as an unknown chat.
+  - DM (`host === config.xmpp.domain`): allowed only when `ai.owner === userId` and the bare `chat` equals `ai.jid` (case-insensitive); `chatKey = dm:<owner bare jid lowercase>` and `canChange = true`.
+  - Room (`host === config.xmpp.mucDomain`): `resolvePinChat` decides visibility (strangers get its 404); `chatKey = room:<resolved.chatJid>`; `canChange = ai.owner === userId || canManageTopic(db, topic, userId)`.
+  - Any other host/malformed JID: 404.
+  - `GET /ai-memory?chat&ai` returns `{ facts, lines, canChange }` from `listFacts` and `renderMemoryBlock`.
+  - `DELETE /ai-memory/facts/:id?chat&ai`: 403 when `!canChange`, `deleteFact` false → `404 'Fact not found'`, else `{ ok: true }`.
+  - `POST /ai-memory/clear` with strict `{ chat, ai }`: same 403, then `clearMemory`, `{ ok: true }`.
+  - Query/body fields are strict zod strings of 1–256 chars; invalid input is `400 invalid_request`. No fact/memory text is logged.
+  - Added a per-user write rate limiter on DELETE and clear (see Deviations).
+- `apps/server/src/app.ts`: imported `createAiMemoryRoutes` and mounted `app.route('/api', createAiMemoryRoutes({ auth, db, config }))` next to the pins routes.
+- `apps/server/src/agents/memory/routes.test.ts` (new): 7 tests covering the DM rules, the room member/manager/owner rules, private-topic hiding, validation/unknown-AI/other-AI-fact scoping, and 401.
+
+### Files changed
+- `apps/server/src/agents/memory/routes.ts` (new)
+- `apps/server/src/agents/memory/routes.test.ts` (new)
+- `apps/server/src/app.ts`
+- `work/T-0441-ai-memory-routes.md` (this report)
+
+`git status --short` shows exactly these four; gate confirms every changed file is inside the Allowed files.
+
+### Commands and real results
+- `pnpm install` — Done, 1170 packages added, exit 0.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot memory/routes` — 1 test file, 7 tests passed, exit 0.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot authz-sweep` — 1 test file, 5 tests passed, exit 0. The sweep table lists `GET /api/ai-memory -> 401`, `DELETE /api/ai-memory/facts/:id -> 401`, `POST /api/ai-memory/clear -> 401`.
+- `pnpm exec prettier --write apps/server/src/agents/memory/routes.ts apps/server/src/agents/memory/routes.test.ts` — 2 files formatted (first `pnpm gate` failed on format for these two; I formatted only my files).
+- `pnpm gate` (repo root) summary:
+```
+gate: 4 changed file(s) against main
+PASS  install (frozen)  (1.2s)
+PASS  format  (33.8s)
+PASS  lint  (1.6s)
+PASS  typecheck  (13.7s)
+PASS  tests @zilar/server  (316.4s)
+scope: every changed file is inside the Allowed files
+GATE PASS
+```
+
+### Deviations from the spec
+- The spec did not mention rate limiting, but AGENTS.md's security checklist requires every write to have a rate limit or a cap. DELETE and clear are writes, so I added a 60/min per-user limiter (`createRateLimiter`, same shape as pins/routes.ts). Nothing else deviates.
+
+### Security checklist
+- No text logged: the routes never call a logger and answer fixed error sentences.
+- Deletes/clears are scoped by `(aiId, chatKey)` (and `id`); the resolver's 404 is shared by unknown AI, unknown chat and chats the caller may not see.
+- No effect before the permission check: `canChange` is checked before `deleteFact`/`clearMemory`; a 403 leaves rows untouched (asserted in the DM test).
+- 401 sweep: the three routes appear in the authz sweep and answer 401 without a session.
+- Writes have the per-user rate limit above.
+
+### Open questions / needs a decision
+None.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-06). GET /api/ai-memory, DELETE /api/ai-memory/facts/:id and POST /api/ai-memory/clear share resolveMemoryChat: an unknown AI, a DM the caller does not own or that is not the AI's JID, a room the caller cannot see (resolvePinChat) or another host all answer 404. Room changes are for the AI owner or a topic manager, otherwise 403 before any effect. Writes are rate-limited at 60/min per user. Nothing is logged. Nit accepted: a resource on the DM chat JID is stripped (same bare JID).

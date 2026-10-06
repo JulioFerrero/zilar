@@ -7,6 +7,7 @@ import { protocolVersion } from '@zilar/protocol';
 import { createLitellmAdminClientFromConfig, type LitellmAdminClient } from './ai/litellm-client';
 import { createAisRoutes } from './ais/routes';
 import type { AiLogger } from './ais/service';
+import { createAiMemoryRoutes } from './agents/memory/routes';
 import { createActionGateway, type ActionGateway } from './actions/gateway';
 import type { AlwaysEligiblePredicate } from './approvals/service';
 import { createApprovalsRoutes } from './approvals/routes';
@@ -351,6 +352,7 @@ export function createApp({
     '/api',
     createRolesRoutes({ auth, db, config, adminClient, logger, audit: auditRecorder }),
   );
+  app.route('/api', createAiMemoryRoutes({ auth, db, config }));
   app.route('/api', createPinsRoutes({ auth, db, config, audit: auditRecorder }));
   app.route(
     '/api',
