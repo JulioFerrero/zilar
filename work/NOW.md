@@ -25,6 +25,8 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
 | T-0302 | Mobile: join link and visibility handle fields on TextField | coding (Muse, peak) | batch 5 |
+| T-0305 | Mobile: AI model, spend limit, tool run-input fields on TextField | coding (Muse, peak) | batch 6 |
+| T-0306 | Mobile: machine rename and sticker pack name on TextField | coding (Muse, peak) | batch 7 |
 
 ~03:30 local: merged T-0304 (web image builder runs natively; local amd64 cross-build passed) and T-0303 (Integrations owner mock: `?mock=1` shows the cards, `?mock=not-owner` the lock). First images run 37396257689: zilar-web still building under QEMU after 32 min; the next images run on the tip uses the T-0304 Dockerfile (lead is timing it).
 
