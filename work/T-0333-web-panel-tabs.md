@@ -1,7 +1,7 @@
 ---
 id: T-0333
 title: "Web kit: the sticker panel's Stickers / GIFs / Emoji tabs use SegmentedControl"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0333-web-panel-tabs
 model: auto
@@ -58,4 +58,27 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Replaced the hand-rolled top tablist (lines 359-375) with the kit
+`SegmentedControl` in default tabs mode, wrapped in the same
+`border-b border-edge p-2` container. Options are the same filtered
+`PANEL_TABS` with the same labels (Stickers / GIFs / Emoji), `value`
+is `visibleTab`, and `onChange` narrows via `PANEL_TABS.find` (no
+cast). The pack tablist below is untouched; `cn` is still used by the
+pack tabs and grid tiles. Added one import line only, no test changes.
+
+Files changed:
+- `apps/web/src/components/StickerPanel.tsx` (import + top tabs block)
+- `work/T-0333-web-panel-tabs.md` (front matter + this report)
+
+Commands and real results:
+- `pnpm install`: done in 11.4s, exit 0.
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot StickerPanel`: 1 file passed, 24 tests passed (3.77s), exit 0. `StickerPanel.test.tsx` unchanged.
+- `pnpm gate`: PASS install (1.4s), PASS format (15.3s), PASS lint (1.5s), PASS typecheck (6.8s), PASS tests @zilar/web (16.4s); "scope: every changed file is inside the Allowed files"; GATE PASS. Changed files: `apps/web/src/components/StickerPanel.tsx`, `work/T-0333-web-panel-tabs.md`.
+
+Security checklist: no secrets/tokens touched; no deletes/updates; no caps; no permission changes; no new routes; no audit entries.
+
+Problems / deviations: none.
+
 ## Review (written by Claude)
+
+**Approved** (pre-review clean, 0 nits). The sticker panel's Stickers / GIFs / Emoji tabs render through `SegmentedControl` (tabs mode), driven by `visibleTab` and narrowed safely through `PANEL_TABS`. They gain arrow-key navigation and roving focus. The pack tabs are unchanged, and `StickerPanel.test.tsx` passes unchanged.

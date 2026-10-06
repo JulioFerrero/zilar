@@ -14,6 +14,7 @@ import { mockGifItems } from '@/mock/helpers';
 import { isPanelStickerUrl, readRecentStickers, rememberRecentSticker } from '@/lib/stickers';
 import type { RecentStickerEntry } from '@/lib/stickers';
 import { cn } from '@/lib/utils';
+import { SegmentedControl } from '@/components/ui/segmented-control';
 
 export interface StickerChoice {
   stickerId: string;
@@ -356,22 +357,23 @@ export function StickerPanel({
       data-testid="sticker-panel"
       className="fixed right-4 bottom-24 z-20 max-w-[calc(100vw-2rem)] min-w-[min(344px,calc(100vw-2rem))] rounded-[14px] border border-edge bg-surface shadow-lg"
     >
-      <div role="tablist" aria-label="Panel tabs" className="flex gap-1 border-b border-edge p-2">
-        {PANEL_TABS.filter((name) => name !== 'gifs' || gifsEnabled !== false).map((name) => (
-          <button
-            key={name}
-            type="button"
-            role="tab"
-            aria-selected={visibleTab === name}
-            onClick={() => setTab(name)}
-            className={cn(
-              'rounded-[8px] px-3 py-1.5 text-[13px] font-medium',
-              visibleTab === name ? 'bg-surface-raised text-foreground' : 'text-muted-foreground',
-            )}
-          >
-            {name === 'stickers' ? 'Stickers' : name === 'gifs' ? 'GIFs' : 'Emoji'}
-          </button>
-        ))}
+      <div className="border-b border-edge p-2">
+        <SegmentedControl
+          ariaLabel="Panel tabs"
+          options={PANEL_TABS.filter((name) => name !== 'gifs' || gifsEnabled !== false).map(
+            (name) => ({
+              value: name,
+              label: name === 'stickers' ? 'Stickers' : name === 'gifs' ? 'GIFs' : 'Emoji',
+            }),
+          )}
+          value={visibleTab}
+          onChange={(next) => {
+            const match = PANEL_TABS.find((name) => name === next);
+            if (match !== undefined) {
+              setTab(match);
+            }
+          }}
+        />
       </div>
 
       {visibleTab === 'gifs' && gifsEnabled !== false && (
