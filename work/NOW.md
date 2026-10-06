@@ -54,9 +54,11 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0340 | Mobile kit: Add machine dialog on the kit surface and Buttons | coding (DeepSeek flash) | also fixes the `#fff` icon on the accent Copy button in light mode |
+| T-0341 | Mobile: empty-state Plus icon (Machines, Connections) in accent foreground | coding (DeepSeek flash) | a white Plus on the #ededed accent is almost invisible |
 
 Time correction (checked with `date`): it is 04:42 local, Tue 10-06. The "~04:xx–05:50 local" stamps below were estimated and run up to about an hour ahead; their order is right.
+
+07:12 local: merged T-0340 (Add machine dialog on the kit; 1 nit → T-0341, launched).
 
 07:03 local: merged T-0339 (4 mobile settings confirms on the kit ConfirmDialog; 0 nits). It is not checked on the emulator yet; next QA run.
 
