@@ -1,7 +1,7 @@
 ---
 id: T-0342
 title: "Web kit migration: the New topic dialog's \"Who can see it\" picker uses SegmentedControl (radio mode)"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0342-web-new-topic-visibility-segmented
 model: auto
@@ -57,4 +57,37 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- Replaced the hand-rolled `role="group"`/`aria-pressed` Public/Private picker in `NewTopicDialog.tsx` with the kit `<SegmentedControl mode="radio" ariaLabel="Who can see it" options={[Public, Private]} value={visibility} onChange={…}>`, narrowing `next` to `TopicVisibility` (`if (next !== 'public' && next !== 'private') return;`), copying `NewGroupDialog.tsx:233-246`. Option order stays Public then Private.
+- Kept the visible "Who can see it" heading and the hint paragraph text unchanged. The heading's `id="new-topic-visibility"` was removed because it only existed to be the `aria-labelledby` target of the deleted group; the kit control exposes its own `aria-label`. This is the only deviation from "unchanged" (visible text is identical).
+- Updated both test queries from `getByRole('button', { name: 'Private' })` to `getByRole('radio', { name: 'Private' })`.
+- Added a test `uses a radio group for visibility (T-0342)`: the `radiogroup` named "Who can see it" exists, Public is `aria-checked="true"` by default, Private is `false`, clicking Private flips the checked state and shows the private hint "Only the people you pick…".
+- No `aria-pressed` remains in the visibility picker (only the Type chips keep `aria-pressed`, unchanged per spec).
+
+### Files changed
+- `apps/web/src/components/NewTopicDialog.tsx`
+- `apps/web/src/components/NewTopicDialog.test.tsx`
+- `work/T-0342-web-new-topic-visibility-segmented.md`
+
+### Commands and results
+- `pnpm install` — success.
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot NewTopicDialog` — 1 file passed, 6 tests passed.
+- `pnpm gate` — first run `GATE FAIL` at `format` (`apps/web/src/components/NewTopicDialog.test.tsx` needed Prettier wrapping); ran `pnpm exec prettier --write apps/web/src/components/NewTopicDialog.test.tsx` and re-ran. Final run:
+
+```
+gate: 3 changed file(s) against main
+PASS  install (frozen)  (1.1s)
+PASS  format  (11.3s)
+PASS  lint  (0.9s)
+PASS  typecheck  (6.9s)
+PASS  tests @zilar/web  (16.6s)
+scope: every changed file is inside the Allowed files
+GATE PASS
+```
+
+### Problems / open questions
+None. Only the task's three Allowed files changed.
+
 ## Review (written by Claude)
+
+**Approved** (pre-review clean, 1 nit accepted). "Who can see it" is now the kit `SegmentedControl` in radio mode, with the same order, narrowing and hint. The nit: the visible label `<span>` is no longer tied to the control. The radiogroup keeps the same accessible name through `ariaLabel`, so this is polish only. The new test checks the default checked state and the private hint.

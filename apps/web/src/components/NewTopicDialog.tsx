@@ -5,6 +5,7 @@ import { AiBadge } from './AiBadge';
 import { Button } from './ui/button';
 import { Checkbox } from './ui/checkbox';
 import { Dialog } from './ui/dialog';
+import { SegmentedControl } from './ui/segmented-control';
 import { TextInput } from './ui/text-input';
 import { cn } from '@/lib/utils';
 import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
@@ -250,36 +251,22 @@ export function NewTopicDialog({
       </div>
 
       <div className="mt-3 flex flex-col gap-1.5">
-        <span id="new-topic-visibility" className="text-[14px] font-medium">
-          Who can see it
-        </span>
-        <div
-          role="group"
-          aria-labelledby="new-topic-visibility"
-          className="well-surface grid grid-cols-2 gap-0.5 rounded-[10px] p-[3px]"
-        >
-          {(
-            [
-              { value: 'public', label: 'Public' },
-              { value: 'private', label: 'Private' },
-            ] as const
-          ).map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              aria-pressed={visibility === option.value}
-              onClick={() => setVisibility(option.value)}
-              className={cn(
-                'h-[30px] rounded-[7px] text-[13px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40',
-                visibility === option.value
-                  ? 'raised-segment text-foreground'
-                  : 'text-muted-foreground hover:text-foreground',
-              )}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
+        <span className="text-[14px] font-medium">Who can see it</span>
+        <SegmentedControl
+          mode="radio"
+          ariaLabel="Who can see it"
+          options={[
+            { value: 'public', label: 'Public' },
+            { value: 'private', label: 'Private' },
+          ]}
+          value={visibility}
+          onChange={(next) => {
+            if (next !== 'public' && next !== 'private') {
+              return;
+            }
+            setVisibility(next);
+          }}
+        />
         <p className="text-[13px] text-muted-foreground">
           {visibility === 'public'
             ? 'Everyone in the group can read and write here.'
