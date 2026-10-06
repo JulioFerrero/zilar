@@ -6,12 +6,28 @@ import { NewMessageSheet } from './new-message-sheet';
 // `react-native` stubbed (same pattern as `invite-links-sheet.test.tsx`):
 // Node only, no simulator, no new dependency.
 vi.mock('react-native', () => ({
+  Platform: { OS: 'ios', select: (options: Record<string, unknown>) => options['ios'] },
   Pressable: 'Pressable',
   View: 'View',
 }));
 
+vi.mock('react-native-reanimated', () => ({
+  useReducedMotion: () => false,
+}));
+
+vi.mock('@/components/ui/use-key-press', () => ({
+  useKeyPress: () => ({ pressed: false, reduceMotion: false, setPressed: () => {} }),
+}));
+
 vi.mock('@/components/ui/text', () => ({
   Text: 'Text',
+  TextClassContext: { Provider: 'TextClassContextProvider' },
+}));
+
+vi.mock('@/lib/depth', () => ({
+  KEY_PRIMARY_PRESSED_SHADOW: {},
+  pressStyle: () => ({}),
+  primaryKey: {},
 }));
 
 interface TestElement {

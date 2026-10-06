@@ -8,6 +8,7 @@ import {
   type CreateVisibility,
 } from '@/components/chat/visibility-fields';
 import { useDirectoryApi } from '@/components/directory/use-directory-api';
+import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 /**
@@ -123,26 +124,12 @@ export function NewChannelSheet({
         </Text>
       ) : null}
       <View className="mt-3 flex-row justify-end gap-2">
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Cancel"
-          disabled={busy}
-          onPress={onClose}
-          className="rounded-full px-4 py-2 active:bg-surface-raised disabled:opacity-60"
-        >
-          <Text className="text-[15px] text-muted-foreground">Cancel</Text>
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Create channel"
-          disabled={!canCreate}
-          onPress={create}
-          className="rounded-full bg-accent px-4 py-2 active:opacity-90 disabled:opacity-60"
-        >
-          <Text className="text-[15px] font-medium text-accent-foreground">
-            {busy ? 'Creating…' : 'Create'}
-          </Text>
-        </Pressable>
+        <Button variant="ghost" accessibilityLabel="Cancel" disabled={busy} onPress={onClose}>
+          <Text>Cancel</Text>
+        </Button>
+        <Button accessibilityLabel="Create channel" disabled={!canCreate} onPress={create}>
+          <Text>{busy ? 'Creating…' : 'Create'}</Text>
+        </Button>
       </View>
     </Pressable>
   );

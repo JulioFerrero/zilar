@@ -383,7 +383,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0352](T-0352-mobile-join-handle-buttons-kit.md) | Mobile kit: join link and @handle screen buttons on Button | 2026-10-06 |
 | [T-0353](T-0353-mobile-new-group-explore-buttons-kit.md) | Mobile kit: New group sheet and Explore join buttons on Button | 2026-10-06 |
 | [T-0355](T-0355-mobile-invite-links-buttons-kit.md) | Mobile kit: invite links sheet buttons on Button | 2026-10-06 |
-| [T-0360](T-0360-mobile-create-sheets-buttons-kit.md) | Mobile kit: New channel, New message, New topic, Visibility sheet buttons on Button | in-progress | auto | T-0354 | |
 | [T-0356](T-0356-mobile-profile-button-labels.md) | Mobile fix: Profile settings buttons show their labels again | 2026-10-06 |
 | [T-0354](T-0354-mobile-join-invite-buttons-kit.md) | Mobile kit: join-link card and Invite a friend sheet buttons on Button | 2026-10-06 |
 | [T-0358](T-0358-web-inline-loading-state.md) | Web kit: StateMessage inline size; panel Loading lines use it | 2026-10-06 |
@@ -396,3 +395,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0362](T-0362-mobile-profile-card-channel-buttons-kit.md) | Mobile kit: profile card, Profile tab and channel screen buttons on Button | 2026-10-06 |
 | [T-0363](T-0363-web-message-menu-items-kit.md) | Web kit: message actions menu items on MenuItem | 2026-10-06 |
 | [T-0364](T-0364-web-gif-stickers-states-kit.md) | Web kit: GIF and Stickers states on StateMessage; SearchField shares FIELD_INPUT | 2026-10-06 |
+| [T-0360](T-0360-mobile-create-sheets-buttons-kit.md) | Mobile kit: create and visibility sheet buttons on Button | 2026-10-06 |

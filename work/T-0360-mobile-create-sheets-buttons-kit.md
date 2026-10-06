@@ -1,7 +1,7 @@
 ---
 id: T-0360
 title: "Mobile kit migration: the New channel, New message, New topic and Visibility sheets use the kit Button"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0360-mobile-create-sheets-buttons-kit
 model: auto
@@ -67,4 +67,45 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**Status:** done, ready for review.
+
+**What I did**
+Replaced the nine hand-rolled pill `Pressable`s in the four chat sheets with the kit `Button` (`components/ui/button.tsx`), per the variant rule. Every label is inside `<Text>` with no className; dropped `accessibilityRole="button"` (kit sets `role="button"`, T-0353 pattern); kept every `accessibilityLabel`, `disabled`, `onPress`, visible/busy text. No icons in any of these buttons, so no `ACCENT_FOREGROUND` needed. `Pressable` stays imported in all four files (outer shells, type chips, visibility radios still use it).
+
+Button list (variant / size):
+- `new-channel-sheet.tsx`: "Cancel" → ghost / default; "Create channel" ("Create"/"Creating…") → default / default.
+- `new-message-sheet.tsx`: "Close" → ghost / default; "Invite a friend" → default / default.
+- `new-topic-sheet.tsx`: "Cancel" → ghost / default; "Create topic" ("Create"/"Creating…") → default / default.
+- `visibility-sheet.tsx`: dynamic "Save visibility"/"Confirm going private" ("Saving…" busy) → default / default; "Cancel going private" ("Cancel") → outline / default; "Copy share link" ("Copy share link"/"Copied") → outline / default.
+- No layout classes needed keeping (none of the nine had `mt-*`/`flex-1`/`shrink-0` etc. on the button itself; the row `View`s keep the layout).
+
+**Files changed**
+- `apps/mobile/src/components/chat/new-channel-sheet.tsx`, `new-message-sheet.tsx`, `new-topic-sheet.tsx`, `visibility-sheet.tsx` — Pressables → kit Buttons; `Button` imported.
+- Mocks only: `new-channel-sheet.test.tsx`, `new-message-sheet.test.tsx`, `new-topic-sheet.test.tsx`, `visibility-sheet.test.ts`, `visibility-fields.test.tsx` — added `Platform.select`, reanimated `useReducedMotion`, `TextClassContext`, `@/lib/depth` key exports; plus `use-key-press` mock in the two tests that execute the Button (`new-message-sheet` calls the body as a plain function, `new-topic-sheet` forces `useState`). `new-chat-button.test.tsx` and `new-group-sheet.test.tsx` already had the full mock set, unchanged.
+- `work/T-0360-mobile-create-sheets-buttons-kit.md` — status and this Report.
+
+**Commands run and results**
+- `pnpm install` — succeeded (Done in 17.2s).
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot new-chat-button new-message-sheet new-topic-sheet visibility new-channel-sheet new-group-sheet` — first run: 5 suites failed at import (react-native-worklets `initializers` missing, via Button → use-key-press → reanimated), 28 tests passed; after mocks: `Test Files 7 passed (7)`, `Tests 55 passed (55)`.
+- `pnpm exec prettier --write` on the two files the gate flagged — formatting fixed.
+- `pnpm gate` (repo root) — second run fully green:
+  ```
+  gate: 10 changed file(s) against main
+  PASS  install (frozen)  (1.5s)
+  PASS  format  (22.5s)
+  PASS  lint  (1.8s)
+  PASS  typecheck  (15.3s)
+  PASS  tests @zilar/mobile  (3.2s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+**Deviations from the spec:** none. Default variant/size props omitted (kit defaults), matching T-0355.
+
+**Blocked / needs a decision:** none.
+
+**Security checklist:** no secrets, routes, deletes, caps, permissions, or audit entries touched — UI button migration only; `disabled`/busy guards unchanged.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-06). Nine sheet buttons are kit `Button` (ghost ×3, default ×4, outline ×2), each label inside `<Text>`, labels/disabled/onPress kept. Test changes are mocks plus small render checks. Pre-review clean (0 findings). Emulator check goes into QA run 29.

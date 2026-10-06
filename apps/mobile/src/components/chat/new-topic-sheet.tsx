@@ -4,6 +4,7 @@ import { Pressable, View } from 'react-native';
 import { AiBadge } from '@/components/chat/ai-badge';
 import { Avatar } from '@/components/chat/avatar';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
+import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
@@ -251,25 +252,12 @@ export function NewTopicSheet({
       ) : null}
 
       <View className="mt-4 flex-row justify-end gap-2">
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Cancel"
-          onPress={onClose}
-          className="rounded-full px-4 py-2 active:bg-surface-raised"
-        >
-          <Text className="text-[15px] text-foreground">Cancel</Text>
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Create topic"
-          disabled={busy}
-          onPress={create}
-          className="rounded-full bg-accent px-4 py-2 active:opacity-90 disabled:opacity-50"
-        >
-          <Text className="text-[15px] font-medium text-accent-foreground">
-            {busy ? 'Creating…' : 'Create'}
-          </Text>
-        </Pressable>
+        <Button variant="ghost" accessibilityLabel="Cancel" onPress={onClose}>
+          <Text>Cancel</Text>
+        </Button>
+        <Button accessibilityLabel="Create topic" disabled={busy} onPress={create}>
+          <Text>{busy ? 'Creating…' : 'Create'}</Text>
+        </Button>
       </View>
     </BottomSheet>
   );

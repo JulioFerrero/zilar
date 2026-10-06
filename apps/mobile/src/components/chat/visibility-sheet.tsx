@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { BottomSheet } from '@/components/ui/bottom-sheet';
+import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import { DirectoryApiError, type GroupVisibility } from '@/lib/directory-api';
@@ -212,38 +213,28 @@ export function VisibilitySheet({
       {saved && <Text className="mt-2 text-[14px] text-muted-foreground">Saved.</Text>}
 
       <View className="mt-3 flex-row flex-wrap gap-2 pb-2">
-        <Pressable
-          accessibilityRole="button"
+        <Button
           accessibilityLabel={confirmingPrivate ? 'Confirm going private' : 'Save visibility'}
           disabled={busy}
           onPress={onSave}
-          className="items-center rounded-full bg-accent px-4 py-2 active:opacity-90 disabled:opacity-50"
         >
-          <Text className="text-[14px] font-medium text-accent-foreground">
+          <Text>
             {busy ? 'Saving…' : confirmingPrivate ? 'Confirm going private' : 'Save visibility'}
           </Text>
-        </Pressable>
+        </Button>
         {confirmingPrivate && (
-          <Pressable
-            accessibilityRole="button"
+          <Button
+            variant="outline"
             accessibilityLabel="Cancel going private"
             onPress={onCancelPrivate}
-            className="items-center rounded-full border border-border-strong px-4 py-2 active:bg-surface-raised"
           >
-            <Text className="text-[14px] text-foreground">Cancel</Text>
-          </Pressable>
+            <Text>Cancel</Text>
+          </Button>
         )}
         {shareLink !== null && (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Copy share link"
-            onPress={copyShareLink}
-            className="items-center rounded-full border border-border-strong px-4 py-2 active:bg-surface-raised"
-          >
-            <Text className="text-[14px] text-foreground">
-              {copied ? 'Copied' : 'Copy share link'}
-            </Text>
-          </Pressable>
+          <Button variant="outline" accessibilityLabel="Copy share link" onPress={copyShareLink}>
+            <Text>{copied ? 'Copied' : 'Copy share link'}</Text>
+          </Button>
         )}
       </View>
     </BottomSheet>
