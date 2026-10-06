@@ -54,12 +54,16 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0380 | Web kit: settings Back, AI close/refresh; drop unused AiPageShell | coding (free Muse, peak) | |
-| T-0381 | Web kit: Setup, handle, Add machine, profile, sign-in text buttons | coding (free Muse, peak) | |
-| T-0382 | Web kit: panel picker rows on outline Button | coding (free Muse, peak) | |
-| T-0383 | Mobile kit: last group roles sheet buttons | coding (free Muse, peak) | Confirm delete had dark text on red |
-| T-0384 | Mobile kit: Explore, Blocked, sticker/GIF Retry buttons | coding (free Muse, peak) | |
-| T-0385 | Web kit: hover Chat/Message actions, attachment Remove | coding (free Muse, peak) | |
+| T-0384 | Mobile kit: Explore, Blocked, sticker/GIF Retry buttons | pre-review (paid Muse fallback) | was blocked: spec missed `lib/stickers-storage.test.ts` (imports sticker-panel); lead allowed it, mocks only |
+| T-0386 | Mobile kit: new StateMessage component, catalog, kit test | coding (DeepSeek flash) | |
+| T-0387 | Mobile kit: profile card Confirm block on destructive Button | coding (DeepSeek flash) | last solid bg-danger on mobile |
+| T-0388 | Web kit: transcript "Aa" → Captions IconButton; file Retry IconButton | coding (DeepSeek flash) | |
+| T-0389 | Web kit: SecretInput replaces 4 key/token fields | coding (DeepSeek flash) | |
+| T-0390 | Web kit: Revoked and More options disclosure toggles | coding (DeepSeek flash) | |
+
+Merged 10:00-10:15 UTC: T-0380 (settings Back/AI icons, unused AiPageShell frame removed), T-0381, T-0382 (picker rows), T-0383 (mobile group roles), T-0385 (hover actions). The free Muse started rate-limiting at ~10:05 UTC; the autopilot switches those sessions to the paid Muse. Off-peak launches go to DeepSeek flash.
+
+Next after this batch: mobile kit SegmentedControl and Switch (web has both); adopt the mobile StateMessage in screens; a mobile guard test against hand-rolled solid `bg-accent`/`bg-danger` button Pressables (after T-0387); QA run 31 for T-0383, T-0384, T-0386, T-0387.
 
 QA run 30 (main a15f1213, mock): T-0377 and T-0378 PASS (dark theme; the light theme was not checked because the app keeps its own theme). Marker restored to b45684f1.
 
