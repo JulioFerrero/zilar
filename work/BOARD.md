@@ -361,4 +361,5 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0329](T-0329-mobile-checkbox.md) | Mobile kit: Checkbox with a Check icon; ✓ glyphs become icons | 2026-10-06 |
 | [T-0332](T-0332-mobile-new-topic-sheet.md) | Mobile: New topic sheet on BottomSheet (long Private form scrolls) | in-progress | auto | T-0329 | QA run 20 |
 | [T-0331](T-0331-web-share-tooltip.md) | Web: disabled Share on an imported sticker pack shows its reason again | 2026-10-06 |
+| [T-0334](T-0334-web-badge-label.md) | Web kit: Badge label follows the visible count (99+) | in-progress | auto | T-0321 | doctor should-fix |
 | [T-0333](T-0333-web-panel-tabs.md) | Web kit: sticker panel tabs on SegmentedControl | 2026-10-06 |
