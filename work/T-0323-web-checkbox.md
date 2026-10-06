@@ -1,7 +1,7 @@
 ---
 id: T-0323
 title: "Web kit: Checkbox, used by the group, topic, roles and folder pickers"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0323-web-checkbox
 model: auto
@@ -78,4 +78,15 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+- Built kit `Checkbox` (`ui/checkbox.tsx`) with `checked`, `onCheckedChange`, `disabled?`, `label?` (as `aria-label`); sr-only input + visual box from FolderEditorDialog, plus `peer-focus-visible:ring-2 peer-focus-visible:ring-ring` and `opacity-40` whenever disabled.
+- Added `ui/checkbox.fixture.tsx` (Off, On, DisabledOff, DisabledOn, each in a row `<label>`) and `ui/checkbox.test.tsx` (row-label click, disabled no-op, accessible name, icon only when checked).
+- Replaced all six checkboxes with `Checkbox`: NewGroupDialog (member rows), NewTopicDialog (members/AIs/roles, keeping `disabled={locked}` and labels), GroupPanel (role holders, keeping `disabled={busy}` and labels), FolderEditorDialog ChatPicker (keeping `!checked && full` disable rule). Dropped `accent-*` classes and the now-unused `Check` import in FolderEditorDialog.
+- Files changed: `apps/web/src/components/ui/checkbox.tsx`, `apps/web/src/components/ui/checkbox.fixture.tsx`, `apps/web/src/components/ui/checkbox.test.tsx`, `apps/web/src/components/NewGroupDialog.tsx`, `apps/web/src/components/NewTopicDialog.tsx`, `apps/web/src/components/GroupPanel.tsx`, `apps/web/src/components/FolderEditorDialog.tsx`, `work/T-0323-web-checkbox.md`.
+- Single-test run: `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot checkbox fixtures NewGroupDialog NewTopicDialog GroupPanel FolderEditorDialog` — 6 files, 114 tests, all passed (after fixing my own checkbox icon test to render the checked state fresh instead of `rerender`, which kept old state).
+- Acceptance check: `grep type="checkbox" apps/web/src` finds only `ui/checkbox.tsx` plus a test selector in `MarkdownText.test.tsx` (markdown task-list rendering, not a picker checkbox).
+- `pnpm gate` summary: `PASS install (frozen) (3.4s)`, `PASS format (30.8s)`, `PASS lint (0.7s)`, `PASS typecheck (13.3s)`, `PASS tests @zilar/web (44.5s)`, `scope: every changed file is inside the Allowed files`, `GATE PASS`. Fixed two gate failures on the way: prettier formatting of the fixture file, and `label?: string | undefined` for `exactOptionalPropertyTypes`.
+- Security checklist: N/A — no secrets, routes, permissions, caps, or audit logging touched; component is pure UI with caller-kept row labels.
+
 ## Review (written by Claude)
+
+**Approved** (pre-review clean, 1 nit accepted: the Check-icon test queries `document` rather than the render container; the test is still sound). The new kit `Checkbox` has the folder editor's look: an sr-only native input plus a visual box. It adds a focus ring and dims when disabled. The six picker checkboxes in NewGroupDialog, NewTopicDialog (members, AIs, roles), GroupPanel (role holders) and FolderEditorDialog use it. No `type="checkbox"` is left outside the kit. The caller tests pass unchanged.

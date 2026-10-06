@@ -24,6 +24,7 @@ import { FieldError } from './ais/AiPageShell';
 import { describeAiError } from './ais/errors';
 import { Avatar } from './Avatar';
 import { Button } from './ui/button';
+import { Checkbox } from './ui/checkbox';
 import { Sheet } from './ui/sheet';
 import { Switch } from './ui/switch';
 import { InviteLinksSection } from './InviteLinksSection';
@@ -804,13 +805,11 @@ function RolesSection({
                         key={member.userId}
                         className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-list-hover"
                       >
-                        <input
-                          type="checkbox"
+                        <Checkbox
                           checked={checked}
                           disabled={busy}
-                          aria-label={`${member.name} holds ${role.name}`}
-                          onChange={() => void toggleHolder(role, member.userId)}
-                          className="size-4 accent-white"
+                          label={`${member.name} holds ${role.name}`}
+                          onCheckedChange={() => void toggleHolder(role, member.userId)}
                         />
                         <Avatar
                           id={member.userId}

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Check, Search, X } from 'lucide-react';
+import { Search, X } from 'lucide-react';
 import {
   FOLDER_CHATS_MAX,
   FOLDER_ICONS,
@@ -19,6 +19,7 @@ import { useChatStore } from '@/store/ChatStoreProvider';
 import { folderIconComponent } from './folderIcon';
 import { ConfirmDialog } from './ConfirmDialog';
 import { Dialog } from './ui/dialog';
+import { Checkbox } from './ui/checkbox';
 import { Switch } from './ui/switch';
 import { cn } from '@/lib/utils';
 
@@ -361,25 +362,11 @@ function ChatPicker({
           return (
             <li key={`${id}-${chat.id}`}>
               <label className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1 text-[15px] hover:bg-list-hover">
-                <input
-                  type="checkbox"
+                <Checkbox
                   checked={checked}
                   disabled={!checked && full}
-                  onChange={() => onToggle(chat.id)}
-                  className="peer sr-only"
+                  onCheckedChange={() => onToggle(chat.id)}
                 />
-                <span
-                  aria-hidden="true"
-                  className={cn(
-                    'flex size-4 shrink-0 items-center justify-center rounded border transition-colors',
-                    checked
-                      ? 'border-transparent bg-accent text-accent-foreground'
-                      : 'border-border-strong bg-transparent',
-                    !checked && full && 'opacity-40',
-                  )}
-                >
-                  {checked && <Check className="h-3 w-3" strokeWidth={3} aria-hidden="true" />}
-                </span>
                 <span className="truncate">{chat.title}</span>
               </label>
             </li>

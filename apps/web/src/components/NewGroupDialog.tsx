@@ -5,6 +5,7 @@ import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { Avatar } from './Avatar';
 import { HandleSuffix } from './HandleSuffix';
 import { Button } from './ui/button';
+import { Checkbox } from './ui/checkbox';
 import { Dialog } from './ui/dialog';
 import { TextArea, TextInput } from './ui/text-input';
 import { cn } from '@/lib/utils';
@@ -180,11 +181,9 @@ export function NewGroupDialog({
                 key={contact.userId}
                 className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 hover:bg-list-hover"
               >
-                <input
-                  type="checkbox"
+                <Checkbox
                   checked={selected.includes(contact.userId)}
-                  onChange={() => toggle(contact.userId)}
-                  className="size-4 accent-[var(--accent)]"
+                  onCheckedChange={() => toggle(contact.userId)}
                 />
                 <Avatar
                   id={contact.userId}
