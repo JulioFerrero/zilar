@@ -263,14 +263,13 @@ function FolderForm({ id, folder }: { id: string; folder: ChatFolder | undefined
                 </View>
               </View>
             ) : (
-              <Pressable
-                accessibilityRole="button"
+              <Button
+                variant="ghost"
                 accessibilityLabel="Delete folder"
                 onPress={() => setConfirmingDelete(true)}
-                className="items-center py-1"
               >
                 <Text className="text-[15px] font-medium text-danger">Delete folder</Text>
-              </Pressable>
+              </Button>
             )}
           </View>
         ) : null}

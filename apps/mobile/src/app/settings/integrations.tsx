@@ -1,7 +1,7 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Eye, EyeOff, Lock, Mail, Mic, Send } from 'lucide-react-native';
 import { useCallback, useRef, useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
 import { useColorScheme } from 'nativewind';
 
 import { RequireAuth } from '@/auth/RequireAuth';
@@ -189,18 +189,19 @@ function SecretField({
           placeholder={placeholder}
           className="min-w-0 flex-1"
         />
-        <Pressable
-          accessibilityRole="button"
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-9 w-9 rounded-full"
           accessibilityLabel={show ? `Hide ${showLabel}` : `Show ${showLabel}`}
           onPress={onToggleShow}
-          className="rounded-full p-2 active:bg-surface-raised"
         >
           {show ? (
             <EyeOff size={16} color={ICON[scheme]} />
           ) : (
             <Eye size={16} color={ICON[scheme]} />
           )}
-        </Pressable>
+        </Button>
       </View>
     </View>
   );

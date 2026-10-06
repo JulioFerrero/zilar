@@ -2,7 +2,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import { Check, ChevronLeft, Copy, Plus, Server } from 'lucide-react-native';
 import { useCallback, useRef, useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, ScrollView, View } from 'react-native';
+import { ActivityIndicator, Modal, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useColorScheme } from 'nativewind';
 
@@ -423,16 +423,17 @@ function MachinesList() {
 
           {status === 'ready' && revoked.length > 0 ? (
             <View accessibilityLabel="Revoked machines" className="gap-2">
-              <Pressable
-                accessibilityRole="button"
+              <Button
+                variant="ghost"
+                size="sm"
+                className="self-start px-0"
                 accessibilityLabel={showRevoked ? 'Hide revoked machines' : 'Show revoked machines'}
                 onPress={() => setShowRevoked((value) => !value)}
-                className="flex-row items-center gap-1 self-start active:opacity-70"
               >
                 <Text className="text-[15px] font-semibold text-foreground">
                   Revoked ({revoked.length})
                 </Text>
-              </Pressable>
+              </Button>
               {showRevoked ? (
                 <Card>
                   {revoked.map((machine) => (

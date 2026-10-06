@@ -3,12 +3,13 @@ import { useRouter } from 'expo-router';
 import { ChevronDown, ChevronUp, Plus } from 'lucide-react-native';
 import { useColorScheme } from 'nativewind';
 import { useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
 
 import { RequireAuth } from '@/auth/RequireAuth';
 import { folderIcon } from '@/components/chat/folder-icon';
 import { SettingsScreenShell } from '@/components/settings/screen-shell';
 import { folderSummary } from '@/components/settings/folders';
+import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { IconButton } from '@/components/ui/icon-button';
 import { IconTile } from '@/components/ui/icon-tile';
@@ -101,16 +102,16 @@ function FoldersSettings() {
         </Card>
       )}
 
-      <Pressable
-        accessibilityRole="button"
+      <Button
+        variant="outline"
+        className="mt-3 rounded-xl border-dashed"
         accessibilityLabel="New folder"
         disabled={atLimit || busy}
         onPress={() => openFolder('new')}
-        className="mt-3 flex-row items-center justify-center gap-2 rounded-xl border border-dashed border-border-strong px-3 py-3 active:bg-surface-raised disabled:opacity-60"
       >
         <Plus size={18} color={MUTED_FOREGROUND[scheme]} />
         <Text className="text-[15px] font-medium text-foreground">New folder</Text>
-      </Pressable>
+      </Button>
 
       {atLimit ? (
         <Text className="mt-2 text-[14px] text-muted-foreground">

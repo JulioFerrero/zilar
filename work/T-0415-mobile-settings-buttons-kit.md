@@ -1,7 +1,7 @@
 ---
 id: T-0415
 title: "Mobile kit: Delete folder, New folder, the Integrations show-secret toggle and the Revoked machines disclosure use the kit Button"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0415-mobile-settings-buttons-kit
 model: auto
@@ -65,4 +65,44 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+Replaced the four raw `Pressable` controls with the kit `Button`:
+1. `folder/[id].tsx` — "Delete folder" is now `<Button variant="ghost" accessibilityLabel="Delete folder">` with the same danger `<Text>`. `Pressable` stays imported (still used at line 184).
+2. `folders.tsx` — "New folder" is now `<Button variant="outline" className="mt-3 rounded-xl border-dashed" …>` with the same `Plus` icon and `<Text>`. Added the missing `Button` import and dropped `Pressable` (now unused).
+3. `integrations.tsx` — the show/hide secret toggle is now `<Button variant="ghost" size="icon" className="h-9 w-9 rounded-full" …>` with the same `Eye`/`EyeOff` icons, matching T-0412 on Connections. Dropped the now-unused `Pressable` import.
+4. `machines.tsx` — the "Revoked (n)" disclosure is now `<Button variant="ghost" size="sm" className="self-start px-0" …>` with the same `<Text>`. Dropped the now-unused `Pressable` import.
+
+No test assertion changed; no mocks added.
+
+### Files changed
+- `apps/mobile/src/app/settings/folder/[id].tsx`
+- `apps/mobile/src/app/settings/folders.tsx`
+- `apps/mobile/src/app/settings/integrations.tsx`
+- `apps/mobile/src/app/settings/machines.tsx`
+- `work/T-0415-mobile-settings-buttons-kit.md` (status + this report)
+
+### Commands run
+- `pnpm install` — Done in 12.8s, exit 0.
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot integrations-screen machines-screen` — 2 files passed, 16 tests passed, exit 0. (The stderr "incorrect casing" lines are the pre-existing React DOM noise in these tests.)
+- `pnpm gate` — exit 0. Summary:
+  ```
+  gate: 5 changed file(s) against main
+  PASS  install (frozen)  (1.6s)
+  PASS  format  (19.9s)
+  PASS  lint  (1.5s)
+  PASS  typecheck  (11.0s)
+  PASS  tests @zilar/mobile  (3.2s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Deviations / notes
+- The spec's "Delete folder" template lists only `variant`, `accessibilityLabel` and `onPress`, so I dropped the old `items-center py-1` class; the Button default size supplies the padding.
+- The two folder screens still have no tests (as the audit found); the gate covers them through typecheck only.
+
+### Blocked / needs a decision
+None.
+
 ## Review (written by Claude)
+
+**2026-10-06, lead:** approved. The pre-review was clean. The four controls are kit Buttons with the same labels, handlers and `<Text>` children, and `Pressable` imports are dropped only where they became unused. They will be checked on the emulator in the next QA run.
