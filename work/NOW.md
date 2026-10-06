@@ -54,9 +54,11 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0339 | Mobile kit: Stickers, Sticker pack, Integrations confirms on ConfirmDialog | coding (DeepSeek flash) | 4 hand-rolled confirms; mocks-only test files allowed |
+| (none) | | | |
 
 Time correction (checked with `date`): it is 04:42 local, Tue 10-06. The "~04:xx–05:50 local" stamps below were estimated and run up to about an hour ahead; their order is right.
+
+07:03 local: merged T-0339 (4 mobile settings confirms on the kit ConfirmDialog; 0 nits). It is not checked on the emulator yet; next QA run.
 
 06:55 local: QA run 24 PASS (qa24/; the lead saw 01.png).
 - The time and tick stay together on one line, including in "Draft three taglines…".
