@@ -50,8 +50,10 @@ vi.mock('react-native-safe-area-context', () => ({
 }));
 
 vi.mock('lucide-react-native', () => ({
+  CircleAlert: 'CircleAlert',
   Eye: 'Eye',
   EyeOff: 'EyeOff',
+  Inbox: 'Inbox',
   Lock: 'Lock',
   Mail: 'Mail',
   Mic: 'Mic',
@@ -83,6 +85,7 @@ vi.mock('@/components/integrations/use-integrations-api', () => ({
 
 vi.mock('@/lib/colors', () => ({
   ACCENT: { dark: '#ededed', light: '#ededed' },
+  DANGER: { dark: '#dc2626', light: '#dc2626' },
   ICON: { dark: '#d4d4d4', light: '#d4d4d4' },
   MUTED_FOREGROUND: { dark: '#a1a1a1', light: '#a1a1a1' },
 }));

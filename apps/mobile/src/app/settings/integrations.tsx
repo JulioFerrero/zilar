@@ -1,7 +1,7 @@
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Eye, EyeOff, Lock, Mail, Mic, RefreshCw, Send } from 'lucide-react-native';
+import { Eye, EyeOff, Lock, Mail, Mic, Send } from 'lucide-react-native';
 import { useCallback, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { useColorScheme } from 'nativewind';
 
 import { RequireAuth } from '@/auth/RequireAuth';
@@ -15,10 +15,11 @@ import { useIntegrationsApi } from '@/components/integrations/use-integrations-a
 import { SettingsScreenShell } from '@/components/settings/screen-shell';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import { asColorScheme } from '@/lib/color-scheme';
-import { ACCENT, ICON } from '@/lib/colors';
+import { ICON } from '@/lib/colors';
 import type {
   EmailIntegrationStatus,
   IntegrationsApi,
@@ -92,10 +93,7 @@ function IntegrationsBody() {
     >
       <View className="gap-4">
         {status === 'loading' ? (
-          <View className="items-center gap-3 pt-16">
-            <ActivityIndicator color={ACCENT[scheme]} />
-            <Text className="text-[15px] text-muted-foreground">Loading integrations…</Text>
-          </View>
+          <StateMessage kind="loading" title="Loading integrations…" />
         ) : null}
 
         {status === 'forbidden' ? (
@@ -108,20 +106,15 @@ function IntegrationsBody() {
         ) : null}
 
         {status === 'error' ? (
-          <View className="items-center gap-3 pt-16">
-            <Text accessibilityRole="alert" className="text-center text-[15px] text-danger">
-              {errorInfo.message}
-            </Text>
-            <Button
-              accessibilityLabel="Retry loading integrations"
-              onPress={reload}
-              variant="outline"
-              size="sm"
-            >
-              <RefreshCw size={16} color={ICON[scheme]} />
-              <Text>Retry</Text>
-            </Button>
-          </View>
+          <StateMessage
+            kind="error"
+            title={errorInfo.message}
+            action={{
+              label: 'Retry',
+              accessibilityLabel: 'Retry loading integrations',
+              onPress: reload,
+            }}
+          />
         ) : null}
 
         {status === 'ready' && data !== null ? (

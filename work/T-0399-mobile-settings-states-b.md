@@ -1,7 +1,7 @@
 ---
 id: T-0399
 title: "Mobile kit: the Integrations, Machines and Stickers settings screens' loading and error states use StateMessage"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0399-mobile-settings-states-b
 model: auto
@@ -50,7 +50,7 @@ This is the same migration as T-0398, on three more screens.
 `AGENTS.md`, `apps/mobile/src/components/ui/state-message.tsx`, each screen around the lines above, and the three tests.
 
 ### Allowed files
-`apps/mobile/src/app/settings/integrations.tsx`, `apps/mobile/src/app/settings/machines.tsx`, `apps/mobile/src/app/settings/stickers.tsx`, `apps/mobile/src/components/integrations/integrations-screen.test.tsx`, `apps/mobile/src/components/machines/machines-screen.test.tsx`, `apps/mobile/src/components/stickers/stickers-screen.test.tsx`, `work/T-0399-mobile-settings-states-b.md`.
+`apps/mobile/src/app/settings/integrations.tsx`, `apps/mobile/src/app/settings/machines.tsx`, `apps/mobile/src/app/settings/stickers.tsx`, `apps/mobile/src/components/integrations/integrations-screen.test.tsx`, `apps/mobile/src/components/machines/machines-screen.test.tsx`, `apps/mobile/src/components/stickers/stickers-screen.test.tsx`, `apps/mobile/src/components/stickers/sticker-pack-screen.test.tsx` (mocks only; lead, 2026-10-06), `work/T-0399-mobile-settings-states-b.md`.
 
 ### Checks
 ```bash
@@ -67,4 +67,46 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Status: **review** — done. `pnpm gate` is green and its scope line names no file outside the Allowed files.
+
+### What I did
+- Replaced the three main loading blocks with `<StateMessage kind="loading" title="…" />` and the three error blocks with `<StateMessage kind="error" title={…} action={{ label: 'Retry', accessibilityLabel: '…', onPress: reload }} />`, keeping the same texts and retry labels:
+  - `apps/mobile/src/app/settings/integrations.tsx` — “Loading integrations…” / `errorInfo.message` + “Retry loading integrations”.
+  - `apps/mobile/src/app/settings/machines.tsx` — “Loading machines…” / `errorInfo.message` + “Retry loading machines”.
+  - `apps/mobile/src/app/settings/stickers.tsx` — “Loading stickers…” / `LOAD_ERROR` + “Retry loading stickers”.
+- Dropped imports that became unused: `ActivityIndicator`, `ACCENT` and `RefreshCw` in `integrations.tsx`; `ACCENT` and `RefreshCw` in `machines.tsx`; none in `stickers.tsx` (its Discover block still uses `ActivityIndicator`, `ACCENT` and `RefreshCw`).
+- Left the Stickers Discover loading and error blocks (`~447-470`) untouched.
+- Added only the mocks `StateMessage` needs, changing no assertion:
+  - In the three allowed tests: `DANGER` in the `@/lib/colors` mock of all three; `MUTED_FOREGROUND` additionally in `machines-screen.test.tsx`; `CircleAlert` and `Inbox` in the `lucide-react-native` mock of all three.
+  - In `apps/mobile/src/components/stickers/sticker-pack-screen.test.tsx` (added to Allowed files by the lead, mocks only): `CircleAlert` and `Inbox` in its lucide mock. This test was collateral — `sticker-pack.tsx` imports `favoriteTileSize` from `./stickers`, so that test’s module graph now loads `state-message.tsx`.
+
+Files changed (8, all in Allowed files): the three screens, four tests, this task file.
+
+### Commands and real results
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot integrations-screen machines-screen stickers-screen` → **32 passed (3 files)**.
+- `pnpm gate` (run 1) → `PASS install (frozen)`, `FAIL format` (`apps/mobile/src/app/settings/machines.tsx`, `apps/mobile/src/app/settings/stickers.tsx`). Fixed with `pnpm exec prettier --write` on just those two files.
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot sticker-pack-screen` → **11 passed (1 file)** (after the mock fix below).
+- `pnpm gate` (run 2, before the mock fix) → `FAIL tests @zilar/mobile`: 11/11 tests in `apps/mobile/src/components/stickers/sticker-pack-screen.test.tsx` (`No "Inbox" export is defined on the "lucide-react-native" mock`), not in my three tests.
+- `pnpm gate` (final):
+  ```
+  gate: 8 changed file(s) against main
+  PASS  install (frozen)  (0.9s)
+  PASS  format  (13.6s)
+  PASS  lint  (0.6s)
+  PASS  typecheck  (6.3s)
+  PASS  tests @zilar/mobile  (1.9s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Notes
+- No assertions changed, no dependencies added, no secrets touched, and the Stickers Discover loading/error states (`~447-470`) were left alone.
+- The only file outside the originally listed Allowed files was `sticker-pack-screen.test.tsx`; the lead widened the scope for mocks only, which is exactly the two entries added.
+
 ## Review (written by Claude)
+
+**2026-10-06, lead:** approved. The pre-review was clean.
+- All three screens now use StateMessage, with the same texts and retry labels.
+- The Discover states are untouched.
+- The test changes are mocks only.
+- `sticker-pack-screen.test.tsx` was allowed by the lead after a valid block: it reaches `stickers.tsx` through `sticker-pack.tsx`, a transitive import that the spec missed.

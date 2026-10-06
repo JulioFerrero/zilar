@@ -16,6 +16,7 @@ import { ActivityIndicator, Image, Pressable, View, useWindowDimensions } from '
 import { RequireStickersAuth } from '@/components/stickers/require-stickers-auth';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { SearchField } from '@/components/ui/search-field';
 import { SegmentedControl } from '@/components/ui/segmented-control';
@@ -291,28 +292,18 @@ function StickersBody() {
           className="mb-2"
         />
 
-        {status === 'loading' ? (
-          <View className="items-center gap-3 pt-16">
-            <ActivityIndicator color={ACCENT[scheme]} />
-            <Text className="text-[15px] text-muted-foreground">Loading stickers…</Text>
-          </View>
-        ) : null}
+        {status === 'loading' ? <StateMessage kind="loading" title="Loading stickers…" /> : null}
 
         {status === 'error' ? (
-          <View className="items-center gap-3 pt-12">
-            <Text accessibilityRole="alert" className="text-center text-[15px] text-danger">
-              {LOAD_ERROR}
-            </Text>
-            <Button
-              variant="outline"
-              size="sm"
-              accessibilityLabel="Retry loading stickers"
-              onPress={reload}
-            >
-              <RefreshCw size={16} color={ICON[scheme]} />
-              <Text>Retry</Text>
-            </Button>
-          </View>
+          <StateMessage
+            kind="error"
+            title={LOAD_ERROR}
+            action={{
+              label: 'Retry',
+              accessibilityLabel: 'Retry loading stickers',
+              onPress: reload,
+            }}
+          />
         ) : null}
 
         {status === 'ready' && tab === 'packs' ? (

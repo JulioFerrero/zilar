@@ -52,10 +52,12 @@ vi.mock('react-native-reanimated', () => ({
 
 vi.mock('lucide-react-native', () => ({
   Circle: 'Circle',
+  CircleAlert: 'CircleAlert',
   CircleDot: 'CircleDot',
   Globe: 'Globe',
   Image: 'Image',
   ImagePlus: 'ImagePlus',
+  Inbox: 'Inbox',
   Lock: 'Lock',
   RefreshCw: 'RefreshCw',
   Trash2: 'Trash2',
