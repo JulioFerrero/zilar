@@ -1,6 +1,14 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
-import { Check, ChevronLeft, Copy, Plus, Server } from 'lucide-react-native';
+import {
+  Check,
+  ChevronDown,
+  ChevronLeft,
+  ChevronUp,
+  Copy,
+  Plus,
+  Server,
+} from 'lucide-react-native';
 import { useCallback, useRef, useState } from 'react';
 import { Modal, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -426,10 +434,16 @@ function MachinesList() {
               <Button
                 variant="ghost"
                 size="sm"
-                className="self-start px-0"
+                className="self-start gap-1 px-0"
                 accessibilityLabel={showRevoked ? 'Hide revoked machines' : 'Show revoked machines'}
+                accessibilityState={{ expanded: showRevoked }}
                 onPress={() => setShowRevoked((value) => !value)}
               >
+                {showRevoked ? (
+                  <ChevronUp size={16} color={ICON[scheme]} />
+                ) : (
+                  <ChevronDown size={16} color={ICON[scheme]} />
+                )}
                 <Text className="text-[15px] font-semibold text-foreground">
                   Revoked ({revoked.length})
                 </Text>
