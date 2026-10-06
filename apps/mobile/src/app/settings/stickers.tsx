@@ -14,14 +14,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Image, Pressable, View, useWindowDimensions } from 'react-native';
 
 import { RequireStickersAuth } from '@/components/stickers/require-stickers-auth';
+import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Text } from '@/components/ui/text';
 import { SearchField } from '@/components/ui/search-field';
 import { useAuthStore } from '@/auth/session';
 import { API_URL } from '@/lib/auth';
 import { asColorScheme } from '@/lib/color-scheme';
-import { ACCENT, FOREGROUND, ICON, MUTED_FOREGROUND } from '@/lib/colors';
-import { ACCENT_FOREGROUND } from '@/lib/depth';
+import { ACCENT, ACCENT_FOREGROUND, FOREGROUND, ICON, MUTED_FOREGROUND } from '@/lib/colors';
 import { segment, well } from '@/lib/depth';
 import { getSessionToken } from '@/lib/session-token';
 import {
@@ -317,15 +317,15 @@ function StickersBody() {
             <Text accessibilityRole="alert" className="text-center text-[15px] text-danger">
               {LOAD_ERROR}
             </Text>
-            <Pressable
-              accessibilityRole="button"
+            <Button
+              variant="outline"
+              size="sm"
               accessibilityLabel="Retry loading stickers"
               onPress={reload}
-              className="flex-row items-center gap-2 rounded-full border border-border-strong px-4 py-2 active:bg-surface-raised"
             >
               <RefreshCw size={16} color={ICON[scheme]} />
-              <Text className="text-[15px] text-foreground">Retry</Text>
-            </Pressable>
+              <Text>Retry</Text>
+            </Button>
           </View>
         ) : null}
 
@@ -333,16 +333,16 @@ function StickersBody() {
           <View className="gap-2">
             <View className="flex-row items-center justify-between">
               <Text className="text-[16px] font-semibold text-foreground">My packs</Text>
-              <Pressable
-                accessibilityRole="button"
+              <Button
+                variant="default"
+                size="sm"
                 accessibilityLabel="Create a new sticker pack"
                 disabled={busy}
                 onPress={() => router.push('/settings/sticker-pack')}
-                className="flex-row items-center gap-1.5 rounded-full bg-accent px-3 py-1.5 active:opacity-90 disabled:opacity-60"
               >
-                <Plus size={16} color={ACCENT_FOREGROUND} />
-                <Text className="text-[14px] font-medium text-accent-foreground">New pack</Text>
-              </Pressable>
+                <Plus size={16} color={ACCENT_FOREGROUND[scheme]} />
+                <Text>New pack</Text>
+              </Button>
             </View>
             <Pressable
               accessibilityRole="button"
@@ -368,16 +368,14 @@ function StickersBody() {
                 <Text className="px-4 text-center text-[15px] text-muted-foreground">
                   No packs on your panel yet. Look in Discover for shared packs to add.
                 </Text>
-                <Pressable
-                  accessibilityRole="button"
+                <Button
+                  variant="default"
+                  size="sm"
                   accessibilityLabel="Open Discover"
                   onPress={() => openTab('discover')}
-                  className="rounded-full bg-accent px-5 py-2 active:opacity-90"
                 >
-                  <Text className="text-[15px] font-medium text-accent-foreground">
-                    Open Discover
-                  </Text>
-                </Pressable>
+                  <Text>Open Discover</Text>
+                </Button>
               </View>
             ) : (
               <View className="gap-2">
@@ -408,8 +406,9 @@ function StickersBody() {
                       </View>
                       <View className="flex-row items-center gap-2">
                         {me !== null && pack.ownerId !== undefined && pack.ownerId === me.id ? (
-                          <Pressable
-                            accessibilityRole="button"
+                          <Button
+                            variant="outline"
+                            size="sm"
                             accessibilityLabel={`Edit ${pack.title}`}
                             disabled={busy}
                             onPress={() =>
@@ -418,21 +417,20 @@ function StickersBody() {
                                 params: { id: pack.id },
                               })
                             }
-                            className="flex-row items-center gap-1 rounded-full border border-border-strong px-3 py-1 active:bg-surface-raised disabled:opacity-60"
                           >
                             <Pencil size={14} color={ICON[scheme]} />
-                            <Text className="text-[14px] text-foreground">Edit</Text>
-                          </Pressable>
+                            <Text>Edit</Text>
+                          </Button>
                         ) : null}
-                        <Pressable
-                          accessibilityRole="button"
+                        <Button
+                          variant="outline"
+                          size="sm"
                           accessibilityLabel={`Remove ${pack.title}`}
                           disabled={busy}
                           onPress={() => askRemove(pack)}
-                          className="rounded-full border border-border-strong px-3 py-1 active:bg-surface-raised disabled:opacity-60"
                         >
-                          <Text className="text-[14px] text-foreground">Remove</Text>
-                        </Pressable>
+                          <Text>Remove</Text>
+                        </Button>
                       </View>
                     </View>
                   </PackCard>
@@ -473,15 +471,15 @@ function StickersBody() {
                 <Text accessibilityRole="alert" className="text-center text-[15px] text-danger">
                   {discoverError === '' ? DISCOVER_ERROR : discoverError}
                 </Text>
-                <Pressable
-                  accessibilityRole="button"
+                <Button
+                  variant="outline"
+                  size="sm"
                   accessibilityLabel="Retry loading shared packs"
                   onPress={() => loadDiscover(query)}
-                  className="flex-row items-center gap-2 rounded-full border border-border-strong px-4 py-2 active:bg-surface-raised"
                 >
                   <RefreshCw size={16} color={ICON[scheme]} />
-                  <Text className="text-[15px] text-foreground">Retry</Text>
-                </Pressable>
+                  <Text>Retry</Text>
+                </Button>
               </View>
             ) : discover.length === 0 ? (
               <View className="items-center px-6 pt-12">
@@ -500,27 +498,27 @@ function StickersBody() {
                       token={token}
                       action={
                         added ? (
-                          <Pressable
-                            accessibilityRole="button"
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="shrink-0"
                             accessibilityLabel={`Remove ${pack.title}`}
                             disabled={busy}
                             onPress={() => askRemove(pack)}
-                            className="shrink-0 rounded-full border border-border-strong px-3 py-1 active:bg-surface-raised disabled:opacity-60"
                           >
-                            <Text className="text-[14px] text-foreground">Remove</Text>
-                          </Pressable>
+                            <Text>Remove</Text>
+                          </Button>
                         ) : (
-                          <Pressable
-                            accessibilityRole="button"
+                          <Button
+                            variant="default"
+                            size="sm"
+                            className="shrink-0"
                             accessibilityLabel={`Add ${pack.title}`}
                             disabled={busy}
                             onPress={() => addPack(pack.id)}
-                            className="shrink-0 rounded-full bg-accent px-3 py-1 active:opacity-90 disabled:opacity-60"
                           >
-                            <Text className="text-[14px] font-medium text-accent-foreground">
-                              {busyId === pack.id ? 'Adding…' : 'Add'}
-                            </Text>
-                          </Pressable>
+                            <Text>{busyId === pack.id ? 'Adding…' : 'Add'}</Text>
+                          </Button>
                         )
                       }
                     />

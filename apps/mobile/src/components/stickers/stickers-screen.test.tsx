@@ -29,11 +29,15 @@ vi.mock('react-native', () => ({
   Image: 'Image',
   KeyboardAvoidingView: 'KeyboardAvoidingView',
   Modal: 'Modal',
-  Platform: { OS: 'ios' },
+  Platform: { OS: 'ios', select: (options: Record<string, unknown>) => options['ios'] },
   Pressable: 'Pressable',
   TextInput: 'TextInput',
   View: 'View',
   useWindowDimensions: () => ({ width: 390, height: 844 }),
+}));
+
+vi.mock('react-native-reanimated', () => ({
+  useReducedMotion: () => false,
 }));
 
 vi.mock('lucide-react-native', () => ({
@@ -57,6 +61,7 @@ vi.mock('@/auth/RequireAuth', () => ({
 
 vi.mock('@/components/ui/text', () => ({
   Text: 'Text',
+  TextClassContext: { Provider: 'TextClassContextProvider' },
 }));
 
 vi.mock('@/components/ui/confirm-dialog', () => ({
@@ -97,6 +102,7 @@ vi.mock('@/lib/session-token', () => ({
 
 vi.mock('@/lib/colors', () => ({
   ACCENT: { dark: '#ededed', light: '#ededed' },
+  ACCENT_FOREGROUND: { dark: '#0a0a0a', light: '#0a0a0a' },
   FOREGROUND: { dark: '#ededed', light: '#ededed' },
   ICON: { dark: '#d4d4d4', light: '#d4d4d4' },
   MUTED_FOREGROUND: { dark: '#a1a1a1', light: '#a1a1a1' },
