@@ -27,7 +27,9 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 | T-0315 | Mobile: visibility, members/roles, topic info sheets on BottomSheet | coding (Muse, peak) | the roles sheet gains scroll and keyboard handling |
 | (none) | | | doctor audit running (paid Muse fallback) |
 
-~05:50 local: merged T-0320, after a lead fix round: the regression test threw inside a listener, which jsdom swallows; it now uses a spy plus a control test. No hand-rolled web menus are left. Bug fixed: on narrow screens, Escape in the chat header or task strip menus used to leave the chat.
+Time correction (checked with `date`): it is 04:42 local, Tue 10-06. The "~04:xx–05:50 local" stamps below were estimated and run up to about an hour ahead; their order is right.
+
+04:42 local: merged T-0320, after a lead fix round: the regression test threw inside a listener, which jsdom swallows; it now uses a spy plus a control test. No hand-rolled web menus are left. Bug fixed: on narrow screens, Escape in the chat header or task strip menus used to leave the chat.
 
 ~05:35 local: merged T-0319 (message and chat actions menus on Menu; Escape works from anywhere).
 
