@@ -27,6 +27,7 @@ import {
 import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
 import { Button } from '@/components/ui/button';
 import { Card, SectionLabel } from '@/components/ui/card';
+import { StateMessage } from '@/components/ui/state-message';
 import { Switch } from '@/components/ui/switch';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
 
@@ -366,7 +367,7 @@ export function NotificationsPage() {
     >
       <div className={SETTINGS_COLUMN}>
         {status === 'loading' && (
-          <p className="text-[14px] text-muted-foreground">Loading notification settings…</p>
+          <StateMessage kind="loading" title="Loading notification settings…" />
         )}
         {status === 'unsupported' && (
           <section aria-label="Notifications on this device" className="flex flex-col gap-2">

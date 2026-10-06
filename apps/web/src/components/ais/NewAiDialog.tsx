@@ -21,6 +21,7 @@ import {
 import { Dialog } from '../ui/dialog';
 import { TextArea, TextInput } from '../ui/text-input';
 import { cn } from '@/lib/utils';
+import { StateMessage } from '@/components/ui/state-message';
 
 type DialogStatus = 'loading' | 'ready' | 'unavailable' | 'error';
 
@@ -178,7 +179,7 @@ export function NewAiDialog({ onClose }: { onClose: () => void }) {
       }
     >
       <div className="mt-3">
-        {status === 'loading' && <p className="text-[15px] text-muted-foreground">Loading…</p>}
+        {status === 'loading' && <StateMessage kind="loading" size="inline" title="Loading…" />}
 
         {(status === 'unavailable' || status === 'error') && (
           <p role="alert" className="text-[15px] text-danger">

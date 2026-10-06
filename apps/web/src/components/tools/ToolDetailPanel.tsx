@@ -16,6 +16,7 @@ import {
 import { truncateOutput } from '@/lib/routines';
 import { Button, FieldError } from '@/components/ais/AiPageShell';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { StateMessage } from '@/components/ui/state-message';
 import { CodeBlock, TruncatedText } from './CodeBlock';
 
 type DetailStatus = 'loading' | 'ready' | 'error';
@@ -185,7 +186,7 @@ export function ToolDetailPanel({
   };
 
   if (status === 'loading') {
-    return <p className="px-2 text-[13px] text-muted-foreground">Loading…</p>;
+    return <StateMessage kind="loading" size="inline" title="Loading…" />;
   }
 
   if (status === 'error' || tool === null) {

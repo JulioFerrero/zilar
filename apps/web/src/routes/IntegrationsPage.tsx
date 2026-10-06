@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
 import { Button } from '@/components/ui/button';
+import { StateMessage } from '@/components/ui/state-message';
 import { SecretInput, TextInput } from '@/components/ui/text-input';
 import {
   ApiError,
@@ -110,9 +111,7 @@ export function IntegrationsPage() {
       onBack={() => navigate('/')}
     >
       <div className={SETTINGS_COLUMN}>
-        {status === 'loading' && (
-          <p className="text-[14px] text-muted-foreground">Loading integrations…</p>
-        )}
+        {status === 'loading' && <StateMessage kind="loading" title="Loading integrations…" />}
 
         {status === 'forbidden' && (
           <div className="flex flex-col gap-3">

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
+import { StateMessage } from '@/components/ui/state-message';
 import type { SearchItem } from '@/lib/api';
 import { useMessageSearch } from '@/lib/useMessageSearch';
 import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
@@ -75,7 +76,9 @@ export function MessageSearchResults({
     return (
       <div aria-label="Searching messages" className="flex flex-col gap-0.5 px-2">
         <p className="px-[10px] pt-2 text-[12px] font-semibold text-muted-foreground">Messages</p>
-        <p className="px-[10px] pb-2 text-[13px] text-muted-foreground">Searching…</p>
+        <div className="px-[10px] pb-2">
+          <StateMessage kind="loading" size="inline" title="Searching…" />
+        </div>
       </div>
     );
   }

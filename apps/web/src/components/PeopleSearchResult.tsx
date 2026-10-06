@@ -1,3 +1,4 @@
+import { StateMessage } from '@/components/ui/state-message';
 import { usePeopleSearch } from '@/lib/usePeopleSearch';
 import { ContactProfileRow } from './ContactProfileRow';
 
@@ -16,7 +17,9 @@ export function PeopleSearchResult({ query }: { query: string }) {
     return (
       <div aria-label="Searching people" className="flex flex-col gap-1 px-2">
         <p className="px-[10px] pt-2 text-[12px] font-semibold text-muted-foreground">People</p>
-        <p className="px-[10px] pb-2 text-[13px] text-muted-foreground">Searching…</p>
+        <div className="px-[10px] pb-2">
+          <StateMessage kind="loading" size="inline" title="Searching…" />
+        </div>
       </div>
     );
   }

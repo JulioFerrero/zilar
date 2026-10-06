@@ -24,6 +24,7 @@ import { Sheet } from '@/components/ui/sheet';
 import { TextArea, TextInput } from '@/components/ui/text-input';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
 import { cn } from '@/lib/utils';
+import { StateMessage } from '@/components/ui/state-message';
 import { Button } from '@/components/ui/button';
 import { FieldError } from './AiPageShell';
 import { AiActivity } from './AiActivity';
@@ -521,7 +522,7 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
         </header>
 
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
-          {status === 'loading' && <p className="text-[15px] text-muted-foreground">Loading…</p>}
+          {status === 'loading' && <StateMessage kind="loading" size="inline" title="Loading…" />}
 
           {status === 'missing' && (
             <p className="text-[15px] text-muted-foreground">This AI no longer exists.</p>

@@ -1,7 +1,7 @@
 ---
 id: T-0394
 title: "Web kit: eight hand-written \"Loading…\" and \"Searching…\" lines use StateMessage"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0394-web-inline-loading-lines-kit
 model: auto
@@ -70,4 +70,52 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Status: done.
+
+### What I did
+Replaced the eight plain-text loading lines with `StateMessage kind="loading"` and kept the
+visible text identical:
+- Six inline lines use `size="inline"`: `PeopleSearchResult.tsx`, `MessageSearchResults.tsx`,
+  `tools/RoutinesSection.tsx`, `tools/ToolDetailPanel.tsx`, `ais/NewAiDialog.tsx`, `ais/AiPanel.tsx`.
+- The two settings lines use the default block size: `routes/IntegrationsPage.tsx`,
+  `routes/NotificationsPage.tsx`.
+- For the two search results I wrapped the message in `<div className="px-[10px] pb-2">` as the
+  spec suggests, so the original left/bottom padding around the line stays.
+- Added `import { StateMessage } from '@/components/ui/state-message';` in each of the eight files.
+
+Files changed:
+- `apps/web/src/components/PeopleSearchResult.tsx`
+- `apps/web/src/components/MessageSearchResults.tsx`
+- `apps/web/src/components/tools/RoutinesSection.tsx`
+- `apps/web/src/components/tools/ToolDetailPanel.tsx`
+- `apps/web/src/components/ais/NewAiDialog.tsx`
+- `apps/web/src/components/ais/AiPanel.tsx`
+- `apps/web/src/routes/IntegrationsPage.tsx`
+- `apps/web/src/routes/NotificationsPage.tsx`
+- `work/T-0394-web-inline-loading-lines-kit.md`
+
+No test file needed changes: the listed tests do not assert the removed markup, and every visible
+string is unchanged. I ran them to confirm.
+
+### Commands and results
+- `pnpm install`: done, 0 errors (peer-dependency warning for `@types/react-dom` in mobile, unrelated).
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot PeopleSearchResult MessageSearch tools NewAiDialog AiPanel IntegrationsPage NotificationsPage`:
+  `Test Files 10 passed (10)`, `Tests 131 passed (131)`.
+- `pnpm gate` (repo root): final output
+  ```
+  gate: 9 changed file(s) against main
+  PASS  install (frozen)  (2.4s)
+  PASS  format  (29.8s)
+  PASS  lint  (2.1s)
+  PASS  typecheck  (18.9s)
+  PASS  tests @zilar/web  (54.4s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Problems / deviations
+None. All eight lines replaced; no files outside the Allowed list were touched.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-06). All eight lines are StateMessage loading (six inline, two block) with the same texts. The follow-up (`approvals/AlwaysAllowedList.tsx:183` still has a plain Loading… line) goes into the next batch. Pre-review clean otherwise.

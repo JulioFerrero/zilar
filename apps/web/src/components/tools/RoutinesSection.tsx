@@ -10,6 +10,7 @@ import {
 } from '@/lib/tools';
 import { describeRoutineSchedule, pausedReasonText } from '@/lib/routines';
 import { Button, FieldError } from '@/components/ais/AiPageShell';
+import { StateMessage } from '@/components/ui/state-message';
 
 type ListStatus = 'loading' | 'ready' | 'error';
 
@@ -166,9 +167,7 @@ export function RoutinesSection({
   return (
     <section aria-label="Routines" className="flex flex-col gap-1">
       <h2 className="px-2 text-[13px] font-semibold text-muted-foreground">Routines</h2>
-      {state.status === 'loading' && (
-        <p className="px-2 text-[13px] text-muted-foreground">Loading…</p>
-      )}
+      {state.status === 'loading' && <StateMessage kind="loading" size="inline" title="Loading…" />}
       {state.status === 'error' && (
         <div className="flex flex-col gap-2 px-2">
           <FieldError>{state.message}</FieldError>
