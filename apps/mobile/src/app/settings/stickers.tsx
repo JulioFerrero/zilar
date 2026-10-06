@@ -1,17 +1,8 @@
 import { useFocusEffect, useRouter } from 'expo-router';
-import {
-  ChevronDown,
-  ChevronUp,
-  Download,
-  Pencil,
-  Plus,
-  RefreshCw,
-  Star,
-  Sticker,
-} from 'lucide-react-native';
+import { ChevronDown, ChevronUp, Download, Pencil, Plus, Star, Sticker } from 'lucide-react-native';
 import { useColorScheme } from 'nativewind';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Image, Pressable, View, useWindowDimensions } from 'react-native';
+import { Image, Pressable, View, useWindowDimensions } from 'react-native';
 
 import { RequireStickersAuth } from '@/components/stickers/require-stickers-auth';
 import { Button } from '@/components/ui/button';
@@ -23,7 +14,7 @@ import { SegmentedControl } from '@/components/ui/segmented-control';
 import { useAuthStore } from '@/auth/session';
 import { API_URL } from '@/lib/auth';
 import { asColorScheme } from '@/lib/color-scheme';
-import { ACCENT, ACCENT_FOREGROUND, FOREGROUND, ICON, MUTED_FOREGROUND } from '@/lib/colors';
+import { ACCENT_FOREGROUND, FOREGROUND, ICON, MUTED_FOREGROUND } from '@/lib/colors';
 import { getSessionToken } from '@/lib/session-token';
 import {
   isSameOriginStickerUrl,
@@ -441,25 +432,17 @@ function StickersBody() {
               </Text>
             ) : null}
             {discoverBusy ? (
-              <View className="items-center gap-3 pt-16">
-                <ActivityIndicator color={ACCENT[scheme]} />
-                <Text className="text-[15px] text-muted-foreground">Searching…</Text>
-              </View>
+              <StateMessage kind="loading" title="Searching…" />
             ) : discover === undefined || discoverError !== '' ? (
-              <View className="items-center gap-3 pt-12">
-                <Text accessibilityRole="alert" className="text-center text-[15px] text-danger">
-                  {discoverError === '' ? DISCOVER_ERROR : discoverError}
-                </Text>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  accessibilityLabel="Retry loading shared packs"
-                  onPress={() => loadDiscover(query)}
-                >
-                  <RefreshCw size={16} color={ICON[scheme]} />
-                  <Text>Retry</Text>
-                </Button>
-              </View>
+              <StateMessage
+                kind="error"
+                title={discoverError === '' ? DISCOVER_ERROR : discoverError}
+                action={{
+                  label: 'Retry',
+                  accessibilityLabel: 'Retry loading shared packs',
+                  onPress: () => loadDiscover(query),
+                }}
+              />
             ) : discover.length === 0 ? (
               <View className="items-center px-6 pt-12">
                 <Text className="text-center text-[15px] text-muted-foreground">

@@ -5,31 +5,24 @@ import {
   Globe,
   ImagePlus,
   Lock,
-  RefreshCw,
   Trash2,
   TriangleAlert,
   X,
 } from 'lucide-react-native';
 import { useColorScheme } from 'nativewind';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  Image as RNImage,
-  Pressable,
-  TextInput,
-  View,
-  useWindowDimensions,
-} from 'react-native';
+import { Image as RNImage, Pressable, TextInput, View, useWindowDimensions } from 'react-native';
 
 import { useAuthStore } from '@/auth/session';
 import { RequireStickersAuth } from '@/components/stickers/require-stickers-auth';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import { API_URL } from '@/lib/auth';
 import { asColorScheme } from '@/lib/color-scheme';
-import { ACCENT, DANGER, FOREGROUND, ICON } from '@/lib/colors';
+import { DANGER, FOREGROUND, ICON } from '@/lib/colors';
 import { well } from '@/lib/depth';
 import { getSessionToken } from '@/lib/session-token';
 import { isSameOriginStickerUrl, stickerImageSource, type StickerItem } from '@/lib/stickers';
@@ -457,28 +450,18 @@ function StickerPackBody({ picker, preparer }: StickerPackScreenDeps) {
       }
       onBack={onBack}
     >
-      {status === 'loading' ? (
-        <View className="items-center gap-3 pt-16">
-          <ActivityIndicator color={ACCENT[scheme]} />
-          <Text className="text-[15px] text-muted-foreground">Loading pack…</Text>
-        </View>
-      ) : null}
+      {status === 'loading' ? <StateMessage kind="loading" title="Loading pack…" /> : null}
 
       {status === 'load-error' ? (
-        <View className="items-center gap-3 pt-12">
-          <Text accessibilityRole="alert" className="text-center text-[15px] text-danger">
-            {LOAD_ERROR}
-          </Text>
-          <Button
-            variant="outline"
-            size="sm"
-            accessibilityLabel="Retry loading pack"
-            onPress={load}
-          >
-            <RefreshCw size={16} color={ICON[scheme]} />
-            <Text>Retry</Text>
-          </Button>
-        </View>
+        <StateMessage
+          kind="error"
+          title={LOAD_ERROR}
+          action={{
+            label: 'Retry',
+            accessibilityLabel: 'Retry loading pack',
+            onPress: load,
+          }}
+        />
       ) : null}
 
       {status === 'not-found' || status === 'forbidden' ? (
@@ -653,12 +636,11 @@ function StickerPackBody({ picker, preparer }: StickerPackScreenDeps) {
               </Text>
             ) : null}
             {preparing > 0 ? (
-              <View className="flex-row items-center gap-2">
-                <ActivityIndicator size="small" color={ACCENT[scheme]} />
-                <Text className="text-[13px] text-muted-foreground">
-                  {preparing === 1 ? 'Preparing 1 image…' : `Preparing ${preparing} images…`}
-                </Text>
-              </View>
+              <StateMessage
+                kind="loading"
+                size="inline"
+                title={preparing === 1 ? 'Preparing 1 image…' : `Preparing ${preparing} images…`}
+              />
             ) : null}
             {fresh.length > 0 ? (
               <View className="gap-2">

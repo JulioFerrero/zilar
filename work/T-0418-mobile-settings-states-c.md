@@ -1,7 +1,7 @@
 ---
 id: T-0418
 title: "Mobile kit: Profile settings, Stickers Discover, the sticker pack screen and the Add machine dialog states use StateMessage"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0418-mobile-settings-states-c
 model: auto
@@ -68,4 +68,50 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+Applied the eight-row table in the spec:
+- `apps/mobile/src/app/settings/profile.tsx`: loading and error now use `StateMessage` (`kind="loading"` / `kind="error"` with `action={{ label: 'Retry', onPress: reload }}`).
+- `apps/mobile/src/app/settings/stickers.tsx`: Discover searching and Discover error now use `StateMessage`; kept the `discoverError === '' ? DISCOVER_ERROR : discoverError` title and `onPress={() => loadDiscover(query)}`.
+- `apps/mobile/src/app/settings/sticker-pack.tsx`: loading, load-error (`{LOAD_ERROR}`, Retry) and the inline preparing row now use `StateMessage` (`size="inline"`, same "Preparing…" expression).
+- `apps/mobile/src/app/settings/machines.tsx`: the Add machine dialog loading now uses `StateMessage kind="loading" title="Creating code…"`. The dialog error part is unchanged.
+
+Dropped now-unused imports only: `ActivityIndicator` (all four files), `RefreshCw` (stickers, sticker-pack), `ACCENT` (stickers, sticker-pack; kept `ACCENT_FOREGROUND`), and in profile also `useColorScheme`, `asColorScheme`, `ACCENT` and the `scheme` variable. `scheme`, `ICON` and `Button`/`View`/`Text` remain where still used. Added the `StateMessage` import to `profile.tsx` and `sticker-pack.tsx`.
+
+Conditions, texts, labels, handlers and the line ranges outside the table are unchanged.
+
+### Files changed
+- `apps/mobile/src/app/settings/profile.tsx`
+- `apps/mobile/src/app/settings/stickers.tsx`
+- `apps/mobile/src/app/settings/sticker-pack.tsx`
+- `apps/mobile/src/app/settings/machines.tsx`
+- `work/T-0418-mobile-settings-states-c.md` (status + this report)
+
+No test file needed changes: the three tests already mock `CircleAlert`, `Inbox`, `DANGER` and `MUTED_FOREGROUND`, so no mocks were added.
+
+### Commands and real results
+- `pnpm install` → `Done in 26.9s`, exit 0.
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot stickers-screen sticker-pack-screen machines-screen` → `Test Files 3 passed (3)`, `Tests 33 passed (33)`, exit 0. (stderr only has the pre-existing React "incorrect casing" warnings.)
+- `pnpm gate` (first run) → `FAIL format` on `sticker-pack.tsx` and `stickers.tsx`; all other steps passed and `scope: every changed file is inside the Allowed files`. `GATE FAIL`.
+- `pnpm exec prettier --write apps/mobile/src/app/settings/sticker-pack.tsx apps/mobile/src/app/settings/stickers.tsx` → formatted both (this only re-wrapped the import lines/`title` prop I had edited).
+- `pnpm gate` (final run) →
+  ```
+  gate: 5 changed file(s) against main
+  PASS  install (frozen)  (1.1s)
+  PASS  format  (11.9s)
+  PASS  lint  (0.9s)
+  PASS  typecheck  (6.4s)
+  PASS  tests @zilar/mobile  (1.7s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Deviations / notes
+- For the profile error the spec table gives `action={{ label: 'Retry', onPress: reload }}` with no `accessibilityLabel`; I followed the table. The old code had `accessibilityLabel="Retry"`, which is redundant with the visible "Retry" text (same pattern as `approvals.tsx`), so the accessible name is unchanged.
+- I ran `prettier --write` on only the two flagged files to clear the gate's own format failure; no other formatting was changed.
+
+### Blocked / needs a decision
+None.
+
 ## Review (written by Claude)
+
+**2026-10-06, lead:** approved. The pre-review had 2 nits, accepted: test coverage for the Add-machine loading line and the profile states, which were not required. All eight places are StateMessages with the same texts, labels and handlers.

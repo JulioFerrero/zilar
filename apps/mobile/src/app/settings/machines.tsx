@@ -2,7 +2,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import { Check, ChevronLeft, Copy, Plus, Server } from 'lucide-react-native';
 import { useCallback, useRef, useState } from 'react';
-import { ActivityIndicator, Modal, ScrollView, View } from 'react-native';
+import { Modal, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useColorScheme } from 'nativewind';
 
@@ -572,12 +572,7 @@ function AddMachineSheet({
             Pair a new computer where your AIs can work.
           </Text>
 
-          {loading ? (
-            <View className="items-center gap-2 py-6">
-              <ActivityIndicator />
-              <Text className="text-[14px] text-muted-foreground">Creating code…</Text>
-            </View>
-          ) : null}
+          {loading ? <StateMessage kind="loading" title="Creating code…" /> : null}
 
           {!loading && error !== '' ? (
             <>
