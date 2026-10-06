@@ -1,7 +1,7 @@
 ---
 id: T-0363
 title: "Web kit: the message actions menu items (Reply, Edit, Copy, Delete, Pin) use MenuItem"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0363-web-message-menu-items-kit
 model: auto
@@ -58,5 +58,15 @@ pnpm gate
 ---
 
 ## Report (written by the worker when done)
+- Replaced the six hand-rolled text `role="menuitem"` buttons in `MessageActionsMenu.tsx` (Reply, Edit, Copy text, Delete for everyone, Unpin/Pin) with kit `MenuItem`, keeping the same text, conditions (`canEdit`, `canPin`/`isPinned`), `disabled` on Copy/Delete, and `destructive` on Delete. Quick-reaction buttons left untouched.
+- Removed `ITEM_CLASS`; kept the `cn` import (still used for the `Menu` placement classes).
+- No test changes needed; visible names unchanged.
+- Files changed: `apps/web/src/components/MessageActionsMenu.tsx`, `work/T-0363-web-message-menu-items-kit.md`.
+- Commands:
+  - `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot MessageActions StickerPanel`: 2 files, 35 tests passed.
+  - `pnpm gate`: PASS install, PASS format, PASS lint, PASS typecheck, PASS tests @zilar/web; scope: every changed file inside Allowed files; GATE PASS.
+- Security checklist: no secrets/tokens, deletes/updates, permissions, caps, routes, or audit entries involved — N/A.
 
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-06). The six message menu items are `MenuItem` with the same texts, conditions and `disabled`; Delete is `destructive`; `ITEM_CLASS` is gone. Pre-review clean (0 findings). The quick-reaction row stays as specified.

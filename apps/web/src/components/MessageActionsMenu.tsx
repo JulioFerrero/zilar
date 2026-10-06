@@ -1,6 +1,6 @@
 import { QUICK_REACTIONS } from '@zilar/chat-core';
 import { cn } from '@/lib/utils';
-import { Menu } from './ui/menu';
+import { Menu, MenuItem } from './ui/menu';
 
 export interface MessageActionsMenuProps {
   canCopy: boolean;
@@ -23,8 +23,6 @@ export interface MessageActionsMenuProps {
   /** Which bubble edge the menu hangs from; incoming bubbles align left. */
   align?: 'left' | 'right';
 }
-
-const ITEM_CLASS = 'flex w-full items-center px-3 py-2 text-left text-[15px]';
 
 /** Reaction bar / Reply / Edit / Copy / Pin / Delete menu for a message bubble. */
 export function MessageActionsMenu({
@@ -69,79 +67,19 @@ export function MessageActionsMenu({
           </button>
         ))}
       </div>
-      <button
-        type="button"
-        role="menuitem"
-        onClick={onReply}
-        className={cn(
-          ITEM_CLASS,
-          'hover:bg-list-hover focus-visible:bg-list-hover focus-visible:outline-none',
-        )}
-      >
-        Reply
-      </button>
-      {canEdit && (
-        <button
-          type="button"
-          role="menuitem"
-          onClick={onEdit}
-          className={cn(
-            ITEM_CLASS,
-            'hover:bg-list-hover focus-visible:bg-list-hover focus-visible:outline-none',
-          )}
-        >
-          Edit
-        </button>
-      )}
-      <button
-        type="button"
-        role="menuitem"
-        disabled={!canCopy}
-        onClick={onCopy}
-        className={cn(
-          ITEM_CLASS,
-          'hover:bg-list-hover focus-visible:bg-list-hover focus-visible:outline-none disabled:opacity-50',
-        )}
-      >
+      <MenuItem onSelect={onReply}>Reply</MenuItem>
+      {canEdit && <MenuItem onSelect={onEdit}>Edit</MenuItem>}
+      <MenuItem onSelect={onCopy} disabled={!canCopy}>
         Copy text
-      </button>
-      <button
-        type="button"
-        role="menuitem"
-        disabled={!canDelete}
-        onClick={onDelete}
-        className={cn(
-          ITEM_CLASS,
-          'text-danger hover:bg-list-hover focus-visible:bg-list-hover focus-visible:outline-none disabled:opacity-50',
-        )}
-      >
+      </MenuItem>
+      <MenuItem onSelect={onDelete} disabled={!canDelete} destructive>
         Delete for everyone
-      </button>
+      </MenuItem>
       {canPin &&
         (isPinned ? (
-          <button
-            type="button"
-            role="menuitem"
-            onClick={onUnpin}
-            className={cn(
-              ITEM_CLASS,
-              'hover:bg-list-hover focus-visible:bg-list-hover focus-visible:outline-none',
-            )}
-          >
-            Unpin
-          </button>
+          <MenuItem onSelect={onUnpin}>Unpin</MenuItem>
         ) : (
-          <button
-            type="button"
-            role="menuitem"
-            onClick={onPin}
-            className={cn(
-              ITEM_CLASS,
-              'hover:bg-list-hover focus-visible:bg-list-hover focus-visible:outline-none',
-            )}
-          >
-            Pin
-          </button>
+          <MenuItem onSelect={onPin}>Pin</MenuItem>
         ))}
     </Menu>
   );
