@@ -1,4 +1,5 @@
 import {
+  contactChatId,
   ContactsApiError,
   normalizeHandleInput,
   type ContactsApi,
@@ -97,4 +98,22 @@ export async function actOnProfileRequest(
   const found = await api.lookupByHandle(target.handle);
   onProfile(found);
   onSentNone();
+}
+
+/**
+ * Resolves a contact's DM chat id without a refetch: the loaded chats first
+ * (the server lists every contact's DM), else the JID built from the user
+ * id and the viewer's domain — only when that chat is also loaded, since a
+ * guessed id that does not exist would open "Chat not found".
+ */
+export function resolveContactChat(
+  chats: { id: string; kind: string }[],
+  contactUserId: string,
+  domain: string | undefined,
+): string | undefined {
+  if (domain === undefined) {
+    return undefined;
+  }
+  const chatId = contactChatId(contactUserId, domain);
+  return chats.some((chat) => chat.id === chatId) ? chatId : undefined;
 }

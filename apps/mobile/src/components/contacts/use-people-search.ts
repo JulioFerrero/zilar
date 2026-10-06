@@ -1,8 +1,7 @@
 import { useEffect, useReducer, useRef, useState } from 'react';
 
 import { ContactsApiError, domainOfJid, type ContactsApi } from '../../lib/contacts-api';
-import { actOnProfileRequest, addContactSendFailure } from './add-contact';
-import { resolveContactChat } from './add-contact-sheet';
+import { actOnProfileRequest, addContactSendFailure, resolveContactChat } from './add-contact';
 import { performBlock, performUnblock } from './blocks';
 import { PeopleSearchController, type PeopleSearchView } from './people-search';
 

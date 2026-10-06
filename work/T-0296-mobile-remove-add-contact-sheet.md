@@ -1,7 +1,7 @@
 ---
 id: T-0296
 title: "Mobile cleanup: remove the unused AddContactSheet; resolveContactChat moves to add-contact.ts"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0296-mobile-remove-add-contact-sheet
 model: auto
@@ -59,4 +59,47 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+1. Moved `resolveContactChat` (with its doc comment, unchanged) from `add-contact-sheet.tsx` into `add-contact.ts`; added `contactChatId` to that file's `../../lib/contacts-api` import.
+2. Updated the two importers to pull it from `./add-contact`:
+   - `use-people-search.ts`: merged into the existing `./add-contact` import.
+   - `contacts.test.tsx`: moved `resolveContactChat` into the existing `./add-contact` import and dropped the now-unused `./add-contact-sheet` import.
+3. Deleted `apps/mobile/src/components/contacts/add-contact-sheet.tsx` (dead code apart from the helper).
+4. Removed the `nativewind` mock from `contacts.test.tsx`; no remaining import in that file needs it (the only rendered component, `ProfileCard`, imports no `nativewind` path). Every other assertion was kept.
+
+### Files changed
+- `apps/mobile/src/components/contacts/add-contact.ts` — added `contactChatId` import and `resolveContactChat`.
+- `apps/mobile/src/components/contacts/use-people-search.ts` — import from `./add-contact`.
+- `apps/mobile/src/components/contacts/contacts.test.tsx` — import from `./add-contact`; removed `nativewind` mock.
+- `apps/mobile/src/components/contacts/add-contact-sheet.tsx` — deleted.
+- `work/T-0296-mobile-remove-add-contact-sheet.md` — status + this Report.
+
+### Commands and real results
+- `pnpm install` — `Done in 11.5s using pnpm v10.32.1`.
+- `grep -rn "add-contact-sheet" apps/mobile` — no matches (exit 1); nothing references the deleted file.
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot contacts.test.tsx people-search` — `Test Files 2 passed (2)`, `Tests 48 passed (48)`.
+- `pnpm gate` (repo root) summary:
+  ```
+  gate: 4 changed file(s) against main
+  PASS  install (frozen)  (1.4s)
+  PASS  format  (15.2s)
+  PASS  lint  (0.9s)
+  PASS  typecheck  (6.0s)
+  PASS  tests @zilar/mobile  (1.4s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+  The 4 files are the four code files above (the task file was edited after the gate ran; it is inside the Allowed files).
+
+### Deviations / problems
+- None. No behaviour change: the helper body and doc comment were moved verbatim; only import paths changed.
+
+### Open questions
+- None.
+
 ## Review (written by Claude)
+
+**Approved.** The pre-review was clean (0 nits) and there were no fix rounds.
+- The dead 303-line sheet is gone.
+- `resolveContactChat` now lives in `add-contact.ts`, and its tests still pass.
+- Nothing references the sheet any more (checked with the lead's grep).

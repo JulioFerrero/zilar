@@ -9,11 +9,11 @@ import {
   addContactHandle,
   addContactLookupFailure,
   addContactSendFailure,
+  resolveContactChat,
 } from './add-contact';
 import { performBlock } from './blocks';
 import { requestsActionFailure, requestsLoadFailure } from './requests';
 import { ContactsApiError } from '@/lib/contacts-api';
-import { resolveContactChat } from './add-contact-sheet';
 import { ProfileCard, ProfileCardActionRow, shouldResetBlockConfirm } from './profile-card';
 
 // The mobile app has no React Native testing library, so the component is
@@ -23,10 +23,6 @@ import { ProfileCard, ProfileCardActionRow, shouldResetBlockConfirm } from './pr
 vi.mock('react-native', () => ({
   Pressable: 'Pressable',
   View: 'View',
-}));
-
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'dark' }),
 }));
 
 vi.mock('lucide-react-native', () => ({
