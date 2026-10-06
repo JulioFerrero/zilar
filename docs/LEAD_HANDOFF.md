@@ -59,6 +59,8 @@ The autopilot starts a Muse doctor session once main stays quiet 10 minutes: it 
 - **Mobile kit migrations break other tests' mocks (T-0287, T-0294).**
   - **Cause:** mobile tests stub modules by hand with `vi.mock`, and there is no RN testing library. When a migrated file starts importing a kit component, every test that imports that file loads new modules. Typical ones are `nativewind`, `react-native-reanimated` and `Platform`. Those tests then fail at import, and the worker is BLOCKED by scope.
   - **Before launching:** run `grep -rl "<migrated file basename>" apps/mobile/src --include=*.test.*` and add each hit to the Allowed files, marked "(mocks only)".
+  - **Go one level up as well (T-0311).** Also grep for the files that import the migrated file, then for the tests of those files. Example: `gif-panel` is imported by `emoji-sheet.tsx` and `composer.tsx`, so `emoji-sheet.test.tsx` broke on a missing lucide `Search` mock.
+  - **Check the mocks of the new component too.** A component with a default icon, such as `SearchField`, needs that icon (and `X`) in every `lucide-react-native` mock that reaches it.
 
 ## Server and deploy facts
 Coolify service `zilar` uuid `zogjtvwnoh9rqo96h7e7ajz1` (restart with `pull_latest: true`, verify the server `hostname` in the logs changes and an authed route answers 401). CI on main has a known flaky test (`packages/runner-tunnel`/runner `connect.test.ts`) and a legacy-name guard (`packages/devtools/src/no-legacy-name.test.ts`: the old product name must not appear in tracked files).
