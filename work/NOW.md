@@ -24,8 +24,9 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0293 | Web kit: setup, new-AI, AI panel, limits fields on TextInput | coding | batch 4 |
-| T-0294 | Mobile kit: TextField (well look) + 5 fields | coding | QA on emulator after merge |
+| T-0297 | Mobile: integrations, connections, AI edit, invite-link fields on TextField | coding (Muse, peak) | batch 2 |
+
+~03:05 local: merged T-0293, T-0294 (mobile TextField; QA run 12 PASS, qa12/), T-0295, T-0296 (removed dead mobile AddContactSheet, found by QA 12). First production image build is running (images run 37396257689: server, postgres, ejabberd built OK; web still building at 00:59 UTC); deploy skips until the Coolify secrets exist.
 
 ~02:50 local: merged T-0290, T-0291, T-0292 (bare field without label/hint/counter). `lead merge` pushes main, so each merge restarts CI; with T-0289 the older runs cancel. Lead plan: hold one merge until CI on the tip finishes so the images workflow builds once and proves the pipeline.
 
