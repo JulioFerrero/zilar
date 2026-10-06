@@ -54,9 +54,20 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| (none) | | | night finished; waiting for Julio |
+| T-0357 | Web kit: SearchField; 4 searches use it | coding (free Muse, peak) | |
+| T-0358 | Web kit: StateMessage inline; panel Loading lines | coding (free Muse, peak) | |
+| T-0359 | Web kit: MenuItem aria-label; chat menus on MenuItem | coding (free Muse, peak) | MessageActionsMenu follows |
+| T-0360 | Mobile kit: create and visibility sheet buttons | coding (free Muse, peak) | |
+| T-0361 | Mobile kit: roles, topic sheets, task strip buttons | coding (free Muse, peak) | |
+| T-0362 | Mobile kit: profile card, Profile tab, channel buttons | coding (free Muse, peak) | |
 
 Time correction (checked with `date`): it is 04:42 local, Tue 10-06. The "~04:xx–05:50 local" stamps below were estimated and run up to about an hour ahead; their order is right.
+
+~11:05 local (09:04 UTC): Julio asked for 6 workers and to watch the peak hours.
+- **Launched:** T-0357 to T-0359 (web) and T-0360 to T-0362 (mobile, the last accent pills).
+- **Model:** all six are on the free Muse, because DeepSeek's peak runs until 10:00 UTC; a failure falls back to the paid Muse.
+- **Specs:** every spec now says that labels go inside `<Text>`, after the T-0349 blank-button bug.
+- **Doctor audit 4:** clean.
 
 08:48 local: night finished.
 - **Merged:** T-0354 (2 nits; the lead checked every label is inside `<Text>`) and T-0356.
