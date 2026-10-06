@@ -378,4 +378,5 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0347](T-0347-mobile-sticker-pack-buttons-kit.md) | Mobile kit: Sticker pack editor text pill buttons on Button | 2026-10-06 |
 | [T-0348](T-0348-mobile-integrations-requests-buttons-kit.md) | Mobile kit: Integrations and Requests text pill buttons on Button | 2026-10-06 |
 | [T-0349](T-0349-mobile-profile-buttons-kit.md) | Mobile kit: Profile settings, avatar and handle buttons on Button | 2026-10-06 |
+| [T-0351](T-0351-mobile-auth-buttons-kit.md) | Mobile kit: sign-in and onboarding Continue/Skip buttons on Button | in-progress | auto | T-0350 | |
 | [T-0350](T-0350-mobile-telegram-import-buttons-kit.md) | Mobile kit: Telegram import sheet text pill buttons on Button | 2026-10-06 |
