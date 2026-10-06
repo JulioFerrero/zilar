@@ -362,5 +362,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0331](T-0331-web-share-tooltip.md) | Web: disabled Share on an imported sticker pack shows its reason again | 2026-10-06 |
 | [T-0333](T-0333-web-panel-tabs.md) | Web kit: sticker panel tabs on SegmentedControl | 2026-10-06 |
 | [T-0334](T-0334-web-badge-label.md) | Web kit: Badge label follows the visible count (99+) | 2026-10-06 |
+| [T-0336](T-0336-mobile-inline-ticks.md) | Mobile: inline bubble ticks as icons (no ✓ ✓✓ ○ glyphs) | in-progress | auto | none | needs emulator QA |
 | [T-0335](T-0335-autopilot-review-fallback.md) | Autopilot: fix rounds in review fall back on a rate limit | 2026-10-06 |
 | [T-0332](T-0332-mobile-new-topic-sheet.md) | Mobile: New topic sheet on BottomSheet; long Private form scrolls | 2026-10-06 |
