@@ -54,12 +54,14 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0357 | Web kit: SearchField; 4 searches use it | coding (free Muse, peak) | |
-| T-0358 | Web kit: StateMessage inline; panel Loading lines | coding (free Muse, peak) | |
-| T-0359 | Web kit: MenuItem aria-label; chat menus on MenuItem | coding (free Muse, peak) | MessageActionsMenu follows |
-| T-0360 | Mobile kit: create and visibility sheet buttons | coding (free Muse, peak) | |
-| T-0361 | Mobile kit: roles, topic sheets, task strip buttons | coding (free Muse, peak) | |
-| T-0362 | Mobile kit: profile card, Profile tab, channel buttons | coding (free Muse, peak) | |
+| T-0368 | Web kit: machine card buttons | coding (free Muse, peak) | |
+| T-0369 | Web kit: AIs page and Integrations Remove buttons | coding (free Muse, peak) | |
+| T-0370 | Web kit: ConfirmDialog, New AI, avatar uploader buttons | launching | |
+| T-0371 | Web kit: pack editor buttons | launching | |
+| T-0372 | Web kit: panel close buttons | launching | |
+| T-0373 | Web kit: dialog Cancel/Back/Close | launching | |
+
+Merged since the morning report (2026-10-06): T-0357 to T-0367 (web: SearchField, inline StateMessage, MenuItem on the chat and message menus, GIF/Stickers states, the Connections/folder/task link, contact row and pinned banner buttons; mobile: the create, visibility, roles, topic, task strip, profile and channel buttons). QA run 29 (T-0360, T-0361, T-0362 on the emulator) is running in the Sonnet subagent. Next web batch after these: the VisibilitySection, InviteLinksSection and ExplorePage outline buttons; StickerPanel, MessageBubble, FolderRail and TopicRow still have raw buttons to audit.
 
 Time correction (checked with `date`): it is 04:42 local, Tue 10-06. The "~04:xx–05:50 local" stamps below were estimated and run up to about an hour ahead; their order is right.
 
