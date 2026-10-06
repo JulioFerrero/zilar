@@ -4,7 +4,8 @@ import { MessageSquare, Pencil, Plus, Trash2, Zap } from 'lucide-react';
 import { deleteAi, listAis, listConnections, type PublicAi } from '@/lib/api';
 import { AiBadge } from '@/components/AiBadge';
 import { Avatar } from '@/components/Avatar';
-import { Button, FieldError } from '@/components/ais/AiPageShell';
+import { FieldError } from '@/components/ais/AiPageShell';
+import { Button } from '@/components/ui/button';
 import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
 import { StateMessage } from '@/components/ui/state-message';
 import { providerLabel } from '@/components/ais/ConnectionPicker';
@@ -223,52 +224,60 @@ function AiRow({
       <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
         {confirming ? (
           <>
-            <button
+            <Button
               type="button"
+              variant="destructive"
+              size="sm"
               disabled={deleting}
               onClick={onConfirmDelete}
-              className="rounded-full bg-danger px-3 py-1.5 text-[14px] font-medium text-white hover:bg-danger/90 disabled:opacity-50"
             >
               Remove
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              variant="ghost"
+              size="sm"
               disabled={deleting}
               onClick={onCancelDelete}
-              className="rounded-full px-3 py-1.5 text-[14px] text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
             >
               Cancel
-            </button>
+            </Button>
           </>
         ) : (
           <>
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="icon"
               aria-label={`Open chat with ${ai.name}`}
               title={`Open chat with ${ai.name}`}
               onClick={onOpenChat}
-              className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              className="text-muted-foreground"
             >
               <MessageSquare className="size-4" aria-hidden="true" />
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              variant="ghost"
+              size="icon"
               aria-label={`Edit ${ai.name}`}
               title={`Edit ${ai.name}`}
               onClick={onEdit}
-              className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              className="text-muted-foreground"
             >
               <Pencil className="size-4" aria-hidden="true" />
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              variant="ghost"
+              size="icon"
               aria-label={`Delete ${ai.name}`}
               title={`Delete ${ai.name}`}
               onClick={onAskDelete}
-              className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-danger/10 hover:text-danger"
+              className="text-muted-foreground hover:bg-danger/10 hover:text-danger"
             >
               <Trash2 className="size-4" aria-hidden="true" />
-            </button>
+            </Button>
           </>
         )}
       </div>

@@ -430,14 +430,9 @@ function VoiceTranscriptionCard({
           {busy ? 'Checking…' : 'Save'}
         </Button>
         {voiceTranscription.configured && (
-          <button
-            type="button"
-            onClick={() => void remove()}
-            disabled={busy}
-            className="rounded-full border border-border-strong bg-surface-raised px-4 py-1.5 text-[14px] font-medium text-foreground hover:bg-muted disabled:opacity-60"
-          >
+          <Button type="button" variant="outline" onClick={() => void remove()} disabled={busy}>
             Remove
-          </button>
+          </Button>
         )}
       </div>
     </section>
@@ -560,14 +555,9 @@ function TelegramCard({
               {busy ? 'Checking…' : 'Save'}
             </Button>
             {telegram.configured && (
-              <button
-                type="button"
-                onClick={() => void remove()}
-                disabled={busy}
-                className="rounded-full border border-border-strong bg-surface-raised px-4 py-1.5 text-[14px] font-medium text-foreground hover:bg-muted disabled:opacity-60"
-              >
+              <Button type="button" variant="outline" onClick={() => void remove()} disabled={busy}>
                 Remove
-              </button>
+              </Button>
             )}
           </div>
         </>

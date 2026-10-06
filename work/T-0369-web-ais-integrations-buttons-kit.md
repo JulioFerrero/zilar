@@ -1,7 +1,7 @@
 ---
 id: T-0369
 title: "Web kit: the AIs page row buttons and the Integrations page Remove buttons use the kit Button"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0369-web-ais-integrations-buttons-kit
 model: auto
@@ -64,4 +64,30 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Migrated all seven hand-rolled buttons to the kit `Button`.
+
+What I did:
+- `apps/web/src/routes/AisPage.tsx`: replaced the Remove/Cancel confirm pair with `<Button variant="destructive" size="sm">` / `<Button variant="ghost" size="sm">`, and the three row icon buttons (MessageSquare, Pencil, Trash2) with `<Button variant="ghost" size="icon">` keeping `text-muted-foreground` (plus `hover:bg-danger/10 hover:text-danger` on delete). Kept all texts, aria-labels, titles, `disabled` and handlers. Changed the import from `{ Button, FieldError } from '@/components/ais/AiPageShell'` to `FieldError` from there plus `Button` from `@/components/ui/button` (the AiPageShell `Button` is a re-export of the same kit button, but the spec asks for the direct import). The pre-existing "Create AI" `<Button size="lg">` now also resolves to the kit button directly; behavior unchanged.
+- `apps/web/src/routes/IntegrationsPage.tsx`: replaced the two hand-rolled "Remove" buttons (voice transcription, Telegram import) with `<Button type="button" variant="outline" ...>` next to the existing Save buttons. Left the three show/hide key toggles (lines ~250, ~407, ~541) untouched.
+- No test changes needed: existing tests find buttons by role/name and all texts/labels/handlers are preserved.
+
+Files changed:
+- `apps/web/src/routes/AisPage.tsx`
+- `apps/web/src/routes/IntegrationsPage.tsx`
+- `work/T-0369-web-ais-integrations-buttons-kit.md` (this report + status)
+
+Commands and real results:
+- `pnpm install`: exit 0.
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot AisPage IntegrationsPage`: 2 files, 20 tests passed.
+- `pnpm gate` (first run): GATE FAIL on format only (`IntegrationsPage.tsx` needed Prettier collapsing the new `<Button>` props to one line); fixed with `pnpm exec prettier --write` on my two files (AisPage.tsx unchanged).
+- `pnpm gate` (final): PASS install, PASS format, PASS lint, PASS typecheck, PASS tests @zilar/web; "scope: every changed file is inside the Allowed files"; GATE PASS.
+
+Acceptance check: `AisPage.tsx` has zero `<button`; `IntegrationsPage.tsx` has exactly the three key-toggle `<button` elements.
+
+Deviations/problems: one cosmetic note — the kit `destructive` variant is a tinted red (`bg-danger/10 text-danger`) rather than the old solid `bg-danger text-white` pill; that is the intended kit migration per the spec table. No open questions.
+
+Security checklist: no secrets/tokens touched; no deletes/updates, permissions, caps, routes, or audit entries involved — not applicable.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-06). The AIs row confirm pair and three icon buttons, and both Integrations Remove buttons, are kit `Button` as specified. The spec missed that AisPage already used the kit Button via the AiPageShell re-export; the worker now imports it directly, no behaviour change. Pre-review clean (0 findings).
