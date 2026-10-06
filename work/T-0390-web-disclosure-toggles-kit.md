@@ -1,7 +1,7 @@
 ---
 id: T-0390
 title: "Web kit: the Machines \"Revoked (n)\" and New AI \"More options\" disclosure toggles use the kit Button"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0390-web-disclosure-toggles-kit
 model: auto
@@ -59,4 +59,43 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- Replaced the hand-rolled "Revoked (n)" toggle in `apps/web/src/routes/MachinesPage.tsx` with the kit `Button` (`variant="ghost" size="sm"`), keeping `type`, `aria-expanded`, `title`, `onClick`, the `ChevronDown` icon, the `rotate-180` logic and the text.
+- Replaced the hand-rolled "More options" toggle in `apps/web/src/components/ais/NewAiDialog.tsx` with the kit `Button` (`variant="ghost" size="sm"`), keeping `aria-expanded`, `onClick`, the `ChevronDown` icon, the `cn(... rotate-180)` logic and the text.
+- No test files needed changes.
+
+### Files changed
+- `apps/web/src/routes/MachinesPage.tsx` (toggle only)
+- `apps/web/src/components/ais/NewAiDialog.tsx` (toggle only)
+- `work/T-0390-web-disclosure-toggles-kit.md` (status/report)
+
+### Acceptance checks
+- `MachinesPage.tsx` has no hand-rolled `<button>`: `grep '<button'` → no matches.
+- `NewAiDialog.tsx` keeps only the template radio chip as a raw button: `grep '<button'` → 1 match at line 228, the template `role="radio"` chip.
+- Tests pass.
+- `pnpm gate` ends `GATE PASS`, no file outside the Allowed files.
+
+### Commands and results
+- `pnpm install`: exit 0, 1170 packages, done.
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot MachinesPage NewAiDialog`: 2 files passed, 27 tests passed, exit 0.
+- `pnpm gate`: exit 0. Summary lines:
+  ```
+  gate: 3 changed file(s) against main
+  PASS  install (frozen)  (1.8s)
+  PASS  format  (24.1s)
+  PASS  lint  (1.1s)
+  PASS  typecheck  (11.8s)
+  PASS  tests @zilar/web  (46.3s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Deviations / problems
+None.
+
+### Blocked / needs a decision
+None.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-06). Revoked and More options are kit ghost `sm` Buttons with the same aria-expanded, title, chevron rotation and text. Pre-review clean (0 findings).

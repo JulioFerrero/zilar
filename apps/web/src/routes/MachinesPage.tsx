@@ -383,19 +383,21 @@ export function MachinesPage() {
                 {revokedMachines.length > 0 && (
                   <section aria-label="Revoked machines" className="flex flex-col gap-2">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <button
+                      <Button
                         type="button"
+                        variant="ghost"
+                        size="sm"
                         aria-expanded={showRevoked}
                         title={showRevoked ? 'Hide revoked machines' : 'Show revoked machines'}
                         onClick={() => setShowRevoked((value) => !value)}
-                        className="flex items-center gap-1 self-start text-[15px] font-semibold hover:text-foreground"
+                        className="self-start px-1 text-[15px] font-semibold"
                       >
                         <ChevronDown
                           className={`size-4 transition-transform ${showRevoked ? 'rotate-180' : ''}`}
                           aria-hidden="true"
                         />
                         Revoked ({revokedMachines.length})
-                      </button>
+                      </Button>
                       {pendingMachines.length === 0 && approvedMachines.length === 0 && (
                         <Button
                           type="button"

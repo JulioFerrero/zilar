@@ -415,8 +415,8 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0386](T-0386-mobile-kit-state-message.md) | Mobile kit: StateMessage component, catalog and kit test | in-progress | auto | | |
 | [T-0388](T-0388-web-voice-file-key-icons-kit.md) | Web kit: transcript toggle as Captions IconButton; file Retry IconButton; transcript states on kit | in-progress | auto | | |
 | [T-0389](T-0389-web-kit-secret-input.md) | Web kit: SecretInput replaces four hand-rolled key/token fields | in-progress | auto | | |
-| [T-0390](T-0390-web-disclosure-toggles-kit.md) | Web kit: Revoked and More options disclosure toggles on Button | in-progress | auto | | |
 | [T-0391](T-0391-mobile-no-solid-pill-guard.md) | Mobile guard: no hand-rolled solid bg-accent/bg-danger Pressable | in-progress | auto | | |
 | [T-0380](T-0380-web-shell-back-icons-kit.md) | Web kit: settings Back, AI close and refresh on Button; drop unused AiPageShell frame | 2026-10-06 |
 | [T-0387](T-0387-mobile-profile-card-confirm-block-kit.md) | Mobile kit: profile card Confirm block on destructive Button | 2026-10-06 |
 | [T-0384](T-0384-mobile-explore-blocked-retry-buttons-kit.md) | Mobile kit: Explore, Blocked and panel Retry buttons on Button | 2026-10-06 |
+| [T-0390](T-0390-web-disclosure-toggles-kit.md) | Web kit: Revoked and More options disclosure toggles on Button | 2026-10-06 |

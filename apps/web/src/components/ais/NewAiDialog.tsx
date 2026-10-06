@@ -263,18 +263,20 @@ export function NewAiDialog({ onClose }: { onClose: () => void }) {
             )}
 
             <div className="flex flex-col gap-3 border-t border-divider pt-3">
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="sm"
                 aria-expanded={moreOptionsOpen}
                 onClick={() => setMoreOptionsOpen((value) => !value)}
-                className="flex items-center gap-1 self-start text-[14px] font-medium text-accent"
+                className="self-start px-1 text-[14px] font-medium text-accent hover:text-accent"
               >
                 More options
                 <ChevronDown
                   className={cn('size-4 transition-transform', moreOptionsOpen && 'rotate-180')}
                   aria-hidden="true"
                 />
-              </button>
+              </Button>
 
               {moreOptionsOpen && (
                 <div className="flex flex-col gap-4">
