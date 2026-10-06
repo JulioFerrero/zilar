@@ -373,4 +373,5 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0342](T-0342-web-new-topic-visibility-segmented.md) | Web kit: New topic visibility on SegmentedControl | 2026-10-06 |
 | [T-0343](T-0343-mobile-machines-buttons-kit.md) | Mobile kit: Machines screen pill buttons on Button | 2026-10-06 |
 | [T-0344](T-0344-web-inputs-kit.md) | Web kit: Telegram import and Group roles fields on TextInput | 2026-10-06 |
+| [T-0346](T-0346-mobile-stickers-buttons-kit.md) | Mobile kit: Stickers screen text pill buttons on Button | in-progress | auto | T-0345 | |
 | [T-0345](T-0345-mobile-connections-buttons-kit.md) | Mobile kit: Connections screen text pill buttons on Button | 2026-10-06 |
