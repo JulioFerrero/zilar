@@ -5,6 +5,7 @@ import { RefreshCw } from 'lucide-react-native';
 import { useColorScheme } from 'nativewind';
 
 import { Button } from '@/components/ui/button';
+import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import type { AuditApi, PublicAuditEntry } from '@/lib/audit-api';
 import { asColorScheme } from '@/lib/color-scheme';
@@ -111,7 +112,7 @@ export function AiActivityContent({
     );
   }
   if (state.entries.length === 0) {
-    return <Text className="px-2 text-[13px] text-muted-foreground">{ACTIVITY_EMPTY_MESSAGE}</Text>;
+    return <StateMessage kind="empty" size="inline" title={ACTIVITY_EMPTY_MESSAGE} />;
   }
   return (
     <View className="gap-0.5">

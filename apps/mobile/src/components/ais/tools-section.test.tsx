@@ -16,11 +16,21 @@ import {
   type ToolsSectionState,
 } from './tools-section';
 
+vi.mock('nativewind', () => ({
+  useColorScheme: () => ({ colorScheme: 'light' }),
+}));
+
 vi.mock('react-native', () => ({
+  ActivityIndicator: 'ActivityIndicator',
   Modal: 'Modal',
   Pressable: 'Pressable',
   ScrollView: 'ScrollView',
   View: 'View',
+}));
+
+vi.mock('lucide-react-native', () => ({
+  CircleAlert: 'CircleAlert',
+  Inbox: 'Inbox',
 }));
 
 vi.mock('@/components/ui/text', () => ({

@@ -282,11 +282,7 @@ function ExploreList() {
               </Button>
             </View>
           )}
-          ListEmptyComponent={
-            <View className="items-center px-6 pt-12">
-              <Text className="text-center text-[15px] text-muted-foreground">{emptyLine}</Text>
-            </View>
-          }
+          ListEmptyComponent={<StateMessage kind="empty" title={emptyLine} />}
           ListFooterComponent={
             <View className="items-center gap-2 py-2">
               {next !== null && entries.length > 0 && (

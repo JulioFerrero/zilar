@@ -14,6 +14,7 @@ import { Card } from '@/components/ui/card';
 import { IconButton } from '@/components/ui/icon-button';
 import { IconTile } from '@/components/ui/icon-tile';
 import { ListRow } from '@/components/ui/list-row';
+import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { asColorScheme, type ColorScheme } from '@/lib/color-scheme';
 import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
@@ -83,7 +84,7 @@ function FoldersSettings() {
       onBack={() => router.back()}
     >
       {folders.length === 0 ? (
-        <Text className="text-[15px] text-muted-foreground">No folders yet.</Text>
+        <StateMessage kind="empty" size="inline" title="No folders yet." />
       ) : (
         <Card>
           {folders.map((folder, index) => (

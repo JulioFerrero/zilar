@@ -20,7 +20,7 @@ import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import { asColorScheme } from '@/lib/color-scheme';
-import { ACCENT_FOREGROUND, ICON } from '@/lib/colors';
+import { ICON } from '@/lib/colors';
 import type { ProviderConnection } from '@/lib/connections-api';
 
 type PageStatus = 'loading' | 'ready' | 'error';
@@ -190,21 +190,16 @@ function ConnectionsList() {
           ) : null}
 
           {status === 'ready' && connections.length === 0 && !showForm ? (
-            <View className="items-center gap-3 pt-16">
-              <KeyRound size={32} color={ICON[scheme]} />
-              <Text className="px-4 text-center text-[15px] text-muted-foreground">
-                No provider connections yet.
-              </Text>
-              <Button
-                variant="default"
-                size="sm"
-                accessibilityLabel="Add a connection"
-                onPress={() => setShowForm(true)}
-              >
-                <Plus size={16} color={ACCENT_FOREGROUND[scheme]} />
-                <Text>Add a connection</Text>
-              </Button>
-            </View>
+            <StateMessage
+              kind="empty"
+              icon={KeyRound}
+              title="No provider connections yet."
+              action={{
+                label: 'Add a connection',
+                accessibilityLabel: 'Add a connection',
+                onPress: () => setShowForm(true),
+              }}
+            />
           ) : null}
 
           {status === 'ready' && (connections.length > 0 || showForm) ? (

@@ -159,7 +159,6 @@ describe('ConnectionsScreen', () => {
     const html = await renderScreen({ connections: [], status: 'ready' });
     expect(html).toContain('No provider connections yet');
     expect(html).toContain('Add a connection');
-    expect(html).toMatch(/<Plus[^>]*color="#0a0a0a"/);
     expect(html).not.toContain('color="#fff"');
   });
 
