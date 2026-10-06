@@ -189,14 +189,16 @@ export function ContactProfileRow({
           {sentLabel && <p className="mt-0.5 text-[13px] text-muted-foreground">Request sent.</p>}
         </div>
         {profile.relation === 'blocked' ? (
-          <button
+          <Button
             type="button"
+            variant="outline"
+            size="sm"
             onClick={() => void unblock()}
             disabled={busy}
-            className="flex shrink-0 items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-[13px] text-muted-foreground hover:bg-surface-raised disabled:opacity-60"
+            className="shrink-0"
           >
             {busy ? 'Unblocking…' : 'Unblock'}
-          </button>
+          </Button>
         ) : profile.relation === 'self' ? null : profile.relation === 'contact' &&
           dmChatId !== undefined ? (
           <Button type="button" onClick={openChat} size="sm" className="shrink-0">
@@ -222,30 +224,33 @@ export function ContactProfileRow({
             </Button>
           )
         ) : profile.relation === 'request_sent' ? (
-          <button
+          <Button
             type="button"
+            variant="outline"
+            size="sm"
             onClick={() => void decide('cancel')}
             disabled={busy}
-            className="flex shrink-0 items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-[13px] text-muted-foreground hover:bg-surface-raised disabled:opacity-60"
+            className="shrink-0"
           >
             <UserMinus className="size-3.5" aria-hidden="true" />
             {busy ? 'Cancelling…' : 'Cancel'}
-          </button>
+          </Button>
         ) : (
           <span className="flex shrink-0 gap-2">
             <Button type="button" onClick={() => void decide('accept')} disabled={busy} size="sm">
               <UserCheck className="size-3.5" aria-hidden="true" />
               Accept
             </Button>
-            <button
+            <Button
               type="button"
+              variant="outline"
+              size="sm"
               onClick={() => void decide('decline')}
               disabled={busy}
-              className="flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-[13px] text-muted-foreground hover:bg-surface-raised disabled:opacity-60"
             >
               <UserX className="size-3.5" aria-hidden="true" />
               Decline
-            </button>
+            </Button>
           </span>
         )}
       </div>
@@ -260,39 +265,43 @@ export function ContactProfileRow({
             Block {profile.name}? They are not told. You won&apos;t see their contact requests.
           </p>
           <div className="flex gap-2">
-            <button
+            <Button
               type="button"
+              variant="destructive"
+              size="sm"
               onClick={() => void block()}
               disabled={busy}
               aria-label="Confirm block"
-              className="flex items-center gap-1.5 rounded-full bg-danger px-3 py-1.5 text-[13px] font-medium text-white hover:opacity-90 disabled:opacity-60"
             >
               <Ban className="size-3.5" aria-hidden="true" />
               {busy ? 'Blocking…' : 'Block'}
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              variant="outline"
+              size="sm"
               onClick={() => setConfirmingBlock(false)}
               disabled={busy}
-              className="rounded-full border border-border px-3 py-1.5 text-[13px] text-muted-foreground hover:bg-surface disabled:opacity-60"
             >
               Cancel
-            </button>
+            </Button>
           </div>
         </div>
       )}
       {profile.relation !== 'self' && profile.relation !== 'blocked' && !confirmingBlock && (
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="sm"
           onClick={() => {
             setError(undefined);
             setConfirmingBlock(true);
           }}
-          className="flex items-center gap-1.5 self-start px-1 text-[13px] text-muted-foreground hover:text-foreground"
+          className="self-start"
         >
           <Ban className="size-3.5" aria-hidden="true" />
           Block
-        </button>
+        </Button>
       )}
     </div>
   );

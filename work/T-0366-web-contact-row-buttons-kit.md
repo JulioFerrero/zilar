@@ -1,7 +1,7 @@
 ---
 id: T-0366
 title: "Web kit: the contact profile row's Unblock, Cancel request, Decline and block buttons use the kit Button"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0366-web-contact-row-buttons-kit
 model: auto
@@ -62,4 +62,17 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Replaced the six hand-rolled `<button>` elements in `apps/web/src/components/ContactProfileRow.tsx` with kit `<Button type="button" size="sm">`: Unblock → `outline` (+`shrink-0`), Cancel request → `outline` (+`shrink-0`), Decline → `outline`, confirm Block → `destructive`, confirm Cancel → `outline`, open-confirm Block → `ghost` (+`self-start`). Kept every icon (`size-3.5`, `aria-hidden`), text, `aria-label`, `disabled` and `onClick`. No test files needed changes. `grep '<button'` in the file: no matches.
+
+Files changed: `apps/web/src/components/ContactProfileRow.tsx`.
+
+Commands:
+- `pnpm install`: pass (24.7s).
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot ContactProfileRow PeopleSearchResult`: 2 files, 23 tests passed.
+- `pnpm gate`: GATE PASS — install, format, lint, typecheck, tests @zilar/web all PASS; scope: every changed file inside Allowed files (2 changed files).
+
+Security checklist: no secrets/tokens touched; no deletes/updates, permissions, caps, routes, or audit entries involved — N/A.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-06). The six hand-rolled buttons are kit `Button` `sm` (outline ×4, destructive Confirm block, ghost Block link) with icons, texts, labels and layout classes kept. Confirm block is now the tinted kit destructive instead of solid red, as specified. Pre-review clean (0 findings).
