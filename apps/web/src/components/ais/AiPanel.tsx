@@ -20,6 +20,7 @@ import {
 import { AiBadge } from '@/components/AiBadge';
 import { Avatar } from '@/components/Avatar';
 import { AvatarUploader } from '@/components/AvatarUploader';
+import { Sheet } from '@/components/ui/sheet';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
 import { cn } from '@/lib/utils';
 import { Button, FieldError } from './AiPageShell';
@@ -480,17 +481,8 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
   };
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label={`${chat.title} AI settings`}
-      onClick={onClose}
-      className="fixed inset-0 z-40 flex justify-end bg-black/40"
-    >
-      <div
-        onClick={(event) => event.stopPropagation()}
-        className="flex h-full w-full max-w-sm flex-col bg-background shadow-xl sm:w-[380px]"
-      >
+    <>
+      <Sheet open onClose={onClose} ariaLabel={`${chat.title} AI settings`}>
         <header className="flex shrink-0 items-center gap-3 border-b border-divider p-4">
           <Avatar
             id={ai?.id ?? chat.id}
@@ -809,7 +801,7 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
             </Button>
           </footer>
         )}
-      </div>
-    </div>
+      </Sheet>
+    </>
   );
 }

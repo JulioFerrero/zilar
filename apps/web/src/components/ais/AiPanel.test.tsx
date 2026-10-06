@@ -230,6 +230,16 @@ describe('AiPanel', () => {
     expect(screen.getByDisplayValue('gpt-4o')).toBeTruthy();
   });
 
+  it('closes with Escape', async () => {
+    mockPanelFetch();
+
+    const { onClose } = renderPanel();
+
+    expect(await screen.findByDisplayValue('Dev-1')).toBeTruthy();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalled();
+  });
+
   it('shows the AI picture when the server sends one', async () => {
     const pictured = { ...ai, avatarUrl: '/api/avatars/a-1' };
     mockPanelFetch([openaiConnection], pictured, undefined, pictured, pictured);

@@ -10,7 +10,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0285](T-0285-web-sheet-group-channel.md) | Web kit migration: GroupPanel and ChannelPanel on the Sheet | in_progress | auto | T-0282 | |
-| [T-0286](T-0286-web-sheet-topic-ai.md) | Web kit migration: TopicPanel and AiPanel on the Sheet | in_progress | auto | T-0282 | AiPanel gains Escape |
 | [T-0287](T-0287-mobile-kit-confirm-dialog.md) | Mobile kit: ConfirmDialog; AI delete, rule revoke, machine confirms use it | in_progress | auto | | audit step 6, mobile |
 
 ## Follow-ups
@@ -316,3 +315,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0283](T-0283-mobile-kit-action-sheet.md) | Mobile kit: ActionSheet; the AI and chat long-press sheets use it | 2026-10-06 |
 | [T-0282](T-0282-web-kit-sheet.md) | Web kit: right-side Sheet (PinsPanel on it); modal Escape stops at the topmost overlay and attaches in a layout effect | 2026-10-06 |
 | [T-0284](T-0284-mobile-topic-actions-sheet.md) | Mobile kit: topic actions sheet on the kit ActionSheet; Open group row gets its icon | 2026-10-06 |
+| [T-0286](T-0286-web-sheet-topic-ai.md) | Web kit: TopicPanel and AiPanel on the kit Sheet; AiPanel closes on Escape | 2026-10-06 |

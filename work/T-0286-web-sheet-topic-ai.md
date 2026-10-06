@@ -1,7 +1,7 @@
 ---
 id: T-0286
 title: "Web kit migration: TopicPanel and AiPanel render through the kit Sheet"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0286-web-sheet-topic-ai
 model: auto
@@ -69,4 +69,73 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+
+- `apps/web/src/components/TopicPanel.tsx` now renders through the kit `Sheet`:
+  - removed the capture-phase Escape effect, the narrow-layout Tab-trap effect,
+    the `isWide` / `useMediaQuery` use, `panelRef` and the `FOCUSABLE` constant;
+  - removed the hand-rolled backdrop and inner panel; the accessible name is
+    unchanged (`${chat.title} topic info`);
+  - the two `ConfirmDialog`s (`confirmingVisibility`, `confirmingArchive`) move
+    from inside the old backdrop to a fragment next to the `Sheet`. They render
+    after it, so the shared topmost-only Escape still closes the confirm first.
+- `apps/web/src/components/ais/AiPanel.tsx` now renders through the `Sheet` too:
+  - removed the backdrop and inner panel (and their `bg-background` /
+    `max-w-sm`); header, body, footer and texts are unchanged; the accessible
+    name is unchanged (`${chat.title} AI settings`);
+  - per the spec it now takes the `Sheet`'s `bg-surface` and gains
+    Escape-to-close, which it did not have before.
+- Neither panel contains `role="dialog"` or a keydown listener of its own any
+  more (`grep` shows no `role="dialog"`, `onKeyDown`, `addEventListener` in
+  either file).
+- Tests:
+  - `apps/web/src/components/ais/AiPanel.test.tsx`: added a test that Escape
+    calls `onClose`;
+  - `apps/web/src/components/TopicPanel.test.tsx` already had a
+    "closes with Escape" test, so it needed no change; all its dialog lookups
+    (`getByRole('dialog', { name: '… topic info' })`) still pass against the
+    `Sheet`;
+  - `apps/web/src/components/TaskStrip.test.tsx` needed no change (it does not
+    query the panel dialogs).
+
+Files changed (all inside the Allowed files):
+`apps/web/src/components/TopicPanel.tsx`,
+`apps/web/src/components/ais/AiPanel.tsx`,
+`apps/web/src/components/ais/AiPanel.test.tsx`,
+`work/T-0286-web-sheet-topic-ai.md`.
+
+### Commands and results
+
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot TopicPanel AiPanel TaskStrip`
+  → `Test Files 3 passed (3)`, `Tests 65 passed (65)`.
+- `pnpm gate` from the repo root:
+
+```
+gate: 4 changed file(s) against main
+PASS  install (frozen)  (1.4s)
+PASS  format  (15.5s)
+PASS  lint  (0.8s)
+PASS  typecheck  (7.3s)
+PASS  tests @zilar/web  (22.1s)
+scope: every changed file is inside the Allowed files
+GATE PASS
+```
+
+### Deviations / notes
+
+- None from the spec. `TopicPanel.tsx` returns a fragment (`<>…</>`) only
+  because the two `ConfirmDialog`s stay outside the `Sheet`; the panel content
+  itself is unchanged.
+- Security checklist: this is a UI-only change (no routes, deletes,
+  permissions, caps or logging), so the security items do not apply.
+
+### Open questions
+
+None.
+
 ## Review (written by Claude)
+
+**Approved.** Clean pre-review, no fix rounds.
+- `TopicPanel` has lost its own Escape handling, Tab trap and `isWide`. Its confirm dialogs still stack on top of the Sheet, so Escape closes the confirm first.
+- `AiPanel` now closes on Escape, with a new test.
+- One nit accepted: a redundant fragment around the Sheet.
