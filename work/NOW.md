@@ -54,14 +54,18 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0368 | Web kit: machine card buttons | coding (free Muse, peak) | |
-| T-0369 | Web kit: AIs page and Integrations Remove buttons | coding (free Muse, peak) | |
-| T-0370 | Web kit: ConfirmDialog, New AI, avatar uploader buttons | coding (free Muse, peak) | |
-| T-0371 | Web kit: pack editor buttons | coding (free Muse, peak) | |
-| T-0372 | Web kit: panel close buttons | coding (free Muse, peak) | |
-| T-0373 | Web kit: dialog Cancel/Back/Close | coding (free Muse, peak) | |
+| T-0374 | Web kit: visibility and invite link buttons | coding (free Muse, peak) | |
+| T-0375 | Web: "+" glyphs to Plus icons; small kit buttons | coding (free Muse, peak) | |
+| T-0376 | Web kit: FAB and voice play; guard flags key-primary and bg-danger | coding (free Muse, peak) | |
+| T-0377 | Mobile kit: topic info Leave/Archive; New topic Create guard | coding (free Muse, peak) | QA run 29 findings |
+| T-0378 | Mobile: group New topic FAB as a raised key | coding (free Muse, peak) | |
+| T-0379 | Web kit: Explore states | coding (free Muse, peak) | |
 
-Merged since the morning report (2026-10-06): T-0357 to T-0367 (web: SearchField, inline StateMessage, MenuItem on the chat and message menus, GIF/Stickers states, the Connections/folder/task link, contact row and pinned banner buttons; mobile: the create, visibility, roles, topic, task strip, profile and channel buttons). QA run 29 (T-0360, T-0361, T-0362 on the emulator) is running in the Sonnet subagent. Next web batch after these: the VisibilitySection, InviteLinksSection and ExplorePage outline buttons; StickerPanel, MessageBubble, FolderRail and TopicRow still have raw buttons to audit.
+Merged since the morning report (2026-10-06): T-0357 to T-0373 (web: SearchField, inline StateMessage, MenuItem on the chat and message menus, GIF/Stickers states, and kit Buttons on Connections, folders, task link, contact row, pinned banner, machine cards, AIs, Integrations, ConfirmDialog, New AI, avatar uploader, pack editor, panel close buttons and dialog Cancel/Back/Close; mobile: the create, visibility, roles, topic, task strip, profile and channel buttons). No hand-rolled solid `bg-danger` button is left on web.
+
+QA run 29 (main b0931985, mock): T-0360, T-0361, T-0362 PASS, no blank pills. Findings → T-0377 (Archive red with dark text; New topic Create enabled with empty name). Not checked: the visibility share-link buttons (no share link in mock), profile card states eve/bob/ada. One ANR came from the QA agent's own key flood in Chats search, not reproduced by normal typing. Marker restored to b45684f1.
+
+Still raw on web after this batch: MessageBubble inline Retry/Delete links and the hover actions button, FolderRail keys, TopicRow chat actions, StickerPanel tabs and grid (tabs and grid cells stay raw by design).
 
 Time correction (checked with `date`): it is 04:42 local, Tue 10-06. The "~04:xx–05:50 local" stamps below were estimated and run up to about an hour ahead; their order is right.
 
