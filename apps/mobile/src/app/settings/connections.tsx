@@ -28,7 +28,7 @@ import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import { asColorScheme } from '@/lib/color-scheme';
-import { ACCENT, ICON } from '@/lib/colors';
+import { ACCENT, ACCENT_FOREGROUND, ICON } from '@/lib/colors';
 import type { ProviderConnection } from '@/lib/connections-api';
 
 type PageStatus = 'loading' | 'ready' | 'error';
@@ -217,7 +217,7 @@ function ConnectionsList() {
                 onPress={() => setShowForm(true)}
                 className="flex-row items-center gap-2 rounded-full bg-accent px-5 py-2 active:opacity-90"
               >
-                <Plus size={16} color="#fff" />
+                <Plus size={16} color={ACCENT_FOREGROUND[scheme]} />
                 <Text className="text-[15px] font-medium text-accent-foreground">
                   Add a connection
                 </Text>

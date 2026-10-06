@@ -69,6 +69,7 @@ vi.mock('@/components/connections/use-connections-api', () => ({
 
 vi.mock('@/lib/colors', () => ({
   ACCENT: { dark: '#ededed', light: '#ededed' },
+  ACCENT_FOREGROUND: { dark: '#0a0a0a', light: '#0a0a0a' },
   ICON: { dark: '#d4d4d4', light: '#d4d4d4' },
   MUTED_FOREGROUND: { dark: '#a1a1a1', light: '#a1a1a1' },
 }));
@@ -150,6 +151,8 @@ describe('ConnectionsScreen', () => {
     const html = await renderScreen({ connections: [], status: 'ready' });
     expect(html).toContain('No provider connections yet');
     expect(html).toContain('Add a connection');
+    expect(html).toMatch(/<Plus[^>]*color="#0a0a0a"/);
+    expect(html).not.toContain('color="#fff"');
   });
 
   it('shows connection rows with the provider, label and status', async () => {

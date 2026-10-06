@@ -310,7 +310,7 @@ function MachinesList() {
                 onPress={openAdd}
                 className="flex-row items-center gap-2 rounded-full bg-accent px-5 py-2 active:opacity-90"
               >
-                <Plus size={16} color="#fff" />
+                <Plus size={16} color={ACCENT_FOREGROUND[scheme]} />
                 <Text className="text-[15px] font-medium text-accent-foreground">Add machine</Text>
               </Pressable>
             </View>

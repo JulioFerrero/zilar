@@ -71,7 +71,7 @@ vi.mock('@/components/machines/use-machines-api', () => ({
 
 vi.mock('@/lib/colors', () => ({
   ACCENT: { dark: '#ededed', light: '#ededed' },
-  ACCENT_FOREGROUND: { dark: '#ededed', light: '#ededed' },
+  ACCENT_FOREGROUND: { dark: '#0a0a0a', light: '#0a0a0a' },
   ICON: { dark: '#d4d4d4', light: '#d4d4d4' },
 }));
 
@@ -168,6 +168,8 @@ describe('MachinesScreen', () => {
     const html = await renderScreen({ machines: [], status: 'ready' });
     expect(html).toContain('No machines yet');
     expect(html).toContain('Add machine');
+    expect(html).toMatch(/<Plus[^>]*color="#0a0a0a"/);
+    expect(html).not.toContain('color="#fff"');
   });
 
   it('shows pending rows with Approve and Deny', async () => {
