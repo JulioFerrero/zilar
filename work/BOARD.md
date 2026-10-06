@@ -10,6 +10,8 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0284](T-0284-mobile-topic-actions-sheet.md) | Mobile kit migration: topic actions sheet on ActionSheet | in_progress | auto | T-0283 | + "Open group" icon (QA run 10) |
+| [T-0285](T-0285-web-sheet-group-channel.md) | Web kit migration: GroupPanel and ChannelPanel on the Sheet | in_progress | auto | T-0282 | |
+| [T-0286](T-0286-web-sheet-topic-ai.md) | Web kit migration: TopicPanel and AiPanel on the Sheet | in_progress | auto | T-0282 | AiPanel gains Escape |
 
 ## Follow-ups
 
