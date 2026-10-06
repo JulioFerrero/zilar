@@ -28,6 +28,8 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 | T-0305 | Mobile: AI model, spend limit, tool run-input fields on TextField | coding (Muse, peak) | batch 6 |
 | T-0306 | Mobile: machine rename and sticker pack name on TextField | coding (Muse, peak) | batch 7 |
 
+~03:40 local: QA run 14 PASS (qa14/): invite links sheet sits above the numeric keyboard (lead saw 02.png), backdrop closes and inside taps do not; the create-sheet, roles and task-strip link fields show the well look and typing works. No crash. Phone marker restored to b45684f1 (lead checked).
+
 ~03:30 local: merged T-0304 (web image builder runs natively; local amd64 cross-build passed) and T-0303 (Integrations owner mock: `?mock=1` shows the cards, `?mock=not-owner` the lock). First images run 37396257689: zilar-web still building under QEMU after 32 min; the next images run on the tip uses the T-0304 Dockerfile (lead is timing it).
 
 ~03:22 local: merged T-0299 (invite links sheet keyboard), T-0300, T-0301 (all clean, 0 nits). QA run 14 sent for all three (qa14/).
