@@ -13,7 +13,6 @@ import { AlwaysAllowedList } from './approvals/AlwaysAllowedList';
 import { Button } from './ui/button';
 import { Sheet } from './ui/sheet';
 import { StateMessage } from './ui/state-message';
-import { cn } from '@/lib/utils';
 import {
   ApiError,
   getTopic,
@@ -522,15 +521,13 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
                     {memberPickerOpen ? (
                       <>
                         {addableMembers.map((member) => (
-                          <button
+                          <Button
                             key={member.userId}
                             type="button"
+                            variant="outline"
                             disabled={busyId !== undefined}
                             onClick={() => void addMember(member.userId)}
-                            className={cn(
-                              'flex items-center gap-2 rounded-xl border border-border-strong bg-surface px-2 py-1.5 text-left text-[14px]',
-                              'hover:bg-surface-raised disabled:opacity-50',
-                            )}
+                            className="h-auto justify-start gap-2 rounded-xl px-2 py-1.5 text-left text-[14px] font-normal"
                           >
                             <Avatar
                               id={member.userId}
@@ -542,7 +539,7 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
                             {busyId === `add:${member.userId}` && (
                               <span className="text-[12px] text-muted-foreground">Adding…</span>
                             )}
-                          </button>
+                          </Button>
                         ))}
                         <Button
                           type="button"
@@ -682,15 +679,13 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
                 {aiPickerOpen ? (
                   <>
                     {addableAis.map((ai) => (
-                      <button
+                      <Button
                         key={ai.id}
                         type="button"
+                        variant="outline"
                         disabled={busyId !== undefined}
                         onClick={() => void addAi(ai.id)}
-                        className={cn(
-                          'flex items-center gap-2 rounded-xl border border-border-strong bg-surface px-2 py-1.5 text-left text-[14px]',
-                          'hover:bg-surface-raised disabled:opacity-50',
-                        )}
+                        className="h-auto justify-start gap-2 rounded-xl px-2 py-1.5 text-left text-[14px] font-normal"
                       >
                         <Avatar id={ai.jid} name={ai.name} size={28} ai avatarUrl={ai.avatarUrl} />
                         <span className="min-w-0 flex-1 truncate">{ai.name}</span>
@@ -698,7 +693,7 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
                         {busyId === `addAi:${ai.id}` && (
                           <span className="text-[12px] text-muted-foreground">Adding…</span>
                         )}
-                      </button>
+                      </Button>
                     ))}
                     <Button
                       type="button"
@@ -1021,21 +1016,19 @@ function TopicRolesSection({
                   {groupRoles
                     .filter((role) => !rolesState.roles.some((item) => item.id === role.id))
                     .map((role) => (
-                      <button
+                      <Button
                         key={role.id}
                         type="button"
+                        variant="outline"
                         disabled={busy}
                         onClick={() => void toggleRole(role.id)}
-                        className={cn(
-                          'flex items-center gap-2 rounded-xl border border-border-strong bg-surface px-2 py-1.5 text-left text-[14px]',
-                          'hover:bg-surface-raised disabled:opacity-50',
-                        )}
+                        className="h-auto justify-start gap-2 rounded-xl px-2 py-1.5 text-left text-[14px] font-normal"
                       >
                         <span className="min-w-0 flex-1 truncate">{role.name}</span>
                         <span className="text-[12px] text-muted-foreground">
                           {role.members.length}
                         </span>
-                      </button>
+                      </Button>
                     ))}
                   <Button
                     type="button"

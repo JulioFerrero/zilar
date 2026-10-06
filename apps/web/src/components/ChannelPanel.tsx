@@ -456,12 +456,13 @@ export function ChannelPanel({ chat, onClose }: { chat: ChatSummary; onClose: ()
                   {pickerOpen ? (
                     <div className="flex flex-col gap-1">
                       {eligibleAis.map((ai) => (
-                        <button
+                        <Button
                           key={ai.id}
                           type="button"
+                          variant="outline"
                           disabled={addingId !== undefined}
                           onClick={() => void add(ai.id)}
-                          className="flex items-center gap-2 rounded-xl border border-border-strong bg-surface px-2 py-1.5 text-left text-[14px] hover:bg-surface-raised disabled:opacity-50"
+                          className="h-auto justify-start gap-2 rounded-xl px-2 py-1.5 text-left text-[14px] font-normal"
                         >
                           <Avatar
                             id={ai.jid}
@@ -475,7 +476,7 @@ export function ChannelPanel({ chat, onClose }: { chat: ChatSummary; onClose: ()
                           {addingId === ai.id && (
                             <span className="text-[12px] text-muted-foreground">Adding…</span>
                           )}
-                        </button>
+                        </Button>
                       ))}
                       <Button
                         type="button"
