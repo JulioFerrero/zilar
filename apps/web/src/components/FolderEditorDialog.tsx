@@ -373,15 +373,17 @@ function ChatPicker({
             <span className="min-w-0 flex-1 truncate">
               {chat.title} <span className="text-[13px]">(archived)</span>
             </span>
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="icon-sm"
+              className="shrink-0 rounded-full"
               aria-label={`Remove ${chat.title}`}
               title={`Remove ${chat.title}`}
               onClick={() => onToggle(chat.id)}
-              className="flex shrink-0 items-center justify-center rounded-full p-1 hover:bg-list-hover hover:text-foreground"
             >
               <X className="h-4 w-4" aria-hidden="true" />
-            </button>
+            </Button>
           </li>
         ))}
       </ul>

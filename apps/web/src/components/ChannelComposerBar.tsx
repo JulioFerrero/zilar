@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Composer } from './Composer';
 import type { ReplyRef } from '@zilar/chat-core';
 import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
+import { Button } from '@/components/ui/button';
 
 /**
  * The channel feed's bottom bar (T-0124). Admins (owner/admin) see the normal
@@ -62,14 +63,15 @@ export function ChannelComposerBar({
         <p className="min-w-0 flex-1 truncate text-[14px] text-muted-foreground">
           Only admins can post here
         </p>
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          className="shrink-0"
           disabled={busy}
           onClick={() => void toggleMute()}
-          className="shrink-0 rounded-full px-4 py-1.5 text-[14px] font-medium text-foreground hover:bg-list-hover disabled:opacity-60"
         >
           {chat.muted ? 'Unmute' : 'Mute'}
-        </button>
+        </Button>
       </div>
       {error !== '' && (
         <p role="alert" className="mt-1 px-1 text-[12px] text-danger">

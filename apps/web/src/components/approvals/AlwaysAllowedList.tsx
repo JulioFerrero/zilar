@@ -9,6 +9,7 @@ import {
 } from '@/lib/api';
 import { useChatStore } from '@/store/ChatStoreProvider';
 import { Button, FieldError } from '@/components/ais/AiPageShell';
+import { StateMessage } from '@/components/ui/state-message';
 
 // T-0100: whose rules to list. Mirrors `AuditScope` in AiActivity: exactly
 // one of the two keys, and the callers guard their own mounting (the AI
@@ -179,11 +180,7 @@ export function AlwaysAllowedList({
     >
       <h3 className="text-[14px] font-medium">Always allowed</h3>
 
-      {state.status === 'loading' && (
-        <p role="status" className="text-[13px] text-muted-foreground">
-          Loading…
-        </p>
-      )}
+      {state.status === 'loading' && <StateMessage kind="loading" size="inline" title="Loading…" />}
 
       {state.status === 'error' && (
         <div className="flex flex-col gap-2">

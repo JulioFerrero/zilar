@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Button } from '@/components/ui/button';
 
 /**
  * Plain text with line numbers for read-only code and output (T-0107).
@@ -52,13 +53,15 @@ export function TruncatedText({
         {shown}
       </pre>
       {truncated && (
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="sm"
+          className="self-start text-muted-foreground"
           onClick={() => setExpanded((value) => !value)}
-          className="self-start rounded-full px-2 py-1 text-[13px] text-muted-foreground hover:bg-list-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
         >
           {expanded ? 'Show less' : 'Show all'}
-        </button>
+        </Button>
       )}
     </div>
   );
