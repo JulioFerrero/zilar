@@ -10,7 +10,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0316](T-0316-web-search-group-name.md) | Web fix: the chat list search also matches a group by its own name | todo | auto | | mobile twin T-0314 |
-| [T-0315](T-0315-mobile-bottom-sheet-2.md) | Mobile kit migration: visibility, members/roles and topic info sheets on BottomSheet | todo | auto | T-0313 | |
 
 ## Follow-ups
 
@@ -345,3 +344,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0312](T-0312-mobile-message-actions-kit.md) | Mobile kit: message actions sheet and voice download confirm on ActionSheet/ConfirmDialog | 2026-10-06 |
 | [T-0313](T-0313-mobile-kit-bottom-sheet.md) | Mobile kit: BottomSheet; pins and invite links sheets use it | 2026-10-06 |
 | [T-0314](T-0314-mobile-search-chat-matches.md) | Mobile: chat search shows matching chats and groups above message hits | 2026-10-06 |
+| [T-0315](T-0315-mobile-bottom-sheet-2.md) | Mobile kit: visibility, members/roles and topic info sheets on BottomSheet | 2026-10-06 |

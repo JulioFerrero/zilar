@@ -20,6 +20,16 @@ vi.mock('@/components/ui/text', () => ({
   Text: 'Text',
 }));
 
+// The reason text comes from the real `visibility-sheet`, which renders
+// through the kit `BottomSheet` (T-0315); stub the shell so these tests
+// never load its hooks. Same pattern as `pins-sheet.test.tsx`.
+vi.mock('@/components/ui/bottom-sheet', () => ({
+  BottomSheet: ({ title, children }: { title?: string; children?: unknown }) => ({
+    type: 'BottomSheet',
+    props: { children: [title, children] },
+  }),
+}));
+
 vi.mock('nativewind', () => ({
   useColorScheme: () => ({ colorScheme: 'dark' }),
 }));

@@ -33,6 +33,15 @@ vi.mock('@/components/ui/text', () => ({
   Text: 'Text',
 }));
 
+// The sheet renders through the kit `BottomSheet` (T-0315), which owns
+// hooks that cannot run under `renderToStaticMarkup` with these hand
+// mocks; stub it as a host tag so the title stays searchable as an
+// attribute and the rows render. The real shell is covered by
+// `bottom-sheet.test.tsx`.
+vi.mock('@/components/ui/bottom-sheet', () => ({
+  BottomSheet: 'BottomSheet',
+}));
+
 // `@/lib/roles` is deliberately NOT mocked: the render assertions below
 // verify the real confirm-text wiring (T-0137 pre-review finding 3).
 

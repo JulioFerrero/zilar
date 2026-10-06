@@ -38,6 +38,17 @@ vi.mock('lucide-react-native', () => ({
   Lock: 'Lock',
 }));
 
+// `topic-sheets` also exports the info sheet, which renders through the
+// kit `BottomSheet` (T-0315); stub the shell as a pass-through so this
+// function-call walk never loads its hooks. Same pattern as
+// `pins-sheet.test.tsx`.
+vi.mock('@/components/ui/bottom-sheet', () => ({
+  BottomSheet: ({ title, children }: { title?: string; children?: unknown }) => ({
+    type: 'BottomSheet',
+    props: { children: [title, children] },
+  }),
+}));
+
 interface TestElement {
   type: unknown;
   props: { children?: unknown; accessibilityLabel?: string; onPress?: () => void };
