@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Image } from 'expo-image';
-import { ActivityIndicator, Modal, Pressable, ScrollView, TextInput, View } from 'react-native';
+import { ActivityIndicator, Modal, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { SearchField } from '@/components/ui/search-field';
 
 import { Text } from '@/components/ui/text';
 import { API_URL } from '@/lib/auth';
@@ -234,7 +236,7 @@ export function GifPanel({ open, mockItems, api, onPick }: GifPanelProps) {
   return (
     <View className="flex min-h-0 flex-1 flex-col">
       <View className="p-2">
-        <TextInput
+        <SearchField
           value={query}
           onChangeText={(value) => {
             setQuery(value);
@@ -242,9 +244,7 @@ export function GifPanel({ open, mockItems, api, onPick }: GifPanelProps) {
             scheduleSearch(value);
           }}
           placeholder="Search GIFs"
-          placeholderTextColor="#a1a1a1"
           accessibilityLabel="Search GIFs"
-          className="w-full rounded-[8px] bg-surface-raised px-3 py-1.5 text-[13px] text-foreground"
         />
       </View>
       {loading ? (

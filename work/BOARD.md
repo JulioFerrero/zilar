@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-0311](T-0311-mobile-gif-telegram-fields.md) | Mobile kit migration: GIF search on SearchField, Telegram import field on TextField | todo | auto | T-0309 | |
 
 ## Follow-ups
 
@@ -340,3 +339,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0308](T-0308-mobile-kit-search-field.md) | Mobile kit: SearchField; group topics search and Explore use it | 2026-10-06 |
 | [T-0310](T-0310-mobile-visibility-sheet-keyboard.md) | Mobile: visibility sheet moves above the keyboard; shared sheetBottomPadding | 2026-10-06 |
 | [T-0309](T-0309-mobile-search-field-2.md) | Mobile kit: chat list and Stickers discover search use SearchField | 2026-10-06 |
+| [T-0311](T-0311-mobile-gif-telegram-fields.md) | Mobile kit: GIF search on SearchField, Telegram import field on TextField | 2026-10-06 |

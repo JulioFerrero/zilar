@@ -7,14 +7,13 @@ import {
   Modal,
   Platform,
   Pressable,
-  TextInput,
   View,
 } from 'react-native';
 
 import { Text } from '@/components/ui/text';
+import { TextField } from '@/components/ui/text-field';
 import { asColorScheme } from '@/lib/color-scheme';
 import { ACCENT, ICON, MUTED_FOREGROUND } from '@/lib/colors';
-import { well } from '@/lib/depth';
 import type { StickersApi, TelegramImportResult } from '@/lib/stickers-api';
 
 import {
@@ -278,24 +277,21 @@ export function TelegramImportSheet({
                 >
                   Pack link or name
                 </Text>
-                <View className="mt-3 h-11 justify-center rounded-xl px-3" style={well}>
-                  <TextInput
-                    value={input}
-                    onChangeText={setInput}
-                    onSubmitEditing={() => run(input)}
-                    maxLength={512}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    keyboardType="url"
-                    returnKeyType="go"
-                    autoFocus
-                    editable={!busy}
-                    placeholder="t.me/addstickers/FunCats"
-                    placeholderTextColor={MUTED_FOREGROUND[scheme]}
-                    accessibilityLabel="Pack link or name"
-                    className="text-[15px] text-foreground"
-                  />
-                </View>
+                <TextField
+                  className="mt-3 h-11"
+                  value={input}
+                  onChangeText={setInput}
+                  onSubmitEditing={() => run(input)}
+                  maxLength={512}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="url"
+                  returnKeyType="go"
+                  autoFocus
+                  editable={!busy}
+                  placeholder="t.me/addstickers/FunCats"
+                  accessibilityLabel="Pack link or name"
+                />
                 <View className="mt-2 flex-row items-start gap-1.5">
                   <Info size={14} color={MUTED_FOREGROUND[scheme]} />
                   <Text className="flex-1 text-[13px] text-muted-foreground">
