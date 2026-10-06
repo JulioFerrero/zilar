@@ -10,7 +10,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0410](T-0410-server-media-index.md) | Media gallery 1a (server): index tables + indexer | running | auto | — | the only schema task |
-| [T-0425](T-0425-mobile-profile-buttons-kit.md) | Mobile kit: profile and contact card buttons | running | auto | — | |
 | [T-0426](T-0426-mobile-ai-sheet-buttons-kit.md) | Mobile kit: AI activity and tool sheet buttons | running | auto | — | |
 | [T-0427](T-0427-mobile-forwarded-header.md) | Forwarding receive side (mobile): forwarded header | running | auto | — | |
 
@@ -455,3 +454,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0424](T-0424-mobile-stickers-machines-empty.md) | Mobile: Stickers and Machines empty states on StateMessage | 2026-10-06 |
 | [T-0422](T-0422-mobile-sheet-empty-lines.md) | Mobile: topic, invite links and roles sheets empty lines on StateMessage | 2026-10-06 |
 | [T-0414](T-0414-web-forward-store-action.md) | Web store: forwardMessages sends copies with a forward origin, optional comment | 2026-10-06 |
+| [T-0425](T-0425-mobile-profile-buttons-kit.md) | Mobile: profile and contact card buttons on the kit Button | 2026-10-06 |

@@ -1,7 +1,7 @@
 ---
 id: T-0425
 title: "Mobile kit: the profile Copy username, Discard and Remove picture buttons and the contact card Block link use the kit Button"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0425-mobile-profile-buttons-kit
 model: auto
@@ -58,4 +58,39 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+Replaced the four raw `Pressable` controls with the kit `Button`, labels still inside `<Text>`:
+1. **Copy username** (`profile-view.tsx:177`): `<Button variant="ghost" size="icon" className="h-9 w-9 rounded-lg" accessibilityLabel="Copy username" onPress={onCopyUsername}>` with the same `<Copy size={18} …/>` icon.
+2. **Discard picture** (`profile-view.tsx`, `PhotoEditRow`): `<Button variant="outline" className="rounded-full" accessibilityLabel="Discard picture" disabled={edit.busy} onPress={edit.onDiscard}>` with the same `<Text className="text-[14px] text-foreground">Discard</Text>`.
+3. **Remove picture** (`profile-view.tsx`, `PhotoEditRow`): `<Button variant="outline" className="rounded-full" accessibilityLabel="Remove picture" disabled={edit.busy} onPress={edit.onRemove}>` with the same `<Text>` (kept outline; it is not red today).
+4. **Block** (`profile-card.tsx:310`): `<Button variant="ghost" size="sm" className="mt-2 self-start px-1" accessibilityLabel="Block" disabled={busy} onPress={onStartBlock}>` with the same muted `<Text className="text-[14px] text-muted-foreground">Block</Text>`.
+
+`Pressable` is still used elsewhere in both files (`ActionKey` and the "Claim a username" row; the profile-card header), so both imports stay. No test assertion was changed and no new mock was needed.
+
+### Files changed
+- `apps/mobile/src/components/profile/profile-view.tsx` (4 controls)
+- `apps/mobile/src/components/contacts/profile-card.tsx` (Block)
+- `work/T-0425-mobile-profile-buttons-kit.md` (this report + status)
+
+### Commands and real results
+- `pnpm install`: done, success.
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot profile-view contacts`: **8 test files passed, 108 tests passed** (the two path patterns matched 8 files, all green).
+- `pnpm gate`: **GATE PASS**; summary:
+  - `gate: 3 changed file(s) against main`
+  - `PASS install (frozen) (2.2s)`
+  - `PASS format (27.5s)`
+  - `PASS lint (2.5s)`
+  - `PASS typecheck (17.2s)`
+  - `PASS tests @zilar/mobile (3.3s)`
+  - `scope: every changed file is inside the Allowed files`
+
+### Deviations / notes
+- The old Copy-username `Pressable` had `hitSlop={8}`; the spec's Button recipe lists no `hitSlop`, so I dropped it and followed the spec exactly. `accessibilityRole="button"` was also dropped because `Button` sets `role="button"` internally.
+- No test outside the Allowed files broke.
+
+### Open questions
+None.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-06). These four controls are now kit Buttons: Copy username (ghost icon), Discard and Remove picture (outline rounded-full) and Block (ghost sm). Labels stay inside Text, disabled is passed through, and no assertion changed. The pre-review was clean (0/0/0/0).

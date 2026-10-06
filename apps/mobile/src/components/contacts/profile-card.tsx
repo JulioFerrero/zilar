@@ -308,15 +308,16 @@ export function ProfileCardActionRow({
           </View>
         </View>
       ) : (
-        <Pressable
-          accessibilityRole="button"
+        <Button
+          variant="ghost"
+          size="sm"
+          className="mt-2 self-start px-1"
           accessibilityLabel="Block"
           disabled={busy}
           onPress={onStartBlock}
-          className="mt-2 self-start px-1 active:opacity-70 disabled:opacity-60"
         >
           <Text className="text-[14px] text-muted-foreground">Block</Text>
-        </Pressable>
+        </Button>
       )}
     </View>
   );
