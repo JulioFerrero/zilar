@@ -24,8 +24,9 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0312 | Mobile: message actions sheet → ActionSheet + ConfirmDialog; voice download confirm → ConfirmDialog | coding (Muse, peak) | |
 | T-0313 | Mobile kit BottomSheet (keyboard-aware); pins + invite links sheets use it | coding (Muse, peak) | then move the other ~8 panel sheets |
+
+~04:25 local: merged T-0312 (message actions on the kit ActionSheet with icons, centred delete ConfirmDialog; voice download prompt on ConfirmDialog; 2 nits accepted).
 
 ~04:15 local: merged T-0311, after a lead unblock: `emoji-sheet.test.tsx` reaches `GifPanel` through another file, and the transitive pitfall is now in `docs/LEAD_HANDOFF.md`. The plain mobile fields are all on the kit (TextField and SearchField). QA run 17 sent (qa17/).
 
