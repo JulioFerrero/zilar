@@ -24,9 +24,11 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0336 | Mobile: inline bubble ticks as icons (no ✓ ✓✓ ○ glyphs) | coding | every outgoing text bubble; emulator QA after the merge |
+| (none) | | | QA run 22 (T-0336 tick alignment) on the emulator |
 
 Time correction (checked with `date`): it is 04:42 local, Tue 10-06. The "~04:xx–05:50 local" stamps below were estimated and run up to about an hour ahead; their order is right.
+
+06:10 local: merged T-0336 (the inline time in outgoing text and markdown bubbles is followed by a Ticks icon instead of ✓ / ✓✓ / ○; 1 nit). QA run 22 sent (qa22/) to check the alignment.
 
 06:03 local: QA run 21 PASS (qa21/). The New topic sheet is a kit bottom sheet. With Private chosen, Cancel and Create are reachable after one swipe. The keyboard keeps the field visible, and Create is reachable with it open. The backdrop and the back button close the sheet. No crash. QA reported Create clipped before scrolling (02.png); the lead looked, and it is the scroll area's edge with more content below, which is normal for a sheet. Phone marker b45684f1 (lead checked).
 
