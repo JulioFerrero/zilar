@@ -1,7 +1,7 @@
 ---
 id: T-0335
 title: "Autopilot: a worker fix round that hits a free-model rate limit while the task is in review falls back to the paid Muse"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0335-autopilot-review-fallback
 model: auto
@@ -61,4 +61,40 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Did: added the worker in-place fallback at the start of the review branch in
+`decide()` (paid model returns `undefined` from `fallbackModel`, so the
+existing "quota handling only applies to todo/in-progress" test still passes
+unchanged), three new review-quota tests, and one sentence in
+`docs/LEAD_HANDOFF.md` (line 24).
+
+Changed files (all inside Allowed files):
+- `packages/devtools/src/lead/decide.ts` — review branch now calls
+  `pushWorkerFallback` and returns when `quotaError` and
+  `fallbackModel(record.model)` is defined, before pre-review logic.
+- `packages/devtools/src/lead/decide.test.ts` — 3 new tests: review/idle/free
+  + quota error → worker fallback to paid Muse + FALLBACK line, no send-prompt;
+  DeepSeek flash + quota error → same fallback; review/idle/free without quota
+  error → no worker fallback, `start-prereview` unchanged.
+- `docs/LEAD_HANDOFF.md` — FALLBACK sentence now mentions fix rounds in review (T-0335).
+- `work/T-0335-autopilot-review-fallback.md` — this report.
+
+Commands (real results):
+- `pnpm install`: ok (10.9s).
+- `pnpm --filter @zilar/devtools test --maxWorkers=2 --reporter=dot decide`:
+  1 file, 42 passed (39 existing + 3 new).
+- `pnpm gate`: PASS install (1.4s), format (17.8s), lint (1.4s), typecheck
+  (3.4s), tests @zilar/devtools (1.0s); "scope: every changed file is inside
+  the Allowed files"; GATE PASS; 4 changed files against main.
+
+Security checklist: no secrets/logs changes; no deletes/updates; no caps or
+uniqueness rules; no permission changes; no new routes; audit untouched. Only
+behaviour change: a quota error in `review` falls back in place instead of
+going idle, using the existing FALLBACK escalation.
+
+Problems / deviations: none. Spec followed as written.
+
+status: review
+
 ## Review (written by Claude)
+
+**Approved** (pre-review clean, 0 nits). In `review` status, a worker quota error now falls back in place (free Muse or DeepSeek flash to paid Muse), before the pre-review logic. It cannot loop: after the switch, `record.model` is the paid model, which has no fallback. The new tests cover free Muse, DeepSeek and the no-quota case, and the existing "review + paid model" test still passes. `LEAD_HANDOFF.md` notes the new coverage. The lead restarts the autopilot after the merge.
