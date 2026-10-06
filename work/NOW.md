@@ -18,6 +18,36 @@ Known issue: `pnpm install` flips two `transitivePeerDependencies` entries (`buf
 
 Models (Julio, 2026-10-05): default `opencode/muse-spark-1.3-contributor-free`; MiniMax M3 only for the easiest exact tasks; billed `meta/muse-spark-1.3-contributor` is the fallback if the free listing hits limits.
 
+## Morning summary for Julio (2026-10-06, written 07:00 local)
+
+**Overnight:** about 95 tasks merged since 22:00, mostly the UI kit migration on web and mobile.
+- Every web field, menu, dialog, checkbox and radio switch is now on the kit.
+- On web, the ★ ✕ ↑ ↓ glyphs are now icons. On mobile, the ✓ glyphs are icons and the message bubbles draw tick icons.
+- Emulator QA ran in mock mode, runs 14-24, all on the `galena` AVD only. Every finding became a task and was fixed.
+
+**Bugs found and fixed tonight:**
+- mobile: the visibility and invite sheets were hidden under the keyboard;
+- mobile and web: search never found groups by name;
+- web, narrow screens: Escape in the chat header and task menus left the chat;
+- mobile: long AI messages collapsed to a narrow column, and the markdown reply showed as a huge empty block;
+- mobile: the New topic form overflowed its card;
+- web: the handle check reset when the active Public option was clicked again;
+- autopilot: a fix round that hit a rate limit stalled silently (T-0335; the autopilot was restarted on it).
+
+**Doctor audits:**
+- Audit 1: full suites green (web 1500, mobile 1982, server 1886).
+- Audit 2: one should-fix (Badge aria-label), fixed in T-0334.
+- Audit 3: clean.
+
+**Needs you:**
+1. **Auto-deploy:** add the GitHub secrets `COOLIFY_URL`, `COOLIFY_TOKEN` and `COOLIFY_SERVICE_UUID` (= `zogjtvwnoh9rqo96h7e7ajz1`).
+   - The images pipeline is green: the web image builds in 40 s.
+   - Until the secrets exist, live chat.zilar.app stays on v0.1.13.
+2. **Forwarding UI:** answer the 7 questions in `docs/audit/forwarding-plan.md` §5.
+3. **Media gallery:** answer the 8 questions in `docs/audit/media-gallery-plan.md` §5.
+4. **Security, for you to decide:** `/upload/*` has no auth. Anyone who has a file URL can read the file, even after the message is retracted.
+5. **For later:** blocking matches the localpart only (doctor audit 1). That is harmless while federation is off, but revisit it before turning federation on.
+
 ## Running (max 6, at most 3 mobile; Julio 2026-10-05)
 
 Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's request): it builds, taps, screenshots and reports, never edits files. Run 1 done: T-0189, T-0212, T-0213, T-0218 PASS on a mock build, no crash; layout issues (routine row squeeze on Delete confirm, Activity header/icon, "Show all" under the gesture bar, version date cut) → T-0229 (written, launches after T-0219). Run 2 done (T-0219 PASS; keyboard + stale list → T-0230, merged). Run 3 done (T-0228: channel Private/Public and handle checks PASS; the sheets sit under the keyboard and mock create throws by design → T-0234). Julio: never wait for the QA subagent; merge on code review, QA findings go to a polish task.
