@@ -21,6 +21,7 @@ import { IconButton } from '@/components/ui/icon-button';
 import { IconTile } from '@/components/ui/icon-tile';
 import { ListRow } from '@/components/ui/list-row';
 import { SearchField } from '@/components/ui/search-field';
+import { SegmentedControl } from '@/components/ui/segmented-control';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
@@ -43,6 +44,7 @@ function KitCatalog() {
   const [bottomOpen, setBottomOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [search, setSearch] = useState('Try clearing me');
+  const [segment, setSegment] = useState('one');
   return (
     <SafeAreaView className="flex-1 bg-background">
       <ScrollView
@@ -163,6 +165,20 @@ function KitCatalog() {
               accessibilityLabel="Sample search with clear"
             />
           </View>
+        </View>
+
+        <View className="mt-6 gap-2">
+          <SectionLabel>Segmented control</SectionLabel>
+          <SegmentedControl
+            options={[
+              { value: 'one', label: 'One' },
+              { value: 'two', label: 'Two' },
+              { value: 'three', label: 'Three' },
+            ]}
+            value={segment}
+            onChange={setSegment}
+            accessibilityLabel="Sample segmented control"
+          />
         </View>
 
         <View className="mt-6 gap-2">

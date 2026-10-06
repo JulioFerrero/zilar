@@ -9,6 +9,7 @@ import { ConfirmDialog } from './confirm-dialog';
 import { CountBadge } from './count-badge';
 import { ListRow } from './list-row';
 import { SearchField } from './search-field';
+import { SegmentedControl } from './segmented-control';
 import { StateMessage } from './state-message';
 import { TextField } from './text-field';
 import { DANGER, MUTED_FOREGROUND } from '@/lib/colors';
@@ -393,5 +394,55 @@ describe('StateMessage', () => {
     expect(html).toContain('<ActivityIndicator');
     expect(html).toContain('Loading more…');
     expect(html).toContain('text-[13px] text-muted-foreground');
+  });
+});
+
+describe('SegmentedControl', () => {
+  const options = [
+    { value: 'one', label: 'One' },
+    { value: 'two', label: 'Two' },
+  ];
+
+  it('uses the tablist and tab roles by default', () => {
+    const html = renderToStaticMarkup(
+      createElement(SegmentedControl, {
+        options,
+        value: 'one',
+        onChange: noop,
+        accessibilityLabel: 'Sections',
+      }),
+    );
+    expect(html).toContain('accessibilityRole="tablist"');
+    expect(html).toContain('accessibilityLabel="Sections"');
+    expect(html.match(/accessibilityRole="tab"/g)).toHaveLength(2);
+  });
+
+  it('uses the radiogroup and radio roles in radio mode', () => {
+    const html = renderToStaticMarkup(
+      createElement(SegmentedControl, {
+        options,
+        value: 'one',
+        onChange: noop,
+        accessibilityLabel: 'Sections',
+        mode: 'radio',
+      }),
+    );
+    expect(html).toContain('accessibilityRole="radiogroup"');
+    expect(html.match(/accessibilityRole="radio"/g)).toHaveLength(2);
+  });
+
+  it('renders every label and marks only the active option', () => {
+    const html = renderToStaticMarkup(
+      createElement(SegmentedControl, {
+        options,
+        value: 'two',
+        onChange: noop,
+        accessibilityLabel: 'Sections',
+      }),
+    );
+    expect(html).toContain('One');
+    expect(html).toContain('Two');
+    expect(html.match(/text-foreground/g)).toHaveLength(1);
+    expect(html.match(/text-muted-foreground/g)).toHaveLength(1);
   });
 });

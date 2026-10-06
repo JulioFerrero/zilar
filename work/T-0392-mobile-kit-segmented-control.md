@@ -1,7 +1,7 @@
 ---
 id: T-0392
 title: "Mobile kit: a SegmentedControl (well track, raised active segment, tab or radio roles) taken from the Stickers settings tabs, used there, in the catalog and the kit test"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0392-mobile-kit-segmented-control
 model: auto
@@ -66,4 +66,74 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+
+1. Added `apps/mobile/src/components/ui/segmented-control.tsx` exporting
+   `SegmentedControl({ options: { value, label }[], value, onChange,
+   accessibilityLabel, mode?: 'tabs' | 'radio', className? })`.
+   - Track: `View` with `accessibilityRole` `tablist` or `radiogroup` (radio
+     mode), the `accessibilityLabel`, `style={[well, { borderColor: '#1a1a1a' }]}`
+     and `className="flex-row gap-0.5 rounded-[10px] p-[3px]"` merged with the
+     caller class.
+   - Option: `Pressable` with role `tab`/`radio`, `accessibilityState`
+     `{ selected }`/`{ checked }`, `accessibilityLabel`, the `h-[34px] flex-1
+     items-center justify-center rounded-[7px]` classes and `segment` when
+     active. The `key` is `${value}-${selected ? 'on' : 'off'}` to keep the
+     style-reapply-on-toggle trick.
+   - `onChange` fires only when the pressed value differs from `value`.
+2. Replaced the hand-rolled tab `View`/`Pressable` block in
+   `apps/mobile/src/app/settings/stickers.tsx` with the new component
+   (`options` mapped from `TABS`, `value={tab}`, `onChange` guarded by a new
+   `isStickerTab` type guard before calling `openTab`,
+   `accessibilityLabel="Sticker sections"`, `className="mb-2"`).
+3. Catalog: added a "Segmented control" section to
+   `apps/mobile/src/app/dev/kit.tsx` with a three-option example backed by
+   `useState`.
+4. Kit test: added a `describe('SegmentedControl')` to
+   `apps/mobile/src/components/ui/kit.test.tsx` checking the `tablist`/`tab`
+   roles, the `radiogroup`/`radio` roles, that both labels render, and that
+   only the active option paints `text-foreground` while the other is
+   `text-muted-foreground`.
+
+### Files changed
+
+- `apps/mobile/src/components/ui/segmented-control.tsx` (new)
+- `apps/mobile/src/app/settings/stickers.tsx`
+- `apps/mobile/src/app/dev/kit.tsx`
+- `apps/mobile/src/components/ui/kit.test.tsx`
+- `work/T-0392-mobile-kit-segmented-control.md`
+
+No other file was touched.
+
+### Commands and real results
+
+- `pnpm install`: "Done in 18.5s" (only the pre-existing peer-dependency
+  warning for `@types/react-dom` vs `@types/react`).
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot kit
+  stickers-screen`: `Test Files 2 passed (2)`, `Tests 49 passed (49)`. The
+  React "incorrect casing" warnings in the output are pre-existing
+  `renderToStaticMarkup` noise from the mocked `react-native` host strings.
+- `pnpm gate`: `gate: 5 changed file(s) against main`, then
+  `PASS install (frozen)`, `PASS format`, `PASS lint`, `PASS typecheck`,
+  `PASS tests @zilar/mobile`, `scope: every changed file is inside the Allowed
+  files`, `GATE PASS`.
+
+### Notes / deviations
+
+- None. `well` and `segment` are still exported from `@/lib/depth`; only the
+  now-unused import in `stickers.tsx` was removed.
+- The selected-state assertion reads through the static markup via the label
+  colour (`text-foreground` vs `text-muted-foreground`), the same convention
+  already used by `floating-tab-bar.test.tsx`; `accessibilityState` object
+  props serialize as `[object Object]` under `renderToStaticMarkup` and cannot
+  be compared per option there.
+- The `isStickerTab` guard was added so `onChange: (value: string) => void`
+  narrows safely to the `StickerTab` union without a cast.
+
+### Blocked / needs a decision
+
+None.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-06). The mobile kit SegmentedControl is built from the Stickers tabs (well track, raised segment, `#1a1a1a` border, key trick, tab/radio roles and states), used on the Stickers settings screen, shown in the catalog and kit-tested. Accepted nit: the onChange-only-on-change guard has no press test (the static-markup kit tests cannot press).

@@ -18,11 +18,11 @@ import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Text } from '@/components/ui/text';
 import { SearchField } from '@/components/ui/search-field';
+import { SegmentedControl } from '@/components/ui/segmented-control';
 import { useAuthStore } from '@/auth/session';
 import { API_URL } from '@/lib/auth';
 import { asColorScheme } from '@/lib/color-scheme';
 import { ACCENT, ACCENT_FOREGROUND, FOREGROUND, ICON, MUTED_FOREGROUND } from '@/lib/colors';
-import { segment, well } from '@/lib/depth';
 import { getSessionToken } from '@/lib/session-token';
 import {
   isSameOriginStickerUrl,
@@ -43,6 +43,9 @@ const TABS: readonly { key: StickerTab; label: string }[] = [
   { key: 'discover', label: 'Discover' },
   { key: 'favorites', label: 'Favorites' },
 ];
+
+const isStickerTab = (value: string): value is StickerTab =>
+  TABS.some((entry) => entry.key === value);
 
 type PageStatus = 'loading' | 'ready' | 'error';
 
@@ -276,34 +279,17 @@ function StickersBody() {
       onBack={() => router.back()}
     >
       <View className="gap-4">
-        <View
-          className="mb-2 flex-row gap-0.5 rounded-[10px] p-[3px]"
-          style={[well, { borderColor: '#1a1a1a' }]}
-        >
-          {TABS.map((entry) => {
-            const selected = entry.key === tab;
-            return (
-              <Pressable
-                key={`${entry.key}-${selected ? 'on' : 'off'}`}
-                accessibilityRole="tab"
-                accessibilityState={{ selected }}
-                accessibilityLabel={entry.label}
-                onPress={() => openTab(entry.key)}
-                className="h-[34px] flex-1 items-center justify-center rounded-[7px]"
-                style={selected ? segment : undefined}
-              >
-                <Text
-                  className={cn(
-                    'text-[13px] font-medium',
-                    selected ? 'text-foreground' : 'text-muted-foreground',
-                  )}
-                >
-                  {entry.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
+        <SegmentedControl
+          options={TABS.map((entry) => ({ value: entry.key, label: entry.label }))}
+          value={tab}
+          onChange={(next) => {
+            if (isStickerTab(next)) {
+              openTab(next);
+            }
+          }}
+          accessibilityLabel="Sticker sections"
+          className="mb-2"
+        />
 
         {status === 'loading' ? (
           <View className="items-center gap-3 pt-16">
