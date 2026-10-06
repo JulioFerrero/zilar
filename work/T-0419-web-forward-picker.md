@@ -28,7 +28,8 @@ This is the first half of task T-E in `docs/audit/forwarding-plan.md` §4, appro
   - the items render at lines 70-82 with `MenuItem` from `./ui/menu`: Reply, Edit, Copy, Delete (destructive), Pin/Unpin.
 - **`apps/web/src/components/MessageBubble.tsx`:**
   - props include `onReply: (message: UiMessage) => void` (line 187);
-  - `MessageActionsMenu` is rendered twice, at line ~396 (sticker layout) and line ~713 (text layout), each passing `onReply={() => { …; onReply(message); }}`.
+  - `MessageActionsMenu` is rendered twice, with `onReply={() => { …; onReply(message); }}` at line ~406 (sticker layout) and line ~723 (text layout).
+- **Store (T-0414, merged):** `forwardMessages(targets: string[], messages: UiMessage[], options?: { comment?: string }) => void` (`apps/web/src/store/store.ts:312-316`); the real action is at `apps/web/src/store/realStore.ts:4282`.
 - **`apps/web/src/components/MessageList.tsx`:** props `{ chat, onReply }` (lines 20-27), and it passes `onReply` to each `MessageBubble` (line ~249).
 - **`apps/web/src/routes/ChatView.tsx`:** `startReply` (line 71) is passed as `<MessageList key={chat.id} chat={chat} onReply={startReply} />` (line 118).
 - **Kit:**
@@ -66,10 +67,10 @@ This is the first half of task T-E in `docs/audit/forwarding-plan.md` §4, appro
    Mirror these files' existing render and store setup.
 
 ### Read first
-`AGENTS.md`, `docs/audit/forwarding-plan.md` §3.3 and §4 (T-E), `apps/web/src/components/MessageActionsMenu.tsx`, `apps/web/src/components/MessageBubble.tsx:180-230`, `:390-420` and `:705-735`, `apps/web/src/components/MessageList.tsx:1-60` and `:235-255`, `apps/web/src/routes/ChatView.tsx:60-130`, `apps/web/src/components/ui/dialog.tsx`, and `apps/web/src/components/ui/checkbox.tsx`. For a picker pattern, see how `apps/web/src/components/NewGroupDialog.tsx` lists people with checkboxes.
+`AGENTS.md`, `docs/audit/forwarding-plan.md` §3.3 and §4 (T-E), `apps/web/src/components/MessageActionsMenu.tsx`, `apps/web/src/components/MessageBubble.tsx:180-230`, `:398-425` and `:715-745`, `apps/web/src/components/MessageList.tsx:1-60` and `:235-255`, `apps/web/src/routes/ChatView.tsx:60-130`, `apps/web/src/components/ui/dialog.tsx`, and `apps/web/src/components/ui/checkbox.tsx`. For a picker pattern, see how `apps/web/src/components/NewGroupDialog.tsx` lists people with checkboxes.
 
 ### Allowed files
-`apps/web/src/components/MessageActionsMenu.tsx`, `apps/web/src/components/MessageActionsMenu.test.tsx`, `apps/web/src/components/MessageBubble.tsx`, `apps/web/src/components/MessageList.tsx`, `apps/web/src/components/ForwardPicker.tsx`, `apps/web/src/components/ForwardPicker.test.tsx`, `apps/web/src/routes/ChatView.tsx`, `apps/web/src/routes/ChatView.test.tsx`, `work/T-0419-web-forward-picker.md`.
+`apps/web/src/components/MessageActionsMenu.tsx`, `apps/web/src/components/MessageActionsMenu.test.tsx`, `apps/web/src/components/MessageBubble.tsx`, `apps/web/src/components/MessageList.tsx`, `apps/web/src/components/ForwardPicker.tsx`, `apps/web/src/components/ForwardPicker.test.tsx`, `apps/web/src/routes/ChatView.tsx`, `apps/web/src/routes/ChatView.test.tsx`, `apps/web/src/components/MessageBubble.forward.test.tsx` and `apps/web/src/components/MessageList.test.tsx` (setup fixes only, if the new props break them), `work/T-0419-web-forward-picker.md`.
 
 ### Checks
 ```bash
