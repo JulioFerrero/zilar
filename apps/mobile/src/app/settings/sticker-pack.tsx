@@ -25,9 +25,10 @@ import {
 import { useAuthStore } from '@/auth/session';
 import { RequireStickersAuth } from '@/components/stickers/require-stickers-auth';
 import { Text } from '@/components/ui/text';
+import { TextField } from '@/components/ui/text-field';
 import { API_URL } from '@/lib/auth';
 import { asColorScheme } from '@/lib/color-scheme';
-import { ACCENT, DANGER, FOREGROUND, ICON, MUTED_FOREGROUND } from '@/lib/colors';
+import { ACCENT, DANGER, FOREGROUND, ICON } from '@/lib/colors';
 import { well } from '@/lib/depth';
 import { getSessionToken } from '@/lib/session-token';
 import { isSameOriginStickerUrl, stickerImageSource, type StickerItem } from '@/lib/stickers';
@@ -499,22 +500,17 @@ function StickerPackBody({ picker, preparer }: StickerPackScreenDeps) {
         <View className="gap-5">
           <View className="gap-1">
             <Text className="text-[14px] font-medium text-foreground">Pack name</Text>
-            <View
-              className="h-11 flex-row items-center rounded-xl px-3"
-              style={[well, saving ? { opacity: 0.6 } : undefined]}
-            >
-              <TextInput
-                value={title}
-                onChangeText={setTitle}
-                maxLength={60}
-                placeholder="My stickers"
-                placeholderTextColor={MUTED_FOREGROUND[scheme]}
-                accessibilityLabel="Pack name"
-                returnKeyType="done"
-                editable={!saving}
-                className="flex-1 text-[15px] text-foreground"
-              />
-            </View>
+            <TextField
+              value={title}
+              onChangeText={setTitle}
+              maxLength={60}
+              placeholder="My stickers"
+              accessibilityLabel="Pack name"
+              returnKeyType="done"
+              editable={!saving}
+              className="h-11"
+              style={saving ? { opacity: 0.6 } : undefined}
+            />
           </View>
 
           <View className="gap-1">

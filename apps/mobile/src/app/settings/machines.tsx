@@ -2,7 +2,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import { Check, ChevronLeft, Copy, Plus, RefreshCw, Server } from 'lucide-react-native';
 import { useCallback, useRef, useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, ScrollView, TextInput, View } from 'react-native';
+import { ActivityIndicator, Modal, Pressable, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useColorScheme } from 'nativewind';
 
@@ -11,6 +11,7 @@ import { Card, SectionLabel } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
+import { TextField } from '@/components/ui/text-field';
 import { asColorScheme } from '@/lib/color-scheme';
 import { ACCENT, ICON } from '@/lib/colors';
 import type { Machine, PairingCode } from '@/lib/machines-api';
@@ -362,13 +363,12 @@ function MachinesList() {
                   renamingId === machine.id ? (
                     <View key={machine.id} className="gap-2 px-3 py-2.5">
                       <Text className="text-[14px] font-medium text-foreground">Rename</Text>
-                      <TextInput
+                      <TextField
                         value={renameDraft}
                         onChangeText={setRenameDraft}
                         accessibilityLabel={`Name for ${machine.name}`}
                         maxLength={64}
                         autoFocus
-                        className="rounded-lg border border-input bg-background px-3 py-2 text-[15px] text-foreground"
                       />
                       {actionErrors[machine.id] !== undefined && actionErrors[machine.id] !== '' ? (
                         <Text accessibilityRole="alert" className="text-[13px] text-danger">

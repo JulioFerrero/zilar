@@ -1,7 +1,7 @@
 ---
 id: T-0306
 title: "Mobile kit migration: machine rename and sticker pack name fields use the kit TextField"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0306-mobile-text-field-7
 model: auto
@@ -64,4 +64,48 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### Status: ready for review
+
+Both fields now render through the kit `TextField`. The sticker-pack emoji cell is unchanged.
+
+### What I did
+
+- **`apps/mobile/src/app/settings/machines.tsx`** — the rename field is now `TextField` with no `className`. Kept `value`, `onChangeText`, `accessibilityLabel`, `maxLength`, `autoFocus`. Removed `TextInput` from the `react-native` import and added the `TextField` import.
+- **`apps/mobile/src/app/settings/sticker-pack.tsx`** — the Pack name wrapper `View` + `TextInput` became one `TextField` with `className="h-11"` and `style={saving ? { opacity: 0.6 } : undefined}`. Kept `value`, `onChangeText`, `maxLength`, `placeholder`, `accessibilityLabel`, `returnKeyType`, `editable`. Dropped `placeholderTextColor` (TextField defaults to `MUTED_FOREGROUND[scheme]`). Removed the now-unused `MUTED_FOREGROUND` from the colors import; `TextInput`, `scheme`, and `well` remain for the emoji cell at line ~702. Added the `TextField` import.
+- **Tests (no changes needed):** both `machines-screen.test.tsx` and `sticker-pack-screen.test.tsx` already mock `nativewind` (the import `TextField` pulls in), so no mock edits were required.
+
+### Security checklist
+
+- No secrets, tokens or keys in logs, errors or URLs; only the input components changed, no logic touched.
+- No new routes, deletes, caps or audit entries. No permission logic touched.
+
+### Files changed
+
+`apps/mobile/src/app/settings/machines.tsx`, `apps/mobile/src/app/settings/sticker-pack.tsx`, `work/T-0306-mobile-text-field-7.md`.
+
+### Commands run (real results)
+
+- `pnpm install` → done, no errors.
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot machines-screen sticker-pack-screen` → **2 files passed, 17 tests passed** (the `<X /> is using incorrect casing` lines are pre-existing string-mock noise). No test changes needed.
+- `pnpm gate` (final run):
+  ```
+  gate: 3 changed file(s) against main
+  PASS  install (frozen)  (1.2s)
+  PASS  format  (19.0s)
+  PASS  lint  (1.1s)
+  PASS  typecheck  (7.9s)
+  PASS  tests @zilar/mobile  (2.1s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Open questions
+
+None.
+
 ## Review (written by Claude)
+
+**Approved.** Clean pre-review (0 nits), no fix rounds (Muse, peak).
+- The machine rename field and the sticker Pack name field are on `TextField`. Pack name keeps `h-11` and the saving opacity.
+- `MUTED_FOREGROUND` left the sticker-pack import only because it became unused. `scheme` and `well` stay for the emoji cell, which is unchanged.
+- No test changes were needed.
