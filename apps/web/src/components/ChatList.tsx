@@ -393,18 +393,20 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
                     AI chats and legacy groups. */}
                 {archived.length > 0 && (
                   <>
-                    <button
+                    <Button
                       type="button"
+                      variant="ghost"
+                      size="sm"
                       aria-expanded={showArchived}
                       onClick={() => setShowArchived((value) => !value)}
                       className={cn(
-                        'flex shrink-0 items-center gap-2 px-3 py-2 text-left text-[13px] text-muted-foreground hover:text-foreground',
+                        'w-full justify-start gap-2 text-[13px] font-normal text-muted-foreground hover:text-foreground',
                         isWide && 'rounded-[12px]',
                       )}
                     >
                       <Archive className="size-4" aria-hidden="true" />
                       <span className="flex-1">Archived ({archived.length})</span>
-                    </button>
+                    </Button>
                     {showArchived &&
                       archived.map((chat) => (
                         <ChatListItem
