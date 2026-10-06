@@ -6,6 +6,7 @@ import { Avatar } from './Avatar';
 import { HandleSuffix } from './HandleSuffix';
 import { Button } from './ui/button';
 import { Dialog } from './ui/dialog';
+import { TextArea, TextInput } from './ui/text-input';
 import { cn } from '@/lib/utils';
 
 /** Two-step dialog: pick contacts, set a title, then create the group. */
@@ -200,25 +201,28 @@ export function NewGroupDialog({
         </div>
       ) : (
         <>
-          <input
-            autoFocus
-            value={title}
-            maxLength={100}
-            onChange={(event) => setTitle(event.target.value)}
-            placeholder={nameLabel}
-            aria-label={nameLabel}
-            className="mt-3 w-full rounded-lg border border-input bg-background px-3 py-2 text-[15px] outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40"
-          />
-          {channel && (
-            <textarea
-              value={description}
-              maxLength={300}
-              rows={2}
-              onChange={(event) => setDescription(event.target.value)}
-              placeholder="Description (optional)"
-              aria-label="Channel description"
-              className="mt-2 w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-[15px] outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40"
+          <div className="mt-3">
+            <TextInput
+              autoFocus
+              value={title}
+              maxLength={100}
+              onChange={(event) => setTitle(event.target.value)}
+              placeholder={nameLabel}
+              aria-label={nameLabel}
             />
+          </div>
+          {channel && (
+            <div className="mt-2">
+              <TextArea
+                value={description}
+                maxLength={300}
+                rows={2}
+                onChange={(event) => setDescription(event.target.value)}
+                placeholder="Description (optional)"
+                aria-label="Channel description"
+                className="min-h-0 resize-none"
+              />
+            </div>
           )}
           {/* T-0164: Private (default, invite-only) or Public (its own
                 `@handle`, in the directory, joinable with one tap). Public
@@ -270,24 +274,23 @@ export function NewGroupDialog({
           </fieldset>
           {visibility === 'public' && (
             <>
-              <label className="mt-3 block text-[14px] font-medium" htmlFor="new-group-handle">
-                Handle
-              </label>
-              <input
-                id="new-group-handle"
-                value={handle}
-                autoCapitalize="none"
-                autoCorrect="off"
-                spellCheck={false}
-                maxLength={32}
-                onChange={(event) => {
-                  setHandle(event.target.value);
-                  setCheck({ state: 'idle' });
-                }}
-                placeholder="hiking_club"
-                aria-label="Group handle"
-                className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-[15px] outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40"
-              />
+              <div className="mt-3">
+                <TextInput
+                  id="new-group-handle"
+                  label="Handle"
+                  value={handle}
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  maxLength={32}
+                  onChange={(event) => {
+                    setHandle(event.target.value);
+                    setCheck({ state: 'idle' });
+                  }}
+                  placeholder="hiking_club"
+                  aria-label="Group handle"
+                />
+              </div>
               <div aria-live="polite" className="mt-1 min-h-[20px] text-[14px]">
                 {check.state === 'done' &&
                   (check.available ? (
@@ -297,15 +300,17 @@ export function NewGroupDialog({
                   ))}
               </div>
               {!channel && (
-                <textarea
-                  value={description}
-                  maxLength={300}
-                  rows={2}
-                  onChange={(event) => setDescription(event.target.value)}
-                  placeholder="Description (optional, one line)"
-                  aria-label="Group description"
-                  className="mt-2 w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-[15px] outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40"
-                />
+                <div className="mt-2">
+                  <TextArea
+                    value={description}
+                    maxLength={300}
+                    rows={2}
+                    onChange={(event) => setDescription(event.target.value)}
+                    placeholder="Description (optional, one line)"
+                    aria-label="Group description"
+                    className="min-h-0 resize-none"
+                  />
+                </div>
               )}
             </>
           )}

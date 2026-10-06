@@ -131,6 +131,7 @@ describe('GroupPanel invite links (T-0115)', () => {
 
     const section = await screen.findByRole('region', { name: 'Invite links' });
     expect(within(section).getByText('No invite links yet.')).toBeTruthy();
+    expect(within(section).getByLabelText('Link label').className).toContain('well-surface');
 
     fireEvent.change(within(section).getByLabelText('Link label'), {
       target: { value: 'Friends' },

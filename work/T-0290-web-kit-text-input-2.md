@@ -1,7 +1,7 @@
 ---
 id: T-0290
 title: "Web kit migration 14: New group and invite-link fields use the kit TextInput / TextArea"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0290-web-kit-text-input-2
 model: auto
@@ -68,4 +68,53 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- `apps/web/src/components/NewGroupDialog.tsx`:
+  - Title field (`aria-label={nameLabel}`, no visible label) → `<TextInput autoFocus value={title} maxLength={100} … aria-label={nameLabel}>` inside a `<div className="mt-3">` (old input's top margin).
+  - Channel description `<textarea aria-label="Channel description">` → `<TextArea rows={2} className="min-h-0 resize-none">` inside a `<div className="mt-2">`.
+  - Handle `label htmlFor` + `<input>` pair → `<TextInput id="new-group-handle" label="Handle" … aria-label="Group handle">` inside a `<div className="mt-3">` (old label's top margin).
+  - Group description `<textarea aria-label="Group description">` → `<TextArea rows={2} className="min-h-0 resize-none">` inside a `<div className="mt-2">`.
+  - Checkboxes (members) and radios (visibility) are untouched.
+- `apps/web/src/components/InviteLinksSection.tsx`: the three wrapped-label blocks became `<TextInput label="…" aria-label="…">` (kept `value`, `onChange`, `maxLength`, `inputMode`, `placeholder`). The two side-by-side fields are each wrapped in `<div className="min-w-0 flex-1">` so they stay side by side.
+- Kept every value, handler, `maxLength`, `inputMode`, `autoFocus`, placeholder and accessible name (`aria-label`) unchanged.
+- Tests: added one `well-surface` assertion per test file (`NewGroupDialog.test.tsx` on `Group name`, `InviteLinksSection.test.tsx` on `Link label`). No other test file needed editing.
+
+### Files changed
+- `apps/web/src/components/NewGroupDialog.tsx`
+- `apps/web/src/components/NewGroupDialog.test.tsx`
+- `apps/web/src/components/InviteLinksSection.tsx`
+- `apps/web/src/components/InviteLinksSection.test.tsx`
+- `work/T-0290-web-kit-text-input-2.md` (status/Report)
+
+### Commands and real results
+- `pnpm install` → Done, exit 0.
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot NewGroupDialog InviteLinksSection GroupPanel Channels` → 4 files passed, 41 tests passed, exit 0.
+- `pnpm gate` (repo root) summary lines:
+  ```
+  gate: 5 changed file(s) against main
+  PASS  install (frozen)  (0.9s)
+  PASS  format  (11.5s)
+  PASS  lint  (0.9s)
+  PASS  typecheck  (6.6s)
+  PASS  tests @zilar/web  (16.3s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Acceptance
+- `grep '<input|<textarea'` in the two components now only finds the two `type="checkbox"` / `type="radio"` inputs; no raw `<textarea>` remains. Verified.
+- Accessible names (`Group name`, `Group handle`, `Group description`, `Link label`, `Expiry in hours`, `Max uses`, `Channel name`, `Channel description`) and behaviour are unchanged; the existing tests pass.
+
+### Problems / deviations
+- None. No files outside the Allowed list were touched.
+- Deviations: `TextArea` gets `className="min-h-0 resize-none"` (kit's default `min-h-20` removed) as the spec asked; the visible labels in `InviteLinksSection` now use the kit's `text-[14px] font-medium` instead of the old `text-[13px]` muted span. Accepted by the spec.
+
+### Blocked / needs a decision
+- None.
+
 ## Review (written by Claude)
+
+**Approved.** Clean pre-review, 0 nits, no fix rounds.
+- The only raw inputs left are the member checkboxes and the visibility radios.
+- Accessible names are kept.
+- The textareas use `min-h-0 resize-none`.
