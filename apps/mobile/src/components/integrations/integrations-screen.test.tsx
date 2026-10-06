@@ -31,9 +31,18 @@ vi.mock('nativewind', () => ({
 vi.mock('react-native', () => ({
   ActivityIndicator: 'ActivityIndicator',
   Modal: 'Modal',
+  Platform: { OS: 'ios', select: (options: Record<string, unknown>) => options['ios'] },
   Pressable: 'Pressable',
   TextInput: 'TextInput',
   View: 'View',
+}));
+
+vi.mock('react-native-reanimated', () => ({
+  useReducedMotion: () => false,
+}));
+
+vi.mock('@/components/ui/use-key-press', () => ({
+  useKeyPress: () => ({ pressed: false, reduceMotion: false, setPressed: () => {} }),
 }));
 
 vi.mock('react-native-safe-area-context', () => ({
@@ -60,6 +69,7 @@ vi.mock('@/components/settings/screen-shell', () => ({
 
 vi.mock('@/components/ui/text', () => ({
   Text: 'Text',
+  TextClassContext: { Provider: 'TextClassContextProvider' },
 }));
 
 vi.mock('@/components/ui/confirm-dialog', () => ({

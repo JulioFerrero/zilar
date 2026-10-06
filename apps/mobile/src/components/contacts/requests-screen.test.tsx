@@ -24,9 +24,14 @@ vi.mock('nativewind', () => ({
 
 vi.mock('react-native', () => ({
   ActivityIndicator: 'ActivityIndicator',
+  Platform: { OS: 'ios', select: (options: Record<string, unknown>) => options['ios'] },
   Pressable: 'Pressable',
   ScrollView: 'ScrollView',
   View: 'View',
+}));
+
+vi.mock('react-native-reanimated', () => ({
+  useReducedMotion: () => false,
 }));
 
 vi.mock('react-native-safe-area-context', () => ({
@@ -51,6 +56,7 @@ vi.mock('@/components/ui/icon-button', () => ({
 
 vi.mock('@/components/ui/text', () => ({
   Text: 'Text',
+  TextClassContext: { Provider: 'TextClassContextProvider' },
 }));
 
 vi.mock('@/components/chat/avatar', () => ({

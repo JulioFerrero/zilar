@@ -375,5 +375,5 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0344](T-0344-web-inputs-kit.md) | Web kit: Telegram import and Group roles fields on TextInput | 2026-10-06 |
 | [T-0345](T-0345-mobile-connections-buttons-kit.md) | Mobile kit: Connections screen text pill buttons on Button | 2026-10-06 |
 | [T-0346](T-0346-mobile-stickers-buttons-kit.md) | Mobile kit: Stickers screen text pill buttons on Button | 2026-10-06 |
-| [T-0348](T-0348-mobile-integrations-requests-buttons-kit.md) | Mobile kit: Integrations and Requests text pill buttons on Button | in-progress | auto | T-0347 | |
 | [T-0347](T-0347-mobile-sticker-pack-buttons-kit.md) | Mobile kit: Sticker pack editor text pill buttons on Button | 2026-10-06 |
+| [T-0348](T-0348-mobile-integrations-requests-buttons-kit.md) | Mobile kit: Integrations and Requests text pill buttons on Button | 2026-10-06 |

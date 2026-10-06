@@ -1,11 +1,12 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Ban, ChevronLeft, RefreshCw, UserPlus } from 'lucide-react-native';
 import { useCallback, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, View } from 'react-native';
+import { ActivityIndicator, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useColorScheme } from 'nativewind';
 
 import { RequireAuth } from '@/auth/RequireAuth';
+import { Button } from '@/components/ui/button';
 import { Card, SectionLabel } from '@/components/ui/card';
 import { IconButton } from '@/components/ui/icon-button';
 import { IconTile } from '@/components/ui/icon-tile';
@@ -140,15 +141,15 @@ function RequestsList() {
               <Text accessibilityRole="alert" className="text-center text-[15px] text-danger">
                 {error}
               </Text>
-              <Pressable
-                accessibilityRole="button"
+              <Button
                 accessibilityLabel="Retry loading requests"
                 onPress={reload}
-                className="flex-row items-center gap-2 rounded-full border border-border-strong px-4 py-2 active:bg-surface-raised"
+                variant="outline"
+                size="sm"
               >
                 <RefreshCw size={16} color={ICON[scheme]} />
-                <Text className="text-[15px] text-foreground">Retry</Text>
-              </Pressable>
+                <Text>Retry</Text>
+              </Button>
             </View>
           ) : null}
 
@@ -260,35 +261,35 @@ function RequestRow({
         ) : null}
       </View>
       {outgoing ? (
-        <Pressable
-          accessibilityRole="button"
+        <Button
           accessibilityLabel={`Cancel the request to ${request.other.name}`}
           disabled={busy}
           onPress={onCancel}
-          className="rounded-full border border-border-strong px-3 py-1 active:bg-surface-raised disabled:opacity-60"
+          variant="outline"
+          size="sm"
         >
-          <Text className="text-[14px] text-foreground">Cancel</Text>
-        </Pressable>
+          <Text>Cancel</Text>
+        </Button>
       ) : (
         <View className="flex-row gap-2">
-          <Pressable
-            accessibilityRole="button"
+          <Button
             accessibilityLabel={`Accept ${request.other.name}`}
             disabled={busy}
             onPress={onAccept}
-            className="rounded-full bg-accent px-3 py-1 active:opacity-90 disabled:opacity-60"
+            variant="default"
+            size="sm"
           >
-            <Text className="text-[14px] font-medium text-accent-foreground">Accept</Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
+            <Text>Accept</Text>
+          </Button>
+          <Button
             accessibilityLabel={`Decline ${request.other.name}`}
             disabled={busy}
             onPress={onDecline}
-            className="rounded-full border border-border-strong px-3 py-1 active:bg-surface-raised disabled:opacity-60"
+            variant="outline"
+            size="sm"
           >
-            <Text className="text-[14px] text-foreground">Decline</Text>
-          </Pressable>
+            <Text>Decline</Text>
+          </Button>
         </View>
       )}
     </View>

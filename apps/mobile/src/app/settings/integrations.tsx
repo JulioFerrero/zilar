@@ -13,6 +13,7 @@ import {
 } from '@/components/integrations/card-save';
 import { useIntegrationsApi } from '@/components/integrations/use-integrations-api';
 import { SettingsScreenShell } from '@/components/settings/screen-shell';
+import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
@@ -111,15 +112,15 @@ function IntegrationsBody() {
             <Text accessibilityRole="alert" className="text-center text-[15px] text-danger">
               {errorInfo.message}
             </Text>
-            <Pressable
-              accessibilityRole="button"
+            <Button
               accessibilityLabel="Retry loading integrations"
               onPress={reload}
-              className="flex-row items-center gap-2 rounded-full border border-border-strong px-4 py-2 active:bg-surface-raised"
+              variant="outline"
+              size="sm"
             >
               <RefreshCw size={16} color={ICON[scheme]} />
-              <Text className="text-[15px] text-foreground">Retry</Text>
-            </Pressable>
+              <Text>Retry</Text>
+            </Button>
           </View>
         ) : null}
 
@@ -224,17 +225,15 @@ function SaveButton({
   onPress: () => void;
 }) {
   return (
-    <Pressable
-      accessibilityRole="button"
+    <Button
       accessibilityLabel={label}
       disabled={busy}
       onPress={onPress}
-      className="rounded-full bg-accent px-4 py-2 active:opacity-90 disabled:opacity-60"
+      variant="default"
+      size="sm"
     >
-      <Text className="text-[15px] font-medium text-accent-foreground">
-        {busy ? busyLabel : label}
-      </Text>
-    </Pressable>
+      <Text>{busy ? busyLabel : label}</Text>
+    </Button>
   );
 }
 
@@ -248,15 +247,15 @@ function RemoveButton({
   onPress: () => void;
 }) {
   return (
-    <Pressable
-      accessibilityRole="button"
+    <Button
       accessibilityLabel={label}
       disabled={busy}
       onPress={onPress}
-      className="rounded-full border border-border-strong px-4 py-2 active:bg-surface-raised disabled:opacity-60"
+      variant="outline"
+      size="sm"
     >
-      <Text className="text-[15px] text-foreground">{label}</Text>
-    </Pressable>
+      <Text>{label}</Text>
+    </Button>
   );
 }
 
