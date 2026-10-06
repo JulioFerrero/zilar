@@ -9,6 +9,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
+| [T-0314](T-0314-mobile-search-chat-matches.md) | Mobile fix: chat search shows matching chats and groups above message hits | todo | auto | T-0309 | QA run 17 |
 | [T-0313](T-0313-mobile-kit-bottom-sheet.md) | Mobile kit: BottomSheet; pins and invite links sheets use it | todo | auto | T-0310 | |
 
 ## Follow-ups
