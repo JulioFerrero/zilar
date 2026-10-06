@@ -29,6 +29,7 @@ import { ReactionChips } from './ReactionChips';
 import { ReplyQuote } from './ReplyQuote';
 import { StickerMessage } from './StickerMessage';
 import { VoiceMessage } from './VoiceMessage';
+import { Button } from './ui/button';
 import { copyText } from '@/lib/clipboard';
 import { useSmoothText } from '@/lib/useSmoothText';
 import { cn } from '@/lib/utils';
@@ -370,17 +371,19 @@ export function MessageBubble({
               </div>
             ) : (
               !generating && (
-                <button
+                <Button
                   ref={menuButtonRef}
                   type="button"
+                  variant="ghost"
+                  size="icon-sm"
                   aria-label="Message actions"
                   aria-haspopup="menu"
                   aria-expanded={menuOpen}
                   onClick={() => setMenuOpen(true)}
-                  className="absolute top-0.5 right-0.5 z-10 flex size-6 items-center justify-center rounded-full bg-surface/80 text-muted-foreground opacity-0 shadow-sm transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+                  className="absolute top-0.5 right-0.5 z-10 size-6 rounded-full bg-surface/80 text-muted-foreground opacity-0 shadow-sm transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
                 >
                   <MoreHorizontal className="size-4" aria-hidden="true" />
-                </button>
+                </Button>
               )
             )}
             {!generating && message.failed !== true && menuOpen && (
@@ -677,17 +680,19 @@ export function MessageBubble({
             )}
 
             {!generating && (
-              <button
+              <Button
                 ref={menuButtonRef}
                 type="button"
+                variant="ghost"
+                size="icon-sm"
                 aria-label="Message actions"
                 aria-haspopup="menu"
                 aria-expanded={menuOpen}
                 onClick={() => setMenuOpen(true)}
-                className="absolute top-0.5 right-0.5 z-10 flex size-6 items-center justify-center rounded-full bg-surface/80 text-muted-foreground opacity-0 shadow-sm transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+                className="absolute top-0.5 right-0.5 z-10 size-6 rounded-full bg-surface/80 text-muted-foreground opacity-0 shadow-sm transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
               >
                 <MoreHorizontal className="size-4" aria-hidden="true" />
-              </button>
+              </Button>
             )}
           </div>
         )}

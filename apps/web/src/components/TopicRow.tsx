@@ -143,8 +143,10 @@ export function TopicRow({
                 </span>
               )
             )}
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="icon-sm"
               aria-label={`Chat actions for ${chat.title}`}
               aria-haspopup="menu"
               aria-expanded={menuOpen}
@@ -153,10 +155,10 @@ export function TopicRow({
                 event.stopPropagation();
                 setMenuOpen((value) => !value);
               }}
-              className="shrink-0 rounded-md p-1 text-subtle-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none"
+              className="size-6 shrink-0 text-subtle-foreground opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
             >
               <MoreHorizontal className="size-4" aria-hidden="true" />
-            </button>
+            </Button>
           </span>
         </span>
       </Link>

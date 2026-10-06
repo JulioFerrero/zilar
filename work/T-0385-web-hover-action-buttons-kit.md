@@ -1,7 +1,7 @@
 ---
 id: T-0385
 title: "Web kit: the hover \"Chat actions\" and \"Message actions\" buttons and the attachment Remove use the kit Button"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0385-web-hover-action-buttons-kit
 model: auto
@@ -68,5 +68,19 @@ pnpm gate
 ---
 
 ## Report (written by the worker when done)
+- Converted the 5 hand-rolled icon buttons to kit `Button` (`variant="ghost"`), keeping all aria props, handlers (incl. `stopPropagation` on chat actions, `menuButtonRef` on message actions), and icons:
+  - `ChatListItem.tsx`: chat-actions button → `size="icon-sm"`, class `size-6 shrink-0 text-subtle-foreground opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100`; added `Button` import.
+  - `TopicRow.tsx`: same conversion (Button already imported).
+  - `MessageBubble.tsx` (2 buttons): → `size="icon-sm"`, class `absolute top-0.5 right-0.5 z-10 size-6 rounded-full bg-surface/80 text-muted-foreground opacity-0 shadow-sm transition-opacity group-hover:opacity-100 focus-visible:opacity-100`; added `Button` import. Left Retry/Delete text links untouched.
+  - `AttachmentPreview.tsx`: Remove → `size="icon-lg"`, class `shrink-0 rounded-[8px] text-muted-foreground`; added `Button` import.
+- Files changed: `apps/web/src/components/ChatListItem.tsx`, `TopicRow.tsx`, `MessageBubble.tsx`, `AttachmentPreview.tsx` (+ this task file).
+- Commands:
+  - `pnpm install`: pass.
+  - `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot ChatListItem MessageList AttachmentPreview ChatList`: 5 files, 64 tests passed.
+  - `pnpm gate`: GATE PASS — install/lint/format/typecheck/tests pass; scope: every changed file inside Allowed files (5 changed files).
+- Security checklist: no secrets, no permission/data-scope changes (pure UI button swap); N/A for deletes/caps/audit/401/rate-limit.
+- No deviations, no open questions.
 
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-06). The two Chat actions, two Message actions (ref kept) and the attachment Remove are kit ghost icon `Button`s with the hover/opacity classes kept. The one nit (import path `./ui/button` vs the spec's `@/…`) matches the neighbouring files, so no change. Pre-review clean otherwise.
