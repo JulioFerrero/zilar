@@ -540,6 +540,9 @@ export function MessageBubble({
                             style={{
                               width: 14,
                               height: 11,
+                              // Nudge the ticks down onto the time's baseline
+                              // (they otherwise sit about a third too high).
+                              transform: [{ translateY: 2 }],
                               ...(generating ? { opacity: 0 } : undefined),
                             }}
                           >
@@ -575,6 +578,9 @@ export function MessageBubble({
                             style={{
                               width: 14,
                               height: 11,
+                              // Nudge the ticks down onto the time's baseline
+                              // (they otherwise sit about a third too high).
+                              transform: [{ translateY: 2 }],
                               ...(generating ? { opacity: 0 } : undefined),
                             }}
                           >

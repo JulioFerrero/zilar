@@ -98,7 +98,11 @@ function ListBlock({ block, color }: { block: Extract<Block, { type: 'list' }>; 
           >
             {block.ordered ? item.marker : '•'}
           </RNText>
-          <RNText style={[BODY, { color, flex: 1 }]}>{renderInline(item.nodes)}</RNText>
+          {/* `flexShrink` only: a `flex: 1` basis of 0 collapses the item to a
+              sliver inside the shrink-wrapping bubble, so the text wraps a few
+              characters per line. The auto basis lets the row size to its
+              content and then shrink to the bubble's max width. */}
+          <RNText style={[BODY, { color, flexShrink: 1 }]}>{renderInline(item.nodes)}</RNText>
         </View>
       ))}
     </View>
@@ -108,7 +112,13 @@ function ListBlock({ block, color }: { block: Extract<Block, { type: 'list' }>; 
 function CodeBlock({ block, color }: { block: Extract<Block, { type: 'code' }>; color: string }) {
   return (
     <View style={[well, { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 6 }]}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        // A horizontal ScrollView grows to fill the free height; without this
+        // the code block stretches into a tall empty grey square.
+        style={{ flexGrow: 0 }}
+      >
         <RNText style={[CODE, { color }]}>{block.value}</RNText>
       </ScrollView>
     </View>

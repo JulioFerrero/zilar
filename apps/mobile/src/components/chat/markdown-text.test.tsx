@@ -115,11 +115,25 @@ describe('MarkdownText', () => {
     expect(code.some((element) => textOf(element.props.children) === 'const x = 1;')).toBe(true);
   });
 
+  it('keeps the horizontal code ScrollView from growing to fill the bubble', () => {
+    const elements = render('```ts\nconst x = 1;\n```');
+    const scroll = elements.find((element) => element.type === 'ScrollView');
+    expect(scroll).toBeDefined();
+    expect(styleOf(scroll as TestElement).flexGrow).toBe(0);
+  });
+
   it('aligns bullet and numbered list markers', () => {
     const bullets = render('- one\n- two');
     expect(bullets.filter((element) => textOf(element.props.children) === '•')).toHaveLength(2);
     const ordered = render('3. third');
     expect(ordered.some((element) => textOf(element.props.children) === '3.')).toBe(true);
+  });
+
+  it('sizes list item text from its content instead of a zero flex basis', () => {
+    const elements = render('1) a long ordered item that has to wrap at the bubble width');
+    const content = findStyle(elements, 'flexShrink', 1);
+    expect(content).toHaveLength(1);
+    expect(elements.some((element) => styleOf(element).flex === 1)).toBe(false);
   });
 
   it('draws a quote with a left bar', () => {

@@ -1,7 +1,7 @@
 ---
 id: T-0337
 title: "Mobile: long incoming AI messages collapse to a narrow column and the markdown reply renders as a huge empty block; tick icon sits a little high"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0337-mobile-ai-bubble-layout
 model: auto
@@ -67,4 +67,61 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**Status:** review. No deviations from the spec.
+
+### Cause
+
+Both layout bugs are in `MarkdownText`, not in the bubble width chain, so I fixed them there (the spec allows this).
+
+1. **Narrow column (message `marketing-ai-02`).** The list item body was a `flex: 1` text (`apps/mobile/src/components/chat/markdown-text.tsx:101` before the fix), i.e. `flexBasis: 0`, inside a `flexDirection: 'row'` view (`:94`) whose width is content-driven (the bubble shrink-wraps up to `max-w-[80%]`). With a zero basis and no definite parent width the row collapses to the marker column and the text wraps a few characters per line. Message 02 is the only long incoming message affected because it starts with `1) `, so `parseMarkdown` (`apps/mobile/src/lib/markdown.ts:389`, `LIST_ITEM` at `:42`) turns the whole 112-character line into a one-item ordered list and `ListBlock` renders it. `marketing-ai-04` is a paragraph, so it wrapped normally.
+2. **Tall grey markdown block (message `marketing-ai-06`).** The horizontal `ScrollView` in `CodeBlock` (`apps/mobile/src/components/chat/markdown-text.tsx:111` before the fix) had no `flexGrow: 0`. React Native's horizontal ScrollView grows to fill the free height; the repo already documents this exact pitfall in `apps/mobile/src/components/chat/folder-tabs.tsx:38` and `apps/mobile/src/components/chat/emoji-tab.tsx:78`. That stretched the code `well` into the large square grey block.
+
+### Changes
+
+- `apps/mobile/src/components/chat/markdown-text.tsx`
+  - `ListBlock`: `flex: 1` -> `flexShrink: 1`, with a comment (the auto basis lets the row size to its content, then shrink to the bubble's max width).
+  - `CodeBlock`: `style={{ flexGrow: 0 }}` on the horizontal `ScrollView`, with a comment.
+- `apps/mobile/src/components/chat/message-bubble.tsx`
+  - Both inline 14x11 tick wrappers (the markdown and plain branches, after the time) got `transform: [{ translateY: 2 }]`.
+- `apps/mobile/src/components/chat/markdown-text.test.tsx`
+  - `sizes list item text from its content instead of a zero flex basis`: the item body has `flexShrink: 1` and no `flex: 1`.
+  - `keeps the horizontal code ScrollView from growing to fill the bubble`: the code `ScrollView` has `flexGrow: 0`.
+- `apps/mobile/src/components/chat/message-bubble-layout.test.tsx` (new)
+  - `nudges the inline ticks down onto the time baseline`: renders an outgoing text bubble and asserts the tick slot's `data-style` contains `translateY: 2`.
+
+### Commands
+
+- `pnpm install` — exit 0.
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot message-bubble markdown-text` — `Test Files 4 passed (4)`, `Tests 22 passed (22)`.
+- `pnpm exec prettier --check <the 4 changed source/test files>` — `All matched files use Prettier code style!`.
+- `pnpm gate` — `GATE PASS`:
+
+  ```
+  gate: 5 changed file(s) against main
+  PASS  install (frozen)  (1.0s)
+  PASS  format  (11.3s)
+  PASS  lint  (0.8s)
+  PASS  typecheck  (5.9s)
+  PASS  tests @zilar/mobile  (1.5s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Tests: what they cannot prove
+
+The node tests pin the style values that caused the bugs (list item `flexShrink` with no zero basis; code `ScrollView` `flexGrow: 0`; tick `translateY: 2`) but cannot exercise real Yoga flex layout or pixel rendering. The width wrap and the bubble height must be confirmed on the emulator.
+
+### Notes for the lead
+
+- The tick nudge is a starting 2 px `translateY`; per the spec, the lead verifies it on the emulator.
+- No security-relevant surface (pure UI styles).
+- No new dependencies, no `any`, no suppressed checks.
+
 ## Review (written by Claude)
+
+**Approved** (pre-review clean, 2 nits accepted: the tick-nudge test reaches only the plain-text branch, and the Report cites `parseMarkdown` at :389 when it is at :342). Both causes are in `MarkdownText`, and the lead checked the reasoning:
+- **Narrow column:** "1) …" parses as a one-item ordered list. The list item text was `flex: 1` (basis 0) inside a content-sized row, which collapsed it to a sliver. It is now `flexShrink: 1`.
+- **Grey block:** the code block's horizontal `ScrollView` grew to fill the free height. It now has `flexGrow: 0`, the same pitfall already noted in `folder-tabs.tsx` and `emoji-tab.tsx`.
+- **Ticks:** both inline tick wrappers get `translateY: 2`.
+
+Emulator confirmation: QA run 23 after the merge.

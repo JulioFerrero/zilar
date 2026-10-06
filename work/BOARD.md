@@ -364,5 +364,5 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0334](T-0334-web-badge-label.md) | Web kit: Badge label follows the visible count (99+) | 2026-10-06 |
 | [T-0335](T-0335-autopilot-review-fallback.md) | Autopilot: fix rounds in review fall back on a rate limit | 2026-10-06 |
 | [T-0332](T-0332-mobile-new-topic-sheet.md) | Mobile: New topic sheet on BottomSheet; long Private form scrolls | 2026-10-06 |
-| [T-0337](T-0337-mobile-ai-bubble-layout.md) | Mobile: long AI messages collapse / markdown reply renders as an empty block; tick nudge | in-progress | auto | T-0336 | QA run 22 |
 | [T-0336](T-0336-mobile-inline-ticks.md) | Mobile: inline bubble ticks as icons | 2026-10-06 |
+| [T-0337](T-0337-mobile-ai-bubble-layout.md) | Mobile: AI markdown list and code block layout fixed; tick nudge | 2026-10-06 |
