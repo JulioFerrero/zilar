@@ -54,16 +54,18 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0384 | Mobile kit: Explore, Blocked, sticker/GIF Retry buttons | pre-review (paid Muse fallback) | was blocked: spec missed `lib/stickers-storage.test.ts` (imports sticker-panel); lead allowed it, mocks only |
-| T-0386 | Mobile kit: new StateMessage component, catalog, kit test | coding (DeepSeek flash) | |
-| T-0387 | Mobile kit: profile card Confirm block on destructive Button | coding (DeepSeek flash) | last solid bg-danger on mobile |
-| T-0388 | Web kit: transcript "Aa" → Captions IconButton; file Retry IconButton | coding (DeepSeek flash) | |
-| T-0389 | Web kit: SecretInput replaces 4 key/token fields | coding (DeepSeek flash) | |
-| T-0390 | Web kit: Revoked and More options disclosure toggles | coding (DeepSeek flash) | |
+| T-0391 | Mobile guard: no hand-rolled solid bg-accent/bg-danger Pressable | pre-review | |
+| T-0392 | Mobile kit: SegmentedControl from the Stickers tabs | coding (DeepSeek flash) | |
+| T-0393 | Mobile kit: sticker and GIF panel states on StateMessage | coding (DeepSeek flash) | |
+| T-0394 | Web kit: eight Loading/Searching lines on StateMessage | coding (DeepSeek flash) | |
+| T-0395 | Web kit: chat and message list errors on StateMessage | coding (DeepSeek flash) | |
+| T-0396 | Web kit: Connections icon buttons | coding (DeepSeek flash) | |
+
+Merged 10:15-10:35 UTC: T-0384, T-0386 (mobile StateMessage), T-0387, T-0388 (Captions icon instead of "Aa"), T-0389 (web SecretInput), T-0390. QA run 31 (main e298c4d6): T-0383, T-0386 catalog, T-0387 PASS; T-0384 Blocked PASS, Explore Show more not reachable in mock (3 rows), panel Retry not forceable. Marker restored to b45684f1.
 
 Merged 10:00-10:15 UTC: T-0380 (settings Back/AI icons, unused AiPageShell frame removed), T-0381, T-0382 (picker rows), T-0383 (mobile group roles), T-0385 (hover actions). The free Muse started rate-limiting at ~10:05 UTC; the autopilot switches those sessions to the paid Muse. Off-peak launches go to DeepSeek flash.
 
-Next after this batch: mobile kit SegmentedControl and Switch (web has both); adopt the mobile StateMessage in screens; a mobile guard test against hand-rolled solid `bg-accent`/`bg-danger` button Pressables (after T-0387); QA run 31 for T-0383, T-0384, T-0386, T-0387.
+Next after this batch: mobile kit Switch (web has one); adopt the mobile StateMessage and SegmentedControl in more screens (folder tabs, other loading/error states); QA run 32 for T-0392, T-0393.
 
 QA run 30 (main a15f1213, mock): T-0377 and T-0378 PASS (dark theme; the light theme was not checked because the app keeps its own theme). Marker restored to b45684f1.
 
