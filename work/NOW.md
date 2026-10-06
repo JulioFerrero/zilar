@@ -24,7 +24,14 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0311 | Mobile: GIF search on SearchField, Telegram import field on TextField | coding (Muse, peak) | last plain mobile fields |
+| T-0313 | Mobile kit BottomSheet (keyboard-aware); pins + invite links sheets use it | coding (Muse, peak) | then move the other ~8 panel sheets |
+| T-0314 | Mobile fix: chat search shows matching chats and groups above message hits | coding (Muse, peak) | QA run 17 |
+
+~04:30 local: QA run 17 PASS (qa17/): chat list search well, clear, People view; Stickers Discover search filters; GIF search bar (the mock GIFs are blank tiles); Telegram import field. Older bug found (lead saw 03.png and read the code): with 2+ characters the search shows only messages, never matching chats, and `filterChats` ignores `groupTitle`, so groups are never found by name → T-0314. Phone marker b45684f1 (lead checked).
+
+~04:25 local: merged T-0312 (message actions on the kit ActionSheet with icons, centred delete ConfirmDialog; voice download prompt on ConfirmDialog; 2 nits accepted).
+
+~04:15 local: merged T-0311, after a lead unblock: `emoji-sheet.test.tsx` reaches `GifPanel` through another file, and the transitive pitfall is now in `docs/LEAD_HANDOFF.md`. The plain mobile fields are all on the kit (TextField and SearchField). QA run 17 sent (qa17/).
 
 ~04:05 local: QA run 16 PASS (qa16/). With the keyboard open, the visibility sheet shows the Handle field, the availability line and Save (lead saw 02.png). The invite links sheet is still OK. Kit SearchField: topic search filters, Explore with a compass icon, catalog clear works. T-0307 sign-in fields not reachable, because mock mode starts signed in. Phone marker b45684f1 (lead checked).
 

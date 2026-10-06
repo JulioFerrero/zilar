@@ -1,11 +1,10 @@
 import { useState } from 'react';
-import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Pressable, View } from 'react-native';
 
+import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import type { GroupInviteLink } from '@/lib/invite-links-api';
-import { sheetBottomPadding, useKeyboardHeight } from '@/lib/use-keyboard-height';
 
 export type InviteLinkState = 'active' | 'expired' | 'exhausted' | 'revoked';
 
@@ -123,8 +122,6 @@ export function InviteLinksSheet({
   onDismissCreated: () => void;
   onClose: () => void;
 }) {
-  const insets = useSafeAreaInsets();
-  const keyboardHeight = useKeyboardHeight();
   const [label, setLabel] = useState('');
   const [expiry, setExpiry] = useState('');
   const [maxUses, setMaxUses] = useState('');
@@ -160,120 +157,94 @@ export function InviteLinksSheet({
   // fixes on every open (see `openLinks`), so they never go stale.
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        className="flex-1"
+    <BottomSheet
+      visible={visible}
+      onClose={onClose}
+      closeLabel="Close invite links"
+      title="Invite links"
+    >
+      {createdUrl !== undefined ? (
+        <CreatedInviteLinkView
+          url={createdUrl}
+          copied={copied}
+          onCopy={copy}
+          onShare={shareLink}
+          onDone={() => {
+            setCopied(false);
+            onDismissCreated();
+          }}
+        />
+      ) : null}
+
+      <Text className="mt-4 text-[14px] font-medium text-foreground">Label (optional)</Text>
+      <TextField
+        value={label}
+        onChangeText={setLabel}
+        maxLength={60}
+        editable={!busy}
+        placeholder="e.g. Friends"
+        accessibilityLabel="Link label"
+        className="mt-1"
+      />
+      <View className="mt-2 flex-row gap-2">
+        <View className="flex-1">
+          <Text className="text-[14px] font-medium text-foreground">Expires in (hours)</Text>
+          <TextField
+            value={expiry}
+            onChangeText={setExpiry}
+            keyboardType="numeric"
+            editable={!busy}
+            placeholder="e.g. 48"
+            accessibilityLabel="Expiry in hours"
+            className="mt-1"
+          />
+        </View>
+        <View className="flex-1">
+          <Text className="text-[14px] font-medium text-foreground">Max uses</Text>
+          <TextField
+            value={maxUses}
+            onChangeText={setMaxUses}
+            keyboardType="numeric"
+            editable={!busy}
+            placeholder="e.g. 10"
+            accessibilityLabel="Max uses"
+            className="mt-1"
+          />
+        </View>
+      </View>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Create invite link"
+        disabled={busy}
+        onPress={submit}
+        className="mt-3 items-center rounded-full bg-accent px-4 py-2.5 active:opacity-90 disabled:opacity-50"
       >
-        <Pressable
-          accessibilityLabel="Close invite links"
-          onPress={onClose}
-          className="flex-1 justify-end bg-black/40"
-        >
-          <Pressable
-            onPress={() => {}}
-            className="max-h-[85%] rounded-t-2xl border-t border-border-strong bg-surface px-4 pt-3"
-            style={{
-              paddingBottom: sheetBottomPadding(Platform.OS, insets.bottom, keyboardHeight),
-            }}
-          >
-            <ScrollView keyboardShouldPersistTaps="handled">
-              <View className="mb-1 h-1 w-10 self-center rounded-full bg-surface-raised" />
-              <Text
-                accessibilityRole="header"
-                className="text-[18px] font-semibold text-foreground"
-              >
-                Invite links
-              </Text>
+        <Text className="text-[15px] font-medium text-accent-foreground">
+          {busy ? 'Creating…' : 'Create invite link'}
+        </Text>
+      </Pressable>
+      {shownError !== '' ? (
+        <Text accessibilityRole="alert" className="mt-2 text-[14px] text-danger">
+          {shownError}
+        </Text>
+      ) : null}
 
-              {createdUrl !== undefined ? (
-                <CreatedInviteLinkView
-                  url={createdUrl}
-                  copied={copied}
-                  onCopy={copy}
-                  onShare={shareLink}
-                  onDone={() => {
-                    setCopied(false);
-                    onDismissCreated();
-                  }}
-                />
-              ) : null}
-
-              <Text className="mt-4 text-[14px] font-medium text-foreground">Label (optional)</Text>
-              <TextField
-                value={label}
-                onChangeText={setLabel}
-                maxLength={60}
-                editable={!busy}
-                placeholder="e.g. Friends"
-                accessibilityLabel="Link label"
-                className="mt-1"
-              />
-              <View className="mt-2 flex-row gap-2">
-                <View className="flex-1">
-                  <Text className="text-[14px] font-medium text-foreground">
-                    Expires in (hours)
-                  </Text>
-                  <TextField
-                    value={expiry}
-                    onChangeText={setExpiry}
-                    keyboardType="numeric"
-                    editable={!busy}
-                    placeholder="e.g. 48"
-                    accessibilityLabel="Expiry in hours"
-                    className="mt-1"
-                  />
-                </View>
-                <View className="flex-1">
-                  <Text className="text-[14px] font-medium text-foreground">Max uses</Text>
-                  <TextField
-                    value={maxUses}
-                    onChangeText={setMaxUses}
-                    keyboardType="numeric"
-                    editable={!busy}
-                    placeholder="e.g. 10"
-                    accessibilityLabel="Max uses"
-                    className="mt-1"
-                  />
-                </View>
-              </View>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Create invite link"
-                disabled={busy}
-                onPress={submit}
-                className="mt-3 items-center rounded-full bg-accent px-4 py-2.5 active:opacity-90 disabled:opacity-50"
-              >
-                <Text className="text-[15px] font-medium text-accent-foreground">
-                  {busy ? 'Creating…' : 'Create invite link'}
-                </Text>
-              </Pressable>
-              {shownError !== '' ? (
-                <Text accessibilityRole="alert" className="mt-2 text-[14px] text-danger">
-                  {shownError}
-                </Text>
-              ) : null}
-
-              <View className="mt-3 gap-1 pb-2">
-                {links.length === 0 ? (
-                  <Text className="text-[14px] text-muted-foreground">No invite links yet.</Text>
-                ) : (
-                  links.map((link) => (
-                    <InviteLinkRow
-                      key={link.id}
-                      link={link}
-                      now={now}
-                      revoking={revokingId === link.id}
-                      onRevoke={onRevoke}
-                    />
-                  ))
-                )}
-              </View>
-            </ScrollView>
-          </Pressable>
-        </Pressable>
-      </KeyboardAvoidingView>
-    </Modal>
+      <View className="mt-3 gap-1 pb-2">
+        {links.length === 0 ? (
+          <Text className="text-[14px] text-muted-foreground">No invite links yet.</Text>
+        ) : (
+          links.map((link) => (
+            <InviteLinkRow
+              key={link.id}
+              link={link}
+              now={now}
+              revoking={revokingId === link.id}
+              onRevoke={onRevoke}
+            />
+          ))
+        )}
+      </View>
+    </BottomSheet>
   );
 }
 
