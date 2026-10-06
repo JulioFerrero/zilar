@@ -129,10 +129,11 @@ export function ToolsSection({
         </div>
       )}
       {state.status === 'ready' && state.tools.length === 0 && (
-        <p className="px-2 text-[13px] text-muted-foreground">
-          No tools here yet. An AI can write small tools that run on a schedule — ask it in the
-          chat.
-        </p>
+        <StateMessage
+          kind="empty"
+          size="inline"
+          title="No tools here yet. An AI can write small tools that run on a schedule — ask it in the chat."
+        />
       )}
       {state.status === 'ready' &&
         state.tools.map((tool) => (

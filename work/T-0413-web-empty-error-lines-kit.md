@@ -1,7 +1,7 @@
 ---
 id: T-0413
 title: "Web kit: the Tools, Always-allowed and Approvals empty lines and the people search errors use StateMessage"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0413-web-empty-error-lines-kit
 model: auto
@@ -64,4 +64,57 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+Replaced the five hand-rolled empty/error lines with `StateMessage`, keeping every string and the alert role on the two errors.
+
+1. `apps/web/src/components/tools/ToolsSection.tsx` — the empty tools line is now
+   `<StateMessage kind="empty" size="inline" title="No tools here yet. An AI can write small tools that run on a schedule — ask it in the chat." />`.
+   `StateMessage` was already imported.
+2. `apps/web/src/components/approvals/AlwaysAllowedList.tsx` — the empty line is now
+   `<StateMessage kind="empty" size="inline" title="Nothing is always allowed here." />`.
+   `StateMessage` was already imported.
+3. `apps/web/src/routes/ApprovalsPage.tsx` — the whole centred empty div (icon + `<p>`) is now
+   `<StateMessage kind="empty" icon={ShieldCheck} title="Nothing is waiting for you." />`, and I added the `StateMessage` import.
+   `ShieldCheck` is still used (as the `icon` prop), so its import stays.
+4. `apps/web/src/components/PeopleSearchResult.tsx` — the two `<p role="alert">` lines are now
+   `<StateMessage kind="error" size="inline" title="…" />`, wrapped in `<div className="px-[10px] pb-2">` to match the
+   padding of the existing `loading` branch in the same file. The `alert` role comes from `kind="error"`; the "People"
+   headings are untouched. `StateMessage` was already imported.
+
+### Files changed
+- `apps/web/src/components/tools/ToolsSection.tsx`
+- `apps/web/src/components/approvals/AlwaysAllowedList.tsx`
+- `apps/web/src/routes/ApprovalsPage.tsx`
+- `apps/web/src/components/PeopleSearchResult.tsx`
+- `work/T-0413-web-empty-error-lines-kit.md` (this report + status)
+
+No other files. No test file needed a change: all assertions use `findByText` on the exact strings and
+`getByRole('alert')` for the errors, which `StateMessage` keeps (kind error → `role="alert"`), so **no assertion
+was changed** (spec point 6 did not apply).
+
+### Commands and real results
+- `pnpm install` — done in 15.7s, exit 0.
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot tools AlwaysAllowedList ApprovalsPage PeopleSearchResult`
+  — `Test Files 6 passed (6)`, `Tests 78 passed (78)`, exit 0.
+- `pnpm gate` (first run) — `FAIL format (32.2s)` on `apps/web/src/components/PeopleSearchResult.tsx`; scope was inside Allowed files. Fixed with
+  `pnpm exec prettier --write apps/web/src/components/PeopleSearchResult.tsx`.
+- `pnpm gate` (second run) from the repo root:
+  ```
+  gate: 5 changed file(s) against main
+  PASS  install (frozen)  (2.2s)
+  PASS  format  (29.4s)
+  PASS  lint  (1.0s)
+  PASS  typecheck  (11.2s)
+  PASS  tests @zilar/web  (26.3s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Deviations / notes
+- In `PeopleSearchResult.tsx` I wrapped each `StateMessage` in a `<div className="px-[10px] pb-2">`, which the spec
+  sketch did not show, to preserve the padding of the old `<p>` and mirror the `loading` branch directly above it.
+- The `pnpm gate` scope line confirms every changed file is inside the Allowed files.
+
 ## Review (written by Claude)
+
+**2026-10-06, lead:** approved. The pre-review was clean. The five lines are StateMessages with the same texts. The two people-search errors keep the alert role through `kind="error"`. Approvals uses the ShieldCheck icon.

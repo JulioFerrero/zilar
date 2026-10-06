@@ -37,9 +37,13 @@ export function PeopleSearchResult({ query }: { query: string }) {
     return (
       <div className="flex flex-col gap-1 px-2">
         <p className="px-[10px] pt-2 text-[12px] font-semibold text-muted-foreground">People</p>
-        <p role="alert" className="px-[10px] pb-2 text-[13px] text-muted-foreground">
-          Too many searches, try again in a few minutes.
-        </p>
+        <div className="px-[10px] pb-2">
+          <StateMessage
+            kind="error"
+            size="inline"
+            title="Too many searches, try again in a few minutes."
+          />
+        </div>
       </div>
     );
   }
@@ -47,9 +51,9 @@ export function PeopleSearchResult({ query }: { query: string }) {
     return (
       <div className="flex flex-col gap-1 px-2">
         <p className="px-[10px] pt-2 text-[12px] font-semibold text-muted-foreground">People</p>
-        <p role="alert" className="px-[10px] pb-2 text-[13px] text-muted-foreground">
-          Could not search for that username.
-        </p>
+        <div className="px-[10px] pb-2">
+          <StateMessage kind="error" size="inline" title="Could not search for that username." />
+        </div>
       </div>
     );
   }

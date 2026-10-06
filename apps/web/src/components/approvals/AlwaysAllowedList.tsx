@@ -192,7 +192,7 @@ export function AlwaysAllowedList({
       )}
 
       {state.status === 'ready' && state.rules.length === 0 && (
-        <p className="text-[13px] text-muted-foreground">Nothing is always allowed here.</p>
+        <StateMessage kind="empty" size="inline" title="Nothing is always allowed here." />
       )}
 
       {state.status === 'ready' && state.rules.length > 0 && (
