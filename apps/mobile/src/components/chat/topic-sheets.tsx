@@ -6,6 +6,7 @@ import { Avatar } from '@/components/chat/avatar';
 import { ActionSheet, ActionSheetItem } from '@/components/ui/action-sheet';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Button } from '@/components/ui/button';
+import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { asColorScheme } from '@/lib/color-scheme';
 import { MUTE_DURATIONS, type MuteDurationId } from '@/lib/chat-prefs';
@@ -252,7 +253,7 @@ export function TopicInfoSheet({
               </View>
             ))}
             {ais.length === 0 ? (
-              <Text className="py-1 text-[14px] text-muted-foreground">No AIs here yet.</Text>
+              <StateMessage kind="empty" size="inline" title="No AIs here yet." />
             ) : null}
           </View>
 
@@ -284,9 +285,11 @@ export function TopicInfoSheet({
               ) : (
                 <View>
                   {roles.length === 0 ? (
-                    <Text className="py-1 text-[14px] text-muted-foreground">
-                      No roles here yet — only the people above can see this topic.
-                    </Text>
+                    <StateMessage
+                      kind="empty"
+                      size="inline"
+                      title="No roles here yet — only the people above can see this topic."
+                    />
                   ) : null}
                   {attachedRows.map((row) => (
                     <View key={row.id} className="flex-row items-center gap-2 py-1">

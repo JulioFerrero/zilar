@@ -27,6 +27,8 @@ vi.mock('react-native-reanimated', () => ({
 
 vi.mock('lucide-react-native', () => ({
   Check: 'Check',
+  CircleAlert: 'CircleAlert',
+  Inbox: 'Inbox',
 }));
 
 vi.mock('@/components/chat/avatar', () => ({

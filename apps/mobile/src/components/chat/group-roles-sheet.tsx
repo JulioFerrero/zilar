@@ -6,6 +6,7 @@ import { RoleChips } from '@/components/chat/role-chips';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import type { GroupRole } from '@/lib/chat-api';
@@ -130,9 +131,11 @@ export function GroupRolesSheet({
         </View>
       ) : null}
       {roles !== undefined && roles.length === 0 ? (
-        <Text className="py-1 text-[14px] text-muted-foreground">
-          No roles yet. Roles grant private-topic access and approver rights.
-        </Text>
+        <StateMessage
+          kind="empty"
+          size="inline"
+          title="No roles yet. Roles grant private-topic access and approver rights."
+        />
       ) : null}
       {roles?.map((role) => {
         const renaming = renamingId === role.id;

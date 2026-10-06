@@ -6,6 +6,7 @@ import { GroupRolesSheet } from './group-roles-sheet';
 import type { CustomGroupRole } from '@/lib/roles-api';
 
 vi.mock('react-native', () => ({
+  ActivityIndicator: 'ActivityIndicator',
   Modal: 'Modal',
   Platform: { OS: 'ios', select: (options: Record<string, unknown>) => options['ios'] },
   Pressable: 'Pressable',
@@ -27,6 +28,8 @@ vi.mock('react-native-reanimated', () => ({
 
 vi.mock('lucide-react-native', () => ({
   Check: 'Check',
+  CircleAlert: 'CircleAlert',
+  Inbox: 'Inbox',
 }));
 
 vi.mock('@/components/chat/avatar', () => ({

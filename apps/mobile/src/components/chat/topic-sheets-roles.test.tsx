@@ -6,6 +6,7 @@ import { TopicInfoSheet } from './topic-sheets';
 import type { ChatSummary } from '@/lib/types';
 
 vi.mock('react-native', () => ({
+  ActivityIndicator: 'ActivityIndicator',
   Modal: 'Modal',
   Platform: { OS: 'ios', select: (options: Record<string, unknown>) => options['ios'] },
   Pressable: 'Pressable',
@@ -27,6 +28,8 @@ vi.mock('react-native-reanimated', () => ({
 vi.mock('lucide-react-native', () => ({
   Check: 'Check',
   Lock: 'Lock',
+  CircleAlert: 'CircleAlert',
+  Inbox: 'Inbox',
 }));
 
 vi.mock('@/components/chat/avatar', () => ({
@@ -54,6 +57,7 @@ vi.mock('@/lib/color-scheme', () => ({
 }));
 
 vi.mock('@/lib/colors', () => ({
+  DANGER: { dark: '#ef4444', light: '#ef4444' },
   FOREGROUND: { dark: '#fafafa', light: '#fafafa' },
   MUTED_FOREGROUND: { dark: '#8a8a8a', light: '#8a8a8a' },
 }));

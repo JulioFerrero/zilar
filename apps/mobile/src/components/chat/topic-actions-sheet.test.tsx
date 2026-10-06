@@ -47,6 +47,8 @@ vi.mock('@/components/chat/avatar', () => ({
 vi.mock('lucide-react-native', () => ({
   Check: 'Check',
   Lock: 'Lock',
+  CircleAlert: 'CircleAlert',
+  Inbox: 'Inbox',
 }));
 
 // `topic-sheets` also exports the info sheet, which renders through the

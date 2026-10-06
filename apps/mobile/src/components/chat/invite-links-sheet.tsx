@@ -3,6 +3,7 @@ import { Pressable, View } from 'react-native';
 
 import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Button } from '@/components/ui/button';
+import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import type { GroupInviteLink } from '@/lib/invite-links-api';
@@ -229,7 +230,7 @@ export function InviteLinksSheet({
 
       <View className="mt-3 gap-1 pb-2">
         {links.length === 0 ? (
-          <Text className="text-[14px] text-muted-foreground">No invite links yet.</Text>
+          <StateMessage kind="empty" size="inline" title="No invite links yet." />
         ) : (
           links.map((link) => (
             <InviteLinkRow

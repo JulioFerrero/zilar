@@ -15,6 +15,7 @@ import type { GroupInviteLink } from '@/lib/invite-links-api';
 // `markdown-text.test.tsx`. This keeps the tests in Node (no simulator, no
 // new dependency) while exercising the real render output.
 vi.mock('react-native', () => ({
+  ActivityIndicator: 'ActivityIndicator',
   Keyboard: { addListener: vi.fn(() => ({ remove: vi.fn() })) },
   KeyboardAvoidingView: 'KeyboardAvoidingView',
   Modal: 'Modal',
@@ -28,6 +29,11 @@ vi.mock('react-native', () => ({
 
 vi.mock('react-native-reanimated', () => ({
   useReducedMotion: () => false,
+}));
+
+vi.mock('lucide-react-native', () => ({
+  CircleAlert: 'CircleAlert',
+  Inbox: 'Inbox',
 }));
 
 vi.mock('@/components/ui/use-key-press', () => ({
