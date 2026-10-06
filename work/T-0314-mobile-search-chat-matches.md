@@ -1,7 +1,7 @@
 ---
 id: T-0314
 title: "Mobile fix: chat search shows matching chats and groups above the message hits"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0314-mobile-search-chat-matches
 model: auto
@@ -66,4 +66,29 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Done. Chat name matches now appear in a "Chats" section above the Messages hits in the mobile 2+ character search, and group-name matching works for all query lengths.
+
+What I changed:
+- `apps/mobile/src/lib/filter.ts`: `filterChats` also matches when `chat.groupTitle` contains the query (case-insensitive). This flows into `chatListModel`, so `visibleRows` in `(tabs)/index.tsx` already carries group-name matches for both the 1-character filter and the 2+ character search.
+- `apps/mobile/src/lib/chat-list.ts`: added `CHAT_SEARCH_LIMIT = 5` and `chatSearchMatches(rows)` returning the first 5 rows.
+- `apps/mobile/src/app/(tabs)/index.tsx`: in the 2+ character branch, `chatMatches = searchChat === undefined ? chatSearchMatches(visibleRows) : []` renders a "Chats" section (label styled like the Messages label) between `PeopleSearchResult` and `MessageSearchList` when non-empty. Rows reuse `ChatListItem` / `GroupListItem`; `onPress` calls `closeSearch()` then the same `router.push`; `onLongPress` is unchanged. Nothing else on the screen changed.
+- Tests: `filter.test.ts` (topic chat titled "General" with `groupTitle: 'Dev team'` matches `dev`/`DEV`; unrelated group does not), `chat-list.test.ts` (`CHAT_SEARCH_LIMIT` is 5, first-5 slicing, short and empty inputs).
+
+Commands and real results:
+- `pnpm install`: exit 0.
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot filter chat-list`: 3 files, 13 tests passed.
+- `pnpm exec prettier --write` on the two touched test files (gate's format check flagged them): fixed, no logic change.
+- `pnpm gate`: GATE PASS — install PASS, format PASS, lint PASS, typecheck PASS, tests @zilar/mobile PASS; "every changed file is inside the Allowed files". 6 changed files, all within the task's Allowed files.
+
+Security checklist: no secrets/tokens in code or logs; no new routes, deletes, caps, or audit entries; no permission-affecting changes. No deviations from the spec. I did not run the app in an emulator, so the "typing dev shows the Dev team row" acceptance is covered by unit tests + code inspection, not a live screenshot.
+
+Blocked / needs a decision: none.
+
 ## Review (written by Claude)
+
+**Approved.** Clean pre-review (1 nit, on the test-count wording in the Report), no fix rounds (Muse, peak).
+- `filterChats` also matches `groupTitle`, so a group's topics are found by the group name and the group row appears, with tests.
+- `chatSearchMatches` caps the list at 5 rows.
+- The 2+ character search shows a "Chats" section above Messages when not scoped to one chat; tapping a row closes the search and opens it.
+
+**Still to do:** emulator QA, by typing `dev`.

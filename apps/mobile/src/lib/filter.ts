@@ -25,6 +25,8 @@ export function filterChats(
   return chats.filter(
     (chat) =>
       (options.folder === undefined || folderMatches(options.folder, chat)) &&
-      (query === '' || chat.title.toLowerCase().includes(query)),
+      (query === '' ||
+        chat.title.toLowerCase().includes(query) ||
+        chat.groupTitle?.toLowerCase().includes(query) === true),
   );
 }

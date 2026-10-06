@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { ChatSummary } from '@zilar/chat-core';
 
-import { chatListModel } from './chat-list';
+import { CHAT_SEARCH_LIMIT, chatListModel, chatSearchMatches } from './chat-list';
 
 function chat(id: string, overrides: Partial<ChatSummary> = {}): ChatSummary {
   return {
@@ -103,5 +103,23 @@ describe('chatListModel', () => {
     expect(
       model.rows.map((row) => (row.kind === 'chat' ? row.chat.id : `group:${row.groupId}`)),
     ).toEqual(['group:g1', 'fresh']);
+  });
+
+  it('chatSearchMatches returns the first CHAT_SEARCH_LIMIT rows', () => {
+    expect(CHAT_SEARCH_LIMIT).toBe(5);
+    const rows = Array.from({ length: 7 }, (_, index) => ({
+      kind: 'chat' as const,
+      chat: chat(`c${index}`),
+    }));
+    expect(chatSearchMatches(rows)).toHaveLength(5);
+    expect(chatSearchMatches(rows).map((row) => (row.kind === 'chat' ? row.chat.id : ''))).toEqual([
+      'c0',
+      'c1',
+      'c2',
+      'c3',
+      'c4',
+    ]);
+    expect(chatSearchMatches(rows.slice(0, 2))).toHaveLength(2);
+    expect(chatSearchMatches([])).toEqual([]);
   });
 });
