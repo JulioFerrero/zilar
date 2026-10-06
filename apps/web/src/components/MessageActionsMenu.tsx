@@ -1,5 +1,5 @@
 import { QUICK_REACTIONS } from '@zilar/chat-core';
-import { Forward } from 'lucide-react';
+import { Forward, ListChecks } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Menu, MenuItem } from './ui/menu';
 
@@ -17,6 +17,8 @@ export interface MessageActionsMenuProps {
   isPinned: boolean;
   onReply: () => void;
   onForward: () => void;
+  /** Enters multi-select mode with this message checked (T-0439). */
+  onSelectMessages: () => void;
   onCopy: () => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -38,6 +40,7 @@ export function MessageActionsMenu({
   isPinned,
   onReply,
   onForward,
+  onSelectMessages,
   onCopy,
   onEdit,
   onDelete,
@@ -75,9 +78,14 @@ export function MessageActionsMenu({
       </div>
       <MenuItem onSelect={onReply}>Reply</MenuItem>
       {canForward && (
-        <MenuItem onSelect={onForward} icon={Forward}>
-          Forward
-        </MenuItem>
+        <>
+          <MenuItem onSelect={onForward} icon={Forward}>
+            Forward
+          </MenuItem>
+          <MenuItem onSelect={onSelectMessages} icon={ListChecks}>
+            Select
+          </MenuItem>
+        </>
       )}
       {canEdit && <MenuItem onSelect={onEdit}>Edit</MenuItem>}
       <MenuItem onSelect={onCopy} disabled={!canCopy}>

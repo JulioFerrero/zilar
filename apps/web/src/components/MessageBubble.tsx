@@ -31,6 +31,7 @@ import { ReplyQuote } from './ReplyQuote';
 import { StickerMessage } from './StickerMessage';
 import { VoiceMessage } from './VoiceMessage';
 import { Button } from './ui/button';
+import { Checkbox } from './ui/checkbox';
 import { copyText } from '@/lib/clipboard';
 import { useSmoothText } from '@/lib/useSmoothText';
 import { cn } from '@/lib/utils';
@@ -187,6 +188,14 @@ export interface MessageBubbleProps {
   onReply: (message: UiMessage) => void;
   /** Opens the forward picker for this message. Omitted callers hide the item. */
   onForward?: (message: UiMessage) => void;
+  /** Multi-select mode (T-0439): shows a checkbox and routes clicks to selection. */
+  selecting?: boolean;
+  /** True when this message is checked in select mode. */
+  selected?: boolean;
+  /** Toggles this message's checked state. */
+  onToggleSelect?: (message: UiMessage) => void;
+  /** Enters select mode with this message checked (the menu's Select item). */
+  onStartSelect?: (message: UiMessage) => void;
   /** A live AI draft: same bubble, but recessed while it is written. */
   draft?: boolean;
   /**
@@ -206,6 +215,10 @@ export function MessageBubble({
   meJid,
   onReply,
   onForward,
+  selecting = false,
+  selected = false,
+  onToggleSelect,
+  onStartSelect,
   draft = false,
   revealTurnId,
 }: MessageBubbleProps) {
@@ -323,20 +336,41 @@ export function MessageBubble({
       data-message-id={message.id}
       data-draft-turn={revealTurnId}
       onContextMenu={
-        generating
+        generating || selecting
           ? undefined
           : (event) => {
               event.preventDefault();
               setMenuOpen(true);
             }
       }
+      onClick={
+        selecting && !generating && canForward
+          ? (event) => {
+              if ((event.target as HTMLElement).closest('input[type="checkbox"]') !== null) {
+                return;
+              }
+              onToggleSelect?.(message);
+            }
+          : undefined
+      }
       className={cn(
         'group relative flex items-end gap-1.5',
         own ? 'flex-row-reverse' : 'flex-row',
         firstInGroup ? 'mt-2' : 'mt-0.5',
         isSending && 'animate-in fade-in slide-in-from-bottom-2 duration-150',
+        selecting && 'cursor-pointer',
       )}
     >
+      {selecting && !generating && (
+        <span className="flex shrink-0 items-center self-center">
+          <Checkbox
+            checked={selected}
+            disabled={!canForward}
+            label="Select message"
+            onCheckedChange={() => onToggleSelect?.(message)}
+          />
+        </span>
+      )}
       {!own &&
         chat.kind === 'group' &&
         (lastInGroup ? (
@@ -380,7 +414,8 @@ export function MessageBubble({
                 </button>
               </div>
             ) : (
-              !generating && (
+              !generating &&
+              !selecting && (
                 <Button
                   ref={menuButtonRef}
                   type="button"
@@ -396,7 +431,7 @@ export function MessageBubble({
                 </Button>
               )
             )}
-            {!generating && message.failed !== true && menuOpen && (
+            {!generating && message.failed !== true && !selecting && menuOpen && (
               <MessageActionsMenu
                 canCopy={false}
                 canEdit={false}
@@ -415,6 +450,10 @@ export function MessageBubble({
                 onForward={() => {
                   setMenuOpen(false);
                   onForward?.(message);
+                }}
+                onSelectMessages={() => {
+                  setMenuOpen(false);
+                  onStartSelect?.(message);
                 }}
                 onEdit={() => setMenuOpen(false)}
                 onCopy={() => setMenuOpen(false)}
@@ -700,7 +739,7 @@ export function MessageBubble({
               </>
             )}
 
-            {!generating && (
+            {!generating && !selecting && (
               <Button
                 ref={menuButtonRef}
                 type="button"
@@ -718,7 +757,7 @@ export function MessageBubble({
           </div>
         )}
 
-        {!generating && sticker === undefined && menuOpen && (
+        {!generating && sticker === undefined && !selecting && menuOpen && (
           <MessageActionsMenu
             canCopy={hasText}
             canEdit={canEdit}
@@ -737,6 +776,10 @@ export function MessageBubble({
             onForward={() => {
               setMenuOpen(false);
               onForward?.(message);
+            }}
+            onSelectMessages={() => {
+              setMenuOpen(false);
+              onStartSelect?.(message);
             }}
             onEdit={() => {
               setMenuOpen(false);

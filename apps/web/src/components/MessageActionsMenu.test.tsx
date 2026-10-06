@@ -6,6 +6,7 @@ afterEach(cleanup);
 
 function renderMenu(overrides: Partial<MessageActionsMenuProps> = {}) {
   const onForward = vi.fn();
+  const onSelectMessages = vi.fn();
   const props: MessageActionsMenuProps = {
     canCopy: true,
     canEdit: false,
@@ -15,6 +16,7 @@ function renderMenu(overrides: Partial<MessageActionsMenuProps> = {}) {
     isPinned: false,
     onReply: vi.fn(),
     onForward,
+    onSelectMessages,
     onCopy: vi.fn(),
     onEdit: vi.fn(),
     onDelete: vi.fn(),
@@ -25,7 +27,7 @@ function renderMenu(overrides: Partial<MessageActionsMenuProps> = {}) {
     ...overrides,
   };
   render(<MessageActionsMenu {...props} />);
-  return { onForward };
+  return { onForward, onSelectMessages };
 }
 
 describe('MessageActionsMenu forward', () => {
@@ -43,5 +45,23 @@ describe('MessageActionsMenu forward', () => {
     renderMenu({ canForward: false });
 
     expect(screen.queryByRole('menuitem', { name: 'Forward' })).toBeNull();
+  });
+});
+
+describe('MessageActionsMenu select (T-0439)', () => {
+  it('shows Select after Forward and calls onSelectMessages', () => {
+    const { onSelectMessages } = renderMenu();
+
+    const select = screen.getByRole('menuitem', { name: 'Select' });
+    expect(select).toBeTruthy();
+    fireEvent.click(select);
+
+    expect(onSelectMessages).toHaveBeenCalledTimes(1);
+  });
+
+  it('hides Select when the message cannot be forwarded', () => {
+    renderMenu({ canForward: false });
+
+    expect(screen.queryByRole('menuitem', { name: 'Select' })).toBeNull();
   });
 });

@@ -22,10 +22,20 @@ export function MessageList({
   chat,
   onReply,
   onForward,
+  selection,
+  selecting = false,
 }: {
   chat: ChatSummary;
   onReply: (message: UiMessage) => void;
   onForward?: (message: UiMessage) => void;
+  /** Multi-select controller (T-0439). */
+  selection?: {
+    ids: ReadonlySet<string>;
+    onToggle: (message: UiMessage) => void;
+    onStart: (message: UiMessage) => void;
+  };
+  /** True while select mode is active (drives the checkbox UI). */
+  selecting?: boolean;
 }) {
   const store = useChatStore();
   const storeApi = useChatStoreApi();
@@ -250,6 +260,14 @@ export function MessageList({
                     meJid={store.me?.jid ?? undefined}
                     onReply={onReply}
                     {...(onForward === undefined ? {} : { onForward })}
+                    selecting={selecting}
+                    selected={selection !== undefined && selection.ids.has(item.message.id)}
+                    {...(selection === undefined
+                      ? {}
+                      : {
+                          onToggleSelect: selection.onToggle,
+                          onStartSelect: selection.onStart,
+                        })}
                     draft={isDraft}
                     {...(revealTurnId === undefined ? {} : { revealTurnId })}
                   />
