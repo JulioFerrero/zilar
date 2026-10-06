@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
 import type { PatchTopicInput, TopicStatus } from '@/lib/api';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
+import { Menu } from '@/components/ui/menu';
 import { TextInput } from '@/components/ui/text-input';
 
 const STATUS_ORDER: TopicStatus[] = ['open', 'in_progress', 'in_review', 'blocked', 'done'];
@@ -105,21 +106,21 @@ export function TaskStrip({ chat }: { chat: ChatSummary }) {
   const [linkLabel, setLinkLabel] = useState('');
   const [error, setError] = useState('');
 
-  // Esc closes any open menu or form.
+  // Esc closes the link form. The status and owner menus close through
+  // the kit Menu, whose document Escape handler stops propagation.
   useEffect(() => {
-    if (!statusOpen && !ownerOpen && !linkOpen) {
+    if (!linkOpen) {
       return;
     }
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') {
-        setStatusOpen(false);
-        setOwnerOpen(false);
+        event.stopPropagation();
         setLinkOpen(false);
       }
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [statusOpen, ownerOpen, linkOpen]);
+  }, [linkOpen]);
 
   if (topic === undefined) {
     return null;
@@ -253,39 +254,30 @@ export function TaskStrip({ chat }: { chat: ChatSummary }) {
           />
           {STATUS_LABEL[status]}
         </button>
-        {statusOpen && (
-          <>
+        <Menu
+          open={statusOpen}
+          onClose={() => setStatusOpen(false)}
+          label="Change status"
+          closeLabel="Close status menu"
+          className="top-full left-0 mt-1 min-w-[160px]"
+        >
+          {STATUS_ORDER.map((option) => (
             <button
+              key={option}
               type="button"
-              tabIndex={-1}
-              aria-label="Close status menu"
-              onClick={() => setStatusOpen(false)}
-              className="fixed inset-0 z-10 cursor-default"
-            />
-            <div
-              role="menu"
-              aria-label="Change status"
-              className="absolute top-full left-0 z-20 mt-1 min-w-[160px] rounded-xl border border-border bg-popover py-1 shadow-lg"
+              role="menuitemradio"
+              aria-checked={option === status}
+              onClick={() => chooseStatus(option)}
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] hover:bg-surface-raised focus-visible:bg-surface-raised focus-visible:outline-none"
             >
-              {STATUS_ORDER.map((option) => (
-                <button
-                  key={option}
-                  type="button"
-                  role="menuitemradio"
-                  aria-checked={option === status}
-                  onClick={() => chooseStatus(option)}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] hover:bg-surface-raised focus-visible:bg-surface-raised focus-visible:outline-none"
-                >
-                  <span
-                    className={cn('size-2 shrink-0 rounded-full', STATUS_DOT[option])}
-                    aria-hidden="true"
-                  />
-                  {STATUS_LABEL[option]}
-                </button>
-              ))}
-            </div>
-          </>
-        )}
+              <span
+                className={cn('size-2 shrink-0 rounded-full', STATUS_DOT[option])}
+                aria-hidden="true"
+              />
+              {STATUS_LABEL[option]}
+            </button>
+          ))}
+        </Menu>
       </div>
 
       <div className="relative">
@@ -303,62 +295,53 @@ export function TaskStrip({ chat }: { chat: ChatSummary }) {
         >
           {ownerLabel(chat)}
         </button>
-        {ownerOpen && (
-          <>
-            <button
-              type="button"
-              tabIndex={-1}
-              aria-label="Close owner picker"
-              onClick={() => setOwnerOpen(false)}
-              className="fixed inset-0 z-10 cursor-default"
-            />
-            <div
-              role="menu"
-              aria-label="Change owner"
-              className="absolute top-full left-0 z-20 mt-1 max-h-64 min-w-[180px] overflow-y-auto rounded-xl border border-border bg-popover py-1 shadow-lg"
-            >
+        <Menu
+          open={ownerOpen}
+          onClose={() => setOwnerOpen(false)}
+          label="Change owner"
+          closeLabel="Close owner picker"
+          className="top-full left-0 mt-1 max-h-64 min-w-[180px] overflow-y-auto"
+        >
+          <button
+            type="button"
+            role="menuitemradio"
+            aria-checked={topic.owner === null}
+            onClick={() => chooseOwner(null)}
+            className="flex w-full items-center px-3 py-2 text-left text-[13px] hover:bg-surface-raised focus-visible:bg-surface-raised focus-visible:outline-none"
+          >
+            No owner
+          </button>
+          {members.map((member) => {
+            const userId = ownerIdFor(member.jid);
+            return (
               <button
+                key={member.jid}
                 type="button"
                 role="menuitemradio"
-                aria-checked={topic.owner === null}
-                onClick={() => chooseOwner(null)}
+                aria-checked={topic.owner?.kind === 'user' && topic.owner.id === userId}
+                onClick={() => chooseOwner({ kind: 'user', id: userId, name: member.name })}
                 className="flex w-full items-center px-3 py-2 text-left text-[13px] hover:bg-surface-raised focus-visible:bg-surface-raised focus-visible:outline-none"
               >
-                No owner
+                {member.name}
               </button>
-              {members.map((member) => {
-                const userId = ownerIdFor(member.jid);
-                return (
-                  <button
-                    key={member.jid}
-                    type="button"
-                    role="menuitemradio"
-                    aria-checked={topic.owner?.kind === 'user' && topic.owner.id === userId}
-                    onClick={() => chooseOwner({ kind: 'user', id: userId, name: member.name })}
-                    className="flex w-full items-center px-3 py-2 text-left text-[13px] hover:bg-surface-raised focus-visible:bg-surface-raised focus-visible:outline-none"
-                  >
-                    {member.name}
-                  </button>
-                );
-              })}
-              {aiCandidates.map((member) => {
-                const aiId = ownerIdFor(member.jid);
-                return (
-                  <button
-                    key={member.jid}
-                    type="button"
-                    role="menuitemradio"
-                    aria-checked={topic.owner?.kind === 'ai' && topic.owner.id === aiId}
-                    onClick={() => chooseOwner({ kind: 'ai', id: aiId, name: member.name })}
-                    className="flex w-full items-center px-3 py-2 text-left text-[13px] hover:bg-surface-raised focus-visible:bg-surface-raised focus-visible:outline-none"
-                  >
-                    {member.name} (AI)
-                  </button>
-                );
-              })}
-            </div>
-          </>
-        )}
+            );
+          })}
+          {aiCandidates.map((member) => {
+            const aiId = ownerIdFor(member.jid);
+            return (
+              <button
+                key={member.jid}
+                type="button"
+                role="menuitemradio"
+                aria-checked={topic.owner?.kind === 'ai' && topic.owner.id === aiId}
+                onClick={() => chooseOwner({ kind: 'ai', id: aiId, name: member.name })}
+                className="flex w-full items-center px-3 py-2 text-left text-[13px] hover:bg-surface-raised focus-visible:bg-surface-raised focus-visible:outline-none"
+              >
+                {member.name} (AI)
+              </button>
+            );
+          })}
+        </Menu>
       </div>
 
       <div className="relative flex shrink-0 items-center">

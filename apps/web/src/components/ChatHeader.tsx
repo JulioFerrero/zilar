@@ -1,12 +1,13 @@
 import type { ChatSummary } from '@zilar/chat-core';
 import { ArrowLeft, Lock, MoreVertical, Search } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { AiBadge } from './AiBadge';
 import { Avatar } from './Avatar';
 import { ChatPrefMenuItems, CHAT_MENU_ITEM_CLASS } from './ChatActionsMenu';
 import { TypingDots } from './TypingDots';
 import { IconButton } from './ui/icon-button';
+import { Menu } from './ui/menu';
 import { chatSubtitle, typingLabel } from '@/lib/format';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
@@ -59,21 +60,6 @@ export function ChatHeader({
   const [menuOpen, setMenuOpen] = useState(false);
   const [actionError, setActionError] = useState('');
   const [archiving, setArchiving] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  // Esc closes the kebab menu.
-  useEffect(() => {
-    if (!menuOpen) {
-      return;
-    }
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') {
-        setMenuOpen(false);
-      }
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, [menuOpen]);
 
   // A topic's Archive entry needs a manager; the entry hides until the
   // group detail loads and the role is known (see `TopicArchiveItem`).
@@ -172,7 +158,7 @@ export function ChatHeader({
       <IconButton aria-label="Search in chat" onClick={startChatSearch}>
         <Search className="size-5" aria-hidden="true" />
       </IconButton>
-      <div ref={menuRef} className="relative">
+      <div className="relative">
         <IconButton
           aria-label="Chat menu"
           aria-haspopup="menu"
@@ -183,98 +169,84 @@ export function ChatHeader({
         >
           <MoreVertical className="size-5" aria-hidden="true" />
         </IconButton>
-        {isTopic && menuOpen && (
-          <>
+        {isTopic && (
+          <Menu
+            open={menuOpen}
+            onClose={() => setMenuOpen(false)}
+            label="Topic actions"
+            closeLabel="Close chat menu"
+            className="top-full right-0 mt-1 min-w-[180px]"
+          >
             <button
               type="button"
-              tabIndex={-1}
-              aria-label="Close chat menu"
-              onClick={() => setMenuOpen(false)}
-              className="fixed inset-0 z-10 cursor-default"
-            />
-            <div
-              role="menu"
-              aria-label="Topic actions"
-              className="absolute top-full right-0 z-20 mt-1 min-w-[180px] rounded-xl border border-border bg-popover py-1 shadow-lg"
+              role="menuitem"
+              onClick={() => {
+                setMenuOpen(false);
+                openPanel?.();
+              }}
+              className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised focus-visible:bg-surface-raised focus-visible:outline-none"
             >
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
+              Topic info
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setMenuOpen(false);
+                storeApi.getState().setPinsPanel(chat.id);
+              }}
+              className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised focus-visible:bg-surface-raised focus-visible:outline-none"
+            >
+              Pinned messages
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setMenuOpen(false);
+                startChatSearch();
+              }}
+              className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised focus-visible:bg-surface-raised focus-visible:outline-none"
+            >
+              Search
+            </button>
+            <ChatPrefMenuItems
+              chat={chat}
+              onDone={(failed) => {
+                if (!failed) {
                   setMenuOpen(false);
-                  openPanel?.();
-                }}
-                className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised focus-visible:bg-surface-raised focus-visible:outline-none"
-              >
-                Topic info
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setMenuOpen(false);
-                  storeApi.getState().setPinsPanel(chat.id);
-                }}
-                className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised focus-visible:bg-surface-raised focus-visible:outline-none"
-              >
-                Pinned messages
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setMenuOpen(false);
-                  startChatSearch();
-                }}
-                className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised focus-visible:bg-surface-raised focus-visible:outline-none"
-              >
-                Search
-              </button>
-              <ChatPrefMenuItems
+                }
+              }}
+            >
+              <TopicArchiveItem
                 chat={chat}
-                onDone={(failed) => {
-                  if (!failed) {
-                    setMenuOpen(false);
-                  }
-                }}
-              >
-                <TopicArchiveItem
-                  chat={chat}
-                  archiving={archiving}
-                  onArchive={() => void archive()}
-                />
-              </ChatPrefMenuItems>
-            </div>
-          </>
+                archiving={archiving}
+                onArchive={() => void archive()}
+              />
+            </ChatPrefMenuItems>
+          </Menu>
         )}
-        {!isTopic && menuOpen && (
-          <>
+        {!isTopic && (
+          <Menu
+            open={menuOpen}
+            onClose={() => setMenuOpen(false)}
+            label={`Actions for ${chat.title}`}
+            closeLabel="Close chat menu"
+            className="top-full right-0 mt-1 min-w-[196px]"
+          >
             <button
               type="button"
-              tabIndex={-1}
-              aria-label="Close chat menu"
-              onClick={() => setMenuOpen(false)}
-              className="fixed inset-0 z-10 cursor-default"
-            />
-            <div
-              role="menu"
-              aria-label={`Actions for ${chat.title}`}
-              className="absolute top-full right-0 z-20 mt-1 min-w-[196px] rounded-xl border border-border bg-popover py-1 shadow-lg"
+              role="menuitem"
+              onClick={() => {
+                setMenuOpen(false);
+                storeApi.getState().setPinsPanel(chat.id);
+              }}
+              className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised focus-visible:bg-surface-raised focus-visible:outline-none"
             >
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setMenuOpen(false);
-                  storeApi.getState().setPinsPanel(chat.id);
-                }}
-                className="flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised focus-visible:bg-surface-raised focus-visible:outline-none"
-              >
-                Pinned messages
-              </button>
-              <ChatPrefMenuItems chat={chat} onDone={(failed) => !failed && setMenuOpen(false)} />
-            </div>
-          </>
+              Pinned messages
+            </button>
+            <ChatPrefMenuItems chat={chat} onDone={(failed) => !failed && setMenuOpen(false)} />
+          </Menu>
         )}
       </div>
     </header>

@@ -1,7 +1,7 @@
 ---
 id: T-0320
 title: "Web kit migration: ChatHeader and TaskStrip menus use the kit Menu (fixes Escape leaving the chat on narrow screens)"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0320-web-menu-3
 model: auto
@@ -78,4 +78,61 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+All four hand-rolled menus now render through the kit `Menu`; Escape in any
+of them closes only the menu (the kit `Menu` stops it at the document), so
+a narrow screen stays in the chat.
+
+Files changed:
+- `apps/web/src/components/ui/menu.tsx`: focus helper (`enabledItems`)
+  now also finds `[role="menuitemradio"]` and `[role="menuitemcheckbox"]`,
+  both excluding disabled ones.
+- `apps/web/src/components/ui/menu.test.tsx`: added test that focus moves
+  across menuitem / menuitemradio / menuitemcheckbox with ArrowDown wrap.
+- `apps/web/src/components/ChatHeader.tsx`: both menus (topic,
+  `min-w-[180px]`; non-topic, `min-w-[196px]`) render through
+  `<Menu open={menuOpen} onClose={...} closeLabel="Close chat menu"
+  label=... className="top-full right-0 mt-1 ...">`; items unchanged;
+  removed the document Escape listener and the now-unused `menuRef`
+  (and the `useEffect`/`useRef` imports).
+- `apps/web/src/components/TaskStrip.tsx`: status (`min-w-[160px]`) and
+  owner (`max-h-64 overflow-y-auto`) menus render through `Menu` with
+  their labels/close labels; items unchanged; the document listener now
+  only handles the link form (`linkOpen`) and calls
+  `event.stopPropagation()` on Escape.
+- `apps/web/src/components/ChatHeader.menu.test.tsx` (new): regression
+  test — with a stub `window` keydown listener registered, Escape in the
+  ChatHeader topic menu closes the menu and does not reach the window
+  listener (the stub throws if reached).
+- Existing `TaskStrip.test.tsx`, `ChatPrefs.test.tsx`,
+  `TopicsMockE2E.test.tsx`: unchanged, all pass.
+
+Deviations: none. Note the container styling now comes from `Menu`
+(`border-border-strong bg-surface` vs the old `border-border bg-popover`),
+same shell swap as T-0318/T-0319.
+
+Commands (real results):
+- `pnpm install`: exit 0.
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot
+  src/components/ui/menu.test.tsx src/components/ChatHeader.menu.test.tsx
+  src/components/TaskStrip.test.tsx src/components/ChatPrefs.test.tsx
+  src/components/TopicsMockE2E.test.tsx`: 5 files passed, 32 tests passed.
+- `pnpm gate`: GATE PASS — install PASS, format PASS, lint PASS,
+  typecheck PASS, tests @zilar/web PASS, scope: every changed file is
+  inside the Allowed files.
+
+Fix round 1: `ChatHeader.menu.test.tsx` now uses a `vi.fn()` window spy
+with `expect(onWindowKeyDown).not.toHaveBeenCalled()` instead of a
+throwing listener, plus a control test proving the spy sees window
+keydown events when no menu is open.
+
+Security checklist: N/A — no secrets, no deletes/updates, no caps, no
+permissions, no new routes, no audit entries; menus only render existing
+actions.
+
 ## Review (written by Claude)
+
+**Approved** after one lead fix round (paid Muse fallback). The first regression test threw inside a window listener; jsdom only reports such errors and does not fail the test, so the test could pass vacuously. It now uses a `vi.fn` spy that must not be called, plus a control test showing that the spy does see Escape when no menu is open.
+- The ChatHeader topic and chat menus and the TaskStrip status and owner menus render through `Menu`; no hand-rolled `role="menu"` is left on web.
+- `Menu` also focuses `menuitemradio` and `menuitemcheckbox` items.
+- The TaskStrip link form keeps its own Escape, now with `stopPropagation`.
+- **Bug fixed:** on narrow screens, Escape in these menus no longer reaches ChatShell's window handler, which used to leave the chat.

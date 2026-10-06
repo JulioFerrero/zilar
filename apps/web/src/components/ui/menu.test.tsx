@@ -108,6 +108,32 @@ describe('Menu', () => {
     expect(document.activeElement).toBe(screen.getByRole('menuitem', { name: 'Second' }));
   });
 
+  it('moves focus across menuitem, menuitemradio and menuitemcheckbox', () => {
+    render(
+      <div>
+        <Menu open onClose={() => {}} label="Radios" closeLabel="Close radios">
+          <button type="button" role="menuitemradio" aria-checked="false" onClick={() => {}}>
+            First
+          </button>
+          <button type="button" role="menuitemcheckbox" aria-checked="false" onClick={() => {}}>
+            Second
+          </button>
+          <MenuItem onSelect={() => {}}>Third</MenuItem>
+        </Menu>
+      </div>,
+    );
+    const first = screen.getByRole('menuitemradio', { name: 'First' });
+    const second = screen.getByRole('menuitemcheckbox', { name: 'Second' });
+    const third = screen.getByRole('menuitem', { name: 'Third' });
+    expect(document.activeElement).toBe(first);
+    fireEvent.keyDown(first, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(second);
+    fireEvent.keyDown(second, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(third);
+    fireEvent.keyDown(third, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(first);
+  });
+
   it('marks a destructive item and renders its icon', () => {
     openMenu();
     const third = screen.getByRole('menuitem', { name: 'Third' });

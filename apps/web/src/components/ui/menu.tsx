@@ -26,7 +26,11 @@ function enabledItems(menu: HTMLElement | null): HTMLElement[] {
   if (menu === null) {
     return [];
   }
-  return [...menu.querySelectorAll<HTMLElement>('[role="menuitem"]:not([disabled])')];
+  return [
+    ...menu.querySelectorAll<HTMLElement>(
+      '[role="menuitem"]:not([disabled]), [role="menuitemradio"]:not([disabled]), [role="menuitemcheckbox"]:not([disabled])',
+    ),
+  ];
 }
 
 /**
