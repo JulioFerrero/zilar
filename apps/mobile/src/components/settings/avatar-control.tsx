@@ -1,9 +1,10 @@
 import { Image } from 'expo-image';
 import { useColorScheme } from 'nativewind';
 import { useState } from 'react';
-import { ActivityIndicator, Pressable, View } from 'react-native';
+import { ActivityIndicator, View } from 'react-native';
 
 import { Avatar } from '@/components/chat/avatar';
+import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { ACCENT } from '@/lib/colors';
 import { asColorScheme } from '@/lib/color-scheme';
@@ -64,29 +65,25 @@ export function AvatarControl({
           onImageError={() => setImageFailed(true)}
         />
         <View className="flex-row flex-wrap gap-2">
-          <Pressable
-            accessibilityRole="button"
+          <Button
+            variant="default"
+            size="sm"
             accessibilityLabel={currentUrl === undefined ? 'Add picture' : 'Change picture'}
             disabled={uploading}
             onPress={onPick}
-            className="items-center rounded-full bg-accent px-4 py-2 active:opacity-90 disabled:opacity-60"
           >
-            <Text className="text-[14px] font-medium text-accent-foreground">
-              {currentUrl === undefined ? 'Add picture' : 'Change picture'}
-            </Text>
-          </Pressable>
+            {currentUrl === undefined ? 'Add picture' : 'Change picture'}
+          </Button>
           {currentUrl !== undefined ? (
-            <Pressable
-              accessibilityRole="button"
+            <Button
+              variant="outline"
+              size="sm"
               accessibilityLabel="Remove picture"
               disabled={uploading}
               onPress={onRemove}
-              className="items-center rounded-full border border-border-strong bg-surface px-4 py-2 active:bg-surface-raised disabled:opacity-60"
             >
-              <Text className="text-[14px] text-foreground">
-                {phase.name === 'uploading' ? 'Working…' : 'Remove'}
-              </Text>
-            </Pressable>
+              {phase.name === 'uploading' ? 'Working…' : 'Remove'}
+            </Button>
           ) : null}
         </View>
       </View>
@@ -104,15 +101,16 @@ export function AvatarControl({
               />
             </View>
           ) : (
-            <Pressable
-              accessibilityRole="button"
+            <Button
+              variant="default"
+              size="sm"
+              className="self-start"
               accessibilityLabel="Save picture"
               disabled={uploading}
               onPress={onSavePicked}
-              className="items-center self-start rounded-full bg-accent px-4 py-2 active:opacity-90 disabled:opacity-60"
             >
-              <Text className="text-[14px] font-medium text-accent-foreground">Save picture</Text>
-            </Pressable>
+              Save picture
+            </Button>
           )}
         </View>
       ) : null}

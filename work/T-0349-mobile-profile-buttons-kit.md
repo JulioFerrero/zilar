@@ -1,7 +1,7 @@
 ---
 id: T-0349
 title: "Mobile kit migration: the pill buttons on the Profile settings screen, the avatar control and the handle field use the kit Button"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0349-mobile-profile-buttons-kit
 model: auto
@@ -68,4 +68,57 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**Status:** done, ready for review.
+
+**What I did**
+Replaced all six text pill `Pressable`s named in the spec with the kit `Button` (`apps/mobile/src/components/ui/button.tsx`), size `sm` for every one — the spec's default. The avatar pair sits in a `flex-row flex-wrap` so it wraps instead of cramping, and `sm` keeps the two pills on one row for longer than `default` would; no `size="default"` was needed.
+
+`apps/mobile/src/app/settings/profile.tsx`
+- "Retry" (was line 320) → `variant="outline" size="sm"`; kept `accessibilityLabel="Retry"` and `onPress={reload}`.
+- "Save name" (was 365) → `variant="default" size="sm"` with `className="mt-1 self-start"`; kept `accessibilityLabel="Save name"`, `disabled={nameBusy || nameUnchanged}`, `onPress={saveName}` and the busy text `{nameBusy ? 'Saving…' : 'Save name'}`.
+- No `Pressable` remains, so I dropped it from the `react-native` import.
+
+`apps/mobile/src/components/settings/avatar-control.tsx`
+- "Add picture"/"Change picture" (was 67) → `variant="default" size="sm"`; kept the `accessibilityLabel` ternary, `disabled={uploading}`, `onPress={onPick}` and the label ternary.
+- "Remove picture" (was 79) → `variant="outline" size="sm"`; kept `accessibilityLabel`, `disabled`, `onPress={onRemove}` and the busy text `{phase.name === 'uploading' ? 'Working…' : 'Remove'}`.
+- "Save picture" (was 107) → `variant="default" size="sm"` with `className="self-start"`; kept `accessibilityLabel`, `disabled`, `onPress={onSavePicked}`.
+- No `Pressable` remains, so I dropped it from the `react-native` import; `Text` is still used elsewhere in the file and stays.
+
+`apps/mobile/src/components/settings/handle-field.tsx`
+- "Save username" (was 70) → `variant="default" size="sm"` with `className="mt-1 self-start"`; kept `accessibilityLabel`, `disabled={busy || saveDisabled}`, `onPress={onSave}` and the busy text `{busy ? 'Saving…' : 'Save username'}`.
+- No `Pressable` remains, so I dropped it from the `react-native` import; `Text` stays.
+
+For every button I dropped the old pill classes and the child `Text` colour/size classes; the kit `TextClassContext` now sets them. I also dropped `accessibilityRole="button"` because the kit `Button` sets `role="button"` on its own `Pressable` (the T-0345–T-0348 pattern). Added `import { Button } from '@/components/ui/button';` to all three files.
+
+**Files changed**
+- `apps/mobile/src/app/settings/profile.tsx` — two `Pressable`s now kit `Button`s; `Button` imported; unused `Pressable` import removed.
+- `apps/mobile/src/components/settings/avatar-control.tsx` — three `Pressable`s now kit `Button`s; `Button` imported; unused `Pressable` import removed.
+- `apps/mobile/src/components/settings/handle-field.tsx` — one `Pressable` now a kit `Button`; `Button` imported; unused `Pressable` import removed.
+- `apps/mobile/src/components/settings/settings-ui.test.tsx` — mocks only: added `Platform.select`, `react-native-reanimated` `useReducedMotion`, and `TextClassContext` on the `@/components/ui/text` mock.
+- `work/T-0349-mobile-profile-buttons-kit.md` — status and this Report.
+
+**Why the extra mocks**
+`Platform.select`, `useReducedMotion` and `TextClassContext` are the imports the kit `Button` chain pulls in (`button.tsx` → `use-key-press.ts`, `button.tsx` `Platform.select`, and `TextClassContext` from `@/components/ui/text`), exactly as the spec listed. The test previously did not mock them. No `@/components/ui/use-key-press` mock was needed: `settings-ui.test.tsx` has no forced/ordered `useState` mock (it only calls `renderToStaticMarkup`, which never runs effects), so the extra `useKeyPress` `useState` does not shift a cursor.
+
+**Commands run and results**
+- `pnpm install` (worktree) — succeeded (`Done in 11.3s`; only pre-existing peer/deprecation warnings).
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot settings-ui` — `Test Files 1 passed (1)`, `Tests 11 passed (11)` (only the usual React DOM casing warnings on stderr).
+- `pnpm gate` (repo root) — final output:
+  ```
+  gate: 5 changed file(s) against main
+  PASS  install (frozen)  (1.0s)
+  PASS  format  (11.5s)
+  PASS  lint  (0.9s)
+  PASS  typecheck  (5.7s)
+  PASS  tests @zilar/mobile  (1.4s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+**Deviations from the spec:** none.
+
+**Blocked / needs a decision:** none.
+
 ## Review (written by Claude)
+
+**Approved** (pre-review clean, 0 nits). All six pills are kit `Button`s with the variants from the table, and the layout classes are kept (`mt-1 self-start` on Save name and Save username, `self-start` on Save picture). The lead grep found the labels kept. The test changes are mocks only.
