@@ -1,7 +1,7 @@
 ---
 id: T-0338
 title: "Mobile: the tick icon never wraps away from the time, and a markdown list item no longer leaves empty space under the bubble"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0338-mobile-bubble-meta-wrap
 model: auto
@@ -72,4 +72,87 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**Status:** review. No deviations from the spec.
+
+### What I did
+
+1. **Ticks stay with the time.** In both branches of `message-bubble.tsx` (markdown and plain text) the inline tick `View` moved inside the meta `Text`, right after `formatTime(...)`, preceded by `'\u00a0\u2060'` (a no-break space then a word joiner) when `outgoing`. Removed the separate `<Text> </Text>` that used to sit between the meta `Text` and the tick. The 14×11 size, `transform: [{ translateY: 2 }]`, `metaColor` and the generating `opacity: 0` are unchanged.
+2. **List item is one Text.** `ListBlock` in `markdown-text.tsx` no longer renders a row `View` with a marker `RNText` and a body `RNText`. Each item is now a single `RNText`: `item.marker` or `'•'`, then `'\u00a0'`, then the inline nodes, with `paddingLeft: 12`. The `accessible={false}` marker column is gone, so the marker is read as part of the item text. There is no more measured-vs-laid-out width mismatch.
+3. **Tests.**
+   - `markdown-text.test.tsx`: replaced T-0337's `flexShrink`/`flex: 1` test with `renders each list item as one text with an inline marker and no row` (one `Text` per item, no `flexDirection: 'row'`, no `flex: 1`); updated the old marker test to `puts bullet and numbered list markers inline with the item text` (markers are no longer standalone `Text`s). Kept the `flexGrow: 0` code `ScrollView` test as required.
+   - `message-bubble-layout.test.tsx`: added `keeps the inline ticks inside the time text behind a no-break space`, which asserts the tick view opens directly after `'\u00a0\u2060'` and that the meta `Text` has not closed before the tick.
+   - `message-bubble-ticks.test.tsx`: unchanged (its existing assertions still pass).
+
+### Files changed (5, all inside Allowed files)
+
+- `apps/mobile/src/components/chat/message-bubble.tsx`
+- `apps/mobile/src/components/chat/markdown-text.tsx`
+- `apps/mobile/src/components/chat/markdown-text.test.tsx`
+- `apps/mobile/src/components/chat/message-bubble-layout.test.tsx`
+- `work/T-0338-mobile-bubble-meta-wrap.md`
+
+### Commands (real results)
+
+- `pnpm install` — exit 0, 13 workspace projects, done in 11.8s.
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot message-bubble markdown-text` — `Test Files 4 passed (4)`, `Tests 23 passed (23)`.
+- `pnpm gate` — `GATE PASS`:
+
+  ```
+  gate: 5 changed file(s) against main
+  PASS  install (frozen)  (1.0s)
+  PASS  format  (11.1s)
+  PASS  lint  (0.9s)
+  PASS  typecheck  (5.8s)
+  PASS  tests @zilar/mobile  (1.7s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### What the tests cannot prove / needs the emulator
+
+The node tests pin the tree shape and the join characters, but cannot exercise real Yoga layout or pixel rendering. **The real wrap (the tick no longer dropping to a second line) and the list-item bubble height (no empty space under the time) must be checked on the emulator.** The lead runs QA after the merge.
+
+### Notes for the lead
+
+- The list test mocks `react-native` as host strings; the `Text` type check is against the stub tag, not a real RN `Text`.
+- No security-relevant surface (pure UI). No new dependencies, no `any`, no suppressed checks.
+
+### Round (fix round, fresh session)
+
+**Findings fixed:** none.
+
+**Disagreements**
+
+- **Finding 1 (should-fix — "vacuous nesting assertion") is wrong.** Its premise is that this test's RN stub renders `Text` as `RNText` (line 45, `Text: styled('RNText')`). But `message-bubble.tsx` imports `Text` from `@/components/ui/text` (line 31), and this test mocks that module as `{ Text: 'Text' }` (line 128). So the meta `Text` renders as `<Text>…</Text>`: the markup contains `</Text>` and contains no `</RNText>`. I verified both directions:
+  - Correct code: `expect(html).toContain('</Text>')` and `expect(html).not.toContain('</RNText>')` both pass, and the existing `not.toContain('</Text>')` passes.
+  - Reverting exactly the nesting the finding describes (tick `View` moved back outside the meta `Text`, with `'\u00a0\u2060'` left immediately before the view so line 195 still passes) makes line 197 **fail**: `AssertionError: expected … not to contain '</Text>'`. The assertion is therefore not vacuous; it catches the regression.
+  - The suggested replacement (`</RNText>`) would itself break the test, because no `</RNText>` is rendered. I left the assertion unchanged and made no commit for finding 1.
+
+**Nits skipped**
+
+- **Finding 2 (nit — new test pins only the plain-text branch).** Skipped, per the rule "do not touch nits unless they are in a line you already change"; the fix round changed no line in that test.
+
+**Tests added/adjusted:** none (no behaviour change in this round).
+
+**Gate result:** `GATE PASS`:
+
+```
+gate: 5 changed file(s) against main
+PASS  install (frozen)  (0.9s)
+PASS  format  (12.5s)
+PASS  lint  (0.7s)
+PASS  typecheck  (0.7s)
+PASS  tests @zilar/mobile  (1.5s)
+scope: every changed file is inside the Allowed files
+GATE PASS
+```
+
+Single test run: `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot message-bubble markdown-text` — `Test Files 4 passed (4)`, `Tests 23 passed (23)`.
+
 ## Review (written by Claude)
+
+**Approved** after one automatic round. The pre-review then withdrew its should-fix as wrong, and 1 nit is accepted: the new tick test covers the plain-text branch only, while the markdown branch has the identical code.
+- **Ticks:** the tick view now sits inside the time's meta `Text`, behind ` ⁠`, in both branches. The separate breakable `<Text> </Text>` is gone.
+- **Lists:** `ListBlock` renders each item as one `RNText` with the marker inline, a no-break space and `paddingLeft: 12`. There is no row layout any more, so there is no measuring mismatch.
+
+Emulator confirmation: QA run 24 after the merge.

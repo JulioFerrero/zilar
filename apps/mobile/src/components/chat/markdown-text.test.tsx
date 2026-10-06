@@ -122,17 +122,27 @@ describe('MarkdownText', () => {
     expect(styleOf(scroll as TestElement).flexGrow).toBe(0);
   });
 
-  it('aligns bullet and numbered list markers', () => {
+  it('puts bullet and numbered list markers inline with the item text', () => {
     const bullets = render('- one\n- two');
-    expect(bullets.filter((element) => textOf(element.props.children) === '•')).toHaveLength(2);
+    const items = findStyle(bullets, 'paddingLeft', 12);
+    expect(items.map((element) => textOf(element.props.children))).toEqual([
+      '\u2022\u00a0one',
+      '\u2022\u00a0two',
+    ]);
     const ordered = render('3. third');
-    expect(ordered.some((element) => textOf(element.props.children) === '3.')).toBe(true);
+    const orderedItem = findStyle(ordered, 'paddingLeft', 12)[0];
+    expect(textOf(orderedItem?.props.children)).toBe('3.\u00a0third');
   });
 
-  it('sizes list item text from its content instead of a zero flex basis', () => {
+  it('renders each list item as one text with an inline marker and no row', () => {
     const elements = render('1) a long ordered item that has to wrap at the bubble width');
-    const content = findStyle(elements, 'flexShrink', 1);
-    expect(content).toHaveLength(1);
+    const items = findStyle(elements, 'paddingLeft', 12);
+    expect(items).toHaveLength(1);
+    expect(items[0]?.type).toBe('Text');
+    expect(textOf(items[0]?.props.children)).toBe(
+      '1)\u00a0a long ordered item that has to wrap at the bubble width',
+    );
+    expect(elements.some((element) => styleOf(element).flexDirection === 'row')).toBe(false);
     expect(elements.some((element) => styleOf(element).flex === 1)).toBe(false);
   });
 

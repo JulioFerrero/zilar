@@ -90,20 +90,16 @@ function Body({ nodes, color, style }: { nodes: InlineNode[]; color: string; sty
 function ListBlock({ block, color }: { block: Extract<Block, { type: 'list' }>; color: string }) {
   return (
     <View>
+      {/* One `Text` per item with the marker inline. A row whose body was
+          measured at one width and laid out at another left the bubble taller
+          than its content, so the item is a single flowing text instead. Wrapped
+          lines start under the marker; that is accepted. */}
       {block.items.map((item, index) => (
-        <View key={index} style={{ flexDirection: 'row' }}>
-          <RNText
-            style={[BODY, { color, width: 22, marginRight: 6, textAlign: 'right' }]}
-            accessible={false}
-          >
-            {block.ordered ? item.marker : '•'}
-          </RNText>
-          {/* `flexShrink` only: a `flex: 1` basis of 0 collapses the item to a
-              sliver inside the shrink-wrapping bubble, so the text wraps a few
-              characters per line. The auto basis lets the row size to its
-              content and then shrink to the bubble's max width. */}
-          <RNText style={[BODY, { color, flexShrink: 1 }]}>{renderInline(item.nodes)}</RNText>
-        </View>
+        <RNText key={index} style={[BODY, { color, paddingLeft: 12 }]}>
+          {block.ordered ? item.marker : '•'}
+          {'\u00a0'}
+          {renderInline(item.nodes)}
+        </RNText>
       ))}
     </View>
   );
