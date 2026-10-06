@@ -1,6 +1,7 @@
 import { Pin } from 'lucide-react-native';
 import { Pressable, View } from 'react-native';
 
+import { Button } from '../ui/button';
 import { Text } from '../ui/text';
 import { pinLabel, type SnapshotPinKind } from '../../lib/pin-snapshot';
 
@@ -56,14 +57,15 @@ export function PinnedBanner({
             <Text accessibilityRole="alert" className="flex-1 text-[12px] text-danger">
               {pinsError}
             </Text>
-            <Pressable
-              accessibilityRole="button"
+            <Button
+              variant="ghost"
+              size="sm"
               accessibilityLabel="Dismiss pins error"
               onPress={onDismissError}
-              className="rounded-full px-2 py-0.5 active:bg-surface-raised"
+              className="h-7 rounded-full px-2"
             >
               <Text className="text-[12px] text-muted-foreground">Dismiss</Text>
-            </Pressable>
+            </Button>
           </View>
         ) : null}
         {jumpError !== '' ? (
@@ -85,14 +87,15 @@ export function PinnedBanner({
           <Text accessibilityRole="alert" className="flex-1 text-[12px] text-danger">
             {pinsError}
           </Text>
-          <Pressable
-            accessibilityRole="button"
+          <Button
+            variant="ghost"
+            size="sm"
             accessibilityLabel="Dismiss pins error"
             onPress={onDismissError}
-            className="rounded-full px-2 py-0.5 active:bg-surface-raised"
+            className="h-7 rounded-full px-2"
           >
             <Text className="text-[12px] text-muted-foreground">Dismiss</Text>
-          </Pressable>
+          </Button>
         </View>
       ) : null}
       <View className="flex-row items-center gap-2">
@@ -109,29 +112,31 @@ export function PinnedBanner({
           </Text>
         </Pressable>
         {pins.length > 1 ? (
-          <Pressable
-            accessibilityRole="button"
+          <Button
+            variant="ghost"
+            size="sm"
             accessibilityLabel={`Cycle pins, ${index + 1} of ${pins.length}`}
             onPress={onCycle}
-            className="shrink-0 rounded-full px-2 py-1 active:bg-surface-raised"
+            className="shrink-0 h-7 rounded-full px-2"
           >
             <Text className="text-[12px] font-medium text-muted-foreground">
               {index + 1} of {pins.length}
             </Text>
-          </Pressable>
+          </Button>
         ) : null}
-        <Pressable
-          accessibilityRole="button"
+        <Button
+          variant="ghost"
+          size="sm"
           accessibilityLabel={
             pins.length === 1 ? 'Show pinned message' : `Show all pins, ${pins.length}`
           }
           onPress={onOpenList}
-          className="shrink-0 rounded-full px-2 py-1 active:bg-surface-raised"
+          className="shrink-0 h-7 rounded-full px-2"
         >
           <Text className="text-[12px] font-medium text-muted-foreground">
             {pins.length === 1 ? 'Pin' : `${pins.length} pins`}
           </Text>
-        </Pressable>
+        </Button>
       </View>
       {jumpError !== '' ? (
         <Text accessibilityRole="alert" className="mt-0.5 text-[12px] text-danger">

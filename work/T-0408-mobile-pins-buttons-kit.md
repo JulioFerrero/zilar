@@ -1,7 +1,7 @@
 ---
 id: T-0408
 title: "Mobile kit: the pinned banner's Dismiss, Cycle and Show pills and the pins sheet's Unpin use the kit Button"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0408-mobile-pins-buttons-kit
 model: auto
@@ -62,4 +62,39 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- `apps/mobile/src/components/chat/pinned-banner.tsx`: replaced the four `Pressable`s with the kit `Button` (`variant="ghost" size="sm"`). The two "Dismiss pins error" pills and both the cycle ("n of N") and list ("Pin"/"N pins") pills use `className="h-7 rounded-full px-2"`, keeping `shrink-0` on the cycle and list pills. Children `<Text>` elements and their classes are unchanged. The jump row `Pressable` is untouched.
+- `apps/mobile/src/components/chat/pins-sheet.tsx`: replaced the Unpin `Pressable` with `<Button variant="ghost" size="sm" className="shrink-0 rounded-full" disabled={unpinning} …>`, keeping the danger `Text` child and label. The jump row `Pressable` is untouched.
+- Added the kit-Button mocks the spec names to both tests: `Platform.select` in the `react-native` mock, `react-native-reanimated` `useReducedMotion`, `@/components/ui/use-key-press`, `@/lib/depth` keys, and `TextClassContext` in the `../ui/text` mock.
+- Grepped one level up for tests importing these two files: only `pinned-banner.test.tsx` and `pins-sheet.test.tsx` do (other hits are comments referencing the file). No out-of-scope test needed mocks, so no BLOCKED.
+
+### Files changed
+- `apps/mobile/src/components/chat/pinned-banner.tsx`
+- `apps/mobile/src/components/chat/pins-sheet.tsx`
+- `apps/mobile/src/components/chat/pinned-banner.test.tsx`
+- `apps/mobile/src/components/chat/pins-sheet.test.tsx`
+- `work/T-0408-mobile-pins-buttons-kit.md`
+
+### Commands and results
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot pinned-banner pins-sheet` → `Test Files 2 passed (2)`, `Tests 7 passed (7)`.
+- `pnpm gate` (repo root) → summary lines:
+  ```
+  gate: 5 changed file(s) against main
+  PASS  install (frozen)  (1.5s)
+  PASS  format  (20.9s)
+  PASS  lint  (1.6s)
+  PASS  typecheck  (10.4s)
+  PASS  tests @zilar/mobile  (2.6s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Deviations / notes
+- `pnpm install` printed a peer-dependency warning for `@types/react-dom` wanting `@types/react@^19.3.0` (found 19.2.18) on `apps/mobile`; it is pre-existing and gate lint/typecheck pass.
+- No open questions.
+
 ## Review (written by Claude)
+
+**2026-10-06, lead:** approved. The pre-review had one nit, accepted: the tests do not assert component identity, which matches repo practice.
+- All five controls are ghost `sm` kit Buttons, with labels inside `<Text>` and the banner pills kept compact (`h-7`).
+- The jump rows are untouched.

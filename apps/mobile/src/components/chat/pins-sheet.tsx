@@ -1,6 +1,7 @@
 import { Pressable, View } from 'react-native';
 
 import { Text } from '../ui/text';
+import { Button } from '../ui/button';
 import { BottomSheet } from '../ui/bottom-sheet';
 import { pinLabel, type SnapshotPinKind } from '../../lib/pin-snapshot';
 
@@ -67,17 +68,18 @@ export function PinsSheet({
               </Text>
             </Pressable>
             {canUnpin ? (
-              <Pressable
-                accessibilityRole="button"
+              <Button
+                variant="ghost"
+                size="sm"
                 accessibilityLabel={`Unpin message from ${pin.senderName}`}
                 disabled={unpinning}
                 onPress={() => onUnpin(pin)}
-                className="shrink-0 rounded-full px-3 py-1.5 active:bg-surface-raised disabled:opacity-50"
+                className="shrink-0 rounded-full"
               >
                 <Text className="text-[13px] font-medium text-danger">
                   {unpinning ? '…' : 'Unpin'}
                 </Text>
-              </Pressable>
+              </Button>
             ) : null}
           </View>
         );
