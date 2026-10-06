@@ -54,14 +54,20 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0407 | Web kit: Archived disclosure and Dismiss notice | coding | |
-| T-0408 | Mobile kit: pins banner and sheet buttons | coding | |
-| T-0409 | Forwarding step 2 (web): "Forwarded from" header | coding | first forwarding UI task |
-| T-0410 | Media gallery 1a (server): index tables + indexer | coding | the only schema task; 1b (route) next |
-| T-0411 | Web kit: Run input, sign-in email, two empty lines | coding | |
-| T-0412 | Mobile kit: Connections icon buttons | coding | |
+| T-0410 | Media gallery 1a (server): index tables + indexer | pre-review | the only schema task; then the `/api/media` route (1b) |
+| T-0414 | Forwarding step 3 (web store): forwardMessages | pre-review | T-0419 (picker UI, spec written) launches when it merges |
+| T-0420 | Mobile: AI sections, Connections, Folders, Explore empty lines | coding | |
+| T-0421 | Mobile: Revoked machines chevron (QA run 34) | coding | |
 
-All six were launched 11:05-11:28 UTC on DeepSeek flash (off-peak).
+The two free web slots are waiting for T-0414 (then T-0419) and T-0410 (then the gallery route). The web kit is nearly finished: what is left are tile overlays and content rows, kept raw on purpose.
+
+Merged 11:30-12:10 UTC: T-0407, T-0408, T-0409, T-0411, T-0412, T-0413, T-0415, T-0416, T-0417, T-0418.
+- **Forwarded header (T-0409):** the lead checked it in the browser (mock, Ana chat). "Forwarded from Luis in Friday plans" shows above the text.
+- **QA run 34** (main dd4e6a07, mock) PASS for the pins banner and sheet, the Connections icons, New folder, Delete folder, the Integrations eye, Stickers Import and Move, and the AIs tab. No crash. Marker b45684f1.
+  - Finding: "Revoked (1)" shows no tap hint (lead saw `qa34/16.png`) → T-0421.
+- **Lead decision:** the mobile `LoadError` component keeps its quiet raised Retry key (its comment says this is on purpose), so audit batch 27 is not migrated.
+
+Earlier: T-0407 to T-0412 were launched 11:05-11:28 UTC on DeepSeek flash (off-peak).
 
 **Julio, 2026-10-06 ~11:15 UTC:** he accepted every recommendation in the forwarding plan §5 and the media gallery plan §5 (recorded in both docs).
 - **Forwarding order:** T-0409 (receive and header), then the `forwardMessages` store action, then the picker and multi-select UI, then mobile.
