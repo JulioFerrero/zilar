@@ -1,7 +1,7 @@
 ---
 id: T-0302
 title: "Mobile kit migration: join link and group handle (visibility sheet) fields use the kit TextField"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0302-mobile-text-field-5
 model: auto
@@ -67,4 +67,76 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### Status: ready for review
+
+Both fields now render through the kit `TextField`, and neither source
+file contains `#8a8a8a` or a raw `<TextInput` any more (verified with
+`grep`).
+
+### What I did
+
+- **`apps/mobile/src/components/chat/join-link.tsx`** — "Invite link" field
+  (`JoinLinkForm`) is now `TextField` with `className="mt-3"` (wrapper
+  margin moved onto the field). Kept every other prop (`value`,
+  `onChangeText`, `autoCapitalize="none"`, `autoCorrect={false}`,
+  `editable`, `placeholder`, `accessibilityLabel`). Removed the
+  `placeholderTextColor="#8a8a8a"` and the hand-written text classes, the
+  wrapper `View`, and `TextInput` from the `react-native` import.
+- **`apps/mobile/src/components/chat/visibility-sheet.tsx`** — "Group
+  handle" field is now `TextField` with `className="mt-1"`. Kept every
+  other prop (`value`, `onChangeText`, `maxLength={32}`,
+  `editable={!busy}`, `autoCapitalize="none"`, `autoCorrect={false}`,
+  `placeholder`, `accessibilityLabel`). Same cleanup.
+- **Tests (mocks only):** `join-link.test.tsx` and
+  `visibility-sheet.test.ts` each gained only the `nativewind` mock
+  (`useColorScheme: () => ({ colorScheme: 'dark' })`, same as T-0300),
+  since the sources now import `TextField`, which imports `nativewind`.
+  No assertion changed. The other four listed test files needed no change:
+  `new-channel-sheet.test.tsx` and `visibility-fields.test.tsx` already
+  mock `nativewind` (from T-0300), and `settings-ui.test.tsx` /
+  `new-chat-button.test.tsx` already mock it per the spec.
+
+### Security checklist
+
+- No secrets, tokens or keys in logs, errors or URLs; only the input
+  components changed, no logic touched.
+- No new routes, deletes, caps or audit entries. No permission logic
+  touched.
+
+### Files changed
+
+`apps/mobile/src/components/chat/join-link.tsx`,
+`apps/mobile/src/components/chat/visibility-sheet.tsx`,
+`apps/mobile/src/components/chat/join-link.test.tsx` (mock only),
+`apps/mobile/src/components/chat/visibility-sheet.test.ts` (mock only),
+`work/T-0302-mobile-text-field-5.md`.
+
+### Commands run (real results)
+
+- `pnpm install` → done, no errors.
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot
+  join-link visibility settings-ui new-chat-button new-channel-sheet` →
+  **6 files passed, 63 tests passed** (no import failures after the two
+  `nativewind` mocks).
+- `pnpm gate` (final run):
+  ```
+  gate: 5 changed file(s) against main
+  PASS  install (frozen)  (3.2s)
+  PASS  format  (27.3s)
+  PASS  lint  (1.6s)
+  PASS  typecheck  (9.9s)
+  PASS  tests @zilar/mobile  (3.7s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Open questions
+
+None.
+
 ## Review (written by Claude)
+
+**Approved.** Clean pre-review (0 nits), no fix rounds (Muse, peak).
+- Both fields are on `TextField`, and the wrapper margins moved to `className` (`mt-3` and `mt-1`).
+- No `#8a8a8a` or raw `<TextInput` is left in either file.
+- Two test files gained the `nativewind` mock only.
