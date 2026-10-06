@@ -62,6 +62,20 @@ describe('buildMamQuery', () => {
     expect(withField?.getChildText('value')).toBe('alice@zilar.localhost');
   });
 
+  it('asks for the last page with an empty before element when there is no cursor', () => {
+    const iq = buildMamQuery({
+      chatJid: 'project@rooms.zilar.localhost',
+      kind: 'groupchat',
+      me: 'bob@zilar.localhost',
+      queryId: 'q0',
+      iqId: 'iq-0',
+      max: 50,
+    });
+    const set = iq.getChild('query', MAM_NAMESPACE)?.getChild('set', RSM_NAMESPACE);
+    expect(set?.getChild('before')).toBeTruthy();
+    expect(set?.getChildText('before')).toBe('');
+  });
+
   it('adds a before cursor when paging', () => {
     const iq = buildMamQuery({
       chatJid: 'project@rooms.zilar.localhost',

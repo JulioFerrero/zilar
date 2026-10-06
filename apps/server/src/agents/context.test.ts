@@ -100,6 +100,28 @@ describe('buildDmMessages', () => {
     ]);
   });
 
+  it('keeps alternating roles and adds exactly one user turn for the trigger', () => {
+    const history = [
+      dm('m-1', OWNER_JID, 'one'),
+      dm('m-2', AI_JID, 'two', true),
+      dm('m-3', OWNER_JID, 'three'),
+      dm('m-4', AI_JID, 'four', true),
+    ];
+    const messages = buildDmMessages({
+      ...baseInput(history),
+      trigger: { id: 't-1', body: 'five' },
+    });
+    expect(messages.slice(1).map((message) => message.role)).toEqual([
+      'user',
+      'assistant',
+      'user',
+      'assistant',
+      'user',
+    ]);
+    expect(messages.filter((message) => message.content === 'five')).toHaveLength(1);
+    expect(messages.at(-1)).toEqual({ role: 'user', content: 'five' });
+  });
+
   it('appends the trigger when the history ends on another message', () => {
     const messages = buildDmMessages(baseInput([dm('m-1', OWNER_JID, 'first')]));
     expect(messages.at(-1)).toEqual({ role: 'user', content: 'hello' });

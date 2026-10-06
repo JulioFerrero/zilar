@@ -210,6 +210,38 @@ describe.skipIf(!integrationEnabled)('@zilar/xmpp-core integration', () => {
       const dmHistory = await bob.loadHistory(aliceJid, 'chat');
       expect(dmHistory.messages.some((message) => message.body === 'private hello')).toBe(true);
       console.log(`PASS  DM history comes back (${dmHistory.messages.length} messages)`);
+
+      // T-0430 proof: with no cursor and a full archive, which page does MAM
+      // return? XEP-0059 §2.5 says only an empty <before/> asks for the last
+      // page, so the default should be the oldest one.
+      for (let index = 1; index <= 40; index += 1) {
+        await alice.sendMessage(bobJid, 'chat', `m${String(index).padStart(2, '0')}`);
+        await sleep(20);
+      }
+      await sleep(1000);
+      const newestPage = await bob.loadHistory(aliceJid, 'chat', { max: 10 });
+      const newestBodies = newestPage.messages.map((message) => message.body);
+      console.log(
+        `T-0430 proof: loadHistory(chat, max=10) returned ${JSON.stringify(newestBodies)}`,
+      );
+      const lastArchived = newestPage.messages.at(-1);
+      const lastLive = bobDms.find((message) => message.body === lastArchived?.body);
+      console.log(
+        `T-0430 proof: last archived body=${lastArchived?.body ?? 'none'} id=${lastArchived?.id ?? 'none'}; ` +
+          `live id=${lastLive?.id ?? 'none'}`,
+      );
+      expect(newestBodies).toEqual([
+        'm31',
+        'm32',
+        'm33',
+        'm34',
+        'm35',
+        'm36',
+        'm37',
+        'm38',
+        'm39',
+        'm40',
+      ]);
     } finally {
       await admin.destroyRoom(roomId).catch(() => undefined);
       await alice.disconnect().catch(() => undefined);

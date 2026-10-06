@@ -24,9 +24,10 @@ export function buildMamQuery(query: MamQuery): XmppElement {
   }
 
   const rsm: XmppElement[] = [xml('max', {}, String(query.max))];
-  if (query.before !== undefined) {
-    rsm.push(xml('before', {}, query.before));
-  }
+  // XEP-0059 §2.5: an empty <before/> asks for the last page, which is the
+  // newest messages. Callers that pass no cursor want that; a cursor still
+  // pages backwards from the given id.
+  rsm.push(xml('before', {}, query.before ?? ''));
 
   return xml(
     'iq',

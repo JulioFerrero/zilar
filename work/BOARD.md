@@ -453,7 +453,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0414](T-0414-web-forward-store-action.md) | Web store: forwardMessages sends copies with a forward origin, optional comment | 2026-10-06 |
 | [T-0425](T-0425-mobile-profile-buttons-kit.md) | Mobile: profile and contact card buttons on the kit Button | 2026-10-06 |
 | [T-0426](T-0426-mobile-ai-sheet-buttons-kit.md) | Mobile: AI activity Refresh, tool sheet Show all/less and Close on the kit Button | 2026-10-06 |
-| [T-0430](T-0430-ai-history-newest-page.md) | AI loses the conversation: MAM newest page | running | auto | — | Julio bug report |
 | [T-0431](T-0431-server-media-route.md) | Media gallery 1b (server): GET /api/media | running | auto | T-0410 | |
 | [T-0432](T-0432-mobile-forward-store-action.md) | Forwarding (mobile store): forwardMessages | running | auto | — | |
 | [T-0427](T-0427-mobile-forwarded-header.md) | Mobile: forwarded messages show 'Forwarded from X [in Y]' | 2026-10-06 |
@@ -461,3 +460,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0429](T-0429-mobile-dismiss-banner.md) | Mobile: DismissBanner replaces 12 copied chat screen banners | 2026-10-06 |
 | [T-0410](T-0410-server-media-index.md) | Server: media_items and media_index_state tables with an incremental MAM media indexer | 2026-10-06 |
 | [T-0419](T-0419-web-forward-picker.md) | Web: Forward in the message menu opens a chat picker with an optional comment | 2026-10-06 |
+| [T-0430](T-0430-ai-history-newest-page.md) | AI and app history load the newest MAM page (empty RSM before), not the oldest | 2026-10-06 |
