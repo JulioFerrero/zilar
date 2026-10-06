@@ -54,7 +54,7 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| (none) | | | QA run 25 (T-0339, T-0340, T-0341) on the emulator |
+| T-0342 | Web kit: New topic "Who can see it" on SegmentedControl (radio) | coding (DeepSeek flash) | QA run 25 (T-0339 to T-0341) on the emulator |
 
 Time correction (checked with `date`): it is 04:42 local, Tue 10-06. The "~04:xx–05:50 local" stamps below were estimated and run up to about an hour ahead; their order is right.
 
