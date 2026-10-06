@@ -54,9 +54,13 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0346 | Mobile kit: Stickers screen text pill buttons on Button | coding (DeepSeek flash) | 8 Pressables; T-0345 (Connections) merged |
+| T-0347 | Mobile kit: Sticker pack editor text pill buttons on Button | coding (DeepSeek flash) | 5 Pressables; T-0346 (Stickers) merged |
 
 Time correction (checked with `date`): it is 04:42 local, Tue 10-06. The "~04:xx–05:50 local" stamps below were estimated and run up to about an hour ahead; their order is right.
+
+07:40 local: merged T-0345 (Connections buttons) and T-0346 (Stickers buttons).
+
+T-0346 blocked once, validly: `sticker-pack.tsx` imports from `stickers.tsx`, so its test needed the same mocks. That was a lead spec miss; the "one level up" grep in LEAD_HANDOFF was skipped. The lead allowed the test file (mocks only) and the worker finished. T-0347 launched.
 
 07:28 local: merged T-0343 (Machines pill buttons on Button, clean) and T-0344 (web TextInput, clean). Lead browser check in mock mode: the Telegram import field has the kit well style with its label. PASS.
 
