@@ -24,9 +24,17 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| (none) | | | QA run 24 (T-0338) on the emulator |
+| (none) | | | |
 
 Time correction (checked with `date`): it is 04:42 local, Tue 10-06. The "~04:xx–05:50 local" stamps below were estimated and run up to about an hour ahead; their order is right.
+
+06:55 local: QA run 24 PASS (qa24/; the lead saw 01.png).
+- The time and tick stay together on one line, including in "Draft three taglines…".
+- The "1) …" bubble fits its content.
+- The Launch checklist list reads as a list.
+- The ticks are centred on the digits.
+
+No crash. Phone marker b45684f1 (lead checked). The mobile bubble chain T-0336, T-0337 and T-0338 is done.
 
 06:51 local:
 - **Doctor audit 3 (since 21297ac): clean.** must-fix 0, should-fix 0, 3 test and wording nits, no task. It confirmed the T-0337 causes.
