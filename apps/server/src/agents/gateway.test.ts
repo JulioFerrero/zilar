@@ -25,6 +25,7 @@ import type { GatewayLogger } from './gateway';
 import {
   aiLimits,
   aiMemoryFacts,
+  aiMemoryMessages,
   ais,
   groupAis,
   groupMembers,
@@ -1693,6 +1694,9 @@ describe('agent gateway', () => {
       expect(calls).toHaveLength(2);
       const first = rawBody(calls[0]!);
       expect(first.tools?.map((tool) => tool.function.name).sort()).toEqual([
+        'memory_zoom',
+        'recall',
+        'remember',
         'revert_persona',
         'update_persona',
       ]);
@@ -1883,6 +1887,216 @@ describe('agent gateway', () => {
         persona: NEW_PERSONA,
         previousPersona: OLD_PERSONA,
       });
+    });
+  });
+
+  describe('memory tools (T-0444)', () => {
+    function toolCallResponse(
+      calls: Array<{ id: string; name: string; args: unknown }>,
+      content: string | null = null,
+    ): Response {
+      return jsonResponse({
+        choices: [
+          {
+            message: {
+              content,
+              tool_calls: calls.map((call) => ({
+                id: call.id,
+                type: 'function',
+                function: { name: call.name, arguments: JSON.stringify(call.args) },
+              })),
+            },
+          },
+        ],
+      });
+    }
+
+    function scriptedFetch(responses: Response[]): { fetchImpl: FetchLike; calls: Call[] } {
+      const calls: Call[] = [];
+      let index = 0;
+      const fetchImpl: FetchLike = (url, init) => {
+        calls.push({ url, init });
+        const response = responses[Math.min(index, responses.length - 1)]!;
+        index += 1;
+        return Promise.resolve(response.clone());
+      };
+      return { fetchImpl, calls };
+    }
+
+    function toolMessageOf(
+      call: Call,
+    ): { role: string; content: string; tool_call_id?: string } | undefined {
+      const body = JSON.parse(String(call.init.body)) as {
+        messages: Array<{ role: string; content: string; tool_call_id?: string }>;
+      };
+      return body.messages.find((message) => message.role === 'tool');
+    }
+
+    async function factsFor(aiId: string, chatKey: string): Promise<string[]> {
+      const rows = await context.db
+        .select({ text: aiMemoryFacts.text })
+        .from(aiMemoryFacts)
+        .where(and(eq(aiMemoryFacts.aiId, aiId), eq(aiMemoryFacts.chatKey, chatKey)));
+      return rows.map((row) => row.text);
+    }
+
+    it('saves a remembered fact in this DM and answers the model `ok`, without logging the text', async () => {
+      const seeded = await seedAi(context);
+      const cores: FakeCore[] = [];
+      const fact = 'The launch is on Friday.';
+      const { fetchImpl, calls } = scriptedFetch([
+        toolCallResponse([{ id: 'call-1', name: 'remember', args: { text: fact } }]),
+        completionResponse('noted'),
+      ]);
+      const { gateway: started, logger } = harness(cores, fetchImpl, new FakeLitellm());
+      await started.start();
+      const core = await coreFor(cores, seeded.aiJid);
+
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-1', 'remember the launch'));
+      await waitFor(() => core.sent.length === 1);
+
+      expect(await factsFor(seeded.aiId, `dm:${seeded.ownerJid}`)).toEqual([fact]);
+      expect(toolMessageOf(calls[1]!)?.content).toBe('ok');
+      const everything = `${JSON.stringify(logger.calls)}\n${JSON.stringify(core.sent)}`;
+      expect(everything).not.toContain(fact);
+    });
+
+    it('refuses a secret-looking fact and stores nothing', async () => {
+      const seeded = await seedAi(context);
+      const cores: FakeCore[] = [];
+      const { fetchImpl, calls } = scriptedFetch([
+        toolCallResponse([
+          { id: 'call-1', name: 'remember', args: { text: 'password: hunter22' } },
+        ]),
+        completionResponse('noted'),
+      ]);
+      const { gateway: started } = harness(cores, fetchImpl, new FakeLitellm());
+      await started.start();
+      const core = await coreFor(cores, seeded.aiJid);
+
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-1', 'save this'));
+      await waitFor(() => core.sent.length === 1);
+
+      expect(await factsFor(seeded.aiId, `dm:${seeded.ownerJid}`)).toEqual([]);
+      expect(toolMessageOf(calls[1]!)?.content).toBe('refused: looks like a secret');
+    });
+
+    it('refuses a sixth remember in one turn after five saved', async () => {
+      const seeded = await seedAi(context);
+      const cores: FakeCore[] = [];
+      const texts = ['fact one', 'fact two', 'fact three', 'fact four', 'fact five', 'fact six'];
+      const { fetchImpl, calls } = scriptedFetch([
+        toolCallResponse(
+          texts.map((text, index) => ({
+            id: `call-${index + 1}`,
+            name: 'remember',
+            args: { text },
+          })),
+        ),
+        completionResponse('noted'),
+      ]);
+      const { gateway: started } = harness(cores, fetchImpl, new FakeLitellm());
+      await started.start();
+      const core = await coreFor(cores, seeded.aiJid);
+
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-1', 'remember all this'));
+      await waitFor(() => core.sent.length === 1);
+
+      const saved = await factsFor(seeded.aiId, `dm:${seeded.ownerJid}`);
+      expect(saved).toHaveLength(5);
+      expect(new Set(saved)).toEqual(new Set(texts.slice(0, 5)));
+      expect(saved).not.toContain('fact six');
+      const body = JSON.parse(String(calls[1]!.init.body)) as {
+        messages: Array<{ role: string; content: string }>;
+      };
+      const toolContents = body.messages
+        .filter((message) => message.role === 'tool')
+        .map((message) => message.content);
+      expect(toolContents).toEqual(['ok', 'ok', 'ok', 'ok', 'ok', 'refused: at most 5 per turn']);
+    });
+
+    it('recalls seeded lines from this chat only', async () => {
+      const seeded = await seedAi(context);
+      const chatKey = `dm:${seeded.ownerJid}`;
+      await context.db.insert(aiMemoryMessages).values([
+        {
+          aiId: seeded.aiId,
+          chatKey,
+          seq: 1,
+          messageId: 'mine-1',
+          at: new Date('2026-10-05T00:00:00Z'),
+          sender: 'Owner',
+          text: 'the launch is friday',
+        },
+        {
+          aiId: seeded.aiId,
+          chatKey,
+          seq: 2,
+          messageId: 'mine-2',
+          at: new Date('2026-10-05T00:00:01Z'),
+          sender: 'Gateway AI',
+          text: 'noted, the launch is friday',
+        },
+        {
+          aiId: seeded.aiId,
+          chatKey: 'dm:someone-else',
+          seq: 1,
+          messageId: 'theirs-1',
+          at: new Date('2026-10-05T00:00:02Z'),
+          sender: 'Someone',
+          text: 'the launch is in another chat',
+        },
+      ]);
+      const cores: FakeCore[] = [];
+      const { fetchImpl, calls } = scriptedFetch([
+        toolCallResponse([{ id: 'call-1', name: 'recall', args: { query: 'launch' } }]),
+        completionResponse('found it'),
+      ]);
+      const { gateway: started } = harness(cores, fetchImpl, new FakeLitellm());
+      await started.start();
+      const core = await coreFor(cores, seeded.aiJid);
+
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-1', 'when is the launch?'));
+      await waitFor(() => core.sent.length === 1);
+
+      const content = toolMessageOf(calls[1]!)?.content ?? '';
+      expect(content).toContain('#1 2026-10-05 Owner: the launch is friday');
+      expect(content).toContain('#2 2026-10-05 Gateway AI: noted, the launch is friday');
+      expect(content).not.toContain('another chat');
+    });
+
+    it('answers `no matches` when recall finds nothing', async () => {
+      const seeded = await seedAi(context);
+      const cores: FakeCore[] = [];
+      const { fetchImpl, calls } = scriptedFetch([
+        toolCallResponse([{ id: 'call-1', name: 'recall', args: { query: 'nothing at all' } }]),
+        completionResponse('no idea'),
+      ]);
+      const { gateway: started } = harness(cores, fetchImpl, new FakeLitellm());
+      await started.start();
+      const core = await coreFor(cores, seeded.aiJid);
+
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-1', 'do you know?'));
+      await waitFor(() => core.sent.length === 1);
+
+      expect(toolMessageOf(calls[1]!)?.content).toBe('no matches');
+    });
+
+    it('answers `invalid: unknown block` for an out-of-range memory_zoom block', async () => {
+      const seeded = await seedAi(context);
+      const cores: FakeCore[] = [];
+      const { fetchImpl, calls } = scriptedFetch([
+        toolCallResponse([{ id: 'call-1', name: 'memory_zoom', args: { block: '0-15' } }]),
+        completionResponse('nothing there'),
+      ]);
+      const { gateway: started } = harness(cores, fetchImpl, new FakeLitellm());
+      await started.start();
+      const core = await coreFor(cores, seeded.aiJid);
+
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-1', 'open that block'));
+      await waitFor(() => core.sent.length === 1);
+
+      expect(toolMessageOf(calls[1]!)?.content).toBe('invalid: unknown block');
     });
   });
 
@@ -2188,7 +2402,8 @@ describe('agent gateway', () => {
       await started.start();
       const core = await coreFor(cores, seeded.aiJid);
 
-      // The persona-only tools are sent on both calls (no request_action).
+      // The persona and memory tools are sent on both calls (no
+      // request_action).
       core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-1', 'echo hi'));
       await waitFor(() => calls.length === 2);
       for (const call of calls) {
@@ -2196,6 +2411,9 @@ describe('agent gateway', () => {
           tools: Array<{ function: { name: string } }>;
         };
         expect(body.tools.map((tool) => tool.function.name).sort()).toEqual([
+          'memory_zoom',
+          'recall',
+          'remember',
           'revert_persona',
           'update_persona',
         ]);
@@ -2736,8 +2954,16 @@ describe('agent gateway', () => {
       expect(call.url).toBe('http://litellm.test:4000/chat/completions');
       expect(new Headers(call.init.headers).get('authorization')).toBe(`Bearer ${VIRTUAL_KEY}`);
       expect(bodyOf(call).model).toBe(`ai-${seeded.aiId}`);
-      // No persona tools in groups.
-      expect((bodyOf(call) as { tools?: unknown }).tools).toBeUndefined();
+      // A room turn always carries the three memory tools (T-0444), never a
+      // persona or action tool for a plain member.
+      const withTools = JSON.parse(String(call.init.body)) as {
+        tools: Array<{ function: { name: string } }>;
+      };
+      expect(withTools.tools.map((tool) => tool.function.name)).toEqual([
+        'recall',
+        'memory_zoom',
+        'remember',
+      ]);
       const messages = (bodyOf(call) as { messages: Array<{ role: string; content: string }> })
         .messages;
       expect(messages[0]?.role).toBe('system');
@@ -3222,7 +3448,7 @@ describe('agent gateway', () => {
         });
       }
 
-      it('an admin sender sees only the request_action tool (no persona tools)', async () => {
+      it('an admin sender sees the memory tools and request_action (no persona tools)', async () => {
         const fake = fakeActions({ status: 'pending_approval', approvalId: 'appr-1' });
         const setup_ = await setupGroupWithRoles({
           members: [{ name: 'Bea', role: 'admin' }],
@@ -3244,7 +3470,7 @@ describe('agent gateway', () => {
           };
           expect(body.tool_choice).toBe('auto');
           const names = body.tools.map((tool) => tool.function.name);
-          expect(names).toEqual(['request_action']);
+          expect(names).toEqual(['recall', 'memory_zoom', 'remember', 'request_action']);
           expect(names).not.toContain('update_persona');
           expect(names).not.toContain('revert_persona');
         }
@@ -3276,7 +3502,7 @@ describe('agent gateway', () => {
         );
       });
 
-      it('an owner sender sees only the request_action tool and gets the executed wording', async () => {
+      it('an owner sender sees the memory tools and request_action and gets the executed wording', async () => {
         const fake = fakeActions({ status: 'executed', summary: 'Echoed: hello' });
         const setup_ = await setupGroupWithRoles({
           members: [{ name: 'Owen', role: 'owner' }],
@@ -3291,7 +3517,12 @@ describe('agent gateway', () => {
         const firstBody = JSON.parse(String(calls[0]!.init.body)) as {
           tools: Array<{ function: { name: string } }>;
         };
-        expect(firstBody.tools.map((tool) => tool.function.name)).toEqual(['request_action']);
+        expect(firstBody.tools.map((tool) => tool.function.name)).toEqual([
+          'recall',
+          'memory_zoom',
+          'remember',
+          'request_action',
+        ]);
         const second = JSON.parse(String(calls[1]!.init.body)) as {
           messages: Array<{ role: string; content: string }>;
         };
@@ -3439,7 +3670,7 @@ describe('agent gateway', () => {
         }
       });
 
-      it('a plain member sender gets no tools; actions.request is never called', async () => {
+      it('a plain member sender gets only the memory tools; actions.request is never called', async () => {
         const fake = fakeActions({ status: 'pending_approval', approvalId: 'appr-4' });
         const setup_ = await setupGroupWithRoles({
           members: [{ name: 'Carol', role: 'member' }],
@@ -3452,11 +3683,15 @@ describe('agent gateway', () => {
         await waitFor(() => calls.length === 2);
         for (const call of calls) {
           const body = JSON.parse(String(call.init.body)) as {
-            tools?: Array<{ function: { name: string } }>;
+            tools: Array<{ function: { name: string } }>;
           };
-          // No tools advertised to the model at all: the gateway falls back
-          // to today's plain `completeChat` path.
-          expect(body.tools).toBeUndefined();
+          // A plain member never gets `request_action`; the three memory
+          // tools (T-0444) are all a room turn advertises to them.
+          expect(body.tools.map((tool) => tool.function.name)).toEqual([
+            'recall',
+            'memory_zoom',
+            'remember',
+          ]);
         }
         const second = JSON.parse(String(calls[1]!.init.body)) as {
           messages: Array<{ role: string; content: string }>;
@@ -3464,6 +3699,27 @@ describe('agent gateway', () => {
         const toolMessage = second.messages.find((message) => message.role === 'tool');
         expect(toolMessage?.content).toMatch(/^invalid: /);
         expect(fake.requests).toHaveLength(0);
+      });
+
+      it('a plain member improvising request_action gets `invalid: unknown tool`, gateway not called', async () => {
+        const fake = fakeActions({ status: 'pending_approval', approvalId: 'appr-plain' });
+        const setup_ = await setupGroupWithRoles({
+          members: [{ name: 'Carol', role: 'member' }],
+          fetch: () => requestActionScriptedFetch({ action: 'demo.echo', args: { text: 'hi' } }),
+          actions: fake.gateway,
+        });
+        const { seeded, members, roomJid, core, calls } = setup_;
+        const plain = members[0]!;
+        core.receive(memberMention(seeded, plain, roomJid, 'm-1'));
+        await waitFor(() => calls.length === 2);
+
+        const second = JSON.parse(String(calls[1]!.init.body)) as {
+          messages: Array<{ role: string; content: string }>;
+        };
+        const toolMessage = second.messages.find((message) => message.role === 'tool');
+        expect(toolMessage?.content).toBe('invalid: unknown tool');
+        expect(fake.requests).toHaveLength(0);
+        expect(core.sent).toHaveLength(1);
       });
 
       it('an AI sender gets no tools and the action gateway is never called', async () => {
@@ -3620,7 +3876,7 @@ describe('agent gateway', () => {
         void started;
       });
 
-      it('without actions the model sees no tools; a request_action call answers invalid', async () => {
+      it('without actions the model sees only the memory tools; a request_action call answers invalid', async () => {
         const setup_ = await setupGroupWithRoles({
           members: [{ name: 'Bea', role: 'admin' }],
           fetch: () => requestActionScriptedFetch({ action: 'demo.echo', args: { text: 'hi' } }),
@@ -3634,9 +3890,13 @@ describe('agent gateway', () => {
         await waitFor(() => calls.length === 2);
         for (const call of calls) {
           const body = JSON.parse(String(call.init.body)) as {
-            tools?: Array<{ function: { name: string } }>;
+            tools: Array<{ function: { name: string } }>;
           };
-          expect(body.tools).toBeUndefined();
+          expect(body.tools.map((tool) => tool.function.name)).toEqual([
+            'recall',
+            'memory_zoom',
+            'remember',
+          ]);
         }
         const second = JSON.parse(String(calls[1]!.init.body)) as {
           messages: Array<{ role: string; content: string }>;

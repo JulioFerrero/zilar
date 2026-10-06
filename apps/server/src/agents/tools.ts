@@ -3,6 +3,9 @@ import { z } from 'zod';
 export const UPDATE_PERSONA_TOOL = 'update_persona';
 export const REVERT_PERSONA_TOOL = 'revert_persona';
 export const REQUEST_ACTION_TOOL = 'request_action';
+export const RECALL_TOOL = 'recall';
+export const MEMORY_ZOOM_TOOL = 'memory_zoom';
+export const REMEMBER_TOOL = 'remember';
 
 // The same ceiling the API enforces on a persona (`CreateAiSchema`).
 export const PERSONA_MAX_LENGTH = 4000;
@@ -25,6 +28,26 @@ export const UpdatePersonaArgsSchema = z
   .strict();
 
 export const RevertPersonaArgsSchema = z.object({}).strict();
+
+export const RecallArgsSchema = z
+  .object({
+    query: z.string().trim().min(1).max(100),
+  })
+  .strict();
+
+// The block id shape OptMem uses (`64-79`): one open, one close, both capped
+// at 9 digits so an absurd id is a parse failure, never a bad query.
+export const MemoryZoomArgsSchema = z
+  .object({
+    block: z.string().regex(/^\d{1,9}-\d{1,9}$/),
+  })
+  .strict();
+
+export const RememberArgsSchema = z
+  .object({
+    text: z.string().trim().min(1).max(280),
+  })
+  .strict();
 
 // `args` is a JSON object (never an array, never a primitive): a JSON
 // object is the shape every adapter's zod schema expects. `action` rides
@@ -49,6 +72,9 @@ export type ParsedToolArguments =
       action: string;
       args: Record<string, unknown>;
     }
+  | { ok: true; tool: typeof RECALL_TOOL; query: string }
+  | { ok: true; tool: typeof MEMORY_ZOOM_TOOL; block: string }
+  | { ok: true; tool: typeof REMEMBER_TOOL; text: string }
   | { ok: false; reason: string };
 
 // Tool names ride into log lines and back to the model, so a model-chosen
@@ -78,7 +104,10 @@ export function parseToolArguments(toolName: string, argsJson: string): ParsedTo
   if (
     toolName !== UPDATE_PERSONA_TOOL &&
     toolName !== REVERT_PERSONA_TOOL &&
-    toolName !== REQUEST_ACTION_TOOL
+    toolName !== REQUEST_ACTION_TOOL &&
+    toolName !== RECALL_TOOL &&
+    toolName !== MEMORY_ZOOM_TOOL &&
+    toolName !== REMEMBER_TOOL
   ) {
     return { ok: false, reason: `unknown tool: ${safeToolName(toolName)}` };
   }
@@ -110,6 +139,27 @@ export function parseToolArguments(toolName: string, argsJson: string): ParsedTo
       persona: parsed.data.persona,
       summary: parsed.data.summary,
     };
+  }
+  if (toolName === RECALL_TOOL) {
+    const parsed = RecallArgsSchema.safeParse(parsedJson);
+    if (!parsed.success) {
+      return { ok: false, reason: firstIssue(parsed.error) };
+    }
+    return { ok: true, tool: RECALL_TOOL, query: parsed.data.query };
+  }
+  if (toolName === MEMORY_ZOOM_TOOL) {
+    const parsed = MemoryZoomArgsSchema.safeParse(parsedJson);
+    if (!parsed.success) {
+      return { ok: false, reason: firstIssue(parsed.error) };
+    }
+    return { ok: true, tool: MEMORY_ZOOM_TOOL, block: parsed.data.block };
+  }
+  if (toolName === REMEMBER_TOOL) {
+    const parsed = RememberArgsSchema.safeParse(parsedJson);
+    if (!parsed.success) {
+      return { ok: false, reason: firstIssue(parsed.error) };
+    }
+    return { ok: true, tool: REMEMBER_TOOL, text: parsed.data.text };
   }
   const parsed = RequestActionArgsSchema.safeParse(parsedJson);
   if (!parsed.success) {
@@ -174,6 +224,67 @@ export const PERSONA_TOOLS: ChatToolDefinition[] = [
   },
 ];
 
+// The three memory tools offered in every DM and room turn (T-0444,
+// docs/audit/ai-memory-plan.md §3.4). They are always advertised: recall and
+// memory_zoom read this chat's mirror, and remember pins a fact. The AI id and
+// chat key never appear here — they come from the turn, never from the
+// arguments.
+export const MEMORY_TOOLS: ChatToolDefinition[] = [
+  {
+    type: 'function',
+    function: {
+      name: RECALL_TOOL,
+      description:
+        'Search everything said in this chat, including messages older than what you ' +
+        "can see. Use it before saying you don't remember. `query` is a few words; " +
+        'every word must appear. Returns the newest matches as `#seq date sender: text`.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', minLength: 1, maxLength: 100 },
+        },
+        required: ['query'],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: MEMORY_ZOOM_TOOL,
+      description:
+        'Open one block of your memory of this chat, like `64-79`, into its two ' +
+        'halves (shorter summaries or the messages themselves).',
+      parameters: {
+        type: 'object',
+        properties: {
+          block: { type: 'string', pattern: '^\\d{1,9}-\\d{1,9}$' },
+        },
+        required: ['block'],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: REMEMBER_TOOL,
+      description:
+        'Pin one short fact for this chat. Use it only when someone asks you to ' +
+        'remember something, or for a lasting decision. One line, at most 280 ' +
+        'characters. Never passwords, codes, keys or tokens.',
+      parameters: {
+        type: 'object',
+        properties: {
+          text: { type: 'string', minLength: 1, maxLength: 280 },
+        },
+        required: ['text'],
+        additionalProperties: false,
+      },
+    },
+  },
+];
+
 // The minimal description the AI sees for `request_action`: it lists every
 // registered action as `name — description`. The list is sorted by name so
 // the tool definition is stable across turns. The platform runs whatever
@@ -216,32 +327,33 @@ export function buildRequestActionTool(
   };
 }
 
-// The full tools array for one DM turn. With no actions registered (the
-// production default while `ACTION_DEMO_ENABLED` is off and no real
-// adapters are wired), the model only sees the persona tools, and a
-// `request_action` call falls through to `invalid: unknown tool` — the
-// spec's promise that "with the flag off, nothing changes".
+// The full tools array for one DM turn: the persona tools, the memory tools,
+// and `request_action` only when at least one action is registered. With no
+// actions (the production default while `ACTION_DEMO_ENABLED` is off and no
+// real adapters are wired) a `request_action` call still falls through to
+// `invalid: unknown tool`, while `recall` / `memory_zoom` / `remember` keep
+// working.
 export function buildTools(
   actions: ReadonlyArray<{ name: string; description: string }>,
 ): ChatToolDefinition[] {
   if (actions.length === 0) {
-    return [...PERSONA_TOOLS];
+    return [...PERSONA_TOOLS, ...MEMORY_TOOLS];
   }
-  return [...PERSONA_TOOLS, buildRequestActionTool(actions)];
+  return [...PERSONA_TOOLS, ...MEMORY_TOOLS, buildRequestActionTool(actions)];
 }
 
-// The tools array for one group turn when the trigger is allowed to ask
-// for an action (T-0098): only `request_action`. Persona tools never appear
-// in a group — only the AI's owner may reshape it, and only in the DM. With
-// no actions registered the result is an empty list, so the caller can
-// fall back to the plain `completeChat` path (today's behaviour).
+// The tools array for one group turn: always the three memory tools (T-0444),
+// plus `request_action` only when the trigger is allowed to ask for an action
+// (T-0098). Persona tools never appear in a group — only the AI's owner may
+// reshape it, and only in the DM. With no acceptable actions the result is the
+// memory tools alone, so a plain member's turn still carries no action tool.
 export function buildGroupTools(
   actions: ReadonlyArray<{ name: string; description: string }>,
 ): ChatToolDefinition[] {
   if (actions.length === 0) {
-    return [];
+    return [...MEMORY_TOOLS];
   }
-  return [buildRequestActionTool(actions)];
+  return [...MEMORY_TOOLS, buildRequestActionTool(actions)];
 }
 
 // One line the gateway appends to the AI's text reply after a successful

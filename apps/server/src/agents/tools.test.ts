@@ -4,9 +4,13 @@ import {
   buildGroupTools,
   buildTools,
   formatPersonaUpdatedLine,
+  MEMORY_TOOLS,
+  MEMORY_ZOOM_TOOL,
   parseToolArguments,
   PERSONA_RESTORED_LINE,
   PERSONA_TOOLS,
+  RECALL_TOOL,
+  REMEMBER_TOOL,
   REQUEST_ACTION_TOOL,
   REVERT_PERSONA_TOOL,
   safeToolName,
@@ -161,6 +165,60 @@ describe('parseToolArguments', () => {
       expect(parsed.reason).not.toContain(secret);
     }
   });
+
+  it('parses valid recall, memory_zoom and remember calls', () => {
+    expect(parseToolArguments(RECALL_TOOL, JSON.stringify({ query: 'launch friday' }))).toEqual({
+      ok: true,
+      tool: RECALL_TOOL,
+      query: 'launch friday',
+    });
+    expect(parseToolArguments(MEMORY_ZOOM_TOOL, JSON.stringify({ block: '64-79' }))).toEqual({
+      ok: true,
+      tool: MEMORY_ZOOM_TOOL,
+      block: '64-79',
+    });
+    expect(
+      parseToolArguments(REMEMBER_TOOL, JSON.stringify({ text: '  The launch is Friday. ' })),
+    ).toEqual({
+      ok: true,
+      tool: REMEMBER_TOOL,
+      text: 'The launch is Friday.',
+    });
+  });
+
+  it('rejects an empty recall query', () => {
+    const parsed = parseToolArguments(RECALL_TOOL, JSON.stringify({ query: '   ' }));
+    expect(parsed.ok).toBe(false);
+  });
+
+  it('rejects a recall query over 100 characters', () => {
+    const parsed = parseToolArguments(RECALL_TOOL, JSON.stringify({ query: 'x'.repeat(101) }));
+    expect(parsed.ok).toBe(false);
+  });
+
+  it('rejects a malformed memory_zoom block', () => {
+    for (const block of ['a-b', '64', '64-', '-79', '64_79']) {
+      const parsed = parseToolArguments(MEMORY_ZOOM_TOOL, JSON.stringify({ block }));
+      expect(parsed.ok).toBe(false);
+    }
+  });
+
+  it('rejects a remember text over 280 characters', () => {
+    const parsed = parseToolArguments(REMEMBER_TOOL, JSON.stringify({ text: 'x'.repeat(281) }));
+    expect(parsed.ok).toBe(false);
+  });
+
+  it('rejects extra keys on every memory tool', () => {
+    expect(parseToolArguments(RECALL_TOOL, JSON.stringify({ query: 'x', chat: 'other' })).ok).toBe(
+      false,
+    );
+    expect(
+      parseToolArguments(MEMORY_ZOOM_TOOL, JSON.stringify({ block: '1-2', ai: 'other' })).ok,
+    ).toBe(false);
+    expect(
+      parseToolArguments(REMEMBER_TOOL, JSON.stringify({ text: 'x', chatKey: 'other' })).ok,
+    ).toBe(false);
+  });
 });
 
 describe('safeToolName', () => {
@@ -183,13 +241,49 @@ describe('PERSONA_TOOLS', () => {
   });
 });
 
+describe('MEMORY_TOOLS', () => {
+  it('exposes exactly recall, memory_zoom and remember', () => {
+    expect(MEMORY_TOOLS.map((tool) => tool.function.name)).toEqual([
+      RECALL_TOOL,
+      MEMORY_ZOOM_TOOL,
+      REMEMBER_TOOL,
+    ]);
+  });
+
+  it('carries the exact descriptions the spec fixes', () => {
+    const byName = new Map(MEMORY_TOOLS.map((tool) => [tool.function.name, tool]));
+    expect(byName.get(RECALL_TOOL)?.function.description).toBe(
+      'Search everything said in this chat, including messages older than what you ' +
+        "can see. Use it before saying you don't remember. `query` is a few words; " +
+        'every word must appear. Returns the newest matches as `#seq date sender: text`.',
+    );
+    expect(byName.get(MEMORY_ZOOM_TOOL)?.function.description).toBe(
+      'Open one block of your memory of this chat, like `64-79`, into its two ' +
+        'halves (shorter summaries or the messages themselves).',
+    );
+    expect(byName.get(REMEMBER_TOOL)?.function.description).toBe(
+      'Pin one short fact for this chat. Use it only when someone asks you to ' +
+        'remember something, or for a lasting decision. One line, at most 280 ' +
+        'characters. Never passwords, codes, keys or tokens.',
+    );
+  });
+});
+
 describe('buildTools', () => {
-  it('returns just the persona tools when no action is registered', () => {
+  it('returns the persona and memory tools when no action is registered', () => {
     expect(
       buildTools([])
         .map((tool) => tool.function.name)
         .sort(),
-    ).toEqual([REVERT_PERSONA_TOOL, UPDATE_PERSONA_TOOL].sort());
+    ).toEqual(
+      [
+        REVERT_PERSONA_TOOL,
+        UPDATE_PERSONA_TOOL,
+        RECALL_TOOL,
+        MEMORY_ZOOM_TOOL,
+        REMEMBER_TOOL,
+      ].sort(),
+    );
   });
 
   it('adds request_action when at least one action is registered, listing its name and description', () => {
@@ -221,16 +315,20 @@ describe('buildTools', () => {
 });
 
 describe('buildGroupTools', () => {
-  it('returns no tools when no action is registered (caller falls back to plain completeChat)', () => {
-    expect(buildGroupTools([])).toEqual([]);
+  it('always returns the three memory tools, with no action registered', () => {
+    expect(buildGroupTools([]).map((tool) => tool.function.name)).toEqual([
+      RECALL_TOOL,
+      MEMORY_ZOOM_TOOL,
+      REMEMBER_TOOL,
+    ]);
   });
 
-  it('returns only the request_action tool when at least one action is registered', () => {
+  it('adds request_action on top of the memory tools when at least one action is registered', () => {
     const tools = buildGroupTools([
       { name: 'demo.echo', description: 'Repeats a short text back.' },
     ]);
     const names = tools.map((tool) => tool.function.name);
-    expect(names).toEqual([REQUEST_ACTION_TOOL]);
+    expect(names).toEqual([RECALL_TOOL, MEMORY_ZOOM_TOOL, REMEMBER_TOOL, REQUEST_ACTION_TOOL]);
     // Persona tools must never appear in a group turn.
     expect(names).not.toContain(UPDATE_PERSONA_TOOL);
     expect(names).not.toContain(REVERT_PERSONA_TOOL);

@@ -58,7 +58,8 @@ import {
 } from './context';
 import { TOOL_GUIDE } from './tool-guide';
 import { indexMemory, type MemoryScope } from './memory/indexer';
-import { listFacts, renderMemoryBlock } from './memory/store';
+import { looksLikeSecret } from './memory/secrets';
+import { addFact, listFacts, recallMemory, renderMemoryBlock, zoomMemory } from './memory/store';
 import type { ArchivePool } from '../search/service';
 import { getAiUsage, type AiUsage } from '../ais/usage';
 import {
@@ -76,7 +77,10 @@ import {
   buildGroupTools,
   buildTools,
   formatPersonaUpdatedLine,
+  MEMORY_ZOOM_TOOL,
   PERSONA_RESTORED_LINE,
+  RECALL_TOOL,
+  REMEMBER_TOOL,
   REQUEST_ACTION_TOOL,
   UPDATE_PERSONA_TOOL,
 } from './tools';
@@ -665,20 +669,33 @@ export function createAgentGateway(
   // wording. The `isStillAllowed` callback re-queries the database right
   // before the action gateway runs, so a role change that landed between
   // the turn starting and the tool executing short-circuits to
-  // `denied: not allowed` without calling the gateway.
+  // `denied: not allowed` without calling the gateway. `allowActions` is
+  // false when the trigger may not ask for one, so an improvised
+  // `request_action` gets `invalid: unknown tool`.
   interface RequestActionContext {
     groupId: string;
     topicId: string;
     isStillAllowed: () => Promise<boolean>;
+    allowActions: boolean;
   }
 
   // Runs one validated tool call against the gateway's own AI id. The id
-  // comes from the session, never from the model's arguments, and only
-  // `ais.persona` / `ais.previous_persona` (persona tools) or the action
-  // gateway (request_action) can change. Log lines carry the AI id, the
-  // tool name and the outcome only: never the persona text or the args.
-  function executeToolCall(session: AiSession, context?: RequestActionContext): ExecuteToolCall {
+  // comes from the session, never from the model's arguments, and the
+  // `chatKey` comes from the turn. Only `ais.persona` /
+  // `ais.previous_persona` (persona tools), the action gateway
+  // (request_action) or this chat's memory rows (the memory tools) can
+  // change. Log lines carry the AI id, the tool name and the outcome only:
+  // never the persona text, a recall query, a block id or a fact.
+  function executeToolCall(
+    session: AiSession,
+    chatKey: string,
+    context?: RequestActionContext,
+  ): ExecuteToolCall {
     const aiId = session.aiId;
+    // The T-0444 cap: at most five facts saved per turn. The counter lives in
+    // this closure, which is created once per turn, so it resets with the
+    // turn.
+    let savedFacts = 0;
     return async (call) => {
       // A turn that was computing when the AI was stopped must not change the
       // persona afterwards, and a tier-2 action must not run without the
@@ -686,11 +703,57 @@ export function createAgentGateway(
       if (!sessionIsLive(session)) {
         return { content: 'the AI was stopped' };
       }
-      // A group turn only ever offers `request_action`. The persona tools are
-      // reachable from the owner's DM alone, so a model that improvises one in
-      // a room (for example after reading a hostile message) gets nothing.
-      if (context !== undefined && call.tool !== REQUEST_ACTION_TOOL) {
-        return { content: 'invalid: unknown tool' };
+      // A group turn offers the memory tools always, and `request_action`
+      // only when the trigger is allowed to ask for one. The persona tools
+      // are reachable from the owner's DM alone, so a model that improvises
+      // one in a room (for example after reading a hostile message) gets
+      // nothing.
+      if (context !== undefined) {
+        const isMemoryTool =
+          call.tool === RECALL_TOOL ||
+          call.tool === MEMORY_ZOOM_TOOL ||
+          call.tool === REMEMBER_TOOL;
+        if (!isMemoryTool && call.tool !== REQUEST_ACTION_TOOL) {
+          return { content: 'invalid: unknown tool' };
+        }
+        if (call.tool === REQUEST_ACTION_TOOL && !context.allowActions) {
+          return { content: 'invalid: unknown tool' };
+        }
+      }
+      if (call.tool === RECALL_TOOL) {
+        const lines = await recallMemory(deps.db, aiId, chatKey, call.query);
+        logger.info({ aiId, tool: call.tool, ok: true }, 'AI memory tool');
+        return { content: lines.length === 0 ? 'no matches' : lines.join('\n') };
+      }
+      if (call.tool === MEMORY_ZOOM_TOOL) {
+        const lines = await zoomMemory(deps.db, aiId, chatKey, call.block);
+        if (lines === null) {
+          logger.info({ aiId, tool: call.tool, ok: false }, 'AI memory tool');
+          return { content: 'invalid: unknown block' };
+        }
+        logger.info({ aiId, tool: call.tool, ok: true }, 'AI memory tool');
+        return { content: lines.length === 0 ? 'empty' : lines.join('\n') };
+      }
+      if (call.tool === REMEMBER_TOOL) {
+        if (savedFacts >= 5) {
+          logger.info({ aiId, tool: call.tool, ok: false }, 'AI memory tool');
+          return { content: 'refused: at most 5 per turn' };
+        }
+        if (looksLikeSecret(call.text)) {
+          logger.info({ aiId, tool: call.tool, ok: false }, 'AI memory tool');
+          return { content: 'refused: looks like a secret' };
+        }
+        const outcome = await addFact(deps.db, aiId, chatKey, call.text);
+        if (outcome === 'saved') {
+          savedFacts += 1;
+          logger.info({ aiId, tool: call.tool, ok: true }, 'AI memory tool');
+          return { content: 'ok' };
+        }
+        logger.info({ aiId, tool: call.tool, ok: false }, 'AI memory tool');
+        if (outcome === 'duplicate') {
+          return { content: 'already remembered' };
+        }
+        return { content: 'invalid: one line, at most 280 characters' };
       }
       if (call.tool === UPDATE_PERSONA_TOOL) {
         await setPersonaFromChat(deps.db, aiId, call.persona);
@@ -1608,19 +1671,20 @@ export function createAgentGateway(
         memory,
       });
 
-      // T-0098: decide per turn, from the database, whether the trigger's
-      // sender is allowed to ask the AI for an action. The role lives on
-      // the `roomGate` we already loaded; a plain `member`, an AI sender,
-      // an unknown occupant, or an empty actions registry all fall through
-      // to today's plain `completeChat` path (no tools advertised).
+      // T-0098/T-0444: decide per turn, from the database, whether the
+      // trigger's sender is allowed to ask the AI for an action. The role
+      // lives on the `roomGate` we already loaded; a plain `member`, an AI
+      // sender or an unknown occupant does not get `request_action`. Every
+      // room turn still carries the three memory tools (T-0444), so the tool
+      // loop always runs.
       const triggerBare = normBareJid(trigger.fromJid);
       const triggerRole = gate.memberRolesByJid.get(triggerBare);
       const allowedForAction = triggerRole === 'owner' || triggerRole === 'admin';
       const actionsList = deps.actions?.listActions() ?? [];
-      const groupTools =
-        allowedForAction && actionsList.length > 0 ? buildGroupTools(actionsList) : undefined;
+      const allowActions = allowedForAction && actionsList.length > 0;
+      const groupTools = buildGroupTools(allowedForAction ? actionsList : []);
       // The re-check callback runs at tool-execution time. A `plain
-      // member` turn never advertises tools, so this never fires for
+      // member` turn never offers `request_action`, so this never fires for
       // them; for an admin/owner turn it queries the same gate so a
       // demotion that landed between the mention and the tool call
       // short-circuits to `denied: not allowed` without invoking the
@@ -1645,15 +1709,16 @@ export function createAgentGateway(
       // the room with `composing`/`paused` chat states around it. The 80%
       // warnings go out after it, so the owner reads the answer first. The
       // `live*` wrappers drop the reply when the AI was stopped between the
-      // mention arriving and the LLM call resolving. When `groupTools` is
-      // set the room reply goes through the same tool loop as DMs (T-0098);
-      // the executor carries the room's group id and the re-check callback.
+      // mention arriving and the LLM call resolving. The room reply always
+      // goes through the same tool loop as DMs (T-0098, extended by T-0444);
+      // the executor carries the room's group id, the re-check callback and
+      // whether `request_action` is allowed.
       // T-0106: the guide is appended to the last user turn only when tools
       // are enabled and the room offers `request_action`; the loop runs
       // `toolMaxRounds` rounds with a live progress message.
       const groupProgress = liveProgressReporter(session, roomJid, 'groupchat', ai.jid);
       const groupMessages =
-        deps.toolsEnabled === true && groupTools !== undefined ? withToolGuide(messages) : messages;
+        deps.toolsEnabled === true && allowActions ? withToolGuide(messages) : messages;
       await runGroupTurn({
         aiId: session.aiId,
         roomJid,
@@ -1665,23 +1730,20 @@ export function createAgentGateway(
         virtualKey,
         model: modelNameForAi(session.aiId),
         ...(deps.fetchImpl === undefined ? {} : { fetchImpl: deps.fetchImpl }),
-        ...(groupTools === undefined
-          ? {}
-          : {
-              tools: groupTools,
-              executeTool: executeToolCall(session, {
-                groupId: room.groupId,
-                topicId: room.topicId,
-                isStillAllowed,
-              }),
-              ...(deps.toolMaxRounds === undefined ? {} : { maxRounds: deps.toolMaxRounds }),
-              checkRoundGate: () => checkDmRoundGate(session),
-              reportProgress: groupProgress.reportProgress,
-              clearProgress: groupProgress.clearProgress,
-              // T-0156: the per-turn counts line (ids and counts only),
-              // like the DM path below.
-              turnLogger,
-            }),
+        tools: groupTools,
+        executeTool: executeToolCall(session, groupChatKey, {
+          groupId: room.groupId,
+          topicId: room.topicId,
+          isStillAllowed,
+          allowActions,
+        }),
+        ...(deps.toolMaxRounds === undefined ? {} : { maxRounds: deps.toolMaxRounds }),
+        checkRoundGate: () => checkDmRoundGate(session),
+        reportProgress: groupProgress.reportProgress,
+        clearProgress: groupProgress.clearProgress,
+        // T-0156: the per-turn counts line (ids and counts only), like the
+        // DM path below.
+        turnLogger,
         sendMessage: (to, kind, text, opts) => liveSendMessage(session, to, kind, text, opts),
         sendTyping: (to, kind, state) => {
           liveSendTyping(session, to, kind, state);
@@ -1891,8 +1953,8 @@ export function createAgentGateway(
         baseUrl: baseUrl,
         virtualKey,
         model: modelNameForAi(session.aiId),
-        executeTool: executeToolCall(session),
-        ...(deps.actions === undefined ? {} : { tools: buildTools(deps.actions.listActions()) }),
+        executeTool: executeToolCall(session, dmChatKey),
+        tools: buildTools(deps.actions?.listActions() ?? []),
         ...(deps.fetchImpl === undefined ? {} : { fetchImpl: deps.fetchImpl }),
         ...(deps.toolMaxRounds === undefined ? {} : { maxRounds: deps.toolMaxRounds }),
         checkRoundGate: () => checkDmRoundGate(session),

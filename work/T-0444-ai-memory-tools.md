@@ -1,7 +1,7 @@
 ---
 id: T-0444
 title: "AI memory M3b (server): recall, memory_zoom and remember tools in every DM and room turn, with a secret check"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0444-ai-memory-tools
 model: auto
@@ -142,4 +142,83 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Status: done, ready for review.
+
+### What I did
+
+- Added `apps/server/src/agents/memory/secrets.ts` with `looksLikeSecret(text)`: the eight
+  rules in the spec (sk-, GitHub, AKIA, Slack xox, JWT, `-----BEGIN`, a labelled
+  password/token value, and a 32+ URL-safe run mixing letters and digits). Added
+  `secrets.test.ts` with one true and one false case per rule, plus the plain-sentence,
+  URL and date false cases.
+- `tools.ts`: added `RECALL_TOOL` / `MEMORY_ZOOM_TOOL` / `REMEMBER_TOOL`, their strict zod
+  schemas (query 1–100, block `^\d{1,9}-\d{1,9}$`, text 1–280), their
+  `ParsedToolArguments` variants and acceptance in `parseToolArguments`; added
+  `MEMORY_TOOLS` with the exact descriptions; `buildTools` now returns persona + memory
+  (+ `request_action` when actions exist) and `buildGroupTools` always returns the memory
+  tools (+ `request_action` when actions exist). Updated the stale comments.
+- `reply.ts`: added the three variants to `ValidToolCall` and to `toCall`; updated the
+  `GroupTurnDeps.tools` comment.
+- `gateway.ts`: `RequestActionContext` gained `allowActions`; `executeToolCall` is now
+  `(session, chatKey, context?)`, implements `recall` / `memory_zoom` / `remember` scoped to
+  the session's AI and the turn's chat key, refuses a sixth saved fact per turn and
+  secret-looking text, and logs `{ aiId, tool, ok }` only (never query, block or text). The
+  room turn always builds `groupTools = buildGroupTools(allowedForAction ? actionsList : [])`
+  and always passes the tool fields, with `allowActions` gating `request_action`; the guide
+  still appears only with `toolsEnabled` and an offered `request_action`. The DM turn always
+  passes `tools: buildTools(deps.actions?.listActions() ?? [])` and
+  `executeTool: executeToolCall(session, dmChatKey)`.
+- Tests: `tools.test.ts` new list/parse cases; `gateway.test.ts` updated the tool-list
+  expectations and added a `memory tools (T-0444)` describe (remember saved + `ok` + no
+  fact text in logs, secret refused, sixth refused, recall scoped to this chat, `no matches`,
+  `invalid: unknown block`) and a plain-member room improvisation test asserting exact
+  `invalid: unknown tool` and zero action-gateway calls.
+
+### Files changed
+
+`apps/server/src/agents/memory/secrets.ts`, `apps/server/src/agents/memory/secrets.test.ts`,
+`apps/server/src/agents/tools.ts`, `apps/server/src/agents/tools.test.ts`,
+`apps/server/src/agents/reply.ts`, `apps/server/src/agents/gateway.ts`,
+`apps/server/src/agents/gateway.test.ts`, `work/T-0444-ai-memory-tools.md`.
+
+`reply.test.ts`, `rounds.test.ts` and `integration.test.ts` needed no changes; they pass
+unchanged (their group plain-path tests call `runGroupTurn` directly, whose default is still
+the plain path, and the gateway's DM/group wiring is what changed).
+
+### Commands and results
+
+- `pnpm install` — done, no lockfile change.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot memory/secrets agents/tools`
+  — 2 files, 46 passed.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot agents/gateway`
+  — 1 file, 130 passed.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot agents/reply agents/rounds agents/integration`
+  — 2 passed + 1 skipped file, 61 passed + 1 skipped.
+- `pnpm gate` (first run) — GATE FAIL at `format` (3 test files), scope clean.
+- `pnpm exec prettier --write` on the three test files (re-ran the secrets/tools tests: 46 passed).
+- `pnpm gate` (second run) — GATE FAIL at `typecheck` (one `bodyOf(...) as { tools }` cast).
+- Fixed the cast; `pnpm gate` (final run):
+  - `gate: 8 changed file(s) against main`
+  - `PASS  install (frozen)`, `PASS  format`, `PASS  lint`, `PASS  typecheck`,
+    `PASS  tests @zilar/server  (187.4s)`
+  - `scope: every changed file is inside the Allowed files`
+  - `GATE PASS`
+
+### Deviations / notes
+
+- I renamed a few test titles that had become false ("an admin sender sees only the
+  request_action tool", "a plain member sender gets no tools", "without actions the model
+  sees no tools") so they describe the new tool lists. Assertions changed only for the
+  tool lists and the new behavior.
+- The spec says `remember` logs `ok`; I set `ok: true` only on a `saved` outcome and
+  `ok: false` for refused/duplicate/invalid, and `ok: false` for a `memory_zoom` null. The
+  log line still carries no content.
+- No new dependencies.
+
+### Blocked / needs a decision
+
+None.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-06). Every DM and room turn offers recall, memory_zoom and remember, executed with the turn's chat key and the session's AI id. remember refuses secret-like text (memory/secrets.ts, eight patterns), duplicates, malformed text and a sixth save per turn. In rooms, request_action is answered invalid unless the trigger may ask for actions, and the guide still appears only then. Logs carry the AI id, tool and ok only. Nit for a later pass: a stale T-0098 comment in gateway.test.ts.
