@@ -1,6 +1,7 @@
 import { Pin } from 'lucide-react';
 import { useState } from 'react';
 import { LinkText } from './LinkText';
+import { Button } from './ui/button';
 import { cn } from '@/lib/utils';
 import type { Pin as PinRow } from '@/lib/api';
 import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
@@ -38,14 +39,16 @@ export function PinnedBanner({ chatId }: { chatId: string }) {
           <p role="alert" className="flex-1 text-[12px] text-danger">
             {pinsError.message}
           </p>
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
             aria-label="Dismiss pins error"
             onClick={() => storeApi.getState().dismissPinsError()}
-            className="shrink-0 rounded-full px-2 py-0.5 text-[12px] text-muted-foreground hover:bg-surface-raised hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+            className="shrink-0 text-muted-foreground"
           >
             Dismiss
-          </button>
+          </Button>
         </div>
       </div>
     );
@@ -101,23 +104,27 @@ export function PinnedBanner({ chatId }: { chatId: string }) {
           </span>
         </button>
         {pins.length > 1 && (
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
             onClick={cycle}
             aria-label={`Show next pinned message, ${Math.min(index, pins.length - 1) + 1} of ${pins.length}`}
-            className="shrink-0 rounded-full px-2 py-1 font-mono text-[11px] text-muted-foreground hover:bg-surface-raised hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+            className="shrink-0 font-mono text-muted-foreground"
           >
             {Math.min(index, pins.length - 1) + 1} of {pins.length}
-          </button>
+          </Button>
         )}
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="sm"
           onClick={() => storeApi.getState().setPinsPanel(chatId)}
           aria-label={`Open pinned messages, ${pins.length} pinned`}
-          className="shrink-0 rounded-full px-2 py-1 text-[13px] font-medium text-muted-foreground hover:bg-surface-raised hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+          className="shrink-0 text-muted-foreground"
         >
           List
-        </button>
+        </Button>
       </div>
       {jumpError !== '' && (
         <p
@@ -132,14 +139,16 @@ export function PinnedBanner({ chatId }: { chatId: string }) {
           <p role="alert" className="flex-1 text-[12px] text-danger">
             {pinsError.message}
           </p>
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
             aria-label="Dismiss pins error"
             onClick={() => storeApi.getState().dismissPinsError()}
-            className="shrink-0 rounded-full px-2 py-0.5 text-[12px] text-muted-foreground hover:bg-surface-raised hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+            className="shrink-0 text-muted-foreground"
           >
             Dismiss
-          </button>
+          </Button>
         </div>
       )}
     </div>

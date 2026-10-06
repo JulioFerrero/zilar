@@ -1,7 +1,7 @@
 ---
 id: T-0367
 title: "Web kit: the pinned banner's Dismiss, next-pin counter and List buttons use the kit Button"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0367-web-pinned-banner-buttons-kit
 model: auto
@@ -60,5 +60,14 @@ pnpm gate
 ---
 
 ## Report (written by the worker when done)
+- Replaced the four hand-rolled ghost buttons in `apps/web/src/components/PinnedBanner.tsx` (both "Dismiss pins error" buttons, the `n of N` counter, and the "List" button) with `<Button type="button" variant="ghost" size="sm" className="shrink-0 text-muted-foreground …">`, keeping every `aria-label`, `onClick` and text, plus `font-mono` on the counter. Added the `Button` import. Left the "Jump to …" button as a hand-rolled `<button>` per spec.
+- Files changed: `apps/web/src/components/PinnedBanner.tsx`, `work/T-0367-web-pinned-banner-buttons-kit.md`.
+- Commands:
+  - `pnpm install`: pass (done in 24.2s).
+  - `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot PinnedMessages`: 1 file passed, 15 tests passed.
+  - `pnpm gate`: GATE PASS — install PASS, format PASS, lint PASS, typecheck PASS, tests @zilar/web PASS; scope: every changed file is inside the Allowed files; 2 changed files against main.
+- Security checklist: no secrets/tokens handled; no deletes/updates, permissions, caps, routes, rate limits, or audit entries touched. N/A.
 
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-06). The two Dismiss buttons, the counter (keeps `font-mono`) and List are kit `Button` ghost `sm` with `shrink-0 text-muted-foreground`; the Jump button stays. Pre-review clean (0 findings).
