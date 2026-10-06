@@ -10,7 +10,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0302](T-0302-mobile-text-field-5.md) | Mobile kit migration: join link and visibility handle fields use the kit TextField | todo | auto | T-0300 | batch 5 |
-| [T-0303](T-0303-mobile-integrations-mock.md) | Mobile mock mode: Integrations owner mock | todo | auto | | QA run 13 could not test Integrations |
 
 ## Follow-ups
 
@@ -333,3 +332,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0300](T-0300-mobile-text-field-3.md) | Mobile kit: create-sheet fields use the kit TextField | 2026-10-06 |
 | [T-0301](T-0301-mobile-text-field-4.md) | Mobile kit: role name and topic link fields use the kit TextField | 2026-10-06 |
 | [T-0304](T-0304-web-image-native-builder.md) | Images: web builder stage runs natively, not under QEMU | 2026-10-06 |
+| [T-0303](T-0303-mobile-integrations-mock.md) | Mobile mock mode: Integrations owner mock | 2026-10-06 |

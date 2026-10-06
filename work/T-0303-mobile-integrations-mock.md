@@ -1,7 +1,7 @@
 ---
 id: T-0303
 title: "Mobile mock mode: Settings → Integrations gets an owner mock, so the cards can be tested on the emulator"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0303-mobile-integrations-mock
 model: auto
@@ -77,4 +77,31 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Built the Integrations mock beside the hook, mirroring `connections-mock.ts`.
+
+Changed files:
+- `apps/mobile/src/components/integrations/integrations-mock.ts` (new): `IntegrationsMockScenario = 'default' | 'unconfigured' | 'not-owner' | 'error'`, `integrationsMockScenario` with the same parsing rules as `connectionsMockScenario`, `createMockIntegrationsApi` with module-scope per-scenario state. `default` = telegram stored + email stored (`Zilar <hello@example.com>`) + voice off + `canManage: true`; `unconfigured` = everything off; `not-owner` rejects `getIntegrationsStatus` with `IntegrationsApiError(404, 'not_found', ...)`; `error` rejects with `(500, 'server_error', 'Mock failure')`. Saves flip `configured`/`source` and keep `from` (email) / `baseUrl`+`model` (voice) without storing secrets; removes clear the flags. `getVoiceTranscriptionStatus` returns `{ enabled: voice.configured }`. Also exports `resetIntegrationsMock` for test isolation.
+- `apps/mobile/src/components/integrations/use-integrations-api.ts`: picks the mock via `useGlobalSearchParams` + `EXPO_PUBLIC_ZILAR_MOCK` + `mockParamAllowed`, exactly like `use-connections-api.ts`. Returns `{ api, scenario }`; `IntegrationsApiHandle` stays compatible (screen destructures `{ api }`).
+- `apps/mobile/src/components/integrations/integrations-mock.test.ts` (new): scenario parsing (`'1'` → default, `'not-owner'`, unknown → null, param ignored when not allowed), `not-owner` → 404, bot token never appears in later status JSON, email save keeps `from`.
+
+Commands and real results:
+- `pnpm install`: pass (12.7s).
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot src/components/integrations/integrations-mock.test.ts`: 8 passed.
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot src/components/integrations/integrations-screen.test.tsx`: 10 passed (unaffected, still mocks the hook).
+- `pnpm gate` (first run): GATE FAIL on format (`integrations-mock.test.ts` prettier style); fixed with `pnpm exec prettier --write` on the three touched files (npx was blocked by policy).
+- `pnpm gate` (final): `PASS install / format / lint / typecheck / tests @zilar/mobile`, `scope: every changed file is inside the Allowed files`, `GATE PASS`.
+
+Deviations: none. `error`/`not-owner` scenarios also reject saves/removes and the voice status (mirrors `connections-mock.ts` where every method fails in `error`); spec only pins `getIntegrationsStatus`.
+
+Security checklist: no secrets stored or logged (token/key dropped at save, `void botToken` to avoid retention); no new routes; no permission changes — mock only, real path untouched.
+
 ## Review (written by Claude)
+
+**Approved.** Clean pre-review (1 nit), no fix rounds (Muse, peak).
+- `use-integrations-api.ts` picks the mock exactly like the connections hook.
+- `not-owner` gives 404 (the lock), and `error` gives 500.
+- The bot-token test checks that the secret never appears in later status.
+
+**Nit, accepted:** the email and voice tests do not also assert that `resendApiKey` and `apiKey` are dropped. The code drops them (`saveEmailSettings` keeps only `from`; the voice save keeps only `baseUrl` and `model`). Since this is a mock, the gap stays.
+
+**Still to do:** the next emulator QA can open Settings → Integrations on a mock build.
