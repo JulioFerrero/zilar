@@ -24,10 +24,9 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0307 | Mobile: sign-in email, name, username on TextField | reviewed, merge held | batch 8 |
-| T-0308 | Mobile kit SearchField; group topics search + Explore | reviewed, merge held | |
-| T-0310 | Mobile: visibility sheet above the keyboard; shared `sheetBottomPadding` | coding (Muse, peak) | QA run 15 finding |
-| T-0309 | Mobile: chat list + Stickers search on SearchField | spec written, launches after T-0308 merges | |
+| T-0309 | Mobile: chat list + Stickers search on SearchField | coding (Muse, peak) | |
+
+~03:50 local: CI green on c1837ca3. The old images run had ignored the cancel and still held `publish-main`; force-cancelled it, and images run 37400612697 (the first with the T-0304 native web builder) started; lead is timing it. Merged T-0307, T-0308 (kit SearchField), T-0310 (visibility sheet keyboard fix). QA run 16 sent (qa16/).
 
 ~03:40 local: QA run 15 (qa15/): PASS for Integrations (cards show in mock; `?mock=not-owner` shows the lock), Join link field, AI Model, $ limits, tool Run input, machine rename, new sticker pack name. ISSUE: the visibility sheet is fully hidden by the keyboard (lead saw 10.png) → T-0310. Editing an owned sticker pack's name is not reachable in mock. Phone marker b45684f1 (lead checked).
 
