@@ -6,7 +6,7 @@ import { Avatar } from '@/components/Avatar';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { SegmentedControl } from '@/components/ui/segmented-control';
-import { TextInput } from '@/components/ui/text-input';
+import { SearchField } from '@/components/ui/search-field';
 
 type KindFilter = 'all' | 'group' | 'channel';
 
@@ -157,7 +157,7 @@ export function ExplorePage({ onClose }: { onClose: () => void }) {
       <p className="mt-1 text-[14px] text-muted-foreground">
         Public groups and channels anyone can join.
       </p>
-      <TextInput
+      <SearchField
         ref={searchRef}
         value={query}
         maxLength={100}

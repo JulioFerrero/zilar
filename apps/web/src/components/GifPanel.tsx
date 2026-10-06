@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError, gifMediaUrl, searchGifs, trendingGifs, type GifResult } from '@/lib/api';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { cn } from '@/lib/utils';
+import { SearchField } from '@/components/ui/search-field';
 
 export interface GifChoice {
   /** The provider item id (for attribution keys, never fetched). */
@@ -279,13 +280,11 @@ export function GifPanel({ onPick, mockItems }: GifPanelProps) {
   return (
     <div className="flex max-h-[300px] flex-col">
       <div className="p-2">
-        <input
-          type="search"
+        <SearchField
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           placeholder="Search GIFs"
           aria-label="Search GIFs"
-          className="w-full rounded-[8px] bg-surface-raised px-3 py-1.5 text-[13px] outline-none placeholder:text-muted-foreground"
         />
       </div>
       {loading ? (

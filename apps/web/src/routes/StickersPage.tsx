@@ -8,7 +8,7 @@ import { PackEditor } from '@/components/PackEditor';
 import { TelegramImportDialog } from '@/components/TelegramImportDialog';
 import { Button } from '@/components/ui/button';
 import { StateMessage } from '@/components/ui/state-message';
-import { TextInput } from '@/components/ui/text-input';
+import { SearchField } from '@/components/ui/search-field';
 import { useIsServerOwner } from '@/lib/useIsServerOwner';
 import {
   addStickerPanelPack,
@@ -533,7 +533,7 @@ export function StickersPage() {
                 void search();
               }}
             >
-              <TextInput
+              <SearchField
                 value={query}
                 aria-label="Search sticker packs"
                 placeholder="Search shared packs"

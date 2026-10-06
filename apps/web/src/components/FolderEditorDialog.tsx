@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Search, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import {
   FOLDER_CHATS_MAX,
   FOLDER_ICONS,
@@ -21,6 +21,7 @@ import { ConfirmDialog } from './ConfirmDialog';
 import { Dialog } from './ui/dialog';
 import { Checkbox } from './ui/checkbox';
 import { Switch } from './ui/switch';
+import { SearchField } from './ui/search-field';
 import { cn } from '@/lib/utils';
 
 const TYPE_SWITCHES: { type: FolderChatType; label: string }[] = [
@@ -339,23 +340,16 @@ function ChatPicker({
   return (
     <div>
       <p className="text-[14px] font-medium">{label}</p>
-      <div className="relative mt-2">
-        <label htmlFor={searchId} className="sr-only">
-          {`Search ${label.toLowerCase()}`}
-        </label>
-        <Search
-          className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-foreground"
-          aria-hidden="true"
-        />
-        <input
-          id={searchId}
-          type="text"
-          value={search}
-          onChange={(event) => onSearch(event.target.value)}
-          placeholder={`Search ${label.toLowerCase()}`}
-          className="w-full rounded-xl border border-border bg-surface-raised py-2 pr-3 pl-9 text-[15px] focus-visible:outline-none"
-        />
-      </div>
+      <label htmlFor={searchId} className="sr-only">
+        {`Search ${label.toLowerCase()}`}
+      </label>
+      <SearchField
+        id={searchId}
+        value={search}
+        onChange={(event) => onSearch(event.target.value)}
+        placeholder={`Search ${label.toLowerCase()}`}
+        className="mt-2"
+      />
       <ul className="mt-1 flex max-h-40 flex-col gap-0.5 overflow-y-auto">
         {pickable.map((chat) => {
           const checked = picked.includes(chat.id);

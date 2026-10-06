@@ -1,7 +1,7 @@
 ---
 id: T-0357
 title: "Web kit: SearchField (well input with a search icon); GIF, folder editor, Explore and sticker discover searches use it"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0357-web-kit-search-field
 model: auto
@@ -72,4 +72,56 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Built `SearchField` and migrated the four web searches to it.
+
+Changed files:
+- `apps/web/src/components/ui/search-field.tsx` (new): `SearchField` takes
+  `ComponentProps<'input'>` (ref passes through via props spread, React 19),
+  renders a `relative` wrapper `div` taking `className` for layout, an
+  absolutely placed lucide `Search` icon (`size-4 text-subtle-foreground`,
+  `aria-hidden`, `pointer-events-none`, same left-3 centering as the old
+  hand-placed icon), and `<input type="search">` with the `well-surface`
+  `FIELD_INPUT` look plus `pl-9` (merged with `cn`/`twMerge`, so `pl-9` wins
+  over the base `px-3` left padding). `type="search"` is forced after the
+  spread, so the old FolderEditorDialog `type="text"` becomes `search`.
+  `text-input.tsx` was not touched (not in Allowed files), so the field style
+  string is duplicated there rather than imported.
+- `apps/web/src/components/ui/search-field.fixture.tsx` (new): Default,
+  WithValue (`defaultValue` to avoid a controlled-input warning), Disabled.
+- `apps/web/src/components/ui/kit.test.tsx`: added a `SearchField` case
+  asserting `type="search"`, the kept `aria-label`, and `className` on the
+  wrapper `div` (with `relative`).
+- `apps/web/src/components/GifPanel.tsx`: raw `<input>` replaced with
+  `SearchField`, keeping `value`/`onChange`/`placeholder`/`aria-label`.
+- `apps/web/src/components/FolderEditorDialog.tsx`: raw `<input>` plus the
+  hand-placed `Search` icon replaced with `SearchField`; the sr-only
+  `<label htmlFor>` is kept and `id` is passed through; `mt-2` layout moved to
+  the `SearchField` wrapper. `lucide-react` import narrowed from
+  `{ Search, X }` to `{ X }` (`X` is still used at line ~390).
+- `apps/web/src/components/ExplorePage.tsx`: `TextInput` replaced with
+  `SearchField`, keeping `ref`, `value`, `maxLength`, `onChange`,
+  `placeholder`, `aria-label`, `className="mt-3"`.
+- `apps/web/src/routes/StickersPage.tsx`: `TextInput` replaced with
+  `SearchField`, keeping `value`, `aria-label`, `placeholder`, `maxLength`,
+  `onChange`, `className="min-w-0 flex-1"`.
+- No test-file changes: I checked all six test files and every query uses
+  `getByLabelText`, so none relied on the old element (`type="text"` etc.).
+  The StickersPage `well-surface` assertion still passes since the input keeps
+  that class.
+
+Commands and real results:
+- `pnpm install`: exit 0.
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot kit GifPanel
+  FolderEditorDialog ExplorePage StickersPage StickerPanel`: 6 files,
+  118 tests, all passed.
+- `pnpm gate` (from repo root): 8 changed files against main; PASS install,
+  format, lint, typecheck, tests @zilar/web; scope: every changed file inside
+  Allowed files; GATE PASS.
+
+Security checklist: new component renders no secrets, no logging, no
+ids/URLs; no deletes/updates, caps, permissions, routes, or audit entries
+involved. No deviations from the spec; no open questions.
+
 ## Review (written by Claude)
+
+**Approved** (pre-review clean, 2 nits accepted: the test does not assert that `className` is kept off the input, and an Explore test title is stale). The kit `SearchField` wraps a `type="search"` well input with a left Search icon, and the four searches use it. One follow-up is noted for later: share `FIELD_INPUT` from `text-input.tsx` so the two class strings cannot drift.

@@ -13,6 +13,7 @@ import { SegmentedControl } from './segmented-control';
 import { StateMessage } from './state-message';
 import { Switch } from './switch';
 import { TextArea, TextInput } from './text-input';
+import { SearchField } from './search-field';
 
 describe('Badge', () => {
   it('renders nothing at zero', () => {
@@ -143,6 +144,21 @@ describe('TextInput and TextArea', () => {
     const input = screen.getByLabelText('Group name');
     expect(screen.getByText('Group name').tagName).toBe('LABEL');
     expect(input.parentElement?.className).toContain('flex-col');
+  });
+});
+
+describe('SearchField', () => {
+  it('renders type search, keeps the aria-label, and puts className on the wrapper', () => {
+    const { container } = render(
+      <SearchField aria-label="Search groups" placeholder="Search" className="mt-3" />,
+    );
+    const input = screen.getByLabelText('Search groups');
+    expect(input.getAttribute('type')).toBe('search');
+    const wrapper = container.firstElementChild as HTMLElement;
+    expect(wrapper.tagName).toBe('DIV');
+    expect(wrapper.className).toContain('relative');
+    expect(wrapper.className).toContain('mt-3');
+    expect(input.parentElement).toBe(wrapper);
   });
 });
 
