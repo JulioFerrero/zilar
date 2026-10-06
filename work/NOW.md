@@ -58,7 +58,7 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 Time correction (checked with `date`): it is 04:42 local, Tue 10-06. The "~04:xx–05:50 local" stamps below were estimated and run up to about an hour ahead; their order is right.
 
-07:25 local: merged T-0342 (web New topic visibility on SegmentedControl; 1 a11y nit, polish only).
+07:20 local: merged T-0342 (web New topic visibility on SegmentedControl; 1 a11y nit, polish only).
 
 QA run 25 (qa25/; the lead saw 14.png), no crash:
 - **PASS:**
