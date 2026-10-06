@@ -170,7 +170,9 @@ describe('PackEditor', () => {
       />,
     );
 
-    fireEvent.change(screen.getByPlaceholderText('My stickers'), { target: { value: 'Cats' } });
+    const titleInput = screen.getByPlaceholderText('My stickers');
+    expect(titleInput.className).toContain('well-surface');
+    fireEvent.change(titleInput, { target: { value: 'Cats' } });
     pickFiles(screen.getByLabelText('Pick sticker images') as HTMLInputElement, [
       new File(['a'], 'a.png', { type: 'image/png' }),
       new File(['b'], 'b.png', { type: 'image/png' }),

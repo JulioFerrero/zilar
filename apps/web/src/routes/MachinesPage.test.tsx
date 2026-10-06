@@ -336,6 +336,7 @@ describe('MachinesPage', () => {
 
     const input = (await screen.findByLabelText('Rename julio-mbp')) as HTMLInputElement;
     expect(input.value).toBe('julio-mbp');
+    expect(input.className).toContain('well-surface');
     fireEvent.change(input, { target: { value: 'julio-mbp-2' } });
     fireEvent.keyDown(input, { key: 'Enter' });
 
@@ -360,6 +361,26 @@ describe('MachinesPage', () => {
       (call) => (call[1] as RequestInit)?.method === 'PATCH',
     );
     expect(patches).toHaveLength(1);
+  });
+
+  it('focuses the rename input through its ref when editing starts', async () => {
+    vi.stubGlobal(
+      'fetch',
+      fetchRouter([
+        {
+          method: 'GET',
+          path: '/api/machines',
+          respond: () => jsonResponse(200, [approvedMachine]),
+        },
+      ]),
+    );
+
+    renderMachinesPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Rename julio-mbp' }));
+
+    const input = await screen.findByLabelText('Rename julio-mbp');
+    await waitFor(() => expect(document.activeElement).toBe(input));
   });
 
   it('leaves the card and shows an inline error when an action fails', async () => {

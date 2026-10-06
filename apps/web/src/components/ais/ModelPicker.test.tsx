@@ -19,6 +19,7 @@ describe('ModelPicker', () => {
 
     const input = screen.getByLabelText('Model') as HTMLInputElement;
     expect(input.value).toBe('');
+    expect(input.className).toContain('well-surface');
 
     fireEvent.click(screen.getByRole('radio', { name: 'gpt-4o-mini' }));
 
