@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AiBadge } from '@/components/chat/ai-badge';
 import { Avatar } from '@/components/chat/avatar';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import { cn } from '@/lib/utils';
@@ -213,16 +214,7 @@ export function NewTopicSheet({
                     onPress={() => toggleMember(member.userId)}
                     className="flex-row items-center gap-3 rounded-lg px-2 py-2 active:bg-surface-raised"
                   >
-                    <View
-                      className={cn(
-                        'h-5 w-5 items-center justify-center rounded-md border',
-                        checked ? 'border-accent bg-accent' : 'border-border-strong',
-                      )}
-                    >
-                      {checked ? (
-                        <Text className="text-[12px] text-accent-foreground">✓</Text>
-                      ) : null}
-                    </View>
+                    <Checkbox checked={checked} disabled={locked} />
                     <Avatar id={member.userId} name={member.name} size={28} />
                     <Text numberOfLines={1} className="min-w-0 flex-1 text-[14px] text-foreground">
                       {member.name}
@@ -254,16 +246,7 @@ export function NewTopicSheet({
                         onPress={() => toggleAi(ai.aiId)}
                         className="flex-row items-center gap-3 rounded-lg px-2 py-2 active:bg-surface-raised"
                       >
-                        <View
-                          className={cn(
-                            'h-5 w-5 items-center justify-center rounded-md border',
-                            checked ? 'border-accent bg-accent' : 'border-border-strong',
-                          )}
-                        >
-                          {checked ? (
-                            <Text className="text-[12px] text-accent-foreground">✓</Text>
-                          ) : null}
-                        </View>
+                        <Checkbox checked={checked} />
                         <Avatar id={ai.jid} name={ai.name} size={28} ai />
                         <Text
                           numberOfLines={1}

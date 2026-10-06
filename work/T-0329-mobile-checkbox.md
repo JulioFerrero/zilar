@@ -1,7 +1,7 @@
 ---
 id: T-0329
 title: "Mobile kit: Checkbox box with a Check icon, replacing the ✓ glyph boxes; approver tick becomes an icon"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0329-mobile-checkbox
 model: auto
@@ -79,4 +79,30 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- Added `ACCENT_FOREGROUND` to `apps/mobile/src/lib/colors.ts` from `palette.accentForeground`.
+- New kit piece `apps/mobile/src/components/ui/checkbox.tsx`: visual-only `Checkbox({ checked, disabled? })` — `h-5 w-5 rounded-md border` box, `border-accent bg-accent` with `<Check size={14} strokeWidth={3} color={ACCENT_FOREGROUND[scheme]} />` when checked, `border-border-strong` when unchecked, `opacity-50` when disabled. Scheme via `asColorScheme(useColorScheme().colorScheme)` like `search-field.tsx`.
+- New test `apps/mobile/src/components/ui/checkbox.test.tsx` (bottom-sheet node pattern): Check icon present when checked, absent when unchecked, `opacity-50` when disabled.
+- Replaced all three hand-rolled `✓` boxes with `<Checkbox>`: two in `new-topic-sheet.tsx` (locked member passes `disabled={locked}`), one in `group-roles-sheet.tsx`.
+- `topic-sheets.tsx`: dropped the `' ✓'` string; renders `<Check size={16} color={FOREGROUND[scheme]} />` after the label `Text` when `option.selected`, keeping `accessibilityState={{ selected }}`. Imports now `Check, Lock` and `MUTED_FOREGROUND, FOREGROUND`.
+- Test mocks: added `Check: 'Check'` to the lucide mocks in `topic-actions-sheet.test.tsx` and `topic-sheets-roles.test.tsx`; added `FOREGROUND` to the `@/lib/colors` mock in `topic-sheets-roles.test.tsx`.
+- Extra mocks (mocks only, per spec step 7): `group-roles-sheet.test.tsx`, `group-roles-mounted.test.tsx`, `group-roles-load.test.tsx` never mocked `lucide-react-native`, so importing `Checkbox` through the sheet failed with `SyntaxError: Unexpected token 'typeof'`. Added `Check: 'Check'` lucide mock to each. `handle-route.test.ts` needed nothing (its suite passes).
+
+### Files changed
+`apps/mobile/src/lib/colors.ts`, `apps/mobile/src/components/ui/checkbox.tsx` (new), `apps/mobile/src/components/ui/checkbox.test.tsx` (new), `apps/mobile/src/components/chat/new-topic-sheet.tsx`, `apps/mobile/src/components/chat/group-roles-sheet.tsx`, `apps/mobile/src/components/chat/topic-sheets.tsx`, `apps/mobile/src/components/chat/topic-actions-sheet.test.tsx`, `apps/mobile/src/components/chat/topic-sheets-roles.test.tsx`, `apps/mobile/src/components/chat/group-roles-sheet.test.tsx`, `apps/mobile/src/components/chat/group-roles-mounted.test.tsx`, `apps/mobile/src/components/chat/group-roles-load.test.tsx` (last three mocks only).
+
+### Commands and real results
+- `pnpm install`: done in 17.5s.
+- `grep ✓` on the three call sites: no matches (exit 1).
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot checkbox topic-actions-sheet topic-sheets-roles group-roles handle-route`: 7 files passed, 32 tests passed (after adding the three group-roles lucide mocks; before that the 3 group-roles files failed on import). The `<Check />` casing warning in output is expected noise from the string-stub icon mocks, same as the existing `Lock` mock.
+- `pnpm gate`: first run GATE FAIL on format (`checkbox.test.tsx` prettier issue); ran `prettier --write` on the touched files, second run: `PASS install (frozen) (1.3s)`, `PASS format (16.8s)`, `PASS lint (0.9s)`, `PASS typecheck (7.0s)`, `PASS tests @zilar/mobile (4.8s)`, `scope: every changed file is inside the Allowed files`, GATE PASS.
+
+### Security checklist
+- No secrets, tokens, or env values touched. No deletes/updates, no new routes, no caps, no permissions, no audit entries. No user-facing error text added. Icons from lucide only.
+
+### Blocked / needs a decision
+None.
+
 ## Review (written by Claude)
+
+**Approved** (pre-review clean, 1 cosmetic nit accepted: import order). The new mobile kit `Checkbox` is visual only: it draws a lucide `Check` on accent, and the picker row keeps the press handling and the checkbox role. It replaces the hand-drawn ✓ boxes in the new-topic sheet (members, AIs) and the group roles sheet. The approver option draws a `Check` icon instead of `' ✓'`. `colors.ts` gains `ACCENT_FOREGROUND`. The only test-file changes are mock additions, as allowed.

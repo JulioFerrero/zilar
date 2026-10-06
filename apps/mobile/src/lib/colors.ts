@@ -34,6 +34,11 @@ export const ACCENT: Record<ColorScheme, string> = {
   dark: palette.accent,
 };
 
+export const ACCENT_FOREGROUND: Record<ColorScheme, string> = {
+  light: palette.accentForeground,
+  dark: palette.accentForeground,
+};
+
 export const MUTED_FOREGROUND: Record<ColorScheme, string> = {
   light: palette.mutedForeground,
   dark: palette.mutedForeground,
