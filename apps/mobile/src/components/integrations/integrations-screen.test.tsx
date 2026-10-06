@@ -62,6 +62,11 @@ vi.mock('@/components/ui/text', () => ({
   Text: 'Text',
 }));
 
+vi.mock('@/components/ui/confirm-dialog', () => ({
+  ConfirmDialog: ({ visible, title }: { visible: boolean; title: string }) =>
+    visible ? createElement('Text', null, title) : null,
+}));
+
 vi.mock('@/components/integrations/use-integrations-api', () => ({
   useIntegrationsApi: () => ({ api: {} }),
 }));

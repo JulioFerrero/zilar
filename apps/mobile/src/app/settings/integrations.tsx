@@ -1,7 +1,7 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Eye, EyeOff, Lock, Mail, Mic, RefreshCw, Send } from 'lucide-react-native';
 import { useCallback, useRef, useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, View } from 'react-native';
+import { ActivityIndicator, Pressable, View } from 'react-native';
 import { useColorScheme } from 'nativewind';
 
 import { RequireAuth } from '@/auth/RequireAuth';
@@ -13,6 +13,7 @@ import {
 } from '@/components/integrations/card-save';
 import { useIntegrationsApi } from '@/components/integrations/use-integrations-api';
 import { SettingsScreenShell } from '@/components/settings/screen-shell';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import { asColorScheme } from '@/lib/color-scheme';
@@ -275,41 +276,19 @@ function RemoveConfirmDialog({
   onConfirm: () => void;
 }) {
   return (
-    <Modal visible transparent animationType="fade" onRequestClose={onCancel}>
-      <View className="flex-1 items-center justify-center bg-black/40 p-6">
-        <View className="w-full max-w-xs rounded-2xl bg-background p-4">
-          <Text className="text-[16px] font-semibold text-foreground">{title}</Text>
-          <Text className="mt-1 text-[14px] leading-5 text-muted-foreground">{body}</Text>
-          {error !== '' ? (
-            <Text accessibilityRole="alert" className="mt-2 text-[13px] text-danger">
-              {error}
-            </Text>
-          ) : null}
-          <View className="mt-4 flex-row justify-end gap-2">
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Cancel"
-              disabled={removing}
-              onPress={onCancel}
-              className="rounded-full px-3 py-1.5 active:bg-surface-raised disabled:opacity-60"
-            >
-              <Text className="text-[14px] text-muted-foreground">Cancel</Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Confirm remove"
-              disabled={removing}
-              onPress={onConfirm}
-              className="rounded-full bg-destructive px-3 py-1.5 active:opacity-90 disabled:opacity-60"
-            >
-              <Text className="text-[14px] font-medium text-white">
-                {removing ? 'Removing…' : 'Remove'}
-              </Text>
-            </Pressable>
-          </View>
-        </View>
-      </View>
-    </Modal>
+    <ConfirmDialog
+      visible
+      title={title}
+      message={body}
+      error={error}
+      confirmLabel="Remove"
+      busyLabel="Removing…"
+      busy={removing}
+      onCancel={onCancel}
+      onConfirm={onConfirm}
+      confirmAccessibilityLabel="Confirm remove"
+      destructive
+    />
   );
 }
 

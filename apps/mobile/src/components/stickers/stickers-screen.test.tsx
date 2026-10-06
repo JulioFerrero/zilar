@@ -59,6 +59,18 @@ vi.mock('@/components/ui/text', () => ({
   Text: 'Text',
 }));
 
+vi.mock('@/components/ui/confirm-dialog', () => ({
+  ConfirmDialog: ({
+    visible,
+    title,
+    message,
+  }: {
+    visible: boolean;
+    title: string;
+    message: string;
+  }) => (visible ? createElement('Text', null, title, message) : null),
+}));
+
 vi.mock('@/components/settings/screen-shell', () => ({
   SettingsScreenShell: ({ children }: { children: React.ReactNode }) => children,
 }));

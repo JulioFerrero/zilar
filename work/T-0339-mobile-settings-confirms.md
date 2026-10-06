@@ -1,7 +1,7 @@
 ---
 id: T-0339
 title: "Mobile kit migration: the Stickers, Sticker pack and Integrations confirm dialogs use the kit ConfirmDialog"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0339-mobile-settings-confirms
 model: auto
@@ -84,4 +84,47 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+Replaced the four hand-rolled confirm dialogs with the kit `ConfirmDialog` (`<ConfirmDialog … destructive />`), keeping every visible string, handler, error, busy state/label and accessibility label:
+- `apps/mobile/src/app/settings/stickers.tsx`: the "Remove this pack?" dialog now uses `ConfirmDialog` (`confirmAccessibilityLabel` = `Remove <title>` / `Remove pack`).
+- `apps/mobile/src/app/settings/sticker-pack.tsx`: the "Delete this pack?" dialog (error, busy `Deleting…`, `confirmAccessibilityLabel` = `Delete <title>` / `Delete pack`) and the "Discard changes?" dialog (`busy={false}`, `busyLabel="Discard"`, `cancelLabel="Keep editing"`, `cancelAccessibilityLabel="Keep editing"`, confirm keeps `setDiscardAsk(false); router.back()`).
+- `apps/mobile/src/app/settings/integrations.tsx`: `RemoveConfirmDialog` is now a thin wrapper around `ConfirmDialog` (smaller diff; call sites unchanged), keeping title/body/error/busy and `confirmAccessibilityLabel="Confirm remove"`.
+- Removed the now-unused `Modal` imports in all three screens.
+
+Test mocks (only mock changes): added a `@/components/ui/confirm-dialog` stub to the three screen tests, so the existing assertions run unchanged. The spec's example stub rendered `title` and `message`; the sticker-pack test also asserts `Delete Mine` (the confirm accessibility label), so that stub renders `error` and `confirmAccessibilityLabel` too. The stickers and integrations stubs render `title` + `message` and `title`, respectively.
+
+### Files changed (7, all inside Allowed files)
+`apps/mobile/src/app/settings/stickers.tsx`, `apps/mobile/src/app/settings/sticker-pack.tsx`, `apps/mobile/src/app/settings/integrations.tsx`, `apps/mobile/src/components/stickers/stickers-screen.test.tsx`, `apps/mobile/src/components/stickers/sticker-pack-screen.test.tsx`, `apps/mobile/src/components/integrations/integrations-screen.test.tsx`, `work/T-0339-mobile-settings-confirms.md`.
+
+### Commands and real results
+- `pnpm install`: `Done in 11.8s using pnpm v10.32.1` (one pre-existing `@types/react-dom` peer warning).
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot stickers-screen sticker-pack-screen integrations-screen`: `Test Files 3 passed (3)`, `Tests 37 passed (37)`.
+- `pnpm gate` (first run): `GATE FAIL` — `FAIL format` listed my `stickers.tsx`, `sticker-pack-screen.test.tsx`, `stickers-screen.test.tsx`; scope was already `every changed file is inside the Allowed files`. Fixed with `pnpm exec prettier --write` on those three files.
+- `pnpm gate` (second run):
+  ```
+  PASS  install (frozen)  (0.9s)
+  PASS  format  (11.0s)
+  PASS  lint  (0.9s)
+  PASS  typecheck  (5.9s)
+  PASS  tests @zilar/mobile  (1.6s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Acceptance
+- No `<Modal` is left in the three screens. The only remaining `<Modal` in `apps/mobile/src/app/settings/` is `machines.tsx:577` (the add-machine sheet), which is not one of these four confirms and is outside this task's scope.
+- The screen tests pass with only mock changes.
+
+### Deviations / notes
+- The sticker-pack test stub also renders `error` and `confirmAccessibilityLabel` (the spec's example only mentioned `title` and `message`), because the test asserts `Delete Mine` and the delete-error sentence.
+- The Cancel buttons of the stickers/delete/integrations dialogs rely on `ConfirmDialog`'s default cancel (button text "Cancel", which is also the accessible name they had before). Only the Discard dialog passes an explicit `cancelAccessibilityLabel`, as the spec requires.
+- No blockers.
+
 ## Review (written by Claude)
+
+**Approved** (pre-review clean, 0 nits). These four confirms now render through the kit `ConfirmDialog` (destructive):
+- Remove this pack (Stickers);
+- Delete this pack and Discard changes (Sticker pack); Discard keeps "Keep editing" and has no busy state;
+- Integrations' `RemoveConfirmDialog`, now a thin wrapper.
+
+The strings, handlers, accessibility labels, errors and busy labels are unchanged, and the lead checked that the `visible` props are in place. The three screen tests changed mocks only.

@@ -11,16 +11,10 @@ import {
 } from 'lucide-react-native';
 import { useColorScheme } from 'nativewind';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  Image,
-  Modal,
-  Pressable,
-  View,
-  useWindowDimensions,
-} from 'react-native';
+import { ActivityIndicator, Image, Pressable, View, useWindowDimensions } from 'react-native';
 
 import { RequireStickersAuth } from '@/components/stickers/require-stickers-auth';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Text } from '@/components/ui/text';
 import { SearchField } from '@/components/ui/search-field';
 import { useAuthStore } from '@/auth/session';
@@ -589,52 +583,25 @@ function StickersBody() {
         ) : null}
       </View>
 
-      <Modal
+      <ConfirmDialog
         visible={confirming !== null}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setConfirming(null)}
-      >
-        <View className="flex-1 items-center justify-center bg-black/40 p-6">
-          <View className="w-full max-w-xs rounded-2xl bg-background p-4">
-            <Text className="text-[16px] font-semibold text-foreground">Remove this pack?</Text>
-            <Text className="mt-1 text-[14px] leading-5 text-muted-foreground">
-              {confirming === null
-                ? ''
-                : `${confirming.title} leaves your sticker panel. You can add it again from Discover if it is still shared.`}
-            </Text>
-            {confirmError !== '' ? (
-              <Text accessibilityRole="alert" className="mt-2 text-[13px] text-danger">
-                {confirmError}
-              </Text>
-            ) : null}
-            <View className="mt-4 flex-row justify-end gap-2">
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Cancel"
-                disabled={busy}
-                onPress={() => setConfirming(null)}
-                className="rounded-full px-3 py-1.5 active:bg-surface-raised disabled:opacity-60"
-              >
-                <Text className="text-[14px] text-muted-foreground">Cancel</Text>
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={
-                  confirming === null ? 'Remove pack' : `Remove ${confirming.title}`
-                }
-                disabled={busy}
-                onPress={confirmRemove}
-                className="rounded-full bg-destructive px-3 py-1.5 active:opacity-90 disabled:opacity-60"
-              >
-                <Text className="text-[14px] font-medium text-white">
-                  {busy ? 'Removing…' : 'Remove'}
-                </Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
+        title="Remove this pack?"
+        message={
+          confirming === null
+            ? ''
+            : `${confirming.title} leaves your sticker panel. You can add it again from Discover if it is still shared.`
+        }
+        error={confirmError}
+        confirmLabel="Remove"
+        busyLabel="Removing…"
+        busy={busy}
+        onCancel={() => setConfirming(null)}
+        onConfirm={confirmRemove}
+        confirmAccessibilityLabel={
+          confirming === null ? 'Remove pack' : `Remove ${confirming.title}`
+        }
+        destructive
+      />
 
       <TelegramImportSheet
         key={`telegram-import-${importNonce}`}
