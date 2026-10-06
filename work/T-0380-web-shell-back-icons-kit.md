@@ -1,7 +1,7 @@
 ---
 id: T-0380
 title: "Web kit: the settings Back arrow, the AI panel close and the AI activity refresh use the kit Button and lucide icons; the unused AiPageShell frame is removed"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0380-web-shell-back-icons-kit
 model: auto
@@ -71,4 +71,18 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+- SettingsShell Back arrow is now kit `Button` (`ghost`, `icon`) with lucide `ArrowLeft`; removed the hand-copied inline SVG. `aria-label`, `title`, handler kept.
+- Deleted the unused `AiPageShell` function and its doc comment from `apps/web/src/components/ais/AiPageShell.tsx`; `SelectOption`, `FieldError` and the `Button` re-export kept as-is. Its `Button` import stays because the re-export references it.
+- AiPanel close is now kit `Button` (`ghost`, `icon-lg`) with the `X` icon; AiActivity refresh is now kit `Button` (`ghost`, `icon-sm`) with the `RefreshCw` icon. Both files now import `Button` from `@/components/ui/button` (same component the re-export pointed at) and `FieldError` still from `./AiPageShell`.
+- Deviation note: `AiPageShell.tsx` still contains one `<button` — the one inside `SelectOption` (role=radio option row), which the spec says to keep unchanged. No `<svg` remains in either file; no hand-rolled icon `<button>` remains.
+- Files changed: `apps/web/src/components/SettingsShell.tsx`, `apps/web/src/components/ais/AiPageShell.tsx`, `apps/web/src/components/ais/AiPanel.tsx`, `apps/web/src/components/ais/AiActivity.tsx`.
+- Commands:
+  - `pnpm install`: pass (15.7s).
+  - `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot SettingsShell AiPanel AiActivity ApprovalsPage ConnectionsPage tools`: 8 files, 125 tests passed.
+  - `pnpm gate`: GATE PASS — install, format, lint, typecheck, @zilar/web tests all PASS; scope check "every changed file is inside the Allowed files" (5 changed files vs main, incl. task file).
+- Security checklist: no secrets touched; no routes, deletes, caps, or audit paths changed; icon-only UI swap with labels/handlers preserved.
+- Round 1 fix: rewrote the stale SettingsShell doc comment (no more `AiPageShell` frame mention); `pnpm gate` re-run: GATE PASS, scope clean.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-06). Settings Back is a kit ghost icon Button with lucide `ArrowLeft`; AI close and activity refresh are kit ghost icon Buttons; the unused `AiPageShell` frame is gone and its `SelectOption`, `FieldError` and `Button` exports stay. Round 1 fixed the stale SettingsShell comment. The remaining nit is my spec wording: the acceptance said no `<button` in `AiPageShell.tsx`, while the spec also said to keep `SelectOption` (a radio row) unchanged; the worker was right.

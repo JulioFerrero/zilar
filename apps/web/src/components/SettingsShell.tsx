@@ -1,13 +1,14 @@
 import type { ReactNode } from 'react';
+import { ArrowLeft } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 /**
  * The one column every web settings page shares (T-0153): back arrow + title
  * + one-line description in the header, then a centered `max-w-2xl` column on
  * a 16 px gutter at 390 px wide, readable body text and bordered cards.
  *
- * `AiPageShell` keeps the bare frame (dialogs like `NewAiDialog` and panels
- * only need that); the column, section and card recipes live here so the
- * settings pages stay alike without forcing every consumer onto them.
+ * The column, section and card recipes live here so the settings pages stay
+ * alike without forcing every consumer onto them.
  */
 export function SettingsShell({
   title,
@@ -24,27 +25,17 @@ export function SettingsShell({
     <div className="flex h-full min-h-0 flex-col" data-testid="settings-shell">
       <header className="shrink-0 border-b border-divider px-4 py-3">
         <div className="flex items-center gap-2">
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="icon"
             aria-label="Back"
             title="Back"
             onClick={onBack}
-            className="flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-list-hover"
+            className="shrink-0 rounded-full text-muted-foreground"
           >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="size-5"
-              aria-hidden="true"
-            >
-              <path d="m12 19-7-7 7-7" />
-              <path d="M19 12H5" />
-            </svg>
-          </button>
+            <ArrowLeft className="size-5" aria-hidden="true" />
+          </Button>
           <h1 className="text-[20px] leading-7 font-semibold">{title}</h1>
         </div>
         <p className="mt-1 text-[14px] text-muted-foreground">{subtitle}</p>

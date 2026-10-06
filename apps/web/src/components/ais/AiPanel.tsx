@@ -24,7 +24,8 @@ import { Sheet } from '@/components/ui/sheet';
 import { TextArea, TextInput } from '@/components/ui/text-input';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
 import { cn } from '@/lib/utils';
-import { Button, FieldError } from './AiPageShell';
+import { Button } from '@/components/ui/button';
+import { FieldError } from './AiPageShell';
 import { AiActivity } from './AiActivity';
 import { AlwaysAllowedList } from '@/components/approvals/AlwaysAllowedList';
 import { RoutinesSection } from '@/components/tools/RoutinesSection';
@@ -507,14 +508,16 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
             </div>
             <p className="text-[13px] text-muted-foreground">AI settings</p>
           </div>
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="icon-lg"
             aria-label="Close AI panel"
             onClick={onClose}
-            className="flex size-9 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-list-hover"
+            className="shrink-0 rounded-full text-muted-foreground"
           >
             <X className="size-5" aria-hidden="true" />
-          </button>
+          </Button>
         </header>
 
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">

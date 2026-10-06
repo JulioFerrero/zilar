@@ -4,7 +4,8 @@ import { listAudit, type AuditScope, type PublicAuditEntry } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { useDelayed } from '@/lib/useDelayed';
-import { Button, FieldError } from './AiPageShell';
+import { Button } from '@/components/ui/button';
+import { FieldError } from './AiPageShell';
 
 const PAGE_LIMIT = 20;
 
@@ -176,14 +177,16 @@ export function ActivitySection({ scope }: { scope: AuditScope }) {
       <div className="flex items-center justify-between">
         <h3 className="text-[14px] font-medium">Activity</h3>
         {state.status === 'ready' && (
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="icon-sm"
             aria-label="Refresh activity"
             onClick={refresh}
-            className="flex size-7 items-center justify-center rounded-full text-muted-foreground hover:bg-list-hover"
+            className="rounded-full text-muted-foreground"
           >
             <RefreshCw className="size-4" aria-hidden="true" />
-          </button>
+          </Button>
         )}
       </div>
 
