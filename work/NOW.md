@@ -25,10 +25,11 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
 | T-0332 | Mobile: New topic sheet on BottomSheet (long Private form scrolls) | autofix round 1 | from QA run 20 |
-| T-0334 | Web kit: Badge label follows the visible count (99+) | coding | doctor should-fix |
 | (doctor) | | | audit running (paid Muse fallback) |
 
 Time correction (checked with `date`): it is 04:42 local, Tue 10-06. The "~04:xx–05:50 local" stamps below were estimated and run up to about an hour ahead; their order is right.
+
+05:50 local: merged T-0334 (Badge aria-label follows the visible 99+; 0 nits). The doctor's should-fix is closed.
 
 05:45 local: doctor audit 2 (since fc0be5e) found must-fix 0, should-fix 1, nits 2.
 - **Should-fix:** the Badge aria-label used the raw count while the badge showed 99+. The lead's T-0321 spec caused it → T-0334, launched.
