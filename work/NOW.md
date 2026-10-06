@@ -54,7 +54,7 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| (none) | | | |
+| T-0339 | Mobile kit: Stickers, Sticker pack, Integrations confirms on ConfirmDialog | coding (DeepSeek flash) | 4 hand-rolled confirms; mocks-only test files allowed |
 
 Time correction (checked with `date`): it is 04:42 local, Tue 10-06. The "~04:xx–05:50 local" stamps below were estimated and run up to about an hour ahead; their order is right.
 
