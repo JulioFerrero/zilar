@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router';
-import type { ChatSummary } from '@zilar/chat-core';
+import type { ChatSummary, UiMessage } from '@zilar/chat-core';
 import { AuthProvider, type AuthState } from '@/auth/AuthProvider';
 import { ChatStoreProvider } from '@/store/ChatStoreProvider';
-import { createChatStore } from '@/store/store';
+import { createChatStore, type ChatStoreSeed } from '@/store/store';
 import { ChatView } from './ChatView';
 
 const auth: AuthState = {
@@ -34,8 +34,12 @@ const dm: ChatSummary = {
   muted: false,
 };
 
-function renderView(chat: ChatSummary, path = '/c/c-devteam') {
-  const store = createChatStore({ chats: [group, dm] });
+function renderView(
+  chat: ChatSummary,
+  path = '/c/c-devteam',
+  seed: ChatStoreSeed = { chats: [group, dm] },
+) {
+  const store = createChatStore(seed);
   const tree = (next: ChatSummary) => (
     <AuthProvider value={auth}>
       <ChatStoreProvider store={store}>
@@ -74,5 +78,28 @@ describe('ChatView panels', () => {
     renderView({ ...group, visibility: 'public', handle: 'dev_team' });
 
     expect(screen.getByText('PUBLIC')).toBeTruthy();
+  });
+});
+
+describe('ChatView forwarding (T-0419)', () => {
+  it('opens the forward picker from a message menu', () => {
+    const message: UiMessage = {
+      id: 'm-1',
+      chatId: 'c-devteam',
+      senderId: 'u-ana',
+      senderName: 'Ana',
+      text: 'hello there',
+      createdAt: new Date('2026-09-28T10:00:00Z'),
+      status: 'read',
+    };
+    renderView(group, '/c/c-devteam', {
+      chats: [group, dm],
+      messagesByChat: { 'c-devteam': [message] },
+    });
+
+    fireEvent.contextMenu(screen.getByText('hello there'));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Forward' }));
+
+    expect(screen.getByRole('dialog', { name: 'Forward' })).toBeTruthy();
   });
 });

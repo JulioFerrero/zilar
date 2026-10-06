@@ -1,7 +1,7 @@
 ---
 id: T-0419
 title: "Forwarding step 4 (web UI): Forward in the message menu opens a picker; choose chats, add an optional comment, send"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0419-web-forward-picker
 model: auto
@@ -88,4 +88,42 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+Single-message forwarding from the web message menu, per the spec.
+
+- `MessageActionsMenu.tsx`: added `canForward: boolean` and `onForward: () => void` props, and a Forward item right after Reply, gated on `canForward`.
+- `MessageBubble.tsx`: added optional `onForward?: (message: UiMessage) => void`; computed `canForward = !deleted && !isSending && !(own && message.failed === true)` and passed `canForward` plus an `onForward` handler (closes the menu, then calls the prop) to both menu instances (sticker and text layouts).
+- `MessageList.tsx`: added optional `onForward` and passed it through to `MessageBubble` (only when defined, to respect exactOptionalPropertyTypes).
+- `ForwardPicker.tsx` (new): `Dialog` titled "Forward" with a `SearchField` over chats, checkbox rows with avatar + label, an optional comment `TextArea` ("Add a comment (optional)"), Cancel (outline) and Send (primary, disabled with no target; "Send to N chats" for more). Rows exclude archived chats and channels the caller cannot post in (`chatKind === 'channel'` with `myRole` not owner/admin). Topics render as `Group › Topic` and search matches `title` and `groupTitle`. Send calls `forwardMessages(selected, messages, trimmed === '' ? undefined : { comment: trimmed })` then `onClose()`.
+- `ChatView.tsx`: added `forwarding: UiMessage[] | null` state, passed `onForward={(message) => setForwarding([message])}` to `MessageList`, and rendered `ForwardPicker` while set.
+- Tests: new `ForwardPicker.test.tsx` (7 cases: lists DM/group/topic, hides archived + member channel, search by title and group title, disabled Send, sends ids+comment, sends without comment, Cancel), new `MessageActionsMenu.test.tsx` (2 cases: Forward shows + calls, hidden when `canForward` false), and one new `ChatView.test.tsx` case (Forward in the menu opens the picker).
+
+### Files changed
+Modified: `apps/web/src/components/MessageActionsMenu.tsx`, `apps/web/src/components/MessageBubble.tsx`, `apps/web/src/components/MessageList.tsx`, `apps/web/src/routes/ChatView.tsx`, `apps/web/src/routes/ChatView.test.tsx`.
+New: `apps/web/src/components/ForwardPicker.tsx`, `apps/web/src/components/ForwardPicker.test.tsx`, `apps/web/src/components/MessageActionsMenu.test.tsx`.
+
+`MessageBubble.forward.test.tsx` and `MessageList.test.tsx` needed no change: `onForward` is optional and the new prop does not break them, so they were left untouched.
+
+### Commands and results
+- `pnpm install`: done, no errors (only the pre-existing mobile `@types/react-dom` peer warning).
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot ForwardPicker MessageActionsMenu ChatView`: first run 7 failed / 6 passed — the new `ForwardPicker` test did not wrap `ChatStoreProvider` in `AuthProvider`; fixed the test setup, then `3 passed (3)` files, `13 passed (13)` tests.
+- `pnpm gate` (from repo root):
+  - `gate: 9 changed file(s) against main`
+  - `PASS install (frozen)`, `PASS format`, `PASS lint`, `PASS typecheck`, `PASS tests @zilar/web`
+  - `scope: every changed file is inside the Allowed files`
+  - `GATE PASS`
+
+### Deviations / notes
+- Icon: the spec's snippet showed `icon={<Forward …/>}`, but the kit's `MenuItem` takes `icon?: LucideIcon` (a component), so I used `icon={Forward}`. It is the only icon in the menu (the other items have none); no test depends on it.
+- Added a small "No chats found" empty state when search matches nothing (not in the spec).
+- Search/display mirror the sidebar: topics show `groupTitle › title` and match on both fields.
+
+### Blocked / needs a decision
+None.
+
+### Open questions
+None.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-06). The message menu has a Forward item, hidden for deleted, sending and own failed messages. ForwardPicker is a kit Dialog with search, checkbox rows (topics shown as Group > Topic), an optional comment and "Send to N chats". It hides archived chats and channels where the user is not owner or admin. ChatView holds the picker state. Nits accepted: Forward is the only item with an icon; an incoming failed message still offers Forward, which the store skips; the comment is trimmed twice.

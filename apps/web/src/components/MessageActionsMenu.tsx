@@ -1,4 +1,5 @@
 import { QUICK_REACTIONS } from '@zilar/chat-core';
+import { Forward } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Menu, MenuItem } from './ui/menu';
 
@@ -10,9 +11,12 @@ export interface MessageActionsMenuProps {
   canDelete: boolean;
   /** True when the caller may pin in this chat (DM either side, topic manager). */
   canPin: boolean;
+  /** True when this message can be forwarded (not deleted, failed or sending). */
+  canForward: boolean;
   /** True when this message is already pinned. */
   isPinned: boolean;
   onReply: () => void;
+  onForward: () => void;
   onCopy: () => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -30,8 +34,10 @@ export function MessageActionsMenu({
   canEdit,
   canDelete,
   canPin,
+  canForward,
   isPinned,
   onReply,
+  onForward,
   onCopy,
   onEdit,
   onDelete,
@@ -68,6 +74,11 @@ export function MessageActionsMenu({
         ))}
       </div>
       <MenuItem onSelect={onReply}>Reply</MenuItem>
+      {canForward && (
+        <MenuItem onSelect={onForward} icon={Forward}>
+          Forward
+        </MenuItem>
+      )}
       {canEdit && <MenuItem onSelect={onEdit}>Edit</MenuItem>}
       <MenuItem onSelect={onCopy} disabled={!canCopy}>
         Copy text

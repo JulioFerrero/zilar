@@ -185,6 +185,8 @@ export interface MessageBubbleProps {
   /** My bare JID, for highlighting a mention of me. */
   meJid?: string | undefined;
   onReply: (message: UiMessage) => void;
+  /** Opens the forward picker for this message. Omitted callers hide the item. */
+  onForward?: (message: UiMessage) => void;
   /** A live AI draft: same bubble, but recessed while it is written. */
   draft?: boolean;
   /**
@@ -203,6 +205,7 @@ export function MessageBubble({
   currentUserId,
   meJid,
   onReply,
+  onForward,
   draft = false,
   revealTurnId,
 }: MessageBubbleProps) {
@@ -226,6 +229,7 @@ export function MessageBubble({
   // the change to the normal look fades instead of jumping.
   const transitioning = draft || revealTurnId !== undefined;
   const isSending = own && message.status === 'sending';
+  const canForward = !deleted && !isSending && !(own && message.failed === true);
   const sticker =
     message.card !== undefined && message.card.type === 'sticker' ? message.card.data : undefined;
   const bigEmoji =
@@ -399,6 +403,7 @@ export function MessageBubble({
                 canDelete={canDelete}
                 canPin={canPin}
                 isPinned={pin !== undefined}
+                canForward={canForward}
                 onReact={(emoji) => {
                   setMenuOpen(false);
                   handleReact(emoji);
@@ -406,6 +411,10 @@ export function MessageBubble({
                 onReply={() => {
                   setMenuOpen(false);
                   onReply(message);
+                }}
+                onForward={() => {
+                  setMenuOpen(false);
+                  onForward?.(message);
                 }}
                 onEdit={() => setMenuOpen(false)}
                 onCopy={() => setMenuOpen(false)}
@@ -716,6 +725,7 @@ export function MessageBubble({
             canDelete={canDelete}
             canPin={canPin}
             isPinned={pin !== undefined}
+            canForward={canForward}
             onReact={(emoji) => {
               setMenuOpen(false);
               handleReact(emoji);
@@ -723,6 +733,10 @@ export function MessageBubble({
             onReply={() => {
               setMenuOpen(false);
               onReply(message);
+            }}
+            onForward={() => {
+              setMenuOpen(false);
+              onForward?.(message);
             }}
             onEdit={() => {
               setMenuOpen(false);

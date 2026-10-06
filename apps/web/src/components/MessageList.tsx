@@ -21,9 +21,11 @@ const NEAR_BOTTOM_PX = 80;
 export function MessageList({
   chat,
   onReply,
+  onForward,
 }: {
   chat: ChatSummary;
   onReply: (message: UiMessage) => void;
+  onForward?: (message: UiMessage) => void;
 }) {
   const store = useChatStore();
   const storeApi = useChatStoreApi();
@@ -247,6 +249,7 @@ export function MessageList({
                     currentUserId={store.currentUserId}
                     meJid={store.me?.jid ?? undefined}
                     onReply={onReply}
+                    {...(onForward === undefined ? {} : { onForward })}
                     draft={isDraft}
                     {...(revealTurnId === undefined ? {} : { revealTurnId })}
                   />
