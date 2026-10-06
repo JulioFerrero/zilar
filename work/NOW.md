@@ -25,7 +25,10 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
 | T-0315 | Mobile: visibility, members/roles, topic info sheets on BottomSheet | coding (Muse, peak) | the roles sheet gains scroll and keyboard handling |
-| T-0316 | Web fix: the chat list search also matches a group by its own name | coding (Muse, peak) | same bug as mobile (`groupChats` matches only topic titles) |
+| T-0317 | Mobile kit polish: ActionSheet and ConfirmDialog cards on bg-surface with a border | pre-review (paid Muse fallback) | QA run 18 |
+| T-0318 | Web kit Menu (Escape, arrow keys, focus); main menu + New chat menu use it | coding (paid Muse fallback) | then 5 more web menus |
+
+~04:55 local: merged T-0315 (3 sheets on BottomSheet) and T-0316 (web search finds groups by name; lead checked in mock: "dev" shows Dev team with all 7 topics). QA run 18 PASS (qa18/): the message menu and the centred delete dialog work, and so do pins, invite links and the kit BottomSheet. In dark mode the floating cards barely stand out (lead saw 02/03.png) → T-0317. The voice download prompt is not reachable in mock. The free Muse is rate-limited again; workers fall back to the paid Muse.
 
 ~04:40 local: merged T-0314 (mobile search shows a Chats section above Messages; groups are found by name).
 
