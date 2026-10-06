@@ -1,7 +1,7 @@
 ---
 id: T-0412
 title: "Mobile kit: the Connections screen's Test, Remove, Close form and Show key icon buttons use the kit Button"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0412-mobile-connections-icon-buttons
 model: auto
@@ -56,4 +56,44 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+Replaced the four raw `Pressable` icon buttons in `apps/mobile/src/app/settings/connections.tsx` with the kit `Button`:
+
+- Test key button (was lines 281-288): `<Button variant="ghost" size="icon" className="h-9 w-9 rounded-full" accessibilityLabel={`Test ${providerLabel(connection.provider)} key`} disabled={testingId === connection.id} onPress={() => test(connection.id)}>`, `Zap` icon unchanged.
+- Remove connection button (was 289-300): same Button shape, label `` `Remove ${providerLabel(connection.provider)} connection` ``, same handler that sets `confirmingId` and clears `removeError`, `Trash2` icon unchanged.
+- Close-the-form button (was 381-388): same Button shape, label "Close the form", `onPress={onCancel}`, `X` icon unchanged.
+- Show/hide key button (was 438-449): same Button shape, label `showKey ? 'Hide key' : 'Show key'`, same toggle handler, `Eye`/`EyeOff` unchanged.
+
+I dropped `accessibilityRole="button"` on these four because the kit `Button` already sets `role="button"` on its inner `Pressable`. The `disabled` dim is preserved: the `Button` adds `opacity-50` when `disabled` (button.tsx:104).
+
+I kept the `Pressable` import: the provider picker in `AddConnectionForm` (lines 399-421) still uses `Pressable` with `accessibilityRole="radio"`, which this task does not touch. No other file changed.
+
+### Files changed
+- `apps/mobile/src/app/settings/connections.tsx`
+- `work/T-0412-mobile-connections-icon-buttons.md` (status + this report)
+
+### Commands and results
+- `pnpm install` → Done, exit 0.
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot connections-screen` → Test Files 1 passed (1), Tests 5 passed (5), exit 0. (Only the pre-existing React "incorrect casing" stderr warnings from the static-markup harness; no failures.)
+- `pnpm gate` → exit 0, ends with `GATE PASS`:
+  - `gate: 2 changed file(s) against main`
+  - `PASS  install (frozen)  (1.5s)`
+  - `PASS  format  (20.4s)`
+  - `PASS  lint  (1.2s)`
+  - `PASS  typecheck  (18.9s)`
+  - `PASS  tests @zilar/mobile  (3.0s)`
+  - `scope: every changed file is inside the Allowed files`
+  - `GATE PASS`
+
+### Test mocks
+No test change was needed. The spec said the kit Button mocks were already present; in fact the test relies on the real `Button` (its `react-native`, `nativewind`, `react-native-reanimated`, `lucide-react-native`, `@/components/ui/text` and `@/components/ui/icon-button` mocks are enough), and all 5 cases pass with the real Button rendering. Assertions are unchanged.
+
+### Deviations
+None. All four buttons now use `variant="ghost" size="icon" className="h-9 w-9 rounded-full"` as specified.
+
+### Blocked / needs a decision
+None. No open questions.
+
 ## Review (written by Claude)
+
+**2026-10-06, lead:** approved. The pre-review was clean. All four in-card icon buttons are ghost `icon` kit Buttons (`h-9 w-9 rounded-full`) with the same labels, handlers and `disabled`.

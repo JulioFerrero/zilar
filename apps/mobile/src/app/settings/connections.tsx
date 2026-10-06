@@ -278,26 +278,28 @@ function ConnectionsList() {
                             ) : null}
                           </View>
                           <View className="flex-row shrink-0 gap-1">
-                            <Pressable
-                              accessibilityRole="button"
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-9 w-9 rounded-full"
                               accessibilityLabel={`Test ${providerLabel(connection.provider)} key`}
                               disabled={testingId === connection.id}
                               onPress={() => test(connection.id)}
-                              className="rounded-full p-2 active:bg-surface-raised disabled:opacity-50"
                             >
                               <Zap size={16} color={ICON[scheme]} />
-                            </Pressable>
-                            <Pressable
-                              accessibilityRole="button"
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-9 w-9 rounded-full"
                               accessibilityLabel={`Remove ${providerLabel(connection.provider)} connection`}
                               onPress={() => {
                                 setConfirmingId(connection.id);
                                 setRemoveError('');
                               }}
-                              className="rounded-full p-2 active:bg-surface-raised"
                             >
                               <Trash2 size={16} color={ICON[scheme]} />
-                            </Pressable>
+                            </Button>
                           </View>
                         </View>
                       ),
@@ -378,14 +380,15 @@ function AddConnectionForm({
     <View className="gap-3 rounded-xl border border-border bg-surface p-4">
       <View className="flex-row items-center justify-between">
         <Text className="text-[16px] font-semibold text-foreground">New connection</Text>
-        <Pressable
-          accessibilityRole="button"
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-9 w-9 rounded-full"
           accessibilityLabel="Close the form"
           onPress={onCancel}
-          className="rounded-full p-1 active:bg-surface-raised"
         >
           <X size={16} color={ICON[scheme]} />
-        </Pressable>
+        </Button>
       </View>
 
       <View className="gap-1">
@@ -435,18 +438,19 @@ function AddConnectionForm({
             placeholder="Paste your key"
             className="min-w-0 flex-1"
           />
-          <Pressable
-            accessibilityRole="button"
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-9 w-9 rounded-full"
             accessibilityLabel={showKey ? 'Hide key' : 'Show key'}
             onPress={() => setShowKey((value) => !value)}
-            className="rounded-full p-2 active:bg-surface-raised"
           >
             {showKey ? (
               <EyeOff size={16} color={ICON[scheme]} />
             ) : (
               <Eye size={16} color={ICON[scheme]} />
             )}
-          </Pressable>
+          </Button>
         </View>
       </View>
 
