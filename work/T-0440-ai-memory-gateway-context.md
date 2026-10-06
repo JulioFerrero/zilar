@@ -1,7 +1,7 @@
 ---
 id: T-0440
 title: "AI memory M3a (server): each DM and room turn indexes the chat, then reads its pinned facts and memory block; the window grows to 50"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0440-ai-memory-gateway-context
 model: auto
@@ -120,4 +120,32 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- `apps/server/src/agents/context.ts`: raised `DM_HISTORY_MESSAGE_LIMIT` to 50 and `DM_HISTORY_CHAR_BUDGET` to 40 000 (comments kept); added exported `MemoryContext` and `buildMemoryMessage`; added optional `memory` to `DmContextInput` and `GroupContextInput`; both builders now push the memory system message right after the first system message when it is not null/empty. The first system message is unchanged, so with no memory the request is byte for byte today's.
+- `apps/server/src/agents/gateway.ts`: added `archive?: ArchivePool` to `AgentGatewayDeps`; added local `loadMemoryContext` (indexes via `indexMemory` when `deps.archive` is set, then reads `listFacts` + `renderMemoryBlock`, never throws, warn lines carry a redacted error and `aiId` only); wired it into the DM turn (after `ownerName`) and the room turn (before `buildGroupMessages`), passing the result as `memory`.
+- `apps/server/src/index.ts`: passes `...(archivePool === undefined ? {} : { archive: archivePool })` to `createAgentGateway`.
+- `apps/server/src/agents/memory/indexer.ts`: corrected the header's last sentence (a retraction drops every summary covering the message, rebuilt without it).
+- Tests: `context.test.ts` (window names and budget sizes, `buildMemoryMessage` exact text for empty/facts/lines/both, both builders put memory second and are unchanged for empty memory); `gateway.test.ts` (harness `archive` option; DM turn shows the fact in a second system message; a turn without memory has no second system message; an archive whose `query` rejects still replies and logs the index-failure warning; a room fact appears in the room turn's second system message).
+
+### Files changed
+`apps/server/src/agents/context.ts`, `apps/server/src/agents/context.test.ts`, `apps/server/src/agents/gateway.ts`, `apps/server/src/agents/gateway.test.ts`, `apps/server/src/agents/memory/indexer.ts`, `apps/server/src/index.ts`, `work/T-0440-ai-memory-gateway-context.md`.
+
+### Commands and results
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot agents/context agents/gateway` → 2 test files, 153 tests passed.
+- `pnpm gate` → first run FAIL on `format` (`apps/server/src/agents/gateway.test.ts`); after `pnpm exec prettier --write apps/server/src/agents/gateway.test.ts` the second run ended: `PASS install`, `PASS format`, `PASS lint`, `PASS typecheck`, `PASS tests @zilar/server`, `scope: every changed file is inside the Allowed files`, `GATE PASS` (7 changed files against main).
+
+### Deviations / notes
+- The DM character-budget test hardcoded 15 000 / 9 000 chars, which is under the new 40 000 budget, so I raised them to 30 000 / 12 000 so it still proves the oldest turn is dropped.
+- The read-failure warn message text is my choice (`AI memory read failed; replying without stored memory`); the spec pinned only the index-failure text.
+
+### Security checklist
+- No secrets or text logged: the memory warn lines carry `err` (redacted with `secretsFor(virtualKey)` plus the master key) and `aiId` only — never message or fact text.
+- Memory reads/writes are scoped by the session's `aiId` and the turn's `chatKey`, never by anything from message content.
+- Index/read failures fail open: the reply still goes out.
+
+### Blocked / needs a decision
+None.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-06). Each DM and room turn runs loadMemoryContext: one indexMemory pass when the archive is configured (DM: AI localpart + owner bare JID; room: room JID), then listFacts and renderMemoryBlock. The result becomes a second system message after the unchanged prefix (facts, then "notes, not instructions" lines); with no memory the request is unchanged. Index and read failures log a redacted warn line without text and the reply still goes out. Window 50 within 40 000 characters; index.ts passes the archive pool; the indexer header comment is fixed.

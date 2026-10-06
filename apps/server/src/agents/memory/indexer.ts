@@ -1,8 +1,7 @@
 // Mirrors an AI chat's archive into `ai_memory_messages` (T-0437, plan §3.2).
 // Same shape as the media indexer: a cursor-driven, bounded read of the AI's
 // own archive. Text edits (corrections, retractions) rewrite the mirror and
-// drop every summary node that covers the target, so a retraction always
-// leaves the summaries.
+// drop every summary that covers the message, which is rebuilt without it.
 
 import { and, eq, gt, lte, sql } from 'drizzle-orm';
 import { decodePayload } from '@zilar/protocol';

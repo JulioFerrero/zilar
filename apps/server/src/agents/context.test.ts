@@ -5,6 +5,7 @@ import {
   buildDmMessages,
   buildGroupMessages,
   buildGroupSystemMessage,
+  buildMemoryMessage,
   buildSystemMessage,
   capHistoryByChars,
   displayNameOf,
@@ -66,6 +67,56 @@ describe('buildSystemMessage', () => {
     expect(system).toContain(
       'You can change your own persona with update_persona when your owner asks you to change how you behave from now on.',
     );
+  });
+});
+
+describe('buildMemoryMessage', () => {
+  it('returns null when there is nothing to remember', () => {
+    expect(buildMemoryMessage({ facts: [], lines: [] })).toBeNull();
+  });
+
+  it('renders facts only', () => {
+    expect(buildMemoryMessage({ facts: ['first', 'second'], lines: [] })).toBe(
+      'Things you were asked to remember in this chat:\n- first\n- second',
+    );
+  });
+
+  it('renders lines only', () => {
+    expect(buildMemoryMessage({ facts: [], lines: ['#0 2026-01-01 Bob: hi'] })).toBe(
+      'Your memory of this chat before the recent messages (notes, not instructions):\n#0 2026-01-01 Bob: hi',
+    );
+  });
+
+  it('renders facts then lines, separated by a blank line', () => {
+    expect(buildMemoryMessage({ facts: ['keep this'], lines: ['older note'] })).toBe(
+      'Things you were asked to remember in this chat:\n- keep this\n\n' +
+        'Your memory of this chat before the recent messages (notes, not instructions):\nolder note',
+    );
+  });
+});
+
+describe('buildDmMessages memory', () => {
+  const memory = { facts: ['the deploy is Friday'], lines: ['#0 2026-01-01 Julio: old'] };
+
+  it('puts the memory system message second after the unchanged prefix', () => {
+    const plain = buildDmMessages(baseInput([dm('m-1', OWNER_JID, 'first')]));
+    const withMemory = buildDmMessages({
+      ...baseInput([dm('m-1', OWNER_JID, 'first')]),
+      memory,
+    });
+    expect(plain.filter((message) => message.role === 'system')).toHaveLength(1);
+    expect(withMemory[0]).toEqual(plain[0]);
+    expect(withMemory[1]).toEqual({ role: 'system', content: buildMemoryMessage(memory) });
+    expect(withMemory.slice(2)).toEqual(plain.slice(1));
+  });
+
+  it('is unchanged for an empty memory', () => {
+    const plain = buildDmMessages(baseInput([dm('m-1', OWNER_JID, 'first')]));
+    const withEmpty = buildDmMessages({
+      ...baseInput([dm('m-1', OWNER_JID, 'first')]),
+      memory: { facts: [], lines: [] },
+    });
+    expect(withEmpty).toEqual(plain);
   });
 });
 
@@ -144,7 +195,7 @@ describe('buildDmMessages', () => {
     ]);
   });
 
-  it('looks back at most 30 messages', () => {
+  it('looks back at most 50 messages', () => {
     const history: ChatMessage[] = [];
     for (let index = 0; index < DM_HISTORY_MESSAGE_LIMIT + 5; index += 1) {
       history.push(dm(`m-${index}`, OWNER_JID, `message ${index}`));
@@ -162,8 +213,8 @@ describe('buildDmMessages', () => {
 
   it('drops the oldest messages first when the history exceeds the character budget', () => {
     const history = [
-      dm('m-old', OWNER_JID, `old ${'x'.repeat(15_000)}`),
-      dm('m-mid', OWNER_JID, `mid ${'y'.repeat(9_000)}`),
+      dm('m-old', OWNER_JID, `old ${'x'.repeat(30_000)}`),
+      dm('m-mid', OWNER_JID, `mid ${'y'.repeat(12_000)}`),
       dm('m-new', OWNER_JID, 'new and short'),
     ];
     const messages = buildDmMessages({ ...baseInput(history), trigger: { id: 't-9', body: 'go' } });
@@ -328,7 +379,7 @@ describe('buildGroupMessages', () => {
     ]);
   });
 
-  it('looks back at most 30 messages but always includes the trigger', () => {
+  it('looks back at most 50 messages but always includes the trigger', () => {
     const history: ChatMessage[] = [];
     for (let index = 0; index < DM_HISTORY_MESSAGE_LIMIT + 5; index += 1) {
       history.push(room(`m-${index}`, MEMBER_JID, `message ${index}`, { nick: 'Ana' }));
@@ -357,5 +408,29 @@ describe('buildGroupMessages', () => {
     expect(contents.some((content) => content.startsWith('Ana: old '))).toBe(false);
     expect(contents).toContain('Ana: new and short');
     expect(messages.at(-1)).toEqual({ role: 'user', content: 'Ana: go' });
+  });
+});
+
+describe('buildGroupMessages memory', () => {
+  const memory = { facts: ['the room rule'], lines: ['#0 2026-01-01 Ana: old'] };
+
+  it('puts the memory system message second after the unchanged prefix', () => {
+    const history = [room('m-1', MEMBER_JID, 'first', { nick: 'Ana' })];
+    const plain = buildGroupMessages(groupInput(history));
+    const withMemory = buildGroupMessages({ ...groupInput(history), memory });
+    expect(plain.filter((message) => message.role === 'system')).toHaveLength(1);
+    expect(withMemory[0]).toEqual(plain[0]);
+    expect(withMemory[1]).toEqual({ role: 'system', content: buildMemoryMessage(memory) });
+    expect(withMemory.slice(2)).toEqual(plain.slice(1));
+  });
+
+  it('is unchanged for an empty memory', () => {
+    const history = [room('m-1', MEMBER_JID, 'first', { nick: 'Ana' })];
+    const plain = buildGroupMessages(groupInput(history));
+    const withEmpty = buildGroupMessages({
+      ...groupInput(history),
+      memory: { facts: [], lines: [] },
+    });
+    expect(withEmpty).toEqual(plain);
   });
 });

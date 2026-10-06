@@ -20,9 +20,11 @@ import type {
 } from '../ai/litellm-client';
 import { createKeyCipher } from '../connections/crypto';
 import type { ActionGateway, RequestOutcome } from '../actions/gateway';
+import type { ArchivePool } from '../search/service';
 import type { GatewayLogger } from './gateway';
 import {
   aiLimits,
+  aiMemoryFacts,
   ais,
   groupAis,
   groupMembers,
@@ -450,6 +452,7 @@ describe('agent gateway', () => {
       toolsEnabled?: boolean;
       toolMaxRounds?: number;
       turnLogger?: GatewayLogger;
+      archive?: ArchivePool;
     } = {},
   ): {
     gateway: AgentGateway;
@@ -500,6 +503,7 @@ describe('agent gateway', () => {
       ...(config.actions === undefined ? {} : { actions: config.actions }),
       ...(config.toolsEnabled === undefined ? {} : { toolsEnabled: config.toolsEnabled }),
       ...(config.toolMaxRounds === undefined ? {} : { toolMaxRounds: config.toolMaxRounds }),
+      ...(config.archive === undefined ? {} : { archive: config.archive }),
     };
     const created = createAgentGateway(deps, {
       enabled: config.enabled ?? true,
@@ -858,6 +862,66 @@ describe('agent gateway', () => {
         { role: 'assistant', content: 'older answer' },
         { role: 'user', content: 'latest question' },
       ]);
+    });
+
+    it('reads pinned facts into a second system message', async () => {
+      const seeded = await seedAi(context);
+      await context.db.insert(aiMemoryFacts).values({
+        id: randomUUID(),
+        aiId: seeded.aiId,
+        chatKey: `dm:${seeded.ownerJid}`,
+        text: 'remember the deploy is Friday',
+      });
+      const cores: FakeCore[] = [];
+      const { fetchImpl, calls } = completionFetch();
+      const { gateway: started } = harness(cores, fetchImpl, new FakeLitellm());
+      await started.start();
+      const core = await coreFor(cores, seeded.aiJid);
+
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-1', 'hello'));
+      await waitFor(() => calls.length === 1);
+      const messages = bodyOf(calls[0]!).messages;
+      expect(messages[1]).toEqual({
+        role: 'system',
+        content: 'Things you were asked to remember in this chat:\n- remember the deploy is Friday',
+      });
+      expect(messages.filter((message) => message.role === 'system')).toHaveLength(2);
+      expect(messages[2]).toEqual({ role: 'user', content: 'hello' });
+    });
+
+    it('sends no second system message without memory', async () => {
+      const { seeded, core, calls } = await answeredSetup();
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-1', 'hello'));
+      await waitFor(() => calls.length === 1);
+      const messages = bodyOf(calls[0]!).messages;
+      expect(messages.filter((message) => message.role === 'system')).toHaveLength(1);
+      expect(messages[1]).toEqual({ role: 'user', content: 'hello' });
+    });
+
+    it('still replies when the memory index fails, logging a redacted warning', async () => {
+      const seeded = await seedAi(context);
+      const failingArchive: ArchivePool = {
+        query: () => Promise.reject(new Error('archive is down')),
+        close: () => Promise.resolve(),
+      };
+      const cores: FakeCore[] = [];
+      const { fetchImpl, calls } = completionFetch();
+      const { gateway: started, logger } = harness(cores, fetchImpl, new FakeLitellm(), {
+        archive: failingArchive,
+      });
+      await started.start();
+      const core = await coreFor(cores, seeded.aiJid);
+
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-1', 'hello'));
+      await waitFor(() => calls.length === 1);
+      expect(core.sent).toEqual([{ to: seeded.ownerJid, kind: 'chat', text: 'AI says hi' }]);
+      expect(
+        logger.calls.some(
+          (call) =>
+            call.level === 'warn' &&
+            call.message === 'AI memory index failed; replying with stored memory',
+        ),
+      ).toBe(true);
     });
 
     it.each([
@@ -2572,6 +2636,25 @@ describe('agent gateway', () => {
       const { seeded, roomJid, core } = await roomSetup();
       expect(core.joined).toEqual([{ roomJid, nick: 'Gateway AI' }]);
       expect(seeded.aiJid).toContain('ai-');
+    });
+
+    it('reads a room fact into a second system message', async () => {
+      const { seeded, member, roomJid, core, calls } = await roomSetup();
+      await context.db.insert(aiMemoryFacts).values({
+        id: randomUUID(),
+        aiId: seeded.aiId,
+        chatKey: `room:${roomJid}`,
+        text: 'the room rule is be brief',
+      });
+
+      core.receive(mention(seeded, member, roomJid, 'm-1'));
+      await waitFor(() => calls.length === 1);
+      const messages = bodyOf(calls[0]!).messages;
+      expect(messages[1]).toEqual({
+        role: 'system',
+        content: 'Things you were asked to remember in this chat:\n- the room rule is be brief',
+      });
+      expect(messages.filter((message) => message.role === 'system')).toHaveLength(2);
     });
 
     it('joins on the ai-added event and leaves on ai-removed', async () => {

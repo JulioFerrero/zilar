@@ -454,7 +454,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0425](T-0425-mobile-profile-buttons-kit.md) | Mobile: profile and contact card buttons on the kit Button | 2026-10-06 |
 | [T-0426](T-0426-mobile-ai-sheet-buttons-kit.md) | Mobile: AI activity Refresh, tool sheet Show all/less and Close on the kit Button | 2026-10-06 |
 | [T-0436](T-0436-mobile-media-sheet.md) | Media gallery 3 (mobile): media sheet | running | auto | T-0431 | |
-| [T-0440](T-0440-ai-memory-gateway-context.md) | AI memory M3a: turns index the chat and read facts + memory block; window 50 | running | auto | T-0437, T-0438 | |
 | [T-0441](T-0441-ai-memory-routes.md) | AI memory M4a: GET /api/ai-memory, delete fact, clear | running | auto | T-0438 | |
 | [T-0443](T-0443-web-ai-memory-dm.md) | AI memory M5a (web): Memory section in the AI panel | running | auto | T-0441 | |
 | [T-0442](T-0442-ai-memory-room-cleanup.md) | AI memory M4b: removing an AI from a room deletes that room's memory | running | auto | T-0438 | |
@@ -472,3 +471,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0437](T-0437-ai-memory-indexer.md) | AI memory M2a: mirror indexer (archive to ai_memory_messages) | 2026-10-06 |
 | [T-0438](T-0438-ai-memory-store.md) | AI memory M2b: store reads (window, memory block, recall, zoom, facts, compaction input, clear) | 2026-10-06 |
 | [T-0439](T-0439-web-forward-multiselect.md) | Web: multi-select forwarding (Select, selection bar, forward in chat order) | 2026-10-06 |
+| [T-0440](T-0440-ai-memory-gateway-context.md) | AI memory M3a: turns index the chat and read facts + memory block; window 50 | 2026-10-06 |
