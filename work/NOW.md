@@ -54,7 +54,7 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0352 | Mobile kit: join link and @handle screen buttons on Button | coding (free Muse, DeepSeek peak) | 6 Pressables; T-0351 merged |
+| T-0353 | Mobile kit: New group sheet and Explore join buttons on Button | coding (free Muse, DeepSeek peak) | the last accent text pills outside the kit; T-0352 merged |
 
 Time correction (checked with `date`): it is 04:42 local, Tue 10-06. The "~04:xx–05:50 local" stamps below were estimated and run up to about an hour ahead; their order is right.
 
