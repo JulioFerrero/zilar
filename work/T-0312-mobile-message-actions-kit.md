@@ -1,7 +1,7 @@
 ---
 id: T-0312
 title: "Mobile kit migration: message actions sheet on ActionSheet + ConfirmDialog; voice model download confirm on ConfirmDialog"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0312-mobile-message-actions-kit
 model: auto
@@ -95,5 +95,23 @@ pnpm gate
 ---
 
 ## Report (written by the worker when done)
+- `ConfirmDialog` (`ui/confirm-dialog.tsx`): added optional `cancelAccessibilityLabel?: string`, passed to the Cancel kit `Button`. Added a kit test asserting it reaches the Cancel button (`accessibilityLabel="Cancel delete"` in the static markup).
+- `message-actions-sheet.tsx`: removed the hand-rolled `Modal`/backdrop/panel. Now renders `<ActionSheet visible={visible && !confirmOpen} onClose closeLabel="Close message menu" header={reactions toolbar}>` with `ActionSheetItem`s (Reply/`Reply`; Edit/`Pencil` a11y "Edit message" when `canEdit`; Copy text/`Copy` disabled when `!canCopy`; Delete for everyone/`Trash2` destructive disabled when `!canDelete`; Pin/Unpin `Pin`/`PinOff` a11y "Pin message"/"Unpin message" when `canPin === true`) plus `<ConfirmDialog visible={visible && confirmOpen} title="Delete for everyone?" ... confirmLabel="Delete" busyLabel="Deleting…" busy={false} onCancel={onCloseConfirm} onConfirm={onConfirmDelete} cancelAccessibilityLabel="Cancel delete" confirmAccessibilityLabel="Delete" />`. Reaction chips stay emoji. Props unchanged. Verified: neither migrated component renders its own `Modal` (grep for "Modal" in both files returns nothing).
+- `voice-transcribe-confirm.tsx`: removed the hand-rolled sheet; renders the spec's `<ConfirmDialog ... destructive={false} onCancel={busy ? () => {} : onClose} ... />`, keeping `if (!open) return null`.
+- Tests: `voice-transcribe-confirm.test.tsx` added mocks for `@/components/ui/button` and `@/components/ui/text` so the element walk reaches the kit `Button`s through the real `ConfirmDialog`; same three assertions kept (labels, Download calls `onDownload`, busy disables both + "Downloading…"). `message-bubble-stickers.test.tsx` and `voice-message.test.tsx` needed no mock changes (both stub the migrated component entirely) — left untouched.
+- Commands: `pnpm install` — ok (11.1s). Scoped tests `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot kit voice-transcribe-confirm message-bubble-stickers voice-message` — 4 files, 47 tests passed. `pnpm exec prettier --write` on message-actions-sheet (gate format fix). `pnpm gate` — GATE PASS: install ok, format ok, lint ok, typecheck ok, tests @zilar/mobile ok, scope: every changed file inside Allowed files.
+- Security checklist: no secrets/tokens in logs or code; no deletes/updates touched; no caps/uniqueness rules; no permission flow changed (delete still confirms first, busy still blocks voice confirm backdrop via noop onCancel); no new routes; no audit entries.
+- No deviations from spec; no open questions.
 
 ## Review (written by Claude)
+
+**Approved.** Clean pre-review (2 nits), no fix rounds (Muse, peak).
+- The message actions use `ActionSheet` with icons, and "Delete for everyone?" is a centred `ConfirmDialog`.
+- The voice download prompt is a `ConfirmDialog`; busy still blocks Cancel and Back.
+- `ConfirmDialog` gained `cancelAccessibilityLabel`, with a test.
+
+**Nits, accepted:**
+- two dead mocks in the voice test;
+- `onPin ?? noop`, which behaves the same as before.
+
+**Visible change for QA:** the menu is now the floating kit card, as in the chat actions sheet, and the delete confirm is centred instead of inline.

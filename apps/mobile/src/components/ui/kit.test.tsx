@@ -211,6 +211,23 @@ describe('ConfirmDialog', () => {
     expect(html).toContain('Removing…');
     expect(html.match(/disabled=""/g)).toHaveLength(2);
   });
+
+  it('passes the cancel accessibility label to the Cancel button', () => {
+    const html = renderToStaticMarkup(
+      createElement(ConfirmDialog, {
+        visible: true,
+        title: 'Delete this AI?',
+        message: 'This removes the chat account.',
+        confirmLabel: 'Remove',
+        busyLabel: 'Removing…',
+        busy: false,
+        onCancel: noop,
+        onConfirm: noop,
+        cancelAccessibilityLabel: 'Cancel delete',
+      }),
+    );
+    expect(html).toContain('accessibilityLabel="Cancel delete"');
+  });
 });
 
 describe('TextField', () => {

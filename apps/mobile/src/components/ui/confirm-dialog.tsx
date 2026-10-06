@@ -18,6 +18,8 @@ type ConfirmDialogProps = {
   cancelLabel?: string;
   /** Defaults to `confirmLabel` via the button text. */
   confirmAccessibilityLabel?: string;
+  /** Defaults to `cancelLabel` via the button text. */
+  cancelAccessibilityLabel?: string;
   /** Renders the confirm button in the danger colour. Defaults to true. */
   destructive?: boolean;
   /** The dialog's accessibility label, on the `Modal`. */
@@ -42,6 +44,7 @@ export function ConfirmDialog({
   onConfirm,
   cancelLabel = 'Cancel',
   confirmAccessibilityLabel,
+  cancelAccessibilityLabel,
   destructive = true,
   accessibilityLabel,
 }: ConfirmDialogProps) {
@@ -64,7 +67,13 @@ export function ConfirmDialog({
             </Text>
           ) : null}
           <View className="mt-4 flex-row justify-end gap-2">
-            <Button variant="ghost" size="sm" disabled={busy} onPress={onCancel}>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={busy}
+              accessibilityLabel={cancelAccessibilityLabel}
+              onPress={onCancel}
+            >
               <Text>{cancelLabel}</Text>
             </Button>
             <Button
