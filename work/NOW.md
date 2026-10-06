@@ -2,7 +2,9 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
-Last updated: 2026-10-05 ~14:40 local, after merging T-0223 and launching T-0225; earlier merged T-0222, T-0211 (Julio: "the resize is working great") and T-0221, and launching T-0222. Main checkout got `pnpm install` (T-0211 added Ink/React; the autopilot could not start without it). Julio's watcher reopened on the new version and floated; test window closed.
+Last updated: 2026-10-06 ~12:40 UTC, after the manual deploy, merging T-0414/T-0425/T-0426 and launching T-0419/T-0427/T-0428/T-0429.
+
+Older: 2026-10-05 ~14:40 local, after merging T-0223 and launching T-0225; earlier merged T-0222, T-0211 (Julio: "the resize is working great") and T-0221, and launching T-0222. Main checkout got `pnpm install` (T-0211 added Ink/React; the autopilot could not start without it). Julio's watcher reopened on the new version and floated; test window closed.
 
 Autopilot restarted with `ZILAR_REVIEW_MODEL=meta/muse-spark-1.3-contributor` (free Muse still 429 at ~12:05). When the free listing answers again (`opencode2 run -m "opencode/muse-spark-1.3-contributor-free#low" "Reply OK."`), restart it without the variable.
 
@@ -54,12 +56,15 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0410 | Media gallery 1a (server): index tables + indexer | pre-review | the only schema task; then the `/api/media` route (1b) |
-| T-0414 | Forwarding step 3 (web store): forwardMessages | pre-review | T-0419 (picker UI, spec written) launches when it merges |
-| T-0420 | Mobile: AI sections, Connections, Folders, Explore empty lines | coding | |
-| T-0421 | Mobile: Revoked machines chevron (QA run 34) | coding | |
+| T-0410 | Media gallery 1a (server): index tables + indexer | pre-review after fix round | the only schema task; then the `/api/media` route (1b) |
+| T-0419 | Forwarding step 4 (web): Forward menu item + picker | coding | then multi-select |
+| T-0427 | Mobile forwarded header | fix round (big-emoji branch) | |
+| T-0428 | Mobile New chat menu on ActionSheet | coding | audit batch 23 part |
+| T-0429 | Mobile DismissBanner on the chat screen | coding | audit batch 17 |
 
-The two free web slots are waiting for T-0414 (then T-0419) and T-0410 (then the gallery route). The web kit is nearly finished: what is left are tile overlays and content rows, kept raw on purpose.
+The sixth (web) slot waits for T-0419 (then multi-select) or T-0410 (then the gallery route). Remaining audit batches: 11 (tab chrome, no tests), 19 and 20 (in-bubble controls: lead leaves them raw, bubble colours), the rest of 23.
+
+**Deploy 2026-10-06 12:24 UTC (Julio: "Deploy now, by hand"):** CI green on eeaddee3, images run 37462477607 built all four, Coolify service restarted with pull. Live `/health` shows `commit: eeaddee3…`, and the live web bundle contains the T-0409 "Forwarded from" header. Auto-deploy still needs the 3 GitHub secrets. Merged after the deploy: T-0414, T-0425, T-0426.
 
 Merged 11:30-12:10 UTC: T-0407, T-0408, T-0409, T-0411, T-0412, T-0413, T-0415, T-0416, T-0417, T-0418.
 - **Forwarded header (T-0409):** the lead checked it in the browser (mock, Ana chat). "Forwarded from Luis in Friday plans" shows above the text.
