@@ -27,6 +27,13 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 | T-0315 | Mobile: visibility, members/roles, topic info sheets on BottomSheet | coding (Muse, peak) | the roles sheet gains scroll and keyboard handling |
 | T-0318 | Web kit Menu (Escape, arrow keys, focus); main menu + New chat menu use it | coding (paid Muse fallback) | then 5 more web menus |
 
+~05:10 local: QA run 19 PASS (qa19/).
+- Search: `dev` shows a Chats section (Dev AI, Dev team) above Messages, and tapping Dev team opens it.
+- The visibility, members/roles and topic info sheets on BottomSheet stay above the keyboard; the roles field also checked.
+- T-0317 cards: the border now gives a clear edge (lead saw qa19/12.png). The dark fill stays close to the dimmed chat. The lead compared qa18/04.png, where the bubbles are near-white with no menu, against qa19/12.png, where they are grey: the dim works. No further task.
+- Topic info opens from the topic's ⋮ menu, not from long-press.
+- Phone marker b45684f1 (lead checked).
+
 ~05:00 local: merged T-0317 (card contrast). QA run 19 sent (qa19/) for T-0314, T-0315 and T-0317.
 
 ~04:55 local: merged T-0315 (3 sheets on BottomSheet) and T-0316 (web search finds groups by name; lead checked in mock: "dev" shows Dev team with all 7 topics). QA run 18 PASS (qa18/): the message menu and the centred delete dialog work, and so do pins, invite links and the kit BottomSheet. In dark mode the floating cards barely stand out (lead saw 02/03.png) → T-0317. The voice download prompt is not reachable in mock. The free Muse is rate-limited again; workers fall back to the paid Muse.
