@@ -24,6 +24,16 @@ vi.mock('@/components/ui/text', () => ({
   Text: 'Text',
 }));
 
+// The sheet renders through the kit `BottomSheet` (T-0315); stub it so the
+// pure-helper tests never load the shell's hooks. Same pattern as
+// `pins-sheet.test.tsx`.
+vi.mock('@/components/ui/bottom-sheet', () => ({
+  BottomSheet: ({ title, children }: { title?: string; children?: unknown }) => ({
+    type: 'BottomSheet',
+    props: { children: [title, children] },
+  }),
+}));
+
 vi.mock('nativewind', () => ({
   useColorScheme: () => ({ colorScheme: 'dark' }),
 }));

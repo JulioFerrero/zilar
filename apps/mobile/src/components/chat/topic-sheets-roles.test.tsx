@@ -31,6 +31,13 @@ vi.mock('@/components/ui/text', () => ({
   Text: 'Text',
 }));
 
+// The info sheet renders through the kit `BottomSheet` (T-0315); stub it
+// as a host tag so the rows render under `renderToStaticMarkup`. The real
+// shell is covered by `bottom-sheet.test.tsx`.
+vi.mock('@/components/ui/bottom-sheet', () => ({
+  BottomSheet: 'BottomSheet',
+}));
+
 // `@/lib/roles` is deliberately NOT mocked: the render assertions below
 // verify the real label/line wiring (T-0137 pre-review finding 3). The
 // module is types-only apart from pure functions, so it loads cleanly.

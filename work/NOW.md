@@ -25,7 +25,9 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
 | T-0315 | Mobile: visibility, members/roles, topic info sheets on BottomSheet | coding (Muse, peak) | the roles sheet gains scroll and keyboard handling |
-| T-0314 | Mobile fix: chat search shows matching chats and groups above message hits | coding (Muse, peak) | QA run 17 |
+| T-0316 | Web fix: the chat list search also matches a group by its own name | coding (Muse, peak) | same bug as mobile (`groupChats` matches only topic titles) |
+
+~04:40 local: merged T-0314 (mobile search shows a Chats section above Messages; groups are found by name).
 
 ~04:30 local: QA run 17 PASS (qa17/): chat list search well, clear, People view; Stickers Discover search filters; GIF search bar (the mock GIFs are blank tiles); Telegram import field. Older bug found (lead saw 03.png and read the code): with 2+ characters the search shows only messages, never matching chats, and `filterChats` ignores `groupTitle`, so groups are never found by name → T-0314. Phone marker b45684f1 (lead checked).
 

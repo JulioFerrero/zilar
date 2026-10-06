@@ -32,6 +32,13 @@ vi.mock('@/components/ui/text', () => ({
   Text: 'Text',
 }));
 
+// The sheet renders through the kit `BottomSheet` (T-0315); stub it as a
+// host tag so the rows render under `renderToStaticMarkup`. The real shell
+// is covered by `bottom-sheet.test.tsx`.
+vi.mock('@/components/ui/bottom-sheet', () => ({
+  BottomSheet: 'BottomSheet',
+}));
+
 // `@/lib/roles` is deliberately NOT mocked: the assertions below verify the
 // real `describeRolesError(error, 'load')` line the group screen's mount
 // effect produces (T-0140/T-0147/T-0157). The mount mapping itself lives in

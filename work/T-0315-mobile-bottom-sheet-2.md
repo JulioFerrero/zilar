@@ -1,7 +1,7 @@
 ---
 id: T-0315
 title: "Mobile kit migration: visibility, group members/roles and topic info sheets use the kit BottomSheet"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0315-mobile-bottom-sheet-2
 model: auto
@@ -82,4 +82,30 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Done. All three sheets render through the kit `BottomSheet`; no sheet renders its own `Modal`.
+
+What I did:
+- `visibility-sheet.tsx`: renders `<BottomSheet visible onClose closeLabel="Close visibility settings" title="Visibility">` around the content (radiogroup to the button row). Removed the hand-written `Modal`/`KeyboardAvoidingView`/`ScrollView`/handle/header layout and the now-unused imports (`KeyboardAvoidingView`, `Modal`, `Platform`, `ScrollView`, `useSafeAreaInsets`, `sheetBottomPadding`, `useKeyboardHeight`). All texts, labels and behaviour unchanged.
+- `group-roles-sheet.tsx`: renders `<BottomSheet ... closeLabel="Close group members and roles" title={\`${groupTitle} · Members (${members.length})\`} maxHeightClassName="max-h-[80%]">` around the content. Removed the old shell/handle/header and unused `Modal`/`useSafeAreaInsets` imports. The sheet now scrolls and stays above the keyboard via the kit layout (previously no `ScrollView`, fixed `paddingBottom`).
+- `topic-sheets.tsx` (topic info sheet only): renders `<BottomSheet visible={chat !== null} onClose closeLabel="Close topic info" maxHeightClassName="max-h-[80%]">` around the existing content (avatar row on, no `title` since the header is a custom avatar row). Removed the old shell/handle and unused `Modal`/`useSafeAreaInsets` imports; `TopicActionsSheet` and everything else in the file untouched.
+- Tests (mocks only, same assertions): added a `BottomSheet` stub to all 7 listed test files. Pass-through object stub (pins-sheet pattern) in `visibility-sheet.test.ts`, `visibility-fields.test.tsx`, `new-channel-sheet.test.tsx` and `topic-actions-sheet.test.tsx`; host-tag string stub (`BottomSheet: 'BottomSheet'`, title stays searchable as an attribute) in the three `renderToStaticMarkup` suites (`group-roles-sheet`, `group-roles-mounted`, `group-roles-load`, `topic-sheets-roles`).
+
+Files changed (all inside Allowed files): the 3 sheets, 7 test files (mocks only), plus this task file.
+
+Commands (real results):
+- `pnpm install`: ok (14.9 s).
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot visibility new-channel-sheet group-roles topic-sheets-roles topic-actions-sheet`: 8 files, 47 tests passed (only the known string-stub casing warnings).
+- `pnpm gate` (final): GATE PASS — install PASS, format PASS, lint PASS, typecheck PASS, tests @zilar/mobile PASS; "scope: every changed file is inside the Allowed files". One intermediate gate run failed on prettier formatting in the 3 sheets (my manual re-indent); fixed with `prettier --write` on those 3 files only, then re-ran the single tests (47 passed) before the final gate.
+- Transitive check: `grep` for other test files importing the three sheets found none (only screens import them at runtime, plus a comment mention); `visibility-fields.tsx` pulls the helper from the real `visibility-sheet`, covered by the stub added to its test.
+
+Problems / deviations: none. Security checklist: no secrets, no deletes/updates, no caps, no new routes, no audit entries, no error-text changes (all user-facing sentences untouched).
+
 ## Review (written by Claude)
+
+**Approved.** Clean pre-review (1 nit, a file-count typo in the Report), no fix rounds (Muse, peak).
+- The visibility, members/roles and topic info sheets render through `BottomSheet`, and none has its own `Modal`.
+- The large line counts are mostly re-indentation.
+- The test changes are `BottomSheet` stubs in the T-0313 `pins-sheet` pattern; the assertions are unchanged.
+- The members/roles sheet now scrolls and has keyboard handling.
+
+**Still to do:** emulator QA in the next run.
