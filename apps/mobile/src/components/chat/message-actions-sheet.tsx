@@ -1,6 +1,6 @@
 import type { UiReaction } from '@zilar/chat-core';
 import { QUICK_REACTIONS } from '@zilar/chat-core';
-import { Copy, Forward, Pencil, Pin, PinOff, Reply, Trash2 } from 'lucide-react-native';
+import { Copy, Forward, ListChecks, Pencil, Pin, PinOff, Reply, Trash2 } from 'lucide-react-native';
 import { Pressable, View } from 'react-native';
 
 import { Text } from '@/components/ui/text';
@@ -25,6 +25,8 @@ type MessageActionsSheetProps = {
   onCopy: () => void;
   onDelete: () => void;
   onForward?: () => void;
+  /** Enters select mode for this message (undefined hides the row). */
+  onSelect?: (() => void) | undefined;
   onPin?: () => void;
   /** Confirm-delete dialog state, controlled by the parent so the bubble can
    *  restore focus on close. */
@@ -54,6 +56,7 @@ export function MessageActionsSheet({
   onCopy,
   onDelete,
   onForward,
+  onSelect,
   onPin,
   confirmOpen,
   onCloseConfirm,
@@ -105,6 +108,14 @@ export function MessageActionsSheet({
             accessibilityLabel="Forward message"
             onPress={onForward ?? (() => {})}
             icon={Forward}
+          />
+        ) : null}
+        {canForward === true && onSelect !== undefined ? (
+          <ActionSheetItem
+            label="Select"
+            accessibilityLabel="Select messages"
+            onPress={onSelect}
+            icon={ListChecks}
           />
         ) : null}
         {canEdit ? (

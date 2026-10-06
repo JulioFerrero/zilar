@@ -1,7 +1,7 @@
 ---
 id: T-0445
 title: "Forwarding (mobile): Select in the message sheet starts select mode; tap messages to check them; a bar forwards them together"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0445-mobile-forward-multiselect
 model: auto
@@ -115,4 +115,50 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+Implemented multi-select forwarding on mobile (T-0445, the twin of web T-0439). The message sheet's **Select** row enters select mode with that message checked. While selecting, every normal bubble shows a kit `Checkbox` and a transparent whole-row `Pressable` (`checkbox` role, "Select message") that toggles it and swallows the inner tap/long-press; tombstones stay unchanged. A new `SelectionBar` replaces the composer ("N selected", ghost Cancel, Forward disabled at 0, Android back cancels). **Forward** opens the existing `ForwardSheet` with the checked messages in chat order. Cancel, Android back and a chat switch leave select mode.
+
+### Files changed (all inside Allowed files)
+- `apps/mobile/src/lib/selection.ts` (new) — `toggleSelected`, `selectedInOrder`.
+- `apps/mobile/src/lib/selection.test.ts` (new) — add/remove, no mutation, chat-order with an out-of-order pick, unknown ids.
+- `apps/mobile/src/components/chat/message-actions-sheet.tsx` — optional `onSelect` and a `Select` row (`ListChecks`) after Forward, shown only when `canForward === true && onSelect !== undefined`.
+- `apps/mobile/src/components/chat/message-actions-sheet.test.tsx` — `ListChecks` in the icon mock; Select shown/called with `canForward` + `onSelect`, hidden otherwise.
+- `apps/mobile/src/components/chat/message-bubble.tsx` — new `selecting`/`selected`/`onToggleSelect`/`onStartSelect` props; the row is `relative`, renders the `Checkbox` before the bubble content and the absolute transparent `Pressable` cover; the sheet gets `onSelect` only when `onStartSelect` is set (closes the menu then starts).
+- `apps/mobile/src/components/chat/message-list.tsx` — optional `selection` controller; maps it to each bubble (`selecting`, `selected`, `onToggleSelect`, `onStartSelect`).
+- `apps/mobile/src/components/chat/selection-bar.tsx` (new) — the bar, with the `BackHandler` effect.
+- `apps/mobile/src/components/chat/selection-bar.test.tsx` (new) — count text + live region, Forward disabled at 0 / enabled at 1, Cancel, Forward.
+- `apps/mobile/src/app/chat/[id].tsx` — `selectedIds` state, reset effect on `chatId`, `selection` + `forwardSelected` handlers, `selection` on all three `MessageList`s, `SelectionBar` instead of each branch's composer block.
+- `apps/mobile/src/components/chat/message-list.test.tsx` — Node render of the real list/bubbles with a `FlatList` stub and a `Pressable` stub that records props: two "Select message" checkboxes with one checked, pressing the checked one calls `onToggle` with `m1`, plus no checkboxes without a selection.
+- `work/T-0445-mobile-forward-multiselect.md` — status/report.
+
+I did **not** need to touch `message-bubble-layout.test.tsx`, `message-bubble-stickers.test.tsx` or `message-bubble-ticks.test.tsx`; the new props are optional and they still pass.
+
+### Commands run (real results)
+- `pnpm install` — done, 1170 packages added, exit 0 (peer warning only).
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot selection message-actions-sheet message-list message-bubble` — **7 files passed, 36 tests passed**.
+- `pnpm gate` — **GATE PASS**:
+  ```
+  gate: 11 changed file(s) against main
+  PASS  install (frozen)  (1.2s)
+  PASS  format  (17.2s)
+  PASS  lint  (0.5s)
+  PASS  typecheck  (7.1s)
+  PASS  tests @zilar/mobile  (2.6s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Deviations from the spec
+- **`MessageList` receives `selection` always** (as item 6 says), not `undefined` while idle; `selecting` is `selection.ids.length > 0`, so the empty case behaves like the old list.
+- **The checkbox sits before the avatar column** for incoming group bubbles (still "before the bubble content") and is vertically centered; outgoing rows stay right-aligned.
+- **`message-list.test.tsx` renders the real list and bubbles** with a `FlatList` stub plus a `Pressable` stub that records its props on `globalThis`. Mobile has no React Native testing library, so this follows the repo's Node `react-dom/server` render pattern; the string labels/roles are asserted from the recorded props. This is why the file mocks the bubble's children (`react-native-svg`, cards, etc.).
+- `SelectionBar` uses the composer's `px-2 pt-1.5` + safe-area padding so it sits in the composer's place.
+
+### Blocked / needs a decision
+None.
+
+**status: review**
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-06). Select in the message sheet (ListChecks) starts select mode in all three chat screen branches. Bubbles show the kit Checkbox and a full-row cover that toggles and swallows inner taps; tombstones have no box. SelectionBar replaces the composer or channel bar, with the count, Cancel, Forward and Android back; a chat switch resets. Forward opens ForwardSheet in chat order (lib/selection.ts). Not checked on the emulator yet. Nits for a polish task: swipe-to-reply still fires while selecting; a selection that loses a retracted message can open a short or empty sheet; tests for the idle {ids: []} shape and for BackHandler.

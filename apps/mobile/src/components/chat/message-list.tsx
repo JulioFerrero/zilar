@@ -62,6 +62,14 @@ type MessageListProps = {
   openingAttachmentId?: string | undefined;
   /** The shared voice player host from the chat screen (T-0154). */
   voiceHost?: VoicePlayerHost | undefined;
+  /** Multi-select for forwarding (T-0445): present while picking messages. */
+  selection?:
+    | {
+        ids: readonly string[];
+        onToggle: (message: UiMessage) => void;
+        onStart: (message: UiMessage) => void;
+      }
+    | undefined;
 };
 
 /**
@@ -88,6 +96,7 @@ export function MessageList({
   onOpenAttachment,
   openingAttachmentId,
   voiceHost,
+  selection,
 }: MessageListProps) {
   const currentUserId = useChatStore((state) => state.currentUserId);
   const messages = useChatStore((state) => state.messages(chat.id));
@@ -338,6 +347,11 @@ export function MessageList({
             {...(onOpenAttachment === undefined ? {} : { onOpenAttachment })}
             {...(openingAttachmentId === undefined ? {} : { openingAttachmentId })}
             {...(voiceHost === undefined ? {} : { voiceHost })}
+            selecting={selection !== undefined && selection.ids.length > 0}
+            selected={selection !== undefined && selection.ids.includes(item.item.message.id)}
+            {...(selection === undefined
+              ? {}
+              : { onToggleSelect: selection.onToggle, onStartSelect: selection.onStart })}
           />
         );
       }}

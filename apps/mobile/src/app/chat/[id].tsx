@@ -15,6 +15,7 @@ import { MessageListSkeleton } from '@/components/chat/skeleton';
 import { MediaSheet } from '@/components/chat/media-sheet';
 import { PinnedBanner } from '@/components/chat/pinned-banner';
 import { PinsSheet } from '@/components/chat/pins-sheet';
+import { SelectionBar } from '@/components/chat/selection-bar';
 import { TaskStrip } from '@/components/chat/task-strip';
 import { TopicInfoSheet } from '@/components/chat/topic-sheets';
 import { useVoicePlayerHost } from '@/components/chat/voice-player';
@@ -26,6 +27,7 @@ import type { AttachmentOpener } from '@/lib/attachment-ports';
 import { getSessionToken } from '@/lib/session-token';
 import { replyRef } from '@/lib/format';
 import { attachedRoleIds, describeRolesError, mayManageRoles } from '@/lib/roles';
+import { selectedInOrder, toggleSelected } from '@/lib/selection';
 import { httpsTopicUrl, mayArchiveTopic } from '@/lib/topics';
 import type { BannerPin } from '@/components/chat/pinned-banner';
 import type { SheetPin } from '@/components/chat/pins-sheet';
@@ -172,6 +174,9 @@ function Chat() {
   const [infoRolesError, setInfoRolesError] = useState('');
   const [infoGroupRolesError, setInfoGroupRolesError] = useState('');
   const [forwarding, setForwarding] = useState<UiMessage[] | null>(null);
+  // Multi-select for forwarding (T-0445): the checked message ids while the
+  // SelectionBar replaces the composer.
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   // Demo packs in mock mode, so the sticker panel works without a server
   // (real mode loads the user's packs from the API instead).
   const demoPacks = useMemo(
@@ -293,6 +298,22 @@ function Chat() {
       cancelEdit();
     };
   }, [chatId, cancelEdit]);
+
+  // Selecting is per chat: leaving or switching drops the checked messages.
+  useEffect(() => {
+    setSelectedIds([]);
+  }, [chatId]);
+
+  const selection = {
+    ids: selectedIds,
+    onToggle: (message: UiMessage) => setSelectedIds((ids) => toggleSelected(ids, message.id)),
+    onStart: (message: UiMessage) => setSelectedIds([message.id]),
+  };
+
+  const forwardSelected = () => {
+    setForwarding(selectedInOrder(loadedMessages ?? [], selectedIds));
+    setSelectedIds([]);
+  };
 
   // The manager bit (archive gate, role controls) and the owner picker read
   // the group detail, so load it for the topic's group: opening a topic
@@ -516,6 +537,7 @@ function Chat() {
             onEdit={(message) => startEdit(chat.id, message.id)}
             onDelete={(message) => deleteForEveryone(chat.id, message.id)}
             onForward={(message) => setForwarding([message])}
+            selection={selection}
             onPin={pin}
             onUnpin={unpin}
             pinnedIds={pinnedIds}
@@ -550,7 +572,13 @@ function Chat() {
               onDismiss={() => setJumpMissed(false)}
             />
           ) : null}
-          {legacyComposer ? (
+          {selectedIds.length > 0 ? (
+            <SelectionBar
+              count={selectedIds.length}
+              onCancel={() => setSelectedIds([])}
+              onForward={forwardSelected}
+            />
+          ) : legacyComposer ? (
             <Composer
               chatKey={chat.id}
               title={chat.title}
@@ -676,6 +704,7 @@ function Chat() {
             onEdit={(message) => startEdit(chat.id, message.id)}
             onDelete={(message) => deleteForEveryone(chat.id, message.id)}
             onForward={(message) => setForwarding([message])}
+            selection={selection}
             onPin={pin}
             onUnpin={unpin}
             pinnedIds={pinnedIds}
@@ -710,7 +739,13 @@ function Chat() {
               onDismiss={() => setJumpMissed(false)}
             />
           ) : null}
-          {channelBar ? (
+          {selectedIds.length > 0 ? (
+            <SelectionBar
+              count={selectedIds.length}
+              onCancel={() => setSelectedIds([])}
+              onForward={forwardSelected}
+            />
+          ) : channelBar ? (
             <ChannelComposerBar
               chat={chat}
               groupId={chat.groupId}
@@ -890,6 +925,7 @@ function Chat() {
           onEdit={(message) => startEdit(chat.id, message.id)}
           onDelete={(message) => deleteForEveryone(chat.id, message.id)}
           onForward={(message) => setForwarding([message])}
+          selection={selection}
           onPin={pin}
           onUnpin={unpin}
           pinnedIds={pinnedIds}
@@ -924,30 +960,38 @@ function Chat() {
             onDismiss={() => setJumpMissed(false)}
           />
         ) : null}
-        <Composer
-          chatKey={chat.id}
-          title={chat.title}
-          onSend={sendTextNow}
-          mentionMembers={mentionMembers}
-          onSendSticker={(sticker) => {
-            sendSticker(chat.id, sticker, replyTo === undefined ? undefined : { replyTo });
-            cancelReply();
-          }}
-          onSendAttachment={(file: PickedFile, options?: SendAttachmentOptions) => {
-            sendAttachmentNow(
-              file,
-              options === undefined ? (replyTo === undefined ? undefined : { replyTo }) : options,
-            );
-            cancelReply();
-          }}
-          onSendVoice={sendVoiceNow}
-          demoAttachments={demoAttachments}
-          demoGifs={demoGifs}
-          replyTo={replyTo}
-          onCancelReply={cancelReply}
-          onTyping={() => sendTyping(chat.id)}
-          demoPacks={demoPacks}
-        />
+        {selectedIds.length > 0 ? (
+          <SelectionBar
+            count={selectedIds.length}
+            onCancel={() => setSelectedIds([])}
+            onForward={forwardSelected}
+          />
+        ) : (
+          <Composer
+            chatKey={chat.id}
+            title={chat.title}
+            onSend={sendTextNow}
+            mentionMembers={mentionMembers}
+            onSendSticker={(sticker) => {
+              sendSticker(chat.id, sticker, replyTo === undefined ? undefined : { replyTo });
+              cancelReply();
+            }}
+            onSendAttachment={(file: PickedFile, options?: SendAttachmentOptions) => {
+              sendAttachmentNow(
+                file,
+                options === undefined ? (replyTo === undefined ? undefined : { replyTo }) : options,
+              );
+              cancelReply();
+            }}
+            onSendVoice={sendVoiceNow}
+            demoAttachments={demoAttachments}
+            demoGifs={demoGifs}
+            replyTo={replyTo}
+            onCancelReply={cancelReply}
+            onTyping={() => sendTyping(chat.id)}
+            demoPacks={demoPacks}
+          />
+        )}
       </KeyboardAvoidingView>
       <TopicInfoSheet
         chat={infoOpen ? chat : null}
