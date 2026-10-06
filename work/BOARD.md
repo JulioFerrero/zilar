@@ -9,6 +9,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
+| [T-0317](T-0317-mobile-kit-card-contrast.md) | Mobile kit polish: ActionSheet and ConfirmDialog cards on bg-surface with a border | todo | auto | T-0313 | QA run 18 |
 | [T-0316](T-0316-web-search-group-name.md) | Web fix: the chat list search also matches a group by its own name | todo | auto | | mobile twin T-0314 |
 
 ## Follow-ups
