@@ -25,7 +25,9 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
 | T-0315 | Mobile: visibility, members/roles, topic info sheets on BottomSheet | coding (Muse, peak) | the roles sheet gains scroll and keyboard handling |
-| T-0320 | Web: ChatHeader + TaskStrip menus on Menu. Fixes a bug: on narrow screens Escape in those menus also left the chat (ChatShell window listener) | coding (Muse, peak) | last hand-rolled web menus |
+| (none) | | | doctor audit running (paid Muse fallback) |
+
+~05:50 local: merged T-0320, after a lead fix round: the regression test threw inside a listener, which jsdom swallows; it now uses a spy plus a control test. No hand-rolled web menus are left. Bug fixed: on narrow screens, Escape in the chat header or task strip menus used to leave the chat.
 
 ~05:35 local: merged T-0319 (message and chat actions menus on Menu; Escape works from anywhere).
 
