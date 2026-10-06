@@ -31,6 +31,16 @@ export default {
       <SecretInput label="API key" placeholder="sk-…" defaultValue="sk-secret" />
     </div>
   ),
+  SecretInputWithHint: (
+    <div className="max-w-sm">
+      <SecretInput
+        label="API key"
+        hint="Kept encrypted at rest."
+        placeholder="sk-…"
+        defaultValue="sk-secret"
+      />
+    </div>
+  ),
   TextArea: (
     <div className="max-w-sm">
       <TextArea

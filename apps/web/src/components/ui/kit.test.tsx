@@ -168,6 +168,20 @@ describe('TextInput and TextArea', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Show token' }));
     expect(screen.getByRole('button', { name: 'Hide token' })).toBeTruthy();
   });
+
+  it('keeps the eye toggle on the input when a labelled SecretInput has a hint', () => {
+    render(<SecretInput label="API key" hint="Starts with sk-" defaultValue="sk-secret" />);
+    const input = screen.getByLabelText('API key');
+    expect(screen.getByText('Starts with sk-').tagName).toBe('P');
+    const toggle = screen.getByRole('button', { name: 'Show key' });
+    expect(toggle.parentElement).toBe(input.parentElement);
+    expect(toggle.parentElement?.className).toContain('relative');
+    expect(toggle.parentElement?.className).not.toContain('flex-col');
+    expect(input.parentElement?.parentElement?.className).toContain('flex-col');
+    fireEvent.click(toggle);
+    expect(input.getAttribute('type')).toBe('text');
+    expect(screen.getByRole('button', { name: 'Hide key' })).toBeTruthy();
+  });
 });
 
 describe('SearchField', () => {

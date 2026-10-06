@@ -17,7 +17,7 @@ interface FieldProps {
   counter?: { max: number };
 }
 
-type TextInputProps = ComponentProps<'input'> & FieldProps;
+type TextInputProps = ComponentProps<'input'> & FieldProps & { trailing?: ReactNode };
 type TextAreaProps = TextareaHTMLAttributes<HTMLTextAreaElement> & FieldProps;
 
 function Field({
@@ -58,6 +58,7 @@ export function TextInput({
   hint,
   invalid,
   counter,
+  trailing,
   id,
   maxLength,
   onChange,
@@ -74,7 +75,7 @@ export function TextInput({
     setUncontrolledLength(event.target.value.length);
     onChange?.(event);
   };
-  const field = (
+  const input = (
     <input
       id={fieldId}
       aria-invalid={invalid === true ? true : undefined}
@@ -84,6 +85,15 @@ export function TextInput({
       onChange={handleChange}
     />
   );
+  const field =
+    trailing === undefined ? (
+      input
+    ) : (
+      <div className="relative">
+        {input}
+        {trailing}
+      </div>
+    );
   if (label === undefined && hint === undefined && counter === undefined) {
     return field;
   }
@@ -108,28 +118,34 @@ export function SecretInput({
   revealLabel = { show: 'Show key', hide: 'Hide key' },
   className,
   ...props
-}: Omit<TextInputProps, 'type'> & { revealLabel?: { show: string; hide: string } }) {
+}: Omit<TextInputProps, 'type' | 'trailing'> & {
+  revealLabel?: { show: string; hide: string };
+}) {
   const [shown, setShown] = useState(false);
   const label = shown ? revealLabel.hide : revealLabel.show;
   return (
-    <div className="relative">
-      <TextInput {...props} type={shown ? 'text' : 'password'} className={cn('pr-10', className)} />
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        aria-label={label}
-        title={label}
-        onClick={() => setShown((value) => !value)}
-        className="absolute top-1/2 right-1 -translate-y-1/2 rounded-full text-muted-foreground"
-      >
-        {shown ? (
-          <EyeOff className="size-4" aria-hidden="true" />
-        ) : (
-          <Eye className="size-4" aria-hidden="true" />
-        )}
-      </Button>
-    </div>
+    <TextInput
+      {...props}
+      type={shown ? 'text' : 'password'}
+      className={cn('pr-10', className)}
+      trailing={
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          aria-label={label}
+          title={label}
+          onClick={() => setShown((value) => !value)}
+          className="absolute top-1/2 right-1 -translate-y-1/2 rounded-full text-muted-foreground"
+        >
+          {shown ? (
+            <EyeOff className="size-4" aria-hidden="true" />
+          ) : (
+            <Eye className="size-4" aria-hidden="true" />
+          )}
+        </Button>
+      }
+    />
   );
 }
 

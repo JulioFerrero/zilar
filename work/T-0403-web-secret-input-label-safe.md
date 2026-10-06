@@ -1,7 +1,7 @@
 ---
 id: T-0403
 title: "Web kit: SecretInput keeps its eye toggle centred on the input when given a label, hint or counter"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0403-web-secret-input-label-safe
 model: auto
@@ -55,4 +55,31 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- Chose the spec's option 2: `TextInput` gained an optional internal `trailing` slot. When `trailing` is set, `TextInput` wraps only the `<input>` and the trailing node in the `relative` div; the `Field` (label/hint/counter) is built around that. The eye toggle's parent is now the same element that contains the input, not the `Field` root, so it stays centred on the input.
+- `SecretInput` no longer renders its own `relative` wrapper; it passes the toggle through `trailing`. With no `label`, `hint` or `counter` the rendered DOM is unchanged: `div.relative > input + button`.
+- Added a kit test for a labelled `SecretInput` with a hint; it checks the label and hint render, the toggle works, the toggle's parent equals the input's parent and is a `relative` element (not the `flex-col` Field root).
+- Added a `SecretInputWithHint` labelled example to the fixture.
+
+### Files changed
+- `apps/web/src/components/ui/text-input.tsx` — optional `trailing` slot on `TextInputProps`; `TextInput` wraps input+trailing in `relative`; `SecretInput` passes the toggle via `trailing`.
+- `apps/web/src/components/ui/kit.test.tsx` — new test `keeps the eye toggle on the input when a labelled SecretInput has a hint`.
+- `apps/web/src/components/ui/text-input.fixture.tsx` — new `SecretInputWithHint` example.
+- `work/T-0403-web-secret-input-label-safe.md` — status + this report.
+
+### Commands run
+- `pnpm install` → done in 17.4s, exit 0.
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot kit ConnectionsPage IntegrationsPage` → Test Files 3 passed (3), Tests 78 passed (78), exit 0.
+- `pnpm gate` (repo root) → `gate: 4 changed file(s) against main`; `PASS install (frozen) (2.0s)`; `PASS format (65.8s)`; `PASS lint (3.1s)`; `PASS typecheck (44.1s)`; `PASS tests @zilar/web (49.5s)`; `scope: every changed file is inside the Allowed files`; `GATE PASS`.
+
+### Problems / deviations
+- Used spec option 2 (`trailing` slot); no `Field` duplication.
+- The fixture already had a labelled `SecretInput` example from T-0389, so the new example adds a `hint` to exercise the fixed layout.
+- Verified no existing caller passes `label`/`hint`/`counter` (ConnectionsPage and IntegrationsPage use external `<label>` + `aria-label`), so caller markup is unchanged.
+
+### Security checklist
+- No secrets read, printed or logged. UI-only change: no routes, queries, permissions, caps or audit paths touched.
+
 ## Review (written by Claude)
+
+**2026-10-06, lead:** approved. The pre-review was clean. `TextInput` gets a `trailing` slot wrapped in a `relative` div around the input only, inside `Field` when there is a label. Without a label, the markup is the same as before (`div.relative > input + button`), so the existing callers do not change.
