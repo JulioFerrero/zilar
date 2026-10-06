@@ -9,10 +9,10 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| T-0324 | Web kit: SegmentedControl radio mode (Explore filter, group Visibility) | in-progress | auto | none | |
-| T-0323 | Web kit: Checkbox for the pickers | in-progress | auto | none | folder editor look |
-| T-0322 | Web kit: AIs, Connections, Machines page states on StateMessage | in-progress | auto | none | |
-| T-0321 | Web kit: unread count pills on Badge | in-progress | auto | none | ChatListItem, TopicRow, MessageList |
+| [T-0324](T-0324-web-segmented.md) | Web kit: SegmentedControl radio mode (Explore filter, group Visibility) | in-progress | auto | none | |
+| [T-0323](T-0323-web-checkbox.md) | Web kit: Checkbox for the pickers | in-progress | auto | none | folder editor look |
+| [T-0322](T-0322-web-state-message.md) | Web kit: AIs, Connections, Machines page states on StateMessage | in-progress | auto | none | |
+| [T-0321](T-0321-web-badge.md) | Web kit: unread count pills on Badge | in-progress | auto | none | ChatListItem, TopicRow, MessageList |
 
 ## Follow-ups
 
