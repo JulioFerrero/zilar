@@ -10,6 +10,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0288](T-0288-web-kit-text-input-1.md) | Web kit migration 13: name/username/add-contact fields on TextInput | in_progress | auto | | first TextInput users |
+| [T-0289](T-0289-ci-cancel-superseded.md) | CI: newer push to main cancels older in-progress runs | in_progress | auto | | auto-deploy never reached the tip |
 
 ## Follow-ups
 
