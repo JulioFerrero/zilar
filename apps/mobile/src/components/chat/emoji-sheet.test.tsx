@@ -39,9 +39,11 @@ vi.mock('lucide-react-native', () => ({
   PawPrint: 'PawPrint',
   Pizza: 'Pizza',
   Plane: 'Plane',
+  Search: 'Search',
   Smile: 'Smile',
   Sticker: 'StickerIcon',
   Trophy: 'Trophy',
+  X: 'X',
 }));
 
 vi.mock('@/components/ui/text', () => ({
@@ -58,6 +60,7 @@ vi.mock('@/lib/session-token', () => ({
 
 vi.mock('@/lib/colors', () => ({
   ICON: { dark: '#fff', light: '#000' },
+  MUTED_FOREGROUND: { dark: '#a1a1a1', light: '#a1a1a1' },
 }));
 
 vi.mock('@/lib/gifs-api', async (importOriginal) => {
