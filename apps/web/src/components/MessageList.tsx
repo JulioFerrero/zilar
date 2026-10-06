@@ -10,9 +10,9 @@ import { DateSeparator } from './DateSeparator';
 import { MessageBubble } from './MessageBubble';
 import { MessageListSkeleton } from './Skeleton';
 import { UnreadDivider } from './UnreadDivider';
-import { Button } from './ui/button';
 import { IconButton } from './ui/icon-button';
 import { Badge } from './ui/badge';
+import { StateMessage } from './ui/state-message';
 import { isBlockedSender, useBlockedJids } from '@/lib/blockedJids';
 import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
 
@@ -186,16 +186,12 @@ export function MessageList({
     if (history === 'error') {
       return (
         <div className="relative min-h-0 flex-1">
-          <div className="chat-background flex h-full flex-col items-center justify-center gap-3 p-8 text-center">
-            <p className="text-[15px] text-muted-foreground">{"Couldn't load messages"}</p>
-            <Button
-              type="button"
-              size="lg"
-              className="rounded-full px-5"
-              onClick={() => storeApi.getState().retryHistory(chat.id)}
-            >
-              Retry
-            </Button>
+          <div className="chat-background flex h-full flex-col items-center justify-center p-8">
+            <StateMessage
+              kind="error"
+              title="Couldn't load messages"
+              action={{ label: 'Retry', onClick: () => storeApi.getState().retryHistory(chat.id) }}
+            />
           </div>
         </div>
       );
