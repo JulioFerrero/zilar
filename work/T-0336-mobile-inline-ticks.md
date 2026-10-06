@@ -1,7 +1,7 @@
 ---
 id: T-0336
 title: "Mobile: the inline time + ticks at the end of a text bubble draw icons, not ✓ / ✓✓ / ○ glyphs"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0336-mobile-inline-ticks
 model: auto
@@ -59,4 +59,40 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Done. Outgoing plain-text and markdown bubbles now draw the `Ticks` icon inline
+after the time instead of `✓`/`✓✓`/`○` glyphs. **Alignment needs a look on the
+emulator** — I verified the render output in tests only, not the visual
+baseline; the lead runs QA after the merge.
+
+What changed:
+- `apps/mobile/src/components/chat/message-bubble.tsx`: deleted `outgoingTicks`
+  (verified: no `✓`, `○`, or `outgoingTicks` remains in the file). At both
+  inline-meta sites (markdown and plain-text branches) the meta `Text` now ends
+  after `formatTime(...)`, followed by `<Text>{' '}</Text>` and a fixed-size
+  `<View style={{ width: 14, height: 11 }}>` wrapping
+  `<Ticks status={message.status} color={metaColor} size={11} />`. The wrapper
+  gets `opacity: 0` while `generating`, matching the meta text's hidden state.
+- `apps/mobile/src/components/chat/message-bubble-ticks.test.tsx` (new): 3
+  tests — outgoing read text renders `Ticks`; no `✓`/`○` for any status
+  (`sending`, `sent`, `read`, `failed`); incoming text renders no `Ticks` and
+  no glyphs.
+
+Deviations: none from the spec. One fix during work: first draft of the test
+used a `delivered` status that does not exist in `MessageStatus`
+(`'sending' | 'sent' | 'read' | 'failed'` in `packages/chat-core/src/types.ts:7`);
+removed it before the gate.
+
+Commands and results:
+- `pnpm install`: exit 0 (11.9s).
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot message-bubble`:
+  2 files, 10 tests, all passed (7 existing sticker tests + 3 new ticks tests).
+- `pnpm gate`: GATE PASS — install, format, lint, typecheck, `@zilar/mobile`
+  tests all PASS; "every changed file is inside the Allowed files".
+
+Security checklist: no secrets/tokens touched; no deletes/updates, caps, or
+routes involved; no audit entries; no logging changes. Nothing new is
+user-facing text (icons only).
+
 ## Review (written by Claude)
+
+**Approved** (pre-review clean, 1 nit accepted: the new test covers the plain-text branch more than the markdown branch, and both branches use the same code). Outgoing text and markdown bubbles end with the time plus an inline 14×11 view holding the `Ticks` icon (Clock, Check or CheckCheck, in `metaColor`), hidden while generating. `outgoingTicks` and its glyphs are gone. Baseline alignment is checked on the emulator in QA run 22 after the merge.

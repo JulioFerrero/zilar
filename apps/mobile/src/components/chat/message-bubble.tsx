@@ -106,14 +106,6 @@ function BubbleMeta({
   );
 }
 
-/** Delivered/read ticks as glyphs, so they flow inline at the end of the text (as main did). */
-function outgoingTicks(status: UiMessage['status']): string {
-  if (status === 'sending' || status === 'failed') {
-    return ' ○';
-  }
-  return status === 'read' ? ' ✓✓' : ' ✓';
-}
-
 /** A soft blinking caret at the end of a live draft (no blink with reduced motion). */
 function DraftCaret({ reduceMotion }: { reduceMotion: boolean }) {
   const [opacity] = useState(() => new Animated.Value(1));
@@ -541,8 +533,19 @@ export function MessageBubble({
                           {'  '}
                           {message.edited === true ? 'edited ' : ''}
                           {formatTime(message.createdAt)}
-                          {outgoing ? outgoingTicks(message.status) : ''}
                         </Text>
+                        {outgoing ? <Text> </Text> : null}
+                        {outgoing ? (
+                          <View
+                            style={{
+                              width: 14,
+                              height: 11,
+                              ...(generating ? { opacity: 0 } : undefined),
+                            }}
+                          >
+                            <Ticks status={message.status} color={metaColor} size={11} />
+                          </View>
+                        ) : null}
                       </Text>
                       {generating ? <GeneratingLabel /> : null}
                     </>
@@ -565,8 +568,19 @@ export function MessageBubble({
                           {'  '}
                           {message.edited === true ? 'edited ' : ''}
                           {formatTime(message.createdAt)}
-                          {outgoing ? outgoingTicks(message.status) : ''}
                         </Text>
+                        {outgoing ? <Text> </Text> : null}
+                        {outgoing ? (
+                          <View
+                            style={{
+                              width: 14,
+                              height: 11,
+                              ...(generating ? { opacity: 0 } : undefined),
+                            }}
+                          >
+                            <Ticks status={message.status} color={metaColor} size={11} />
+                          </View>
+                        ) : null}
                       </Text>
                       {generating ? <GeneratingLabel /> : null}
                     </>
