@@ -24,9 +24,18 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| (none) | | | QA run 22 (T-0336 tick alignment) on the emulator |
+| T-0337 | Mobile: long AI messages collapse / markdown reply renders as an empty block; tick nudge | coding (DeepSeek flash, off-peak) | from QA run 22; emulator QA after the merge |
 
 Time correction (checked with `date`): it is 04:42 local, Tue 10-06. The "~04:xx–05:50 local" stamps below were estimated and run up to about an hour ahead; their order is right.
+
+06:16 local: QA run 22 (qa22/).
+- **Ticks:** the tick icons show; no ✓ or ○ glyphs are left. They sit about a third of the digit height too high (lead saw z1.png).
+- **New bug** (lead saw 07.png), in the Marketing AI mock chat:
+  - the long plain incoming message wraps a letter or two per line, in a very narrow column;
+  - the markdown reply renders as a huge, square, mostly empty grey block, showing only "Full brief …".
+
+  The cause is unknown and may be old, since T-0336 touches only outgoing bubbles. → T-0337 (find the cause + fix + tick nudge), launched.
+- No crash. Phone marker b45684f1 (lead checked).
 
 06:10 local: merged T-0336 (the inline time in outgoing text and markdown bubbles is followed by a Ticks icon instead of ✓ / ✓✓ / ○; 1 nit). QA run 22 sent (qa22/) to check the alignment.
 
