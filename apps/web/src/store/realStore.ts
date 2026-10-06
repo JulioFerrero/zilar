@@ -30,8 +30,14 @@ import {
   sortFolders,
   summarize,
 } from '@zilar/chat-core';
-import type { Payload } from '@zilar/protocol';
-import { StickerSchema } from '@zilar/protocol';
+import type { ForwardOrigin, Payload } from '@zilar/protocol';
+import {
+  AttachmentSchema,
+  ForwardOriginSchema,
+  PayloadSchema,
+  StickerSchema,
+  VoiceMetaSchema,
+} from '@zilar/protocol';
 import { clearChatListCache, readChatListCache, writeChatListCache } from './chatListCache';
 import {
   createXmppCore,
@@ -3292,6 +3298,121 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       })();
     }
 
+    // The room identity a forward may carry (T-0414): only a public group or
+    // topic has a room JID safe to reveal. A DM/AI chat has no room JID, and a
+    // private topic (or private group) must omit both so the target never
+    // learns a room it may not see (forwarding plan §3.1/§3.6).
+    function forwardPublicRoomFor(source: ChatSummary | undefined): ChatSummary | undefined {
+      if (source === undefined || source.kind !== 'group') {
+        return undefined;
+      }
+      const visibility = source.topic?.visibility ?? source.visibility;
+      return visibility === 'public' ? source : undefined;
+    }
+
+    // The origin header of one forwarded copy. Reusing a message's own
+    // `forward` keeps the first author on a forward of a forward. Otherwise it
+    // is built from the source message; `ForwardOriginSchema` caps over-long
+    // names and rejects a bad timestamp, and such a message is skipped instead
+    // of putting junk on the wire.
+    function forwardOriginFor(message: UiMessage): ForwardOrigin | undefined {
+      if (message.forward !== undefined) {
+        const reused = ForwardOriginSchema.safeParse(message.forward);
+        return reused.success ? reused.data : undefined;
+      }
+      const createdAt = message.createdAt.getTime();
+      if (Number.isNaN(createdAt)) {
+        return undefined;
+      }
+      const author = authorFor(message.id);
+      const room = forwardPublicRoomFor(get().chats.find((entry) => entry.id === message.chatId));
+      const originalId = correctionTargetFor(message.id);
+      const candidate = {
+        sender_id: author?.jid ?? message.senderId,
+        sender_name: message.senderName,
+        ...(room === undefined ? {} : { chat_id: room.id, chat_name: room.title }),
+        ...(originalId === undefined ? {} : { original_id: originalId }),
+        original_at: new Date(createdAt).toISOString(),
+      };
+      const parsed = ForwardOriginSchema.safeParse(candidate);
+      return parsed.success ? parsed.data : undefined;
+    }
+
+    // The reused payload of a forwarded message: a sticker or other card as-is,
+    // an attachment or voice rebuilt from the UiMessage fields. The voice
+    // transcript is dropped (it is chat-scoped). Every payload is validated
+    // with the protocol schema before the optimistic insert, like `sendSticker`.
+    function forwardedPayloadFor(message: UiMessage): Payload | undefined {
+      if (message.card !== undefined) {
+        return PayloadSchema.safeParse(message.card).success ? message.card : undefined;
+      }
+      if (message.attachment !== undefined) {
+        const data = message.attachment;
+        return AttachmentSchema.safeParse(data).success
+          ? { v: 0, type: 'attachment', data }
+          : undefined;
+      }
+      if (message.voice !== undefined) {
+        const { transcript: _transcript, ...data } = message.voice;
+        return VoiceMetaSchema.safeParse(data).success ? { v: 0, type: 'voice', data } : undefined;
+      }
+      return undefined;
+    }
+
+    // The content fields a forwarded payload paints into the optimistic bubble,
+    // so it looks like the echo the matching normal send would produce.
+    function forwardedUiFieldsFor(
+      payload: Payload,
+    ): Pick<UiMessage, 'voice' | 'attachment' | 'card'> {
+      if (payload.type === 'attachment') {
+        return { attachment: payload.data };
+      }
+      if (payload.type === 'voice') {
+        return { voice: payload.data };
+      }
+      return { card: payload };
+    }
+
+    // One forwarded copy's send: the same timeout/status machinery as voice and
+    // attachments, with a fixed user-safe reason on failure.
+    function runForwardSend(
+      target: ChatSummary,
+      localId: string,
+      body: string,
+      payload: Payload | undefined,
+      origin: ForwardOrigin,
+    ): void {
+      const current = core;
+      if (current === undefined) {
+        markSendFailed(target.id, localId, 'network');
+        return;
+      }
+      const run = {};
+      armSendTimeout(target.id, localId, run);
+      current
+        .sendMessage(target.id, coreKind(target), body, {
+          ...(payload === undefined ? {} : { payload }),
+          forward: origin,
+        })
+        .then((sent) => {
+          linkMessageIds(localId, sent.id);
+          linkLocalToServer(localId, sent.id);
+          rememberOriginId(localId, sent.id);
+          if (!isCurrentSendRun(localId, run)) {
+            return;
+          }
+          settleSendTimeout(localId, run);
+          updateMessageStatus(target.id, localId, 'sent');
+        })
+        .catch((error) => {
+          if (!isCurrentSendRun(localId, run)) {
+            return;
+          }
+          settleSendTimeout(localId, run);
+          markSendFailed(target.id, localId, sendFailureReasonFor(error, false));
+        });
+    }
+
     return {
       currentUserId: '',
       me: undefined,
@@ -4157,6 +4278,77 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           return;
         }
         runStickerSend(chat, localId, payload, body, replyTo);
+      },
+      forwardMessages: (targets, messages, options) => {
+        const comment = options?.comment?.trim();
+        const visited = new Set<string>();
+        for (const targetId of targets) {
+          if (visited.has(targetId)) {
+            continue;
+          }
+          visited.add(targetId);
+          const target = get().chats.find((entry) => entry.id === targetId);
+          if (target === undefined) {
+            continue;
+          }
+          let queued = false;
+          for (const message of messages) {
+            if (
+              message.deleted === true ||
+              message.failed === true ||
+              message.status === 'failed' ||
+              message.status === 'sending'
+            ) {
+              continue;
+            }
+            const origin = forwardOriginFor(message);
+            if (origin === undefined) {
+              continue;
+            }
+            const payload = forwardedPayloadFor(message);
+            const body = message.text ?? '';
+            if (body.length === 0 && payload === undefined) {
+              continue;
+            }
+            sequence += 1;
+            const localId = `local-${sequence}`;
+            const copy: UiMessage = {
+              id: localId,
+              chatId: targetId,
+              senderId: get().currentUserId,
+              senderName: 'You',
+              createdAt: now(),
+              status: 'sending',
+              forward: origin,
+              ...(body.length === 0 ? {} : { text: body }),
+              ...(payload === undefined ? {} : forwardedUiFieldsFor(payload)),
+            };
+            // Key the echo queue exactly as the matching normal send does, so
+            // the server echo links to this bubble instead of duplicating it.
+            const signature =
+              payload !== undefined && payload.type === 'sticker'
+                ? stickerSignatureFor(targetId, body, payload.data.sticker_id, undefined)
+                : signatureFor(targetId, body, undefined);
+            const queue = pendingOutgoing.get(signature) ?? [];
+            queue.push(localId);
+            pendingOutgoing.set(signature, queue);
+            setChatMessage(targetId, copy, true);
+            const mine = myJid();
+            if (mine !== undefined) {
+              rememberAuthor(localId, { jid: mine, resolved: true });
+            }
+            if (body.length > 0) {
+              rememberBaseText(localId, body);
+            }
+            queued = true;
+            runForwardSend(target, localId, body, payload, origin);
+          }
+          // The comment is a separate normal text message, only when this
+          // target received at least one copy.
+          if (queued && comment !== undefined && comment.length > 0) {
+            get().sendText(targetId, comment);
+          }
+        }
       },
       retrySticker: (chatId, messageId) => {
         const chat = get().chats.find((entry) => entry.id === chatId);
