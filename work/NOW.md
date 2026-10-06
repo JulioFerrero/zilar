@@ -24,10 +24,13 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0332 | Mobile: New topic sheet on BottomSheet (long Private form scrolls) | autofix round 1 | from QA run 20 |
+| T-0332 | Mobile: New topic sheet on BottomSheet (long Private form scrolls) | lead fix round 1 (paid Muse) | from QA run 20 |
+| T-0335 | Autopilot: fix rounds in review fall back on a rate limit | coding | devtools; restart the autopilot after the merge |
 | (doctor) | | | audit running (paid Muse fallback) |
 
 Time correction (checked with `date`): it is 04:42 local, Tue 10-06. The "~04:xx–05:50 local" stamps below were estimated and run up to about an hour ahead; their order is right.
+
+05:52 local: T-0332's automatic fix round went idle/failed on the free Muse rate limit, and nothing followed for about 25 minutes: no FALLBACK and no STALLED line. The cause: `decide.ts` skips the worker quota fallback when the task is in `review`. The lead switched T-0332 to the paid Muse in place and resent the fix (the test must assert the BottomSheet `title` prop). T-0335 fixes the autopilot.
 
 05:50 local: merged T-0334 (Badge aria-label follows the visible 99+; 0 nits). The doctor's should-fix is closed.
 
