@@ -4,6 +4,7 @@ import { ApiError, searchDirectory, type DirectoryEntry } from '@/lib/api';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
 import { Avatar } from '@/components/Avatar';
 import { Button } from '@/components/ui/button';
+import { StateMessage } from '@/components/ui/state-message';
 import { Dialog } from '@/components/ui/dialog';
 import { SegmentedControl } from '@/components/ui/segmented-control';
 import { SearchField } from '@/components/ui/search-field';
@@ -182,32 +183,29 @@ export function ExplorePage({ onClose }: { onClose: () => void }) {
       </div>
 
       <div aria-live="polite" className="mt-3 min-h-0 flex-1 overflow-y-auto">
-        {state === 'loading' && (
-          <p className="py-6 text-center text-[14px] text-muted-foreground">Searching…</p>
-        )}
+        {state === 'loading' && <StateMessage kind="loading" title="Searching…" />}
         {state === 'error' && (
-          <div className="flex flex-col items-center gap-3 py-6 text-center">
-            <p role="alert" className="text-[14px] text-danger">
-              {errorMessage}
-            </p>
-            <button
-              type="button"
-              onClick={() => {
+          <StateMessage
+            kind="error"
+            title={errorMessage}
+            action={{
+              label: 'Retry',
+              onClick: () => {
                 setState('loading');
                 setAttempt((value) => value + 1);
-              }}
-              className="rounded-full border border-border px-4 py-1.5 text-[14px] hover:bg-surface-raised"
-            >
-              Retry
-            </button>
-          </div>
+              },
+            }}
+          />
         )}
         {state === 'ready' && entries.length === 0 && (
-          <p className="py-6 text-center text-[14px] text-muted-foreground">
-            {trimmed === ''
-              ? 'No public groups or channels yet. Be the first to make one public.'
-              : `Nothing public matches “${trimmed}”. Try another name or @handle.`}
-          </p>
+          <StateMessage
+            kind="empty"
+            title={
+              trimmed === ''
+                ? 'No public groups or channels yet. Be the first to make one public.'
+                : `Nothing public matches “${trimmed}”. Try another name or @handle.`
+            }
+          />
         )}
         {state === 'ready' &&
           entries.map((entry) => (
@@ -241,14 +239,14 @@ export function ExplorePage({ onClose }: { onClose: () => void }) {
           ))}
         {state === 'ready' && next !== null && (
           <div className="flex justify-center py-2">
-            <button
+            <Button
               type="button"
+              variant="outline"
               disabled={loadingMore}
               onClick={() => void loadMore()}
-              className="rounded-full border border-border px-4 py-1.5 text-[14px] hover:bg-surface-raised disabled:opacity-60"
             >
               {loadingMore ? 'Loading…' : 'Show more'}
-            </button>
+            </Button>
           </div>
         )}
         {joinError !== undefined && (

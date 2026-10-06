@@ -1,7 +1,7 @@
 ---
 id: T-0379
 title: "Web kit: Explore's searching, error, empty and Show more states use StateMessage and the kit Button"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0379-web-explore-states-kit
 model: auto
@@ -63,5 +63,12 @@ pnpm gate
 ---
 
 ## Report (written by the worker when done)
+- Replaced Explore's hand-rolled loading/error/empty/Show more markup with the kit: `StateMessage kind="loading"` (title "Searching…"), `StateMessage kind="error"` (title=errorMessage, Retry action re-running the search), `StateMessage kind="empty"` (same two texts), and kit `Button variant="outline"` for Show more. Added `StateMessage` import. No other behavior changed.
+- Files changed: `apps/web/src/components/ExplorePage.tsx`; task file only.
+- Commands: `pnpm install` (pass, 25.4s); `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot ExplorePage` (8 passed); `pnpm gate`: PASS install (3.8s), PASS format (46.2s), PASS lint (1.8s), PASS typecheck (14.8s), PASS tests @zilar/web (43.9s), scope OK, GATE PASS with 2 changed files against main.
+- Verified: grep shows no `<button` and no plain `Searching…</p>` remain in ExplorePage.tsx; existing tests cover roles/texts (alert, Retry, Show more, empty texts) and pass unchanged.
+- Security checklist: no secrets/tokens touched; no deletes/updates, caps, permissions, routes, rate limits, or audit entries involved — N/A.
 
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-06). Explore searching, error (with Retry action, role alert) and empty states are `StateMessage`; Show more is kit outline. Same texts and roles. Pre-review clean (0 findings).

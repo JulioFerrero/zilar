@@ -402,9 +402,9 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0370](T-0370-web-dialog-footers-buttons-kit.md) | Web kit: ConfirmDialog, New AI and avatar uploader buttons on Button | 2026-10-06 |
 | [T-0371](T-0371-web-pack-editor-buttons-kit.md) | Web kit: sticker pack editor buttons on Button | 2026-10-06 |
 | [T-0373](T-0373-web-dialog-cancel-back-close-kit.md) | Web kit: dialog Cancel, Back and Close on Button | 2026-10-06 |
-| [T-0379](T-0379-web-explore-states-kit.md) | Web kit: Explore states on StateMessage and Button | in-progress | auto | | |
 | [T-0377](T-0377-mobile-topic-info-leave-archive-kit.md) | Mobile kit: topic info Leave/Archive on Button; New topic Create guard | 2026-10-06 |
 | [T-0378](T-0378-mobile-group-fab-key.md) | Mobile: group New topic FAB as a raised key | 2026-10-06 |
 | [T-0374](T-0374-web-visibility-invite-buttons-kit.md) | Web kit: visibility and invite link buttons on Button | 2026-10-06 |
 | [T-0375](T-0375-web-plus-glyphs-icons-kit.md) | Web: Plus icons for + glyphs; New topic, Manage stickers, folder Edit on Button | 2026-10-06 |
 | [T-0376](T-0376-web-fab-voice-key-guard.md) | Web kit: FAB and voice play on Button; guard flags key-primary and solid bg-danger | 2026-10-06 |
+| [T-0379](T-0379-web-explore-states-kit.md) | Web kit: Explore states on StateMessage and Button | 2026-10-06 |
