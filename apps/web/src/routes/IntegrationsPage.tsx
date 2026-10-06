@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router';
 import { Eye, EyeOff } from 'lucide-react';
 import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
 import { Button } from '@/components/ui/button';
+import { TextInput } from '@/components/ui/text-input';
 import {
   ApiError,
   getIntegrationsStatus,
@@ -218,14 +219,13 @@ function EmailCard({
         <>
           <label className="flex flex-col gap-1 text-[14px]">
             From address
-            <input
+            <TextInput
               value={from}
               aria-label="From address"
               placeholder="Zilar <no-reply@mail.example.com>"
               maxLength={320}
               disabled={busy}
               onChange={(event) => setFrom(event.target.value)}
-              className="rounded-lg border border-input bg-background px-3 py-2 text-[15px] outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40 disabled:opacity-60"
             />
           </label>
           <p className="text-[13px] text-muted-foreground">
@@ -235,8 +235,8 @@ function EmailCard({
           </p>
           <label className="flex flex-col gap-1 text-[14px]">
             New Resend API key
-            <span className="relative">
-              <input
+            <div className="relative">
+              <TextInput
                 type={showKey ? 'text' : 'password'}
                 value={key}
                 aria-label="New Resend API key"
@@ -245,7 +245,7 @@ function EmailCard({
                 autoComplete="off"
                 disabled={busy}
                 onChange={(event) => setKey(event.target.value)}
-                className="w-full rounded-lg border border-input bg-background py-2 pr-10 pl-3 text-[15px] outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40 disabled:opacity-60"
+                className="pr-10"
               />
               <button
                 type="button"
@@ -256,7 +256,7 @@ function EmailCard({
               >
                 {showKey ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
               </button>
-            </span>
+            </div>
           </label>
           <p className="text-[13px] text-muted-foreground">Leave empty to keep the current key.</p>
           {error !== '' && (
@@ -370,32 +370,30 @@ function VoiceTranscriptionCard({
       </p>
       <label className="flex flex-col gap-1 text-[14px]">
         Base URL
-        <input
+        <TextInput
           value={baseUrl}
           aria-label="Base URL"
           placeholder="https://api.openai.com/v1"
           maxLength={512}
           disabled={busy}
           onChange={(event) => setBaseUrl(event.target.value)}
-          className="rounded-lg border border-input bg-background px-3 py-2 text-[15px] outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40 disabled:opacity-60"
         />
       </label>
       <label className="flex flex-col gap-1 text-[14px]">
         Model
-        <input
+        <TextInput
           value={model}
           aria-label="Model"
           placeholder="whisper-1"
           maxLength={128}
           disabled={busy}
           onChange={(event) => setModel(event.target.value)}
-          className="rounded-lg border border-input bg-background px-3 py-2 text-[15px] outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40 disabled:opacity-60"
         />
       </label>
       <label className="flex flex-col gap-1 text-[14px]">
         API key
-        <span className="relative">
-          <input
+        <div className="relative">
+          <TextInput
             type={showKey ? 'text' : 'password'}
             value={key}
             aria-label="API key"
@@ -404,7 +402,7 @@ function VoiceTranscriptionCard({
             autoComplete="off"
             disabled={busy}
             onChange={(event) => setKey(event.target.value)}
-            className="w-full rounded-lg border border-input bg-background py-2 pr-10 pl-3 text-[15px] outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40 disabled:opacity-60"
+            className="pr-10"
           />
           <button
             type="button"
@@ -415,7 +413,7 @@ function VoiceTranscriptionCard({
           >
             {showKey ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
           </button>
-        </span>
+        </div>
       </label>
       <p className="text-[13px] text-muted-foreground">
         Optional — leave empty for a self-hosted server without one. The key is never shown again
@@ -528,8 +526,8 @@ function TelegramCard({
         <>
           <label className="flex flex-col gap-1 text-[14px]">
             Bot token
-            <span className="relative">
-              <input
+            <div className="relative">
+              <TextInput
                 type={showToken ? 'text' : 'password'}
                 value={token}
                 aria-label="Bot token"
@@ -538,7 +536,7 @@ function TelegramCard({
                 autoComplete="off"
                 disabled={busy}
                 onChange={(event) => setToken(event.target.value)}
-                className="w-full rounded-lg border border-input bg-background py-2 pr-10 pl-3 text-[15px] outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40 disabled:opacity-60"
+                className="pr-10"
               />
               <button
                 type="button"
@@ -549,7 +547,7 @@ function TelegramCard({
               >
                 {showToken ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
               </button>
-            </span>
+            </div>
           </label>
           {error !== '' && (
             <p role="alert" className="text-[14px] text-danger">

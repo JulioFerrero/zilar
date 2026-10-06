@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router';
 import { Eye, EyeOff, Link, Trash2, Zap } from 'lucide-react';
 import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
 import { Button } from '@/components/ui/button';
+import { TextInput } from '@/components/ui/text-input';
 import {
   type Connection,
   type ConnectionTestResult,
@@ -337,14 +338,14 @@ function AddConnectionForm({
         <label className="flex flex-col gap-1">
           <span className="text-[14px] font-medium">API key</span>
           <div className="relative">
-            <input
+            <TextInput
               type={showKey ? 'text' : 'password'}
               value={key}
               placeholder="sk-…"
               maxLength={16384}
               autoComplete="off"
               onChange={(event) => setKey(event.target.value)}
-              className="w-full rounded-lg border border-input bg-background py-2 pr-10 pl-3 text-[15px] outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40"
+              className="pr-10"
             />
             <button
               type="button"
@@ -360,12 +361,11 @@ function AddConnectionForm({
 
         <label className="flex flex-col gap-1">
           <span className="text-[14px] font-medium">Label (optional)</span>
-          <input
+          <TextInput
             value={label}
             placeholder="Work project"
             maxLength={256}
             onChange={(event) => setLabel(event.target.value)}
-            className="rounded-lg border border-input bg-background px-3 py-2 text-[15px] outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40"
           />
         </label>
 

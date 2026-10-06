@@ -21,6 +21,7 @@ describe('New topic dialog (T-0111)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'New chat' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'New topic' }));
     fireEvent.change(screen.getByLabelText('Topic name'), { target: { value: 'Fresh task' } });
+    expect(screen.getByLabelText('Topic name').className).toContain('well-surface');
     fireEvent.click(screen.getByRole('button', { name: 'Task' }));
     fireEvent.click(screen.getByRole('button', { name: 'Create topic' }));
     await waitFor(() => {

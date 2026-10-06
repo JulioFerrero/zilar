@@ -4,6 +4,7 @@ import { Avatar } from './Avatar';
 import { AiBadge } from './AiBadge';
 import { Button } from './ui/button';
 import { Dialog } from './ui/dialog';
+import { TextInput } from './ui/text-input';
 import { cn } from '@/lib/utils';
 import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
 import type { GroupDetail, GroupRole, PublicAi, TopicKind, TopicVisibility } from '@/lib/api';
@@ -214,13 +215,12 @@ export function NewTopicDialog({
     >
       <label className="mt-4 flex flex-col gap-1">
         <span className="text-[14px] font-medium">Name</span>
-        <input
+        <TextInput
           aria-label="Topic name"
           value={name}
           maxLength={80}
           onChange={(event) => setName(event.target.value)}
           placeholder="e.g. Checkout bug"
-          className="well-surface rounded-[10px] px-3 py-2 text-[15px] text-foreground outline-none placeholder:text-subtle-foreground focus-visible:ring-2 focus-visible:ring-accent/40"
         />
       </label>
 

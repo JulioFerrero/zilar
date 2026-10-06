@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-0291](T-0291-web-kit-text-input-3.md) | Web kit migration 15: Integrations, Connections, topic name, group handle on TextInput | in_progress | auto | T-0290 | |
 
 ## Follow-ups
 
@@ -320,3 +319,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0289](T-0289-ci-cancel-superseded.md) | CI: a newer push cancels the older in-progress run, so the tip is verified and auto-deployed sooner | 2026-10-06 |
 | [T-0288](T-0288-web-kit-text-input-1.md) | Web kit: name, username and add-contact fields use the kit TextInput | 2026-10-06 |
 | [T-0290](T-0290-web-kit-text-input-2.md) | Web kit: New group and invite-link fields use the kit TextInput and TextArea | 2026-10-06 |
+| [T-0291](T-0291-web-kit-text-input-3.md) | Web kit: Integrations, Connections, topic name and group handle fields use the kit TextInput | 2026-10-06 |

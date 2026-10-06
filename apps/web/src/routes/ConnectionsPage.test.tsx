@@ -118,6 +118,7 @@ describe('ConnectionsPage', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Add a connection' }));
 
     const input = screen.getByLabelText('API key');
+    expect(input.className).toContain('well-surface');
     expect(input.getAttribute('type')).toBe('password');
 
     fireEvent.click(screen.getByRole('button', { name: 'Show key' }));

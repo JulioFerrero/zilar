@@ -5,6 +5,7 @@ import { useChatStoreApi } from '@/store/ChatStoreProvider';
 import { FieldError } from './ais/AiPageShell';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { TextInput } from './ui/text-input';
 
 /**
  * Visibility settings (T-0164, owner only): flip a group or channel private
@@ -163,14 +164,9 @@ export function VisibilitySection({
             <p className="text-[13px] text-muted-foreground">
               Anyone can find and join {title === '' ? 'this group' : `“${title}”`}.
             </p>
-            <label
-              className="block text-[14px] font-medium"
-              htmlFor={`visibility-handle-${groupId}`}
-            >
-              Handle
-            </label>
-            <input
+            <TextInput
               id={`visibility-handle-${groupId}`}
+              label="Handle"
               value={typed}
               autoCapitalize="none"
               autoCorrect="off"
@@ -182,7 +178,6 @@ export function VisibilitySection({
                 setSaved(false);
               }}
               placeholder="hiking_club"
-              className="w-full rounded-lg border border-input bg-background px-3 py-2 text-[15px] outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40"
             />
             <div aria-live="polite" className="min-h-[20px] text-[14px]">
               {check.state === 'done' &&

@@ -85,6 +85,7 @@ describe('VisibilitySection', () => {
     expect(screen.getByText('Anyone can find and join “Hiking club”.')).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText('Handle'), { target: { value: 'hiking_club' } });
+    expect(screen.getByLabelText('Handle').className).toContain('well-surface');
     expect(await screen.findByText('@hiking_club is available')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Save visibility' }));

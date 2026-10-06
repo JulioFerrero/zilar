@@ -98,7 +98,8 @@ describe('IntegrationsPage', () => {
     });
     renderApp('/settings/integrations');
 
-    expect(await screen.findByLabelText('From address')).toBeTruthy();
+    const fromInput = await screen.findByLabelText('From address');
+    expect(fromInput.className).toContain('well-surface');
     fireEvent.click(screen.getAllByRole('button', { name: 'Save' })[0]!);
     expect(await screen.findByRole('alert')).toBeTruthy();
     expect(screen.getByRole('alert').textContent).toMatch(/test email could not be sent/);
