@@ -456,6 +456,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0433](T-0433-ai-memory-schema-core.md) | AI memory M1 (server): tables + tree core | running | auto | — | the only schema task |
 | [T-0434](T-0434-web-chat-media-panel.md) | Media gallery 2 (web): media panel | running | auto | T-0431 | |
 | [T-0435](T-0435-mobile-forward-sheet.md) | Forwarding (mobile UI): forward sheet | running | auto | T-0432 | |
+| [T-0436](T-0436-mobile-media-sheet.md) | Media gallery 3 (mobile): media sheet | running | auto | T-0431 | |
 | [T-0427](T-0427-mobile-forwarded-header.md) | Mobile: forwarded messages show 'Forwarded from X [in Y]' | 2026-10-06 |
 | [T-0428](T-0428-mobile-new-chat-menu-sheet.md) | Mobile: New chat menu on the kit ActionSheet with icons | 2026-10-06 |
 | [T-0429](T-0429-mobile-dismiss-banner.md) | Mobile: DismissBanner replaces 12 copied chat screen banners | 2026-10-06 |
