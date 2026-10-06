@@ -43,8 +43,8 @@ Models (Julio, 2026-10-05): default `opencode/muse-spark-1.3-contributor-free`; 
 1. **Auto-deploy:** add the GitHub secrets `COOLIFY_URL`, `COOLIFY_TOKEN` and `COOLIFY_SERVICE_UUID` (= `zogjtvwnoh9rqo96h7e7ajz1`).
    - The images pipeline is green: the web image builds in 40 s.
    - Until the secrets exist, live chat.zilar.app stays on v0.1.13.
-2. **Forwarding UI:** answer the 7 questions in `docs/audit/forwarding-plan.md` §5.
-3. **Media gallery:** answer the 8 questions in `docs/audit/media-gallery-plan.md` §5.
+2. ~~Forwarding UI questions~~: answered on 10-06 (all recommendations).
+3. ~~Media gallery questions~~: answered on 10-06 (all recommendations).
 4. **Security, for you to decide:** `/upload/*` has no auth. Anyone who has a file URL can read the file, even after the message is retracted.
 5. **For later:** blocking matches the localpart only (doctor audit 1). That is harmless while federation is off, but revisit it before turning federation on.
 
@@ -54,14 +54,26 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0398 | Mobile: Requests/Blocked/Connections states on StateMessage | coding (DeepSeek flash) | |
-| T-0399 | Mobile: Integrations/Machines/Stickers states on StateMessage | coding (DeepSeek flash) | |
-| T-0400 | Mobile kit: Switch in the catalog, SegmentedControl press test | coding (DeepSeek flash) | |
-| T-0401 | Web kit: MenuRadioItem; TaskStrip menus | coding (DeepSeek flash) | |
-| T-0402 | Web kit: four small leftovers | coding (DeepSeek flash) | |
-| T-0403 | Web kit: SecretInput toggle with a label | coding (DeepSeek flash) | |
+| T-0407 | Web kit: Archived disclosure and Dismiss notice | coding | |
+| T-0408 | Mobile kit: pins banner and sheet buttons | coding | |
+| T-0409 | Forwarding step 2 (web): "Forwarded from" header | coding | first forwarding UI task |
+| T-0410 | Media gallery 1a (server): index tables + indexer | coding | the only schema task; 1b (route) next |
+| T-0411 | Web kit: Run input, sign-in email, two empty lines | coding | |
+| T-0412 | Mobile kit: Connections icon buttons | coding | |
 
-Launched 10:38 UTC (off-peak, DeepSeek flash). Merged 10:35-10:38 UTC: T-0391 to T-0397 (mobile guard, SegmentedControl, panel states, Switch; web loading lines, list errors, Connections icons). QA run 32 (main b4763d36, mock, qa32/):
+All six were launched 11:05-11:28 UTC on DeepSeek flash (off-peak).
+
+**Julio, 2026-10-06 ~11:15 UTC:** he accepted every recommendation in the forwarding plan §5 and the media gallery plan §5 (recorded in both docs).
+- **Forwarding order:** T-0409 (receive and header), then the `forwardMessages` store action, then the picker and multi-select UI, then mobile.
+- **Gallery order:** T-0410 (1a), then the `/api/media` route (1b), then the web panel, then mobile.
+
+Merged 10:40-11:20 UTC: T-0398 to T-0406.
+- T-0400 had one lead fix round: a test could pass without pressing anything.
+- T-0406 wrote the `docs/audit/ui-kit-leftovers.md` batches, the source of the next kit tasks.
+
+QA run 33 (main d2b455fc, mock) PASS. The ON Switch now has a light thumb on a grey track (the lead saw `qa33/02_on_off.png`), and the catalog Switch works. The settings screens load straight to content in mock, so their states cannot be seen. No crash. Marker b45684f1.
+
+Earlier: launched 10:38 UTC (off-peak, DeepSeek flash). Merged 10:35-10:38 UTC: T-0391 to T-0397 (mobile guard, SegmentedControl, panel states, Switch; web loading lines, list errors, Connections icons). QA run 32 (main b4763d36, mock, qa32/):
 - **PASS:** the Stickers tabs and the catalog segmented control.
 - **ISSUE:** an ON Switch has a dark thumb that overhangs the light track and vanishes into the card (lead saw 23z.png) → T-0404, which launches in the next mobile slot.
 - **Inconclusive:** the T-0393 panels. Their states could not be forced. The sticker panel showed an empty grid and its pack tabs did not switch. T-0393 did not touch the tabs, so this is likely mock data; check it later.
