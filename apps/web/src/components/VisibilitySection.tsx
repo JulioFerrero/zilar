@@ -188,24 +188,20 @@ export function VisibilitySection({
             {busy ? 'Saving…' : confirmingPrivate ? 'Confirm going private' : 'Save visibility'}
           </Button>
           {confirmingPrivate && (
-            <button
-              type="button"
-              onClick={() => setConfirmingPrivate(false)}
-              className="rounded-full border border-border px-4 py-1.5 text-[14px] hover:bg-surface-raised"
-            >
+            <Button type="button" variant="outline" onClick={() => setConfirmingPrivate(false)}>
               Cancel
-            </button>
+            </Button>
           )}
           {shareUrl !== null && (
-            <button
+            <Button
               type="button"
+              variant="outline"
               onClick={() => {
                 void copyText(shareUrl).then(() => setCopied(true));
               }}
-              className="rounded-full border border-border px-4 py-1.5 text-[14px] hover:bg-surface-raised"
             >
               {copied ? 'Copied' : 'Copy share link'}
-            </button>
+            </Button>
           )}
         </div>
       </div>
