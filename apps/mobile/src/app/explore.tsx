@@ -303,17 +303,15 @@ function ExploreList() {
           ListFooterComponent={
             <View className="items-center gap-2 py-2">
               {next !== null && entries.length > 0 && (
-                <Pressable
-                  accessibilityRole="button"
+                <Button
+                  variant="outline"
+                  size="sm"
                   accessibilityLabel="Show more"
                   disabled={loadingMore}
                   onPress={loadMore}
-                  className="rounded-full border border-border-strong px-4 py-1.5 active:bg-surface-raised disabled:opacity-60"
                 >
-                  <Text className="text-[14px] text-foreground">
-                    {loadingMore ? 'Loading…' : 'Show more'}
-                  </Text>
-                </Pressable>
+                  <Text>{loadingMore ? 'Loading…' : 'Show more'}</Text>
+                </Button>
               )}
               {moreError !== '' && (
                 <Text accessibilityRole="alert" className="text-center text-[14px] text-danger">

@@ -3,6 +3,7 @@ import { Image } from 'expo-image';
 import { ActivityIndicator, Modal, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Button } from '@/components/ui/button';
 import { SearchField } from '@/components/ui/search-field';
 
 import { Text } from '@/components/ui/text';
@@ -254,14 +255,13 @@ export function GifPanel({ open, mockItems, api, onPick }: GifPanelProps) {
       ) : error !== undefined ? (
         <View className="h-[180px] items-center justify-center gap-2 px-4">
           <Text className="text-center text-[13px] text-muted-foreground">{error}</Text>
-          <Pressable
-            accessibilityRole="button"
+          <Button
+            variant="ghost"
             accessibilityLabel="Retry loading GIFs"
             onPress={() => load(queryRef.current, undefined, false)}
-            className="rounded-[10px] px-4 py-2 active:bg-surface-raised"
           >
-            <Text className="text-[15px] font-semibold text-foreground">Retry</Text>
-          </Pressable>
+            <Text>Retry</Text>
+          </Button>
           {rateLimited ? (
             <Text className="text-center text-[12px] text-muted-foreground">{GIF_ATTRIBUTION}</Text>
           ) : null}

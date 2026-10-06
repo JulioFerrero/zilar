@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useColorScheme } from 'nativewind';
 
 import { RequireAuth } from '@/auth/RequireAuth';
+import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
@@ -194,15 +195,15 @@ function BlockedRow({
           ) : null}
         </Text>
       </View>
-      <Pressable
-        accessibilityRole="button"
+      <Button
+        variant="outline"
+        size="sm"
         accessibilityLabel={`Unblock ${person.name}`}
         disabled={busy}
         onPress={onUnblock}
-        className="rounded-full border border-border-strong px-3 py-1 active:bg-surface-raised disabled:opacity-60"
       >
-        <Text className="text-[14px] text-foreground">{busy ? 'Unblocking…' : 'Unblock'}</Text>
-      </Pressable>
+        <Text>{busy ? 'Unblocking…' : 'Unblock'}</Text>
+      </Button>
     </View>
   );
 }

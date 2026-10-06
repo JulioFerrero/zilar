@@ -408,7 +408,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0375](T-0375-web-plus-glyphs-icons-kit.md) | Web: Plus icons for + glyphs; New topic, Manage stickers, folder Edit on Button | 2026-10-06 |
 | [T-0376](T-0376-web-fab-voice-key-guard.md) | Web kit: FAB and voice play on Button; guard flags key-primary and solid bg-danger | 2026-10-06 |
 | [T-0379](T-0379-web-explore-states-kit.md) | Web kit: Explore states on StateMessage and Button | 2026-10-06 |
-| [T-0384](T-0384-mobile-explore-blocked-retry-buttons-kit.md) | Mobile kit: Explore, Blocked and panel Retry buttons on Button | in-progress | auto | | |
 | [T-0383](T-0383-mobile-group-roles-remaining-buttons-kit.md) | Mobile kit: last group roles sheet buttons on Button | 2026-10-06 |
 | [T-0381](T-0381-web-auth-setup-text-buttons-kit.md) | Web kit: Setup, handle, Add machine, profile and sign-in text buttons on Button | 2026-10-06 |
 | [T-0382](T-0382-web-picker-rows-outline-kit.md) | Web kit: panel picker rows on outline Button | 2026-10-06 |
@@ -420,3 +419,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0391](T-0391-mobile-no-solid-pill-guard.md) | Mobile guard: no hand-rolled solid bg-accent/bg-danger Pressable | in-progress | auto | | |
 | [T-0380](T-0380-web-shell-back-icons-kit.md) | Web kit: settings Back, AI close and refresh on Button; drop unused AiPageShell frame | 2026-10-06 |
 | [T-0387](T-0387-mobile-profile-card-confirm-block-kit.md) | Mobile kit: profile card Confirm block on destructive Button | 2026-10-06 |
+| [T-0384](T-0384-mobile-explore-blocked-retry-buttons-kit.md) | Mobile kit: Explore, Blocked and panel Retry buttons on Button | 2026-10-06 |

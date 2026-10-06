@@ -1,7 +1,7 @@
 ---
 id: T-0384
 title: "Mobile kit: Explore Show more, Blocked Unblock and the sticker and GIF panel Retry buttons use the kit Button"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0384-mobile-explore-blocked-retry-buttons-kit
 model: auto
@@ -56,7 +56,7 @@ Four raw `Pressable` text pills are left outside the kit on these screens.
 `AGENTS.md`, `apps/mobile/src/components/ui/button.tsx`, each file around the line above, and the three tests' mock blocks.
 
 ### Allowed files
-`apps/mobile/src/app/explore.tsx`, `apps/mobile/src/app/settings/blocked.tsx`, `apps/mobile/src/components/chat/sticker-panel.tsx`, `apps/mobile/src/components/chat/gif-panel.tsx`, `apps/mobile/src/components/contacts/blocked-screen.test.tsx`, `apps/mobile/src/components/chat/sticker-panel.test.tsx`, `apps/mobile/src/components/chat/gif-panel.test.tsx`, `apps/mobile/src/components/chat/emoji-sheet.test.tsx`, `apps/mobile/src/components/chat/composer-gifs.test.tsx`, `work/T-0384-mobile-explore-blocked-retry-buttons-kit.md`.
+`apps/mobile/src/app/explore.tsx`, `apps/mobile/src/app/settings/blocked.tsx`, `apps/mobile/src/components/chat/sticker-panel.tsx`, `apps/mobile/src/components/chat/gif-panel.tsx`, `apps/mobile/src/components/contacts/blocked-screen.test.tsx`, `apps/mobile/src/components/chat/sticker-panel.test.tsx`, `apps/mobile/src/components/chat/gif-panel.test.tsx`, `apps/mobile/src/components/chat/emoji-sheet.test.tsx`, `apps/mobile/src/components/chat/composer-gifs.test.tsx`, `apps/mobile/src/lib/stickers-storage.test.ts` (mocks only; lead added it, round 1), `work/T-0384-mobile-explore-blocked-retry-buttons-kit.md`.
 
 ### Checks
 ```bash
@@ -73,4 +73,45 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Migrated the four raw `Pressable` pills to the kit `Button`, labels inside
+`<Text>`, per the spec table. `Pressable` imports kept everywhere (still used
+elsewhere in each file). No assertion changed.
+
+Changed files:
+- `apps/mobile/src/app/explore.tsx`: Show more -> `<Button variant="outline"
+  size="sm" ...>` (Button already imported).
+- `apps/mobile/src/app/settings/blocked.tsx`: Unblock -> `<Button
+  variant="outline" size="sm" ...>`; added the `Button` import.
+- `apps/mobile/src/components/chat/sticker-panel.tsx`: Retry -> `<Button
+  variant="ghost" ...>`; added the `Button` import.
+- `apps/mobile/src/components/chat/gif-panel.tsx`: Retry -> `<Button
+  variant="ghost" ...>`; added the `Button` import.
+- Test mocks only (spec-listed keys: `Platform.select`, reanimated
+  `useReducedMotion`, `TextClassContext`, `@/lib/depth` key exports,
+  `@/components/ui/use-key-press`): `blocked-screen.test.tsx`,
+  `sticker-panel.test.tsx`, `gif-panel.test.tsx`, `emoji-sheet.test.tsx`,
+  `composer-gifs.test.tsx`, plus `apps/mobile/src/lib/stickers-storage.test.ts`
+  (added to Allowed files after unblock; it imports `persistRecent` from the
+  real `sticker-panel`, so it needed the same Button mock chain). Two extras
+  beyond the listed keys were needed because the newly rendered subtrees
+  pull them in: `well` (used by
+  `SearchField`, rendered inside `GifPanel`, reached from gif-panel,
+  emoji-sheet and composer-gifs tests) and `avatarShade` (used by `Avatar`,
+  rendered by the blocked screen). No assertion changed.
+
+Commands and real results:
+- `pnpm install`: exit 0, no output (silent).
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot
+  blocked-screen sticker-panel gif-panel emoji-sheet composer-gifs`: 5 files
+  passed, 50 tests passed.
+- `pnpm gate`: install PASS, format PASS, lint PASS, typecheck PASS,
+  tests PASS (`@zilar/mobile`). Scope check: every changed file is inside
+  the Allowed files. GATE PASS.
+
+Security checklist: no secrets, no deletes/updates, no caps, no permission
+checks, no routes, no audit entries. This task only swaps button components;
+no user data reaches logs or errors.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-06). Explore Show more and Blocked Unblock are kit outline `sm`, the sticker and GIF Retry kit ghost, labels inside `<Text>`. The block came from my spec missing `lib/stickers-storage.test.ts` (it imports sticker-panel); I allowed it and the worker added mocks only. No assertion changed. Pre-review clean (0 findings).

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, Image, Modal, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { API_URL } from '@/lib/auth';
 import { getSessionToken } from '@/lib/session-token';
@@ -162,14 +163,9 @@ export function StickerGrid({
           <Text className="text-center text-[13px] text-muted-foreground">
             Couldn&apos;t load stickers.
           </Text>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Retry loading stickers"
-            onPress={onRetry}
-            className="rounded-[10px] px-4 py-2 active:bg-surface-raised"
-          >
-            <Text className="text-[15px] font-semibold text-foreground">Retry</Text>
-          </Pressable>
+          <Button variant="ghost" accessibilityLabel="Retry loading stickers" onPress={onRetry}>
+            <Text>Retry</Text>
+          </Button>
         </View>
       ) : rows.length === 0 && recentChoices.length === 0 ? (
         <View className="h-[180px] items-center justify-center px-4">
