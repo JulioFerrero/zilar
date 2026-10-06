@@ -358,4 +358,5 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0326](T-0326-web-segmented-2.md) | Web kit: New group and sticker pack visibility on SegmentedControl | 2026-10-06 |
 | [T-0327](T-0327-web-stickers-buttons.md) | Web kit: Stickers pack actions on Button; glyph arrows and star become icons | 2026-10-06 |
 | [T-0328](T-0328-web-glyph-icons.md) | Web: star and close glyphs become lucide icons | 2026-10-06 |
+| [T-0331](T-0331-web-share-tooltip.md) | Web: disabled Share on an imported pack shows its reason again | in-progress | auto | T-0327 | |
 | [T-0330](T-0330-web-segmented-fix.md) | Web kit: SegmentedControl ignores re-clicks; PackEditor glyphs become icons | 2026-10-06 |
