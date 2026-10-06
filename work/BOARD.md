@@ -9,6 +9,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
+| [T-0299](T-0299-mobile-invite-links-keyboard.md) | Mobile fix: the invite links sheet moves above the keyboard and scrolls | todo | auto | T-0297 | QA run 13 |
 
 ## Follow-ups
 
