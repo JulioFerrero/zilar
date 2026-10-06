@@ -9,6 +9,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
+| [T-0326](T-0326-web-segmented-2.md) | Web kit: New group and sticker pack visibility on SegmentedControl | in-progress | auto | T-0324 | last raw radios |
 | [T-0325](T-0325-web-stickers-kit.md) | Web kit: Stickers page states and pill buttons | in-progress | auto | none | |
 
 ## Follow-ups
