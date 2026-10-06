@@ -1,7 +1,7 @@
 ---
 id: T-0300
 title: "Mobile kit migration: new channel, new group, new topic and handle fields use the kit TextField"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0300-mobile-text-field-3
 model: auto
@@ -71,4 +71,89 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### Status: ready for review
+
+All five fields now render through the kit `TextField`, and none of the
+four source files contains `#8a8a8a` or a raw `<TextInput` any more.
+
+### What I did
+
+- **`apps/mobile/src/components/chat/new-channel-sheet.tsx`** — "Channel name"
+  and "Channel description" (`multiline`) are now `TextField`. Removed the
+  well wrapper `View`s; wrapper margins moved onto the fields
+  (`className="mt-3"`, `className="mt-2"`). Kept every other prop (`value`,
+  handlers, `accessibilityLabel`, `autoCapitalize`, `maxLength`,
+  `placeholder`, `multiline`). Removed `TextInput` from the `react-native`
+  import.
+- **`apps/mobile/src/components/chat/new-group-sheet.tsx`** — "Group name"
+  (`autoFocus`) is now `TextField` with `className="mt-3"`. Same import
+  cleanup.
+- **`apps/mobile/src/components/chat/new-topic-sheet.tsx`** — "Topic name" is
+  now `TextField` with `className="mt-1"`. Same import cleanup.
+- **`apps/mobile/src/components/chat/visibility-fields.tsx`** — "Group
+  handle" (`autoCapitalize="none"`, `autoCorrect={false}`, `maxLength={32}`)
+  is now `TextField` with `className="mt-1"`. Same import cleanup.
+- **Tests (mocks only):** `new-channel-sheet.test.tsx`,
+  `new-group-sheet.test.tsx` and `visibility-fields.test.tsx` each gained
+  only the `nativewind` mock (`useColorScheme: () => ({ colorScheme: 'dark'
+  })`, same as T-0297), since the sources now import `TextField`, which
+  imports `nativewind`. No assertion changed. The other three listed test
+  files needed no change: `new-chat-button`, `floating-tab-bar` and
+  `profile-view` tests already mock `nativewind` (verified the former loads
+  the real group sheet through the un-mocked import).
+- Verified with `grep` that none of the four source files contains
+  `#8a8a8a` or `TextInput` any more.
+
+### Security checklist
+
+- No secrets, tokens or keys in logs, errors or URLs; only the input
+  component changed, no logic touched.
+- No new routes, deletes, caps or audit entries. No permission logic
+  touched.
+
+### Files changed
+
+`apps/mobile/src/components/chat/new-channel-sheet.tsx`,
+`apps/mobile/src/components/chat/new-group-sheet.tsx`,
+`apps/mobile/src/components/chat/new-topic-sheet.tsx`,
+`apps/mobile/src/components/chat/visibility-fields.tsx`,
+`apps/mobile/src/components/chat/new-channel-sheet.test.tsx` (mock only),
+`apps/mobile/src/components/chat/new-group-sheet.test.tsx` (mock only),
+`apps/mobile/src/components/chat/visibility-fields.test.tsx` (mock only),
+`work/T-0300-mobile-text-field-3.md`.
+
+### Commands run (real results)
+
+- `pnpm install` → done, no errors.
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot
+  new-channel-sheet new-group-sheet visibility-fields new-chat-button
+  floating-tab-bar profile-view` → first run: 3 suites failed at import
+  (`SyntaxError: Unexpected token 'typeof'` from the new `nativewind`
+  import via `TextField`); after adding the `nativewind` mock to the three
+  failing test files: **6 files passed, 63 tests passed** (the
+  `<X /> is using incorrect casing` lines are the pre-existing string-mock
+  noise).
+- `pnpm gate` (final run):
+  ```
+  gate: 8 changed file(s) against main
+  PASS  install (frozen)  (1.7s)
+  PASS  format  (21.1s)
+  PASS  lint  (1.0s)
+  PASS  typecheck  (5.9s)
+  PASS  tests @zilar/mobile  (1.8s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Open questions
+
+None.
+
 ## Review (written by Claude)
+
+**Approved.** Clean pre-review (0 nits), no fix rounds (Muse, peak).
+- The five fields are on `TextField`, and the wrapper margins moved to `className`.
+- No `#8a8a8a` or raw `<TextInput` is left in the four files (checked with the lead's grep).
+- The test changes are the `nativewind` mocks only.
+
+**Still to do:** emulator QA in the next run.

@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-0300](T-0300-mobile-text-field-3.md) | Mobile kit migration: create-sheet fields use the kit TextField | todo | auto | T-0297 | batch 3 |
 | [T-0301](T-0301-mobile-text-field-4.md) | Mobile kit migration: role name and topic link fields use the kit TextField | todo | auto | T-0297 | batch 4 |
 
 ## Follow-ups
@@ -330,3 +329,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0297](T-0297-mobile-text-field-2.md) | Mobile kit: integrations, connections, AI edit and invite-link fields use the kit TextField | 2026-10-06 |
 | [T-0298](T-0298-web-kit-text-input-6.md) | Web kit: Explore search, sticker pack search and task-strip link fields use the kit TextInput | 2026-10-06 |
 | [T-0299](T-0299-mobile-invite-links-keyboard.md) | Mobile: invite links sheet moves above the keyboard and scrolls | 2026-10-06 |
+| [T-0300](T-0300-mobile-text-field-3.md) | Mobile kit: create-sheet fields use the kit TextField | 2026-10-06 |

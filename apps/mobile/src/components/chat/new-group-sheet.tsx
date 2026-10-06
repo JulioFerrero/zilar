@@ -1,6 +1,6 @@
 import { Check } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
-import { Pressable, ScrollView, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, View } from 'react-native';
 
 import { Avatar } from '@/components/chat/avatar';
 import {
@@ -11,6 +11,7 @@ import {
 } from '@/components/chat/visibility-fields';
 import { useDirectoryApi } from '@/components/directory/use-directory-api';
 import { Text } from '@/components/ui/text';
+import { TextField } from '@/components/ui/text-field';
 import type { Contact } from '@/lib/chat-api';
 import { ICON_COLOR } from '@/lib/depth';
 
@@ -244,19 +245,16 @@ export function NewGroupSheetBody({
       ) : (
         <>
           <Text className="text-[16px] font-semibold text-foreground">Group name</Text>
-          <View className="mt-3 rounded-[10px] border border-border-strong bg-well px-3 py-2">
-            <TextInput
-              value={title}
-              onChangeText={onTitle}
-              autoCapitalize="sentences"
-              autoFocus
-              placeholder="Group name"
-              placeholderTextColor="#8a8a8a"
-              accessibilityLabel="Group name"
-              maxLength={100}
-              className="text-[15px] text-foreground"
-            />
-          </View>
+          <TextField
+            value={title}
+            onChangeText={onTitle}
+            autoCapitalize="sentences"
+            autoFocus
+            placeholder="Group name"
+            accessibilityLabel="Group name"
+            maxLength={100}
+            className="mt-3"
+          />
           <VisibilityFields
             kind="group"
             visibility={visibility}
