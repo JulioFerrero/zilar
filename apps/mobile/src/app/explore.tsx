@@ -15,6 +15,7 @@ import {
   exploreActionTitle,
 } from '@/components/directory/explore-helpers';
 import { useDirectoryApi } from '@/components/directory/use-directory-api';
+import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { SearchField } from '@/components/ui/search-field';
 import { Text } from '@/components/ui/text';
@@ -282,17 +283,16 @@ function ExploreList() {
                 )}
                 <Text className="text-[13px] text-muted-foreground">{directorySubtitle(item)}</Text>
               </View>
-              <Pressable
-                accessibilityRole="button"
+              <Button
+                variant="default"
+                size="sm"
+                className="shrink-0"
                 accessibilityLabel={`${exploreActionTitle(item)} ${item.title}`}
                 disabled={joiningId !== undefined}
                 onPress={() => join(item)}
-                className="shrink-0 rounded-full bg-accent px-4 py-1.5 active:opacity-90 disabled:opacity-60"
               >
-                <Text className="text-[14px] font-medium text-accent-foreground">
-                  {joiningId === item.id ? 'Joining…' : exploreActionTitle(item)}
-                </Text>
-              </Pressable>
+                <Text>{joiningId === item.id ? 'Joining…' : exploreActionTitle(item)}</Text>
+              </Button>
             </View>
           )}
           ListEmptyComponent={

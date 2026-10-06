@@ -10,6 +10,7 @@ import {
   type CreateVisibility,
 } from '@/components/chat/visibility-fields';
 import { useDirectoryApi } from '@/components/directory/use-directory-api';
+import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import type { Contact } from '@/lib/chat-api';
@@ -222,24 +223,17 @@ export function NewGroupSheetBody({
             </ScrollView>
           )}
           <View className="mt-4 flex-row justify-end gap-2">
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Cancel"
-              disabled={busy}
-              onPress={onClose}
-              className="rounded-full px-4 py-2 active:bg-surface-raised disabled:opacity-60"
-            >
-              <Text className="text-[15px] text-muted-foreground">Cancel</Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
+            <Button variant="ghost" accessibilityLabel="Cancel" disabled={busy} onPress={onClose}>
+              <Text>Cancel</Text>
+            </Button>
+            <Button
+              variant="default"
               accessibilityLabel="Next"
               disabled={!canGoNext(selected) || busy}
               onPress={onNext}
-              className="rounded-full bg-accent px-4 py-2 active:opacity-90 disabled:opacity-60"
             >
-              <Text className="text-[15px] font-medium text-accent-foreground">Next</Text>
-            </Pressable>
+              <Text>Next</Text>
+            </Button>
           </View>
         </>
       ) : (
@@ -275,26 +269,17 @@ export function NewGroupSheetBody({
             </Text>
           ) : null}
           <View className="mt-3 flex-row justify-end gap-2">
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Back"
-              disabled={busy}
-              onPress={onBack}
-              className="rounded-full px-4 py-2 active:bg-surface-raised disabled:opacity-60"
-            >
-              <Text className="text-[15px] text-muted-foreground">Back</Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
+            <Button variant="ghost" accessibilityLabel="Back" disabled={busy} onPress={onBack}>
+              <Text>Back</Text>
+            </Button>
+            <Button
+              variant="default"
               accessibilityLabel="Create group"
               disabled={busy}
               onPress={onCreate}
-              className="rounded-full bg-accent px-4 py-2 active:opacity-90 disabled:opacity-60"
             >
-              <Text className="text-[15px] font-medium text-accent-foreground">
-                {busy ? 'Creating…' : 'Create'}
-              </Text>
-            </Pressable>
+              <Text>{busy ? 'Creating…' : 'Create'}</Text>
+            </Button>
           </View>
         </>
       )}

@@ -1,7 +1,7 @@
 ---
 id: T-0353
 title: "Mobile kit migration: the New group sheet step buttons and the Explore join button use the kit Button"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0353-mobile-new-group-explore-buttons-kit
 model: auto
@@ -67,4 +67,43 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**Status:** done, ready for review.
+
+**What I did**
+Replaced the five hand-rolled accent-pill `Pressable`s with the kit `Button` (`apps/mobile/src/components/ui/button.tsx`), following the spec table:
+- `apps/mobile/src/components/chat/new-group-sheet.tsx`: "Cancel" → `variant="ghost" size="default"`; "Next" → `variant="default" size="default"`; "Back" → `variant="ghost" size="default"`; "Create group" → `variant="default" size="default"` (busy text `Creating…` kept). Left the dialog card wrapper and contact rows alone, so `Pressable` stays in the import.
+- `apps/mobile/src/app/explore.tsx`: join/open button → `variant="default" size="sm" className="shrink-0"`, busy text `Joining…` kept. Left the kind-filter radios, Retry and Show-more `Pressable`s alone, so `Pressable` stays in the import.
+- Kept every `accessibilityLabel`, `disabled`, `onPress`, and the visible text in all five. Dropped the old pill classes and the child `Text` colour/size classes (kit `TextClassContext` sets them). Dropped `accessibilityRole="button"` since the kit `Button` sets `role="button"` (T-0348/T-0351 pattern).
+- Tests, mocks only: `new-group-sheet.test.tsx` — added `Platform.select` to the `react-native` mock, a `react-native-reanimated` `useReducedMotion` mock, `TextClassContext` on the `@/components/ui/text` mock, the `@/lib/depth` key exports (`primaryKey`, `pressStyle`, `KEY_PRIMARY_PRESSED_SHADOW`, alongside the existing `ICON_COLOR`), and an `@/components/ui/use-key-press` mock. The `use-key-press` mock is needed here for a different reason than T-0351: this test calls the body as a plain function, so the real `Button`'s hook would throw an invalid-hook-call; the mock keeps the real `Button` rendering (labels, `disabled`, `onPress` all pass through to its inner `Pressable`, which the `collect`/`button`/`press` helpers find). `new-chat-button.test.tsx` — added `Platform.select` (the kit `Button` calls it at module init) and `TextClassContext`; its reanimated and `@/lib/depth` key mocks already existed, and no `useState` is forced there so no `use-key-press` mock was needed.
+
+**Files changed**
+- `apps/mobile/src/components/chat/new-group-sheet.tsx` — four `Pressable`s now kit `Button`s; `Button` imported.
+- `apps/mobile/src/app/explore.tsx` — one `Pressable` now kit `Button`; `Button` imported.
+- `apps/mobile/src/components/chat/new-group-sheet.test.tsx` — mocks only (see above).
+- `apps/mobile/src/components/chat/new-chat-button.test.tsx` — mocks only (see above).
+- `work/T-0353-mobile-new-group-explore-buttons-kit.md` — status and this Report.
+
+**Commands run and results**
+- `pnpm install` (worktree) — succeeded (`Done in 10.4s`).
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot new-group-sheet new-chat-button` — `Test Files 2 passed (2)`, `Tests 28 passed (28)` (only the usual string-mock casing warnings on stderr). Re-ran after the prettier fix: same 28 passed.
+- `pnpm gate` (repo root) — first run failed `format` (prettier wanted the short `<Button>` lines collapsed onto one line, the T-0352 pitfall); after `pnpm exec prettier --write` on the file, final output:
+  ```
+  gate: 5 changed file(s) against main
+  PASS  install (frozen)  (0.9s)
+  PASS  format  (11.2s)
+  PASS  lint  (0.8s)
+  PASS  typecheck  (5.8s)
+  PASS  tests @zilar/mobile  (1.4s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+**Deviations from the spec:** none. One spec-note difference: the `use-key-press` mock in `new-group-sheet.test.tsx` is required by the plain-function render (invalid hook call otherwise), not by forced `useState` order — still mocks-only in an Allowed file.
+
+**Blocked / needs a decision:** none.
+
+**Security checklist:** no secrets, routes, deletes, caps, permissions, or audit entries touched — UI button migration only; `disabled`/`busy` guards unchanged.
+
 ## Review (written by Claude)
+
+**Approved** (pre-review clean, 0 nits). The New group buttons are kit `Button`s: Cancel and Back `ghost`, Next and Create group `default`. They leave out `size`, so they get the default size, which matches the table. The Explore join button is `default` `sm` with `shrink-0`. The lead grep found the labels kept. Both tests changed mocks only.

@@ -19,14 +19,24 @@ import type { Contact } from '@/lib/chat-api';
 // `react-native` stubbed (same pattern as `new-message-sheet.test.tsx`):
 // Node only, no simulator, no new dependency.
 vi.mock('react-native', () => ({
+  Platform: { OS: 'ios', select: (options: Record<string, unknown>) => options['ios'] },
   Pressable: 'Pressable',
   ScrollView: 'ScrollView',
   TextInput: 'TextInput',
   View: 'View',
 }));
 
+vi.mock('react-native-reanimated', () => ({
+  useReducedMotion: () => false,
+}));
+
+vi.mock('@/components/ui/use-key-press', () => ({
+  useKeyPress: () => ({ pressed: false, reduceMotion: false, setPressed: () => {} }),
+}));
+
 vi.mock('@/components/ui/text', () => ({
   Text: 'Text',
+  TextClassContext: { Provider: 'TextClassContextProvider' },
 }));
 
 vi.mock('nativewind', () => ({
@@ -55,6 +65,9 @@ vi.mock('@/components/directory/use-directory-api', () => ({
 
 vi.mock('@/lib/depth', () => ({
   ICON_COLOR: '#d4d4d4',
+  KEY_PRIMARY_PRESSED_SHADOW: {},
+  pressStyle: () => ({}),
+  primaryKey: {},
 }));
 
 interface TestElement {
