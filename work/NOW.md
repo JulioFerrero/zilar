@@ -24,7 +24,9 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0309 | Mobile: chat list + Stickers search on SearchField | coding (Muse, peak) | |
+| T-0311 | Mobile: GIF search on SearchField, Telegram import field on TextField | coding (Muse, peak) | last plain mobile fields |
+
+~04:00 local: merged T-0309. No hand-rolled search bars are left on mobile. Left raw on purpose: the composer, OtpInput, the sticker-pack emoji cell and the folder name row (it has an inline counter).
 
 ~03:50 local: FIRST FULL IMAGES RUN GREEN (37400612697, tip c1837ca3), about 3.5 min end to end. zilar-web took 40 s (T-0304 native builder; the old QEMU build was still running after 55 min), server 3.5 min, postgres and ejabberd under 1 min. The "Deploy to Coolify" job ran and logged "Auto-deploy skipped: set COOLIFY_URL, COOLIFY_TOKEN and COOLIFY_SERVICE_UUID". Once Julio adds the secrets, every green main deploys by itself.
 
