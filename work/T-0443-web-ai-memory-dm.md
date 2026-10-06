@@ -1,7 +1,7 @@
 ---
 id: T-0443
 title: "AI memory M5a (web): a Memory section in the AI panel shows what the AI remembers in this DM; forget a fact, clear memory"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0443-web-ai-memory-dm
 model: auto
@@ -103,4 +103,40 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**What I did**
+- **`apps/web/src/lib/api.ts`** — added the AI-memory section: `aiMemorySchema` + `export type AiMemory`, `getAiMemory`, `forgetAiMemoryFact`, `clearAiMemory`. Queries use `URLSearchParams`; the DELETE and POST answers parse with `z.object({ ok: z.literal(true) })`.
+- **`apps/web/src/mock/api.ts`** — added `MockAiMemory` and an `aiMemory: Map<string, MockAiMemory>` on the mock state, keyed by `${chat}|${ai}` and seeded on the first read (two facts, three lines: one `#0-15 …` summary and two `#16 2026-10-01 …` messages). GET answers `{ facts, lines, canChange: true }`; DELETE removes one fact (unknown id → 404 `not_found`); clear empties both lists. All routes live in the main `mockRequest` chain next to the pins block.
+- **New `apps/web/src/components/ais/AiMemorySection.tsx`** — closed: `<section aria-label="Memory">`, heading `Memory`, the help line, and a ghost `Button` "Show memory" (Brain); no request until it is pressed. Open: an inline loading `StateMessage`, then the content, or an error `StateMessage` with a Retry action. Content: "Pinned facts" (per-fact Trash2 icon button with `aria-label="Forget this fact"`, inline `role="alert"` line on failure, "Nothing pinned yet." when empty) and "Earlier in this chat" (leading `#<n>` / `#<lo>-<hi>` token stripped, 13 px muted, `whitespace-pre-wrap break-words`, "Nothing older than the recent messages yet." when empty). When `canChange`, a destructive outline "Clear memory" opens the `ConfirmDialog` from the spec; confirming calls `clearAiMemory` then reloads, a failure shows "Could not clear the memory" (`role="alert"`). A "Hide memory" button closes the section.
+- **`apps/web/src/components/ais/AiPanel.tsx`** — render `<AiMemorySection chat={chat.id} aiId={ai.id} aiName={ai.name} />` right after `<UsageBlock ai={ai} />`.
+- **New `apps/web/src/components/ais/AiMemorySection.test.tsx`** — 10 tests: no fetch before Show memory then one GET to the right URL; facts and stripped lines render; Forget DELETEs the right URL and removes the row; Clear asks first (Cancel sends nothing, Clear POSTs `{ chat, ai }` and reloads); `canChange: false` hides Forget and Clear; the empty texts; error → Retry loads again; forget/clear failure alerts; Hide memory closes.
+
+**Deviations / notes**
+- "destructive outline `Button`": the kit has no combined variant, so I used `variant="outline"` with `border-danger/40 text-danger hover:bg-danger/10`.
+- The loading flag is set from the event that starts a load (Show/Retry/after-clear), not synchronously inside the effect: oxlint's `react(set-state-in-effect)` rejects the latter (it caught my first version).
+- `AiPanel.test.tsx` was not changed and still passes.
+
+**Commands and results**
+- `pnpm install`: done; only the pre-existing `@types/react` peer warning in `apps/mobile`.
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot AiMemorySection AiPanel`: 2 files, **42 passed** (10 new + 32 AiPanel).
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot AiMemorySection`: 1 file, **10 passed**.
+- `pnpm gate` (two earlier red runs were fixed inside scope: prettier on 4 files, then a lint rule in the new test, then `noUncheckedIndexedAccess` typing in the new test):
+```
+gate: 6 changed file(s) against main
+PASS  install (frozen)  (1.6s)
+PASS  format  (31.1s)
+PASS  lint  (0.7s)
+PASS  typecheck  (9.5s)
+PASS  tests @zilar/web  (52.6s)
+scope: every changed file is inside the Allowed files
+GATE PASS
+```
+
+**Files changed** (all inside the Allowed files): `apps/web/src/lib/api.ts`, `apps/web/src/mock/api.ts`, `apps/web/src/components/ais/AiMemorySection.tsx` (new), `apps/web/src/components/ais/AiMemorySection.test.tsx` (new), `apps/web/src/components/ais/AiPanel.tsx`, `work/T-0443-web-ai-memory-dm.md`.
+
+**Security checklist:** client-only change; no secrets or raw server text in the UI (fixed sentences), no logs added, no routes, no permissions changed.
+
+**Open questions:** none.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-06). AiMemorySection sits after Usage in the DM AI panel and fetches nothing until Show memory. It shows the pinned facts with Forget (when canChange), the earlier lines with the #ids stripped, and Clear memory behind a ConfirmDialog, followed by a reload. Errors are fixed sentences and Retry reloads. Mock mode has seeded data and lib/api has getAiMemory, forgetAiMemoryFact and clearAiMemory. Nit for a later pass: a double tap on Forget can show a false error.

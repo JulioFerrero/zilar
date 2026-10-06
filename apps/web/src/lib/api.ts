@@ -922,6 +922,59 @@ export async function unpinMessage(id: string): Promise<void> {
   await request(`/pins/${encodeURIComponent(id)}`, pinSchema, { method: 'DELETE' });
 }
 
+// --- AI memory (T-0443) ------------------------------------------------------
+// The wire contract lives in apps/server/src/agents/memory/routes.ts. `chat`
+// is the DM peer's bare JID (the AI's JID in a DM); `aiId` is the AI's id. The
+// server answers the pinned facts and the cover lines; `canChange` is false
+// for a room member who may only view.
+
+const aiMemoryFactSchema = z.object({
+  id: z.string(),
+  text: z.string(),
+});
+
+export const aiMemorySchema = z.object({
+  facts: z.array(aiMemoryFactSchema),
+  lines: z.array(z.string()),
+  canChange: z.boolean(),
+});
+
+export type AiMemory = z.infer<typeof aiMemorySchema>;
+
+const okResponseSchema = z.object({ ok: z.literal(true) });
+
+export function getAiMemory(chat: string, aiId: string): Promise<AiMemory> {
+  const params = new URLSearchParams();
+  params.set('chat', chat);
+  params.set('ai', aiId);
+  return request(`/ai-memory?${params.toString()}`, aiMemorySchema);
+}
+
+export async function forgetAiMemoryFact(
+  chat: string,
+  aiId: string,
+  factId: string,
+): Promise<void> {
+  const params = new URLSearchParams();
+  params.set('chat', chat);
+  params.set('ai', aiId);
+  await request(
+    `/ai-memory/facts/${encodeURIComponent(factId)}?${params.toString()}`,
+    okResponseSchema,
+    {
+      method: 'DELETE',
+    },
+  );
+}
+
+export async function clearAiMemory(chat: string, aiId: string): Promise<void> {
+  await request('/ai-memory/clear', okResponseSchema, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat, ai: aiId }),
+  });
+}
+
 // --- Media gallery (T-0434) --------------------------------------------------
 // The wire contract lives in apps/server/src/media/routes.ts. `chat` is a room
 // bare JID for groups/topics, or a DM peer's bare JID. `type` maps to a panel

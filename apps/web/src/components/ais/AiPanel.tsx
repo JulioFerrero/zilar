@@ -28,6 +28,7 @@ import { StateMessage } from '@/components/ui/state-message';
 import { Button } from '@/components/ui/button';
 import { FieldError } from './AiPageShell';
 import { AiActivity } from './AiActivity';
+import { AiMemorySection } from './AiMemorySection';
 import { AlwaysAllowedList } from '@/components/approvals/AlwaysAllowedList';
 import { RoutinesSection } from '@/components/tools/RoutinesSection';
 import { ToolsSection } from '@/components/tools/ToolsSection';
@@ -626,6 +627,8 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
               </div>
 
               <UsageBlock ai={ai} />
+
+              <AiMemorySection chat={chat.id} aiId={ai.id} aiName={ai.name} />
 
               {/* T-0165: the AI's picture, for the AI's owner. */}
               <AiPictureSection ai={ai} onChanged={setAi} />
