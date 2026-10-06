@@ -11,6 +11,8 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0407](T-0407-web-archived-dismiss-kit.md) | Web kit: Archived disclosure and Dismiss notice | running | auto | — | |
 | [T-0408](T-0408-mobile-pins-buttons-kit.md) | Mobile kit: pins banner and sheet buttons | running | auto | — | |
+| [T-0409](T-0409-web-forwarded-header.md) | Forwarding step 2 (web): received forwards show "Forwarded from" | running | auto | — | |
+| [T-0410](T-0410-server-media-index.md) | Media gallery 1a (server): index tables + indexer | running | auto | — | the only schema task |
 
 ## Follow-ups
 
