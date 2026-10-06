@@ -1,7 +1,7 @@
 ---
 id: T-0388
 title: "Web kit: the voice transcript \"Aa\" toggle becomes a Captions icon on the kit IconButton; the file Retry upload uses IconButton; transcript Retry and Transcribing… use the kit"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0388-web-voice-file-key-icons-kit
 model: auto
@@ -65,4 +65,27 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Did steps 1-4 of the spec; files changed are inside the Allowed files.
+
+- `apps/web/src/components/VoiceMessage.tsx`:
+  - transcript toggle is now `<IconButton size={24} radius={6} aria-label={transcriptOpen ? 'Hide transcript' : 'Show transcript'} aria-pressed={transcriptOpen} onClick={toggleTranscript}><Captions className="size-3.5" aria-hidden="true" /></IconButton>`; removed the `Aa` glyph.
+  - "Transcribing…" is now `<div className="mt-1.5"><StateMessage kind="loading" size="inline" title="Transcribing…" /></div>`.
+  - transcript Retry is now `<Button type="button" variant="secondary" size="sm" onClick={retryTranscript}>Retry</Button>` inside `<div className="mt-1.5 flex items-center gap-2 text-[14px]">` (was a `<p>`, so the button is no longer nested in a paragraph).
+  - imports added: `Captions` (lucide), `IconButton`, `StateMessage`. `Button` was already imported.
+- `apps/web/src/components/FileMessage.tsx`: Retry upload is now `<IconButton size={32} radius={8} aria-label="Retry upload" onClick={onRetry}><RotateCcw className="size-4" aria-hidden="true" /></IconButton>`; added `import { IconButton } from '@/components/ui/icon-button'`. The Download `<a>` is untouched per the spec ("leave the Download `<a>` … alone; it is a link").
+
+Acceptance status:
+- No `Aa` text and no `<button` in `VoiceMessage.tsx`: yes (grep clean).
+- No `<button` in `FileMessage.tsx`: yes.
+- **Deviation / conflict to flag:** the acceptance also says "no `key-icon` class remain in `VoiceMessage.tsx` or `FileMessage.tsx`". `VoiceMessage.tsx` is clean, but `FileMessage.tsx:62` still has one `key-icon` on the Download `<a>`, because the spec's "Verified facts" explicitly says to leave it alone (it is a link, not a key button) and `NOW.md` lists only "FileMessage key-icon retry" as still raw. I followed the explicit spec. Removing that class would require either styling the link like a kit button (no kit link/key component exists) or adding a file outside the Allowed files. Question for the lead: if the acceptance bullet is meant literally, say how the Download link should be restyled; otherwise the spec text is authoritative.
+
+Commands (real results):
+- `pnpm install --frozen-lockfile`: exit 0 (17.9s).
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot VoiceMessage FileMessage`: 3 files, 16 tests passed, exit 0 (the one stderr line "Not implemented: HTMLMediaElement's pause() method" is jsdom noise).
+- `pnpm gate` (repo root): `PASS install (frozen)`, `PASS format`, `PASS lint`, `PASS typecheck`, `PASS tests @zilar/web`, `scope: every changed file is inside the Allowed files`, `GATE PASS`. The gate reported 3 changed files against main (the two source files plus this task file).
+
+Security checklist: UI-only change; no secrets/tokens touched or logged; no deletes/updates, caps, uniqueness rules, permission checks, routes, rate limits or audit entries involved.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-06). The transcript toggle is a kit IconButton with the lucide Captions icon (no more "Aa"); Transcribing… is an inline StateMessage; transcript Retry is a kit secondary Button outside a `<p>`; file Retry upload is a kit IconButton. The follow-up is my acceptance wording: the Download `<a>` keeps `key-icon`, as the spec said to leave it. Pre-review clean otherwise.

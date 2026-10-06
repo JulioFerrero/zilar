@@ -1,5 +1,6 @@
 import type { Attachment } from '@zilar/chat-core';
 import { Download, FileText, RotateCcw } from 'lucide-react';
+import { IconButton } from '@/components/ui/icon-button';
 import { formatFileSize, safeHttpUrl } from '@/lib/attachments';
 import { cn } from '@/lib/utils';
 
@@ -48,14 +49,9 @@ export function FileMessage({
           </div>
         </div>
         {failed ? (
-          <button
-            type="button"
-            aria-label="Retry upload"
-            onClick={onRetry}
-            className="key-icon flex size-8 shrink-0 items-center justify-center rounded-[8px]"
-          >
+          <IconButton size={32} radius={8} aria-label="Retry upload" onClick={onRetry}>
             <RotateCcw className="size-4" aria-hidden="true" />
-          </button>
+          </IconButton>
         ) : href !== undefined && !uploading ? (
           <a
             href={href}
