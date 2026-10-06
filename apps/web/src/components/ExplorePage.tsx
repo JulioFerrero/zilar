@@ -5,6 +5,7 @@ import { useChatStoreApi } from '@/store/ChatStoreProvider';
 import { Avatar } from '@/components/Avatar';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
+import { TextInput } from '@/components/ui/text-input';
 import { cn } from '@/lib/utils';
 
 type KindFilter = 'all' | 'group' | 'channel';
@@ -150,14 +151,14 @@ export function ExplorePage({ onClose }: { onClose: () => void }) {
       <p className="mt-1 text-[14px] text-muted-foreground">
         Public groups and channels anyone can join.
       </p>
-      <input
+      <TextInput
         ref={searchRef}
         value={query}
         maxLength={100}
         onChange={(event) => setQuery(event.target.value)}
         placeholder="Search by name or @handle"
         aria-label="Search public groups and channels"
-        className="mt-3 w-full rounded-lg border border-input bg-background px-3 py-2 text-[15px] outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40"
+        className="mt-3"
       />
       <div className="mt-2 flex gap-2" role="radiogroup" aria-label="Kind filter">
         {(

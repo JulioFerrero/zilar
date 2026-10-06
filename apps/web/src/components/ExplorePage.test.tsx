@@ -160,4 +160,12 @@ describe('ExplorePage', () => {
 
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+
+  it('renders the search as the kit TextInput and focuses it initially', async () => {
+    renderExplore();
+
+    const search = screen.getByLabelText('Search public groups and channels');
+    expect(search.className).toContain('well-surface');
+    await waitFor(() => expect(document.activeElement).toBe(search));
+  });
 });

@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-0298](T-0298-web-kit-text-input-6.md) | Web kit migration 18: Explore search, sticker search, task-strip link fields | in_progress | auto | T-0295 | last plain-field batch |
 
 ## Follow-ups
 
@@ -327,3 +326,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0295](T-0295-web-kit-text-input-5.md) | Web kit: sticker pack, machine rename and model picker fields use the kit TextInput | 2026-10-06 |
 | [T-0296](T-0296-mobile-remove-add-contact-sheet.md) | Mobile cleanup: remove the unused AddContactSheet; resolveContactChat moves to add-contact.ts | 2026-10-06 |
 | [T-0297](T-0297-mobile-text-field-2.md) | Mobile kit: integrations, connections, AI edit and invite-link fields use the kit TextField | 2026-10-06 |
+| [T-0298](T-0298-web-kit-text-input-6.md) | Web kit: Explore search, sticker pack search and task-strip link fields use the kit TextInput | 2026-10-06 |

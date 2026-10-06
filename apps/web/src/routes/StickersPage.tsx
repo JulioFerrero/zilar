@@ -6,6 +6,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { PackEditor } from '@/components/PackEditor';
 import { TelegramImportDialog } from '@/components/TelegramImportDialog';
 import { Button } from '@/components/ui/button';
+import { TextInput } from '@/components/ui/text-input';
 import { useIsServerOwner } from '@/lib/useIsServerOwner';
 import {
   addStickerPanelPack,
@@ -511,13 +512,13 @@ export function StickersPage() {
                 void search();
               }}
             >
-              <input
+              <TextInput
                 value={query}
                 aria-label="Search sticker packs"
                 placeholder="Search shared packs"
                 maxLength={60}
                 onChange={(event) => setQuery(event.target.value)}
-                className="min-w-0 flex-1 rounded-lg border border-input bg-background px-3 py-2 text-[15px] outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40"
+                className="min-w-0 flex-1"
               />
               <Button type="submit" size="lg" disabled={discoverBusy}>
                 Search

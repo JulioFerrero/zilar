@@ -155,6 +155,7 @@ describe('StickersPage', () => {
     renderPage(fetchMock);
 
     await screen.findByText('Cats');
+    expect(screen.getByLabelText('Search sticker packs').className).toContain('well-surface');
     fireEvent.click(screen.getByRole('button', { name: 'Add' }));
     await waitFor(() => {
       expect(calls.some((call) => call.startsWith('PUT /api/sticker-panel/'))).toBe(true);
