@@ -166,6 +166,17 @@ describe('channels', () => {
     await waitFor(() => expect(leaveChannel).toHaveBeenCalledWith('c-acme'));
   });
 
+  it('closes the channel panel on Escape', () => {
+    renderApp('/c/c-acme', { chats: [channelChat('owner')] });
+
+    fireEvent.click(screen.getByLabelText('Open Acme Announcements channel info'));
+    expect(screen.getByRole('dialog', { name: 'Acme Announcements channel info' })).toBeTruthy();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    expect(screen.queryByRole('dialog', { name: 'Acme Announcements channel info' })).toBeNull();
+  });
+
   it('shows the description and subscriber count in the panel', () => {
     renderApp('/c/c-acme', { chats: [channelChat('owner')] });
 

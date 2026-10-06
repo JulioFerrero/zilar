@@ -270,6 +270,35 @@ describe('GroupPanel', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it('closes only the topmost dialog on Escape', async () => {
+    // The panel's picture section opens the kit crop Dialog. jsdom never
+    // loads images, so stub `Image` to resolve the natural size the way a
+    // real load would, which reaches the dialog.
+    class LoadedImage {
+      decoding = 'async';
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      naturalWidth = 120;
+      naturalHeight = 120;
+      set src(_value: string) {
+        queueMicrotask(() => this.onload?.());
+      }
+    }
+    vi.stubGlobal('Image', LoadedImage);
+
+    const { onClose } = setup();
+    fireEvent.change(screen.getByLabelText('Choose a picture file'), {
+      target: { files: [new File(['x'], 'avatar.png', { type: 'image/png' })] },
+    });
+    await screen.findByRole('dialog', { name: 'Crop your picture' });
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    expect(screen.queryByRole('dialog', { name: 'Crop your picture' })).toBeNull();
+    expect(screen.getByRole('dialog', { name: 'Dev team info' })).toBeTruthy();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   // T-0116: custom group roles. Managers see the Roles section (create,
   // rename, delete, assign); everyone sees the chips next to member names.
   describe('group roles (T-0116)', () => {
