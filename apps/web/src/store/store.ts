@@ -1459,7 +1459,11 @@ export function visibleChats(state: ChatStoreState): ChatSummary[] {
     if (!matchesFolder(chat, activeFolderOf(state))) {
       return false;
     }
-    return query.length === 0 || chat.title.toLowerCase().includes(query);
+    return (
+      query.length === 0 ||
+      chat.title.toLowerCase().includes(query) ||
+      (chat.groupTitle !== undefined && chat.groupTitle.toLowerCase().includes(query))
+    );
   });
 }
 
@@ -1488,7 +1492,8 @@ function groupTitleOf(chat: ChatSummary): string {
  * and pinned groups (via the General room's pref) float to the top, newer
  * pins first; inside a group, pinned topics float above the rest with
  * General first among the unpinned. Search keeps a group header when any of
- * its topics matches by name. Folders treat a topic like its group (a topic
+ * its topics matches by name, or when the group's own name contains the
+ * query (then it shows all its topics). Folders treat a topic like its group (a topic
  * matches when its own row does).
  */
 export function groupChats(state: ChatStoreState): ChatGroup[] {
@@ -1519,8 +1524,9 @@ export function groupChats(state: ChatStoreState): ChatGroup[] {
   }
   const groups: ChatGroup[] = [];
   for (const [groupId, topics] of byGroup) {
+    const groupMatches = query.length > 0 && groupTitleOf(topics[0]!).toLowerCase().includes(query);
     const matching =
-      query.length === 0
+      query.length === 0 || groupMatches
         ? topics
         : topics.filter((topic) => topic.title.toLowerCase().includes(query));
     if (matching.length === 0) {
