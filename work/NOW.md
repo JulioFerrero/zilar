@@ -54,7 +54,7 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0347 | Mobile kit: Sticker pack editor text pill buttons on Button | coding (DeepSeek flash) | 5 Pressables; T-0346 (Stickers) merged |
+| T-0348 | Mobile kit: Integrations and Requests text pill buttons on Button | coding (DeepSeek flash) | 7 Pressables; T-0347 merged; QA run 26 (4 settings screens) running |
 
 Time correction (checked with `date`): it is 04:42 local, Tue 10-06. The "~04:xx–05:50 local" stamps below were estimated and run up to about an hour ahead; their order is right.
 
