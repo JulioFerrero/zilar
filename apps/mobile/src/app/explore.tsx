@@ -1,9 +1,9 @@
 import { useFocusEffect, useRouter } from 'expo-router';
-import { ChevronLeft, Compass, RefreshCw } from 'lucide-react-native';
+import { ChevronLeft, Compass } from 'lucide-react-native';
 
 import { useColorScheme } from 'nativewind';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, View } from 'react-native';
+import { FlatList, Pressable, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { RequireAuth } from '@/auth/RequireAuth';
@@ -18,6 +18,7 @@ import { useDirectoryApi } from '@/components/directory/use-directory-api';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { SearchField } from '@/components/ui/search-field';
+import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { asColorScheme } from '@/lib/color-scheme';
 import { ICON } from '@/lib/colors';
@@ -236,28 +237,14 @@ function ExploreList() {
         </View>
       </View>
 
-      {status === 'loading' && (
-        <View className="items-center gap-3 pt-16">
-          <ActivityIndicator color="#ededed" />
-          <Text className="text-[15px] text-muted-foreground">Searching…</Text>
-        </View>
-      )}
+      {status === 'loading' && <StateMessage kind="loading" title="Searching…" />}
 
       {status === 'error' && (
-        <View className="items-center gap-3 px-6 pt-12">
-          <Text accessibilityRole="alert" className="text-center text-[15px] text-danger">
-            {errorMessage}
-          </Text>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Retry"
-            onPress={reload}
-            className="flex-row items-center gap-2 rounded-full border border-border-strong px-4 py-1.5 active:bg-surface-raised"
-          >
-            <RefreshCw size={16} color={ICON[scheme]} />
-            <Text className="text-[14px] text-foreground">Retry</Text>
-          </Pressable>
-        </View>
+        <StateMessage
+          kind="error"
+          title={errorMessage}
+          action={{ label: 'Retry', onPress: reload }}
+        />
       )}
 
       {status === 'ready' && (
