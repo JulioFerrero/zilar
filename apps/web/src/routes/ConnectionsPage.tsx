@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { Eye, EyeOff, Link, Trash2, X, Zap } from 'lucide-react';
+import { Link, Trash2, X, Zap } from 'lucide-react';
 import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
 import { Button } from '@/components/ui/button';
 import { StateMessage } from '@/components/ui/state-message';
-import { TextInput } from '@/components/ui/text-input';
+import { SecretInput, TextInput } from '@/components/ui/text-input';
 import {
   type Connection,
   type ConnectionTestResult,
@@ -273,7 +273,6 @@ function AddConnectionForm({
   const [provider, setProvider] = useState<string>(PROVIDERS[0].id);
   const [key, setKey] = useState('');
   const [label, setLabel] = useState('');
-  const [showKey, setShowKey] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -330,26 +329,13 @@ function AddConnectionForm({
 
         <label className="flex flex-col gap-1">
           <span className="text-[14px] font-medium">API key</span>
-          <div className="relative">
-            <TextInput
-              type={showKey ? 'text' : 'password'}
-              value={key}
-              placeholder="sk-…"
-              maxLength={16384}
-              autoComplete="off"
-              onChange={(event) => setKey(event.target.value)}
-              className="pr-10"
-            />
-            <button
-              type="button"
-              aria-label={showKey ? 'Hide key' : 'Show key'}
-              title={showKey ? 'Hide key' : 'Show key'}
-              onClick={() => setShowKey((value) => !value)}
-              className="absolute top-1/2 right-1 -translate-y-1/2 rounded-full p-1.5 text-muted-foreground hover:bg-muted"
-            >
-              {showKey ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-            </button>
-          </div>
+          <SecretInput
+            value={key}
+            placeholder="sk-…"
+            maxLength={16384}
+            autoComplete="off"
+            onChange={(event) => setKey(event.target.value)}
+          />
         </label>
 
         <label className="flex flex-col gap-1">

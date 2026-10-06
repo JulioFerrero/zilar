@@ -1,3 +1,4 @@
+import { Eye, EyeOff } from 'lucide-react';
 import {
   useId,
   useState,
@@ -7,6 +8,7 @@ import {
   type TextareaHTMLAttributes,
 } from 'react';
 import { cn } from '@/lib/utils';
+import { Button } from './button';
 
 interface FieldProps {
   label?: string;
@@ -99,6 +101,35 @@ export function TextInput({
         </p>
       )}
     </Field>
+  );
+}
+
+export function SecretInput({
+  revealLabel = { show: 'Show key', hide: 'Hide key' },
+  className,
+  ...props
+}: Omit<TextInputProps, 'type'> & { revealLabel?: { show: string; hide: string } }) {
+  const [shown, setShown] = useState(false);
+  const label = shown ? revealLabel.hide : revealLabel.show;
+  return (
+    <div className="relative">
+      <TextInput {...props} type={shown ? 'text' : 'password'} className={cn('pr-10', className)} />
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        aria-label={label}
+        title={label}
+        onClick={() => setShown((value) => !value)}
+        className="absolute top-1/2 right-1 -translate-y-1/2 rounded-full text-muted-foreground"
+      >
+        {shown ? (
+          <EyeOff className="size-4" aria-hidden="true" />
+        ) : (
+          <Eye className="size-4" aria-hidden="true" />
+        )}
+      </Button>
+    </div>
   );
 }
 

@@ -1,4 +1,4 @@
-import { TextArea, TextInput } from './text-input';
+import { SecretInput, TextArea, TextInput } from './text-input';
 
 export default {
   Default: (
@@ -24,6 +24,11 @@ export default {
   WithCounter: (
     <div className="max-w-sm">
       <TextInput label="Group name" counter={{ max: 64 }} defaultValue="Weekend" />
+    </div>
+  ),
+  SecretInput: (
+    <div className="max-w-sm">
+      <SecretInput label="API key" placeholder="sk-…" defaultValue="sk-secret" />
     </div>
   ),
   TextArea: (

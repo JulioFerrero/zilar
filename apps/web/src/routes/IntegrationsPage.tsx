@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { Eye, EyeOff } from 'lucide-react';
 import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
 import { Button } from '@/components/ui/button';
-import { TextInput } from '@/components/ui/text-input';
+import { SecretInput, TextInput } from '@/components/ui/text-input';
 import {
   ApiError,
   getIntegrationsStatus,
@@ -165,7 +164,6 @@ function EmailCard({
   const managedByEnv = email.source === 'env';
   const [from, setFrom] = useState(email.from ?? '');
   const [key, setKey] = useState('');
-  const [showKey, setShowKey] = useState(false);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
@@ -235,28 +233,15 @@ function EmailCard({
           </p>
           <label className="flex flex-col gap-1 text-[14px]">
             New Resend API key
-            <div className="relative">
-              <TextInput
-                type={showKey ? 'text' : 'password'}
-                value={key}
-                aria-label="New Resend API key"
-                placeholder="re_…"
-                maxLength={256}
-                autoComplete="off"
-                disabled={busy}
-                onChange={(event) => setKey(event.target.value)}
-                className="pr-10"
-              />
-              <button
-                type="button"
-                aria-label={showKey ? 'Hide key' : 'Show key'}
-                title={showKey ? 'Hide key' : 'Show key'}
-                onClick={() => setShowKey((value) => !value)}
-                className="absolute top-1/2 right-1 -translate-y-1/2 rounded-full p-1.5 text-muted-foreground hover:bg-muted"
-              >
-                {showKey ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-              </button>
-            </div>
+            <SecretInput
+              value={key}
+              aria-label="New Resend API key"
+              placeholder="re_…"
+              maxLength={256}
+              autoComplete="off"
+              disabled={busy}
+              onChange={(event) => setKey(event.target.value)}
+            />
           </label>
           <p className="text-[13px] text-muted-foreground">Leave empty to keep the current key.</p>
           {error !== '' && (
@@ -289,7 +274,6 @@ function VoiceTranscriptionCard({
 }) {
   const [baseUrl, setBaseUrl] = useState(voiceTranscription.baseUrl ?? '');
   const [key, setKey] = useState('');
-  const [showKey, setShowKey] = useState(false);
   const [model, setModel] = useState(voiceTranscription.model ?? 'whisper-1');
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -392,28 +376,15 @@ function VoiceTranscriptionCard({
       </label>
       <label className="flex flex-col gap-1 text-[14px]">
         API key
-        <div className="relative">
-          <TextInput
-            type={showKey ? 'text' : 'password'}
-            value={key}
-            aria-label="API key"
-            placeholder="sk-…"
-            maxLength={512}
-            autoComplete="off"
-            disabled={busy}
-            onChange={(event) => setKey(event.target.value)}
-            className="pr-10"
-          />
-          <button
-            type="button"
-            aria-label={showKey ? 'Hide key' : 'Show key'}
-            title={showKey ? 'Hide key' : 'Show key'}
-            onClick={() => setShowKey((value) => !value)}
-            className="absolute top-1/2 right-1 -translate-y-1/2 rounded-full p-1.5 text-muted-foreground hover:bg-muted"
-          >
-            {showKey ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-          </button>
-        </div>
+        <SecretInput
+          value={key}
+          aria-label="API key"
+          placeholder="sk-…"
+          maxLength={512}
+          autoComplete="off"
+          disabled={busy}
+          onChange={(event) => setKey(event.target.value)}
+        />
       </label>
       <p className="text-[13px] text-muted-foreground">
         Optional — leave empty for a self-hosted server without one. The key is never shown again
@@ -448,7 +419,6 @@ function TelegramCard({
 }) {
   const managedByEnv = telegram.source === 'env';
   const [token, setToken] = useState('');
-  const [showToken, setShowToken] = useState(false);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
@@ -521,28 +491,16 @@ function TelegramCard({
         <>
           <label className="flex flex-col gap-1 text-[14px]">
             Bot token
-            <div className="relative">
-              <TextInput
-                type={showToken ? 'text' : 'password'}
-                value={token}
-                aria-label="Bot token"
-                placeholder="123456:ABC-…"
-                maxLength={256}
-                autoComplete="off"
-                disabled={busy}
-                onChange={(event) => setToken(event.target.value)}
-                className="pr-10"
-              />
-              <button
-                type="button"
-                aria-label={showToken ? 'Hide token' : 'Show token'}
-                title={showToken ? 'Hide token' : 'Show token'}
-                onClick={() => setShowToken((value) => !value)}
-                className="absolute top-1/2 right-1 -translate-y-1/2 rounded-full p-1.5 text-muted-foreground hover:bg-muted"
-              >
-                {showToken ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-              </button>
-            </div>
+            <SecretInput
+              value={token}
+              aria-label="Bot token"
+              placeholder="123456:ABC-…"
+              maxLength={256}
+              autoComplete="off"
+              disabled={busy}
+              revealLabel={{ show: 'Show token', hide: 'Hide token' }}
+              onChange={(event) => setToken(event.target.value)}
+            />
           </label>
           {error !== '' && (
             <p role="alert" className="text-[14px] text-danger">

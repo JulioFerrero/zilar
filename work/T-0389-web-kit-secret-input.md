@@ -1,7 +1,7 @@
 ---
 id: T-0389
 title: "Web kit: a SecretInput (TextInput with a built-in show/hide toggle) replaces the four hand-rolled key and token fields on Connections and Integrations"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0389-web-kit-secret-input
 model: auto
@@ -76,4 +76,67 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+
+- Added `SecretInput` to `apps/web/src/components/ui/text-input.tsx`: a component typed
+  `Omit<TextInputProps, 'type'> & { revealLabel?: { show: string; hide: string } }` that keeps its own
+  `shown` state, renders `<div className="relative">` wrapping `TextInput` with
+  `type={shown ? 'text' : 'password'}` and `className={cn('pr-10', className)}`, plus a kit `Button`
+  (`type="button"`, `variant="ghost"`, `size="icon-sm"`, `aria-label`/`title` from the label,
+  `Eye`/`EyeOff` at `size-4` with `aria-hidden`). `revealLabel` defaults to
+  `{ show: 'Show key', hide: 'Hide key' }`.
+- Replaced the four hand-rolled fields with `SecretInput`:
+  - `ConnectionsPage.tsx` — provider API key.
+  - `IntegrationsPage.tsx` — Resend API key, voice transcription API key, and Telegram bot token
+    (`revealLabel={{ show: 'Show token', hide: 'Hide token' }}`).
+- Removed the four `showKey`/`showToken` states, the wrapper `div`s and the `Eye`/`EyeOff` imports
+  from both routes.
+- Added a `SecretInput` example to `text-input.fixture.tsx`.
+- Added three kit tests to `kit.test.tsx`: starts as `type="password"` with a "Show key" button;
+  clicking toggles to `type="text"`/ "Hide key" and back; a custom `revealLabel` is used.
+
+### Files changed
+
+- `apps/web/src/components/ui/text-input.tsx`
+- `apps/web/src/components/ui/text-input.fixture.tsx`
+- `apps/web/src/components/ui/kit.test.tsx`
+- `apps/web/src/routes/ConnectionsPage.tsx`
+- `apps/web/src/routes/IntegrationsPage.tsx`
+- `work/T-0389-web-kit-secret-input.md`
+
+`ConnectionsPage.test.tsx` and `IntegrationsPage.test.tsx` were not edited: their existing
+"Show key"/"Hide key" queries still match the new component and still pass.
+
+### Commands and real results
+
+- `pnpm install` — success (1170 packages).
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot kit ConnectionsPage IntegrationsPage` —
+  `Test Files 3 passed (3)`, `Tests 77 passed (77)`.
+- `pnpm gate` — first run `GATE FAIL` at `format` (prettier) for `kit.test.tsx` and `text-input.tsx`;
+  fixed with `pnpm exec prettier --write` on those two files. Second run:
+
+```
+gate: 6 changed file(s) against main
+PASS  install (frozen)  (1.6s)
+PASS  format  (32.6s)
+PASS  lint  (2.2s)
+PASS  typecheck  (16.7s)
+PASS  tests @zilar/web  (34.6s)
+scope: every changed file is inside the Allowed files
+GATE PASS
+```
+
+### Deviations / notes
+
+- No behavioural deviation. The old raw toggle `<button>` (`p-1.5`, `hover:bg-muted`) is replaced by
+  the kit `Button` exactly as the spec prescribes.
+- `SecretInput` always renders its `div.relative` wrapper, even when `TextInput` returns a bare
+  input (no label/hint/counter), which is required for the absolutely-positioned toggle.
+
+### Open questions
+
+- None.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-06). Kit `SecretInput` owns its show/hide state with a kit ghost icon toggle and a `revealLabel` override; the four copies on Connections and Integrations use it, and their states and Eye imports are gone. It has a fixture and kit tests. Pre-review clean (0 findings). Lead note for later: with `label`/`hint`, `TextInput` wraps itself in a Field, so the absolute toggle would centre on the whole field. No caller passes those today; if one does, move the relative wrapper inside the Field.
