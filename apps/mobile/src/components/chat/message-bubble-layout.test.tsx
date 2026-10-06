@@ -183,4 +183,17 @@ describe('MessageBubble layout', () => {
     const nudged = html.match(/&quot;translateY&quot;:2/g) ?? [];
     expect(nudged).toHaveLength(1);
   });
+
+  it('keeps the inline ticks inside the time text behind a no-break space', () => {
+    const html = renderToStaticMarkup(createElement(MessageBubble, BASE));
+    const ticks = html.indexOf('<Ticks');
+    expect(ticks).toBeGreaterThan(-1);
+    const beforeTicks = html.slice(0, ticks);
+    const viewOpen = beforeTicks.lastIndexOf('<View');
+    expect(viewOpen).toBeGreaterThan(-1);
+    // The no-break space and word joiner sit directly before the inline view...
+    expect(beforeTicks.slice(viewOpen - 2, viewOpen)).toBe('\u00a0\u2060');
+    // ...inside the meta `Text`: it has not closed before the tick.
+    expect(beforeTicks.slice(0, viewOpen)).not.toContain('</Text>');
+  });
 });

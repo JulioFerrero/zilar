@@ -533,22 +533,25 @@ export function MessageBubble({
                           {'  '}
                           {message.edited === true ? 'edited ' : ''}
                           {formatTime(message.createdAt)}
+                          {/* A no-break space then a word joiner: the tick
+                              view stays on the time's line and cannot wrap
+                              alone onto a second line. */}
+                          {outgoing ? '\u00a0\u2060' : null}
+                          {outgoing ? (
+                            <View
+                              style={{
+                                width: 14,
+                                height: 11,
+                                // Nudge the ticks down onto the time's baseline
+                                // (they otherwise sit about a third too high).
+                                transform: [{ translateY: 2 }],
+                                ...(generating ? { opacity: 0 } : undefined),
+                              }}
+                            >
+                              <Ticks status={message.status} color={metaColor} size={11} />
+                            </View>
+                          ) : null}
                         </Text>
-                        {outgoing ? <Text> </Text> : null}
-                        {outgoing ? (
-                          <View
-                            style={{
-                              width: 14,
-                              height: 11,
-                              // Nudge the ticks down onto the time's baseline
-                              // (they otherwise sit about a third too high).
-                              transform: [{ translateY: 2 }],
-                              ...(generating ? { opacity: 0 } : undefined),
-                            }}
-                          >
-                            <Ticks status={message.status} color={metaColor} size={11} />
-                          </View>
-                        ) : null}
                       </Text>
                       {generating ? <GeneratingLabel /> : null}
                     </>
@@ -571,22 +574,25 @@ export function MessageBubble({
                           {'  '}
                           {message.edited === true ? 'edited ' : ''}
                           {formatTime(message.createdAt)}
+                          {/* A no-break space then a word joiner: the tick
+                              view stays on the time's line and cannot wrap
+                              alone onto a second line. */}
+                          {outgoing ? '\u00a0\u2060' : null}
+                          {outgoing ? (
+                            <View
+                              style={{
+                                width: 14,
+                                height: 11,
+                                // Nudge the ticks down onto the time's baseline
+                                // (they otherwise sit about a third too high).
+                                transform: [{ translateY: 2 }],
+                                ...(generating ? { opacity: 0 } : undefined),
+                              }}
+                            >
+                              <Ticks status={message.status} color={metaColor} size={11} />
+                            </View>
+                          ) : null}
                         </Text>
-                        {outgoing ? <Text> </Text> : null}
-                        {outgoing ? (
-                          <View
-                            style={{
-                              width: 14,
-                              height: 11,
-                              // Nudge the ticks down onto the time's baseline
-                              // (they otherwise sit about a third too high).
-                              transform: [{ translateY: 2 }],
-                              ...(generating ? { opacity: 0 } : undefined),
-                            }}
-                          >
-                            <Ticks status={message.status} color={metaColor} size={11} />
-                          </View>
-                        ) : null}
                       </Text>
                       {generating ? <GeneratingLabel /> : null}
                     </>
