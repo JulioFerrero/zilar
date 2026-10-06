@@ -1,7 +1,7 @@
 ---
 id: T-0447
 title: "AI memory M5b (web): each AI row in the group and topic panels opens a 'What <AI> remembers' dialog"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0447-web-ai-memory-rooms
 model: auto
@@ -76,4 +76,23 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- **`AiMemorySection.tsx`:** added the optional `initiallyOpen?: boolean` prop (default `false`). The section starts open when true, loads on mount, and hides both the Show and the Hide button. Everything else is unchanged.
+- **`AiMemoryDialog.tsx` (new):** `AiMemoryDialog({ chat, aiId, aiName, onClose })` renders a `Dialog` titled ``What ${aiName} remembers`` with `AiMemorySection … initiallyOpen` inside.
+- **`GroupPanel.tsx`:** each AI row now has a ghost `size="sm"` icon button (Brain, `aria-label="What <name> remembers"`) before the Remove button, shown to everyone. Pressing it sets `memoryAi` and renders `AiMemoryDialog` with `chat={chat.id}`; `onClose` clears the state.
+- **`TopicPanel.tsx`:** same as the group panel, using `ai.id` / `ai.name` and `chat.id`.
+- **Tests:** added the `initiallyOpen` case to `AiMemorySection.test.tsx`; new `AiMemoryDialog.test.tsx` (title, `/api/ai-memory?chat&ai` URL, `canChange:false` hides Forget and Clear, Escape calls `onClose`); one new test each in `GroupPanel.test.tsx` and `TopicPanel.test.tsx` (the row button opens the dialog).
+
+### Files changed
+All inside the Allowed files: `AiMemorySection.tsx`, `AiMemorySection.test.tsx`, `AiMemoryDialog.tsx` (new), `AiMemoryDialog.test.tsx` (new), `GroupPanel.tsx`, `GroupPanel.test.tsx`, `TopicPanel.tsx`, `TopicPanel.test.tsx`, and this task file.
+
+### Commands and real results
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot AiMemorySection AiMemoryDialog GroupPanel TopicPanel` → `Test Files 4 passed (4)`, `Tests 62 passed (62)`.
+- `pnpm gate` → `PASS install (frozen)`, `PASS format`, `PASS lint`, `PASS typecheck`, `PASS tests @zilar/web`, `scope: every changed file is inside the Allowed files`, `GATE PASS`.
+
+### Problems / deviations / open questions
+None. No files outside the Allowed files were touched, and no other test broke.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-06). Every AI row in the group and topic panels has a Brain button, "What <AI> remembers", which opens AiMemoryDialog (kit Dialog) with AiMemorySection already open for that room JID. Forget and Clear follow the server's canChange. Pre-review clean.

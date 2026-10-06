@@ -15,17 +15,22 @@ type LoadStatus = 'loading' | 'ready' | 'error';
  * T-0443: the AI's memory in this DM. It stays collapsed, and makes no
  * request, until the owner opens it; then it lists the pinned facts and the
  * cover lines, and lets the owner forget a fact or clear the whole memory.
+ *
+ * T-0447: `initiallyOpen` mounts it already expanded, for the rooms dialog;
+ * then it loads at once and shows neither the Show nor the Hide button.
  */
 export function AiMemorySection({
   chat,
   aiId,
   aiName,
+  initiallyOpen = false,
 }: {
   chat: string;
   aiId: string;
   aiName: string;
+  initiallyOpen?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(initiallyOpen);
   const [status, setStatus] = useState<LoadStatus>('loading');
   const [memory, setMemory] = useState<AiMemory | null>(null);
   const [forgetError, setForgetError] = useState('');
@@ -95,7 +100,7 @@ export function AiMemorySection({
     <section aria-label="Memory" className="flex flex-col gap-2 border-t border-divider pt-4">
       <div className="flex items-center justify-between">
         <h3 className="text-[14px] font-medium">Memory</h3>
-        {open && (
+        {open && !initiallyOpen && (
           <Button
             type="button"
             variant="ghost"

@@ -51,6 +51,20 @@ describe('Topic panel (T-0111)', () => {
     expect(within(dialog).getByText('Added by you')).toBeTruthy();
   });
 
+  it('opens the What <AI> remembers dialog from an AI row (T-0447)', async () => {
+    renderApp('/c/c-devteam-bug');
+    fireEvent.click(screen.getByRole('button', { name: 'Chat menu' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Topic info' }));
+    const dialog = screen.getByRole('dialog', { name: /topic info/ });
+    const memoryButton = await within(dialog).findByRole('button', {
+      name: 'What Dev-1 remembers',
+    });
+
+    fireEvent.click(memoryButton);
+
+    expect(await screen.findByRole('dialog', { name: 'What Dev-1 remembers' })).toBeTruthy();
+  });
+
   it('confirms private -> public with the history warning', async () => {
     renderApp('/c/c-devteam-hiring');
     fireEvent.click(screen.getByRole('button', { name: 'Chat menu' }));

@@ -240,4 +240,14 @@ describe('AiMemorySection', () => {
     expect(screen.getByRole('button', { name: 'Show memory' })).toBeTruthy();
     expect(screen.queryByText('Pinned facts')).toBeNull();
   });
+
+  it('loads at once and shows no Show or Hide button when initiallyOpen (T-0447)', async () => {
+    const api = stubMemoryApi(seeded);
+    render(<AiMemorySection chat={CHAT} aiId={AI} aiName={NAME} initiallyOpen />);
+
+    expect(await screen.findByText('Pinned facts')).toBeTruthy();
+    expect(api.getCount()).toBe(1);
+    expect(screen.queryByRole('button', { name: 'Show memory' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Hide memory' })).toBeNull();
+  });
 });

@@ -1,5 +1,5 @@
 import type { ChatSummary } from '@zilar/chat-core';
-import { X } from 'lucide-react';
+import { Brain, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { CreatedInviteLink, GroupAi, GroupInviteLink, GroupRole, PublicAi } from '@/lib/api';
 import {
@@ -15,6 +15,7 @@ import {
 import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { HandleSuffix } from './HandleSuffix';
 import { ActivitySection } from './ais/AiActivity';
+import { AiMemoryDialog } from './ais/AiMemoryDialog';
 import { AlwaysAllowedList } from './approvals/AlwaysAllowedList';
 import { PinsSection } from './PinsPanel';
 import { AiBadge } from './AiBadge';
@@ -61,6 +62,7 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
   const [errorMessage, setErrorMessage] = useState('');
   const [switchBusy, setSwitchBusy] = useState(false);
   const [switchError, setSwitchError] = useState('');
+  const [memoryAi, setMemoryAi] = useState<{ id: string; name: string } | undefined>(undefined);
 
   // T-0115: invite links for owners/admins. The list carries hints, never
   // tokens; the created URL is shown once with a Copy button. The load runs
@@ -386,6 +388,16 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
                         Added by {ownerName(ai)}
                       </p>
                     </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      aria-label={`What ${ai.name} remembers`}
+                      className="shrink-0 text-muted-foreground"
+                      onClick={() => setMemoryAi({ id: ai.aiId, name: ai.name })}
+                    >
+                      <Brain className="size-4" aria-hidden="true" />
+                    </Button>
                     {canRemove &&
                       (confirming ? (
                         <div className="flex shrink-0 items-center gap-1">
@@ -476,6 +488,15 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
                 </div>
               )}
             </section>
+
+            {memoryAi !== undefined && (
+              <AiMemoryDialog
+                chat={chat.id}
+                aiId={memoryAi.id}
+                aiName={memoryAi.name}
+                onClose={() => setMemoryAi(undefined)}
+              />
+            )}
 
             {/* T-0086: room activity for owners and admins. Plain members
                   get no section and no request is made. The section handles
