@@ -25,7 +25,9 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
 | T-0315 | Mobile: visibility, members/roles, topic info sheets on BottomSheet | coding (Muse, peak) | the roles sheet gains scroll and keyboard handling |
-| T-0319 | Web: message actions and chat actions menus on the kit Menu shell (+ `backdropClassName`) | coding (Muse, peak) | then ChatHeader ×2 + TaskStrip ×2 |
+| T-0320 | Web: ChatHeader + TaskStrip menus on Menu. Fixes a bug: on narrow screens Escape in those menus also left the chat (ChatShell window listener) | coding (Muse, peak) | last hand-rolled web menus |
+
+~05:35 local: merged T-0319 (message and chat actions menus on Menu; Escape works from anywhere).
 
 ~05:20 local: merged T-0318 (web kit Menu). Lead browser check, mock, wide: the main menu opens; ArrowDown, End and Escape all work.
 
