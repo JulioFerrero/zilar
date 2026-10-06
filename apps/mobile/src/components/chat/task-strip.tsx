@@ -1,6 +1,7 @@
-import { Linking, Pressable, TextInput, View } from 'react-native';
+import { Linking, Pressable, View } from 'react-native';
 
 import { Text } from '@/components/ui/text';
+import { TextField } from '@/components/ui/text-field';
 import {
   httpsTopicUrl,
   topicLinkText,
@@ -211,29 +212,23 @@ export function TaskStrip({
 
       {linkOpen ? (
         <View className="mt-2 gap-2">
-          <View className="rounded-[10px] border border-border-strong bg-well px-3 py-2">
-            <TextInput
-              value={linkUrl}
-              onChangeText={onChangeLinkUrl}
-              placeholder="https://…"
-              placeholderTextColor="#8a8a8a"
-              autoCapitalize="none"
-              autoCorrect={false}
-              accessibilityLabel="Topic link URL"
-              className="text-[14px] text-foreground"
-            />
-          </View>
-          <View className="rounded-[10px] border border-border-strong bg-well px-3 py-2">
-            <TextInput
-              value={linkLabel}
-              onChangeText={onChangeLinkLabel}
-              placeholder="Label (optional)"
-              placeholderTextColor="#8a8a8a"
-              maxLength={40}
-              accessibilityLabel="Topic link label"
-              className="text-[14px] text-foreground"
-            />
-          </View>
+          <TextField
+            value={linkUrl}
+            onChangeText={onChangeLinkUrl}
+            placeholder="https://…"
+            autoCapitalize="none"
+            autoCorrect={false}
+            accessibilityLabel="Topic link URL"
+            className="text-[14px]"
+          />
+          <TextField
+            value={linkLabel}
+            onChangeText={onChangeLinkLabel}
+            placeholder="Label (optional)"
+            maxLength={40}
+            accessibilityLabel="Topic link label"
+            className="text-[14px]"
+          />
           <View className="flex-row justify-end">
             <Pressable
               accessibilityRole="button"

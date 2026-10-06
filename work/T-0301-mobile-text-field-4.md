@@ -1,7 +1,7 @@
 ---
 id: T-0301
 title: "Mobile kit migration: role name and topic link fields use the kit TextField"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0301-mobile-text-field-4
 model: auto
@@ -73,4 +73,91 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### Status: ready for review
+
+All four fields now render through the kit `TextField`. No raw
+`<TextInput` and no `placeholderTextColor` remain in either source file.
+
+### What I did
+
+- **`apps/mobile/src/components/chat/group-roles-sheet.tsx`** — the rename
+  field (was line 155) is now `TextField` with
+  `className="min-w-0 flex-1 py-1.5 text-[14px]"`, keeping `value`,
+  `onChangeText`, `maxLength={30}` and
+  `accessibilityLabel={`Rename ${role.name}`}`; the "New role name" field
+  (was line 301) is now `TextField` with
+  `className="min-w-0 flex-1 text-[14px]"`, keeping `placeholder="e.g.
+  Designers"` and the other props. Both `#8a8a8a` placeholder colours are
+  gone (kit default `MUTED_FOREGROUND[scheme]` applies). Removed `TextInput`
+  from the `react-native` import, added the `TextField` import.
+- **`apps/mobile/src/components/chat/task-strip.tsx`** — "Topic link URL"
+  and "Topic link label" are now `TextField` with `className="text-[14px]"`,
+  keeping `value`, handlers, `placeholder`, `autoCapitalize`,
+  `autoCorrect`, `maxLength` and `accessibilityLabel`s. Removed the two well
+  wrapper `View`s (the parent's `mt-2 gap-2` keeps the spacing) and both
+  `#8a8a8a` placeholder colours. Removed `TextInput` from the
+  `react-native` import, added the `TextField` import.
+- **Three test files (mocks only)** — added the `nativewind` mock
+  (`useColorScheme: () => ({ colorScheme: 'dark' })`, same as `kit.test.tsx`
+  and T-0297's `invite-links-sheet.test.tsx`) to
+  `group-roles-sheet.test.tsx`, `group-roles-mounted.test.tsx` and
+  `group-roles-load.test.tsx`. No assertion changed. No test imports
+  `task-strip.tsx`, so nothing was needed there.
+
+### Deviation from the spec / acceptance
+
+The acceptance line "neither source file contains `#8a8a8a`" is not
+literally met: `task-strip.tsx` line 17 still has `open: '#8a8a8a'` in
+`STATUS_DOT_BG`. That is a status-dot fill colour, not a placeholder
+colour, so I deliberately kept it — removing it would change the "open"
+dot's look. All four fields' `placeholderTextColor="#8a8a8a"` props are
+gone, and neither file has a raw `<TextInput` left (verified with `grep`).
+
+### Security checklist
+
+- No secrets, tokens or keys in logs, errors or URLs; only the input
+  component changed, all props/handlers unchanged.
+- No new routes, deletes, caps, permissions or audit entries touched.
+
+### Files changed
+
+`apps/mobile/src/components/chat/group-roles-sheet.tsx`,
+`apps/mobile/src/components/chat/task-strip.tsx`,
+`apps/mobile/src/components/chat/group-roles-sheet.test.tsx` (mock only),
+`apps/mobile/src/components/chat/group-roles-mounted.test.tsx` (mock only),
+`apps/mobile/src/components/chat/group-roles-load.test.tsx` (mock only),
+`work/T-0301-mobile-text-field-4.md`.
+
+### Commands run (real results)
+
+- `pnpm install` → done, no errors.
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot
+  group-roles` → first run: 3 files failed at import (`SyntaxError:
+  Unexpected token 'typeof'` from the unmocked `nativewind` import via the
+  new `TextField` — the known T-0287/T-0294 pitfall); after adding the
+  `nativewind` mock to the three test files: **3 files passed, 13 tests
+  passed**.
+- `pnpm gate` (final run):
+  ```
+  gate: 6 changed file(s) against main
+  PASS  install (frozen)  (1.3s)
+  PASS  format  (16.2s)
+  PASS  lint  (1.1s)
+  PASS  typecheck  (8.1s)
+  PASS  tests @zilar/mobile  (2.8s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Open questions
+
+None. One note for the lead: if the acceptance wording is meant
+literally, the `STATUS_DOT_BG` `open` colour in `task-strip.tsx` would need
+a follow-up task (it is out of this task's scope to recolour it).
+
 ## Review (written by Claude)
+
+**Approved.** Clean pre-review (0 nits), no fix rounds (Muse, peak).
+- The four fields are on `TextField` with the sizes from the spec.
+- The `#8a8a8a` left in `task-strip.tsx:18` is the open status dot colour, not a placeholder, so it stays.
+- The test changes are the `nativewind` mocks only.
