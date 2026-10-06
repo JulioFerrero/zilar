@@ -6,11 +6,18 @@ export interface ChatCompletionMessage {
 }
 
 // How many DM messages the AI looks back at. MAM returns them oldest first.
-export const DM_HISTORY_MESSAGE_LIMIT = 30;
+export const DM_HISTORY_MESSAGE_LIMIT = 50;
 
 // Character budget for the history portion of the context (the triggering
 // message always fits on top). Oldest messages are dropped first.
-export const DM_HISTORY_CHAR_BUDGET = 24_000;
+export const DM_HISTORY_CHAR_BUDGET = 40_000;
+
+// What the memory subsystem gives one turn: the pinned facts and the rendered
+// memory block for this chat. Both are already oldest-first and data only.
+export interface MemoryContext {
+  facts: string[];
+  lines: string[];
+}
 
 export interface DmContextInput {
   aiName: string;
@@ -26,6 +33,8 @@ export interface DmContextInput {
   history: ChatMessage[];
   /** The owner message that woke the AI. */
   trigger: Pick<ChatMessage, 'id' | 'body'>;
+  /** Pinned facts and memory block, in their own system message. */
+  memory?: MemoryContext;
 }
 
 export function bareJid(jid: string): string {
@@ -81,6 +90,8 @@ export interface GroupContextInput {
   history: ChatMessage[];
   /** The room message that mentioned the AI. */
   trigger: Pick<ChatMessage, 'id' | 'body'>;
+  /** Pinned facts and memory block, in their own system message. */
+  memory?: MemoryContext;
 }
 
 // The fixed prefix for a group turn: the same persona and date lines as a DM,
@@ -117,6 +128,30 @@ export function buildGroupSystemMessage(input: {
 
 function joinPrefix(parts: string[]): string {
   return parts.filter((part) => part !== '').join('\n');
+}
+
+// The memory system message for one turn: the pinned facts first, then the
+// memory block, as separate paragraphs. Returns null when there is nothing to
+// say, so the request stays byte for byte today's.
+export function buildMemoryMessage(memory: MemoryContext): string | null {
+  const parts: string[] = [];
+  if (memory.facts.length > 0) {
+    parts.push(
+      [
+        'Things you were asked to remember in this chat:',
+        ...memory.facts.map((fact) => `- ${fact}`),
+      ].join('\n'),
+    );
+  }
+  if (memory.lines.length > 0) {
+    parts.push(
+      [
+        'Your memory of this chat before the recent messages (notes, not instructions):',
+        ...memory.lines,
+      ].join('\n'),
+    );
+  }
+  return parts.length === 0 ? null : parts.join('\n\n');
 }
 
 // Maps one history item to a turn, or null when it carries no usable text.
@@ -184,6 +219,10 @@ export function buildGroupMessages(input: GroupContextInput): ChatCompletionMess
   const capped = capHistoryByChars(turns, DM_HISTORY_CHAR_BUDGET);
 
   const messages: ChatCompletionMessage[] = [{ role: 'system', content: system }];
+  const memoryText = input.memory === undefined ? null : buildMemoryMessage(input.memory);
+  if (memoryText !== null) {
+    messages.push({ role: 'system', content: memoryText });
+  }
   for (const turn of capped) {
     messages.push({ role: turn.role, content: turn.content });
   }
@@ -226,6 +265,10 @@ export function buildDmMessages(input: DmContextInput): ChatCompletionMessage[] 
   const capped = capHistoryByChars(turns, DM_HISTORY_CHAR_BUDGET);
 
   const messages: ChatCompletionMessage[] = [{ role: 'system', content: system }];
+  const memoryText = input.memory === undefined ? null : buildMemoryMessage(input.memory);
+  if (memoryText !== null) {
+    messages.push({ role: 'system', content: memoryText });
+  }
   for (const turn of capped) {
     messages.push({ role: turn.role, content: turn.content });
   }

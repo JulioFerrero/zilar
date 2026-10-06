@@ -348,6 +348,7 @@ const gateway = createAgentGateway(
     adminClient,
     ...(gatewayLitellm === undefined ? {} : { litellm: gatewayLitellm }),
     ...(gatewayCipher === undefined ? {} : { cipher: gatewayCipher }),
+    ...(archivePool === undefined ? {} : { archive: archivePool }),
     logger,
     ...(config.LITELLM_BASE_URL === undefined ? {} : { litellmBaseUrl: config.LITELLM_BASE_URL }),
     ...(config.LITELLM_MASTER_KEY === undefined

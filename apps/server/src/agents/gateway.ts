@@ -54,8 +54,12 @@ import {
   DM_HISTORY_MESSAGE_LIMIT,
   normBareJid,
   type ChatCompletionMessage,
+  type MemoryContext,
 } from './context';
 import { TOOL_GUIDE } from './tool-guide';
+import { indexMemory, type MemoryScope } from './memory/indexer';
+import { listFacts, renderMemoryBlock } from './memory/store';
+import type { ArchivePool } from '../search/service';
 import { getAiUsage, type AiUsage } from '../ais/usage';
 import {
   dailyLimitReply,
@@ -116,6 +120,8 @@ export interface AgentGatewayDeps {
    * (today's behaviour, byte for byte). Production passes
    * `AGENT_TOOL_MAX_ROUNDS` (6 when `TOOLS_ENABLED` is on). */
   toolMaxRounds?: number;
+  /** Memory archive. Absent means memory is read but never indexed. */
+  archive?: ArchivePool;
 }
 
 export interface AgentGatewayConfig {
@@ -487,6 +493,54 @@ export function createAgentGateway(
       ...(virtualKey === undefined ? [] : [virtualKey]),
       ...(deps.masterKeyForRedaction === undefined ? [] : [deps.masterKeyForRedaction]),
     ];
+  }
+
+  // Indexes this chat when an archive is configured, then reads its pinned
+  // facts and memory block. It never throws and never logs text: a failure
+  // still lets the reply go out with whatever is already stored.
+  async function loadMemoryContext(input: {
+    aiId: string;
+    chatKey: string;
+    archiveOwner: string;
+    scope: MemoryScope;
+    aiBareJid: string;
+    ownerName?: string | undefined;
+    now: Date;
+    virtualKey?: string | undefined;
+  }): Promise<MemoryContext> {
+    if (deps.archive !== undefined) {
+      try {
+        await indexMemory({
+          archive: deps.archive,
+          db: deps.db,
+          aiId: input.aiId,
+          chatKey: input.chatKey,
+          archiveOwner: input.archiveOwner,
+          scope: input.scope,
+          aiBareJid: input.aiBareJid,
+          ...(input.ownerName === undefined ? {} : { ownerName: input.ownerName }),
+          now: input.now,
+        });
+      } catch (error) {
+        logger.warn(
+          { err: toRedactedError(error, secretsFor(input.virtualKey)), aiId: input.aiId },
+          'AI memory index failed; replying with stored memory',
+        );
+      }
+    }
+    try {
+      const [facts, lines] = await Promise.all([
+        listFacts(deps.db, input.aiId, input.chatKey),
+        renderMemoryBlock(deps.db, input.aiId, input.chatKey),
+      ]);
+      return { facts: facts.map((fact) => fact.text), lines };
+    } catch (error) {
+      logger.warn(
+        { err: toRedactedError(error, secretsFor(input.virtualKey)), aiId: input.aiId },
+        'AI memory read failed; replying without stored memory',
+      );
+      return { facts: [], lines: [] };
+    }
   }
 
   // One fixed notice per AI per chat per UTC day, in memory only. After a
@@ -1514,6 +1568,15 @@ export function createAgentGateway(
 
       const now = (deps.now ?? (() => new Date()))();
       const today = now.toISOString().slice(0, 10);
+      const memory = await loadMemoryContext({
+        aiId: session.aiId,
+        chatKey: groupChatKey,
+        archiveOwner: roomJid,
+        scope: { kind: 'room', room: roomJid },
+        aiBareJid: normBareJid(ai.jid),
+        now,
+        virtualKey,
+      });
       // The batch is newer than the archive may know: merge the eligible
       // messages into the history (skipping ids MAM already returned) so a
       // coalesced turn sees every mention that arrived, and the context
@@ -1542,6 +1605,7 @@ export function createAgentGateway(
         ...(topicName === undefined ? {} : { topicName }),
         history: [...history, ...fresh],
         trigger: { id: trigger.id, body: trigger.body },
+        memory,
       });
 
       // T-0098: decide per turn, from the database, whether the trigger's
@@ -1764,6 +1828,16 @@ export function createAgentGateway(
       const ownerName = await loadOwnerName(deps.db, ai.owner);
       const now = (deps.now ?? (() => new Date()))();
       const today = now.toISOString().slice(0, 10);
+      const memory = await loadMemoryContext({
+        aiId: session.aiId,
+        chatKey: dmChatKey,
+        archiveOwner: ai.localpart,
+        scope: { kind: 'dm', peer: ownerBare },
+        aiBareJid: bareJid(ai.jid),
+        ownerName,
+        now,
+        virtualKey,
+      });
       // The batch is newer than the archive may know: merge the triggering
       // messages into the history (skipping ids MAM already returned) so a
       // coalesced turn sees every message that arrived, and the trigger below
@@ -1790,6 +1864,7 @@ export function createAgentGateway(
         ownerJid,
         history: [...history, ...fresh],
         trigger,
+        memory,
       });
       // T-0106: the guide rides as a trailing user turn only when tools are
       // enabled and tool/routine adapters are registered (a non-empty

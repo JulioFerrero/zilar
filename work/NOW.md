@@ -2,6 +2,23 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-06 evening:**
+- **Merged:** T-0433 to T-0435 and T-0437 to T-0439:
+  - AI memory M1, M2a and M2b;
+  - the web media panel;
+  - the mobile forward sheet;
+  - web multi-select forwarding.
+- **T-0436 (mobile media sheet):** approved. Its rebase conflicted with T-0435 in `[id].tsx`; the worker is resolving it (keep both sheets). Then run `lead merge T-0436` again. It is not checked on the emulator yet (smoke skips `[id]`).
+- **Running AI memory tasks:**
+  - T-0440 (M3a): turns index the chat and read facts and the memory block; window 50.
+  - T-0441 (M4a): the routes.
+  - T-0442 (M4b): room cleanup.
+- **Next:**
+  - M3b, the tools `recall`, `memory_zoom` and `remember`, with a new secret-pattern check. There is no pattern helper today; `redactSecrets` only redacts known values. It waits for T-0440, because both touch `gateway.ts`.
+  - M3c, the compactor.
+  - M5 (web) and M6 (mobile).
+  - Mobile multi-select forwarding, after T-0436.
+
 **2026-10-06 afternoon (resumed):**
 - **Merged:** T-0419 (web forward picker), T-0430 (MAM newest page), T-0431 (`/api/media`) and T-0432 (mobile forwardMessages).
 - **T-0430** proved and fixed Julio's AI bug: without a cursor, MAM returned the OLDEST page. The deep test archive has 33 rows, and the AI saw rows 1-30, ending at "are you still running?". His two vanished Spanish messages were retracted from his own session (12:17:49 and :53); the only path that sends a retraction is the Delete menu plus its confirm.
