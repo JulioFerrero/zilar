@@ -24,10 +24,11 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0332 | Mobile: New topic sheet on BottomSheet (long Private form scrolls) | lead fix round 1 (paid Muse) | from QA run 20 |
 | (doctor) | | | audit running (paid Muse fallback) |
 
 Time correction (checked with `date`): it is 04:42 local, Tue 10-06. The "~04:xx–05:50 local" stamps below were estimated and run up to about an hour ahead; their order is right.
+
+05:59 local: merged T-0332 (the New topic sheet uses the kit BottomSheet, so the long Private form scrolls; clean after the fix round). QA run 21 sent (qa21/). No workers run now.
 
 05:58 local: merged T-0335 (in review status, a worker that hits a rate limit now falls back in place to the paid Muse; 0 nits) and restarted the autopilot on it. One instance runs, and lead.log is ticking.
 
