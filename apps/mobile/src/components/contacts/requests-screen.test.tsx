@@ -42,7 +42,8 @@ vi.mock('lucide-react-native', () => ({
   Ban: 'Ban',
   ChevronLeft: 'ChevronLeft',
   ChevronRight: 'ChevronRight',
-  RefreshCw: 'RefreshCw',
+  CircleAlert: 'CircleAlert',
+  Inbox: 'Inbox',
   UserPlus: 'UserPlus',
 }));
 
@@ -68,6 +69,7 @@ vi.mock('@/components/contacts/use-contacts-api', () => ({
 }));
 
 vi.mock('@/lib/colors', () => ({
+  DANGER: '#ef4444',
   ICON: { dark: '#d4d4d4', light: '#d4d4d4' },
   MUTED_FOREGROUND: { dark: '#a1a1a1', light: '#a1a1a1' },
 }));

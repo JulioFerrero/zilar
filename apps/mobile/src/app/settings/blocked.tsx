@@ -1,7 +1,7 @@
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Ban, ChevronLeft, RefreshCw } from 'lucide-react-native';
+import { Ban, ChevronLeft } from 'lucide-react-native';
 import { useCallback, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useColorScheme } from 'nativewind';
 
@@ -9,6 +9,7 @@ import { RequireAuth } from '@/auth/RequireAuth';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { IconButton } from '@/components/ui/icon-button';
+import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { asColorScheme } from '@/lib/color-scheme';
 import { ICON } from '@/lib/colors';
@@ -112,27 +113,19 @@ function BlockedList() {
       >
         <View className="p-4">
           {status === 'loading' ? (
-            <View className="items-center gap-3 pt-16">
-              <ActivityIndicator />
-              <Text className="text-[15px] text-muted-foreground">Loading blocked people…</Text>
-            </View>
+            <StateMessage kind="loading" title="Loading blocked people…" />
           ) : null}
 
           {status === 'error' ? (
-            <View className="items-center gap-3 pt-12">
-              <Text accessibilityRole="alert" className="text-center text-[15px] text-danger">
-                {error}
-              </Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Retry loading blocked people"
-                onPress={reload}
-                className="flex-row items-center gap-2 rounded-full border border-border-strong px-4 py-2 active:bg-surface-raised"
-              >
-                <RefreshCw size={16} color={ICON[scheme]} />
-                <Text className="text-[15px] text-foreground">Retry</Text>
-              </Pressable>
-            </View>
+            <StateMessage
+              kind="error"
+              title={error}
+              action={{
+                label: 'Retry',
+                accessibilityLabel: 'Retry loading blocked people',
+                onPress: reload,
+              }}
+            />
           ) : null}
 
           {status === 'ready' && people.length === 0 ? (

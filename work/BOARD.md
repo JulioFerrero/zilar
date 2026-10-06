@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-0398](T-0398-mobile-settings-states-a.md) | Mobile: Requests/Blocked/Connections states on StateMessage | running | auto | — | |
 | [T-0399](T-0399-mobile-settings-states-b.md) | Mobile: Integrations/Machines/Stickers states on StateMessage | running | auto | — | |
 | [T-0400](T-0400-mobile-kit-catalog-switch-segmented.md) | Mobile kit: Switch in the catalog, SegmentedControl press test | running | auto | — | |
 | [T-0404](T-0404-mobile-switch-on-colors.md) | Mobile kit: Switch ON keeps a light thumb (QA run 32) | planned | auto | — | next mobile slot |
@@ -433,3 +432,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0401](T-0401-web-kit-menu-radio-item.md) | Web kit: MenuRadioItem; TaskStrip status and owner menus use it | 2026-10-06 |
 | [T-0403](T-0403-web-secret-input-label-safe.md) | Web kit: SecretInput toggle stays on the input with a label or hint | 2026-10-06 |
 | [T-0402](T-0402-web-small-leftovers-kit.md) | Web kit: four small leftovers on the kit | 2026-10-06 |
+| [T-0398](T-0398-mobile-settings-states-a.md) | Mobile: Requests, Blocked and Connections states on StateMessage | 2026-10-06 |

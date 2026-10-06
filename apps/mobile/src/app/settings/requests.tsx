@@ -1,7 +1,7 @@
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Ban, ChevronLeft, RefreshCw, UserPlus } from 'lucide-react-native';
+import { Ban, ChevronLeft, UserPlus } from 'lucide-react-native';
 import { useCallback, useRef, useState } from 'react';
-import { ActivityIndicator, ScrollView, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useColorScheme } from 'nativewind';
 
@@ -11,6 +11,7 @@ import { Card, SectionLabel } from '@/components/ui/card';
 import { IconButton } from '@/components/ui/icon-button';
 import { IconTile } from '@/components/ui/icon-tile';
 import { ListRow } from '@/components/ui/list-row';
+import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { asColorScheme } from '@/lib/color-scheme';
 import { ICON } from '@/lib/colors';
@@ -129,28 +130,18 @@ function RequestsList() {
         automaticallyAdjustKeyboardInsets
       >
         <View className="p-4">
-          {status === 'loading' ? (
-            <View className="items-center gap-3 pt-16">
-              <ActivityIndicator />
-              <Text className="text-[15px] text-muted-foreground">Loading requests…</Text>
-            </View>
-          ) : null}
+          {status === 'loading' ? <StateMessage kind="loading" title="Loading requests…" /> : null}
 
           {status === 'error' ? (
-            <View className="items-center gap-3 pt-12">
-              <Text accessibilityRole="alert" className="text-center text-[15px] text-danger">
-                {error}
-              </Text>
-              <Button
-                accessibilityLabel="Retry loading requests"
-                onPress={reload}
-                variant="outline"
-                size="sm"
-              >
-                <RefreshCw size={16} color={ICON[scheme]} />
-                <Text>Retry</Text>
-              </Button>
-            </View>
+            <StateMessage
+              kind="error"
+              title={error}
+              action={{
+                label: 'Retry',
+                accessibilityLabel: 'Retry loading requests',
+                onPress: reload,
+              }}
+            />
           ) : null}
 
           {status === 'ready' && pending === 0 ? (

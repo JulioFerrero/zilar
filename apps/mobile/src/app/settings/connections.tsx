@@ -1,17 +1,7 @@
 import { useFocusEffect, useRouter } from 'expo-router';
-import {
-  ChevronLeft,
-  Eye,
-  EyeOff,
-  KeyRound,
-  Plus,
-  RefreshCw,
-  Trash2,
-  X,
-  Zap,
-} from 'lucide-react-native';
+import { ChevronLeft, Eye, EyeOff, KeyRound, Plus, Trash2, X, Zap } from 'lucide-react-native';
 import { useCallback, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, View } from 'react-native';
+import { Pressable, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useColorScheme } from 'nativewind';
 
@@ -26,10 +16,11 @@ import { useConnectionsApi } from '@/components/connections/use-connections-api'
 import { Button } from '@/components/ui/button';
 import { Card, SectionLabel } from '@/components/ui/card';
 import { IconButton } from '@/components/ui/icon-button';
+import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import { asColorScheme } from '@/lib/color-scheme';
-import { ACCENT, ACCENT_FOREGROUND, ICON } from '@/lib/colors';
+import { ACCENT_FOREGROUND, ICON } from '@/lib/colors';
 import type { ProviderConnection } from '@/lib/connections-api';
 
 type PageStatus = 'loading' | 'ready' | 'error';
@@ -183,27 +174,19 @@ function ConnectionsList() {
       >
         <View className="gap-4 p-4">
           {status === 'loading' ? (
-            <View className="items-center gap-3 pt-16">
-              <ActivityIndicator color={ACCENT[scheme]} />
-              <Text className="text-[15px] text-muted-foreground">Loading connections…</Text>
-            </View>
+            <StateMessage kind="loading" title="Loading connections…" />
           ) : null}
 
           {status === 'error' ? (
-            <View className="items-center gap-3 pt-12">
-              <Text accessibilityRole="alert" className="text-center text-[15px] text-danger">
-                {errorInfo.message}
-              </Text>
-              <Button
-                variant="outline"
-                size="sm"
-                accessibilityLabel="Retry loading connections"
-                onPress={reload}
-              >
-                <RefreshCw size={16} color={ICON[scheme]} />
-                <Text>Retry</Text>
-              </Button>
-            </View>
+            <StateMessage
+              kind="error"
+              title={errorInfo.message}
+              action={{
+                label: 'Retry',
+                accessibilityLabel: 'Retry loading connections',
+                onPress: reload,
+              }}
+            />
           ) : null}
 
           {status === 'ready' && connections.length === 0 && !showForm ? (
