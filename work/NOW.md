@@ -54,7 +54,8 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| (none) | | | |
+| T-0343 | Mobile kit: Machines screen pill buttons on Button | coding (DeepSeek flash) | 9 Pressables |
+| T-0344 | Web kit: Telegram import link field and Group roles fields on TextInput | coding (DeepSeek flash) | |
 
 Time correction (checked with `date`): it is 04:42 local, Tue 10-06. The "~04:xx–05:50 local" stamps below were estimated and run up to about an hour ahead; their order is right.
 
