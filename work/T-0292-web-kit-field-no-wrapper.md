@@ -1,7 +1,7 @@
 ---
 id: T-0292
 title: "Web kit: TextInput / TextArea render the bare field when there is no label, hint or counter"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0292-web-kit-field-no-wrapper
 model: auto
@@ -59,4 +59,47 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- `apps/web/src/components/ui/text-input.tsx`: in both `TextInput` and `TextArea`, the field element (`<input>` / `<textarea>`) is now built once into a `field` variable with the same `id`, `aria-invalid`, `maxLength`, merged `className` and `onChange` logic. When `label`, `hint` and `counter` are all `undefined`, the function returns `field` directly, so no `Field` `<div className="flex flex-col gap-1.5">` wrapper is emitted. When any of the three is present, the previous behaviour is unchanged: `field` and the optional counter `<p>` are rendered inside `Field`. The `invalid` prop alone does not trigger the wrapper — it only affects the field's own `aria-invalid` / `border-destructive`.
+- `apps/web/src/components/ui/kit.test.tsx`: added two tests to `describe('TextInput and TextArea')`:
+  - a bare `TextInput` renders no wrapper: its parent is the test container and there is no `div.flex-col` in the container;
+  - a labelled `TextInput` still renders a real `<label>` and keeps the `flex-col` wrapper.
+- Callers without `label` (`IntegrationsPage`, `ConnectionsPage`, `NewTopicDialog`, `NewGroupDialog`, plus `InviteLinksSection` and the fixture) keep the same look: the removed wrapper held a single child, so nothing visual changes. Their tests pass.
+
+### Files changed
+- `apps/web/src/components/ui/text-input.tsx`
+- `apps/web/src/components/ui/kit.test.tsx`
+- `work/T-0292-web-kit-field-no-wrapper.md` (status/Report)
+
+### Commands and real results
+- `pnpm install` → Done, exit 0.
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot kit IntegrationsPage ConnectionsPage NewTopicDialog NewGroupDialog InviteLinksSection fixtures` → `Test Files 7 passed (7)`, `Tests 149 passed (149)`, exit 0.
+- `pnpm gate` (repo root) summary lines:
+  ```
+  gate: 3 changed file(s) against main
+  PASS  install (frozen)  (1.2s)
+  PASS  format  (15.6s)
+  PASS  lint  (1.0s)
+  PASS  typecheck  (7.6s)
+  PASS  tests @zilar/web  (18.8s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Acceptance
+- No `div` sits inside the wrapping `<label>`s from T-0291: those callers pass no `label`/`hint`/`counter` to the kit, so the kit now returns the bare field. Verified by the new bare-field test and the passing caller tests.
+- Labelled fields are unchanged: the existing label/hint/counter tests plus the new "keeps the wrapper and the label" test pass.
+- `pnpm gate` ends with `GATE PASS` and lists no file outside the Allowed list.
+
+### Problems / deviations
+- None. Runtime `invalid` styling for a bare field is preserved (it was already on the field element, not the wrapper).
+
+### Blocked / needs a decision
+- None.
+
 ## Review (written by Claude)
+
+**Approved.** The pre-review was clean and there were no fix rounds.
+
+- `TextInput` and `TextArea` now return the bare field when none of `label`, `hint` or `counter` is set, so the T-0291 wrapping labels no longer contain a `div`.
+- **Nit accepted:** there is no test of a bare `TextArea`. Its code path is identical to `TextInput`'s.

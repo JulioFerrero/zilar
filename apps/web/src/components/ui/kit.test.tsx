@@ -112,6 +112,20 @@ describe('TextInput and TextArea', () => {
     expect(area.className).toContain('max-w-xs');
     expect(area.className).toContain('well-surface');
   });
+
+  it('renders a bare field with no wrapper when there is no label, hint or counter', () => {
+    const { container } = render(<TextInput aria-label="Search" />);
+    const input = screen.getByLabelText('Search');
+    expect(input.parentElement).toBe(container);
+    expect(container.querySelector('div.flex-col')).toBeNull();
+  });
+
+  it('keeps the wrapper and the label for a labelled field', () => {
+    render(<TextInput label="Group name" />);
+    const input = screen.getByLabelText('Group name');
+    expect(screen.getByText('Group name').tagName).toBe('LABEL');
+    expect(input.parentElement?.className).toContain('flex-col');
+  });
 });
 
 describe('Dialog', () => {
