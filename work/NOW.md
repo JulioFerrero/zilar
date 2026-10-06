@@ -24,7 +24,11 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0297 | Mobile: integrations, connections, AI edit, invite-link fields on TextField | coding (Muse, peak) | batch 2 |
+| T-0299 | Mobile: invite links sheet moves above the keyboard and scrolls | coding (Muse, peak) | QA run 13 finding |
+| T-0300 | Mobile: create-sheet fields on TextField | coding (Muse, peak) | batch 3 |
+| T-0301 | Mobile: role name and topic link fields on TextField | coding (Muse, peak) | batch 4 |
+
+~03:14 local: merged T-0297 (mobile TextField batch 2) and T-0298 (web TextInput batch 6, the last plain web fields). QA run 13 (qa13/): T-0297 fields PASS. Integrations was not testable, because the mock user is not the owner and gets the lock page. Finding: the invite links sheet never avoided the keyboard → T-0299. Still to migrate after T-0300/T-0301: join-link and visibility-sheet (their tests overlap with T-0300), sticker pack, stickers, explore, machines, folder editor, telegram import, AI pickers. Images run 37396257689 is still building zilar-web.
 
 ~03:05 local: merged T-0293, T-0294 (mobile TextField; QA run 12 PASS, qa12/), T-0295, T-0296 (removed dead mobile AddContactSheet, found by QA 12). First production image build is running (images run 37396257689: server, postgres, ejabberd built OK; web still building at 00:59 UTC); deploy skips until the Coolify secrets exist.
 
