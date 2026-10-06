@@ -24,8 +24,11 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0280 | Web tests: GroupHandleRoute Escape flake | coding | flaked in T-0273 and T-0277 gates |
-| T-0281 | Web guard test: no hand-rolled solid bg-accent button/link | coding | audit line 437 |
+| T-0280 | Web tests: GroupHandleRoute Escape flake | pre-review | flaked in T-0273 and T-0277 gates |
+| T-0283 | Mobile kit: ActionSheet; AI + chat long-press sheets use it | coding | first mobile Modal family; QA on emulator after merge |
+| T-0282 | Web kit Sheet (PinsPanel first) + kit Escape stops propagating | queued after T-0280 | probable bug: on < 900 px, Escape in a kit dialog inside a chat also runs ChatShell's window handler (navigates to /) |
+
+~02:00 local: merged T-0281 (accent pill guard, after a lead fix round: no vacuous pass).
 
 ~01:55 local: merged T-0277, T-0278, T-0279. No hand-rolled accent buttons left on web (only 2 badge spans). Images workflow has only skipped so far (main moves faster than CI); the first build comes when merges pause.
 
