@@ -12,6 +12,7 @@ import { DismissBanner } from '@/components/chat/dismiss-banner';
 import { ForwardSheet } from '@/components/chat/forward-sheet';
 import { MessageList } from '@/components/chat/message-list';
 import { MessageListSkeleton } from '@/components/chat/skeleton';
+import { MediaSheet } from '@/components/chat/media-sheet';
 import { PinnedBanner } from '@/components/chat/pinned-banner';
 import { PinsSheet } from '@/components/chat/pins-sheet';
 import { TaskStrip } from '@/components/chat/task-strip';
@@ -156,6 +157,7 @@ function Chat() {
   const [linkLabel, setLinkLabel] = useState('');
   const [stripError, setStripError] = useState('');
   const [pinsOpen, setPinsOpen] = useState(false);
+  const [mediaOpen, setMediaOpen] = useState(false);
   const [pinIndex, setPinIndex] = useState(0);
   const [jumpToMessageId, setJumpToMessageId] = useState<string | undefined>(undefined);
   const [jumpError, setJumpError] = useState('');
@@ -338,8 +340,7 @@ function Chat() {
   const startReply = (message: UiMessage) => setReplyTo(replyRef(message, currentUserId));
   const cancelReply = () => setReplyTo(undefined);
 
-  const jumpToPin = (pin: BannerPin | SheetPin) => {
-    const messageId = pin.messageId;
+  const jumpTo = (messageId: string) => {
     if ((loadedMessageIds ?? []).includes(messageId)) {
       setJumpError('');
       setJumpToMessageId(messageId);
@@ -347,6 +348,10 @@ function Chat() {
     }
     // No history paging on mobile yet (no `openAtMessage` seam): say so.
     setJumpError('Message not found');
+  };
+
+  const jumpToPin = (pin: BannerPin | SheetPin) => {
+    jumpTo(pin.messageId);
   };
 
   const sheetUnpin = (pin: SheetPin) => {
@@ -481,6 +486,7 @@ function Chat() {
             chat={chat}
             onBack={() => router.back()}
             onSearchInChat={() => router.push({ pathname: '/', params: { searchChat: chat.id } })}
+            onOpenMedia={() => setMediaOpen(true)}
             onOpenGroup={
               chat.groupId === undefined
                 ? undefined
@@ -616,6 +622,14 @@ function Chat() {
         {forwarding !== null ? (
           <ForwardSheet messages={forwarding} onClose={() => setForwarding(null)} />
         ) : null}
+        {mediaOpen ? (
+          <MediaSheet
+            chatId={chat.id}
+            title="Media, files and links"
+            onJump={jumpTo}
+            onClose={() => setMediaOpen(false)}
+          />
+        ) : null}
       </View>
     );
   }
@@ -632,6 +646,7 @@ function Chat() {
             chat={chat}
             onBack={() => router.back()}
             onSearchInChat={() => router.push({ pathname: '/', params: { searchChat: chat.id } })}
+            onOpenMedia={() => setMediaOpen(true)}
             onOpenGroup={
               chat.groupId === undefined
                 ? undefined
@@ -767,6 +782,14 @@ function Chat() {
         {forwarding !== null ? (
           <ForwardSheet messages={forwarding} onClose={() => setForwarding(null)} />
         ) : null}
+        {mediaOpen ? (
+          <MediaSheet
+            chatId={chat.id}
+            title="Media, files and links"
+            onJump={jumpTo}
+            onClose={() => setMediaOpen(false)}
+          />
+        ) : null}
       </View>
     );
   }
@@ -779,6 +802,7 @@ function Chat() {
           chat={chat}
           onBack={() => router.back()}
           onSearchInChat={() => router.push({ pathname: '/', params: { searchChat: chat.id } })}
+          onOpenMedia={() => setMediaOpen(true)}
           topicGroupName={groupName}
           onOpenInfo={openInfo}
           onOpenGroup={
@@ -996,6 +1020,14 @@ function Chat() {
       />
       {forwarding !== null ? (
         <ForwardSheet messages={forwarding} onClose={() => setForwarding(null)} />
+      ) : null}
+      {mediaOpen ? (
+        <MediaSheet
+          chatId={chat.id}
+          title="Media, files and links"
+          onJump={jumpTo}
+          onClose={() => setMediaOpen(false)}
+        />
       ) : null}
     </View>
   );

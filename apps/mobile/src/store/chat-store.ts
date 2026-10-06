@@ -1,5 +1,5 @@
 import type { MentionMember, MessageStatus, UiMessage } from '@zilar/chat-core';
-import { defaultFolders, sortFolders } from '@zilar/chat-core';
+import { defaultFolders, sortFolders, splitLinks } from '@zilar/chat-core';
 import { StickerSchema } from '@zilar/protocol';
 import { create, type StoreApi, type UseBoundStore } from 'zustand';
 
@@ -43,6 +43,7 @@ import {
 import { MOCK_LOAD_DELAY_MS, readMockLoadScenario, type MockLoadScenario } from '../mock/load';
 import type { ChatStoreState, LoadState } from './types';
 import type { Pin } from '../lib/pins-api';
+import type { MediaItem, MediaTab } from '../lib/media-api';
 
 /** Simulated send states, from T-0018 step 5. */
 export const SENT_DELAY_MS = 300;
@@ -98,6 +99,7 @@ type ChatStoreData = Omit<
   | 'unpinMessage'
   | 'dismissPinsError'
   | 'stopPinsPoll'
+  | 'loadChatMedia'
   | 'createTopic'
   | 'patchTopic'
   | 'archiveTopic'
@@ -268,6 +270,88 @@ function mockPinsFor(chatId: string): Pin[] {
 
 function setPinsCache(chatId: string, pins: Pin[]): void {
   mockPinsRead[chatId] = pins;
+}
+
+function linkHostOf(url: string): string | undefined {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Builds one tab of the mock gallery from a chat's messages, newest first
+ * (T-0436). It mirrors the server's indexer: an image (or image attachment)
+ * is media, a file attachment is a file, a voice payload is a voice message
+ * and every http(s) URL in a text body is one link row. Retracted messages
+ * drop out, and the mock never pages (`next` is always null).
+ */
+function mockMediaItems(messages: readonly UiMessage[], tab: MediaTab): MediaItem[] {
+  const items: MediaItem[] = [];
+  for (const message of messages) {
+    if (message.deleted === true) {
+      continue;
+    }
+    const base = {
+      messageId: message.id,
+      chat: message.chatId,
+      at: message.createdAt.toISOString(),
+      senderName: message.senderName,
+    };
+    if (tab === 'media' && message.image !== undefined) {
+      items.push({
+        ...base,
+        kind: 'image',
+        url: message.image.url,
+        width: message.image.width,
+        height: message.image.height,
+      });
+    } else if (tab === 'media' && message.attachment?.kind === 'image') {
+      items.push({
+        ...base,
+        kind: 'image',
+        url: message.attachment.url,
+        name: message.attachment.name,
+        size: message.attachment.size,
+        mime: message.attachment.mime,
+        ...(message.attachment.width === undefined ? {} : { width: message.attachment.width }),
+        ...(message.attachment.height === undefined ? {} : { height: message.attachment.height }),
+      });
+    } else if (tab === 'files' && message.attachment?.kind === 'file') {
+      items.push({
+        ...base,
+        kind: 'file',
+        url: message.attachment.url,
+        name: message.attachment.name,
+        size: message.attachment.size,
+        mime: message.attachment.mime,
+      });
+    } else if (tab === 'voice' && message.voice !== undefined) {
+      items.push({
+        ...base,
+        kind: 'voice',
+        ...(message.voice.url === undefined ? {} : { url: message.voice.url }),
+        durationMs: message.voice.duration_ms,
+        waveform: [...message.voice.waveform],
+        mime: message.voice.mime,
+      });
+    } else if (tab === 'links' && message.text !== undefined) {
+      for (const segment of splitLinks(message.text)) {
+        if (segment.kind !== 'link') {
+          continue;
+        }
+        const host = linkHostOf(segment.href);
+        items.push({
+          ...base,
+          kind: 'link',
+          linkUrl: segment.href,
+          ...(host === undefined ? {} : { linkHost: host }),
+        });
+      }
+    }
+  }
+  return items.reverse();
 }
 
 /** The mock store kept for `?mock=1` dev mode and unit tests. */
@@ -600,6 +684,11 @@ export function createChatStore(
       // Mock mode has no background poll: leaving a chat is a no-op for
       // pins (the cache stays until the next open re-reads the seeds).
       stopPinsPoll: () => {},
+      loadChatMedia: (chatId, tab) =>
+        Promise.resolve({
+          items: mockMediaItems(get().messagesByChat[chatId] ?? NO_MESSAGES, tab),
+          next: null,
+        }),
       createTopic: async (chatId, input) => {
         const chat = get().chats.find((entry) => entry.id === chatId);
         const groupId = chat?.groupId;
