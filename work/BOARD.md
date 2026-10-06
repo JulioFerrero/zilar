@@ -405,6 +405,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0374](T-0374-web-visibility-invite-buttons-kit.md) | Web kit: visibility and invite link buttons on Button | in-progress | auto | | |
 | [T-0375](T-0375-web-plus-glyphs-icons-kit.md) | Web: "+" glyphs to Plus icons; New topic, Manage stickers, folder Edit on Button | in-progress | auto | | |
 | [T-0376](T-0376-web-fab-voice-key-guard.md) | Web kit: FAB and voice play on Button; guard flags key-primary and solid bg-danger | in-progress | auto | | |
-| [T-0378](T-0378-mobile-group-fab-key.md) | Mobile: group New topic FAB as a raised key | in-progress | auto | | |
 | [T-0379](T-0379-web-explore-states-kit.md) | Web kit: Explore states on StateMessage and Button | in-progress | auto | | |
 | [T-0377](T-0377-mobile-topic-info-leave-archive-kit.md) | Mobile kit: topic info Leave/Archive on Button; New topic Create guard | 2026-10-06 |
+| [T-0378](T-0378-mobile-group-fab-key.md) | Mobile: group New topic FAB as a raised key | 2026-10-06 |

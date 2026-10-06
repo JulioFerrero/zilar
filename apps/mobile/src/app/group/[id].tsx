@@ -27,6 +27,7 @@ import { TopicRow } from '@/components/chat/topic-row';
 import { IconButton } from '@/components/ui/icon-button';
 import { SearchField } from '@/components/ui/search-field';
 import { Text } from '@/components/ui/text';
+import { useKeyPress } from '@/components/ui/use-key-press';
 import { asColorScheme } from '@/lib/color-scheme';
 import { ICON } from '@/lib/colors';
 import { DirectoryApiError, type GroupVisibility } from '@/lib/directory-api';
@@ -42,6 +43,7 @@ import {
   topicsOfGroup,
 } from '@/lib/topics';
 import type { ChatSummary } from '@/lib/types';
+import { ACCENT_FOREGROUND, KEY_PRIMARY_PRESSED_SHADOW, pressStyle, primaryKey } from '@/lib/depth';
 import { useChatStore } from '@/store/chat-store-provider';
 
 export default function GroupTopicsScreen() {
@@ -57,6 +59,7 @@ function GroupTopics() {
   const params = useLocalSearchParams<{ id: string }>();
   const groupId = typeof params.id === 'string' ? params.id : '';
   const scheme = asColorScheme(useColorScheme().colorScheme);
+  const { pressed, reduceMotion, setPressed } = useKeyPress();
 
   const chats = useChatStore((state) => state.chats);
   const chatsLoad = useChatStore((state) => state.chatsLoad);
@@ -585,9 +588,12 @@ function GroupTopics() {
             setComposerAiError('');
             setComposerOpen(true);
           }}
-          className="absolute bottom-6 right-5 h-14 w-14 items-center justify-center rounded-[18px] bg-accent active:opacity-90"
+          onPressIn={() => setPressed(true)}
+          onPressOut={() => setPressed(false)}
+          className="absolute bottom-6 right-5 h-14 w-14 items-center justify-center rounded-[18px]"
+          style={[primaryKey, pressStyle(pressed, KEY_PRIMARY_PRESSED_SHADOW, reduceMotion)]}
         >
-          <Plus size={24} color="#0a0a0a" />
+          <Plus size={24} color={ACCENT_FOREGROUND} />
         </Pressable>
       ) : null}
 
