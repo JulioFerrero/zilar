@@ -1,7 +1,7 @@
 ---
 id: T-0375
 title: "Web: the \"+\" glyphs on New topic and Create sticker pack become Plus icons; New topic, Manage stickers and folder Edit/Create use the kit Button"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0375-web-plus-glyphs-icons-kit
 model: auto
@@ -66,5 +66,17 @@ pnpm gate
 ---
 
 ## Report (written by the worker when done)
+- TopicRow GroupHeaderRow New-topic button is now kit `<Button variant="ghost" size="icon-sm" className="shrink-0 rounded-full text-muted-foreground">` with `<Plus className="size-4">`; kept aria-label/title/onClick. Added `Plus` and `Button` imports.
+- StickerPanel Create pack tab kept as raw `<button role="tab">`, `+` replaced with `<Plus className="size-3.5">`; Manage stickers is now kit `<Button variant="ghost" size="sm" className="w-full text-muted-foreground">`. Added `Plus` and `Button` imports.
+- FoldersPage Edit button is now kit `<Button variant="ghost" size="icon" className="shrink-0 rounded-full text-muted-foreground">` with Pencil kept; reorder grip and dashed Create box untouched. Added `Button` import.
+- Files changed: `apps/web/src/components/TopicRow.tsx`, `apps/web/src/components/StickerPanel.tsx`, `apps/web/src/routes/FoldersPage.tsx`.
+- Commands:
+  - `pnpm install`: pass (18.7s).
+  - `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot StickerPanel ChatList TopicPanel FoldersPage`: 6 files, 98 tests passed.
+  - `pnpm gate`: GATE PASS — install PASS (3.1s), format PASS (57.0s), lint PASS (2.2s), typecheck PASS (27.7s), tests @zilar/web PASS (41.1s); scope clean (4 changed files, all inside Allowed files).
+- Security checklist: no secrets/tokens touched; no deletes/updates, permissions, caps, routes, or audit entries involved — N/A.
+- No deviations; no open questions.
 
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-06). Both "+" glyphs are lucide `Plus` icons; New topic is kit ghost `icon-sm`, Manage stickers kit ghost `sm`, folder Edit kit ghost `icon`. The Create sticker pack tab stays a raw `role="tab"` button by design. Pre-review clean (0 findings).

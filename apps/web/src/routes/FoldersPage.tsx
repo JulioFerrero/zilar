@@ -7,6 +7,7 @@ import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
 import { FolderEditorDialog } from '@/components/FolderEditorDialog';
 import { folderIconComponent } from '@/components/folderIcon';
 import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { StateMessage } from '@/components/ui/state-message';
 import { useChatStore } from '@/store/ChatStoreProvider';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
@@ -167,15 +168,17 @@ export function FoldersPage({ onBack }: { onBack: () => void }) {
                         {summary(folder)}
                       </span>
                     </span>
-                    <button
+                    <Button
                       type="button"
+                      variant="ghost"
+                      size="icon"
                       aria-label={`Edit ${folder.name}`}
                       title={`Edit ${folder.name}`}
                       onClick={() => setEditor({ open: true, folder })}
-                      className="flex shrink-0 items-center justify-center rounded-full p-2 text-muted-foreground hover:bg-list-hover hover:text-foreground"
+                      className="shrink-0 rounded-full text-muted-foreground"
                     >
                       <Pencil className="h-4 w-4" aria-hidden="true" />
-                    </button>
+                    </Button>
                   </li>
                 );
               })}

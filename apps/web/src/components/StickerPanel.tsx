@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Star } from 'lucide-react';
+import { Plus, Star } from 'lucide-react';
 import { GifPanel, gifsAvailability, probeGifsAvailability, type GifChoice } from './GifPanel';
 import type { Sticker, StickerPack } from '@/lib/api';
 import {
@@ -15,6 +15,7 @@ import { isPanelStickerUrl, readRecentStickers, rememberRecentSticker } from '@/
 import type { RecentStickerEntry } from '@/lib/stickers';
 import { cn } from '@/lib/utils';
 import { SegmentedControl } from '@/components/ui/segmented-control';
+import { Button } from '@/components/ui/button';
 
 export interface StickerChoice {
   stickerId: string;
@@ -468,7 +469,7 @@ export function StickerPanel({
                 onClick={onCreate}
                 className="shrink-0 rounded-[8px] px-2.5 py-1 text-[12px] text-muted-foreground"
               >
-                +
+                <Plus className="size-3.5" aria-hidden="true" />
               </button>
             )}
           </div>
@@ -558,13 +559,15 @@ export function StickerPanel({
 
           {onManage !== undefined && (
             <div className="border-t border-edge p-2">
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="sm"
                 onClick={onManage}
-                className="w-full rounded-[8px] px-3 py-1.5 text-center text-[13px] text-muted-foreground hover:bg-surface-raised hover:text-foreground"
+                className="w-full text-muted-foreground"
               >
                 Manage stickers
-              </button>
+              </Button>
             </div>
           )}
         </>
