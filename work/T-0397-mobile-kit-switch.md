@@ -1,7 +1,7 @@
 ---
 id: T-0397
 title: "Mobile kit: a themed Switch row (label plus RN Switch in kit colours) replaces the folder editor's SwitchRow"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0397-mobile-kit-switch
 model: auto
@@ -67,4 +67,36 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- Added `apps/mobile/src/components/ui/switch.tsx` exporting `Switch({ label, value, onValueChange, disabled?, hideLabel? })`. It renders the labelled row from the old local `SwitchRow`, omits the visible `Text` when `hideLabel`, and draws the RN switch with `accessibilityLabel={label}`, `value`, `disabled`, `onValueChange`, `trackColor={{ false: BORDER_STRONG, true: ACCENT[scheme] }}`, `ios_backgroundColor={BORDER_STRONG}` and `thumbColor={ACCENT_FOREGROUND[scheme]}` when on (`undefined`, i.e. the platform default, when off).
+- `apps/mobile/src/app/settings/folder/[id].tsx`: dropped `Switch` from the `react-native` import, imported the kit `Switch` from `@/components/ui/switch`, switched the three call sites (the three type rows plus the two "Hide" rows — lines 211, 223, 229 before the edit) to the kit component with the same props, and deleted the local `SwitchRow` function. No local `SwitchRow` remains and RN `Switch` is no longer imported.
+- Added `apps/mobile/src/components/ui/switch.test.tsx`, copying the `react-native` / `nativewind` / `@/components/ui/text` mocks from `kit.test.tsx` with `Switch: 'Switch'` added, and checking the label, `accessibilityLabel`, `hideLabel` and `value` pass-through. `kit.test.tsx` and the catalog were not touched.
+
+### Files changed
+- `apps/mobile/src/components/ui/switch.tsx` (new)
+- `apps/mobile/src/components/ui/switch.test.tsx` (new)
+- `apps/mobile/src/app/settings/folder/[id].tsx`
+- `work/T-0397-mobile-kit-switch.md`
+
+### Commands and real results
+- `pnpm install`: done in 13s, exit 0.
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot switch`: `Test Files 1 passed (1)`, `Tests 3 passed (3)`, exit 0. (The run prints React's "incorrect casing" / "does not recognize prop" warnings from the stubbed `react-native`, same as the existing kit tests; not failures.)
+- `pnpm gate`: exit 0.
+  - `gate: 4 changed file(s) against main`
+  - `PASS install (frozen) (1.0s)`
+  - `PASS format (15.6s)`
+  - `PASS lint (0.9s)`
+  - `PASS typecheck (6.2s)`
+  - `PASS tests @zilar/mobile (2.0s)`
+  - `scope: every changed file is inside the Allowed files`
+  - `GATE PASS`
+
+### Problems / deviations
+- None. The kit `Switch` signature follows the mobile naming in the spec (`value` / `onValueChange`), not the web `checked` / `onCheckedChange`.
+
+### Open questions
+- None.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-06). The kit `Switch` is a labelled row around the RN Switch with an accent track, a strong-border off track and an accent-foreground thumb when on. The folder editor uses it at all three places, and the local SwitchRow and RN Switch import are gone. It is tested in its own file. Pre-review clean (0 findings). Catalog entry to come.

@@ -9,7 +9,7 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useColorScheme } from 'nativewind';
 import { useState } from 'react';
-import { Pressable, Switch, TextInput, View } from 'react-native';
+import { Pressable, TextInput, View } from 'react-native';
 
 import { RequireAuth } from '@/auth/RequireAuth';
 import { folderIcon } from '@/components/chat/folder-icon';
@@ -21,6 +21,7 @@ import {
   isFolderNameValid,
 } from '@/components/settings/folders';
 import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
 import { Text } from '@/components/ui/text';
 import { ChatFoldersApiError } from '@/lib/chat-folders-api';
 import { asColorScheme } from '@/lib/color-scheme';
@@ -208,7 +209,7 @@ function FolderForm({ id, folder }: { id: string; folder: ChatFolder | undefined
         <View className="gap-3 rounded-xl border border-border bg-surface px-3 py-3">
           <Text className="text-[16px] font-semibold text-foreground">Show these chats</Text>
           {TYPE_ORDER.map((type) => (
-            <SwitchRow
+            <Switch
               key={type}
               label={FOLDER_TYPE_LABELS[type]}
               value={includeTypes.includes(type)}
@@ -220,13 +221,13 @@ function FolderForm({ id, folder }: { id: string; folder: ChatFolder | undefined
 
         <View className="gap-3 rounded-xl border border-border bg-surface px-3 py-3">
           <Text className="text-[16px] font-semibold text-foreground">Hide</Text>
-          <SwitchRow
+          <Switch
             label="Muted chats"
             value={excludeMuted}
             disabled={busy}
             onValueChange={setExcludeMuted}
           />
-          <SwitchRow
+          <Switch
             label="Read chats"
             value={excludeRead}
             disabled={busy}
@@ -275,30 +276,6 @@ function FolderForm({ id, folder }: { id: string; folder: ChatFolder | undefined
         ) : null}
       </View>
     </SettingsScreenShell>
-  );
-}
-
-function SwitchRow({
-  label,
-  value,
-  disabled,
-  onValueChange,
-}: {
-  label: string;
-  value: boolean;
-  disabled: boolean;
-  onValueChange: (value: boolean) => void;
-}) {
-  return (
-    <View className="flex-row items-center gap-2">
-      <Text className="min-w-0 flex-1 text-[15px] text-foreground">{label}</Text>
-      <Switch
-        accessibilityLabel={label}
-        value={value}
-        disabled={disabled}
-        onValueChange={onValueChange}
-      />
-    </View>
   );
 }
 
