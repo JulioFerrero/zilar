@@ -26,6 +26,8 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 | --- | --- | --- | --- |
 | T-0309 | Mobile: chat list + Stickers search on SearchField | coding (Muse, peak) | |
 
+~03:50 local: FIRST FULL IMAGES RUN GREEN (37400612697, tip c1837ca3), about 3.5 min end to end. zilar-web took 40 s (T-0304 native builder; the old QEMU build was still running after 55 min), server 3.5 min, postgres and ejabberd under 1 min. The "Deploy to Coolify" job ran and logged "Auto-deploy skipped: set COOLIFY_URL, COOLIFY_TOKEN and COOLIFY_SERVICE_UUID". Once Julio adds the secrets, every green main deploys by itself.
+
 ~03:50 local: CI green on c1837ca3. The old images run had ignored the cancel and still held `publish-main`; force-cancelled it, and images run 37400612697 (the first with the T-0304 native web builder) started; lead is timing it. Merged T-0307, T-0308 (kit SearchField), T-0310 (visibility sheet keyboard fix). QA run 16 sent (qa16/).
 
 ~03:40 local: QA run 15 (qa15/): PASS for Integrations (cards show in mock; `?mock=not-owner` shows the lock), Join link field, AI Model, $ limits, tool Run input, machine rename, new sticker pack name. ISSUE: the visibility sheet is fully hidden by the keyboard (lead saw 10.png) → T-0310. Editing an owned sticker pack's name is not reachable in mock. Phone marker b45684f1 (lead checked).
