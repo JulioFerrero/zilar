@@ -219,28 +219,32 @@ export function ConnectionsPage() {
                           </>
                         ) : (
                           <>
-                            <button
+                            <Button
                               type="button"
+                              variant="ghost"
+                              size="icon"
                               disabled={testingId === connection.id}
                               aria-label={`Test ${providerLabel(connection.provider)} key`}
                               title={`Test ${providerLabel(connection.provider)} key`}
                               onClick={() => void testConnection(connection.id)}
-                              className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+                              className="rounded-full text-muted-foreground"
                             >
                               <Zap className="size-4" aria-hidden="true" />
-                            </button>
-                            <button
+                            </Button>
+                            <Button
                               type="button"
+                              variant="ghost"
+                              size="icon"
                               aria-label={`Remove ${providerLabel(connection.provider)} connection`}
                               title={`Remove ${providerLabel(connection.provider)} connection`}
                               onClick={() => {
                                 setConfirmingId(connection.id);
                                 setRemoveError('');
                               }}
-                              className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-danger/10 hover:text-danger"
+                              className="rounded-full text-muted-foreground hover:bg-danger/10 hover:text-danger"
                             >
                               <Trash2 className="size-4" aria-hidden="true" />
-                            </button>
+                            </Button>
                           </>
                         )}
                       </div>
@@ -300,15 +304,17 @@ function AddConnectionForm({
     <div className="rounded-xl border border-border bg-surface p-4">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-[16px] font-semibold">New connection</h2>
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="icon-sm"
           aria-label="Close"
           title="Close"
           onClick={onCancel}
-          className="rounded-full p-1 text-muted-foreground hover:bg-muted"
+          className="rounded-full text-muted-foreground"
         >
           <X className="size-4" aria-hidden="true" />
-        </button>
+        </Button>
       </div>
 
       <div className="flex flex-col gap-3">

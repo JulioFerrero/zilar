@@ -415,7 +415,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0392](T-0392-mobile-kit-segmented-control.md) | Mobile kit: SegmentedControl from the Stickers tabs | in-progress | auto | | |
 | [T-0393](T-0393-mobile-panels-state-message.md) | Mobile kit: sticker and GIF panel states on StateMessage | in-progress | auto | T-0386 | |
 | [T-0394](T-0394-web-inline-loading-lines-kit.md) | Web kit: eight Loading/Searching lines on StateMessage | in-progress | auto | | |
-| [T-0396](T-0396-web-connections-icon-buttons-kit.md) | Web kit: Connections icon buttons on Button | in-progress | auto | | |
 | [T-0397](T-0397-mobile-kit-switch.md) | Mobile kit: themed Switch row replaces the folder editor's SwitchRow | in-progress | auto | | |
 | [T-0380](T-0380-web-shell-back-icons-kit.md) | Web kit: settings Back, AI close and refresh on Button; drop unused AiPageShell frame | 2026-10-06 |
 | [T-0387](T-0387-mobile-profile-card-confirm-block-kit.md) | Mobile kit: profile card Confirm block on destructive Button | 2026-10-06 |
@@ -426,3 +425,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0389](T-0389-web-kit-secret-input.md) | Web kit: SecretInput replaces four hand-rolled key/token fields | 2026-10-06 |
 | [T-0391](T-0391-mobile-no-solid-pill-guard.md) | Mobile guard: no hand-rolled solid bg-accent/bg-danger Pressable | 2026-10-06 |
 | [T-0395](T-0395-web-chat-message-list-errors-kit.md) | Web kit: chat and message list errors on StateMessage | 2026-10-06 |
+| [T-0396](T-0396-web-connections-icon-buttons-kit.md) | Web kit: Connections icon buttons on Button | 2026-10-06 |
