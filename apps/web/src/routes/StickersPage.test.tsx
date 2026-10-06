@@ -414,6 +414,14 @@ describe('StickersPage', () => {
     expect(within(row).queryByText(/Imported from Telegram · Private/)).toBeNull();
     const share = screen.getByRole('button', { name: 'Share' }) as HTMLButtonElement;
     expect(share.disabled).toBe(true);
-    expect(share.title).toContain('personal use');
+    expect(share.title).toBe('');
+    const wrapper = share.parentElement!;
+    expect(wrapper.tagName).toBe('SPAN');
+    expect(wrapper.title).toBe('Imported packs stay private for personal use');
+    const describedBy = share.getAttribute('aria-describedby');
+    expect(describedBy).not.toBeNull();
+    expect(document.getElementById(describedBy!)?.textContent).toBe(
+      'Imported packs stay private for personal use',
+    );
   });
 });

@@ -378,6 +378,20 @@ export function StickersPage() {
                       url: sticker.url,
                       alt: sticker.emoji ?? `Sticker ${index + 1}`,
                     }));
+                  const importedShareLocked = pack.importedFrom !== undefined;
+                  const shareReasonId = `share-reason-${pack.id}`;
+                  const shareButton = (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void toggleVisibility(pack)}
+                      disabled={importedShareLocked}
+                      aria-describedby={importedShareLocked ? shareReasonId : undefined}
+                    >
+                      {pack.visibility === 'server' ? 'Make private' : 'Share'}
+                    </Button>
+                  );
                   return (
                     <li
                       key={pack.id}
@@ -423,20 +437,19 @@ export function StickersPage() {
                         >
                           <ChevronDown aria-hidden="true" />
                         </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => void toggleVisibility(pack)}
-                          disabled={pack.importedFrom !== undefined}
-                          title={
-                            pack.importedFrom !== undefined
-                              ? 'Imported packs stay private for personal use'
-                              : undefined
-                          }
-                        >
-                          {pack.visibility === 'server' ? 'Make private' : 'Share'}
-                        </Button>
+                        {importedShareLocked ? (
+                          <span
+                            title="Imported packs stay private for personal use"
+                            className="inline-flex"
+                          >
+                            {shareButton}
+                            <span id={shareReasonId} className="sr-only">
+                              Imported packs stay private for personal use
+                            </span>
+                          </span>
+                        ) : (
+                          shareButton
+                        )}
                         <Button
                           type="button"
                           variant="outline"
