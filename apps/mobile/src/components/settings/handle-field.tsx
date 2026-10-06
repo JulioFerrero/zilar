@@ -76,7 +76,7 @@ export function HandleField({
         disabled={busy || saveDisabled}
         onPress={onSave}
       >
-        {busy ? 'Saving…' : 'Save username'}
+        <Text>{busy ? 'Saving…' : 'Save username'}</Text>
       </Button>
     </View>
   );

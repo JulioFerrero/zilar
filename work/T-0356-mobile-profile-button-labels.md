@@ -1,7 +1,7 @@
 ---
 id: T-0356
 title: "Mobile fix: the Profile settings buttons show their labels again (wrap the label in Text)"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0356-mobile-profile-button-labels
 model: auto
@@ -56,4 +56,19 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Wrapped all six bare-string kit Button labels in `<Text>` with no className (matching machines.tsx):
+- `apps/mobile/src/app/settings/profile.tsx`: Retry, Save name / Saving….
+- `apps/mobile/src/components/settings/avatar-control.tsx`: Add/Change picture, Working…/Remove, Save picture.
+- `apps/mobile/src/components/settings/handle-field.tsx`: Save username / Saving….
+Added two assertions in `settings-ui.test.tsx`: AvatarControl markup contains `<Text>Add picture</Text>`; HandleField markup contains `<Text>Save username</Text>` (Text mocked as the `'Text'` tag, so these fail on the old code).
+Files changed: the four Allowed files above (3 source + test + this task file).
+Commands:
+- `pnpm install`: pass (11.2s).
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot settings-ui`: 13 passed, 1 file.
+- `pnpm gate`: GATE PASS — install, format, lint, typecheck, tests @zilar/mobile all PASS; scope: every changed file inside Allowed files (4 changed files).
+Note: the real visual check is on the emulator; the lead runs QA after the merge.
+Security checklist: no secrets, no deletes/updates, no caps, no routes, no audit entries — not applicable to this UI-label fix.
+
 ## Review (written by Claude)
+
+**Approved** (pre-review clean, 0 nits). All six labels are now inside `<Text>`. The new assertions pin the label inside a `Text` for `HandleField` and `AvatarControl`. Emulator confirmation is in QA run 28.

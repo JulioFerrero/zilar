@@ -72,7 +72,7 @@ export function AvatarControl({
             disabled={uploading}
             onPress={onPick}
           >
-            {currentUrl === undefined ? 'Add picture' : 'Change picture'}
+            {currentUrl === undefined ? <Text>Add picture</Text> : <Text>Change picture</Text>}
           </Button>
           {currentUrl !== undefined ? (
             <Button
@@ -82,7 +82,7 @@ export function AvatarControl({
               disabled={uploading}
               onPress={onRemove}
             >
-              {phase.name === 'uploading' ? 'Working…' : 'Remove'}
+              <Text>{phase.name === 'uploading' ? 'Working…' : 'Remove'}</Text>
             </Button>
           ) : null}
         </View>
@@ -109,7 +109,7 @@ export function AvatarControl({
               disabled={uploading}
               onPress={onSavePicked}
             >
-              Save picture
+              <Text>Save picture</Text>
             </Button>
           )}
         </View>

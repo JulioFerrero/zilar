@@ -319,7 +319,7 @@ function ProfileSettings() {
             Could not load your profile.
           </Text>
           <Button variant="outline" size="sm" accessibilityLabel="Retry" onPress={reload}>
-            Retry
+            <Text>Retry</Text>
           </Button>
         </View>
       ) : null}
@@ -366,7 +366,7 @@ function ProfileSettings() {
               disabled={nameBusy || nameUnchanged}
               onPress={saveName}
             >
-              {nameBusy ? 'Saving…' : 'Save name'}
+              <Text>{nameBusy ? 'Saving…' : 'Save name'}</Text>
             </Button>
           </View>
 

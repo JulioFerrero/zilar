@@ -54,6 +54,11 @@ describe('AvatarControl phases', () => {
     expect(html).toContain('Add a picture so friends recognize you.');
   });
 
+  it('wraps the add-picture label in a Text element', () => {
+    const html = renderAvatar({ name: 'idle' });
+    expect(html).toContain('<Text>Add picture</Text>');
+  });
+
   it('offers change and remove when a picture is set', () => {
     const html = renderAvatar({ name: 'idle' }, '/api/avatars/1');
     expect(html).toContain('Change picture');
@@ -143,6 +148,16 @@ describe('AvatarPicture fallback', () => {
 });
 
 describe('HandleField states', () => {
+  it('wraps the save label in a Text element', () => {
+    const html = renderToStaticMarkup(
+      createElement(HandleField, {
+        ...HANDLE_BASE,
+        availability: { state: 'idle' },
+      }),
+    );
+    expect(html).toContain('<Text>Save username</Text>');
+  });
+
   it('announces an available handle', () => {
     const html = renderToStaticMarkup(
       createElement(HandleField, {
