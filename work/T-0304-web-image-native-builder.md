@@ -1,7 +1,7 @@
 ---
 id: T-0304
 title: "Images: the web image's builder stage runs on the native build platform, not under QEMU"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0304-web-image-native-builder
 model: auto
@@ -55,5 +55,16 @@ pnpm gate
 ---
 
 ## Report (written by the worker when done)
+- Changed `apps/web/Dockerfile`: builder stage is now `FROM --platform=$BUILDPLATFORM node:24.11.1-alpine AS builder` with a two-line comment above it explaining dist/ is platform-independent static files so only the Caddy runtime stage builds per platform. Runtime stage unchanged.
+- Docker build ran locally and succeeded: `docker buildx build --platform linux/amd64 -f apps/web/Dockerfile . -t zilar-web-test` exited 0 and exported `zilar-web-test:latest` (buildx details `desktop-linux/9ogecpdx9dkh0aiz92wgsnhaf`).
+- Commands: `pnpm install` (exit 0, ~13s); `docker buildx build ...` (exit 0); `pnpm gate` — GATE PASS: install (frozen) 1.7s, format 20.7s, lint 0.8s, typecheck 7.7s, tests @zilar/web 3.1s; scope: every changed file inside Allowed files. No single-file tests run (Dockerfile-only change, no JS touched; gate ran @zilar/web tests).
+- Files changed: `apps/web/Dockerfile`, `work/T-0304-web-image-native-builder.md`.
+- No deviations; security checklist N/A (no routes, auth, secrets, or data deletes).
 
 ## Review (written by Claude)
+
+**Approved.** Clean pre-review (0 nits), no fix rounds (Muse, peak).
+- The builder stage is `FROM --platform=$BUILDPLATFORM`; the Caddy stage is unchanged.
+- The worker's local `docker buildx build --platform linux/amd64` passed. It ran on an arm64 Mac, so it already tested the cross-platform case: a native builder with a foreign runtime stage.
+
+**Still to do:** time the next images run in CI.
