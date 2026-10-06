@@ -7,6 +7,7 @@ import type { ChatSummary } from '@/lib/types';
 
 vi.mock('react-native', () => ({
   Modal: 'Modal',
+  Platform: { OS: 'ios', select: (options: Record<string, unknown>) => options['ios'] },
   Pressable: 'Pressable',
   View: 'View',
 }));
@@ -17,6 +18,10 @@ vi.mock('react-native-safe-area-context', () => ({
 
 vi.mock('nativewind', () => ({
   useColorScheme: () => ({ colorScheme: 'dark' }),
+}));
+
+vi.mock('react-native-reanimated', () => ({
+  useReducedMotion: () => false,
 }));
 
 vi.mock('lucide-react-native', () => ({
@@ -30,6 +35,7 @@ vi.mock('@/components/chat/avatar', () => ({
 
 vi.mock('@/components/ui/text', () => ({
   Text: 'Text',
+  TextClassContext: { Provider: 'TextClassContextProvider' },
 }));
 
 // The info sheet renders through the kit `BottomSheet` (T-0315); stub it

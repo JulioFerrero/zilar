@@ -1,7 +1,7 @@
 ---
 id: T-0361
 title: "Mobile kit migration: the Group roles sheet, the topic sheets and the task strip use the kit Button"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0361-mobile-roles-topics-buttons-kit
 model: auto
@@ -67,4 +67,54 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**Status:** done, ready for review.
+
+**What I did**
+Replaced the ten hand-rolled pill `Pressable`s with the kit `Button` (`components/ui/button.tsx`), per the variant rule. Every label is inside `<Text>`; kept every `accessibilityLabel`, `disabled` and `onPress`; dropped old pill classes and child `Text` colour/size classes; dropped `accessibilityRole="button"` since kit `Button` sets `role="button"` (T-0353/T-0355 pattern). `Pressable` stays imported in all three source files (other `Pressable`s remain: cancel/rename/delete rows, checkboxes, picker rows, approver row, status/owner/link chips).
+
+Button list (variant / size / kept className):
+- `group-roles-sheet.tsx` "Retry loading roles" → `outline` / default (omitted) / `self-start`.
+- `group-roles-sheet.tsx` "Save …" → `outline` / `sm` / none.
+- `group-roles-sheet.tsx` "Assign …" → `outline` / `sm` / none.
+- `group-roles-sheet.tsx` "Add role" → default (omitted) / default (omitted) / `shrink-0`; busy text `Saving…` kept.
+- `topic-sheets.tsx` "Retry loading topic roles" → `outline` / default / `self-start`.
+- `topic-sheets.tsx` "Remove … from the topic" → `outline` / `sm` / none.
+- `topic-sheets.tsx` "Retry loading group roles" → `outline` / default / `self-start`.
+- `topic-sheets.tsx` "Add … to the topic" (picker row) → `outline` / `sm` / none.
+- `topic-sheets.tsx` "Add roles to the topic" → default / default / `self-start`.
+- `task-strip.tsx` "Save link" → default / `sm` / none.
+- Left alone: `topic-sheets.tsx` Approvers picker row, "Done adding roles", Leave/Archive, and all group-roles cancel/confirm/checkbox rows.
+
+Tests, mocks only (T-0353/T-0355 pattern): added `Platform.select` to the `react-native` mock, a `react-native-reanimated` `useReducedMotion` mock, and `TextClassContext` on the text mock in all five test files; plus a `@/components/ui/use-key-press` mock in `topic-actions-sheet.test.tsx` (it walks the tree by calling bodies as plain functions, so the real hook would throw invalid-hook-call). No `@/lib/depth` mock needed (no test mocks it; the real module is type-only RN import + tokens and loads cleanly).
+
+**Files changed**
+- `apps/mobile/src/components/chat/group-roles-sheet.tsx` — 4 `Pressable`s now kit `Button`s; `Button` imported.
+- `apps/mobile/src/components/chat/topic-sheets.tsx` — 5 `Pressable`s now kit `Button`s; `Button` imported.
+- `apps/mobile/src/components/chat/task-strip.tsx` — 1 `Pressable` now kit `Button`; `Button` imported.
+- Mocks only: `group-roles-sheet.test.tsx`, `group-roles-mounted.test.tsx`, `group-roles-load.test.tsx`, `topic-actions-sheet.test.tsx`, `topic-sheets-roles.test.tsx`.
+- `work/T-0361-mobile-roles-topics-buttons-kit.md` — status and this Report.
+
+**Commands run and results**
+- `pnpm install` (worktree) — succeeded (`Done in 22.8s`).
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot group-roles topic-actions-sheet topic-sheets` — `Test Files 5 passed (5)`, `Tests 25 passed (25)` (only the usual string-mock casing warnings on stderr, incl. `TextClassContextProvider`).
+- `pnpm gate` (repo root) — passed first try:
+  ```
+  gate: 9 changed file(s) against main
+  PASS  install (frozen)  (2.0s)
+  PASS  format  (22.1s)
+  PASS  lint  (1.2s)
+  PASS  typecheck  (17.3s)
+  PASS  tests @zilar/mobile  (3.2s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+**Deviations from the spec:** none.
+
+**Blocked / needs a decision:** none.
+
+**Security checklist:** no secrets, routes, deletes, caps, permissions, or audit entries touched — UI button migration only; `disabled`/`busy` guards unchanged.
+
 ## Review (written by Claude)
+
+**Approved** (pre-review clean, 1 nit accepted: a long role name in the topic add-picker no longer truncates to one line; check on the emulator). The ten buttons are kit `Button`s, and the lead scan found every label inside `<Text>`. The tests changed mocks only.

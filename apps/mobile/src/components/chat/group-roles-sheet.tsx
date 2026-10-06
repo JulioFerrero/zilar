@@ -4,6 +4,7 @@ import { Pressable, View } from 'react-native';
 import { Avatar } from '@/components/chat/avatar';
 import { RoleChips } from '@/components/chat/role-chips';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
+import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
@@ -117,15 +118,15 @@ export function GroupRolesSheet({
           <Text accessibilityRole="alert" className="text-[13px] text-danger">
             {rolesError}
           </Text>
-          <Pressable
-            accessibilityRole="button"
+          <Button
+            variant="outline"
             accessibilityLabel="Retry loading roles"
             disabled={busy}
             onPress={onRetryRoles}
-            className="self-start rounded-[10px] border border-border-strong px-4 py-2 active:bg-surface-raised disabled:opacity-50"
+            className="self-start"
           >
-            <Text className="text-[15px] text-foreground">Retry</Text>
-          </Pressable>
+            <Text>Retry</Text>
+          </Button>
         </View>
       ) : null}
       {roles !== undefined && roles.length === 0 ? (
@@ -156,15 +157,15 @@ export function GroupRolesSheet({
               {isManager ? (
                 renaming ? (
                   <>
-                    <Pressable
-                      accessibilityRole="button"
+                    <Button
+                      variant="outline"
+                      size="sm"
                       accessibilityLabel={`Save ${role.name}`}
                       disabled={busy}
                       onPress={() => rename(role.id)}
-                      className="rounded-[10px] border border-border-strong px-3 py-1.5 active:bg-surface-raised disabled:opacity-50"
                     >
-                      <Text className="text-[14px] text-foreground">Save</Text>
-                    </Pressable>
+                      <Text>Save</Text>
+                    </Button>
                     <Pressable
                       accessibilityRole="button"
                       accessibilityLabel="Cancel rename"
@@ -202,15 +203,15 @@ export function GroupRolesSheet({
                   </>
                 ) : (
                   <>
-                    <Pressable
-                      accessibilityRole="button"
+                    <Button
+                      variant="outline"
+                      size="sm"
                       accessibilityLabel={`Assign ${role.name}`}
                       disabled={busy}
                       onPress={() => setAssigningId(assigning ? undefined : role.id)}
-                      className="rounded-[10px] border border-border-strong px-3 py-1.5 active:bg-surface-raised disabled:opacity-50"
                     >
-                      <Text className="text-[14px] text-foreground">Assign</Text>
-                    </Pressable>
+                      <Text>Assign</Text>
+                    </Button>
                     <Pressable
                       accessibilityRole="button"
                       accessibilityLabel={`Rename ${role.name}`}
@@ -280,17 +281,14 @@ export function GroupRolesSheet({
             placeholder="e.g. Designers"
             className="min-w-0 flex-1 text-[14px]"
           />
-          <Pressable
-            accessibilityRole="button"
+          <Button
             accessibilityLabel="Add role"
             disabled={busy || newName.trim() === ''}
             onPress={create}
-            className="shrink-0 rounded-full bg-accent px-4 py-2 active:opacity-90 disabled:opacity-50"
+            className="shrink-0"
           >
-            <Text className="text-[14px] font-semibold text-accent-foreground">
-              {busy ? 'Saving…' : 'Add role'}
-            </Text>
-          </Pressable>
+            <Text>{busy ? 'Saving…' : 'Add role'}</Text>
+          </Button>
         </View>
       ) : null}
       {error !== '' ? (

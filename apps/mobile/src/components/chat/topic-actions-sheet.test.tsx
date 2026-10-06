@@ -6,6 +6,7 @@ import { TopicActionsSheet, type TopicPrefAction } from './topic-sheets';
 
 vi.mock('react-native', () => ({
   Modal: 'Modal',
+  Platform: { OS: 'ios', select: (options: Record<string, unknown>) => options['ios'] },
   Pressable: 'Pressable',
   View: 'View',
 }));
@@ -18,8 +19,17 @@ vi.mock('nativewind', () => ({
   useColorScheme: () => ({ colorScheme: 'dark' }),
 }));
 
+vi.mock('react-native-reanimated', () => ({
+  useReducedMotion: () => false,
+}));
+
+vi.mock('@/components/ui/use-key-press', () => ({
+  useKeyPress: () => ({ pressed: false, reduceMotion: false, setPressed: () => {} }),
+}));
+
 vi.mock('../ui/text', () => ({
   Text: 'Text',
+  TextClassContext: { Provider: 'TextClassContextProvider' },
 }));
 
 vi.mock('../../lib/utils', () => ({

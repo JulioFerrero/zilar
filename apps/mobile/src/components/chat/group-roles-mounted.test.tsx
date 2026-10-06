@@ -7,6 +7,7 @@ import { ROLE_GONE_MESSAGE, ROLE_LOAD_FAILED_MESSAGE } from '@/lib/roles';
 
 vi.mock('react-native', () => ({
   Modal: 'Modal',
+  Platform: { OS: 'ios', select: (options: Record<string, unknown>) => options['ios'] },
   Pressable: 'Pressable',
   TextInput: 'TextInput',
   View: 'View',
@@ -18,6 +19,10 @@ vi.mock('react-native-safe-area-context', () => ({
 
 vi.mock('nativewind', () => ({
   useColorScheme: () => ({ colorScheme: 'dark' }),
+}));
+
+vi.mock('react-native-reanimated', () => ({
+  useReducedMotion: () => false,
 }));
 
 vi.mock('lucide-react-native', () => ({
@@ -34,6 +39,7 @@ vi.mock('@/components/chat/role-chips', () => ({
 
 vi.mock('@/components/ui/text', () => ({
   Text: 'Text',
+  TextClassContext: { Provider: 'TextClassContextProvider' },
 }));
 
 // The sheet renders through the kit `BottomSheet` (T-0315); stub it as a

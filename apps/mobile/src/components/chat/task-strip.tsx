@@ -1,5 +1,6 @@
 import { Linking, Pressable, View } from 'react-native';
 
+import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import {
@@ -230,14 +231,9 @@ export function TaskStrip({
             className="text-[14px]"
           />
           <View className="flex-row justify-end">
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Save link"
-              onPress={onSaveLink}
-              className="rounded-full bg-accent px-4 py-1.5 active:opacity-90"
-            >
-              <Text className="text-[14px] font-medium text-accent-foreground">Save</Text>
-            </Pressable>
+            <Button size="sm" accessibilityLabel="Save link" onPress={onSaveLink}>
+              <Text>Save</Text>
+            </Button>
           </View>
         </View>
       ) : null}
