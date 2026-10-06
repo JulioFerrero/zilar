@@ -1,7 +1,7 @@
 ---
 id: T-0381
 title: "Web kit: Setup Back, handle Skip, Add machine Close, profile Copy share link and the sign-in Resend/Use a different email links use the kit Button"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0381-web-auth-setup-text-buttons-kit
 model: auto
@@ -66,5 +66,20 @@ pnpm gate
 ---
 
 ## Report (written by the worker when done)
+Migrated all six hand-rolled text buttons to the kit `Button` (`type="button"`, texts/disabled/handlers unchanged):
+- `apps/web/src/routes/SetupPage.tsx`: Back -> `variant="outline" size="lg"`.
+- `apps/web/src/routes/HandlePage.tsx`: Skip for now -> `variant="ghost" size="lg"`, `className="mt-2 w-full text-muted-foreground"`.
+- `apps/web/src/components/machines/AddMachineDialog.tsx`: Close -> `variant="ghost" size="lg"`.
+- `apps/web/src/components/ProfileSettingsSection.tsx`: Copy share link/Copied -> `variant="outline"`.
+- `apps/web/src/components/auth/AuthFlow.tsx`: Resend code -> `variant="link" size="sm"`, `className="h-auto px-0 text-[14px] text-accent"`; Use a different email -> `variant="link" size="sm"`, `className="h-auto px-0 text-[14px] text-muted-foreground"`.
+No test files needed changes (buttons still found by role+name).
+Commands:
+- `pnpm install`: pass.
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot SetupPage HandlePage AddMachineDialog ProfileSettingsSection AuthFlow`: 5 files, 27 tests passed.
+- `grep -rn "<button" <5 files>`: no matches (acceptance: no hand-rolled `<button` remains).
+- `pnpm gate`: GATE PASS — PASS install (2.0s), PASS format (31.1s), PASS lint (1.3s), PASS typecheck (30.1s), PASS tests @zilar/web (35.6s); 6 changed files, scope: every changed file is inside the Allowed files.
+Security checklist: no secrets/tokens touched; no deletes/updates, permissions, caps, routes, or audit entries involved — N/A.
 
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-06). The six text buttons are kit `Button` as specified (Setup Back outline lg, Skip ghost lg, Close ghost lg, Copy share link outline, Resend and Use a different email inline links). Texts, disabled and handlers kept. Pre-review clean (0 findings).

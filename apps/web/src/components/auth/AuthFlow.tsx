@@ -186,26 +186,30 @@ export function AuthFlow({
               {secondsLeft > 0 ? (
                 <span className="text-[14px] text-muted-foreground">Resend in {secondsLeft}s</span>
               ) : (
-                <button
+                <Button
                   type="button"
+                  variant="link"
+                  size="sm"
                   disabled={busy}
                   onClick={() => void requestCode()}
-                  className="text-[14px] text-accent hover:underline"
+                  className="h-auto px-0 text-[14px] text-accent"
                 >
                   Resend code
-                </button>
+                </Button>
               )}
             </div>
-            <button
+            <Button
               type="button"
+              variant="link"
+              size="sm"
               onClick={() => {
                 setStep('email');
                 setError(undefined);
               }}
-              className="text-[14px] text-muted-foreground hover:underline"
+              className="h-auto px-0 text-[14px] text-muted-foreground"
             >
               Use a different email
-            </button>
+            </Button>
           </div>
         )}
       </div>

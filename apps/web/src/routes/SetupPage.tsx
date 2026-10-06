@@ -206,17 +206,18 @@ export function SetupPage() {
               </p>
             )}
             <div className="mt-1 flex items-center gap-3">
-              <button
+              <Button
                 type="button"
+                variant="outline"
+                size="lg"
                 disabled={busy}
                 onClick={() => {
                   setStep(1);
                   setError(undefined);
                 }}
-                className="rounded-full border border-input px-5 py-2.5 text-[15px] font-medium hover:bg-accent/10 disabled:opacity-60"
               >
                 Back
-              </button>
+              </Button>
               <Button type="submit" disabled={busy} size="lg" className="flex-1">
                 {busy ? 'Sending your code…' : 'Send my code'}
               </Button>

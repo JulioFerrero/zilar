@@ -160,15 +160,15 @@ export function ProfileSettingsSection() {
             {busy ? 'Saving…' : 'Save username'}
           </Button>
           {shareUrl !== null && (
-            <button
+            <Button
               type="button"
+              variant="outline"
               onClick={() => {
                 void copyText(shareUrl).then(() => setCopied(true));
               }}
-              className="rounded-full border border-border px-4 py-1.5 text-[14px] hover:bg-surface-raised"
             >
               {copied ? 'Copied' : 'Copy share link'}
-            </button>
+            </Button>
           )}
         </div>
       </div>

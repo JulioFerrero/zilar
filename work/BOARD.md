@@ -409,8 +409,8 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0376](T-0376-web-fab-voice-key-guard.md) | Web kit: FAB and voice play on Button; guard flags key-primary and solid bg-danger | 2026-10-06 |
 | [T-0379](T-0379-web-explore-states-kit.md) | Web kit: Explore states on StateMessage and Button | 2026-10-06 |
 | [T-0380](T-0380-web-shell-back-icons-kit.md) | Web kit: settings Back, AI panel close and activity refresh on Button; drop unused AiPageShell | in-progress | auto | | |
-| [T-0381](T-0381-web-auth-setup-text-buttons-kit.md) | Web kit: Setup, handle, Add machine, profile and sign-in text buttons on Button | in-progress | auto | | |
 | [T-0382](T-0382-web-picker-rows-outline-kit.md) | Web kit: panel picker rows on outline Button | in-progress | auto | | |
 | [T-0384](T-0384-mobile-explore-blocked-retry-buttons-kit.md) | Mobile kit: Explore, Blocked and panel Retry buttons on Button | in-progress | auto | | |
 | [T-0385](T-0385-web-hover-action-buttons-kit.md) | Web kit: hover Chat/Message actions and attachment Remove on Button | in-progress | auto | | |
 | [T-0383](T-0383-mobile-group-roles-remaining-buttons-kit.md) | Mobile kit: last group roles sheet buttons on Button | 2026-10-06 |
+| [T-0381](T-0381-web-auth-setup-text-buttons-kit.md) | Web kit: Setup, handle, Add machine, profile and sign-in text buttons on Button | 2026-10-06 |
