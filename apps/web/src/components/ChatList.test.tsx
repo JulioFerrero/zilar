@@ -261,6 +261,19 @@ describe('ChatList', () => {
     expect(screen.getByText('Machines')).toBeTruthy();
   });
 
+  it('closes the main menu on Escape and returns focus to the trigger', () => {
+    renderApp('/');
+    const trigger = screen.getByRole('button', { name: 'Open menu' });
+    trigger.focus();
+    fireEvent.click(trigger);
+    expect(screen.getByRole('menu', { name: 'Main menu' })).toBeTruthy();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    expect(screen.queryByRole('menu', { name: 'Main menu' })).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+
   it('navigates to the Chat folders page from the menu', () => {
     renderApp('/');
     fireEvent.click(screen.getByRole('button', { name: 'Open menu' }));

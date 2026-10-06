@@ -1,5 +1,5 @@
 import { Plus } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { ExplorePage } from './ExplorePage';
 import { InviteDialog } from './InviteDialog';
 import { NewAiDialog } from './ais/NewAiDialog';
@@ -7,12 +7,10 @@ import { NewGroupDialog } from './NewGroupDialog';
 import { NewTopicDialog } from './NewTopicDialog';
 import { Button } from './ui/button';
 import { Dialog } from './ui/dialog';
+import { Menu, MenuItem } from './ui/menu';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { useChatStore } from '@/store/ChatStoreProvider';
 import { cn } from '@/lib/utils';
-
-const MENU_ITEM_CLASS =
-  'flex w-full items-center px-3 py-2 text-left text-[15px] hover:bg-surface-raised focus-visible:bg-surface-raised focus-visible:outline-none';
 
 type Dialog = 'group' | 'channel' | 'message' | 'invite' | 'ai' | 'topic' | 'explore';
 
@@ -123,21 +121,8 @@ export function NewChatButton({
   };
 
   // Esc must close the menu wherever focus is, including on the trigger button
-  // (whose own keydown never reaches the menu). A document listener while the
-  // menu is open covers both focus positions.
-  useEffect(() => {
-    if (!menuOpen) {
-      return;
-    }
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') {
-        setMenuOpen(false);
-        focusTrigger();
-      }
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, [menuOpen]);
+  // (whose own keydown never reaches the menu). `Menu` registers a document
+  // listener while open that closes and returns focus to the trigger.
 
   return (
     <div
@@ -147,66 +132,22 @@ export function NewChatButton({
       )}
     >
       {menuOpen && (
-        <>
-          <button
-            type="button"
-            tabIndex={-1}
-            aria-label="Close new chat menu"
-            onClick={closeMenu}
-            className="fixed inset-0 z-10 cursor-default"
-          />
-          <div
-            role="menu"
-            aria-label="New chat actions"
-            className="absolute right-0 bottom-full z-20 mb-2 min-w-[180px] rounded-xl border border-border bg-popover py-1 shadow-lg"
-          >
-            <button
-              type="button"
-              role="menuitem"
-              className={MENU_ITEM_CLASS}
-              onClick={() => openDialog('group')}
-            >
-              New group
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              className={MENU_ITEM_CLASS}
-              onClick={() => openDialog('channel')}
-            >
-              New channel
-            </button>
-            <button type="button" role="menuitem" className={MENU_ITEM_CLASS} onClick={openExplore}>
-              Explore groups
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              className={MENU_ITEM_CLASS}
-              onClick={() => openDialog('message')}
-            >
-              New message
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              className={MENU_ITEM_CLASS}
-              onClick={() => openDialog('ai')}
-            >
-              New AI
-            </button>
-            {(defaultGroupId !== undefined || topicGroups.length > 0) && (
-              <button
-                type="button"
-                role="menuitem"
-                className={MENU_ITEM_CLASS}
-                onClick={openNewTopic}
-              >
-                New topic
-              </button>
-            )}
-          </div>
-        </>
+        <Menu
+          open={menuOpen}
+          onClose={closeMenu}
+          label="New chat actions"
+          closeLabel="Close new chat menu"
+          className="right-0 bottom-full mb-2"
+        >
+          <MenuItem onSelect={() => openDialog('group')}>New group</MenuItem>
+          <MenuItem onSelect={() => openDialog('channel')}>New channel</MenuItem>
+          <MenuItem onSelect={openExplore}>Explore groups</MenuItem>
+          <MenuItem onSelect={() => openDialog('message')}>New message</MenuItem>
+          <MenuItem onSelect={() => openDialog('ai')}>New AI</MenuItem>
+          {(defaultGroupId !== undefined || topicGroups.length > 0) && (
+            <MenuItem onSelect={openNewTopic}>New topic</MenuItem>
+          )}
+        </Menu>
       )}
 
       {isWide ? (
