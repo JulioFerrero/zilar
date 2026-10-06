@@ -54,7 +54,8 @@ Emulator QA now goes to a Sonnet subagent ("android emulator expert", Julio's re
 
 | Task | What | Step | Note |
 | --- | --- | --- | --- |
-| T-0353 | Mobile kit: New group sheet and Explore join buttons on Button | coding (free Muse, DeepSeek peak) | the last accent text pills outside the kit; T-0352 merged |
+| T-0354 | Mobile kit: join-link card and Invite a friend sheet buttons on Button | coding (paid Muse fallback) | T-0353 merged |
+| T-0355 | Mobile kit: invite links sheet buttons on Button | coding (free Muse) | QA run 27 (T-0348 to T-0353) running |
 
 Time correction (checked with `date`): it is 04:42 local, Tue 10-06. The "~04:xx–05:50 local" stamps below were estimated and run up to about an hour ahead; their order is right.
 
