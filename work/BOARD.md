@@ -10,6 +10,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0282](T-0282-web-kit-sheet.md) | Web kit: right-side Sheet (PinsPanel first); kit Escape stops propagating | in_progress | auto | T-0280 | same files as T-0280 |
+| [T-0284](T-0284-mobile-topic-actions-sheet.md) | Mobile kit migration: topic actions sheet on ActionSheet | todo | auto | T-0283 | launch after QA run 10 passes |
 
 ## Follow-ups
 
