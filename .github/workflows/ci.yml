@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
 
+# A newer push to main makes older runs stale, so cancel them and verify the tip sooner.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 

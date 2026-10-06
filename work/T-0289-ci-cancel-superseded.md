@@ -1,7 +1,7 @@
 ---
 id: T-0289
 title: "CI: a newer push to main cancels the older in-progress CI run, so the tip gets verified (and auto-deployed) sooner"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0289-ci-cancel-superseded
 model: auto
@@ -54,4 +54,47 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**What I did**
+- `.github/workflows/ci.yml`: added a workflow-level `concurrency` block after the `on:` triggers:
+  - `group: ci-${{ github.ref }}` — one group per ref, so each PR merge ref gets its own group and pushes to `main` share one;
+  - `cancel-in-progress: true` — a newer push cancels the older in-progress run;
+  - a one-line comment saying a newer push to `main` makes older runs stale, so cancel them and verify the tip sooner.
+- `docs/RELEASING.md`: added one sentence to the §9 auto-deploy paragraph. It states that the CI `ci-${{ github.ref }}` concurrency group with `cancel-in-progress: true` cancels an older `main` run as soon as a newer push arrives, so only a green run on the tip builds and deploys.
+
+**Files changed**
+- `.github/workflows/ci.yml`
+- `docs/RELEASING.md`
+- `work/T-0289-ci-cancel-superseded.md`
+
+**Commands and results**
+- `pnpm install`: exit 0, 13 workspace projects, 1170 packages added, 17.6s.
+- `pnpm gate` (once, from the repo root): exit 0, summary:
+  ```
+  gate: 3 changed file(s) against main
+  PASS  install (frozen)  (2.0s)
+  PASS  format  (24.1s)
+  PASS  lint  (1.5s)
+  PASS  typecheck  (1.3s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+  No package tests ran because no package was touched (the changed files are a workflow, docs and this task file). I ran no single test file; there is no code under test in this task.
+
+**Deviations from the spec**
+- None.
+
+**Security checklist**
+- Not applicable: no secrets, routes, database writes, deletes or audit entries are involved.
+
+**Blocked / needs a decision**
+- None.
+
 ## Review (written by Claude)
+
+Approved. Clean pre-review, no fix rounds.
+
+**What changed:**
+- `ci.yml` gets `concurrency: ci-${{ github.ref }}` with `cancel-in-progress: true`, and a one-line why.
+- `RELEASING.md` gets one sentence on it.
+
+**Why it is safe:** a cancelled run has conclusion `cancelled`, and `images.yml` only builds on `success`.
