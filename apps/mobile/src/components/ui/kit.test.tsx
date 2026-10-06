@@ -50,6 +50,37 @@ vi.mock('@/components/ui/button', () => ({
   Button: 'Button',
 }));
 
+interface TestElement {
+  type: unknown;
+  props: { children?: unknown; accessibilityLabel?: string; onPress?: () => void };
+}
+
+// Widgets are rendered to a plain element tree by calling them as functions, so
+// their `onPress` handlers can be invoked without a React Native test renderer
+// (same pattern as the `collect` helper in `contacts.test.tsx`).
+function collect(node: unknown, out: TestElement[] = []): TestElement[] {
+  if (Array.isArray(node)) {
+    for (const child of node) {
+      collect(child, out);
+    }
+    return out;
+  }
+  if (node === null || node === undefined || typeof node !== 'object') {
+    return out;
+  }
+  const element = node as { type?: unknown; props?: { children?: unknown } };
+  if (element.props === undefined) {
+    return out;
+  }
+  if (typeof element.type === 'function') {
+    const Component = element.type as (props: unknown) => unknown;
+    return collect(Component(element.props), out);
+  }
+  out.push(element as TestElement);
+  collect(element.props.children, out);
+  return out;
+}
+
 describe('ListRow', () => {
   it('renders the title and the subtitle', () => {
     const html = renderToStaticMarkup(
@@ -444,5 +475,38 @@ describe('SegmentedControl', () => {
     expect(html).toContain('Two');
     expect(html.match(/text-foreground/g)).toHaveLength(1);
     expect(html.match(/text-muted-foreground/g)).toHaveLength(1);
+  });
+
+  it('does not call onChange when the selected option is pressed', () => {
+    const onChange = vi.fn();
+    const tree = SegmentedControl({
+      options,
+      value: 'one',
+      onChange,
+      accessibilityLabel: 'Sections',
+    });
+    const selected = collect(tree).find(
+      (element) => element.type === 'Pressable' && element.props.accessibilityLabel === 'One',
+    );
+    expect(selected).toBeDefined();
+    selected?.props.onPress?.();
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('calls onChange once with the value of another pressed option', () => {
+    const onChange = vi.fn();
+    const tree = SegmentedControl({
+      options,
+      value: 'one',
+      onChange,
+      accessibilityLabel: 'Sections',
+    });
+    const other = collect(tree).find(
+      (element) => element.type === 'Pressable' && element.props.accessibilityLabel === 'Two',
+    );
+    expect(other).toBeDefined();
+    other?.props.onPress?.();
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenCalledWith('two');
   });
 });

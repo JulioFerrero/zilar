@@ -23,6 +23,7 @@ import { ListRow } from '@/components/ui/list-row';
 import { SearchField } from '@/components/ui/search-field';
 import { SegmentedControl } from '@/components/ui/segmented-control';
 import { StateMessage } from '@/components/ui/state-message';
+import { Switch } from '@/components/ui/switch';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import { asColorScheme } from '@/lib/color-scheme';
@@ -45,6 +46,8 @@ function KitCatalog() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [search, setSearch] = useState('Try clearing me');
   const [segment, setSegment] = useState('one');
+  const [switchOn, setSwitchOn] = useState(true);
+  const [switchOff, setSwitchOff] = useState(false);
   return (
     <SafeAreaView className="flex-1 bg-background">
       <ScrollView
@@ -179,6 +182,14 @@ function KitCatalog() {
             onChange={setSegment}
             accessibilityLabel="Sample segmented control"
           />
+        </View>
+
+        <View className="mt-6 gap-2">
+          <SectionLabel>Switch</SectionLabel>
+          <View className="gap-3">
+            <Switch label="Notifications" value={switchOn} onValueChange={setSwitchOn} />
+            <Switch label="Sounds" value={switchOff} onValueChange={setSwitchOff} />
+          </View>
         </View>
 
         <View className="mt-6 gap-2">
