@@ -37,7 +37,9 @@ describe('NewGroupDialog visibility (T-0164)', () => {
     const createGroup = openCreateDialog();
 
     expect(screen.getByLabelText('Group name').className).toContain('well-surface');
-    expect(screen.getByRole('radio', { name: 'Private' })).toHaveProperty('checked', true);
+    expect(screen.getByRole('radio', { name: 'Private' }).getAttribute('aria-checked')).toBe(
+      'true',
+    );
     expect(screen.getByRole('button', { name: 'Create' }).getAttribute('data-slot')).toBe('button');
     fireEvent.change(screen.getByLabelText('Group name'), { target: { value: 'Hiking club' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create' }));

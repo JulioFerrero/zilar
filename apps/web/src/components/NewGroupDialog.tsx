@@ -7,8 +7,8 @@ import { HandleSuffix } from './HandleSuffix';
 import { Button } from './ui/button';
 import { Checkbox } from './ui/checkbox';
 import { Dialog } from './ui/dialog';
+import { SegmentedControl } from './ui/segmented-control';
 import { TextArea, TextInput } from './ui/text-input';
-import { cn } from '@/lib/utils';
 
 /** Two-step dialog: pick contacts, set a title, then create the group. */
 export function NewGroupDialog({
@@ -229,37 +229,24 @@ export function NewGroupDialog({
                 one-line description. */}
           <fieldset className="mt-3">
             <legend className="text-[14px] font-medium">Visibility</legend>
-            <div className="mt-1 flex gap-2" role="radiogroup" aria-label="Visibility">
-              {(
-                [
+            <div className="mt-1">
+              <SegmentedControl
+                mode="radio"
+                ariaLabel="Visibility"
+                options={[
                   { value: 'private', label: 'Private' },
                   { value: 'public', label: 'Public' },
-                ] as const
-              ).map((option) => (
-                <label
-                  key={option.value}
-                  className={cn(
-                    'flex-1 cursor-pointer rounded-lg border px-3 py-2 text-center text-[14px]',
-                    visibility === option.value
-                      ? 'border-accent bg-accent/10 font-medium'
-                      : 'border-input text-muted-foreground',
-                  )}
-                >
-                  <input
-                    type="radio"
-                    name="group-visibility"
-                    value={option.value}
-                    checked={visibility === option.value}
-                    onChange={() => {
-                      setVisibility(option.value);
-                      setCheck({ state: 'idle' });
-                      setError(undefined);
-                    }}
-                    className="sr-only"
-                  />
-                  {option.label}
-                </label>
-              ))}
+                ]}
+                value={visibility}
+                onChange={(next) => {
+                  if (next !== 'private' && next !== 'public') {
+                    return;
+                  }
+                  setVisibility(next);
+                  setCheck({ state: 'idle' });
+                  setError(undefined);
+                }}
+              />
             </div>
             <p className="mt-1 text-[13px] text-muted-foreground">
               {visibility === 'public'

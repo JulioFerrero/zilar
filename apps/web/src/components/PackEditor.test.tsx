@@ -539,4 +539,21 @@ describe('PackEditor', () => {
     expect(orderCall?.[1]).toEqual({ order: ['st-new-3'] });
     await waitFor(() => expect(onDone).toHaveBeenCalledWith('pack-1'));
   });
+
+  it('switches the visibility hint when the pack visibility changes', () => {
+    render(<PackEditor onDone={() => {}} onCancel={() => {}} prepare={prepareOk()} />);
+
+    expect(
+      screen.getByText('Only you can find a private pack. Stickers you already sent still show.'),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Shared on this server' }));
+
+    expect(
+      screen.getByText('Shared packs can be found and added by anyone on this server.'),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('radio', { name: 'Shared on this server' }).getAttribute('aria-checked'),
+    ).toBe('true');
+  });
 });
