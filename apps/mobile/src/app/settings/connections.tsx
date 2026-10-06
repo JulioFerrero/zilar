@@ -23,6 +23,7 @@ import {
 } from '@/components/connections/errors';
 import { keyAfterSave, saveConnection } from '@/components/connections/save-connection';
 import { useConnectionsApi } from '@/components/connections/use-connections-api';
+import { Button } from '@/components/ui/button';
 import { Card, SectionLabel } from '@/components/ui/card';
 import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
@@ -193,15 +194,15 @@ function ConnectionsList() {
               <Text accessibilityRole="alert" className="text-center text-[15px] text-danger">
                 {errorInfo.message}
               </Text>
-              <Pressable
-                accessibilityRole="button"
+              <Button
+                variant="outline"
+                size="sm"
                 accessibilityLabel="Retry loading connections"
                 onPress={reload}
-                className="flex-row items-center gap-2 rounded-full border border-border-strong px-4 py-2 active:bg-surface-raised"
               >
                 <RefreshCw size={16} color={ICON[scheme]} />
-                <Text className="text-[15px] text-foreground">Retry</Text>
-              </Pressable>
+                <Text>Retry</Text>
+              </Button>
             </View>
           ) : null}
 
@@ -211,17 +212,15 @@ function ConnectionsList() {
               <Text className="px-4 text-center text-[15px] text-muted-foreground">
                 No provider connections yet.
               </Text>
-              <Pressable
-                accessibilityRole="button"
+              <Button
+                variant="default"
+                size="sm"
                 accessibilityLabel="Add a connection"
                 onPress={() => setShowForm(true)}
-                className="flex-row items-center gap-2 rounded-full bg-accent px-5 py-2 active:opacity-90"
               >
                 <Plus size={16} color={ACCENT_FOREGROUND[scheme]} />
-                <Text className="text-[15px] font-medium text-accent-foreground">
-                  Add a connection
-                </Text>
-              </Pressable>
+                <Text>Add a connection</Text>
+              </Button>
             </View>
           ) : null}
 
@@ -243,29 +242,27 @@ function ConnectionsList() {
                             </Text>
                           ) : null}
                           <View className="flex-row justify-end gap-2">
-                            <Pressable
-                              accessibilityRole="button"
+                            <Button
+                              variant="ghost"
+                              size="sm"
                               accessibilityLabel="Cancel removing"
                               disabled={busy}
                               onPress={() => {
                                 setConfirmingId(null);
                                 setRemoveError('');
                               }}
-                              className="rounded-full px-3 py-1 active:bg-surface-raised disabled:opacity-60"
                             >
-                              <Text className="text-[14px] text-muted-foreground">Cancel</Text>
-                            </Pressable>
-                            <Pressable
-                              accessibilityRole="button"
+                              <Text>Cancel</Text>
+                            </Button>
+                            <Button
+                              variant="destructive"
+                              size="sm"
                               accessibilityLabel="Confirm remove"
                               disabled={busy}
                               onPress={() => confirmRemove(connection.id)}
-                              className="rounded-full bg-destructive px-3 py-1 active:opacity-90 disabled:opacity-60"
                             >
-                              <Text className="text-[14px] font-medium text-white">
-                                {busy ? 'Removing…' : 'Remove'}
-                              </Text>
-                            </Pressable>
+                              <Text>{busy ? 'Removing…' : 'Remove'}</Text>
+                            </Button>
                           </View>
                         </View>
                       ) : (
@@ -488,26 +485,24 @@ function AddConnectionForm({
       ) : null}
 
       <View className="flex-row items-center gap-2">
-        <Pressable
-          accessibilityRole="button"
+        <Button
+          variant="default"
+          size="sm"
           accessibilityLabel="Save the connection"
           disabled={busy}
           onPress={submit}
-          className="rounded-full bg-accent px-4 py-2 active:opacity-90 disabled:opacity-60"
         >
-          <Text className="text-[15px] font-medium text-accent-foreground">
-            {busy ? 'Saving…' : 'Save'}
-          </Text>
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
+          <Text>{busy ? 'Saving…' : 'Save'}</Text>
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
           accessibilityLabel="Cancel"
           disabled={busy}
           onPress={onCancel}
-          className="rounded-full px-4 py-2 active:bg-surface-raised disabled:opacity-60"
         >
-          <Text className="text-[15px] text-muted-foreground">Cancel</Text>
-        </Pressable>
+          <Text>Cancel</Text>
+        </Button>
       </View>
     </View>
   );
