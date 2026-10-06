@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import { OtpInput } from './OtpInput';
 import { Button } from '@/components/ui/button';
+import { TextInput } from '@/components/ui/text-input';
 import { useAuth } from '@/auth/AuthProvider';
 import { authClient, sendSignInCode, verifySignInCode } from '@/lib/auth';
 
@@ -130,17 +131,14 @@ export function AuthFlow({
 
         {step === 'email' ? (
           <form onSubmit={submitEmail} className="mt-6 flex flex-col gap-3">
-            <label className="text-[14px] font-medium" htmlFor="auth-email">
-              Email
-            </label>
-            <input
+            <TextInput
               id="auth-email"
+              label="Email"
               type="email"
               autoComplete="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               placeholder="you@example.com"
-              className="rounded-lg border border-input bg-background px-3 py-2 text-[15px] outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40"
             />
             {inviteCode === undefined && (
               <p className="text-[13px] text-muted-foreground">

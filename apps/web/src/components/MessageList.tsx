@@ -199,7 +199,7 @@ export function MessageList({
     return (
       <div className="relative min-h-0 flex-1">
         <div className="chat-background flex h-full items-center justify-center p-8 text-center">
-          <p className="text-[15px] text-muted-foreground">No messages yet</p>
+          <StateMessage kind="empty" title="No messages yet" />
         </div>
       </div>
     );

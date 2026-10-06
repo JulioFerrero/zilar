@@ -1,7 +1,7 @@
 ---
 id: T-0411
 title: "Web kit: the tool Run input, the sign-in email field and two empty lines use TextArea, TextInput and StateMessage"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0411-web-fields-empty-kit
 model: auto
@@ -69,4 +69,39 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- **`ToolDetailPanel.tsx`:** replaced the raw `<textarea>` in the "Run now" label with `<TextArea aria-label="Run input (JSON)" rows={3} … className="min-h-0 font-mono text-[13px]" />`. Kept the outer `<label>` and its visible span, and kept value, handler and placeholder. Added `import { TextArea } from '@/components/ui/text-input';`.
+- **`AuthFlow.tsx`:** replaced the `<label htmlFor="auth-email">` + `<input>` pair with `<TextInput id="auth-email" label="Email" type="email" autoComplete="email" value={email} onChange=… placeholder="you@example.com" />`. The `gap-3` form layout is unchanged. Added `import { TextInput } from '@/components/ui/text-input';`.
+- **`MessageList.tsx`:** inside the same `chat-background` wrapper, replaced `<p>No messages yet</p>` with `<StateMessage kind="empty" title="No messages yet" />`. `StateMessage` was already imported.
+- **`MessageSearchResults.tsx`:** kept the "Messages" heading and replaced `<p>No messages found</p>` with `<StateMessage kind="empty" size="inline" title="No messages found" />`. `StateMessage` was already imported.
+- No test assertion was changed. All existing queries still resolve because the kit preserves the accessible names: `getByLabelText('Run input (JSON)')` (aria-label kept), `getByLabelText('Email')` (`Field` renders a real `<label htmlFor>` linked to `id="auth-email"`), and `getByText('No messages yet')` / `getByText('No messages found')` (the title text is still rendered).
+
+### Files changed
+- `apps/web/src/components/tools/ToolDetailPanel.tsx`
+- `apps/web/src/components/auth/AuthFlow.tsx`
+- `apps/web/src/components/MessageList.tsx`
+- `apps/web/src/components/MessageSearchResults.tsx`
+- `work/T-0411-web-fields-empty-kit.md`
+
+### Commands and real results
+- `pnpm install`: Done in 13.2s (1170 packages, no changes to the lockfile; pre-existing peer-dependency warning for `apps/mobile`).
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot tools AuthFlow SetupPage MessageList ChatView MessageSearch`: 9 test files passed, 94 tests passed, 6.66s.
+- `pnpm gate` (repo root): summary lines —
+  - `gate: 5 changed file(s) against main`
+  - `PASS  install (frozen)  (1.1s)`
+  - `PASS  format  (21.5s)`
+  - `PASS  lint  (1.2s)`
+  - `PASS  typecheck  (12.2s)`
+  - `PASS  tests @zilar/web  (46.5s)`
+  - `scope: every changed file is inside the Allowed files`
+  - `GATE PASS`
+
+### Deviations / open questions
+- None. Every place uses the kit with the same labels, texts and handlers.
+
 ## Review (written by Claude)
+
+**2026-10-06, lead:** approved. The pre-review was clean.
+- The Run input is `TextArea` (mono).
+- The sign-in email is `TextInput` with the label "Email", keeping `id="auth-email"`.
+- The two empty lines are `StateMessage`s.

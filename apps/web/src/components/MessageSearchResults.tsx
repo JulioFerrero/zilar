@@ -96,7 +96,7 @@ export function MessageSearchResults({
     return (
       <div className="flex flex-col gap-0.5 px-2">
         <p className="px-[10px] pt-2 text-[12px] font-semibold text-muted-foreground">Messages</p>
-        <p className="px-[10px] pb-2 text-[13px] text-muted-foreground">No messages found</p>
+        <StateMessage kind="empty" size="inline" title="No messages found" />
       </div>
     );
   }
