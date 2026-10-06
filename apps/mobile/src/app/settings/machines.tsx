@@ -298,21 +298,16 @@ function MachinesList() {
           ) : null}
 
           {status === 'ready' && machines.length === 0 ? (
-            <View className="items-center gap-3 pt-16">
-              <Server size={32} color={ICON[scheme]} />
-              <Text className="px-4 text-center text-[15px] text-muted-foreground">
-                No machines yet. Add one to let your AIs work on your own computers.
-              </Text>
-              <Button
-                variant="default"
-                size="sm"
-                accessibilityLabel="Add a machine"
-                onPress={openAdd}
-              >
-                <Plus size={16} color={ACCENT_FOREGROUND[scheme]} />
-                <Text>Add machine</Text>
-              </Button>
-            </View>
+            <StateMessage
+              kind="empty"
+              icon={Server}
+              title="No machines yet. Add one to let your AIs work on your own computers."
+              action={{
+                label: 'Add machine',
+                accessibilityLabel: 'Add a machine',
+                onPress: openAdd,
+              }}
+            />
           ) : null}
 
           {status === 'ready' && pending.length > 0 ? (

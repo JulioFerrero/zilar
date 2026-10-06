@@ -331,20 +331,16 @@ function StickersBody() {
               </Text>
             ) : null}
             {packs.length === 0 ? (
-              <View className="items-center gap-3 pt-16">
-                <Sticker size={32} color={ICON[scheme]} />
-                <Text className="px-4 text-center text-[15px] text-muted-foreground">
-                  No packs on your panel yet. Look in Discover for shared packs to add.
-                </Text>
-                <Button
-                  variant="default"
-                  size="sm"
-                  accessibilityLabel="Open Discover"
-                  onPress={() => openTab('discover')}
-                >
-                  <Text>Open Discover</Text>
-                </Button>
-              </View>
+              <StateMessage
+                kind="empty"
+                icon={Sticker}
+                title="No packs on your panel yet. Look in Discover for shared packs to add."
+                action={{
+                  label: 'Open Discover',
+                  accessibilityLabel: 'Open Discover',
+                  onPress: () => openTab('discover'),
+                }}
+              />
             ) : (
               <View className="gap-2">
                 {packs.map((pack, index) => (
@@ -500,11 +496,7 @@ function StickersBody() {
               </Text>
             ) : null}
             {favorites.length === 0 ? (
-              <View className="items-center px-6 pt-12">
-                <Text className="text-center text-[15px] text-muted-foreground">
-                  No favorites yet. Starred stickers show up here.
-                </Text>
-              </View>
+              <StateMessage kind="empty" title="No favorites yet. Starred stickers show up here." />
             ) : (
               <View accessibilityLabel="Favorite stickers" className="flex-row flex-wrap gap-2">
                 {favorites.map((sticker) => (

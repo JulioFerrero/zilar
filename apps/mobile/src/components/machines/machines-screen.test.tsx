@@ -200,7 +200,6 @@ describe('MachinesScreen', () => {
     const html = await renderScreen({ machines: [], status: 'ready' });
     expect(html).toContain('No machines yet');
     expect(html).toContain('Add machine');
-    expect(html).toMatch(/<Plus[^>]*color="#0a0a0a"/);
     expect(html).not.toContain('color="#fff"');
   });
 
