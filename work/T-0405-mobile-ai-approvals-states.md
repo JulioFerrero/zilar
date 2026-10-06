@@ -1,7 +1,7 @@
 ---
 id: T-0405
 title: "Mobile kit: the AIs tab, AI detail and Approvals screens' loading and error states use StateMessage"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0405-mobile-ai-approvals-states
 model: auto
@@ -63,4 +63,42 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+Replaced the four hand-rolled loading/error blocks with `StateMessage`, keeping the same conditions, texts and handlers:
+
+- `apps/mobile/src/app/(tabs)/ais.tsx`: loading block -> `<StateMessage kind="loading" title="Loading…" />`; error block -> `<StateMessage kind="error" title={errorInfo.message} hint={errorInfo.unavailable ? 'AI management is not available on this server.' : undefined} action={{ label: 'Retry', onPress: reload }} />`.
+- `apps/mobile/src/app/ais/[id].tsx`: loading -> `<StateMessage kind="loading" title="Loading…" />`; error -> `<StateMessage kind="error" title={loadError} action={{ label: 'Retry', onPress: retry }} />`.
+- `apps/mobile/src/app/settings/approvals.tsx`: `ApprovalsBody` loading/error use `StateMessage` with `action={{ label: 'Retry', onPress: () => void load(true) }}`; `RulesSection` uses `<StateMessage kind="loading" size="inline" … />`. Its error block is unchanged as specified.
+- Removed imports that became unused: `ActivityIndicator` and `RefreshCw` in `ais.tsx`; `ActivityIndicator`, `ACCENT`, `asColorScheme`, `useColorScheme` and the `scheme` const in `ais/[id].tsx`; `ActivityIndicator` in `approvals.tsx`. `ACCENT`/`ICON` are still used elsewhere in `ais.tsx`, and `ACCENT` is still used in `approvals.tsx` (empty state), so those stayed.
+
+### Files changed
+- `apps/mobile/src/app/(tabs)/ais.tsx`
+- `apps/mobile/src/app/ais/[id].tsx`
+- `apps/mobile/src/app/settings/approvals.tsx`
+- `work/T-0405-mobile-ai-approvals-states.md` (status + this Report)
+
+### Commands and results
+- `pnpm install`: done, exit 0 (1 warning about an unmet peer `@types/react@^19.3.0` vs 19.2.18, pre-existing).
+- Single test files: none — no test imports these three screens (as noted in the spec), so there was no focused file to run.
+- `pnpm gate` (final, from repo root) summary lines:
+  ```
+  gate: 4 changed file(s) against main
+  PASS  install (frozen)  (1.2s)
+  PASS  format  (14.7s)
+  PASS  lint  (1.2s)
+  PASS  typecheck  (8.2s)
+  PASS  tests @zilar/mobile  (2.9s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+  Two earlier gate runs failed and were fixed before the pass: `FAIL format` (Prettier wanted the inline `RulesSection` ternary on one line) and `FAIL lint` (`scheme` in `ais/[id].tsx` became unused once `ACCENT` was dropped), both corrected within scope.
+
+### Problems / deviations
+- None affecting the acceptance criteria. The only extra removals beyond the spec's named imports (`useColorScheme`, `asColorScheme`, `scheme`) were required by lint because removing `ACCENT` left them unused.
+
+### Open questions
+- None.
+
 ## Review (written by Claude)
+
+**2026-10-06, lead:** approved. The pre-review was clean. All four places now use StateMessage with the same texts and handlers. The "not available on this server" line is now the hint. RulesSection loading is inline, and its error block stays as it was.
