@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { Text } from '@/components/ui/text';
+import { Button } from '@/components/ui/button';
 import { asColorScheme } from '@/lib/color-scheme';
 import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
 
@@ -215,17 +216,15 @@ export function PhotoEditRow({ edit, stagedName }: { edit: PhotoEdit; stagedName
           contentFit="cover"
         />
         <View className="flex-row gap-2">
-          <Pressable
-            accessibilityRole="button"
+          <Button
             accessibilityLabel="Save picture"
             disabled={edit.busy}
             onPress={edit.onSave}
-            className="items-center rounded-full bg-accent px-4 py-2 active:opacity-90 disabled:opacity-60"
+            variant="default"
+            size="default"
           >
-            <Text className="text-[14px] font-medium text-accent-foreground">
-              {edit.busy ? 'Saving…' : 'Save picture'}
-            </Text>
-          </Pressable>
+            <Text>{edit.busy ? 'Saving…' : 'Save picture'}</Text>
+          </Button>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Discard picture"

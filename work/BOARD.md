@@ -383,7 +383,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0352](T-0352-mobile-join-handle-buttons-kit.md) | Mobile kit: join link and @handle screen buttons on Button | 2026-10-06 |
 | [T-0353](T-0353-mobile-new-group-explore-buttons-kit.md) | Mobile kit: New group sheet and Explore join buttons on Button | 2026-10-06 |
 | [T-0355](T-0355-mobile-invite-links-buttons-kit.md) | Mobile kit: invite links sheet buttons on Button | 2026-10-06 |
-| [T-0362](T-0362-mobile-profile-card-channel-buttons-kit.md) | Mobile kit: profile card, Profile tab and channel screen buttons on Button | in-progress | auto | T-0356 | |
 | [T-0360](T-0360-mobile-create-sheets-buttons-kit.md) | Mobile kit: New channel, New message, New topic, Visibility sheet buttons on Button | in-progress | auto | T-0354 | |
 | [T-0356](T-0356-mobile-profile-button-labels.md) | Mobile fix: Profile settings buttons show their labels again | 2026-10-06 |
 | [T-0354](T-0354-mobile-join-invite-buttons-kit.md) | Mobile kit: join-link card and Invite a friend sheet buttons on Button | 2026-10-06 |
@@ -391,3 +390,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0357](T-0357-web-kit-search-field.md) | Web kit: SearchField; GIF, folder editor, Explore and sticker searches use it | 2026-10-06 |
 | [T-0359](T-0359-web-chat-menu-items-kit.md) | Web kit: MenuItem aria-label; chat row, header and topic menus on MenuItem | 2026-10-06 |
 | [T-0361](T-0361-mobile-roles-topics-buttons-kit.md) | Mobile kit: Group roles, topic sheets and task strip buttons on Button | 2026-10-06 |
+| [T-0362](T-0362-mobile-profile-card-channel-buttons-kit.md) | Mobile kit: profile card, Profile tab and channel screen buttons on Button | 2026-10-06 |

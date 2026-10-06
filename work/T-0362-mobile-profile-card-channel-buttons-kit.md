@@ -1,7 +1,7 @@
 ---
 id: T-0362
 title: "Mobile kit migration: the contact profile card, the Profile tab and the channel screen use the kit Button"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0362-mobile-profile-card-channel-buttons-kit
 model: auto
@@ -68,4 +68,74 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**Status:** done, ready for review.
+
+**What I did**
+Replaced the fourteen hand-rolled pill `Pressable`s with the kit `Button`
+(`components/ui/button.tsx`), per the spec variant rule. Every label is inside
+`<Text>` with no className; kept every `accessibilityLabel`, `disabled` and
+`onPress`; dropped the old pill classes and the child `Text` colour/size
+classes (kit `TextClassContext` sets them); dropped
+`accessibilityRole="button"` since kit `Button` sets `role="button"` (T-0353 /
+T-0355 pattern). No icons sit inside a `default` button, so no
+`ACCENT_FOREGROUND` handling was needed. `Pressable` stays imported in all
+three files (still used: the card header link, the red Confirm-block pill with
+its white `Ban` icon, the Block text link, `ActionKey`/claim/copy/Discard/
+Remove, the channel feed row).
+
+Button list (label → variant / size / kept className):
+- `profile-card.tsx`: "Unblock" → outline/sm `mt-2 self-start`; "Message" →
+  default/sm `mt-2 self-start`; "Cancel the request" (request_sent) →
+  outline/sm `mt-2 self-start`; "Accept" → default/sm (none); "Decline" →
+  outline/sm (none); "Open contact requests" → ghost/sm (none); "Cancel the
+  request" (just-sent) → outline/sm `mt-2 self-start`; "Send request" →
+  default/sm `mt-2 self-start`; "Cancel the block" → outline/sm (none).
+- `profile-view.tsx`: "Save picture" (busy `Saving…`) → default/default (none).
+  Discard/Remove stay as `Pressable` (not in the spec list).
+- `channel-screen.tsx`: `Demote…` → outline/sm (none); `Promote…` →
+  outline/sm (none); "Invite links" → default/default `mt-4 self-start`;
+  "Leave channel" (busy `Leaving…`) → outline/default `mt-4 self-start`.
+
+Tests, mocks only (T-0353/T-0355 pattern): in `contacts.test.tsx`,
+`people-search.test.ts` and `profile-view.test.tsx` added `Platform.select`
+to the `react-native` stub, a `react-native-reanimated` `useReducedMotion`
+mock, `TextClassContext` on the text mock, the `@/lib/depth` key exports, and
+a `@/components/ui/use-key-press` mock (needed because the tests call the
+bodies as plain functions / `collect` invokes `Button` directly, so the real
+hook would throw invalid-hook-call). No assertions changed.
+
+**Files changed**
+- `apps/mobile/src/components/contacts/profile-card.tsx` — 9 `Pressable`s now
+  kit `Button`s; `Button` imported.
+- `apps/mobile/src/components/profile/profile-view.tsx` — Save picture now a
+  kit `Button`; `Button` imported.
+- `apps/mobile/src/components/chat/channel-screen.tsx` — 4 `Pressable`s now
+  kit `Button`s; `Button` imported.
+- `apps/mobile/src/components/contacts/contacts.test.tsx`,
+  `apps/mobile/src/components/contacts/people-search.test.ts`,
+  `apps/mobile/src/components/profile/profile-view.test.tsx` — mocks only.
+- `work/T-0362-mobile-profile-card-channel-buttons-kit.md` — status and Report.
+
+**Commands run and results**
+- `pnpm install` (worktree) — succeeded (`Done in 19.7s`).
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot contacts
+  people-search profile-view` — `Test Files 8 passed (8)`, `Tests 108 passed
+  (108)` (the filters matched 8 files; the casing warnings are the pre-existing
+  stub-tag pattern).
+- `pnpm gate` (repo root) — GATE PASS:
+  `PASS install (frozen)`, `PASS format`, `PASS lint`, `PASS typecheck`,
+  `PASS tests @zilar/mobile`, `scope: every changed file is inside the Allowed
+  files` (7 changed files).
+
+**Deviations from the spec:** none. The red Confirm-block button and the Block
+text link stay as `Pressable` per the spec ("Leave alone" + the 9-line list =
+14 total).
+
+**Blocked / needs a decision:** none.
+
+**Security checklist:** no secrets, routes, deletes, caps, permissions, or audit
+entries touched — UI button migration only; `disabled`/busy guards unchanged.
+
 ## Review (written by Claude)
+
+**Approved** (pre-review clean, 0 nits). The fourteen buttons on the profile card, the Profile tab and the channel screen are kit `Button`s, and the lead scan found every label inside `<Text>`. The tests changed mocks only.

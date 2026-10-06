@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { Text } from '@/components/ui/text';
+import { Button } from '@/components/ui/button';
 import type { ContactRelation, HandleProfile } from '@/lib/contacts-api';
 
 import { Avatar } from '../chat/avatar';
@@ -177,15 +178,16 @@ export function ProfileCardActionRow({
     return (
       <View className="mt-2">
         <Text className="text-[14px] text-muted-foreground">You blocked this person.</Text>
-        <Pressable
-          accessibilityRole="button"
+        <Button
           accessibilityLabel="Unblock"
           disabled={busy}
           onPress={onUnblock}
-          className="mt-2 self-start rounded-full border border-border-strong px-4 py-1.5 active:bg-surface-raised disabled:opacity-60"
+          variant="outline"
+          size="sm"
+          className="mt-2 self-start"
         >
-          <Text className="text-[14px] text-foreground">{busy ? 'Unblocking…' : 'Unblock'}</Text>
-        </Pressable>
+          <Text>{busy ? 'Unblocking…' : 'Unblock'}</Text>
+        </Button>
       </View>
     );
   }
@@ -195,87 +197,87 @@ export function ProfileCardActionRow({
       {relation === 'contact' ? (
         <View className="mt-2">
           <Text className="text-[14px] text-muted-foreground">You are already contacts.</Text>
-          <Pressable
-            accessibilityRole="button"
+          <Button
             accessibilityLabel="Message"
             disabled={busy}
             onPress={onMessage}
-            className="mt-2 self-start rounded-full bg-accent px-4 py-1.5 active:opacity-90 disabled:opacity-60"
+            variant="default"
+            size="sm"
+            className="mt-2 self-start"
           >
-            <Text className="text-[14px] font-medium text-accent-foreground">Message</Text>
-          </Pressable>
+            <Text>Message</Text>
+          </Button>
         </View>
       ) : relation === 'request_sent' ? (
         <View className="mt-2">
           <Text className="text-[14px] text-muted-foreground">
             Request sent. They have not answered yet.
           </Text>
-          <Pressable
-            accessibilityRole="button"
+          <Button
             accessibilityLabel="Cancel the request"
             disabled={busy}
             onPress={onCancel}
-            className="mt-2 self-start rounded-full border border-border-strong px-4 py-1.5 active:bg-surface-raised disabled:opacity-60"
+            variant="outline"
+            size="sm"
+            className="mt-2 self-start"
           >
-            <Text className="text-[14px] text-foreground">{busy ? 'Cancelling…' : 'Cancel'}</Text>
-          </Pressable>
+            <Text>{busy ? 'Cancelling…' : 'Cancel'}</Text>
+          </Button>
         </View>
       ) : relation === 'request_received' ? (
         <View className="mt-2 flex-row gap-2">
-          <Pressable
-            accessibilityRole="button"
+          <Button
             accessibilityLabel="Accept"
             disabled={busy}
             onPress={onAccept}
-            className="rounded-full bg-accent px-4 py-1.5 active:opacity-90 disabled:opacity-60"
+            variant="default"
+            size="sm"
           >
-            <Text className="text-[14px] font-medium text-accent-foreground">
-              {busy ? 'Accepting…' : 'Accept'}
-            </Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
+            <Text>{busy ? 'Accepting…' : 'Accept'}</Text>
+          </Button>
+          <Button
             accessibilityLabel="Decline"
             disabled={busy}
             onPress={onDecline}
-            className="rounded-full border border-border-strong px-4 py-1.5 active:bg-surface-raised disabled:opacity-60"
+            variant="outline"
+            size="sm"
           >
-            <Text className="text-[14px] text-foreground">Decline</Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
+            <Text>Decline</Text>
+          </Button>
+          <Button
             accessibilityLabel="Open contact requests"
             onPress={onOpenRequests}
-            className="rounded-full px-2 py-1.5 active:bg-surface-raised"
+            variant="ghost"
+            size="sm"
           >
-            <Text className="text-[14px] text-muted-foreground">Requests</Text>
-          </Pressable>
+            <Text>Requests</Text>
+          </Button>
         </View>
       ) : sent ? (
         <View className="mt-2">
           <Text className="text-[14px] text-muted-foreground">Request sent.</Text>
-          <Pressable
-            accessibilityRole="button"
+          <Button
             accessibilityLabel="Cancel the request"
             disabled={busy}
             onPress={onCancel}
-            className="mt-2 self-start rounded-full border border-border-strong px-4 py-1.5 active:bg-surface-raised disabled:opacity-60"
+            variant="outline"
+            size="sm"
+            className="mt-2 self-start"
           >
-            <Text className="text-[14px] text-foreground">{busy ? 'Cancelling…' : 'Cancel'}</Text>
-          </Pressable>
+            <Text>{busy ? 'Cancelling…' : 'Cancel'}</Text>
+          </Button>
         </View>
       ) : (
-        <Pressable
-          accessibilityRole="button"
+        <Button
           accessibilityLabel="Send request"
           disabled={busy}
           onPress={onSend}
-          className="mt-2 self-start rounded-full bg-accent px-4 py-1.5 active:opacity-90 disabled:opacity-60"
+          variant="default"
+          size="sm"
+          className="mt-2 self-start"
         >
-          <Text className="text-[14px] font-medium text-accent-foreground">
-            {busy ? 'Sending…' : 'Send request'}
-          </Text>
-        </Pressable>
+          <Text>{busy ? 'Sending…' : 'Send request'}</Text>
+        </Button>
       )}
 
       {blockConfirming ? (
@@ -296,15 +298,15 @@ export function ProfileCardActionRow({
                 {busy ? 'Blocking…' : 'Block'}
               </Text>
             </Pressable>
-            <Pressable
-              accessibilityRole="button"
+            <Button
               accessibilityLabel="Cancel the block"
               disabled={busy}
               onPress={onCancelBlock}
-              className="rounded-full border border-border-strong px-3 py-1.5 active:bg-surface disabled:opacity-60"
+              variant="outline"
+              size="sm"
             >
-              <Text className="text-[14px] text-foreground">Cancel</Text>
-            </Pressable>
+              <Text>Cancel</Text>
+            </Button>
           </View>
         </View>
       ) : (

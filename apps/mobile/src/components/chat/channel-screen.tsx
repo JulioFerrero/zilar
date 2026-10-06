@@ -9,6 +9,7 @@ import { RequireAuth } from '@/auth/RequireAuth';
 import { Avatar } from '@/components/chat/avatar';
 import { InviteLinksSheet, type CreateInviteLinkForm } from '@/components/chat/invite-links-sheet';
 import { Text } from '@/components/ui/text';
+import { Button } from '@/components/ui/button';
 import {
   channelAdminsOf,
   channelDescription,
@@ -266,15 +267,15 @@ function Channel({ groupId, feedId, title }: ChannelScreenProps) {
             </Text>
             <Text className="text-[11px] text-muted-foreground">{member.role}</Text>
             {isOwner && member.userId !== currentUserId && member.role === 'admin' ? (
-              <Pressable
-                accessibilityRole="button"
+              <Button
                 accessibilityLabel={`Demote ${member.name} to subscriber`}
                 disabled={roleBusy}
                 onPress={() => flipRole(member.userId, 'member')}
-                className="rounded-full border border-border-strong px-3 py-1 active:bg-surface-raised disabled:opacity-60"
+                variant="outline"
+                size="sm"
               >
-                <Text className="text-[13px] text-foreground">Demote</Text>
-              </Pressable>
+                <Text>Demote</Text>
+              </Button>
             ) : null}
           </View>
         ))}
@@ -285,15 +286,15 @@ function Channel({ groupId, feedId, title }: ChannelScreenProps) {
               {member.name}
             </Text>
             {isOwner && member.userId !== currentUserId ? (
-              <Pressable
-                accessibilityRole="button"
+              <Button
                 accessibilityLabel={`Promote ${member.name} to admin`}
                 disabled={roleBusy}
                 onPress={() => flipRole(member.userId, 'admin')}
-                className="rounded-full border border-border-strong px-3 py-1 active:bg-surface-raised disabled:opacity-60"
+                variant="outline"
+                size="sm"
               >
-                <Text className="text-[13px] text-foreground">Promote</Text>
-              </Pressable>
+                <Text>Promote</Text>
+              </Button>
             ) : null}
           </View>
         ))}
@@ -304,26 +305,26 @@ function Channel({ groupId, feedId, title }: ChannelScreenProps) {
         ) : null}
 
         {isManager ? (
-          <Pressable
-            accessibilityRole="button"
+          <Button
             accessibilityLabel="Invite links"
             onPress={openLinks}
-            className="mt-4 self-start rounded-full bg-accent px-4 py-2 active:opacity-90"
+            variant="default"
+            size="default"
+            className="mt-4 self-start"
           >
-            <Text className="text-[15px] font-medium text-accent-foreground">Invite links</Text>
-          </Pressable>
+            <Text>Invite links</Text>
+          </Button>
         ) : (
-          <Pressable
-            accessibilityRole="button"
+          <Button
             accessibilityLabel="Leave channel"
             disabled={leaving}
             onPress={leave}
-            className="mt-4 self-start rounded-full border border-border-strong px-4 py-2 active:bg-surface-raised disabled:opacity-60"
+            variant="outline"
+            size="default"
+            className="mt-4 self-start"
           >
-            <Text className="text-[15px] font-medium text-foreground">
-              {leaving ? 'Leaving…' : 'Leave channel'}
-            </Text>
-          </Pressable>
+            <Text>{leaving ? 'Leaving…' : 'Leave channel'}</Text>
+          </Button>
         )}
         {!isManager && leaveError !== '' ? (
           <Text role="alert" className="mt-2 text-[13px] text-danger">
