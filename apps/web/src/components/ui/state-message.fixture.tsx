@@ -11,6 +11,7 @@ export default {
     />
   ),
   Loading: <StateMessage kind="loading" title="Loading chats" />,
+  Inline: <StateMessage kind="loading" size="inline" title="Loading…" />,
   Error: (
     <StateMessage
       kind="error"

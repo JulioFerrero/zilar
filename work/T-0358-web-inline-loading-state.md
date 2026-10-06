@@ -1,7 +1,7 @@
 ---
 id: T-0358
 title: "Web kit: StateMessage gets an inline size; the panel \"Loading…\" lines use it"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0358-web-inline-loading-state
 model: auto
@@ -66,4 +66,19 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Did it: added `size?: 'block' | 'inline'` to `StateMessage` (default `'block'`, block markup unchanged). `inline` renders a left-aligned row (`flex items-center gap-2 px-2 py-1.5 text-[13px] text-muted-foreground`), title only, same `role` mapping (`status` for loading, `alert` for error), spinner at `size-3.5` for loading. Added `Inline` fixture and new `state-message.test.tsx` (inline loading has `role="status"`, shows the title, wrapper has no `py-10`). Replaced all eight plain `<p>Loading…</p>` lines (GroupPanel x2, TopicPanel x3, ChannelPanel x2, ToolsSection x1) with `<StateMessage kind="loading" size="inline" title="Loading…" />`, keeping the surrounding conditions; added the `StateMessage` import to each of the four files.
+
+Files changed: `apps/web/src/components/ui/state-message.tsx`, `apps/web/src/components/ui/state-message.fixture.tsx`, `apps/web/src/components/ui/state-message.test.tsx` (new), `apps/web/src/components/GroupPanel.tsx`, `apps/web/src/components/TopicPanel.tsx`, `apps/web/src/components/ChannelPanel.tsx`, `apps/web/src/components/tools/ToolsSection.tsx`, plus this task file.
+
+Commands (real results):
+- `pnpm install`: exit 0, done in 12.7s.
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot state-message GroupPanel TopicPanel Channels ToolsSection`: 4 files, 58 tests, all passed.
+- `pnpm gate` (first run): FAIL on format (prettier flagged ToolsSection.tsx, state-message.test.tsx, state-message.tsx); fixed with `pnpm exec prettier --write` on those three files only.
+- `pnpm gate` (final): `PASS install`, `PASS format`, `PASS lint`, `PASS typecheck`, `PASS tests @zilar/web`, `scope: every changed file is inside the Allowed files`, `GATE PASS`.
+
+Deviations: none. The inline branch renders non-loading kinds with the same row layout (spinner slot swaps to the kind icon); only loading is used by the spec. No test queries needed updating (`getByText('Loading…')` still matches; GroupPanel/TopicPanel/Channels test files contain no `Loading` assertions).
+Security checklist: no secrets, no deletes/updates, no caps, no permissions, no new routes, no audit entries; change is presentational only.
+
 ## Review (written by Claude)
+
+**Approved** (pre-review clean, 0 nits). `StateMessage` has `size="inline"`: a left-aligned row with a `size-3.5` spinner and the same `role`. The block size is unchanged. The eight panel lines use it, and the lead grep found no plain `Loading…</p>` left in those four files. It has a new test and fixture. The two StickersPage lines stay for a later task.

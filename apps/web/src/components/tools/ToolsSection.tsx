@@ -7,6 +7,7 @@ import {
   type ToolListItem,
 } from '@/lib/tools';
 import { Button, FieldError } from '@/components/ais/AiPageShell';
+import { StateMessage } from '../ui/state-message';
 import { ToolDetailPanel } from './ToolDetailPanel';
 
 type ListStatus = 'loading' | 'ready' | 'error';
@@ -113,9 +114,7 @@ export function ToolsSection({
   return (
     <section aria-label="Tools" className="flex flex-col gap-1">
       <h2 className="px-2 text-[13px] font-semibold text-muted-foreground">Tools</h2>
-      {state.status === 'loading' && (
-        <p className="px-2 text-[13px] text-muted-foreground">Loading…</p>
-      )}
+      {state.status === 'loading' && <StateMessage kind="loading" size="inline" title="Loading…" />}
       {state.status === 'error' && (
         <div className="flex flex-col gap-2 px-2">
           <FieldError>{state.message}</FieldError>

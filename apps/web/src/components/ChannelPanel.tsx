@@ -19,6 +19,7 @@ import { describeAiError } from './ais/errors';
 import { Avatar } from './Avatar';
 import { Button } from './ui/button';
 import { Sheet } from './ui/sheet';
+import { StateMessage } from './ui/state-message';
 import { InviteLinksSection } from './InviteLinksSection';
 import { VisibilitySection } from './VisibilitySection';
 
@@ -295,7 +296,7 @@ export function ChannelPanel({ chat, onClose }: { chat: ChatSummary; onClose: ()
           </section>
         )}
 
-        {info === undefined && <p className="text-[15px] text-muted-foreground">Loading…</p>}
+        {info === undefined && <StateMessage kind="loading" size="inline" title="Loading…" />}
 
         {info !== undefined && (
           <>
@@ -355,7 +356,7 @@ export function ChannelPanel({ chat, onClose }: { chat: ChatSummary; onClose: ()
               <section aria-label="Admins" className="flex flex-col gap-1">
                 <h2 className="px-2 text-[13px] font-semibold text-muted-foreground">Admins</h2>
                 {adminsState.status === 'loading' && (
-                  <p className="px-2 text-[13px] text-muted-foreground">Loading…</p>
+                  <StateMessage kind="loading" size="inline" title="Loading…" />
                 )}
                 {adminsState.status === 'error' && <FieldError>{adminsState.message}</FieldError>}
                 {adminsState.status === 'ready' && admins.length === 0 && (

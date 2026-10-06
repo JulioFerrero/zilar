@@ -26,6 +26,7 @@ import { Avatar } from './Avatar';
 import { Button } from './ui/button';
 import { Checkbox } from './ui/checkbox';
 import { Sheet } from './ui/sheet';
+import { StateMessage } from './ui/state-message';
 import { Switch } from './ui/switch';
 import { TextInput } from './ui/text-input';
 import { InviteLinksSection } from './InviteLinksSection';
@@ -292,7 +293,7 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
       </header>
 
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
-        {info === undefined && <p className="text-[15px] text-muted-foreground">Loading…</p>}
+        {info === undefined && <StateMessage kind="loading" size="inline" title="Loading…" />}
 
         {info !== undefined && (
           <>
@@ -672,7 +673,7 @@ function RolesSection({
     <section aria-label="Roles" className="flex flex-col gap-1">
       <h2 className="px-2 text-[13px] font-semibold text-muted-foreground">Roles</h2>
       {rolesState.status === 'loading' && (
-        <p className="px-2 text-[13px] text-muted-foreground">Loading…</p>
+        <StateMessage kind="loading" size="inline" title="Loading…" />
       )}
       {rolesState.status === 'error' && (
         <div className="flex flex-col gap-2 px-2">

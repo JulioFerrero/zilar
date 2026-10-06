@@ -12,6 +12,7 @@ import { PinsSection } from './PinsPanel';
 import { AlwaysAllowedList } from './approvals/AlwaysAllowedList';
 import { Button } from './ui/button';
 import { Sheet } from './ui/sheet';
+import { StateMessage } from './ui/state-message';
 import { cn } from '@/lib/utils';
 import {
   ApiError,
@@ -420,7 +421,7 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
             {isPrivate ? (
               <>
                 {membersState.status === 'loading' && (
-                  <p className="px-2 text-[13px] text-muted-foreground">Loading…</p>
+                  <StateMessage kind="loading" size="inline" title="Loading…" />
                 )}
                 {membersState.status === 'error' && (
                   <div className="flex flex-col gap-2 px-2">
@@ -589,7 +590,7 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
               AIs in this topic
             </h2>
             {aisState.status === 'loading' && (
-              <p className="px-2 text-[13px] text-muted-foreground">Loading…</p>
+              <StateMessage kind="loading" size="inline" title="Loading…" />
             )}
             {aisState.status === 'error' && (
               <div className="flex flex-col gap-2 px-2">
@@ -965,7 +966,7 @@ function TopicRolesSection({
     <section aria-label="Roles" className="flex flex-col gap-1">
       <h2 className="px-2 text-[13px] font-semibold text-muted-foreground">Roles</h2>
       {rolesState.status === 'loading' && (
-        <p className="px-2 text-[13px] text-muted-foreground">Loading…</p>
+        <StateMessage kind="loading" size="inline" title="Loading…" />
       )}
       {rolesState.status === 'error' && (
         <div className="flex flex-col gap-2 px-2">
