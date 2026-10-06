@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-0305](T-0305-mobile-text-field-6.md) | Mobile kit migration: AI model, spend limit and tool run-input fields use the kit TextField | todo | auto | T-0300 | batch 6 |
 
 ## Follow-ups
 
@@ -335,3 +334,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0303](T-0303-mobile-integrations-mock.md) | Mobile mock mode: Integrations owner mock | 2026-10-06 |
 | [T-0302](T-0302-mobile-text-field-5.md) | Mobile kit: join link and visibility handle fields use the kit TextField | 2026-10-06 |
 | [T-0306](T-0306-mobile-text-field-7.md) | Mobile kit: machine rename and sticker pack name use the kit TextField | 2026-10-06 |
+| [T-0305](T-0305-mobile-text-field-6.md) | Mobile kit: AI model, spend limit and tool run-input fields use the kit TextField | 2026-10-06 |
