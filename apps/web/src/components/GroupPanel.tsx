@@ -26,6 +26,7 @@ import { describeAiError } from './ais/errors';
 import { Avatar } from './Avatar';
 import { Button } from './ui/button';
 import { Checkbox } from './ui/checkbox';
+import { ListRow } from './ui/list-row';
 import { Sheet } from './ui/sheet';
 import { StateMessage } from './ui/state-message';
 import { Switch } from './ui/switch';
@@ -567,14 +568,12 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
                   owners and admins only. */}
             {isManager && (
               <section aria-label="Group background" className="px-2">
-                <button
-                  type="button"
+                <ListRow
+                  icon={<Image />}
+                  title="Group background"
+                  chevron
                   onClick={() => setBackgroundOpen(true)}
-                  className="flex w-full items-center gap-2 rounded-xl px-2 py-1.5 text-left text-[14px] hover:bg-list-hover"
-                >
-                  <Image className="size-4 text-muted-foreground" aria-hidden="true" />
-                  Group background
-                </button>
+                />
               </section>
             )}
 

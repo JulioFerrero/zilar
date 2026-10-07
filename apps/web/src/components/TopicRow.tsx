@@ -295,14 +295,16 @@ export function GroupHeaderRow({
             />
           ))}
           {archived.length > 0 && (
-            <button
+            <Button
               type="button"
-              onClick={onToggleArchived}
+              variant="ghost"
+              size="sm"
               aria-expanded={archivedOpen}
-              className="w-full rounded-[12px] px-2.5 py-1.5 text-left text-[13px] text-muted-foreground hover:bg-surface-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+              onClick={onToggleArchived}
+              className="w-full justify-start text-muted-foreground"
             >
               Archived ({archived.length})
-            </button>
+            </Button>
           )}
           {archivedOpen &&
             archived.map((topic) => (

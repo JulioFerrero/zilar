@@ -1,8 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { ChatSummary, UiMessage } from '@zilar/chat-core';
 import type { GroupDetail } from '@/lib/api';
 import { renderApp } from '@/test/renderApp';
+import { AuthProvider } from '@/auth/AuthProvider';
+import { ChatStoreProvider } from '@/store/ChatStoreProvider';
+import { createChatStore } from '@/store/store';
+import { PinsSection } from './PinsPanel';
 import { mockRequest, resetMockApi, setMockDelay } from '@/mock/api';
 
 interface StubPin {
@@ -377,6 +381,42 @@ describe('pinned messages (T-0114)', () => {
 
     fireEvent.click(within(dialog).getByRole('button', { name: 'Unpin message from Ana' }));
     await waitFor(() => expect(store.getState().pins('c-x')).toHaveLength(0));
+  });
+
+  it('shows the pin count on the info row', () => {
+    const store = createChatStore({ chats: [dm('c-x', 'Ana')] });
+    act(() => {
+      store.setState({
+        pinsByChat: {
+          'c-x': [
+            stubPin({
+              id: 'pin-1',
+              chat: 'c-x',
+              messageId: 'm-1',
+              senderName: 'Ana',
+              text: 'Read this',
+              kind: 'text',
+            }),
+          ],
+        },
+      });
+    });
+    render(
+      <AuthProvider
+        value={{
+          status: 'authenticated',
+          user: { id: 'u-you', name: 'You', email: 'you@zilar.test', handle: 'you' },
+          refetch: async () => {},
+        }}
+      >
+        <ChatStoreProvider store={store}>
+          <PinsSection chatId="c-x" onOpen={() => {}} />
+        </ChatStoreProvider>
+      </AuthProvider>,
+    );
+
+    const row = screen.getByRole('button', { name: 'Open pinned messages, 1 pinned' });
+    expect(within(row).getByText('1')).toBeTruthy();
   });
 
   it('closes the pins panel on Escape', async () => {
