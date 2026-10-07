@@ -21,6 +21,7 @@ import { AiBadge } from '@/components/AiBadge';
 import { Avatar } from '@/components/Avatar';
 import { AvatarUploader } from '@/components/AvatarUploader';
 import { Sheet } from '@/components/ui/sheet';
+import { Switch } from '@/components/ui/switch';
 import { TextArea, TextInput } from '@/components/ui/text-input';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
 import { cn } from '@/lib/utils';
@@ -177,6 +178,10 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
   const [machines, setMachines] = useState<Machine[] | null>(null);
   const [machineBusy, setMachineBusy] = useState(false);
   const [machineError, setMachineError] = useState('');
+  // T-0478: the owner's delegation opt-ins. Each switch saves on its own
+  // through `updateAi`, separate from the main form's Save.
+  const [delegationBusy, setDelegationBusy] = useState(false);
+  const [delegationError, setDelegationError] = useState('');
 
   useEffect(() => {
     let active = true;
@@ -372,6 +377,25 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
       }
     } finally {
       setBusy(false);
+    }
+  };
+
+  // T-0478: the delegation switches save on their own. On success the fresh
+  // AI replaces the local copy; on failure the inline error shows and the
+  // switch keeps the old value (we never flip it optimistically).
+  const saveDelegation = async (input: UpdateAiInput): Promise<void> => {
+    if (ai === null) {
+      return;
+    }
+    setDelegationBusy(true);
+    setDelegationError('');
+    try {
+      const updated = await updateAi(ai.id, input);
+      setAi(updated);
+    } catch (error) {
+      setDelegationError(describeAiError(error, 'Could not update the AI').message);
+    } finally {
+      setDelegationBusy(false);
     }
   };
 
@@ -627,6 +651,47 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
               </div>
 
               <UsageBlock ai={ai} />
+
+              {/* T-0478: the owner's delegation opt-ins. Each switch saves
+                  immediately; on failure the inline error shows and the
+                  switch keeps its old value. */}
+              <section aria-label="Delegation" className="flex flex-col gap-2">
+                <h3 className="text-[14px] font-medium">Delegation</h3>
+                <label className="flex cursor-pointer items-start justify-between gap-3 rounded-xl px-2 py-1.5 hover:bg-list-hover">
+                  <span className="flex flex-col">
+                    <span className="text-[14px]">Can delegate</span>
+                    <span className="text-[13px] text-muted-foreground">
+                      Hand tasks to other AIs in a group
+                    </span>
+                  </span>
+                  <Switch
+                    checked={ai.canDelegate === true}
+                    onCheckedChange={(checked) => void saveDelegation({ canDelegate: checked })}
+                    label="Can delegate"
+                    hideLabel
+                    disabled={delegationBusy}
+                  />
+                </label>
+                <label className="flex cursor-pointer items-start justify-between gap-3 rounded-xl px-2 py-1.5 hover:bg-list-hover">
+                  <span className="flex flex-col">
+                    <span className="text-[14px]">Accepts tasks</span>
+                    <span className="text-[13px] text-muted-foreground">
+                      Other AIs in a group can hand this AI tasks. It works on them with its own
+                      model and budget
+                    </span>
+                  </span>
+                  <Switch
+                    checked={ai.acceptsDelegation === true}
+                    onCheckedChange={(checked) =>
+                      void saveDelegation({ acceptsDelegation: checked })
+                    }
+                    label="Accepts tasks"
+                    hideLabel
+                    disabled={delegationBusy}
+                  />
+                </label>
+                {delegationError !== '' && <FieldError>{delegationError}</FieldError>}
+              </section>
 
               <AiMemorySection chat={chat.id} aiId={ai.id} aiName={ai.name} />
 

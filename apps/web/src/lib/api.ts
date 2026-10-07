@@ -152,6 +152,17 @@ const groupAiSchema = z.object({
   avatarUrl: z.string().optional(),
 });
 
+// T-0478: the group's AI listener. `available` is the server's
+// `LISTENER_ENABLED` flag: when false the controls stay disabled. Optional
+// on details so payloads from an older server still parse.
+const groupListenerSchema = z.object({
+  enabled: z.boolean(),
+  eagerness: z.enum(['quiet', 'normal', 'eager']),
+  available: z.boolean(),
+});
+
+export type ListenerEagerness = z.infer<typeof groupListenerSchema>['eagerness'];
+
 const groupDetailSchema = z.object({
   id: z.string(),
   title: z.string(),
@@ -175,6 +186,9 @@ const groupDetailSchema = z.object({
   avatarUrl: z.string().optional(),
   // T-0466: the group's shared background. Optional so older payloads parse.
   background: groupBackgroundSchema.optional(),
+  // T-0478: the AI listener switch and eagerness. Optional so older
+  // payloads parse (treated as off and unavailable).
+  listener: groupListenerSchema.optional(),
   members: z.array(groupMemberSchema),
   ais: z.array(groupAiSchema),
 });
@@ -600,6 +614,24 @@ export function setMembersCanCreateTopics(
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ membersCanCreateTopics }),
+  });
+}
+
+export interface SetGroupListenerInput {
+  listenerEnabled?: boolean;
+  listenerEagerness?: ListenerEagerness;
+}
+
+// T-0478: owners/admins turn the group's AI listener on/off and pick an
+// eagerness. A member gets 403.
+export function setGroupListener(
+  groupId: string,
+  input: SetGroupListenerInput,
+): Promise<GroupDetail> {
+  return request(`/groups/${encodeURIComponent(groupId)}`, groupDetailSchema, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
   });
 }
 
@@ -1144,6 +1176,10 @@ const publicAiSchema = z.object({
   // T-0165: the AI's picture, when it has one. Optional so older payloads
   // parse (treated as none).
   avatarUrl: z.string().optional(),
+  // T-0478: the owner's delegation opt-ins. Optional so older payloads parse
+  // (treated as off).
+  canDelegate: z.boolean().optional(),
+  acceptsDelegation: z.boolean().optional(),
   createdAt: z.string(),
 });
 
@@ -1174,6 +1210,9 @@ export interface UpdateAiInput {
   limits?: AiLimits;
   model?: string;
   providerConnectionId?: string;
+  // T-0478: the owner's delegation opt-ins.
+  canDelegate?: boolean;
+  acceptsDelegation?: boolean;
 }
 
 export function listAis(): Promise<PublicAi[]> {

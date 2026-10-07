@@ -1923,6 +1923,9 @@ function patchAi(ai: PublicAi, init: RequestInit): Response {
     updated.providerConnectionId = body.providerConnectionId;
   }
   if (body.limits !== undefined) updated.limits = readLimits(body.limits);
+  if (typeof body.canDelegate === 'boolean') updated.canDelegate = body.canDelegate;
+  if (typeof body.acceptsDelegation === 'boolean')
+    updated.acceptsDelegation = body.acceptsDelegation;
   state.ais = state.ais.map((item) => (item.id === ai.id ? updated : item));
   return jsonResponse(updated);
 }
@@ -3412,6 +3415,32 @@ export async function mockRequest(
     let updated = detail;
     if (typeof body.membersCanCreateTopics === 'boolean') {
       updated = { ...updated, membersCanCreateTopics: body.membersCanCreateTopics };
+    }
+    // T-0478: the group's AI listener. The mock server flag is on, so the
+    // panel's controls render enabled; both fields patch independently.
+    if (typeof body.listenerEnabled === 'boolean') {
+      updated = {
+        ...updated,
+        listener: {
+          enabled: body.listenerEnabled,
+          eagerness: updated.listener?.eagerness ?? 'normal',
+          available: true,
+        },
+      };
+    }
+    if (
+      body.listenerEagerness === 'quiet' ||
+      body.listenerEagerness === 'normal' ||
+      body.listenerEagerness === 'eager'
+    ) {
+      updated = {
+        ...updated,
+        listener: {
+          enabled: updated.listener?.enabled ?? false,
+          eagerness: body.listenerEagerness,
+          available: true,
+        },
+      };
     }
     // T-0466: the group's shared background. All-null clears it.
     if (

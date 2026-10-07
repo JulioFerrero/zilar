@@ -346,6 +346,20 @@ const gatewayCipher =
     : createKeyCipher(config.ZILAR_KEY_ENCRYPTION_KEY);
 const gatewayLitellm =
   config.LITELLM_MASTER_KEY === undefined ? undefined : createLitellmAdminClientFromConfig(config);
+// T-0475: the listener is the platform's own paid feature: it needs the flag,
+// a model and the master key. Any missing piece keeps it off with one warning
+// that names no value.
+const gatewayListener =
+  config.LISTENER_ENABLED &&
+  config.LISTENER_MODEL !== undefined &&
+  config.LITELLM_MASTER_KEY !== undefined
+    ? { model: config.LISTENER_MODEL, virtualKey: config.LITELLM_MASTER_KEY }
+    : undefined;
+if (config.LISTENER_ENABLED && gatewayListener === undefined) {
+  logger.warn(
+    'listener is enabled but LISTENER_MODEL or LITELLM_MASTER_KEY is missing; staying off',
+  );
+}
 const gateway = createAgentGateway(
   {
     db,
@@ -359,6 +373,7 @@ const gateway = createAgentGateway(
     ...(config.LITELLM_MASTER_KEY === undefined
       ? {}
       : { masterKeyForRedaction: config.LITELLM_MASTER_KEY }),
+    ...(gatewayListener === undefined ? {} : { listener: gatewayListener }),
     // The shared in-process hub: the gateway publishes drafts here and the
     // `/api/drafts/stream` route (mounted in app.ts) streams them out.
     drafts: { hub: sharedDraftHub },

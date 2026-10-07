@@ -34,6 +34,7 @@ import type {
   Pin,
   PinMessageInput,
   PublicAi,
+  SetGroupListenerInput,
   SetTopicRolesInput,
   Topic,
 } from '@/lib/api';
@@ -52,6 +53,7 @@ import {
   setGroupVisibility as setGroupVisibilityApi,
   setMembersCanCreateTopics,
   setGroupBackground as setGroupBackgroundApi,
+  setGroupListener as setGroupListenerApi,
   setTopicRoles,
 } from '@/lib/api';
 import {
@@ -247,6 +249,8 @@ export interface ChatStore {
   setMembersCanCreateTopics: (chatId: string, allowed: boolean) => Promise<void>;
   /** T-0466: sets or clears the group's shared background (owner/admin). */
   setGroupBackground: (chatId: string, background: GroupBackground) => Promise<void>;
+  /** T-0478: turns the group's AI listener on/off or sets its eagerness (owner/admin). */
+  setGroupListener: (chatId: string, input: SetGroupListenerInput) => Promise<void>;
   /**
    * Server chat-preference rows by lowercased chat JID (T-0113). Loaded with
    * the chat list; mute/archive/pin actions patch one row optimistically and
@@ -1057,6 +1061,16 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
                   chat.groupId === groupId ? { ...chat, groupBackground: nextBackground } : chat,
                 ),
         }));
+      },
+      // T-0478 (mock): the group's AI listener goes through the mock API's
+      // PATCH and refreshes the cached detail, like the real store.
+      setGroupListener: async (chatId, input) => {
+        const groupId = get().groupInfos[chatId]?.id;
+        if (groupId === undefined) {
+          throw new Error('This group is not available yet.');
+        }
+        const updated = await setGroupListenerApi(groupId, input);
+        set((state) => ({ groupInfos: { ...state.groupInfos, [chatId]: updated } }));
       },
       // T-0164 (mock): visibility flips through the mock API's PATCH, and
       // joining appends the mock user like the mock's link join does.

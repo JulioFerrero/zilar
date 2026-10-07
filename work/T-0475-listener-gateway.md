@@ -1,7 +1,7 @@
 ---
 id: T-0475
 title: "Listener S3 (server): per-room listener in the agent gateway — debounce, one scoring call, wake AIs above threshold with a short 'looking at this' line"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0475-listener-gateway
 model: auto
@@ -107,4 +107,64 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**Status:** done, all checks green. All changes are in the 5 Allowed files; no helper file was needed.
+
+### What I did
+1. **`apps/server/src/config.ts`** — added `LISTENER_MODEL` (trimmed string, 1–256 chars, optional) next to `LISTENER_ENABLED`, commented as the LiteLLM model the listener calls with the server master key.
+2. **`apps/server/src/config.test.ts`** — added "leaves the listener model unset until it is given" (absent by default, parses an explicit value). The two full-config `toEqual` listings were already correct because an optional key absent from the env is omitted from the parsed object (the gate confirms this).
+3. **`apps/server/src/index.ts`** — builds `gatewayListener` only when `LISTENER_ENABLED`, `LISTENER_MODEL` and `LITELLM_MASTER_KEY` are all set, and passes it as `listener: { model, virtualKey }`. When the flag is on and a value is missing it logs one warning with no values and passes nothing.
+4. **`apps/server/src/agents/gateway.ts`**
+   - `AgentGatewayDeps.listener?: { model; virtualKey; quietMs?; everyN?; complete? }`.
+   - One gateway-level `Map<roomJid, RoomListenerState>` (window of the last 40 messages, id set for dedupe, count, timer, `inFlight`, `groupId`, `topicId`, `generation`).
+   - In `handleRoomIncoming`, after the skew check and before the mention return, a non-AI sender is recorded once per message id. A message that mentions any AI resets the count and cancels the timer; otherwise the count rises and the quiet timer (`quietMs`, default 20 s) is re-armed, firing early at `everyN` (default 12).
+   - On fire: skip while `inFlight`, read the group's `listenerEnabled`/`listenerEagerness`, load the roster (General → group roster, other topics → topic roster via `topics.isGeneral`), call `scoreRoom` once with `completeChat` (or the injected fake) and a fresh generation; a newer human message during the call drops the result.
+   - Waking: for each scored AI with a live session in the room, sends `<nick> is looking at this` (plain, no mention, not a turn) then pushes the latest window message onto that session's `roomPending` and pumps; the normal turn-time checks still apply.
+   - Cleanup: `dropRoomListenerIfUnused` clears the timer/state when the last session leaves a room and from `disconnectAi` for rooms with no remaining session; `stop` clears every timer.
+   - Logs/errors carry ids and counts only (`roomJid`, `groupId`, `aiIds`, `count`); errors are redacted with `secretsFor(virtualKey)`. No message text, reason or key is logged.
+5. **`apps/server/src/agents/gateway.test.ts`** — new `describe('listener (T-0475)')` with 10 tests: no dep, group switch off, quiet-window wake (line + normal turn), one record/call for two AIs and only the scored AI woken, `everyN` fire, mention left to the mention path, stale result dropped, `complete` throws, `complete` returns garbage, and timer cleared on disconnect. The harness gained an optional `listener` config.
+
+### Files changed
+- `apps/server/src/config.ts`
+- `apps/server/src/config.test.ts`
+- `apps/server/src/index.ts`
+- `apps/server/src/agents/gateway.ts`
+- `apps/server/src/agents/gateway.test.ts`
+- `work/T-0475-listener-gateway.md` (this file)
+
+### Commands and real results
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot agents/gateway agents/listener config` → **5 files passed, 226 tests passed**.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot agents/gateway.test.ts -t "T-0475"` → **10 passed, 134 skipped** (focused run while iterating).
+- `pnpm gate` (run from the repo root, on the 5 code files) → 
+  ```
+  gate: 5 changed file(s) against main
+  PASS  install (frozen)  (1.0s)
+  PASS  format  (13.4s)
+  PASS  lint  (0.8s)
+  PASS  typecheck  (8.0s)
+  PASS  tests @zilar/server  (268.0s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+  The Report/status edit to this task file happened after that run; it is a sixth changed file but `work/T-*.md` is always allowed and `work/` is excluded from Prettier.
+
+### Deviations from the spec
+- **Test timers:** the spec asked for "fake timers". I used the real timers with a small injected `quietMs` (5–30 ms) plus the existing `waitFor` helper instead of `vi.useFakeTimers`, because the test harness drives async PGlite work through `waitFor` (which itself uses `setTimeout`); faking timers would stall it. The injected `quietMs`/`everyN` are in the dep as the spec allows, so the debounce is still tested deterministically without a 20 s wait. Say the word if you want the fake-timer form and I will convert it.
+- No other deviation: the helper file was not needed, so no new module was added.
+
+### Security checklist
+- No secret reaches logs: only ids/counts; errors redacted with the listener virtual key and the master key.
+- The listener call never advertises tools (`scoreRoom` uses `completeChat`); room text is untrusted data.
+- Off by default on both axes (server flag + per-group switch); the wake line is plain text with no mention and is not counted as a turn.
+- No new routes/writes, so the 401 sweep and rate limits are unaffected.
+- A wake is scoped to live sessions joined to that room, and the normal member/daily/rate checks still gate the turn.
+
+### Open questions
+- None blocking.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-07).
+- LISTENER_MODEL is added; the listener is wired only when the flag, the model and the master key are all set, with one warning and no values otherwise.
+- The per-room state is gateway-level: deduped by message id, a quiet timer and an everyN trigger, mentions reset it, there is an inFlight guard, and the generation drops stale results.
+- A wake posts the "looking at this" line, then queues a normal turn; it is cleaned up on leave, disconnect and stop.
+The nit (an orphan wake line when the turn is then rate-limited or over the daily limit) moves to S4, which reworks the turn gating.

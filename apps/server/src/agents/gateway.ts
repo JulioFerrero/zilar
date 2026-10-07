@@ -57,6 +57,12 @@ import {
   type MemoryContext,
 } from './context';
 import { TOOL_GUIDE } from './tool-guide';
+import {
+  loadRoster,
+  LISTENER_WINDOW_MAX,
+  scoreRoom,
+  type ListenerWindowMessage,
+} from './listener/score';
 import { compactMemory } from './memory/compactor';
 import { indexMemory, type MemoryScope } from './memory/indexer';
 import { looksLikeSecret } from './memory/secrets';
@@ -110,6 +116,17 @@ export interface AgentGatewayDeps {
   litellmBaseUrl?: string;
   /** Only used to redact log lines; never sent anywhere. */
   masterKeyForRedaction?: string;
+  /** T-0475: the server-paid room listener (plan §2). Absent means the
+   * listener is off, so a room message without an AI mention wakes nobody.
+   * `quietMs` and `everyN` tune the debounce (defaults below). `complete`
+   * is injected in tests. */
+  listener?: {
+    model: string;
+    virtualKey: string;
+    quietMs?: number;
+    everyN?: number;
+    complete?: typeof completeChat;
+  };
   createCore?: (options: XmppCoreOptions) => XmppCore;
   fetchImpl?: FetchLike;
   now?: () => Date;
@@ -165,10 +182,23 @@ export const GATEWAY_RESOURCE = 'gateway';
 export const GROUP_TURNS_PER_WINDOW = 6;
 export const GROUP_RATE_WINDOW_MS = 10 * 60_000;
 
+// T-0479: at most this many AI turns per human room message, across every AI
+// in the room. A new human message opens a fresh round.
+export const ROUND_MAX_AI_TURNS = 4;
+
+// T-0481: at most this many AI-to-AI handoffs per human room message. A
+// handoff turn counts against ROUND_MAX_AI_TURNS too.
+export const ROUND_MAX_HOPS = 2;
+
 // A live room message carries ~now as its timestamp, while history replayed
 // on join carries its original (older) stamp. Anything older than the join
 // minus this skew is treated as replayed history and never wakes the AI.
 export const GROUP_JOIN_SKEW_MS = 60_000;
+
+// T-0475: the listener scores a room after this much quiet, or early once this
+// many human messages have queued without a mention (plan §2.1).
+export const LISTENER_QUIET_MS_DEFAULT = 20_000;
+export const LISTENER_EVERY_N_DEFAULT = 12;
 
 interface PendingMessage {
   id: string;
@@ -183,6 +213,22 @@ interface RoomPendingMessage {
   fromResolved: boolean;
   fromNick?: string;
   timestamp: Date;
+  /** T-0479: set by a listener wake, never by a mention. */
+  wake?: true;
+  /** T-0481: set on an AI-to-AI handoff queued by another AI's @mention. */
+  handoff?: true;
+}
+
+// T-0479: the per-room round budget, shared by every AI session in the room
+// and keyed by the human message that opened it.
+interface RoomRound {
+  humanMessageId: string;
+  aiTurns: number;
+  /** T-0481: AI-to-AI hops already spent in this round. */
+  hops: number;
+  /** T-0481: AI message ids already counted, so several sessions seeing the
+   * same stanza spend one hop. */
+  handoffIds: Set<string>;
 }
 
 interface RoomSubscription {
@@ -191,6 +237,31 @@ interface RoomSubscription {
   topicId: string;
   joinedAtMs: number;
   nick: string;
+}
+
+// T-0475: one debounce window per room, at the gateway level, shared by every
+// AI session in it. `seen` dedupes the stanza each session receives; `count`
+// is the messages since the last check and `generation` invalidates a scoring
+// call whose window a newer human message replaced.
+interface RoomListenerMessage {
+  id: string;
+  sender: string;
+  text: string;
+  fromJid: string;
+  fromResolved: boolean;
+  fromNick?: string;
+  timestamp: Date;
+}
+
+interface RoomListenerState {
+  groupId: string;
+  topicId: string;
+  window: RoomListenerMessage[];
+  seen: Set<string>;
+  count: number;
+  generation: number;
+  inFlight: boolean;
+  timer: ReturnType<typeof setTimeout> | undefined;
 }
 
 interface AiSession {
@@ -470,6 +541,11 @@ export function createAgentGateway(
   // retries never reconnect them again until the gateway restarts. In memory
   // only, keyed by the gateway's own AI ids.
   const superseded = new Set<string>();
+  // T-0475: the listener's per-room debounce windows (see RoomListenerState).
+  const roomListeners = new Map<string, RoomListenerState>();
+  // T-0479: per-room round budgets (see RoomRound). In memory: a restart
+  // safely resets it, a fresh start can only wake fewer AIs.
+  const roomRounds = new Map<string, RoomRound>();
 
   let started = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -1177,6 +1253,9 @@ export function createAgentGateway(
       return;
     }
     sessions.delete(aiId);
+    for (const roomJid of session.rooms.keys()) {
+      dropRoomListenerIfUnused(roomJid);
+    }
     session.stopped = true;
     if (session.retryTimer !== undefined) {
       clearTimeout(session.retryTimer);
@@ -1262,6 +1341,7 @@ export function createAgentGateway(
     session.roomBusy.delete(roomJid);
     // A re-added AI starts with a fresh rate budget.
     session.roomTurns.delete(roomJid);
+    dropRoomListenerIfUnused(roomJid);
     try {
       await session.core.leaveRoom(roomJid);
     } catch (error) {
@@ -1463,6 +1543,226 @@ export function createAgentGateway(
     });
   }
 
+  // T-0475: feed one human room message to the room's debounce window. Every
+  // AI session receives the same stanza, so the first call records it and the
+  // rest are dropped by id. A message that mentions an AI already wakes that
+  // AI through the mention path, so it resets the window instead. Never logs
+  // room text: ids and counts only.
+  function noteListenerMessage(
+    roomJid: string,
+    room: RoomSubscription,
+    message: ChatMessage,
+    body: string,
+  ): void {
+    const listener = deps.listener;
+    if (listener === undefined) {
+      return;
+    }
+    const existing = roomListeners.get(roomJid);
+    const state: RoomListenerState =
+      existing ??
+      (() => {
+        const created: RoomListenerState = {
+          groupId: room.groupId,
+          topicId: room.topicId,
+          window: [],
+          seen: new Set(),
+          count: 0,
+          generation: 0,
+          inFlight: false,
+          timer: undefined,
+        };
+        roomListeners.set(roomJid, created);
+        return created;
+      })();
+    if (state.seen.has(message.id)) {
+      return;
+    }
+    state.seen.add(message.id);
+    state.generation += 1;
+    state.window.push({
+      id: message.id,
+      sender: message.fromNick ?? normBareJid(message.fromJid),
+      text: body,
+      fromJid: message.fromJid,
+      fromResolved: message.fromResolved,
+      ...(message.fromNick === undefined ? {} : { fromNick: message.fromNick }),
+      timestamp: message.timestamp,
+    });
+    while (state.window.length > LISTENER_WINDOW_MAX) {
+      const dropped = state.window.shift();
+      if (dropped !== undefined) {
+        state.seen.delete(dropped.id);
+      }
+    }
+    const mentionsAi = (message.mentions ?? []).some((mention) =>
+      isAiSender(normBareJid(mention.jid)),
+    );
+    if (mentionsAi) {
+      // Mentions already wake the right AIs; drop the debounce.
+      state.count = 0;
+      clearListenerTimer(state);
+      return;
+    }
+    state.count += 1;
+    if (state.count >= (listener.everyN ?? LISTENER_EVERY_N_DEFAULT)) {
+      clearListenerTimer(state);
+      void fireRoomListener(roomJid, state);
+      return;
+    }
+    clearListenerTimer(state);
+    state.timer = setTimeout(() => {
+      state.timer = undefined;
+      void fireRoomListener(roomJid, state);
+    }, listener.quietMs ?? LISTENER_QUIET_MS_DEFAULT);
+  }
+
+  function clearListenerTimer(state: RoomListenerState): void {
+    if (state.timer !== undefined) {
+      clearTimeout(state.timer);
+      state.timer = undefined;
+    }
+  }
+
+  // One scoring call per room. Skips while a call is in flight and drops a
+  // result whose window a newer human message replaced (plan §2.1).
+  async function fireRoomListener(roomJid: string, state: RoomListenerState): Promise<void> {
+    const listener = deps.listener;
+    if (listener === undefined || state.inFlight) {
+      return;
+    }
+    state.inFlight = true;
+    const generation = state.generation;
+    const window: ListenerWindowMessage[] = state.window.map((entry) => ({
+      id: entry.id,
+      sender: entry.sender,
+      text: entry.text,
+    }));
+    try {
+      const [group] = await deps.db
+        .select({
+          listenerEnabled: groups.listenerEnabled,
+          listenerEagerness: groups.listenerEagerness,
+        })
+        .from(groups)
+        .where(eq(groups.id, state.groupId))
+        .limit(1);
+      if (group === undefined || !group.listenerEnabled) {
+        return;
+      }
+      const [topic] = await deps.db
+        .select({ isGeneral: topics.isGeneral })
+        .from(topics)
+        .where(eq(topics.id, state.topicId))
+        .limit(1);
+      // General rooms score the group's AIs; every other topic its own.
+      const isGeneral = state.topicId === '' || topic?.isGeneral === true;
+      const roster = await loadRoster(
+        deps.db,
+        isGeneral ? { groupId: state.groupId } : { groupId: state.groupId, topicId: state.topicId },
+      );
+      const result = await scoreRoom({
+        complete: listener.complete ?? completeChat,
+        baseUrl,
+        virtualKey: listener.virtualKey,
+        model: listener.model,
+        roster,
+        window,
+        eagerness: group.listenerEagerness,
+      });
+      if (state.generation !== generation) {
+        return;
+      }
+      if (result !== null) {
+        await wakeListenerAis(roomJid, state, result.wake);
+      }
+    } catch (error) {
+      logger.warn(
+        { err: toRedactedError(error, secretsFor(listener.virtualKey)), groupId: state.groupId },
+        'AI listener check failed',
+      );
+    } finally {
+      state.count = 0;
+      state.inFlight = false;
+    }
+  }
+
+  // Wakes each scored AI that still holds a live session in this room by
+  // queueing the latest window message as a normal turn. The short "looking at
+  // this" line is posted at turn time, once the turn passed every gate. The
+  // turn-time checks (member, daily limit, rate limit, round budget) apply.
+  async function wakeListenerAis(
+    roomJid: string,
+    state: RoomListenerState,
+    wakeIds: readonly string[],
+  ): Promise<void> {
+    const latest = state.window[state.window.length - 1];
+    if (latest === undefined) {
+      return;
+    }
+    const woken: string[] = [];
+    for (const aiId of wakeIds) {
+      const session = sessions.get(aiId);
+      if (session === undefined || !sessionIsLive(session)) {
+        continue;
+      }
+      const room = session.rooms.get(roomJid);
+      if (room === undefined) {
+        continue;
+      }
+      const queued = session.roomPending.get(roomJid) ?? [];
+      queued.push({
+        id: latest.id,
+        body: latest.text,
+        fromJid: latest.fromJid,
+        fromResolved: latest.fromResolved,
+        ...(latest.fromNick === undefined ? {} : { fromNick: latest.fromNick }),
+        timestamp: latest.timestamp,
+        wake: true,
+      });
+      session.roomPending.set(roomJid, queued);
+      void pumpRoom(session, roomJid).catch((error: unknown) => {
+        logger.warn(
+          { err: toRedactedError(error, secretsFor()), aiId: session.aiId },
+          'AI listener pump failed',
+        );
+      });
+      woken.push(aiId);
+    }
+    if (woken.length > 0) {
+      logger.info(
+        { roomJid, groupId: state.groupId, aiIds: woken, count: state.count },
+        'AI listener woke AIs',
+      );
+    }
+  }
+
+  // Drops a room's listener state once no live session is joined to it.
+  function dropRoomListenerIfUnused(roomJid: string): void {
+    for (const session of sessions.values()) {
+      if (session.rooms.has(roomJid)) {
+        return;
+      }
+    }
+    const state = roomListeners.get(roomJid);
+    if (state !== undefined) {
+      clearListenerTimer(state);
+    }
+    roomListeners.delete(roomJid);
+    roomRounds.delete(roomJid);
+  }
+
+  // T-0481: the live session for an `ai-*` sender's bare JID, if this gateway
+  // runs it. `sessions` is keyed by the gateway's own AI id, so match the JID.
+  function sessionForAiJid(bare: string): AiSession | undefined {
+    for (const candidate of sessions.values()) {
+      if (normBareJid(candidate.aiJid) === bare) {
+        return candidate;
+      }
+    }
+    return undefined;
+  }
+
   // M2 rule 1 (§9.4): a person @mentions AIs, and only those AIs reply. Every
   // check that needs no database runs here; the sender's membership and the
   // rate limit are checked fresh at turn time.
@@ -1489,18 +1789,59 @@ export function createAgentGateway(
     if (message.timestamp.getTime() < room.joinedAtMs - GROUP_JOIN_SKEW_MS) {
       return;
     }
+    // T-0479: every human room message opens a fresh round, mention or not.
+    // Every AI session receives the same stanza, so an id we already opened on
+    // leaves the running count alone.
+    if (!isAiSender(normBareJid(message.fromJid))) {
+      const round = roomRounds.get(roomJid);
+      if (round === undefined || round.humanMessageId !== message.id) {
+        roomRounds.set(roomJid, {
+          humanMessageId: message.id,
+          aiTurns: 0,
+          hops: 0,
+          handoffIds: new Set(),
+        });
+      }
+    }
     const aiBare = normBareJid(session.aiJid);
     const mentioned = (message.mentions ?? []).some(
       (mention) => normBareJid(mention.jid) === aiBare,
     );
+    // T-0475: the listener sees every human room message, mention or not,
+    // before the mention early-return below. AI senders never feed it.
+    if (deps.listener !== undefined && !isAiSender(normBareJid(message.fromJid))) {
+      noteListenerMessage(roomJid, room, message, body);
+    }
     if (!mentioned) {
       // No mention, nobody replies (M2 rule 3).
       return;
     }
-    // No AI-to-AI turns in M2: any `ai-*` real JID never wakes the AI. An
-    // occupant whose real JID is unknown is decided at turn time by nick.
-    if (isAiSender(normBareJid(message.fromJid))) {
-      return;
+    const fromBare = normBareJid(message.fromJid);
+    let handoff = false;
+    if (isAiSender(fromBare)) {
+      // T-0481: an AI mentioning another AI hands the question over, inside
+      // the round's hop budget. The sender must be another live session
+      // joined to this room — never a JID or nick taken from the message.
+      const senderSession = sessionForAiJid(fromBare);
+      if (senderSession === undefined || !senderSession.rooms.has(roomJid)) {
+        return;
+      }
+      const round = roomRounds.get(roomJid);
+      if (round === undefined) {
+        return;
+      }
+      if (!round.handoffIds.has(message.id)) {
+        if (round.hops >= ROUND_MAX_HOPS) {
+          logger.info(
+            { roomJid, fromAiId: senderSession.aiId, toAiId: session.aiId },
+            'AI handoff budget spent',
+          );
+          return;
+        }
+        round.handoffIds.add(message.id);
+        round.hops += 1;
+      }
+      handoff = true;
     }
     const queued = session.roomPending.get(roomJid) ?? [];
     queued.push({
@@ -1510,6 +1851,7 @@ export function createAgentGateway(
       fromResolved: message.fromResolved,
       ...(message.fromNick === undefined ? {} : { fromNick: message.fromNick }),
       timestamp: message.timestamp,
+      ...(handoff ? { handoff: true as const } : {}),
     });
     session.roomPending.set(roomJid, queued);
     void pumpRoom(session, roomJid).catch((error: unknown) => {
@@ -1571,6 +1913,17 @@ export function createAgentGateway(
     for (const item of batch) {
       const fromBare = normBareJid(item.fromJid);
       if (isAiSender(fromBare)) {
+        // T-0481: an AI sender passes only for a queued handoff, and only
+        // while it is still a live session in this room. Everything else is
+        // the old M2 ban.
+        if (item.handoff !== true) {
+          continue;
+        }
+        const senderSession = sessionForAiJid(fromBare);
+        if (senderSession === undefined || !senderSession.rooms.has(roomJid)) {
+          continue;
+        }
+        eligible.push(item);
         continue;
       }
       if (!item.fromResolved) {
@@ -1580,8 +1933,7 @@ export function createAgentGateway(
         // check below anyway.
         continue;
       }
-      // Only a current human member's mention triggers a reply. Members are
-      // people: every `ai-*` sender already returned above.
+      // Only a current human member's mention triggers a reply.
       if (!gate.memberJids.has(fromBare)) {
         continue;
       }
@@ -1623,6 +1975,33 @@ export function createAgentGateway(
     }
     recent.push(atMs);
     session.roomTurns.set(roomJid, recent);
+
+    // T-0479: at most ROUND_MAX_AI_TURNS AI turns per human message per room,
+    // across every AI that message woke. The rate stamp just pushed is
+    // refunded so a dropped turn does not consume rate budget. A missing round
+    // (for example right after a restart) counts as a fresh one.
+    const round = roomRounds.get(roomJid);
+    if (round !== undefined && round.aiTurns >= ROUND_MAX_AI_TURNS) {
+      recent.pop();
+      session.roomTurns.set(roomJid, recent);
+      logger.warn(
+        { aiId: session.aiId, groupId: room.groupId, messageId: trigger.id },
+        'AI round budget spent; dropping the turn',
+      );
+      return;
+    }
+    if (round !== undefined) {
+      round.aiTurns += 1;
+    }
+
+    // T-0479: a pure listener wake (every eligible item is a wake, no mention
+    // in the batch) shows the short "looking at this" line only once the turn
+    // has passed every gate above. A mention turn never posts it.
+    if (eligible.every((item) => item.wake === true)) {
+      await liveSendMessage(session, roomJid, 'groupchat', `${room.nick} is looking at this`).catch(
+        () => undefined,
+      );
+    }
 
     // The room history the AI reads for a turn is that topic's room only:
     // the `roomJid` above is the joined topic room, and `loadHistory` reads
@@ -1711,6 +2090,36 @@ export function createAgentGateway(
           timestamp: item.timestamp,
           outgoing: false,
         }));
+      // T-0481: the other AIs in this room that may receive a handoff. One
+      // database read for the turn; a lookup failure just means no targets,
+      // and the turn runs unchanged.
+      const otherSessions = [...sessions.values()].filter(
+        (candidate) => candidate.aiId !== session.aiId && candidate.rooms.has(roomJid),
+      );
+      let handoffTargets: { nick: string; jid: string }[] = [];
+      if (otherSessions.length > 0) {
+        try {
+          const rows = await deps.db
+            .select({ id: ais.id, accepts: ais.acceptsDelegation })
+            .from(ais)
+            .where(
+              inArray(
+                ais.id,
+                otherSessions.map((candidate) => candidate.aiId),
+              ),
+            );
+          const accepting = new Set(rows.filter((row) => row.accepts).map((row) => row.id));
+          handoffTargets = otherSessions.flatMap((candidate) => {
+            const subscription = candidate.rooms.get(roomJid);
+            if (subscription === undefined || !accepting.has(candidate.aiId)) {
+              return [];
+            }
+            return [{ nick: subscription.nick, jid: candidate.aiJid }];
+          });
+        } catch {
+          // Best effort: no handoff targets, the turn runs as before.
+        }
+      }
       const messages: ChatCompletionMessage[] = buildGroupMessages({
         aiName: ai.name,
         persona: ai.persona,
@@ -1719,6 +2128,9 @@ export function createAgentGateway(
         aiJid: ai.jid,
         ...(groupName === undefined ? {} : { groupName }),
         ...(topicName === undefined ? {} : { topicName }),
+        ...(handoffTargets.length === 0
+          ? {}
+          : { handoffNames: handoffTargets.map((target) => target.nick) }),
         history: [...history, ...fresh],
         trigger: { id: trigger.id, body: trigger.body },
         memory,
@@ -1791,6 +2203,7 @@ export function createAgentGateway(
           allowActions,
         }),
         ...(deps.toolMaxRounds === undefined ? {} : { maxRounds: deps.toolMaxRounds }),
+        ...(handoffTargets.length === 0 ? {} : { handoffTargets }),
         checkRoundGate: () => checkDmRoundGate(session),
         reportProgress: groupProgress.reportProgress,
         clearProgress: groupProgress.clearProgress,
@@ -2203,6 +2616,10 @@ export function createAgentGateway(
         // Shutdown disconnects everyone; one failure stops nothing else.
       }
     }
+    for (const state of roomListeners.values()) {
+      clearListenerTimer(state);
+    }
+    roomListeners.clear();
   }
 
   return {

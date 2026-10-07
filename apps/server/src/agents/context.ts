@@ -92,6 +92,9 @@ export interface GroupContextInput {
   trigger: Pick<ChatMessage, 'id' | 'body'>;
   /** Pinned facts and memory block, in their own system message. */
   memory?: MemoryContext;
+  /** T-0481: room nicks of other AIs here whose `acceptsDelegation` is on.
+   * When present, the prompt tells the AI it may hand a question over. */
+  handoffNames?: string[];
 }
 
 // The fixed prefix for a group turn: the same persona and date lines as a DM,
@@ -108,6 +111,7 @@ export function buildGroupSystemMessage(input: {
   today: string;
   groupName?: string;
   topicName?: string;
+  handoffNames?: string[];
 }): string {
   const persona = input.persona.trim();
   const sender = input.senderName.trim() === '' ? 'a member' : input.senderName.trim();
@@ -123,7 +127,16 @@ export function buildGroupSystemMessage(input: {
     `You are ${input.aiName}, an AI in the Zilar chat app, talking in a group chat. ` +
     `${where}` +
     `${sender} mentioned you: reply to them directly. Reply in plain text; keep it brief unless asked for more.`;
-  return joinPrefix([persona, platform, `Today is ${input.today}.`]);
+  const handoffNames = (input.handoffNames ?? [])
+    .map((nick) => nick.trim())
+    .filter((nick) => nick !== '');
+  const handoff =
+    handoffNames.length === 0
+      ? ''
+      : `Other AIs here you can hand a question to: ${handoffNames
+          .map((nick) => `@${nick}`)
+          .join(', ')}. Write their @name in your reply only when they should take over.`;
+  return joinPrefix([persona, platform, `Today is ${input.today}.`, handoff]);
 }
 
 function joinPrefix(parts: string[]): string {
