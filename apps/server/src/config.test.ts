@@ -388,6 +388,18 @@ describe('loadServerConfig', () => {
     expect(loadServerConfig({ ...base, LISTENER_ENABLED: 'true' }).LISTENER_ENABLED).toBe(true);
   });
 
+  it('leaves the listener model unset until it is given', () => {
+    const base = {
+      DATABASE_URL: VALID_DATABASE_URL,
+      BETTER_AUTH_SECRET: VALID_SECRET,
+      ...VALID_XMPP_ENV,
+    };
+    expect(loadServerConfig(base).LISTENER_MODEL).toBeUndefined();
+    expect(loadServerConfig({ ...base, LISTENER_MODEL: 'listener-model' }).LISTENER_MODEL).toBe(
+      'listener-model',
+    );
+  });
+
   it('rejects junk values for ROUTINES_ENABLED like the sibling flags', () => {
     const base = {
       DATABASE_URL: VALID_DATABASE_URL,

@@ -201,6 +201,11 @@ const serverConfigSchema = z
       .enum(['true', 'false'])
       .default('false')
       .transform((value) => value === 'true'),
+    // The LiteLLM model name the listener calls (T-0475, plan §2.2). It is
+    // paid with the server's LiteLLM master key, never an AI's own key, so
+    // one room costs the platform, not any owner. Unset means the listener
+    // stays off even when `LISTENER_ENABLED` is true.
+    LISTENER_MODEL: z.string().trim().min(1).max(256).optional(),
     // Model-side tool rounds (T-0106): how many tool rounds one AI turn
     // may run. Integer 1 to 10. Unset = 1 when `TOOLS_ENABLED` is off
     // (today's behaviour, byte for byte) and 6 when it is on. Set

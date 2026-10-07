@@ -67,6 +67,7 @@ import {
   BUDGET_EXCEEDED_REPLY,
   PROVIDER_KEY_REJECTED_REPLY,
   TRANSIENT_FAILURE_REPLY,
+  type CompleteChatInput,
 } from './reply';
 
 const MASTER_KEY = 'test-master-key-0000000000000000000000';
@@ -455,6 +456,7 @@ describe('agent gateway', () => {
       toolMaxRounds?: number;
       turnLogger?: GatewayLogger;
       archive?: ArchivePool;
+      listener?: AgentGatewayDeps['listener'];
     } = {},
   ): {
     gateway: AgentGateway;
@@ -506,6 +508,7 @@ describe('agent gateway', () => {
       ...(config.toolsEnabled === undefined ? {} : { toolsEnabled: config.toolsEnabled }),
       ...(config.toolMaxRounds === undefined ? {} : { toolMaxRounds: config.toolMaxRounds }),
       ...(config.archive === undefined ? {} : { archive: config.archive }),
+      ...(config.listener === undefined ? {} : { listener: config.listener }),
     };
     const created = createAgentGateway(deps, {
       enabled: config.enabled ?? true,
@@ -5415,5 +5418,350 @@ describe('agent gateway', () => {
       expect(dumped).not.toContain('Hiring Secrets');
       expect(dumped).not.toContain('General');
     });
+  });
+
+  describe('listener (T-0475)', () => {
+    const NOW = new Date('2026-09-28T12:00:00Z');
+    const LISTENER_VIRTUAL_KEY = 'sk-listener-key-do-not-leak';
+
+    function listenerScores(aiId: string, score: number): string {
+      return JSON.stringify({ scores: { [aiId]: score }, reason: 'one line', message_ids: [] });
+    }
+
+    async function seedMember(name: string): Promise<{ userId: string; jid: string }> {
+      const userId = randomUUID();
+      await context.db.insert(user).values({ id: userId, name, email: `${userId}@example.com` });
+      return { userId, jid: `${localpartFor(userId)}@${TEST_XMPP_DOMAIN}` };
+    }
+
+    async function seedGroup(input: {
+      ownerId: string;
+      memberIds?: string[];
+      listenerEnabled?: boolean;
+      eagerness?: 'quiet' | 'normal' | 'eager';
+    }): Promise<{ groupId: string; roomJid: string }> {
+      const groupId = randomUUID();
+      const roomLocalpart = `ltest${randomUUID().replace(/-/g, '').slice(0, 10)}`;
+      await context.db.insert(groups).values({
+        id: groupId,
+        roomLocalpart,
+        title: 'Room',
+        createdBy: input.ownerId,
+        ...(input.listenerEnabled === undefined ? {} : { listenerEnabled: input.listenerEnabled }),
+        ...(input.eagerness === undefined ? {} : { listenerEagerness: input.eagerness }),
+      });
+      await context.db.insert(groupMembers).values([
+        { groupId, userId: input.ownerId, role: 'owner' },
+        ...(input.memberIds ?? []).map((userId) => ({
+          groupId,
+          userId,
+          role: 'member' as const,
+        })),
+      ]);
+      await context.db.insert(topics).values({
+        id: randomUUID(),
+        groupId,
+        name: 'General',
+        glyph: 'G',
+        roomLocalpart,
+        visibility: 'public',
+        kind: 'chat',
+        status: 'open',
+        isGeneral: true,
+        createdBy: input.ownerId,
+      });
+      return { groupId, roomJid: `${roomLocalpart}@${TEST_XMPP_MUC_DOMAIN}` };
+    }
+
+    async function addAiToGroup(groupId: string, ownerId: string, aiId: string): Promise<void> {
+      await context.db.insert(groupAis).values({ groupId, aiId, addedBy: ownerId });
+    }
+
+    function roomMessage(
+      roomJid: string,
+      fromJid: string,
+      id: string,
+      body: string,
+      options: { nick?: string; mentions?: string[] } = {},
+    ): ChatMessage {
+      return {
+        id,
+        chatJid: roomJid,
+        kind: 'groupchat',
+        fromJid,
+        fromResolved: true,
+        ...(options.nick === undefined ? {} : { fromNick: options.nick }),
+        body,
+        ...(options.mentions === undefined
+          ? {}
+          : { mentions: options.mentions.map((jid) => ({ jid })) }),
+        timestamp: NOW,
+        outgoing: false,
+      };
+    }
+
+    function mention(seeded: SeededAi, member: { jid: string }, roomJid: string, id: string) {
+      return roomMessage(roomJid, member.jid, id, 'hey, what do you think?', {
+        nick: 'Ana',
+        mentions: [seeded.aiJid],
+      });
+    }
+
+    interface ListenerSetup {
+      seeded: SeededAi;
+      extras: SeededAi[];
+      member: { userId: string; jid: string };
+      groupId: string;
+      roomJid: string;
+      core: FakeCore;
+      cores: FakeCore[];
+      calls: Call[];
+      listenerCalls: CompleteChatInput[];
+      litellm: FakeLitellm;
+      started: AgentGateway;
+      logger: ReturnType<typeof captureLogger>;
+    }
+
+    async function listenerSetup(
+      input: {
+        listenerEnabled?: boolean;
+        eagerness?: 'quiet' | 'normal' | 'eager';
+        aiCount?: number;
+        quietMs?: number;
+        everyN?: number;
+        listener?: boolean;
+        complete?: (aiId: string) => (call: CompleteChatInput) => Promise<string>;
+      } = {},
+    ): Promise<ListenerSetup> {
+      const seeded = await seedAi(context);
+      const member = await seedMember('Ana');
+      const { groupId, roomJid } = await seedGroup({
+        ownerId: seeded.ownerId,
+        memberIds: [member.userId],
+        listenerEnabled: input.listenerEnabled ?? true,
+        ...(input.eagerness === undefined ? {} : { eagerness: input.eagerness }),
+      });
+      await addAiToGroup(groupId, seeded.ownerId, seeded.aiId);
+      const extras: SeededAi[] = [];
+      for (let index = 1; index < (input.aiCount ?? 1); index += 1) {
+        const extra = await seedAi(context);
+        await addAiToGroup(groupId, extra.ownerId, extra.aiId);
+        extras.push(extra);
+      }
+      const cores: FakeCore[] = [];
+      const { fetchImpl, calls } = completionFetch();
+      const litellm = new FakeLitellm();
+      const listenerCalls: CompleteChatInput[] = [];
+      const complete =
+        input.complete?.(seeded.aiId) ??
+        (async (call: CompleteChatInput) => {
+          listenerCalls.push(call);
+          return listenerScores(seeded.aiId, 0.9);
+        });
+      const listenerConfig =
+        input.listener === false
+          ? undefined
+          : {
+              model: 'listener-model',
+              virtualKey: LISTENER_VIRTUAL_KEY,
+              complete,
+              quietMs: input.quietMs ?? 5,
+              everyN: input.everyN ?? 12,
+            };
+      const { gateway: started, logger } = harness(
+        cores,
+        fetchImpl,
+        litellm,
+        listenerConfig === undefined ? {} : { listener: listenerConfig },
+      );
+      await started.start();
+      const core = await coreFor(cores, seeded.aiJid);
+      return {
+        seeded,
+        extras,
+        member,
+        groupId,
+        roomJid,
+        core,
+        cores,
+        calls,
+        listenerCalls,
+        litellm,
+        started,
+        logger,
+      };
+    }
+
+    function aiServiceDeps(litellm: FakeLitellm): AiServiceDeps {
+      return {
+        db: context.db,
+        adminClient: context.adminClient,
+        litellm,
+        cipher: createKeyCipher(MASTER_KEY),
+        logger: context.logger,
+        domain: context.xmppConfig.domain,
+      };
+    }
+
+    it('wakes nobody without a listener dep (today behaviour)', async () => {
+      const { member, roomJid, core, calls } = await listenerSetup({ listener: false });
+      core.receive(roomMessage(roomJid, member.jid, 'm-1', 'hello there', { nick: 'Ana' }));
+      await tick(40);
+      expect(calls).toHaveLength(0);
+      expect(core.sent).toHaveLength(0);
+    });
+
+    it('does nothing while the group switch is off', async () => {
+      const { member, roomJid, core, calls, listenerCalls } = await listenerSetup({
+        listenerEnabled: false,
+      });
+      core.receive(roomMessage(roomJid, member.jid, 'm-1', 'hello there', { nick: 'Ana' }));
+      await tick(40);
+      expect(listenerCalls).toHaveLength(0);
+      expect(calls).toHaveLength(0);
+      expect(core.sent).toHaveLength(0);
+    });
+
+    it('wakes the scored AI with a line and a normal turn after the quiet window', async () => {
+      const { seeded, member, roomJid, core, calls, listenerCalls } = await listenerSetup({
+        quietMs: 10,
+      });
+      const message = roomMessage(roomJid, member.jid, 'm-1', 'no mention here', { nick: 'Ana' });
+      core.receive(message);
+
+      await waitFor(() => listenerCalls.length === 1);
+      await waitFor(() => calls.length === 1);
+      expect(listenerCalls[0]?.model).toBe('listener-model');
+      expect(listenerCalls[0]?.virtualKey).toBe(LISTENER_VIRTUAL_KEY);
+      await waitFor(() => core.sent.length >= 1);
+      expect(core.sent[0]?.text).toBe('Gateway AI is looking at this');
+      // The listener turn is a normal turn: the model sees the human message.
+      expect(bodyOf(calls[0]!).messages.at(-1)).toEqual({
+        role: 'user',
+        content: 'Ana: no mention here',
+      });
+      expect(seeded.aiId).toBeTruthy();
+    });
+
+    it('records a message once for two AIs and wakes only the scored one', async () => {
+      const { seeded, extras, member, roomJid, core, cores, calls, listenerCalls } =
+        await listenerSetup({ aiCount: 2, quietMs: 10 });
+      const secondCore = await coreFor(cores, extras[0]!.aiJid);
+      const message = roomMessage(roomJid, member.jid, 'm-1', 'no mention here', { nick: 'Ana' });
+      core.receive(message);
+      secondCore.receive(message);
+
+      await waitFor(() => listenerCalls.length === 1);
+      await tick(30);
+      expect(listenerCalls).toHaveLength(1);
+      await waitFor(() => calls.length === 1);
+      expect(core.sent[0]?.text).toBe('Gateway AI is looking at this');
+      expect(secondCore.sent).toHaveLength(0);
+      expect(seeded.aiId).not.toBe(extras[0]!.aiId);
+    });
+
+    it('fires at everyN without waiting for quiet', async () => {
+      const { member, roomJid, core, calls, listenerCalls } = await listenerSetup({
+        quietMs: 60_000,
+        everyN: 3,
+      });
+      core.receive(roomMessage(roomJid, member.jid, 'm-1', 'one', { nick: 'Ana' }));
+      core.receive(roomMessage(roomJid, member.jid, 'm-2', 'two', { nick: 'Ana' }));
+      core.receive(roomMessage(roomJid, member.jid, 'm-3', 'three', { nick: 'Ana' }));
+
+      await waitFor(() => listenerCalls.length === 1);
+      await waitFor(() => calls.length === 1);
+      expect(core.sent[0]?.text).toBe('Gateway AI is looking at this');
+    });
+
+    it('leaves a mention to the mention path and never scores it', async () => {
+      const { seeded, member, roomJid, core, calls, listenerCalls } = await listenerSetup({
+        quietMs: 10,
+      });
+      core.receive(mention(seeded, member, roomJid, 'm-1'));
+
+      await waitFor(() => calls.length === 1);
+      await tick(40);
+      expect(listenerCalls).toHaveLength(0);
+      expect(core.sent[0]?.text).toContain('AI says hi');
+    });
+
+    it('drops a scoring result when a newer human message arrives', async () => {
+      let completeCalls = 0;
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const { seeded, member, roomJid, core, calls } = await listenerSetup({
+        quietMs: 30,
+        complete: (aiId) => async () => {
+          completeCalls += 1;
+          await gate;
+          return listenerScores(aiId, 0.9);
+        },
+      });
+      core.receive(roomMessage(roomJid, member.jid, 'm-1', 'no mention here', { nick: 'Ana' }));
+      await waitFor(() => completeCalls === 1);
+
+      // The mention resets the window and bumps the generation while the
+      // scoring call is in flight.
+      core.receive(mention(seeded, member, roomJid, 'm-2'));
+      release();
+      await waitFor(() => calls.length === 1);
+      await tick(50);
+      expect(completeCalls).toBe(1);
+      expect(core.sent.some((message) => message.text === 'Gateway AI is looking at this')).toBe(
+        false,
+      );
+    });
+
+    it('wakes nobody when the scoring call throws', async () => {
+      let attempts = 0;
+      const { member, roomJid, core, calls } = await listenerSetup({
+        quietMs: 10,
+        complete: () => async () => {
+          attempts += 1;
+          throw new Error('boom');
+        },
+      });
+      core.receive(roomMessage(roomJid, member.jid, 'm-1', 'no mention here', { nick: 'Ana' }));
+      await waitFor(() => attempts === 1);
+      await tick(20);
+      expect(calls).toHaveLength(0);
+      expect(core.sent).toHaveLength(0);
+    });
+
+    it('wakes nobody when the scoring call returns garbage', async () => {
+      let attempts = 0;
+      const { member, roomJid, core, calls } = await listenerSetup({
+        quietMs: 10,
+        complete: () => async () => {
+          attempts += 1;
+          return 'not json at all';
+        },
+      });
+      core.receive(roomMessage(roomJid, member.jid, 'm-1', 'no mention here', { nick: 'Ana' }));
+      await waitFor(() => attempts === 1);
+      await tick(20);
+      expect(calls).toHaveLength(0);
+      expect(core.sent).toHaveLength(0);
+    });
+
+    it('clears the pending timer when the AI is disconnected', async () => {
+      const { seeded, member, roomJid, core, calls, litellm } = await listenerSetup({
+        quietMs: 200,
+      });
+      const deps = aiServiceDeps(litellm);
+      core.receive(roomMessage(roomJid, member.jid, 'm-1', 'no mention here', { nick: 'Ana' }));
+      await stopAi(deps, seeded.aiId, seeded.ownerId);
+      await waitFor(() => startedSize() === 0);
+      await tick(260);
+      expect(calls).toHaveLength(0);
+      expect(core.sent).toHaveLength(0);
+    });
+
+    function startedSize(): number {
+      return gateway?.size() ?? 0;
+    }
   });
 });
