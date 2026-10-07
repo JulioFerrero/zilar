@@ -1,3 +1,6 @@
+import { Data, Effect, Exit, Schema, SchemaGetter, type Effect as EffectType } from 'effect';
+import { struct } from '@zilar/protocol';
+
 import { API_URL } from './auth';
 
 /**
@@ -6,10 +9,11 @@ import { API_URL } from './auth';
  * The wire contract lives in `apps/server/src/chat-prefs/routes.ts` and
  * `service.ts` (T-0113).
  *
- * Mobile has no zod, so — like `chat-api.ts` — the boundary is validated
- * with type guards. Muting a group covers its topics: the pref sits on the
- * General room JID and the client applies it to every topic unless the
- * topic has its own row.
+ * The boundary is validated with Effect Schema (T-0506 recipe): the request is
+ * an Effect pipeline, cut back to a `Promise` at the edge with
+ * `Effect.runPromise`. Muting a group covers its topics: the pref sits on the
+ * General room JID and the client applies it to every topic unless the topic
+ * has its own row.
  */
 
 export interface ChatPref {
@@ -44,71 +48,106 @@ export class ChatPrefsApiError extends Error {
   }
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
+const ChatPrefSchema = struct({
+  chatJid: Schema.String,
+  mutedUntil: Schema.NullOr(Schema.String),
+  archived: Schema.Boolean,
+  pinnedAt: Schema.NullOr(Schema.String),
+  updatedAt: Schema.String,
+});
 
-function isString(value: unknown): value is string {
-  return typeof value === 'string';
-}
+const ChatPrefsListSchema = struct({
+  prefs: Schema.mutable(Schema.Array(ChatPrefSchema)),
+});
 
-function nullableString(value: unknown): string | null | undefined {
-  if (value === null) return null;
-  return isString(value) ? value : undefined;
-}
+// `{ prefs: null }` is the write landing on all defaults (the row is deleted).
+const DeletedPrefsSchema = struct({
+  prefs: Schema.Null,
+});
+
+// The server's error envelope is decoded field by field, so a malformed `code`
+// does not discard a valid `message` (and vice versa). A missing or malformed
+// envelope keeps the fixed fallbacks used by `requestEffect`, as the old
+// per-field guards did.
+const LenientErrorStringSchema = Schema.Unknown.pipe(
+  Schema.decodeTo(Schema.UndefinedOr(Schema.String), {
+    decode: SchemaGetter.transform((value) => (typeof value === 'string' ? value : undefined)),
+    encode: SchemaGetter.transform((value) => value),
+  }),
+);
+
+const ErrorBodySchema = struct({
+  error: struct({
+    code: Schema.optional(LenientErrorStringSchema),
+    message: Schema.optional(LenientErrorStringSchema),
+  }),
+});
 
 /** A pref row the server sent; malformed rows return null and are dropped. */
 export function parseChatPref(value: unknown): ChatPref | null {
-  if (!isRecord(value)) return null;
-  const chatJid = value['chatJid'];
-  const archived = value['archived'];
-  const updatedAt = value['updatedAt'];
-  const mutedUntil = nullableString(value['mutedUntil']);
-  const pinnedAt = nullableString(value['pinnedAt']);
-  if (
-    !isString(chatJid) ||
-    typeof archived !== 'boolean' ||
-    !isString(updatedAt) ||
-    mutedUntil === undefined ||
-    pinnedAt === undefined
-  ) {
-    return null;
-  }
-  return { chatJid, mutedUntil, archived, pinnedAt, updatedAt };
+  const decoded = Schema.decodeUnknownExit(ChatPrefSchema)(value);
+  return Exit.isSuccess(decoded) ? decoded.value : null;
 }
 
-async function request(
+function parseChatPrefsList(value: unknown): ChatPref[] | null {
+  const decoded = Schema.decodeUnknownExit(ChatPrefsListSchema)(value);
+  return Exit.isSuccess(decoded) ? decoded.value.prefs : null;
+}
+
+function parsePutChatPref(value: unknown): ChatPref | 'deleted' | null {
+  const deleted = Schema.decodeUnknownExit(DeletedPrefsSchema)(value);
+  if (Exit.isSuccess(deleted)) return 'deleted';
+  return parseChatPref(value);
+}
+
+// The internal failures, one per case. They carry no field beyond what the old
+// `ChatPrefsApiError` already surfaced; the `Promise` edge maps each back to
+// that same error, status, code and message.
+class ChatPrefsNetworkError extends Data.TaggedError('ChatPrefsNetworkError') {}
+class ChatPrefsRequestError extends Data.TaggedError('ChatPrefsRequestError')<{
+  readonly status: number;
+  readonly code: string;
+  readonly message: string;
+}> {}
+class ChatPrefsUnauthorized extends Data.TaggedError('ChatPrefsUnauthorized') {}
+class ChatPrefsInvalidResponse extends Data.TaggedError('ChatPrefsInvalidResponse') {}
+
+const requestEffect = Effect.fnUntraced(function* (
   apiUrl: string,
   path: string,
   token: string,
   init: RequestInit,
   fetchImpl: typeof fetch,
-): Promise<unknown> {
-  let response: Response;
-  try {
-    response = await fetchImpl(`${apiUrl}${path}`, {
-      ...init,
-      headers: {
-        accept: 'application/json',
-        authorization: `Bearer ${token}`,
-        ...init.headers,
-      },
-    });
-  } catch {
-    throw new ChatPrefsApiError(0, 'network_error', 'Could not reach the server');
-  }
+): EffectType.fn.Return<unknown, ChatPrefsNetworkError | ChatPrefsRequestError> {
+  const response = yield* Effect.tryPromise({
+    try: (signal) =>
+      fetchImpl(`${apiUrl}${path}`, {
+        ...init,
+        signal,
+        headers: {
+          accept: 'application/json',
+          authorization: `Bearer ${token}`,
+          ...init.headers,
+        },
+      }),
+    catch: () => new ChatPrefsNetworkError(),
+  });
 
-  const body: unknown = await response.json().catch(() => null);
+  const body: unknown = yield* Effect.promise(
+    () => response.json().catch(() => null) as Promise<unknown>,
+  );
+
   if (!response.ok) {
-    const error = isRecord(body) && isRecord(body['error']) ? body['error'] : null;
-    const code = isString(error?.['code']) ? error['code'] : 'request_failed';
-    const message = isString(error?.['message'])
-      ? error['message']
-      : `Request failed (${response.status})`;
-    throw new ChatPrefsApiError(response.status, code, message);
+    const decoded = Schema.decodeUnknownExit(ErrorBodySchema)(body);
+    const error = Exit.isSuccess(decoded) ? decoded.value.error : undefined;
+    return yield* new ChatPrefsRequestError({
+      status: response.status,
+      code: error?.code ?? 'request_failed',
+      message: error?.message ?? `Request failed (${response.status})`,
+    });
   }
   return body;
-}
+});
 
 /** The production `ChatPrefsApi`: bearer auth, `fetch`, the build API URL. */
 export function createChatPrefsApi(
@@ -116,39 +155,55 @@ export function createChatPrefsApi(
   fetchImpl: typeof fetch = fetch,
   apiUrl: string = API_URL,
 ): ChatPrefsApi {
-  const withToken = async (
+  const withTokenEffect = Effect.fnUntraced(function* (
     path: string,
     init: RequestInit,
     parse: (value: unknown) => unknown,
-  ): Promise<unknown> => {
-    const token = await getToken();
+  ): EffectType.fn.Return<
+    unknown,
+    ChatPrefsUnauthorized | ChatPrefsNetworkError | ChatPrefsRequestError | ChatPrefsInvalidResponse
+  > {
+    const token = yield* Effect.promise(() => getToken());
     if (token === undefined) {
-      throw new ChatPrefsApiError(401, 'unauthorized', 'No session');
+      return yield* new ChatPrefsUnauthorized();
     }
-    const body = await request(apiUrl, path, token, init, fetchImpl);
+    const body = yield* requestEffect(apiUrl, path, token, init, fetchImpl);
     const parsed = parse(body);
     if (parsed === null) {
-      throw new ChatPrefsApiError(
-        200,
-        'invalid_response',
-        'The server sent an unexpected response',
-      );
+      return yield* new ChatPrefsInvalidResponse();
     }
     return parsed;
-  };
+  });
+
+  const withToken = (
+    path: string,
+    init: RequestInit,
+    parse: (value: unknown) => unknown,
+  ): Promise<unknown> =>
+    Effect.runPromise(
+      withTokenEffect(path, init, parse).pipe(
+        Effect.catchTags({
+          ChatPrefsUnauthorized: () =>
+            Effect.fail(new ChatPrefsApiError(401, 'unauthorized', 'No session')),
+          ChatPrefsNetworkError: () =>
+            Effect.fail(new ChatPrefsApiError(0, 'network_error', 'Could not reach the server')),
+          ChatPrefsRequestError: (error) =>
+            Effect.fail(new ChatPrefsApiError(error.status, error.code, error.message)),
+          ChatPrefsInvalidResponse: () =>
+            Effect.fail(
+              new ChatPrefsApiError(
+                200,
+                'invalid_response',
+                'The server sent an unexpected response',
+              ),
+            ),
+        }),
+      ),
+    );
 
   return {
     async listChatPrefs() {
-      const body = await withToken('/api/chat-prefs', { method: 'GET' }, (value) => {
-        if (!isRecord(value) || !Array.isArray(value['prefs'])) return null;
-        const prefs: ChatPref[] = [];
-        for (const entry of value['prefs']) {
-          const pref = parseChatPref(entry);
-          if (pref === null) return null;
-          prefs.push(pref);
-        }
-        return prefs;
-      });
+      const body = await withToken('/api/chat-prefs', { method: 'GET' }, parseChatPrefsList);
       return body as ChatPref[];
     },
     async putChatPref(chatJid, input) {
@@ -159,14 +214,7 @@ export function createChatPrefsApi(
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify(input),
         },
-        (value) => {
-          // The server answers `{ prefs: null }` when the write landed on
-          // all defaults (the row is deleted); the caller drops it locally.
-          if (isRecord(value) && 'prefs' in value && value['prefs'] === null) {
-            return 'deleted';
-          }
-          return parseChatPref(value);
-        },
+        parsePutChatPref,
       );
       return body === 'deleted' ? null : (body as ChatPref);
     },

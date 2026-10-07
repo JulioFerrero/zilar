@@ -1,3 +1,6 @@
+import { Data, Effect, Exit, Schema, SchemaGetter, type Effect as EffectType } from 'effect';
+import { struct } from '@zilar/protocol';
+
 import { API_URL } from './auth';
 
 /**
@@ -5,9 +8,10 @@ import { API_URL } from './auth';
  * web client in `apps/web/src/lib/api.ts` (`listAudit`). The wire contract
  * lives in `apps/server/src/audit/routes.ts`.
  *
- * Mobile validates the boundary with type guards, like `tools-api.ts`.
- * `AuditApiError` keeps the server's `code` and `status`, so the section can
- * show fixed user-facing sentences instead of server text.
+ * The boundary is validated with Effect Schema (T-0506 recipe): the request is
+ * an Effect pipeline, cut back to a `Promise` at the edge with
+ * `Effect.runPromise`. `AuditApiError` keeps the server's `code` and `status`,
+ * so the section can show fixed user-facing sentences instead of server text.
  */
 
 export type AuditResult = 'ok' | 'denied' | 'error';
@@ -52,117 +56,113 @@ export class AuditApiError extends Error {
   }
 }
 
-/** Page size, matching web `PAGE_LIMIT` in `AiActivity.tsx`. */
-export const AUDIT_PAGE_LIMIT = 20;
+const AuditResultSchema = Schema.Literals(['ok', 'denied', 'error']);
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
+const AuditCostSchema = struct({
+  currency: Schema.Literals(['EUR', 'USD']),
+  amount: Schema.Number,
+});
 
-function isString(value: unknown): value is string {
-  return typeof value === 'string';
-}
+// The old `isRecord` guard accepted any non-null object as `detail`, arrays
+// included; `Schema.declare` keeps that tolerance and the exported
+// `Record<string, unknown>` type.
+const LenientDetailSchema = Schema.declare(
+  (value): value is Record<string, unknown> => typeof value === 'object' && value !== null,
+);
 
-function isAuditResult(value: unknown): value is AuditResult {
-  return value === 'ok' || value === 'denied' || value === 'error';
-}
+const PublicAuditEntrySchema = struct({
+  id: Schema.String,
+  at: Schema.String,
+  aiId: Schema.NullOr(Schema.String),
+  groupId: Schema.NullOr(Schema.String),
+  action: Schema.String,
+  subjectId: Schema.NullOr(Schema.String),
+  argsHash: Schema.NullOr(Schema.String),
+  cost: Schema.NullOr(AuditCostSchema),
+  result: AuditResultSchema,
+  detail: Schema.NullOr(LenientDetailSchema),
+  actorUserId: Schema.NullOr(Schema.String),
+});
 
-function parseCost(value: unknown): AuditCost | null {
-  if (value === null) return null;
-  if (!isRecord(value)) return null;
-  const currency = value['currency'];
-  const amount = value['amount'];
-  if ((currency !== 'EUR' && currency !== 'USD') || typeof amount !== 'number') return null;
-  return { currency, amount };
-}
+const AuditPageSchema = struct({
+  entries: Schema.mutable(Schema.Array(PublicAuditEntrySchema)),
+  next: Schema.NullOr(Schema.String),
+});
 
-function parseAuditEntry(value: unknown): PublicAuditEntry | null {
-  if (!isRecord(value)) return null;
-  const id = value['id'];
-  const at = value['at'];
-  const aiId = value['aiId'];
-  const groupId = value['groupId'];
-  const action = value['action'];
-  const subjectId = value['subjectId'];
-  const argsHash = value['argsHash'];
-  const cost = value['cost'];
-  const result = value['result'];
-  const detail = value['detail'];
-  const actorUserId = value['actorUserId'];
-  if (!isString(id) || !isString(at)) return null;
-  if (aiId !== null && !isString(aiId)) return null;
-  if (groupId !== null && !isString(groupId)) return null;
-  if (!isString(action)) return null;
-  if (subjectId !== null && !isString(subjectId)) return null;
-  if (argsHash !== null && !isString(argsHash)) return null;
-  if (!isAuditResult(result)) return null;
-  if (detail !== null && !isRecord(detail)) return null;
-  if (actorUserId !== null && !isString(actorUserId)) return null;
-  if (cost !== null && !isRecord(cost)) return null;
-  const parsedCost = parseCost(cost);
-  if (cost !== null && parsedCost === null) return null;
-  return {
-    id,
-    at,
-    aiId,
-    groupId,
-    action,
-    subjectId,
-    argsHash,
-    cost: parsedCost,
-    result,
-    detail,
-    actorUserId,
-  };
-}
+// The server's error envelope is decoded field by field, so a malformed `code`
+// does not discard a valid `message` (and vice versa). A missing or malformed
+// envelope keeps the fixed fallbacks used by `requestEffect`, as the old
+// per-field guards did.
+const LenientErrorStringSchema = Schema.Unknown.pipe(
+  Schema.decodeTo(Schema.UndefinedOr(Schema.String), {
+    decode: SchemaGetter.transform((value) => (typeof value === 'string' ? value : undefined)),
+    encode: SchemaGetter.transform((value) => value),
+  }),
+);
+
+const ErrorBodySchema = struct({
+  error: struct({
+    code: Schema.optional(LenientErrorStringSchema),
+    message: Schema.optional(LenientErrorStringSchema),
+  }),
+});
 
 function parseAuditPage(value: unknown): AuditPage | null {
-  if (!isRecord(value)) return null;
-  const entries = value['entries'];
-  const next = value['next'];
-  if (!Array.isArray(entries)) return null;
-  if (next !== null && !isString(next)) return null;
-  const parsed: PublicAuditEntry[] = [];
-  for (const item of entries) {
-    const entry = parseAuditEntry(item);
-    if (entry === null) return null;
-    parsed.push(entry);
-  }
-  return { entries: parsed, next };
+  const decoded = Schema.decodeUnknownExit(AuditPageSchema)(value);
+  return Exit.isSuccess(decoded) ? decoded.value : null;
 }
 
-async function request(
+// The internal failures, one per case. They carry no field beyond what the old
+// `AuditApiError` already surfaced; the `Promise` edge maps each back to that
+// same error, status, code and message.
+class AuditNetworkError extends Data.TaggedError('AuditNetworkError') {}
+class AuditRequestError extends Data.TaggedError('AuditRequestError')<{
+  readonly status: number;
+  readonly code: string;
+  readonly message: string;
+}> {}
+class AuditUnauthorized extends Data.TaggedError('AuditUnauthorized') {}
+class AuditInvalidResponse extends Data.TaggedError('AuditInvalidResponse') {}
+
+const requestEffect = Effect.fnUntraced(function* (
   apiUrl: string,
   path: string,
   token: string,
   init: RequestInit,
   fetchImpl: typeof fetch,
-): Promise<unknown> {
-  let response: Response;
-  try {
-    response = await fetchImpl(`${apiUrl}${path}`, {
-      ...init,
-      headers: {
-        accept: 'application/json',
-        authorization: `Bearer ${token}`,
-        ...init.headers,
-      },
-    });
-  } catch {
-    throw new AuditApiError(0, 'network_error', 'Could not reach the server');
-  }
+): EffectType.fn.Return<unknown, AuditNetworkError | AuditRequestError> {
+  const response = yield* Effect.tryPromise({
+    try: (signal) =>
+      fetchImpl(`${apiUrl}${path}`, {
+        ...init,
+        signal,
+        headers: {
+          accept: 'application/json',
+          authorization: `Bearer ${token}`,
+          ...init.headers,
+        },
+      }),
+    catch: () => new AuditNetworkError(),
+  });
 
-  const body: unknown = await response.json().catch(() => null);
+  const body: unknown = yield* Effect.promise(
+    () => response.json().catch(() => null) as Promise<unknown>,
+  );
+
   if (!response.ok) {
-    const error = isRecord(body) && isRecord(body['error']) ? body['error'] : null;
-    const code = isString(error?.['code']) ? error['code'] : 'request_failed';
-    const message = isString(error?.['message'])
-      ? error['message']
-      : `Request failed (${response.status})`;
-    throw new AuditApiError(response.status, code, message);
+    const decoded = Schema.decodeUnknownExit(ErrorBodySchema)(body);
+    const error = Exit.isSuccess(decoded) ? decoded.value.error : undefined;
+    return yield* new AuditRequestError({
+      status: response.status,
+      code: error?.code ?? 'request_failed',
+      message: error?.message ?? `Request failed (${response.status})`,
+    });
   }
   return body;
-}
+});
+
+/** Page size, matching web `PAGE_LIMIT` in `AiActivity.tsx`. */
+export const AUDIT_PAGE_LIMIT = 20;
 
 /** The production `AuditApi`: bearer auth, `fetch`, and the build-time API URL. */
 export function createAuditApi(
@@ -170,6 +170,48 @@ export function createAuditApi(
   fetchImpl: typeof fetch = fetch,
   apiUrl: string = API_URL,
 ): AuditApi {
+  const withTokenEffect = Effect.fnUntraced(function* (
+    path: string,
+    init: RequestInit,
+    parse: (value: unknown) => unknown,
+  ): EffectType.fn.Return<
+    unknown,
+    AuditUnauthorized | AuditNetworkError | AuditRequestError | AuditInvalidResponse
+  > {
+    const token = yield* Effect.promise(() => getToken());
+    if (token === undefined) {
+      return yield* new AuditUnauthorized();
+    }
+    const body = yield* requestEffect(apiUrl, path, token, init, fetchImpl);
+    const parsed = parse(body);
+    if (parsed === null) {
+      return yield* new AuditInvalidResponse();
+    }
+    return parsed;
+  });
+
+  const withToken = (
+    path: string,
+    init: RequestInit,
+    parse: (value: unknown) => unknown,
+  ): Promise<unknown> =>
+    Effect.runPromise(
+      withTokenEffect(path, init, parse).pipe(
+        Effect.catchTags({
+          AuditUnauthorized: () =>
+            Effect.fail(new AuditApiError(401, 'unauthorized', 'No session')),
+          AuditNetworkError: () =>
+            Effect.fail(new AuditApiError(0, 'network_error', 'Could not reach the server')),
+          AuditRequestError: (error) =>
+            Effect.fail(new AuditApiError(error.status, error.code, error.message)),
+          AuditInvalidResponse: () =>
+            Effect.fail(
+              new AuditApiError(200, 'invalid_response', 'The server sent an unexpected response'),
+            ),
+        }),
+      ),
+    );
+
   return {
     async listAiAudit(aiId, before) {
       const params = new URLSearchParams();
@@ -178,22 +220,12 @@ export function createAuditApi(
       if (before !== undefined && before !== '') {
         params.set('before', before);
       }
-      const token = await getToken();
-      if (token === undefined) {
-        throw new AuditApiError(401, 'unauthorized', 'No session');
-      }
-      const body = await request(
-        apiUrl,
+      const body = await withToken(
         `/api/audit?${params.toString()}`,
-        token,
         { method: 'GET' },
-        fetchImpl,
+        parseAuditPage,
       );
-      const parsed = parseAuditPage(body);
-      if (parsed === null) {
-        throw new AuditApiError(200, 'invalid_response', 'The server sent an unexpected response');
-      }
-      return parsed;
+      return body as AuditPage;
     },
   };
 }
