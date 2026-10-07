@@ -13,9 +13,9 @@
   },
   "dependencies": {
     "@types/react": "^19.3.0",
+    "effect": "^4.0.0",
     "ink": "^8.0.0",
-    "react": "^19.3.0",
-    "zod": "^4.6.5"
+    "react": "^19.3.0"
   },
   "devDependencies": {
     "@xmpp/client": "^0.14.0",

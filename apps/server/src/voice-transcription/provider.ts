@@ -1,13 +1,17 @@
-// The OpenAI-compatible transcription port (T-0170). One function posts
-// audio to `POST {baseUrl}/audio/transcriptions` (multipart `file` +
-// `model`, optional bearer key) and answers the transcript text plus the
-// detected language. The provider's response shape is validated with zod;
-// the error body is never forwarded — the caller maps each failure kind to
-// a fixed answer (`rejected` vs `unreachable`, never the provider's body).
+// The OpenAI-compatible transcription port (T-0170, Effect conversion by
+// T-0492). One function posts audio to
+// `POST {baseUrl}/audio/transcriptions` (multipart `file` + `model`,
+// optional bearer key) and answers the transcript text plus the detected
+// language. The provider's response shape is validated with zod; the error
+// body is never forwarded — the caller maps each failure kind to a fixed
+// answer (`rejected` vs `unreachable`, never the provider's body).
 //
-// `fetchFn` is injected so tests use a fake provider, never a real
-// endpoint or key.
+// The call runs on Effect inside (typed errors, timeout via interruption);
+// `transcribeAudio` is the Promise edge and throws the same
+// `TranscriptionProviderError` as before. `fetchFn` is injected so tests
+// use a fake provider, never a real endpoint or key.
 
+import { Data, Duration, Effect, type Effect as EffectType } from 'effect';
 import { z } from 'zod';
 
 const transcriptionResponseSchema = z
@@ -49,53 +53,73 @@ export type TranscriptionFetch = (
 
 const PROVIDER_TIMEOUT_MS = 60_000;
 
+/** The provider was never reached (transport, DNS or the timeout). */
+class ProviderUnreachable extends Data.TaggedError('ProviderUnreachable') {}
+
+/** The provider answered but refused, or its body did not parse. */
+class ProviderRejected extends Data.TaggedError('ProviderRejected') {}
+
 /** Builds `POST {baseUrl}/audio/transcriptions` with no double slash. */
 export function transcriptionEndpointFor(baseUrl: string): string {
   return `${baseUrl.replace(/\/+$/, '')}/audio/transcriptions`;
 }
 
+const transcribeAudioEffect = Effect.fnUntraced(function* (
+  input: TranscribeInput,
+  fetchFn: TranscriptionFetch,
+): EffectType.fn.Return<TranscriptionResult, ProviderUnreachable | ProviderRejected> {
+  const headers: Record<string, string> = {};
+  if (input.apiKey !== null && input.apiKey !== '') {
+    headers['authorization'] = `Bearer ${input.apiKey}`;
+  }
+  const form = new FormData();
+  form.append('model', input.model);
+  form.append('file', new Blob([input.audio], { type: input.mime }), input.filename);
+  // `Effect.tryPromise` hands the fetch an `AbortSignal` that fires when the
+  // effect is interrupted; `timeoutOrElse` interrupts the source on expiry
+  // and keeps only the typed error (no `Cause.TimeoutError`).
+  const response = yield* Effect.tryPromise({
+    try: (signal) =>
+      fetchFn(transcriptionEndpointFor(input.baseUrl), {
+        method: 'POST',
+        headers,
+        body: form,
+        signal,
+      }),
+    catch: () => new ProviderUnreachable(),
+  }).pipe(
+    Effect.timeoutOrElse({
+      duration: Duration.millis(PROVIDER_TIMEOUT_MS),
+      orElse: () => Effect.fail(new ProviderUnreachable()),
+    }),
+  );
+  const raw: unknown = yield* Effect.promise(() => response.json().catch(() => null));
+  if (!response.ok) {
+    // The endpoint answered, but refused (bad key, bad model, 5xx).
+    return yield* new ProviderRejected();
+  }
+  const parsed = transcriptionResponseSchema.safeParse(raw);
+  if (!parsed.success) {
+    return yield* new ProviderRejected();
+  }
+  // Empty text is a valid answer (silence transcribes to nothing): the
+  // verify call proves the endpoint works either way, and a real message
+  // with no speech honestly has no words.
+  return { text: parsed.data.text.trim(), language: parsed.data.language ?? null };
+});
+
 export async function transcribeAudio(
   input: TranscribeInput,
   fetchFn: TranscriptionFetch = defaultFetch,
 ): Promise<TranscriptionResult> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), PROVIDER_TIMEOUT_MS);
-  try {
-    const headers: Record<string, string> = {};
-    if (input.apiKey !== null && input.apiKey !== '') {
-      headers['authorization'] = `Bearer ${input.apiKey}`;
-    }
-    const form = new FormData();
-    form.append('model', input.model);
-    form.append('file', new Blob([input.audio], { type: input.mime }), input.filename);
-    let response: Response;
-    try {
-      response = await fetchFn(transcriptionEndpointFor(input.baseUrl), {
-        method: 'POST',
-        headers,
-        body: form,
-        signal: controller.signal,
-      });
-    } catch {
-      // Transport, abort (timeout) or DNS: the endpoint was never reached.
-      throw new TranscriptionProviderError('unreachable');
-    }
-    const raw: unknown = await response.json().catch(() => null);
-    if (!response.ok) {
-      // The endpoint answered, but refused (bad key, bad model, 5xx).
-      throw new TranscriptionProviderError('rejected');
-    }
-    const parsed = transcriptionResponseSchema.safeParse(raw);
-    if (!parsed.success) {
-      throw new TranscriptionProviderError('rejected');
-    }
-    // Empty text is a valid answer (silence transcribes to nothing): the
-    // verify call proves the endpoint works either way, and a real message
-    // with no speech honestly has no words.
-    return { text: parsed.data.text.trim(), language: parsed.data.language ?? null };
-  } finally {
-    clearTimeout(timer);
-  }
+  return Effect.runPromise(
+    transcribeAudioEffect(input, fetchFn).pipe(
+      Effect.catchTags({
+        ProviderUnreachable: () => Effect.fail(new TranscriptionProviderError('unreachable')),
+        ProviderRejected: () => Effect.fail(new TranscriptionProviderError('rejected')),
+      }),
+    ),
+  );
 }
 
 function defaultFetch(

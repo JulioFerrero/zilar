@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { chmod, mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import { join } from 'node:path';
-import { z } from 'zod';
+import { Exit, Schema } from 'effect';
 
 const IDENTITY_VERSION = 1;
 
@@ -16,24 +16,42 @@ const noopLogger: IdentityLogger = {
   warn: () => undefined,
 };
 
-export const IdentitySchema = z.strictObject({
-  version: z.literal(IDENTITY_VERSION),
-  serverUrl: z.string().url(),
-  machineId: z.string().min(1).max(128),
-  publicKey: z.string().min(1).max(1024),
-  privateKey: z.string().min(1).max(4096),
-  name: z.string().min(1).max(64),
-  createdAt: z.string().min(1).max(64),
-  hubUrl: z
-    .string()
-    .url()
-    .refine((value) => value.startsWith('ws://') || value.startsWith('wss://'), {
-      message: 'hubUrl must use ws:// or wss://',
-    })
-    .optional(),
+function isUrlString(value: string): boolean {
+  try {
+    new URL(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Effect Schema's `Schema.URL`/`Schema.URLFromString` decode to a `URL`
+// instance, while the identity stores and exposes plain strings. A string
+// filter keeps the same shape as zod's `z.string().url()`.
+const serverUrlFilter = Schema.makeFilter(
+  (value: string) => isUrlString(value) || 'must be a valid URL',
+);
+
+const hubUrlFilter = Schema.makeFilter((value: string) => {
+  if (!isUrlString(value)) return 'hubUrl must be a valid URL';
+  if (!value.startsWith('ws://') && !value.startsWith('wss://')) {
+    return 'hubUrl must use ws:// or wss://';
+  }
+  return true;
 });
 
-export type RunnerIdentity = z.infer<typeof IdentitySchema>;
+export const IdentitySchema = Schema.Struct({
+  version: Schema.Literal(IDENTITY_VERSION),
+  serverUrl: Schema.String.check(serverUrlFilter),
+  machineId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(128)),
+  publicKey: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(1024)),
+  privateKey: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4096)),
+  name: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
+  createdAt: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
+  hubUrl: Schema.optionalKey(Schema.String.check(hubUrlFilter)),
+});
+
+export type RunnerIdentity = typeof IdentitySchema.Type;
 
 export interface IdentitySummary {
   machineId: string;
@@ -170,15 +188,15 @@ export async function loadIdentity(
   } catch {
     throw new IdentityError(`Identity file ${storage.filePath} is not valid JSON.`, 'corrupt');
   }
-  const result = IdentitySchema.safeParse(parsed);
-  if (!result.success) {
+  const result = Schema.decodeUnknownExit(IdentitySchema, { onExcessProperty: 'error' })(parsed);
+  if (Exit.isFailure(result)) {
     throw new IdentityError(
       `Identity file ${storage.filePath} is not a valid Zilar runner identity (wrong version or shape).`,
       'corrupt',
     );
   }
   logger.info(`Loaded identity from ${storage.filePath}`);
-  return result.data;
+  return result.value;
 }
 
 export async function hasIdentity(storage: IdentityStorage): Promise<boolean> {

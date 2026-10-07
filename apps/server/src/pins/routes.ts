@@ -5,6 +5,7 @@ import type { Auth } from '../auth/auth';
 import { requireSession } from '../auth/session';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
+import { registerSqlRuntime } from '../effect/sql';
 import { HttpError } from '../errors';
 import { createRateLimiter } from '../rate-limit';
 import { createPinBodySchema, listPins, pinMessage, unpinMessage } from './service';
@@ -25,6 +26,10 @@ const listQuerySchema = z.object({ chat: z.string().min(1).max(255) }).strict();
 
 export function createPinsRoutes(deps: PinsRoutesDependencies): Hono {
   const routes = new Hono();
+  // The pins queries run on `effect/sql`; bind its runtime to the database
+  // the app is already using. Tests hand us the drizzle-wrapped PGlite, so
+  // their database and the pins client are the same instance.
+  registerSqlRuntime(deps.db, deps.config.DATABASE_URL);
   const writeLimiter = createRateLimiter({
     max: PINS_WRITE_RATE_LIMIT_MAX,
     windowMs: PINS_WRITE_RATE_LIMIT_WINDOW_MS,

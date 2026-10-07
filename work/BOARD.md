@@ -453,14 +453,9 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0414](T-0414-web-forward-store-action.md) | Web store: forwardMessages sends copies with a forward origin, optional comment | 2026-10-06 |
 | [T-0425](T-0425-mobile-profile-buttons-kit.md) | Mobile: profile and contact card buttons on the kit Button | 2026-10-06 |
 | [T-0426](T-0426-mobile-ai-sheet-buttons-kit.md) | Mobile: AI activity Refresh, tool sheet Show all/less and Close on the kit Button | 2026-10-06 |
-| [T-0482](T-0482-delegate-tools.md) | Listener S5b (server): delegate + task_status tools, worker turn, stored result | running | auto | T-0480, T-0481 | |
-| [T-0483](T-0483-effect-telegram-import.md) | Effect convert: Telegram import client | running | auto | T-0173 | |
-| [T-0484](T-0484-effect-guarded-fetch.md) | Effect convert: web-tools guarded GET | running | auto | T-0173 | |
-| [T-0485](T-0485-effect-giphy.md) | Effect convert: Giphy provider | running | auto | T-0173 | |
-| [T-0486](T-0486-effect-runner-hub.md) | Effect convert: runner hub loops | running | auto | T-0173 | |
-| [T-0487](T-0487-effect-mailer.md) | Effect convert: SMTP mailer send | running | auto | T-0173 | |
-| [T-0488](T-0488-effect-background-loops.md) | Effect convert: routines scheduler + approvals sweeper | running | auto | T-0173 | |
-| [T-0489](T-0489-effect-run-tool.md) | Effect convert: sandbox runTool | running | auto | T-0173 | |
+| [T-0494](T-0494-protocol-effect-schema.md) | Effect B1: protocol on Effect Schema + every consumer | running | auto | T-0490 | |
+| [T-0510](T-0510-effect-sql-blocks-runtime.md) | Effect C1: blocks on effect/sql + runtime wiring | running | auto | T-0496 | |
+| [T-0512](T-0512-agents-g1-extract-contracts.md) | Agents G1: extract contracts and DB lookups | running | auto | T-0503 | |
 | [T-0427](T-0427-mobile-forwarded-header.md) | Mobile: forwarded messages show 'Forwarded from X [in Y]' | 2026-10-06 |
 | [T-0428](T-0428-mobile-new-chat-menu-sheet.md) | Mobile: New chat menu on the kit ActionSheet with icons | 2026-10-06 |
 | [T-0429](T-0429-mobile-dismiss-banner.md) | Mobile: DismissBanner replaces 12 copied chat screen banners | 2026-10-06 |
@@ -518,3 +513,27 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0479](T-0479-listener-round-budget.md) | Listener S4a (server): 4 AI turns per human message; wake line after gates | 2026-10-07 |
 | [T-0480](T-0480-delegation-service.md) | Listener S5a (server): delegation service | 2026-10-07 |
 | [T-0481](T-0481-ai-handoff-mentions.md) | Listener S4b (server): AI-to-AI handoff by @mention, max 2 hops | 2026-10-07 |
+| [T-0484](T-0484-effect-guarded-fetch.md) | Effect convert: web-tools guarded GET | 2026-10-07 |
+| [T-0489](T-0489-effect-run-tool.md) | Effect convert: sandbox runTool | 2026-10-07 |
+| [T-0490](T-0490-effect-everywhere-plan.md) | Audit + plan: whole codebase on Effect 4 | 2026-10-07 |
+| [T-0482](T-0482-delegate-tools.md) | Listener S5b (server): delegate + task_status tools | 2026-10-07 |
+| [T-0486](T-0486-effect-runner-hub.md) | Effect convert: runner hub loops | 2026-10-07 |
+| [T-0488](T-0488-effect-background-loops.md) | Effect convert: routines scheduler + approvals sweeper | 2026-10-07 |
+| [T-0491](T-0491-watch-scroll-columns.md) | lead watch: keyboard scroll + two columns | 2026-10-07 |
+| [T-0493](T-0493-effect-push-service.md) | Effect convert: push delivery pipeline | 2026-10-07 |
+| [T-0492](T-0492-effect-transcription-provider.md) | Effect convert: voice transcription provider call | 2026-10-07 |
+| [T-0487](T-0487-effect-mailer.md) | Effect convert: SMTP mailer send | 2026-10-07 |
+| [T-0495](T-0495-server-runtime-logger.md) | Effect F1: server runtime + pino-backed Effect Logger | 2026-10-07 |
+| [T-0485](T-0485-effect-giphy.md) | Effect convert: Giphy provider | 2026-10-07 |
+| [T-0483](T-0483-effect-telegram-import.md) | Effect convert: Telegram import client | 2026-10-07 |
+| [T-0497](T-0497-effect-recovery-loop.md) | Effect convert: action gateway recovery loop | 2026-10-07 |
+| [T-0500](T-0500-effect-runner-tunnel-schema.md) | Effect F: runner-tunnel zod to Effect Schema | 2026-10-07 |
+| [T-0501](T-0501-effect-runner-app-schema.md) | Effect F: apps/runner zod to Effect Schema | 2026-10-07 |
+| [T-0499](T-0499-effect-agent-drivers.md) | Effect P4: agent-drivers on Effect + Schema | 2026-10-07 |
+| [T-0503](T-0503-audit-agent-gateway-effect.md) | Audit: agents module Effect plan | 2026-10-07 |
+| [T-0502](T-0502-effect-devtools-lead-schema.md) | Effect F: lead CLI schemas on Effect Schema | 2026-10-07 |
+| [T-0511](T-0511-effect-tunnel-server-timers.md) | Effect F: tunnel server timers on Effect | 2026-10-07 |
+| [T-0498](T-0498-httpapi-adapter-handles.md) | Effect F4+P1: HttpApi adapter under Hono, handles moved | 2026-10-07 |
+| [T-0509](T-0509-effect-runner-client-lifecycle.md) | Effect F: RunnerClient lifecycle on Effect | 2026-10-07 |
+| [T-0513](T-0513-agents-c1-completion-effect.md) | Agents C1: model call on Effect | 2026-10-07 |
+| [T-0496](T-0496-db-effect-sql-spike.md) | Effect F3 spike: pins on effect/sql + migration plan | 2026-10-07 |

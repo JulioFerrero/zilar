@@ -2,7 +2,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { z } from 'zod';
+import { Result, Schema } from 'effect';
 import type { PermissionRule } from './types.js';
 
 export interface SessionModel {
@@ -21,20 +21,21 @@ export interface CreateSessionOptions {
 
 export type PermissionDecision = 'once' | 'reject';
 
-const sessionIdSchema = z.object({ id: z.string() });
+const sessionIdSchema = Schema.Struct({ id: Schema.String });
+
+const envelopeSchema = Schema.Struct({ data: Schema.Unknown });
 
 // The raw OpenCode message/permission payloads vary by version, so the client
 // keeps them as unknown and the decision layer reads them defensively.
 // `data` is the envelope every `opencode2 api` call returns.
 function readDataPayload(file: string): unknown {
   const parsed: unknown = JSON.parse(fs.readFileSync(file, 'utf8'));
-  const envelope = z.object({ data: z.unknown() }).safeParse(parsed);
-  if (!envelope.success) {
+  const envelope = Schema.decodeUnknownResult(envelopeSchema)(parsed);
+  if (Result.isFailure(envelope)) {
     throw new Error('opencode2 response has no data envelope');
   }
-  // Note: `envelope.data` is zod's whole parsed value; the payload lives in
-  // its `data` property.
-  return envelope.data.data;
+  // The payload lives in the envelope's `data` property.
+  return envelope.success.data;
 }
 
 export interface OpenCodeClient {
@@ -179,11 +180,11 @@ export class OpencodeCliClient implements OpenCodeClient {
 
   async createSession(options: CreateSessionOptions): Promise<string> {
     const data = this.call('session.create', {}, options) as Record<string, unknown>;
-    const parsed = sessionIdSchema.safeParse(data);
-    if (!parsed.success) {
+    const parsed = Schema.decodeUnknownResult(sessionIdSchema)(data);
+    if (Result.isFailure(parsed)) {
       throw new Error('session.create response has no id');
     }
-    return parsed.data.id;
+    return parsed.success.id;
   }
 
   promptDetached(sessionId: string, text: string): void {

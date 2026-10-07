@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { Exit, Schema } from 'effect';
 
 /** The only protocol version this spike speaks. */
 export const PROTOCOL_VERSION = 1;
@@ -30,66 +30,82 @@ export const MAX_WS_PAYLOAD_BYTES = MAX_FRAME_BYTES + FRAME_HEADER_BYTES;
 /** Receive window per stream: beyond this the receiver asks the sender to pause. */
 export const STREAM_WINDOW_BYTES = 256 * 1024;
 
-const runnerIdSchema = z.string().min(1).max(128);
-const streamIdSchema = z.number().int().min(0).max(0xff_ff_ff_ff);
-const portSchema = z.number().int().min(1).max(65535);
+const boundedString = (min: number, max: number): Schema.String =>
+  Schema.String.check(Schema.isMinLength(min), Schema.isMaxLength(max));
 
-export const HelloSchema = z.strictObject({
-  type: z.literal('hello'),
+const nonNegativeInt: Schema.Number = Schema.Number.check(
+  Schema.isInt(),
+  Schema.isGreaterThanOrEqualTo(0),
+);
+
+const runnerIdSchema = boundedString(1, 128);
+const streamIdSchema: Schema.Number = Schema.Number.check(
+  Schema.isInt(),
+  Schema.isGreaterThanOrEqualTo(0),
+  Schema.isLessThanOrEqualTo(0xff_ff_ff_ff),
+);
+const portSchema: Schema.Number = Schema.Number.check(
+  Schema.isInt(),
+  Schema.isGreaterThanOrEqualTo(1),
+  Schema.isLessThanOrEqualTo(65535),
+);
+
+export const HelloSchema = Schema.Struct({
+  type: Schema.Literal('hello'),
   runner_id: runnerIdSchema,
-  runner_version: z.string().min(1).max(64),
-  protocol_version: z.number().int().min(0),
+  runner_version: boundedString(1, 64),
+  protocol_version: nonNegativeInt,
 });
 
-export const ChallengeSchema = z.strictObject({
-  type: z.literal('challenge'),
-  nonce: z.string().min(1).max(128),
+export const ChallengeSchema = Schema.Struct({
+  type: Schema.Literal('challenge'),
+  nonce: boundedString(1, 128),
 });
 
-export const AuthSchema = z.strictObject({
-  type: z.literal('auth'),
-  signature: z.string().min(1).max(256),
+export const AuthSchema = Schema.Struct({
+  type: Schema.Literal('auth'),
+  signature: boundedString(1, 256),
 });
 
-export const ReadySchema = z.strictObject({
-  type: z.literal('ready'),
+export const ReadySchema = Schema.Struct({
+  type: Schema.Literal('ready'),
 });
 
-export const HeartbeatSchema = z.strictObject({
-  type: z.literal('heartbeat'),
-  at: z.number().int().min(0),
+export const HeartbeatSchema = Schema.Struct({
+  type: Schema.Literal('heartbeat'),
+  at: nonNegativeInt,
 });
 
-export const TunnelOpenSchema = z.strictObject({
-  type: z.literal('tunnel.open'),
+export const TunnelOpenSchema = Schema.Struct({
+  type: Schema.Literal('tunnel.open'),
   stream_id: streamIdSchema,
   port: portSchema,
 });
 
-export const TunnelRefusedSchema = z.strictObject({
-  type: z.literal('tunnel.refused'),
+export const TunnelRefusedSchema = Schema.Struct({
+  type: Schema.Literal('tunnel.refused'),
   stream_id: streamIdSchema,
-  reason: z.string().min(1).max(256),
+  reason: boundedString(1, 256),
 });
 
-export const TunnelClosedSchema = z.strictObject({
-  type: z.literal('tunnel.closed'),
+export const TunnelClosedSchema = Schema.Struct({
+  type: Schema.Literal('tunnel.closed'),
   stream_id: streamIdSchema,
-  reason: z.string().min(1).max(256),
+  reason: boundedString(1, 256),
 });
 
-export const TunnelPauseSchema = z.strictObject({
-  type: z.literal('tunnel.pause'),
-  stream_id: streamIdSchema,
-});
-
-export const TunnelResumeSchema = z.strictObject({
-  type: z.literal('tunnel.resume'),
+export const TunnelPauseSchema = Schema.Struct({
+  type: Schema.Literal('tunnel.pause'),
   stream_id: streamIdSchema,
 });
 
-export const ModelOpenSchema = z.strictObject({
-  type: z.literal('model.open'),
+export const TunnelResumeSchema = Schema.Struct({
+  type: Schema.Literal('tunnel.resume'),
+  stream_id: streamIdSchema,
+});
+
+export const ModelOpenSchema = Schema.Struct({
+  type: Schema.Literal('model.open'),
   stream_id: streamIdSchema,
 });
 
@@ -117,17 +133,30 @@ export type RunnerToServerType = keyof typeof runnerToServerSchemas;
 export type ServerToRunnerType = keyof typeof serverToRunnerSchemas;
 
 export type ControlMessage =
-  | z.infer<typeof HelloSchema>
-  | z.infer<typeof ChallengeSchema>
-  | z.infer<typeof AuthSchema>
-  | z.infer<typeof ReadySchema>
-  | z.infer<typeof HeartbeatSchema>
-  | z.infer<typeof TunnelOpenSchema>
-  | z.infer<typeof TunnelRefusedSchema>
-  | z.infer<typeof TunnelClosedSchema>
-  | z.infer<typeof TunnelPauseSchema>
-  | z.infer<typeof TunnelResumeSchema>
-  | z.infer<typeof ModelOpenSchema>;
+  | typeof HelloSchema.Type
+  | typeof ChallengeSchema.Type
+  | typeof AuthSchema.Type
+  | typeof ReadySchema.Type
+  | typeof HeartbeatSchema.Type
+  | typeof TunnelOpenSchema.Type
+  | typeof TunnelRefusedSchema.Type
+  | typeof TunnelClosedSchema.Type
+  | typeof TunnelPauseSchema.Type
+  | typeof TunnelResumeSchema.Type
+  | typeof ModelOpenSchema.Type;
+
+type ControlSchema =
+  | typeof HelloSchema
+  | typeof ChallengeSchema
+  | typeof AuthSchema
+  | typeof ReadySchema
+  | typeof HeartbeatSchema
+  | typeof TunnelOpenSchema
+  | typeof TunnelRefusedSchema
+  | typeof TunnelClosedSchema
+  | typeof TunnelPauseSchema
+  | typeof TunnelResumeSchema
+  | typeof ModelOpenSchema;
 
 export type MessageDirection = 'runner-to-server' | 'server-to-runner';
 
@@ -164,15 +193,15 @@ export function parseControlMessage(
     return { ok: false, code: CLOSE_MALFORMED, reason: 'frame has no string type' };
   }
   const schemas = direction === 'runner-to-server' ? runnerToServerSchemas : serverToRunnerSchemas;
-  const schema = (schemas as Record<string, z.ZodType | undefined>)[typeValue];
+  const schema = (schemas as Record<string, ControlSchema | undefined>)[typeValue];
   if (schema === undefined) {
     return { ok: false, code: CLOSE_UNKNOWN_TYPE, reason: `unknown message type ${typeValue}` };
   }
-  const result = schema.safeParse(parsed);
-  if (!result.success) {
+  const result = Schema.decodeUnknownExit(schema, { onExcessProperty: 'error' })(parsed);
+  if (!Exit.isSuccess(result)) {
     return { ok: false, code: CLOSE_MALFORMED, reason: `invalid ${typeValue} frame` };
   }
-  return { ok: true, message: result.data as ControlMessage };
+  return { ok: true, message: result.value as ControlMessage };
 }
 
 export interface BinaryFrame {

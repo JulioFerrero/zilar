@@ -33,6 +33,10 @@ function view(entries: WatchEntry[], mergedToday = 3): WatchView {
   return { clock: '11:33:52', refreshFailed: false, mergedToday, entries };
 }
 
+function manyEntries(count: number): WatchEntry[] {
+  return Array.from({ length: count }, (_value, index) => entry({ id: `T-000${index + 1}` }));
+}
+
 function stripAnsi(frame: string): string {
   const esc = String.fromCharCode(27);
   return frame.replace(new RegExp(`${esc}\\[[0-9;]*[a-zA-Z]`, 'g'), '');
@@ -848,6 +852,156 @@ describe('WatchLive without a TTY stdin', () => {
     });
     try {
       expect(stdout.frames.length).toBeGreaterThan(0);
+    } finally {
+      instance.unmount();
+    }
+  });
+});
+
+describe('WatchApp scrolling', () => {
+  it('shows only the cards that fit and a down-more hint in one column', () => {
+    const { lastFrame, unmount } = render(
+      <WatchApp view={view(manyEntries(9))} updatedAgoSecs={2} columns={64} rows={30} />,
+    );
+    try {
+      const frame = stripAnsi(lastFrame() ?? '');
+      expect(frame).toContain('↓ 5 more');
+      expect(frame).toContain('q quit · ↑↓ scroll');
+      expect(frame).toContain('T-0004');
+      expect(frame).not.toContain('T-0005');
+      expect(frame).not.toContain('T-0009');
+    } finally {
+      unmount();
+    }
+  });
+
+  it('shows the last card and an up-more hint when scrolled to the end', () => {
+    const { lastFrame, unmount } = render(
+      <WatchApp
+        view={view(manyEntries(9))}
+        updatedAgoSecs={2}
+        columns={64}
+        rows={30}
+        scroll={99}
+      />,
+    );
+    try {
+      const frame = stripAnsi(lastFrame() ?? '');
+      expect(frame).toContain('↑ 8 more');
+      expect(frame).toContain('T-0009');
+      expect(frame).not.toContain('T-0001');
+    } finally {
+      unmount();
+    }
+  });
+
+  for (const width of [100, 140]) {
+    it(`fits every line within ${width} columns in two columns`, () => {
+      const { lastFrame, unmount } = render(
+        <WatchApp
+          view={view([entry({ id: 'T-0001' }), entry({ id: 'T-0002' })])}
+          updatedAgoSecs={2}
+          columns={width}
+          rows={40}
+        />,
+      );
+      try {
+        const lines = linesOf(lastFrame());
+        expect(lines.length).toBeGreaterThan(0);
+        for (const line of lines) {
+          expect(Array.from(line).length).toBeLessThanOrEqual(width);
+        }
+        const bordered = lines.filter((line) => /^[╭╰│]/.test(line));
+        expect(bordered.length).toBeGreaterThan(0);
+        for (const line of bordered) {
+          expect(Array.from(line).length).toBe(width);
+        }
+      } finally {
+        unmount();
+      }
+    });
+  }
+
+  it('places two cards side by side at 120 columns', () => {
+    const { lastFrame, unmount } = render(
+      <WatchApp
+        view={view([entry({ id: 'T-0001' }), entry({ id: 'T-0002' })])}
+        updatedAgoSecs={2}
+        columns={120}
+        rows={40}
+      />,
+    );
+    try {
+      const lines = linesOf(lastFrame());
+      const both = lines.find((line) => line.includes('T-0001') && line.includes('T-0002'));
+      expect(both).toBeDefined();
+    } finally {
+      unmount();
+    }
+  });
+});
+
+describe('WatchLive keys', () => {
+  class FakeStdout extends EventEmitter {
+    frames: string[] = [];
+    columns = 64;
+    rows = 30;
+    isTTY = true;
+    write = (frame: string): boolean => {
+      this.frames.push(frame);
+      return true;
+    };
+    lastFrame = (): string => stripAnsi(this.frames.at(-1) ?? '');
+  }
+
+  class FakeStdin extends EventEmitter {
+    isTTY = true;
+    private data: string | null = null;
+    setEncoding(): void {}
+    setRawMode(): void {}
+    resume(): void {}
+    pause(): void {}
+    ref(): void {}
+    unref(): void {}
+    write = (data: string): void => {
+      this.data = data;
+      this.emit('readable');
+      this.emit('data', data);
+    };
+    read = (): string | null => {
+      const data = this.data;
+      this.data = null;
+      return data;
+    };
+  }
+
+  it('moves the view down with j', async () => {
+    const mocked = vi.mocked(execFile);
+    mocked.mockReset();
+    mocked.mockImplementation((() => undefined) as unknown as typeof execFile);
+    const stdout = new FakeStdout();
+    const stdin = new FakeStdin();
+    const instance = inkRender(<WatchLive initial={view(manyEntries(9))} />, {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      stdout: stdout as unknown as NodeJS.WritableStream,
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      stdin: stdin as unknown as NodeJS.ReadableStream,
+      debug: true,
+      exitOnCtrlC: false,
+      patchConsole: false,
+      interactive: true,
+    });
+    const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 30));
+    try {
+      await settle();
+      expect(stdout.lastFrame()).toContain('T-0001');
+      expect(stdout.lastFrame()).not.toContain('T-0005');
+      stdin.write('j');
+      await settle();
+      const frame = stdout.lastFrame();
+      expect(frame).toContain('↑ 1 more');
+      expect(frame).toContain('T-0005');
+      expect(frame).not.toContain('T-0001');
     } finally {
       instance.unmount();
     }

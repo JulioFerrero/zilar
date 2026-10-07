@@ -23,6 +23,8 @@ import type { ActionGateway, RequestOutcome } from '../actions/gateway';
 import type { ArchivePool } from '../search/service';
 import type { GatewayLogger } from './gateway';
 import {
+  aiDailySpend,
+  aiDelegations,
   aiLimits,
   aiMemoryFacts,
   aiMemoryMessages,
@@ -5537,6 +5539,9 @@ describe('agent gateway', () => {
         fetch?: () => { fetchImpl: FetchLike; calls: Call[] };
         /** T-0481: action gateway, so a handoff turn's tool list can be checked. */
         actions?: ActionGateway;
+        /** T-0482: fixed clock, so a seeded daily-spend baseline matches the
+         * day the gateway reads. */
+        now?: () => Date;
       } = {},
     ): Promise<ListenerSetup> {
       const seeded = await seedAi(
@@ -5581,6 +5586,7 @@ describe('agent gateway', () => {
       const { gateway: started, logger } = harness(cores, fetchImpl, litellm, {
         ...(listenerConfig === undefined ? {} : { listener: listenerConfig }),
         ...(input.actions === undefined ? {} : { actions: input.actions }),
+        ...(input.now === undefined ? {} : { now: input.now }),
       });
       await started.start();
       const core = await coreFor(cores, seeded.aiJid);
@@ -6142,6 +6148,629 @@ describe('agent gateway', () => {
         );
         await tick(50);
         expect(calls).toHaveLength(4);
+      });
+    });
+
+    describe('delegation tools (T-0482)', () => {
+      const BOSS_NAME = 'Alpha';
+      const WORKER_NAME = 'Helper';
+
+      async function setFlags(
+        ai: SeededAi,
+        flags: { canDelegate?: boolean; acceptsDelegation?: boolean },
+      ): Promise<void> {
+        await context.db.update(ais).set(flags).where(eq(ais.id, ai.aiId));
+      }
+
+      interface ScriptedCall {
+        toolCalls?: Array<{ name: string; args: () => unknown }>;
+        content?: string;
+      }
+
+      // A fetch keyed by the system prompt's "You are <name>", so the boss and
+      // the worker get their own script regardless of how their turns
+      // interleave.
+      function scriptedFetch(config: {
+        scripts: Record<string, ScriptedCall[]>;
+        fallback?: string;
+      }): { fetchImpl: FetchLike; calls: Call[] } {
+        const calls: Call[] = [];
+        const index: Record<string, number> = {};
+        const fetchImpl: FetchLike = (_url, init) => {
+          calls.push({ url: _url, init: init ?? { headers: new Headers() } });
+          const body = JSON.parse(String(init?.body)) as {
+            messages: Array<{ role: string; content: string }>;
+          };
+          const system = body.messages[0]?.content ?? '';
+          const name = Object.keys(config.scripts).find((candidate) =>
+            system.includes(`You are ${candidate}`),
+          );
+          if (name === undefined) {
+            return Promise.resolve(completionResponse(config.fallback ?? 'ok'));
+          }
+          const list = config.scripts[name]!;
+          const step = list[Math.min(index[name] ?? 0, list.length - 1)]!;
+          index[name] = (index[name] ?? 0) + 1;
+          if (step.toolCalls !== undefined) {
+            return Promise.resolve(
+              jsonResponse({
+                choices: [
+                  {
+                    message: {
+                      content: step.content ?? null,
+                      tool_calls: step.toolCalls.map((call, position) => ({
+                        id: `call-${position + 1}`,
+                        type: 'function',
+                        function: { name: call.name, arguments: JSON.stringify(call.args()) },
+                      })),
+                    },
+                  },
+                ],
+              }),
+            );
+          }
+          return Promise.resolve(completionResponse(step.content ?? 'done'));
+        };
+        return { fetchImpl, calls };
+      }
+
+      function callsFor(calls: Call[], name: string): Call[] {
+        const needle = `You are ${name}`;
+        return calls.filter((call) => {
+          const body = JSON.parse(String(call.init.body)) as {
+            messages: Array<{ content: string }>;
+          };
+          return (body.messages[0]?.content ?? '').includes(needle);
+        });
+      }
+
+      function toolsOf(call: Call): string[] {
+        const body = JSON.parse(String(call.init.body)) as {
+          tools?: Array<{ function: { name: string } }>;
+        };
+        return (body.tools ?? []).map((tool) => tool.function.name);
+      }
+
+      function toolResultsOf(call: Call): string[] {
+        const body = JSON.parse(String(call.init.body)) as {
+          messages: Array<{ role: string; content: string }>;
+        };
+        return body.messages
+          .filter((message) => message.role === 'tool')
+          .map((message) => message.content);
+      }
+
+      function delegationRows() {
+        return context.db.select().from(aiDelegations);
+      }
+
+      it('delegates to an accepting AI, wakes it, and stores the completed reply', async () => {
+        let workerId = '';
+        const { seeded, extras, member, roomJid, cores, calls } = await listenerSetup({
+          aiCount: 2,
+          names: [BOSS_NAME, WORKER_NAME],
+          listener: false,
+          fetch: () =>
+            scriptedFetch({
+              scripts: {
+                [BOSS_NAME]: [
+                  {
+                    toolCalls: [
+                      {
+                        name: 'delegate',
+                        args: () => ({ to: workerId, objective: 'write the report' }),
+                      },
+                    ],
+                  },
+                  { content: 'delegated' },
+                ],
+              },
+              fallback: 'the report is done',
+            }),
+        });
+        const worker = extras[0]!;
+        workerId = worker.aiId;
+        await setFlags(seeded, { canDelegate: true });
+        await setFlags(worker, { acceptsDelegation: true });
+
+        const bossCore = await coreFor(cores, seeded.aiJid);
+        const workerCore = await coreFor(cores, worker.aiJid);
+        bossCore.receive(
+          roomMessage(roomJid, member.jid, 'm-1', 'hey Alpha', {
+            nick: 'Ana',
+            mentions: [seeded.aiJid],
+          }),
+        );
+
+        await waitFor(() => workerCore.sent.length === 1);
+        await vi.waitFor(async () => {
+          const rows = await delegationRows();
+          expect(rows[0]?.status).toBe('completed');
+        });
+
+        // The boss was offered both delegation tools.
+        const bossCalls = callsFor(calls, BOSS_NAME);
+        expect(toolsOf(bossCalls[0]!)).toContain('delegate');
+        expect(toolsOf(bossCalls[0]!)).toContain('task_status');
+
+        // The worker's prompt carries the task line with the boss nick.
+        const workerCalls = callsFor(calls, WORKER_NAME);
+        expect(workerCalls).toHaveLength(1);
+        const workerMessages = JSON.parse(String(workerCalls[0]!.init.body)).messages as Array<{
+          content: string;
+        }>;
+        expect(
+          workerMessages.some((message) =>
+            message.content.includes('Task from Alpha: write the report'),
+          ),
+        ).toBe(true);
+
+        // The row records the worker's reply and the worker's answer mentions
+        // the boss.
+        const rows = await delegationRows();
+        expect(rows).toHaveLength(1);
+        expect(rows[0]!.fromAiId).toBe(seeded.aiId);
+        expect(rows[0]!.toAiId).toBe(worker.aiId);
+        expect(rows[0]!.resultSummary).toBe('@Alpha the report is done');
+        expect(workerCore.sent[0]!.text).toBe('@Alpha the report is done');
+        const mentions = (workerCore.sent[0]!.opts as { mentions?: Array<{ jid: string }> })
+          .mentions;
+        expect(mentions?.map((mention) => mention.jid)).toContain(seeded.aiJid);
+      });
+
+      it('does not offer delegate without canDelegate and answers an improvised call invalid', async () => {
+        const { seeded, extras, member, roomJid, cores, calls } = await listenerSetup({
+          aiCount: 2,
+          names: [BOSS_NAME, WORKER_NAME],
+          listener: false,
+          fetch: () =>
+            scriptedFetch({
+              scripts: {
+                [BOSS_NAME]: [
+                  {
+                    toolCalls: [
+                      { name: 'delegate', args: () => ({ to: 'ai-someone', objective: 'x' }) },
+                    ],
+                  },
+                  { content: 'ok' },
+                ],
+              },
+            }),
+        });
+        const worker = extras[0]!;
+        await setFlags(worker, { acceptsDelegation: true });
+
+        const bossCore = await coreFor(cores, seeded.aiJid);
+        bossCore.receive(
+          roomMessage(roomJid, member.jid, 'm-1', 'hey Alpha', {
+            nick: 'Ana',
+            mentions: [seeded.aiJid],
+          }),
+        );
+
+        await waitFor(() => callsFor(calls, BOSS_NAME).length >= 2);
+        const bossCalls = callsFor(calls, BOSS_NAME);
+        expect(toolsOf(bossCalls[0]!)).not.toContain('delegate');
+        expect(toolsOf(bossCalls[0]!)).not.toContain('task_status');
+        expect(toolResultsOf(bossCalls[1]!)).toContain('invalid: unknown tool');
+        expect(await delegationRows()).toHaveLength(0);
+      });
+
+      it('answers an unknown delegation target with invalid: unknown AI', async () => {
+        const { seeded, extras, member, roomJid, cores, calls } = await listenerSetup({
+          aiCount: 2,
+          names: [BOSS_NAME, WORKER_NAME],
+          listener: false,
+          fetch: () =>
+            scriptedFetch({
+              scripts: {
+                [BOSS_NAME]: [
+                  {
+                    toolCalls: [
+                      { name: 'delegate', args: () => ({ to: 'ai-nobody', objective: 'x' }) },
+                    ],
+                  },
+                  { content: 'ok' },
+                ],
+              },
+            }),
+        });
+        await setFlags(seeded, { canDelegate: true });
+        await setFlags(extras[0]!, { acceptsDelegation: true });
+
+        const bossCore = await coreFor(cores, seeded.aiJid);
+        bossCore.receive(
+          roomMessage(roomJid, member.jid, 'm-1', 'hey Alpha', {
+            nick: 'Ana',
+            mentions: [seeded.aiJid],
+          }),
+        );
+
+        await waitFor(() => callsFor(calls, BOSS_NAME).length >= 2);
+        const bossCalls = callsFor(calls, BOSS_NAME);
+        expect(toolResultsOf(bossCalls[1]!)).toContain('invalid: unknown AI');
+        expect(await delegationRows()).toHaveLength(0);
+      });
+
+      it('refuses a delegate once the round has spent its hops', async () => {
+        let workerId = '';
+        const { seeded, extras, member, roomJid, cores, calls } = await listenerSetup({
+          aiCount: 2,
+          names: [BOSS_NAME, WORKER_NAME],
+          listener: false,
+          fetch: () =>
+            scriptedFetch({
+              scripts: {
+                [BOSS_NAME]: [
+                  {
+                    toolCalls: [
+                      { name: 'delegate', args: () => ({ to: workerId, objective: 'one' }) },
+                      { name: 'delegate', args: () => ({ to: workerId, objective: 'two' }) },
+                      { name: 'delegate', args: () => ({ to: workerId, objective: 'three' }) },
+                    ],
+                  },
+                  { content: 'done' },
+                ],
+              },
+              fallback: 'worker done',
+            }),
+        });
+        const worker = extras[0]!;
+        workerId = worker.aiId;
+        await setFlags(seeded, { canDelegate: true });
+        await setFlags(worker, { acceptsDelegation: true });
+
+        const bossCore = await coreFor(cores, seeded.aiJid);
+        bossCore.receive(
+          roomMessage(roomJid, member.jid, 'm-1', 'hey Alpha', {
+            nick: 'Ana',
+            mentions: [seeded.aiJid],
+          }),
+        );
+
+        await waitFor(() => callsFor(calls, BOSS_NAME).length >= 2);
+        const bossCalls = callsFor(calls, BOSS_NAME);
+        expect(toolResultsOf(bossCalls[1]!)).toContain('refused: no hops left for this message');
+        await vi.waitFor(async () => {
+          const rows = await delegationRows();
+          expect(rows).toHaveLength(2);
+          expect(rows.every((row) => row.status === 'completed')).toBe(true);
+        });
+      });
+
+      it('answers task_status from a third AI with invalid: unknown task', async () => {
+        const taskId = randomUUID();
+        const { seeded, extras, groupId, member, roomJid, cores, calls } = await listenerSetup({
+          aiCount: 3,
+          names: [BOSS_NAME, WORKER_NAME, 'Other'],
+          listener: false,
+          fetch: () =>
+            scriptedFetch({
+              scripts: {
+                Other: [
+                  { toolCalls: [{ name: 'task_status', args: () => ({ task_id: taskId }) }] },
+                  { content: 'checked' },
+                ],
+              },
+            }),
+        });
+        const [worker, other] = extras as [SeededAi, SeededAi];
+        await context.db.insert(aiDelegations).values({
+          id: taskId,
+          fromAiId: seeded.aiId,
+          toAiId: worker.aiId,
+          groupId,
+          objective: 'a stored task',
+        });
+        await setFlags(other, { canDelegate: true });
+        await setFlags(worker, { acceptsDelegation: true });
+
+        const otherCore = await coreFor(cores, other.aiJid);
+        otherCore.receive(
+          roomMessage(roomJid, member.jid, 'm-1', 'hey Other', {
+            nick: 'Ana',
+            mentions: [other.aiJid],
+          }),
+        );
+
+        await waitFor(() => callsFor(calls, 'Other').length >= 2);
+        const otherCalls = callsFor(calls, 'Other');
+        expect(toolsOf(otherCalls[0]!)).toContain('task_status');
+        expect(toolResultsOf(otherCalls[1]!)).toContain('invalid: unknown task');
+      });
+
+      it('reads a task_status for an involved AI', async () => {
+        const taskId = randomUUID();
+        const { seeded, extras, groupId, member, roomJid, cores, calls } = await listenerSetup({
+          aiCount: 2,
+          names: [BOSS_NAME, WORKER_NAME],
+          listener: false,
+          fetch: () =>
+            scriptedFetch({
+              scripts: {
+                [BOSS_NAME]: [
+                  { toolCalls: [{ name: 'task_status', args: () => ({ task_id: taskId }) }] },
+                  { content: 'checked' },
+                ],
+              },
+            }),
+        });
+        const worker = extras[0]!;
+        await context.db.insert(aiDelegations).values({
+          id: taskId,
+          fromAiId: seeded.aiId,
+          toAiId: worker.aiId,
+          groupId,
+          objective: 'a stored task',
+          status: 'completed',
+          resultSummary: 'the report is ready',
+        });
+        await setFlags(seeded, { canDelegate: true });
+        await setFlags(worker, { acceptsDelegation: true });
+
+        const bossCore = await coreFor(cores, seeded.aiJid);
+        bossCore.receive(
+          roomMessage(roomJid, member.jid, 'm-1', 'hey Alpha', {
+            nick: 'Ana',
+            mentions: [seeded.aiJid],
+          }),
+        );
+
+        await waitFor(() => callsFor(calls, BOSS_NAME).length >= 2);
+        const bossCalls = callsFor(calls, BOSS_NAME);
+        expect(toolsOf(bossCalls[0]!)).toContain('task_status');
+        expect(toolResultsOf(bossCalls[1]!)).toContain(
+          JSON.stringify({ task_id: taskId, status: 'completed', result: 'the report is ready' }),
+        );
+      });
+
+      it('answers task_status in a DM with invalid: unknown tool', async () => {
+        const taskId = randomUUID();
+        const { seeded, extras, groupId, cores, calls } = await listenerSetup({
+          aiCount: 2,
+          names: [BOSS_NAME, WORKER_NAME],
+          listener: false,
+          fetch: () =>
+            scriptedFetch({
+              scripts: {
+                [BOSS_NAME]: [
+                  { toolCalls: [{ name: 'task_status', args: () => ({ task_id: taskId }) }] },
+                  { content: 'checked' },
+                ],
+              },
+            }),
+        });
+        const worker = extras[0]!;
+        // The row is real and involves this AI, so the only reason to refuse
+        // is the missing group context.
+        await context.db.insert(aiDelegations).values({
+          id: taskId,
+          fromAiId: seeded.aiId,
+          toAiId: worker.aiId,
+          groupId,
+          objective: 'a stored task',
+          status: 'completed',
+          resultSummary: 'the report is ready',
+        });
+        await setFlags(seeded, { canDelegate: true });
+        await setFlags(worker, { acceptsDelegation: true });
+
+        const bossCore = await coreFor(cores, seeded.aiJid);
+        bossCore.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-1', 'check the task'));
+
+        await waitFor(() => callsFor(calls, BOSS_NAME).length >= 2);
+        const bossCalls = callsFor(calls, BOSS_NAME);
+        expect(toolsOf(bossCalls[0]!)).not.toContain('task_status');
+        expect(toolResultsOf(bossCalls[1]!)).toContain('invalid: unknown tool');
+      });
+
+      it('reads a completed task_status for the boss after the worker left the room', async () => {
+        let workerId = '';
+        let taskId = '';
+        const { seeded, extras, groupId, member, roomJid, cores, calls } = await listenerSetup({
+          aiCount: 2,
+          names: [BOSS_NAME, WORKER_NAME],
+          listener: false,
+          fetch: () =>
+            scriptedFetch({
+              scripts: {
+                [BOSS_NAME]: [
+                  {
+                    toolCalls: [
+                      { name: 'delegate', args: () => ({ to: workerId, objective: 'write it' }) },
+                    ],
+                  },
+                  { content: 'delegated' },
+                  { toolCalls: [{ name: 'task_status', args: () => ({ task_id: taskId }) }] },
+                  { content: 'checked' },
+                ],
+              },
+              fallback: 'the report is done',
+            }),
+        });
+        const worker = extras[0]!;
+        workerId = worker.aiId;
+        await setFlags(seeded, { canDelegate: true });
+        await setFlags(worker, { acceptsDelegation: true });
+
+        const bossCore = await coreFor(cores, seeded.aiJid);
+        const workerCore = await coreFor(cores, worker.aiJid);
+        bossCore.receive(
+          roomMessage(roomJid, member.jid, 'm-1', 'hey Alpha', {
+            nick: 'Ana',
+            mentions: [seeded.aiJid],
+          }),
+        );
+
+        await vi.waitFor(async () => {
+          const rows = await delegationRows();
+          expect(rows[0]?.status).toBe('completed');
+        });
+        taskId = (await delegationRows())[0]!.id;
+
+        // The worker leaves the room, so the boss has no delegation targets:
+        // the tool is not offered, but an improvised call still reads the row.
+        await context.db
+          .delete(groupAis)
+          .where(and(eq(groupAis.groupId, groupId), eq(groupAis.aiId, worker.aiId)));
+        emitGroupAi({ type: 'ai-removed', groupId, aiId: worker.aiId });
+        await waitFor(() => workerCore.left.length === 1);
+
+        bossCore.receive(
+          roomMessage(roomJid, member.jid, 'm-2', 'check it', {
+            nick: 'Ana',
+            mentions: [seeded.aiJid],
+          }),
+        );
+
+        await waitFor(() => callsFor(calls, BOSS_NAME).length >= 4);
+        const bossCalls = callsFor(calls, BOSS_NAME);
+        expect(toolsOf(bossCalls[2]!)).not.toContain('task_status');
+        expect(toolResultsOf(bossCalls[3]!)).toContain(
+          JSON.stringify({
+            task_id: taskId,
+            status: 'completed',
+            result: '@Alpha the report is done',
+          }),
+        );
+      });
+
+      it('lets an accepting worker read its own task without canDelegate', async () => {
+        const taskId = randomUUID();
+        const { seeded, extras, groupId, member, roomJid, cores, calls } = await listenerSetup({
+          aiCount: 2,
+          names: [BOSS_NAME, WORKER_NAME],
+          listener: false,
+          fetch: () =>
+            scriptedFetch({
+              scripts: {
+                [WORKER_NAME]: [
+                  { toolCalls: [{ name: 'task_status', args: () => ({ task_id: taskId }) }] },
+                  { content: 'checked' },
+                ],
+              },
+            }),
+        });
+        const worker = extras[0]!;
+        await context.db.insert(aiDelegations).values({
+          id: taskId,
+          fromAiId: seeded.aiId,
+          toAiId: worker.aiId,
+          groupId,
+          objective: 'a stored task',
+          status: 'completed',
+          resultSummary: 'the report is ready',
+        });
+        await setFlags(worker, { acceptsDelegation: true });
+
+        const workerCore = await coreFor(cores, worker.aiJid);
+        workerCore.receive(
+          roomMessage(roomJid, member.jid, 'm-1', 'hey Helper', {
+            nick: 'Ana',
+            mentions: [worker.aiJid],
+          }),
+        );
+
+        await waitFor(() => callsFor(calls, WORKER_NAME).length >= 2);
+        const workerCalls = callsFor(calls, WORKER_NAME);
+        expect(toolsOf(workerCalls[0]!)).not.toContain('task_status');
+        expect(toolResultsOf(workerCalls[1]!)).toContain(
+          JSON.stringify({ task_id: taskId, status: 'completed', result: 'the report is ready' }),
+        );
+      });
+
+      it('answers task_status from an uninvolved AI with invalid: unknown task when there are no targets', async () => {
+        const taskId = randomUUID();
+        const { seeded, extras, groupId, member, roomJid, cores, calls } = await listenerSetup({
+          aiCount: 3,
+          names: [BOSS_NAME, WORKER_NAME, 'Other'],
+          listener: false,
+          fetch: () =>
+            scriptedFetch({
+              scripts: {
+                Other: [
+                  { toolCalls: [{ name: 'task_status', args: () => ({ task_id: taskId }) }] },
+                  { content: 'checked' },
+                ],
+              },
+            }),
+        });
+        const [worker, other] = extras as [SeededAi, SeededAi];
+        await context.db.insert(aiDelegations).values({
+          id: taskId,
+          fromAiId: seeded.aiId,
+          toAiId: worker.aiId,
+          groupId,
+          objective: 'a stored task',
+          status: 'completed',
+          resultSummary: 'the report is ready',
+        });
+
+        const otherCore = await coreFor(cores, other.aiJid);
+        otherCore.receive(
+          roomMessage(roomJid, member.jid, 'm-1', 'hey Other', {
+            nick: 'Ana',
+            mentions: [other.aiJid],
+          }),
+        );
+
+        await waitFor(() => callsFor(calls, 'Other').length >= 2);
+        const otherCalls = callsFor(calls, 'Other');
+        expect(toolsOf(otherCalls[0]!)).not.toContain('task_status');
+        expect(toolResultsOf(otherCalls[1]!)).toContain('invalid: unknown task');
+      });
+
+      it('leaves a delegated row failed when the worker is over its daily limit', async () => {
+        let workerId = '';
+        const { seeded, extras, member, roomJid, cores, calls, litellm } = await listenerSetup({
+          aiCount: 2,
+          names: [BOSS_NAME, WORKER_NAME],
+          listener: false,
+          now: () => NOW,
+          fetch: () =>
+            scriptedFetch({
+              scripts: {
+                [BOSS_NAME]: [
+                  {
+                    toolCalls: [
+                      { name: 'delegate', args: () => ({ to: workerId, objective: 'write it' }) },
+                    ],
+                  },
+                  { content: 'delegated' },
+                ],
+              },
+              fallback: 'worker done',
+            }),
+        });
+        const worker = extras[0]!;
+        workerId = worker.aiId;
+        await setFlags(seeded, { canDelegate: true });
+        await setFlags(worker, { acceptsDelegation: true });
+        // The worker already spent today's cap, but its baseline still reads
+        // as zero, so the delta crosses the limit. The boss has no baseline
+        // yet, so it records the current spend and runs.
+        await context.db.insert(aiDailySpend).values({
+          aiId: worker.aiId,
+          day: NOW.toISOString().slice(0, 10),
+          baselineUsd: '0.00',
+        });
+        litellm.spendByKey.set('tok-1', 2);
+
+        const bossCore = await coreFor(cores, seeded.aiJid);
+        bossCore.receive(
+          roomMessage(roomJid, member.jid, 'm-1', 'hey Alpha', {
+            nick: 'Ana',
+            mentions: [seeded.aiJid],
+          }),
+        );
+
+        await vi.waitFor(async () => {
+          const rows = await delegationRows();
+          expect(rows[0]?.status).toBe('failed');
+        });
+        const rows = await delegationRows();
+        expect(rows[0]!.resultSummary).toBeNull();
+        expect(callsFor(calls, WORKER_NAME)).toHaveLength(0);
       });
     });
 

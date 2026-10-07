@@ -1,9 +1,11 @@
 import { randomUUID } from 'node:crypto';
-import { and, count, desc, eq, sql } from 'drizzle-orm';
+import { Effect } from 'effect';
+import { SqlClient, SqlError } from 'effect/sql';
 import { z } from 'zod';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
 import { pinnedMessages } from '../db/schema';
+import { sqlRuntimeFor } from '../effect/sql';
 import { HttpError } from '../errors';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 import {
@@ -91,6 +93,16 @@ export interface PinsServiceDeps {
   audit?: AuditRecorder;
 }
 
+// Every query runs on the `effect/sql` client registered for this database
+// (see `../effect/sql`). The exported functions stay `async` so routes and
+// tests keep their shape during the transition.
+function runSql<A>(
+  deps: PinsServiceDeps,
+  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
+): Promise<A> {
+  return sqlRuntimeFor(deps.db).runPromise(effect);
+}
+
 export function toPinView(row: PinRow, chat: string): PinView {
   return {
     id: row.id,
@@ -117,11 +129,15 @@ export async function listPins(
     domain: deps.domain,
     mucDomain: deps.mucDomain,
   });
-  const rows = await deps.db
-    .select()
-    .from(pinnedMessages)
-    .where(eq(pinnedMessages.chatJid, chat.chatJid))
-    .orderBy(desc(pinnedMessages.pinnedAt), desc(pinnedMessages.id));
+  const rows = await runSql(
+    deps,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<PinRow>`SELECT * FROM pinned_messages
+        WHERE chat_jid = ${chat.chatJid}
+        ORDER BY pinned_at DESC, id DESC`;
+    }),
+  );
   return rows.map((row) => toPinView(row, chatParam));
 }
 
@@ -147,44 +163,46 @@ export async function pinMessage(deps: PinsServiceDeps, input: PinMessageInput):
   // keep it race-safe), but the count check and the insert run in one
   // transaction under a per-chat advisory lock: two concurrent pins past the
   // cap would otherwise both read under 20 and both insert.
-  const [existing] = await deps.db
-    .select({ id: pinnedMessages.id })
-    .from(pinnedMessages)
-    .where(
-      and(eq(pinnedMessages.chatJid, chat.chatJid), eq(pinnedMessages.messageId, input.messageId)),
-    )
-    .limit(1);
+  const [existing] = await runSql(
+    deps,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ id: string }>`SELECT id FROM pinned_messages
+        WHERE chat_jid = ${chat.chatJid} AND message_id = ${input.messageId} LIMIT 1`;
+    }),
+  );
   if (existing) {
     throw new HttpError(409, 'pin_exists', 'That message is already pinned');
   }
+  const insert = Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    return yield* sql.withTransaction(
+      Effect.gen(function* () {
+        yield* sql`SELECT pg_advisory_xact_lock(hashtext(${chat.chatJid}))`;
+        const [counter] = yield* sql<{ total: number }>`SELECT count(*)::int AS total
+          FROM pinned_messages WHERE chat_jid = ${chat.chatJid}`;
+        if (Number(counter?.total ?? 0) >= PINS_MAX_PER_CHAT) {
+          return yield* Effect.fail(
+            new HttpError(400, 'pin_limit', `A chat has at most ${PINS_MAX_PER_CHAT} pins`),
+          );
+        }
+        yield* sql`INSERT INTO pinned_messages (id, chat_jid, message_id, sender_name, text, kind, pinned_by)
+          VALUES (${id}, ${chat.chatJid}, ${input.messageId}, ${input.senderName}, ${text}, ${kind}, ${input.actorId})`;
+      }),
+    );
+  });
   try {
-    await deps.db.transaction(async (tx) => {
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${chat.chatJid}))`);
-      const [counter] = await tx
-        .select({ total: count() })
-        .from(pinnedMessages)
-        .where(eq(pinnedMessages.chatJid, chat.chatJid));
-      if (Number(counter?.total ?? 0) >= PINS_MAX_PER_CHAT) {
-        throw new HttpError(400, 'pin_limit', `A chat has at most ${PINS_MAX_PER_CHAT} pins`);
-      }
-      await tx.insert(pinnedMessages).values({
-        id,
-        chatJid: chat.chatJid,
-        messageId: input.messageId,
-        senderName: input.senderName,
-        text,
-        kind,
-        pinnedBy: input.actorId,
-      });
-    });
+    await sqlRuntimeFor(deps.db).runPromise(insert.pipe(Effect.mapError(mapPinError)));
   } catch (error) {
-    throw mapPinError(error);
+    throw error instanceof HttpError ? error : mapPinError(error);
   }
-  const [row] = await deps.db
-    .select()
-    .from(pinnedMessages)
-    .where(eq(pinnedMessages.id, id))
-    .limit(1);
+  const [row] = await runSql(
+    deps,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<PinRow>`SELECT * FROM pinned_messages WHERE id = ${id} LIMIT 1`;
+    }),
+  );
   if (!row) {
     throw new HttpError(503, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
   }
@@ -199,11 +217,13 @@ export async function unpinMessage(
   pinId: string,
   userId: string,
 ): Promise<PinView> {
-  const [row] = await deps.db
-    .select()
-    .from(pinnedMessages)
-    .where(eq(pinnedMessages.id, pinId))
-    .limit(1);
+  const [row] = await runSql(
+    deps,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<PinRow>`SELECT * FROM pinned_messages WHERE id = ${pinId} LIMIT 1`;
+    }),
+  );
   // A missing pin and a pin in a chat the caller may not see are the same
   // 404 ("Chat not found" either way), so pin ids cannot be told apart from
   // invisible chats.
@@ -212,7 +232,13 @@ export async function unpinMessage(
   }
   const chat = await requirePinVisible(deps.db, row.chatJid, userId, deps.domain);
   await requirePinManager(deps.db, chat, userId);
-  await deps.db.delete(pinnedMessages).where(eq(pinnedMessages.id, pinId));
+  await runSql(
+    deps,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`DELETE FROM pinned_messages WHERE id = ${pinId}`;
+    }),
+  );
   if (deps.audit) {
     await deps.audit.record(toAuditEntry(chat, 'message.unpinned', userId, row));
   }
@@ -264,6 +290,9 @@ function mapPinError(error: unknown): HttpError {
 }
 
 function isUniqueViolation(error: unknown): boolean {
+  if (error instanceof SqlError.SqlError) {
+    return error.reason._tag === 'UniqueViolation';
+  }
   return (
     typeof error === 'object' && error !== null && (error as { code?: unknown }).code === '23505'
   );

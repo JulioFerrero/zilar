@@ -1,3 +1,4 @@
+import { Data, Duration, Effect, type Effect as EffectType } from 'effect';
 import { and, eq } from 'drizzle-orm';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
@@ -60,6 +61,31 @@ export type PushOutcome =
     }
   | { kind: 'unknown-device'; node: string };
 
+// Internal failure modes of the delivery pipeline. They never leave this
+// module: `handleIncomingPush` maps each to today's dropped outcome and log.
+type DeliveryError = Undecryptable | ArchiveUnavailable | SendFailed;
+
+class Undecryptable extends Data.TaggedError('Undecryptable') {}
+
+class ArchiveUnavailable extends Data.TaggedError('ArchiveUnavailable') {}
+
+class SendFailed extends Data.TaggedError('SendFailed') {}
+
+type DroppedReason = Extract<PushOutcome, { kind: 'dropped' }>['reason'];
+
+type OpenDevice = ReturnType<typeof openDevice>;
+
+function dropped(device: PushDeviceRow, reason: DroppedReason): PushOutcome {
+  return { kind: 'dropped', userId: device.userId, deviceId: device.id, reason };
+}
+
+// Lifts a drizzle promise the same way `await` did: a DB failure rejects the
+// boundary promise with the original error, identical and unwrapped. Only the
+// calls whose old contract was "any throw becomes archive-unavailable" use a
+// typed catch instead (see `newestMessageForUserEffect`).
+const awaitDb = <A>(promise: () => Promise<A>): EffectType.Effect<A, never, never> =>
+  Effect.promise(promise);
+
 // How many of the newest archived rows to scan for an acceptable message,
 // and how often to re-read before giving up (the publish IQ can win the race
 // against the MAM write).
@@ -83,6 +109,10 @@ interface ArchiveCandidate {
 // Never throws: every failure answers `result` at the component (ejabberd
 // disables a push pair after an error IQ) and is logged with ids only —
 // never message text or endpoint URLs.
+//
+// The pipeline runs as Effect inside (see `docs/EFFECT_GUIDE.md`); this
+// `Promise` boundary runs it and maps each typed error to today's dropped
+// outcome and log. DB failures that used to reject still reject unchanged.
 export async function handleIncomingPush(
   deps: PushServiceDeps,
   notification: PushNotification,
@@ -92,50 +122,66 @@ export async function handleIncomingPush(
   if (device === undefined) {
     return { kind: 'unknown-device', node: notification.node };
   }
-  const outcome = await resolveAndSend(deps, device, notification.node, now);
+  const outcome = await Effect.runPromise(
+    resolveAndSendEffect(deps, device, notification.node).pipe(
+      Effect.catchTags({
+        Undecryptable: () =>
+          Effect.sync(() => {
+            deps.logger.warn(
+              { userId: device.userId, deviceId: device.id },
+              'push device undecryptable; dropping the notification',
+            );
+            return dropped(device, 'undecryptable');
+          }),
+        ArchiveUnavailable: () =>
+          Effect.sync(() => {
+            deps.logger.warn(
+              { userId: device.userId, deviceId: device.id },
+              'push archive lookup failed; dropping the notification',
+            );
+            return dropped(device, 'archive-unavailable');
+          }),
+        SendFailed: () =>
+          Effect.sync(() => {
+            deps.logger.warn(
+              { userId: device.userId, deviceId: device.id },
+              'push send failed; answered the publish IQ with result anyway',
+            );
+            return dropped(device, 'send-failed');
+          }),
+      }),
+    ),
+  );
   if (outcome.kind === 'sent') {
     await markDeviceUsed(deps.db, device.id, now);
   }
   return outcome;
 }
 
-async function resolveAndSend(
+const openDeviceEffect = Effect.fnUntraced(function* (
+  deps: PushServiceDeps,
+  device: PushDeviceRow,
+): EffectType.fn.Return<OpenDevice, Undecryptable> {
+  return yield* Effect.try({
+    try: () => openDevice(deps.cipher, device),
+    catch: () => new Undecryptable(),
+  });
+});
+
+const resolveAndSendEffect = Effect.fnUntraced(function* (
   deps: PushServiceDeps,
   device: PushDeviceRow,
   node: string,
-  _now: Date,
-): Promise<PushOutcome> {
-  let subscription: { endpoint: string; keys: { p256dh: string; auth: string } };
-  try {
-    subscription = openDevice(deps.cipher, device);
-  } catch {
-    deps.logger.warn(
-      { userId: device.userId, deviceId: device.id },
-      'push device undecryptable; dropping the notification',
-    );
-    return {
-      kind: 'dropped',
-      userId: device.userId,
-      deviceId: device.id,
-      reason: 'undecryptable',
-    };
-  }
-
-  let scan: NewestScan;
-  try {
-    scan = await newestMessageForUser(deps, device.userId, node);
-  } catch {
-    deps.logger.warn(
-      { userId: device.userId, deviceId: device.id },
-      'push archive lookup failed; dropping the notification',
-    );
-    return {
-      kind: 'dropped',
-      userId: device.userId,
-      deviceId: device.id,
-      reason: 'archive-unavailable',
-    };
-  }
+): EffectType.fn.Return<PushOutcome, DeliveryError> {
+  const subscription = yield* openDeviceEffect(deps, device);
+  const scan = yield* newestMessageForUserEffect(deps, device.userId, node).pipe(
+    // The old Promise version wrapped this whole call in a try/catch: any
+    // throw from the scan — including a synchronous one in its own loop
+    // bookkeeping when the archive answers something unexpected — became
+    // `archive-unavailable`. A rejected promise is mapped inside the scan; a
+    // defect is caught here so `handleIncomingPush` still never rejects.
+    Effect.catchDefect(() => Effect.fail(new ArchiveUnavailable())),
+  );
   const newest = scan.newest;
   if (newest === undefined) {
     // Nothing acceptable to show: persistent emptiness (the trigger may be
@@ -146,62 +192,60 @@ async function resolveAndSend(
       scan.saw === 'muted' || scan.saw === 'hidden' || scan.saw === 'no-message'
         ? scan.saw
         : 'duplicate';
-    return { kind: 'dropped', userId: device.userId, deviceId: device.id, reason };
+    return dropped(device, reason);
   }
 
-  const showPreviews = await showPreviewsForUser(deps.db, device.userId);
+  const showPreviews = yield* awaitDb(() => showPreviewsForUser(deps.db, device.userId));
   const payload = buildPushPayload(newest.message, {
     muted: false,
     visible: true,
     showPreviews,
   });
   if (payload === undefined) {
-    return { kind: 'dropped', userId: device.userId, deviceId: device.id, reason: 'muted' };
+    return dropped(device, 'muted');
   }
-  const outcome = await sendPayload(deps, device, subscription, payload);
-  // `last_used_at` is the last successful send; a failed send only stamps
-  // `failed_at` (inside `sendPayload`), so the 90-day inactivity rule keeps
-  // measuring receipt, not attempts.
-  if (outcome === 'failed') {
-    // Not marked: a retried publish IQ for the same message must still
-    // notify (F3). Only a successful send (or an expired device, whose row
-    // is gone) suppresses later retries.
-    return { kind: 'dropped', userId: device.userId, deviceId: device.id, reason: 'send-failed' };
-  }
+  yield* sendPayloadEffect(deps, device, subscription, payload);
   // Marked only after a successful send. Per-node serialization keeps
   // concurrent IQs for one node ordered, so a retry cannot double-buzz:
   // the retry finds the origin id already seen and drops as `duplicate`.
   markNotified(deps, device.node, scan.notify);
   return { kind: 'sent', userId: device.userId, deviceId: device.id };
-}
+});
 
-async function sendPayload(
+const sendPayloadEffect = Effect.fnUntraced(function* (
   deps: PushServiceDeps,
   device: PushDeviceRow,
-  subscription: { endpoint: string; keys: { p256dh: string; auth: string } },
+  subscription: OpenDevice,
   payload: PushPayload,
-): Promise<'sent' | 'failed'> {
+): EffectType.fn.Return<void, SendFailed> {
   const now = (deps.now ?? (() => new Date()))();
-  try {
-    const result = await deps.sender.send(subscription, JSON.stringify(payload));
-    if (result.gone) {
-      await removeDeviceByNode(deps.db, device.node);
-      deps.logger.info(
-        { userId: device.userId, deviceId: device.id },
-        'push subscription expired; removed',
-      );
-    }
-    return 'sent';
-  } catch {
-    await markDeviceFailed(deps.db, device.id, now);
-    // Ids only: the error may echo the request, which carries the endpoint.
-    deps.logger.warn(
-      { userId: device.userId, deviceId: device.id },
-      'push send failed; answered the publish IQ with result anyway',
-    );
-    return 'failed';
-  }
-}
+  // The send and the `gone` cleanup share one `try`, exactly like the old
+  // `try` block: any throw stamps `failed_at` and answers the IQ with a
+  // result. A failure here is not marked notified (F3), so a retried publish
+  // IQ for the same message still notifies.
+  yield* Effect.tryPromise({
+    try: async () => {
+      const result = await deps.sender.send(subscription, JSON.stringify(payload));
+      if (result.gone) {
+        await removeDeviceByNode(deps.db, device.node);
+        deps.logger.info(
+          { userId: device.userId, deviceId: device.id },
+          'push subscription expired; removed',
+        );
+      }
+    },
+    catch: () => new SendFailed(),
+  }).pipe(
+    Effect.catchTag('SendFailed', () =>
+      Effect.gen(function* () {
+        yield* awaitDb(() => markDeviceFailed(deps.db, device.id, now));
+        // Ids only: the error may echo the request, which carries the endpoint.
+        // The boundary logs the failure and returns the dropped outcome.
+        return yield* new SendFailed();
+      }),
+    ),
+  );
+});
 
 // How many notified origin ids to remember per device node before
 // forgetting the oldest (a retried publish IQ or a re-scan then stays
@@ -230,12 +274,15 @@ interface NewestScan {
 // silent. Retraction rows (their text is the stock fallback), body-less
 // reaction rows, the user's own outgoing DM rows, and rows already notified
 // do not notify either.
-async function newestMessageForUser(
+const newestMessageForUserEffect = Effect.fnUntraced(function* (
   deps: PushServiceDeps,
   userId: string,
   node: string,
-): Promise<NewestScan> {
-  const allowed = await allowedArchives(deps.db, deps.config, userId);
+): EffectType.fn.Return<NewestScan, ArchiveUnavailable> {
+  const allowed = yield* Effect.tryPromise({
+    try: () => allowedArchives(deps.db, deps.config, userId),
+    catch: () => new ArchiveUnavailable(),
+  });
   // Per node (device): one publish IQ per node means each device buzzes
   // independently, while a retried IQ for the same node still dedups (S1).
   const seen = deps.recentlyNotified.get(node) ?? new Set<string>();
@@ -244,7 +291,10 @@ async function newestMessageForUser(
   let sticky: 'muted' | 'hidden' | undefined;
   let everSawRows = false;
   for (let attempt = 0; attempt < ARCHIVE_LOOKUP_ATTEMPTS; attempt += 1) {
-    const rows = await readNewestCandidates(deps.archive, allowed);
+    const rows = yield* Effect.tryPromise({
+      try: () => readNewestCandidates(deps.archive, allowed),
+      catch: () => new ArchiveUnavailable(),
+    });
     if (rows.length > 0) {
       everSawRows = true;
     }
@@ -253,7 +303,10 @@ async function newestMessageForUser(
       if (row.originId === '' || seen.has(row.originId)) {
         continue;
       }
-      const verdict = await resolveCandidate(deps, userId, allowed, row);
+      const verdict = yield* Effect.tryPromise({
+        try: () => resolveCandidate(deps, userId, allowed, row),
+        catch: () => new ArchiveUnavailable(),
+      });
       if (verdict.status === 'ok') {
         // The sent message plus every older row this read superseded. Rows
         // skipped as muted/hidden above it are deliberately excluded (see
@@ -277,7 +330,7 @@ async function newestMessageForUser(
       break;
     }
     if (attempt + 1 < ARCHIVE_LOOKUP_ATTEMPTS) {
-      await sleep(ARCHIVE_LOOKUP_RETRY_MS);
+      yield* Effect.sleep(Duration.millis(ARCHIVE_LOOKUP_RETRY_MS));
     }
   }
   if (sticky !== undefined) {
@@ -291,7 +344,7 @@ async function newestMessageForUser(
   // only already-notified rows report `duplicate`; persistent emptiness
   // reports `no-message`.
   return { newest: undefined, notify: [], saw: everSawRows ? 'duplicate' : 'no-message' };
-}
+});
 
 function buildNewestQuery(allowed: SearchOwner): { text: string; values: unknown[] } {
   const values: unknown[] = [];
@@ -484,8 +537,4 @@ function markNotified(deps: PushServiceDeps, node: string, originIds: string[]):
     const fresh = [...seen].slice(seen.size - NOTIFIED_REMEMBERED);
     deps.recentlyNotified.set(node, new Set(fresh));
   }
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }

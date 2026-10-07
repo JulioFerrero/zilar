@@ -32,7 +32,8 @@ import { createBlocksRoutes } from './blocks/routes';
 import { createContactsRoutes } from './contacts/routes';
 import { createContactRequestsRoutes } from './contact-requests/routes';
 import { createDirectoryRoutes } from './directory/routes';
-import { createHandlesRoutes } from './handles/routes';
+import { createHandlesApi } from './handles/api';
+import { mountEffectRoutes } from './effect/http';
 import type { ServerDatabase } from './db/client';
 import { HttpError } from './errors';
 import { createGroupsRoutes } from './groups/routes';
@@ -320,7 +321,8 @@ export function createApp({
   app.route('/api', createContactsRoutes({ auth, db, config }));
   // @usernames and contact requests (T-0163): session-required, rate
   // limited; the sweep asserts every one of them answers 401 unauthenticated.
-  app.route('/api', createHandlesRoutes({ auth, db, audit: auditRecorder }));
+  const handlesApi = createHandlesApi({ auth, db, audit: auditRecorder, logger });
+  mountEffectRoutes(app, handlesApi.routes, handlesApi.handler);
   app.route(
     '/api',
     createContactRequestsRoutes({ auth, db, config, adminClient, audit: auditRecorder }),

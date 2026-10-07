@@ -2,6 +2,21 @@
 
 Julio's idea (2026-10-03): alternate one task that writes NEW code in Effect with one task that REDOES old code in Effect, and so on. This file is the plan; the board holds the tasks.
 
+## Update 2026-10-07: the whole codebase
+
+Julio: "i will like all the codebase to be effect 4.0 please". His answers:
+- **Scope:** everything, frameworks too. The server HTTP layer, DB access and config move onto Effect.
+- **Schema:** Effect Schema replaces zod everywhere.
+- **Apps:** web and mobile convert now, in parallel with the server.
+
+**Decisions after the plan (Julio, 2026-10-07), overriding its recommendations where they differ:**
+- **DB:** `effect/sql` + `@effect/sql-pg`; drizzle and drizzle-kit go. Tests use `@effect/sql-pglite`. The spike T-0496 settles migrations and better-auth.
+- **HTTP:** Effect's own server (`HttpApi`/`HttpRouter` + `@effect/platform-node`) replaces Hono entirely. Modules move under Hono first, then the edge flips. better-auth is mounted with `HttpEffect.fromWebHandler`.
+- **State:** `@effect/atom-react` replaces zustand on web and mobile. `jotai-effect` is not Effect-TS.
+- **Mobile:** converts now; the +2.8 MiB bundle is accepted.
+
+This supersedes rules 2 and 3 and the "Not converted" line below, and the new-feature half of each pair is dropped: conversions only. The architecture per layer and the ordered task split come from the plan audit T-0490 (`docs/audit/effect-everywhere-plan.md`); this file is rewritten from it. The first logic conversions (T-0483 to T-0489) follow the old rules and stay valid.
+
 ## Rules
 
 1. **Gate first.** T-0173 is a spike on one small server module plus a worker guide. The series only starts if the spike is judged good (tests unchanged, review stays easy, no surprises). If not, we stop there and lose half a day.

@@ -1,10 +1,15 @@
 // Pure helpers for the Ink `lead watch` app (`watch-app.tsx`). No Ink or
-// Node imports here so the mapping rules stay easy to test.
+// Node runtime imports here so the mapping rules stay easy to test.
+
+import type { WatchEntry } from './watch.js';
 
 export const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
 /** Widths below this drop the tracker bars, the sparkline and file names. */
 export const COMPACT_WIDTH = 50;
+
+/** From this width on the cards lay out in two columns, each at least 50 wide. */
+export const TWO_COLUMN_MIN_WIDTH = 100;
 
 export type TrackerStep = 1 | 2 | 3 | 4;
 
@@ -179,4 +184,65 @@ export function truncate(text: string, width: number): string {
     return '…';
   }
   return `${chars.slice(0, width - 1).join('')}…`;
+}
+
+// The exact number of lines a `TaskCard` renders: the two borders, the title,
+// the tracker and the idle/speed line, plus the live or waiting line and the
+// files line when they are shown.
+export function cardHeight(entry: WatchEntry): number {
+  let height = 5;
+  if ((entry.running && entry.step !== null) || entry.needsLead) {
+    height += 1;
+  }
+  if (entry.files.length > 0) {
+    height += 1;
+  }
+  return height;
+}
+
+export function layoutColumns(width: number): number {
+  return width >= TWO_COLUMN_MIN_WIDTH ? 2 : 1;
+}
+
+// The widths of `count` cards side by side within `width`: a one-column gap
+// sits between them, so the first is `floor((width - 1) / 2)` and the second
+// takes the rest.
+export function columnWidths(width: number, count: number): number[] {
+  if (count <= 1) {
+    return [width];
+  }
+  const first = Math.floor((width - 1) / 2);
+  return [first, width - 1 - first];
+}
+
+export interface VisibleSlice {
+  start: number;
+  end: number;
+  hiddenAbove: number;
+  hiddenBelow: number;
+}
+
+// Shows as many whole rows as fit from `offset` and always at least one row,
+// so a tiny terminal still shows something.
+export function visibleSlice(
+  rowHeights: number[],
+  offset: number,
+  availableRows: number,
+): VisibleSlice {
+  const total = rowHeights.length;
+  if (total === 0) {
+    return { start: 0, end: 0, hiddenAbove: 0, hiddenBelow: 0 };
+  }
+  const start = Math.min(Math.max(0, offset), total - 1);
+  let used = 0;
+  let end = start;
+  while (end < total) {
+    const height = rowHeights[end] ?? 0;
+    if (end > start && used + height > availableRows) {
+      break;
+    }
+    used += height;
+    end += 1;
+  }
+  return { start, end, hiddenAbove: start, hiddenBelow: total - end };
 }

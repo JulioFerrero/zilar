@@ -3,6 +3,7 @@ import {
   ACTION_NAME_MAX_LENGTH,
   buildGroupTools,
   buildTools,
+  DELEGATE_TOOL,
   formatPersonaUpdatedLine,
   formatRememberedLine,
   MEMORY_TOOLS,
@@ -16,6 +17,7 @@ import {
   REVERT_PERSONA_TOOL,
   safeToolName,
   sanitizeSummary,
+  TASK_STATUS_TOOL,
   UPDATE_PERSONA_TOOL,
 } from './tools';
 
@@ -220,6 +222,73 @@ describe('parseToolArguments', () => {
       parseToolArguments(REMEMBER_TOOL, JSON.stringify({ text: 'x', chatKey: 'other' })).ok,
     ).toBe(false);
   });
+
+  it('parses a fully specified delegate call', () => {
+    expect(
+      parseToolArguments(
+        DELEGATE_TOOL,
+        JSON.stringify({
+          to: 'ai-worker',
+          objective: 'write the report',
+          context_summary: 'we discussed the launch',
+          acceptance: ['has a summary', 'lists risks'],
+          return_format: 'one paragraph',
+        }),
+      ),
+    ).toEqual({
+      ok: true,
+      tool: DELEGATE_TOOL,
+      to: 'ai-worker',
+      objective: 'write the report',
+      context_summary: 'we discussed the launch',
+      acceptance: ['has a summary', 'lists risks'],
+      return_format: 'one paragraph',
+    });
+  });
+
+  it('parses a delegate call with only the required fields', () => {
+    expect(
+      parseToolArguments(DELEGATE_TOOL, JSON.stringify({ to: 'ai-worker', objective: 'do it' })),
+    ).toEqual({ ok: true, tool: DELEGATE_TOOL, to: 'ai-worker', objective: 'do it' });
+  });
+
+  it('rejects malformed delegate arguments', () => {
+    const bad = [
+      { objective: 'no target' },
+      { to: '', objective: 'do it' },
+      { to: 'ai-worker' },
+      { to: 'ai-worker', objective: '   ' },
+      { to: 'ai-worker', objective: 'x'.repeat(1001) },
+      { to: 'ai-worker', objective: 'do it', context_summary: 'x'.repeat(1201) },
+      { to: 'ai-worker', objective: 'do it', return_format: 'x'.repeat(201) },
+      {
+        to: 'ai-worker',
+        objective: 'do it',
+        acceptance: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k'],
+      },
+      { to: 'ai-worker', objective: 'do it', extra: true },
+    ];
+    for (const args of bad) {
+      expect(parseToolArguments(DELEGATE_TOOL, JSON.stringify(args)).ok).toBe(false);
+    }
+  });
+
+  it('parses a valid task_status call', () => {
+    expect(
+      parseToolArguments(TASK_STATUS_TOOL, JSON.stringify({ task_id: 'delegation-1' })),
+    ).toEqual({ ok: true, tool: TASK_STATUS_TOOL, task_id: 'delegation-1' });
+  });
+
+  it('rejects malformed task_status arguments', () => {
+    for (const args of [
+      {},
+      { task_id: '' },
+      { task_id: 'x'.repeat(65) },
+      { task_id: 'a', ai: 'b' },
+    ]) {
+      expect(parseToolArguments(TASK_STATUS_TOOL, JSON.stringify(args)).ok).toBe(false);
+    }
+  });
 });
 
 describe('safeToolName', () => {
@@ -345,6 +414,49 @@ describe('buildGroupTools', () => {
     expect(requestAction?.function.description).toContain('Repeats a short text back.');
     expect(requestAction?.function.description).toContain('another.tool');
     expect(requestAction?.function.description).toContain('Does another thing.');
+  });
+
+  it('appends delegate and task_status when delegate targets are given, listing id — name', () => {
+    const tools = buildGroupTools(
+      [],
+      [
+        { id: 'ai-1', name: 'Helper' },
+        { id: 'ai-2', name: 'Tester' },
+      ],
+    );
+    expect(tools.map((tool) => tool.function.name)).toEqual([
+      RECALL_TOOL,
+      MEMORY_ZOOM_TOOL,
+      REMEMBER_TOOL,
+      DELEGATE_TOOL,
+      TASK_STATUS_TOOL,
+    ]);
+    const delegate = tools.find((tool) => tool.function.name === DELEGATE_TOOL);
+    expect(delegate?.function.description).toContain('ai-1 — Helper');
+    expect(delegate?.function.description).toContain('ai-2 — Tester');
+  });
+
+  it('keeps request_action and puts the delegation tools after it', () => {
+    const tools = buildGroupTools(
+      [{ name: 'demo.echo', description: 'Repeats a short text back.' }],
+      [{ id: 'ai-1', name: 'Helper' }],
+    );
+    expect(tools.map((tool) => tool.function.name)).toEqual([
+      RECALL_TOOL,
+      MEMORY_ZOOM_TOOL,
+      REMEMBER_TOOL,
+      REQUEST_ACTION_TOOL,
+      DELEGATE_TOOL,
+      TASK_STATUS_TOOL,
+    ]);
+  });
+
+  it('returns the memory tools alone for an empty target list', () => {
+    expect(buildGroupTools([], []).map((tool) => tool.function.name)).toEqual([
+      RECALL_TOOL,
+      MEMORY_ZOOM_TOOL,
+      REMEMBER_TOOL,
+    ]);
   });
 });
 

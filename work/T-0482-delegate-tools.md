@@ -1,7 +1,7 @@
 ---
 id: T-0482
 title: "Listener S5b (server): delegate + task_status tools in group turns, wired to the delegation service; worker turn injected as a handoff; result stored on finish"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0482-delegate-tools
 model: auto
@@ -122,4 +122,115 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- **`tools.ts`**: added `DELEGATE_TOOL` / `TASK_STATUS_TOOL`, the strict `DelegateArgsSchema` (`to`, `objective`, optional `context_summary` ≤1200, `acceptance` ≤10 items, `return_format` ≤200) and `TaskStatusArgsSchema`; taught `parseToolArguments` both names; added `buildDelegateTool(targets)` (lists `id — name`, says the target uses its own model/budget and replies in the room, use `task_status` for the stored result) and `TASK_STATUS_TOOL_DEF`; `buildGroupTools(actions, delegateTargets?)` appends both tools only when `delegateTargets` is non-empty (byte-identical output otherwise).
+- **`reply.ts`**: added both tools to `ValidToolCall`; `toCall` maps `to → toAiId`, `context_summary → contextSummary`, `return_format → returnFormat`.
+- **`gateway.ts`**:
+  - `RoomPendingMessage` gained `delegationId`.
+  - `RequestActionContext` gained `roomJid`, `triggerId` and `delegateTargetIds`.
+  - The group turn's one delegation read now also carries this AI's `canDelegate` and each target's `aiId`; when `canDelegate` and there is at least one accepting session, `buildGroupTools` gets the targets (`{id: aiId, name: nick}`).
+  - `executeToolCall` (group context): `delegate` / `task_status` are allowed only with a non-empty `delegateTargetIds` (otherwise `invalid: unknown tool`); `delegate` checks the target, the round's hop budget (`refused: no hops left for this message`), calls `createDelegation` (`replyTo` = turn trigger id), queues `delegation:<id>` on the **worker's** `roomPending` (`handoff: true`, `fromJid` = boss JID, `fromNick` = boss room nick, body `Task from <boss nick>: <objective>` plus `\nContext: …` / `\nReturn: …`), calls `pumpRoom`, spends one hop and answers `{"task_id":"…","status":"working"}`; `task_status` answers `{"task_id","status","result"}` or `invalid: unknown task`.
+  - After `runGroupTurn`, when the trigger has a `delegationId`, `finishDelegation` stores `completed`/`failed` with the worker's posted text. Dropped turns (daily limit, rate limit, round cap) and the outer turn-error path finish the row `failed` with no summary, so a row never stays `working`.
+- **Tests**: `tools.test.ts` parse accept/reject for both tools and `buildGroupTools` with/without targets (48 tests in the file). `gateway.test.ts` new `delegation tools (T-0482)` describe with the six cases from the spec (happy path, no `canDelegate` + improvised call, unknown target, hops spent, third-AI `task_status`, worker over daily limit).
+
+### Files changed
+`apps/server/src/agents/tools.ts`, `apps/server/src/agents/tools.test.ts`, `apps/server/src/agents/reply.ts`, `apps/server/src/agents/gateway.ts`, `apps/server/src/agents/gateway.test.ts`, `work/T-0482-delegate-tools.md`.
+`apps/server/src/agents/reply.test.ts` was allowed but did not need changes (no snapshot of the tool list there; the mapping is covered through the gateway tests).
+
+### Commands and results
+- `pnpm install` — done (warnings only: pre-existing `@types/react-dom` peer).
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot agents/tools` — 48 passed.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot agents/reply` — 45 passed.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot agents/gateway agents/delegation` — 183 passed.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot agents/tools agents/reply agents/gateway agents/delegation` (the task Checks command) — 4 files, 276 passed.
+- `pnpm gate` (first run) — FAIL format on 5 changed files; ran `pnpm exec prettier --write` on them, then one lint error (`no-unsafe-optional-chaining` in my new test) which I fixed with a non-null assertion.
+- `pnpm gate` (final) —
+  ```
+  gate: 6 changed file(s) against main
+  PASS  install (frozen)  (5.6s)
+  PASS  format  (42.2s)
+  PASS  lint  (1.3s)
+  PASS  typecheck  (20.1s)
+  PASS  tests @zilar/server  (62.4s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Deviations / notes
+- The spec named only `delegateTargetIds` for `RequestActionContext`; I also added `roomJid` and `triggerId`, because `delegate` needs the room (to queue the worker and read the boss's nick) and the trigger id (`replyTo`). No other constructor of the context exists.
+- Beyond the three named pre-model drops, the outer `catch` in `runGroupSessionTurn` also finishes a delegated row `failed`, so a failure in `ensureAiModel` / key / memory setup cannot leave a row `working`. `finishDelegation` is a single conditional update, so a later call after a finish is a no-op.
+- `finishDelegation` after `runGroupTurn` passes `resultSummary` in both outcomes (per the spec wording); the dropped-turn paths pass no summary.
+- If one boss turn issues several `delegate` calls that all land in one worker batch, only the trigger's `delegationId` is finished (the spec ties one `delegationId` to one trigger). The hop cap still refuses beyond `ROUND_MAX_HOPS`. Flagging in case the lead wants each queued delegation finished.
+
+### Blocked / needs a decision
+None.
+
+### Round (pre-review fixes, T-0482)
+Findings fixed:
+- **Finding 1 (must-fix)** — coalesced worker batches orphaned every non-trigger delegation row. `pumpRoom` now peels the queue so a delegated task is always its own turn: if the head run has no delegation it coalesces mentions as before, but the batch stops before the first delegation item, and a delegation is taken alone. Each delegated turn then finishes its own row. (Previously the whole queue was drained into one batch and only the last eligible item's `delegationId` was finished.) Updated the hops test to assert both rows end `completed`, the assertion the finding named.
+- **Finding 2 (should-fix)** — added `reads a task_status for an involved AI`: a boss that may delegate calls `task_status` for its own `completed` row and the tool result carries `{task_id, status, result}`.
+
+Nits not touched (all three, per "do not touch nits"): the missing `context === undefined` guard in the `TASK_STATUS_TOOL` branch, the lenient hop-budget check when the round is missing, and `task_status` being tied to a non-empty `delegateTargetIds`.
+
+Tests: `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot agents/gateway -t 'delegation tools'` — 7 passed.
+
+Gate result:
+```
+gate: 6 changed file(s) against main
+PASS  install (frozen)  (1.2s)
+PASS  format  (18.2s)
+PASS  lint  (1.3s)
+PASS  typecheck  (8.9s)
+PASS  tests @zilar/server  (51.8s)
+scope: every changed file is inside the Allowed files
+GATE PASS
+```
+
+### Round (post-review fixes, T-0482)
+Findings fixed:
+- **Finding 1 (should-fix)** — `task_status` was executable in DM turns. The `TASK_STATUS_TOOL` branch in `executeToolCall` now returns `invalid: unknown tool` when `context === undefined`, mirroring the sibling `delegate` branch, so a DM model that improvises the tool with valid args can no longer read real delegation data. Test added: `answers task_status in a DM with invalid: unknown tool` — it seeds a real `completed` row for the AI, sends a DM turn, and asserts the tool is not offered and the tool result is `invalid: unknown tool`. I confirmed it fails without the guard (reverted it, ran the test: 1 failed) and passes with it.
+
+Nits not touched (per "do not touch nits"): finding 2, `task_status` being tied to a non-empty `delegateTargetIds`.
+
+Tests: `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot agents/gateway -t 'answers task_status in a DM'` — 1 passed.
+
+Gate result:
+```
+gate: 6 changed file(s) against main
+PASS  install (frozen)  (1.7s)
+PASS  format  (39.9s)
+PASS  lint  (2.2s)
+PASS  typecheck  (1.3s)
+PASS  tests @zilar/server  (99.6s)
+scope: every changed file is inside the Allowed files
+GATE PASS
+```
+
+### Round (post-review fixes 2, T-0482)
+Findings fixed:
+- **Finding 1 (should-fix)** — the empty-`delegateTargetIds` gate applied to both delegation tools, so `task_status` was refused whenever there were no targets. In `gateway.ts` the gate now names `DELEGATE_TOOL` only; `task_status` always falls through to `getDelegationForAi`, which scopes the read to the two involved AIs. One extra fix was required outside that line: the group tool loop in `reply.ts` only runs advertised tools, so even with the gateway gate fixed an improvised `task_status` was answered `invalid: unknown tool` before `executeToolCall` ran. `runGroupToolTurn` now treats `task_status` as a known group tool that may run even when it was not advertised (read-only, scoped by `getDelegationForAi`). The advertised tool list is unchanged, so `buildGroupTools` output, spec §3 and the "boss without canDelegate is not offered the tool" test are untouched.
+- Tests added in `gateway.test.ts`: `reads a completed task_status for the boss after the worker left the room`, `lets an accepting worker read its own task without canDelegate`, `answers task_status from an uninvolved AI with invalid: unknown task when there are no targets`.
+- I confirmed both halves are load-bearing: with `gateway.ts` reverted (reply fix present), all 3 new tests fail; with `reply.ts` reverted (gateway fix present), all 3 new tests fail with `invalid: unknown tool`.
+
+Disagreements: none. The finding named `gateway.ts:818` only; the `reply.ts` advertised-tool guard was an additional, necessary part of the same behaviour.
+
+Tests: `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot agents/gateway -t 'delegation tools'` — 11 passed.
+
+Gate result:
+```
+gate: 6 changed file(s) against main
+PASS  install (frozen)  (4.5s)
+PASS  format  (106.0s)
+PASS  lint  (1.8s)
+PASS  typecheck  (63.0s)
+PASS  tests @zilar/server  (220.6s)
+scope: every changed file is inside the Allowed files
+GATE PASS
+```
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-07).
+- **delegate:** offered only to an AI with canDelegate and same-room targets that accept tasks. It creates the row, counts a hop, and queues a "Task from" handoff turn on the worker. The worker turn finishes the row: completed with the reply, or failed when it is dropped.
+- **task_status:** reads only for the two AIs involved, with targets or without (fix round 3).
+This was the last feature task before the no-features rule. Pre-review clean after the rounds; the nits are cosmetic.

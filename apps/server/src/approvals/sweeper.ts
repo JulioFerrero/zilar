@@ -1,3 +1,4 @@
+import { Effect, Schedule, type Fiber } from 'effect';
 import type { ServerDatabase } from '../db/client';
 import type { AuditEntry } from '../audit/service';
 import { expireStale } from './service';
@@ -40,8 +41,7 @@ export function startApprovalsSweeper({
   intervalMs = 60_000,
   now = () => new Date(),
 }: StartApprovalsSweeperOptions): ApprovalsSweeperHandle {
-  let timer: NodeJS.Timeout | null = null;
-  let closed = false;
+  let fiber: Fiber.Fiber<void, never> | null = null;
 
   async function tick(): Promise<void> {
     const at = now();
@@ -74,30 +74,27 @@ export function startApprovalsSweeper({
     }
   }
 
-  function schedule(): void {
-    if (closed) {
-      return;
-    }
-    timer = setTimeout(() => {
-      timer = null;
-      void tick().finally(() => {
-        schedule();
-      });
-    }, intervalMs);
-    timer.unref();
+  // The background loop repeats the tick with `Schedule.spaced`, first
+  // after one interval. The tick runs uninterruptibly so an in-flight
+  // sweep finishes after `close()`; only the sleep between ticks is
+  // interruptible.
+  function loop(): Effect.Effect<void, never, never> {
+    const tickEffect = Effect.uninterruptible(Effect.promise(() => tick()));
+    return Effect.sleep(intervalMs).pipe(
+      Effect.andThen(Effect.repeat(tickEffect, Schedule.spaced(intervalMs))),
+    );
   }
 
   // First run after one interval, not at boot. `index.ts` starts the sweeper
   // after `serve()` resolves so the API is already listening and the timer
   // delay never blocks startup.
-  schedule();
+  fiber = Effect.runFork(loop());
 
   return {
     close(): void {
-      closed = true;
-      if (timer !== null) {
-        clearTimeout(timer);
-        timer = null;
+      if (fiber !== null) {
+        fiber.interruptUnsafe();
+        fiber = null;
       }
       // An in-flight tick keeps running (its `await audit.record` calls have
       // no other side effects), but the timer is stopped and no new tick

@@ -1,6 +1,6 @@
 import net from 'node:net';
+import { Cause, Duration, Effect, Exit, Fiber, Schedule, Schema } from 'effect';
 import { WebSocket } from 'ws';
-import { z } from 'zod';
 import {
   CLOSE_AUTH,
   CLOSE_MALFORMED,
@@ -15,26 +15,55 @@ import {
 import { signNonce, type RunnerKeypair } from './keys.ts';
 import { StreamMux, TunnelClosedError, attachSocketToStream } from './mux.ts';
 
-const RunnerOptionsSchema = z.strictObject({
-  serverUrl: z
-    .string()
-    .url()
-    .refine((value) => value.startsWith('ws://') || value.startsWith('wss://'), {
+const stringUrl: Schema.String = Schema.String.check(
+  Schema.makeFilter((value) => {
+    try {
+      new URL(value);
+      return true;
+    } catch {
+      return false;
+    }
+  }),
+);
+
+const portSchema: Schema.Number = Schema.Number.check(
+  Schema.isInt(),
+  Schema.isGreaterThanOrEqualTo(1),
+  Schema.isLessThanOrEqualTo(65535),
+);
+
+export const RunnerOptionsSchema = Schema.Struct({
+  serverUrl: stringUrl.check(
+    Schema.makeFilter((value) => value.startsWith('ws://') || value.startsWith('wss://'), {
       message: 'serverUrl must use ws:// or wss://',
     }),
-  runnerId: z.string().min(1).max(128),
-  runnerVersion: z.string().min(1).max(64).default('0.1.0'),
-  exposedPorts: z.array(z.number().int().min(1).max(65535)).default([]),
-  enableModelListener: z.boolean().default(true),
-  reconnectBaseMs: z.number().int().min(10).max(60000).default(250),
-  reconnectMaxMs: z.number().int().min(50).max(300000).default(5000),
-  handshakeTimeoutMs: z.number().int().min(100).max(60000).default(10000),
-  highWaterMarkBytes: z
-    .number()
-    .int()
-    .min(4096)
-    .max(64 * 1024 * 1024)
-    .default(1024 * 1024),
+  ),
+  runnerId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(128)),
+  runnerVersion: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64)).pipe(
+    Schema.withDecodingDefault(Effect.succeed('0.1.0')),
+  ),
+  exposedPorts: Schema.Array(portSchema).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
+  enableModelListener: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  reconnectBaseMs: Schema.Number.check(
+    Schema.isInt(),
+    Schema.isGreaterThanOrEqualTo(10),
+    Schema.isLessThanOrEqualTo(60000),
+  ).pipe(Schema.withDecodingDefault(Effect.succeed(250))),
+  reconnectMaxMs: Schema.Number.check(
+    Schema.isInt(),
+    Schema.isGreaterThanOrEqualTo(50),
+    Schema.isLessThanOrEqualTo(300000),
+  ).pipe(Schema.withDecodingDefault(Effect.succeed(5000))),
+  handshakeTimeoutMs: Schema.Number.check(
+    Schema.isInt(),
+    Schema.isGreaterThanOrEqualTo(100),
+    Schema.isLessThanOrEqualTo(60000),
+  ).pipe(Schema.withDecodingDefault(Effect.succeed(10000))),
+  highWaterMarkBytes: Schema.Number.check(
+    Schema.isInt(),
+    Schema.isGreaterThanOrEqualTo(4096),
+    Schema.isLessThanOrEqualTo(64 * 1024 * 1024),
+  ).pipe(Schema.withDecodingDefault(Effect.succeed(1024 * 1024))),
 });
 
 export interface RunnerOptions {
@@ -69,7 +98,7 @@ export class RunnerClient {
   private readonly keypair: RunnerKeypair;
   private readonly serverUrl: string;
   private readonly runnerVersion: string;
-  private readonly exposedPorts: number[];
+  private readonly exposedPorts: readonly number[];
   private readonly enableModelListener: boolean;
   private readonly reconnectBaseMs: number;
   private readonly reconnectMaxMs: number;
@@ -79,9 +108,10 @@ export class RunnerClient {
   private ws: WebSocket | null = null;
   private mux: StreamMux | null = null;
   private modelServer: net.Server | null = null;
-  private heartbeatTimer: NodeJS.Timeout | null = null;
+  private heartbeatFiber: Fiber.Fiber<unknown, unknown> | null = null;
+  private runFiber: Fiber.Fiber<unknown, unknown> | null = null;
+  private started = false;
   private stopped = false;
-  private runPromise: Promise<void> | null = null;
   private lastCloseCode: number | null = null;
   private readonly readyListeners = new Set<() => void>();
   private readonly failedListeners = new Set<(err: Error) => void>();
@@ -91,7 +121,9 @@ export class RunnerClient {
   private reconnectAttemptsValue = 0;
 
   constructor(options: RunnerOptions) {
-    const validated = RunnerOptionsSchema.parse({
+    const validated = Schema.decodeUnknownSync(RunnerOptionsSchema, {
+      onExcessProperty: 'error',
+    })({
       serverUrl: options.serverUrl,
       runnerId: options.runnerId,
       runnerVersion: options.runnerVersion,
@@ -167,12 +199,13 @@ export class RunnerClient {
 
   /** Start the model listener and connect. Resolves on the first authentication. */
   async start(): Promise<void> {
-    if (this.runPromise !== null) {
+    if (this.started) {
       throw new Error('runner already started');
     }
     if (this.enableModelListener) {
       await this.startModelListener();
     }
+    this.started = true;
     await new Promise<void>((resolve, reject) => {
       const offReady = this.on('ready', () => {
         offReady();
@@ -184,17 +217,15 @@ export class RunnerClient {
         offFailed();
         reject(err ?? new TunnelClosedError('runner failed'));
       });
-      // run() never rejects: every failure is either retried or reported via 'failed'.
-      this.runPromise = this.run();
+      // The reconnect loop never rejects: every failure is either retried or
+      // reported through 'failed'.
+      this.runFiber = Effect.runFork(this.runEffect());
     });
   }
 
   async stop(): Promise<void> {
     this.stopped = true;
-    if (this.heartbeatTimer !== null) {
-      clearInterval(this.heartbeatTimer);
-      this.heartbeatTimer = null;
-    }
+    await this.interruptHeartbeat();
     try {
       this.ws?.terminate();
     } catch {
@@ -211,7 +242,11 @@ export class RunnerClient {
     for (const resolve of this.closeResolvers.splice(0)) {
       resolve();
     }
-    await this.runPromise;
+    const fiber = this.runFiber;
+    this.runFiber = null;
+    if (fiber !== null) {
+      await Effect.runPromise(Fiber.interrupt(fiber));
+    }
   }
 
   private emitReady(): void {
@@ -227,59 +262,61 @@ export class RunnerClient {
     }
   }
 
-  private async run(): Promise<void> {
-    let attempt = 0;
-    for (;;) {
-      if (this.stopped) {
-        return;
-      }
-      let fatal: Error | null = null;
-      try {
-        await this.connectOnce();
-        attempt = 0;
-        this.emitReady();
-        this.lastCloseCode = null;
-        await this.waitForClose();
-        if (this.lastCloseCode !== null && FATAL_CLOSE_CODES.has(this.lastCloseCode)) {
-          throw new TunnelClosedError(
-            `connection closed (${this.lastCloseCode}): rejected by the server`,
-          );
+  private runEffect(): Effect.Effect<void, never> {
+    return Effect.gen({ self: this }, function* () {
+      let attempt = 0;
+      for (;;) {
+        if (this.stopped) {
+          return;
         }
-      } catch (err) {
-        fatal = err instanceof Error ? err : new Error(String(err));
+        const outcome = yield* Effect.exit(
+          Effect.gen({ self: this }, function* () {
+            yield* this.connectOnce();
+            attempt = 0;
+            this.emitReady();
+            this.lastCloseCode = null;
+            yield* this.waitForClose();
+            if (this.lastCloseCode !== null && FATAL_CLOSE_CODES.has(this.lastCloseCode)) {
+              return yield* Effect.fail(
+                new TunnelClosedError(
+                  `connection closed (${this.lastCloseCode}): rejected by the server`,
+                ),
+              );
+            }
+          }),
+        );
+        let fatal: Error | null = null;
+        if (Exit.isFailure(outcome)) {
+          fatal = toError(Cause.squash(outcome.cause));
+        }
+        if (this.stopped) {
+          return;
+        }
+        if (fatal !== null && isFatalError(fatal)) {
+          this.emitFailed(fatal);
+          this.stopped = true;
+          return;
+        }
+        const waitMs = computeBackoff(attempt, this.reconnectBaseMs, this.reconnectMaxMs);
+        attempt += 1;
+        this.reconnectAttemptsValue += 1;
+        yield* Effect.sleep(Duration.millis(waitMs));
       }
-      if (this.stopped) {
-        return;
-      }
-      if (fatal !== null && isFatalError(fatal)) {
-        this.emitFailed(fatal);
-        this.stopped = true;
-        return;
-      }
-      const waitMs = computeBackoff(attempt, this.reconnectBaseMs, this.reconnectMaxMs);
-      attempt += 1;
-      this.reconnectAttemptsValue += 1;
-      await this.delayOrStopped(waitMs);
-    }
-  }
-
-  private async delayOrStopped(ms: number): Promise<void> {
-    if (this.stopped) {
-      return;
-    }
-    await new Promise<void>((resolve) => {
-      const timer = setTimeout(resolve, ms);
-      timer.unref();
-      this.closeResolvers.push(() => {
-        clearTimeout(timer);
-        resolve();
-      });
     });
   }
 
-  private waitForClose(): Promise<void> {
-    return new Promise<void>((resolve) => {
+  private waitForClose(): Effect.Effect<void> {
+    return Effect.callback<void>((resume) => {
+      const resolve = (): void => {
+        resume(Effect.void);
+      };
       this.closeResolvers.push(resolve);
+      return Effect.sync(() => {
+        const index = this.closeResolvers.indexOf(resolve);
+        if (index !== -1) {
+          this.closeResolvers.splice(index, 1);
+        }
+      });
     });
   }
 
@@ -289,78 +326,107 @@ export class RunnerClient {
     }
   }
 
-  private async connectOnce(): Promise<void> {
-    const ws = new WebSocket(this.serverUrl, { maxPayload: MAX_WS_PAYLOAD_BYTES });
-    this.ws = ws;
-    try {
-      await new Promise<void>((resolve, reject) => {
-        const timer = setTimeout(() => {
-          reject(new TunnelClosedError('connection timeout'));
-        }, this.handshakeTimeoutMs);
-        timer.unref();
-        ws.once('open', () => {
-          clearTimeout(timer);
-          resolve();
-        });
-        ws.once('error', (err: Error) => {
-          clearTimeout(timer);
-          reject(new TunnelClosedError(`connection failed: ${err.message}`));
-        });
-      });
-      if (this.stopped) {
-        throw new TunnelClosedError('runner stopped');
-      }
-      ws.send(
-        JSON.stringify({
-          type: 'hello',
-          runner_id: this.runnerId,
-          runner_version: this.runnerVersion,
-          protocol_version: PROTOCOL_VERSION,
-        }),
-      );
-      const challenge = await this.waitForType(ws, 'challenge');
-      if (challenge.type !== 'challenge') {
-        throw new TunnelClosedError('expected challenge');
-      }
-      ws.send(
-        JSON.stringify({
-          type: 'auth',
-          signature: signNonce(this.keypair.privateKey, Buffer.from(challenge.nonce, 'base64')),
-        }),
-      );
-      await this.waitForType(ws, 'ready');
-      if (this.stopped) {
-        throw new TunnelClosedError('runner stopped');
-      }
-      this.installReadyConnection(ws);
-    } catch (err) {
-      try {
-        ws.terminate();
-      } catch {
-        // Already gone.
-      }
-      throw err;
+  private async interruptHeartbeat(): Promise<void> {
+    const fiber = this.heartbeatFiber;
+    this.heartbeatFiber = null;
+    if (fiber !== null) {
+      await Effect.runPromise(Fiber.interrupt(fiber));
     }
   }
 
-  private waitForType(ws: WebSocket, expected: 'challenge' | 'ready'): Promise<ControlMessage> {
-    return new Promise<ControlMessage>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        finish(new TunnelClosedError(`timeout waiting for ${expected}`));
-      }, this.handshakeTimeoutMs);
-      timer.unref();
-      const finish = (outcome: ControlMessage | Error): void => {
-        clearTimeout(timer);
+  private connectOnce(): Effect.Effect<void, TunnelClosedError> {
+    const ws = new WebSocket(this.serverUrl, { maxPayload: MAX_WS_PAYLOAD_BYTES });
+    this.ws = ws;
+    return Effect.gen({ self: this }, function* () {
+      yield* this.openSocket(ws);
+      if (this.stopped) {
+        return yield* Effect.fail(new TunnelClosedError('runner stopped'));
+      }
+      yield* Effect.sync(() => {
+        ws.send(
+          JSON.stringify({
+            type: 'hello',
+            runner_id: this.runnerId,
+            runner_version: this.runnerVersion,
+            protocol_version: PROTOCOL_VERSION,
+          }),
+        );
+      });
+      const challenge = yield* this.waitForType(ws, 'challenge');
+      if (challenge.type !== 'challenge') {
+        return yield* Effect.fail(new TunnelClosedError('expected challenge'));
+      }
+      yield* Effect.sync(() => {
+        ws.send(
+          JSON.stringify({
+            type: 'auth',
+            signature: signNonce(this.keypair.privateKey, Buffer.from(challenge.nonce, 'base64')),
+          }),
+        );
+      });
+      yield* this.waitForType(ws, 'ready');
+      if (this.stopped) {
+        return yield* Effect.fail(new TunnelClosedError('runner stopped'));
+      }
+      this.installReadyConnection(ws);
+    }).pipe(
+      Effect.onExit((exit) => {
+        if (Exit.isFailure(exit)) {
+          try {
+            ws.terminate();
+          } catch {
+            // Already gone.
+          }
+        }
+        return Effect.void;
+      }),
+    );
+  }
+
+  private openSocket(ws: WebSocket): Effect.Effect<void, TunnelClosedError> {
+    return Effect.callback<void, TunnelClosedError>((resume) => {
+      function cleanup(): void {
+        ws.removeListener('open', onOpen);
+        ws.removeListener('error', onError);
+      }
+      function onOpen(): void {
+        cleanup();
+        resume(Effect.void);
+      }
+      function onError(err: Error): void {
+        cleanup();
+        resume(Effect.fail(new TunnelClosedError(`connection failed: ${err.message}`)));
+      }
+      ws.on('open', onOpen);
+      ws.on('error', onError);
+      return Effect.sync(cleanup);
+    }).pipe(
+      Effect.timeoutOrElse({
+        duration: Duration.millis(this.handshakeTimeoutMs),
+        orElse: () => Effect.fail(new TunnelClosedError('connection timeout')),
+      }),
+    );
+  }
+
+  private waitForType(
+    ws: WebSocket,
+    expected: 'challenge' | 'ready',
+  ): Effect.Effect<ControlMessage, TunnelClosedError> {
+    return Effect.callback<ControlMessage, TunnelClosedError>((resume) => {
+      function cleanup(): void {
         ws.removeListener('message', onMessage);
         ws.removeListener('close', onClose);
         ws.removeListener('error', onError);
+      }
+      function finish(outcome: ControlMessage | TunnelClosedError): void {
+        cleanup();
         if (outcome instanceof Error) {
-          reject(outcome);
+          resume(Effect.fail(outcome));
         } else {
-          resolve(outcome);
+          resume(Effect.succeed(outcome));
         }
-      };
-      const onMessage = (data: unknown, isBinary: boolean): void => {
+      }
+      function onMessage(data: unknown, isBinary: boolean): void {
         if (isBinary) {
           finish(new TunnelClosedError('binary frame during handshake'));
           try {
@@ -381,21 +447,27 @@ export class RunnerClient {
           return;
         }
         finish(parsed.message);
-      };
-      const onClose = (code: number, reason: Buffer): void => {
+      }
+      function onClose(code: number, reason: Buffer): void {
         finish(
           new TunnelClosedError(
             `handshake connection closed (${code}): ${reason.toString() || 'no reason'}`,
           ),
         );
-      };
-      const onError = (err: Error): void => {
+      }
+      function onError(err: Error): void {
         finish(new TunnelClosedError(`handshake failed: ${err.message}`));
-      };
+      }
       ws.on('message', onMessage);
       ws.on('close', onClose);
       ws.on('error', onError);
-    });
+      return Effect.sync(cleanup);
+    }).pipe(
+      Effect.timeoutOrElse({
+        duration: Duration.millis(this.handshakeTimeoutMs),
+        orElse: () => Effect.fail(new TunnelClosedError(`timeout waiting for ${expected}`)),
+      }),
+    );
   }
 
   private installReadyConnection(ws: WebSocket): void {
@@ -423,17 +495,25 @@ export class RunnerClient {
     ws.on('error', () => {
       // The close event below does the cleanup.
     });
-    if (this.heartbeatTimer !== null) {
-      clearInterval(this.heartbeatTimer);
-    }
-    this.heartbeatTimer = setInterval(() => {
-      try {
-        mux.sendControl({ type: 'heartbeat', at: Date.now() });
-      } catch {
-        // The tunnel is dying; the close handler cleans up.
-      }
-    }, 10000);
-    this.heartbeatTimer.unref();
+    this.startHeartbeat(mux);
+  }
+
+  private startHeartbeat(mux: StreamMux): void {
+    // Replace a previous connection's heartbeat if one is still running: an
+    // orphaned fiber would keep pinging a dead mux and, since Effect timers are
+    // not unref'd, keep the process alive.
+    void this.interruptHeartbeat();
+    const heartbeat = Effect.repeat(
+      Effect.sync(() => {
+        try {
+          mux.sendControl({ type: 'heartbeat', at: Date.now() });
+        } catch {
+          // The tunnel is dying; the close handler cleans up.
+        }
+      }).pipe(Effect.catchDefect(() => Effect.void)),
+      Schedule.spaced(Duration.millis(HEARTBEAT_INTERVAL_MS)),
+    ).pipe(Effect.delay(Duration.millis(HEARTBEAT_INTERVAL_MS)));
+    this.heartbeatFiber = Effect.runFork(heartbeat);
   }
 
   private teardownConnection(mux: StreamMux, ws: WebSocket, code: number): void {
@@ -444,10 +524,7 @@ export class RunnerClient {
     if (this.mux === mux) {
       this.mux = null;
     }
-    if (this.heartbeatTimer !== null) {
-      clearInterval(this.heartbeatTimer);
-      this.heartbeatTimer = null;
-    }
+    void this.interruptHeartbeat();
     mux.failAll(new TunnelClosedError('connection to the server was lost'));
     this.notifyClosed();
   }
@@ -542,6 +619,9 @@ export class RunnerClient {
   }
 }
 
+/** How often a ready connection sends a liveness heartbeat. */
+const HEARTBEAT_INTERVAL_MS = 10000;
+
 /** Auth and version rejections are final; anything else is worth a reconnect. */
 const FATAL_CLOSE_CODES = new Set([
   CLOSE_AUTH,
@@ -559,4 +639,8 @@ function isFatalError(err: Error): boolean {
     err.message.includes(`(${CLOSE_MALFORMED})`) ||
     err.message.includes(`(${CLOSE_UNKNOWN_TYPE})`)
   );
+}
+
+function toError(value: unknown): Error {
+  return value instanceof Error ? value : new Error(String(value));
 }

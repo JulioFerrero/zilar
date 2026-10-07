@@ -1,6 +1,7 @@
 import { Worker } from 'node:worker_threads';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import { Data, Duration, Effect } from 'effect';
 import { z } from 'zod';
 import {
   createDefaultFetcher,
@@ -76,6 +77,11 @@ const outputJsonSchema = z.object({
   data: z.unknown().optional(),
 });
 
+// The worker failed to start (missing tsx hook, `worker_threads` refused). It
+// is a control signal inside this module only: the Promise boundary turns it
+// into the same fixed `sandbox_failure` result the old try/catch returned.
+class SandboxStartFailed extends Data.TaggedError('SandboxStartFailed') {}
+
 function sanitizeMessage(message: string): string {
   return message
     .replace(/[A-Z]:[\\/][^\s]*/g, '[path]')
@@ -142,25 +148,16 @@ export async function runTool(params: RunToolParams): Promise<RunToolResult> {
       stackSizeMb: 8,
     },
   };
-  let worker: Worker;
-  try {
+  const spawnWorker = (): Worker => {
     const requireFromHere = createRequire(import.meta.url);
     const tsxHook = requireFromHere.resolve('tsx/cjs');
     const bootstrap = `require(${JSON.stringify(tsxHook)}); require(${JSON.stringify(workerPath)});`;
-    worker = new Worker(bootstrap, {
+    return new Worker(bootstrap, {
       eval: true,
       workerData: workerOptions.workerData,
       resourceLimits: workerOptions.resourceLimits,
     });
-  } catch {
-    return {
-      ok: false,
-      error: { kind: 'sandbox_failure', message: 'could not start the tool sandbox' },
-      logs: '',
-      durationMs: Date.now() - startedAt,
-      fetchCount: 0,
-    };
-  }
+  };
 
   const logLines: string[] = [];
   let logBytes = 0;
@@ -189,104 +186,133 @@ export async function runTool(params: RunToolParams): Promise<RunToolResult> {
     fetchCount,
   });
 
-  return await new Promise<RunToolResult>((resolve) => {
-    let settled = false;
+  // The worker is a scoped resource: `acquireRelease` terminates it on every
+  // exit path — success, failure, or the wall-clock timeout interrupting the
+  // run. The listeners resume one `Effect.callback`; a later event is ignored
+  // by `resume`, the same guard `settled` provided. Fetch requests keep the
+  // old handling: validated here, then answered asynchronously.
+  const runWorker = (worker: Worker): Effect.Effect<RunToolResult> => {
     let fetchCount = 0;
-    const settle = (result: RunToolResult): void => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      clearTimeout(killTimer);
-      void worker.terminate().catch(() => undefined);
-      resolve(result);
-    };
+    return Effect.callback<RunToolResult>((resume) => {
+      const settle = (result: RunToolResult): void => {
+        resume(Effect.succeed(result));
+      };
 
-    const killTimer = setTimeout(() => {
-      settle(fail('timeout', 'tool timed out', fetchCount));
-    }, limits.wallMs + 500);
-    killTimer.unref?.();
-
-    worker.on('message', (raw: unknown) => {
-      const parsed = workerEventSchema.safeParse(raw);
-      if (!parsed.success) {
-        return;
-      }
-      const event = parsed.data;
-      if (event.type === 'log') {
-        pushLog(event.text);
-        return;
-      }
-      if (event.type === 'fetch') {
-        const fetchFailed = (message: string): void => {
-          worker.postMessage({
-            type: 'fetch-result',
-            id: event.id,
-            ok: false as const,
-            message: withFetchPrefix(message),
-          });
-        };
-        void (async () => {
-          const check = await validateFetchRequest(
-            {
-              url: event.url,
-              method: event.method,
-              headers: event.headers,
-              bodyPresent: event.bodyPresent,
-            },
-            {
-              allowedHosts: params.allowedHosts,
-              fetchTimeoutMs: limits.fetchTimeoutMs,
-              maxResponseBytes: limits.maxResponseBytes,
-              resolver: params.resolver,
-            },
+      const onMessage = (raw: unknown): void => {
+        const parsed = workerEventSchema.safeParse(raw);
+        if (!parsed.success) {
+          return;
+        }
+        const event = parsed.data;
+        if (event.type === 'log') {
+          pushLog(event.text);
+          return;
+        }
+        if (event.type === 'fetch') {
+          const fetchFailed = (message: string): void => {
+            worker.postMessage({
+              type: 'fetch-result',
+              id: event.id,
+              ok: false as const,
+              message: withFetchPrefix(message),
+            });
+          };
+          void (async () => {
+            const check = await validateFetchRequest(
+              {
+                url: event.url,
+                method: event.method,
+                headers: event.headers,
+                bodyPresent: event.bodyPresent,
+              },
+              {
+                allowedHosts: params.allowedHosts,
+                fetchTimeoutMs: limits.fetchTimeoutMs,
+                maxResponseBytes: limits.maxResponseBytes,
+                resolver: params.resolver,
+              },
+            );
+            if (!check.ok) {
+              fetchFailed(check.message);
+              return;
+            }
+            // The fetcher ignores tool-supplied headers: the real request always
+            // sends only `accept: */*` plus the fixed `ZilarTool/1` user-agent.
+            // Anything the tool passes (authorization, cookies, …) never leaves
+            // the sandbox, so there is nothing to forward or merge here.
+            let response;
+            try {
+              response = await fetcher(check.request);
+            } catch (error) {
+              fetchFailed(error instanceof Error ? error.message : 'fetch failed');
+              return;
+            }
+            if (response.body.length > limits.maxResponseBytes) {
+              fetchFailed('response too large');
+              return;
+            }
+            worker.postMessage({
+              type: 'fetch-result',
+              id: event.id,
+              ok: true as const,
+              status: response.status,
+              body: response.body,
+            });
+          })();
+          return;
+        }
+        const message: WorkerResultMessage = event;
+        fetchCount = message.fetchCount;
+        if (message.type === 'error') {
+          settle(fail(message.kind, message.message, message.fetchCount));
+          return;
+        }
+        let parsedOutput: unknown;
+        try {
+          parsedOutput = JSON.parse(message.outputJson) as unknown;
+        } catch {
+          settle(
+            fail(
+              'invalid_output',
+              'tool must return a string or { text, data }',
+              message.fetchCount,
+            ),
           );
-          if (!check.ok) {
-            fetchFailed(check.message);
+          return;
+        }
+        if (typeof parsedOutput === 'string') {
+          const output = parseToolOutput({ text: parsedOutput }, limits.maxOutputBytes);
+          if (output === null) {
+            settle(
+              fail(
+                'invalid_output',
+                'tool must return a string or { text, data }',
+                message.fetchCount,
+              ),
+            );
             return;
           }
-          // The fetcher ignores tool-supplied headers: the real request always
-          // sends only `accept: */*` plus the fixed `ZilarTool/1` user-agent.
-          // Anything the tool passes (authorization, cookies, …) never leaves
-          // the sandbox, so there is nothing to forward or merge here.
-          let response;
-          try {
-            response = await fetcher(check.request);
-          } catch (error) {
-            fetchFailed(error instanceof Error ? error.message : 'fetch failed');
-            return;
-          }
-          if (response.body.length > limits.maxResponseBytes) {
-            fetchFailed('response too large');
-            return;
-          }
-          worker.postMessage({
-            type: 'fetch-result',
-            id: event.id,
-            ok: true as const,
-            status: response.status,
-            body: response.body,
+          settle({
+            ok: true,
+            output,
+            logs: finishLogs(),
+            durationMs: Date.now() - startedAt,
+            fetchCount: message.fetchCount,
           });
-        })();
-        return;
-      }
-      const message: WorkerResultMessage = event;
-      fetchCount = message.fetchCount;
-      if (message.type === 'error') {
-        settle(fail(message.kind, message.message, message.fetchCount));
-        return;
-      }
-      let parsedOutput: unknown;
-      try {
-        parsedOutput = JSON.parse(message.outputJson) as unknown;
-      } catch {
-        settle(
-          fail('invalid_output', 'tool must return a string or { text, data }', message.fetchCount),
-        );
-        return;
-      }
-      if (typeof parsedOutput === 'string') {
-        const output = parseToolOutput({ text: parsedOutput }, limits.maxOutputBytes);
+          return;
+        }
+        const shaped = outputJsonSchema.safeParse(parsedOutput);
+        if (!shaped.success) {
+          settle(
+            fail(
+              'invalid_output',
+              'tool must return a string or { text, data }',
+              message.fetchCount,
+            ),
+          );
+          return;
+        }
+        const output = parseToolOutput(shaped.data, limits.maxOutputBytes);
         if (output === null) {
           settle(
             fail(
@@ -304,40 +330,50 @@ export async function runTool(params: RunToolParams): Promise<RunToolResult> {
           durationMs: Date.now() - startedAt,
           fetchCount: message.fetchCount,
         });
-        return;
-      }
-      const shaped = outputJsonSchema.safeParse(parsedOutput);
-      if (!shaped.success) {
-        settle(
-          fail('invalid_output', 'tool must return a string or { text, data }', message.fetchCount),
-        );
-        return;
-      }
-      const output = parseToolOutput(shaped.data, limits.maxOutputBytes);
-      if (output === null) {
-        settle(
-          fail('invalid_output', 'tool must return a string or { text, data }', message.fetchCount),
-        );
-        return;
-      }
-      settle({
-        ok: true,
-        output,
-        logs: finishLogs(),
-        durationMs: Date.now() - startedAt,
-        fetchCount: message.fetchCount,
-      });
-    });
+      };
 
-    worker.on('error', () => {
-      settle(fail('sandbox_failure', 'tool sandbox failed', fetchCount));
-    });
-    worker.on('exit', (code: number) => {
-      if (!settled) {
+      const onError = (): void => {
+        settle(fail('sandbox_failure', 'tool sandbox failed', fetchCount));
+      };
+      const onExit = (code: number): void => {
         settle(
           fail(code === 0 ? 'runtime' : 'sandbox_failure', 'tool sandbox stopped', fetchCount),
         );
-      }
-    });
+      };
+
+      worker.on('message', onMessage);
+      worker.on('error', onError);
+      worker.on('exit', onExit);
+      return Effect.sync(() => {
+        worker.off('message', onMessage);
+        worker.off('error', onError);
+        worker.off('exit', onExit);
+      });
+    }).pipe(
+      Effect.timeoutOrElse({
+        duration: Duration.millis(limits.wallMs + 500),
+        orElse: () => Effect.succeed(fail('timeout', 'tool timed out', fetchCount)),
+      }),
+    );
+  };
+
+  const program = Effect.gen(function* () {
+    const worker = yield* Effect.acquireRelease(
+      Effect.try({ try: spawnWorker, catch: () => new SandboxStartFailed() }),
+      (worker: Worker) =>
+        Effect.sync(() => {
+          void worker.terminate().catch(() => undefined);
+        }),
+    );
+    return yield* runWorker(worker);
   });
+
+  return Effect.runPromise(
+    program.pipe(
+      Effect.scoped,
+      Effect.catchTag('SandboxStartFailed', () =>
+        Effect.succeed(fail('sandbox_failure', 'could not start the tool sandbox', 0)),
+      ),
+    ),
+  );
 }

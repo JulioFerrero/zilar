@@ -1,13 +1,39 @@
 import { describe, expect, it } from 'vitest';
+import type { WatchEntry } from './watch';
 import {
   WATCH_ICONS,
+  TWO_COLUMN_MIN_WIDTH,
+  cardHeight,
+  columnWidths,
   contextColorName,
   iconsEnabled,
   iconText,
+  layoutColumns,
   liveStepIcon,
   modelBadge,
+  visibleSlice,
   type WatchIconName,
 } from './watch-format';
+
+function entry(overrides: Partial<WatchEntry> = {}): WatchEntry {
+  return {
+    id: 'T-0001',
+    title: 'A task',
+    modelLabel: 'acme/model',
+    model: 'acme/model',
+    effort: undefined,
+    totalAge: '1 m',
+    autoFixRounds: 0,
+    phaseId: 'coding',
+    phaseLabel: 'Coding',
+    needsLead: false,
+    running: true,
+    step: 'editing a.ts',
+    files: [],
+    speed: null,
+    ...overrides,
+  };
+}
 
 const NAMES: WatchIconName[] = [
   'brand',
@@ -184,5 +210,97 @@ describe('contextColorName', () => {
     expect(contextColorName(163_000)).toBe('yellow');
     expect(contextColorName(199_999)).toBe('yellow');
     expect(contextColorName(200_000)).toBe('red');
+  });
+});
+
+describe('cardHeight', () => {
+  it('counts the five base lines of a plain card', () => {
+    expect(cardHeight(entry({ running: false, step: null }))).toBe(5);
+  });
+
+  it('adds the live step line for a running card', () => {
+    expect(cardHeight(entry({ running: true, step: 'editing a.ts' }))).toBe(6);
+  });
+
+  it('adds the waiting line for a card that needs the lead', () => {
+    expect(cardHeight(entry({ needsLead: true, running: false, step: null }))).toBe(6);
+  });
+
+  it('adds the files line when files changed', () => {
+    expect(
+      cardHeight(
+        entry({ running: false, step: null, files: [{ path: 'a.ts', kind: 'modified' }] }),
+      ),
+    ).toBe(6);
+    expect(cardHeight(entry({ files: [{ path: 'a.ts', kind: 'modified' }] }))).toBe(7);
+  });
+});
+
+describe('layoutColumns', () => {
+  it('is one column below 100 and two columns from 100', () => {
+    expect(TWO_COLUMN_MIN_WIDTH).toBe(100);
+    expect(layoutColumns(99)).toBe(1);
+    expect(layoutColumns(100)).toBe(2);
+    expect(layoutColumns(140)).toBe(2);
+  });
+});
+
+describe('columnWidths', () => {
+  it('gives the single column the full width', () => {
+    expect(columnWidths(64, 1)).toEqual([64]);
+  });
+
+  it('splits two columns with a one-column gap and the rest to the second', () => {
+    expect(columnWidths(100, 2)).toEqual([49, 50]);
+    expect(columnWidths(101, 2)).toEqual([50, 50]);
+    expect(columnWidths(120, 2)).toEqual([59, 60]);
+    expect(columnWidths(140, 2)).toEqual([69, 70]);
+  });
+});
+
+describe('visibleSlice', () => {
+  it('shows as many whole rows as fit', () => {
+    expect(visibleSlice([6, 6, 6, 6, 6], 0, 24)).toEqual({
+      start: 0,
+      end: 4,
+      hiddenAbove: 0,
+      hiddenBelow: 1,
+    });
+  });
+
+  it('reports what is hidden above and below after a scroll', () => {
+    expect(visibleSlice([6, 6, 6, 6, 6], 1, 24)).toEqual({
+      start: 1,
+      end: 5,
+      hiddenAbove: 1,
+      hiddenBelow: 0,
+    });
+  });
+
+  it('always shows at least one row, even with no space', () => {
+    expect(visibleSlice([6, 6, 6], 0, 0)).toEqual({
+      start: 0,
+      end: 1,
+      hiddenAbove: 0,
+      hiddenBelow: 2,
+    });
+  });
+
+  it('clamps an offset past the end to the last row', () => {
+    expect(visibleSlice([6, 6, 6], 99, 24)).toEqual({
+      start: 2,
+      end: 3,
+      hiddenAbove: 2,
+      hiddenBelow: 0,
+    });
+  });
+
+  it('returns nothing for no rows', () => {
+    expect(visibleSlice([], 0, 24)).toEqual({
+      start: 0,
+      end: 0,
+      hiddenAbove: 0,
+      hiddenBelow: 0,
+    });
   });
 });

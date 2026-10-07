@@ -1,5 +1,6 @@
 import { TunnelServer } from '@zilar/runner-tunnel';
 import type { KeyRegistry } from '@zilar/runner-tunnel';
+import { Duration, Effect, Fiber, Schedule } from 'effect';
 import { DEFAULT_LITELLM_BASE_URL } from '../ai/litellm-client';
 import type { ServerDatabase } from '../db/client';
 import { listApprovedMachineKeys } from './service';
@@ -55,8 +56,7 @@ export function createHubKeyRegistry({
 }: CreateHubKeyRegistryOptions): HubKeyRegistry {
   const keys = new Map<string, string>();
   const revokeListeners = new Set<(machineId: string) => void>();
-  let timer: NodeJS.Timeout | null = null;
-  let closed = false;
+  let refreshFiber: Fiber.Fiber<number, never> | null = null;
   // Approve/revoke events that land while a refresh query is in flight. The
   // query may have read the database before the change committed, so the
   // events win over its result: a machine revoked mid-refresh must never come
@@ -111,21 +111,28 @@ export function createHubKeyRegistry({
     }
   }
 
-  function scheduleRefresh(): void {
-    if (closed) {
-      return;
-    }
-    timer = setTimeout(() => {
-      timer = null;
-      void refresh().finally(() => {
-        scheduleRefresh();
-      });
-    }, refreshMs);
-    timer.unref();
-  }
+  // The periodic refresh is one Effect program: `refresh` repeated with a
+  // fixed spacing (the delay starts when the previous run finishes), with the
+  // whole program delayed once so the first run comes after one interval,
+  // exactly as the old `setTimeout` chain did. `refresh` catches its own
+  // database errors, but anything it throws outside that guard (a listener
+  // bug, say) is caught here and logged, so the fiber survives it and keeps
+  // rescheduling — the old `void refresh().finally(scheduleRefresh)` chain
+  // always re-armed the same way. `close` interrupts the fiber in place of
+  // the old `timer`/`closed` flags.
+  const refreshLoop = Effect.repeat(
+    Effect.promise(() => refresh()).pipe(
+      Effect.catchDefect((defect) =>
+        Effect.sync(() => {
+          logger.error({ err: serializeError(defect) }, 'runner hub key refresh loop failed');
+        }),
+      ),
+    ),
+    Schedule.spaced(Duration.millis(refreshMs)),
+  ).pipe(Effect.delay(Duration.millis(refreshMs)));
 
   if (autoStartTimer) {
-    scheduleRefresh();
+    refreshFiber = Effect.runFork(refreshLoop);
   }
 
   // The durable registry drives the cache synchronously: the routes call
@@ -179,10 +186,10 @@ export function createHubKeyRegistry({
     },
 
     close(): void {
-      closed = true;
-      if (timer !== null) {
-        clearTimeout(timer);
-        timer = null;
+      if (refreshFiber !== null) {
+        const fiber = refreshFiber;
+        refreshFiber = null;
+        Effect.runFork(Fiber.interrupt(fiber));
       }
       unsubscribeDurableApprove();
       unsubscribeDurableRevoke();
@@ -291,34 +298,32 @@ export async function startRunnerHub({
   };
 
   // The tunnel has no "became ready" event, so a poll walks the approved ids
-  // and writes `last_seen_at` for the live ones (throttled per machine).
-  let pollTimer: NodeJS.Timeout | null = null;
-  let stopped = false;
-
+  // and writes `last_seen_at` for the live ones (throttled per machine). Like
+  // the key refresh, the loop is one Effect program: the first run after one
+  // interval, then every `pollIntervalMs` after the previous run finished.
+  // `flushLastSeen` catches its own write errors, but anything else the walk
+  // throws is caught here and logged so the fiber survives it and reschedules,
+  // as the old `void pollOnce().finally(schedulePoll)` chain did. `close`
+  // interrupts the fiber in place of the old `timer`/`stopped` flags.
   async function pollOnce(): Promise<void> {
     for (const id of cache.approvedIds()) {
-      if (stopped) {
-        return;
-      }
       if (server.isRunnerLive(id)) {
         await flushLastSeen(id);
       }
     }
   }
 
-  function schedulePoll(): void {
-    if (stopped) {
-      return;
-    }
-    pollTimer = setTimeout(() => {
-      pollTimer = null;
-      void pollOnce().finally(() => {
-        schedulePoll();
-      });
-    }, pollIntervalMs);
-    pollTimer.unref();
-  }
-  schedulePoll();
+  const pollLoop = Effect.repeat(
+    Effect.promise(() => pollOnce()).pipe(
+      Effect.catchDefect((defect) =>
+        Effect.sync(() => {
+          logger.error({ err: serializeError(defect) }, 'runner hub last-seen poll failed');
+        }),
+      ),
+    ),
+    Schedule.spaced(Duration.millis(pollIntervalMs)),
+  ).pipe(Effect.delay(Duration.millis(pollIntervalMs)));
+  const pollFiber = Effect.runFork(pollLoop);
 
   logger.info({ port: server.port }, 'runner hub listening');
 
@@ -330,11 +335,7 @@ export async function startRunnerHub({
     },
 
     async close(): Promise<void> {
-      stopped = true;
-      if (pollTimer !== null) {
-        clearTimeout(pollTimer);
-        pollTimer = null;
-      }
+      await Effect.runPromise(Fiber.interrupt(pollFiber));
       cache.close();
       await server.close().catch(() => undefined);
     },

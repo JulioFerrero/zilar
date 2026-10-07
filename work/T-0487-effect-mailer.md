@@ -1,7 +1,7 @@
 ---
 id: T-0487
 title: "Effect convert: SMTP mailer send with timeout in Effect, Mailer API unchanged"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0487-effect-mailer
 model: auto
@@ -69,4 +69,75 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+
+Converted the internals of `SmtpMailer.sendOtp` to Effect, keeping the plain
+`Promise`/throw API at the edge:
+
+- `Effect.tryPromise(() => send, catch)` wraps the `sendMail` promise; the
+  rejection maps to a private `MailerSendFailed` tagged error that carries only
+  the `smtpCode` (a number or `'unknown'`) used by the log line.
+- `Effect.timeoutOrElse({ duration, orElse })` adds the `#sendTimeoutMs`
+  timeout; expiry fails with a private `MailerSendTimedOut` tagged error.
+- `Effect.catchTags` maps both at the edge to the same logs and the same
+  `MailerDeliveryError` throws as before:
+  - timeout → `{ purpose }` "sign-in email delivery timed out";
+  - send failure → `{ purpose, smtpCode }` "sign-in email failed".
+- The digit check stays first and throws `MailerDeliveryError` before any Effect.
+- The manual `setTimeout`/`Promise.race` is gone. `Effect.timeoutOrElse`
+  interrupts the timer fiber when the send completes, so the timer no longer
+  outlives a successful send. This is the only internal change; no caller sees
+  it.
+- No export, class or method signature changed. The two new errors are
+  module-private and not exported.
+
+### Files and line counts (before → after)
+
+- `apps/server/src/auth/mailer.ts`: **311 → 329** lines (+18).
+- `apps/server/src/auth/mailer.effect.test.ts`: **new, 85** lines.
+- `work/T-0487-effect-mailer.md`: Report filled, status set to review.
+
+`apps/server/src/auth/mailer.test.ts` was **not touched**.
+
+### Commands I ran (real results)
+
+- `pnpm install`: done in 30.4s (setup).
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot auth/mailer`:
+  `Test Files 2 passed (2)`, `Tests 20 passed (20)`, duration 4.34s. (The 18
+  existing mailer tests plus the 2 new Effect tests.)
+- `pnpm gate` (from the repo root): **GATE PASS**. Summary lines:
+
+```
+gate: 3 changed file(s) against main
+PASS  install (frozen)  (4.4s)
+PASS  format  (41.6s)
+PASS  lint  (1.1s)
+PASS  typecheck  (1.5s)
+PASS  tests @zilar/server  (1250.7s)
+scope: every changed file is inside the Allowed files
+GATE PASS
+EXIT:0
+```
+
+The `tests @zilar/server` step took ~21 minutes because the machine was shared
+with several other worktrees running their own gates; it passed.
+
+### New tests
+
+`apps/server/src/auth/mailer.effect.test.ts`, over the json transport (no
+network): a hanging transport fails with `MailerDeliveryError` and logs
+"sign-in email delivery timed out"; a rejecting transport fails with
+`MailerDeliveryError` and logs the `smtpCode` (`"smtpCode":550`) without leaking
+the provider message or the code.
+
+### Deviations / notes
+
+- None from the spec. The existing tests are unchanged and green.
+- The old timeout branch rethrew the same `MailerDeliveryError` instance; the
+  new code always throws a fresh instance. Both are `MailerDeliveryError` and
+  the tests assert `instanceof`, so this is not observable. Called out for
+  transparency.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-07). SmtpMailer.sendOtp runs on Effect: tryPromise(sendMail) with timeoutOrElse, and typed timeout and send errors mapped to the same logs and the same MailerDeliveryError. The digit check comes first, and the timer no longer outlives a successful send. The existing tests are untouched. Pre-review clean.

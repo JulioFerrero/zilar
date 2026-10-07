@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import React from 'react';
 import { render as renderInk } from 'ink';
-import { z } from 'zod';
+import { Result, Schema } from 'effect';
 import type { OpenCodeClient } from './client.js';
 import { OpencodeCliClient } from './client.js';
 import { collectSnapshot } from './collect-snapshot.js';
@@ -374,40 +374,40 @@ export interface WatchView {
 // The `--data` child process prints one JSON line and exits; this parses it.
 // Junk of any kind — malformed JSON, missing fields, wrong types — returns
 // `null` so the watcher can keep the previous view.
-const FileSchema = z.object({
-  path: z.string(),
-  kind: z.enum(['created', 'modified', 'deleted']),
+const FileSchema = Schema.Struct({
+  path: Schema.String,
+  kind: Schema.Literals(['created', 'modified', 'deleted']),
 });
 
-const SpeedSchema = z.object({
-  tokPerSec: z.number(),
-  secPerStep: z.number(),
-  context: z.number(),
-  spark: z.array(z.number()),
+const SpeedSchema = Schema.Struct({
+  tokPerSec: Schema.Number,
+  secPerStep: Schema.Number,
+  context: Schema.Number,
+  spark: Schema.mutable(Schema.Array(Schema.Number)),
 });
 
-const EntrySchema = z.object({
-  id: z.string(),
-  title: z.string(),
-  modelLabel: z.string(),
-  model: z.string(),
-  effort: z.string().nullish(),
-  totalAge: z.string(),
-  autoFixRounds: z.number(),
-  phaseId: z.string(),
-  phaseLabel: z.string(),
-  needsLead: z.boolean(),
-  running: z.boolean(),
-  step: z.string().nullable(),
-  files: z.array(FileSchema),
-  speed: SpeedSchema.nullish(),
+const EntrySchema = Schema.Struct({
+  id: Schema.String,
+  title: Schema.String,
+  modelLabel: Schema.String,
+  model: Schema.String,
+  effort: Schema.optional(Schema.NullOr(Schema.String)),
+  totalAge: Schema.String,
+  autoFixRounds: Schema.Number,
+  phaseId: Schema.String,
+  phaseLabel: Schema.String,
+  needsLead: Schema.Boolean,
+  running: Schema.Boolean,
+  step: Schema.NullOr(Schema.String),
+  files: Schema.mutable(Schema.Array(FileSchema)),
+  speed: Schema.optional(Schema.NullOr(SpeedSchema)),
 });
 
-const ViewSchema = z.object({
-  clock: z.string(),
-  refreshFailed: z.boolean(),
-  mergedToday: z.number(),
-  entries: z.array(EntrySchema),
+const ViewSchema = Schema.Struct({
+  clock: Schema.String,
+  refreshFailed: Schema.Boolean,
+  mergedToday: Schema.Number,
+  entries: Schema.mutable(Schema.Array(EntrySchema)),
 });
 
 export function parseWatchView(line: string): WatchView | null {
@@ -417,13 +417,13 @@ export function parseWatchView(line: string): WatchView | null {
   } catch {
     return null;
   }
-  const result = ViewSchema.safeParse(parsed);
-  if (!result.success) {
+  const result = Schema.decodeUnknownResult(ViewSchema)(parsed);
+  if (Result.isFailure(result)) {
     return null;
   }
   return {
-    ...result.data,
-    entries: result.data.entries.map((entry) => ({
+    ...result.success,
+    entries: result.success.entries.map((entry) => ({
       ...entry,
       effort: entry.effort ?? undefined,
       speed: entry.speed ?? null,

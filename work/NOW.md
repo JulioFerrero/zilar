@@ -2,6 +2,76 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-07 23:45, Julio asleep, Effect night continues:**
+- **Merged since 23:10:**
+  - T-0495: runtime and logger;
+  - T-0485: Giphy;
+  - T-0483: Telegram import;
+  - T-0497: recovery loop;
+  - T-0499: agent-drivers;
+  - T-0500: runner-tunnel schemas;
+  - T-0501: apps/runner schemas;
+  - T-0502: lead CLI schemas. Live `state.json` decode checked first;
+  - T-0503: the agents split plan;
+  - T-0511: tunnel server timers.
+- **Merging:** T-0498 (HttpApi adapter, handles pilot; P1 gate passed) and T-0496 (pins on effect/sql, plus the migration plan).
+- **Approved, waiting for a fix before merge:**
+  - T-0494 (protocol on Effect Schema): after T-0496 merges, the worker regenerates the lockfile, then phone:smoke runs on the emulator (the first Effect bundle on Hermes);
+  - T-0509 (RunnerClient): T-0511's new pong-timeout test is flaky (it failed 1 in 5 on main), and the T-0509 worker makes it deterministic.
+- **Running:**
+  - T-0512: agents G1 extraction;
+  - T-0513: agents C1, the model call on Effect.
+- **Paused:** T-0510 (blocks on effect/sql) waits for T-0496 in main; it was launched too early.
+- **Ready after T-0494:**
+  - T-0504: server config;
+  - T-0505 and T-0507: web api.ts parts 1 and 2;
+  - T-0506: mobile pins pilot;
+  - T-0508: web drafts, tools and cache.
+- **Lead decisions tonight:**
+  - **effect/sql:** better-auth moves to a custom adapter over effect/sql; drizzle-kit migrations stay until the last step, then one transaction per migration;
+  - **agents plan:** the oversized G1, G8 and C2 are split;
+  - **effect version:** ^4.0.2 everywhere;
+  - **lead tooling:** the lead runner script now runs `pnpm install --frozen-lockfile` in main after each merge, because the lead CLI broke once when T-0502 added `effect` to devtools.
+
+**2026-10-07 23:10, Julio asleep ("dont stop working… dont make questions"):**
+- **The lead decides alone tonight.** Anything that is Julio's call goes to "Waiting for Julio" below.
+- **Merged tonight:**
+  - T-0492: the transcription provider;
+  - T-0493: the push pipeline;
+  - T-0487: the mailer.
+- **Merge queue** (one at a time, run by the lead's runner script):
+  - T-0495: the runtime and pino logger. The lead sent 3 fix rounds for redaction: objects become fields, Errors become `err`;
+  - T-0485: Giphy;
+  - T-0483: Telegram import. A fix round added an edge catch-all so the token can never leak;
+  - T-0497: the recovery loop.
+- **Running:**
+  - T-0494: the protocol on Effect Schema plus every consumer;
+  - T-0496: the `effect/sql` spike on pins;
+  - T-0499: agent-drivers;
+  - T-0500: runner-tunnel schemas;
+  - T-0501: apps/runner schemas.
+- **Launching:**
+  - T-0498 (the HttpApi adapter, handles pilot), after T-0495 merges;
+  - T-0502 (lead CLI schemas);
+  - T-0503 (the audit that splits the agents module into small tasks).
+- **Found on main:** `apps/server/src/topics/backfill.test.ts` fails, because migration 0045 (T-0470) adds a foreign key to `topics` that the test's exclusion list doesn't skip. The gate missed it because it only runs related tests. T-0494 carries the one-line fix (lead-approved). Follow-up: the merge gate should run the whole server suite at least once a day.
+- **Decisions the lead took:**
+  - workers may not run `npx` or detached `python` processes; they use `pnpm exec` and run the gate in the foreground;
+  - the draft hub stays as it is: its sync ordering needs no Effect, so it moves with the drafts route later.
+
+**2026-10-07 late night (Effect everywhere):**
+- **Julio:** "all the codebase to be effect 4.0". That means frameworks too, Effect Schema instead of zod, and web and mobile now. **No new features.** Use as many workers as the PC handles; it ran 9 at a load around 44 with 52% memory free.
+- **Merged since the last update:**
+  - T-0479: the round budget;
+  - T-0480: the delegation service;
+  - T-0481: AI-to-AI handoff.
+- **Running:**
+  - T-0482: the delegate tools, in a fix round. It was nearly done when the no-features rule came, so it finishes;
+  - T-0483 to T-0489: logic conversions (Telegram import, guarded fetch, Giphy, runner hub, mailer, scheduler and sweeper, sandbox runner);
+  - T-0490: the whole-codebase plan. It produces `docs/audit/effect-everywhere-plan.md`, with the architecture per layer, measurements and task lanes.
+- **Next:** after T-0490, rewrite `docs/ROADMAP_EFFECT.md` and `docs/EFFECT_GUIDE.md` from the plan. Then foundations, then one pilot per layer, then the bulk.
+- **Waiting for Julio:** as before: the upload cutover, the mobile version bump, the Coolify secrets.
+
 **2026-10-07 night (listener + kit):**
 - **Merged:**
   - T-0469: release-readiness audit;

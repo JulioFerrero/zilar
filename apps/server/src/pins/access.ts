@@ -1,6 +1,7 @@
-import { eq } from 'drizzle-orm';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
-import { topics } from '../db/schema';
+import { sqlRuntimeFor } from '../effect/sql';
 import { HttpError } from '../errors';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 import { canManageTopic, canSeeTopic, type TopicRow } from '../topics/access';
@@ -31,6 +32,22 @@ export function dmPairKey(ownBareJid: string, peerBareJid: string): string {
   return `${first}|${second}`;
 }
 
+// The room-owning topic row, read through `effect/sql`. Selecting `*` and
+// letting the client camelCase the columns keeps the exact drizzle `TopicRow`
+// shape the access helpers below already took.
+async function findTopicByRoomLocalpart(
+  db: ServerDatabase,
+  roomLocalpart: string,
+): Promise<TopicRow | null> {
+  const program = Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const rows =
+      yield* sql<TopicRow>`SELECT * FROM topics WHERE room_localpart = ${roomLocalpart} LIMIT 1`;
+    return rows[0] ?? null;
+  });
+  return sqlRuntimeFor(db).runPromise(program);
+}
+
 // Resolves the `chat` parameter to the stored `chat_jid` plus, for rooms,
 // the topic row that owns it. Visibility only: a stranger (or a malformed
 // JID) gets the same 404 as an unknown chat. Pin/write permission is a
@@ -50,11 +67,7 @@ export async function resolvePinChat(
   const host = access.bare.slice(at + 1);
   if (host === mucDomain.toLowerCase()) {
     const localpart = access.bare.slice(0, at);
-    const [topic] = await db
-      .select()
-      .from(topics)
-      .where(eq(topics.roomLocalpart, localpart))
-      .limit(1);
+    const topic = await findTopicByRoomLocalpart(db, localpart);
     // The room exists in the directory but no visible topic owns it (or the
     // topic is archived): still a 404, never a leak.
     if (!topic || !(await canSeeTopic(db, topic, userId))) {
@@ -117,11 +130,7 @@ async function resolveRoomPin(
 ): Promise<PinChat> {
   const at = storedChatJid.indexOf('@');
   const localpart = at === -1 ? '' : storedChatJid.slice(0, at);
-  const [topic] = await db
-    .select()
-    .from(topics)
-    .where(eq(topics.roomLocalpart, localpart))
-    .limit(1);
+  const topic = await findTopicByRoomLocalpart(db, localpart);
   if (!topic || !(await canSeeTopic(db, topic, userId))) {
     throw toMissingChat();
   }

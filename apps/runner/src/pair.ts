@@ -1,7 +1,7 @@
 import { createPrivateKey, sign } from 'node:crypto';
 import os from 'node:os';
 import { generateRunnerKeypair, type RunnerKeypair } from '@zilar/runner-tunnel';
-import { z } from 'zod';
+import { Exit, Schema } from 'effect';
 import { detectCapabilities, type Capabilities } from './capabilities.ts';
 import {
   buildIdentity,
@@ -89,9 +89,9 @@ function defaultName(): string {
   return host.length > 0 ? host.slice(0, 64) : 'zilar-runner';
 }
 
-const pairResponseSchema = z.strictObject({
-  machineId: z.string().min(1).max(128),
-  status: z.literal('pending'),
+const pairResponseSchema = Schema.Struct({
+  machineId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(128)),
+  status: Schema.Literal('pending'),
 });
 
 export async function pairRunner(options: PairOptions): Promise<PairResult> {
@@ -159,8 +159,10 @@ export async function pairRunner(options: PairOptions): Promise<PairResult> {
         'The server returned 201 but the body was not JSON.',
       );
     }
-    const parsed = pairResponseSchema.safeParse(payload);
-    if (!parsed.success) {
+    const parsed = Schema.decodeUnknownExit(pairResponseSchema, { onExcessProperty: 'error' })(
+      payload,
+    );
+    if (Exit.isFailure(parsed)) {
       throw new PairError(
         'malformed_response',
         'The server response did not include a machine id.',
@@ -168,7 +170,7 @@ export async function pairRunner(options: PairOptions): Promise<PairResult> {
     }
     const identity = buildIdentity({
       serverUrl: options.serverUrl,
-      machineId: parsed.data.machineId,
+      machineId: parsed.value.machineId,
       publicKey: keypair.publicKey,
       privateKey: keypair.privateKey,
       name: trimmedName,
@@ -186,7 +188,7 @@ export async function pairRunner(options: PairOptions): Promise<PairResult> {
       throw err;
     }
     return {
-      machineId: parsed.data.machineId,
+      machineId: parsed.value.machineId,
       fingerprint: fingerprintOfPublicKey(keypair.publicKey),
       identity,
     };
