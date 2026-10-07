@@ -6,6 +6,9 @@ export const REQUEST_ACTION_TOOL = 'request_action';
 export const RECALL_TOOL = 'recall';
 export const MEMORY_ZOOM_TOOL = 'memory_zoom';
 export const REMEMBER_TOOL = 'remember';
+// T-0482: the delegation tools (plan `listener-delegation-plan.md` §4.1-§4.3).
+export const DELEGATE_TOOL = 'delegate';
+export const TASK_STATUS_TOOL = 'task_status';
 
 // The same ceiling the API enforces on a persona (`CreateAiSchema`).
 export const PERSONA_MAX_LENGTH = 4000;
@@ -52,6 +55,26 @@ export const RememberArgsSchema = z
   })
   .strict();
 
+// T-0482: the `delegate` tool's arguments. `objective` is the only required
+// text; the rest are hints. `to` is an AI id from the roster that the tool
+// description lists, never a name taken from model output. The service caps
+// and cuts these values itself, so the schema only rejects out-of-shape input.
+export const DelegateArgsSchema = z
+  .object({
+    to: z.string().trim().min(1).max(64),
+    objective: z.string().trim().min(1).max(1000),
+    context_summary: z.string().trim().max(1200).optional(),
+    acceptance: z.array(z.string().trim().min(1).max(300)).max(10).optional(),
+    return_format: z.string().trim().max(200).optional(),
+  })
+  .strict();
+
+export const TaskStatusArgsSchema = z
+  .object({
+    task_id: z.string().trim().min(1).max(64),
+  })
+  .strict();
+
 // `args` is a JSON object (never an array, never a primitive): a JSON
 // object is the shape every adapter's zod schema expects. `action` rides
 // through to the gateway unchanged, but its pattern is checked so a
@@ -78,6 +101,16 @@ export type ParsedToolArguments =
   | { ok: true; tool: typeof RECALL_TOOL; query: string }
   | { ok: true; tool: typeof MEMORY_ZOOM_TOOL; block: string }
   | { ok: true; tool: typeof REMEMBER_TOOL; text: string }
+  | {
+      ok: true;
+      tool: typeof DELEGATE_TOOL;
+      to: string;
+      objective: string;
+      context_summary?: string;
+      acceptance?: string[];
+      return_format?: string;
+    }
+  | { ok: true; tool: typeof TASK_STATUS_TOOL; task_id: string }
   | { ok: false; reason: string };
 
 // Tool names ride into log lines and back to the model, so a model-chosen
@@ -110,7 +143,9 @@ export function parseToolArguments(toolName: string, argsJson: string): ParsedTo
     toolName !== REQUEST_ACTION_TOOL &&
     toolName !== RECALL_TOOL &&
     toolName !== MEMORY_ZOOM_TOOL &&
-    toolName !== REMEMBER_TOOL
+    toolName !== REMEMBER_TOOL &&
+    toolName !== DELEGATE_TOOL &&
+    toolName !== TASK_STATUS_TOOL
   ) {
     return { ok: false, reason: `unknown tool: ${safeToolName(toolName)}` };
   }
@@ -163,6 +198,32 @@ export function parseToolArguments(toolName: string, argsJson: string): ParsedTo
       return { ok: false, reason: firstIssue(parsed.error) };
     }
     return { ok: true, tool: REMEMBER_TOOL, text: parsed.data.text };
+  }
+  if (toolName === DELEGATE_TOOL) {
+    const parsed = DelegateArgsSchema.safeParse(parsedJson);
+    if (!parsed.success) {
+      return { ok: false, reason: firstIssue(parsed.error) };
+    }
+    return {
+      ok: true,
+      tool: DELEGATE_TOOL,
+      to: parsed.data.to,
+      objective: parsed.data.objective,
+      ...(parsed.data.context_summary === undefined
+        ? {}
+        : { context_summary: parsed.data.context_summary }),
+      ...(parsed.data.acceptance === undefined ? {} : { acceptance: parsed.data.acceptance }),
+      ...(parsed.data.return_format === undefined
+        ? {}
+        : { return_format: parsed.data.return_format }),
+    };
+  }
+  if (toolName === TASK_STATUS_TOOL) {
+    const parsed = TaskStatusArgsSchema.safeParse(parsedJson);
+    if (!parsed.success) {
+      return { ok: false, reason: firstIssue(parsed.error) };
+    }
+    return { ok: true, tool: TASK_STATUS_TOOL, task_id: parsed.data.task_id };
   }
   const parsed = RequestActionArgsSchema.safeParse(parsedJson);
   if (!parsed.success) {
@@ -330,6 +391,64 @@ export function buildRequestActionTool(
   };
 }
 
+// T-0482: the tool definition the model sees for `delegate`. The targets are
+// listed as `id — name`, and the model must pick the id (a name from its own
+// text is never trusted). The worker runs the task with its own model, key and
+// budget and answers in the room; the boss reads the stored result later with
+// `task_status`.
+export function buildDelegateTool(
+  targets: ReadonlyArray<{ id: string; name: string }>,
+): ChatToolDefinition {
+  const list = targets.map((target) => `${target.id} — ${target.name}`).join('; ');
+  return {
+    type: 'function',
+    function: {
+      name: DELEGATE_TOOL,
+      description:
+        'Hand a task to another AI in this room. It works on the task with its own ' +
+        'model and budget and replies in the room. `to` is the target id from the ' +
+        'list below, `objective` is what it must do. Use task_status later to read ' +
+        `the stored result. Targets: ${list}.`,
+      parameters: {
+        type: 'object',
+        properties: {
+          to: { type: 'string', minLength: 1, maxLength: 64 },
+          objective: { type: 'string', minLength: 1, maxLength: 1000 },
+          context_summary: { type: 'string', maxLength: 1200 },
+          acceptance: {
+            type: 'array',
+            items: { type: 'string', minLength: 1, maxLength: 300 },
+            maxItems: 10,
+          },
+          return_format: { type: 'string', maxLength: 200 },
+        },
+        required: ['to', 'objective'],
+        additionalProperties: false,
+      },
+    },
+  };
+}
+
+// The `task_status` tool definition, the same for every room that offers the
+// delegation tools: it reads one delegation row for the two AIs involved.
+export const TASK_STATUS_TOOL_DEF: ChatToolDefinition = {
+  type: 'function',
+  function: {
+    name: TASK_STATUS_TOOL,
+    description:
+      'Read the stored result of a task you delegated or received. `task_id` is ' +
+      'the id `delegate` returned.',
+    parameters: {
+      type: 'object',
+      properties: {
+        task_id: { type: 'string', minLength: 1, maxLength: 64 },
+      },
+      required: ['task_id'],
+      additionalProperties: false,
+    },
+  },
+};
+
 // The full tools array for one DM turn: the persona tools, the memory tools,
 // and `request_action` only when at least one action is registered. With no
 // actions (the production default while `ACTION_DEMO_ENABLED` is off and no
@@ -350,13 +469,19 @@ export function buildTools(
 // (T-0098). Persona tools never appear in a group — only the AI's owner may
 // reshape it, and only in the DM. With no acceptable actions the result is the
 // memory tools alone, so a plain member's turn still carries no action tool.
+// T-0482: when `delegateTargets` is non-empty (the AI may delegate and at
+// least one accepting AI is in the room) `delegate` and `task_status` are
+// appended. Without targets the output is unchanged.
 export function buildGroupTools(
   actions: ReadonlyArray<{ name: string; description: string }>,
+  delegateTargets?: ReadonlyArray<{ id: string; name: string }>,
 ): ChatToolDefinition[] {
-  if (actions.length === 0) {
-    return [...MEMORY_TOOLS];
+  const base =
+    actions.length === 0 ? [...MEMORY_TOOLS] : [...MEMORY_TOOLS, buildRequestActionTool(actions)];
+  if (delegateTargets === undefined || delegateTargets.length === 0) {
+    return base;
   }
-  return [...MEMORY_TOOLS, buildRequestActionTool(actions)];
+  return [...base, buildDelegateTool(delegateTargets), TASK_STATUS_TOOL_DEF];
 }
 
 // One line the gateway appends to the AI's text reply after a successful

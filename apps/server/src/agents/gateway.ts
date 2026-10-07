@@ -84,6 +84,7 @@ import {
 import {
   buildGroupTools,
   buildTools,
+  DELEGATE_TOOL,
   formatPersonaUpdatedLine,
   formatRememberedLine,
   MEMORY_ZOOM_TOOL,
@@ -91,8 +92,10 @@ import {
   RECALL_TOOL,
   REMEMBER_TOOL,
   REQUEST_ACTION_TOOL,
+  TASK_STATUS_TOOL,
   UPDATE_PERSONA_TOOL,
 } from './tools';
+import { createDelegation, finishDelegation, getDelegationForAi } from './delegation/service';
 import type { ActionGateway, DeniedReason, RequestOutcome } from '../actions/gateway';
 
 export interface GatewayLogger {
@@ -217,6 +220,9 @@ interface RoomPendingMessage {
   wake?: true;
   /** T-0481: set on an AI-to-AI handoff queued by another AI's @mention. */
   handoff?: true;
+  /** T-0482: set on the synthetic trigger `delegate` queues on the worker's
+   * session; its id is the delegation row to finish when the turn ends. */
+  delegationId?: string;
 }
 
 // T-0479: the per-room round budget, shared by every AI session in the room
@@ -754,8 +760,17 @@ export function createAgentGateway(
   interface RequestActionContext {
     groupId: string;
     topicId: string;
+    /** T-0482: the room JID the turn is answering in, so `delegate` can queue
+     * the worker's synthetic trigger and read this AI's room nick. */
+    roomJid: string;
+    /** T-0482: the message id that opened the turn, stored as `reply_to`. */
+    triggerId: string;
     isStillAllowed: () => Promise<boolean>;
     allowActions: boolean;
+    /** T-0482: the AI ids in this room that may receive a delegation. Empty
+     * when this AI may not delegate or no accepting AI is present, which makes
+     * both delegation tools answer `invalid: unknown tool`. */
+    delegateTargetIds: ReadonlySet<string>;
   }
 
   // Runs one validated tool call against the gateway's own AI id. The id
@@ -792,7 +807,18 @@ export function createAgentGateway(
           call.tool === RECALL_TOOL ||
           call.tool === MEMORY_ZOOM_TOOL ||
           call.tool === REMEMBER_TOOL;
-        if (!isMemoryTool && call.tool !== REQUEST_ACTION_TOOL) {
+        // T-0482: `delegate` is offered only when this AI may delegate and at
+        // least one accepting AI is in the room, and a model that improvises
+        // it otherwise gets the same `invalid: unknown tool` as any other
+        // unadvertised tool. `task_status` is always a known group tool: it
+        // reads an existing row and `getDelegationForAi` already scopes the
+        // read to the two involved AIs, so it must still fall through when
+        // there are no delegation targets.
+        const isDelegationTool = call.tool === DELEGATE_TOOL || call.tool === TASK_STATUS_TOOL;
+        if (!isMemoryTool && !isDelegationTool && call.tool !== REQUEST_ACTION_TOOL) {
+          return { content: 'invalid: unknown tool' };
+        }
+        if (call.tool === DELEGATE_TOOL && context.delegateTargetIds.size === 0) {
           return { content: 'invalid: unknown tool' };
         }
         if (call.tool === REQUEST_ACTION_TOOL && !context.allowActions) {
@@ -833,6 +859,124 @@ export function createAgentGateway(
           return { content: 'already remembered' };
         }
         return { content: 'invalid: one line, at most 280 characters' };
+      }
+      if (call.tool === DELEGATE_TOOL) {
+        // Only reachable in a group turn that offered the tool; the guard
+        // above answers `invalid: unknown tool` otherwise.
+        if (context === undefined) {
+          return { content: 'invalid: unknown tool' };
+        }
+        if (!context.delegateTargetIds.has(call.toAiId)) {
+          return { content: 'invalid: unknown AI' };
+        }
+        // The target must still be a live session in this room. The id set was
+        // built from those sessions at turn start, so a session that left in
+        // the meantime is refused the same way an unknown id is.
+        let worker: AiSession | undefined;
+        for (const candidate of sessions.values()) {
+          if (candidate.aiId === call.toAiId && candidate.rooms.has(context.roomJid)) {
+            worker = candidate;
+            break;
+          }
+        }
+        if (worker === undefined) {
+          return { content: 'invalid: unknown AI' };
+        }
+        const round = roomRounds.get(context.roomJid);
+        if (round !== undefined && round.hops >= ROUND_MAX_HOPS) {
+          logger.info(
+            { fromAiId: session.aiId, toAiId: call.toAiId, groupId: context.groupId },
+            'AI delegation refused: no hops left',
+          );
+          return { content: 'refused: no hops left for this message' };
+        }
+        const bossNick = session.rooms.get(context.roomJid)?.nick ?? '';
+        let created: Awaited<ReturnType<typeof createDelegation>>;
+        try {
+          created = await createDelegation(deps.db, {
+            fromAiId: session.aiId,
+            toAiId: call.toAiId,
+            groupId: context.groupId,
+            ...(context.topicId === '' ? {} : { topicId: context.topicId }),
+            objective: call.objective,
+            ...(call.contextSummary === undefined ? {} : { contextSummary: call.contextSummary }),
+            ...(call.acceptance === undefined ? {} : { acceptance: call.acceptance }),
+            ...(call.returnFormat === undefined ? {} : { returnFormat: call.returnFormat }),
+            replyTo: context.triggerId,
+          });
+        } catch (error) {
+          logger.warn(
+            { err: errorName(error), fromAiId: session.aiId, toAiId: call.toAiId },
+            'AI delegation create threw',
+          );
+          return { content: 'the task could not be started' };
+        }
+        if (!created.ok) {
+          logger.info(
+            { fromAiId: session.aiId, toAiId: call.toAiId, groupId: context.groupId, ok: false },
+            'AI delegation refused',
+          );
+          return { content: `refused: ${created.reason}` };
+        }
+        let body = `Task from ${bossNick}: ${call.objective}`;
+        if (call.contextSummary !== undefined) {
+          body += `\nContext: ${call.contextSummary}`;
+        }
+        if (call.returnFormat !== undefined) {
+          body += `\nReturn: ${call.returnFormat}`;
+        }
+        const queued = worker.roomPending.get(context.roomJid) ?? [];
+        queued.push({
+          id: `delegation:${created.delegation.id}`,
+          body,
+          fromJid: session.aiJid,
+          fromResolved: true,
+          ...(bossNick === '' ? {} : { fromNick: bossNick }),
+          timestamp: (deps.now ?? (() => new Date()))(),
+          handoff: true,
+          delegationId: created.delegation.id,
+        });
+        worker.roomPending.set(context.roomJid, queued);
+        void pumpRoom(worker, context.roomJid).catch((error: unknown) => {
+          logger.warn(
+            { err: toRedactedError(error, secretsFor()), aiId: worker.aiId },
+            'AI group pump failed',
+          );
+        });
+        if (round !== undefined) {
+          round.hops += 1;
+        }
+        logger.info(
+          {
+            fromAiId: session.aiId,
+            toAiId: call.toAiId,
+            delegationId: created.delegation.id,
+            groupId: context.groupId,
+          },
+          'AI delegation started',
+        );
+        return {
+          content: JSON.stringify({ task_id: created.delegation.id, status: 'working' }),
+        };
+      }
+      if (call.tool === TASK_STATUS_TOOL) {
+        // Only reachable in a group turn that offered the tool; a DM has no
+        // delegation context, so an improvised call gets the same
+        // `invalid: unknown tool` as any other unadvertised tool.
+        if (context === undefined) {
+          return { content: 'invalid: unknown tool' };
+        }
+        const view = await getDelegationForAi(deps.db, call.taskId, aiId);
+        if (view === null) {
+          return { content: 'invalid: unknown task' };
+        }
+        return {
+          content: JSON.stringify({
+            task_id: view.id,
+            status: view.status,
+            result: view.resultSummary,
+          }),
+        };
       }
       if (call.tool === UPDATE_PERSONA_TOOL) {
         await setPersonaFromChat(deps.db, aiId, call.persona);
@@ -1871,11 +2015,18 @@ export function createAgentGateway(
     session.roomBusy.add(roomJid);
     try {
       while (!session.stopped) {
-        const batch = session.roomPending.get(roomJid) ?? [];
-        if (batch.length === 0) {
+        const queued = session.roomPending.get(roomJid) ?? [];
+        if (queued.length === 0) {
           break;
         }
-        session.roomPending.set(roomJid, []);
+        // T-0482: a delegated task is always its own turn. If it coalesced
+        // with a mention or another delegation, only the last item would be
+        // the trigger and the other delegation rows would stay `working`
+        // forever. Mentions still coalesce with mentions.
+        const nextDelegation = queued.findIndex((item) => item.delegationId !== undefined);
+        const take = nextDelegation === -1 ? queued.length : Math.max(1, nextDelegation);
+        const batch = queued.slice(0, take);
+        session.roomPending.set(roomJid, queued.slice(take));
         await runGroupSessionTurn(session, roomJid, batch);
       }
     } finally {
@@ -1944,6 +2095,28 @@ export function createAgentGateway(
     }
     const trigger = eligible[eligible.length - 1] as RoomPendingMessage;
 
+    // T-0482: a delegated trigger that is dropped before the model call must
+    // not leave its row `working` forever. Fails quietly: a lookup or update
+    // error here only logs ids. A turn that does reach the model finishes its
+    // row below with the worker's text.
+    const failDelegationQuietly = async (delegationId: string | undefined): Promise<void> => {
+      if (delegationId === undefined) {
+        return;
+      }
+      try {
+        await finishDelegation(deps.db, {
+          id: delegationId,
+          aiId: session.aiId,
+          status: 'failed',
+        });
+      } catch (error) {
+        logger.warn(
+          { err: errorName(error), aiId: session.aiId, delegationId },
+          'AI delegation finish failed',
+        );
+      }
+    };
+
     // The soft daily limit is checked before the rate budget and any model
     // call: a limited AI sends at most one fixed notice per room per UTC day
     // (a plain room message, no mention) and further mentions get nothing.
@@ -1958,6 +2131,7 @@ export function createAgentGateway(
       sendNotice: (text) => liveSendMessage(session, roomJid, 'groupchat', text),
     });
     if (groupBudget.limited) {
+      await failDelegationQuietly(trigger.delegationId);
       return;
     }
 
@@ -1971,6 +2145,7 @@ export function createAgentGateway(
         { aiId: session.aiId, groupId: room.groupId, messageId: trigger.id },
         'AI group rate limit reached; dropping the turn',
       );
+      await failDelegationQuietly(trigger.delegationId);
       return;
     }
     recent.push(atMs);
@@ -1988,6 +2163,7 @@ export function createAgentGateway(
         { aiId: session.aiId, groupId: room.groupId, messageId: trigger.id },
         'AI round budget spent; dropping the turn',
       );
+      await failDelegationQuietly(trigger.delegationId);
       return;
     }
     if (round !== undefined) {
@@ -2090,31 +2266,32 @@ export function createAgentGateway(
           timestamp: item.timestamp,
           outgoing: false,
         }));
-      // T-0481: the other AIs in this room that may receive a handoff. One
-      // database read for the turn; a lookup failure just means no targets,
+      // T-0481: the other AIs in this room that may receive a handoff. T-0482:
+      // the same read carries this AI's `canDelegate` and each target's AI id,
+      // so the delegation tools can list the roster. One database read for the
+      // turn; a lookup failure just means no targets and no delegation tools,
       // and the turn runs unchanged.
       const otherSessions = [...sessions.values()].filter(
         (candidate) => candidate.aiId !== session.aiId && candidate.rooms.has(roomJid),
       );
-      let handoffTargets: { nick: string; jid: string }[] = [];
+      let handoffTargets: { aiId: string; nick: string; jid: string }[] = [];
+      let canDelegate = false;
       if (otherSessions.length > 0) {
         try {
           const rows = await deps.db
-            .select({ id: ais.id, accepts: ais.acceptsDelegation })
+            .select({ id: ais.id, accepts: ais.acceptsDelegation, canDelegate: ais.canDelegate })
             .from(ais)
             .where(
-              inArray(
-                ais.id,
-                otherSessions.map((candidate) => candidate.aiId),
-              ),
+              inArray(ais.id, [session.aiId, ...otherSessions.map((candidate) => candidate.aiId)]),
             );
+          canDelegate = rows.find((row) => row.id === session.aiId)?.canDelegate ?? false;
           const accepting = new Set(rows.filter((row) => row.accepts).map((row) => row.id));
           handoffTargets = otherSessions.flatMap((candidate) => {
             const subscription = candidate.rooms.get(roomJid);
             if (subscription === undefined || !accepting.has(candidate.aiId)) {
               return [];
             }
-            return [{ nick: subscription.nick, jid: candidate.aiJid }];
+            return [{ aiId: candidate.aiId, nick: subscription.nick, jid: candidate.aiJid }];
           });
         } catch {
           // Best effort: no handoff targets, the turn runs as before.
@@ -2147,7 +2324,14 @@ export function createAgentGateway(
       const allowedForAction = triggerRole === 'owner' || triggerRole === 'admin';
       const actionsList = deps.actions?.listActions() ?? [];
       const allowActions = allowedForAction && actionsList.length > 0;
-      const groupTools = buildGroupTools(allowedForAction ? actionsList : []);
+      // T-0482: offer the delegation tools only when this AI may delegate and
+      // at least one accepting AI is in the room. The target list is the id
+      // and room nick of each accepting session.
+      const delegateTargets =
+        canDelegate && handoffTargets.length > 0
+          ? handoffTargets.map((target) => ({ id: target.aiId, name: target.nick }))
+          : undefined;
+      const groupTools = buildGroupTools(allowedForAction ? actionsList : [], delegateTargets);
       // The re-check callback runs at tool-execution time. A `plain
       // member` turn never offers `request_action`, so this never fires for
       // them; for an admin/owner turn it queries the same gate so a
@@ -2184,7 +2368,7 @@ export function createAgentGateway(
       const groupProgress = liveProgressReporter(session, roomJid, 'groupchat', ai.jid);
       const groupMessages =
         deps.toolsEnabled === true && allowActions ? withToolGuide(messages) : messages;
-      await runGroupTurn({
+      const turnOutcome = await runGroupTurn({
         aiId: session.aiId,
         roomJid,
         triggerId: trigger.id,
@@ -2199,8 +2383,11 @@ export function createAgentGateway(
         executeTool: executeToolCall(session, groupChatKey, {
           groupId: room.groupId,
           topicId: room.topicId,
+          roomJid,
+          triggerId: trigger.id,
           isStillAllowed,
           allowActions,
+          delegateTargetIds: new Set(delegateTargets?.map((target) => target.id) ?? []),
         }),
         ...(deps.toolMaxRounds === undefined ? {} : { maxRounds: deps.toolMaxRounds }),
         ...(handoffTargets.length === 0 ? {} : { handoffTargets }),
@@ -2217,6 +2404,24 @@ export function createAgentGateway(
         logger,
         secrets: secretsFor(),
       });
+      // T-0482: a delegated turn stores its result on the row. The worker's
+      // posted text (with the `@<boss> ` prefix) is the stored summary; a
+      // failed turn stores whatever was posted instead. Log ids only.
+      if (trigger.delegationId !== undefined) {
+        try {
+          await finishDelegation(deps.db, {
+            id: trigger.delegationId,
+            aiId: session.aiId,
+            status: turnOutcome.kind === 'replied' ? 'completed' : 'failed',
+            resultSummary: turnOutcome.text,
+          });
+        } catch (error) {
+          logger.warn(
+            { err: errorName(error), aiId: session.aiId, delegationId: trigger.delegationId },
+            'AI delegation finish failed',
+          );
+        }
+      }
       await sendBudgetWarnings({
         aiId: session.aiId,
         chatKey: groupChatKey,
@@ -2231,6 +2436,9 @@ export function createAgentGateway(
         { err: toRedactedError(error, secretsFor(virtualKey)), aiId: session.aiId },
         'AI group turn failed',
       );
+      // T-0482: if this was a delegated turn, the model call never happened
+      // (or the turn failed around it), so the row must not stay `working`.
+      await failDelegationQuietly(trigger.delegationId);
       const reply = mapFailureToReply(error);
       const name = senderName.trim() === '' ? normBareJid(trigger.fromJid) : senderName.trim();
       try {

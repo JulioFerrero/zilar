@@ -4,12 +4,14 @@ import { LitellmApiError, redactSecrets, type FetchLike } from '../ai/litellm-cl
 import type { ChatCompletionMessage } from './context';
 import { ChatStreamInterruptedError, consumeChatCompletionStream } from './stream';
 import {
+  DELEGATE_TOOL,
   MEMORY_ZOOM_TOOL,
   PERSONA_TOOLS,
   RECALL_TOOL,
   REMEMBER_TOOL,
   REQUEST_ACTION_TOOL,
   REVERT_PERSONA_TOOL,
+  TASK_STATUS_TOOL,
   UPDATE_PERSONA_TOOL,
   parseToolArguments,
   safeToolName,
@@ -86,7 +88,17 @@ export type ValidToolCall =
     }
   | { id: string; tool: typeof RECALL_TOOL; query: string }
   | { id: string; tool: typeof MEMORY_ZOOM_TOOL; block: string }
-  | { id: string; tool: typeof REMEMBER_TOOL; text: string };
+  | { id: string; tool: typeof REMEMBER_TOOL; text: string }
+  | {
+      id: string;
+      tool: typeof DELEGATE_TOOL;
+      toAiId: string;
+      objective: string;
+      contextSummary?: string;
+      acceptance?: string[];
+      returnFormat?: string;
+    }
+  | { id: string; tool: typeof TASK_STATUS_TOOL; taskId: string };
 
 export interface ToolExecution {
   // A short result for the model: "ok", "nothing to undo" or "invalid: …".
@@ -1075,6 +1087,8 @@ function actionOfCall(tool: string, argsJson: string): string | undefined {
 // Lifts a parsed `request_action` / `update_persona` / `revert_persona` /
 // memory-tool shape into the `ValidToolCall` the executor understands. The
 // call id comes from the wire; everything else is already validated by zod.
+// T-0482: the delegation tools fold their snake_case arguments into the
+// camelCase shape the executor uses.
 function toCall(parsed: ParsedToolArgumentsOk, id: string): ValidToolCall {
   if (parsed.tool === UPDATE_PERSONA_TOOL) {
     return {
@@ -1095,6 +1109,20 @@ function toCall(parsed: ParsedToolArgumentsOk, id: string): ValidToolCall {
   }
   if (parsed.tool === REMEMBER_TOOL) {
     return { id, tool: REMEMBER_TOOL, text: parsed.text };
+  }
+  if (parsed.tool === DELEGATE_TOOL) {
+    return {
+      id,
+      tool: DELEGATE_TOOL,
+      toAiId: parsed.to,
+      objective: parsed.objective,
+      ...(parsed.context_summary === undefined ? {} : { contextSummary: parsed.context_summary }),
+      ...(parsed.acceptance === undefined ? {} : { acceptance: parsed.acceptance }),
+      ...(parsed.return_format === undefined ? {} : { returnFormat: parsed.return_format }),
+    };
+  }
+  if (parsed.tool === TASK_STATUS_TOOL) {
+    return { id, tool: TASK_STATUS_TOOL, taskId: parsed.task_id };
   }
   return {
     id,
@@ -1351,13 +1379,16 @@ async function runGroupToolTurn(
   const turnLogger = deps.turnLogger ?? { info: () => undefined };
   // Only a tool that was advertised may run: anything else the model
   // improvises (a persona tool, say) is answered `invalid: unknown tool`.
+  // `task_status` is the one exception: it is a read-only group tool and
+  // `getDelegationForAi` scopes the read to the two involved AIs, so it may
+  // run even when no delegation targets were advertised.
   const advertised = new Set(tools.map((tool) => tool.function.name));
   const execute = deps.executeTool;
   const executeAdvertised: ExecuteToolCall | undefined =
     execute === undefined
       ? undefined
       : (call) =>
-          advertised.has(call.tool)
+          advertised.has(call.tool) || call.tool === TASK_STATUS_TOOL
             ? execute(call)
             : Promise.resolve({ content: 'invalid: unknown tool' });
   let loop: {
