@@ -42,6 +42,7 @@ import { createPushRoutes } from './push/routes';
 import { createRolesRoutes } from './roles/routes';
 import { createSearchRoutes, type SearchRoutesDependencies } from './search/routes';
 import { createMediaRoutes } from './media/routes';
+import { createFilesRoutes } from './files/routes';
 import { createGifsRoutes } from './gifs/routes';
 import { createAvatarsRoutes } from './avatars/routes';
 import { createStickersRoutes } from './stickers/routes';
@@ -394,6 +395,17 @@ export function createApp({
   app.route(
     '/api',
     createMediaRoutes({
+      auth,
+      db,
+      config,
+      logger,
+      ...(archive === undefined ? {} : { archive }),
+      ...(searchNow === undefined ? {} : { now: searchNow }),
+    }),
+  );
+  app.route(
+    '/api',
+    createFilesRoutes({
       auth,
       db,
       config,

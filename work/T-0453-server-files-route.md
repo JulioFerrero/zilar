@@ -1,7 +1,7 @@
 ---
 id: T-0453
 title: "Upload lock 1 (server): GET /api/files?chat=&url= streams an upload file only to members of a chat that holds it (Range supported)"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0453-server-files-route
 model: auto
@@ -81,4 +81,27 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Implemented `GET /api/files?chat=<jid>&url=<upload URL>` per spec.
+
+What I did:
+- New `apps/server/src/files/routes.ts`: `createFilesRoutes({ auth, db, config, logger, archive?, now?, fetchImpl? })` mirroring `media/routes.ts` (session via `requireSession`, 501 `files_unavailable` without archive, 600/min/user rate limit, strict zod query `chat` 1-256 / `url` 1-2048, same chat resolution via `allowedArchives` + `resolveChatFilter` + `isDmBlocked`, `indexChat` retry wrapped with ids-only warn log). `mediaItems` lookup matches `archiveOwner` + `chatJid` + `url` + `deleted = false` + kind not `link`. Same-origin check via `toInternalUploadUrl`; every refusal is 404 `not_found` "File not found". Upstream fetch uses `fetchImpl` (default `fetch`), `AbortSignal.timeout(30_000)`, forwards only the `Range` header. 200/206 stream back with same status and only `Content-Type` (upstream, else row mime, else `application/octet-stream`), `Content-Length`, `Content-Range`, `Accept-Ranges`, `ETag`, `Last-Modified`, plus `Cache-Control: private, max-age=3600` and `X-Content-Type-Options: nosniff`; `file` kind adds `Content-Disposition: attachment` with RFC 5987-encoded name (or `file`). 416 passes through; any other upstream status or network error is 502 `file_unavailable` with a fixed message. Logs carry only `userId` and the error name.
+- `apps/server/src/app.ts`: mounted `createFilesRoutes` next to the media routes (same archive/`searchNow` wiring). The authz sweep picks it up automatically (session check first, so unauthenticated answers 401).
+- New `apps/server/src/files/routes.test.ts`: 13 tests covering all spec cases (401, 501, all six 404 refusals, 200 serving with byte/type/`Cache-Control: private` + internal-URL assertion, on-demand index of a just-sent file, Range 206 with `Content-Range` and exact Range forwarding, forwarded-copy target-200/source-404, upstream-500 to 502, 600-requests-then-429). Tests build the files routes directly with an injected fake fetch so no request touches the network; the fake records the fetched URL and Range header.
+
+Files changed: `apps/server/src/files/routes.ts` (new), `apps/server/src/files/routes.test.ts` (new), `apps/server/src/app.ts` (mount only), `work/T-0453-server-files-route.md` (this report).
+
+Commands and real results:
+- `pnpm install`: ok (13.6s).
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot files/routes`: first run 10 failed / 3 passed — all failures were 500s because the bare test Hono app had no `HttpError` handler; added an `onError` mirroring `app.ts`. Second run: 13 passed. Final targeted run after the typecheck fix was covered by the gate run below.
+- `pnpm exec prettier --write` on the two new files (gate's format check flagged them).
+- `pnpm gate`: GATE PASS — install, format, lint, typecheck all PASS; tests @zilar/server PASS (253.4s); "scope: every changed file is inside the Allowed files". Gate reports 4 changed files against main (the 3 code files + this task file).
+
+Problems / deviations:
+- One typecheck error (`HeadersInit` not in scope under this tsconfig): typed the fake fetch init as `{ headers?: Record<string, string> }`.
+- Validation failures (missing/oversized params) answer 400 `invalid_request`, matching the media route's convention; the spec only names 404 for the refusal cases, and 400 is not a refusal of an existing file.
+
+Security checklist: no secrets/URLs/names/bodies in logs (only `userId` + error name); lookups always scoped by `(archiveOwner, chatJid)`; unknown and invisible chats share one 404; route is session-first (401 sweep covers it via the app mount); rate limit 600/min/user on the read route.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-07). GET /api/files?chat=&url= checks the session (401) and archive (501) and is rate-limited (600/min). It resolves the chat like /api/media, looks the URL up in that chat's non-retracted media_items rows, and on a miss indexes the chat once. It streams the internal ejabberd URL with only the Range header, passes 200/206/416 through with a header allowlist plus Cache-Control: private and nosniff, and turns anything else into a fixed 502. Every refusal is the same 404, and the logs carry ids only. Nit accepted: a malformed query gives 400, the same as /api/media. For the cutover task: check that Caddy access logs do not record the url query.
