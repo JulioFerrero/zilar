@@ -2,6 +2,19 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-07 late night (Effect everywhere):**
+- **Julio:** "all the codebase to be effect 4.0". That means frameworks too, Effect Schema instead of zod, and web and mobile now. **No new features.** Use as many workers as the PC handles; it ran 9 at a load around 44 with 52% memory free.
+- **Merged since the last update:**
+  - T-0479: the round budget;
+  - T-0480: the delegation service;
+  - T-0481: AI-to-AI handoff.
+- **Running:**
+  - T-0482: the delegate tools, in a fix round. It was nearly done when the no-features rule came, so it finishes;
+  - T-0483 to T-0489: logic conversions (Telegram import, guarded fetch, Giphy, runner hub, mailer, scheduler and sweeper, sandbox runner);
+  - T-0490: the whole-codebase plan. It produces `docs/audit/effect-everywhere-plan.md`, with the architecture per layer, measurements and task lanes.
+- **Next:** after T-0490, rewrite `docs/ROADMAP_EFFECT.md` and `docs/EFFECT_GUIDE.md` from the plan. Then foundations, then one pilot per layer, then the bulk.
+- **Waiting for Julio:** as before: the upload cutover, the mobile version bump, the Coolify secrets.
+
 **2026-10-07 night (listener + kit):**
 - **Merged:**
   - T-0469: release-readiness audit;
