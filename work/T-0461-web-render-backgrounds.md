@@ -1,7 +1,7 @@
 ---
 id: T-0461
 title: "Backgrounds D (web): load the background prefs and default, paint each chat's effective background (preset or image + dim)"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0461-web-render-backgrounds
 model: auto
@@ -77,7 +77,7 @@ This task makes the web read them and paint them. The picker is the next task, s
 `AGENTS.md`, `docs/audit/chat-backgrounds-plan.md` §5 and §8, `apps/web/src/lib/api.ts:185-200` and `:755-800`, `apps/web/src/mock/api.ts:2460-2500`, `apps/web/src/store/store.ts:240-260` and `:1030-1055`, `apps/web/src/store/realStore.ts:3051-3100` and `:4550-4600`, `apps/web/src/components/MessageList.tsx:20-60` and `:195-235`, `packages/ui-tokens/src/index.ts`.
 
 ### Allowed files
-`apps/web/src/lib/api.ts`, `apps/web/src/mock/api.ts`, `apps/web/src/lib/chatBackground.ts`, `apps/web/src/lib/chatBackground.test.ts`, `apps/web/src/store/store.ts`, `apps/web/src/store/realStore.ts`, `apps/web/src/store/realStore.test.tsx`, `apps/web/src/components/MessageList.tsx`, `apps/web/src/components/MessageList.test.tsx`, `work/T-0461-web-render-backgrounds.md`.
+`apps/web/src/lib/api.ts`, `apps/web/src/mock/api.ts`, `apps/web/src/lib/chatBackground.ts`, `apps/web/src/lib/chatBackground.test.ts`, `apps/web/src/store/store.ts`, `apps/web/src/store/realStore.ts`, `apps/web/src/store/realStore.test.tsx`, `apps/web/src/components/MessageList.tsx`, `apps/web/src/components/MessageList.test.tsx`, `apps/web/src/store/reload.test.tsx`, `apps/web/src/store/realStore.forward.test.tsx`, `apps/web/src/store/realStore.media.test.tsx`, `apps/web/src/store/realStore.topics.test.tsx`, `work/T-0461-web-render-backgrounds.md`.
 
 If any other test breaks (for example a test that builds a full store object and now misses the new field), stop and report BLOCKED with the file name.
 
@@ -96,4 +96,28 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**Status: review. The spec is fully implemented; `pnpm gate` ends with GATE PASS and all changed files are inside the Allowed files.**
+
+### What I did
+- `lib/api.ts`: added `backgroundPreset` / `backgroundImageId` / `backgroundDim` to `chatPrefSchema` as `.nullable().optional()`; exported `ChatBackgroundChoice`; added `getChatBackgroundDefault()` calling `GET /chat-background` and unwrapping `defaultBackground`.
+- `mock/api.ts`: `GET /chat-background` now returns `{ defaultBackground: { backgroundPreset: null, backgroundImageId: null, backgroundDim: null } }`.
+- New `lib/chatBackground.ts`: `effectiveBackground(pref, fallback)` (pref wins, else default, else `slate`; unknown preset id → `slate`; image dim defaults to 40) and `chatBackgroundStyle(effective)` (`{}` for slate, a 22 px dot radial-gradient for other presets, and a dim layer + `/api/backgrounds/<encoded id>` for images).
+- `store/store.ts`: added `defaultBackground: ChatBackgroundChoice | null` and `refreshDefaultBackground(): Promise<void>` to `ChatStoreState`, plus the mock implementation.
+- `store/realStore.ts`: added `getChatBackgroundDefault()` to `ApiClient` and `realApi`; initial/stop/sign-out state reset `defaultBackground` to `null`; `boot` fires `void get().refreshDefaultBackground()` without blocking the chat list; the public `refreshDefaultBackground` is generation-guarded and leaves the value null on failure.
+- `components/MessageList.tsx`: computes the style once and applies it to all three `chat-background` elements.
+- Tests: new `lib/chatBackground.test.ts` (precedence, unknown id, slate `{}`, navy hexes, image dim 55, image default dim 40); `MessageList.test.tsx` (gold preset inline background; no pref → no inline background); `store/realStore.test.tsx` (boot loads the default; a failure leaves null and chats still load, plus the method added to `fakeApi`); and the `getChatBackgroundDefault` stub added to the four other `ApiClient` literals (`reload.test.tsx`, `realStore.forward.test.tsx`, `realStore.media.test.tsx`, `realStore.topics.test.tsx`) after the lead approved those files.
+
+### Commands and real results
+- `pnpm install`: done (exit 0).
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot chatBackground MessageList realStore`: 192 passed, 1 failed first (jsdom serialises hex to `rgb()`, fixed the test); re-ran `… MessageList`: 21 passed.
+- `pnpm gate`: `gate: 14 changed file(s) against main`; `PASS install (frozen)`, `PASS format`, `PASS lint`, `PASS typecheck`, `PASS tests @zilar/web`; `scope: every changed file is inside the Allowed files`; `GATE PASS`.
+
+### Blocked / needs a decision
+None. The earlier blocker (the four other `ApiClient` test literals) is resolved: the lead added those files to Allowed files and I added the one `getChatBackgroundDefault` stub to each, keeping `ApiClient.getChatBackgroundDefault` required.
+
+### Security checklist
+No secrets, routes, deletes or permissions were added; this is a read-only client render change. `getChatBackgroundDefault` only reads the caller's own default.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-07). effectiveBackground and chatBackgroundStyle (lib/chatBackground.ts) resolve per-chat, then default, then slate; slate gives no inline style, so today's look is unchanged. Presets paint the token dot on its ground; images use a dim overlay plus /api/backgrounds/<id>. The store loads defaultBackground at boot without blocking. MessageList styles all three background elements. Lead widened Allowed files for the 4 ApiClient fakes (one stub each). Pre-review clean.

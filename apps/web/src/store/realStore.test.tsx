@@ -331,6 +331,11 @@ function fakeApi(overrides: Partial<ApiClient> = {}): ApiClient {
       ais: [],
     })),
     listChatPrefs: vi.fn(async () => []),
+    getChatBackgroundDefault: vi.fn(async () => ({
+      backgroundPreset: null,
+      backgroundImageId: null,
+      backgroundDim: null,
+    })),
     putChatPref: vi.fn(async () => null),
     listPins: vi.fn(async () => []),
     listChatMedia: vi.fn(async () => ({ items: [], next: null })),
@@ -432,6 +437,32 @@ describe('createRealChatStore', () => {
     expect(store.getState().chatPrefs['ana@zilar.test']?.mutedUntil).toBe(
       '2026-09-28T13:00:00.000Z',
     );
+  });
+
+  it('loads the global background default on boot', async () => {
+    const getChatBackgroundDefault = vi.fn(async () => ({
+      backgroundPreset: 'navy',
+      backgroundImageId: null,
+      backgroundDim: null,
+    }));
+    const { store } = await setup({ getChatBackgroundDefault });
+
+    expect(getChatBackgroundDefault).toHaveBeenCalled();
+    expect(store.getState().defaultBackground).toEqual({
+      backgroundPreset: 'navy',
+      backgroundImageId: null,
+      backgroundDim: null,
+    });
+  });
+
+  it('leaves the background null and still loads chats when it fails', async () => {
+    const getChatBackgroundDefault = vi.fn(async () => {
+      throw new Error('offline');
+    });
+    const { store } = await setup({ getChatBackgroundDefault });
+
+    expect(store.getState().defaultBackground).toBeNull();
+    expect(store.getState().chats.length).toBeGreaterThan(0);
   });
 
   it('pins optimistically and rolls back when the PUT fails', async () => {

@@ -2471,6 +2471,14 @@ export async function mockRequest(
     return jsonResponse({ prefs: state.chatPrefs });
   }
 
+  // T-0461: the personal background default. The picker (T-0462) writes it,
+  // so the mock always answers unset and chats fall back to the slate grid.
+  if (head === 'chat-background' && first === undefined && method === 'GET') {
+    return jsonResponse({
+      defaultBackground: { backgroundPreset: null, backgroundImageId: null, backgroundDim: null },
+    });
+  }
+
   if (head === 'chat-prefs' && first !== undefined && second === undefined && method === 'PUT') {
     const chatJid = decodeURIComponent(first);
     const body = readJsonBody(init);

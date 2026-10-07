@@ -763,6 +763,11 @@ const chatPrefSchema = z.object({
   archived: z.boolean(),
   pinnedAt: z.string().nullable(),
   updatedAt: z.string(),
+  // T-0461: per-chat background override (T-0458). All null when the chat
+  // inherits the caller's global default.
+  backgroundPreset: z.string().nullable().optional(),
+  backgroundImageId: z.string().nullable().optional(),
+  backgroundDim: z.number().nullable().optional(),
 });
 
 export type ChatPref = z.infer<typeof chatPrefSchema>;
@@ -777,6 +782,24 @@ export interface PutChatPrefInput {
 
 export function listChatPrefs(): Promise<ChatPref[]> {
   return request('/chat-prefs', chatPrefsSchema).then((body) => body.prefs);
+}
+
+// T-0461: the caller's global chat background default (T-0458). `GET
+// /chat-background` returns it under `defaultBackground`; all-null means the
+// caller never chose one, so chats fall back to the slate grid.
+const chatBackgroundChoiceSchema = z.object({
+  backgroundPreset: z.string().nullable(),
+  backgroundImageId: z.string().nullable(),
+  backgroundDim: z.number().nullable(),
+});
+
+export type ChatBackgroundChoice = z.infer<typeof chatBackgroundChoiceSchema>;
+
+export function getChatBackgroundDefault(): Promise<ChatBackgroundChoice> {
+  return request(
+    '/chat-background',
+    z.object({ defaultBackground: chatBackgroundChoiceSchema }),
+  ).then((body) => body.defaultBackground);
 }
 
 export async function putChatPref(

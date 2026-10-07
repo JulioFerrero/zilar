@@ -14,6 +14,7 @@ import { IconButton } from './ui/icon-button';
 import { Badge } from './ui/badge';
 import { StateMessage } from './ui/state-message';
 import { isBlockedSender, useBlockedJids } from '@/lib/blockedJids';
+import { chatBackgroundStyle, effectiveBackground } from '@/lib/chatBackground';
 import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
 
 const NEAR_BOTTOM_PX = 80;
@@ -39,6 +40,11 @@ export function MessageList({
 }) {
   const store = useChatStore();
   const storeApi = useChatStoreApi();
+  // T-0461: the chat's own background, else the caller's default, else slate
+  // (which paints no inline style, exactly as before).
+  const backgroundStyle = chatBackgroundStyle(
+    effectiveBackground(store.chatPrefs[chat.id.toLowerCase()], store.defaultBackground),
+  );
   const messages = store.messages(chat.id);
   // Unknown means never requested, which the real store reports as loading:
   // first paint (before ChatView's openChat effect runs) must never flash
@@ -198,7 +204,10 @@ export function MessageList({
     if (history === 'error') {
       return (
         <div className="relative min-h-0 flex-1">
-          <div className="chat-background flex h-full flex-col items-center justify-center p-8">
+          <div
+            className="chat-background flex h-full flex-col items-center justify-center p-8"
+            style={backgroundStyle}
+          >
             <StateMessage
               kind="error"
               title="Couldn't load messages"
@@ -210,7 +219,10 @@ export function MessageList({
     }
     return (
       <div className="relative min-h-0 flex-1">
-        <div className="chat-background flex h-full items-center justify-center p-8 text-center">
+        <div
+          className="chat-background flex h-full items-center justify-center p-8 text-center"
+          style={backgroundStyle}
+        >
           <StateMessage kind="empty" title="No messages yet" />
         </div>
       </div>
@@ -224,6 +236,7 @@ export function MessageList({
         onScroll={handleScroll}
         data-testid="message-list"
         className="chat-background scrollbar-thin h-full overflow-y-auto"
+        style={backgroundStyle}
       >
         <div
           ref={contentRef}

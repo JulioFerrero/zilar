@@ -62,6 +62,7 @@ import {
   createInvite as createInviteRequest,
   createTopic as createTopicRequest,
   getChats,
+  getChatBackgroundDefault as getChatBackgroundDefaultRequest,
   getContacts,
   getGroup,
   getMe,
@@ -95,6 +96,7 @@ import {
   unpinMessage as unpinMessageRequest,
   type ChatEntry,
   type ChatPref,
+  type ChatBackgroundChoice,
   type Contact,
   type CreateGroupInviteLinkInput,
   type CreatedInviteLink,
@@ -319,6 +321,7 @@ export interface ApiClient {
   setTopicRoles(topicId: string, input: SetTopicRolesInput): Promise<Topic>;
   setMembersCanCreateTopics(groupId: string, allowed: boolean): Promise<GroupDetail>;
   listChatPrefs(): Promise<ChatPref[]>;
+  getChatBackgroundDefault(): Promise<ChatBackgroundChoice>;
   putChatPref(chatJid: string, input: PutChatPrefInput): Promise<ChatPref | null>;
   listPins(chat: string): Promise<Pin[]>;
   listChatMedia(input: ListChatMediaInput): Promise<MediaPage>;
@@ -385,6 +388,7 @@ const realApi: ApiClient = {
   setTopicRoles: setTopicRolesRequest,
   setMembersCanCreateTopics: setMembersCanCreateTopicsRequest,
   listChatPrefs: listChatPrefsRequest,
+  getChatBackgroundDefault: getChatBackgroundDefaultRequest,
   putChatPref: putChatPrefRequest,
   listPins: listPinsRequest,
   listChatMedia: listChatMediaRequest,
@@ -3090,6 +3094,9 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         chatPrefs: byJid,
         chatsState: 'ready',
       });
+      // T-0461: the global background default is a nice-to-have; load it
+      // without holding up the chat list, and leave it null on failure.
+      void get().refreshDefaultBackground();
       startDraftStream(gen);
       startChatsPolling(gen);
       startPinsPolling(gen);
@@ -3455,6 +3462,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       chats: [],
       contacts: [],
       chatPrefs: {},
+      defaultBackground: null,
       messagesByChat: {},
       reactions: {},
       pinsByChat: {},
@@ -4520,6 +4528,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           chats: [],
           contacts: [],
           chatPrefs: {},
+          defaultBackground: null,
           messagesByChat: {},
           reactions: {},
           edits: {},
@@ -4577,7 +4586,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         stopChatsPolling();
         stopPinsPolling();
         clearDraftState();
-        set({ drafts: {}, finishedDraftMessages: {} });
+        set({ drafts: {}, finishedDraftMessages: {}, defaultBackground: null });
         pendingOpenChatId = undefined;
         for (const unsubscribe of unsubscribers) {
           unsubscribe();
@@ -4639,6 +4648,20 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           return;
         }
         applyPrefs(prefs);
+      },
+      refreshDefaultBackground: async () => {
+        const gen = generation;
+        let value: ChatBackgroundChoice;
+        try {
+          value = await api.getChatBackgroundDefault();
+        } catch {
+          // A failed load keeps the slate grid; it never blocks the chat list.
+          return;
+        }
+        if (gen !== generation) {
+          return;
+        }
+        set({ defaultBackground: value });
       },
       setPinned: async (chatId, pinned) => {
         await updatePref(chatId, { pinned });

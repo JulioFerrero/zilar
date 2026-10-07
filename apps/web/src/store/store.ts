@@ -20,6 +20,7 @@ import {
 } from '@zilar/chat-core';
 import type { ChatFolder } from '@zilar/chat-core';
 import type {
+  ChatBackgroundChoice,
   ChatPref,
   Contact,
   CreateTopicInput,
@@ -40,6 +41,7 @@ import {
   addTopicMember,
   ApiError,
   createTopic,
+  getChatBackgroundDefault,
   listChatPrefs,
   patchTopic,
   putChatPref,
@@ -248,6 +250,10 @@ export interface ChatStore {
   chatPrefs: Record<string, ChatPref>;
   /** Loads the caller's pref rows and merges them into the chat list. */
   refreshChatPrefs: () => Promise<void>;
+  /** T-0461: the caller's global background default; null until loaded. */
+  defaultBackground: ChatBackgroundChoice | null;
+  /** Loads the caller's global background default. Never rejects. */
+  refreshDefaultBackground: () => Promise<void>;
   /** Pins or unpins a chat/topic. Optimistic with rollback. Rejects on failure. */
   setPinned: (chatId: string, pinned: boolean) => Promise<void>;
   /** Mutes a chat/topic for a duration, or unmutes. Optimistic with rollback. */
@@ -1047,6 +1053,15 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
           }));
         } catch {
           // Mock prefs are best-effort; the list works without them.
+        }
+      },
+      defaultBackground: null,
+      refreshDefaultBackground: async () => {
+        try {
+          const value = await getChatBackgroundDefault();
+          set({ defaultBackground: value });
+        } catch {
+          // Mock background is best-effort; chats still paint the slate grid.
         }
       },
       setPinned: async (chatId, pinned) => {
