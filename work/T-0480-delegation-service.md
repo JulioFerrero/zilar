@@ -1,7 +1,7 @@
 ---
 id: T-0480
 title: "Listener S5a (server): delegation service — permission check, create (with caps), read for task_status, finish; pure DB module, not wired yet"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0480-delegation-service
 model: auto
@@ -89,4 +89,74 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+Built the delegation DB module and its tests, nothing wired to the gateway.
+
+- `apps/server/src/agents/delegation/service.ts` — new module:
+  - exported caps `OBJECTIVE_MAX` (1000), `CONTEXT_SUMMARY_MAX` (1200), `DELEGATION_LIST_MAX` (10), `DELEGATION_ITEM_MAX` (300), `RETURN_FORMAT_MAX` (200), `RESULT_SUMMARY_MAX` (8000);
+  - `checkDelegation` (same AI, source `canDelegate`, target `acceptsDelegation`, both `active`, room membership via `groupAis` for the group / General topic and `topicAis` for a non-General topic; unknown ids read as `inactive`);
+  - `createDelegation` (runs the check, trims objectives, caps text and lists, drops extra list items, drops a negative budget, stores `working`);
+  - `getDelegationForAi` (only `fromAiId` or `toAiId`; a third AI gets `null`);
+  - `finishDelegation` and `cancelDelegation` (one conditional `UPDATE … WHERE … status='working'`, so a race cannot finish or cancel twice).
+- `apps/server/src/agents/delegation/service.test.ts` — new tests covering every `checkDelegation` reason, group (`groupAis`) and non-General topic (`topicAis`) success, the "in group but not in topic" case, caps, empty objective, budget drop, third-AI read, single finish and source-only cancel.
+
+### Files changed
+- `apps/server/src/agents/delegation/service.ts` (new)
+- `apps/server/src/agents/delegation/service.test.ts` (new)
+- `work/T-0480-delegation-service.md` (status + this report)
+
+No other file was touched.
+
+### Commands and real results
+- `pnpm install` — done (only the existing `apps/mobile` `@types/react-dom` peer warning; no change needed).
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot agents/delegation` — 1 test file passed, **18 tests passed**.
+- `pnpm gate` — **GATE PASS**. Summary lines:
+  ```
+  gate: 3 changed file(s) against main
+  PASS  install (frozen)
+  PASS  format
+  PASS  lint
+  PASS  typecheck
+  PASS  tests @zilar/server
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+  The first two gate runs failed (format on my two files; then typecheck: `.returning({ id })` is not accepted on the `ServerDatabase` union, and two destructured test rows needed an `undefined` guard). Both fixed inside the Allowed files.
+
+### Deviations / notes
+- The spec does not name a reason for an empty objective. I added `'empty_objective'` to the `createDelegation` failure union (`DelegationCheckReason | 'empty_objective'`); `checkDelegation`'s own union is unchanged.
+- `finishDelegation` always writes the capped `resultSummary` (null when omitted) and writes `artifacts` only when given. `cancelDelegation` takes `{ id, aiId }` and returns a boolean as specified.
+- Check order is: `same_ai` → unknown id → `cannot_delegate` → `not_accepting` → `inactive` → `not_in_room`. `createDelegation` runs the permission check first, then rejects an empty objective, then inserts.
+
+### Round 2 (fix round)
+Findings fixed:
+- **Finding 1 (should-fix):** `bothInRoom` now selects `topics.groupId` alongside `isGeneral` and returns `false` when the topic does not belong to the passed `groupId`, so a mismatched `{ groupId: A, topicId: T of group B }` is rejected as `not_in_room` for both General and non-General topics. No other logic changed.
+
+Tests added:
+- `rejects a non-General topic that belongs to another group` — both AIs are in the topic's `topicAis`, but the topic belongs to another group, so the check returns `not_in_room`.
+- `rejects a General topic that belongs to another group` — both AIs are in the passed group's `groupAis`, but the General topic belongs to another group, so it returns `not_in_room`.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot agents/delegation` — 1 file passed, **20 tests passed** (was 18).
+
+Finding 2 (nit, budget `currency`/extreme `max`) was left as is: it is a nit and the line is outside the finding-1 change, so it stays untouched per the fix-round instructions.
+
+Gate:
+- `pnpm gate` — **GATE PASS**. Summary lines:
+  ```
+  gate: 3 changed file(s) against main
+  PASS  install (frozen)
+  PASS  format
+  PASS  lint
+  PASS  typecheck
+  PASS  tests @zilar/server
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-07). agents/delegation/service.ts provides:
+- checkDelegation (same_ai, cannot_delegate, not_accepting, inactive, not_in_room; General through group_ais, other topics through topic_ais);
+- createDelegation with capped fields;
+- getDelegationForAi, limited to the two AIs involved;
+- finishDelegation and cancelDelegation, each a single conditional UPDATE.
+Pre-review clean after one auto round. Not wired yet (S5b).
