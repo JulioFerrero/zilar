@@ -1,7 +1,7 @@
 ---
 id: T-0520
 title: "Effect C (HTTP): chat-prefs and chat-folders routes onto the HttpApi adapter (T-0498 recipe), zod bodies to Effect Schema; every route test unchanged"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0520-effect-http-chat-prefs-folders
 model: auto
@@ -82,4 +82,49 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- Added `apps/server/src/chat-prefs/api.ts` and `apps/server/src/chat-folders/api.ts`: Effect `HttpApi` groups mounted through `mountEffectRoutes`, with the same paths, methods, status codes (201 on folder create) and bodies.
+- Kept the exact per-route step order. The write limiters run **inside** the handlers (not as endpoint middleware, which would run before the body decode):
+  - `PUT /chat-prefs/:chatJid`: session → body decode → `requireChatAccess` (incl. `decodePathJid`) → limiter → `putChatPref` → `{ prefs: null }` or the pref.
+  - `PUT /chat-background`: session → decode → limiter → `putChatBackgroundDefault`.
+  - `POST/PUT order/PATCH`: session → decode → limiter → service. `DELETE`: session → limiter → service.
+- Bodies use Effect Schema (no zod): strict via `HttpApi.PayloadParseOptions { onExcessProperty: 'error' }`, `Schema.Trim` before the 1..`FOLDER_NAME_MAX` check, defaults via `Schema.withDecodingDefault`, duplicate and "at least one key" checks via `Schema.makeFilter` with the old texts. Decode failures map to `400 invalid_request` through a module-local `layerSchemaErrorTransform` carrying `SchemaError.message`.
+- `app.ts`: swapped the two imports and the two `app.route(...)` lines for `createChatPrefsApi` / `createChatFoldersApi` + `mountEffectRoutes(...)`. Deleted both `routes.ts` files. Kept the exported limit constants and the injectable `now`.
+
+### Files changed (6, all inside the Allowed files)
+- `apps/server/src/chat-prefs/api.ts` (new)
+- `apps/server/src/chat-prefs/routes.ts` (deleted)
+- `apps/server/src/chat-folders/api.ts` (new)
+- `apps/server/src/chat-folders/routes.ts` (deleted)
+- `apps/server/src/app.ts`
+- `work/T-0520-effect-http-chat-prefs-folders.md`
+
+### Commands and real outcomes
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot chat-prefs chat-folders authz-sweep app.test`
+  → `Test Files  4 passed (4)`, `Tests  41 passed (41)`.
+- `pnpm gate` (from repo root)
+  → `gate: 6 changed file(s) against main`; `PASS install (frozen)`, `PASS format`, `PASS lint`, `PASS typecheck`, `PASS tests @zilar/server`; `scope: every changed file is inside the Allowed files`; `GATE PASS`.
+  - An earlier gate run failed only on Prettier formatting of the two new files, and after that a typecheck error: the response schemas typed `backgroundPreset` as the preset literal union while the service returns `string | null`. I fixed both (ran `pnpm exec prettier --write` on the two files; relaxed the response schema to `Schema.NullOr(Schema.String)`), then the full gate passed.
+
+### Message texts: old (zod) → new (Effect Schema)
+Generic messages (no test asserts them):
+- excess key: `Unrecognized key: "nope"` → `Expected no excess property\n  at ["nope"]`
+- folder name too short: `Too small: expected string to have >=1 characters` → `Expected a value with a length of at least 1`
+- folder name too long: `Too big: expected string to have <=24 characters` → `Expected a value with a length of at most 24`
+- non-object body (empty/unparseable): `expected object, received null` → Effect's `InvalidType` wording (`Expected object`-style); status stays 400.
+Preserved exactly (from `Schema.makeFilter`, same as zod refinements): `Nothing to update`, `Chat lists must not contain duplicates`, `includeTypes must not contain duplicates`. The service messages (`Choose a preset or an image`, `Dim needs an image`, `Unknown background image`, `You can have up to 20 folders.`) are untouched. I checked the new texts with a throwaway `node` Schema decode; I did not modify any test.
+
+### Deviations / notes
+- `PUT /chat-prefs/:chatJid` success is `Schema.Union([ChatPrefView, Schema.Struct({ prefs: Schema.Null })])` because the router answered the bare pref or `{ prefs: null }`.
+- `POST /chat-folders` answers `HttpServerResponse.jsonUnsafe({ folder }, { status: 201 })` (same approach as contact-requests), so the 201 is exact.
+- No zod import remains in either module.
+
+### Security checklist
+Session middleware runs before any decode/effect; every write is rate-limited (60/min/user on the shared module limiter); unknown and foreign ids answer the same 404 (chat-folders) and unknown/unseeable chats the same 404 (chat-prefs); no audit or secret-logging changes.
+
+### Blocked / needs a decision
+None.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-08). chat-prefs and chat-folders are served by Effect HttpApi through the adapter, with the same step order, 201 on create, the same limiter texts and the refine texts kept. No zod is left in either module; the generic Schema texts that changed are listed in the Report and no test asserts them. Pre-review clean, 0 nits. Follow-up for later: the Schema excess-key message is multi-line ("at [...]"); the web shows error.message in some dialogs.

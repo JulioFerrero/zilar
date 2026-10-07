@@ -20,8 +20,8 @@ import { createSetupRoutes, type SetupRoutesDependencies } from './setup/routes'
 import { createIntegrationsRoutes, createGetBotToken } from './integrations/routes';
 import { settingsCipherFor } from './setup/settings';
 import { createChatsRoutes } from './chats/routes';
-import { createChatPrefsRoutes } from './chat-prefs/routes';
-import { createChatFoldersRoutes } from './chat-folders/routes';
+import { createChatPrefsApi } from './chat-prefs/api';
+import { createChatFoldersApi } from './chat-folders/api';
 import type { ServerConfig } from './config';
 import { loadPushConfig, type PushConfig } from './push/config';
 import { createDraftsRoutes } from './drafts/routes';
@@ -385,8 +385,13 @@ export function createApp({
     createTopicsRoutes({ auth, db, config, adminClient, logger, audit: auditRecorder }),
   );
   app.route('/api', createChatsRoutes({ auth, db, config }));
-  app.route('/api', createChatPrefsRoutes({ auth, db, config }));
-  app.route('/api', createChatFoldersRoutes({ auth, db, config }));
+  // Chat prefs and folders (T-0113/T-0232) on the Effect adapter: session
+  // required, one write budget each; the sweep asserts every route answers 401
+  // unauthenticated.
+  const chatPrefsApi = createChatPrefsApi({ auth, db, config, logger });
+  mountEffectRoutes(app, chatPrefsApi.routes, chatPrefsApi.handler);
+  const chatFoldersApi = createChatFoldersApi({ auth, db, config, logger });
+  mountEffectRoutes(app, chatFoldersApi.routes, chatFoldersApi.handler);
   // Push devices and settings (T-0119) mount always: with push off or
   // unconfigured every route answers 404/503 instead of disappearing, so
   // the web can show the matching state.
