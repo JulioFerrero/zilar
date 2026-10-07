@@ -1,8 +1,8 @@
-import { z } from 'zod';
+import { Data, Duration, Effect, Result, Schema, type Effect as EffectType } from 'effect';
 import type { ChatKind, SendMessageOptions } from '@zilar/xmpp-core';
 import { LitellmApiError, redactSecrets, type FetchLike } from '../ai/litellm-client';
 import type { ChatCompletionMessage } from './context';
-import { ChatStreamInterruptedError, consumeChatCompletionStream } from './stream';
+import { consumeChatCompletionStream } from './stream';
 import {
   DELEGATE_TOOL,
   MEMORY_ZOOM_TOOL,
@@ -123,24 +123,25 @@ export interface ModelRequestMessage {
   tool_call_id?: string;
 }
 
-const RawToolCallSchema = z.object({
-  id: z.string(),
-  function: z.object({ name: z.string(), arguments: z.string() }),
+// Effect Schema replaces zod here (T-0513). The shapes are identical: a plain
+// struct ignores unknown keys exactly as `z.object` did, and `optionalKey` is
+// zod's `.optional()`.
+const RawToolCallSchema = Schema.Struct({
+  id: Schema.String,
+  function: Schema.Struct({ name: Schema.String, arguments: Schema.String }),
 });
 
-const ChatCompletionsResponseSchema = z.object({
-  choices: z
-    .array(
-      z.object({
-        message: z
-          .object({
-            content: z.string().nullable().optional(),
-            tool_calls: z.array(RawToolCallSchema).optional(),
-          })
-          .optional(),
-      }),
-    )
-    .min(1),
+const ChatCompletionsResponseSchema = Schema.Struct({
+  choices: Schema.Array(
+    Schema.Struct({
+      message: Schema.optionalKey(
+        Schema.Struct({
+          content: Schema.optionalKey(Schema.NullOr(Schema.String)),
+          tool_calls: Schema.optionalKey(Schema.Array(RawToolCallSchema)),
+        }),
+      ),
+    }),
+  ).check(Schema.isMinLength(1)),
 });
 
 export interface CompleteChatInput {
@@ -194,104 +195,185 @@ function hasErrorBody(body: unknown): boolean {
   return typeof error === 'string' || (error !== null && typeof error === 'object');
 }
 
+// One typed failure per completion failure mode. Each `detail` is redacted
+// where the error is built, so the typed channel never carries a secret; the
+// Promise edge maps every one to the same `ChatCompletionError(status, detail)`
+// the function always threw.
+class CompletionUnreachable extends Data.TaggedError('CompletionUnreachable')<{
+  detail: string;
+}> {}
+class CompletionTimeout extends Data.TaggedError('CompletionTimeout') {}
+class CompletionNoBody extends Data.TaggedError('CompletionNoBody') {}
+class CompletionStreamBroken extends Data.TaggedError('CompletionStreamBroken')<{
+  detail: string;
+}> {}
+class CompletionBadShape extends Data.TaggedError('CompletionBadShape') {}
+class CompletionHttpError extends Data.TaggedError('CompletionHttpError')<{
+  status: number;
+  detail: string;
+}> {}
+class CompletionErrorBody extends Data.TaggedError('CompletionErrorBody')<{
+  status: number;
+  detail: string;
+}> {}
+class CompletionBodyUnreadable extends Data.TaggedError('CompletionBodyUnreadable') {}
+
+type CompletionFailure =
+  | CompletionUnreachable
+  | CompletionNoBody
+  | CompletionStreamBroken
+  | CompletionBadShape
+  | CompletionHttpError
+  | CompletionErrorBody
+  | CompletionBodyUnreadable;
+
 // One model call for one turn, authenticated as the AI with its own capped
 // virtual key. Every call streams (`stream: true`): text deltas are reported
 // through `onDelta` as they arrive, and the result has the same shape the
-// tool loop already understands. Throws ChatCompletionError (redacted) on any
-// failure. A stream that breaks midway or times out (the same per-call
-// timeout, now covering the whole stream) counts as a network failure. If the
-// provider ignores `stream` and answers plain JSON, that shape is parsed the
-// way it always was.
-async function requestCompletion(input: CompleteChatInput): Promise<ChatCompletionResult> {
+// tool loop already understands. A stream that breaks midway or times out
+// (the same per-call timeout, now covering the whole stream) counts as a
+// network failure. If the provider ignores `stream` and answers plain JSON,
+// that shape is parsed the way it always was.
+const requestCompletionEffect = Effect.fnUntraced(function* (
+  input: CompleteChatInput,
+  secrets: readonly string[],
+): EffectType.fn.Return<ChatCompletionResult, CompletionFailure> {
   const fetchImpl = input.fetchImpl ?? fetch;
-  const timeoutMs = input.timeoutMs ?? LITELLM_CHAT_TIMEOUT_MS;
   const url = `${input.baseUrl.replace(/\/+$/, '')}/chat/completions`;
-  const secrets = [input.virtualKey, ...(input.secrets ?? [])];
+  const requestBody = JSON.stringify({
+    model: input.model,
+    messages: input.messages,
+    max_tokens: REPLY_MAX_TOKENS,
+    stream: true,
+    ...(input.tools === undefined ? {} : { tools: input.tools, tool_choice: 'auto' }),
+  });
 
-  let response: Response;
-  try {
-    response = await fetchImpl(url, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        authorization: `Bearer ${input.virtualKey}`,
-      },
-      body: JSON.stringify({
-        model: input.model,
-        messages: input.messages,
-        max_tokens: REPLY_MAX_TOKENS,
-        stream: true,
-        ...(input.tools === undefined ? {} : { tools: input.tools, tool_choice: 'auto' }),
+  // The controller is held for the whole call: `timeoutOrElse` interrupts this
+  // effect, its release aborts the live request (headers, stream and all).
+  // `Effect.tryPromise`'s own signal stops covering the socket once `fetch`
+  // resolves its headers, so it cannot abort the stream read on its own.
+  return yield* Effect.acquireUseRelease(
+    Effect.sync(() => new AbortController()),
+    (controller) =>
+      Effect.gen(function* () {
+        const response = yield* Effect.tryPromise({
+          try: () =>
+            fetchImpl(url, {
+              method: 'POST',
+              headers: {
+                'content-type': 'application/json',
+                authorization: `Bearer ${input.virtualKey}`,
+              },
+              body: requestBody,
+              signal: controller.signal,
+            }),
+          catch: (cause) =>
+            new CompletionUnreachable({
+              detail: redactSecrets(
+                cause instanceof Error ? cause.message : 'network error',
+                secrets,
+              ),
+            }),
+        });
+
+        // HTTP errors surface before the stream starts and map exactly as before.
+        if (!response.ok) {
+          const text = yield* readBodyTextEffect(response);
+          return yield* new CompletionHttpError({
+            status: response.status,
+            detail: redactSecrets(errorDetail(parseBody(text)), secrets),
+          });
+        }
+
+        const contentType = response.headers.get('content-type') ?? '';
+        if (contentType.includes('text/event-stream')) {
+          const body = response.body;
+          if (body === null) {
+            return yield* new CompletionNoBody();
+          }
+          const streamed = yield* Effect.tryPromise({
+            try: () => consumeChatCompletionStream(body, input.onDelta),
+            catch: (error) =>
+              new CompletionStreamBroken({
+                detail: redactSecrets(
+                  error instanceof Error ? error.message : 'network error',
+                  secrets,
+                ),
+              }),
+          });
+          return {
+            content: streamed.content,
+            toolCalls: streamed.toolCalls.map((call) => ({
+              id: call.id,
+              name: call.name,
+              argsJson: call.argsJson,
+            })),
+          };
+        }
+
+        const text = yield* readBodyTextEffect(response);
+        const body: unknown = parseBody(text);
+
+        if (hasErrorBody(body)) {
+          return yield* new CompletionErrorBody({
+            status: response.status,
+            detail: redactSecrets(errorDetail(body), secrets),
+          });
+        }
+
+        const decoded = Schema.decodeUnknownResult(ChatCompletionsResponseSchema)(body);
+        if (Result.isFailure(decoded)) {
+          return yield* new CompletionBadShape();
+        }
+        const message = decoded.success.choices[0]?.message;
+        const content = message?.content?.trim() ?? '';
+        return {
+          content: content === '' ? null : content,
+          toolCalls: (message?.tool_calls ?? []).map((call) => ({
+            id: call.id,
+            name: call.function.name,
+            argsJson: call.function.arguments,
+          })),
+        };
       }),
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-  } catch (cause) {
-    const message = cause instanceof Error ? cause.message : 'network error';
-    throw new ChatCompletionError(0, redactSecrets(message, secrets));
-  }
+    (controller) => Effect.sync(() => controller.abort()),
+  );
+});
 
-  // HTTP errors surface before the stream starts and map exactly as before.
-  if (!response.ok) {
-    const text = await readBodyText(response);
-    throw new ChatCompletionError(
-      response.status,
-      redactSecrets(errorDetail(parseBody(text)), secrets),
-    );
-  }
-
-  const contentType = response.headers.get('content-type') ?? '';
-  if (contentType.includes('text/event-stream')) {
-    if (response.body === null) {
-      throw new ChatCompletionError(0, 'the stream had no body');
-    }
-    try {
-      const streamed = await consumeChatCompletionStream(response.body, input.onDelta);
-      return {
-        content: streamed.content,
-        toolCalls: streamed.toolCalls.map((call) => ({
-          id: call.id,
-          name: call.name,
-          argsJson: call.argsJson,
-        })),
-      };
-    } catch (error) {
-      if (error instanceof ChatStreamInterruptedError) {
-        throw new ChatCompletionError(0, redactSecrets(error.message, secrets));
-      }
-      const message = error instanceof Error ? error.message : 'network error';
-      throw new ChatCompletionError(0, redactSecrets(message, secrets));
-    }
-  }
-
-  const text = await readBodyText(response);
-  const body: unknown = parseBody(text);
-
-  if (hasErrorBody(body)) {
-    throw new ChatCompletionError(response.status, redactSecrets(errorDetail(body), secrets));
-  }
-
-  const parsed = ChatCompletionsResponseSchema.safeParse(body);
-  if (!parsed.success) {
-    throw new ChatCompletionError(200, 'unexpected response shape');
-  }
-  const message = parsed.data.choices[0]?.message;
-  const content = message?.content?.trim() ?? '';
-  return {
-    content: content === '' ? null : content,
-    toolCalls: (message?.tool_calls ?? []).map((call) => ({
-      id: call.id,
-      name: call.function.name,
-      argsJson: call.function.arguments,
-    })),
-  };
+async function requestCompletion(input: CompleteChatInput): Promise<ChatCompletionResult> {
+  const secrets = [input.virtualKey, ...(input.secrets ?? [])];
+  const timeoutMs = input.timeoutMs ?? LITELLM_CHAT_TIMEOUT_MS;
+  return Effect.runPromise(
+    requestCompletionEffect(input, secrets).pipe(
+      Effect.timeoutOrElse({
+        duration: Duration.millis(timeoutMs),
+        orElse: () => Effect.fail(new CompletionTimeout()),
+      }),
+      Effect.catchTags({
+        CompletionUnreachable: (error) => Effect.fail(new ChatCompletionError(0, error.detail)),
+        CompletionTimeout: () => Effect.fail(new ChatCompletionError(0, 'the request timed out')),
+        CompletionNoBody: () => Effect.fail(new ChatCompletionError(0, 'the stream had no body')),
+        CompletionStreamBroken: (error) => Effect.fail(new ChatCompletionError(0, error.detail)),
+        CompletionBadShape: () =>
+          Effect.fail(new ChatCompletionError(200, 'unexpected response shape')),
+        CompletionHttpError: (error) =>
+          Effect.fail(new ChatCompletionError(error.status, error.detail)),
+        CompletionErrorBody: (error) =>
+          Effect.fail(new ChatCompletionError(error.status, error.detail)),
+        CompletionBodyUnreadable: () =>
+          Effect.fail(new ChatCompletionError(0, 'the response body could not be read')),
+      }),
+    ),
+  );
 }
 
-async function readBodyText(response: Response): Promise<string> {
-  try {
-    return await response.text();
-  } catch {
-    throw new ChatCompletionError(0, 'the response body could not be read');
-  }
+function readBodyTextEffect(
+  response: Response,
+): EffectType.Effect<string, CompletionBodyUnreadable> {
+  return Effect.tryPromise({
+    try: () => response.text(),
+    catch: () => new CompletionBodyUnreadable(),
+  });
 }
 
 function parseBody(text: string): unknown {
