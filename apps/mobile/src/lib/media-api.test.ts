@@ -47,6 +47,7 @@ describe('parseMediaItem', () => {
     expect(parseMediaItem(null)).toBeNull();
     expect(parseMediaItem({ ...ROW, messageId: 7 })).toBeNull();
     expect(parseMediaItem({ ...ROW, at: undefined })).toBeNull();
+    expect(parseMediaItem({ ...ROW, at: 'not-a-date' })).toBeNull();
   });
 });
 

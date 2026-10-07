@@ -97,6 +97,7 @@ export function parseMediaItem(value: unknown): MediaItem | null {
     !isString(messageId) ||
     !isString(chat) ||
     !isString(at) ||
+    Number.isNaN(Date.parse(at)) ||
     !isString(senderName) ||
     !isMediaKind(kind)
   ) {
