@@ -186,6 +186,18 @@ Each item was hit by a worker in a merged task; trust these over memory of v3.
   
   Log secrets-bearing objects as objects, never interpolated into the message string: pino cannot redact free text.
 
+## Moving a server route module onto Effect HTTP (T-0498)
+
+Hono stays the outer edge until every module has moved. Each module becomes an `HttpApi` group mounted under Hono by `apps/server/src/effect/http.ts`; `apps/server/src/handles/api.ts` is the worked example.
+
+1. **Group:** in `<module>/api.ts`, `HttpApiGroup.make('<id>').add(<endpoints>).middleware(Session).prefix('/api')` and `HttpApi.make('<id>').add(group)`. The `/api` prefix is required, because the adapter forwards the full Hono path.
+2. **Schemas:** Effect `Schema.Struct`s replace zod for the query and payload. Map decode failures to the module's old answers with a module-local `HttpApiMiddleware.layerSchemaErrorTransform`; usually that is `400 invalid_request` through `failureResponse(...)`. A strict body uses the `HttpApi.PayloadParseOptions: { onExcessProperty: 'error' }` annotation.
+3. **Auth:** use `.middleware(Session)` and read the user with `yield* CurrentUser`. The 401 comes before any decode.
+4. **Handlers:** lift Promise and DB calls with `Effect.promise` and wrap each body in `withErrorEnvelope(effect, logger, requestId)`. Keep the rate limiters, the `now` seam and the audit calls identical.
+5. **Layer:** `HttpApiBuilder.group(...)`, then `HttpApiBuilder.layer(api)` with the group, `sessionLayer` and the schema-error layer provided, then `HttpRouter.toWebHandler(layer.pipe(Layer.provide(HttpServer.layerServices)), { disableLogger: true })`. **Keep the router logger off:** it logs full URLs, which would bypass Hono's redacted path logging.
+6. **Mount:** export `{ handler, routes }` with the exact `{ method, path }` pairs, then replace the module's `app.route('/api', …)` line with `mountEffectRoutes(app, routes, handler)`. **Use exact routes, not a wildcard,** so the authz sweep test still sees every route.
+7. **Proof:** the module's existing Hono-level test passes unchanged. If it cannot, stop and report BLOCKED.
+
 ## Whole-codebase conversion (2026-10-07)
 
 The rules in "What NOT to do" below were written for the first, logic-only conversions. **Julio extended the scope** to the whole codebase: Effect Schema replaces zod, `effect/sql` replaces drizzle, Effect HTTP replaces Hono, and `@effect/atom-react` replaces zustand. See `docs/ROADMAP_EFFECT.md` and `docs/audit/effect-everywhere-plan.md`. A task that says it converts one of those layers overrides the matching "do not" below. The foundation tasks (T-0494 protocol Schema, T-0495 runtime and logger, T-0496 the `effect/sql` spike) define the patterns; this guide gains a section for each as they merge.
