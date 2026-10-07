@@ -1,4 +1,5 @@
-import { taskFrontMatterSchema, type TaskFrontMatter } from './types.js';
+import { Result, Schema } from 'effect';
+import { schemaIssues, taskFrontMatterSchema, type TaskFrontMatter } from './types.js';
 
 // The task files are markdown with a small YAML front matter block. There is
 // no YAML dependency allowed, so this parses only the flat `key: value` lines
@@ -19,14 +20,14 @@ export function parseFrontMatter(text: string): Record<string, string> {
 }
 
 export function parseTaskFrontMatter(text: string): TaskFrontMatter {
-  const parsed = taskFrontMatterSchema.safeParse(parseFrontMatter(text));
-  if (!parsed.success) {
-    const detail = parsed.error.issues
-      .map((issue) => `${issue.path.join('.') || 'front matter'}: ${issue.message}`)
+  const parsed = Schema.decodeUnknownResult(taskFrontMatterSchema)(parseFrontMatter(text));
+  if (Result.isFailure(parsed)) {
+    const detail = schemaIssues(parsed.failure)
+      .map((issue) => `${issue.path || 'front matter'}: ${issue.message}`)
       .join('; ');
     throw new Error(`invalid task front matter: ${detail}`);
   }
-  return parsed.data;
+  return parsed.success;
 }
 
 // Splits "providerID/modelID" from the task's `model:` field.

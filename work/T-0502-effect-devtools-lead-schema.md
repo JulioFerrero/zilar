@@ -1,7 +1,7 @@
 ---
 id: T-0502
 title: "Effect lane F: packages/devtools lead CLI zod to Effect Schema (state file, task front matter, rules, opencode envelopes, watch view); every lead test unchanged"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0502-effect-devtools-lead-schema
 model: auto
@@ -86,4 +86,43 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Status: review.
+
+### What I did
+- Replaced zod with Effect Schema in `packages/devtools/src/lead` (types, state, prompts, task-file, client, watch). No zod left in the package; `effect@^4.0.0` added to dependencies, `zod` removed.
+- Kept every exported schema name and type (`permissionRuleSchema`, `permissionRulesSchema`, `taskFrontMatterSchema`, `stateFileSchema`, `PermissionRule`, `TaskFrontMatter`) and the hand-written `PrereviewRecord`/`DoctorRecord`/`TaskRecord`/`StateFile` interfaces. `PermissionRule`/`TaskFrontMatter` now come from `typeof schema.Type`.
+- Preserved the exact error-text templates: state file (`invalid state file at <path>: <first issue message>`), rules file (`invalid rules file at <path>: <first issue message>`), front matter (`invalid task front matter: <path or "front matter">: <message>` joined with `; `).
+- Unknown keys are stripped, not rejected: Effect `Schema.Struct` ignores excess properties by default, as decided in the task (`onExcessProperty: "ignore"`).
+- Defaults (`nudgesSent` 0, `prereviewStalledEscalated`/`stalledEscalated` false, `autoFixRounds` 0, `escalatedPermissionIds`/`escalatedQuestionIds` `[]`) and bounds (`int`, `>= 0`) are kept via `withDecodingDefault`, `isInt`, `isGreaterThanOrEqualTo`.
+- Added `packages/devtools/src/lead/types.schema.test.ts`: a full state-file round trip (two task records, one rich with `prereview`/`packetReadyForHead`/`lastEscalation`, one minimal with an unknown extra key; plus a `doctor`) and front-matter `effort: default` accepted / `effort: huge` rejected with a message naming `effort`.
+- Existing tests were not touched.
+
+### Files changed
+- `packages/devtools/package.json` — zod → effect.
+- `pnpm-lock.yaml` — from `pnpm install`.
+- `packages/devtools/src/lead/types.ts` — Effect Schema + small exported `schemaIssues` helper.
+- `packages/devtools/src/lead/state.ts`, `prompts.ts`, `task-file.ts`, `client.ts`, `watch.ts` — Effect Schema decode + same error text.
+- `packages/devtools/src/lead/types.schema.test.ts` — new.
+- `work/T-0502-effect-devtools-lead-schema.md` — this report.
+
+### Commands and real results
+- `pnpm --filter @zilar/devtools test --maxWorkers=2 --reporter=dot src/lead`: **26 files passed, 608 tests passed**.
+- `pnpm gate` (from repo root), summary lines:
+  - `gate: 10 changed file(s) against main`
+  - `PASS  install (frozen)`, `PASS  format`, `PASS  lint`, `PASS  typecheck`, `PASS  tests @zilar/devtools`
+  - `scope: every changed file is inside the Allowed files`
+  - `GATE PASS`
+- Smoke test `pnpm exec tsx src/lead/cli.ts --help` (from `packages/devtools`): prints the full usage with no stack trace (exit 0). No command touched `~/.zilar-lead`.
+
+### Deviations from the spec (all behaviour-preserving)
+- Used `Schema.decodeUnknownResult` (same family as the listed `decodeUnknownExit`, `Schema.d.ts:1337`) instead of `decodeUnknownExit`: it mirrors zod's `safeParse` and gives a typed `SchemaError` without `Cause`/`Exit` juggling.
+- Built issue path/message with `SchemaIssue.makeFormatterStandardSchemaV1()`, which flattens the Effect issue tree into `{ path, message }` entries (the "build the issue list from Effect's issue" step). Exported a tiny `schemaIssues(error)` helper from `types.ts` so the three callers share it.
+- Used `Schema.mutable(Schema.Array(...))` for array fields so decoded types stay `string[]`/`number[]` and match the unchanged hand-written interfaces.
+- `z.enum` → `Schema.Literals`, `z.literal(1)` → `Schema.Literal(1)`, `.regex(re, msg)` → `Schema.isPattern(re, { message })`, `.min(1, msg)` → `Schema.isMinLength(1, { message })` (messages verified to render).
+
+### Open questions / notes
+- None blocking. The zod `permissionRuleSchema` min-length checks had no custom message; I kept them message-less (Effect default message), so the only fixed messages that matter to callers (task id, branch, model, rules/defaults) are preserved.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-07). The lead CLI has no zod. The state file, front matter, rules, opencode envelopes and watch view decode with Effect Schema, with the same defaults, key stripping and error formats. The existing tests are untouched and the round-trip test passes. The lead decoded the live state.json (26 tasks) with the new schema and ran `lead status` from this worktree; both worked.

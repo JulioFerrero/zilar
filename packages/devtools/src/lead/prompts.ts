@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { permissionRulesSchema, type PermissionRule } from './types.js';
+import { Result, Schema } from 'effect';
+import { permissionRulesSchema, schemaIssues, type PermissionRule } from './types.js';
 
 export type PromptName =
   | 'worker'
@@ -28,13 +29,12 @@ export function loadPrompt(dir: string, name: PromptName): string {
 
 export function loadRulesFile(file: string): PermissionRule[] {
   const parsed: unknown = JSON.parse(fs.readFileSync(file, 'utf8'));
-  const validated = permissionRulesSchema.safeParse(parsed);
-  if (!validated.success) {
-    throw new Error(
-      `invalid rules file at ${file}: ${validated.error.issues[0]?.message ?? 'unknown'}`,
-    );
+  const validated = Schema.decodeUnknownResult(permissionRulesSchema)(parsed);
+  if (Result.isFailure(validated)) {
+    const [first] = schemaIssues(validated.failure);
+    throw new Error(`invalid rules file at ${file}: ${first?.message ?? 'unknown'}`);
   }
-  return validated.data;
+  return validated.success;
 }
 
 // Fills {{PLACEHOLDERS}} in a prompt template. Unknown placeholders are left

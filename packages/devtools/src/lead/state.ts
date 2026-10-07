@@ -1,7 +1,14 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { stateFileSchema, type DoctorRecord, type StateFile, type TaskRecord } from './types.js';
+import { Result, Schema } from 'effect';
+import {
+  schemaIssues,
+  stateFileSchema,
+  type DoctorRecord,
+  type StateFile,
+  type TaskRecord,
+} from './types.js';
 
 // The state file lives outside the repo so worktree removals and rebases can
 // never touch it. It holds session ids and bookkeeping only: no secrets.
@@ -29,14 +36,14 @@ export function loadState(statePath: string): StateFile {
     return emptyState();
   }
   const parsed: unknown = JSON.parse(raw);
-  const validated = stateFileSchema.safeParse(parsed);
-  if (!validated.success) {
-    throw new Error(
-      `invalid state file at ${statePath}: ${validated.error.issues[0]?.message ?? 'unknown'}`,
-    );
+  const validated = Schema.decodeUnknownResult(stateFileSchema)(parsed);
+  if (Result.isFailure(validated)) {
+    const [first] = schemaIssues(validated.failure);
+    throw new Error(`invalid state file at ${statePath}: ${first?.message ?? 'unknown'}`);
   }
+  const data = validated.success;
   const tasks: Record<string, TaskRecord> = {};
-  for (const [key, value] of Object.entries(validated.data.tasks)) {
+  for (const [key, value] of Object.entries(data.tasks)) {
     const entry: TaskRecord = {
       task: value.task,
       sessionId: value.sessionId,
@@ -61,16 +68,16 @@ export function loadState(statePath: string): StateFile {
     tasks[key] = entry;
   }
   const doctor: DoctorRecord | undefined =
-    validated.data.doctor === undefined
+    data.doctor === undefined
       ? undefined
       : {
-          sessionId: validated.data.doctor.sessionId,
-          head: validated.data.doctor.head,
-          since: validated.data.doctor.since,
-          startedAt: validated.data.doctor.startedAt,
-          reportedForHead: validated.data.doctor.reportedForHead,
-          stalledReportedForHead: validated.data.doctor.stalledReportedForHead,
-          model: validated.data.doctor.model,
+          sessionId: data.doctor.sessionId,
+          head: data.doctor.head,
+          since: data.doctor.since,
+          startedAt: data.doctor.startedAt,
+          reportedForHead: data.doctor.reportedForHead,
+          stalledReportedForHead: data.doctor.stalledReportedForHead,
+          model: data.doctor.model,
         };
   return { version: 1, tasks, doctor };
 }
