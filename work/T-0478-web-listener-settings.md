@@ -1,7 +1,7 @@
 ---
 id: T-0478
 title: "Listener W1 (web): group panel listener switch + eagerness (owners/admins); AI panel 'Can delegate' and 'Accepts tasks' switches (owner)"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0478-web-listener-settings
 model: auto
@@ -94,4 +94,43 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+Web controls for the listener and delegation (plan W1).
+
+- **`apps/web/src/lib/api.ts`**: added `groupListenerSchema` (`enabled`, `eagerness` enum, `available`) + exported `ListenerEagerness`; `groupDetailSchema` now carries `listener` as an optional object; added `SetGroupListenerInput` and `setGroupListener(groupId, input)` (PATCH `/groups/:id`). `publicAiSchema` and `UpdateAiInput` gained optional `canDelegate` / `acceptsDelegation`.
+- **`apps/web/src/store/store.ts`**: declared `setGroupListener(chatId, input)` and implemented it in the mock store (calls the API, refreshes the cached detail).
+- **`apps/web/src/store/realStore.ts`**: added `setGroupListener` to the `ApiClient` interface, the `realApi` map and the store implementation, following the `setMembersCanCreateTopics` pattern (resolve `groupId`, PATCH, `applyGroupDetail`).
+- **`apps/web/src/components/GroupPanel.tsx`**: manager-only `aria-label="AI listener"` section after "Topic settings": the "Let AIs answer without @mention" `Switch`, a radio `SegmentedControl` (Quiet / Normal / Eager) shown when enabled, the muted helper line, the "Turned off on this server" line when `available !== true`, and busy/error handling copied from `flipTopicSwitch`.
+- **`apps/web/src/components/ais/AiPanel.tsx`**: `aria-label="Delegation"` section with "Can delegate" and "Accepts tasks" switches that save immediately through `updateAi(ai.id, …)`, update the local `ai` on success, and show an inline `role="alert"` error keeping the old value on failure.
+- **`apps/web/src/mock/api.ts`**: the group PATCH handles `listenerEnabled` / `listenerEagerness`; `patchAi` handles `canDelegate` / `acceptsDelegation`.
+- **Tests**: 4 new cases in `GroupPanel.test.tsx` (admin vs member visibility, flip → `{ listenerEnabled: true }`, Quiet → `{ listenerEagerness: 'quiet' }`, `available: false` disables both controls with the server line) and 3 new cases in `AiPanel.test.tsx` (switches reflect flags, Accepts tasks → `updateAi({ acceptsDelegation: true })` and updates, rejected save alerts and keeps the old value).
+- **Store test fakes** (`realStore.test.tsx`, `realStore.forward.test.tsx`, `realStore.media.test.tsx`, `realStore.topics.test.tsx`, `reload.test.tsx`): added the `setGroupListener` stub required by the extended `ApiClient` interface.
+
+### Files changed
+14, all inside the Allowed list: `apps/web/src/lib/api.ts`, `apps/web/src/store/store.ts`, `apps/web/src/store/realStore.ts`, `apps/web/src/components/GroupPanel.tsx`, `apps/web/src/components/GroupPanel.test.tsx`, `apps/web/src/components/ais/AiPanel.tsx`, `apps/web/src/components/ais/AiPanel.test.tsx`, `apps/web/src/mock/api.ts`, `apps/web/src/store/reload.test.tsx`, `apps/web/src/store/realStore.forward.test.tsx`, `apps/web/src/store/realStore.media.test.tsx`, `apps/web/src/store/realStore.topics.test.tsx`, `apps/web/src/store/realStore.test.tsx`, `work/T-0478-web-listener-settings.md`.
+
+### Commands and results
+- `pnpm install`: success (1170 packages, done in 20s).
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot GroupPanel.test.tsx`: 1 file, 29 tests passed.
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot AiPanel.test.tsx`: 1 file, 35 tests passed.
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot GroupPanel AiPanel realStore`: 6 files, 232 tests passed.
+- `pnpm gate` (first run): `FAIL format` — prettier flagged `GroupPanel.tsx` and `mock/api.ts`; scope line was already `every changed file is inside the Allowed files`. I ran `pnpm exec prettier --write` on those two files, then re-ran the gate.
+- `pnpm gate` (final):
+  ```
+  gate: 14 changed file(s) against main
+  PASS  install (frozen)  (1.2s)
+  PASS  format  (22.2s)
+  PASS  lint  (1.1s)
+  PASS  typecheck  (17.6s)
+  PASS  tests @zilar/web  (68.8s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Deviations / notes
+- The kit `SegmentedControl` has no `disabled` prop and `segmented-control.tsx` is not in the Allowed files, so I wrapped it in a `<fieldset disabled>` when the listener is unavailable/busy (a disabled fieldset disables descendant buttons in a real browser). I also guard `chooseEagerness` on `listenerAvailable`, so the radio does nothing when the server flag is off. The `available: false` test asserts the switch is `disabled`, the fieldset is `disabled`, and a Quiet click is a no-op.
+- No new dependencies. No security-relevant code paths added (web only).
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-07). The group panel has an AI listener section for managers: a switch and a Quiet/Normal/Eager radio, disabled with "Turned off on this server" when unavailable. The AI panel has Delegation switches that save immediately, with an alert and a revert on failure. The API, store and mocks are extended. Nits accepted: the raw error message copies flipTopicSwitch; there is no re-entry guard beyond disabled.

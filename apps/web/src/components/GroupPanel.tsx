@@ -1,7 +1,14 @@
 import type { ChatSummary } from '@zilar/chat-core';
 import { Brain, Image, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import type { CreatedInviteLink, GroupAi, GroupInviteLink, GroupRole, PublicAi } from '@/lib/api';
+import type {
+  CreatedInviteLink,
+  GroupAi,
+  GroupInviteLink,
+  GroupRole,
+  ListenerEagerness,
+  PublicAi,
+} from '@/lib/api';
 import {
   createGroupInviteLink,
   createGroupRole,
@@ -28,6 +35,7 @@ import { Button } from './ui/button';
 import { Checkbox } from './ui/checkbox';
 import { ListRow } from './ui/list-row';
 import { Sheet } from './ui/sheet';
+import { SegmentedControl } from './ui/segmented-control';
 import { StateMessage } from './ui/state-message';
 import { Switch } from './ui/switch';
 import { TextInput } from './ui/text-input';
@@ -64,6 +72,9 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
   const [errorMessage, setErrorMessage] = useState('');
   const [switchBusy, setSwitchBusy] = useState(false);
   const [switchError, setSwitchError] = useState('');
+  // T-0478: the AI listener switch and eagerness, owner/admin only.
+  const [listenerBusy, setListenerBusy] = useState(false);
+  const [listenerError, setListenerError] = useState('');
   const [memoryAi, setMemoryAi] = useState<{ id: string; name: string } | undefined>(undefined);
   /** T-0466: the manager-only group background dialog. */
   const [backgroundOpen, setBackgroundOpen] = useState(false);
@@ -274,6 +285,42 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
       setSwitchError(error instanceof Error ? error.message : 'Could not save the setting.');
     } finally {
       setSwitchBusy(false);
+    }
+  };
+
+  // T-0478: the listener switch and eagerness. Both go through
+  // `setGroupListener`; the store refreshes the detail on success and an
+  // inline error shows on failure, exactly like `flipTopicSwitch`.
+  const listenerEnabled = info?.listener?.enabled === true;
+  const listenerAvailable = info?.listener?.available === true;
+
+  const flipListenerSwitch = async (): Promise<void> => {
+    if (info === undefined || listenerBusy || !listenerAvailable) {
+      return;
+    }
+    setListenerBusy(true);
+    setListenerError('');
+    try {
+      await storeApi.getState().setGroupListener(chat.id, { listenerEnabled: !listenerEnabled });
+    } catch (error) {
+      setListenerError(error instanceof Error ? error.message : 'Could not save the setting.');
+    } finally {
+      setListenerBusy(false);
+    }
+  };
+
+  const chooseEagerness = async (eagerness: ListenerEagerness): Promise<void> => {
+    if (info === undefined || listenerBusy || !listenerAvailable) {
+      return;
+    }
+    setListenerBusy(true);
+    setListenerError('');
+    try {
+      await storeApi.getState().setGroupListener(chat.id, { listenerEagerness: eagerness });
+    } catch (error) {
+      setListenerError(error instanceof Error ? error.message : 'Could not save the setting.');
+    } finally {
+      setListenerBusy(false);
     }
   };
 
@@ -561,6 +608,47 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
                   />
                 </label>
                 {switchError !== '' && <FieldError>{switchError}</FieldError>}
+              </section>
+            )}
+
+            {/* T-0478: the AI listener switch and eagerness, same visibility —
+                  owners and admins only. */}
+            {isManager && (
+              <section aria-label="AI listener" className="flex flex-col gap-2 px-2">
+                <label className="flex cursor-pointer items-center justify-between gap-3 rounded-xl px-2 py-1.5 hover:bg-list-hover">
+                  <span className="text-[14px]">Let AIs answer without @mention</span>
+                  <Switch
+                    checked={listenerEnabled}
+                    onCheckedChange={() => void flipListenerSwitch()}
+                    label="Let AIs answer without @mention"
+                    hideLabel
+                    disabled={!listenerAvailable || listenerBusy}
+                  />
+                </label>
+                {listenerEnabled && (
+                  <fieldset
+                    disabled={!listenerAvailable || listenerBusy}
+                    className="m-0 min-w-0 border-0 p-0"
+                  >
+                    <SegmentedControl
+                      options={[
+                        { value: 'quiet', label: 'Quiet' },
+                        { value: 'normal', label: 'Normal' },
+                        { value: 'eager', label: 'Eager' },
+                      ]}
+                      value={info.listener?.eagerness ?? 'normal'}
+                      onChange={(value) => void chooseEagerness(value as ListenerEagerness)}
+                      ariaLabel="Eagerness"
+                      mode="radio"
+                    />
+                  </fieldset>
+                )}
+                <p className="px-2 text-[13px] text-muted-foreground">
+                  {listenerAvailable
+                    ? 'Normal suits most groups. Quiet wakes AIs only for clear asks.'
+                    : 'Turned off on this server'}
+                </p>
+                {listenerError !== '' && <FieldError>{listenerError}</FieldError>}
               </section>
             )}
 

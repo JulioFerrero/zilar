@@ -1002,4 +1002,59 @@ describe('AiPanel home machine (T-0091)', () => {
     // No other options are offered.
     expect(Array.from(select.options).map((option) => option.value)).toEqual(['m-approved']);
   });
+
+  describe('delegation (T-0478)', () => {
+    it('reflects the AI delegation flags in the switches', async () => {
+      const flagged = { ...ai, canDelegate: true, acceptsDelegation: false };
+      mockPanelFetch([openaiConnection], flagged, undefined, flagged, flagged);
+
+      renderPanel();
+
+      const canDelegate = await screen.findByRole('switch', { name: 'Can delegate' });
+      expect(canDelegate.getAttribute('aria-checked')).toBe('true');
+      expect(
+        screen.getByRole('switch', { name: 'Accepts tasks' }).getAttribute('aria-checked'),
+      ).toBe('false');
+    });
+
+    it('saves Accepts tasks immediately through updateAi', async () => {
+      const after = { ...ai, acceptsDelegation: true };
+      const fetchMock = mockPanelFetch([openaiConnection], after, undefined, after, ai);
+
+      renderPanel();
+      const accepts = await screen.findByRole('switch', { name: 'Accepts tasks' });
+      expect(accepts.getAttribute('aria-checked')).toBe('false');
+
+      fireEvent.click(accepts);
+
+      await waitFor(() => expect(patchesTo(fetchMock)).toHaveLength(1));
+      expect(bodyOf(patchesTo(fetchMock)[0]!)).toEqual({ acceptsDelegation: true });
+      await waitFor(() =>
+        expect(
+          screen.getByRole('switch', { name: 'Accepts tasks' }).getAttribute('aria-checked'),
+        ).toBe('true'),
+      );
+    });
+
+    it('shows an alert and keeps the old value when a delegation save fails', async () => {
+      const fetchMock = mockPanelFetch(
+        [openaiConnection],
+        undefined,
+        { status: 500, message: 'nope' },
+        undefined,
+        ai,
+      );
+
+      renderPanel();
+      const accepts = await screen.findByRole('switch', { name: 'Accepts tasks' });
+
+      fireEvent.click(accepts);
+
+      expect(await screen.findByRole('alert')).toBeTruthy();
+      expect(patchesTo(fetchMock)).toHaveLength(1);
+      expect(
+        screen.getByRole('switch', { name: 'Accepts tasks' }).getAttribute('aria-checked'),
+      ).toBe('false');
+    });
+  });
 });

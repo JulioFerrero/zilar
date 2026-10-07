@@ -454,7 +454,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0425](T-0425-mobile-profile-buttons-kit.md) | Mobile: profile and contact card buttons on the kit Button | 2026-10-06 |
 | [T-0426](T-0426-mobile-ai-sheet-buttons-kit.md) | Mobile: AI activity Refresh, tool sheet Show all/less and Close on the kit Button | 2026-10-06 |
 | [T-0475](T-0475-listener-gateway.md) | Listener S3 (server): per-room listener in the gateway, wakes AIs | running | auto | T-0474 | |
-| [T-0478](T-0478-web-listener-settings.md) | Listener W1 (web): group listener switch + eagerness; AI delegation switches | running | auto | T-0474 | |
 | [T-0427](T-0427-mobile-forwarded-header.md) | Mobile: forwarded messages show 'Forwarded from X [in Y]' | 2026-10-06 |
 | [T-0428](T-0428-mobile-new-chat-menu-sheet.md) | Mobile: New chat menu on the kit ActionSheet with icons | 2026-10-06 |
 | [T-0429](T-0429-mobile-dismiss-banner.md) | Mobile: DismissBanner replaces 12 copied chat screen banners | 2026-10-06 |
@@ -507,3 +506,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0476](T-0476-web-kit-panel-rows.md) | Web kit: panel rows on ListRow, archived toggle on Button | 2026-10-07 |
 | [T-0474](T-0474-listener-settings-routes.md) | Listener S6a (server): LISTENER_ENABLED, group listener + AI delegation settings | 2026-10-07 |
 | [T-0477](T-0477-web-kit-chip.md) | Web kit: Chip component; reactions + search scope chip; topic Type on SegmentedControl | 2026-10-07 |
+| [T-0478](T-0478-web-listener-settings.md) | Listener W1 (web): group listener switch + eagerness; AI delegation switches | 2026-10-07 |

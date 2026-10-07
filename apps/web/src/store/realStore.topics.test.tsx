@@ -192,6 +192,7 @@ function topicApi(overrides: Partial<ApiClient> = {}): ApiClient {
     setTopicRoles: vi.fn(nope),
     setMembersCanCreateTopics: vi.fn(nope),
     setGroupBackground: vi.fn(nope),
+    setGroupListener: vi.fn(nope),
     listChatPrefs: vi.fn(async () => []),
     getChatBackgroundDefault: vi.fn(async () => ({
       backgroundPreset: null,

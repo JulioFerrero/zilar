@@ -681,4 +681,104 @@ describe('GroupPanel', () => {
       );
     });
   });
+
+  describe('AI listener (T-0478)', () => {
+    it('shows the listener section to an admin', () => {
+      setup({
+        groupInfos: {
+          'c-devteam': detail({
+            members: [{ userId: 'u-you', name: 'You', role: 'admin' }],
+            listener: { enabled: false, eagerness: 'normal', available: true },
+          }),
+        },
+      });
+
+      expect(screen.getByRole('region', { name: 'AI listener' })).toBeTruthy();
+    });
+
+    it('hides the listener section from a plain member', () => {
+      setup(
+        {
+          groupInfos: {
+            'c-devteam': detail({
+              members: [{ userId: 'u-you', name: 'You', role: 'member' }],
+              listener: { enabled: false, eagerness: 'normal', available: true },
+            }),
+          },
+        },
+        'no-stub',
+      );
+
+      expect(screen.queryByRole('region', { name: 'AI listener' })).toBeNull();
+    });
+
+    it('flips the switch through setGroupListener', async () => {
+      const { store } = setup({
+        groupInfos: {
+          'c-devteam': detail({
+            listener: { enabled: false, eagerness: 'normal', available: true },
+          }),
+        },
+      });
+      const setGroupListener = vi.fn(async () => {});
+      act(() => {
+        store.setState({ setGroupListener });
+      });
+
+      fireEvent.click(
+        await screen.findByRole('switch', { name: 'Let AIs answer without @mention' }),
+      );
+
+      await waitFor(() =>
+        expect(setGroupListener).toHaveBeenCalledWith('c-devteam', { listenerEnabled: true }),
+      );
+    });
+
+    it('picks an eagerness through setGroupListener', async () => {
+      const { store } = setup({
+        groupInfos: {
+          'c-devteam': detail({
+            listener: { enabled: true, eagerness: 'normal', available: true },
+          }),
+        },
+      });
+      const setGroupListener = vi.fn(async () => {});
+      act(() => {
+        store.setState({ setGroupListener });
+      });
+
+      fireEvent.click(await screen.findByRole('radio', { name: 'Quiet' }));
+
+      await waitFor(() =>
+        expect(setGroupListener).toHaveBeenCalledWith('c-devteam', {
+          listenerEagerness: 'quiet',
+        }),
+      );
+    });
+
+    it('disables both controls when the server flag is off', async () => {
+      const { store } = setup({
+        groupInfos: {
+          'c-devteam': detail({
+            listener: { enabled: true, eagerness: 'normal', available: false },
+          }),
+        },
+      });
+      const setGroupListener = vi.fn(async () => {});
+      act(() => {
+        store.setState({ setGroupListener });
+      });
+
+      const switchEl = await screen.findByRole('switch', {
+        name: 'Let AIs answer without @mention',
+      });
+      expect((switchEl as HTMLButtonElement).disabled).toBe(true);
+      expect(screen.getByText('Turned off on this server')).toBeTruthy();
+
+      const quiet = screen.getByRole('radio', { name: 'Quiet' });
+      expect((quiet.closest('fieldset') as HTMLFieldSetElement | null)?.disabled).toBe(true);
+      fireEvent.click(quiet);
+      expect(setGroupListener).not.toHaveBeenCalled();
+    });
+  });
 });

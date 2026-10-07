@@ -92,6 +92,7 @@ import {
   revokeGroupInviteLink as revokeGroupInviteLinkRequest,
   searchDirectory as searchDirectoryRequest,
   setGroupBackground as setGroupBackgroundRequest,
+  setGroupListener as setGroupListenerRequest,
   setGroupVisibility as setGroupVisibilityRequest,
   setMembersCanCreateTopics as setMembersCanCreateTopicsRequest,
   setTopicRoles as setTopicRolesRequest,
@@ -124,6 +125,7 @@ import {
   type Topic,
   type TopicAi,
   type TopicMember,
+  type SetGroupListenerInput,
   type SetTopicRolesInput,
   type XmppToken,
 } from '@/lib/api';
@@ -324,6 +326,7 @@ export interface ApiClient {
   setTopicRoles(topicId: string, input: SetTopicRolesInput): Promise<Topic>;
   setMembersCanCreateTopics(groupId: string, allowed: boolean): Promise<GroupDetail>;
   setGroupBackground(groupId: string, background: GroupBackground): Promise<GroupDetail>;
+  setGroupListener(groupId: string, input: SetGroupListenerInput): Promise<GroupDetail>;
   listChatPrefs(): Promise<ChatPref[]>;
   getChatBackgroundDefault(): Promise<ChatBackgroundChoice>;
   putChatBackgroundDefault(input: ChatBackgroundChoice): Promise<ChatBackgroundChoice>;
@@ -393,6 +396,7 @@ const realApi: ApiClient = {
   setTopicRoles: setTopicRolesRequest,
   setMembersCanCreateTopics: setMembersCanCreateTopicsRequest,
   setGroupBackground: setGroupBackgroundRequest,
+  setGroupListener: setGroupListenerRequest,
   listChatPrefs: listChatPrefsRequest,
   getChatBackgroundDefault: getChatBackgroundDefaultRequest,
   putChatBackgroundDefault: putChatBackgroundDefaultRequest,
@@ -3752,6 +3756,19 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         }
         const domain = mine.slice(mine.indexOf('@') + 1);
         const detail = await api.setGroupBackground(groupId, background);
+        applyGroupDetail(chatId, detail, domain);
+      },
+      // T-0478: owners/admins turn the group's AI listener on/off or set its
+      // eagerness; the detail refresh repaints the panel.
+      setGroupListener: async (chatId, input) => {
+        const chat = get().chats.find((entry) => entry.id === chatId);
+        const groupId = chat?.groupId ?? groupIds.get(chatId);
+        const mine = myJid();
+        if (groupId === undefined || mine === undefined) {
+          throw new Error('This group is not available yet.');
+        }
+        const domain = mine.slice(mine.indexOf('@') + 1);
+        const detail = await api.setGroupListener(groupId, input);
         applyGroupDetail(chatId, detail, domain);
       },
       // T-0164: the owner flips a group public (with a handle) or back to
