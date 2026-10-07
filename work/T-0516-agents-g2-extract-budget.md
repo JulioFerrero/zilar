@@ -1,7 +1,7 @@
 ---
 id: T-0516
 title: "Agents G2: move the budget gate (daily-limit check, 80% warnings, notice maps, utcDay, checkDmRoundGate) out of createAgentGateway into agents/gateway/budget.ts; zero behaviour change"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0516-agents-g2-extract-budget
 model: auto
@@ -56,4 +56,48 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- Created `apps/server/src/agents/gateway/budget.ts` with `createBudgetGate(ctx)`:
+  - `ctx` = `{ deps, logger, sessionIsLive, secretsFor }`.
+  - Returns `{ utcDay, checkDailyLimit, sendBudgetWarnings, checkDmRoundGate }`.
+  - The three notice maps (`dailyLimitNotices`, `dailyWarningNotices`, `monthlyWarningNotices`) live inside the gate, so there is one gate instance per gateway, as before.
+- In `createAgentGateway`, the gate is created once where the maps were declared:
+  `const budgetGate = createBudgetGate({ deps, logger, sessionIsLive, secretsFor });`
+  (`sessionIsLive` and `secretsFor` are function declarations, so they are hoisted and the create site may precede them textually.)
+- Replaced every call site with the gate method, same argument order and awaiting:
+  - `await budgetGate.checkDailyLimit({...})` — 2 sites (group turn, DM turn)
+  - `await budgetGate.sendBudgetWarnings({...})` — 2 sites
+  - `checkRoundGate: () => budgetGate.checkDmRoundGate(session)` — 2 sites
+  - `if ((await budgetGate.checkDmRoundGate(session)) !== null)` in `startCompaction` — 1 site
+- Removed now-unused imports from `gateway.ts`: `getAiUsage`, `type AiUsage`, `dailyLimitReply`, `dailyWarningReply`, `monthlyWarningReply`. Added the `createBudgetGate` import.
+
+### Injected callbacks (spec point 3)
+The moved bodies call `secretsFor()` (a gateway-local helper over `deps.masterKeyForRedaction`) and `sessionIsLive` (a gateway-local function over the `sessions` map). To keep the bodies verbatim I injected both through `ctx`. There is no import cycle; injecting them avoids reimplementing gateway-local closures or exporting the `sessions` map. The notice senders are not closures: they already arrive per call as `input.sendNotice` / `input.sendWarning`, so those are unchanged.
+
+### Files changed
+- `apps/server/src/agents/gateway.ts` (budget logic moved out; single gate instance; call sites updated)
+- `apps/server/src/agents/gateway/budget.ts` (new)
+- `work/T-0516-agents-g2-extract-budget.md` (status + this Report)
+
+### Commands run and real results
+- `pnpm install`: done (packages already present, no changes).
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/agents/gateway.test.ts`: 1 file passed, 168 tests passed.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/agents`: 16 files passed, 1 skipped; 430 tests passed, 1 skipped (all `apps/server/src/agents/**/*.test.ts`, unchanged).
+- `pnpm gate`:
+  ```
+  gate: 3 changed file(s) against main
+  PASS  install (frozen)  (2.8s)
+  PASS  format  (43.2s)
+  PASS  lint  (1.2s)
+  PASS  typecheck  (19.7s)
+  PASS  tests @zilar/server  (84.7s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Problems / deviations / open questions
+- None. Pure extraction: no logic edited, no function renamed, tests untouched. No blocked item.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-08). G2 is a pure extraction: utcDay, checkDailyLimit, sendBudgetWarnings, checkDmRoundGate and the three notice maps moved verbatim into agents/gateway/budget.ts (createBudgetGate), with one gate per gateway. The agents tests are unchanged. Pre-review clean.
