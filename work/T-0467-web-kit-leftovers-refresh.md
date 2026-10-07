@@ -1,7 +1,7 @@
 ---
 id: T-0467
 title: "Audit: refresh the web half of the UI kit leftovers list (what is still hand-rolled on web today), with ready batches"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0467-web-kit-leftovers-refresh
 model: auto
@@ -59,4 +59,65 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**What I did**
+
+Re-scanned `apps/web/src` for raw `<button>`, `<a>` / `Link`, `<input>`,
+`<textarea>` and `Loader2` (excluding `components/ui/`, tests and fixtures), read
+every cited line with context, and rewrote the web half of
+`docs/audit/ui-kit-leftovers.md`. The web part is now:
+
+- `W1. Still hand-rolled on web` — Table 1 (14 controls to move), Table 2 (8
+  states to move onto `StateMessage`), Table 3 (2 fields to move), Table 4 (48
+  kept by design, each with a one-line reason).
+- `W2. Done since T-0406` — 10 rows from the old web list that are now on the
+  kit (`Button`, `StateMessage`, `TextArea`, `TextInput`).
+- `W3. Ready batches` — 6 batches ordered by visibility; the `Chip` batch is
+  marked "needs a kit decision" (no `Chip` in `components/ui/`).
+
+Header title/date/task id updated. The mobile `M1`–`M4` text and the mobile
+batch entries are byte-identical: `diff` against `HEAD` for the `# Mobile` →
+`# Suggested batches` region shows only the section heading change, and the
+mobile batch list (`11.` … `28.`) is identical.
+
+**Files changed**
+
+- `docs/audit/ui-kit-leftovers.md` — web half rewritten; mobile untouched.
+- `work/T-0467-web-kit-leftovers-refresh.md` — status and this Report.
+
+**Commands and results**
+
+- `pnpm install` — `Done in 17.2s`; only a peer warning
+  (`@types/react-dom` wants `@types/react ^19.3.0`, found `19.2.18`).
+- `pnpm gate` — summary:
+  ```
+  gate: 2 changed file(s) against main
+  PASS  install (frozen)  (1.0s)
+  PASS  format  (13.3s)
+  PASS  lint  (1.0s)
+  PASS  typecheck  (1.2s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+- No single test files were run: this task is docs-only and touches no package
+  source, so I went straight to the one required `pnpm gate` run.
+
+**Notes / deviations**
+
+- Repeated same-file controls are grouped in one row (e.g.
+  `FolderRail.tsx:134,151,165,178`, `StickerPanel.tsx:411,426,443,463`,
+  `TaskStrip.tsx:240,283,352,368`, `MessageBubble.tsx:78,86,407,581,636`) rather
+  than one row per line, matching the old doc's style.
+- Two old rows are now `keep`: `ChatList.tsx:340` (inline `Loader2` busy
+  spinner inside the Retry `Button`) and `ProgressCard.tsx:11` (spinner beside
+  a `role="progressbar"`) because `StateMessage` is a message block, not a busy
+  affordance. `PinnedBanner.tsx:89`, `PinsPanel.tsx:105` and
+  `ToolDetailPanel.tsx:274` are full-row composites and are also kept.
+- New rows not in T-0406: `GroupPanel.tsx:570`, `ChatMediaPanel.tsx:123,157`,
+  `MessageSearchResult.tsx:71`, and the `ChatBackgroundDialog.tsx` buttons and
+  inputs.
+
+**Open questions:** none.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-07). The web half of docs/audit/ui-kit-leftovers.md is refreshed: what is still hand-rolled (with file:line), a done list, and 6 ordered ready batches (W-chips needs a kit decision). The mobile half is untouched. Nit accepted: the MessageSearchResults failed-search <p> is not listed and goes into the W-empty-error batch.
