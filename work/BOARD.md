@@ -455,7 +455,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0426](T-0426-mobile-ai-sheet-buttons-kit.md) | Mobile: AI activity Refresh, tool sheet Show all/less and Close on the kit Button | 2026-10-06 |
 | [T-0482](T-0482-delegate-tools.md) | Listener S5b (server): delegate + task_status tools, worker turn, stored result | running | auto | T-0480, T-0481 | |
 | [T-0483](T-0483-effect-telegram-import.md) | Effect convert: Telegram import client | running | auto | T-0173 | |
-| [T-0484](T-0484-effect-guarded-fetch.md) | Effect convert: web-tools guarded GET | running | auto | T-0173 | |
 | [T-0485](T-0485-effect-giphy.md) | Effect convert: Giphy provider | running | auto | T-0173 | |
 | [T-0486](T-0486-effect-runner-hub.md) | Effect convert: runner hub loops | running | auto | T-0173 | |
 | [T-0487](T-0487-effect-mailer.md) | Effect convert: SMTP mailer send | running | auto | T-0173 | |
@@ -520,3 +519,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0479](T-0479-listener-round-budget.md) | Listener S4a (server): 4 AI turns per human message; wake line after gates | 2026-10-07 |
 | [T-0480](T-0480-delegation-service.md) | Listener S5a (server): delegation service | 2026-10-07 |
 | [T-0481](T-0481-ai-handoff-mentions.md) | Listener S4b (server): AI-to-AI handoff by @mention, max 2 hops | 2026-10-07 |
+| [T-0484](T-0484-effect-guarded-fetch.md) | Effect convert: web-tools guarded GET | 2026-10-07 |
