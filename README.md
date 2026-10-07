@@ -31,12 +31,18 @@ Think of the messenger you already use, but some of the people in the room are A
 |---|---|
 | 💬 **Real chat** | DMs and groups over XMPP: history, typing, read receipts, replies, reactions, edit and delete, attachments, @mentions |
 | 🤖 **AIs as people** | Create an AI in one screen, give it a persona, add it to a group, change it just by asking it in chat |
+| 🧠 **AI memory** | Your AI remembers durable facts and chat context on its own, with a *What it remembers* view you can edit |
 | 🔑 **Bring your own keys** | Any provider, keys encrypted at rest, every AI behind a **hard money cap** |
 | 🧵 **Topics** | Groups have forum-style topics: public or private, a task strip with owners, AIs per topic; plus per-user mute, archive and pin, pinned messages, and search across everything (prefix and typo tolerant) |
 | 🔗 **Invites, roles, channels** | Shareable group invite links, named roles with private-topic access and approver rights, one-way channels where only admins post |
 | 🎙️ **Voice notes, transcribed on your phone** | Hold to record, release to send. On an Android phone a Transcribe button turns a voice note into text with the Whistle model running on the device: free, offline, private |
 | 👥 **Contacts** | Find people by exact @handle, send and accept contact requests |
 | 🏷️ **Stickers and GIFs** | User-made sticker packs, a creator, favorites, and GIF search that stays private (GIFs need the owner's provider key) |
+| 🖼️ **Media, files and links** | Every chat keeps Media / Files / Links / Voice tabs so what was shared is one tap away; uploads load only for chat members through `/api/files` |
+| ↩️ **Forwarding and multi-select** | Forward one message or several to another chat in order, with an optional comment |
+| 🎨 **Chat backgrounds** | A preset or your own uploaded image as a chat background; groups set theirs by owner/admin |
+| 🗂️ **Chat folders** | Server-backed folders with a reorderable page, a folder editor, and chips on web and mobile |
+| 🚫 **Blocking** | Block and unblock people; blocked people stay out of your previews and group messages |
 | 🔔 **Notifications** | Installable app with web push: per-device subscription, mute-aware, dismiss-on-read (needs HTTPS on a real deploy) |
 | ⚡ **Streaming replies** | Answers appear as they are written, on web and mobile |
 | ✋ **Approvals** | Risky actions become cards in the chat: *Approve*, *Deny*, or *Always allow here* (per chat, revocable) |
@@ -112,7 +118,7 @@ Early and moving fast, built by one person with an AI team. Chat, AIs, streaming
 | M2 AIs that talk (create, keys, caps, streaming, groups) | ✅ done |
 | M3 Bring your own machine (registry, runner, tunnel) | 🟡 registry, runner and hub merged; desks and docker driver next |
 | M4 AIs that act (approvals, gateway, rules, tools) | 🟡 approvals, gateway, sandbox, routines and web tools merged (off by default); UI next |
-| M5 A complete daily messenger (topics, search, pins, stickers, install) | 🟡 topics, chat prefs, pins, search, invites, roles, channels, stickers, GIFs, push and the install wizard merged (several need keys, HTTPS or a device check); voice notes, on-device transcripts, mobile GIFs and contacts merged; the phone now has the settings screens, sticker management and import, approvals, machines, integrations, Explore, and the AI tools/routines/activity screens; notification settings blocked on server push ([`docs/ROADMAP_M5.md`](docs/ROADMAP_M5.md), [`docs/ROADMAP_MOBILE_PARITY.md`](docs/ROADMAP_MOBILE_PARITY.md)) |
+| M5 A complete daily messenger (topics, search, pins, stickers, install) | 🟡 topics, chat prefs, pins, search, invites, roles, channels, stickers, GIFs, push and the install wizard merged (several need keys, HTTPS or a device check); voice notes, on-device transcripts, mobile GIFs and contacts merged; the phone now has the settings screens, sticker management and import, approvals, machines, integrations, Explore, and the AI tools/routines/activity screens; AI memory, forwarding and multi-select, the media panel, blocking and chat folders merged on web and mobile, chat backgrounds on web and server (mobile next), and uploads behind membership on the web (the Caddy cutover and the mobile switch are still open); notification settings blocked on server push ([`docs/ROADMAP_M5.md`](docs/ROADMAP_M5.md), [`docs/ROADMAP_MOBILE_PARITY.md`](docs/ROADMAP_MOBILE_PARITY.md)) |
 
 ## 🚀 Quick start
 

@@ -499,3 +499,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0468](T-0468-listener-delegation-plan.md) | Audit + plan: listener and delegation on today's code | 2026-10-07 |
 | [T-0467](T-0467-web-kit-leftovers-refresh.md) | Audit: refresh web UI kit leftovers with ready batches | 2026-10-07 |
 | [T-0469](T-0469-release-readiness-audit.md) | Audit: release readiness (Effect status, docs freshness, release checklist) | 2026-10-07 |
+| [T-0471](T-0471-docs-catch-up.md) | Docs catch-up: FEATURES, USER_GUIDE, READMEs, storage dirs, RELEASING | 2026-10-07 |
