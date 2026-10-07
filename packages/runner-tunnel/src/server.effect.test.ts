@@ -48,9 +48,11 @@ describe('TunnelServer timers on Effect', () => {
   });
 
   it('terminates a ready connection whose pongs stop after heartbeatTimeoutMs', async () => {
+    const heartbeatIntervalMs = 20;
+    const heartbeatTimeoutMs = 80;
     const { server, registry } = await startServer({
-      heartbeatIntervalMs: 20,
-      heartbeatTimeoutMs: 80,
+      heartbeatIntervalMs,
+      heartbeatTimeoutMs,
       handshakeTimeoutMs: 10000,
     });
     const keypair = generateRunnerKeypair();
@@ -58,11 +60,20 @@ describe('TunnelServer timers on Effect', () => {
     const raw = await rawHandshake(server, 'raw-heartbeat', (nonce) =>
       signNonce(keypair.privateKey, nonce),
     );
+    // This client never answers pings, so the last pong the server can have
+    // counted is the moment it marks the connection ready. Taking the mark here
+    // (right after auth is sent, before the server can reach ready) is at or
+    // before that instant, so observation lag can never shorten the measured
+    // interval.
+    const started = Date.now();
     await waitFor(() => raw.texts.length > 1 || raw.closed, 5000, 'raw ready');
     expect(raw.closed).toBe(false);
-    const started = Date.now();
     await waitFor(() => raw.closed, 5000, 'dead connection detection');
-    expect(Date.now() - started).toBeGreaterThanOrEqual(80);
+    const elapsed = Date.now() - started;
+    // Terminated, and not before the timeout counted from the last pong...
+    expect(elapsed).toBeGreaterThanOrEqual(heartbeatTimeoutMs - heartbeatIntervalMs);
+    // ...nor much later than the timeout plus one sweep interval, plus slack.
+    expect(elapsed).toBeLessThanOrEqual(heartbeatTimeoutMs + 2 * heartbeatIntervalMs + 50);
     raw.destroy();
   });
 
