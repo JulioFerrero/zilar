@@ -1,7 +1,7 @@
 ---
 id: T-0490
 title: "Audit + plan: the whole codebase on Effect 4 (frameworks too, Effect Schema replaces zod, web and mobile now) — architecture, measurements, ordered task split"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0490-effect-everywhere-plan
 model: auto
@@ -106,4 +106,74 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+
+Wrote `docs/audit/effect-everywhere-plan.md` (604 lines, six numbered sections as
+the spec requires): inventory, architecture per layer, measurements, ordered task
+split, risks/decisions, guide changes. No code changed.
+
+### Files changed
+
+- `docs/audit/effect-everywhere-plan.md` (new)
+- `work/T-0490-effect-everywhere-plan.md` (status + this Report)
+
+Both inside the Allowed files.
+
+### Commands run and real results
+
+Measurements (all temporary edits reverted; `git status` clean after each):
+
+- Baseline web build `pnpm --filter @zilar/web build`: `index-wv0dHVba.js`
+  1,339.44 kB raw / 374.56 kB gzip. With a temporary `effect@4.0.2` dependency and
+  a minimal `Effect`+`Schema` probe in `apps/web/src/main.tsx`: `index-DDwvkyGG.js`
+  1,408.70 kB raw / 397.32 kB gzip. Delta +69.26 kB raw / +22.76 kB gzip.
+- Baseline mobile export `pnpm --filter @zilar/mobile exec expo export --platform ios --output-dir /tmp/mobile-export-base`:
+  `entry-0f62f0d19db42cc47ecccd7cb11fab0a.hbc` 9,223,877 bytes. With temporary
+  `effect@4.0.2` and a probe in `apps/mobile/src/app/_layout.tsx`:
+  `entry-6441db35b5fceb9d31c9ee1acac38d9d.hbc` 12,180,112 bytes. Delta
+  +2,956,235 bytes (~+32%). Headless export worked, so no need to explain a
+  failure.
+- Upgrade check: temporary `pnpm --filter @zilar/server add effect@4.0.2` then
+  `pnpm --filter @zilar/server typecheck` → exit 0, no errors. Reverted, dep back
+  to `^4.0.0`.
+- Registry: `npm view @effect/sql-drizzle@latest peerDependencies` →
+  `effect ^3.22.0`, `drizzle-orm <0.50`, latest 0.51.0 → no v4-compatible drizzle
+  integration. `effect`, `@effect/platform-node`, `@effect/sql-pg`,
+  `@effect/platform-browser`, `@effect/atom-react` all publish 4.0.2.
+
+Gate (from repo root):
+
+```
+gate: 2 changed file(s) against main
+PASS  install (frozen)  (2.7s)
+PASS  format  (101.9s)
+PASS  lint  (3.6s)
+PASS  typecheck  (3.0s)
+scope: every changed file is inside the Allowed files
+GATE PASS
+```
+
+No package tests ran because only Markdown changed (`pnpm gate` runs tests of
+touched packages only). I ran no single test files: the task adds no code.
+
+### Deviations / notes
+
+- The spec said "every claim about our code cites `file:line`". Section 0 and the
+  body do; a few aggregate numbers are stated with the command used rather than a
+  single line, because they are counts.
+- I could not measure a use-the-frameworks bundle (HttpApi, HttpClient,
+  atom-react); the measurement is the minimal Effect+Schema import the spec asked
+  for.
+- Mobile was exported for iOS only; Android uses the same JS bundle.
+- One measurement command path (`pnpm --filter @zilar/mobile exec expo export`)
+  was used instead of `npx expo export`; `npx` was not needed.
+
+### Open questions (also in the doc, section 5)
+
+None block this task. The decisions for Julio are in `docs/audit/effect-everywhere-plan.md`
+section 5, mainly: keep drizzle vs `effect/sql`, and keep a fetch sub-app for
+better-auth after the Hono edge flip.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-07). The plan covers all six sections with file:line evidence and real measurements: web +23 kB gzip, mobile +2.8 MiB (+32%), effect 4.0.2 typechecks, and no v4 drizzle integration. Recommendations: a Hono strangler toward HttpApi; drizzle inside a Database service; Config through ConfigProvider.fromMap; zustand stays with Effect inside actions; Schema starting in protocol. The lanes are F1–F5, then B1 and the pilots, then the bulk. The decisions go to Julio.
