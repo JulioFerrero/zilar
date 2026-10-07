@@ -2,6 +2,30 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-07 night (listener + kit):**
+- **Merged:**
+  - T-0469: release-readiness audit;
+  - T-0471 and T-0473: docs and env examples catch-up;
+  - T-0470: listener schema 0045;
+  - T-0472: scoring core;
+  - T-0474: settings routes, plus `LISTENER_ENABLED` (off by default);
+  - T-0476 and T-0477: kit panel rows and the Chip. The kit cleanup is done; the rest of the audit's batches is low value.
+- **Running:**
+  - T-0475: the listener in the gateway (S3), adding `LISTENER_MODEL`, paid with the master key;
+  - T-0478: the web settings (W1).
+- **Next, in order** (one gateway task at a time, all in `gateway.ts`):
+  1. S4: the per-human-message budget (4 AI messages, 2 hops) and AI-to-AI handoff;
+  2. S5: `delegate` and `task_status`;
+  3. W2: wake and delegation lines in the chat;
+  4. then pilot polish.
+- **Waiting for Julio:**
+  - the Caddy cutover for the upload lock;
+  - the mobile work: upload lock and backgrounds;
+  - the Effect pairs;
+  - the mobile version bump;
+  - the 3 Coolify secrets.
+- **The rule stays:** 2 workers, no mobile.
+
 **2026-10-07 evening:**
 - **Backgrounds done on web and server:** T-0457 to T-0466 merged (presets, own images with dim, groups set by admins; my per-chat choice wins). Mobile render and picker wait for a free PC.
 - **Julio's next picks:**
