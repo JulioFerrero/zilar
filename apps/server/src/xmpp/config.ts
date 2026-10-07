@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { JidSchema } from '@zilar/protocol';
+import { isJid } from '@zilar/protocol';
 
 // Lowercase host name (letters, digits, dots, hyphens). No port, no scheme.
 const DomainSchema = z
@@ -12,7 +12,7 @@ const DomainSchema = z
 // keys so error messages can name the variable that is missing or invalid.
 export const xmppEnvSchema = z.object({
   EJABBERD_API_URL: z.url({ protocol: /^https?$/ }).default('http://127.0.0.1:5280/api'),
-  EJABBERD_ADMIN_JID: JidSchema,
+  EJABBERD_ADMIN_JID: z.string().refine(isJid, 'must be a bare JID (local@domain)'),
   EJABBERD_ADMIN_PASSWORD: z.string().min(1, 'must not be empty'),
   XMPP_DOMAIN: DomainSchema.default('zilar.localhost'),
   XMPP_MUC_DOMAIN: DomainSchema.default('rooms.zilar.localhost'),

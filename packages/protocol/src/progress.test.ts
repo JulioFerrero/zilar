@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CostSchema, PreviewSchema, ProgressSchema } from './index';
+import { CostSchema, decodeOrThrow, isValid, PreviewSchema, ProgressSchema } from './index';
 
 describe('ProgressSchema', () => {
   const progress = {
@@ -11,35 +11,32 @@ describe('ProgressSchema', () => {
   };
 
   it('accepts a full progress update', () => {
-    const result = ProgressSchema.safeParse(progress);
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data).toEqual(progress);
-    }
+    expect(isValid(ProgressSchema)(progress)).toBe(true);
+    expect(decodeOrThrow(ProgressSchema)(progress)).toEqual(progress);
   });
 
   it('accepts a progress update without optional fields', () => {
-    expect(ProgressSchema.safeParse({ ai: progress.ai, stage: progress.stage }).success).toBe(true);
+    expect(isValid(ProgressSchema)({ ai: progress.ai, stage: progress.stage })).toBe(true);
   });
 
   it('rejects a percent above 100', () => {
-    expect(ProgressSchema.safeParse({ ...progress, percent: 101 }).success).toBe(false);
+    expect(isValid(ProgressSchema)({ ...progress, percent: 101 })).toBe(false);
   });
 
   it('rejects a negative percent', () => {
-    expect(ProgressSchema.safeParse({ ...progress, percent: -1 }).success).toBe(false);
+    expect(isValid(ProgressSchema)({ ...progress, percent: -1 })).toBe(false);
   });
 
   it('rejects a fractional percent', () => {
-    expect(ProgressSchema.safeParse({ ...progress, percent: 5.5 }).success).toBe(false);
+    expect(isValid(ProgressSchema)({ ...progress, percent: 5.5 })).toBe(false);
   });
 
   it('rejects an empty stage', () => {
-    expect(ProgressSchema.safeParse({ ...progress, stage: '' }).success).toBe(false);
+    expect(isValid(ProgressSchema)({ ...progress, stage: '' })).toBe(false);
   });
 
   it('rejects an extra key', () => {
-    expect(ProgressSchema.safeParse({ ...progress, extra: true }).success).toBe(false);
+    expect(isValid(ProgressSchema)({ ...progress, extra: true })).toBe(false);
   });
 });
 
@@ -51,46 +48,43 @@ describe('PreviewSchema', () => {
       label: 'Checkout fix on iOS',
       expires_at: '2026-09-28T00:00:00Z',
     };
-    const result = PreviewSchema.safeParse(preview);
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data).toEqual(preview);
-    }
+    expect(isValid(PreviewSchema)(preview)).toBe(true);
+    expect(decodeOrThrow(PreviewSchema)(preview)).toEqual(preview);
   });
 
   it('accepts an http preview without optional fields', () => {
-    expect(
-      PreviewSchema.safeParse({ ai: 'qa@ai.example.com', url: 'http://localhost:3000' }).success,
-    ).toBe(true);
+    expect(isValid(PreviewSchema)({ ai: 'qa@ai.example.com', url: 'http://localhost:3000' })).toBe(
+      true,
+    );
   });
 
   it('rejects a non-http url', () => {
     expect(
-      PreviewSchema.safeParse({ ai: 'qa@ai.example.com', url: 'ftp://files.example.com' }).success,
+      isValid(PreviewSchema)({ ai: 'qa@ai.example.com', url: 'ftp://files.example.com' }),
     ).toBe(false);
   });
 
   it('rejects a label longer than 100 characters', () => {
     expect(
-      PreviewSchema.safeParse({
+      isValid(PreviewSchema)({
         ai: 'qa@ai.example.com',
         url: 'https://p-7f3a.preview.example.com',
         label: 'a'.repeat(101),
-      }).success,
+      }),
     ).toBe(false);
   });
 
   it('rejects a missing url', () => {
-    expect(PreviewSchema.safeParse({ ai: 'qa@ai.example.com' }).success).toBe(false);
+    expect(isValid(PreviewSchema)({ ai: 'qa@ai.example.com' })).toBe(false);
   });
 
   it('rejects an extra key', () => {
     expect(
-      PreviewSchema.safeParse({
+      isValid(PreviewSchema)({
         ai: 'qa@ai.example.com',
         url: 'https://p-7f3a.preview.example.com',
         extra: true,
-      }).success,
+      }),
     ).toBe(false);
   });
 });
@@ -103,56 +97,52 @@ describe('CostSchema', () => {
       amount: { currency: 'USD', amount: 0.12 },
       tokens: { input: 1000, output: 200 },
     };
-    const result = CostSchema.safeParse(cost);
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data).toEqual(cost);
-    }
+    expect(isValid(CostSchema)(cost)).toBe(true);
+    expect(decodeOrThrow(CostSchema)(cost)).toEqual(cost);
   });
 
   it('accepts a cost report without optional fields', () => {
     expect(
-      CostSchema.safeParse({ ai: 'dev-1@ai.example.com', amount: { currency: 'EUR', amount: 0 } })
-        .success,
+      isValid(CostSchema)({ ai: 'dev-1@ai.example.com', amount: { currency: 'EUR', amount: 0 } }),
     ).toBe(true);
   });
 
   it('rejects a negative amount', () => {
     expect(
-      CostSchema.safeParse({
+      isValid(CostSchema)({
         ai: 'dev-1@ai.example.com',
         amount: { currency: 'EUR', amount: -1 },
-      }).success,
+      }),
     ).toBe(false);
   });
 
   it('rejects negative token counts', () => {
     expect(
-      CostSchema.safeParse({
+      isValid(CostSchema)({
         ai: 'dev-1@ai.example.com',
         amount: { currency: 'EUR', amount: 1 },
         tokens: { input: -1, output: 0 },
-      }).success,
+      }),
     ).toBe(false);
   });
 
   it('rejects fractional token counts', () => {
     expect(
-      CostSchema.safeParse({
+      isValid(CostSchema)({
         ai: 'dev-1@ai.example.com',
         amount: { currency: 'EUR', amount: 1 },
         tokens: { input: 1.5, output: 0 },
-      }).success,
+      }),
     ).toBe(false);
   });
 
   it('rejects an extra key', () => {
     expect(
-      CostSchema.safeParse({
+      isValid(CostSchema)({
         ai: 'dev-1@ai.example.com',
         amount: { currency: 'EUR', amount: 1 },
         extra: true,
-      }).success,
+      }),
     ).toBe(false);
   });
 });

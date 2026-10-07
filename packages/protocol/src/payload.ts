@@ -1,6 +1,7 @@
-import { z } from 'zod';
+import { Schema } from 'effect';
 import { ApprovalDecisionSchema, ApprovalRequestSchema } from './approval';
 import { AttachmentSchema } from './attachment';
+import { decodeOrThrow, isValid } from './common';
 import { HandoffSchema } from './handoff';
 import { PollSchema, PollVoteSchema } from './poll';
 import { CostSchema, PreviewSchema, ProgressSchema } from './progress';
@@ -11,35 +12,43 @@ import { WakeReasonSchema } from './wake';
 
 export const MAX_PAYLOAD_BYTES = 64 * 1024;
 
-export const PayloadSchema = z.discriminatedUnion('type', [
-  z.strictObject({ v: z.literal(0), type: z.literal('task'), data: TaskSchema }),
-  z.strictObject({ v: z.literal(0), type: z.literal('handoff'), data: HandoffSchema }),
-  z.strictObject({
-    v: z.literal(0),
-    type: z.literal('approval.request'),
+export const PayloadSchema = Schema.Union([
+  Schema.Struct({ v: Schema.Literal(0), type: Schema.Literal('task'), data: TaskSchema }),
+  Schema.Struct({ v: Schema.Literal(0), type: Schema.Literal('handoff'), data: HandoffSchema }),
+  Schema.Struct({
+    v: Schema.Literal(0),
+    type: Schema.Literal('approval.request'),
     data: ApprovalRequestSchema,
   }),
-  z.strictObject({
-    v: z.literal(0),
-    type: z.literal('approval.decision'),
+  Schema.Struct({
+    v: Schema.Literal(0),
+    type: Schema.Literal('approval.decision'),
     data: ApprovalDecisionSchema,
   }),
-  z.strictObject({ v: z.literal(0), type: z.literal('progress'), data: ProgressSchema }),
-  z.strictObject({ v: z.literal(0), type: z.literal('board.update'), data: BoardUpdateSchema }),
-  z.strictObject({ v: z.literal(0), type: z.literal('preview'), data: PreviewSchema }),
-  z.strictObject({ v: z.literal(0), type: z.literal('cost'), data: CostSchema }),
-  z.strictObject({ v: z.literal(0), type: z.literal('wake'), data: WakeReasonSchema }),
-  z.strictObject({ v: z.literal(0), type: z.literal('poll'), data: PollSchema }),
-  z.strictObject({ v: z.literal(0), type: z.literal('poll.vote'), data: PollVoteSchema }),
-  z.strictObject({ v: z.literal(0), type: z.literal('voice'), data: VoiceMetaSchema }),
-  z.strictObject({ v: z.literal(0), type: z.literal('attachment'), data: AttachmentSchema }),
-  z.strictObject({ v: z.literal(0), type: z.literal('sticker'), data: StickerSchema }),
+  Schema.Struct({ v: Schema.Literal(0), type: Schema.Literal('progress'), data: ProgressSchema }),
+  Schema.Struct({
+    v: Schema.Literal(0),
+    type: Schema.Literal('board.update'),
+    data: BoardUpdateSchema,
+  }),
+  Schema.Struct({ v: Schema.Literal(0), type: Schema.Literal('preview'), data: PreviewSchema }),
+  Schema.Struct({ v: Schema.Literal(0), type: Schema.Literal('cost'), data: CostSchema }),
+  Schema.Struct({ v: Schema.Literal(0), type: Schema.Literal('wake'), data: WakeReasonSchema }),
+  Schema.Struct({ v: Schema.Literal(0), type: Schema.Literal('poll'), data: PollSchema }),
+  Schema.Struct({ v: Schema.Literal(0), type: Schema.Literal('poll.vote'), data: PollVoteSchema }),
+  Schema.Struct({ v: Schema.Literal(0), type: Schema.Literal('voice'), data: VoiceMetaSchema }),
+  Schema.Struct({
+    v: Schema.Literal(0),
+    type: Schema.Literal('attachment'),
+    data: AttachmentSchema,
+  }),
+  Schema.Struct({ v: Schema.Literal(0), type: Schema.Literal('sticker'), data: StickerSchema }),
 ]);
 
-export type Payload = z.infer<typeof PayloadSchema>;
+export type Payload = typeof PayloadSchema.Type;
 
 const KNOWN_PAYLOAD_TYPES: ReadonlySet<string> = new Set(
-  PayloadSchema.options.map((option) => option.shape.type.value),
+  PayloadSchema.members.map((member) => member.fields.type.literal),
 );
 
 export type DecodePayloadResult = { ok: true; payload: Payload } | { ok: false; error: string };
@@ -65,7 +74,7 @@ function utf8ByteLength(value: string, limit: number): number {
 }
 
 export function encodePayload(payload: Payload): string {
-  return JSON.stringify(PayloadSchema.parse(payload));
+  return JSON.stringify(decodeOrThrow(PayloadSchema)(payload));
 }
 
 export function decodePayload(raw: string): DecodePayloadResult {
@@ -99,12 +108,11 @@ export function decodePayload(raw: string): DecodePayloadResult {
       return { ok: false, error: 'unsupported payload version' };
     }
 
-    const result = PayloadSchema.safeParse(parsed);
-    if (!result.success) {
+    if (!isValid(PayloadSchema)(parsed)) {
       return { ok: false, error: 'payload failed schema validation' };
     }
 
-    return { ok: true, payload: result.data };
+    return { ok: true, payload: parsed };
   } catch {
     return { ok: false, error: 'payload could not be decoded' };
   }

@@ -1,4 +1,4 @@
-import { ForwardOriginSchema, PayloadSchema, type Payload } from '@zilar/protocol';
+import { ForwardOriginSchema, PayloadSchema, decodeOrThrow, type Payload } from '@zilar/protocol';
 
 import { gradientImage } from '../lib/image-presets';
 import { CURRENT_USER_ID, CURRENT_USER_NAME, type UiMessage } from '../lib/types';
@@ -45,7 +45,7 @@ function message(
 
 /** Payloads are parsed, so mock data stays valid against `@zilar/protocol`. */
 function payload(input: Payload): Payload {
-  return PayloadSchema.parse(input);
+  return decodeOrThrow(PayloadSchema)(input);
 }
 
 function progressCard(stage: string, percent: number, detail?: string): Payload {
@@ -96,7 +96,7 @@ export const mockMessagesByChat: Record<string, UiMessage[]> = {
     message('ana', 'ana-11', ME, at(1, 21, 22), { text: 'Booked for 21:00 ✅' }),
     message('ana', 'ana-12', ANA, at(0, 12, 30), {
       text: 'I found that other place with the terrace 🌿',
-      forward: ForwardOriginSchema.parse({
+      forward: decodeOrThrow(ForwardOriginSchema)({
         sender_id: 'luis@zilar.test',
         sender_name: 'Luis',
         chat_id: 'viernes@conference.zilar.test',

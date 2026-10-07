@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { ApprovalRequestSchema } from '@zilar/protocol';
+import { ApprovalRequestSchema, decodeOrThrow } from '@zilar/protocol';
 import { ApprovalCard } from './ApprovalCard';
 
-const request = ApprovalRequestSchema.parse({
+const request = decodeOrThrow(ApprovalRequestSchema)({
   id: 'apr-42',
   room: 'dev-team@rooms.zilar.test',
   ai: 'dev-1@ai.zilar.test',
@@ -635,7 +635,7 @@ describe('ApprovalCard approvers line (T-0141)', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     for (const id of ids) {
-      const parsed = ApprovalRequestSchema.parse({ ...request, id });
+      const parsed = decodeOrThrow(ApprovalRequestSchema)({ ...request, id });
       render(<ApprovalCard request={parsed} />);
     }
     await waitFor(() => {

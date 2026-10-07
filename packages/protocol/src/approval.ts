@@ -1,29 +1,29 @@
-import { z } from 'zod';
-import { IdSchema, IsoDateTimeSchema, JidSchema, MoneySchema } from './common';
+import { Schema } from 'effect';
+import { IdSchema, IsoDateTimeSchema, JidSchema, MoneySchema, struct } from './common';
 
 export const ARGS_HASH_PATTERN = /^[0-9a-f]{64}$/;
 
-export const ApprovalRequestSchema = z.strictObject({
+export const ApprovalRequestSchema = struct({
   id: IdSchema,
   room: JidSchema,
   ai: JidSchema,
-  action: z.string().min(1).max(100),
-  summary: z.string().min(1).max(500),
-  details: z.string().max(20000).optional(),
-  args_hash: z.string().regex(ARGS_HASH_PATTERN),
-  worst_case_cost: MoneySchema.optional(),
+  action: Schema.String.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(100))),
+  summary: Schema.String.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(500))),
+  details: Schema.optional(Schema.String.pipe(Schema.check(Schema.isMaxLength(20000)))),
+  args_hash: Schema.String.pipe(Schema.check(Schema.isPattern(ARGS_HASH_PATTERN))),
+  worst_case_cost: Schema.optional(MoneySchema),
   requested_by: JidSchema,
   expires_at: IsoDateTimeSchema,
 });
 
-export type ApprovalRequest = z.infer<typeof ApprovalRequestSchema>;
+export type ApprovalRequest = typeof ApprovalRequestSchema.Type;
 
-export const ApprovalDecisionSchema = z.strictObject({
+export const ApprovalDecisionSchema = struct({
   approval_id: IdSchema,
-  decision: z.enum(['approve_once', 'approve_always', 'deny']),
-  note: z.string().max(500).optional(),
+  decision: Schema.Literals(['approve_once', 'approve_always', 'deny']),
+  note: Schema.optional(Schema.String.pipe(Schema.check(Schema.isMaxLength(500)))),
   decided_by: JidSchema,
   decided_at: IsoDateTimeSchema,
 });
 
-export type ApprovalDecision = z.infer<typeof ApprovalDecisionSchema>;
+export type ApprovalDecision = typeof ApprovalDecisionSchema.Type;

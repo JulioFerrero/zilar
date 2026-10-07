@@ -1,4 +1,9 @@
-import { ApprovalRequestSchema, type ApprovalRequest, type Payload } from '@zilar/protocol';
+import {
+  ApprovalRequestSchema,
+  isValid,
+  type ApprovalRequest,
+  type Payload,
+} from '@zilar/protocol';
 import { approvals } from '../db/schema';
 
 // The approval row shape: just the column inference from the schema, since
@@ -89,9 +94,8 @@ export function buildApprovalCardPayload(input: BuildApprovalCardInput): Payload
     requested_by: input.approval.requestedBy,
     expires_at: input.approval.expiresAt.toISOString(),
   };
-  const parsed = ApprovalRequestSchema.safeParse(data);
-  if (!parsed.success) {
+  if (!isValid(ApprovalRequestSchema)(data)) {
     return null;
   }
-  return { v: 0, type: 'approval.request', data: parsed.data };
+  return { v: 0, type: 'approval.request', data };
 }

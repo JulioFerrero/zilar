@@ -1,6 +1,6 @@
 import type { MentionMember, MessageStatus, UiMessage } from '@zilar/chat-core';
 import { defaultFolders, sortFolders, splitLinks } from '@zilar/chat-core';
-import { StickerSchema } from '@zilar/protocol';
+import { StickerSchema, isValid } from '@zilar/protocol';
 import { create, type StoreApi, type UseBoundStore } from 'zustand';
 
 import type {
@@ -1220,7 +1220,7 @@ export function createChatStore(
           height: sticker.height,
           mime: sticker.mime,
         };
-        if (!StickerSchema.safeParse(data).success) {
+        if (!isValid(StickerSchema)(data)) {
           set({ actionError: { chatId, message: 'That sticker could not be sent.' } });
           return;
         }
@@ -1313,7 +1313,7 @@ export function createChatStore(
           return;
         }
         // A drifted payload that no longer validates stays failed.
-        if (!StickerSchema.safeParse(payload.data).success) {
+        if (!isValid(StickerSchema)(payload.data)) {
           return;
         }
         set((state) => ({

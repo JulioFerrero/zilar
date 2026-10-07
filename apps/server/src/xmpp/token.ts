@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { SignJWT } from 'jose';
-import { JidSchema } from '@zilar/protocol';
+import { JidSchema, decodeOrThrow } from '@zilar/protocol';
 import type { XmppConfig } from './config';
 
 // JWT login: our server signs a short-lived HS256 token and the client sends it
@@ -20,7 +20,7 @@ export async function issueXmppToken(
   bareJid: string,
   ttlSeconds: number = 300,
 ): Promise<XmppToken> {
-  const jid = JidSchema.parse(bareJid);
+  const jid = decodeOrThrow(JidSchema)(bareJid);
   const domain = jid.slice(jid.indexOf('@') + 1);
   if (domain !== config.domain) {
     throw new Error(`JID "${jid}" is not on the XMPP domain "${config.domain}"`);

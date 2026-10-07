@@ -65,7 +65,7 @@ import {
 } from '@/lib/chatPrefs';
 import type { MuteDurationId } from '@/lib/chatPrefs';
 import { classify, cleanFilename, objectUrlFor } from '@/lib/attachments';
-import { StickerSchema } from '@zilar/protocol';
+import { StickerSchema, isValid } from '@zilar/protocol';
 import { sampleVoiceDataUrl } from '@/lib/voice';
 import type { StoreApi } from 'zustand/vanilla';
 import { createStore } from 'zustand/vanilla';
@@ -1594,7 +1594,7 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
         };
         // Same guard as the real store: tampered recents must refuse loudly,
         // never leave a bubble behind.
-        if (!StickerSchema.safeParse(data).success) {
+        if (!isValid(StickerSchema)(data)) {
           set({ actionError: { chatId, message: 'That sticker could not be sent.' } });
           return;
         }

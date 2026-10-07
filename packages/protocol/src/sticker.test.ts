@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { decodePayload, encodePayload } from './payload';
-import { StickerSchema, type Sticker } from './sticker';
+import { isValid, StickerSchema, type Sticker } from './index';
 
 const validSticker: Sticker = {
   pack_id: '123e4567-e89b-12d3-a456-426614174000',
@@ -14,67 +14,61 @@ const validSticker: Sticker = {
 
 describe('StickerSchema', () => {
   it('accepts a valid sticker', () => {
-    expect(StickerSchema.safeParse(validSticker).success).toBe(true);
+    expect(isValid(StickerSchema)(validSticker)).toBe(true);
   });
 
   it('accepts a sticker without an emoji', () => {
     const { emoji: _emoji, ...rest } = validSticker;
-    expect(StickerSchema.safeParse(rest).success).toBe(true);
+    expect(isValid(StickerSchema)(rest)).toBe(true);
   });
 
   it('accepts image/png', () => {
-    expect(StickerSchema.safeParse({ ...validSticker, mime: 'image/png' }).success).toBe(true);
+    expect(isValid(StickerSchema)({ ...validSticker, mime: 'image/png' })).toBe(true);
   });
 
   it('rejects image/gif', () => {
-    expect(StickerSchema.safeParse({ ...validSticker, mime: 'image/gif' }).success).toBe(false);
+    expect(isValid(StickerSchema)({ ...validSticker, mime: 'image/gif' })).toBe(false);
   });
 
   it('rejects image/svg+xml', () => {
-    expect(StickerSchema.safeParse({ ...validSticker, mime: 'image/svg+xml' }).success).toBe(false);
+    expect(isValid(StickerSchema)({ ...validSticker, mime: 'image/svg+xml' })).toBe(false);
   });
 
   it('rejects unknown keys', () => {
-    expect(StickerSchema.safeParse({ ...validSticker, padding: 'x'.repeat(100) }).success).toBe(
-      false,
-    );
+    expect(isValid(StickerSchema)({ ...validSticker, padding: 'x'.repeat(100) })).toBe(false);
   });
 
   it('rejects a non-/api/stickers/ relative url', () => {
-    expect(StickerSchema.safeParse({ ...validSticker, url: '/evil/track.png' }).success).toBe(
-      false,
-    );
+    expect(isValid(StickerSchema)({ ...validSticker, url: '/evil/track.png' })).toBe(false);
   });
 
   it('rejects data: and javascript: urls', () => {
-    expect(
-      StickerSchema.safeParse({ ...validSticker, url: 'data:image/png;base64,AAA' }).success,
-    ).toBe(false);
-    expect(StickerSchema.safeParse({ ...validSticker, url: 'javascript:alert(1)' }).success).toBe(
+    expect(isValid(StickerSchema)({ ...validSticker, url: 'data:image/png;base64,AAA' })).toBe(
       false,
     );
+    expect(isValid(StickerSchema)({ ...validSticker, url: 'javascript:alert(1)' })).toBe(false);
   });
 
   it('rejects an oversized url', () => {
     const base = 'http://localhost:3000/api/stickers/';
     const url = `${base}${'a'.repeat(2048 - base.length + 1)}`;
-    expect(StickerSchema.safeParse({ ...validSticker, url }).success).toBe(false);
+    expect(isValid(StickerSchema)({ ...validSticker, url })).toBe(false);
   });
 
   it('rejects an emoji longer than 8 characters', () => {
-    expect(StickerSchema.safeParse({ ...validSticker, emoji: '012345678' }).success).toBe(false);
+    expect(isValid(StickerSchema)({ ...validSticker, emoji: '012345678' })).toBe(false);
   });
 
   it('rejects zero and oversized dimensions', () => {
     for (const size of [0, 513, -1]) {
-      expect(StickerSchema.safeParse({ ...validSticker, width: size }).success).toBe(false);
-      expect(StickerSchema.safeParse({ ...validSticker, height: size }).success).toBe(false);
+      expect(isValid(StickerSchema)({ ...validSticker, width: size })).toBe(false);
+      expect(isValid(StickerSchema)({ ...validSticker, height: size })).toBe(false);
     }
   });
 
   it('rejects a non-uuid pack or sticker id', () => {
-    expect(StickerSchema.safeParse({ ...validSticker, pack_id: 'nope' }).success).toBe(false);
-    expect(StickerSchema.safeParse({ ...validSticker, sticker_id: 'nope' }).success).toBe(false);
+    expect(isValid(StickerSchema)({ ...validSticker, pack_id: 'nope' })).toBe(false);
+    expect(isValid(StickerSchema)({ ...validSticker, sticker_id: 'nope' })).toBe(false);
   });
 });
 

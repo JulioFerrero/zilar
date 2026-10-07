@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BoardUpdateSchema, TaskSchema, TaskStateSchema } from './index';
+import { BoardUpdateSchema, decodeOrThrow, isValid, TaskSchema, TaskStateSchema } from './index';
 
 const task = {
   id: 't-17',
@@ -26,26 +26,23 @@ describe('TaskStateSchema', () => {
       'rejected',
     ];
     for (const state of states) {
-      expect(TaskStateSchema.safeParse(state).success).toBe(true);
+      expect(isValid(TaskStateSchema)(state)).toBe(true);
     }
   });
 
   it('rejects an unknown state', () => {
-    expect(TaskStateSchema.safeParse('done').success).toBe(false);
+    expect(isValid(TaskStateSchema)('done')).toBe(false);
   });
 
   it('rejects an underscored state', () => {
-    expect(TaskStateSchema.safeParse('input_required').success).toBe(false);
+    expect(isValid(TaskStateSchema)('input_required')).toBe(false);
   });
 });
 
 describe('TaskSchema', () => {
   it('accepts a full task', () => {
-    const result = TaskSchema.safeParse(task);
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data).toEqual(task);
-    }
+    expect(isValid(TaskSchema)(task)).toBe(true);
+    expect(decodeOrThrow(TaskSchema)(task)).toEqual(task);
   });
 
   it('accepts a task without optional fields', () => {
@@ -58,15 +55,15 @@ describe('TaskSchema', () => {
       acceptance: task.acceptance,
       artifacts: task.artifacts,
     };
-    expect(TaskSchema.safeParse(minimal).success).toBe(true);
+    expect(isValid(TaskSchema)(minimal)).toBe(true);
   });
 
   it('rejects an unknown state', () => {
-    expect(TaskSchema.safeParse({ ...task, state: 'done' }).success).toBe(false);
+    expect(isValid(TaskSchema)({ ...task, state: 'done' })).toBe(false);
   });
 
   it('rejects a title longer than 200 characters', () => {
-    expect(TaskSchema.safeParse({ ...task, title: 'a'.repeat(201) }).success).toBe(false);
+    expect(isValid(TaskSchema)({ ...task, title: 'a'.repeat(201) })).toBe(false);
   });
 
   it('rejects a missing id', () => {
@@ -78,49 +75,45 @@ describe('TaskSchema', () => {
       acceptance: task.acceptance,
       artifacts: task.artifacts,
     };
-    expect(TaskSchema.safeParse(withoutId).success).toBe(false);
+    expect(isValid(TaskSchema)(withoutId)).toBe(false);
   });
 
   it('rejects an extra key', () => {
-    expect(TaskSchema.safeParse({ ...task, extra: true }).success).toBe(false);
+    expect(isValid(TaskSchema)({ ...task, extra: true })).toBe(false);
   });
 });
 
 describe('BoardUpdateSchema', () => {
   it('accepts task.created with a room', () => {
-    expect(BoardUpdateSchema.safeParse({ op: 'task.created', room: task.room, task }).success).toBe(
-      true,
-    );
+    expect(isValid(BoardUpdateSchema)({ op: 'task.created', room: task.room, task })).toBe(true);
   });
 
   it('accepts decision.added', () => {
     expect(
-      BoardUpdateSchema.safeParse({
+      isValid(BoardUpdateSchema)({
         op: 'decision.added',
         room: task.room,
         decision: { id: 'd-1', text: 'Ship on Friday', author: 'ana@example.com' },
-      }).success,
+      }),
     ).toBe(true);
   });
 
   it('accepts artifact.added', () => {
     expect(
-      BoardUpdateSchema.safeParse({
+      isValid(BoardUpdateSchema)({
         op: 'artifact.added',
         room: task.room,
         artifact: { id: 'a-1', kind: 'pr', ref: 'https://github.com/acme/shop/pull/42' },
-      }).success,
+      }),
     ).toBe(true);
   });
 
   it('rejects an unknown op', () => {
-    expect(BoardUpdateSchema.safeParse({ op: 'task.deleted', room: task.room, task }).success).toBe(
-      false,
-    );
+    expect(isValid(BoardUpdateSchema)({ op: 'task.deleted', room: task.room, task })).toBe(false);
   });
 
   it('rejects a variant without a room', () => {
-    expect(BoardUpdateSchema.safeParse({ op: 'task.created', task }).success).toBe(false);
+    expect(isValid(BoardUpdateSchema)({ op: 'task.created', task })).toBe(false);
   });
 
   it('rejects task.created with an invalid task', () => {
@@ -133,15 +126,13 @@ describe('BoardUpdateSchema', () => {
       artifacts: task.artifacts,
     };
     expect(
-      BoardUpdateSchema.safeParse({ op: 'task.created', room: task.room, task: withoutTitle })
-        .success,
+      isValid(BoardUpdateSchema)({ op: 'task.created', room: task.room, task: withoutTitle }),
     ).toBe(false);
   });
 
   it('rejects an extra key', () => {
     expect(
-      BoardUpdateSchema.safeParse({ op: 'task.created', room: task.room, task, extra: true })
-        .success,
+      isValid(BoardUpdateSchema)({ op: 'task.created', room: task.room, task, extra: true }),
     ).toBe(false);
   });
 });

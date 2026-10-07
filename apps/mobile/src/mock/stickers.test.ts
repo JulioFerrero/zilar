@@ -1,4 +1,4 @@
-import { StickerSchema } from '@zilar/protocol';
+import { StickerSchema, isValid } from '@zilar/protocol';
 import { describe, expect, it } from 'vitest';
 
 import { mockDemoStickerPacks } from './stickers';
@@ -12,7 +12,7 @@ describe('mock demo sticker packs', () => {
       for (const sticker of pack.stickers) {
         expect(sticker.url.startsWith('data:')).toBe(false);
         expect(
-          StickerSchema.safeParse({
+          isValid(StickerSchema)({
             pack_id: pack.id,
             sticker_id: sticker.id,
             url: sticker.url,
@@ -20,7 +20,7 @@ describe('mock demo sticker packs', () => {
             width: sticker.width,
             height: sticker.height,
             mime: sticker.mime,
-          }).success,
+          }),
         ).toBe(true);
       }
     }

@@ -1,20 +1,45 @@
-import { z } from 'zod';
+import { Schema } from 'effect';
+import { isUrl, struct } from './common';
 
-export const VoiceTranscriptSchema = z.strictObject({
-  text: z.string().max(20000),
-  language: z.string().min(2).max(10).optional(),
-  source: z.enum(['api', 'local']),
+export const VoiceTranscriptSchema = struct({
+  text: Schema.String.pipe(Schema.check(Schema.isMaxLength(20000))),
+  language: Schema.optional(
+    Schema.String.pipe(Schema.check(Schema.isMinLength(2), Schema.isMaxLength(10))),
+  ),
+  source: Schema.Literals(['api', 'local']),
 });
 
-export type VoiceTranscript = z.infer<typeof VoiceTranscriptSchema>;
+export type VoiceTranscript = typeof VoiceTranscriptSchema.Type;
 
-export const VoiceMetaSchema = z.strictObject({
-  duration_ms: z.int().min(1).max(3_600_000),
-  mime: z.string().startsWith('audio/').max(100),
-  waveform: z.array(z.int().min(0).max(255)).min(1).max(128),
+const UrlSchema = Schema.String.pipe(
+  Schema.check(
+    Schema.isMaxLength(8192),
+    Schema.makeFilter((value) => (isUrl(value) ? undefined : 'must be a URL')),
+  ),
+);
+
+export const VoiceMetaSchema = struct({
+  duration_ms: Schema.Int.pipe(
+    Schema.check(Schema.isGreaterThanOrEqualTo(1), Schema.isLessThanOrEqualTo(3_600_000)),
+  ),
+  mime: Schema.String.pipe(
+    Schema.check(
+      Schema.isMaxLength(100),
+      Schema.makeFilter((value) =>
+        value.startsWith('audio/') ? undefined : 'must be an audio mime',
+      ),
+    ),
+  ),
+  waveform: Schema.mutable(
+    Schema.Array(
+      Schema.Int.pipe(
+        Schema.check(Schema.isGreaterThanOrEqualTo(0), Schema.isLessThanOrEqualTo(255)),
+      ),
+    ),
+  ).pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(128))),
   /** Where the receiving client fetches the audio (an XEP-0363 download URL). */
-  url: z.url().max(8192).optional(),
-  transcript: VoiceTranscriptSchema.optional(),
+  url: Schema.optional(UrlSchema),
+  transcript: Schema.optional(VoiceTranscriptSchema),
 });
 
-export type VoiceMeta = z.infer<typeof VoiceMetaSchema>;
+export type VoiceMeta = typeof VoiceMetaSchema.Type;

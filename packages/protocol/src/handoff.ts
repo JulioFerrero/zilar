@@ -1,18 +1,20 @@
-import { z } from 'zod';
-import { ArtifactRefSchema, BudgetSchema, IdSchema, JidSchema } from './common';
+import { Schema } from 'effect';
+import { ArtifactRefSchema, BudgetSchema, IdSchema, JidSchema, struct } from './common';
 
-export const HandoffSchema = z.strictObject({
+export const HandoffSchema = struct({
   task_id: IdSchema,
   from: JidSchema,
   to: JidSchema,
-  objective: z.string().min(1),
-  context_summary: z.string().max(2000),
-  acceptance: z.array(z.string().min(1)),
-  constraints: z.array(z.string().min(1)),
-  artifacts: z.array(ArtifactRefSchema),
+  objective: Schema.String.pipe(Schema.check(Schema.isMinLength(1))),
+  context_summary: Schema.String.pipe(Schema.check(Schema.isMaxLength(2000))),
+  acceptance: Schema.mutable(Schema.Array(Schema.String.pipe(Schema.check(Schema.isMinLength(1))))),
+  constraints: Schema.mutable(
+    Schema.Array(Schema.String.pipe(Schema.check(Schema.isMinLength(1)))),
+  ),
+  artifacts: Schema.mutable(Schema.Array(ArtifactRefSchema)),
   budget: BudgetSchema,
-  return_format: z.string().min(1),
-  reply_to: z.string().min(1),
+  return_format: Schema.String.pipe(Schema.check(Schema.isMinLength(1))),
+  reply_to: Schema.String.pipe(Schema.check(Schema.isMinLength(1))),
 });
 
-export type Handoff = z.infer<typeof HandoffSchema>;
+export type Handoff = typeof HandoffSchema.Type;

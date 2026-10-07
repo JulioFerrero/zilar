@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ApprovalRequestSchema } from '@zilar/protocol';
+import { ApprovalRequestSchema, isValid } from '@zilar/protocol';
 import { approvals } from '../db/schema';
 import {
   approvalCardBody,
@@ -69,7 +69,7 @@ describe('approval card builder', () => {
       requested_by: 'owner-1@zilar.localhost',
       expires_at: '2026-12-01T12:00:00.000Z',
     });
-    expect(ApprovalRequestSchema.safeParse(payload.data).success).toBe(true);
+    expect(isValid(ApprovalRequestSchema)(payload.data)).toBe(true);
   });
 
   it('builds a valid payload for a DM using the owner bare JID as the room', () => {

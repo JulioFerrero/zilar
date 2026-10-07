@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { WakeReasonSchema } from './index';
+import { decodeOrThrow, isValid, WakeReasonSchema } from './index';
 
 describe('WakeReasonSchema', () => {
   const wake = {
@@ -10,35 +10,32 @@ describe('WakeReasonSchema', () => {
   };
 
   it('accepts a wake reason', () => {
-    const result = WakeReasonSchema.safeParse(wake);
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data).toEqual(wake);
-    }
+    expect(isValid(WakeReasonSchema)(wake)).toBe(true);
+    expect(decodeOrThrow(WakeReasonSchema)(wake)).toEqual(wake);
   });
 
   it('accepts a wake reason with no message ids', () => {
-    expect(WakeReasonSchema.safeParse({ ...wake, message_ids: [] }).success).toBe(true);
+    expect(isValid(WakeReasonSchema)({ ...wake, message_ids: [] })).toBe(true);
   });
 
   it('rejects a score above 1', () => {
-    expect(WakeReasonSchema.safeParse({ ...wake, score: 1.1 }).success).toBe(false);
+    expect(isValid(WakeReasonSchema)({ ...wake, score: 1.1 })).toBe(false);
   });
 
   it('rejects a negative score', () => {
-    expect(WakeReasonSchema.safeParse({ ...wake, score: -0.1 }).success).toBe(false);
+    expect(isValid(WakeReasonSchema)({ ...wake, score: -0.1 })).toBe(false);
   });
 
   it('rejects a reason longer than 300 characters', () => {
-    expect(WakeReasonSchema.safeParse({ ...wake, reason: 'a'.repeat(301) }).success).toBe(false);
+    expect(isValid(WakeReasonSchema)({ ...wake, reason: 'a'.repeat(301) })).toBe(false);
   });
 
   it('rejects more than 50 message ids', () => {
     const messageIds = Array.from({ length: 51 }, (_, index) => `m-${index}`);
-    expect(WakeReasonSchema.safeParse({ ...wake, message_ids: messageIds }).success).toBe(false);
+    expect(isValid(WakeReasonSchema)({ ...wake, message_ids: messageIds })).toBe(false);
   });
 
   it('rejects an extra key', () => {
-    expect(WakeReasonSchema.safeParse({ ...wake, extra: true }).success).toBe(false);
+    expect(isValid(WakeReasonSchema)({ ...wake, extra: true })).toBe(false);
   });
 });

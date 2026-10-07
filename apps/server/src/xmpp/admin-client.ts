@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { z } from 'zod';
-import { JidSchema } from '@zilar/protocol';
+import { JidSchema, isJid, isValid } from '@zilar/protocol';
 import type { XmppConfig } from './config';
 
 // Localparts and room ids are lowercase by design; they become part of a JID.
@@ -14,6 +14,10 @@ const NameSchema = z
 
 const PasswordSchema = z.string().min(1, 'must not be empty').max(1024);
 
+// The shared protocol rule, re-checked on the zod side while the server still
+// builds these objects with zod.
+const BareJidSchema = z.string().refine(isJid, 'must be a bare JID (local@domain)');
+
 // MUC/Sub nodes a push device subscribes to: room messages only. Presence,
 // affiliations and subject changes never notify.
 const PUSH_SUBSCRIPTION_NODES = 'urn:xmpp:mucsub:nodes:messages';
@@ -26,7 +30,7 @@ export type RosterSubscription = z.infer<typeof RosterSubscriptionSchema>;
 
 // A roster entry as returned by `get_roster`.
 export const RosterEntrySchema = z.object({
-  jid: JidSchema,
+  jid: BareJidSchema,
   nick: z.string(),
   subscription: RosterSubscriptionSchema,
   pending: z.string(),
@@ -35,7 +39,7 @@ export const RosterEntrySchema = z.object({
 export type RosterEntry = z.infer<typeof RosterEntrySchema>;
 
 export const RoomAffiliationEntrySchema = z.object({
-  jid: JidSchema,
+  jid: BareJidSchema,
   affiliation: z.string().min(1),
   reason: z.string(),
 });
@@ -176,8 +180,7 @@ function parseName(value: string, label: string): string {
 }
 
 function splitBareJid(value: string): { user: string; host: string } {
-  const result = JidSchema.safeParse(value);
-  if (!result.success) {
+  if (!isValid(JidSchema)(value)) {
     throw new Error(`jid "${value}" is invalid`);
   }
   const at = value.indexOf('@');
@@ -413,7 +416,7 @@ export function createEjabberdAdminClient(
       options: SendDirectInvitationOptions = {},
     ): Promise<void> {
       const room = parseName(roomId, 'roomId');
-      const targets = z.array(JidSchema).min(1).max(1000).parse(users);
+      const targets = z.array(BareJidSchema).min(1).max(1000).parse(users);
       const response = await call('send_direct_invitation', {
         room,
         service: config.mucDomain,
