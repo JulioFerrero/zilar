@@ -1,7 +1,8 @@
-# UI kit leftovers audit (T-0406)
+# UI kit leftovers audit (T-0467, web refreshed)
 
-Docs-only audit. No code, config or package changes. Written 2026-10-06 in the
-`task/T-0406-ui-kit-leftovers-audit` worktree.
+Docs-only audit. No code, config or package changes. The web half was re-scanned
+on 2026-10-07 in the `task/T-0467-web-kit-leftovers-refresh` worktree; the mobile
+half is unchanged from T-0406 (2026-10-06).
 
 This lists what is still hand-rolled **outside** the two UI kits after the
 migration series (`T-0374` … `T-0403`). It is the source list for the next
@@ -43,83 +44,157 @@ migration tasks, so every row cites a `file:line` that was opened and read.
 
 # Web
 
-## W1. Buttons and links styled as buttons
+Re-scanned on 2026-10-07; every `file:line` below was opened and read on main.
+Tests are relative to `apps/web/src/`.
 
-| File:line | What it is today (visible text) | Kit replacement | Tests that cover it |
-| --- | --- | --- | --- |
-| `apps/web/src/components/MentionPicker.tsx:30` | Mention option row (`role="option"`), the member name | `MenuItem` (`ui/menu`) | `components/MentionPicker.test.tsx`, `components/Composer.test.tsx` |
-| `apps/web/src/components/MessageActionsMenu.tsx:58` | "React with {emoji}" menu item (`role="menuitem"`) | `MenuItem` (`ui/menu`) | none found |
-| `apps/web/src/components/NewTopicDialog.tsx:235` | "Type" chips: Channel / Group (`aria-pressed`) | `SegmentedControl` | `components/NewTopicDialog.test.tsx`, `components/ChatList.test.tsx` |
-| `apps/web/src/components/ReactionChips.tsx:36` | Reaction chips (`reaction-chip`, `aria-pressed`) | none — no `Chip` in the kit | `components/ReactionChips.test.tsx` |
-| `apps/web/src/components/SearchBar.tsx:45` | "Searching only in {chat}" scope chip (click clears scope) | none — no `Chip` in the kit | `components/ChatList.test.tsx` |
-| `apps/web/src/components/ChatHeader.tsx:139` | Topic title button opens the info panel | `Button variant="ghost"` | `routes/ChatView.test.tsx` |
-| `apps/web/src/components/ChatList.tsx:396` | "Archived ({n})" show/hide disclosure (Archive icon) | `Button variant="ghost"` | `components/ChatList.test.tsx`, `routes/ChatShell.test.tsx` |
-| `apps/web/src/components/PinnedBanner.tsx:89` | "Jump to pinned message from {name}" banner button | `Button variant="ghost"` | `routes/ChatView.test.tsx` |
-| `apps/web/src/components/PinsPanel.tsx:157` | "Pinned messages" row with a count opens the pins sheet | `Button variant="ghost"` | `components/GroupPanel.test.tsx`, `components/TopicPanel.test.tsx`, `routes/ChatView.test.tsx` |
-| `apps/web/src/components/StickerPanel.tsx:519` | "Unfavorite {emoji}" star toggle | `IconButton` | `components/StickerPanel.test.tsx` |
-| `apps/web/src/routes/StickersPage.tsx:627` | "Unfavorite {emoji}" star toggle | `IconButton` | `routes/StickersPage.test.tsx` |
-| `apps/web/src/routes/FoldersPage.tsx:141` | "Reorder {folder}" drag grip (GripVertical) | `IconButton` | `routes/FoldersPage.test.tsx` |
-| `apps/web/src/routes/FoldersPage.tsx:189` | "Create new folder" dashed button (Plus) | `Button variant="outline"` | `routes/FoldersPage.test.tsx` |
-| `apps/web/src/components/tools/ToolDetailPanel.tsx:273` | "Show source of v{version}" toggle | `Button variant="ghost" size="sm"` | `components/tools/tools.test.tsx` |
-| `apps/web/src/routes/ChatView.tsx:105` | "Dismiss" server notice | `Button variant="ghost"` | `routes/ChatView.test.tsx` |
-| `apps/web/src/components/FileMessage.tsx:56` | Download link (`<a aria-label="Download {name}">`) | `Button asChild variant="ghost"` | `components/FileMessage.test.tsx` |
+## W1. Still hand-rolled on web
 
-## W2. Loading, error and empty states not on `StateMessage`
+### Table 1. Controls to move onto the kit
 
 | File:line | What it is today | Kit replacement | Tests that cover it |
 | --- | --- | --- | --- |
-| `apps/web/src/components/Skeleton.tsx:15` | "Loading chats" skeleton (`role="status"`) | `StateMessage kind="loading"` | `components/Skeleton.test.tsx`, `components/ChatList.test.tsx`, `components/MessageList.test.tsx` |
-| `apps/web/src/components/Skeleton.tsx:41` | "Loading messages" skeleton (`role="status"`) | `StateMessage kind="loading"` | `components/Skeleton.test.tsx`, `components/MessageList.test.tsx` |
-| `apps/web/src/components/machines/MachineListSkeleton.tsx:14` | "Loading machines" skeleton (`role="status"`) | `StateMessage kind="loading"` | `routes/MachinesPage.test.tsx` |
-| `apps/web/src/components/approvals/ApprovalsListSkeleton.tsx:14` | "Loading approvals" skeleton (`role="status"`) | `StateMessage kind="loading"` | `routes/ApprovalsPage.test.tsx` |
-| `apps/web/src/components/ais/AiActivity.tsx:272` | "Loading activity" skeleton (`role="status"`) | `StateMessage kind="loading"` | `components/ais/AiActivity.test.tsx` |
-| `apps/web/src/components/ChatList.tsx:340` | Inline `Loader2` spinner while a chat list page loads | `StateMessage kind="loading" size="inline"` | `components/ChatList.test.tsx` |
-| `apps/web/src/components/ProgressCard.tsx:11` | Inline `Loader2` spinner on a progress card | `StateMessage kind="loading" size="inline"` | `components/ProgressCard.test.tsx` |
-| `apps/web/src/components/EmptyState.tsx:20` | "No chats here yet" | `StateMessage kind="empty"` | `components/ChatList.test.tsx`, `routes/ChatShell.test.tsx` |
-| `apps/web/src/components/MessageList.tsx:202` | "No messages yet" | `StateMessage kind="empty"` | `components/MessageList.test.tsx`, `routes/ChatView.test.tsx` |
-| `apps/web/src/components/MessageSearchResults.tsx:99` | "No messages found" | `StateMessage kind="empty"` | `components/MessageSearch.test.tsx` |
-| `apps/web/src/components/PinsPanel.tsx:74` | "Nothing pinned yet" | `StateMessage kind="empty"` | `components/GroupPanel.test.tsx`, `components/TopicPanel.test.tsx`, `routes/ChatView.test.tsx` |
-| `apps/web/src/components/tools/ToolsSection.tsx:133` | "No tools here yet. An AI can write small tools…" | `StateMessage kind="empty"` | `components/tools/tools.test.tsx` |
-| `apps/web/src/components/approvals/AlwaysAllowedList.tsx:195` | "Nothing is always allowed here." | `StateMessage kind="empty"` | `components/approvals/AlwaysAllowedList.test.tsx` |
-| `apps/web/src/routes/ApprovalsPage.tsx:268` | "Nothing is waiting for you." | `StateMessage kind="empty"` | `routes/ApprovalsPage.test.tsx` |
-| `apps/web/src/components/PeopleSearchResult.tsx:40` | Error `role="alert"`: "Too many searches…" (and line 50) | `StateMessage kind="error"` | `components/PeopleSearchResult.test.tsx` |
-| `apps/web/src/components/MessageSearchResults.tsx:149` | Error `role="alert"` for a failed message search | `StateMessage kind="error"` | `components/MessageSearch.test.tsx` |
+| `components/ChatHeader.tsx:143` | Chat title button opens the info panel | `Button variant="ghost"` | `components/ChatHeader.menu.test.tsx`, `routes/ChatView.test.tsx` |
+| `components/TopicRow.tsx:298` | "Archived ({n})" show/hide disclosure | `Button variant="ghost"` | `components/TopicsSidebar.test.tsx`, `components/ChatList.test.tsx` |
+| `components/PinsPanel.tsx:157` | "Pinned messages" count row opens the pins sheet | `Button variant="ghost"` | `components/PinnedMessages.test.tsx`, `components/GroupPanel.test.tsx` |
+| `components/GroupPanel.tsx:570` | "Group background" row opens the background dialog | `Button variant="ghost"` | `components/GroupPanel.test.tsx` |
+| `components/NewTopicDialog.tsx:235` | Type chips Channel / Group (`aria-pressed`) | `SegmentedControl` | `components/NewTopicDialog.test.tsx` |
+| `components/ReactionChips.tsx:36` | Reaction chip (`aria-pressed`) | needs a `Chip` — not in the kit | `components/ReactionChips.test.tsx` |
+| `components/SearchBar.tsx:45` | "Searching only in {chat}" scope chip | needs a `Chip` — not in the kit | `components/ChatList.test.tsx` |
+| `components/MessageActionsMenu.tsx:67` | "React with {emoji}" quick keys (`role="menuitem"`) | `IconButton` (pass `role="menuitem"`) | `components/MessageActionsMenu.test.tsx` |
+| `components/StickerPanel.tsx:519` | Favorite star overlay key on a sticker | `IconButton` | `components/StickerPanel.test.tsx` |
+| `routes/StickersPage.tsx:627` | Favorite star overlay key on a sticker | `IconButton` | `routes/StickersPage.test.tsx` |
+| `routes/FoldersPage.tsx:141` | "Reorder {folder}" drag grip | `IconButton` | `routes/FoldersPage.test.tsx` |
+| `routes/FoldersPage.tsx:189` | "Create new folder" dashed button | `Button variant="outline"` | `routes/FoldersPage.test.tsx` |
+| `components/ChatBackgroundDialog.tsx:451` | "Use default" / "No group background" text button | `Button variant="link"` | `components/ChatBackgroundDialog.test.tsx` |
+| `components/AddContactDialog.tsx:128` | "Go to Requests" link styled as a button | `Button asChild variant="outline"` | `components/AddContactDialog.test.tsx` |
 
-## W3. Text fields not on the kit field components
+### Table 2. States to move onto `StateMessage`
 
-| File:line | What it is today (visible text / placeholder) | Kit replacement | Tests that cover it |
+| File:line | What it is today | Kit replacement | Tests that cover it |
 | --- | --- | --- | --- |
-| `apps/web/src/components/FolderEditorDialog.tsx:167` | Folder name `<input>` ("Folder name") | `TextInput` (use its `counter`) | `components/FolderEditorDialog.test.tsx` |
-| `apps/web/src/components/SearchBar.tsx:55` | Chat search `<input type="search">` ("Search, or type @username") | `SearchField` | `components/ChatList.test.tsx` |
-| `apps/web/src/components/tools/ToolDetailPanel.tsx:312` | Run input `<textarea>` ("Optional JSON input (max 4 KB)") | `TextArea` | `components/tools/tools.test.tsx` |
-| `apps/web/src/components/auth/AuthFlow.tsx:136` | Sign-in email `<input type="email">` ("you@example.com") | `TextInput` | `components/auth/AuthFlow.test.tsx`, `routes/SetupPage.test.tsx` |
+| `components/Skeleton.tsx:15` | "Loading chats" shaped skeleton (`role="status"`) | `StateMessage kind="loading"` | `components/Skeleton.test.tsx`, `components/ChatList.test.tsx` |
+| `components/Skeleton.tsx:41` | "Loading messages" shaped skeleton (`role="status"`) | `StateMessage kind="loading"` | `components/Skeleton.test.tsx`, `components/MessageList.test.tsx` |
+| `components/machines/MachineListSkeleton.tsx:14` | "Loading machines" shaped skeleton (`role="status"`) | `StateMessage kind="loading"` | `routes/MachinesPage.test.tsx` |
+| `components/approvals/ApprovalsListSkeleton.tsx:14` | "Loading approvals" shaped skeleton (`role="status"`) | `StateMessage kind="loading"` | `routes/ApprovalsPage.test.tsx` |
+| `components/ais/AiActivity.tsx:272` | "Loading activity" shaped skeleton (`role="status"`) | `StateMessage kind="loading"` | `components/ais/AiActivity.test.tsx` |
+| `components/EmptyState.tsx:20` | "No chats here yet" empty view (two CTAs) | `StateMessage kind="empty"` | `components/ChatList.test.tsx`, `routes/ChatShell.test.tsx` |
+| `components/PinsPanel.tsx:73` | "Nothing pinned yet" empty copy | `StateMessage kind="empty"` | `components/PinnedMessages.test.tsx` |
+| `components/MessageSearchResults.tsx:149` | "Message not found" inline error (`role="alert"`) | `StateMessage kind="error" size="inline"` | `components/MessageSearch.test.tsx` |
 
-## W4. Kept by design
+### Table 3. Text fields to move onto the kit field components
 
-- `apps/web/src/components/ChatListItem.tsx:63`, `components/TopicRow.tsx:67,228,298`,
-  `components/MessageSearchResult.tsx:71`, `components/tools/ToolsSection.tsx:139`,
-  `components/NewChatButton.tsx:202`, `components/PinsPanel.tsx:105` — navigation
-  list rows (own chrome per row).
-- `components/FolderTabs.tsx:58`, `components/FolderRail.tsx:102`,
-  `components/StickerPanel.tsx:411,426,443,463` — tabs (`role="tab"`).
-- `components/ais/AiPageShell.tsx:19`, `components/ais/ModelPicker.tsx:75`,
-  `components/ais/NewAiDialog.tsx:229`, `components/FolderEditorDialog.tsx:189` —
-  radios (`role="radio"`).
-- `components/GifPanel.tsx:114`, `components/StickerPanel.tsx:391,505` — grid and
-  emoji/sticker cells.
-- `components/FolderRail.tsx:134,151,165,178` — FolderRail keys (New folder, Edit
-  folders, My AIs, Profile).
-- `components/MessageBubble.tsx:76,84,363,519,573` — inline Retry/Delete text
-  links in a bubble.
-- `components/EditBar.tsx:19`, `components/Composer.tsx:916` — EditBar and
-  Composer full-height strips.
-- `components/TaskStrip.tsx:240,283,352,368` — TaskStrip chips and their menu
-  triggers.
-- `components/LinkText.tsx:32`, `components/MarkdownText.tsx:28` — inline text
-  links; `components/GifMessage.tsx:51`, `components/ImageMessage.tsx:48` — media
-  openers; `components/auth/OtpInput.tsx:76`, `components/AvatarUploader.tsx:290,368`,
-  `components/PackEditor.tsx:489`, `components/Composer.tsx:962,978` — native
-  file/zoom inputs and the composer textarea.
+| File:line | What it is today | Kit replacement | Tests that cover it |
+| --- | --- | --- | --- |
+| `components/FolderEditorDialog.tsx:167` | Folder name `<input>` with an inline counter | `TextInput` (use its `counter`) | `components/FolderEditorDialog.test.tsx` |
+| `components/SearchBar.tsx:55` | Chat search `<input type="search">` | `SearchField` (inside the existing `Well`) | `components/ChatList.test.tsx` |
+
+### Table 4. Kept by design
+
+| File:line | What it is today | Why it stays | Tests that cover it |
+| --- | --- | --- | --- |
+| `components/MentionPicker.tsx:30` | `@` mention option (`role="option"`) | listbox option; `MenuItem` is `role="menuitem"` | `components/MentionPicker.test.tsx`, `components/Composer.test.tsx` |
+| `components/FolderEditorDialog.tsx:189` | Icon choice (`role="radio"`) | radio cell | `components/FolderEditorDialog.test.tsx` |
+| `components/ais/ModelPicker.tsx:75` | Model suggestion (`role="radio"`) | radio | `components/ais/ModelPicker.test.tsx` |
+| `components/ais/AiPageShell.tsx:19` | Selectable option card (`role="radio"`) | radio | `components/ais/AisPage.test.tsx` |
+| `components/ais/NewAiDialog.tsx:229` | Template chip (`role="radio"`) | radio | `components/ais/NewAiDialog.test.tsx` |
+| `components/FolderTabs.tsx:58` | Folder tab (`role="tab"`) | tab | `components/FolderTabs.test.tsx` |
+| `components/FolderRail.tsx:102` | Folder rail item (`role="tab"`) | tab | `components/FolderRail.test.tsx` |
+| `components/FolderRail.tsx:134,151,165,178` | New / Edit / My AIs / Profile rail keys | rail keys | `components/FolderRail.test.tsx` |
+| `components/StickerPanel.tsx:391` | Emoji cell | grid cell | `components/StickerPanel.test.tsx` |
+| `components/StickerPanel.tsx:411,426,443,463` | Sticker-pack tabs (`role="tab"`) | tabs | `components/StickerPanel.test.tsx` |
+| `components/StickerPanel.tsx:505` | Sticker cell | grid cell | `components/StickerPanel.test.tsx` |
+| `components/GifPanel.tsx:114` | GIF cell | grid cell | `components/GifPanel.test.tsx` |
+| `components/ChatMediaPanel.tsx:157` | Media thumbnail | grid cell | `components/ChatMediaPanel.test.tsx` |
+| `components/ChatBackgroundDialog.tsx:334` | Background preset swatch | swatch cell | `components/ChatBackgroundDialog.test.tsx` |
+| `components/ChatBackgroundDialog.tsx:377` | Background image thumbnail | grid cell | `components/ChatBackgroundDialog.test.tsx` |
+| `components/MessageSearchResult.tsx:71` | Message search hit row | full-row composite | `components/MessageSearch.test.tsx` |
+| `components/ChatListItem.tsx:63` | Chat row (`Link`) | navigation row | `components/ChatListItem.test.tsx` |
+| `components/TopicRow.tsx:67` | Topic row (`Link`) | navigation row | `components/TopicsSidebar.test.tsx` |
+| `components/TopicRow.tsx:228` | Group collapse row | full-row composite | `components/TopicsSidebar.test.tsx` |
+| `components/NewChatButton.tsx:202` | Group picker row in a dialog | dialog list row | `components/NewChatButton.test.tsx` |
+| `components/tools/ToolsSection.tsx:140` | Tool row | navigation row | `components/tools/tools.test.tsx` |
+| `components/tools/ToolDetailPanel.tsx:274` | Version history row | full-row composite | `components/tools/tools.test.tsx` |
+| `components/PinsPanel.tsx:105` | Pin jump row | full-row composite | `components/PinnedMessages.test.tsx` |
+| `components/PinnedBanner.tsx:89` | Pinned-message jump banner | full-row composite | `components/PinnedMessages.test.tsx`, `routes/ChatView.test.tsx` |
+| `components/TaskStrip.tsx:240,283,352,368` | Topic status / owner / link chips and their menu triggers | chips / menu triggers | `components/TaskStrip.test.tsx` |
+| `components/TaskStrip.tsx:342` | Topic link chip (`<a>`) | external link chip | `components/TaskStrip.test.tsx` |
+| `components/MessageBubble.tsx:78,86,407,581,636` | Inline Retry / Delete / Retry-upload text links | inline text links | `components/SendFailure.test.tsx`, `components/MessageBubble.forward.test.tsx` |
+| `components/EditBar.tsx:19` | Cancel edit key | edit strip | none found |
+| `components/Composer.tsx:916` | Cancel reply key | composer strip | `components/Composer.test.tsx` |
+| `components/FileMessage.tsx:60` | Download anchor styled as an icon key | download anchor; `IconButton` has no `asChild` | `components/FileMessage.test.tsx` |
+| `components/ChatMediaPanel.tsx:123` | Media / file row link | file link | `components/ChatMediaPanel.test.tsx` |
+| `components/GifMessage.tsx:56` | GIF opener (`<a>`) | media opener | `components/GifMessage.test.tsx` |
+| `components/ImageMessage.tsx:53` | Image opener (`<a>`) | media opener | `components/ImageMessage.test.tsx` |
+| `components/LinkText.tsx:32` | Inline link (`<a>`) | inline text link | none found |
+| `components/MarkdownText.tsx:28` | Markdown link (`<a>`) | inline text link | `components/MarkdownText.test.tsx` |
+| `components/TelegramImportDialog.tsx:140,171` | Inline "integrations settings" links | inline text links | `components/TelegramImportDialog.test.tsx` |
+| `routes/LoginPage.tsx:43` | `Link` inside `Button asChild` | already the kit `Button asChild` | `App.test.tsx` |
+| `routes/JoinPage.tsx:95,210,243` | `Link` inside `Button asChild` | already the kit `Button asChild` | `routes/JoinPage.test.tsx` |
+| `components/Composer.tsx:978` | Composer textarea | composer | `components/Composer.test.tsx` |
+| `components/Composer.tsx:962` | Attach file input | native file input | `components/Composer.test.tsx` |
+| `components/AvatarUploader.tsx:290` | Avatar file input | native file input | `components/AvatarUploader.test.tsx` |
+| `components/AvatarUploader.tsx:368` | Zoom range input | native range input, no kit | `components/AvatarUploader.test.tsx` |
+| `components/ChatBackgroundDialog.tsx:417` | Background file input | native file input | `components/ChatBackgroundDialog.test.tsx` |
+| `components/ChatBackgroundDialog.tsx:436` | Dim range input | native range input, no kit | `components/ChatBackgroundDialog.test.tsx` |
+| `components/auth/OtpInput.tsx:76` | OTP digit cells | OTP cells | `components/auth/OtpInput.test.tsx` |
+| `components/PackEditor.tsx:489` | Sticker-pack file input | native file input | `components/PackEditor.test.tsx` |
+| `components/ChatList.tsx:340` | Inline `Loader2` busy spinner inside the Retry `Button` | inline busy indicator inside a button | `components/ChatList.test.tsx` |
+| `components/ProgressCard.tsx:11` | Inline `Loader2` beside a `role="progressbar"` | spinner + progress bar composite | `components/ProgressCard.test.tsx` |
+
+## W2. Done since T-0406
+
+These rows from the T-0406 web list are now on the kit.
+
+- `routes/ChatView.tsx:151` — the server-notice "Dismiss" is now a `Button`.
+- `components/ChatList.tsx:396` — the "Archived ({n})" disclosure is now `Button variant="ghost"`.
+- `components/MessageList.tsx:230` — "No messages yet" is now `StateMessage kind="empty"`.
+- `components/MessageSearchResults.tsx:80,99` — "Searching…" and "No messages found" are now `StateMessage`.
+- `routes/ApprovalsPage.tsx:267` — "Nothing is waiting for you." is now `StateMessage kind="empty"`.
+- `components/PeopleSearchResult.tsx:21,41,55` — searching and "Too many searches…" are now `StateMessage`.
+- `components/tools/ToolsSection.tsx:117,132` — loading and "No tools here yet" are now `StateMessage`.
+- `components/approvals/AlwaysAllowedList.tsx:183,195` — loading and "Nothing is always allowed here." are now `StateMessage`.
+- `components/tools/ToolDetailPanel.tsx:313` — the run input is now `TextArea`.
+- `components/auth/AuthFlow.tsx:134` — the sign-in email is now `TextInput`.
+
+## W3. Ready batches
+
+Ordered by value, the most visible screens first. Each batch is small enough for
+one task; the `Chip` batch needs a kit decision.
+
+1. **W-chat-chrome** — `components/ChatHeader.tsx:143`, `components/TopicRow.tsx:298`,
+   `components/PinsPanel.tsx:157`, `components/GroupPanel.tsx:570` → ghost `Button`.
+   Tests: `components/ChatHeader.menu.test.tsx`, `components/TopicsSidebar.test.tsx`,
+   `components/PinnedMessages.test.tsx`, `components/GroupPanel.test.tsx`,
+   `routes/ChatView.test.tsx`.
+2. **W-chips** (needs a kit decision) — `components/NewTopicDialog.tsx:235` →
+   `SegmentedControl`; `components/ReactionChips.tsx:36` and
+   `components/SearchBar.tsx:45` → a new `Chip` (reactions and the search-filter
+   chip). Tests: `components/NewTopicDialog.test.tsx`,
+   `components/ReactionChips.test.tsx`, `components/ChatList.test.tsx`.
+3. **W-keys-folders** — `components/StickerPanel.tsx:519`,
+   `routes/StickersPage.tsx:627`, `routes/FoldersPage.tsx:141` → `IconButton`;
+   `routes/FoldersPage.tsx:189` → outline `Button`. Tests:
+   `components/StickerPanel.test.tsx`, `routes/StickersPage.test.tsx`,
+   `routes/FoldersPage.test.tsx`.
+4. **W-fields-links** — `components/FolderEditorDialog.tsx:167` → `TextInput`
+   (`counter`); `components/SearchBar.tsx:55` → `SearchField`;
+   `components/AddContactDialog.tsx:128` → `Button asChild variant="outline"`;
+   `components/MessageActionsMenu.tsx:67` → `IconButton`;
+   `components/ChatBackgroundDialog.tsx:451` → `Button variant="link"`. Tests:
+   `components/FolderEditorDialog.test.tsx`, `components/ChatList.test.tsx`,
+   `components/AddContactDialog.test.tsx`, `components/MessageActionsMenu.test.tsx`,
+   `components/ChatBackgroundDialog.test.tsx`.
+5. **W-loading-states** — `components/Skeleton.tsx:15,41`,
+   `components/machines/MachineListSkeleton.tsx:14`,
+   `components/approvals/ApprovalsListSkeleton.tsx:14`,
+   `components/ais/AiActivity.tsx:272` → `StateMessage kind="loading"`. Tests:
+   `components/Skeleton.test.tsx`, `routes/MachinesPage.test.tsx`,
+   `routes/ApprovalsPage.test.tsx`, `components/ais/AiActivity.test.tsx`.
+6. **W-empty-error** — `components/EmptyState.tsx:20` and
+   `components/PinsPanel.tsx:73` → `StateMessage kind="empty"`;
+   `components/MessageSearchResults.tsx:149` → `StateMessage kind="error" size="inline"`.
+   Tests: `components/ChatList.test.tsx`, `components/PinnedMessages.test.tsx`,
+   `components/MessageSearch.test.tsx`.
 
 ---
 
@@ -293,46 +368,7 @@ None left. All four raw `TextInput` uses are the kept ones below (table M4):
 
 ---
 
-# Suggested batches
-
-Groups of 3-5 rows that share a file or a test, small enough for one migration
-task. Web first.
-
-**Web**
-
-1. **W-menu** — `MentionPicker.tsx:30`, `MessageActionsMenu.tsx:58` → `MenuItem`.
-   Tests: `MentionPicker.test.tsx`, `Composer.test.tsx`.
-2. **W-chips** — `NewTopicDialog.tsx:235` → `SegmentedControl`;
-   `ReactionChips.tsx:36`, `SearchBar.tsx:45` → decide a `Chip` (none today).
-   Tests: `NewTopicDialog.test.tsx`, `ReactionChips.test.tsx`, `ChatList.test.tsx`.
-3. **W-chat-buttons** — `ChatHeader.tsx:139`, `ChatList.tsx:396`,
-   `PinnedBanner.tsx:89`, `ChatView.tsx:105` → ghost `Button`.
-   Tests: `ChatView.test.tsx`, `ChatList.test.tsx`.
-4. **W-pins-favorites** — `PinsPanel.tsx:157`, `StickerPanel.tsx:519`,
-   `StickersPage.tsx:627` → `Button` / `IconButton`.
-   Tests: `StickerPanel.test.tsx`, `StickersPage.test.tsx`, `GroupPanel.test.tsx`.
-5. **W-folders-tools** — `FoldersPage.tsx:141,189`, `ToolDetailPanel.tsx:273`,
-   `FileMessage.tsx:56`. Tests: `FoldersPage.test.tsx`, `FileMessage.test.tsx`.
-6. **W-loading-inline** — `Skeleton.tsx:15,41`, `ChatList.tsx:340`,
-   `ProgressCard.tsx:11` → `StateMessage` loading.
-   Tests: `Skeleton.test.tsx`, `ProgressCard.test.tsx`, `ChatList.test.tsx`.
-7. **W-loading-skeletons** — `MachineListSkeleton.tsx:14`,
-   `ApprovalsListSkeleton.tsx:14`, `AiActivity.tsx:272` → `StateMessage` loading.
-   Tests: `MachinesPage.test.tsx`, `ApprovalsPage.test.tsx`, `AiActivity.test.tsx`.
-8. **W-empty** — `EmptyState.tsx:20`, `MessageList.tsx:202`,
-   `MessageSearchResults.tsx:99`, `PinsPanel.tsx:74` → `StateMessage` empty.
-   Tests: `MessageList.test.tsx`, `MessageSearch.test.tsx`.
-9. **W-empty-error** — `ToolsSection.tsx:133`, `AlwaysAllowedList.tsx:195`,
-   `ApprovalsPage.tsx:268`, `PeopleSearchResult.tsx:40`,
-   `MessageSearchResults.tsx:149` → `StateMessage`. Tests:
-   `tools.test.tsx`, `AlwaysAllowedList.test.tsx`, `ApprovalsPage.test.tsx`,
-   `PeopleSearchResult.test.tsx`.
-10. **W-fields** — `FolderEditorDialog.tsx:167` → `TextInput`,
-    `SearchBar.tsx:55` → `SearchField`, `ToolDetailPanel.tsx:312` → `TextArea`,
-    `AuthFlow.tsx:136` → `TextInput`. Tests: `FolderEditorDialog.test.tsx`,
-    `ChatList.test.tsx`, `AuthFlow.test.tsx`.
-
-**Mobile**
+# Suggested batches (mobile)
 
 11. **M-tab-chrome** — `(tabs)/index.tsx:224,263,430`,
     `(tabs)/profile.tsx:175`; `group/[id].tsx:563,583`. Tests: none found.
