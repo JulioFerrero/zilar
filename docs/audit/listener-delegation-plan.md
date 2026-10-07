@@ -244,3 +244,17 @@ Dependencies: S1 blocks S2–S4, S6; S2 blocks S3; S3 blocks S4; S3/S4 block S5;
 Also worth a decision, not asked in the spec but blocking:
 5. **Wake line wording** — "Dev is looking at this" (plan §9.3) vs. a purely ephemeral typing state. Recommendation: the line, non-counted, no mention.
 6. **Interrupting in-flight turns** (§3.2) — v1 reset-only (recommended) vs. adding cancellation now.
+
+---
+
+## 8. Decisions (Julio, 2026-10-07)
+
+1. **The server pays for listener calls:** a dedicated listener model and key set by the server owner, behind `LISTENER_ENABLED`, off by default.
+2. **The default eagerness is `normal`**, a threshold of about 0.6. Admins can set `quiet` or `eager` per group.
+3. **Delegation:** any AI in the same group may receive a task, but only if **its owner allowed receiving**. So `ais` gets two flags:
+   - `can_delegate`, which the owner turns on so the AI may hand out tasks;
+   - `accepts_delegation`, which the owner turns on so the AI may receive them.
+
+   Both are off by default. Cross-owner delegation runs on the worker's own model, key and budget.
+4. **The wake line:** a small "Dev is looking at this" line, with a tap for why. Delegation progress is visible in the chat.
+5. **Interrupting in-flight turns:** v1 is reset-only, as the plan recommends.
