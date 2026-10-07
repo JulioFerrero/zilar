@@ -1,7 +1,7 @@
 ---
 id: T-0508
 title: "Effect lane D4: web lib/drafts.ts, lib/tools.ts and store/chatListCache.ts from zod to Effect Schema; same behaviour, tests unchanged"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0508-effect-web-drafts-tools-cache
 model: auto
@@ -71,4 +71,68 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+Converted the three web files from zod to Effect Schema with the same exported
+names, bounds, enums and runtime behaviour.
+
+- `apps/web/src/lib/drafts.ts`: `draftEventSchema` / `endEventSchema` now use
+  `struct(...)` from `@zilar/protocol`, `Schema.Literal`, `Schema.Literals`
+  and `Schema.check(Schema.isMinLength(1))` / `Schema.check(Schema.isUUID())`.
+  `parseEvent` decodes with `Schema.decodeUnknownResult` and returns
+  `undefined` (silent drop) on a non-string, bad JSON or a failed decode.
+- `apps/web/src/lib/tools.ts`: all schemas on `struct(...)`; `.extend` became a
+  field spread (`struct({ ...base.fields, source: Schema.String })`);
+  `z.array` became `Schema.mutable(Schema.Array(...))`; `z.null()` became
+  `Schema.Null`; the `ok` discriminated union became a `Schema.Union` of structs
+  with boolean literals. The local request helper now takes
+  `Schema.ConstraintDecoder<T>` and maps a failed decode of `errorBodySchema` to
+  the same `request_failed` / `Request failed (<status>)` fallbacks, and a
+  failed body decode to `invalid_response`.
+- `apps/web/src/store/chatListCache.ts`: `lastMessageSchema` and
+  `cachedChatSchema` use `Schema.StructWithRest(struct({...}),
+  [Schema.Record(Schema.String, Schema.Unknown)])`, so unknown keys survive
+  (the `.passthrough()` behaviour). `readChatListCache` decodes with
+  `Schema.decodeUnknownResult`. `zod` is gone from all three files;
+  `apps/web/package.json` is untouched so `api.ts` keeps zod.
+- Added `apps/web/src/store/chatListCache.schema.test.ts`: an unknown key on a
+  cached chat and on its `lastMessage` survives a write/read round trip.
+
+No exported name changed and no existing test was edited.
+
+### Files changed (all inside Allowed files)
+- `apps/web/src/lib/drafts.ts`
+- `apps/web/src/lib/tools.ts`
+- `apps/web/src/store/chatListCache.ts`
+- `apps/web/src/store/chatListCache.schema.test.ts` (new)
+- `work/T-0508-effect-web-drafts-tools-cache.md`
+
+### Commands and results
+`pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot src/lib/drafts src/lib/tools src/store/chatListCache`
+→ Test Files 4 passed (4); Tests 21 passed (21) (the three existing suites plus
+the new round-trip test).
+
+`pnpm gate` (from the repo root):
+```
+gate: 5 changed file(s) against main
+PASS  install (frozen)  (8.5s)
+PASS  format  (50.7s)
+PASS  lint  (1.9s)
+PASS  typecheck  (21.6s)
+PASS  tests @zilar/web  (55.1s)
+scope: every changed file is inside the Allowed files
+GATE PASS
+```
+
+I ran `pnpm exec prettier --write` on the four source files before the gate
+(`format:check` is part of the gate); the other gate steps were only run by the
+gate itself.
+
+### Problems / deviations
+None.
+
+### Open questions
+None.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-08). drafts.ts, tools.ts and chatListCache.ts moved from zod to Effect Schema, with no zod imports left. The cache passthrough uses StructWithRest, and a new round-trip test proves extra keys survive. Existing web tests unchanged and green. Pre-review clean.
