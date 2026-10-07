@@ -1,6 +1,13 @@
-import { and, asc, eq } from 'drizzle-orm';
+// Contacts and the XMPP roster sync. Every query runs on the `effect/sql`
+// client registered for this database (see `../effect/sql`). The exported
+// functions stay `async` so routes and tests keep their shape during the
+// transition; calls into modules still on drizzle (`avatarIdsByOwner`,
+// `findInviteByCode`) stay drizzle and keep taking `db`.
+
+import { Effect } from 'effect';
+import { SqlClient, SqlError } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
-import { contacts, handles, user, userInvites, xmppAccounts } from '../db/schema';
+import { sqlRuntimeFor } from '../effect/sql';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 import { avatarIdsByOwner, avatarUrlFor } from '../avatars/service';
@@ -32,6 +39,13 @@ export interface AddContactPairInput {
   source: ContactSource;
 }
 
+function runSql<A>(
+  db: ServerDatabase,
+  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
+): Promise<A> {
+  return sqlRuntimeFor(db).runPromise(effect);
+}
+
 // Creates both directions of a contact relationship. Idempotent, so calling it
 // again for an existing pair changes nothing.
 export async function addContactPair(
@@ -41,21 +55,24 @@ export async function addContactPair(
   if (input.userId === input.contactUserId) {
     return;
   }
-  await db
-    .insert(contacts)
-    .values([
-      {
-        userId: input.userId,
-        contactUserId: input.contactUserId,
-        source: input.source,
-      },
-      {
-        userId: input.contactUserId,
-        contactUserId: input.userId,
-        source: input.source,
-      },
-    ])
-    .onConflictDoNothing();
+  await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO contacts (user_id, contact_user_id, source)
+        VALUES (${input.userId}, ${input.contactUserId}, ${input.source}),
+               (${input.contactUserId}, ${input.userId}, ${input.source})
+        ON CONFLICT DO NOTHING`;
+    }),
+  );
+}
+
+interface ContactListRow {
+  userId: string;
+  name: string;
+  image: string | null;
+  jid: string | null;
+  handle: string | null;
 }
 
 export async function listContacts(
@@ -63,20 +80,20 @@ export async function listContacts(
   userId: string,
   domain: string,
 ): Promise<Contact[]> {
-  const rows = await db
-    .select({
-      userId: contacts.contactUserId,
-      name: user.name,
-      image: user.image,
-      jid: xmppAccounts.jid,
-      handle: handles.handle,
-    })
-    .from(contacts)
-    .innerJoin(user, eq(user.id, contacts.contactUserId))
-    .leftJoin(xmppAccounts, eq(xmppAccounts.userId, contacts.contactUserId))
-    .leftJoin(handles, eq(handles.userId, contacts.contactUserId))
-    .where(eq(contacts.userId, userId))
-    .orderBy(asc(user.name));
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<ContactListRow>`SELECT c.contact_user_id AS user_id, u.name, u.image,
+          x.jid, h.handle
+        FROM contacts c
+        INNER JOIN "user" u ON u.id = c.contact_user_id
+        LEFT JOIN xmpp_accounts x ON x.user_id = c.contact_user_id
+        LEFT JOIN handles h ON h.user_id = c.contact_user_id
+        WHERE c.user_id = ${userId}
+        ORDER BY u.name ASC`;
+    }),
+  );
 
   // The avatar is read by joining `avatars` at read time: a stored
   // picture wins (`/api/avatars/<id>`), otherwise the existing
@@ -114,6 +131,12 @@ export interface RosterSyncResult {
   ok: boolean;
 }
 
+interface PendingRosterRow {
+  contactUserId: string;
+  name: string;
+  jid: string | null;
+}
+
 // Adds every not-yet-synced contact of `userId` to that user's XMPP roster.
 // A failure (for example ejabberd is down) leaves the rows `roster_synced`
 // false and stops early, so a later call can retry. It never throws for an
@@ -124,16 +147,17 @@ export async function syncRoster(
   domain: string,
   userId: string,
 ): Promise<RosterSyncResult> {
-  const pending = await db
-    .select({
-      contactUserId: contacts.contactUserId,
-      name: user.name,
-      jid: xmppAccounts.jid,
-    })
-    .from(contacts)
-    .innerJoin(user, eq(user.id, contacts.contactUserId))
-    .leftJoin(xmppAccounts, eq(xmppAccounts.userId, contacts.contactUserId))
-    .where(and(eq(contacts.userId, userId), eq(contacts.rosterSynced, false)));
+  const pending = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<PendingRosterRow>`SELECT c.contact_user_id, u.name, x.jid
+        FROM contacts c
+        INNER JOIN "user" u ON u.id = c.contact_user_id
+        LEFT JOIN xmpp_accounts x ON x.user_id = c.contact_user_id
+        WHERE c.user_id = ${userId} AND c.roster_synced = false`;
+    }),
+  );
 
   const localpart = localpartFor(userId);
   let synced = 0;
@@ -149,10 +173,14 @@ export async function syncRoster(
     } catch {
       return { synced, pending: pending.length - synced, ok: false };
     }
-    await db
-      .update(contacts)
-      .set({ rosterSynced: true })
-      .where(and(eq(contacts.userId, userId), eq(contacts.contactUserId, row.contactUserId)));
+    await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`UPDATE contacts SET roster_synced = true
+          WHERE user_id = ${userId} AND contact_user_id = ${row.contactUserId}`;
+      }),
+    );
     synced += 1;
   }
 
@@ -177,21 +205,34 @@ export async function refreshRosterNicknames(
   userId: string,
   name: string,
 ): Promise<RosterNicknameResult> {
-  const rows = await db
-    .select({ ownerId: contacts.userId })
-    .from(contacts)
-    .where(eq(contacts.contactUserId, userId));
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ ownerId: string }>`SELECT c.user_id AS owner_id
+        FROM contacts c WHERE c.contact_user_id = ${userId}`;
+    }),
+  );
   if (rows.length === 0) {
     return { updated: 0, pending: 0, ok: true };
   }
 
-  await db.update(contacts).set({ rosterSynced: false }).where(eq(contacts.contactUserId, userId));
+  await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`UPDATE contacts SET roster_synced = false WHERE contact_user_id = ${userId}`;
+    }),
+  );
 
-  const [account] = await db
-    .select({ jid: xmppAccounts.jid })
-    .from(xmppAccounts)
-    .where(eq(xmppAccounts.userId, userId))
-    .limit(1);
+  const [account] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ jid: string }>`SELECT jid FROM xmpp_accounts
+        WHERE user_id = ${userId} LIMIT 1`;
+    }),
+  );
   const jid = account?.jid ?? jidFor(localpartFor(userId), domain);
 
   let updated = 0;
@@ -205,10 +246,14 @@ export async function refreshRosterNicknames(
     } catch {
       return { updated, pending: rows.length - updated, ok: false };
     }
-    await db
-      .update(contacts)
-      .set({ rosterSynced: true })
-      .where(and(eq(contacts.userId, row.ownerId), eq(contacts.contactUserId, userId)));
+    await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`UPDATE contacts SET roster_synced = true
+          WHERE user_id = ${row.ownerId} AND contact_user_id = ${userId}`;
+      }),
+    );
     updated += 1;
   }
 
@@ -235,14 +280,15 @@ export async function setUpContactsFromInvite(
     return;
   }
 
-  await db
-    .insert(userInvites)
-    .values({
-      userId: input.userId,
-      inviteId: invite.id,
-      invitedBy: invite.createdBy ?? null,
-    })
-    .onConflictDoNothing();
+  await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO user_invites (user_id, invite_id, invited_by)
+        VALUES (${input.userId}, ${invite.id}, ${invite.createdBy ?? null})
+        ON CONFLICT DO NOTHING`;
+    }),
+  );
 
   const inviterId = invite.createdBy;
   if (!inviterId || inviterId === input.userId) {

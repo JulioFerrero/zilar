@@ -1,7 +1,7 @@
 ---
 id: T-0522
 title: "Effect C1: contacts/service.ts and directory/service.ts on effect/sql (same queries, same order, same answers); signatures unchanged, every test unchanged"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0522-effect-sql-contacts-directory
 model: auto
@@ -66,4 +66,73 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+
+Converted both services to `effect/sql` following the recipe in
+`docs/audit/effect-sql-migration.md` §(a) and the `pins`/`blocks` examples. All
+exported functions keep their names, `async` signatures (`db: ServerDatabase`
+still keys `sqlRuntimeFor(db)`), return values and comments. No caller changed.
+Calls into modules still on drizzle (`avatarIdsByOwner`, `findInviteByCode`)
+stay drizzle and keep taking `db`. No drizzle imports remain in either file.
+
+- `apps/server/src/contacts/service.ts`: `addContactPair`, `listContacts`,
+  `syncRoster`, `refreshRosterNicknames`, `setUpContactsFromInvite` now run
+  through a local `runSql` helper (`sqlRuntimeFor(db).runPromise`). Statements
+  keep the same semantics: two-row `INSERT ... ON CONFLICT DO NOTHING`, the same
+  joins/order (`ORDER BY u.name ASC`) and avatar read, the
+  `roster_synced = false` pending read and per-row `UPDATE`, the
+  `user_invites` insert with `ON CONFLICT DO NOTHING`, and the two `syncRoster`
+  calls. Constants and types (`ROSTER_GROUP`, `UNNAMED_CONTACT_NAME`,
+  `ContactSource`, `Contact`, `AddContactPairInput`, the result interfaces)
+  stay exported unchanged.
+- `apps/server/src/directory/service.ts`: `searchDirectory` and
+  `publicGroupForHandle` now run on `effect/sql`, plus the private
+  `countMembers` / `membershipsOf` helpers. The `ilike` on handle **or** title
+  with the same `escapeLike(raw) + '%'`, the `(created_at, id)` keyset cursor,
+  `ORDER BY created_at DESC, id DESC`, the `DIRECTORY_PAGE_SIZE + 1` probe,
+  `count(*)::int`, the `IN (...)` list queries and the in-memory rank sort are
+  unchanged. `decodeCursor`/`encodeCursor`, the constants and the exported
+  interfaces are untouched.
+
+### Files changed
+
+- `apps/server/src/contacts/service.ts`
+- `apps/server/src/directory/service.ts`
+- `work/T-0522-effect-sql-contacts-directory.md` (status + this Report)
+
+### Commands run and results
+
+- `pnpm install` — done, no changes needed (exit 0).
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot contacts` —
+  1 file, 8 tests passed.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot groups/visibility` —
+  1 file, 22 tests passed.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot contact-requests` —
+  1 file, 15 tests passed.
+- Required check `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot contacts groups/visibility contact-requests chats auth` —
+  10 files, 127 tests passed (also printed the 158-route 401 sweep, all as expected).
+- `pnpm gate` from the repo root — **GATE PASS**:
+
+  ```
+  gate: 3 changed file(s) against main
+  PASS  install (frozen)  (1.9s)
+  PASS  format  (31.4s)
+  PASS  lint  (1.3s)
+  PASS  typecheck  (26.0s)
+  PASS  tests @zilar/server  (554.5s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Problems / deviations
+
+None. All listed tests pass unchanged, no caller changes were needed, and no
+file outside the Allowed files was touched.
+
+### Open questions
+
+None.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-08). contacts/service.ts and directory/service.ts run on effect/sql with the same SQL semantics: two-row conflict-do-nothing, the escaped ILIKE prefix, the (created_at, id) keyset cursor, the +1 page probe and the same counts. No drizzle-orm imports are left; signatures and callers are unchanged. Pre-review clean, 0 nits.
