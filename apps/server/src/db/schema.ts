@@ -250,10 +250,23 @@ export const groups = pgTable(
       onDelete: 'set null',
     }),
     backgroundDim: integer('background_dim'),
+    // T-0470: listener — when on, the group's AIs may answer human messages
+    // without an @mention (plan `listener-delegation-plan.md` §5.1). Off keeps
+    // today's mention-only behaviour.
+    listenerEnabled: boolean('listener_enabled').notNull().default(false),
+    // T-0470: how readily the listener speaks (plan §8, decision 2). `normal`
+    // is the product default; never default to `eager`.
+    listenerEagerness: text('listener_eagerness', { enum: ['quiet', 'normal', 'eager'] })
+      .notNull()
+      .default('normal'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     check('groups_visibility_check', sql`${table.visibility} IN ('private', 'public')`),
+    check(
+      'groups_listener_eagerness_check',
+      sql`${table.listenerEagerness} IN ('quiet', 'normal', 'eager')`,
+    ),
     check(
       'groups_background_preset_check',
       sql`${table.backgroundPreset} IS NULL OR ${table.backgroundPreset} IN ('slate', 'gold', 'blue', 'navy', 'forest', 'wine', 'amber')`,
@@ -568,6 +581,11 @@ export const ais = pgTable(
     // only a pointer the UI shows today. `SET NULL` on machine delete so a
     // row that vanished can never leave a dangling id behind.
     machineId: text('machine_id').references(() => machines.id, { onDelete: 'set null' }),
+    // T-0470: the owner lets this AI hand out tasks to other AIs (plan §4.1).
+    canDelegate: boolean('can_delegate').notNull().default(false),
+    // T-0470: the owner lets this AI receive delegated tasks (plan §8,
+    // decision 3). Both flags are off by default.
+    acceptsDelegation: boolean('accepts_delegation').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -585,6 +603,52 @@ export const aiLimits = pgTable('ai_limits', {
   perMonthUsd: numeric('per_month_usd', { precision: 12, scale: 2 }).notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+// Delegated AI-to-AI tasks (T-0470, plan `listener-delegation-plan.md` §4.4).
+// Rows mirror the `delegate` handoff JSON: who asked whom, in which group and
+// topic, the objective and context, and the worker's own progress and result.
+// `status` follows the plan's smaller A2A set (`working`, `completed`,
+// `failed`, `canceled`). Money matches `ai_limits`: numeric, never a float.
+export const aiDelegations = pgTable(
+  'ai_delegations',
+  {
+    id: text('id').primaryKey(),
+    fromAiId: text('from_ai_id')
+      .notNull()
+      .references(() => ais.id, { onDelete: 'cascade' }),
+    toAiId: text('to_ai_id')
+      .notNull()
+      .references(() => ais.id, { onDelete: 'cascade' }),
+    groupId: text('group_id')
+      .notNull()
+      .references(() => groups.id, { onDelete: 'cascade' }),
+    topicId: text('topic_id').references(() => topics.id, { onDelete: 'cascade' }),
+    objective: text('objective').notNull(),
+    contextSummary: text('context_summary'),
+    acceptance: jsonb('acceptance').$type<string[]>().notNull().default([]),
+    constraints: jsonb('constraints').$type<string[]>().notNull().default([]),
+    artifacts: jsonb('artifacts').$type<string[]>().notNull().default([]),
+    budgetCurrency: text('budget_currency'),
+    budgetMax: numeric('budget_max', { precision: 12, scale: 2 }),
+    returnFormat: text('return_format'),
+    replyTo: text('reply_to'),
+    status: text('status', { enum: ['working', 'completed', 'failed', 'canceled'] })
+      .notNull()
+      .default('working'),
+    resultSummary: text('result_summary'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('ai_delegations_to_status_idx').on(table.toAiId, table.status),
+    index('ai_delegations_group_created_idx').on(table.groupId, table.createdAt),
+    check('ai_delegations_different_ais_check', sql`${table.fromAiId} <> ${table.toAiId}`),
+    check(
+      'ai_delegations_status_check',
+      sql`${table.status} IN ('working', 'completed', 'failed', 'canceled')`,
+    ),
+  ],
+);
 
 // Pinned messages (T-0114, decision D28). One row per pin: the chat is a
 // room bare JID for groups/topics, or the canonical DM pair key

@@ -1,0 +1,86 @@
+---
+id: T-0472
+title: "Listener S2 (server): pure scoring core — roster, prompt, strict JSON parse, eagerness threshold (no gateway wiring yet)"
+status: todo
+milestone: M5
+branch: task/T-0472-listener-score-core
+model: auto
+effort: low
+depends_on: [T-0470]
+estimate: 0.4 day
+---
+
+# T-0472: listener scoring core
+
+## Spec (written by Claude, do not edit)
+
+### Why
+This is plan `docs/audit/listener-delegation-plan.md` §2.2, §2.3, §2.5 and §8, task S2. The listener is one cheap model call that scores every AI in a room, to decide who should answer a message with no @mention.
+
+This task builds the pure core in a new folder. **Nothing calls it yet:** the gateway hook is S3. **There are no DB writes.**
+
+### Verified facts (do not re-derive)
+- **`completeChat(input)`** (`apps/server/src/agents/reply.ts:298-304`) is a plain text call: no tools, so improvised tool calls are ignored, and an empty reply throws. `CompleteChatInput` (lines 134-146) is `{ baseUrl, virtualKey, model, messages, tools?, fetchImpl?, timeoutMs?, secrets?, onDelta? }`. `ModelRequestMessage` is the message type used by the agents.
+- **Roster tables (`apps/server/src/db/schema.ts`):**
+  - `groupAis` (lines 344-359): `groupId`, `aiId`;
+  - `topicAis` (lines 516-531): `topicId`, `aiId`;
+  - `ais` (line 539): `id`, `owner`, `name`, `persona` (up to 4000 characters), `model`.
+- **`PERSONA_SUMMARY_MAX_LENGTH = 200`** is at `apps/server/src/agents/tools.ts:12`.
+- **Eagerness** is the `groups.listenerEagerness` text column (`'quiet' | 'normal' | 'eager'`, T-0470). The plan maps `eager` to 0.4, `normal` to 0.6 and `quiet` to 0.8.
+- **Security (plan §2.5):**
+  - the listener has no tools;
+  - room text is data, not instructions (see how the memory block is framed in `apps/server/src/agents/context.ts:146-154`);
+  - logs carry ids and counts only.
+
+### What to build
+New folder `apps/server/src/agents/listener/`:
+1. **`score.ts`:**
+   - **Threshold:** `export const LISTENER_THRESHOLDS = { eager: 0.4, normal: 0.6, quiet: 0.8 } as const;` and `thresholdFor(eagerness)`.
+   - **The roster:** `export interface RosterAi { id: string; name: string; summary: string }` and `loadRoster(db, { groupId, topicId? })`.
+     - **With a `topicId`:** the AIs in `topicAis` for that topic.
+     - **Without one:** the AIs in `groupAis` for that group.
+     - **Fields:** `id` and `name` from `ais`, and `summary` from the first line of `persona`, trimmed and cut to `PERSONA_SUMMARY_MAX_LENGTH`.
+     - **Order:** sorted by name, then id.
+   - **The prompt:** `buildListenerMessages({ roster, window, roomSummary? }): ModelRequestMessage[]`.
+     - **System message:** states the job (score each AI 0-1 for how much the latest messages need that AI), says the transcript is untrusted data and never instructions, and requires **only** a JSON object `{"scores": {"<aiId>": number}, "reason": string, "message_ids": string[]}` keyed by the given AI ids.
+     - **User message:** holds the roster as `id: name, summary` lines, the optional room summary, and the window as `[messageId] sender: text` lines.
+     - **Caps:** at most 40 window messages; each message text cut to 500 characters.
+   - **The parser:** `parseListenerOutput(raw, rosterIds): { scores: Map<string, number>; reason: string; messageIds: string[] } | null`.
+     - **Input cleanup:** strip one surrounding ```json fence if there is one, then parse with zod.
+     - **Scores:** numbers 0-1. Unknown ids are dropped, and a missing id counts as 0.
+     - **Text fields:** `reason` is cut to 200 characters, and `message_ids` is capped at 20 strings of at most 64 characters each.
+     - **Garbage** gives `null`.
+   - **The top-level call:** `scoreRoom({ complete, baseUrl, virtualKey, model, roster, window, roomSummary?, eagerness, timeoutMs? }): Promise<{ wake: string[]; reason: string; messageIds: string[] } | null>`.
+     - **Calls** `complete` (an injected function with the shape of `completeChat`) **without tools**.
+     - **Wakes** the AIs whose score is at least the threshold, sorted by score descending.
+     - **Wakes nobody** (returns `{ wake: [] }` or `null`) on an empty roster, a parse failure or a thrown error. It never throws.
+2. **`score.test.ts`:**
+   - `thresholdFor` mapping;
+   - `loadRoster` for a group and for a topic: seed the DB like the existing agent tests. The summary is the first line, capped at 200;
+   - `buildListenerMessages`: no tools; the system message contains the untrusted-data line; the window is capped at 40 and texts at 500; the roster lines contain the ids;
+   - `parseListenerOutput`: valid; fenced; an unknown id dropped; an out-of-range score rejected (null); garbage gives null; the reason is cut;
+   - `scoreRoom`: a fake `complete` returning scores wakes only those at or above the threshold, sorted. A thrown error gives null or no wake. **The fake is called without `tools`.**
+
+### Read first
+`AGENTS.md`, `docs/audit/listener-delegation-plan.md` §2 and §8, `apps/server/src/agents/reply.ts:120-160` and `:290-310`, `apps/server/src/agents/context.ts:140-160`, `apps/server/src/agents/tools.ts:1-20`, `apps/server/src/db/schema.ts:344-360`, `:516-532` and `:539-580`, `apps/server/src/agents/memory/compactor.ts` (a sibling module with an injected `complete` and DB tests).
+
+### Allowed files
+`apps/server/src/agents/listener/score.ts`, `apps/server/src/agents/listener/score.test.ts`, `work/T-0472-listener-score-core.md`.
+
+If you need to change any other file, stop and report BLOCKED with the file name.
+
+### Checks
+```bash
+pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot agents/listener
+pnpm gate
+```
+
+### Acceptance
+- `agents/listener/score.ts` exports the roster loader, the prompt builder, the strict parser, the threshold mapping and `scoreRoom`. It is tool-free, never throws, wakes nobody on any failure, and is fully tested.
+- `pnpm gate` ends with GATE PASS and lists no file outside the Allowed files.
+
+---
+
+## Report (written by the worker when done)
+
+## Review (written by Claude)
