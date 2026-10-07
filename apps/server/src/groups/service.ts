@@ -60,6 +60,9 @@ export interface GroupMemberView {
 
 export type ChannelKind = 'group' | 'channel';
 
+// T-0474: how readily a group's listener speaks (plan §8, decision 2).
+export type GroupListenerEagerness = 'quiet' | 'normal' | 'eager';
+
 // T-0463: the group background an owner/admin sets, shared by the detail and
 // the chat list. Same shape and rules as the per-user background fields.
 export interface GroupBackground {
@@ -91,6 +94,14 @@ export interface GroupDetail {
   avatarUrl?: string | undefined;
   // T-0463: the background set for the whole group by an owner or admin.
   background: GroupBackground;
+  // T-0474: the listener switch and eagerness stored on the group, plus
+  // `available`, the server `LISTENER_ENABLED` flag that gates them. The
+  // settings are inert while `available` is false.
+  listener: {
+    enabled: boolean;
+    eagerness: GroupListenerEagerness;
+    available: boolean;
+  };
   members: GroupMemberView[];
   ais: GroupAiView[];
 }
@@ -178,6 +189,9 @@ export interface PatchGroupInput {
   // T-0463: a partial background patch. `undefined` keeps a stored value,
   // `null` clears it. Validated with the same rules as the per-user prefs.
   background?: BackgroundFieldsInput | undefined;
+  // T-0474: the listener switch and eagerness (owner or admin).
+  listenerEnabled?: boolean | undefined;
+  listenerEagerness?: GroupListenerEagerness | undefined;
 }
 
 // The three nullable background columns with the same merge semantics as the
@@ -226,6 +240,7 @@ async function resolveGroupBackground(
 
 // T-0108: group owner/admin toggles whether plain members may create topics.
 // T-0463: an owner/admin also sets or clears the group background.
+// T-0474: an owner/admin also sets the listener switch and eagerness.
 export async function patchGroup(db: ServerDatabase, input: PatchGroupInput): Promise<GroupDetail> {
   const group = await requireGroup(db, input.groupId);
   const actor = await getMembership(db, input.groupId, input.actorId);
@@ -249,13 +264,22 @@ export async function patchGroup(db: ServerDatabase, input: PatchGroupInput): Pr
           },
           input.background,
         );
-  if (input.membersCanCreateTopics !== undefined || background !== undefined) {
+  if (
+    input.membersCanCreateTopics !== undefined ||
+    background !== undefined ||
+    input.listenerEnabled !== undefined ||
+    input.listenerEagerness !== undefined
+  ) {
     await db
       .update(groups)
       .set({
         ...(input.membersCanCreateTopics === undefined
           ? {}
           : { membersCanCreateTopics: input.membersCanCreateTopics }),
+        ...(input.listenerEnabled === undefined ? {} : { listenerEnabled: input.listenerEnabled }),
+        ...(input.listenerEagerness === undefined
+          ? {}
+          : { listenerEagerness: input.listenerEagerness }),
         ...background,
       })
       .where(eq(groups.id, input.groupId));
@@ -438,6 +462,7 @@ export async function createGroup(
 export async function getGroupDetail(
   db: ServerDatabase,
   groupId: string,
+  listenerAvailable = false,
 ): Promise<GroupDetail | null> {
   const [group] = await db.select().from(groups).where(eq(groups.id, groupId)).limit(1);
   if (!group) {
@@ -473,6 +498,11 @@ export async function getGroupDetail(
       backgroundPreset: group.backgroundPreset,
       backgroundImageId: group.backgroundImageId,
       backgroundDim: group.backgroundDim,
+    },
+    listener: {
+      enabled: group.listenerEnabled,
+      eagerness: group.listenerEagerness,
+      available: listenerAvailable,
     },
     members,
     ais: aiViews.map((ai) =>

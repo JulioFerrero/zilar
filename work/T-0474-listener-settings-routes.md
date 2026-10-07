@@ -1,7 +1,7 @@
 ---
 id: T-0474
 title: "Listener S6a (server): LISTENER_ENABLED flag; group listener settings on PATCH /groups/:id; AI canDelegate/acceptsDelegation on PATCH /ais/:id"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0474-listener-settings-routes
 model: auto
@@ -82,4 +82,41 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- **Config (`apps/server/src/config.ts`)** — added `LISTENER_ENABLED` after `WEB_TOOLS_ENABLED`, same boolean `z.enum(['true','false']).default('false').transform(...)` pattern, with the plan §2 comment (off by default; per-group switch inert).
+- **Groups service (`apps/server/src/groups/service.ts`)** — added `GroupListenerEagerness = 'quiet'|'normal'|'eager'`; added `listener: { enabled, eagerness, available }` to `GroupDetail`; added `listenerEnabled`/`listenerEagerness` to `PatchGroupInput` and applied them in the same `patchGroup` update (owner/admin only, unchanged 403/404 rules); `getGroupDetail(db, groupId, listenerAvailable = false)` fills the DB values for `enabled`/`eagerness` and the flag for `available`.
+- **Groups routes (`apps/server/src/groups/routes.ts`)** — `patchGroupSchema` accepts `listenerEnabled: z.boolean().optional()` and `listenerEagerness: z.enum(['quiet','normal','eager']).optional()` (unknown value → 400). PATCH maps them into `patchGroup`. A route-level `withListenerAvailability` helper stamps `available` from `config.LISTENER_ENABLED` onto every group response (the six service functions that build their own `GroupDetail` cannot see the config); the `GET /groups/:id` call passes the flag straight into `getGroupDetail`.
+- **AI service (`apps/server/src/ais/service.ts`)** — `PublicAi` and `AiRecord` gained `canDelegate`/`acceptsDelegation`; added to `publicAiColumns` and `toPublicAi`; `UpdateAiInput` gained both; `updateAi` applies them in the existing transaction (owner only, unchanged 404).
+- **AI routes (`apps/server/src/ais/routes.ts`)** — `UpdateAiSchema` accepts both optional booleans and the PATCH handler maps them into `updateAi`.
+- **Tests** — `config.test.ts`: `LISTENER_ENABLED: false` added to both full-config `toEqual` blocks plus a default/`'true'`-parse test. `groups.test.ts`: new `group listener settings (T-0474)` describe (admin sets switch + quiet, detail shows them; defaults off/normal; member 403 and row unchanged; unknown eagerness 400; `available` true when `LISTENER_ENABLED` is on). `ais/routes.test.ts`: owner sets both flags and sees them, defaults false, another user gets 404 and the row is unchanged.
+
+### Files changed
+`apps/server/src/config.ts`, `apps/server/src/config.test.ts`, `apps/server/src/groups/routes.ts`, `apps/server/src/groups/service.ts`, `apps/server/src/groups/groups.test.ts`, `apps/server/src/ais/routes.ts`, `apps/server/src/ais/service.ts`, `apps/server/src/ais/routes.test.ts`, `work/T-0474-listener-settings-routes.md`. All inside the Allowed files (gate confirms).
+
+### Commands and results
+- `pnpm install` — done, 1170 packages, exit 0.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot groups/groups ais/routes config` — **5 files, 173 passed, 0 failed**.
+- `pnpm gate` (first run) — FAIL on `format`: `apps/server/src/ais/routes.test.ts`, `apps/server/src/groups/service.ts`; `scope: every changed file is inside the Allowed files`.
+- `pnpm exec prettier --write` on those two files — exit 0.
+- `pnpm gate` (final):
+  ```
+  gate: 9 changed file(s) against main
+  PASS  install (frozen)
+  PASS  format
+  PASS  lint
+  PASS  typecheck
+  PASS  tests @zilar/server
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Deviations / notes
+- **`available` threading.** `getGroupDetail` is called from ten service sites plus two route sites; threading `config` into all of them would have touched every create/member/AI/role function. I took the fallback the spec allows: `getGroupDetail` takes an optional `listenerAvailable` (used directly by `GET /groups/:id` and by the tests), and the routes stamp `available` onto the six service-built details with a small `withListenerAvailability` helper from `config.LISTENER_ENABLED`. Result: every group response carries the correct flag. Nothing reads it yet (gateway work is S3–S5).
+- No other package/test asserts an exact `PublicAi` or `GroupDetail`; `pnpm gate` (which runs the whole `@zilar/server` suite) is green. Web/mobile have their own types and were not touched.
+
+### Blocked / needs a decision
+None.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-07). LISTENER_ENABLED is added, off by default. PATCH /groups/:id takes listenerEnabled and listenerEagerness (owner or admin; member 403; non-member 404), and the GroupDetail listener carries enabled, eagerness and available (stamped in routes). PATCH /ais/:id takes canDelegate and acceptsDelegation (owner only), and PublicAi shows them. Nit accepted: available=true is only tested on GET.

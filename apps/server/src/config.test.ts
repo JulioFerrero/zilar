@@ -66,6 +66,7 @@ describe('loadServerConfig', () => {
       ACTION_DEMO_ENABLED: false,
       TOOLS_ENABLED: false,
       WEB_TOOLS_ENABLED: false,
+      LISTENER_ENABLED: false,
       WEB_SEARCH_PROVIDER: 'duckduckgo-html',
       AGENT_TOOL_MAX_ROUNDS: 1,
       xmpp: VALID_XMPP,
@@ -113,6 +114,7 @@ describe('loadServerConfig', () => {
       ACTION_DEMO_ENABLED: false,
       TOOLS_ENABLED: false,
       WEB_TOOLS_ENABLED: false,
+      LISTENER_ENABLED: false,
       WEB_SEARCH_PROVIDER: 'duckduckgo-html',
       AGENT_TOOL_MAX_ROUNDS: 1,
       xmpp: VALID_XMPP,
@@ -374,6 +376,16 @@ describe('loadServerConfig', () => {
     };
     expect(loadServerConfig(base).ROUTINES_ENABLED).toBe(false);
     expect(loadServerConfig({ ...base, ROUTINES_ENABLED: 'true' }).ROUTINES_ENABLED).toBe(true);
+  });
+
+  it('leaves the listener off by default and enables it with one line', () => {
+    const base = {
+      DATABASE_URL: VALID_DATABASE_URL,
+      BETTER_AUTH_SECRET: VALID_SECRET,
+      ...VALID_XMPP_ENV,
+    };
+    expect(loadServerConfig(base).LISTENER_ENABLED).toBe(false);
+    expect(loadServerConfig({ ...base, LISTENER_ENABLED: 'true' }).LISTENER_ENABLED).toBe(true);
   });
 
   it('rejects junk values for ROUTINES_ENABLED like the sibling flags', () => {

@@ -21,6 +21,7 @@ import {
   patchGroup,
   removeGroupAi,
   removeGroupMember,
+  type GroupDetail,
   type InviteLogger,
 } from './service';
 import { setGroupVisibility } from './visibility';
@@ -90,6 +91,10 @@ const patchGroupSchema = z
       })
       .strict()
       .optional(),
+    // T-0474: the listener switch and how readily it speaks. Owner or admin,
+    // like the other group settings; an unknown eagerness is a 400.
+    listenerEnabled: z.boolean().optional(),
+    listenerEagerness: z.enum(['quiet', 'normal', 'eager']).optional(),
   })
   .strict();
 
@@ -118,6 +123,14 @@ export function createGroupsRoutes({
 }: GroupsRoutesDependencies): Hono {
   const routes = new Hono();
   const domain = config.xmpp.domain;
+  // T-0474: every group response carries the listener `available` flag from
+  // the server config. Service callers that do not know the config keep the
+  // default false and the routes stamp the real value here.
+  const listenerAvailable = config.LISTENER_ENABLED;
+  const withListenerAvailability = (group: GroupDetail): GroupDetail => ({
+    ...group,
+    listener: { ...group.listener, available: listenerAvailable },
+  });
   // T-0124: role changes hit ejabberd (one affiliation write per call), so
   // they are capped per owner like topic creation is capped per user.
   const roleLimiter = createRateLimiter({
@@ -154,13 +167,13 @@ export function createGroupsRoutes({
       ...(parsed.data.visibility === undefined ? {} : { visibility: parsed.data.visibility }),
       ...(parsed.data.handle === undefined ? {} : { handle: parsed.data.handle }),
     });
-    return c.json(group, 201);
+    return c.json(withListenerAvailability(group), 201);
   });
 
   routes.get('/groups/:id', async (c) => {
     const { user } = await requireSession(auth, c.req.raw.headers);
     const groupId = c.req.param('id');
-    const group = await getGroupDetail(db, groupId);
+    const group = await getGroupDetail(db, groupId, listenerAvailable);
     const membership = group ? await getMembership(db, groupId, user.id) : null;
     // A non-member sees the same 404 as a missing group, so group ids cannot
     // be probed.
@@ -221,7 +234,7 @@ export function createGroupsRoutes({
       logger,
       ...(audit === undefined ? {} : { audit }),
     });
-    return c.json(group);
+    return c.json(withListenerAvailability(group));
   });
 
   routes.post('/groups/:id/members', async (c) => {
@@ -243,7 +256,7 @@ export function createGroupsRoutes({
       domain,
       logger,
     });
-    return c.json(group);
+    return c.json(withListenerAvailability(group));
   });
 
   routes.delete('/groups/:id/members/:userId', async (c) => {
@@ -255,7 +268,7 @@ export function createGroupsRoutes({
       domain,
       logger,
     });
-    return c.json(group);
+    return c.json(withListenerAvailability(group));
   });
 
   routes.post('/groups/:id/ais', async (c) => {
@@ -277,7 +290,7 @@ export function createGroupsRoutes({
       domain,
       logger,
     });
-    return c.json(group);
+    return c.json(withListenerAvailability(group));
   });
 
   routes.delete('/groups/:id/ais/:aiId', async (c) => {
@@ -289,7 +302,7 @@ export function createGroupsRoutes({
       domain,
       logger,
     });
-    return c.json(group);
+    return c.json(withListenerAvailability(group));
   });
 
   // T-0108: group owner/admin toggles whether plain members may create
@@ -351,8 +364,14 @@ export function createGroupsRoutes({
       actorId: user.id,
       membersCanCreateTopics: parsed.data.membersCanCreateTopics,
       ...(parsed.data.background === undefined ? {} : { background: parsed.data.background }),
+      ...(parsed.data.listenerEnabled === undefined
+        ? {}
+        : { listenerEnabled: parsed.data.listenerEnabled }),
+      ...(parsed.data.listenerEagerness === undefined
+        ? {}
+        : { listenerEagerness: parsed.data.listenerEagerness }),
     });
-    return c.json(group);
+    return c.json(withListenerAvailability(group));
   });
 
   // T-0164: open join for public groups and channels. Private and unknown

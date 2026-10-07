@@ -47,6 +47,11 @@ export interface PublicAi {
   // T-0091: the AI's home machine id, or null when it runs on the platform.
   // CamelCase like the rest of the public AI fields.
   machineId: string | null;
+  // T-0474: delegation opt-ins (plan §8, decision 3). `canDelegate` lets the
+  // AI hand out tasks; `acceptsDelegation` lets it receive them. Both off by
+  // default.
+  canDelegate: boolean;
+  acceptsDelegation: boolean;
   // T-0165: the AI's picture, when it has one. Attached at read time by
   // the routes; absent (not null) when none, like the chat list.
   avatarUrl?: string | undefined;
@@ -80,6 +85,9 @@ export interface UpdateAiInput {
   limits?: AiLimits;
   model?: string;
   providerConnectionId?: string;
+  // T-0474: the two delegation opt-ins, owner only like the rest.
+  canDelegate?: boolean;
+  acceptsDelegation?: boolean;
 }
 
 // The localpart of an AI XMPP account: the `ai-` prefix plus a stable,
@@ -392,12 +400,21 @@ export async function updateAi(deps: AiServiceDeps, input: UpdateAiInput): Promi
   }
 
   await deps.db.transaction(async (tx) => {
-    if (input.name !== undefined || input.persona !== undefined) {
+    if (
+      input.name !== undefined ||
+      input.persona !== undefined ||
+      input.canDelegate !== undefined ||
+      input.acceptsDelegation !== undefined
+    ) {
       await tx
         .update(ais)
         .set({
           ...(input.name === undefined ? {} : { name: input.name }),
           ...(input.persona === undefined ? {} : { persona: input.persona }),
+          ...(input.canDelegate === undefined ? {} : { canDelegate: input.canDelegate }),
+          ...(input.acceptsDelegation === undefined
+            ? {}
+            : { acceptsDelegation: input.acceptsDelegation }),
           updatedAt: new Date(),
         })
         .where(eq(ais.id, ai.id));
@@ -1064,6 +1081,8 @@ interface AiRecord {
   createdAt: Date;
   perDayUsd: string;
   perMonthUsd: string;
+  canDelegate: boolean;
+  acceptsDelegation: boolean;
   litellmKeyId: string | null;
   litellmModelId: string | null;
 }
@@ -1088,6 +1107,8 @@ const publicAiColumns = {
   createdAt: ais.createdAt,
   perDayUsd: aiLimits.perDayUsd,
   perMonthUsd: aiLimits.perMonthUsd,
+  canDelegate: ais.canDelegate,
+  acceptsDelegation: ais.acceptsDelegation,
 };
 
 const aiColumns = {
@@ -1115,6 +1136,8 @@ function toPublicAi(row: PublicAiRow): PublicAi {
     },
     machineId: row.machineId,
     createdAt: row.createdAt,
+    canDelegate: row.canDelegate,
+    acceptsDelegation: row.acceptsDelegation,
   };
 }
 

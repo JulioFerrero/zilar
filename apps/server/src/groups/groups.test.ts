@@ -45,6 +45,11 @@ interface GroupDetailBody {
     backgroundImageId: string | null;
     backgroundDim: number | null;
   };
+  listener?: {
+    enabled: boolean;
+    eagerness: string;
+    available: boolean;
+  };
 }
 
 describe('groups', () => {
@@ -723,6 +728,97 @@ describe('groups', () => {
         backgroundImageId: null,
         backgroundDim: null,
       });
+    });
+  });
+
+  describe('group listener settings (T-0474)', () => {
+    function patchGroupRequest(cookie: string, groupId: string, body: unknown) {
+      return app.request(`${TEST_BASE_URL}/api/groups/${groupId}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json', cookie },
+        body: JSON.stringify(body),
+      });
+    }
+
+    async function ownedGroup() {
+      const owner = await bootstrapUser(context, app, 'owner@example.com');
+      const member = await contactOf(context, app, owner.id, 'member@example.com');
+      const created = await createGroupRequest(owner.cookie, {
+        title: 'Listener club',
+        memberIds: [member.id],
+      });
+      expect(created.status).toBe(201);
+      const { id: groupId } = (await created.json()) as GroupDetailBody;
+      return { owner, member, groupId };
+    }
+
+    async function promote(groupId: string, userId: string): Promise<void> {
+      await context.db
+        .update(groupMembers)
+        .set({ role: 'admin' })
+        .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, userId)));
+    }
+
+    it('lets an admin set the switch and eagerness and shows them in the detail', async () => {
+      const { member, groupId } = await ownedGroup();
+      await promote(groupId, member.id);
+
+      const patched = await patchGroupRequest(member.cookie, groupId, {
+        listenerEnabled: true,
+        listenerEagerness: 'quiet',
+      });
+      expect(patched.status).toBe(200);
+      expect(((await patched.json()) as GroupDetailBody).listener).toEqual({
+        enabled: true,
+        eagerness: 'quiet',
+        available: false,
+      });
+
+      const detail = (await (
+        await groupDetailRequest(member.cookie, groupId)
+      ).json()) as GroupDetailBody;
+      expect(detail.listener).toEqual({ enabled: true, eagerness: 'quiet', available: false });
+
+      const [row] = await context.db.select().from(groups).where(eq(groups.id, groupId));
+      expect(row?.listenerEnabled).toBe(true);
+      expect(row?.listenerEagerness).toBe('quiet');
+    });
+
+    it('leaves the listener off and normal by default', async () => {
+      const { owner, groupId } = await ownedGroup();
+      const detail = (await (
+        await groupDetailRequest(owner.cookie, groupId)
+      ).json()) as GroupDetailBody;
+      expect(detail.listener).toEqual({ enabled: false, eagerness: 'normal', available: false });
+    });
+
+    it('refuses a plain member with a 403', async () => {
+      const { member, groupId } = await ownedGroup();
+      const response = await patchGroupRequest(member.cookie, groupId, { listenerEnabled: true });
+      expect(response.status).toBe(403);
+
+      const [row] = await context.db.select().from(groups).where(eq(groups.id, groupId));
+      expect(row?.listenerEnabled).toBe(false);
+    });
+
+    it('rejects an unknown eagerness with a 400', async () => {
+      const { owner, groupId } = await ownedGroup();
+      const response = await patchGroupRequest(owner.cookie, groupId, {
+        listenerEagerness: 'loud',
+      });
+      expect(response.status).toBe(400);
+    });
+
+    it('reports listener availability from the server flag', async () => {
+      const { owner, groupId } = await ownedGroup();
+      const enabledApp = testApp({
+        ...context,
+        config: { ...context.config, LISTENER_ENABLED: true },
+      });
+      const detail = await enabledApp.request(`${TEST_BASE_URL}/api/groups/${groupId}`, {
+        headers: { cookie: owner.cookie },
+      });
+      expect(((await detail.json()) as GroupDetailBody).listener?.available).toBe(true);
     });
   });
 
