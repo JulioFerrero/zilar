@@ -4724,6 +4724,34 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         }
         set({ defaultBackground: saved });
       },
+      // T-0464: pick an uploaded image for one chat, with the dim percentage.
+      // `updatePref` patches the row optimistically and rolls back on failure.
+      setChatBackgroundImage: async (chatId, imageId, dim) => {
+        await updatePref(chatId, {
+          backgroundPreset: null,
+          backgroundImageId: imageId,
+          backgroundDim: dim,
+        });
+      },
+      // T-0464: pick an uploaded image as the global default, optimistic with
+      // rollback like the preset setter above.
+      setDefaultBackgroundImage: async (imageId, dim) => {
+        const previous = get().defaultBackground;
+        const optimistic: ChatBackgroundChoice = {
+          backgroundPreset: null,
+          backgroundImageId: imageId,
+          backgroundDim: dim,
+        };
+        set({ defaultBackground: optimistic });
+        let saved: ChatBackgroundChoice;
+        try {
+          saved = await api.putChatBackgroundDefault(optimistic);
+        } catch (error) {
+          set({ defaultBackground: previous });
+          throw error;
+        }
+        set({ defaultBackground: saved });
+      },
       archivedChats: () =>
         sortByRecency(
           get().chats.filter((chat) => chat.archived === true && chat.topic === undefined),

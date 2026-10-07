@@ -266,6 +266,12 @@ export interface ChatStore {
   /** T-0462: picks (or clears) the caller's global background default.
    *  Optimistic with rollback. */
   setDefaultBackground: (presetId: string | null) => Promise<void>;
+  /** T-0464: picks one of the caller's uploaded images for a chat, with the
+   *  dim percentage. Optimistic with rollback. */
+  setChatBackgroundImage: (chatId: string, imageId: string, dim: number) => Promise<void>;
+  /** T-0464: picks an uploaded image as the caller's global default, with the
+   *  dim percentage. Optimistic with rollback. */
+  setDefaultBackgroundImage: (imageId: string, dim: number) => Promise<void>;
   /** Per-user archived DMs/AI chats/groups (not topics: those hide inside
    *  their group's own Archived toggle), newest activity first. */
   /** Pins of a chat, newest first; empty until `loadPins` resolves. */
@@ -1146,6 +1152,35 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
           backgroundPreset: presetId,
           backgroundImageId: null,
           backgroundDim: null,
+        });
+        set({ defaultBackground: saved });
+      },
+      // T-0464: the mock store writes an uploaded image with its dim through
+      // the same prefs API; the image bytes never travel through here.
+      setChatBackgroundImage: async (chatId, imageId, dim) => {
+        const saved = await putChatPref(chatId, {
+          backgroundPreset: null,
+          backgroundImageId: imageId,
+          backgroundDim: dim,
+        });
+        set((state) => {
+          const prefs = { ...state.chatPrefs };
+          if (saved === null) {
+            delete prefs[chatId.toLowerCase()];
+          } else {
+            prefs[chatId.toLowerCase()] = saved;
+          }
+          return {
+            chatPrefs: prefs,
+            chats: applyChatPrefs(state.chats, Object.values(prefs), Date.now()),
+          };
+        });
+      },
+      setDefaultBackgroundImage: async (imageId, dim) => {
+        const saved = await putChatBackgroundDefault({
+          backgroundPreset: null,
+          backgroundImageId: imageId,
+          backgroundDim: dim,
         });
         set({ defaultBackground: saved });
       },

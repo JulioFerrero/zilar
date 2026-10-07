@@ -1,7 +1,7 @@
 ---
 id: T-0464
 title: "Backgrounds E2 (web): upload, pick, dim and delete your own background images in the Chat background dialog"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0464-web-background-images
 model: auto
@@ -106,4 +106,113 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**Status: review.** Implemented the web background-images slice of T-0464.
+
+### What I did
+- `lib/api.ts`: added `uploadBackground(blob)` (the raw-body POST twin of
+  `uploadAvatarBytes`, with a mock branch, `toApiError` and a zod parse),
+  `listBackgrounds()` and `deleteBackground(id)` (`z.null()` for the 204),
+  plus the `BackgroundImage`/`BackgroundListItem` types.
+- `mock/api.ts`: in-memory `POST`/`GET`/`DELETE /backgrounds` with a counter
+  id, a 20-image cap (409 `too_many_backgrounds`), newest-first list, and
+  delete clearing any pref/default that referenced the id. URLs are
+  `/api/backgrounds/<id>`.
+- New `lib/background-image.ts`: `fitWithin` (scales down to 2048, never up,
+  integer sides) and `prepareBackgroundImage(file, deps)` (rejects sides under
+  64 as `too_small`, encodes WebP at 0.85/0.7/0.5 until ≤ 1 MiB, then throws
+  `too_large`). `Image`+canvas defaults; tests inject fakes.
+- Stores (`store.ts`, `realStore.ts`): `setChatBackgroundImage(chatId,
+  imageId, dim)` via `updatePref` with all three fields, and
+  `setDefaultBackgroundImage(imageId, dim)` via `putChatBackgroundDefault`,
+  optimistic with rollback (real store). No new `ApiClient` method, so the
+  four store test fakes needed no changes.
+- `ChatBackgroundDialog.tsx`: a "Your images" section below the swatches —
+  thumbnails (`aria-label="Background image N"`, `aria-pressed`), a `Trash2`
+  `IconButton` per image with an inline "Delete this image?" confirm, an
+  `ImagePlus` "Upload image" button with a hidden file input, plain error
+  sentences (`role="alert"`), and a 0-80 step-5 `Dim` slider that saves 400 ms
+  after the last change through the image setter. Presets still clear the
+  image. `listBackgrounds` loads on open; a failure leaves only Upload.
+- Tests: new `lib/background-image.test.ts`; new T-0464 cases in
+  `ChatBackgroundDialog.test.tsx` (list, upload+select dim 40, 409 message,
+  debounced slider with fake timers, delete-with-confirm, all-chats);
+  `realStore.test.tsx` cases for both new setters including rollback.
+
+### Files changed (all inside Allowed files)
+`apps/web/src/lib/api.ts`, `apps/web/src/mock/api.ts`,
+`apps/web/src/lib/background-image.ts`, `apps/web/src/lib/background-image.test.ts`,
+`apps/web/src/store/store.ts`, `apps/web/src/store/realStore.ts`,
+`apps/web/src/store/realStore.test.tsx`,
+`apps/web/src/components/ChatBackgroundDialog.tsx`,
+`apps/web/src/components/ChatBackgroundDialog.test.tsx`,
+`work/T-0464-web-background-images.md`. (10 files, gate checks 10.)
+
+### Commands and real results
+- `pnpm install` — done.
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot background-image ChatBackgroundDialog` — 2 files, 18 passed.
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot realStore.test` — 1 file, 134 passed.
+- `pnpm gate` (run 3x; first failed format, second failed a `react(set-state-in-effect)` lint rule, both fixed):
+  ```
+  gate: 10 changed file(s) against main
+  PASS  install (frozen)  (1.4s)
+  PASS  format  (22.4s)
+  PASS  lint  (0.7s)
+  PASS  typecheck  (11.8s)
+  PASS  tests @zilar/web  (46.0s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Deviations / notes
+- The Dim slider keeps a small `dimDraft` in component state rather than
+  syncing via an effect, to satisfy the repo's `set-state-in-effect` lint rule;
+  behaviour is the same (drag value wins until the scope/image changes).
+- Added a plain `"Couldn't delete the image"` alert for a failed delete; the
+  spec only listed upload sentences.
+- Mock upload ignores the bytes (the mock never stores them) and answers with
+  1920×1080; ids are `bg-mock-<n>`.
+
+### Open questions
+None.
+
+### Round (2026-10-07): pre-review findings
+
+Fixed the four actionable PREREVIEW findings (2 must-fix, 2 should-fix); the
+finding 5 nit is untouched.
+
+- **Finding 1 (must-fix):** `selectImage` now takes an explicit `targetScope`
+  instead of reading `scope` from the render closure, `changeDim` captures the
+  image id and scope when it schedules the save, and a new `clearDimTimer`
+  cancels the pending save on a scope change, an image switch, a preset pick and
+  an upload. Tests: "does not save the chat dim as the global default when the
+  scope changes" and "does not overwrite a newly picked image with a stale dim
+  save".
+- **Finding 2 (must-fix):** `confirmDelete` now patches the store after a
+  successful delete through a new `clearDeletedSelection`, clearing the chat
+  pref and/or the global default when the deleted id was the selected image, so
+  the chat stops painting the deleted image's URL. Test: "clears the selection
+  when the selected image is deleted".
+- **Finding 3 (should-fix):** `close()` now calls `clearDimTimer`, so a save
+  scheduled under 400 ms before close cannot fire or show a late error on the
+  closed dialog. Test: "cancels a pending dim save when the dialog closes".
+- **Finding 4 (should-fix):** `mock/api.ts` DELETE now clears `backgroundDim`
+  as well as `backgroundImageId` on the matching chat pref and the global
+  default, so the mock honours "a dim needs an image".
+
+Notes:
+
+- Finding 4 has no regression test: the only `mockRequest` background test would
+  live in `apps/web/src/mock/api.test.ts`, which is not in the task's Allowed
+  files, so adding one would put a file outside scope. The fix itself is in an
+  Allowed file.
+- Finding 5 is a nit and is not on a line any fix changed, so it is left as-is.
+
+Single tests:
+`pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot background-image ChatBackgroundDialog realStore`
+— 6 files, 190 passed, 0 failed.
+
+`pnpm gate`: GATE PASS.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-07). The Chat background dialog gains Your images: thumbnails with aria-pressed, Upload (prepareBackgroundImage fits to 2048 px and steps WebP quality down to 1 MiB, then POST /backgrounds), an inline delete confirm with Trash2, and a 0-80 dim slider debounced at 400 ms. Errors are plain sentences. Store setters for images are optimistic with rollback. Fixed in one auto round. Nits accepted: the mock id starts at 2, an upload-then-select failure shows the upload message, and fitWithin returns early without rounding.

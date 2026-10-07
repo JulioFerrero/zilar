@@ -536,6 +536,52 @@ describe('createRealChatStore', () => {
     expect(store.getState().defaultBackground?.backgroundPreset).toBe('gold');
   });
 
+  it('setChatBackgroundImage sends the image and the dim (T-0464)', async () => {
+    const putChatPref = vi.fn(async () => ({
+      chatJid: 'ana@zilar.test',
+      mutedUntil: null,
+      archived: false,
+      pinnedAt: null,
+      updatedAt: '2026-09-28T12:00:00.000Z',
+      backgroundPreset: null,
+      backgroundImageId: 'bg-1',
+      backgroundDim: 40,
+    }));
+    const { store } = await setup({ putChatPref });
+
+    await store.getState().setChatBackgroundImage('ana@zilar.test', 'bg-1', 40);
+
+    expect(putChatPref).toHaveBeenCalledWith('ana@zilar.test', {
+      backgroundPreset: null,
+      backgroundImageId: 'bg-1',
+      backgroundDim: 40,
+    });
+    expect(store.getState().chatPrefs['ana@zilar.test']?.backgroundImageId).toBe('bg-1');
+    expect(store.getState().chatPrefs['ana@zilar.test']?.backgroundDim).toBe(40);
+  });
+
+  it('setDefaultBackgroundImage updates the default and rolls back on failure (T-0464)', async () => {
+    const putChatBackgroundDefault = vi.fn();
+    putChatBackgroundDefault.mockResolvedValueOnce({
+      backgroundPreset: null,
+      backgroundImageId: 'bg-1',
+      backgroundDim: 40,
+    });
+    const { store } = await setup({ putChatBackgroundDefault });
+
+    await store.getState().setDefaultBackgroundImage('bg-1', 40);
+    expect(putChatBackgroundDefault).toHaveBeenCalledWith({
+      backgroundPreset: null,
+      backgroundImageId: 'bg-1',
+      backgroundDim: 40,
+    });
+    expect(store.getState().defaultBackground?.backgroundImageId).toBe('bg-1');
+
+    putChatBackgroundDefault.mockRejectedValueOnce(new Error('offline'));
+    await expect(store.getState().setDefaultBackgroundImage('bg-2', 20)).rejects.toThrow('offline');
+    expect(store.getState().defaultBackground?.backgroundImageId).toBe('bg-1');
+  });
+
   it('pins optimistically and rolls back when the PUT fails', async () => {
     const putChatPref = vi.fn(async () => ({
       chatJid: 'ana@zilar.test',

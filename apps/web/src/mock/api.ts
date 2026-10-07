@@ -84,6 +84,10 @@ interface MockState {
     backgroundImageId: string | null;
     backgroundDim: number | null;
   };
+  // T-0464: the caller's uploaded background images, newest first, and the
+  // counter behind their ids.
+  backgrounds: MockBackground[];
+  nextBackgroundSequence: number;
   // T-0237: chat folders in memory for the page load, seeded on first GET
   // with Personal and AIs (mirroring the server's seed).
   chatFolders: MockChatFolder[] | undefined;
@@ -231,6 +235,17 @@ interface MockChatPref {
   backgroundPreset: string | null;
   backgroundImageId: string | null;
   backgroundDim: number | null;
+}
+
+// T-0464: one uploaded background image in memory for the page load. The mock
+// never stores bytes (the app only shows the returned url), so width and
+// height come from the upload defaults below.
+interface MockBackground {
+  id: string;
+  url: string;
+  width: number;
+  height: number;
+  createdAt: string;
 }
 
 // T-0119: one push device row, mirroring the server's device view (labels
@@ -1129,6 +1144,8 @@ function seedState(): MockState {
     joinAttempts: new Map(),
     chatPrefs: [],
     backgroundDefault: { backgroundPreset: null, backgroundImageId: null, backgroundDim: null },
+    backgrounds: [],
+    nextBackgroundSequence: 1,
     chatFolders: undefined,
     pushDevices: [],
     pushShowPreviews: true,
@@ -2655,6 +2672,59 @@ export async function mockRequest(
     }
     state.backgroundDefault = { backgroundPreset, backgroundImageId, backgroundDim };
     return jsonResponse({ defaultBackground: state.backgroundDefault });
+  }
+
+  // T-0464: uploaded background images in memory for the page load. POST takes
+  // a raw body (the size is ignored: the mock never stores bytes), caps the
+  // caller at 20 images like the server and answers the created row. GET lists
+  // newest first; DELETE removes the row and clears any pref that referenced
+  // it, so the app falls back as the server does.
+  if (head === 'backgrounds' && first === undefined && second === undefined) {
+    if (method === 'POST') {
+      if (state.backgrounds.length >= 20) {
+        return jsonResponse(
+          { error: { code: 'too_many_backgrounds', message: 'Too many background images' } },
+          409,
+        );
+      }
+      state.nextBackgroundSequence += 1;
+      const id = `bg-mock-${state.nextBackgroundSequence}`;
+      const row: MockBackground = {
+        id,
+        url: `/api/backgrounds/${id}`,
+        width: 1920,
+        height: 1080,
+        createdAt: new Date().toISOString(),
+      };
+      state.backgrounds = [row, ...state.backgrounds];
+      return jsonResponse({ id: row.id, url: row.url, width: row.width, height: row.height }, 201);
+    }
+    if (method === 'GET') {
+      return jsonResponse({ backgrounds: state.backgrounds });
+    }
+  }
+
+  if (
+    head === 'backgrounds' &&
+    first !== undefined &&
+    second === undefined &&
+    method === 'DELETE'
+  ) {
+    const id = decodeURIComponent(first);
+    state.backgrounds = state.backgrounds.filter((row) => row.id !== id);
+    state.chatPrefs = state.chatPrefs.map((pref) =>
+      pref.backgroundImageId === id
+        ? { ...pref, backgroundImageId: null, backgroundDim: null }
+        : pref,
+    );
+    if (state.backgroundDefault.backgroundImageId === id) {
+      state.backgroundDefault = {
+        ...state.backgroundDefault,
+        backgroundImageId: null,
+        backgroundDim: null,
+      };
+    }
+    return noContent();
   }
 
   // T-0237: in-memory chat folders, seeded on first GET with Personal and

@@ -2486,3 +2486,73 @@ export async function removeAvatar(kind: 'user' | 'ai' | 'group', ownerId: strin
     method: 'DELETE',
   });
 }
+
+// --- Chat background images (T-0464) ---------------------------------------
+// Personal wallpapers for the chat background dialog. The client resizes and
+// re-encodes before upload (`lib/background-image.ts`); the server validates
+// by magic bytes (WebP/PNG, 64-2048 px, at most 1 MiB, at most 20 per user).
+const backgroundImageSchema = z.object({
+  id: z.string(),
+  url: z.string(),
+  width: z.number(),
+  height: z.number(),
+});
+
+export type BackgroundImage = z.infer<typeof backgroundImageSchema>;
+
+const backgroundListItemSchema = z.object({
+  id: z.string(),
+  url: z.string(),
+  width: z.number().nullable(),
+  height: z.number().nullable(),
+  createdAt: z.string(),
+});
+
+export type BackgroundListItem = z.infer<typeof backgroundListItemSchema>;
+
+const backgroundListSchema = z.object({ backgrounds: z.array(backgroundListItemSchema) });
+
+// The POST twin of `uploadAvatarBytes`: a raw-body fetch with a mock branch,
+// `toApiError` on failure and a zod parse of the reply.
+export async function uploadBackground(blob: Blob): Promise<BackgroundImage> {
+  let response: Response;
+  if (isMockApiEnabled()) {
+    response = await mockRequest('/backgrounds', {
+      method: 'POST',
+      headers: { 'Content-Type': blob.type },
+      body: blob as unknown as string,
+    });
+  } else {
+    try {
+      response = await fetch(`${API_BASE}/backgrounds`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': blob.type },
+        body: blob,
+      });
+    } catch {
+      throw new ApiError(0, 'network_error', 'Could not reach the server');
+    }
+  }
+  const raw: unknown = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw toApiError(response.status, raw);
+  }
+  const parsed = backgroundImageSchema.safeParse(raw);
+  if (!parsed.success) {
+    throw new ApiError(
+      response.status,
+      'invalid_response',
+      'The server sent an unexpected response',
+    );
+  }
+  return parsed.data;
+}
+
+export function listBackgrounds(): Promise<BackgroundListItem[]> {
+  return request('/backgrounds', backgroundListSchema).then((body) => body.backgrounds);
+}
+
+export async function deleteBackground(id: string): Promise<void> {
+  await request(`/backgrounds/${encodeURIComponent(id)}`, z.null(), { method: 'DELETE' });
+}
