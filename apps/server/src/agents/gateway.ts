@@ -57,12 +57,14 @@ import {
   type MemoryContext,
 } from './context';
 import { TOOL_GUIDE } from './tool-guide';
+import { compactMemory } from './memory/compactor';
 import { indexMemory, type MemoryScope } from './memory/indexer';
 import { looksLikeSecret } from './memory/secrets';
 import { addFact, listFacts, recallMemory, renderMemoryBlock, zoomMemory } from './memory/store';
 import type { ArchivePool } from '../search/service';
 import { getAiUsage, type AiUsage } from '../ais/usage';
 import {
+  completeChat,
   dailyLimitReply,
   dailyWarningReply,
   mapFailureToReply,
@@ -942,6 +944,56 @@ export function createAgentGateway(
     return { limited: true, reply: dailyLimitReply(usage.perDayUsd) };
   }
 
+  // T-0446: one compaction per (AI, chat) at a time, in memory only. The
+  // gateway fires `startCompaction` after a turn's reply; it is never awaited,
+  // so a slow or failed model call can neither delay nor fail the reply. The
+  // daily-limit gate is re-checked here (usage can have crossed the cap since
+  // the turn started) and the run never logs prompt or summary text.
+  const runningCompactions = new Set<string>();
+
+  function startCompaction(session: AiSession, chatKey: string, virtualKey: string): void {
+    const key = `${session.aiId}:${chatKey}`;
+    if (runningCompactions.has(key)) {
+      return;
+    }
+    runningCompactions.add(key);
+    void (async () => {
+      try {
+        if ((await checkDmRoundGate(session)) !== null) {
+          return;
+        }
+        const startedAt = nowMs();
+        const { built, withheld } = await compactMemory({
+          db: deps.db,
+          aiId: session.aiId,
+          chatKey,
+          complete: (prompt) =>
+            completeChat({
+              baseUrl,
+              virtualKey,
+              model: modelNameForAi(session.aiId),
+              messages: [{ role: 'user', content: prompt }],
+              ...(deps.fetchImpl === undefined ? {} : { fetchImpl: deps.fetchImpl }),
+              secrets: secretsFor(),
+            }),
+        });
+        if (built > 0) {
+          logger.info(
+            { aiId: session.aiId, chatKey, built, withheld, ms: nowMs() - startedAt },
+            'AI memory compacted',
+          );
+        }
+      } catch (error) {
+        logger.warn(
+          { err: toRedactedError(error, secretsFor(virtualKey)), aiId: session.aiId },
+          'AI memory compaction failed',
+        );
+      } finally {
+        runningCompactions.delete(key);
+      }
+    })();
+  }
+
   // T-0106: appends the fixed tool guide to the last user turn. The system
   // prompt builders take no options (their shape is frozen for provider
   // caching), so the guide rides as a separate user turn right before the
@@ -1757,6 +1809,7 @@ export function createAgentGateway(
         usage: groupBudget.usage,
         sendWarning: (text) => liveSendMessage(session, roomJid, 'groupchat', text),
       });
+      startCompaction(session, groupChatKey, virtualKey);
     } catch (error) {
       // ensureAiModel, the key lookup and anything else outside the turn: an
       // honest short message in the room, never the raw error.
@@ -1991,6 +2044,7 @@ export function createAgentGateway(
         usage: dmBudget.usage,
         sendWarning: (text) => liveSendMessage(session, ownerJid, 'chat', text),
       });
+      startCompaction(session, dmChatKey, virtualKey);
     } catch (error) {
       // ensureAiModel, the key lookup and anything else outside the turn: an
       // honest short message, never the raw error.

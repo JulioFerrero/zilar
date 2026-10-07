@@ -26,6 +26,7 @@ import {
   aiLimits,
   aiMemoryFacts,
   aiMemoryMessages,
+  aiMemoryNodes,
   ais,
   groupAis,
   groupMembers,
@@ -2097,6 +2098,103 @@ describe('agent gateway', () => {
       await waitFor(() => core.sent.length === 1);
 
       expect(toolMessageOf(calls[1]!)?.content).toBe('invalid: unknown block');
+    });
+  });
+
+  describe('memory compaction (T-0446)', () => {
+    async function seedMirror(aiId: string, chatKey: string, count: number): Promise<void> {
+      await context.db.insert(aiMemoryMessages).values(
+        Array.from({ length: count }, (_, seq) => ({
+          aiId,
+          chatKey,
+          seq,
+          messageId: `${chatKey}-m${seq}`,
+          at: new Date(Date.UTC(2026, 0, 1) + seq * 86_400_000),
+          sender: 'Bob',
+          text: `mirror-${seq}`,
+          deleted: false,
+        })),
+      );
+    }
+
+    it('summarises a pending block after the reply, with the AI model and key', async () => {
+      const seeded = await seedAi(context);
+      const chatKey = `dm:${seeded.ownerJid}`;
+      await seedMirror(seeded.aiId, chatKey, 66);
+      const cores: FakeCore[] = [];
+      const calls: Call[] = [];
+      let core: FakeCore | undefined;
+      let sentWhenCompacting = -1;
+      const fetchImpl: FetchLike = (url, init) => {
+        calls.push({ url, init });
+        if (calls.length === 2) {
+          sentWhenCompacting = core?.sent.length ?? 0;
+        }
+        return Promise.resolve(completionResponse('AI says hi'));
+      };
+      const { gateway: started, logger } = harness(cores, fetchImpl, new FakeLitellm());
+      await started.start();
+      core = await coreFor(cores, seeded.aiJid);
+
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-1', 'hello'));
+      await waitFor(() => calls.length === 2);
+
+      const sent = bodyOf(calls[1]!).messages;
+      const prompt = sent[sent.length - 1]?.content ?? '';
+      expect(prompt).toContain('Compress chat memory #0-15');
+      for (let seq = 0; seq < 16; seq += 1) {
+        expect(prompt).toContain(`#${seq} `);
+      }
+      // The reply went out before the compaction call.
+      expect(sentWhenCompacting).toBeGreaterThanOrEqual(1);
+      expect(core.sent[0]).toEqual({ to: seeded.ownerJid, kind: 'chat', text: 'AI says hi' });
+
+      const nodes = await context.db
+        .select({ lo: aiMemoryNodes.lo, hi: aiMemoryNodes.hi, summary: aiMemoryNodes.summary })
+        .from(aiMemoryNodes)
+        .where(and(eq(aiMemoryNodes.aiId, seeded.aiId), eq(aiMemoryNodes.chatKey, chatKey)));
+      expect(nodes).toEqual([{ lo: 0, hi: 16, summary: 'AI says hi' }]);
+
+      const logged = logger.calls
+        .map((call) => `${call.message}\n${JSON.stringify(call.fields)}`)
+        .join('\n');
+      expect(logged).not.toContain('AI says hi');
+      for (let seq = 0; seq < 66; seq += 1) {
+        expect(logged).not.toContain(`mirror-${seq}`);
+      }
+    });
+
+    it('skips compaction when the daily limit is crossed before the check', async () => {
+      const seeded = await seedAi(context);
+      const chatKey = `dm:${seeded.ownerJid}`;
+      await seedMirror(seeded.aiId, chatKey, 66);
+      const cores: FakeCore[] = [];
+      const litellm = new FakeLitellm();
+      litellm.spendByKey.set('tok-1', 0.5);
+      let calls = 0;
+      const fetchImpl: FetchLike = () => {
+        calls += 1;
+        // The reply call resolves, then the spend jumps past the cap before the
+        // compactor's own gate reads it.
+        if (calls === 1) {
+          litellm.spendByKey.set('tok-1', 2);
+        }
+        return Promise.resolve(completionResponse('AI says hi'));
+      };
+      const { gateway: started } = harness(cores, fetchImpl, litellm);
+      await started.start();
+      const core = await coreFor(cores, seeded.aiJid);
+
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-1', 'hello'));
+      await waitFor(() => core.sent.length >= 1);
+      await tick(500);
+
+      expect(calls).toBe(1);
+      const nodes = await context.db
+        .select({ lo: aiMemoryNodes.lo })
+        .from(aiMemoryNodes)
+        .where(and(eq(aiMemoryNodes.aiId, seeded.aiId), eq(aiMemoryNodes.chatKey, chatKey)));
+      expect(nodes).toEqual([]);
     });
   });
 

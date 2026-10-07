@@ -1,0 +1,65 @@
+// T-0446: the memory compactor (docs/audit/ai-memory-plan.md §3.7). After a
+// turn's reply, the gateway calls `compactMemory` in the background: it builds
+// up to `limit` pending summary nodes for one (AI, chat), smallest first, using
+// the AI's own model (the caller supplies `complete`). It never logs, and text
+// only ever moves from the mirror into a summary.
+
+import type { ServerDatabase } from '../../db/client';
+import { looksLikeSecret } from './secrets';
+import { buildCompactionPrompt, compactionInput, pendingNodes, putNode } from './store';
+import { formatBlockId } from './tree';
+
+export interface CompactMemoryInput {
+  db: ServerDatabase;
+  aiId: string;
+  chatKey: string;
+  complete: (prompt: string) => Promise<string>;
+  limit?: number;
+}
+
+export interface CompactMemoryResult {
+  built: number;
+  withheld: number;
+}
+
+const DEFAULT_LIMIT = 4;
+const NOTHING_KEPT = '(nothing kept)';
+const SUMMARY_WITHHELD = '(summary withheld)';
+
+// The first non-empty line of the model's reply, trimmed; '' when there is none.
+function firstLine(raw: string): string {
+  for (const line of raw.split('\n')) {
+    const trimmed = line.trim();
+    if (trimmed !== '') return trimmed;
+  }
+  return '';
+}
+
+// Build the pending nodes for one chat, in order. A `complete` that throws
+// stops the loop and is rethrown: the caller (the gateway) logs it. A block
+// whose input is empty (every row deleted) is stored as `(nothing kept)`
+// without a model call; a summary that looks like a secret is withheld.
+export async function compactMemory(input: CompactMemoryInput): Promise<CompactMemoryResult> {
+  const { db, aiId, chatKey, complete } = input;
+  const limit = input.limit ?? DEFAULT_LIMIT;
+  let built = 0;
+  let withheld = 0;
+
+  for (const block of await pendingNodes(db, aiId, chatKey, limit)) {
+    const lines = await compactionInput(db, aiId, chatKey, block);
+    let summary = NOTHING_KEPT;
+    if (lines.length > 0) {
+      const raw = await complete(buildCompactionPrompt(formatBlockId(block), lines));
+      const line = firstLine(raw);
+      if (line !== '') summary = line;
+    }
+    if (looksLikeSecret(summary)) {
+      summary = SUMMARY_WITHHELD;
+      withheld += 1;
+    }
+    await putNode(db, aiId, chatKey, block, summary);
+    built += 1;
+  }
+
+  return { built, withheld };
+}

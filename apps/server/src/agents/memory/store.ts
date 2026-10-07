@@ -466,7 +466,7 @@ export async function compactionInput(
   for (const half of halves(block)) {
     const summary = nodes.get(blockKey(half));
     if (summary !== undefined) {
-      lines.push(summary);
+      lines.push(`#${half.lo}-${half.hi - 1} ${summary}`);
       continue;
     }
     const rows = await loadRows(db, aiId, chatKey, half);
@@ -477,8 +477,9 @@ export async function compactionInput(
   return lines;
 }
 
-// Store one node summary, cut to one line. A concurrent build wins: a second
-// insert for the same block is dropped.
+// Store one node summary, cut to one line. The cut never leaves a lone high
+// surrogate at the end (the string would then be half an astral character). A
+// concurrent build wins: a second insert for the same block is dropped.
 export async function putNode(
   db: ServerDatabase,
   aiId: string,
@@ -486,6 +487,8 @@ export async function putNode(
   block: Block,
   summary: string,
 ): Promise<void> {
+  const cut = summary.slice(0, MEMORY_LINE_MAX);
+  const value = /[\uD800-\uDBFF]$/.test(cut) ? cut.slice(0, -1) : cut;
   await db
     .insert(aiMemoryNodes)
     .values({
@@ -493,7 +496,7 @@ export async function putNode(
       chatKey,
       lo: block.lo,
       hi: block.hi,
-      summary: summary.slice(0, MEMORY_LINE_MAX),
+      summary: value,
     })
     .onConflictDoNothing();
 }
