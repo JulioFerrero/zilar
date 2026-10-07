@@ -455,11 +455,14 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0426](T-0426-mobile-ai-sheet-buttons-kit.md) | Mobile: AI activity Refresh, tool sheet Show all/less and Close on the kit Button | 2026-10-06 |
 | [T-0483](T-0483-effect-telegram-import.md) | Effect convert: Telegram import client | running | auto | T-0173 | |
 | [T-0485](T-0485-effect-giphy.md) | Effect convert: Giphy provider | running | auto | T-0173 | |
-| [T-0487](T-0487-effect-mailer.md) | Effect convert: SMTP mailer send | running | auto | T-0173 | |
 | [T-0494](T-0494-protocol-effect-schema.md) | Effect B1: protocol on Effect Schema + every consumer | running | auto | T-0490 | |
 | [T-0495](T-0495-server-runtime-logger.md) | Effect F1: server runtime + pino-backed Effect Logger | running | auto | T-0490 | |
 | [T-0496](T-0496-db-effect-sql-spike.md) | Effect F3 spike: DB on effect/sql (pins), migrations, better-auth plan | running | auto | T-0490 | |
 | [T-0497](T-0497-effect-recovery-loop.md) | Effect convert: action gateway recovery loop | running | auto | T-0488 | |
+| [T-0498](T-0498-httpapi-adapter-handles.md) | Effect F4+P1: HttpApi under Hono, handles module moved | running | auto | T-0495 | |
+| [T-0499](T-0499-effect-agent-drivers.md) | Effect P4: agent-drivers on Effect + Schema | running | auto | T-0490 | |
+| [T-0500](T-0500-effect-runner-tunnel-schema.md) | Effect F: runner-tunnel zod to Schema | running | auto | T-0490 | |
+| [T-0501](T-0501-effect-runner-app-schema.md) | Effect F: apps/runner zod to Schema | running | auto | T-0490 | |
 | [T-0427](T-0427-mobile-forwarded-header.md) | Mobile: forwarded messages show 'Forwarded from X [in Y]' | 2026-10-06 |
 | [T-0428](T-0428-mobile-new-chat-menu-sheet.md) | Mobile: New chat menu on the kit ActionSheet with icons | 2026-10-06 |
 | [T-0429](T-0429-mobile-dismiss-banner.md) | Mobile: DismissBanner replaces 12 copied chat screen banners | 2026-10-06 |
@@ -526,3 +529,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0491](T-0491-watch-scroll-columns.md) | lead watch: keyboard scroll + two columns | 2026-10-07 |
 | [T-0493](T-0493-effect-push-service.md) | Effect convert: push delivery pipeline | 2026-10-07 |
 | [T-0492](T-0492-effect-transcription-provider.md) | Effect convert: voice transcription provider call | 2026-10-07 |
+| [T-0487](T-0487-effect-mailer.md) | Effect convert: SMTP mailer send | 2026-10-07 |

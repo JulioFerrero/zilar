@@ -1,5 +1,6 @@
 import { createTransport, type Transporter } from 'nodemailer';
 import type SMTPTransport from 'nodemailer/lib/smtp-transport';
+import { Data, Duration, Effect } from 'effect';
 import type { Logger } from 'pino';
 import { OTP_EXPIRES_IN_SECONDS } from './auth';
 import type { ServerConfig } from '../config';
@@ -38,6 +39,16 @@ export class MailNotConfiguredError extends Error {
 
 const CONNECTION_TIMEOUT_MS = 10_000;
 const SEND_TIMEOUT_MS = 20_000;
+
+// Internal failure modes of `SmtpMailer.sendOtp` (never exported): the
+// transport rejected, or the send outlived `sendTimeoutMs`. `smtpCode` is
+// the numeric SMTP response code when there is one, only for the log line —
+// never the provider's message.
+class MailerSendFailed extends Data.TaggedError('MailerSendFailed')<{
+  readonly smtpCode: number | string;
+}> {}
+
+class MailerSendTimedOut extends Data.TaggedError('MailerSendTimedOut') {}
 
 const SUBJECTS: Record<OtpPurpose, string> = {
   'sign-in': 'Your Zilar sign-in code',
@@ -155,20 +166,27 @@ export class SmtpMailer implements Mailer {
       html: buildHtmlBody(code, minutes),
       ...(this.#replyTo === undefined ? {} : { replyTo: this.#replyTo }),
     });
-    const timeout = new Promise<never>((_, reject) => {
-      const timer = setTimeout(() => reject(new MailerDeliveryError()), this.#sendTimeoutMs);
-      timer.unref();
-    });
-    try {
-      await Promise.race([send, timeout]);
-    } catch (error) {
-      if (error instanceof MailerDeliveryError) {
-        this.#logger.warn({ purpose }, 'sign-in email delivery timed out');
-        throw error;
-      }
-      this.#logger.warn({ purpose, smtpCode: smtpResponseCode(error) }, 'sign-in email failed');
-      throw new MailerDeliveryError();
-    }
+    await Effect.runPromise(
+      Effect.tryPromise({
+        try: () => send,
+        catch: (error: unknown) => new MailerSendFailed({ smtpCode: smtpResponseCode(error) }),
+      }).pipe(
+        Effect.timeoutOrElse({
+          duration: Duration.millis(this.#sendTimeoutMs),
+          orElse: () => Effect.fail(new MailerSendTimedOut()),
+        }),
+        Effect.catchTags({
+          MailerSendTimedOut: () => {
+            this.#logger.warn({ purpose }, 'sign-in email delivery timed out');
+            return Effect.fail(new MailerDeliveryError());
+          },
+          MailerSendFailed: (error: MailerSendFailed) => {
+            this.#logger.warn({ purpose, smtpCode: error.smtpCode }, 'sign-in email failed');
+            return Effect.fail(new MailerDeliveryError());
+          },
+        }),
+      ),
+    );
   }
 }
 
