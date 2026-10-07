@@ -159,96 +159,59 @@ describe('contact requests', () => {
 
   it('recovers outside the aborted tx when the insert hits the pair index', async () => {
     // Real Postgres aborts the transaction on a unique violation, so the
-    // recovery reads must run on the outer db (a fresh connection), never
-    // on the aborted tx. PGlite serializes on one connection and cannot
-    // reproduce this — instead the insert is forced to throw a fake 23505
-    // for the pair constraint, and the test asserts the recovery answers
-    // from reads issued on the outer db.
+    // recovery reads must run on a fresh connection, never on the aborted
+    // tx. PGlite serializes on one connection and cannot reproduce the race;
+    // instead `onInsert` throws the real effect/sql `UniqueViolation` for the
+    // pair index. `onRecovery` fires at the recovery seam, once the
+    // transaction has rolled back and released the connection: it commits the
+    // concurrent winner that landed between the pre-check and the insert, and
+    // records that the recovery reads start there.
+    const { SqlError } = await import('effect/sql');
     const alice = await withHandle('alice@example.com', 'alice_w');
     const bob = await withHandle('bob@example.com', 'bob_b');
     const service = await import('./service');
     const { createContactRequest, isPendingPairViolation } = service;
 
-    // The winner's row already exists (Bob asked first, serially).
-    const first = await createContactRequest({ db: context.db }, bob.id, 'alice_w');
-    expect(first.request.status).toBe('pending');
-
-    const recoveryReads: Array<'outer'> = [];
-    const outerSelect = context.db.select.bind(context.db);
-    // Wrap the outer select so the recovery reads leave a trace: the
-    // recovery MUST issue them on `deps.db` (fresh connection), never on
-    // the aborted tx double (which only implements `insert`).
-    const tracedOuterDb = new Proxy(context.db, {
-      get(target, property, receiver) {
-        if (property === 'select') {
-          return (...args: []) => {
-            recoveryReads.push('outer');
-            return outerSelect(...args);
-          };
-        }
-        const value = Reflect.get(target, property, receiver);
-        return typeof value === 'function' ? value.bind(target) : value;
-      },
-    });
-    const outerDb = new Proxy(tracedOuterDb, {
-      get(target, property, receiver) {
-        if (property === 'transaction') {
-          return async (callback: (tx: unknown) => Promise<unknown>) => {
-            // A tx double whose insert throws a 23505 pair-index violation
-            // shaped like Drizzle's wrapped driver error (code nested
-            // under `cause`, constraint named — matched by code/constraint,
-            // never by message text). Reads issued AFTER the failure throw
-            // like a real aborted Postgres tx (25P02); the advisory take
-            // itself runs before the insert, so it still succeeds.
-            const aborted = new Error('aborted transaction (test double)');
-            let failed = false;
-            const txDouble = new Proxy(target, {
-              get(txTarget, txProperty, txReceiver) {
-                if (txProperty === 'insert') {
-                  return () => ({
-                    values: () => ({
-                      returning: async (): Promise<never> => {
-                        failed = true;
-                        throw {
-                          code: '23505',
-                          constraint: 'contact_requests_pending_pair_idx',
-                          cause: {
-                            code: '23505',
-                            constraint: 'contact_requests_pending_pair_idx',
-                          },
-                        };
-                      },
-                    }),
-                  });
-                }
-                if (failed && (txProperty === 'select' || txProperty === 'execute')) {
-                  return () => {
-                    throw aborted;
-                  };
-                }
-                const value = Reflect.get(txTarget, txProperty, txReceiver);
-                return typeof value === 'function' ? value.bind(txTarget) : value;
-              },
-            });
-            return callback(txDouble);
-          };
-        }
-        const value = Reflect.get(target, property, receiver);
-        return typeof value === 'function' ? value.bind(target) : value;
-      },
-    });
+    const winnerId = 'winner-reverse-row';
+    const seams: string[] = [];
 
     const recovered = await createContactRequest(
-      { db: outerDb as unknown as typeof context.db },
+      {
+        db: context.db,
+        onInsert: () => {
+          seams.push('insert');
+          throw new SqlError.SqlError({
+            reason: new SqlError.UniqueViolation({
+              cause: new Error('simulated concurrent insert'),
+              constraint: 'contact_requests_pending_pair_idx',
+            }),
+          });
+        },
+        onRecovery: async () => {
+          // The transaction already rolled back, so this insert on the outer
+          // connection commits: the winner the aborted tx never saw. If the
+          // recovery had run inside the aborted tx, this insert would fail or
+          // be rolled back with it.
+          await context.db.insert(contactRequests).values({
+            id: winnerId,
+            fromUserId: bob.id,
+            toUserId: alice.id,
+            status: 'pending',
+            createdAt: new Date(),
+          });
+          seams.push('recovery');
+        },
+      },
       alice.id,
       'bob_b',
     );
+
     // The reverse-direction loser gets the winner's row back (200-style).
-    expect(recovered.request.id).toBe(first.request.id);
-    expect(recovered.reverseOf?.id).toBe(first.request.id);
-    // Recovery issued its reads on the outer db, not the aborted tx (which
-    // throws on any read, like a real aborted Postgres tx).
-    expect(recoveryReads.length).toBeGreaterThan(0);
+    expect(recovered.request.id).toBe(winnerId);
+    expect(recovered.reverseOf?.id).toBe(winnerId);
+    // The insert ran inside the transaction (the seam threw there); recovery
+    // ran afterwards at the seam, on the fresh connection.
+    expect(seams).toEqual(['insert', 'recovery']);
     expect(isPendingPairViolation({ code: '23505' })).toBe(true);
     expect(
       isPendingPairViolation({ code: '23505', constraint: 'contact_requests_pending_idx' }),
@@ -258,8 +221,21 @@ describe('contact requests', () => {
     ).toBe(true);
     expect(isPendingPairViolation({ code: '23505', constraint: 'some_other_index' })).toBe(false);
     expect(isPendingPairViolation(new Error('boom'))).toBe(false);
-    // Still exactly one pending row.
-    expect(await context.db.select().from(contactRequests)).toHaveLength(1);
+    // The effect/sql shape is matched through the structured reason, too.
+    const violation = (constraint: string) =>
+      new SqlError.SqlError({
+        reason: new SqlError.UniqueViolation({
+          cause: new Error('simulated'),
+          constraint,
+        }),
+      });
+    expect(isPendingPairViolation(violation('contact_requests_pending_idx'))).toBe(true);
+    expect(isPendingPairViolation(violation('contact_requests_pending_pair_idx'))).toBe(true);
+    expect(isPendingPairViolation(violation('some_other_index'))).toBe(false);
+    // The winner row survived the rollback and is the only pending row left.
+    const rows = await context.db.select().from(contactRequests);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.id).toBe(winnerId);
   });
 
   it('declines, cancels, and cools down re-requests for 7 days', async () => {
