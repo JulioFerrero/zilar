@@ -79,6 +79,7 @@ import {
   buildGroupTools,
   buildTools,
   formatPersonaUpdatedLine,
+  formatRememberedLine,
   MEMORY_ZOOM_TOOL,
   PERSONA_RESTORED_LINE,
   RECALL_TOOL,
@@ -749,7 +750,7 @@ export function createAgentGateway(
         if (outcome === 'saved') {
           savedFacts += 1;
           logger.info({ aiId, tool: call.tool, ok: true }, 'AI memory tool');
-          return { content: 'ok' };
+          return { content: 'ok', notice: formatRememberedLine(call.text) };
         }
         logger.info({ aiId, tool: call.tool, ok: false }, 'AI memory tool');
         if (outcome === 'duplicate') {
