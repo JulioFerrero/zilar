@@ -29,6 +29,7 @@ import { Ticks } from '@/components/chat/ticks';
 import { PulseDot } from '@/components/chat/typing-dots';
 import { VoiceMessage } from '@/components/chat/voice-message';
 import type { VoicePlayerHost } from '@/components/chat/voice-player';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Text } from '@/components/ui/text';
 import { asColorScheme } from '@/lib/color-scheme';
 import { BUBBLE_COLORS } from '@/lib/colors';
@@ -208,6 +209,15 @@ type MessageBubbleProps = {
   onDelete?: (message: UiMessage) => void;
   /** Called when the sheet asks to forward the message. */
   onForward?: (message: UiMessage) => void;
+  /** Multi-select mode (T-0445): shows the row checkbox and blocks the row's
+   *  own taps/long-presses while messages are picked for forwarding. */
+  selecting?: boolean;
+  /** Whether this message is picked in select mode. */
+  selected?: boolean;
+  /** Toggles this message in select mode. */
+  onToggleSelect?: (message: UiMessage) => void;
+  /** Enters select mode with this message picked (the sheet's Select row). */
+  onStartSelect?: (message: UiMessage) => void;
   /** Called when the sticker Retry is tapped on a failed sticker send. */
   onRetrySticker?: (message: UiMessage) => void;
   /** Called when the Retry is tapped on a failed attachment upload. */
@@ -245,6 +255,10 @@ export function MessageBubble({
   onEdit,
   onDelete,
   onForward,
+  selecting = false,
+  selected = false,
+  onToggleSelect,
+  onStartSelect,
   onRetrySticker,
   onRetryAttachment,
   onCancelAttachment,
@@ -390,11 +404,16 @@ export function MessageBubble({
       <SwipeToReply color={colors.incomingMeta} onReply={() => onReply(message)}>
         <View
           className={cn(
-            'flex-row px-2',
+            'relative flex-row px-2',
             outgoing ? 'justify-end' : 'items-end',
             isLastInGroup ? 'mb-2' : 'mb-0.5',
           )}
         >
+          {selecting ? (
+            <View className="mr-2 self-center">
+              <Checkbox checked={selected} disabled={!canForward} />
+            </View>
+          ) : null}
           {!outgoing && isGroup ? (
             showAvatar ? (
               <Avatar id={message.senderId} name={message.senderName} size={34} className="mr-2" />
@@ -643,6 +662,19 @@ export function MessageBubble({
               />
             ) : null}
           </View>
+          {selecting ? (
+            <Pressable
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: selected === true, disabled: !canForward }}
+              accessibilityLabel="Select message"
+              onPress={() => {
+                if (canForward) {
+                  onToggleSelect?.(message);
+                }
+              }}
+              className="absolute inset-0"
+            />
+          ) : null}
         </View>
       </SwipeToReply>
       <MessageActionsSheet
@@ -674,6 +706,14 @@ export function MessageBubble({
           setMenuOpen(false);
           onForward?.(message);
         }}
+        {...(onStartSelect === undefined
+          ? {}
+          : {
+              onSelect: () => {
+                setMenuOpen(false);
+                onStartSelect(message);
+              },
+            })}
         onPin={() => {
           setMenuOpen(false);
           if (isPinned === true) {

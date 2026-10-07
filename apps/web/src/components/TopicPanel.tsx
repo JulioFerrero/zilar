@@ -1,5 +1,5 @@
 import type { ChatSummary } from '@zilar/chat-core';
-import { Lock, X } from 'lucide-react';
+import { Brain, Lock, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Avatar } from './Avatar';
@@ -8,6 +8,7 @@ import { ConfirmDialog } from './ConfirmDialog';
 import { RoutinesSection } from './tools/RoutinesSection';
 import { ToolsSection } from './tools/ToolsSection';
 import { FieldError } from './ais/AiPageShell';
+import { AiMemoryDialog } from './ais/AiMemoryDialog';
 import { PinsSection } from './PinsPanel';
 import { AlwaysAllowedList } from './approvals/AlwaysAllowedList';
 import { Button } from './ui/button';
@@ -75,6 +76,7 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
   const [confirmingVisibility, setConfirmingVisibility] = useState(false);
   const [confirmingArchive, setConfirmingArchive] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [memoryAi, setMemoryAi] = useState<{ id: string; name: string } | undefined>(undefined);
 
   useEffect(() => {
     storeApi.getState().refreshGroupInfo(chat.id);
@@ -658,6 +660,16 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
                         Added by {aiOwnerName(ai.id)}
                       </p>
                     </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      aria-label={`What ${ai.name} remembers`}
+                      className="shrink-0 text-muted-foreground"
+                      onClick={() => setMemoryAi({ id: ai.id, name: ai.name })}
+                    >
+                      <Brain className="size-4" aria-hidden="true" />
+                    </Button>
                     {canRemoveAi(ai.id) && (
                       <Button
                         type="button"
@@ -718,6 +730,15 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
               </div>
             )}
           </section>
+
+          {memoryAi !== undefined && (
+            <AiMemoryDialog
+              chat={chat.id}
+              aiId={memoryAi.id}
+              aiName={memoryAi.name}
+              onClose={() => setMemoryAi(undefined)}
+            />
+          )}
 
           {chat.groupId !== undefined && (
             <TopicRulesSection groupId={chat.groupId} topicId={topic.id} topicName={chat.title} />

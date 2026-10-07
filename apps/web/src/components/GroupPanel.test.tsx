@@ -141,6 +141,15 @@ describe('GroupPanel', () => {
     expect(ais.getByText('Added by You')).toBeTruthy();
   });
 
+  it('opens the What <AI> remembers dialog from an AI row (T-0447)', async () => {
+    setup({ groupInfos: { 'c-devteam': detail({ ais: [devAi] }) } });
+
+    const ais = within(screen.getByRole('region', { name: 'AIs' }));
+    fireEvent.click(ais.getByRole('button', { name: 'What Dev-1 remembers' }));
+
+    expect(await screen.findByRole('dialog', { name: 'What Dev-1 remembers' })).toBeTruthy();
+  });
+
   it('shows member and AI pictures when the server sends them', () => {
     const pictured = detail({
       avatarUrl: '/api/avatars/g-1',

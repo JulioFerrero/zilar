@@ -1,7 +1,7 @@
 ---
 id: T-0442
 title: "AI memory M4b (server): removing an AI from a group or topic deletes its memory of those rooms"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0442-ai-memory-room-cleanup
 model: auto
@@ -64,4 +64,71 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Status: done, all checks green.
+
+### What I did
+- `apps/server/src/agents/memory/store.ts`: added and exported
+  `deleteRoomMemory(db, aiId, roomLocalparts)`. It returns early for an empty
+  list; otherwise deletes, for that `aiId` only, every row in
+  `aiMemoryMessages`, `aiMemoryNodes`, `aiMemoryFacts` and `aiMemoryState`
+  whose chat key matches `room:<localpart>@<anything>` for one of the given
+  localparts. Matching uses drizzle `sql` with bound values via `sql.join`
+  (`split_part(chat_key, '@', 1) IN (<bound list>)`), never string-built SQL.
+  The list is de-duplicated. Rows of other AIs, DMs and other rooms are left
+  alone.
+- `apps/server/src/groups/service.ts`: imported `deleteRoomMemory`; the
+  topics select inside the `removeGroupAi` transaction now also reads
+  `roomLocalpart`; after the rules/tools/routines cleanup helpers, the same
+  transaction calls `deleteRoomMemory(tx as unknown as ServerDatabase,
+  input.aiId, [...])` with the group room plus every topic room, de-duplicated.
+- `apps/server/src/topics/service.ts`: imported `deleteRoomMemory`; after the
+  routines cleanup in `removeTopicAi`, it calls
+  `deleteRoomMemory(deps.db, aiId, [topic.roomLocalpart])`.
+- `apps/server/src/agents/memory/cleanup.test.ts` (new): 4 tests — direct
+  `deleteRoomMemory` scoping (only the named AI and named room; room B, the DM
+  and another AI's rows in room A survive), empty-list no-op, `removeGroupAi`
+  (group room + general topic room + private topic room cleared, DM kept), and
+  `removeTopicAi` (only that topic room cleared, group room and DM kept). Each
+  test seeds one row in all four memory tables and counts the four tables
+  after the operation.
+
+### Files changed
+- `apps/server/src/agents/memory/store.ts`
+- `apps/server/src/agents/memory/cleanup.test.ts` (new)
+- `apps/server/src/groups/service.ts`
+- `apps/server/src/topics/service.ts`
+- `work/T-0442-ai-memory-room-cleanup.md` (this file)
+
+All five are inside the task's Allowed files.
+
+### Commands run (real results)
+- `pnpm install`: succeeded (Done in 18.7s); only pre-existing peer-dep
+  warnings.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot memory/cleanup`:
+  1 file passed, 4 tests passed. (First run had 2 failures from wrong relative
+  dynamic-import paths in my new test; fixed to `../../groups/service` and
+  `../../topics/service`.)
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot memory/cleanup routines/service groups topics`:
+  6 test files passed, 122 tests passed.
+- `pnpm gate` (final):
+  ```
+  gate: 5 changed file(s) against main
+  PASS  install (frozen)  (1.2s)
+  PASS  format  (23.9s)
+  PASS  lint  (0.8s)
+  PASS  typecheck  (10.5s)
+  PASS  tests @zilar/server  (313.6s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+  (An earlier gate run failed on format in my two files and then on an unused
+  `owner` variable in the new test; both fixed in scope before the passing run.)
+
+### Problems, deviations, open questions
+- None. The spec was implemented as written. The delete runs inside the same
+  `removeGroupAi` transaction and in `removeTopicAi` right after the routines
+  cleanup, so a removal never leaves room memory behind.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-06). deleteRoomMemory removes one AI's rows in all four memory tables whose chat key starts with room:<localpart>@ (bound values, split_part). removeGroupAi calls it in its transaction for the group room and every topic room; removeTopicAi calls it for that topic. DM memory and other AIs stay. Nit accepted: removeTopicAi has no transaction, the same as its other cleanups.

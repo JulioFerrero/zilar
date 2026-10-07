@@ -27,6 +27,7 @@ vi.mock('@/components/ui/confirm-dialog', () => ({
 vi.mock('lucide-react-native', () => ({
   Copy: 'Copy',
   Forward: 'Forward',
+  ListChecks: 'ListChecks',
   Pencil: 'Pencil',
   Pin: 'Pin',
   PinOff: 'PinOff',
@@ -108,5 +109,36 @@ describe('MessageActionsSheet forward row', () => {
       'Forward message',
     );
     expect(labels(collect(MessageActionsSheet({ ...BASE })))).not.toContain('Forward message');
+  });
+});
+
+function findPressable(elements: TestElement[], label: string): TestElement | undefined {
+  return elements.find(
+    (element) => element.type === 'Pressable' && element.props.accessibilityLabel === label,
+  );
+}
+
+describe('MessageActionsSheet select row', () => {
+  it('shows Select when canForward and onSelect are set, and calls it', () => {
+    const onSelect = vi.fn();
+    const elements = collect(
+      MessageActionsSheet({ ...BASE, canForward: true, onForward: () => {}, onSelect }),
+    );
+    const select = findPressable(elements, 'Select messages');
+    expect(select).toBeDefined();
+    select?.props.onPress?.();
+    expect(onSelect).toHaveBeenCalledTimes(1);
+  });
+
+  it('hides Select without onSelect', () => {
+    expect(
+      labels(collect(MessageActionsSheet({ ...BASE, canForward: true, onForward: () => {} }))),
+    ).not.toContain('Select messages');
+  });
+
+  it('hides Select when canForward is false', () => {
+    expect(
+      labels(collect(MessageActionsSheet({ ...BASE, canForward: false, onSelect: () => {} }))),
+    ).not.toContain('Select messages');
   });
 });

@@ -113,6 +113,9 @@ interface MockState {
   nextContactRequestSequence: number;
   // T-0235: blocked people in memory for the page load.
   blockedUsers: MockBlockedUser[];
+  // T-0443: the AI's memory per `${chat}|${ai}`, seeded on first read. The
+  // mock has one user (the AI owner), so every memory is changeable.
+  aiMemory: Map<string, MockAiMemory>;
 }
 
 type TopicVisibility = 'public' | 'private';
@@ -240,6 +243,13 @@ interface MockPin {
   kind: 'text' | 'image' | 'file' | 'voice' | 'card';
   pinnedBy: string;
   pinnedAt: string;
+}
+
+// T-0443: one chat's AI memory in memory for the page load, keyed by
+// `${chat}|${ai}` and seeded on first read.
+interface MockAiMemory {
+  facts: { id: string; text: string }[];
+  lines: string[];
 }
 
 // T-0121: one sticker pack row, mirroring the server's `sticker_packs` plus
@@ -973,6 +983,22 @@ function seedPins(): MockPin[] {
   ];
 }
 
+// T-0443: the AI's seeded memory for a chat's first read in mock mode: two
+// pinned facts and three cover lines (one summary, two messages).
+function seedAiMemory(): MockAiMemory {
+  return {
+    facts: [
+      { id: 'fact-1', text: 'Julio prefers short answers.' },
+      { id: 'fact-2', text: 'The launch is on Friday.' },
+    ],
+    lines: [
+      '#0-15 Summary: the team agreed on the launch plan and pricing.',
+      '#16 2026-10-01 Julio: Let us keep the pricing simple.',
+      '#17 2026-10-01 Dev-1: Agreed, two tiers only.',
+    ],
+  };
+}
+
 function seedState(): MockState {
   return {
     me: {
@@ -1111,6 +1137,7 @@ function seedState(): MockState {
     contactRequests: [],
     nextContactRequestSequence: 1,
     blockedUsers: [],
+    aiMemory: new Map(),
     audit: [
       {
         id: 'audit-dev-stopped',
@@ -2770,6 +2797,38 @@ export async function mockRequest(
     }
     state.pins = state.pins.filter((item) => item.id !== pinId);
     return jsonResponse(pin);
+  }
+
+  // T-0443: in-memory AI memory, keyed by `${chat}|${ai}` and seeded on the
+  // first read. The mock has one user (the AI owner), so `canChange` is true.
+  if (head === 'ai-memory') {
+    const params = new URLSearchParams(path.includes('?') ? path.slice(path.indexOf('?') + 1) : '');
+    const key = `${params.get('chat') ?? ''}|${params.get('ai') ?? ''}`;
+    const memory = state.aiMemory.get(key) ?? seedAiMemory();
+
+    if (first === undefined && method === 'GET') {
+      state.aiMemory.set(key, memory);
+      return jsonResponse({ ...memory, canChange: true });
+    }
+    if (first === 'facts' && second !== undefined && method === 'DELETE') {
+      const factId = decodeURIComponent(second);
+      if (!memory.facts.some((fact) => fact.id === factId)) {
+        return notFound('Fact not found');
+      }
+      state.aiMemory.set(key, {
+        ...memory,
+        facts: memory.facts.filter((fact) => fact.id !== factId),
+      });
+      return jsonResponse({ ok: true });
+    }
+    if (first === 'clear' && method === 'POST') {
+      const body = readJsonBody(init);
+      const chat = typeof body.chat === 'string' ? body.chat : '';
+      const ai = typeof body.ai === 'string' ? body.ai : '';
+      state.aiMemory.set(`${chat}|${ai}`, { facts: [], lines: [] });
+      return jsonResponse({ ok: true });
+    }
+    return notImplemented();
   }
 
   if (head === 'contacts' && method === 'GET') {

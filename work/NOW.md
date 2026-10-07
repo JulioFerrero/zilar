@@ -2,6 +2,21 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-06 late evening:**
+- **Merged:** T-0436, T-0440 to T-0445:
+  - the mobile media sheet;
+  - AI memory M3a context, M3b tools, M4a routes, M4b room cleanup and M5a web DM section;
+  - mobile multi-select forwarding.
+- **The AI now remembers.** Each turn indexes the chat, reads its facts and memory block, and can recall, zoom and remember.
+- **Running:**
+  - T-0446 (M3c compactor: builds the summaries);
+  - T-0447 (M5b web room "What <AI> remembers" dialog).
+- **Next:**
+  - M6 mobile memory UI;
+  - one web and one mobile polish task for the nits (T-0436, T-0439, T-0443, T-0445);
+  - emulator QA of the mobile forward and media sheets (never seen on a device).
+- **Gate flake:** the first T-0441 merge failed its gate under load. A re-run passed and the merge went through.
+
 **2026-10-06 evening:**
 - **Merged:** T-0433 to T-0435 and T-0437 to T-0439:
   - AI memory M1, M2a and M2b;

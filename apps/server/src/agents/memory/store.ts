@@ -510,6 +510,59 @@ export function buildCompactionPrompt(blockId: string, inputLines: string[]): st
   return `${header}\n${inputLines.join('\n')}`;
 }
 
+// T-0442: removing an AI from a room deletes that room's memory at once
+// (plan §3.5). A room's chat key is `room:<localpart>@<muc domain>`; the
+// prefix before the `@` identifies the room, so this covers the room however
+// its domain is spelled. Rows of other AIs and other chats (DMs, other rooms)
+// stay. The caller passes a room list only, and the delete is scoped to the
+// one AI.
+export async function deleteRoomMemory(
+  db: ServerDatabase,
+  aiId: string,
+  roomLocalparts: string[],
+): Promise<void> {
+  const prefixes = [...new Set(roomLocalparts)].map((localpart) => `room:${localpart}`);
+  if (prefixes.length === 0) {
+    return;
+  }
+  const keys = sql.join(
+    prefixes.map((prefix) => sql`${prefix}`),
+    sql`, `,
+  );
+  await db
+    .delete(aiMemoryMessages)
+    .where(
+      and(
+        eq(aiMemoryMessages.aiId, aiId),
+        sql`split_part(${aiMemoryMessages.chatKey}, '@', 1) IN (${keys})`,
+      ),
+    );
+  await db
+    .delete(aiMemoryNodes)
+    .where(
+      and(
+        eq(aiMemoryNodes.aiId, aiId),
+        sql`split_part(${aiMemoryNodes.chatKey}, '@', 1) IN (${keys})`,
+      ),
+    );
+  await db
+    .delete(aiMemoryFacts)
+    .where(
+      and(
+        eq(aiMemoryFacts.aiId, aiId),
+        sql`split_part(${aiMemoryFacts.chatKey}, '@', 1) IN (${keys})`,
+      ),
+    );
+  await db
+    .delete(aiMemoryState)
+    .where(
+      and(
+        eq(aiMemoryState.aiId, aiId),
+        sql`split_part(${aiMemoryState.chatKey}, '@', 1) IN (${keys})`,
+      ),
+    );
+}
+
 // "Clear memory": forget every node and fact of the chat and move the floor to
 // the end, so the old messages are never summarised again. The mirror itself
 // stays for recall and the recent window.

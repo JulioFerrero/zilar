@@ -25,6 +25,7 @@ import { recordAudit, type AuditRecorder } from '../audit/service';
 import { dropMemberRoles, roleHoldersByGroup, topicRoleHolderIds } from '../roles/service';
 import { revokeActiveRulesForAiInGroup } from '../approvals/rules';
 import { deleteRoutinesForAiInGroup } from '../routines/service';
+import { deleteRoomMemory } from '../agents/memory/store';
 import { deleteToolsForAiInGroup } from '../tools/service';
 import { syncTopicRoom } from '../topics/rooms';
 import { isUniqueViolation } from '../handles/store';
@@ -959,7 +960,7 @@ export async function removeGroupAi(
       // rules/tools cleanup below; every non-General topic room is re-synced
       // after the commit (the gateway leaves through the same event).
       const topicRows = await tx
-        .select({ id: topics.id })
+        .select({ id: topics.id, roomLocalpart: topics.roomLocalpart })
         .from(topics)
         .where(eq(topics.groupId, input.groupId));
       const topicIds = topicRows.map((row) => row.id);
@@ -993,6 +994,12 @@ export async function removeGroupAi(
         groupId: input.groupId,
         now: new Date(),
       });
+      // T-0442: the AI's memory of the group room and every topic room dies
+      // with the membership, in the same transaction (plan §3.5). Its DM
+      // memory and rows of other AIs are unaffected.
+      await deleteRoomMemory(tx as unknown as ServerDatabase, input.aiId, [
+        ...new Set([group.roomLocalpart, ...topicRows.map((row) => row.roomLocalpart)]),
+      ]);
     });
   } catch (error) {
     throw mapXmppError(error);

@@ -4,7 +4,10 @@ import { LitellmApiError, redactSecrets, type FetchLike } from '../ai/litellm-cl
 import type { ChatCompletionMessage } from './context';
 import { ChatStreamInterruptedError, consumeChatCompletionStream } from './stream';
 import {
+  MEMORY_ZOOM_TOOL,
   PERSONA_TOOLS,
+  RECALL_TOOL,
+  REMEMBER_TOOL,
   REQUEST_ACTION_TOOL,
   REVERT_PERSONA_TOOL,
   UPDATE_PERSONA_TOOL,
@@ -80,7 +83,10 @@ export type ValidToolCall =
       tool: typeof REQUEST_ACTION_TOOL;
       action: string;
       args: Record<string, unknown>;
-    };
+    }
+  | { id: string; tool: typeof RECALL_TOOL; query: string }
+  | { id: string; tool: typeof MEMORY_ZOOM_TOOL; block: string }
+  | { id: string; tool: typeof REMEMBER_TOOL; text: string };
 
 export interface ToolExecution {
   // A short result for the model: "ok", "nothing to undo" or "invalid: …".
@@ -1066,9 +1072,9 @@ function actionOfCall(tool: string, argsJson: string): string | undefined {
   return undefined;
 }
 
-// Lifts a parsed `request_action` / `update_persona` / `revert_persona`
-// shape into the `ValidToolCall` the executor understands. The call id
-// comes from the wire; everything else is already validated by zod.
+// Lifts a parsed `request_action` / `update_persona` / `revert_persona` /
+// memory-tool shape into the `ValidToolCall` the executor understands. The
+// call id comes from the wire; everything else is already validated by zod.
 function toCall(parsed: ParsedToolArgumentsOk, id: string): ValidToolCall {
   if (parsed.tool === UPDATE_PERSONA_TOOL) {
     return {
@@ -1080,6 +1086,15 @@ function toCall(parsed: ParsedToolArgumentsOk, id: string): ValidToolCall {
   }
   if (parsed.tool === REVERT_PERSONA_TOOL) {
     return { id, tool: REVERT_PERSONA_TOOL };
+  }
+  if (parsed.tool === RECALL_TOOL) {
+    return { id, tool: RECALL_TOOL, query: parsed.query };
+  }
+  if (parsed.tool === MEMORY_ZOOM_TOOL) {
+    return { id, tool: MEMORY_ZOOM_TOOL, block: parsed.block };
+  }
+  if (parsed.tool === REMEMBER_TOOL) {
+    return { id, tool: REMEMBER_TOOL, text: parsed.text };
   }
   return {
     id,
@@ -1140,13 +1155,14 @@ export interface GroupTurnDeps {
   /** Extra secrets to redact from every log line (e.g. the master key). */
   secrets?: readonly string[];
   /**
-   * Tools to advertise to the model. Absent (or empty) = today's plain
+   * Tools to advertise to the model. Absent (or empty) = the plain
    * `completeChat` path, unchanged. When present and the model asks for a
    * tool, each call is validated and executed through `executeTool`, the
    * results go back for exactly one follow-up call, and the final text is
    * sent into the room with the `@Name` prefix and the trigger's `replyTo`
-   * (T-0098). Persona tools are never offered in a group turn: only the
-   * `request_action` tool may be in this list.
+   * (T-0098). A group turn always carries the memory tools (T-0444); persona
+   * tools are never offered in a group, and `request_action` appears only
+   * when the trigger is allowed to ask for one.
    */
   tools?: ChatToolDefinition[];
   executeTool?: ExecuteToolCall;
