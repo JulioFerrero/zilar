@@ -457,7 +457,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0496](T-0496-db-effect-sql-spike.md) | Effect F3 spike: DB on effect/sql (pins), migrations, better-auth plan | running | auto | T-0490 | |
 | [T-0498](T-0498-httpapi-adapter-handles.md) | Effect F4+P1: HttpApi under Hono, handles module moved | running | auto | T-0495 | |
 | [T-0499](T-0499-effect-agent-drivers.md) | Effect P4: agent-drivers on Effect + Schema | running | auto | T-0490 | |
-| [T-0500](T-0500-effect-runner-tunnel-schema.md) | Effect F: runner-tunnel zod to Schema | running | auto | T-0490 | |
 | [T-0501](T-0501-effect-runner-app-schema.md) | Effect F: apps/runner zod to Schema | running | auto | T-0490 | |
 | [T-0427](T-0427-mobile-forwarded-header.md) | Mobile: forwarded messages show 'Forwarded from X [in Y]' | 2026-10-06 |
 | [T-0428](T-0428-mobile-new-chat-menu-sheet.md) | Mobile: New chat menu on the kit ActionSheet with icons | 2026-10-06 |
@@ -530,3 +529,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0485](T-0485-effect-giphy.md) | Effect convert: Giphy provider | 2026-10-07 |
 | [T-0483](T-0483-effect-telegram-import.md) | Effect convert: Telegram import client | 2026-10-07 |
 | [T-0497](T-0497-effect-recovery-loop.md) | Effect convert: action gateway recovery loop | 2026-10-07 |
+| [T-0500](T-0500-effect-runner-tunnel-schema.md) | Effect F: runner-tunnel zod to Effect Schema | 2026-10-07 |

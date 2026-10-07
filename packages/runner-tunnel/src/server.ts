@@ -4,7 +4,7 @@ import net from 'node:net';
 import { randomBytes } from 'node:crypto';
 import { WebSocketServer } from 'ws';
 import type { WebSocket } from 'ws';
-import { z } from 'zod';
+import { Effect, Schema } from 'effect';
 import {
   CLOSE_AUTH,
   CLOSE_MALFORMED,
@@ -22,17 +22,39 @@ import { TunnelHttpAgent, createLoopbackPair } from './http-agent.ts';
 
 const HOP_BY_HOP_HEADERS = new Set(['connection', 'keep-alive', 'transfer-encoding', 'upgrade']);
 
-const ServerOptionsSchema = z.strictObject({
-  gatewayUrl: z.string().url().startsWith('http://'),
-  heartbeatIntervalMs: z.number().int().min(10).max(60000).default(15000),
-  heartbeatTimeoutMs: z.number().int().min(50).max(300000).default(45000),
-  handshakeTimeoutMs: z.number().int().min(100).max(60000).default(10000),
-  highWaterMarkBytes: z
-    .number()
-    .int()
-    .min(4096)
-    .max(64 * 1024 * 1024)
-    .default(1024 * 1024),
+const stringUrl: Schema.String = Schema.String.check(
+  Schema.makeFilter((value) => {
+    try {
+      new URL(value);
+      return true;
+    } catch {
+      return false;
+    }
+  }),
+);
+
+const ServerOptionsSchema = Schema.Struct({
+  gatewayUrl: stringUrl.check(Schema.isStartingWith('http://')),
+  heartbeatIntervalMs: Schema.Number.check(
+    Schema.isInt(),
+    Schema.isGreaterThanOrEqualTo(10),
+    Schema.isLessThanOrEqualTo(60000),
+  ).pipe(Schema.withDecodingDefault(Effect.succeed(15000))),
+  heartbeatTimeoutMs: Schema.Number.check(
+    Schema.isInt(),
+    Schema.isGreaterThanOrEqualTo(50),
+    Schema.isLessThanOrEqualTo(300000),
+  ).pipe(Schema.withDecodingDefault(Effect.succeed(45000))),
+  handshakeTimeoutMs: Schema.Number.check(
+    Schema.isInt(),
+    Schema.isGreaterThanOrEqualTo(100),
+    Schema.isLessThanOrEqualTo(60000),
+  ).pipe(Schema.withDecodingDefault(Effect.succeed(10000))),
+  highWaterMarkBytes: Schema.Number.check(
+    Schema.isInt(),
+    Schema.isGreaterThanOrEqualTo(4096),
+    Schema.isLessThanOrEqualTo(64 * 1024 * 1024),
+  ).pipe(Schema.withDecodingDefault(Effect.succeed(1024 * 1024))),
 });
 
 export interface TunnelServerOptions {
@@ -82,7 +104,7 @@ export class TunnelServer {
   private closed = false;
   private droppedFromDeadConns = 0;
 
-  private constructor(registry: KeyRegistry, validated: z.infer<typeof ServerOptionsSchema>) {
+  private constructor(registry: KeyRegistry, validated: typeof ServerOptionsSchema.Type) {
     this.registry = registry;
     const gateway = new URL(validated.gatewayUrl);
     this.gatewayHost = gateway.hostname;
@@ -128,7 +150,9 @@ export class TunnelServer {
   }
 
   static async start(options: TunnelServerOptions, port = 0): Promise<TunnelServer> {
-    const validated = ServerOptionsSchema.parse({
+    const validated = Schema.decodeUnknownSync(ServerOptionsSchema, {
+      onExcessProperty: 'error',
+    })({
       gatewayUrl: options.gatewayUrl,
       heartbeatIntervalMs: options.heartbeatIntervalMs,
       heartbeatTimeoutMs: options.heartbeatTimeoutMs,

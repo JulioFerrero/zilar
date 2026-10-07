@@ -12,8 +12,8 @@
     "demo": "node src/demo.ts"
   },
   "dependencies": {
-    "ws": "^8.22.0",
-    "zod": "^4.6.5"
+    "effect": "^4.0.0",
+    "ws": "^8.22.0"
   },
   "devDependencies": {
     "@types/ws": "^8.18.1"

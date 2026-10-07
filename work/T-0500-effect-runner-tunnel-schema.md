@@ -1,7 +1,7 @@
 ---
 id: T-0500
 title: "Effect lane F: packages/runner-tunnel zod to Effect Schema (control frames + option parsing), behaviour and tests unchanged"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0500-effect-runner-tunnel-schema
 model: auto
@@ -68,4 +68,47 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+
+- `packages/runner-tunnel/package.json`: dropped `zod ^4.6.5`, added `effect ^4.0.0` (same range as `apps/server`). Re-ran `pnpm install`.
+- `packages/runner-tunnel/src/protocol.ts`: replaced every zod schema with Effect Schema at the same bounds; the exported constants, schema names and `ControlMessage`/`*Type` exports are unchanged. `ControlMessage` now comes from `typeof X.Type`. `parseControlMessage` keeps its signature, never throws and returns the same codes/reasons (`'frame is not JSON'`, `'frame is not an object'`, `'frame has no string type'`, `` `unknown message type ${t}` ``, `` `invalid ${t} frame` ``); it decodes with `Schema.decodeUnknownExit(schema, { onExcessProperty: 'error' })` so excess keys fail like `z.strictObject`.
+- `packages/runner-tunnel/src/runner.ts`: `RunnerOptionsSchema` is Effect Schema with the same bounds/defaults; the constructor validates with `Schema.decodeUnknownSync(..., { onExcessProperty: 'error' })` so invalid options still throw synchronously.
+- `packages/runner-tunnel/src/server.ts`: `ServerOptionsSchema` is Effect Schema; `gatewayUrl` still requires a parseable URL that starts with `http://`; validated in `static start` with the same strict decode; the constructor type is `typeof ServerOptionsSchema.Type`.
+- `packages/runner-tunnel/src/protocol.schema.test.ts` (new): excess key on `hello` and on `tunnel.open` → `invalid <type> frame`; `stream_id` of `2**32` → `invalid tunnel.open frame`; runner option defaults applied.
+- No other package touched; `index.ts`, `mux.ts`, `keys.ts`, `http-agent.ts`, `test-harness.ts`, `demo.ts` and all existing tests are unchanged.
+
+### Files changed
+
+`packages/runner-tunnel/package.json`, `pnpm-lock.yaml`, `packages/runner-tunnel/src/protocol.ts`, `packages/runner-tunnel/src/runner.ts`, `packages/runner-tunnel/src/server.ts`, `packages/runner-tunnel/src/protocol.schema.test.ts`, `work/T-0500-effect-runner-tunnel-schema.md`.
+
+### Commands and results
+
+- `pnpm install`: done (warns only about an unrelated mobile peer dep).
+- `pnpm --filter @zilar/runner-tunnel test --maxWorkers=2 --reporter=dot src/protocol.test.ts src/protocol.schema.test.ts`: 2 files, 14 passed.
+- `pnpm --filter @zilar/runner-tunnel test --maxWorkers=2 --reporter=dot src/runner.test.ts`: 1 file, 13 passed.
+- `pnpm --filter @zilar/runner-tunnel test --reporter=dot`: 10 files, 65 passed.
+- `pnpm gate` (final run):
+  ```
+  gate: 7 changed file(s) against main
+  PASS  install (frozen)  (3.3s)
+  PASS  format  (57.7s)
+  PASS  lint  (0.9s)
+  PASS  typecheck  (3.5s)
+  PASS  tests @zilar/runner-tunnel  (26.4s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Deviations / decisions
+
+- I added an export `RunnerOptionsSchema` from `runner.ts` so `protocol.schema.test.ts` can assert the defaults directly. The spec asks the new test to cover the runner option defaults, and the schema was not previously observable (the class keeps its fields private, and no getter exposes them), so this was the smallest way to do it. It is an addition, not a rename; no existing export changed. Say the word if you prefer a different seam and I will rework it.
+- URL fields keep their decoded type `string` (as with zod). Effect's `Schema.URLFromString` decodes to a `URL` object, which would have changed the type of `RunnerClient.serverUrl` (used as a `string` by `new WebSocket(...)`) and of `TunnelServer.gatewayUrl`. I used `Schema.String` plus a `Schema.makeFilter` wrapping `new URL(value)` (plus `isStartingWith('http://')` / a `ws://`/`wss://` prefix filter), which matches zod's `.url()` accept/reject cases and keeps the output a string. Verified against the real zod 4.6.5 for the cases in `runner.test.ts`.
+
+### Notes
+
+- Strictness comes from `onExcessProperty: 'error'` at every decode, per the verified fact from T-0494; `Schema.is` was not used.
+- `exposedPorts` now decodes as `readonly number[]` (Effect arrays are readonly); the private `RunnerClient` field is typed `readonly number[]` and only used with `.includes`. The public `RunnerOptions` interface is unchanged (`number[] | undefined`).
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-07). runner-tunnel has no zod. Control frames decode strictly with the same close codes and reasons; runner and server options keep their bounds, defaults and sync throws. The existing tests are untouched; the new schema test covers excess keys, the stream id bound and defaults. Two nits accepted: RunnerOptionsSchema is now exported for the test, and the strict option decode matches the old behaviour.

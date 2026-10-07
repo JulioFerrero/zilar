@@ -1,6 +1,6 @@
 import net from 'node:net';
+import { Effect, Schema } from 'effect';
 import { WebSocket } from 'ws';
-import { z } from 'zod';
 import {
   CLOSE_AUTH,
   CLOSE_MALFORMED,
@@ -15,26 +15,55 @@ import {
 import { signNonce, type RunnerKeypair } from './keys.ts';
 import { StreamMux, TunnelClosedError, attachSocketToStream } from './mux.ts';
 
-const RunnerOptionsSchema = z.strictObject({
-  serverUrl: z
-    .string()
-    .url()
-    .refine((value) => value.startsWith('ws://') || value.startsWith('wss://'), {
+const stringUrl: Schema.String = Schema.String.check(
+  Schema.makeFilter((value) => {
+    try {
+      new URL(value);
+      return true;
+    } catch {
+      return false;
+    }
+  }),
+);
+
+const portSchema: Schema.Number = Schema.Number.check(
+  Schema.isInt(),
+  Schema.isGreaterThanOrEqualTo(1),
+  Schema.isLessThanOrEqualTo(65535),
+);
+
+export const RunnerOptionsSchema = Schema.Struct({
+  serverUrl: stringUrl.check(
+    Schema.makeFilter((value) => value.startsWith('ws://') || value.startsWith('wss://'), {
       message: 'serverUrl must use ws:// or wss://',
     }),
-  runnerId: z.string().min(1).max(128),
-  runnerVersion: z.string().min(1).max(64).default('0.1.0'),
-  exposedPorts: z.array(z.number().int().min(1).max(65535)).default([]),
-  enableModelListener: z.boolean().default(true),
-  reconnectBaseMs: z.number().int().min(10).max(60000).default(250),
-  reconnectMaxMs: z.number().int().min(50).max(300000).default(5000),
-  handshakeTimeoutMs: z.number().int().min(100).max(60000).default(10000),
-  highWaterMarkBytes: z
-    .number()
-    .int()
-    .min(4096)
-    .max(64 * 1024 * 1024)
-    .default(1024 * 1024),
+  ),
+  runnerId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(128)),
+  runnerVersion: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64)).pipe(
+    Schema.withDecodingDefault(Effect.succeed('0.1.0')),
+  ),
+  exposedPorts: Schema.Array(portSchema).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
+  enableModelListener: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  reconnectBaseMs: Schema.Number.check(
+    Schema.isInt(),
+    Schema.isGreaterThanOrEqualTo(10),
+    Schema.isLessThanOrEqualTo(60000),
+  ).pipe(Schema.withDecodingDefault(Effect.succeed(250))),
+  reconnectMaxMs: Schema.Number.check(
+    Schema.isInt(),
+    Schema.isGreaterThanOrEqualTo(50),
+    Schema.isLessThanOrEqualTo(300000),
+  ).pipe(Schema.withDecodingDefault(Effect.succeed(5000))),
+  handshakeTimeoutMs: Schema.Number.check(
+    Schema.isInt(),
+    Schema.isGreaterThanOrEqualTo(100),
+    Schema.isLessThanOrEqualTo(60000),
+  ).pipe(Schema.withDecodingDefault(Effect.succeed(10000))),
+  highWaterMarkBytes: Schema.Number.check(
+    Schema.isInt(),
+    Schema.isGreaterThanOrEqualTo(4096),
+    Schema.isLessThanOrEqualTo(64 * 1024 * 1024),
+  ).pipe(Schema.withDecodingDefault(Effect.succeed(1024 * 1024))),
 });
 
 export interface RunnerOptions {
@@ -69,7 +98,7 @@ export class RunnerClient {
   private readonly keypair: RunnerKeypair;
   private readonly serverUrl: string;
   private readonly runnerVersion: string;
-  private readonly exposedPorts: number[];
+  private readonly exposedPorts: readonly number[];
   private readonly enableModelListener: boolean;
   private readonly reconnectBaseMs: number;
   private readonly reconnectMaxMs: number;
@@ -91,7 +120,9 @@ export class RunnerClient {
   private reconnectAttemptsValue = 0;
 
   constructor(options: RunnerOptions) {
-    const validated = RunnerOptionsSchema.parse({
+    const validated = Schema.decodeUnknownSync(RunnerOptionsSchema, {
+      onExcessProperty: 'error',
+    })({
       serverUrl: options.serverUrl,
       runnerId: options.runnerId,
       runnerVersion: options.runnerVersion,
