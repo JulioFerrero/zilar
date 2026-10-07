@@ -64,7 +64,7 @@ Julio, 2026-10-07: `@effect/atom-react` replaces zustand. The plan is `docs/audi
 6. **Measure:** run `pnpm --filter @zilar/web build` before and after, and report the main JS chunk sizes (raw and gzip) next to the §3.1 baseline.
 
 ### Read first
-`AGENTS.md`, `docs/EFFECT_GUIDE.md`, `docs/audit/effect-atom-react-plan.md` §0, §1, §4 and §6, `apps/web/src/store/ChatStoreProvider.tsx`, and the `createStore` call sites in `realStore.ts` and `store.ts`. Read the atom-react and `effect/reactivity` `.d.ts` in `node_modules` after install.
+`AGENTS.md`, `docs/EFFECT_GUIDE.md`, `docs/audit/effect-atom-react-plan.md` §0, §1, §4 and §6, `apps/web/src/store/ChatStoreProvider.tsx`, and the `createStore` call sites in `realStore.ts` and `store.ts`. After the install, also read the published type declarations of the atom-react package and of effect's reactivity module (Atom, AtomRegistry) in node_modules.
 
 ### Allowed files
 `apps/web/package.json`, `pnpm-lock.yaml`, `apps/web/src/store/atomStore.ts`, `apps/web/src/store/atomStore.test.ts`, `apps/web/src/store/realStore.ts`, `apps/web/src/store/store.ts`, `apps/web/src/store/ChatStoreProvider.tsx`, `work/T-0526-atom-react-web-w1.md`.

@@ -460,6 +460,9 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0524](T-0524-effect-mobile-api-batch-1.md) | Effect E batch 1: mobile invites, chat-prefs, search, audit API | running | auto | T-0506 | |
 | [T-0525](T-0525-effect-http-pins-roles-audit.md) | Effect C (HTTP): pins, roles, audit on HttpApi | planned | auto | T-0514 | |
 | [T-0526](T-0526-atom-react-web-w1.md) | atom-react W1: web stores on an atom registry | planned | auto | T-0521 | |
+| [T-0507](T-0507-effect-web-api-2.md) | Effect D2: web lib/api.ts on Effect Schema, part 2 | planned | auto | T-0505 | |
+| [T-0527](T-0527-effect-mobile-api-batch-2.md) | Effect E batch 2: mobile roles, gifs, ai-memory, connections API | planned | auto | T-0506 | |
+| [T-0528](T-0528-effect-sql-chat-prefs-folders.md) | Effect C1: chat-prefs, chat-folders services on effect/sql | planned | auto | T-0510 | |
 | [T-0427](T-0427-mobile-forwarded-header.md) | Mobile: forwarded messages show 'Forwarded from X [in Y]' | 2026-10-06 |
 | [T-0428](T-0428-mobile-new-chat-menu-sheet.md) | Mobile: New chat menu on the kit ActionSheet with icons | 2026-10-06 |
 | [T-0429](T-0429-mobile-dismiss-banner.md) | Mobile: DismissBanner replaces 12 copied chat screen banners | 2026-10-06 |
