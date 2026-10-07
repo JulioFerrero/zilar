@@ -2,6 +2,22 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-07 late afternoon (backgrounds):**
+- **Merged:**
+  - T-0455: the "Remembered: <fact>" line;
+  - T-0456: the backgrounds plan. Julio's decisions are in `docs/audit/chat-backgrounds-plan.md` §8: both scopes; images after presets; coloured grounds plus brand gold; group backgrounds that admins set, where my own per-chat choice wins.
+- **Doctor (f703edb):** clean, 2 nits in `files/routes.ts`: an `isDmBlocked` copy and the RFC 5987 filename encoding. These become a small cleanup task.
+- **Running:**
+  - T-0457: preset tokens;
+  - T-0458: server prefs schema.
+- **Next:**
+  - C: the image upload server;
+  - D: web render;
+  - E: web picker;
+  - F and G: group backgrounds.
+
+  The rule stays: max 2 workers, no mobile.
+
 **2026-10-07 afternoon (upload lock):**
 - **Julio's decisions** are in `docs/audit/upload-auth-plan.md` §7: server streaming; forwards keep their file; 404 now and delete later; break old builds after a redirect window.
 - **Merged:**

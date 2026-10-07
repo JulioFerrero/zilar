@@ -330,7 +330,20 @@ function fakeApi(overrides: Partial<ApiClient> = {}): ApiClient {
       members: [],
       ais: [],
     })),
+    setGroupBackground: vi.fn(async () => ({
+      id: 'g1',
+      title: 'Team',
+      createdBy: 'u-me',
+      members: [],
+      ais: [],
+    })),
     listChatPrefs: vi.fn(async () => []),
+    getChatBackgroundDefault: vi.fn(async () => ({
+      backgroundPreset: null,
+      backgroundImageId: null,
+      backgroundDim: null,
+    })),
+    putChatBackgroundDefault: vi.fn(async (input) => input),
     putChatPref: vi.fn(async () => null),
     listPins: vi.fn(async () => []),
     listChatMedia: vi.fn(async () => ({ items: [], next: null })),
@@ -432,6 +445,148 @@ describe('createRealChatStore', () => {
     expect(store.getState().chatPrefs['ana@zilar.test']?.mutedUntil).toBe(
       '2026-09-28T13:00:00.000Z',
     );
+  });
+
+  it('loads the global background default on boot', async () => {
+    const getChatBackgroundDefault = vi.fn(async () => ({
+      backgroundPreset: 'navy',
+      backgroundImageId: null,
+      backgroundDim: null,
+    }));
+    const { store } = await setup({ getChatBackgroundDefault });
+
+    expect(getChatBackgroundDefault).toHaveBeenCalled();
+    expect(store.getState().defaultBackground).toEqual({
+      backgroundPreset: 'navy',
+      backgroundImageId: null,
+      backgroundDim: null,
+    });
+  });
+
+  it('leaves the background null and still loads chats when it fails', async () => {
+    const getChatBackgroundDefault = vi.fn(async () => {
+      throw new Error('offline');
+    });
+    const { store } = await setup({ getChatBackgroundDefault });
+
+    expect(store.getState().defaultBackground).toBeNull();
+    expect(store.getState().chats.length).toBeGreaterThan(0);
+  });
+
+  it('keeps a background-only pref when pin toggles on and off (T-0462)', async () => {
+    const row = {
+      chatJid: 'ana@zilar.test',
+      mutedUntil: null,
+      archived: false,
+      pinnedAt: null,
+      updatedAt: '2026-09-28T11:00:00.000Z',
+      backgroundPreset: 'navy',
+      backgroundImageId: null,
+      backgroundDim: null,
+    };
+    const putChatPref = vi.fn();
+    putChatPref
+      .mockResolvedValueOnce({ ...row, pinnedAt: '2026-09-28T12:00:00.000Z' })
+      .mockResolvedValueOnce({ ...row, pinnedAt: null });
+    const { store } = await setup({ listChatPrefs: vi.fn(async () => [row]), putChatPref });
+
+    await store.getState().setPinned('ana@zilar.test', true);
+    await store.getState().setPinned('ana@zilar.test', false);
+
+    const pref = store.getState().chatPrefs['ana@zilar.test'];
+    expect(pref?.backgroundPreset).toBe('navy');
+    expect(pref?.pinnedAt).toBeNull();
+  });
+
+  it('setChatBackground sends the preset and clears the image fields (T-0462)', async () => {
+    const putChatPref = vi.fn(async () => ({
+      chatJid: 'ana@zilar.test',
+      mutedUntil: null,
+      archived: false,
+      pinnedAt: null,
+      updatedAt: '2026-09-28T12:00:00.000Z',
+      backgroundPreset: 'navy',
+      backgroundImageId: null,
+      backgroundDim: null,
+    }));
+    const { store } = await setup({ putChatPref });
+
+    await store.getState().setChatBackground('ana@zilar.test', 'navy');
+
+    expect(putChatPref).toHaveBeenCalledWith('ana@zilar.test', {
+      backgroundPreset: 'navy',
+      backgroundImageId: null,
+      backgroundDim: null,
+    });
+    expect(store.getState().chatPrefs['ana@zilar.test']?.backgroundPreset).toBe('navy');
+  });
+
+  it('setDefaultBackground updates the default and rolls back on failure (T-0462)', async () => {
+    const putChatBackgroundDefault = vi.fn();
+    putChatBackgroundDefault.mockResolvedValueOnce({
+      backgroundPreset: 'gold',
+      backgroundImageId: null,
+      backgroundDim: null,
+    });
+    const { store } = await setup({ putChatBackgroundDefault });
+
+    await store.getState().setDefaultBackground('gold');
+    expect(putChatBackgroundDefault).toHaveBeenCalledWith({
+      backgroundPreset: 'gold',
+      backgroundImageId: null,
+      backgroundDim: null,
+    });
+    expect(store.getState().defaultBackground?.backgroundPreset).toBe('gold');
+
+    putChatBackgroundDefault.mockRejectedValueOnce(new Error('offline'));
+    await expect(store.getState().setDefaultBackground('wine')).rejects.toThrow('offline');
+    expect(store.getState().defaultBackground?.backgroundPreset).toBe('gold');
+  });
+
+  it('setChatBackgroundImage sends the image and the dim (T-0464)', async () => {
+    const putChatPref = vi.fn(async () => ({
+      chatJid: 'ana@zilar.test',
+      mutedUntil: null,
+      archived: false,
+      pinnedAt: null,
+      updatedAt: '2026-09-28T12:00:00.000Z',
+      backgroundPreset: null,
+      backgroundImageId: 'bg-1',
+      backgroundDim: 40,
+    }));
+    const { store } = await setup({ putChatPref });
+
+    await store.getState().setChatBackgroundImage('ana@zilar.test', 'bg-1', 40);
+
+    expect(putChatPref).toHaveBeenCalledWith('ana@zilar.test', {
+      backgroundPreset: null,
+      backgroundImageId: 'bg-1',
+      backgroundDim: 40,
+    });
+    expect(store.getState().chatPrefs['ana@zilar.test']?.backgroundImageId).toBe('bg-1');
+    expect(store.getState().chatPrefs['ana@zilar.test']?.backgroundDim).toBe(40);
+  });
+
+  it('setDefaultBackgroundImage updates the default and rolls back on failure (T-0464)', async () => {
+    const putChatBackgroundDefault = vi.fn();
+    putChatBackgroundDefault.mockResolvedValueOnce({
+      backgroundPreset: null,
+      backgroundImageId: 'bg-1',
+      backgroundDim: 40,
+    });
+    const { store } = await setup({ putChatBackgroundDefault });
+
+    await store.getState().setDefaultBackgroundImage('bg-1', 40);
+    expect(putChatBackgroundDefault).toHaveBeenCalledWith({
+      backgroundPreset: null,
+      backgroundImageId: 'bg-1',
+      backgroundDim: 40,
+    });
+    expect(store.getState().defaultBackground?.backgroundImageId).toBe('bg-1');
+
+    putChatBackgroundDefault.mockRejectedValueOnce(new Error('offline'));
+    await expect(store.getState().setDefaultBackgroundImage('bg-2', 20)).rejects.toThrow('offline');
+    expect(store.getState().defaultBackground?.backgroundImageId).toBe('bg-1');
   });
 
   it('pins optimistically and rolls back when the PUT fails', async () => {

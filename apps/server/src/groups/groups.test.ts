@@ -7,6 +7,7 @@ import {
   aiTools,
   approvalRules,
   auditLog,
+  chatBackgrounds,
   groupAis,
   groupMembers,
   groups,
@@ -31,7 +32,7 @@ import {
 import type { RoomAffiliation } from '../xmpp/admin-client';
 import { localpartFor } from '../xmpp/provisioning';
 import { onGroupAi, type GroupAiEvent } from './events';
-import { MAX_GROUP_MEMBERS } from './service';
+import { listGroupsForUser, MAX_GROUP_MEMBERS } from './service';
 
 interface GroupDetailBody {
   id: string;
@@ -39,6 +40,11 @@ interface GroupDetailBody {
   createdBy: string;
   members: Array<{ userId: string; name: string; role: string }>;
   ais: Array<{ aiId: string; jid: string; name: string; ownerId: string }>;
+  background?: {
+    backgroundPreset: string | null;
+    backgroundImageId: string | null;
+    backgroundDim: number | null;
+  };
 }
 
 describe('groups', () => {
@@ -560,6 +566,164 @@ describe('groups', () => {
       method: 'POST',
     });
     expect(join.status).toBe(401);
+  });
+
+  describe('group backgrounds (T-0463)', () => {
+    function patchGroupRequest(cookie: string, groupId: string, body: unknown) {
+      return app.request(`${TEST_BASE_URL}/api/groups/${groupId}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json', cookie },
+        body: JSON.stringify(body),
+      });
+    }
+
+    async function seedBackgroundImage(userId: string): Promise<string> {
+      const id = randomUUID();
+      await context.db.insert(chatBackgrounds).values({
+        id,
+        userId,
+        mime: 'image/png',
+        width: 64,
+        height: 64,
+        bytes: 10,
+        storageKey: `${id}.png`,
+      });
+      return id;
+    }
+
+    async function ownedGroup() {
+      const owner = await bootstrapUser(context, app, 'owner@example.com');
+      const member = await contactOf(context, app, owner.id, 'member@example.com');
+      const created = await createGroupRequest(owner.cookie, {
+        title: 'Wallpaper club',
+        memberIds: [member.id],
+      });
+      expect(created.status).toBe(201);
+      const { id: groupId } = (await created.json()) as GroupDetailBody;
+      return { owner, member, groupId };
+    }
+
+    async function promote(groupId: string, userId: string): Promise<void> {
+      await context.db
+        .update(groupMembers)
+        .set({ role: 'admin' })
+        .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, userId)));
+    }
+
+    it('lets an admin set a preset and returns it in the detail and the list', async () => {
+      const { member, groupId } = await ownedGroup();
+      await promote(groupId, member.id);
+
+      const patched = await patchGroupRequest(member.cookie, groupId, {
+        background: { backgroundPreset: 'navy' },
+      });
+      expect(patched.status).toBe(200);
+      const body = (await patched.json()) as GroupDetailBody;
+      expect(body.background).toEqual({
+        backgroundPreset: 'navy',
+        backgroundImageId: null,
+        backgroundDim: null,
+      });
+
+      const detail = (await (
+        await groupDetailRequest(member.cookie, groupId)
+      ).json()) as GroupDetailBody;
+      expect(detail.background).toEqual({
+        backgroundPreset: 'navy',
+        backgroundImageId: null,
+        backgroundDim: null,
+      });
+
+      const list = await listGroupsForUser(context.db, member.id);
+      expect(list.find((group) => group.id === groupId)?.background).toEqual({
+        backgroundPreset: 'navy',
+        backgroundImageId: null,
+        backgroundDim: null,
+      });
+    });
+
+    it('refuses a plain member with a 403', async () => {
+      const { member, groupId } = await ownedGroup();
+      const response = await patchGroupRequest(member.cookie, groupId, {
+        background: { backgroundPreset: 'navy' },
+      });
+      expect(response.status).toBe(403);
+
+      const [row] = await context.db.select().from(groups).where(eq(groups.id, groupId));
+      expect(row?.backgroundPreset).toBeNull();
+    });
+
+    it('answers a non-member with the same 404 as a missing group', async () => {
+      const { groupId } = await ownedGroup();
+      const stranger = await bootstrapUser(context, app, 'stranger@example.com');
+      const response = await patchGroupRequest(stranger.cookie, groupId, {
+        background: { backgroundPreset: 'navy' },
+      });
+      expect(response.status).toBe(404);
+    });
+
+    it('rejects a preset together with an image', async () => {
+      const { owner, groupId } = await ownedGroup();
+      const imageId = await seedBackgroundImage(owner.id);
+      const response = await patchGroupRequest(owner.cookie, groupId, {
+        background: { backgroundPreset: 'navy', backgroundImageId: imageId },
+      });
+      expect(response.status).toBe(400);
+      expect(((await response.json()) as { error: { message: string } }).error.message).toBe(
+        'Choose a preset or an image',
+      );
+    });
+
+    it("rejects an image that is not the actor's", async () => {
+      const { owner, groupId } = await ownedGroup();
+      const stranger = await bootstrapUser(context, app, 'stranger@example.com');
+      const foreignId = await seedBackgroundImage(stranger.id);
+      const foreign = await patchGroupRequest(owner.cookie, groupId, {
+        background: { backgroundImageId: foreignId },
+      });
+      expect(foreign.status).toBe(400);
+      expect(((await foreign.json()) as { error: { message: string } }).error.message).toBe(
+        'Unknown background image',
+      );
+
+      const missing = await patchGroupRequest(owner.cookie, groupId, {
+        background: { backgroundImageId: randomUUID() },
+      });
+      expect(missing.status).toBe(400);
+      expect(((await missing.json()) as { error: { message: string } }).error.message).toBe(
+        'Unknown background image',
+      );
+    });
+
+    it('saves the owner image with a dim', async () => {
+      const { owner, groupId } = await ownedGroup();
+      const imageId = await seedBackgroundImage(owner.id);
+      const response = await patchGroupRequest(owner.cookie, groupId, {
+        background: { backgroundImageId: imageId, backgroundDim: 30 },
+      });
+      expect(response.status).toBe(200);
+      expect(((await response.json()) as GroupDetailBody).background).toEqual({
+        backgroundPreset: null,
+        backgroundImageId: imageId,
+        backgroundDim: 30,
+      });
+    });
+
+    it('clears the background when the preset is null', async () => {
+      const { owner, groupId } = await ownedGroup();
+      await patchGroupRequest(owner.cookie, groupId, {
+        background: { backgroundPreset: 'forest' },
+      });
+      const cleared = await patchGroupRequest(owner.cookie, groupId, {
+        background: { backgroundPreset: null },
+      });
+      expect(cleared.status).toBe(200);
+      expect(((await cleared.json()) as GroupDetailBody).background).toEqual({
+        backgroundPreset: null,
+        backgroundImageId: null,
+        backgroundDim: null,
+      });
+    });
   });
 
   describe('AIs in groups', () => {

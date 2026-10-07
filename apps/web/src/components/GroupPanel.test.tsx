@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { ChatSummary } from '@zilar/chat-core';
 import { AuthProvider, type AuthState } from '@/auth/AuthProvider';
 import type { GroupDetail, PublicAi } from '@/lib/api';
@@ -639,6 +639,45 @@ describe('GroupPanel', () => {
         String(call[0]).includes('/approval-rules'),
       );
       expect(ruleCalls).toHaveLength(0);
+    });
+  });
+
+  describe('group background (T-0466)', () => {
+    it('shows the control to an owner or admin', () => {
+      setup();
+
+      expect(screen.getByRole('button', { name: 'Group background' })).toBeTruthy();
+    });
+
+    it('hides the control from a plain member', () => {
+      setup({
+        groupInfos: {
+          'c-devteam': detail({
+            members: [{ userId: 'u-you', name: 'You', role: 'member' }],
+          }),
+        },
+      });
+
+      expect(screen.queryByRole('button', { name: 'Group background' })).toBeNull();
+    });
+
+    it('picks a group preset through setGroupBackground', async () => {
+      const { store } = setup();
+      const setGroupBackground = vi.fn(async () => {});
+      act(() => {
+        store.setState({ setGroupBackground });
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Group background' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Forest' }));
+
+      await waitFor(() =>
+        expect(setGroupBackground).toHaveBeenCalledWith('c-devteam', {
+          backgroundPreset: 'forest',
+          backgroundImageId: null,
+          backgroundDim: null,
+        }),
+      );
     });
   });
 });

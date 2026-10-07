@@ -63,6 +63,16 @@ const dmEntrySchema = z.object({
   isAi: z.boolean().optional(),
 });
 
+// T-0466: the group's shared background, set by owners/admins. Optional on
+// entries and details so payloads from an older server still parse.
+const groupBackgroundSchema = z.object({
+  backgroundPreset: z.string().nullable(),
+  backgroundImageId: z.string().nullable(),
+  backgroundDim: z.number().nullable(),
+});
+
+export type GroupBackground = z.infer<typeof groupBackgroundSchema>;
+
 const groupEntrySchema = z.object({
   kind: z.literal('group'),
   chatJid: z.string(),
@@ -90,6 +100,8 @@ const groupEntrySchema = z.object({
   // T-0165: the group's picture, when it has one. Optional so older
   // payloads parse (treated as none).
   avatarUrl: z.string().optional(),
+  // T-0466: the group's shared background. Optional so older payloads parse.
+  background: groupBackgroundSchema.optional(),
 });
 
 const chatEntrySchema = z.discriminatedUnion('kind', [dmEntrySchema, groupEntrySchema]);
@@ -161,6 +173,8 @@ const groupDetailSchema = z.object({
   handle: z.string().nullable().optional(),
   // T-0165: the group's picture. Optional so older payloads parse.
   avatarUrl: z.string().optional(),
+  // T-0466: the group's shared background. Optional so older payloads parse.
+  background: groupBackgroundSchema.optional(),
   members: z.array(groupMemberSchema),
   ais: z.array(groupAiSchema),
 });
@@ -589,6 +603,19 @@ export function setMembersCanCreateTopics(
   });
 }
 
+// T-0466: owners and admins set the group's shared background. A member gets
+// 403; `null` fields clear them.
+export function setGroupBackground(
+  groupId: string,
+  background: GroupBackground,
+): Promise<GroupDetail> {
+  return request(`/groups/${encodeURIComponent(groupId)}`, groupDetailSchema, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ background }),
+  });
+}
+
 // Web UI helper for T-0111: the panel shows the rules of one topic, read
 // through the existing per-group list (each row carries its `topicId`).
 // Declared as a type alias (not a const) because the approval schemas are
@@ -763,6 +790,11 @@ const chatPrefSchema = z.object({
   archived: z.boolean(),
   pinnedAt: z.string().nullable(),
   updatedAt: z.string(),
+  // T-0461: per-chat background override (T-0458). All null when the chat
+  // inherits the caller's global default.
+  backgroundPreset: z.string().nullable().optional(),
+  backgroundImageId: z.string().nullable().optional(),
+  backgroundDim: z.number().nullable().optional(),
 });
 
 export type ChatPref = z.infer<typeof chatPrefSchema>;
@@ -773,10 +805,45 @@ export interface PutChatPrefInput {
   mutedUntil?: string | null | undefined;
   archived?: boolean | undefined;
   pinned?: boolean | undefined;
+  // T-0462: per-chat background override fields. A null clears that field,
+  // an omitted field leaves it untouched; preset and image are exclusive.
+  backgroundPreset?: string | null | undefined;
+  backgroundImageId?: string | null | undefined;
+  backgroundDim?: number | null | undefined;
 }
 
 export function listChatPrefs(): Promise<ChatPref[]> {
   return request('/chat-prefs', chatPrefsSchema).then((body) => body.prefs);
+}
+
+// T-0461: the caller's global chat background default (T-0458). `GET
+// /chat-background` returns it under `defaultBackground`; all-null means the
+// caller never chose one, so chats fall back to the slate grid.
+const chatBackgroundChoiceSchema = z.object({
+  backgroundPreset: z.string().nullable(),
+  backgroundImageId: z.string().nullable(),
+  backgroundDim: z.number().nullable(),
+});
+
+export type ChatBackgroundChoice = z.infer<typeof chatBackgroundChoiceSchema>;
+
+export function getChatBackgroundDefault(): Promise<ChatBackgroundChoice> {
+  return request(
+    '/chat-background',
+    z.object({ defaultBackground: chatBackgroundChoiceSchema }),
+  ).then((body) => body.defaultBackground);
+}
+
+// T-0462: write the caller's global background default. The body carries the
+// same three fields as the per-chat patch and the reply is the saved default.
+export function putChatBackgroundDefault(
+  input: ChatBackgroundChoice,
+): Promise<ChatBackgroundChoice> {
+  return request('/chat-background', z.object({ defaultBackground: chatBackgroundChoiceSchema }), {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  }).then((body) => body.defaultBackground);
 }
 
 export async function putChatPref(
@@ -2445,4 +2512,74 @@ export async function removeAvatar(kind: 'user' | 'ai' | 'group', ownerId: strin
   await request(`/avatars/${kind}/${encodeURIComponent(ownerId)}`, z.object({ ok: z.boolean() }), {
     method: 'DELETE',
   });
+}
+
+// --- Chat background images (T-0464) ---------------------------------------
+// Personal wallpapers for the chat background dialog. The client resizes and
+// re-encodes before upload (`lib/background-image.ts`); the server validates
+// by magic bytes (WebP/PNG, 64-2048 px, at most 1 MiB, at most 20 per user).
+const backgroundImageSchema = z.object({
+  id: z.string(),
+  url: z.string(),
+  width: z.number(),
+  height: z.number(),
+});
+
+export type BackgroundImage = z.infer<typeof backgroundImageSchema>;
+
+const backgroundListItemSchema = z.object({
+  id: z.string(),
+  url: z.string(),
+  width: z.number().nullable(),
+  height: z.number().nullable(),
+  createdAt: z.string(),
+});
+
+export type BackgroundListItem = z.infer<typeof backgroundListItemSchema>;
+
+const backgroundListSchema = z.object({ backgrounds: z.array(backgroundListItemSchema) });
+
+// The POST twin of `uploadAvatarBytes`: a raw-body fetch with a mock branch,
+// `toApiError` on failure and a zod parse of the reply.
+export async function uploadBackground(blob: Blob): Promise<BackgroundImage> {
+  let response: Response;
+  if (isMockApiEnabled()) {
+    response = await mockRequest('/backgrounds', {
+      method: 'POST',
+      headers: { 'Content-Type': blob.type },
+      body: blob as unknown as string,
+    });
+  } else {
+    try {
+      response = await fetch(`${API_BASE}/backgrounds`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': blob.type },
+        body: blob,
+      });
+    } catch {
+      throw new ApiError(0, 'network_error', 'Could not reach the server');
+    }
+  }
+  const raw: unknown = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw toApiError(response.status, raw);
+  }
+  const parsed = backgroundImageSchema.safeParse(raw);
+  if (!parsed.success) {
+    throw new ApiError(
+      response.status,
+      'invalid_response',
+      'The server sent an unexpected response',
+    );
+  }
+  return parsed.data;
+}
+
+export function listBackgrounds(): Promise<BackgroundListItem[]> {
+  return request('/backgrounds', backgroundListSchema).then((body) => body.backgrounds);
+}
+
+export async function deleteBackground(id: string): Promise<void> {
+  await request(`/backgrounds/${encodeURIComponent(id)}`, z.null(), { method: 'DELETE' });
 }

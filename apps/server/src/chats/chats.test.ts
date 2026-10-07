@@ -27,6 +27,11 @@ interface ChatsBody {
     role?: string;
     avatarUrl?: string;
     isAi?: boolean;
+    background?: {
+      backgroundPreset: string | null;
+      backgroundImageId: string | null;
+      backgroundDim: number | null;
+    };
   }>;
 }
 
@@ -140,6 +145,34 @@ describe('GET /api/chats', () => {
     const response = await chatsFor(carol.cookie);
     expect(response.status).toBe(200);
     expect(((await response.json()) as ChatsBody).chats).toEqual([]);
+  });
+
+  it('carries every group background in the chat list', async () => {
+    const alice = await bootstrapUser(context, app, 'alice@example.com');
+    const bob = await contactOf(context, app, alice.id, 'bob@example.com');
+    const painted = await createGroup(alice.cookie, 'Painted', [bob.id]);
+    const plain = await createGroup(alice.cookie, 'Plain', [bob.id]);
+
+    // T-0465: set the group background directly, as the PATCH route does.
+    await context.db
+      .update(groups)
+      .set({ backgroundPreset: 'navy' })
+      .where(eq(groups.id, painted.id));
+
+    const response = await chatsFor(alice.cookie);
+    expect(response.status).toBe(200);
+    const chats = ((await response.json()) as ChatsBody).chats;
+
+    expect(chats.find((chat) => chat.groupId === painted.id)?.background).toEqual({
+      backgroundPreset: 'navy',
+      backgroundImageId: null,
+      backgroundDim: null,
+    });
+    expect(chats.find((chat) => chat.groupId === plain.id)?.background).toEqual({
+      backgroundPreset: null,
+      backgroundImageId: null,
+      backgroundDim: null,
+    });
   });
 
   it('sorts chats by title', async () => {

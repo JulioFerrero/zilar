@@ -146,6 +146,11 @@ services:
       # empty. Same rules as the sticker dir: a manual edit orphans
       # previously uploaded pictures.
       AVATAR_STORAGE_DIR: /data/avatars
+      # Where chat background wallpapers live (T-0460): it reuses the existing
+      # `avatar-data` volume mounted at /data/avatars, so no new volume is
+      # needed. Same rules as the avatar dir: a manual edit orphans previously
+      # uploaded wallpapers.
+      BACKGROUND_STORAGE_DIR: /data/avatars/backgrounds
       # Compose has no way to say "unset if empty": an empty LITELLM_BASE_URL
       # fails the `z.url()` schema, so default to an unreachable placeholder
       # URL instead. The AI module treats "no master key" as "no gateway",

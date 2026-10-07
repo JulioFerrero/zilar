@@ -453,7 +453,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0414](T-0414-web-forward-store-action.md) | Web store: forwardMessages sends copies with a forward origin, optional comment | 2026-10-06 |
 | [T-0425](T-0425-mobile-profile-buttons-kit.md) | Mobile: profile and contact card buttons on the kit Button | 2026-10-06 |
 | [T-0426](T-0426-mobile-ai-sheet-buttons-kit.md) | Mobile: AI activity Refresh, tool sheet Show all/less and Close on the kit Button | 2026-10-06 |
-| [T-0456](T-0456-chat-backgrounds-plan.md) | Audit + plan: custom chat backgrounds (dot colours, images) | todo | auto | | |
 | [T-0427](T-0427-mobile-forwarded-header.md) | Mobile: forwarded messages show 'Forwarded from X [in Y]' | 2026-10-06 |
 | [T-0428](T-0428-mobile-new-chat-menu-sheet.md) | Mobile: New chat menu on the kit ActionSheet with icons | 2026-10-06 |
 | [T-0429](T-0429-mobile-dismiss-banner.md) | Mobile: DismissBanner replaces 12 copied chat screen banners | 2026-10-06 |
@@ -485,3 +484,14 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0453](T-0453-server-files-route.md) | Upload lock 1: GET /api/files streams uploads to chat members only (Range) | 2026-10-07 |
 | [T-0454](T-0454-web-files-through-route.md) | Upload lock 2 (web): uploads load through /api/files | 2026-10-07 |
 | [T-0455](T-0455-memory-remembered-line.md) | AI memory: 'Remembered: <fact>' line after remember | 2026-10-07 |
+| [T-0456](T-0456-chat-backgrounds-plan.md) | Audit + plan: custom chat backgrounds | 2026-10-07 |
+| [T-0457](T-0457-background-preset-tokens.md) | Backgrounds A: preset tokens in ui-tokens | 2026-10-07 |
+| [T-0459](T-0459-files-route-cleanup.md) | Cleanup: shared isDmBlocked; RFC 5987 filename in /api/files | 2026-10-07 |
+| [T-0458](T-0458-server-background-prefs.md) | Backgrounds B: per-chat + default background prefs (schema) | 2026-10-07 |
+| [T-0461](T-0461-web-render-backgrounds.md) | Backgrounds D (web): paint each chat's effective background | 2026-10-07 |
+| [T-0460](T-0460-server-background-images.md) | Backgrounds C: background image upload/list/serve/delete (owner only) | 2026-10-07 |
+| [T-0462](T-0462-web-background-picker.md) | Backgrounds E (web): Chat background dialog (presets, this chat / all chats) | 2026-10-07 |
+| [T-0463](T-0463-server-group-backgrounds.md) | Backgrounds F (server): group background by owner/admin, members read image | 2026-10-07 |
+| [T-0464](T-0464-web-background-images.md) | Backgrounds E2 (web): upload, pick, dim, delete background images | 2026-10-07 |
+| [T-0465](T-0465-chats-group-background.md) | Backgrounds G1 (server): /api/chats group entries carry background | 2026-10-07 |
+| [T-0466](T-0466-web-group-background.md) | Backgrounds G2 (web): paint group background; admins set it in group panel | 2026-10-07 |

@@ -62,6 +62,7 @@ import {
   createInvite as createInviteRequest,
   createTopic as createTopicRequest,
   getChats,
+  getChatBackgroundDefault as getChatBackgroundDefaultRequest,
   getContacts,
   getGroup,
   getMe,
@@ -82,6 +83,7 @@ import {
   patchTopic as patchTopicRequest,
   pinMessage as pinMessageRequest,
   previewJoinLink as previewJoinLinkRequest,
+  putChatBackgroundDefault as putChatBackgroundDefaultRequest,
   putChatPref as putChatPrefRequest,
   removeGroupAi as removeGroupAiRequest,
   removeGroupMember as removeGroupMemberRequest,
@@ -89,18 +91,21 @@ import {
   removeTopicMember as removeTopicMemberRequest,
   revokeGroupInviteLink as revokeGroupInviteLinkRequest,
   searchDirectory as searchDirectoryRequest,
+  setGroupBackground as setGroupBackgroundRequest,
   setGroupVisibility as setGroupVisibilityRequest,
   setMembersCanCreateTopics as setMembersCanCreateTopicsRequest,
   setTopicRoles as setTopicRolesRequest,
   unpinMessage as unpinMessageRequest,
   type ChatEntry,
   type ChatPref,
+  type ChatBackgroundChoice,
   type Contact,
   type CreateGroupInviteLinkInput,
   type CreatedInviteLink,
   type CreateTopicInput,
   type DirectoryEntry,
   type DirectoryPage,
+  type GroupBackground,
   type GroupDetail,
   type GroupInviteLink,
   type GroupMember,
@@ -318,7 +323,10 @@ export interface ApiClient {
   removeTopicAi(topicId: string, aiId: string): Promise<Topic>;
   setTopicRoles(topicId: string, input: SetTopicRolesInput): Promise<Topic>;
   setMembersCanCreateTopics(groupId: string, allowed: boolean): Promise<GroupDetail>;
+  setGroupBackground(groupId: string, background: GroupBackground): Promise<GroupDetail>;
   listChatPrefs(): Promise<ChatPref[]>;
+  getChatBackgroundDefault(): Promise<ChatBackgroundChoice>;
+  putChatBackgroundDefault(input: ChatBackgroundChoice): Promise<ChatBackgroundChoice>;
   putChatPref(chatJid: string, input: PutChatPrefInput): Promise<ChatPref | null>;
   listPins(chat: string): Promise<Pin[]>;
   listChatMedia(input: ListChatMediaInput): Promise<MediaPage>;
@@ -384,7 +392,10 @@ const realApi: ApiClient = {
   removeTopicAi: removeTopicAiRequest,
   setTopicRoles: setTopicRolesRequest,
   setMembersCanCreateTopics: setMembersCanCreateTopicsRequest,
+  setGroupBackground: setGroupBackgroundRequest,
   listChatPrefs: listChatPrefsRequest,
+  getChatBackgroundDefault: getChatBackgroundDefaultRequest,
+  putChatBackgroundDefault: putChatBackgroundDefaultRequest,
   putChatPref: putChatPrefRequest,
   listPins: listPinsRequest,
   listChatMedia: listChatMediaRequest,
@@ -634,6 +645,8 @@ function summaryFor(entry: ChatEntry): ChatSummary {
     handle: entry.handle ?? null,
     // T-0165: the group's picture rides the entry, like DMs carry theirs.
     ...(entry.avatarUrl === undefined ? {} : { avatarUrl: entry.avatarUrl }),
+    // T-0466: the group's shared background rides the entry too.
+    ...(entry.background === undefined ? {} : { groupBackground: entry.background }),
     ...(chatKind === 'channel'
       ? {
           chatKind: 'channel' as const,
@@ -665,6 +678,7 @@ function summaryForTopic(
   visibility: 'private' | 'public' = 'private',
   handle: string | null = null,
   avatarUrl?: string | undefined,
+  groupBackground?: GroupBackground,
 ): ChatSummary {
   return {
     id: topic.chatJid,
@@ -682,6 +696,8 @@ function summaryForTopic(
     handle,
     // T-0165: topic rows keep their group's picture too.
     ...(avatarUrl === undefined ? {} : { avatarUrl }),
+    // T-0466: topic rows keep their group's shared background too.
+    ...(groupBackground === undefined ? {} : { groupBackground }),
     ...(channel === null
       ? {}
       : {
@@ -740,6 +756,7 @@ export function summariesFor(entry: ChatEntry): ChatSummary[] {
       entry.visibility,
       entry.handle,
       entry.avatarUrl,
+      entry.background,
     ),
   );
 }
@@ -2258,7 +2275,18 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       }
       groupMembers.set(chatId, members);
       groupInfos.set(chatId, detail);
-      set((state) => ({ groupInfos: { ...state.groupInfos, [chatId]: detail } }));
+      // T-0466: the group's shared background paints every chat of that
+      // group, not only the chat the detail was loaded for.
+      const nextBackground = detail.background;
+      set((state) => ({
+        groupInfos: { ...state.groupInfos, [chatId]: detail },
+        chats:
+          nextBackground === undefined
+            ? state.chats
+            : state.chats.map((chat) =>
+                chat.groupId === detail.id ? { ...chat, groupBackground: nextBackground } : chat,
+              ),
+      }));
     }
 
     // Maps the usable mentions of a message to names: the known group member,
@@ -3090,6 +3118,9 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         chatPrefs: byJid,
         chatsState: 'ready',
       });
+      // T-0461: the global background default is a nice-to-have; load it
+      // without holding up the chat list, and leave it null on failure.
+      void get().refreshDefaultBackground();
       startDraftStream(gen);
       startChatsPolling(gen);
       startPinsPolling(gen);
@@ -3221,13 +3252,30 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
               ? (previous[key]?.pinnedAt ?? nowDate.toISOString())
               : null
             : (previous[key]?.pinnedAt ?? null),
+        // T-0462: keep the background override on the optimistic row. A patch
+        // value wins, an omitted field keeps the previous one, else null.
+        backgroundPreset:
+          patch.backgroundPreset !== undefined
+            ? patch.backgroundPreset
+            : (previous[key]?.backgroundPreset ?? null),
+        backgroundImageId:
+          patch.backgroundImageId !== undefined
+            ? patch.backgroundImageId
+            : (previous[key]?.backgroundImageId ?? null),
+        backgroundDim:
+          patch.backgroundDim !== undefined
+            ? patch.backgroundDim
+            : (previous[key]?.backgroundDim ?? null),
         updatedAt: nowDate.toISOString(),
       };
       const next: Record<string, ChatPref> = { ...previous };
       if (
         optimistic.mutedUntil === null &&
         optimistic.archived === false &&
-        optimistic.pinnedAt === null
+        optimistic.pinnedAt === null &&
+        optimistic.backgroundPreset === null &&
+        optimistic.backgroundImageId === null &&
+        optimistic.backgroundDim === null
       ) {
         delete next[key];
       } else {
@@ -3455,6 +3503,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       chats: [],
       contacts: [],
       chatPrefs: {},
+      defaultBackground: null,
       messagesByChat: {},
       reactions: {},
       pinsByChat: {},
@@ -3690,6 +3739,19 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         }
         const domain = mine.slice(mine.indexOf('@') + 1);
         const detail = await api.setMembersCanCreateTopics(groupId, allowed);
+        applyGroupDetail(chatId, detail, domain);
+      },
+      // T-0466: owners/admins set the group's shared background; the detail
+      // refresh repaints every chat of the group at once.
+      setGroupBackground: async (chatId, background) => {
+        const chat = get().chats.find((entry) => entry.id === chatId);
+        const groupId = chat?.groupId ?? groupIds.get(chatId);
+        const mine = myJid();
+        if (groupId === undefined || mine === undefined) {
+          throw new Error('This group is not available yet.');
+        }
+        const domain = mine.slice(mine.indexOf('@') + 1);
+        const detail = await api.setGroupBackground(groupId, background);
         applyGroupDetail(chatId, detail, domain);
       },
       // T-0164: the owner flips a group public (with a handle) or back to
@@ -4520,6 +4582,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           chats: [],
           contacts: [],
           chatPrefs: {},
+          defaultBackground: null,
           messagesByChat: {},
           reactions: {},
           edits: {},
@@ -4577,7 +4640,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         stopChatsPolling();
         stopPinsPolling();
         clearDraftState();
-        set({ drafts: {}, finishedDraftMessages: {} });
+        set({ drafts: {}, finishedDraftMessages: {}, defaultBackground: null });
         pendingOpenChatId = undefined;
         for (const unsubscribe of unsubscribers) {
           unsubscribe();
@@ -4640,6 +4703,20 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         }
         applyPrefs(prefs);
       },
+      refreshDefaultBackground: async () => {
+        const gen = generation;
+        let value: ChatBackgroundChoice;
+        try {
+          value = await api.getChatBackgroundDefault();
+        } catch {
+          // A failed load keeps the slate grid; it never blocks the chat list.
+          return;
+        }
+        if (gen !== generation) {
+          return;
+        }
+        set({ defaultBackground: value });
+      },
       setPinned: async (chatId, pinned) => {
         await updatePref(chatId, { pinned });
       },
@@ -4652,6 +4729,62 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       setArchived: async (chatId, archived) => {
         await updatePref(chatId, { archived });
         saveChatList();
+      },
+      // T-0462: pick a preset for one chat (null clears the override, so the
+      // chat inherits the caller's global default again).
+      setChatBackground: async (chatId, presetId) => {
+        await updatePref(chatId, {
+          backgroundPreset: presetId,
+          backgroundImageId: null,
+          backgroundDim: null,
+        });
+      },
+      // T-0462: pick the global default. Optimistic with rollback; the picker
+      // paints at once and the saved default replaces the optimistic value.
+      setDefaultBackground: async (presetId) => {
+        const previous = get().defaultBackground;
+        const optimistic: ChatBackgroundChoice = {
+          backgroundPreset: presetId,
+          backgroundImageId: null,
+          backgroundDim: null,
+        };
+        set({ defaultBackground: optimistic });
+        let saved: ChatBackgroundChoice;
+        try {
+          saved = await api.putChatBackgroundDefault(optimistic);
+        } catch (error) {
+          set({ defaultBackground: previous });
+          throw error;
+        }
+        set({ defaultBackground: saved });
+      },
+      // T-0464: pick an uploaded image for one chat, with the dim percentage.
+      // `updatePref` patches the row optimistically and rolls back on failure.
+      setChatBackgroundImage: async (chatId, imageId, dim) => {
+        await updatePref(chatId, {
+          backgroundPreset: null,
+          backgroundImageId: imageId,
+          backgroundDim: dim,
+        });
+      },
+      // T-0464: pick an uploaded image as the global default, optimistic with
+      // rollback like the preset setter above.
+      setDefaultBackgroundImage: async (imageId, dim) => {
+        const previous = get().defaultBackground;
+        const optimistic: ChatBackgroundChoice = {
+          backgroundPreset: null,
+          backgroundImageId: imageId,
+          backgroundDim: dim,
+        };
+        set({ defaultBackground: optimistic });
+        let saved: ChatBackgroundChoice;
+        try {
+          saved = await api.putChatBackgroundDefault(optimistic);
+        } catch (error) {
+          set({ defaultBackground: previous });
+          throw error;
+        }
+        set({ defaultBackground: saved });
       },
       archivedChats: () =>
         sortByRecency(

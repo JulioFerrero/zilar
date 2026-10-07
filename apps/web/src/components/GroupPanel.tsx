@@ -1,5 +1,5 @@
 import type { ChatSummary } from '@zilar/chat-core';
-import { Brain, X } from 'lucide-react';
+import { Brain, Image, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { CreatedInviteLink, GroupAi, GroupInviteLink, GroupRole, PublicAi } from '@/lib/api';
 import {
@@ -20,6 +20,7 @@ import { AlwaysAllowedList } from './approvals/AlwaysAllowedList';
 import { PinsSection } from './PinsPanel';
 import { AiBadge } from './AiBadge';
 import { AvatarUploader } from './AvatarUploader';
+import { ChatBackgroundDialog } from './ChatBackgroundDialog';
 import { FieldError } from './ais/AiPageShell';
 import { describeAiError } from './ais/errors';
 import { Avatar } from './Avatar';
@@ -63,6 +64,8 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
   const [switchBusy, setSwitchBusy] = useState(false);
   const [switchError, setSwitchError] = useState('');
   const [memoryAi, setMemoryAi] = useState<{ id: string; name: string } | undefined>(undefined);
+  /** T-0466: the manager-only group background dialog. */
+  const [backgroundOpen, setBackgroundOpen] = useState(false);
 
   // T-0115: invite links for owners/admins. The list carries hints, never
   // tokens; the created URL is shown once with a Copy button. The load runs
@@ -560,6 +563,21 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
               </section>
             )}
 
+            {/* T-0466: the group's shared background, same visibility —
+                  owners and admins only. */}
+            {isManager && (
+              <section aria-label="Group background" className="px-2">
+                <button
+                  type="button"
+                  onClick={() => setBackgroundOpen(true)}
+                  className="flex w-full items-center gap-2 rounded-xl px-2 py-1.5 text-left text-[14px] hover:bg-list-hover"
+                >
+                  <Image className="size-4 text-muted-foreground" aria-hidden="true" />
+                  Group background
+                </button>
+              </section>
+            )}
+
             {/* T-0164: public visibility with a handle — the owner only.
                   Going private removes the group from Explore at once;
                   going public puts it in the directory with one tap join. */}
@@ -574,6 +592,15 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
             )}
 
             {errorMessage !== '' && <FieldError>{errorMessage}</FieldError>}
+
+            {isManager && info !== undefined && (
+              <ChatBackgroundDialog
+                chat={chat}
+                groupId={info.id}
+                open={backgroundOpen}
+                onClose={() => setBackgroundOpen(false)}
+              />
+            )}
           </>
         )}
       </div>

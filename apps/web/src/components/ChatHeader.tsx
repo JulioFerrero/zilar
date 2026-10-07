@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { AiBadge } from './AiBadge';
 import { Avatar } from './Avatar';
+import { ChatBackgroundDialog } from './ChatBackgroundDialog';
 import { ChatPrefMenuItems } from './ChatActionsMenu';
 import { TypingDots } from './TypingDots';
 import { IconButton } from './ui/icon-button';
@@ -62,6 +63,7 @@ export function ChatHeader({
   const [menuOpen, setMenuOpen] = useState(false);
   const [actionError, setActionError] = useState('');
   const [archiving, setArchiving] = useState(false);
+  const [backgroundOpen, setBackgroundOpen] = useState(false);
 
   // A topic's Archive entry needs a manager; the entry hides until the
   // group detail loads and the role is known (see `TopicArchiveItem`).
@@ -211,6 +213,14 @@ export function ChatHeader({
             >
               Search
             </MenuItem>
+            <MenuItem
+              onSelect={() => {
+                setMenuOpen(false);
+                setBackgroundOpen(true);
+              }}
+            >
+              Chat background
+            </MenuItem>
             <ChatPrefMenuItems
               chat={chat}
               onDone={(failed) => {
@@ -251,10 +261,23 @@ export function ChatHeader({
             >
               Media, files and links
             </MenuItem>
+            <MenuItem
+              onSelect={() => {
+                setMenuOpen(false);
+                setBackgroundOpen(true);
+              }}
+            >
+              Chat background
+            </MenuItem>
             <ChatPrefMenuItems chat={chat} onDone={(failed) => !failed && setMenuOpen(false)} />
           </Menu>
         )}
       </div>
+      <ChatBackgroundDialog
+        chat={chat}
+        open={backgroundOpen}
+        onClose={() => setBackgroundOpen(false)}
+      />
     </header>
   );
 }

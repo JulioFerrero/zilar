@@ -1,12 +1,13 @@
-import { and, asc, desc, eq, inArray, lt, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, lt } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import type { Logger } from 'pino';
 import type { Auth } from '../auth/auth';
 import { requireSession } from '../auth/session';
+import { isDmBlocked } from '../blocks/service';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
-import { mediaItems, userBlocks, xmppAccounts } from '../db/schema';
+import { mediaItems } from '../db/schema';
 import { HttpError } from '../errors';
 import { createRateLimiter } from '../rate-limit';
 import {
@@ -103,32 +104,6 @@ function senderNameFor(
     return 'You';
   }
   return allowed.peerNames.get(filter.peer) ?? 'Unknown';
-}
-
-// A DM peer JID maps to one of our users through `xmppAccounts.jid`. An AI
-// peer has no row (and therefore no block). The lookup folds case like
-// `resolveChatFilter`.
-async function isDmBlocked(db: ServerDatabase, userId: string, peerJid: string): Promise<boolean> {
-  const [peer] = await db
-    .select({ userId: xmppAccounts.userId })
-    .from(xmppAccounts)
-    .where(sql`lower(${xmppAccounts.jid}) = ${peerJid.toLowerCase()}`)
-    .limit(1);
-  if (peer === undefined) {
-    return false;
-  }
-  // Either direction hides the DM: a block is silent.
-  const [block] = await db
-    .select({ userId: userBlocks.userId })
-    .from(userBlocks)
-    .where(
-      or(
-        and(eq(userBlocks.userId, userId), eq(userBlocks.blockedUserId, peer.userId)),
-        and(eq(userBlocks.userId, peer.userId), eq(userBlocks.blockedUserId, userId)),
-      ),
-    )
-    .limit(1);
-  return block !== undefined;
 }
 
 // Absent fields are omitted from the payload, never sent as `null`.

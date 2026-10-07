@@ -20,9 +20,11 @@ import {
 } from '@zilar/chat-core';
 import type { ChatFolder } from '@zilar/chat-core';
 import type {
+  ChatBackgroundChoice,
   ChatPref,
   Contact,
   CreateTopicInput,
+  GroupBackground,
   GroupDetail,
   Me,
   MediaItem,
@@ -40,13 +42,16 @@ import {
   addTopicMember,
   ApiError,
   createTopic,
+  getChatBackgroundDefault,
   listChatPrefs,
   patchTopic,
+  putChatBackgroundDefault,
   putChatPref,
   removeTopicAi,
   removeTopicMember,
   setGroupVisibility as setGroupVisibilityApi,
   setMembersCanCreateTopics,
+  setGroupBackground as setGroupBackgroundApi,
   setTopicRoles,
 } from '@/lib/api';
 import {
@@ -240,6 +245,8 @@ export interface ChatStore {
   joinPublicGroup: (groupId: string) => Promise<string | undefined>;
   /** Flips the group's "members can create topics" switch. Rejects on failure. */
   setMembersCanCreateTopics: (chatId: string, allowed: boolean) => Promise<void>;
+  /** T-0466: sets or clears the group's shared background (owner/admin). */
+  setGroupBackground: (chatId: string, background: GroupBackground) => Promise<void>;
   /**
    * Server chat-preference rows by lowercased chat JID (T-0113). Loaded with
    * the chat list; mute/archive/pin actions patch one row optimistically and
@@ -248,12 +255,27 @@ export interface ChatStore {
   chatPrefs: Record<string, ChatPref>;
   /** Loads the caller's pref rows and merges them into the chat list. */
   refreshChatPrefs: () => Promise<void>;
+  /** T-0461: the caller's global background default; null until loaded. */
+  defaultBackground: ChatBackgroundChoice | null;
+  /** Loads the caller's global background default. Never rejects. */
+  refreshDefaultBackground: () => Promise<void>;
   /** Pins or unpins a chat/topic. Optimistic with rollback. Rejects on failure. */
   setPinned: (chatId: string, pinned: boolean) => Promise<void>;
   /** Mutes a chat/topic for a duration, or unmutes. Optimistic with rollback. */
   setMuted: (chatId: string, duration: MuteDurationId | null) => Promise<void>;
   /** Archives or unarchives a chat/topic. Optimistic with rollback. */
   setArchived: (chatId: string, archived: boolean) => Promise<void>;
+  /** T-0462: picks (or clears) a chat's own background preset. Optimistic. */
+  setChatBackground: (chatId: string, presetId: string | null) => Promise<void>;
+  /** T-0462: picks (or clears) the caller's global background default.
+   *  Optimistic with rollback. */
+  setDefaultBackground: (presetId: string | null) => Promise<void>;
+  /** T-0464: picks one of the caller's uploaded images for a chat, with the
+   *  dim percentage. Optimistic with rollback. */
+  setChatBackgroundImage: (chatId: string, imageId: string, dim: number) => Promise<void>;
+  /** T-0464: picks an uploaded image as the caller's global default, with the
+   *  dim percentage. Optimistic with rollback. */
+  setDefaultBackgroundImage: (imageId: string, dim: number) => Promise<void>;
   /** Per-user archived DMs/AI chats/groups (not topics: those hide inside
    *  their group's own Archived toggle), newest activity first. */
   /** Pins of a chat, newest first; empty until `loadPins` resolves. */
@@ -1017,6 +1039,25 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
         const updated = await setMembersCanCreateTopics(groupId, allowed);
         set((state) => ({ groupInfos: { ...state.groupInfos, [chatId]: updated } }));
       },
+      // T-0466 (mock): the group's shared background goes through the mock
+      // API's PATCH and paints every chat of that group, like the real store.
+      setGroupBackground: async (chatId, background) => {
+        const groupId = get().groupInfos[chatId]?.id;
+        if (groupId === undefined) {
+          throw new Error('This group is not available yet.');
+        }
+        const updated = await setGroupBackgroundApi(groupId, background);
+        const nextBackground = updated.background;
+        set((state) => ({
+          groupInfos: { ...state.groupInfos, [chatId]: updated },
+          chats:
+            nextBackground === undefined
+              ? state.chats
+              : state.chats.map((chat) =>
+                  chat.groupId === groupId ? { ...chat, groupBackground: nextBackground } : chat,
+                ),
+        }));
+      },
       // T-0164 (mock): visibility flips through the mock API's PATCH, and
       // joining appends the mock user like the mock's link join does.
       setGroupVisibility: async (chatId, input) => {
@@ -1047,6 +1088,15 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
           }));
         } catch {
           // Mock prefs are best-effort; the list works without them.
+        }
+      },
+      defaultBackground: null,
+      refreshDefaultBackground: async () => {
+        try {
+          const value = await getChatBackgroundDefault();
+          set({ defaultBackground: value });
+        } catch {
+          // Mock background is best-effort; chats still paint the slate grid.
         }
       },
       setPinned: async (chatId, pinned) => {
@@ -1098,6 +1148,64 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
             chats: applyChatPrefs(state.chats, Object.values(prefs), Date.now()),
           };
         });
+      },
+      // T-0462: the mock store writes the background override through the same
+      // in-memory mock API as the other prefs.
+      setChatBackground: async (chatId, presetId) => {
+        const saved = await putChatPref(chatId, {
+          backgroundPreset: presetId,
+          backgroundImageId: null,
+          backgroundDim: null,
+        });
+        set((state) => {
+          const prefs = { ...state.chatPrefs };
+          if (saved === null) {
+            delete prefs[chatId.toLowerCase()];
+          } else {
+            prefs[chatId.toLowerCase()] = saved;
+          }
+          return {
+            chatPrefs: prefs,
+            chats: applyChatPrefs(state.chats, Object.values(prefs), Date.now()),
+          };
+        });
+      },
+      setDefaultBackground: async (presetId) => {
+        const saved = await putChatBackgroundDefault({
+          backgroundPreset: presetId,
+          backgroundImageId: null,
+          backgroundDim: null,
+        });
+        set({ defaultBackground: saved });
+      },
+      // T-0464: the mock store writes an uploaded image with its dim through
+      // the same prefs API; the image bytes never travel through here.
+      setChatBackgroundImage: async (chatId, imageId, dim) => {
+        const saved = await putChatPref(chatId, {
+          backgroundPreset: null,
+          backgroundImageId: imageId,
+          backgroundDim: dim,
+        });
+        set((state) => {
+          const prefs = { ...state.chatPrefs };
+          if (saved === null) {
+            delete prefs[chatId.toLowerCase()];
+          } else {
+            prefs[chatId.toLowerCase()] = saved;
+          }
+          return {
+            chatPrefs: prefs,
+            chats: applyChatPrefs(state.chats, Object.values(prefs), Date.now()),
+          };
+        });
+      },
+      setDefaultBackgroundImage: async (imageId, dim) => {
+        const saved = await putChatBackgroundDefault({
+          backgroundPreset: null,
+          backgroundImageId: imageId,
+          backgroundDim: dim,
+        });
+        set({ defaultBackground: saved });
       },
       archivedChats: () =>
         get().chats.filter((chat) => chat.archived === true && chat.topic === undefined),

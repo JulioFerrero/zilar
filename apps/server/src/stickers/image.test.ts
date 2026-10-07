@@ -138,6 +138,21 @@ describe('probeStickerBytes', () => {
     });
   });
 
+  it('accepts a 1024 px PNG under custom limits that the defaults refuse', () => {
+    const wallpaper = pngBytes(1024, 1024);
+    expect(probeStickerBytes(wallpaper)).toEqual({ ok: false, error: 'too_large' });
+    expect(
+      probeStickerBytes(wallpaper, {
+        maxBytes: 1024 * 1024,
+        maxDimension: 2048,
+        maxDecodedBytes: 2048 * 2048 * 4,
+      }),
+    ).toEqual({
+      ok: true,
+      info: { mime: 'image/png', width: 1024, height: 1024, animated: false },
+    });
+  });
+
   it('accepts static and animated WebP with their dimensions', () => {
     expect(probeStickerBytes(vp8Bytes(100, 200))).toEqual({
       ok: true,

@@ -5,6 +5,7 @@ import { avatarIdsByOwner, avatarUrlFor } from '../avatars/service';
 import type { ServerDatabase } from '../db/client';
 import {
   ais,
+  chatBackgrounds,
   contacts,
   groupAis,
   groupMembers,
@@ -59,6 +60,14 @@ export interface GroupMemberView {
 
 export type ChannelKind = 'group' | 'channel';
 
+// T-0463: the group background an owner/admin sets, shared by the detail and
+// the chat list. Same shape and rules as the per-user background fields.
+export interface GroupBackground {
+  backgroundPreset: string | null;
+  backgroundImageId: string | null;
+  backgroundDim: number | null;
+}
+
 export interface GroupDetail {
   id: string;
   title: string;
@@ -80,6 +89,8 @@ export interface GroupDetail {
   handle: string | null;
   // T-0165: the group's picture, when it has one. Omitted when none.
   avatarUrl?: string | undefined;
+  // T-0463: the background set for the whole group by an owner or admin.
+  background: GroupBackground;
   members: GroupMemberView[];
   ais: GroupAiView[];
 }
@@ -105,6 +116,8 @@ export interface ChatGroup {
   // in the directory) and its `@handle` while public (null while private).
   visibility: GroupVisibility;
   handle: string | null;
+  // T-0463: the background set for the whole group by an owner or admin.
+  background: GroupBackground;
 }
 
 export interface CreateGroupInput {
@@ -162,9 +175,57 @@ export interface PatchGroupInput {
   groupId: string;
   actorId: string;
   membersCanCreateTopics?: boolean | undefined;
+  // T-0463: a partial background patch. `undefined` keeps a stored value,
+  // `null` clears it. Validated with the same rules as the per-user prefs.
+  background?: BackgroundFieldsInput | undefined;
+}
+
+// The three nullable background columns with the same merge semantics as the
+// per-user prefs (T-0458): `undefined` keeps, `null` clears.
+interface BackgroundFieldsInput {
+  backgroundPreset?: string | null | undefined;
+  backgroundImageId?: string | null | undefined;
+  backgroundDim?: number | null | undefined;
+}
+
+// Merges a group background patch with the stored values and rejects the
+// invalid combinations with the same messages as T-0458. An image that does
+// not exist and one owned by another user answer the same error, so an id
+// cannot be probed.
+async function resolveGroupBackground(
+  db: ServerDatabase,
+  actorId: string,
+  existing: GroupBackground,
+  input: BackgroundFieldsInput,
+): Promise<GroupBackground> {
+  const backgroundPreset =
+    input.backgroundPreset === undefined ? existing.backgroundPreset : input.backgroundPreset;
+  const backgroundImageId =
+    input.backgroundImageId === undefined ? existing.backgroundImageId : input.backgroundImageId;
+  const backgroundDim =
+    input.backgroundDim === undefined ? existing.backgroundDim : input.backgroundDim;
+
+  if (backgroundPreset !== null && backgroundImageId !== null) {
+    throw new HttpError(400, 'invalid_request', 'Choose a preset or an image');
+  }
+  if (backgroundDim !== null && backgroundImageId === null) {
+    throw new HttpError(400, 'invalid_request', 'Dim needs an image');
+  }
+  if (backgroundImageId !== null) {
+    const [image] = await db
+      .select({ id: chatBackgrounds.id })
+      .from(chatBackgrounds)
+      .where(and(eq(chatBackgrounds.id, backgroundImageId), eq(chatBackgrounds.userId, actorId)))
+      .limit(1);
+    if (image === undefined) {
+      throw new HttpError(400, 'invalid_request', 'Unknown background image');
+    }
+  }
+  return { backgroundPreset, backgroundImageId, backgroundDim };
 }
 
 // T-0108: group owner/admin toggles whether plain members may create topics.
+// T-0463: an owner/admin also sets or clears the group background.
 export async function patchGroup(db: ServerDatabase, input: PatchGroupInput): Promise<GroupDetail> {
   const group = await requireGroup(db, input.groupId);
   const actor = await getMembership(db, input.groupId, input.actorId);
@@ -175,10 +236,28 @@ export async function patchGroup(db: ServerDatabase, input: PatchGroupInput): Pr
   if (actor.role === 'member') {
     throw new HttpError(403, 'forbidden', 'Only owners and admins can change group settings');
   }
-  if (input.membersCanCreateTopics !== undefined) {
+  const background =
+    input.background === undefined
+      ? undefined
+      : await resolveGroupBackground(
+          db,
+          input.actorId,
+          {
+            backgroundPreset: group.backgroundPreset,
+            backgroundImageId: group.backgroundImageId,
+            backgroundDim: group.backgroundDim,
+          },
+          input.background,
+        );
+  if (input.membersCanCreateTopics !== undefined || background !== undefined) {
     await db
       .update(groups)
-      .set({ membersCanCreateTopics: input.membersCanCreateTopics })
+      .set({
+        ...(input.membersCanCreateTopics === undefined
+          ? {}
+          : { membersCanCreateTopics: input.membersCanCreateTopics }),
+        ...background,
+      })
       .where(eq(groups.id, input.groupId));
   }
   const detail = await getGroupDetail(db, input.groupId);
@@ -390,6 +469,11 @@ export async function getGroupDetail(
     visibility: group.visibility,
     handle,
     ...(avatarId === undefined ? {} : { avatarUrl: avatarUrlFor(avatarId) }),
+    background: {
+      backgroundPreset: group.backgroundPreset,
+      backgroundImageId: group.backgroundImageId,
+      backgroundDim: group.backgroundDim,
+    },
     members,
     ais: aiViews.map((ai) =>
       aiAvatars.get(ai.aiId) === undefined
@@ -1036,6 +1120,9 @@ export async function listGroupsForUser(db: ServerDatabase, userId: string): Pro
       kind: groups.kind,
       description: groups.description,
       visibility: groups.visibility,
+      backgroundPreset: groups.backgroundPreset,
+      backgroundImageId: groups.backgroundImageId,
+      backgroundDim: groups.backgroundDim,
     })
     .from(groups)
     .where(inArray(groups.id, groupIds));
@@ -1076,6 +1163,11 @@ export async function listGroupsForUser(db: ServerDatabase, userId: string): Pro
         description: group.description,
         visibility: group.visibility,
         handle: handlesById.get(group.id) ?? null,
+        background: {
+          backgroundPreset: group.backgroundPreset,
+          backgroundImageId: group.backgroundImageId,
+          backgroundDim: group.backgroundDim,
+        },
       },
     ];
   });

@@ -1,12 +1,13 @@
-import { and, eq, ne, or, sql } from 'drizzle-orm';
+import { and, eq, ne } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import type { Logger } from 'pino';
 import type { Auth } from '../auth/auth';
 import { requireSession } from '../auth/session';
+import { isDmBlocked } from '../blocks/service';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
-import { mediaItems, userBlocks, xmppAccounts } from '../db/schema';
+import { mediaItems } from '../db/schema';
 import { HttpError } from '../errors';
 import { createRateLimiter } from '../rate-limit';
 import { allowedArchives, resolveChatFilter, type ArchivePool } from '../search/service';
@@ -45,32 +46,6 @@ function errorName(error: unknown): string {
   return error instanceof Error ? error.constructor.name : typeof error;
 }
 
-// A DM peer JID maps to one of our users through `xmppAccounts.jid`. An AI
-// peer has no row (and therefore no block). The lookup folds case like
-// `resolveChatFilter`.
-async function isDmBlocked(db: ServerDatabase, userId: string, peerJid: string): Promise<boolean> {
-  const [peer] = await db
-    .select({ userId: xmppAccounts.userId })
-    .from(xmppAccounts)
-    .where(sql`lower(${xmppAccounts.jid}) = ${peerJid.toLowerCase()}`)
-    .limit(1);
-  if (peer === undefined) {
-    return false;
-  }
-  // Either direction hides the DM: a block is silent.
-  const [block] = await db
-    .select({ userId: userBlocks.userId })
-    .from(userBlocks)
-    .where(
-      or(
-        and(eq(userBlocks.userId, userId), eq(userBlocks.blockedUserId, peer.userId)),
-        and(eq(userBlocks.userId, peer.userId), eq(userBlocks.blockedUserId, userId)),
-      ),
-    )
-    .limit(1);
-  return block !== undefined;
-}
-
 type FilesItemRow = typeof mediaItems.$inferSelect;
 
 async function findFileRow(
@@ -93,6 +68,16 @@ async function findFileRow(
     )
     .limit(1);
   return row;
+}
+
+// RFC 5987 ext-value: percent-encode, then tighten the four characters
+// `encodeURIComponent` leaves raw but the grammar does not allow.
+function encodeRfc5987(value: string): string {
+  return encodeURIComponent(value)
+    .replaceAll("'", '%27')
+    .replaceAll('(', '%28')
+    .replaceAll(')', '%29')
+    .replaceAll('*', '%2A');
 }
 
 // Only these upstream headers reach the client; everything else (cookies,
@@ -118,7 +103,7 @@ function passthroughHeaders(upstream: Headers, row: FilesItemRow): Headers {
   headers.set('x-content-type-options', 'nosniff');
   if (row.kind === 'file') {
     const name = row.name ?? 'file';
-    headers.set('content-disposition', `attachment; filename*=UTF-8''${encodeURIComponent(name)}`);
+    headers.set('content-disposition', `attachment; filename*=UTF-8''${encodeRfc5987(name)}`);
   }
   return headers;
 }
