@@ -965,7 +965,7 @@ describe('runGroupTurn', () => {
     opts: unknown;
   }
 
-  function groupHarness(fetchImpl: FetchLike) {
+  function groupHarness(fetchImpl: FetchLike, handoffTargets?: { nick: string; jid: string }[]) {
     const logger = captureLogger();
     const sent: GroupSend[] = [];
     const typing: Array<{ to: string; kind: ChatKind; state: 'composing' | 'paused' }> = [];
@@ -981,6 +981,7 @@ describe('runGroupTurn', () => {
         virtualKey: VIRTUAL_KEY,
         model: MODEL,
         fetchImpl,
+        ...(handoffTargets === undefined ? {} : { handoffTargets }),
         sendMessage: (to, kind, text, opts) => {
           sent.push({ to, kind, text, opts });
           return Promise.resolve({ id: 'sent-1' });
@@ -1030,6 +1031,72 @@ describe('runGroupTurn', () => {
     const body = bodyOf(calls[0]!);
     expect(body.tools).toBeUndefined();
     expect(body.tool_choice).toBeUndefined();
+  });
+
+  it('adds a handoff mention for a target nick in the text, with offsets', async () => {
+    const { fetchImpl } = groupFetch('hi @Helper please take this');
+    const harness = groupHarness(fetchImpl, [{ nick: 'Helper', jid: 'ai-helper@zilar.localhost' }]);
+    const outcome = await harness.run();
+
+    // '@Ana ' is 5 chars; '@Helper' starts at index 8 in the text below.
+    expect(outcome).toEqual({ kind: 'replied', text: '@Ana hi @Helper please take this' });
+    expect(harness.sent[0]?.opts).toEqual({
+      replyTo: { id: 'm-9' },
+      mentions: [
+        { jid: SENDER_JID, begin: 0, end: 4 },
+        { jid: 'ai-helper@zilar.localhost', begin: 8, end: 15 },
+      ],
+    });
+  });
+
+  it('matches a target nick case-insensitively but only as a whole word', async () => {
+    const target = { nick: 'Helper', jid: 'ai-helper@zilar.localhost' };
+    const inside = groupHarness(groupFetch('ask @helper now').fetchImpl, [target]);
+    await inside.run();
+    expect(inside.sent[0]?.opts).toMatchObject({
+      mentions: [
+        { jid: SENDER_JID, begin: 0, end: 4 },
+        { jid: 'ai-helper@zilar.localhost', begin: 9, end: 16 },
+      ],
+    });
+
+    const longer = groupHarness(groupFetch('ask @HelperX now').fetchImpl, [target]);
+    await longer.run();
+    expect(longer.sent[0]?.opts).toEqual({
+      replyTo: { id: 'm-9' },
+      mentions: [{ jid: SENDER_JID, begin: 0, end: 4 }],
+    });
+  });
+
+  it('mentions at most two handoff targets', async () => {
+    const { fetchImpl } = groupFetch('@One @Two @Three');
+    const harness = groupHarness(fetchImpl, [
+      { nick: 'One', jid: 'ai-one@zilar.localhost' },
+      { nick: 'Two', jid: 'ai-two@zilar.localhost' },
+      { nick: 'Three', jid: 'ai-three@zilar.localhost' },
+    ]);
+    await harness.run();
+    const mentions = (harness.sent[0]!.opts as { mentions: Array<{ jid: string }> }).mentions;
+    expect(mentions.map((mention) => mention.jid)).toEqual([
+      SENDER_JID,
+      'ai-one@zilar.localhost',
+      'ai-two@zilar.localhost',
+    ]);
+  });
+
+  it('leaves the reply byte-identical when there are no handoff targets', async () => {
+    const { fetchImpl } = groupFetch('on it');
+    const harness = groupHarness(fetchImpl);
+    await harness.run();
+    expect(harness.sent[0]).toEqual({
+      to: ROOM_JID,
+      kind: 'groupchat',
+      text: '@Ana on it',
+      opts: {
+        replyTo: { id: 'm-9' },
+        mentions: [{ jid: SENDER_JID, begin: 0, end: 4 }],
+      },
+    });
   });
 
   it('posts the honest failure text in the room on model failure', async () => {

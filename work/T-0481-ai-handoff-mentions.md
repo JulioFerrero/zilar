@@ -1,7 +1,7 @@
 ---
 id: T-0481
 title: "Listener S4b (server): AI-to-AI handoff by @mention inside the round budget (max 2 hops); only to AIs that accept tasks"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0481-ai-handoff-mentions
 model: auto
@@ -104,4 +104,60 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+
+- **`gateway.ts`**
+  - Added `export const ROUND_MAX_HOPS = 2;` and extended `RoomRound` with `hops: number` and `handoffIds: Set<string>` (the new-human-message site opens both at 0 / empty).
+  - `RoomPendingMessage` gained `handoff?: true`.
+  - Added `sessionForAiJid(bare)`, which matches a live session by `aiJid` (the `sessions` map is keyed by AI id, so a scan is needed).
+  - `handleRoomIncoming`: the "No AI-to-AI turns in M2" early return is replaced by the handoff path. An `ai-*` sender that mentions this session is dropped unless it is another live session joined to the room; the room round is read and, once per message id, `hops` is checked and incremented (`>= ROUND_MAX_HOPS` drops it with `logger.info({ roomJid, fromAiId, toAiId }, 'AI handoff budget spent')`). The item is queued with `handoff: true` and `pumpRoom` runs. Human messages keep the old path.
+  - `runGroupSessionTurn` eligible filter: an AI sender passes only when `item.handoff === true` and the sender is still a live session in this room; human-member rules are unchanged.
+  - Before `runGroupTurn` (and `buildGroupMessages`), `handoffTargets` is built from the other live sessions in the room, filtered by one `select id, accepts_delegation from ais where id in (...)` read. Non-empty targets are passed as `handoffNames` to the prompt and `handoffTargets` to the turn.
+- **`reply.ts`**
+  - `GroupTurnDeps` gained optional `handoffTargets?: { nick; jid }[]`.
+  - `wire(text)` now appends a mention for each target whose `@<nick>` appears in the reply text, case-insensitively and as a whole word (end / whitespace / punctuation after it), with offsets in the final wire text. At most two targets. With no targets the output is byte-identical to before.
+- **`context.ts`**
+  - `GroupContextInput` / `buildGroupSystemMessage` gained optional `handoffNames?: string[]`. When non-empty it appends exactly one line: "Other AIs here you can hand a question to: @A, @B. Write their @name in your reply only when they should take over." With no names the prompt is unchanged.
+- **Tests**
+  - `reply.test.ts`: handoff mention offsets; case-insensitive whole-word match plus `@HelperX` not matching; at most two targets; no-targets output unchanged.
+  - `context.test.ts`: the handoff line appears only with names.
+  - `gateway.test.ts`: new `describe('AI handoff (T-0481)')` with 6 tests — target that accepts is woken and its handoff turn offers no `request_action`; a non-accepting target is neither offered nor mentioned and is not woken; A→B→A→B stops after 2 hops; the same AI message seen by 3 sessions counts one hop; a non-room AI JID wakes nobody; one human message stays at 4 AI turns across 2 hops. `listenerSetup` gained optional `names`, `fetch` and `actions` so the tests can route completions and name AIs.
+
+### Files changed
+
+`apps/server/src/agents/gateway.ts`, `apps/server/src/agents/gateway.test.ts`, `apps/server/src/agents/reply.ts`, `apps/server/src/agents/reply.test.ts`, `apps/server/src/agents/context.ts`, `apps/server/src/agents/context.test.ts`, `work/T-0481-ai-handoff-mentions.md`. All inside the Allowed files.
+
+### Commands run (real results)
+
+- `pnpm install` — exit 0.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot agents/reply agents/context` — 2 files, 76 passed.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot agents/gateway` — 1 file, 151 passed (before the new tests); then with the new tests the combined run is below.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot agents/gateway agents/reply agents/context` — 3 files, 233 passed.
+- `pnpm gate` — after fixing format/lint it ended:
+  - `PASS  install (frozen)  (1.2s)`
+  - `PASS  format  (17.5s)`
+  - `PASS  lint  (1.0s)`
+  - `PASS  typecheck  (12.5s)`
+  - `PASS  tests @zilar/server  (46.6s)`
+  - `scope: every changed file is inside the Allowed files`
+  - `GATE PASS`
+  - (First two gate runs failed on `format` and then on one `no-unsafe-optional-chaining` lint error in `reply.test.ts`; both fixed, no files outside scope were ever reported.)
+
+### Notes / deviations
+
+- `reply.ts` cannot enforce "never the AI itself" itself: `GroupTurnDeps` carries no AI JID. The gateway excludes the current session when building `handoffTargets`, so a target is never the replying AI. `reply.ts` enforces the 2-target cap and one mention per target.
+- If no round exists for a room (for example right after a gateway restart) an AI handoff is dropped. The spec says to read the round but not what to do when it is missing; dropping matches the plan's "a fresh start can only wake fewer AIs".
+- The handoff reply goes to the sending AI via the existing `@<senderName>` logic, no extra code.
+- No new routes/DB writes were added; the only new log line carries ids only (`roomJid`, `fromAiId`, `toAiId`).
+
+### Open questions
+
+None.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-07).
+- **Handoff:** an AI reply that writes @<nick> of a same-room AI accepting tasks gets a real mention, at most 2, never itself. The prompt lists those names only when there are some.
+- **Waking:** an AI sender wakes a target only when it is a live session in the same room. Hops are counted once per message id, with ROUND_MAX_HOPS=2, and the 4-turn cap still applies.
+- **Safety:** handoff turns get no request_action. Output is byte-identical without targets.
+Nit accepted: the word boundary does not include "/" and a few other symbols, so a rare handoff is missed, never a false wake.

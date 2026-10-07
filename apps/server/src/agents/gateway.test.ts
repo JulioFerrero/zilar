@@ -5531,9 +5531,18 @@ describe('agent gateway', () => {
         everyN?: number;
         listener?: boolean;
         complete?: (aiId: string) => (call: CompleteChatInput) => Promise<string>;
+        /** T-0481: display names, one per seeded AI (first is `seeded`). */
+        names?: string[];
+        /** T-0481: override the AI completion fetch. */
+        fetch?: () => { fetchImpl: FetchLike; calls: Call[] };
+        /** T-0481: action gateway, so a handoff turn's tool list can be checked. */
+        actions?: ActionGateway;
       } = {},
     ): Promise<ListenerSetup> {
-      const seeded = await seedAi(context);
+      const seeded = await seedAi(
+        context,
+        input.names?.[0] === undefined ? {} : { name: input.names[0] },
+      );
       const member = await seedMember('Ana');
       const { groupId, roomJid } = await seedGroup({
         ownerId: seeded.ownerId,
@@ -5544,12 +5553,13 @@ describe('agent gateway', () => {
       await addAiToGroup(groupId, seeded.ownerId, seeded.aiId);
       const extras: SeededAi[] = [];
       for (let index = 1; index < (input.aiCount ?? 1); index += 1) {
-        const extra = await seedAi(context);
+        const name = input.names?.[index];
+        const extra = await seedAi(context, name === undefined ? {} : { name });
         await addAiToGroup(groupId, extra.ownerId, extra.aiId);
         extras.push(extra);
       }
       const cores: FakeCore[] = [];
-      const { fetchImpl, calls } = completionFetch();
+      const { fetchImpl, calls } = (input.fetch ?? completionFetch)();
       const litellm = new FakeLitellm();
       const listenerCalls: CompleteChatInput[] = [];
       const complete =
@@ -5568,12 +5578,10 @@ describe('agent gateway', () => {
               quietMs: input.quietMs ?? 5,
               everyN: input.everyN ?? 12,
             };
-      const { gateway: started, logger } = harness(
-        cores,
-        fetchImpl,
-        litellm,
-        listenerConfig === undefined ? {} : { listener: listenerConfig },
-      );
+      const { gateway: started, logger } = harness(cores, fetchImpl, litellm, {
+        ...(listenerConfig === undefined ? {} : { listener: listenerConfig }),
+        ...(input.actions === undefined ? {} : { actions: input.actions }),
+      });
       await started.start();
       const core = await coreFor(cores, seeded.aiJid);
       return {
@@ -5832,6 +5840,309 @@ describe('agent gateway', () => {
       await waitFor(() => calls.length === 8);
       await tick(50);
       expect(calls).toHaveLength(8);
+    });
+
+    // T-0481: AI-to-AI handoff by @mention, inside the round's hop budget.
+    describe('AI handoff (T-0481)', () => {
+      function routedFetch(
+        pick: (body: { messages: Array<{ role: string; content: string }> }) => string,
+      ): { fetchImpl: FetchLike; calls: Call[] } {
+        const calls: Call[] = [];
+        const fetchImpl: FetchLike = (url, init) => {
+          calls.push({ url, init });
+          const body = JSON.parse(String(init?.body)) as {
+            messages: Array<{ role: string; content: string }>;
+          };
+          return Promise.resolve(completionResponse(pick(body)));
+        };
+        return { fetchImpl, calls };
+      }
+
+      function systemOf(call: Call): string {
+        return bodyOf(call).messages[0]?.content ?? '';
+      }
+
+      function mentionsOf(opts: unknown): Array<{ jid: string; begin: number; end: number }> {
+        return (
+          (opts as { mentions?: Array<{ jid: string; begin: number; end: number }> }).mentions ?? []
+        );
+      }
+
+      function toolsOf(call: Call): Array<{ function: { name: string } }> {
+        const body = JSON.parse(String(call.init.body)) as {
+          tools?: Array<{ function: { name: string } }>;
+        };
+        return body.tools ?? [];
+      }
+
+      async function setAccepts(ai: SeededAi, accepts: boolean): Promise<void> {
+        await context.db.update(ais).set({ acceptsDelegation: accepts }).where(eq(ais.id, ai.aiId));
+      }
+
+      async function receiveOn(
+        cores: FakeCore[],
+        aiJid: string,
+        message: ChatMessage,
+      ): Promise<void> {
+        const core = await coreFor(cores, aiJid);
+        core.receive(message);
+      }
+
+      function actionGateway(): ActionGateway {
+        return {
+          request: async () => ({ status: 'pending_approval', approvalId: 'appr-1' }),
+          onApprovalDecided: () => Promise.resolve(),
+          recoverStuck: () => Promise.resolve(),
+          listActions: () => [{ name: 'demo.echo', description: 'Repeats text.' }],
+        };
+      }
+
+      it('wakes a target that accepts tasks, and the handoff turn offers no request_action', async () => {
+        const { seeded, extras, member, roomJid, cores, calls } = await listenerSetup({
+          aiCount: 2,
+          names: ['Alpha', 'Helper'],
+          listener: false,
+          actions: actionGateway(),
+          fetch: () =>
+            routedFetch((body) =>
+              (body.messages[0]?.content ?? '').includes('You are Alpha')
+                ? '@Helper please take this'
+                : 'on it',
+            ),
+        });
+        const helper = extras[0]!;
+        await setAccepts(helper, true);
+        const alphaCore = await coreFor(cores, seeded.aiJid);
+        const helperCore = await coreFor(cores, helper.aiJid);
+
+        alphaCore.receive(
+          roomMessage(roomJid, member.jid, 'm-1', 'hey Alpha', {
+            nick: 'Ana',
+            mentions: [seeded.aiJid],
+          }),
+        );
+        await waitFor(() => alphaCore.sent.length === 1);
+
+        // The prompt offers Helper, and the reply carries the handoff mention.
+        expect(systemOf(calls[0]!)).toContain('hand a question to: @Helper');
+        const alphaSent = alphaCore.sent.at(-1)!;
+        expect(mentionsOf(alphaSent.opts)).toEqual([
+          { jid: member.jid, begin: 0, end: 4 },
+          { jid: helper.aiJid, begin: 5, end: 12 },
+        ]);
+
+        // Deliver that reply: Helper takes a normal turn, with no action tool.
+        helperCore.receive(
+          roomMessage(roomJid, seeded.aiJid, 'a-1', alphaSent.text, {
+            nick: 'Alpha',
+            mentions: mentionsOf(alphaSent.opts).map((mention) => mention.jid),
+          }),
+        );
+        await waitFor(() => calls.length === 2);
+        await waitFor(() => helperCore.sent.length === 1);
+        const handoffTools = toolsOf(calls[1]!);
+        expect(handoffTools.some((tool) => tool.function.name === 'request_action')).toBe(false);
+      });
+
+      it('never offers or wakes a target that does not accept tasks', async () => {
+        const { seeded, member, roomJid, cores, calls } = await listenerSetup({
+          aiCount: 2,
+          names: ['Alpha', 'Helper'],
+          listener: false,
+          fetch: () => routedFetch(() => '@Helper please take this'),
+        });
+        // Helper acceptsDelegation stays off.
+        const alphaCore = await coreFor(cores, seeded.aiJid);
+        alphaCore.receive(
+          roomMessage(roomJid, member.jid, 'm-1', 'hey Alpha', {
+            nick: 'Ana',
+            mentions: [seeded.aiJid],
+          }),
+        );
+        await waitFor(() => alphaCore.sent.length === 1);
+
+        expect(systemOf(calls[0]!)).not.toContain('hand a question to');
+        expect(mentionsOf(alphaCore.sent.at(-1)!.opts)).toEqual([
+          { jid: member.jid, begin: 0, end: 4 },
+        ]);
+        await tick(40);
+        expect(calls).toHaveLength(1);
+      });
+
+      it('stops an A to B to A to B chain after two hops', async () => {
+        const { seeded, extras, member, roomJid, cores, calls } = await listenerSetup({
+          aiCount: 2,
+          names: ['Alpha', 'Helper'],
+          listener: false,
+          fetch: () => completionFetch('on it'),
+        });
+        const helper = extras[0]!;
+        await setAccepts(seeded, true);
+        await setAccepts(helper, true);
+
+        await receiveOn(
+          cores,
+          seeded.aiJid,
+          roomMessage(roomJid, member.jid, 'm-1', 'hey Alpha', {
+            nick: 'Ana',
+            mentions: [seeded.aiJid],
+          }),
+        );
+        await waitFor(() => calls.length === 1);
+
+        await receiveOn(
+          cores,
+          helper.aiJid,
+          roomMessage(roomJid, seeded.aiJid, 'a-1', 'take this', {
+            nick: 'Alpha',
+            mentions: [helper.aiJid],
+          }),
+        );
+        await waitFor(() => calls.length === 2);
+
+        await receiveOn(
+          cores,
+          seeded.aiJid,
+          roomMessage(roomJid, helper.aiJid, 'b-1', 'over to you', {
+            nick: 'Helper',
+            mentions: [seeded.aiJid],
+          }),
+        );
+        await waitFor(() => calls.length === 3);
+
+        // The second hop is spent: this third AI message wakes nobody.
+        await receiveOn(
+          cores,
+          helper.aiJid,
+          roomMessage(roomJid, seeded.aiJid, 'a-2', 'again', {
+            nick: 'Alpha',
+            mentions: [helper.aiJid],
+          }),
+        );
+        await tick(50);
+        expect(calls).toHaveLength(3);
+      });
+
+      it('counts one hop when several sessions see the same AI message', async () => {
+        const { seeded, extras, member, roomJid, cores, calls } = await listenerSetup({
+          aiCount: 4,
+          names: ['Alpha', 'Bee', 'Cee', 'Dee'],
+          listener: false,
+          fetch: () => completionFetch('on it'),
+        });
+        const [bee, cee, dee] = extras as [SeededAi, SeededAi, SeededAi];
+        for (const ai of [seeded, bee, cee, dee]) {
+          await setAccepts(ai, true);
+        }
+        // A human message that wakes nobody opens the round.
+        await receiveOn(
+          cores,
+          seeded.aiJid,
+          roomMessage(roomJid, member.jid, 'm-1', 'hello all', { nick: 'Ana' }),
+        );
+        await tick(20);
+
+        const first = roomMessage(roomJid, seeded.aiJid, 'a-1', 'three of you', {
+          nick: 'Alpha',
+          mentions: [bee.aiJid, cee.aiJid, dee.aiJid],
+        });
+        await receiveOn(cores, bee.aiJid, first);
+        await receiveOn(cores, cee.aiJid, first);
+        await receiveOn(cores, dee.aiJid, first);
+        await waitFor(() => calls.length === 3);
+
+        // One hop was spent for the whole message, so one handoff still fits.
+        await receiveOn(
+          cores,
+          dee.aiJid,
+          roomMessage(roomJid, bee.aiJid, 'a-2', 'one more', {
+            nick: 'Bee',
+            mentions: [dee.aiJid],
+          }),
+        );
+        await waitFor(() => calls.length === 4);
+        await tick(40);
+        expect(calls).toHaveLength(4);
+      });
+
+      it('ignores an AI message from a JID that is not a live room session', async () => {
+        const { seeded, extras, member, roomJid, cores, calls } = await listenerSetup({
+          aiCount: 2,
+          names: ['Alpha', 'Helper'],
+          listener: false,
+          fetch: () => completionFetch('on it'),
+        });
+        const helper = extras[0]!;
+        await setAccepts(helper, true);
+        await receiveOn(
+          cores,
+          seeded.aiJid,
+          roomMessage(roomJid, member.jid, 'm-1', 'hello all', { nick: 'Ana' }),
+        );
+        await tick(20);
+
+        await receiveOn(
+          cores,
+          helper.aiJid,
+          roomMessage(roomJid, `ai-stranger@${TEST_XMPP_DOMAIN}`, 'a-1', 'take this', {
+            nick: 'Stranger',
+            mentions: [helper.aiJid],
+          }),
+        );
+        await tick(50);
+        expect(calls).toHaveLength(0);
+      });
+
+      it('keeps one human message at four AI turns across two hops', async () => {
+        const { seeded, extras, member, roomJid, cores, calls } = await listenerSetup({
+          aiCount: 2,
+          names: ['Alpha', 'Helper'],
+          listener: false,
+          fetch: () => completionFetch('on it'),
+        });
+        const helper = extras[0]!;
+        await setAccepts(seeded, true);
+        await setAccepts(helper, true);
+
+        // The human wakes both AIs: two turns.
+        const human = roomMessage(roomJid, member.jid, 'm-1', 'hey both', {
+          nick: 'Ana',
+          mentions: [seeded.aiJid, helper.aiJid],
+        });
+        await receiveOn(cores, seeded.aiJid, human);
+        await receiveOn(cores, helper.aiJid, human);
+        await waitFor(() => calls.length === 2);
+
+        // Hop one and hop two bring the total to four; a third is refused.
+        await receiveOn(
+          cores,
+          helper.aiJid,
+          roomMessage(roomJid, seeded.aiJid, 'a-1', 'take this', {
+            nick: 'Alpha',
+            mentions: [helper.aiJid],
+          }),
+        );
+        await waitFor(() => calls.length === 3);
+        await receiveOn(
+          cores,
+          seeded.aiJid,
+          roomMessage(roomJid, helper.aiJid, 'b-1', 'over to you', {
+            nick: 'Helper',
+            mentions: [seeded.aiJid],
+          }),
+        );
+        await waitFor(() => calls.length === 4);
+        await receiveOn(
+          cores,
+          helper.aiJid,
+          roomMessage(roomJid, seeded.aiJid, 'a-2', 'again', {
+            nick: 'Alpha',
+            mentions: [helper.aiJid],
+          }),
+        );
+        await tick(50);
+        expect(calls).toHaveLength(4);
+      });
     });
 
     it('posts the wake line only once the woken turn passes the gates', async () => {

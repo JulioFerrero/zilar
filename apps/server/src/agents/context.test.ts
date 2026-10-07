@@ -316,6 +316,29 @@ describe('buildGroupSystemMessage', () => {
     });
     expect(system).not.toContain('update_persona');
   });
+
+  it('offers the other AIs as handoff targets only when names are given', () => {
+    const without = buildGroupSystemMessage({
+      aiName: 'Dev-1',
+      persona: 'Senior TypeScript developer.',
+      senderName: 'Ana',
+      today: '2026-09-28',
+      handoffNames: [],
+    });
+    expect(without).not.toContain('hand a question to');
+
+    const withNames = buildGroupSystemMessage({
+      aiName: 'Dev-1',
+      persona: 'Senior TypeScript developer.',
+      senderName: 'Ana',
+      today: '2026-09-28',
+      handoffNames: ['Helper', 'Tester'],
+    });
+    expect(withNames).toContain(
+      'Other AIs here you can hand a question to: @Helper, @Tester. ' +
+        'Write their @name in your reply only when they should take over.',
+    );
+  });
 });
 
 describe('displayNameOf', () => {

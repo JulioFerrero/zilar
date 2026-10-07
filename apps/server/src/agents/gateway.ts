@@ -186,6 +186,10 @@ export const GROUP_RATE_WINDOW_MS = 10 * 60_000;
 // in the room. A new human message opens a fresh round.
 export const ROUND_MAX_AI_TURNS = 4;
 
+// T-0481: at most this many AI-to-AI handoffs per human room message. A
+// handoff turn counts against ROUND_MAX_AI_TURNS too.
+export const ROUND_MAX_HOPS = 2;
+
 // A live room message carries ~now as its timestamp, while history replayed
 // on join carries its original (older) stamp. Anything older than the join
 // minus this skew is treated as replayed history and never wakes the AI.
@@ -211,6 +215,8 @@ interface RoomPendingMessage {
   timestamp: Date;
   /** T-0479: set by a listener wake, never by a mention. */
   wake?: true;
+  /** T-0481: set on an AI-to-AI handoff queued by another AI's @mention. */
+  handoff?: true;
 }
 
 // T-0479: the per-room round budget, shared by every AI session in the room
@@ -218,6 +224,11 @@ interface RoomPendingMessage {
 interface RoomRound {
   humanMessageId: string;
   aiTurns: number;
+  /** T-0481: AI-to-AI hops already spent in this round. */
+  hops: number;
+  /** T-0481: AI message ids already counted, so several sessions seeing the
+   * same stanza spend one hop. */
+  handoffIds: Set<string>;
 }
 
 interface RoomSubscription {
@@ -1741,6 +1752,17 @@ export function createAgentGateway(
     roomRounds.delete(roomJid);
   }
 
+  // T-0481: the live session for an `ai-*` sender's bare JID, if this gateway
+  // runs it. `sessions` is keyed by the gateway's own AI id, so match the JID.
+  function sessionForAiJid(bare: string): AiSession | undefined {
+    for (const candidate of sessions.values()) {
+      if (normBareJid(candidate.aiJid) === bare) {
+        return candidate;
+      }
+    }
+    return undefined;
+  }
+
   // M2 rule 1 (§9.4): a person @mentions AIs, and only those AIs reply. Every
   // check that needs no database runs here; the sender's membership and the
   // rate limit are checked fresh at turn time.
@@ -1773,7 +1795,12 @@ export function createAgentGateway(
     if (!isAiSender(normBareJid(message.fromJid))) {
       const round = roomRounds.get(roomJid);
       if (round === undefined || round.humanMessageId !== message.id) {
-        roomRounds.set(roomJid, { humanMessageId: message.id, aiTurns: 0 });
+        roomRounds.set(roomJid, {
+          humanMessageId: message.id,
+          aiTurns: 0,
+          hops: 0,
+          handoffIds: new Set(),
+        });
       }
     }
     const aiBare = normBareJid(session.aiJid);
@@ -1789,10 +1816,32 @@ export function createAgentGateway(
       // No mention, nobody replies (M2 rule 3).
       return;
     }
-    // No AI-to-AI turns in M2: any `ai-*` real JID never wakes the AI. An
-    // occupant whose real JID is unknown is decided at turn time by nick.
-    if (isAiSender(normBareJid(message.fromJid))) {
-      return;
+    const fromBare = normBareJid(message.fromJid);
+    let handoff = false;
+    if (isAiSender(fromBare)) {
+      // T-0481: an AI mentioning another AI hands the question over, inside
+      // the round's hop budget. The sender must be another live session
+      // joined to this room — never a JID or nick taken from the message.
+      const senderSession = sessionForAiJid(fromBare);
+      if (senderSession === undefined || !senderSession.rooms.has(roomJid)) {
+        return;
+      }
+      const round = roomRounds.get(roomJid);
+      if (round === undefined) {
+        return;
+      }
+      if (!round.handoffIds.has(message.id)) {
+        if (round.hops >= ROUND_MAX_HOPS) {
+          logger.info(
+            { roomJid, fromAiId: senderSession.aiId, toAiId: session.aiId },
+            'AI handoff budget spent',
+          );
+          return;
+        }
+        round.handoffIds.add(message.id);
+        round.hops += 1;
+      }
+      handoff = true;
     }
     const queued = session.roomPending.get(roomJid) ?? [];
     queued.push({
@@ -1802,6 +1851,7 @@ export function createAgentGateway(
       fromResolved: message.fromResolved,
       ...(message.fromNick === undefined ? {} : { fromNick: message.fromNick }),
       timestamp: message.timestamp,
+      ...(handoff ? { handoff: true as const } : {}),
     });
     session.roomPending.set(roomJid, queued);
     void pumpRoom(session, roomJid).catch((error: unknown) => {
@@ -1863,6 +1913,17 @@ export function createAgentGateway(
     for (const item of batch) {
       const fromBare = normBareJid(item.fromJid);
       if (isAiSender(fromBare)) {
+        // T-0481: an AI sender passes only for a queued handoff, and only
+        // while it is still a live session in this room. Everything else is
+        // the old M2 ban.
+        if (item.handoff !== true) {
+          continue;
+        }
+        const senderSession = sessionForAiJid(fromBare);
+        if (senderSession === undefined || !senderSession.rooms.has(roomJid)) {
+          continue;
+        }
+        eligible.push(item);
         continue;
       }
       if (!item.fromResolved) {
@@ -1872,8 +1933,7 @@ export function createAgentGateway(
         // check below anyway.
         continue;
       }
-      // Only a current human member's mention triggers a reply. Members are
-      // people: every `ai-*` sender already returned above.
+      // Only a current human member's mention triggers a reply.
       if (!gate.memberJids.has(fromBare)) {
         continue;
       }
@@ -2030,6 +2090,36 @@ export function createAgentGateway(
           timestamp: item.timestamp,
           outgoing: false,
         }));
+      // T-0481: the other AIs in this room that may receive a handoff. One
+      // database read for the turn; a lookup failure just means no targets,
+      // and the turn runs unchanged.
+      const otherSessions = [...sessions.values()].filter(
+        (candidate) => candidate.aiId !== session.aiId && candidate.rooms.has(roomJid),
+      );
+      let handoffTargets: { nick: string; jid: string }[] = [];
+      if (otherSessions.length > 0) {
+        try {
+          const rows = await deps.db
+            .select({ id: ais.id, accepts: ais.acceptsDelegation })
+            .from(ais)
+            .where(
+              inArray(
+                ais.id,
+                otherSessions.map((candidate) => candidate.aiId),
+              ),
+            );
+          const accepting = new Set(rows.filter((row) => row.accepts).map((row) => row.id));
+          handoffTargets = otherSessions.flatMap((candidate) => {
+            const subscription = candidate.rooms.get(roomJid);
+            if (subscription === undefined || !accepting.has(candidate.aiId)) {
+              return [];
+            }
+            return [{ nick: subscription.nick, jid: candidate.aiJid }];
+          });
+        } catch {
+          // Best effort: no handoff targets, the turn runs as before.
+        }
+      }
       const messages: ChatCompletionMessage[] = buildGroupMessages({
         aiName: ai.name,
         persona: ai.persona,
@@ -2038,6 +2128,9 @@ export function createAgentGateway(
         aiJid: ai.jid,
         ...(groupName === undefined ? {} : { groupName }),
         ...(topicName === undefined ? {} : { topicName }),
+        ...(handoffTargets.length === 0
+          ? {}
+          : { handoffNames: handoffTargets.map((target) => target.nick) }),
         history: [...history, ...fresh],
         trigger: { id: trigger.id, body: trigger.body },
         memory,
@@ -2110,6 +2203,7 @@ export function createAgentGateway(
           allowActions,
         }),
         ...(deps.toolMaxRounds === undefined ? {} : { maxRounds: deps.toolMaxRounds }),
+        ...(handoffTargets.length === 0 ? {} : { handoffTargets }),
         checkRoundGate: () => checkDmRoundGate(session),
         reportProgress: groupProgress.reportProgress,
         clearProgress: groupProgress.clearProgress,

@@ -1189,6 +1189,31 @@ export interface GroupTurnDeps {
   turnLogger?: {
     info: (fields: Record<string, unknown>, message: string) => void;
   };
+  /** T-0481: other AIs in this room whose `acceptsDelegation` is on, by room
+   * nick and bare JID. A `@<nick>` in the reply text (whole word) becomes a
+   * mention, up to two targets, so the gateway hands the question over. */
+  handoffTargets?: { nick: string; jid: string }[];
+}
+
+// T-0481: a handoff mention is only offered when the `@<nick>` in the reply
+// text is a whole word: the character after the nick must end the text or be
+// whitespace / punctuation. Case-insensitive, and offsets are in the final
+// wire text (the `@<sender> ` prefix shifted by its length).
+const HANDOFF_BOUNDARY = /[\s.,!?;:'"()[\]{}<>|\u2014\u2013-]/;
+
+function findHandoffIndex(text: string, nick: string): number | null {
+  const needle = `@${nick}`;
+  const lowerNeedle = needle.toLowerCase();
+  for (let index = 0; index + needle.length <= text.length; index += 1) {
+    if (text.slice(index, index + needle.length).toLowerCase() !== lowerNeedle) {
+      continue;
+    }
+    const after = text[index + needle.length];
+    if (after === undefined || HANDOFF_BOUNDARY.test(after)) {
+      return index;
+    }
+  }
+  return null;
 }
 
 // Runs one group turn: typing on, one model call (plain or tool loop),
@@ -1206,13 +1231,37 @@ export async function runGroupTurn(deps: GroupTurnDeps): Promise<DmTurnOutcome> 
   // The mention needs a non-empty name for its offsets: fall back to the
   // sender's JID when no display name is known.
   const name = deps.senderName.trim() === '' ? deps.senderJid : deps.senderName.trim();
-  const wire = (text: string): { text: string; opts: SendMessageOptions } => ({
-    text: `@${name} ${text}`,
-    opts: {
-      replyTo: { id: deps.triggerId },
-      mentions: [{ jid: deps.senderJid.toLowerCase(), begin: 0, end: name.length + 1 }],
-    },
-  });
+  const wire = (text: string): { text: string; opts: SendMessageOptions } => {
+    const prefix = `@${name} `;
+    const mentions: NonNullable<SendMessageOptions['mentions']> = [
+      { jid: deps.senderJid.toLowerCase(), begin: 0, end: name.length + 1 },
+    ];
+    for (const target of deps.handoffTargets ?? []) {
+      if (mentions.length >= 3) {
+        break;
+      }
+      const nick = target.nick.trim();
+      if (nick === '') {
+        continue;
+      }
+      const index = findHandoffIndex(text, nick);
+      if (index === null) {
+        continue;
+      }
+      mentions.push({
+        jid: target.jid.toLowerCase(),
+        begin: prefix.length + index,
+        end: prefix.length + index + nick.length + 1,
+      });
+    }
+    return {
+      text: prefix + text,
+      opts: {
+        replyTo: { id: deps.triggerId },
+        mentions,
+      },
+    };
+  };
   const completionInput = {
     baseUrl: deps.baseUrl,
     virtualKey: deps.virtualKey,
