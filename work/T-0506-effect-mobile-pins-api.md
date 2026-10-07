@@ -1,7 +1,7 @@
 ---
 id: T-0506
 title: "Effect lane E pilot: mobile pins-api.ts on Effect Schema + an Effect request pipeline, same API and errors; Expo export proves the Hermes bundle"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0506-effect-mobile-pins-api
 model: auto
@@ -83,4 +83,127 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Status: review.
+
+### What I did
+
+- Rewrote `apps/mobile/src/lib/pins-api.ts` on Effect Schema (lenient `kind`, list, error
+  envelope) with an Effect request pipeline; the public `PinsApi` interface, `createPinsApi`
+  signature, `PinsApiError` instances/statuses/codes/messages, the `parsePinKind`/`parsePin`
+  exports and the `pin-snapshot` re-exports are unchanged. `parsePin` is now a thin wrapper
+  over `PinSchema`.
+- Added `apps/mobile/src/lib/pins-api.effect.test.ts` (4 tests: unknown kind to `text`, extra
+  field dropped, one bad row fails `listPins` with `invalid_response`, network throw gives
+  `network_error`).
+- Ran the Expo iOS export to prove the Hermes bundle.
+
+### Files changed
+
+- `apps/mobile/src/lib/pins-api.ts`
+- `apps/mobile/src/lib/pins-api.effect.test.ts` (new)
+- `work/T-0506-effect-mobile-pins-api.md`
+
+### Commands and real results
+
+- `pnpm install`: done in 27.5s; only a pre-existing `@types/react-dom` peer warning.
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot src/lib/pins-api`:
+  2 test files, **11 passed** (the 7 existing + 4 new), existing `pins-api.test.ts` untouched.
+- `pnpm --filter @zilar/mobile exec expo export --platform ios --output-dir tmp-export`:
+  succeeded, 1 iOS bundle:
+  `apps/mobile/tmp-export/_expo/static/js/ios/entry-74327be7a88da11ac98e6c75ca180c0a.hbc`,
+  **12191811 bytes** from `ls -l` (~12 MB). The `tmp-export/` folder was deleted afterwards
+  and never committed. (Plan §3.2 measured 12,180,112 bytes with Effect+Schema.)
+- `pnpm gate` from the repo root:
+  ```
+  gate: 3 changed file(s) against main
+  PASS  install (frozen)  (1.7s)
+  PASS  format  (21.1s)
+  PASS  lint  (0.6s)
+  PASS  typecheck  (0.7s)
+  PASS  tests @zilar/mobile  (10.1s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+  The first gate run failed `format` on the new test file; I fixed it with
+  `node_modules/.bin/prettier --write apps/mobile/src/lib/pins-api.effect.test.ts` and the
+  run above is the final green run over the committed tree.
+
+### Deviations / notes
+
+- `ErrorBodySchema` replaces the old `isRecord`/`isString` error-body checks (both helpers were
+  removed as dead code). Difference: if `body.error` exists but `code` is not a string, the
+  whole envelope fails to decode, so **both** code and message fall back
+  (`request_failed` / `Request failed (<status>)`); the old code fell back per field. No test
+  or caller depends on this, and this is the schema shape the spec asked for.
+- `Effect.tryPromise` hands its `AbortSignal` to `fetch`, per `docs/EFFECT_GUIDE.md`; the
+  `fetchImpl` seam is unchanged.
+- Only `effect` core is imported (no `effect/http-api`, workflow or eventlog modules), so
+  nothing on the Hermes-unsafe `crypto.subtle` path is touched.
+
+### Recipe (for the next 24 `*-api.ts` files)
+
+**Lenient enum field** (unknown value must not fail the row):
+
+```ts
+const KindSchema = Schema.Literals(['text', 'image', 'file', 'voice', 'card']);
+const LenientKindSchema = Schema.Unknown.pipe(
+  Schema.decodeTo(KindSchema, {
+    decode: SchemaGetter.transform((value) => parseKind(value)),
+    encode: SchemaGetter.transform((kind) => kind),
+  }),
+);
+```
+
+**Structs**: use `struct()` from `@zilar/protocol` (it wraps every field in `Schema.mutableKey`,
+so the decoded type keeps the mutable fields the old interfaces had). Unknown extra keys are
+dropped by the default non-strict decode — that replaces the old "build a fresh object" guard.
+For repeated fields use `Schema.mutable(Schema.Array(RowSchema))`. Optional error envelope:
+
+```ts
+const ErrorBodySchema = struct({
+  error: struct({
+    code: Schema.optional(Schema.String),
+    message: Schema.optional(Schema.String),
+  }),
+});
+```
+
+**Decode without throwing** and keep the old `T | null` contract:
+
+```ts
+const decoded = Schema.decodeUnknownExit(RowSchema)(value);
+return Exit.isSuccess(decoded) ? decoded.value : null;
+```
+
+**Request pipeline shape**: one `Data.TaggedError` per case (`NetworkError`,
+`RequestError{status,code,message}`, `Unauthorized`, `InvalidResponse`); a module-level
+`Effect.fnUntraced(function* (...) : EffectType.fn.Return<unknown, NetworkError | RequestError>)`
+that does `Effect.tryPromise({ try: (signal) => fetchImpl(...), catch: () => new NetworkError() })`,
+reads the body with `Effect.promise(() => response.json().catch(() => null))`, and fails
+`RequestError` on `!response.ok`. A per-client `withToken` effect gets the token with
+`Effect.promise(() => getToken())`, fails `Unauthorized` when undefined, runs the request, and
+fails `InvalidResponse` when the decode returns `null`. Cut to a Promise once per method:
+
+```ts
+Effect.runPromise(
+  withTokenEffect(path, init, parse).pipe(
+    Effect.catchTags({
+      Unauthorized: () => Effect.fail(new ApiError(401, 'unauthorized', 'No session')),
+      NetworkError: () => Effect.fail(new ApiError(0, 'network_error', 'Could not reach the server')),
+      RequestError: (e) => Effect.fail(new ApiError(e.status, e.code, e.message)),
+      InvalidResponse: () =>
+        Effect.fail(new ApiError(200, 'invalid_response', 'The server sent an unexpected response')),
+    }),
+  ),
+);
+```
+
+**Gotchas**: keep the explicit `EffectType.fn.Return<A, E>` annotation (without it the error
+channel widens and `catchTags` stops typechecking) — import `type Effect as EffectType` like
+`apps/server/src/gifs/giphy.ts`. Do not import `effect/http-api`, workflow or eventlog on
+mobile (Hermes has no `crypto.subtle`). `pnpm gate` checks formatting, so run prettier on new
+files before it.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-08). The mobile pins-api.ts is on Effect Schema with an Effect request pipeline, cut to a Promise at the edge. The public API and errors are unchanged, and the lenient kind is decoded with Schema.decodeTo. The Expo iOS export succeeded (12.2 MB hbc). phone:smoke passed on the galena AVD (chat list with live data). Pre-review clean; the nit (the error envelope decodes whole-or-nothing) is accepted. This is the recipe for the other mobile *-api.ts files.

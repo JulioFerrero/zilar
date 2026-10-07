@@ -456,7 +456,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0518](T-0518-effect-http-blocks-directory-tests.md) | Effect C (HTTP) follow-up: blocks/directory tests on the Effect path | planned | auto | T-0514 | |
 | [T-0504](T-0504-effect-server-config.md) | Effect F5: server config on Effect Schema + Config | running | auto | | |
 | [T-0505](T-0505-effect-web-api-1.md) | Effect D1: web lib/api.ts on Effect Schema, part 1 | running | auto | | |
-| [T-0506](T-0506-effect-mobile-pins-api.md) | Effect E pilot: mobile pins-api on Effect Schema | running | auto | | |
 | [T-0427](T-0427-mobile-forwarded-header.md) | Mobile: forwarded messages show 'Forwarded from X [in Y]' | 2026-10-06 |
 | [T-0428](T-0428-mobile-new-chat-menu-sheet.md) | Mobile: New chat menu on the kit ActionSheet with icons | 2026-10-06 |
 | [T-0429](T-0429-mobile-dismiss-banner.md) | Mobile: DismissBanner replaces 12 copied chat screen banners | 2026-10-06 |
@@ -547,3 +546,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0517](T-0517-agents-g3-extract-memory.md) | Agents G3: extract memory context and compaction | 2026-10-07 |
 | [T-0519](T-0519-effect-sql-contact-requests.md) | Effect C1: contact-requests on effect/sql | 2026-10-07 |
 | [T-0508](T-0508-effect-web-drafts-tools-cache.md) | Effect D4: web drafts, tools, chatListCache on Effect Schema | 2026-10-07 |
+| [T-0506](T-0506-effect-mobile-pins-api.md) | Effect E pilot: mobile pins-api on Effect Schema | 2026-10-07 |
