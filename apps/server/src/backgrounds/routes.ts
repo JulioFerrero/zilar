@@ -110,8 +110,9 @@ export function createBackgroundsRoutes(deps: BackgroundsRoutesDependencies): Ho
     return c.json({ backgrounds: await listBackgrounds(deps.db, user.id) });
   });
 
-  // Streams the stored file to its owner only. A signed-in stranger and an
-  // unknown id answer the same 404.
+  // Streams the stored file to its owner, or to a member of a group that uses
+  // it as its background (T-0463). A signed-in stranger and an unknown id
+  // answer the same 404.
   routes.get('/backgrounds/:id', async (c) => {
     const { user } = await requireSession(deps.auth, c.req.raw.headers);
     const file = await readBackgroundFile(

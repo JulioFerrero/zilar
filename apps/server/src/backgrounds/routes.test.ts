@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { and, eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '../app';
-import { chatBackgroundDefaults, chatBackgrounds, chatPrefs } from '../db/schema';
+import { chatBackgroundDefaults, chatBackgrounds, chatPrefs, groups } from '../db/schema';
 import {
   bootstrapUser,
   contactOf,
@@ -351,6 +351,40 @@ describe('backgrounds routes', () => {
       .from(chatBackgroundDefaults)
       .where(eq(chatBackgroundDefaults.userId, alice.id));
     expect(rows).toHaveLength(0);
+  });
+
+  it('serves a group background to its members and clears the group on delete', async () => {
+    const created = await uploadOne(alice);
+    const group = await app.request(`${TEST_BASE_URL}/api/groups`, {
+      method: 'POST',
+      headers: { cookie: alice.cookie, 'content-type': 'application/json' },
+      body: JSON.stringify({ title: 'Trip', memberIds: [bob.id] }),
+    });
+    expect(group.status).toBe(201);
+    const { id: groupId } = (await group.json()) as { id: string };
+
+    const patched = await app.request(`${TEST_BASE_URL}/api/groups/${groupId}`, {
+      method: 'PATCH',
+      headers: { cookie: alice.cookie, 'content-type': 'application/json' },
+      body: JSON.stringify({ background: { backgroundImageId: created.id, backgroundDim: 30 } }),
+    });
+    expect(patched.status).toBe(200);
+
+    // Bob is a member of the group, so he can load its background image.
+    const memberGet = await getAs(bob, created.id);
+    expect(memberGet.status).toBe(200);
+    expect(new Uint8Array(await memberGet.arrayBuffer())).toEqual(pngRect(1200, 800));
+
+    // A signed-in stranger still gets the same 404 as an unknown id.
+    const carol = await bootstrapUser(context, app, 'carol@example.com');
+    expect((await getAs(carol, created.id)).status).toBe(404);
+
+    // The owner deletes the image: the group's background fields are cleared.
+    expect((await deleteAs(alice, created.id)).status).toBe(204);
+    const [row] = await context.db.select().from(groups).where(eq(groups.id, groupId));
+    expect(row?.backgroundImageId).toBeNull();
+    expect(row?.backgroundDim).toBeNull();
+    expect((await getAs(bob, created.id)).status).toBe(404);
   });
 
   it('requires authentication on every route', async () => {

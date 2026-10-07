@@ -3,7 +3,13 @@ import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { and, count, desc, eq, isNull, sql } from 'drizzle-orm';
 import type { ServerDatabase } from '../db/client';
-import { chatBackgroundDefaults, chatBackgrounds, chatPrefs } from '../db/schema';
+import {
+  chatBackgroundDefaults,
+  chatBackgrounds,
+  chatPrefs,
+  groupMembers,
+  groups,
+} from '../db/schema';
 import { HttpError } from '../errors';
 import { probeStickerBytes, type StickerImageInfo } from '../stickers/image';
 import { resolveStorageDir } from '../stickers/service';
@@ -205,8 +211,10 @@ export interface BackgroundFile {
 }
 
 // An unknown id and another user's image answer the same `null`, so ids cannot
-// be probed. The path is built from the stored key only (`<uuid>.<ext>` written
-// at upload), so a crafted id never touches the filesystem.
+// be probed. T-0463: the image is also readable by a member of any group that
+// uses it as its background. The path is built from the stored key only
+// (`<uuid>.<ext>` written at upload), so a crafted id never touches the
+// filesystem.
 export async function readBackgroundFile(
   deps: BackgroundsServiceDeps,
   backgroundId: string,
@@ -215,10 +223,21 @@ export async function readBackgroundFile(
   const [row] = await deps.db
     .select()
     .from(chatBackgrounds)
-    .where(and(eq(chatBackgrounds.id, backgroundId), eq(chatBackgrounds.userId, userId)))
+    .where(eq(chatBackgrounds.id, backgroundId))
     .limit(1);
   if (!row) {
     return null;
+  }
+  if (row.userId !== userId) {
+    const [membership] = await deps.db
+      .select({ groupId: groupMembers.groupId })
+      .from(groups)
+      .innerJoin(groupMembers, eq(groupMembers.groupId, groups.id))
+      .where(and(eq(groups.backgroundImageId, backgroundId), eq(groupMembers.userId, userId)))
+      .limit(1);
+    if (!membership) {
+      return null;
+    }
   }
   const storageDir = resolveStorageDir(deps.storageDir);
   const filePath = join(storageDir, row.storageKey);
@@ -234,9 +253,9 @@ export async function readBackgroundFile(
 }
 
 // Deletes one image owned by the caller and clears every use of it, in one
-// transaction: pref and default rows that referenced it drop the image id AND
-// the dim (a dim without an image is invalid), rows that land back at all
-// defaults are deleted, then the image row goes. An unknown or foreign id
+// transaction: pref, default and group rows that referenced it drop the image
+// id AND the dim (a dim without an image is invalid), rows that land back at
+// all defaults are deleted, then the image row goes. An unknown or foreign id
 // makes no change and returns false. The file is removed best-effort after
 // the commit.
 export async function deleteBackground(
@@ -268,6 +287,13 @@ export async function deleteBackground(
           eq(chatBackgroundDefaults.backgroundImageId, backgroundId),
         ),
       );
+    // T-0463: a group that used this image loses it too, so members stop being
+    // served a deleted image. Not scoped to the caller: the image may only be
+    // referenced by a group they administer, and the FK would null it anyway.
+    await tx
+      .update(groups)
+      .set({ backgroundImageId: null, backgroundDim: null })
+      .where(eq(groups.backgroundImageId, backgroundId));
     await tx
       .delete(chatPrefs)
       .where(

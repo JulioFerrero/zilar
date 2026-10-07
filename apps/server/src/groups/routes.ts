@@ -7,6 +7,7 @@ import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
 import { createRateLimiter } from '../rate-limit';
+import { CHAT_BACKGROUND_PRESET_IDS } from '../chat-prefs/service';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import {
   addGroupAi,
@@ -78,6 +79,17 @@ const patchGroupSchema = z
     // unique-violation mapping share one transaction in `setGroupVisibility`.
     visibility: z.enum(['private', 'public']).optional(),
     handle: z.string().min(1).max(64).optional(),
+    // T-0463: the group background an owner/admin sets. A preset or an image,
+    // never both; a dim needs an image (checked in the service with the same
+    // messages as the per-user background prefs).
+    background: z
+      .object({
+        backgroundPreset: z.enum(CHAT_BACKGROUND_PRESET_IDS).nullable().optional(),
+        backgroundImageId: z.string().min(1).max(64).nullable().optional(),
+        backgroundDim: z.number().int().min(0).max(80).nullable().optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -338,6 +350,7 @@ export function createGroupsRoutes({
       groupId: c.req.param('id'),
       actorId: user.id,
       membersCanCreateTopics: parsed.data.membersCanCreateTopics,
+      ...(parsed.data.background === undefined ? {} : { background: parsed.data.background }),
     });
     return c.json(group);
   });

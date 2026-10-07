@@ -241,9 +241,32 @@ export const groups = pgTable(
     visibility: text('visibility', { enum: ['private', 'public'] })
       .notNull()
       .default('private'),
+    // T-0463: the group background an owner or admin sets for everyone. A
+    // preset or an image, never both; a dim needs an image. The image belongs
+    // to the actor who set it. `chatBackgrounds` is declared later, so the FK
+    // uses the lazy `references` callback (safe across declaration order).
+    backgroundPreset: text('background_preset'),
+    backgroundImageId: text('background_image_id').references(() => chatBackgrounds.id, {
+      onDelete: 'set null',
+    }),
+    backgroundDim: integer('background_dim'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [check('groups_visibility_check', sql`${table.visibility} IN ('private', 'public')`)],
+  (table) => [
+    check('groups_visibility_check', sql`${table.visibility} IN ('private', 'public')`),
+    check(
+      'groups_background_preset_check',
+      sql`${table.backgroundPreset} IS NULL OR ${table.backgroundPreset} IN ('slate', 'gold', 'blue', 'navy', 'forest', 'wine', 'amber')`,
+    ),
+    check(
+      'groups_background_dim_check',
+      sql`${table.backgroundDim} IS NULL OR ${table.backgroundDim} BETWEEN 0 AND 80`,
+    ),
+    check(
+      'groups_background_exclusive_check',
+      sql`NOT (${table.backgroundPreset} IS NOT NULL AND ${table.backgroundImageId} IS NOT NULL)`,
+    ),
+  ],
 );
 
 // Shareable group invite links (T-0115, decision D28). One row per link: only
