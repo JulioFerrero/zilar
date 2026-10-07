@@ -17,17 +17,22 @@ import {
 } from './watch.js';
 import type { ChangedFile, SessionSpeed, WatchEntry, WatchView } from './watch.js';
 import {
+  cardHeight,
+  columnWidths,
   COMPACT_WIDTH,
   contextColorName,
   iconsEnabled,
   iconText,
+  layoutColumns,
   liveStepIcon,
   modelBadge,
   phaseColorName,
   SPINNER_FRAMES,
   trackerStep,
   truncate,
+  visibleSlice,
   type ModelBadge,
+  type VisibleSlice,
 } from './watch-format.js';
 
 interface Seg {
@@ -40,6 +45,23 @@ interface Seg {
 interface Border {
   color?: string;
   dimColor?: boolean;
+}
+
+// The header is a three-line bordered box; the footer takes one line.
+const HEADER_ROWS = 3;
+
+// Groups entries into rows of `columnCount` cards (1 or 2).
+function rowsOf(entries: WatchEntry[], columnCount: number): WatchEntry[][] {
+  const rows: WatchEntry[][] = [];
+  for (let index = 0; index < entries.length; index += columnCount) {
+    rows.push(entries.slice(index, index + columnCount));
+  }
+  return rows;
+}
+
+// A row is as tall as its tallest card, so a short card never hides the next.
+function rowHeights(rows: WatchEntry[][]): number[] {
+  return rows.map((cards) => Math.max(0, ...cards.map((card) => cardHeight(card))));
 }
 
 function segLen(segs: Seg[]): number {
@@ -456,17 +478,33 @@ export function Footer({
   updatedAgoSecs,
   icons,
   width,
+  hiddenAbove = 0,
+  hiddenBelow = 0,
 }: {
   view: WatchView;
   updatedAgoSecs: number;
   icons: boolean;
   width: number;
+  hiddenAbove?: number;
+  hiddenBelow?: number;
 }): ReactNode {
   if (view.refreshFailed) {
     return <Text color="red">refresh failed, retrying</Text>;
   }
   const secs = Math.max(0, Math.round(updatedAgoSecs));
-  const cut = truncate(`q quit · ${iconText('branch', icons)}main · updated ${secs} s ago`, width);
+  const hints: string[] = [];
+  if (hiddenAbove > 0) {
+    hints.push(`↑ ${hiddenAbove} more`);
+  }
+  if (hiddenBelow > 0) {
+    hints.push(`↓ ${hiddenBelow} more`);
+  }
+  const help =
+    hints.length > 0
+      ? `q quit · ↑↓ scroll · ${iconText('branch', icons)}main · updated ${secs} s ago`
+      : `q quit · ${iconText('branch', icons)}main · updated ${secs} s ago`;
+  const text = hints.length > 0 ? `${hints.join(' · ')} · ${help}` : help;
+  const cut = truncate(text, width);
   return (
     <Text dimColor>
       <Text inverse>{cut.slice(0, 1)}</Text>
@@ -479,6 +517,8 @@ export interface WatchAppProps {
   view: WatchView;
   updatedAgoSecs: number;
   columns?: number;
+  rows?: number;
+  scroll?: number;
   clock?: string;
   icons?: boolean;
 }
@@ -487,6 +527,8 @@ export function WatchApp({
   view,
   updatedAgoSecs,
   columns,
+  rows,
+  scroll,
   clock,
   icons,
 }: WatchAppProps): ReactNode {
@@ -496,16 +538,72 @@ export function WatchApp({
     20,
     Math.floor(columns ?? (typeof ttyColumns === 'number' ? ttyColumns : 80)),
   );
+  const ttyRows = (stdout as { rows?: unknown }).rows;
+  const knownRows =
+    typeof rows === 'number'
+      ? Math.floor(rows)
+      : typeof ttyRows === 'number'
+        ? Math.floor(ttyRows)
+        : undefined;
   const showIcons = icons ?? iconsEnabled(false);
   const compact = width < COMPACT_WIDTH;
+
+  // Without a known height (a non-TTY) render everything in one column, as
+  // before scrolling and the two-column layout existed.
+  if (knownRows === undefined) {
+    return (
+      <Box flexDirection="column" width={width}>
+        <Header view={view} clock={clock ?? view.clock} width={width} icons={showIcons} />
+        {view.entries.map((entry) => (
+          <TaskCard
+            key={entry.id}
+            entry={entry}
+            width={width}
+            compact={compact}
+            icons={showIcons}
+          />
+        ))}
+        {view.entries.length === 0 ? <EmptyCard width={width} /> : null}
+        <Footer view={view} updatedAgoSecs={updatedAgoSecs} icons={showIcons} width={width} />
+      </Box>
+    );
+  }
+
+  const columnCount = layoutColumns(width);
+  const widths = columnWidths(width, columnCount);
+  const cardRows = rowsOf(view.entries, columnCount);
+  const availableRows = Math.max(0, knownRows - HEADER_ROWS - 1);
+  const slice: VisibleSlice = visibleSlice(rowHeights(cardRows), scroll ?? 0, availableRows);
+  const visibleRows = cardRows.slice(slice.start, slice.end);
   return (
     <Box flexDirection="column" width={width}>
       <Header view={view} clock={clock ?? view.clock} width={width} icons={showIcons} />
-      {view.entries.map((entry) => (
-        <TaskCard key={entry.id} entry={entry} width={width} compact={compact} icons={showIcons} />
+      {visibleRows.map((cards) => (
+        <Box key={cards[0]?.id ?? 'row'} flexDirection="row" width={width} gap={1}>
+          {cards.map((card, index) => {
+            const cardWidth = widths[index] ?? width;
+            return (
+              <Box key={card.id} flexDirection="column" width={cardWidth}>
+                <TaskCard
+                  entry={card}
+                  width={cardWidth}
+                  compact={cardWidth < COMPACT_WIDTH}
+                  icons={showIcons}
+                />
+              </Box>
+            );
+          })}
+        </Box>
       ))}
       {view.entries.length === 0 ? <EmptyCard width={width} /> : null}
-      <Footer view={view} updatedAgoSecs={updatedAgoSecs} icons={showIcons} width={width} />
+      <Footer
+        view={view}
+        updatedAgoSecs={updatedAgoSecs}
+        icons={showIcons}
+        width={width}
+        hiddenAbove={slice.hiddenAbove}
+        hiddenBelow={slice.hiddenBelow}
+      />
     </Box>
   );
 }
@@ -517,14 +615,60 @@ export function WatchApp({
 export function WatchLive({ initial, icons }: { initial: WatchView; icons?: boolean }): ReactNode {
   const { exit } = useApp();
   const { isRawModeSupported } = useStdin();
+  const { stdout: term } = useStdout();
   const [view, setView] = useState<WatchView>(initial);
   const [updatedAt, setUpdatedAt] = useState<number>(() => Date.now());
   const [now, setNow] = useState<number>(() => Date.now());
+  const [scroll, setScroll] = useState<number>(0);
+
+  const ttyColumns = (term as { columns?: unknown }).columns;
+  const width = Math.max(20, Math.floor(typeof ttyColumns === 'number' ? ttyColumns : 80));
+  const ttyRows = (term as { rows?: unknown }).rows;
+  const knownRows = typeof ttyRows === 'number' ? Math.floor(ttyRows) : undefined;
+  const columnCount = knownRows === undefined ? 1 : layoutColumns(width);
+  const cardRows = rowsOf(view.entries, columnCount);
+  const totalRows = cardRows.length;
+  const maxOffset = Math.max(0, totalRows - 1);
+  const availableRows =
+    knownRows === undefined ? Number.POSITIVE_INFINITY : Math.max(0, knownRows - HEADER_ROWS - 1);
+  // Entries, columns or rows can change under us: clamp while rendering so the
+  // offset never points past the end.
+  const scrollOffset = Math.min(scroll, maxOffset);
+  const slice = visibleSlice(rowHeights(cardRows), scrollOffset, availableRows);
+  const pageRows = Math.max(1, slice.end - slice.start);
+
+  const move = (delta: number): void => {
+    setScroll((current) => Math.min(Math.max(0, current + delta), maxOffset));
+  };
 
   useInput(
     (input, key) => {
       if (input === 'q' || input === 'Q' || (key.ctrl && (input === 'c' || input === 'C'))) {
         exit();
+        return;
+      }
+      if (key.upArrow || input === 'k') {
+        move(-1);
+        return;
+      }
+      if (key.downArrow || input === 'j') {
+        move(1);
+        return;
+      }
+      if (key.pageUp || input === 'u') {
+        move(-pageRows);
+        return;
+      }
+      if (key.pageDown || input === 'd') {
+        move(pageRows);
+        return;
+      }
+      if (key.home || input === 'g') {
+        setScroll(0);
+        return;
+      }
+      if (key.end || input === 'G') {
+        setScroll(maxOffset);
       }
     },
     { isActive: isRawModeSupported },
@@ -585,6 +729,7 @@ export function WatchLive({ initial, icons }: { initial: WatchView; icons?: bool
       updatedAgoSecs={(now - updatedAt) / 1000}
       clock={formatClock(new Date(now))}
       icons={icons ?? iconsEnabled(false)}
+      scroll={scrollOffset}
     />
   );
 }

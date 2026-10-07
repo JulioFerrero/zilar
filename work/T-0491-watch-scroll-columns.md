@@ -1,7 +1,7 @@
 ---
 id: T-0491
 title: "lead watch: keyboard scroll when the cards don't fit the window height, and two columns of cards when the window is wide"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0491-watch-scroll-columns
 model: auto
@@ -86,4 +86,50 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+
+**`watch-format.ts` (pure helpers):**
+- Added `TWO_COLUMN_MIN_WIDTH = 100`, `cardHeight(entry)`, `layoutColumns(width)`, `columnWidths(width, count)` and `visibleSlice(rowHeights, offset, availableRows)` returning `{ start, end, hiddenAbove, hiddenBelow }`.
+- `cardHeight` mirrors `TaskCard`'s render exactly: 5 base lines + 1 when `(running && step !== null) || needsLead` + 1 when `files.length > 0`.
+- `visibleSlice` clamps an out-of-range `offset` to the last row and always includes at least one row.
+- Added `columnWidths` as a small extra pure helper (the spec described the two widths but did not name a function); it gives `floor((width - 1) / 2)` and the rest with a 1-column gap, also used by the tests.
+
+**`watch-app.tsx`:**
+- `WatchApp` now accepts `rows` and `scroll` and reads `stdout.rows`. Available rows = `rows - HEADER_ROWS(3) - 1` (footer). Entries are grouped into rows of `layoutColumns(width)` and rendered through `visibleSlice`; the two-column row is a `<Box flexDirection="row" gap={1}>` with each card in a column of its own width, so `compact` is decided per column width.
+- `Footer` takes optional `hiddenAbove`/`hiddenBelow`, prefixes `↑ N more`/`↓ N more` and, when anything is hidden, shows `q quit · ↑↓ scroll` before the branch/updated text; the whole string is truncated to the width.
+- `WatchLive` holds `scroll`, handles `↑`/`k`, `↓`/`j`, PageUp/`u`, PageDown/`d`, Home/`g`, End/`G`, keeps `q`/Ctrl-C quitting, and passes the clamped offset to `WatchApp`. It re-reads `stdout.rows`/`columns` each render (Ink re-renders on resize). The clamp is derived during render (`scrollOffset = min(scroll, maxOffset)`) rather than in a `setState` effect, because the repo lint rule `react(set-state-in-effect)` rejects the effect form; the visible offset still never points past the end.
+- With no known `rows` (non-TTY) `WatchApp` renders the old single-column, un-sliced layout, exactly as before.
+
+**Tests:** unit tests for the four helpers; app tests for one-column slicing + `↓ 5 more`, end-of-list + `↑ 8 more` + last card, two-column widths 100/140 still fitting every line, two ids on one line at 120 columns, and a `WatchLive` test that presses `j` through a fake stdin and sees the view move (`↑ 1 more`, T-0005 visible, T-0001 gone).
+
+### Files changed
+`packages/devtools/src/lead/watch-format.ts`, `packages/devtools/src/lead/watch-format.test.ts`, `packages/devtools/src/lead/watch-app.tsx`, `packages/devtools/src/lead/watch-app.test.tsx`, `work/T-0491-watch-scroll-columns.md`.
+
+### Commands and real results
+- `pnpm --filter @zilar/devtools test --maxWorkers=2 --reporter=dot lead/watch` → `Test Files 3 passed (3)`, `Tests 121 passed (121)`.
+- `pnpm --filter @zilar/devtools test --maxWorkers=2 --reporter=dot lead/watch-format` → 26 passed.
+- `pnpm --filter @zilar/devtools test --maxWorkers=2 --reporter=dot lead/watch-app` → 53 passed.
+- `pnpm gate` (repo root):
+  ```
+  gate: 5 changed file(s) against main
+  PASS  install (frozen)  (4.9s)
+  PASS  format  (83.4s)
+  PASS  lint  (1.7s)
+  PASS  typecheck  (18.5s)
+  PASS  tests @zilar/devtools  (36.8s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+  (An earlier `pnpm gate` run failed lint with `react(set-state-in-effect)`; fixed by deriving the clamp during render, re-ran and it passed.)
+
+### Deviations / notes
+- Added `columnWidths` as an extra exported helper; not named in the spec, but it keeps the width math pure and unit-testable.
+- Two-column layout only activates when `rows` is known (a real TTY, or the `rows` test prop). The spec's "with no `rows` known render everything as today" makes the legacy path single-column, so the existing tests are unchanged. In the real app `stdout.rows` is always set.
+- Scrolling clamps by deriving the offset during render instead of `setState` in an effect (lint rule); the state can hold a stale value after the row count shrinks, but the displayed offset and every key press are clamped.
+
+### Blocked / needs a decision
+None.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-07). The watch fits cards to the window height with an up/down "N more" footer, scrolls with arrows, j/k, u/d and g/G, and shows two columns at 100+ columns; nothing overflows the width. Nits accepted: a refresh failure hides the more-hints; at exactly 100 columns the left card is compact; the hints count rows in two-column mode.
