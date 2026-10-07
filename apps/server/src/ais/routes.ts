@@ -95,6 +95,9 @@ const UpdateAiSchema = z
     limits: LimitsSchema.optional(),
     model: z.string().trim().min(1).max(256).optional(),
     providerConnectionId: z.string().trim().min(1).max(128).optional(),
+    // T-0474: the two delegation opt-ins (plan §8, decision 3). Owner only.
+    canDelegate: z.boolean().optional(),
+    acceptsDelegation: z.boolean().optional(),
   })
   .strict()
   .refine((value) => value.providerConnectionId === undefined || value.model !== undefined, {
@@ -230,6 +233,10 @@ export function createAisRoutes({
       ...(parsed.data.providerConnectionId === undefined
         ? {}
         : { providerConnectionId: parsed.data.providerConnectionId }),
+      ...(parsed.data.canDelegate === undefined ? {} : { canDelegate: parsed.data.canDelegate }),
+      ...(parsed.data.acceptsDelegation === undefined
+        ? {}
+        : { acceptsDelegation: parsed.data.acceptsDelegation }),
     });
     return c.json(ai);
   });

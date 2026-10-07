@@ -405,6 +405,47 @@ describe('AI routes', () => {
     expect(logs).not.toContain('tok-');
   });
 
+  it('lets the owner set the delegation flags; another user gets 404 and the flags default off', async () => {
+    const litellm = new FakeLitellm();
+    const app = mount({ litellm });
+    const owner = await bootstrapUser(context, app, `deleg${testCounter}@example.com`);
+    const other = await bootstrapUser(context, app, `deleg-other${testCounter}@example.com`);
+    const connectionId = await addConnection(owner.id);
+
+    const created = await postAi(app, owner.cookie, createBody(connectionId));
+    expect(created.status).toBe(201);
+    const ai = (await created.json()) as Record<string, unknown>;
+    expect(ai).toMatchObject({ canDelegate: false, acceptsDelegation: false });
+
+    const patched = await app.request(`${TEST_BASE_URL}/api/ais/${ai['id'] as string}`, {
+      method: 'PATCH',
+      headers: { cookie: owner.cookie, 'content-type': 'application/json' },
+      body: JSON.stringify({ canDelegate: true, acceptsDelegation: true }),
+    });
+    expect(patched.status).toBe(200);
+    expect(await patched.json()).toMatchObject({ canDelegate: true, acceptsDelegation: true });
+
+    const [row] = await context.db
+      .select()
+      .from(ais)
+      .where(eq(ais.id, ai['id'] as string));
+    expect(row?.canDelegate).toBe(true);
+    expect(row?.acceptsDelegation).toBe(true);
+
+    // Another user cannot change them: the same 404 as a missing AI.
+    const stolen = await app.request(`${TEST_BASE_URL}/api/ais/${ai['id'] as string}`, {
+      method: 'PATCH',
+      headers: { cookie: other.cookie, 'content-type': 'application/json' },
+      body: JSON.stringify({ canDelegate: false }),
+    });
+    expect(stolen.status).toBe(404);
+    const [after] = await context.db
+      .select()
+      .from(ais)
+      .where(eq(ais.id, ai['id'] as string));
+    expect(after?.canDelegate).toBe(true);
+  });
+
   it('requires a signed-in user on every route', async () => {
     const app = mount();
     const noAuth = { 'content-type': 'application/json' };

@@ -194,6 +194,13 @@ const serverConfigSchema = z
       .enum(['true', 'false'])
       .default('false')
       .transform((value) => value === 'true'),
+    // The listener (T-0474, plan `listener-delegation-plan.md` §2): when true,
+    // the server decides which AI answers a room message without an @mention.
+    // Off by default; the per-group switch is inert while this is off.
+    LISTENER_ENABLED: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((value) => value === 'true'),
     // Model-side tool rounds (T-0106): how many tool rounds one AI turn
     // may run. Integer 1 to 10. Unset = 1 when `TOOLS_ENABLED` is off
     // (today's behaviour, byte for byte) and 6 when it is on. Set
