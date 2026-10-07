@@ -46,6 +46,13 @@ Task ids (`T-0042`) point to `work/T-XXXX-*.md`: the spec, the worker's report a
 | Voice transcripts from a server endpoint | Owner-configured OpenAI-compatible endpoint; "Show transcript" on web | server, web | 🟡 Merged | T-0170 |
 | Push in the production deploy | ejabberd component, compose, wizard keys, doctor | deploy | 🟡 Merged (not yet on a real deploy) | T-0145 |
 | Production storage safety | Sticker volume, backup/restore of both file stores, disk check, upload quotas | deploy, docs | 🟡 Merged (not yet on a real deploy) | T-0151 |
+| Media gallery | Media / Files / Links / Voice tabs in a chat, backed by an incremental MAM media index; the same media sheet on the phone | server, web, mobile | 🟡 Merged | T-0410, T-0431, T-0434, T-0436, T-0448 |
+| Forwarding and multi-select | Forward a message to another chat with an optional comment, and select several messages to forward in chat order; received forwards show "Forwarded from X [in Y]" | web, mobile | 🟡 Merged | T-0409, T-0414, T-0419, T-0427, T-0432, T-0435, T-0439, T-0445 |
+| Chat backgrounds | A preset or an uploaded image as a chat background (this chat or the default); groups set theirs by owner/admin, members read it | server, web | 🟡 Merged | T-0457, T-0458, T-0460, T-0461, T-0462, T-0463, T-0464, T-0465, T-0466 |
+| Uploaded files behind membership | Attachments, GIFs and voice notes load through `GET /api/files`, which checks the session and chat membership and streams with `Range`; the web uses it | server, web | 🟡 Merged | T-0453, T-0454, T-0459 |
+| Blocking people | Block and unblock a person; blocked people are hidden from previews and group messages; a Blocked page and a Requests-style flow on web and mobile | server, web, mobile | 🟡 Merged | T-0171, T-0235, T-0239, T-0244, T-0249, T-0252 |
+| Chat folders | Server-backed chat folders with a reorderable page, a folder editor, and folder chips on web and mobile | server, web, mobile | 🟡 Merged | T-0231, T-0232, T-0237, T-0238, T-0248, T-0255 |
+| @mention picker on mobile | The group composer suggests people and AIs; mentions render as chips and a mention of you stands out | mobile | 🟡 Merged | T-0227, T-0241 |
 | Native iOS push | Push chain through Apple's servers (needs an Apple Developer account) | | 🧭 Planned | T-0005 |
 
 ## 2. Accounts and identity
@@ -72,6 +79,7 @@ Task ids (`T-0042`) point to `work/T-XXXX-*.md`: the spec, the worker's report a
 | Shape an AI by chat | The owner says "be more concise": `update_persona` / `revert_persona`, one-step undo, owner DM only | server | 🟡 Merged | T-0040 |
 | AIs in groups | Add your AI to a room, it answers @mentions from humans (rate-limited, never AI-to-AI) | server, web | 🟡 Merged | T-0054, T-0055 |
 | Home machine | Assign an AI to one of your machines; revoking the machine unassigns | server, web | 🟡 Merged | T-0091 |
+| AI memory | An AI remembers durable facts and chat context automatically (mirror indexer, summary tree, recall/remember tools, per-chat facts, a compactor); `What <AI> remembers` on web and mobile | server, web, mobile | 🟡 Merged | T-0433, T-0437, T-0438, T-0440, T-0441, T-0442, T-0443, T-0444, T-0446, T-0447, T-0449, T-0451, T-0455 |
 
 ## 4. Safety: enforced in code, not in prompts
 
@@ -125,6 +133,8 @@ Task ids (`T-0042`) point to `work/T-XXXX-*.md`: the spec, the worker's report a
 | Mobile AI activity and tool detail | Activity feed on the AI screen; tappable tool rows open a detail sheet (source, versions, recent runs) with Run now, Revert and Delete | mobile | 🟡 Merged (activity and read-only sheet seen on the emulator in mock mode 2026-10-05; layout fixes in T-0229) | T-0213, T-0218, T-0219 |
 | Mobile invite sheet and New message box | Invite link sheet (Copy, Share) and a New message box that offers an invite instead of a dead end | mobile | 🟡 Merged | T-0190 |
 | Mobile New group sheet | Create a group from the `+` menu: add members, name it, land on the new group | mobile | 🟡 Merged | T-0214 |
+| Mobile bottom bar | Floating bar (Chats, AIs, Settings, Profile), search bar on Chats, Profile tab | mobile | 🟡 Merged | T-0233 |
+| Mobile Settings hub redesign | Settings hub with a Blocked people row and tab header padding | mobile | 🟡 Merged | T-0247 |
 
 ## 8. Platform and engineering
 
@@ -154,4 +164,5 @@ Task ids (`T-0042`) point to `work/T-XXXX-*.md`: the spec, the worker's report a
 | 2026-09-30 | Topics (server, web, mobile), chat preferences, message search, routines scheduler and tool adapters, keyless web tools, production images, SMTP mailer, install wizard, invite links, group roles, pinned messages, stickers, channels, tools UI, tool host approval, mobile parity |
 | 2026-10-01 | Web push + PWA, smarter search, GIFs, sticker creator, model side of AI tools, mobile stickers and channels |
 | 2026-10-02 to 2026-10-03 | Rename to Zilar, release v0.1.13, hold-to-record voice notes with a real waveform, one emoji sheet, connection watchdog, on-device voice transcripts (Whistle), contacts by @handle on the phone, mobile parity roadmap |
-| 2026-10-04 to 2026-10-05 | Mobile parity waves 1-3 (settings, Explore, approvals, machines, stickers, integrations, AI tools/routines/activity, invite and new-group sheets), @handle people search on web and mobile, lead tooling (doctor, squash merges, `lead watch`, in-place model fallback) |
+| 2026-10-04 to 2026-10-05 | Mobile parity waves 1-3 (settings, Explore, approvals, machines, stickers, integrations, AI tools/routines/activity, invite and new-group sheets), @handle people search on web and mobile, blocking people and chat folders, the mobile @mention picker, bottom bar and Settings hub, lead tooling (doctor, squash merges, `lead watch`, in-place model fallback) |
+| 2026-10-06 to 2026-10-07 | Media gallery, forwarding and multi-select, upload lock (`/api/files`), AI memory (M1-M6), chat backgrounds (presets, images, groups), UI-kit migrations |

@@ -26,6 +26,18 @@ On a phone the same list fills the screen; opening a chat slides it in, and the 
 
 ![DM on a phone](screenshots/chat-phone.png)
 
+## Forwarding and multi-select
+
+Forwarding passes a message on to another chat, with an optional comment on top. Open a message's menu and choose **Forward**, pick the chat (a DM, a group, a topic, a channel or one of your AIs), add a comment if you like, and send. The receiving chat shows **Forwarded from** the original sender, with the original chat's name when it was a group. On a phone the same Forward action opens the chat picker.
+
+To forward several messages at once, choose **Select** from a message's menu (or long-press on the phone), tick the messages you want, then **Forward**. They arrive in the order they were sent, even if you ticked them out of order. **Cancel** clears the selection.
+
+## Media, files and links
+
+Every chat keeps a panel of what has been shared, so you do not have to scroll back through the history. Open it from the chat header and switch between **Media**, **Files**, **Links** and **Voice**: images and GIFs, documents, every shared address, and voice notes. Tapping a picture, a file or a voice note jumps to that message in the chat; a link opens in a new tab. The phone has the same panel as a sheet.
+
+The panel is built from the chat's own history, so it stays in step with messages that arrive while you look at it.
+
 ## Topics
 
 Groups hold **topics**: one thread per subject, like a forum. The Dev team group in the picture has seven: General, a bug report, a pricing-page thread, hiring, release notes, standup, and ideas. Each topic is its own chat with its own history.
@@ -70,6 +82,10 @@ A group with an AI looks like an ordinary group chat, except the AI answers when
 
 ![Approval card](screenshots/approval-desktop.png)
 
+## AI memory
+
+Your AI remembers on its own: the facts you tell it and the context of the chats it is in, with nothing to switch on. Open the AI's DM panel and **What your AI remembers** shows the facts it has kept — forget one, or clear them all. A group's topic panel shows what the AI remembers from that room: everyone who can see the room can read it, while only the AI's owner and the topic's managers can change it. Removing the AI from a room clears that room's memory.
+
 ## Search
 
 Type two or more letters in the search box: matching chat names appear first, then a **Messages** section with hits across your DMs, groups, and topics, grouped by chat with the match highlighted. Enter or a click opens that chat at the message. The magnifier in a chat header scopes the search to that chat only (a chip names it; click the chip to search everywhere again).
@@ -98,6 +114,10 @@ Every person has a unique **@username**: 3–32 characters of letters, numbers a
 - **Add** someone by their username: "Add contact" in the chat-list menu, the + new chat menu, or the empty state. They get a contact request and must accept before you are contacts.
 - **Requests** live under Settings → Requests: Accept or Decline incoming ones, Cancel the ones you sent. The chat-list menu shows a badge with the incoming count.
 - Your share link looks like `https://your-server/@ada`: opening it shows your card with a Send request button (or asks to sign in first).
+
+## Blocking people
+
+You can block someone from their profile card: **Block**. A block is silent — the other person is not told. A blocked person's DMs are hidden from you, and their messages no longer appear in your chat-list previews or in the group messages you see. Unblock them from the same card, or from **Settings → Blocked**, which lists everyone you have blocked.
 
 ## Roles and private topics
 
@@ -137,7 +157,7 @@ A **channel** is a one-way feed inside a group: only the group's owner and admin
 
 Next to stickers in the same panel there is a **GIFs** tab: search for a word ("applause", "facepalm") and send the clip. A sent GIF is stored by Zilar itself, so watching it never contacts the GIF provider.
 
-GIFs are **off until the server owner turns them on**: they need a provider key from Julio (`GIF_PROVIDER` plus `GIF_API_KEY` in the server's settings). Until then the GIFs tab says it is not available. Sending GIFs from the phone app is still being built.
+GIFs are **off until the server owner turns them on**: they need a provider key from Julio (`GIF_PROVIDER` plus `GIF_API_KEY` in the server's settings). Until then the GIFs tab says it is not available. The phone app has the same GIFs tab.
 
 ## Notifications and installing the app
 
@@ -178,6 +198,16 @@ Topics share the same menu; archiving a topic hides it inside its group's own Ar
 
 ![Chat preferences](screenshots/prefs-desktop.png)
 
+## Chat folders
+
+**Folders** group your chats the way you like — "Family", "Work", "AIs". Open **Chat folders** from the chat list (on the phone, **Settings → Chat folders**) to create a folder, pick an icon, and choose which chats it holds (whole kinds such as DMs or AIs, or named chats); a chat can sit in more than one folder. Drag the folders to reorder them. They show in the left rail and above the chat list on web, and as chips on the phone.
+
+## Chat backgrounds
+
+Give a chat a look of its own. Open the chat's menu and choose **Chat background**: pick one of the presets, or upload your own picture and set how strongly it is dimmed so the text stays readable. You can set a background for this chat only, or make it the default for all your chats.
+
+Group owners and admins can set a background for the whole group; every member sees it unless they have set their own background for that chat.
+
 ## Machines
 
 **Machines** (in the menu) are computers you pair so your AIs can run on them: your Mac, a Linux box, a VPS.
@@ -206,10 +236,9 @@ An AI can write small **tools** (code that runs on a schedule or on demand) and 
 
 ## Coming next
 
-These are designed but not in the app yet:
+These are not in the app itself, or need a switch from the owner:
 
-- **(still needs devices)** Native push on iPhone through Apple's servers, and push in the production deploy — the web side is merged, the deploy wiring is still planned.
+- Native push on iPhone through Apple's servers still needs an Apple Developer account. Push in the production deploy is merged (T-0145); it switches on with HTTPS and VAPID keys on a real deploy.
 - **(needs Julio)** GIFs until he adds the provider key; Telegram sticker import until he creates the bot token.
-- **(coming)** Voice messages.
-- **(merged)** The install wizard, backups and the bare-metal guide: the owner's install helper (`deploy/zilar`) covers `init`, `up`, `doctor`, `backup`, `restore` and `create-admin` (details in `docs/INSTALL_DOCKER.md`).
-- **(coming)** GIFs on the phone: stickers already work there; the GIF tab is still planned.
+- The install wizard, backups and the bare-metal guide: the owner's install helper (`deploy/zilar`) covers `init`, `up`, `doctor`, `backup`, `restore` and `create-admin` (details in `docs/INSTALL_DOCKER.md`).
+- The listener and delegation work: planned, see `docs/audit/listener-delegation-plan.md`.

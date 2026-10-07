@@ -247,7 +247,8 @@ databases, a `pg_dumpall -g` roles/globals dump (role definitions incl.
 SCRAM password hashes — secret material, hence 0600), the ejabberd
 uploads volume (`uploads.tgz`: `/opt/ejabberd/upload`) AND the sticker
 volume (`stickers.tgz`: `STICKER_STORAGE_DIR=/data/stickers`) AND the avatar
-volume (`avatars.tgz`: `AVATAR_STORAGE_DIR=/data/avatars`), a copy of
+volume (`avatars.tgz`: `AVATAR_STORAGE_DIR=/data/avatars`, which also holds the
+background wallpapers under `/data/avatars/backgrounds`), a copy of
 `deploy/.env`, and a `manifest.json` with
 versions (domain, image owner/tag, postgres version, ejabberd status
 line, date) — all taken through the running containers. `restore <archive>` needs an
@@ -357,9 +358,10 @@ Where each kind of file lives on the Docker stack:
 |---|---|---|
 | Attachments (XEP-0363) | ejabberd upload volume (`ejabberd-uploads`, `/opt/ejabberd/upload`) | Per-file cap 50 MiB (`max_size`); per-user quotas below |
 | Stickers | sticker volume (`sticker-data`, `STICKER_STORAGE_DIR=/data/stickers` — fixed, always set) | Without the volume every server replace wipes them; `doctor` checks the mount |
-| Avatars | avatar volume (`avatar-data`, `AVATAR_STORAGE_DIR=/data/avatars` — fixed, always set) | Profile pictures for people, AIs, groups and channels (256 × 256 WebP/PNG, cropped in the browser, ≤ 256 KB); backed up with the stickers (`avatars.tgz`) |
+| Avatars | avatar volume (`avatar-data`, `AVATAR_STORAGE_DIR=/data/avatars` — fixed, always set) | Profile pictures for people, AIs, groups and channels (256 × 256 WebP/PNG, cropped in the browser, ≤ 256 KB); backed up as `avatars.tgz` |
+| Background wallpapers | same avatar volume (`BACKGROUND_STORAGE_DIR=/data/avatars/backgrounds` — fixed); no separate volume | Uploaded chat background images (presets need no file); ride `avatars.tgz` with the avatars |
 | GIFs | Not stored: proxied (`/api/gifs/media/:token`); a sent GIF becomes a normal attachment | Needs `GIF_PROVIDER` + `GIF_API_KEY` |
-| Voice | Not built | Planned |
+| Voice | Not stored separately: the recording is uploaded through XEP-0363 and sent as a normal attachment | Recording, waveform, AAC conversion and playback are in the server's voice engine |
 
 Upload quotas: each user may hold 2048 MiB soft / 4096 MiB hard under the
 upload docroot (`mod_http_upload_quota` in `deploy/ejabberd/ejabberd.yml`).
@@ -370,7 +372,7 @@ the two numbers (`soft_upload_quota`, `hard_upload_quota`) in
 settings (shaper keys never expand macros), so a rebuild of the ejabberd
 image is needed for the change to take effect.
 
-`backup` covers both file volumes plus both databases; `doctor` warns at
+`backup` covers all three file volumes (uploads, stickers, avatars) plus both databases; `doctor` warns at
 80% disk use and fails at 95% (plain words, with what to do), and fails
 when the sticker directory sits on the container layer instead of its
 volume. Full variable reference: `docs/SERVER_CONFIG.md` "File storage,

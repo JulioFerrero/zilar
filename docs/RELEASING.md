@@ -8,6 +8,8 @@ How a release goes from `main` to a running Coolify install. Written from the re
 2. Know what the release contains: `git log vPREV..HEAD --oneline`.
 3. Migrations: `git diff vPREV..HEAD --stat -- apps/server/drizzle`. A release with a migration changes the live database on restart. Say so in the tag message and take a backup first (`./deploy/zilar backup` on the host, or the scheduled one).
 
+Note on tagging vs auto-deploy: since T-0260 the live install updates itself on every green `main` (§9), so a tag is not what ships the server. Tags are for named milestones and for the mobile release builds (§7, §8), which are built from a commit; the everyday deploy follows `main`.
+
 ## 2. Tag
 
 ```bash
@@ -36,7 +38,7 @@ The old container keeps answering while the new one starts, so a 200 from `/heal
 
 - Coolify stores the compose variables as environment variables, and `env_file: .env` injects ALL stored variables into every container. Removing a variable from the compose file does not remove it from the containers: delete the stored variable too (we hit this with the old ejabberd admin password variable).
 - Magic variables are `SERVICE_PASSWORD_<ID>`, `SERVICE_FQDN_WEB`, `SERVICE_URL_WEB`, with no underscore inside the id.
-- Named volumes hold state: Postgres, ejabberd database and uploads, stickers, avatars. The scheduled backup covers the database; the file volumes (stickers, avatars, uploads) do not have a scheduled backup yet.
+- Named volumes hold state: Postgres, ejabberd database and uploads, stickers, avatars. The scheduled backup (`deploy/backup-cron.example`) runs `./zilar backup`, which covers both databases and the uploads, stickers and avatars volumes; background wallpapers live inside the avatars volume, so they ride `avatars.tgz`.
 - Do not rotate or print secrets while debugging; read logs through a masking filter.
 
 ## 6. If it goes wrong
@@ -131,5 +133,5 @@ Migrations run at server start, so rolling back the image does not undo a migrat
 
 ### Backups
 
-The Coolify API can queue an immediate database backup only for a standalone database (`PATCH /databases/{uuid}/backups/{scheduled_backup_uuid}` with `backup_now: true`). A database that lives inside a service — as Zilar's Postgres does — has no "backup now" endpoint at all: `POST /services/{uuid}/databases/{database_uuid}` exposes only start, restart, stop, update, logs and import, and the service's only immediate backup is a storage-volume backup, not an engine-aware dump. Auto-deploys therefore rely on the nightly Coolify schedule in `deploy/coolify/scheduled-backup.md`; a deploy that includes a migration (`apps/server/drizzle`) does not take an extra backup.
+The Coolify API can queue an immediate database backup only for a standalone database (`PATCH /databases/{uuid}/backups/{scheduled_backup_uuid}` with `backup_now: true`). A database that lives inside a service — as Zilar's Postgres does — has no "backup now" endpoint at all: `POST /services/{uuid}/databases/{database_uuid}` exposes only start, restart, stop, update, logs and import, and the service's only immediate backup is a storage-volume backup, not an engine-aware dump. Auto-deploys therefore rely on the nightly Coolify schedule in `deploy/coolify/scheduled-backup.md`; a deploy that includes a migration (`apps/server/drizzle`) does not take an extra backup. So run `./zilar backup` on the host before merging a migration that could destroy data — the deploy will not take one for you.
 

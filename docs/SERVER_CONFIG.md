@@ -226,6 +226,17 @@ Uploaded stickers are validated by magic bytes (PNG or WebP only, ≤ 512 KiB, �
 
 Docker/Coolify note: the production compose files already mount the `sticker-data` volume at `/data/stickers` (`STICKER_STORAGE_DIR` is fixed there); on other setups mount a persistent absolute path, or the files are lost when the container is replaced. The directory is git-ignored (`data/` is covered by the `*.log`-adjacent local-data rules; add an explicit `data/` entry if one is missing) and never backed up by the database dump — back it up with the volume.
 
+### Avatars and chat backgrounds (T-0165, T-0460)
+
+Both directories follow the same rules as `STICKER_STORAGE_DIR`: file names are `<uuid>.<ext>` (never user input), a relative value resolves against the server package root, and the server creates the directory when missing or exits with `<VAR> (<dir>) is not writable` otherwise (`index.ts`, `startup.ts`). Images are validated by magic bytes (PNG or WebP) before they are written.
+
+| Variable | Required? | Default | What it does | Notes |
+|---|---|---|---|---|
+| `AVATAR_STORAGE_DIR` | No | `./data/avatars` | Directory profile pictures (people, AIs, groups and channels) are stored under (`config.ts:72`). | Not a secret. In production the compose files fix it at `/data/avatars` on the `avatar-data` volume (`deploy/docker-compose.yml:148`). |
+| `BACKGROUND_STORAGE_DIR` | No | `./data/backgrounds` | Directory uploaded chat background images are stored under (`config.ts:77`). | Not a secret. The production stack sets it to `/data/avatars/backgrounds` (`deploy/docker-compose.yml:153`), inside the existing `avatar-data` volume, so it adds no volume and rides `avatars.tgz` in backups. |
+
+An avatar is 256 × 256 WebP or PNG, ≤ 256 KB, cropped in the browser. A chat background is either a preset token (no file) or one of the owner's uploaded images; a group's own background is set by its owner or admins and is readable by members. Upload, serve and delete live under `/api/avatars`; upload, list, serve and delete under `/api/backgrounds`. An unknown or foreign id answers the same 404. See "File storage, backups, quotas, disk" below for where the files live and what backs them up.
+
 ### File storage, backups, quotas, disk (T-0151)
 
 Where each kind of file lives, and what covers it:
@@ -234,8 +245,10 @@ Where each kind of file lives, and what covers it:
 |---|---|---|---|
 | Attachments (XEP-0363) | ejabberd upload docroot: `/opt/ejabberd/upload` in the container (volume `ejabberd-uploads`); `/var/lib/ejabberd/upload` on bare metal | `./zilar backup` archives the uploads volume (`uploads.tgz`); bare metal: copy the docroot dir (§7) | Per-file cap `max_size` 50 MiB; per-user quotas below |
 | Stickers | `STICKER_STORAGE_DIR`, fixed at `/data/stickers` in both compose files (volume `sticker-data`); `/var/lib/zilar/stickers` on bare metal | `./zilar backup` archives the sticker volume (`stickers.tgz`); bare metal: copy the dir (§7) | Never relative in production: a relative path resolves against the server package root and a moved base silently orphans files (see Stickers above) |
+| Avatars | `AVATAR_STORAGE_DIR`, fixed at `/data/avatars` in both compose files (volume `avatar-data`) | `./zilar backup` archives the avatar volume (`avatars.tgz`) | Profile pictures for people, AIs, groups and channels; never relative in production (see Avatars and chat backgrounds above) |
+| Background wallpapers | `BACKGROUND_STORAGE_DIR`, fixed at `/data/avatars/backgrounds` in the production stack, inside the `avatar-data` volume | Covered by `avatars.tgz` (the backup archives the whole avatars directory) | Uploaded chat background images; presets are tokens and need no file |
 | GIFs | Not stored: the server proxies provider media (`/api/gifs/media/:token`) and a sent GIF becomes a normal attachment | As attachments, once sent | Needs `GIF_PROVIDER` + `GIF_API_KEY` |
-| Voice | Not built | — | Planned (plan §6.5) |
+| Voice | Not stored separately: the client uploads the recording through XEP-0363 and sends it as an attachment | As attachments, once sent | Recording, waveform, AAC conversion and playback are in the voice engine (T-0154, T-0176) |
 
 Upload quotas (ejabberd `mod_http_upload_quota`, stock module, always on): each user's files under the upload docroot count against `soft_upload_quota` (default 2048 MiB) / `hard_upload_quota` (default 4096 MiB) in `deploy/ejabberd/ejabberd.yml` (`shaper_rules`, plain numbers). Past the hard quota ejabberd deletes the user's oldest files until usage is back at the soft quota; `max_days` is unset (infinity), so files never age out without the owner. Retune by editing the two shaper numbers in `deploy/ejabberd/ejabberd.yml` (shaper keys are literal — macros do not expand there, verified live against the stock image), so they are not environment settings and the ejabberd image must be rebuilt for a change to apply. Bare metal carries the same 2048/4096 rules literally in `deploy/baremetal/ejabberd.yml`.
 

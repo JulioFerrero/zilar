@@ -5,13 +5,17 @@ The Zilar mobile app: an [Expo](https://expo.dev) (SDK 57) app using
 [NativeWind](https://www.nativewind.dev) and
 [React Native Reusables](https://reactnativereusables.com).
 
-For now it shows the messenger-style chat shell from T-0019 (mock data), polished
-in T-0023: the chat list with folder tabs, search, typing and the new-chat menu;
-the chat screen with bubbles, an unread divider, big emoji, safe links, reply
-quotes, swipe-to-reply, long-press actions and the composer. Shared pure logic
-(time, avatars, grouping, previews, big emoji, links, the unread divider) lives
-in `@zilar/chat-core`. It also proves the monorepo wiring (Expo + pnpm + Metro
-resolving a TypeScript workspace package) and the styling stack.
+It runs on real data against a Zilar server: invite-only sign-in, DMs, groups
+and topics, channels, message search, pins, invite links and roles. It carries
+the same AI surface as web — create and manage AIs, approvals, machines and
+connections, AI tools and routines with an activity feed, and AI memory — plus
+the settings hub, sticker management and Telegram import, Explore, contacts by
+@handle, blocking, chat folders, the media/files/links sheet, forwarding and
+multi-select, and the @mention picker and chips. Chat backgrounds are web and
+server only so far. Shared pure logic (time, avatars, grouping, previews, big
+emoji, links, mentions, folder matching, the unread divider) lives in
+`@zilar/chat-core`, and the front end proves the monorepo wiring (Expo + pnpm +
+Metro resolving a TypeScript workspace package) and the styling stack.
 
 ## Requirements
 
@@ -90,7 +94,7 @@ src/
   app/           # Expo Router routes (index.tsx = chat list, chat/[id].tsx = chat screen)
   components/    # React Native Reusables components (ui/) and chat components (chat/)
   lib/           # mobile-only helpers (format, links, chat, filter, colors) + tests
-  mock/          # mock chats and messages until the real data lands
+  mock/          # mock chats and messages for mock mode (EXPO_PUBLIC_ZILAR_MOCK)
   store/         # zustand chat store (sendText, openChat, typing, search, folders)
   global.css     # Tailwind entry + Zilar CSS variables (light and dark)
   screenshots/   # simulator screenshots, committed for review

@@ -2,8 +2,9 @@
 
 One outbound WebSocket per runner carries the desk's engine API (HTTP + SSE),
 the AI's model traffic back to the LLM gateway, and private preview URLs. The
-runner only ever dials out, so it works behind home routers. This is the spike
-for `docs/PROJECT_PLAN.md` §11.8; M3 builds on it.
+runner only ever dials out, so it works behind home routers. It began as the
+spike for `docs/PROJECT_PLAN.md` §11.8; M3 built on it (the machine registry,
+the runner app and the hub are merged).
 
 ## Layout
 
@@ -84,13 +85,15 @@ With `ZILAR_TUNNEL_INTEGRATION=1`, the demo additionally points the
 model-traffic path at the real LiteLLM on `http://127.0.0.1:4000` and fetches
 `GET /health/liveliness` through the tunnel. No key is used or printed.
 
-## Security notes for M3
+## Security notes
 
 - The model listener binds `127.0.0.1` only, and the server dials the one
   configured gateway URL no matter what the bytes say (absolute-form URLs and
   foreign `Host` headers still land on the gateway). The runner can never make
   the server connect elsewhere.
 - The preview token is the capability: anyone holding it can load the page.
-  Room-member authorization on previews is M3 work.
-- The key registry is in-memory here; M3 backs it with Postgres. Revocation
+  Room-member authorization on previews is still open (M3 hardening; see the
+  open list in `work/BOARD.md`).
+- The key registry in this package is in-memory; the platform hub backs it with
+  Postgres (a cache over the machines table, refreshed every 30 s). Revocation
   closes the live connection, and the runner does not retry auth rejections.
