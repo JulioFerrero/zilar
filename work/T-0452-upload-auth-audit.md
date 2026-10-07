@@ -1,7 +1,7 @@
 ---
 id: T-0452
 title: "Audit + plan: lock /upload files behind the session and chat membership (today anyone with a file URL can read it, even after a retraction)"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0452-upload-auth-audit
 model: auto
@@ -89,4 +89,29 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Wrote `docs/audit/upload-auth-plan.md` (docs-only, no code/config changed),
+covering all 6 spec sections: Today (serving path, creators, storage, loaders,
+auth table), Threats (leaked URL, former member, retraction, forwarded copy,
+engines/logs), Options (a: server streams — recommended; b: signed URLs;
+c: ejabberd native — not possible), Retraction (serve-while-any-live-row,
+refcounted deletion, server lacks the volume mount), task split (6 ordered
+tasks), and 6 open questions with recommendations.
+
+Files changed: `docs/audit/upload-auth-plan.md` (new),
+`work/T-0452-upload-auth-audit.md` (status + this report only).
+Every `file:line` citation was machine-checked to exist (two shell loops,
+all passed).
+
+Commands and real results:
+- `pnpm install`: done, 12.9s, exit 0.
+- Citation checks (2 shell loops over ~45 `file:line`s): all exist, no output.
+- No single-file tests run: docs-only task, no code touched.
+- `pnpm gate`: GATE PASS — install/format/lint/typecheck all PASS, scope
+  check confirms every changed file is inside the Allowed files
+  (2 changed files against main).
+
+Deviations: none. Open questions: in section 6 of the plan doc.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-07). docs/audit/upload-auth-plan.md maps every upload URL path (slots, payloads, the media index, the web and mobile loaders, voice transcription; avatars, stickers and push are out of scope), the five threats, options (a) server streaming, (b) signed URLs and (c) ejabberd native (no option), retraction with the forwarded-copy rule, a 6-task split marked where Julio is needed, and 6 open questions with recommendations. Nit accepted: the header names the worktree path.

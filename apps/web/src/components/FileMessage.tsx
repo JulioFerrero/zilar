@@ -1,10 +1,12 @@
 import type { Attachment } from '@zilar/chat-core';
 import { Download, FileText, RotateCcw } from 'lucide-react';
 import { IconButton } from '@/components/ui/icon-button';
-import { formatFileSize, safeHttpUrl } from '@/lib/attachments';
+import { formatFileSize, mediaSrc, safeHttpUrl } from '@/lib/attachments';
 import { cn } from '@/lib/utils';
 
 export interface FileMessageProps {
+  /** The chat JID, required by `GET /api/files`, which checks membership. */
+  chatId: string;
   attachment: Attachment;
   own: boolean;
   /** True while the bytes are still uploading. */
@@ -16,13 +18,15 @@ export interface FileMessageProps {
 
 /** A file attachment as a raised card: icon, name, size and MIME, and a link. */
 export function FileMessage({
+  chatId,
   attachment,
   own,
   uploading = false,
   failed = false,
   onRetry,
 }: FileMessageProps) {
-  const href = safeHttpUrl(attachment.url);
+  const href =
+    safeHttpUrl(attachment.url) === undefined ? undefined : mediaSrc(chatId, attachment.url);
   const meta = failed
     ? 'Upload failed'
     : uploading

@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import type { Attachment } from '@zilar/chat-core';
-import { isTrustedMediaUrl, safeHttpUrl } from '@/lib/attachments';
+import { isTrustedMediaUrl, mediaSrc, safeHttpUrl } from '@/lib/attachments';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 
 export interface GifMessageProps {
+  /** The chat JID, required by `GET /api/files`, which checks membership. */
+  chatId: string;
   attachment: Attachment;
 }
 
@@ -13,7 +15,7 @@ export interface GifMessageProps {
  * images (gif/webp) arrive as kind `image` and render in `ImageMessage`;
  * this covers mp4/webm only. `prefers-reduced-motion` shows a paused frame.
  */
-export function GifMessage({ attachment }: GifMessageProps) {
+export function GifMessage({ chatId, attachment }: GifMessageProps) {
   const [broken, setBroken] = useState(false);
   const reduceMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
 
@@ -29,10 +31,13 @@ export function GifMessage({ attachment }: GifMessageProps) {
     attachment.width !== undefined && attachment.height !== undefined
       ? `${attachment.width} / ${attachment.height}`
       : undefined;
-  const href = safeHttpUrl(attachment.url);
+  // The raw URL decides linkability (the trust check never changes); a
+  // same-origin upload then loads and opens through the file route.
+  const src = mediaSrc(chatId, attachment.url);
+  const href = safeHttpUrl(attachment.url) === undefined ? undefined : src;
   const video = (
     <video
-      src={attachment.url}
+      src={src}
       muted
       loop
       playsInline

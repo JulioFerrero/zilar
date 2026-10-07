@@ -1,7 +1,9 @@
 import { useState } from 'react';
-import { safeHttpUrl } from '@/lib/attachments';
+import { mediaSrc, safeHttpUrl } from '@/lib/attachments';
 
 export interface ImageMessageProps {
+  /** The chat JID, required by `GET /api/files`, which checks membership. */
+  chatId: string;
   url: string;
   alt: string;
   /** Pixel width, when known: reserves the aspect ratio before the image loads. */
@@ -15,7 +17,7 @@ export interface ImageMessageProps {
  * jumps, the image is lazy, and only http(s) URLs are made clickable. A broken
  * image becomes a small tile instead of the browser's broken icon.
  */
-export function ImageMessage({ url, alt, width, height }: ImageMessageProps) {
+export function ImageMessage({ chatId, url, alt, width, height }: ImageMessageProps) {
   const [broken, setBroken] = useState(false);
 
   if (broken) {
@@ -27,9 +29,10 @@ export function ImageMessage({ url, alt, width, height }: ImageMessageProps) {
   }
 
   const ratio = width !== undefined && height !== undefined ? `${width} / ${height}` : undefined;
+  const src = mediaSrc(chatId, url);
   const image = (
     <img
-      src={url}
+      src={src}
       alt={alt}
       loading="lazy"
       {...(width === undefined ? {} : { width })}
@@ -40,7 +43,9 @@ export function ImageMessage({ url, alt, width, height }: ImageMessageProps) {
     />
   );
 
-  const href = safeHttpUrl(url);
+  // The raw URL decides whether the image is linkable (the trust check never
+  // changes); a same-origin upload then opens through the file route.
+  const href = safeHttpUrl(url) === undefined ? undefined : src;
   if (href === undefined) {
     return image;
   }

@@ -2,6 +2,13 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-07 midday:**
+- **AI memory is complete (M1-M6).**
+  - Merged since the morning: T-0446 (compactor), T-0448 (mobile polish), T-0450 (web polish) and T-0451 (mobile room memory sheet).
+  - The mobile memory, forward and media screens are not checked on the emulator yet; wait until Julio frees the PC.
+- **Running:** T-0452, the audit and plan for locking `/upload` (Julio chose it). Next: turn its plan into tasks and ask Julio its open questions.
+- **Rule (memory `pc-busy-light-load`):** while Julio works, at most 2 workers, web and server only, no emulator.
+
 **2026-10-07 morning:**
 - **Julio is working on the PC: at most 2 workers at a time until he says otherwise.**
 - **Merged:** T-0447 (web room memory dialog) and T-0449 (mobile Memory section, after a lead fix round for a Forget race).
