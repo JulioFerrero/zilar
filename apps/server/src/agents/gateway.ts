@@ -182,6 +182,10 @@ export const GATEWAY_RESOURCE = 'gateway';
 export const GROUP_TURNS_PER_WINDOW = 6;
 export const GROUP_RATE_WINDOW_MS = 10 * 60_000;
 
+// T-0479: at most this many AI turns per human room message, across every AI
+// in the room. A new human message opens a fresh round.
+export const ROUND_MAX_AI_TURNS = 4;
+
 // A live room message carries ~now as its timestamp, while history replayed
 // on join carries its original (older) stamp. Anything older than the join
 // minus this skew is treated as replayed history and never wakes the AI.
@@ -205,6 +209,15 @@ interface RoomPendingMessage {
   fromResolved: boolean;
   fromNick?: string;
   timestamp: Date;
+  /** T-0479: set by a listener wake, never by a mention. */
+  wake?: true;
+}
+
+// T-0479: the per-room round budget, shared by every AI session in the room
+// and keyed by the human message that opened it.
+interface RoomRound {
+  humanMessageId: string;
+  aiTurns: number;
 }
 
 interface RoomSubscription {
@@ -519,6 +532,9 @@ export function createAgentGateway(
   const superseded = new Set<string>();
   // T-0475: the listener's per-room debounce windows (see RoomListenerState).
   const roomListeners = new Map<string, RoomListenerState>();
+  // T-0479: per-room round budgets (see RoomRound). In memory: a restart
+  // safely resets it, a fresh start can only wake fewer AIs.
+  const roomRounds = new Map<string, RoomRound>();
 
   let started = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -1660,9 +1676,10 @@ export function createAgentGateway(
     }
   }
 
-  // Wakes each scored AI that still holds a live session in this room: the
-  // short "looking at this" line, then the latest window message as a normal
-  // turn. The turn-time checks (member, daily limit, rate limit) still apply.
+  // Wakes each scored AI that still holds a live session in this room by
+  // queueing the latest window message as a normal turn. The short "looking at
+  // this" line is posted at turn time, once the turn passed every gate. The
+  // turn-time checks (member, daily limit, rate limit, round budget) apply.
   async function wakeListenerAis(
     roomJid: string,
     state: RoomListenerState,
@@ -1682,9 +1699,6 @@ export function createAgentGateway(
       if (room === undefined) {
         continue;
       }
-      await liveSendMessage(session, roomJid, 'groupchat', `${room.nick} is looking at this`).catch(
-        () => undefined,
-      );
       const queued = session.roomPending.get(roomJid) ?? [];
       queued.push({
         id: latest.id,
@@ -1693,6 +1707,7 @@ export function createAgentGateway(
         fromResolved: latest.fromResolved,
         ...(latest.fromNick === undefined ? {} : { fromNick: latest.fromNick }),
         timestamp: latest.timestamp,
+        wake: true,
       });
       session.roomPending.set(roomJid, queued);
       void pumpRoom(session, roomJid).catch((error: unknown) => {
@@ -1723,6 +1738,7 @@ export function createAgentGateway(
       clearListenerTimer(state);
     }
     roomListeners.delete(roomJid);
+    roomRounds.delete(roomJid);
   }
 
   // M2 rule 1 (§9.4): a person @mentions AIs, and only those AIs reply. Every
@@ -1750,6 +1766,15 @@ export function createAgentGateway(
     // join. Live messages carry ~now.
     if (message.timestamp.getTime() < room.joinedAtMs - GROUP_JOIN_SKEW_MS) {
       return;
+    }
+    // T-0479: every human room message opens a fresh round, mention or not.
+    // Every AI session receives the same stanza, so an id we already opened on
+    // leaves the running count alone.
+    if (!isAiSender(normBareJid(message.fromJid))) {
+      const round = roomRounds.get(roomJid);
+      if (round === undefined || round.humanMessageId !== message.id) {
+        roomRounds.set(roomJid, { humanMessageId: message.id, aiTurns: 0 });
+      }
     }
     const aiBare = normBareJid(session.aiJid);
     const mentioned = (message.mentions ?? []).some(
@@ -1890,6 +1915,33 @@ export function createAgentGateway(
     }
     recent.push(atMs);
     session.roomTurns.set(roomJid, recent);
+
+    // T-0479: at most ROUND_MAX_AI_TURNS AI turns per human message per room,
+    // across every AI that message woke. The rate stamp just pushed is
+    // refunded so a dropped turn does not consume rate budget. A missing round
+    // (for example right after a restart) counts as a fresh one.
+    const round = roomRounds.get(roomJid);
+    if (round !== undefined && round.aiTurns >= ROUND_MAX_AI_TURNS) {
+      recent.pop();
+      session.roomTurns.set(roomJid, recent);
+      logger.warn(
+        { aiId: session.aiId, groupId: room.groupId, messageId: trigger.id },
+        'AI round budget spent; dropping the turn',
+      );
+      return;
+    }
+    if (round !== undefined) {
+      round.aiTurns += 1;
+    }
+
+    // T-0479: a pure listener wake (every eligible item is a wake, no mention
+    // in the batch) shows the short "looking at this" line only once the turn
+    // has passed every gate above. A mention turn never posts it.
+    if (eligible.every((item) => item.wake === true)) {
+      await liveSendMessage(session, roomJid, 'groupchat', `${room.nick} is looking at this`).catch(
+        () => undefined,
+      );
+    }
 
     // The room history the AI reads for a turn is that topic's room only:
     // the `roomJid` above is the joined topic room, and `loadHistory` reads

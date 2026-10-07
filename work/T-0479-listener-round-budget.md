@@ -1,7 +1,7 @@
 ---
 id: T-0479
 title: "Listener S4a (server): per-human-message AI turn budget per room (max 4); the 'looking at this' line only after the turn passes every gate"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0479-listener-round-budget
 model: auto
@@ -93,4 +93,57 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+Implemented S4a in `apps/server/src/agents/gateway.ts`:
+
+1. **Round budget.**
+   - Added `export const ROUND_MAX_AI_TURNS = 4;` next to `GROUP_TURNS_PER_WINDOW`, a `RoomRound` interface and the gateway-level `roomRounds: Map<roomJid, RoomRound>`.
+   - `handleRoomIncoming` opens a round for every non-AI room message after the skew check (mention or not, listener or not) and only when `humanMessageId !== message.id`, so the same stanza seen by every session does not reset the count.
+   - `runGroupSessionTurn` reads the round **after** the rate-limit gate and before the model call. When `aiTurns >= ROUND_MAX_AI_TURNS` it pops the rate stamp it had just pushed (so a dropped turn does not spend rate budget), logs `{ aiId, groupId, messageId: trigger.id }` with `"AI round budget spent; dropping the turn"` and returns; otherwise it increments `aiTurns`. A missing round is treated as fresh (the turn is allowed, nothing is counted because there is no human message id to key on).
+2. **Wake line after the gates.** `RoomPendingMessage` gained `wake?: true`. `wakeListenerAis` no longer posts the line: it queues the window message with `wake: true`. `runGroupSessionTurn`, after the member/daily/rate/round gates pass and only when **every** eligible item has `wake === true` (a pure listener wake), posts `${room.nick} is looking at this` with `liveSendMessage(…'groupchat'…)` (errors ignored) and continues to the model call. A mention turn never posts it.
+3. **Cleanup.** `dropRoomListenerIfUnused` also deletes the room's `roomRounds` entry.
+
+Security: no new routes, secrets, writes or deletes; the new log line carries ids only (aiId, groupId, messageId), never bodies.
+
+### Files changed
+- `apps/server/src/agents/gateway.ts`
+- `apps/server/src/agents/gateway.test.ts` (7 new tests in the listener describe)
+- `work/T-0479-listener-round-budget.md`
+
+### Commands and results
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot agents/gateway` → `Test Files 1 passed (1)`, `Tests 151 passed (151)`.
+- `pnpm gate` → first run `FAIL format` (prettier flagged `apps/server/src/agents/gateway.test.ts`; `scope: every changed file is inside the Allowed files`). Fixed with `pnpm exec prettier --write apps/server/src/agents/gateway.test.ts`, then re-ran:
+  ```
+  gate: 3 changed file(s) against main
+  PASS  install (frozen)  (1.0s)
+  PASS  format  (14.7s)
+  PASS  lint  (0.9s)
+  PASS  typecheck  (9.8s)
+  PASS  tests @zilar/server  (50.7s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Tests added (listener describe)
+- budget caps at 4 turns for one human message with 5 mentioned AIs;
+- the same message seen by several sessions opens one round (3 turns spent, 2 more sessions leave the count at 4, not 5);
+- a new human message opens a fresh round (two messages → 8 turns);
+- a passing listener wake posts the line first, then the reply;
+- no wake line when the woken AI is at its room rate limit;
+- no wake line when the woken AI is over its daily limit;
+- no wake line for a mention turn.
+
+### Deviations / notes
+- No deviations from the spec. Existing listener tests that asserted the line goes out for a passing wake still pass; the line is still the first `sent` entry, just posted at turn time.
+- Adjacent group rate-limit and daily-limit tests are untouched and pass.
+
+### Open questions
+- None.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-07).
+- ROUND_MAX_AI_TURNS=4 per human message per room: a gateway-level roomRounds map, opened once per message id, checked after the rate gate. A dropped turn gives its rate stamp back.
+- The wake line now goes out only after every gate passes, and only for pure listener wakes.
+- roomRounds is cleared with the listener state.
+Pre-review clean.

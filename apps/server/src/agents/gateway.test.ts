@@ -5760,6 +5760,145 @@ describe('agent gateway', () => {
       expect(core.sent).toHaveLength(0);
     });
 
+    // T-0479: the per-human-message round budget and the wake line timing.
+    it('caps a round at four AI turns for one human message', async () => {
+      const { seeded, extras, member, roomJid, cores, calls } = await listenerSetup({
+        aiCount: 5,
+        listener: false,
+      });
+      const all = [seeded, ...extras];
+      const message = roomMessage(roomJid, member.jid, 'm-1', 'hello all', {
+        nick: 'Ana',
+        mentions: all.map((ai) => ai.aiJid),
+      });
+      for (const ai of all) {
+        const core = await coreFor(cores, ai.aiJid);
+        core.receive(message);
+      }
+
+      await waitFor(() => calls.length === 4);
+      await tick(50);
+      expect(calls).toHaveLength(4);
+    });
+
+    it('opens one round when the same message reaches several sessions', async () => {
+      const { seeded, extras, member, roomJid, cores, calls } = await listenerSetup({
+        aiCount: 5,
+        listener: false,
+      });
+      const all = [seeded, ...extras];
+      const message = roomMessage(roomJid, member.jid, 'm-1', 'hello all', {
+        nick: 'Ana',
+        mentions: all.map((ai) => ai.aiJid),
+      });
+      // Three sessions see the message first and spend three turns.
+      for (const ai of all.slice(0, 3)) {
+        const core = await coreFor(cores, ai.aiJid);
+        core.receive(message);
+      }
+      await waitFor(() => calls.length === 3);
+
+      // The other two sessions see the same id: it must not reset the round,
+      // so only one more turn fits.
+      for (const ai of all.slice(3)) {
+        const core = await coreFor(cores, ai.aiJid);
+        core.receive(message);
+      }
+      await waitFor(() => calls.length === 4);
+      await tick(50);
+      expect(calls).toHaveLength(4);
+    });
+
+    it('opens a fresh round for a new human message', async () => {
+      const { seeded, extras, member, roomJid, cores, calls } = await listenerSetup({
+        aiCount: 5,
+        listener: false,
+      });
+      const all = [seeded, ...extras];
+      const send = async (id: string): Promise<void> => {
+        const message = roomMessage(roomJid, member.jid, id, `hello ${id}`, {
+          nick: 'Ana',
+          mentions: all.map((ai) => ai.aiJid),
+        });
+        for (const ai of all) {
+          const core = await coreFor(cores, ai.aiJid);
+          core.receive(message);
+        }
+      };
+
+      await send('m-1');
+      await waitFor(() => calls.length === 4);
+      await send('m-2');
+      await waitFor(() => calls.length === 8);
+      await tick(50);
+      expect(calls).toHaveLength(8);
+    });
+
+    it('posts the wake line only once the woken turn passes the gates', async () => {
+      const { member, roomJid, core, calls } = await listenerSetup({ quietMs: 10 });
+      core.receive(roomMessage(roomJid, member.jid, 'm-1', 'no mention here', { nick: 'Ana' }));
+
+      await waitFor(() => calls.length === 1);
+      await waitFor(() => core.sent.length >= 2);
+      expect(core.sent[0]?.text).toBe('Gateway AI is looking at this');
+      expect(core.sent[1]?.text).toContain('AI says hi');
+    });
+
+    it('posts no wake line when the woken AI is at its room rate limit', async () => {
+      const { seeded, member, roomJid, core, calls } = await listenerSetup({ quietMs: 10 });
+      for (let index = 1; index <= 6; index += 1) {
+        core.receive(
+          roomMessage(roomJid, member.jid, `r-${index}`, 'hey', {
+            nick: 'Ana',
+            mentions: [seeded.aiJid],
+          }),
+        );
+        await waitFor(() => calls.length === index);
+      }
+      expect(core.sent).toHaveLength(6);
+
+      core.receive(
+        roomMessage(roomJid, member.jid, 'm-listen', 'no mention here', { nick: 'Ana' }),
+      );
+      await tick(120);
+      expect(calls).toHaveLength(6);
+      expect(core.sent).toHaveLength(6);
+      expect(core.sent.some((message) => message.text === 'Gateway AI is looking at this')).toBe(
+        false,
+      );
+    });
+
+    it('posts no wake line when the woken AI is over its daily limit', async () => {
+      const { seeded, member, roomJid, core, calls, litellm } = await listenerSetup({
+        quietMs: 10,
+      });
+      litellm.spendByKey.set('tok-1', 0.5);
+      core.receive(
+        roomMessage(roomJid, member.jid, 'm-1', 'hey', { nick: 'Ana', mentions: [seeded.aiJid] }),
+      );
+      await waitFor(() => calls.length === 1);
+
+      litellm.spendByKey.set('tok-1', 2);
+      core.receive(roomMessage(roomJid, member.jid, 'm-2', 'no mention here', { nick: 'Ana' }));
+      await tick(120);
+      expect(calls).toHaveLength(1);
+      expect(core.sent.some((message) => message.text === 'Gateway AI is looking at this')).toBe(
+        false,
+      );
+    });
+
+    it('posts no wake line for a mention turn', async () => {
+      const { seeded, member, roomJid, core, calls } = await listenerSetup({ quietMs: 10 });
+      core.receive(
+        roomMessage(roomJid, member.jid, 'm-1', 'hey', { nick: 'Ana', mentions: [seeded.aiJid] }),
+      );
+      await waitFor(() => calls.length === 1);
+      expect(core.sent[0]?.text).toContain('AI says hi');
+      expect(core.sent.some((message) => message.text === 'Gateway AI is looking at this')).toBe(
+        false,
+      );
+    });
+
     function startedSize(): number {
       return gateway?.size() ?? 0;
     }
