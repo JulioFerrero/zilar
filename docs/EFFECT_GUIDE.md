@@ -168,7 +168,23 @@ Each item was hit by a worker in a merged task; trust these over memory of v3.
 - **Background loops:** `Effect.repeat(effect, Schedule.spaced(d))` runs the effect **once immediately**, then spaces the repeats. For "first run after one interval", wrap the whole repeated program in a single `Effect.delay(d)`; don't delay the inner effect, or each cycle waits twice (T-0486). Run the loop with `Effect.runFork` and stop it with `Fiber.interrupt`, which returns an `Effect`: use `runFork` for a sync `close()` and `runPromise` for an async one.
 - **A loop must survive a throw:** a bare `repeat` stops at the first defect, with no log. Wrap the inner effect in `Effect.catchDefect(...)` and log there. Do **not** use `catchCause`: it also sees the normal interruption at `close()` and logs a false error. `catchAllCause` does not exist in v4 (T-0486, T-0488).
 - **Timers keep the process alive:** Effect's sleep uses a plain `setTimeout` without `unref`. A loop fiber must be interrupted on shutdown (`index.ts` already calls each `close`/`stop`), or the process won't exit (T-0486).
+- **Schema, strict objects:** zod's `z.strictObject` becomes a decode with `{ onExcessProperty: 'error' }`. `Schema.is` ignores excess keys, so don't use it for strict checks (T-0494). A plain `z.object` strips unknown keys, which is the Effect default. `.passthrough()` becomes `Schema.StructWithRest`.
+- **Schema, record keys:** `Schema.Record(key, value)` does **not** run checks on the key schema. Bound key length or count with a check on the whole record (T-0501).
+- **Schema, mutability:** Struct fields and Arrays are readonly. Use `struct()` from `@zilar/protocol` (`mutableKey` on every field) and `Schema.mutable(Schema.Array(...))` to keep zod's mutable types (T-0494).
 - **`Effect.catch`** is exported as `catch_ as catch`, which our tsc setting doesn't pick up. Use `catchTag` / `catchTags` (T-0173).
+
+## Server runtime and logging (T-0495)
+
+- **One runtime per process.** `makeServerRuntime(layer)` in `apps/server/src/effect/runtime.ts` builds a `ManagedRuntime` that shares one memo map, so a resource layer is built once per process. Only the edge (`index.ts`) creates it and disposes it on shutdown.
+- **Domain modules export Effects**, or plain Promise functions that run through a runtime they are handed. `Effect.runPromise` and `runFork` belong at the edge; the small converted modules (mailer, Giphy, Telegram import) still run at their own edge until the services lane wires them into the runtime.
+- **Tests build their own runtime** from test layers (`runtime.test.ts`), never the process one.
+- **Logging:** provide `makePinoLoggerLayer(logger)` from `apps/server/src/effect/logger.ts`. `Effect.log*` then goes to our pino instance:
+  - string parts become `msg`;
+  - **object parts become top-level fields, so pino's `redactPaths` censor them** (`Effect.log({ password })` comes out as `[redacted]`);
+  - an `Error` part or a failure `Cause` becomes `err: { name, message }`, never a stack or extra props;
+  - annotations and spans become fields too.
+  
+  Log secrets-bearing objects as objects, never interpolated into the message string: pino cannot redact free text.
 
 ## Whole-codebase conversion (2026-10-07)
 
