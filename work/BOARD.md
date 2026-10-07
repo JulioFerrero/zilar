@@ -454,7 +454,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0425](T-0425-mobile-profile-buttons-kit.md) | Mobile: profile and contact card buttons on the kit Button | 2026-10-06 |
 | [T-0426](T-0426-mobile-ai-sheet-buttons-kit.md) | Mobile: AI activity Refresh, tool sheet Show all/less and Close on the kit Button | 2026-10-06 |
 | [T-0458](T-0458-server-background-prefs.md) | Backgrounds B: per-chat + default background prefs (schema) | todo | auto | T-0456 | |
-| [T-0459](T-0459-files-route-cleanup.md) | Cleanup: shared isDmBlocked; RFC 5987 filename in /api/files | todo | auto | T-0453 | |
 | [T-0427](T-0427-mobile-forwarded-header.md) | Mobile: forwarded messages show 'Forwarded from X [in Y]' | 2026-10-06 |
 | [T-0428](T-0428-mobile-new-chat-menu-sheet.md) | Mobile: New chat menu on the kit ActionSheet with icons | 2026-10-06 |
 | [T-0429](T-0429-mobile-dismiss-banner.md) | Mobile: DismissBanner replaces 12 copied chat screen banners | 2026-10-06 |
@@ -488,3 +487,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0455](T-0455-memory-remembered-line.md) | AI memory: 'Remembered: <fact>' line after remember | 2026-10-07 |
 | [T-0456](T-0456-chat-backgrounds-plan.md) | Audit + plan: custom chat backgrounds | 2026-10-07 |
 | [T-0457](T-0457-background-preset-tokens.md) | Backgrounds A: preset tokens in ui-tokens | 2026-10-07 |
+| [T-0459](T-0459-files-route-cleanup.md) | Cleanup: shared isDmBlocked; RFC 5987 filename in /api/files | 2026-10-07 |

@@ -47,6 +47,36 @@ function auditFor(deps: BlocksDeps, action: string, actorUserId: string, subject
   });
 }
 
+// A DM peer JID maps to one of our users through `xmppAccounts.jid`. An AI
+// peer has no row (and therefore no block). The lookup folds case like
+// `resolveChatFilter`.
+export async function isDmBlocked(
+  db: ServerDatabase,
+  userId: string,
+  peerJid: string,
+): Promise<boolean> {
+  const [peer] = await db
+    .select({ userId: xmppAccounts.userId })
+    .from(xmppAccounts)
+    .where(sql`lower(${xmppAccounts.jid}) = ${peerJid.toLowerCase()}`)
+    .limit(1);
+  if (peer === undefined) {
+    return false;
+  }
+  // Either direction hides the DM: a block is silent.
+  const [block] = await db
+    .select({ userId: userBlocks.userId })
+    .from(userBlocks)
+    .where(
+      or(
+        and(eq(userBlocks.userId, userId), eq(userBlocks.blockedUserId, peer.userId)),
+        and(eq(userBlocks.userId, peer.userId), eq(userBlocks.blockedUserId, userId)),
+      ),
+    )
+    .limit(1);
+  return block !== undefined;
+}
+
 // Blocks `targetId` for `userId`. Idempotent: blocking twice keeps one row.
 // Unknown users answer 404, yourself answers 400. Every pending contact
 // request between the two (either direction) becomes `cancelled` in the

@@ -419,6 +419,33 @@ describe('GET /api/files', () => {
     expect(calls).toEqual([{ url: INTERNAL_URL, range: null }]);
   });
 
+  it('encodes a tricky filename per RFC 5987', async () => {
+    const { alice, bob } = await setupDm();
+    const own = localpartFor(alice.id);
+    const peer = dmJid(bob.id);
+    await context.db.insert(mediaItems).values({
+      id: randomUUID(),
+      archiveOwner: own,
+      chatJid: peer,
+      messageId: 'o-tricky',
+      atMicros: at('2026-05-01T00:00:00.000Z'),
+      senderJid: `${peer}/phone`,
+      kind: 'file',
+      url: UPLOAD_URL,
+      name: "it's (1)*.pdf",
+      mime: 'application/pdf',
+      size: 11,
+      ref: UPLOAD_URL,
+      deleted: false,
+    });
+    const { fetchImpl } = makeFetch(200, { 'content-type': 'application/pdf' }, 'hello-bytes');
+    const { status, headers } = await getFile(filesApp(fetchImpl), alice.cookie, fileParams(peer));
+    expect(status).toBe(200);
+    expect(headers.get('content-disposition')).toBe(
+      "attachment; filename*=UTF-8''it%27s%20%281%29%2A.pdf",
+    );
+  });
+
   it('finds a just-sent file after the on-demand index', async () => {
     const { alice, bob } = await setupDm();
     const own = localpartFor(alice.id);

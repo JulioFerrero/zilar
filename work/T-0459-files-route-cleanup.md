@@ -1,7 +1,7 @@
 ---
 id: T-0459
 title: "Cleanup (doctor nits): one shared isDmBlocked for media + files routes; strict RFC 5987 filename in /api/files"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0459-files-route-cleanup
 model: auto
@@ -56,4 +56,57 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+
+1. **Shared `isDmBlocked`.** Moved the function with its comment into
+   `apps/server/src/blocks/service.ts` as an export, same signature
+   `(db: ServerDatabase, userId: string, peerJid: string)` and the same query.
+   Deleted both copies and imported it in `media/routes.ts` (call at the DM
+   check) and `files/routes.ts` (call at the DM check). Removed the imports
+   that only the copies used: `media/routes.ts` dropped `or` and `sql` from
+   `drizzle-orm` and `userBlocks`, `xmppAccounts` from `../db/schema`;
+   `files/routes.ts` dropped `or` and `sql` and `userBlocks`, `xmppAccounts`.
+   `blocks/service.ts` already imported everything the function needs.
+2. **Strict RFC 5987 filename.** Added `encodeRfc5987(value)` to
+   `files/routes.ts` (`encodeURIComponent` then `'`→`%27`, `(`→`%28`,
+   `)`→`%29`, `*`→`%2A`) and used it for the `filename*` parameter.
+3. **Test.** Added `encodes a tricky filename per RFC 5987` to
+   `apps/server/src/files/routes.test.ts`: a `mediaItems` row named
+   `it's (1)*.pdf` must answer
+   `content-disposition: attachment; filename*=UTF-8''it%27s%20%281%29%2A.pdf`.
+   The existing blocked-DM tests in `media/routes.test.ts` and
+   `files/routes.test.ts` were not touched.
+
+### Files changed
+
+- `apps/server/src/blocks/service.ts`
+- `apps/server/src/media/routes.ts`
+- `apps/server/src/files/routes.ts`
+- `apps/server/src/files/routes.test.ts`
+- `work/T-0459-files-route-cleanup.md`
+
+### Commands and real results
+
+- `pnpm install` — done, exit 0.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot files/routes media/routes blocks`
+  — 3 test files passed, 38 tests passed, exit 0.
+- `pnpm gate` (repo root) — summary:
+  ```
+  gate: 5 changed file(s) against main
+  PASS  install (frozen)  (1.4s)
+  PASS  format  (13.4s)
+  PASS  lint  (0.9s)
+  PASS  typecheck  (7.2s)
+  PASS  tests @zilar/server  (268.8s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+  Exit 0; no file outside the Allowed files.
+
+### Problems / deviations / open questions
+
+- None. No spec deviation. `git status --short` shows exactly the five allowed files.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-07). isDmBlocked now lives once in blocks/service.ts and both the media and files routes import it. encodeRfc5987 tightens the filename (quote, parentheses, asterisk) and is tested. Pre-review clean.
