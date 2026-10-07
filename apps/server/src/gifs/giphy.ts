@@ -1,6 +1,7 @@
 import { lookup as dnsLookup } from 'node:dns/promises';
 import { request as httpsRequest } from 'node:https';
 import { isIP } from 'node:net';
+import { Data, Duration, Effect, type Effect as EffectType } from 'effect';
 import { z } from 'zod';
 import { classifyIp } from '../sandbox/ip-guard';
 import type { GifPage, GifProvider, GifSearchOptions } from './provider';
@@ -207,6 +208,14 @@ export class GiphyError extends Error {
 
 export type GiphyFetcher = (url: URL, address: string) => Promise<{ status: number; body: string }>;
 
+const GIPHY_API_TIMEOUT_MS = 10_000;
+const GIPHY_API_MAX_BYTES = 1024 * 1024;
+
+// The internal failure mode: every resolve, filter, fetch and parse failure
+// funnels into this one tagged error, which the `Promise` boundary maps to the
+// neutral `GiphyError`. It carries no payload, so no provider detail leaks.
+class GiphyRequestFailed extends Data.TaggedError('GiphyRequestFailed') {}
+
 async function defaultResolver(host: string): Promise<string[]> {
   const records = await dnsLookup(host, { all: true });
   return records.map((record) => record.address);
@@ -214,13 +223,14 @@ async function defaultResolver(host: string): Promise<string[]> {
 
 // The API call itself goes through the same SSRF guard as the media proxy:
 // https only, the documented endpoint host, resolve-then-pin, connect to the
-// validated IP with SNI and Host kept, no redirects, 10 s timeout.
-async function fetchGiphyApi(
+// validated IP with SNI and Host kept, no redirects. The request is an
+// interruptible effect: the timeout interrupts it and the finalizer destroys
+// the socket, so a slow host never holds a connection.
+const giphyRequestEffect = (
   url: URL,
   address: string,
-  timeoutMs: number,
-): Promise<{ status: number; body: string }> {
-  return new Promise((resolve, reject) => {
+): EffectType.Effect<{ status: number; body: string }, GiphyRequestFailed> =>
+  Effect.callback<{ status: number; body: string }, GiphyRequestFailed>((resume) => {
     const req = httpsRequest(
       {
         host: address,
@@ -234,76 +244,105 @@ async function fetchGiphyApi(
         const status = res.statusCode ?? 0;
         if (status >= 300 && status < 400) {
           res.resume();
-          resolve({ status, body: '' });
+          resume(Effect.succeed({ status, body: '' }));
           return;
         }
         const chunks: Buffer[] = [];
         let total = 0;
         res.on('data', (chunk: Buffer) => {
           total += chunk.length;
-          if (total > 1024 * 1024) {
+          if (total > GIPHY_API_MAX_BYTES) {
             req.destroy(new Error('response too large'));
             return;
           }
           chunks.push(chunk);
         });
-        res.on('end', () => resolve({ status, body: Buffer.concat(chunks).toString('utf8') }));
-        res.on('error', (error: Error) => reject(error));
+        res.on('end', () =>
+          resume(Effect.succeed({ status, body: Buffer.concat(chunks).toString('utf8') })),
+        );
+        res.on('error', () => resume(Effect.fail(new GiphyRequestFailed())));
       },
     );
-    req.setTimeout(timeoutMs, () => req.destroy(new Error('fetch timeout')));
-    req.on('timeout', () => req.destroy(new Error('fetch timeout')));
-    req.on('error', (error: Error) => reject(error));
+    req.on('error', () => resume(Effect.fail(new GiphyRequestFailed())));
     req.end();
+    return Effect.sync(() => {
+      req.destroy();
+    });
   });
-}
 
 /** The real `giphy` adapter behind the `GifProvider` port. */
 export function createGiphyProvider(options: GiphyProviderOptions): GifProvider {
   const resolver = options.resolver ?? defaultResolver;
 
-  async function call(path: string, query: Record<string, string>): Promise<GifPage> {
+  const fetchApi = (
+    url: URL,
+    address: string,
+  ): EffectType.Effect<{ status: number; body: string }, GiphyRequestFailed> => {
+    const fetcher = options.fetcher;
+    if (fetcher === undefined) {
+      return giphyRequestEffect(url, address);
+    }
+    return Effect.tryPromise({
+      try: () => fetcher(url, address),
+      catch: () => new GiphyRequestFailed(),
+    });
+  };
+
+  const call = Effect.fnUntraced(function* (
+    path: string,
+    query: Record<string, string>,
+  ): EffectType.fn.Return<GifPage, GiphyRequestFailed> {
     const url = new URL(`https://${GIPHY_API_HOST}${path}`);
     for (const [key, value] of Object.entries(query)) {
       url.searchParams.set(key, value);
     }
-    const addresses = await resolver(GIPHY_API_HOST).catch(() => [] as string[]);
+    const addresses = yield* Effect.tryPromise({
+      try: () => resolver(GIPHY_API_HOST),
+      catch: () => new GiphyRequestFailed(),
+    });
     if (addresses.length === 0) {
-      throw new GiphyError();
+      return yield* new GiphyRequestFailed();
     }
     for (const address of addresses) {
       if (isIP(address) === 0 || classifyIp(address) === 'blocked') {
-        throw new GiphyError();
+        return yield* new GiphyRequestFailed();
       }
     }
-    const fetcher: GiphyFetcher =
-      options.fetcher ?? ((requestUrl, address) => fetchGiphyApi(requestUrl, address, 10_000));
     const first = addresses[0];
     if (first === undefined) {
-      throw new GiphyError();
+      return yield* new GiphyRequestFailed();
     }
-    let response: { status: number; body: string };
-    try {
-      response = await fetcher(url, first);
-    } catch {
-      throw new GiphyError();
-    }
+    const response = yield* fetchApi(url, first).pipe(
+      Effect.timeoutOrElse({
+        duration: Duration.millis(GIPHY_API_TIMEOUT_MS),
+        orElse: () => Effect.fail(new GiphyRequestFailed()),
+      }),
+    );
     if (response.status < 200 || response.status >= 300) {
-      throw new GiphyError();
+      return yield* new GiphyRequestFailed();
     }
     let body: unknown;
     try {
       body = JSON.parse(response.body) as unknown;
     } catch {
-      throw new GiphyError();
+      return yield* new GiphyRequestFailed();
     }
     return gifPageSchema.parse(parseGiphyResponse(body));
-  }
+  });
+
+  const runCall = (path: string, query: Record<string, string>): Promise<GifPage> =>
+    Effect.runPromise(
+      call(path, query).pipe(
+        Effect.catchTags({
+          GiphyRequestFailed: () => Effect.fail(new GiphyError()),
+        }),
+      ),
+    );
 
   return {
     name: 'giphy',
     search(query: string, page: GifSearchOptions): Promise<GifPage> {
-      return call('/v1/gifs/search', {
+      return runCall('/v1/gifs/search', {
         api_key: options.apiKey,
         q: query.slice(0, 50),
         limit: String(page.limit),
@@ -312,7 +351,7 @@ export function createGiphyProvider(options: GiphyProviderOptions): GifProvider 
       });
     },
     trending(page: GifSearchOptions): Promise<GifPage> {
-      return call('/v1/gifs/trending', {
+      return runCall('/v1/gifs/trending', {
         api_key: options.apiKey,
         limit: String(page.limit),
         offset: page.pos ?? '0',

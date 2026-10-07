@@ -454,7 +454,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0425](T-0425-mobile-profile-buttons-kit.md) | Mobile: profile and contact card buttons on the kit Button | 2026-10-06 |
 | [T-0426](T-0426-mobile-ai-sheet-buttons-kit.md) | Mobile: AI activity Refresh, tool sheet Show all/less and Close on the kit Button | 2026-10-06 |
 | [T-0483](T-0483-effect-telegram-import.md) | Effect convert: Telegram import client | running | auto | T-0173 | |
-| [T-0485](T-0485-effect-giphy.md) | Effect convert: Giphy provider | running | auto | T-0173 | |
 | [T-0494](T-0494-protocol-effect-schema.md) | Effect B1: protocol on Effect Schema + every consumer | running | auto | T-0490 | |
 | [T-0496](T-0496-db-effect-sql-spike.md) | Effect F3 spike: DB on effect/sql (pins), migrations, better-auth plan | running | auto | T-0490 | |
 | [T-0497](T-0497-effect-recovery-loop.md) | Effect convert: action gateway recovery loop | running | auto | T-0488 | |
@@ -530,3 +529,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0492](T-0492-effect-transcription-provider.md) | Effect convert: voice transcription provider call | 2026-10-07 |
 | [T-0487](T-0487-effect-mailer.md) | Effect convert: SMTP mailer send | 2026-10-07 |
 | [T-0495](T-0495-server-runtime-logger.md) | Effect F1: server runtime + pino-backed Effect Logger | 2026-10-07 |
+| [T-0485](T-0485-effect-giphy.md) | Effect convert: Giphy provider | 2026-10-07 |
