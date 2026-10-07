@@ -1,7 +1,7 @@
 ---
 id: T-0523
 title: "Agents G6: move the room listener (noteListenerMessage, fireRoomListener, wakeListenerAis, dropRoomListenerIfUnused, roomListeners) out of createAgentGateway into agents/gateway/listener.ts; zero behaviour change"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0523-agents-g6-extract-listener
 model: auto
@@ -67,4 +67,50 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- Created `apps/server/src/agents/gateway/listener.ts` exporting `createRoomListener(ctx)`,
+  following the `budget.ts` factory shape. `ctx` is `{ deps, logger, baseUrl, secretsFor,
+  sessions, roomRounds, sessionIsLive, pumpRoom }`.
+- Moved verbatim, no logic or name changes:
+  `noteListenerMessage`, `clearListenerTimer`, `fireRoomListener`, `wakeListenerAis`,
+  `dropRoomListenerIfUnused`, and the `roomListeners` map (constructed inside the factory).
+- The factory returns `{ noteListenerMessage, dropRoomListenerIfUnused, clearAll }`.
+  `clearAll()` holds the two `stop()` lines (`clearListenerTimer` per state then
+  `roomListeners.clear()`); `clearListenerTimer` and `fireRoomListener` stay module-private.
+- In `createAgentGateway` I removed the `roomListeners` declaration and the five moved
+  functions, and create one `roomListener` right after `roomRounds`. `sessions` and
+  `roomRounds` are passed by reference; `sessionIsLive` and `pumpRoom` are passed as
+  callbacks (the latter wrapped as `(session, roomJid) => pumpRoom(session, roomJid)` per
+  the spec). `secretsFor` and `baseUrl` come from the enclosing scope.
+- Updated the call sites: `roomListener.dropRoomListenerIfUnused(...)` in `disconnectAi`
+  and `leaveRoomQuietly`; `roomListener.noteListenerMessage(...)` in `handleRoomIncoming`;
+  `stop()` now calls `roomListener.clearAll()` at the same point as before.
+- Dropped only imports used by the moved code: the whole `./listener/score` import
+  (`loadRoster`, `LISTENER_WINDOW_MAX`, `scoreRoom`, `ListenerWindowMessage`),
+  `completeChat` from `./reply`, and `LISTENER_EVERY_N_DEFAULT`,
+  `LISTENER_QUIET_MS_DEFAULT`, `RoomListenerState`, `RoomSubscription` from
+  `./gateway/contracts`. The separate re-export block of the constants is untouched.
+
+### Files changed
+- `apps/server/src/agents/gateway/listener.ts` (new)
+- `apps/server/src/agents/gateway.ts`
+- `work/T-0523-agents-g6-extract-listener.md` (status + this Report)
+
+### Commands run (real results)
+- `pnpm install` → done in 14.1s.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/agents/gateway.test.ts`
+  → 1 test file passed, 168 tests passed.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/agents/listener`
+  → 1 test file passed, 13 tests passed.
+- `pnpm gate` → `PASS install (frozen) (1.9s)`, `PASS format (28.8s)`, `PASS lint (0.9s)`,
+  `PASS typecheck (19.8s)`, `PASS tests @zilar/server (94.9s)`, `scope: every changed file
+  is inside the Allowed files`, `GATE PASS`.
+
+### Deviations / notes
+- None from the spec. All agent tests are untouched and green.
+- Security: pure extraction of debounce/scoring plumbing; no route, auth, secret or
+  persistence logic changed. No secrets were read or logged.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-08). G6 is a pure extraction: the room listener (noteListenerMessage, fireRoomListener, wakeListenerAis, dropRoomListenerIfUnused, roomListeners) moved verbatim into agents/gateway/listener.ts (createRoomListener), with sessions, roomRounds, sessionIsLive and pumpRoom injected, and stop() calls clearAll(). Agents tests unchanged. Pre-review clean, 0 nits.
