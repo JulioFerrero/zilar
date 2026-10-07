@@ -67,8 +67,7 @@ import type { MuteDurationId } from '@/lib/chatPrefs';
 import { classify, cleanFilename, objectUrlFor } from '@/lib/attachments';
 import { StickerSchema, isValid } from '@zilar/protocol';
 import { sampleVoiceDataUrl } from '@/lib/voice';
-import type { StoreApi } from 'zustand/vanilla';
-import { createStore } from 'zustand/vanilla';
+import { createAtomStore, type StoreApi } from './atomStore';
 import {
   currentUserId as defaultCurrentUserId,
   mockChats,
@@ -832,7 +831,7 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
   // The `leaveTopic` row re-check reads it alongside the painted list.
   const archivedTopicIds = new Set<string>();
 
-  return createStore<ChatStoreState>((set, get) => {
+  return createAtomStore<ChatStoreState>((set, get) => {
     const setStatus = (chatId: string, messageId: string, status: MessageStatus): void => {
       set((state) => {
         const list = state.messagesByChat[chatId] ?? [];

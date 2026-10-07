@@ -1,7 +1,7 @@
 ---
 id: T-0526
 title: "atom-react W1 (web): add @effect/atom-react, a zustand-compatible createAtomStore over one registry atom, and swap both web stores and ChatStoreProvider onto it; every web test unchanged; bundle measured"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0526-atom-react-web-w1
 model: auto
@@ -86,4 +86,77 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Status: review. Branch `task/T-0526-atom-react-web-w1`.
+
+### What I did
+
+- **`apps/web/package.json`:** added `@effect/atom-react` `4.0.2`; added
+  `scheduler` `^0.27.0` because pnpm reported the atom-react peer as unmet
+  (`found 0.28.0`, needs `>=0.25.0 <0.28.0`). Removed `zustand`.
+- **`apps/web/src/store/atomStore.ts` (new):** `createAtomStore<T>(initializer, registry?)`.
+  The whole state lives in one `Atom.writable` held in an `AtomRegistry` (one is
+  created when none is passed). It returns the `StoreApi<T>` surface plus `atom`
+  and `registry`, and keeps the semantics: partial **and** updater `set`,
+  `replace`, `Object.is` skip when the state is unchanged, `subscribe(listener)`
+  called with `(state, prevState)` and returning an unsubscribe,
+  `getInitialState`, and a synchronous `get()` that sees the last `set`.
+- **`apps/web/src/store/realStore.ts`, `store.ts`:** swapped
+  `createStore<ChatStoreState>(…)` for `createAtomStore<ChatStoreState>(…)` and
+  the `zustand/vanilla` `StoreApi` import for `./atomStore`. No other line in
+  those two files changed.
+- **`apps/web/src/store/ChatStoreProvider.tsx`:** `useChatStoreApi()` and the
+  auth `start()`/`stop()` effect are unchanged; children are wrapped in
+  `<RegistryContext.Provider value={value.registry}>` and `useChatStore()` now
+  returns `useAtomValue(useChatStoreApi().atom)`.
+- **`apps/web/src/store/atomStore.test.ts` (new):** 8 tests for the semantics
+  above, plus that `registry.get(atom)` mirrors `getState()`.
+- No `zustand` import remains under `apps/web/src`; the only hits are two
+  explanatory comment lines in `atomStore.ts`.
+
+### Files changed
+
+`apps/web/package.json`, `pnpm-lock.yaml`, `apps/web/src/store/atomStore.ts`,
+`apps/web/src/store/atomStore.test.ts`, `apps/web/src/store/realStore.ts`,
+`apps/web/src/store/store.ts`, `apps/web/src/store/ChatStoreProvider.tsx`,
+`work/T-0526-atom-react-web-w1.md`.
+
+### Commands and real results
+
+- `pnpm install`: ok; after adding `scheduler` the atom-react peer warning is
+  gone (only the pre-existing mobile `@types/react` warning remains).
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot src/store/atomStore.test.ts`: 8 passed.
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot src/store/reload.test.tsx`: 3 passed.
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot src/store/realStore.test.tsx`: 134 passed.
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot src/routes/ChatView.test.tsx src/routes/NotificationsPage.test.tsx`: 17 passed.
+- `pnpm gate` (repo root): EXIT 0 —
+  `gate: 8 changed file(s) against main`, `PASS install (frozen)`, `PASS format`,
+  `PASS lint`, `PASS typecheck`, `PASS tests @zilar/web (78.4s)`,
+  `scope: every changed file is inside the Allowed files`, `GATE PASS`.
+
+### Bundle (main JS chunk, `pnpm --filter @zilar/web build`)
+
+- §3.1 documented baseline: `index-wv0dHVba.js` 1,339.44 kB raw / 374.56 kB gzip.
+- Measured before the source change (same tree, deps added but not yet imported):
+  `index-Bo7m48NY.js` 1,415.32 kB raw / 399.31 kB gzip. (The repo has grown since
+  §3.1, so this is the meaningful before.)
+- After (this task): `index-1qlpBPii.js` 1,465.29 kB raw / 416.05 kB gzip.
+- Delta of this task: **+49.97 kB raw / +16.74 kB gzip** (CSS unchanged at
+  57.14 kB / 11.55 kB gzip).
+
+### Deviations and notes
+
+- The local `StoreApi<T>` type carries the four store members **plus** `atom`
+  and `registry`. That is deliberate: item 3 says the two store files keep their
+  `: StoreApi<ChatStoreState>` return annotations with no other line changed, and
+  the provider needs `.registry` / `.atom` from that same type. If the lead wants
+  the local type to be exactly the four zustand members, both return annotations
+  must widen instead.
+- `atomStore.ts` has one cast, `partial as (state: T) => T | Partial<T>`, because
+  the generic union `T | Partial<T> | fn` makes `typeof partial === 'function'`
+  narrow to `T & Function`. No `any`, no `@ts-ignore`.
+- `zustand` stays in the workspace only for `apps/mobile`; web no longer declares
+  it.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-08). Both web stores run on createAtomStore, a zustand-compatible StoreApi over one atom in an AtomRegistry. The provider reads it with useAtomValue under RegistryContext, and zustand is gone from web. atomStore.test.ts pins the semantics; every other web test is unchanged. Bundle +50 kB raw / +16.7 kB gzip. Lead browser check, mock mode, side by side with main on ports 5199 and 5198: chat list, opening a chat and a send updating the list all behave the same as main. Pre-review clean; the nit (a stale Report sentence) is accepted. Next: W2 (slice atoms).

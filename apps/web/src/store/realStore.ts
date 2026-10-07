@@ -48,8 +48,7 @@ import {
   type XmppCore,
   type XmppCoreOptions,
 } from '@zilar/xmpp-core';
-import type { StoreApi } from 'zustand/vanilla';
-import { createStore } from 'zustand/vanilla';
+import { createAtomStore, type StoreApi } from './atomStore';
 import {
   ApiError,
   addGroupAi as addGroupAiRequest,
@@ -784,7 +783,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       }
     });
 
-  return createStore<ChatStoreState>((set, get) => {
+  return createAtomStore<ChatStoreState>((set, get) => {
     let core: XmppCore | undefined;
     let unsubscribers: Array<() => void> = [];
     let typingTimers: Record<string, ReturnType<typeof setTimeout>> = {};
