@@ -1,4 +1,5 @@
 import type { UiReaction } from '@zilar/chat-core';
+import { Chip } from './ui/chip';
 import { cn } from '@/lib/utils';
 
 export interface ReactionChipsProps {
@@ -33,23 +34,19 @@ export function ReactionChips({ reactions, own, className, onToggle }: ReactionC
       )}
     >
       {reactions.map((reaction) => (
-        <button
+        <Chip
           key={reaction.emoji}
-          type="button"
-          aria-pressed={reaction.mine}
-          aria-label={chipLabel(reaction)}
+          pressed={reaction.mine}
+          ariaLabel={chipLabel(reaction)}
           title={reaction.reactors.join(', ')}
           onClick={() => onToggle(reaction.emoji)}
-          className={cn(
-            'reaction-chip flex items-center gap-1 rounded-full px-2 py-0.5 text-[13px] leading-none',
-            reaction.mine && 'reaction-chip-mine',
-          )}
+          className={cn('reaction-chip', reaction.mine && 'reaction-chip-mine')}
         >
           <span aria-hidden="true">{reaction.emoji}</span>
           <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
             {reaction.count}
           </span>
-        </button>
+        </Chip>
       ))}
     </div>
   );

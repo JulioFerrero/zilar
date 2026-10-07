@@ -1,7 +1,7 @@
 ---
 id: T-0477
 title: "Web kit: new Chip component (pill toggle) for reaction chips and the search scope chip; new-topic Type chips on SegmentedControl"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0477-web-kit-chip
 model: auto
@@ -65,4 +65,47 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- Added `apps/web/src/components/ui/chip.tsx`: `Chip({ pressed?, onClick, ariaLabel?, title?, tone?: 'neutral' | 'accent', className?, children })`. Renders `<button type="button">`, sets `aria-pressed` only when `pressed` is given, applies the spec'd base classes, adds `bg-accent/20 font-medium text-foreground` for `tone="accent"`, and merges `className` last via `cn`. Added `data-slot="chip"`.
+- Added `apps/web/src/components/ui/chip.fixture.tsx` (neutral, pressed, accent) so the Cosmos fixture test picks it up.
+- Added a `Chip` describe block to `apps/web/src/components/ui/kit.test.tsx`: `aria-pressed` true, `aria-pressed` false, `aria-pressed` omitted when `pressed` is undefined, and the click callback. The accessible name comes from `ariaLabel` (queries use it).
+- `ReactionChips.tsx`: each raw pill is now `<Chip pressed={reaction.mine} ariaLabel={chipLabel(reaction)} title={…} onClick={…} className={cn('reaction-chip', reaction.mine && 'reaction-chip-mine')}>` with the same children. Names, `title` and `aria-pressed` are unchanged.
+- `SearchBar.tsx`: the scope chip is now `<Chip tone="accent" ariaLabel=… title=… onClick={clearScope} className="max-w-[120px] shrink-0 truncate text-[11px]">`.
+- `NewTopicDialog.tsx`: the Type pills are now `<SegmentedControl mode="radio" ariaLabel="Type" options={TYPE_CHIPS.map(…)} value={kind} onChange={(next) => setKind(next as TopicKind)} />`, with the visible "Type" label kept. Removed the now-unused `cn` import.
+- `NewTopicDialog.test.tsx`: line 25 now clicks `getByRole('radio', { name: 'Task' })`.
+
+### Files changed
+- `apps/web/src/components/ui/chip.tsx` (new)
+- `apps/web/src/components/ui/chip.fixture.tsx` (new)
+- `apps/web/src/components/ui/kit.test.tsx`
+- `apps/web/src/components/ReactionChips.tsx`
+- `apps/web/src/components/SearchBar.tsx`
+- `apps/web/src/components/NewTopicDialog.tsx`
+- `apps/web/src/components/NewTopicDialog.test.tsx`
+- `work/T-0477-web-kit-chip.md`
+
+`ReactionChips.test.tsx` is in Allowed files but needed no change; its assertions on names and `aria-pressed` pass unchanged.
+
+### Commands and real results
+- `pnpm install` — Done, 0 errors (one pre-existing mobile peer warning).
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot kit fixtures ReactionChips NewTopicDialog ChatList` — 7 test files passed, 199 tests passed.
+- `pnpm gate` (from repo root) — summary lines:
+  - `gate: 8 changed file(s) against main`
+  - `PASS  install (frozen)  (1.1s)`
+  - `PASS  format  (16.0s)` (after one `prettier --write` on `kit.test.tsx`)
+  - `PASS  lint  (1.1s)`
+  - `PASS  typecheck  (11.5s)`
+  - `PASS  tests @zilar/web  (40.7s)`
+  - `scope: every changed file is inside the Allowed files`
+  - `GATE PASS`
+
+### Problems / deviations
+- First `pnpm gate` failed only on `format` for `kit.test.tsx`; fixed with `prettier --write` on that one file, then gate passed.
+- Note (not a blocker): `Chip`'s base adds `focus-visible:ring-2 …` while the `reaction-chip` `@utility` sets its own `&:focus-visible { outline: … }`. The resting look is unchanged; a focused reaction chip may now show both the outline and the ring. This comes from the spec'd base classes, so I did not deviate.
+
+### Open questions
+None.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-07). There is a new kit Chip (pressed, tone neutral or accent, focus ring) with a fixture and tests. Reaction chips and the search scope chip use it with an unchanged look and names. The new-topic Type uses SegmentedControl (radio). Nits accepted: a cast on the Type onChange; the visible Type label is not linked by id.
