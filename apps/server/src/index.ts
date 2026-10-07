@@ -31,6 +31,7 @@ import { getMailSettings, settingsCipherFor } from './setup/settings';
 import { createKeyCipher } from './connections/crypto';
 import { createDb } from './db/client';
 import { runMigrations } from './db/migrate';
+import { disposeSqlRuntime } from './effect/sql';
 import { createArchivePool } from './search/service';
 import { createPushCipher } from './push/crypto';
 import { loadPushConfigOrExit, pushConfigError, type PushConfig } from './push/config';
@@ -530,6 +531,9 @@ async function shutdown(signal: NodeJS.Signals): Promise<void> {
   if (routineScheduler !== null) {
     routineScheduler.stop();
   }
+  // The `effect/sql` pool is separate from the drizzle client: dispose it
+  // before closing the client it may share a PGlite connection with.
+  await disposeSqlRuntime(db);
   await close();
   process.exit(0);
 }

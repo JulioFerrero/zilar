@@ -454,7 +454,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0425](T-0425-mobile-profile-buttons-kit.md) | Mobile: profile and contact card buttons on the kit Button | 2026-10-06 |
 | [T-0426](T-0426-mobile-ai-sheet-buttons-kit.md) | Mobile: AI activity Refresh, tool sheet Show all/less and Close on the kit Button | 2026-10-06 |
 | [T-0494](T-0494-protocol-effect-schema.md) | Effect B1: protocol on Effect Schema + every consumer | running | auto | T-0490 | |
-| [T-0510](T-0510-effect-sql-blocks-runtime.md) | Effect C1: blocks on effect/sql + runtime wiring | running | auto | T-0496 | |
 | [T-0514](T-0514-effect-http-blocks-contacts-directory.md) | Effect C (HTTP): blocks, contacts, directory on HttpApi | running | auto | T-0498 | |
 | [T-0516](T-0516-agents-g2-extract-budget.md) | Agents G2: extract the budget gate | running | auto | T-0512 | |
 | [T-0517](T-0517-agents-g3-extract-memory.md) | Agents G3: extract memory context and compaction | running | auto | T-0512 | |
@@ -542,3 +541,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0496](T-0496-db-effect-sql-spike.md) | Effect F3 spike: pins on effect/sql + migration plan | 2026-10-07 |
 | [T-0515](T-0515-effect-http-contact-requests.md) | Effect C (HTTP): contact-requests on HttpApi | 2026-10-07 |
 | [T-0512](T-0512-agents-g1-extract-contracts.md) | Agents G1: extract contracts and DB lookups | 2026-10-07 |
+| [T-0510](T-0510-effect-sql-blocks-runtime.md) | Effect C1: blocks on effect/sql + runtime wiring | 2026-10-07 |

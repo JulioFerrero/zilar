@@ -1,7 +1,7 @@
 ---
 id: T-0510
 title: "Effect C1: blocks service on effect/sql (same lock order, same answers) + the effect/sql runtime registered once in createApp/test context and disposed on shutdown"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0510-effect-sql-blocks-runtime
 model: auto
@@ -74,4 +74,82 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+
+**Runtime wiring.**
+- `app.ts`: `createApp` now calls `registerSqlRuntime(db, config.DATABASE_URL)` as its
+  first statement, before any route/module is built. Added the import.
+- `pins/routes.ts`: removed the now-redundant `registerSqlRuntime` call and its import.
+  Pins tests go through `createApp` (`testApp`), so nothing broke; kept the call removed.
+- `effect/sql.ts`: added exported `disposeSqlRuntime(db): Promise<void>`. It deletes the
+  handle from the `WeakMap` first, then `await runtime.dispose()`, so a second call is a
+  no-op and `sqlRuntimeFor(db)` afterwards throws as documented.
+- `index.ts`: `shutdown` now `await disposeSqlRuntime(db)` after the loops stop and
+  **before** `await close()`. Added the import.
+
+**`blocks/service.ts` on `effect/sql`.** Same exports, signatures and return values
+(`isDmBlocked`, `blockUser`, `unblockUser`, `listBlockedUsers`, `MAX_BLOCK_LIST_ROWS`,
+`BlocksDeps`, `BlockedUserView`). No drizzle imports remain. All five queries are tagged
+templates; `blockUser` keeps `sql.withTransaction` with the two advisory locks in the
+**same order and keys** (`contact-sender:<targetId>` then `user-block:<userId>`), the
+target existence check, the `ON CONFLICT DO NOTHING ... RETURNING` insert and the
+pending-request cancel update inside it. The same `HttpError`s are thrown (400 self,
+404 unknown target, no 409 mapping because the insert is conflict-tolerant). A small
+`runSql(db, effect)` helper runs simple effects through `sqlRuntimeFor(db)`.
+
+**Tests.** Added `apps/server/src/effect/sql-runtime.test.ts` (2 tests): after
+`createApp`/`testApp` on a fresh context `sqlRuntimeFor(db)` does not throw; dispose is
+idempotent and then `sqlRuntimeFor` throws. Existing tests were not modified.
+
+### Files changed (7, all inside Allowed files)
+
+- `apps/server/src/app.ts`
+- `apps/server/src/blocks/service.ts`
+- `apps/server/src/effect/sql.ts`
+- `apps/server/src/effect/sql-runtime.test.ts` (new)
+- `apps/server/src/index.ts`
+- `apps/server/src/pins/routes.ts`
+- `work/T-0510-effect-sql-blocks-runtime.md`
+
+### Commands and real results
+
+- `pnpm install` — done in 4.3s, exit 0 (only the pre-existing mobile peer-dependency warning).
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot blocks src/effect` —
+  6 files, 41 passed.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot contact-requests pins` —
+  2 files, 25 passed.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/files src/media` —
+  3 files, 39 passed (these import `isDmBlocked`; pre-check before the gate).
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot blocks contact-requests pins src/effect`
+  (the task's Checks line) — 8 files, 66 passed.
+- `pnpm gate` (repo root) — summary lines:
+  ```
+  gate: 7 changed file(s) against main
+  PASS  install (frozen)  (1.9s)
+  PASS  format  (29.1s)
+  PASS  lint  (1.1s)
+  PASS  typecheck  (11.9s)
+  PASS  tests @zilar/server  (602.0s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Deviations and notes
+
+- In `blockUser` the `now` timestamp is bound as `now.toISOString()` rather than a JS
+  `Date` object, to avoid driver-specific `Date` parameter binding on PGlite/pg. The
+  column is `timestamptz`, so the stored value and the newest-first ordering are
+  unchanged; `blocks.test.ts`'s injected-clock ordering test passes.
+- `listBlockedUsers` types the joined select as `sql<BlockedUserView>` and aliases
+  `u.id AS user_id`; `transformResultNames` maps it to `userId`, matching the old row shape.
+- The PGlite single-connection caution did not bite: `contact-requests.test.ts` has no
+  block calls, and no test mixes a block transaction with a concurrent contact request.
+  Nothing was changed in tests.
+
+### Blocked / needs a decision
+
+None.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-08). The effect/sql runtime is now registered once in createApp (and no longer in pins routes) and disposed in shutdown before the drizzle close. The blocks service runs on effect/sql with the same advisory lock keys and order and the same answers. The listed tests are unchanged, and the new runtime test passes. Follow-up (test-only PGlite interleave between the blocks and contact-request transactions): T-0519 moves contact-requests/service.ts to effect/sql.

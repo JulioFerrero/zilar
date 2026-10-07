@@ -34,6 +34,7 @@ import { createContactRequestsApi } from './contact-requests/api';
 import { createDirectoryRoutes } from './directory/routes';
 import { createHandlesApi } from './handles/api';
 import { mountEffectRoutes } from './effect/http';
+import { registerSqlRuntime } from './effect/sql';
 import type { ServerDatabase } from './db/client';
 import { HttpError } from './errors';
 import { createGroupsRoutes } from './groups/routes';
@@ -243,6 +244,10 @@ export function createApp({
   gifMediaFetcher,
   gifNow,
 }: AppDependencies): Hono<{ Variables: RequestIdVariables }> {
+  // Bind the `effect/sql` runtime for this database once, before any module
+  // that runs queries through it is built. The registry memoizes per handle,
+  // so building routes (pins, blocks) no longer has to register it.
+  registerSqlRuntime(db, config.DATABASE_URL);
   const app = new Hono<{ Variables: RequestIdVariables }>();
   const auditRecorder = audit ?? createAuditRecorder({ db, logger });
   // Default gateway: empty registry. Every action is denied
