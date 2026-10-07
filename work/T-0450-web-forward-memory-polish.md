@@ -1,7 +1,7 @@
 ---
 id: T-0450
 title: "Web polish: Forget a fact once per click (no false error); multi-select tests prove chat order and the chat-switch reset"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0450-web-forward-memory-polish
 model: auto
@@ -58,4 +58,36 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- **`AiMemorySection.tsx`**: added `forgettingId: string | null` state. `forget(factId)` now returns at once while any forget is in flight; the pending row's Forget button is `disabled={forgettingId === fact.id}`. A rejected delete is treated as success when it is an `ApiError` with `status === 404` (row removed, no error); any other failure still shows "Could not forget that fact" and keeps the row.
+- **`AiMemorySection.test.tsx`**: added a `notFoundDelete` option to the fetch stub, plus two tests: a double click sends exactly one DELETE; a 404 on DELETE removes the row and shows no error line.
+- **`ChatView.test.tsx`**: changed the order test to start select mode from `m-2` and then check `m-1`, so the forwarded picker must still receive `[m-1, m-2]` (chat order, not click order). Added "leaves select mode when the chat changes": select in `group`, `rerender(tree(dm))` shows no selection bar and no "Select message" checkbox, then `rerender(tree(group))` shows the same.
+
+### Files changed
+- `apps/web/src/components/ais/AiMemorySection.tsx`
+- `apps/web/src/components/ais/AiMemorySection.test.tsx`
+- `apps/web/src/routes/ChatView.test.tsx`
+- `work/T-0450-web-forward-memory-polish.md` (status only)
+
+### Commands and results
+- `pnpm install`: done, 18.1s. (Pre-existing warn: `apps/mobile` `@types/react-dom` peer wants `@types/react@^19.3.0`, found `19.2.18`; untouched.)
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot AiMemorySection ChatView`: 2 files passed, 22 tests passed.
+- `pnpm gate`: first run `FAIL format` on `AiMemorySection.tsx` and `AiMemorySection.test.tsx`; ran `pnpm exec prettier --write` on those two files, then re-ran gate:
+  - `PASS install (frozen) (1.2s)`
+  - `PASS format (20.6s)`
+  - `PASS lint (1.1s)`
+  - `PASS typecheck (12.7s)`
+  - `PASS tests @zilar/web (33.7s)`
+  - `scope: every changed file is inside the Allowed files`
+  - `GATE PASS`
+
+### Problems / deviations
+- No deviations from the spec. Formatted my own two files after the first gate run reported format issues; no other checks were run separately.
+- No other test broke.
+
+### Open questions
+- None.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-07). Forget sends one request at a time (forgettingId, the row disabled while pending) and treats a 404 as success. The ChatView order test now selects out of order, and a new test proves the chat switch leaves select mode. Nit accepted: other rows ignore clicks silently while one forget is pending.

@@ -43,7 +43,12 @@ function firstOf<T>(items: T[]): T {
 // `MODE=test`): an in-memory AI-memory endpoint mirroring the server contract.
 function stubMemoryApi(
   initial: StubMemory,
-  options: { failFirstGet?: boolean; failDelete?: boolean; failClear?: boolean } = {},
+  options: {
+    failFirstGet?: boolean;
+    failDelete?: boolean;
+    notFoundDelete?: boolean;
+    failClear?: boolean;
+  } = {},
 ) {
   let memory = initial;
   let getCount = 0;
@@ -61,6 +66,9 @@ function stubMemoryApi(
     }
     if (method === 'DELETE' && path.startsWith('/ai-memory/facts/')) {
       deletePaths.push(path);
+      if (options.notFoundDelete === true) {
+        return jsonResponse(404, { error: { code: 'not_found', message: 'no such fact' } });
+      }
       if (options.failDelete === true) {
         return jsonResponse(500, { error: { code: 'boom', message: 'no' } });
       }
@@ -148,6 +156,31 @@ describe('AiMemorySection', () => {
     expect(url.pathname).toBe('/ai-memory/facts/fact-1');
     expect(url.searchParams.get('chat')).toBe(CHAT);
     expect(url.searchParams.get('ai')).toBe(AI);
+  });
+
+  it('sends one DELETE when Forget is double-clicked', async () => {
+    const api = stubMemoryApi(seeded);
+    renderSection();
+    await openMemory();
+
+    const button = firstOf(screen.getAllByRole('button', { name: 'Forget this fact' }));
+    fireEvent.click(button);
+    fireEvent.click(button);
+
+    await waitFor(() => expect(screen.queryByText('Julio prefers short answers.')).toBeNull());
+    expect(api.deletePaths).toHaveLength(1);
+  });
+
+  it('treats a 404 on Forget as success: removes the row without an error', async () => {
+    stubMemoryApi(seeded, { notFoundDelete: true });
+    renderSection();
+    await openMemory();
+
+    fireEvent.click(firstOf(screen.getAllByRole('button', { name: 'Forget this fact' })));
+
+    await waitFor(() => expect(screen.queryByText('Julio prefers short answers.')).toBeNull());
+    expect(screen.getByText('The launch is on Friday.')).toBeTruthy();
+    expect(screen.queryByText('Could not forget that fact')).toBeNull();
   });
 
   it('asks before clearing: Cancel sends nothing, Clear POSTs and reloads', async () => {

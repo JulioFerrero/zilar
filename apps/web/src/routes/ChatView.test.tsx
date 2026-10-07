@@ -132,13 +132,15 @@ describe('ChatView forwarding multi-select (T-0439)', () => {
   it('selects several messages and forwards them in chat order', () => {
     const { first, second, forwardMessages } = renderSelecting();
 
-    fireEvent.contextMenu(screen.getByText('message m-1'));
+    fireEvent.contextMenu(screen.getByText('message m-2'));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Select' }));
 
     expect(screen.getByText('1 selected')).toBeTruthy();
     expect(screen.getAllByLabelText('Select message')).toHaveLength(2);
 
-    fireEvent.click(screen.getAllByLabelText('Select message')[1] as HTMLElement);
+    // Select m-1 second, so the checked order is m-2 then m-1: the picker must
+    // still send them in chat order (m-1 is older).
+    fireEvent.click(screen.getAllByLabelText('Select message')[0] as HTMLElement);
     expect(screen.getByText('2 selected')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Forward' }));
@@ -151,6 +153,27 @@ describe('ChatView forwarding multi-select (T-0439)', () => {
     expect(forwardMessages).toHaveBeenCalledTimes(1);
     const [, messages] = forwardMessages.mock.calls[0] as [string[], UiMessage[]];
     expect(messages.map((item) => item.id)).toEqual([first.id, second.id]);
+  });
+
+  it('leaves select mode when the chat changes', () => {
+    const first = message('m-1', 1);
+    const second = message('m-2', 2);
+    const { rerender, tree } = renderView(group, '/c/c-devteam', {
+      chats: [group, dm],
+      messagesByChat: { 'c-devteam': [first, second] },
+    });
+
+    fireEvent.contextMenu(screen.getByText('message m-1'));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Select' }));
+    expect(screen.getByText('1 selected')).toBeTruthy();
+
+    rerender(tree(dm));
+    expect(screen.queryByText(/selected/)).toBeNull();
+    expect(screen.queryAllByLabelText('Select message')).toHaveLength(0);
+
+    rerender(tree(group));
+    expect(screen.queryByText(/selected/)).toBeNull();
+    expect(screen.queryAllByLabelText('Select message')).toHaveLength(0);
   });
 
   it('leaves select mode on Cancel', () => {

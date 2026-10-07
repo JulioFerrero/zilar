@@ -2,6 +2,17 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-07 morning:**
+- **Julio is working on the PC: at most 2 workers at a time until he says otherwise.**
+- **Merged:** T-0447 (web room memory dialog) and T-0449 (mobile Memory section, after a lead fix round for a Forget race).
+- **In review:**
+  - T-0446 (compactor) and T-0450 (web polish): pre-reviews restarted after they stalled overnight;
+  - T-0448 (mobile polish): a fresh pre-review after its fix round.
+- **Local dev:** vite and the server hit the background time limit and are stopped. Restart them only when Julio asks.
+- **Next, one at a time while under 2:**
+  - M6b, the mobile room memory (the group and topic info sheets);
+  - emulator QA of the forward, media and memory screens, only when Julio frees the PC.
+
 **2026-10-06 late evening:**
 - **Merged:** T-0436, T-0440 to T-0445:
   - the mobile media sheet;

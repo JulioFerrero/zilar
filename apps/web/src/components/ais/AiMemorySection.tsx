@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Brain, Trash2 } from 'lucide-react';
-import { clearAiMemory, forgetAiMemoryFact, getAiMemory, type AiMemory } from '@/lib/api';
+import { ApiError, clearAiMemory, forgetAiMemoryFact, getAiMemory, type AiMemory } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { StateMessage } from '@/components/ui/state-message';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
@@ -34,6 +34,7 @@ export function AiMemorySection({
   const [status, setStatus] = useState<LoadStatus>('loading');
   const [memory, setMemory] = useState<AiMemory | null>(null);
   const [forgetError, setForgetError] = useState('');
+  const [forgettingId, setForgettingId] = useState<string | null>(null);
   const [clearError, setClearError] = useState('');
   const [confirmingClear, setConfirmingClear] = useState(false);
   const [reloadTick, setReloadTick] = useState(0);
@@ -72,17 +73,31 @@ export function AiMemorySection({
   };
 
   const forget = async (factId: string): Promise<void> => {
+    // Ignore further clicks while a forget is in flight: the row's button is
+    // disabled while it is the one being forgotten, and this guard stops a
+    // second request for any fact.
+    if (forgettingId !== null) {
+      return;
+    }
     setForgetError('');
+    setForgettingId(factId);
     try {
       await forgetAiMemoryFact(chat, aiId, factId);
-      setMemory((current) =>
-        current === null
-          ? current
-          : { ...current, facts: current.facts.filter((fact) => fact.id !== factId) },
-      );
-    } catch {
-      setForgetError('Could not forget that fact');
+    } catch (error) {
+      // A 404 means the fact is already gone, so the outcome the owner asked
+      // for holds; drop the row instead of showing a false error.
+      if (!(error instanceof ApiError && error.status === 404)) {
+        setForgetError('Could not forget that fact');
+        setForgettingId(null);
+        return;
+      }
     }
+    setMemory((current) =>
+      current === null
+        ? current
+        : { ...current, facts: current.facts.filter((fact) => fact.id !== factId) },
+    );
+    setForgettingId(null);
   };
 
   const confirmClear = async (): Promise<void> => {
@@ -172,6 +187,7 @@ export function AiMemorySection({
                         size="icon-sm"
                         aria-label="Forget this fact"
                         className="rounded-full text-muted-foreground"
+                        disabled={forgettingId === fact.id}
                         onClick={() => void forget(fact.id)}
                       >
                         <Trash2 className="size-4" aria-hidden="true" />
