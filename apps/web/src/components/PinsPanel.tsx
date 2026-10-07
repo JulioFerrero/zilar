@@ -2,6 +2,7 @@ import { Pin, X } from 'lucide-react';
 import { useState } from 'react';
 import { LinkText } from './LinkText';
 import { Button } from './ui/button';
+import { ListRow } from './ui/list-row';
 import { Sheet } from './ui/sheet';
 import type { Pin as PinRow } from '@/lib/api';
 import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
@@ -154,16 +155,13 @@ export function PinsSection({ chatId, onOpen }: { chatId: string; onOpen: () => 
   const count = store.pins(chatId).length;
   return (
     <section aria-label="Pinned messages" className="flex flex-col gap-1 px-2">
-      <button
-        type="button"
+      <ListRow
+        icon={<Pin />}
+        title="Pinned messages"
+        trailing={String(count)}
+        ariaLabel={`Open pinned messages, ${count} pinned`}
         onClick={onOpen}
-        aria-label={`Open pinned messages, ${count} pinned`}
-        className="flex w-full items-center gap-2 rounded-xl px-2 py-1.5 text-left text-[14px] hover:bg-list-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
-      >
-        <Pin className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-        <span className="flex-1">Pinned messages</span>
-        <span className="font-mono text-[12px] text-muted-foreground">{count}</span>
-      </button>
+      />
     </section>
   );
 }

@@ -646,7 +646,8 @@ describe('GroupPanel', () => {
     it('shows the control to an owner or admin', () => {
       setup();
 
-      expect(screen.getByRole('button', { name: 'Group background' })).toBeTruthy();
+      const row = screen.getByRole('button', { name: 'Group background' });
+      expect(row.tagName).toBe('BUTTON');
     });
 
     it('hides the control from a plain member', () => {

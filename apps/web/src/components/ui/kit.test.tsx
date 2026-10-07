@@ -580,6 +580,11 @@ describe('ListRow', () => {
     expect(onClick).toHaveBeenCalledTimes(1);
   });
 
+  it('uses ariaLabel as the button name', () => {
+    render(<ListRow title="Notifications" ariaLabel="Open notifications" onClick={() => {}} />);
+    expect(screen.getByRole('button', { name: 'Open notifications' })).toBeTruthy();
+  });
+
   it('renders a router link when href is given', () => {
     render(
       <MemoryRouter>

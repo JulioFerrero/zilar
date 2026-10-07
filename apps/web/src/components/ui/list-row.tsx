@@ -12,6 +12,7 @@ export interface ListRowProps {
   onClick?: () => void;
   href?: string;
   danger?: boolean;
+  ariaLabel?: string;
 }
 
 /**
@@ -28,6 +29,7 @@ export function ListRow({
   onClick,
   href,
   danger = false,
+  ariaLabel,
 }: ListRowProps) {
   const content = (
     <>
@@ -61,14 +63,16 @@ export function ListRow({
     </>
   );
 
+  const interactive = onClick !== undefined || href !== undefined;
   const rowClass = cn(
     'flex w-full items-center gap-3 px-3 py-2.5 text-left',
-    (onClick !== undefined || href !== undefined) && 'transition-colors hover:bg-surface-raised',
+    interactive &&
+      'transition-colors hover:bg-surface-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40',
   );
 
   if (href !== undefined) {
     return (
-      <Link to={href} className={rowClass}>
+      <Link to={href} className={rowClass} aria-label={ariaLabel}>
         {content}
       </Link>
     );
@@ -76,7 +80,7 @@ export function ListRow({
 
   if (onClick !== undefined) {
     return (
-      <button type="button" onClick={onClick} className={rowClass}>
+      <button type="button" onClick={onClick} className={rowClass} aria-label={ariaLabel}>
         {content}
       </button>
     );
