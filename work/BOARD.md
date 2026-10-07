@@ -457,7 +457,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0496](T-0496-db-effect-sql-spike.md) | Effect F3 spike: DB on effect/sql (pins), migrations, better-auth plan | running | auto | T-0490 | |
 | [T-0498](T-0498-httpapi-adapter-handles.md) | Effect F4+P1: HttpApi under Hono, handles module moved | running | auto | T-0495 | |
 | [T-0502](T-0502-effect-devtools-lead-schema.md) | Effect F: lead CLI schemas on Effect Schema | running | auto | T-0490 | |
-| [T-0503](T-0503-audit-agent-gateway-effect.md) | Audit: agents module Effect plan | running | auto | T-0490 | |
 | [T-0509](T-0509-effect-runner-client-lifecycle.md) | Effect F: RunnerClient lifecycle on Effect | running | auto | T-0500 | |
 | [T-0510](T-0510-effect-sql-blocks-runtime.md) | Effect C1: blocks on effect/sql + runtime wiring | running | auto | T-0496 | |
 | [T-0511](T-0511-effect-tunnel-server-timers.md) | Effect F: tunnel server timers on Effect | running | auto | T-0500 | |
@@ -536,3 +535,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0500](T-0500-effect-runner-tunnel-schema.md) | Effect F: runner-tunnel zod to Effect Schema | 2026-10-07 |
 | [T-0501](T-0501-effect-runner-app-schema.md) | Effect F: apps/runner zod to Effect Schema | 2026-10-07 |
 | [T-0499](T-0499-effect-agent-drivers.md) | Effect P4: agent-drivers on Effect + Schema | 2026-10-07 |
+| [T-0503](T-0503-audit-agent-gateway-effect.md) | Audit: agents module Effect plan | 2026-10-07 |

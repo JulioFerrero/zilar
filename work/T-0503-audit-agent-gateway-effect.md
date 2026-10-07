@@ -1,7 +1,7 @@
 ---
 id: T-0503
 title: "Audit: how to move apps/server/src/agents (gateway 2.8k lines + stream, reply, memory, delegation, listener) onto Effect in small safe tasks — doc only"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0503-audit-agent-gateway-effect
 model: auto
@@ -73,4 +73,124 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+
+Wrote `docs/audit/effect-agents-plan.md` (doc only; no code touched). I read every
+non-test file in `apps/server/src/agents/` end to end (`gateway.ts`,
+`stream.ts`, `reply.ts`, `context.ts`, `tools.ts`, `tool-guide.ts`,
+`delegation/service.ts`, `listener/score.ts`, `memory/*.ts` — 7,295 lines), the
+existing task/test names in every `agents/**/*.test.ts`, `docs/EFFECT_GUIDE.md`,
+`docs/audit/effect-everywhere-plan.md` §2.4/§4.4, and the merged conversion
+examples (T-0484 `web-tools/guarded-fetch.ts`, T-0486 `machines/hub.ts`,
+T-0488 `routines/scheduler.ts` + `approvals/sweeper.ts`, T-0489
+`sandbox/run-tool.ts`, T-0492 `voice-transcription/pipeline.ts`, T-0495
+`effect/runtime.ts` + `effect/logger.ts`).
+
+The plan has the five required sections:
+
+1. **Map of `gateway.ts`** — every responsibility with line ranges, the state it
+   owns and its side effects (DB, XMPP, network, timers), including the three
+   timer sites (`gateway.ts:1087`, `1758`, `2798`).
+2. **Seams** — a proposed `agents/gateway/` module layout, and for each seam the
+   functions that move plus the closures/shared state they need. It calls out
+   the one non-pure seam: `executeToolCall` reads `sessions`/`roomRounds` and
+   calls `pumpRoom` directly (`gateway.ts:876,885,940`).
+3. **Ordered task list** — 12 tasks (G1–G9 extractions, then C1–C3 conversions),
+   each with files, the Effect idioms it uses (cited to the merged example by
+   file:line), the tests that must pass unchanged (with named cases and
+   `gateway.test.ts`/`rounds.test.ts`/`reply.test.ts`/`stream.test.ts` line
+   numbers), risk, dependencies and a parallelism graph.
+4. **Hazards** — 11 groups of concurrency/ordering guarantees, intentional
+   non-awaits (`gateway.ts:940,1181,1682,1868,2001,2718,2739,2760,2784`) and
+   swallowed exceptions (`1408-1414`, `1491-1496`, `1613`, `2046`, `2449-2451`,
+   `2680-2681`, `2820-2826`), each with `file:line` and the pinned test names.
+5. **Streaming** — recommends keeping `consumeChatCompletionStream` as a plain
+   async reader and putting one `Effect` boundary (`Effect.tryPromise` +
+   `timeoutOrElse`) around `requestCompletion`, instead of converting the SSE
+   parser to a `Stream`; notes `Stream.fromReadableStream` exists in Effect
+   4.0.0 (`Stream.d.ts:1076`) but gives no runtime gain and would move
+   `stream.test.ts`'s byte-level cases. A `Stream` is suggested later for the
+   DM draft `onDelta` path only.
+
+I also added an "Unknowns / open questions" section (6 questions) rather than
+guessing, per the spec and `AGENTS.md`.
+
+### Files changed
+
+- `docs/audit/effect-agents-plan.md` (new).
+- `work/T-0503-audit-agent-gateway-effect.md` (status + this Report).
+
+No code changed.
+
+### Commands run (real results)
+
+- `pnpm install` — exit 0, `Done in 13.4s using pnpm v10.32.1` (one pre-existing
+  `@types/react-dom` peer warning in `apps/mobile`, unrelated to this task).
+- `pnpm gate` — exit 0, ends with `GATE PASS`:
+
+  ```
+  gate: 2 changed file(s) against main
+  PASS  install (frozen)  (1.8s)
+  PASS  format  (22.2s)
+  PASS  lint  (1.1s)
+  PASS  typecheck  (1.6s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+No single test files were run separately: no code or tests changed, and the gate
+selected no package test suites for a docs-only diff. I did not run `turbo test`
+or any whole suite.
+
+### Problems / deviations
+
+- The spec says "6 to 12 tasks, each at most about 400 changed lines", but the
+  module is 7,295 non-test lines: a strict ≤400 cap needs ~19 tasks. I delivered
+  12 tasks with explicit split points for the two oversized ones (G8 group turn
+  ≈540; C2 tool loop ≈600) and flagged the arithmetic in the plan's "Unknowns"
+  (question 1) so the lead can decide whether to expand the list. This is the
+  one place the plan does not satisfy the spec literally.
+- The spec's verified-facts line says gateway is 2,841 and "the rest of
+  `agents/` is about 7.3k lines"; the actual non-test total for the whole
+  directory is 7,295 (so the rest is ~4,454). I used the measured number.
+- No other deviations. No dependencies added, no tests changed, no files outside
+  the Allowed list touched.
+
+### Open questions
+
+See the plan's "Unknowns / open questions" (task-count sizing, how far to
+convert the pure leaves, whether the shared `ManagedRuntime` is introduced, the
+`catchCause` vs `catchDefect` choice per loop, ordering of `drafts/` and
+`actions/` conversions relative to C2, and keeping `memory/routes.ts` in the 401
+sweep). None block the work; all are decisions for the lead.
+
+### Round
+
+Fix round against `PREREVIEW.md` (must-fix 0, should-fix 1, nit 1).
+
+- **Finding 1 (should-fix) — fixed.** The G4 table row claimed deps `G1,G6`;
+  it is now `G1,G5`, and the §2 closing sentence no longer says "task G5 comes
+  after G6 … lands together with G6" but "task G4 comes after G5 … lands
+  together with G5". Both now agree with the G4 detail ("run it after G5 (the
+  registry)") and the Parallelism graph (`G5 ─> G4`). File:
+  `docs/audit/effect-agents-plan.md`.
+- **Finding 2 (nit, sizing note) — not changed.** The task instruction says not
+  to touch nits unless they sit on a line already edited, and the sizing note is
+  a separate paragraph. No behaviour is affected; left for the lead.
+- **Tests added: none.** This is a doc-only change; the finding names no test and
+  no code or test files changed.
+- **Gate:** `pnpm gate` exit 0, `GATE PASS`:
+
+  ```
+  gate: 2 changed file(s) against main
+  PASS  install (frozen)  (5.5s)
+  PASS  format  (26.8s)
+  PASS  lint  (1.3s)
+  PASS  typecheck  (0.7s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-07). `docs/audit/effect-agents-plan.md` maps gateway.ts with line ranges, lists the seams, gives the ordered G1-G9 extractions and C1-C3 conversions with a parallelism graph, records 11 hazards with file:line, and recommends one Effect boundary around requestCompletion (the SSE parser stays a plain async function). Lead decision on the sizing question: split G1, G8 and C2 so each task stays at or under 400 changed lines.
