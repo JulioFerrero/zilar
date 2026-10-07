@@ -459,7 +459,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0486](T-0486-effect-runner-hub.md) | Effect convert: runner hub loops | running | auto | T-0173 | |
 | [T-0487](T-0487-effect-mailer.md) | Effect convert: SMTP mailer send | running | auto | T-0173 | |
 | [T-0488](T-0488-effect-background-loops.md) | Effect convert: routines scheduler + approvals sweeper | running | auto | T-0173 | |
-| [T-0489](T-0489-effect-run-tool.md) | Effect convert: sandbox runTool | running | auto | T-0173 | |
 | [T-0490](T-0490-effect-everywhere-plan.md) | Audit + plan: whole codebase on Effect 4 (frameworks, Schema, web, mobile) | running | auto | T-0173 | |
 | [T-0491](T-0491-watch-scroll-columns.md) | lead watch: keyboard scroll + two columns when wide | running | auto | — | |
 | [T-0492](T-0492-effect-transcription-provider.md) | Effect convert: voice transcription provider call | running | auto | T-0173 | |
@@ -521,3 +520,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0480](T-0480-delegation-service.md) | Listener S5a (server): delegation service | 2026-10-07 |
 | [T-0481](T-0481-ai-handoff-mentions.md) | Listener S4b (server): AI-to-AI handoff by @mention, max 2 hops | 2026-10-07 |
 | [T-0484](T-0484-effect-guarded-fetch.md) | Effect convert: web-tools guarded GET | 2026-10-07 |
+| [T-0489](T-0489-effect-run-tool.md) | Effect convert: sandbox runTool | 2026-10-07 |
