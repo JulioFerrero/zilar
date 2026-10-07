@@ -343,3 +343,18 @@ Ordered tasks (each one PR; server first, then clients, then deploy):
    read-write for the later deletion job)?** *Recommend:* yes; without it the
    server cannot stream (a) or delete anything. This is a live-server change
    only you can make.
+
+---
+
+## 7. Decisions (Julio, 2026-10-07) and lead changes
+
+**Julio accepted the recommendations:**
+- (a) server streaming;
+- forwarded copies keep their file;
+- 404 now, deleting the bytes later;
+- breaking old mobile builds after a redirect window.
+
+**Lead changes to the task split, after reading the code:**
+- **The route takes the chat.** `media_items` is filled lazily: `indexChat` runs only when the gallery is opened (`apps/server/src/media/routes.ts:196-209`). A just-sent file has no row yet, and the URL alone does not say which chat to index. So the route is `GET /api/files?chat=<jid>&url=<upload URL>`. It resolves the chat like `/api/media` does, looks the URL up for that chat, and on a miss runs one `indexChat` for that chat and looks again. A forwarded copy has its own row in the target chat, so the forwarded-copy rule falls out naturally.
+- **No volume mount is needed to stream.** The server already reaches upload files internally: `toInternalUploadUrl` (`apps/server/src/voice-transcription/routes.ts:423-446`) maps a public `/upload/...` URL to ejabberd's internal origin. The route fetches that internal URL with the caller's `Range` header and streams the answer. The mount is needed only for the later deletion job.
+- **Known limit:** the media index reads 12 months (`apps/server/src/media/indexer.ts:17`), so files sent more than 12 months ago would 404 through the route. That is acceptable while the install is younger than a year; revisit before then.
