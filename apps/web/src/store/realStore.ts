@@ -83,6 +83,7 @@ import {
   patchTopic as patchTopicRequest,
   pinMessage as pinMessageRequest,
   previewJoinLink as previewJoinLinkRequest,
+  putChatBackgroundDefault as putChatBackgroundDefaultRequest,
   putChatPref as putChatPrefRequest,
   removeGroupAi as removeGroupAiRequest,
   removeGroupMember as removeGroupMemberRequest,
@@ -322,6 +323,7 @@ export interface ApiClient {
   setMembersCanCreateTopics(groupId: string, allowed: boolean): Promise<GroupDetail>;
   listChatPrefs(): Promise<ChatPref[]>;
   getChatBackgroundDefault(): Promise<ChatBackgroundChoice>;
+  putChatBackgroundDefault(input: ChatBackgroundChoice): Promise<ChatBackgroundChoice>;
   putChatPref(chatJid: string, input: PutChatPrefInput): Promise<ChatPref | null>;
   listPins(chat: string): Promise<Pin[]>;
   listChatMedia(input: ListChatMediaInput): Promise<MediaPage>;
@@ -389,6 +391,7 @@ const realApi: ApiClient = {
   setMembersCanCreateTopics: setMembersCanCreateTopicsRequest,
   listChatPrefs: listChatPrefsRequest,
   getChatBackgroundDefault: getChatBackgroundDefaultRequest,
+  putChatBackgroundDefault: putChatBackgroundDefaultRequest,
   putChatPref: putChatPrefRequest,
   listPins: listPinsRequest,
   listChatMedia: listChatMediaRequest,
@@ -3228,13 +3231,30 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
               ? (previous[key]?.pinnedAt ?? nowDate.toISOString())
               : null
             : (previous[key]?.pinnedAt ?? null),
+        // T-0462: keep the background override on the optimistic row. A patch
+        // value wins, an omitted field keeps the previous one, else null.
+        backgroundPreset:
+          patch.backgroundPreset !== undefined
+            ? patch.backgroundPreset
+            : (previous[key]?.backgroundPreset ?? null),
+        backgroundImageId:
+          patch.backgroundImageId !== undefined
+            ? patch.backgroundImageId
+            : (previous[key]?.backgroundImageId ?? null),
+        backgroundDim:
+          patch.backgroundDim !== undefined
+            ? patch.backgroundDim
+            : (previous[key]?.backgroundDim ?? null),
         updatedAt: nowDate.toISOString(),
       };
       const next: Record<string, ChatPref> = { ...previous };
       if (
         optimistic.mutedUntil === null &&
         optimistic.archived === false &&
-        optimistic.pinnedAt === null
+        optimistic.pinnedAt === null &&
+        optimistic.backgroundPreset === null &&
+        optimistic.backgroundImageId === null &&
+        optimistic.backgroundDim === null
       ) {
         delete next[key];
       } else {
@@ -4675,6 +4695,34 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       setArchived: async (chatId, archived) => {
         await updatePref(chatId, { archived });
         saveChatList();
+      },
+      // T-0462: pick a preset for one chat (null clears the override, so the
+      // chat inherits the caller's global default again).
+      setChatBackground: async (chatId, presetId) => {
+        await updatePref(chatId, {
+          backgroundPreset: presetId,
+          backgroundImageId: null,
+          backgroundDim: null,
+        });
+      },
+      // T-0462: pick the global default. Optimistic with rollback; the picker
+      // paints at once and the saved default replaces the optimistic value.
+      setDefaultBackground: async (presetId) => {
+        const previous = get().defaultBackground;
+        const optimistic: ChatBackgroundChoice = {
+          backgroundPreset: presetId,
+          backgroundImageId: null,
+          backgroundDim: null,
+        };
+        set({ defaultBackground: optimistic });
+        let saved: ChatBackgroundChoice;
+        try {
+          saved = await api.putChatBackgroundDefault(optimistic);
+        } catch (error) {
+          set({ defaultBackground: previous });
+          throw error;
+        }
+        set({ defaultBackground: saved });
       },
       archivedChats: () =>
         sortByRecency(

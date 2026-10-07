@@ -36,3 +36,26 @@ describe('ChatHeader menu Escape', () => {
     }
   });
 });
+
+describe('ChatHeader "Chat background" item', () => {
+  it('sits in the topic menu and opens the dialog', () => {
+    renderApp('/c/c-devteam');
+    fireEvent.click(screen.getByRole('button', { name: 'Chat menu' }));
+    expect(screen.getByRole('menu', { name: 'Topic actions' })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Chat background' }));
+
+    expect(screen.queryByRole('menu', { name: 'Topic actions' })).toBeNull();
+    expect(screen.getByRole('dialog', { name: 'Chat background' })).toBeTruthy();
+  });
+
+  it('sits in the DM menu and opens the dialog', () => {
+    renderApp('/c/c-ana');
+    fireEvent.click(screen.getByRole('button', { name: 'Chat menu' }));
+    expect(screen.getByRole('menu', { name: 'Actions for Ana' })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Chat background' }));
+
+    expect(screen.getByRole('dialog', { name: 'Chat background' })).toBeTruthy();
+  });
+});

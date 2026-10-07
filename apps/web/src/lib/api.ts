@@ -778,6 +778,11 @@ export interface PutChatPrefInput {
   mutedUntil?: string | null | undefined;
   archived?: boolean | undefined;
   pinned?: boolean | undefined;
+  // T-0462: per-chat background override fields. A null clears that field,
+  // an omitted field leaves it untouched; preset and image are exclusive.
+  backgroundPreset?: string | null | undefined;
+  backgroundImageId?: string | null | undefined;
+  backgroundDim?: number | null | undefined;
 }
 
 export function listChatPrefs(): Promise<ChatPref[]> {
@@ -800,6 +805,18 @@ export function getChatBackgroundDefault(): Promise<ChatBackgroundChoice> {
     '/chat-background',
     z.object({ defaultBackground: chatBackgroundChoiceSchema }),
   ).then((body) => body.defaultBackground);
+}
+
+// T-0462: write the caller's global background default. The body carries the
+// same three fields as the per-chat patch and the reply is the saved default.
+export function putChatBackgroundDefault(
+  input: ChatBackgroundChoice,
+): Promise<ChatBackgroundChoice> {
+  return request('/chat-background', z.object({ defaultBackground: chatBackgroundChoiceSchema }), {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  }).then((body) => body.defaultBackground);
 }
 
 export async function putChatPref(

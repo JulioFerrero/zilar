@@ -261,6 +261,7 @@ function fakeApi(overrides: Partial<ApiClient> = {}): ApiClient {
       backgroundImageId: null,
       backgroundDim: null,
     })),
+    putChatBackgroundDefault: vi.fn(async (input) => input),
     putChatPref: vi.fn(async () => null),
     listPins: vi.fn(async () => []),
     listChatMedia: vi.fn(async () => ({ items: [], next: null })),

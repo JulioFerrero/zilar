@@ -336,6 +336,7 @@ function fakeApi(overrides: Partial<ApiClient> = {}): ApiClient {
       backgroundImageId: null,
       backgroundDim: null,
     })),
+    putChatBackgroundDefault: vi.fn(async (input) => input),
     putChatPref: vi.fn(async () => null),
     listPins: vi.fn(async () => []),
     listChatMedia: vi.fn(async () => ({ items: [], next: null })),
@@ -463,6 +464,76 @@ describe('createRealChatStore', () => {
 
     expect(store.getState().defaultBackground).toBeNull();
     expect(store.getState().chats.length).toBeGreaterThan(0);
+  });
+
+  it('keeps a background-only pref when pin toggles on and off (T-0462)', async () => {
+    const row = {
+      chatJid: 'ana@zilar.test',
+      mutedUntil: null,
+      archived: false,
+      pinnedAt: null,
+      updatedAt: '2026-09-28T11:00:00.000Z',
+      backgroundPreset: 'navy',
+      backgroundImageId: null,
+      backgroundDim: null,
+    };
+    const putChatPref = vi.fn();
+    putChatPref
+      .mockResolvedValueOnce({ ...row, pinnedAt: '2026-09-28T12:00:00.000Z' })
+      .mockResolvedValueOnce({ ...row, pinnedAt: null });
+    const { store } = await setup({ listChatPrefs: vi.fn(async () => [row]), putChatPref });
+
+    await store.getState().setPinned('ana@zilar.test', true);
+    await store.getState().setPinned('ana@zilar.test', false);
+
+    const pref = store.getState().chatPrefs['ana@zilar.test'];
+    expect(pref?.backgroundPreset).toBe('navy');
+    expect(pref?.pinnedAt).toBeNull();
+  });
+
+  it('setChatBackground sends the preset and clears the image fields (T-0462)', async () => {
+    const putChatPref = vi.fn(async () => ({
+      chatJid: 'ana@zilar.test',
+      mutedUntil: null,
+      archived: false,
+      pinnedAt: null,
+      updatedAt: '2026-09-28T12:00:00.000Z',
+      backgroundPreset: 'navy',
+      backgroundImageId: null,
+      backgroundDim: null,
+    }));
+    const { store } = await setup({ putChatPref });
+
+    await store.getState().setChatBackground('ana@zilar.test', 'navy');
+
+    expect(putChatPref).toHaveBeenCalledWith('ana@zilar.test', {
+      backgroundPreset: 'navy',
+      backgroundImageId: null,
+      backgroundDim: null,
+    });
+    expect(store.getState().chatPrefs['ana@zilar.test']?.backgroundPreset).toBe('navy');
+  });
+
+  it('setDefaultBackground updates the default and rolls back on failure (T-0462)', async () => {
+    const putChatBackgroundDefault = vi.fn();
+    putChatBackgroundDefault.mockResolvedValueOnce({
+      backgroundPreset: 'gold',
+      backgroundImageId: null,
+      backgroundDim: null,
+    });
+    const { store } = await setup({ putChatBackgroundDefault });
+
+    await store.getState().setDefaultBackground('gold');
+    expect(putChatBackgroundDefault).toHaveBeenCalledWith({
+      backgroundPreset: 'gold',
+      backgroundImageId: null,
+      backgroundDim: null,
+    });
+    expect(store.getState().defaultBackground?.backgroundPreset).toBe('gold');
+
+    putChatBackgroundDefault.mockRejectedValueOnce(new Error('offline'));
+    await expect(store.getState().setDefaultBackground('wine')).rejects.toThrow('offline');
+    expect(store.getState().defaultBackground?.backgroundPreset).toBe('gold');
   });
 
   it('pins optimistically and rolls back when the PUT fails', async () => {

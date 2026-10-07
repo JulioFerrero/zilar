@@ -77,6 +77,13 @@ interface MockState {
   joinAttempts: Map<string, number>;
   // T-0113: per-chat prefs (mute/archive/pin) in memory for the page load.
   chatPrefs: MockChatPref[];
+  // T-0462: the caller's global background default, in memory for the page
+  // load. All null means unset, so chats fall back to the slate grid.
+  backgroundDefault: {
+    backgroundPreset: string | null;
+    backgroundImageId: string | null;
+    backgroundDim: number | null;
+  };
   // T-0237: chat folders in memory for the page load, seeded on first GET
   // with Personal and AIs (mirroring the server's seed).
   chatFolders: MockChatFolder[] | undefined;
@@ -220,6 +227,10 @@ interface MockChatPref {
   archived: boolean;
   pinnedAt: string | null;
   updatedAt: string;
+  // T-0462: per-chat background override; all null means inherit the default.
+  backgroundPreset: string | null;
+  backgroundImageId: string | null;
+  backgroundDim: number | null;
 }
 
 // T-0119: one push device row, mirroring the server's device view (labels
@@ -1117,6 +1128,7 @@ function seedState(): MockState {
     nextRoleSequence: 3,
     joinAttempts: new Map(),
     chatPrefs: [],
+    backgroundDefault: { backgroundPreset: null, backgroundImageId: null, backgroundDim: null },
     chatFolders: undefined,
     pushDevices: [],
     pushShowPreviews: true,
@@ -2471,18 +2483,23 @@ export async function mockRequest(
     return jsonResponse({ prefs: state.chatPrefs });
   }
 
-  // T-0461: the personal background default. The picker (T-0462) writes it,
-  // so the mock always answers unset and chats fall back to the slate grid.
+  // T-0461: the personal background default, held in memory and written by the
+  // picker (T-0462). All null means unset, so chats fall back to the slate grid.
   if (head === 'chat-background' && first === undefined && method === 'GET') {
-    return jsonResponse({
-      defaultBackground: { backgroundPreset: null, backgroundImageId: null, backgroundDim: null },
-    });
+    return jsonResponse({ defaultBackground: state.backgroundDefault });
   }
 
   if (head === 'chat-prefs' && first !== undefined && second === undefined && method === 'PUT') {
     const chatJid = decodeURIComponent(first);
     const body = readJsonBody(init);
-    const allowed = new Set(['mutedUntil', 'archived', 'pinned']);
+    const allowed = new Set([
+      'mutedUntil',
+      'archived',
+      'pinned',
+      'backgroundPreset',
+      'backgroundImageId',
+      'backgroundDim',
+    ]);
     for (const key of Object.keys(body)) {
       if (!allowed.has(key)) {
         return jsonResponse(
@@ -2500,7 +2517,16 @@ export async function mockRequest(
     if (
       ('mutedUntil' in body && body.mutedUntil !== null && typeof body.mutedUntil !== 'string') ||
       ('archived' in body && typeof body.archived !== 'boolean') ||
-      ('pinned' in body && typeof body.pinned !== 'boolean')
+      ('pinned' in body && typeof body.pinned !== 'boolean') ||
+      ('backgroundPreset' in body &&
+        body.backgroundPreset !== null &&
+        typeof body.backgroundPreset !== 'string') ||
+      ('backgroundImageId' in body &&
+        body.backgroundImageId !== null &&
+        typeof body.backgroundImageId !== 'string') ||
+      ('backgroundDim' in body &&
+        body.backgroundDim !== null &&
+        typeof body.backgroundDim !== 'number')
     ) {
       return jsonResponse(
         { error: { code: 'invalid_request', message: 'Invalid preference body' } },
@@ -2526,7 +2552,31 @@ export async function mockRequest(
       : (body.pinned as boolean)
         ? (existing?.pinnedAt ?? new Date().toISOString())
         : null;
-    if (mutedUntil === null && archived === false && pinnedAt === null) {
+    const backgroundPreset = !('backgroundPreset' in body)
+      ? (existing?.backgroundPreset ?? null)
+      : (body.backgroundPreset as string | null);
+    const backgroundImageId = !('backgroundImageId' in body)
+      ? (existing?.backgroundImageId ?? null)
+      : (body.backgroundImageId as string | null);
+    const backgroundDim = !('backgroundDim' in body)
+      ? (existing?.backgroundDim ?? null)
+      : (body.backgroundDim as number | null);
+    // Mirror the server: after merging with the existing row, a preset and an
+    // image may not both be set.
+    if (backgroundPreset !== null && backgroundImageId !== null) {
+      return jsonResponse(
+        { error: { code: 'invalid_request', message: 'Set a preset or an image, not both' } },
+        400,
+      );
+    }
+    if (
+      mutedUntil === null &&
+      archived === false &&
+      pinnedAt === null &&
+      backgroundPreset === null &&
+      backgroundImageId === null &&
+      backgroundDim === null
+    ) {
       state.chatPrefs = state.chatPrefs.filter((pref) => pref.chatJid.toLowerCase() !== key);
       return jsonResponse({ prefs: null });
     }
@@ -2536,6 +2586,9 @@ export async function mockRequest(
       archived,
       pinnedAt,
       updatedAt: new Date().toISOString(),
+      backgroundPreset,
+      backgroundImageId,
+      backgroundDim,
     };
     state.chatPrefs =
       existing === undefined
@@ -2553,6 +2606,55 @@ export async function mockRequest(
       );
     }
     return jsonResponse(row);
+  }
+
+  // T-0462: the personal background default write. Mirrors the server's
+  // field rule: a preset and an image together are rejected.
+  if (
+    head === 'chat-background' &&
+    first === undefined &&
+    second === undefined &&
+    method === 'PUT'
+  ) {
+    const body = readJsonBody(init);
+    const allowed = new Set(['backgroundPreset', 'backgroundImageId', 'backgroundDim']);
+    for (const key of Object.keys(body)) {
+      if (!allowed.has(key)) {
+        return jsonResponse(
+          { error: { code: 'invalid_request', message: `Unknown field: ${key}` } },
+          400,
+        );
+      }
+    }
+    if (
+      ('backgroundPreset' in body &&
+        body.backgroundPreset !== null &&
+        typeof body.backgroundPreset !== 'string') ||
+      ('backgroundImageId' in body &&
+        body.backgroundImageId !== null &&
+        typeof body.backgroundImageId !== 'string') ||
+      ('backgroundDim' in body &&
+        body.backgroundDim !== null &&
+        typeof body.backgroundDim !== 'number')
+    ) {
+      return jsonResponse(
+        { error: { code: 'invalid_request', message: 'Invalid background body' } },
+        400,
+      );
+    }
+    const backgroundPreset =
+      'backgroundPreset' in body ? (body.backgroundPreset as string | null) : null;
+    const backgroundImageId =
+      'backgroundImageId' in body ? (body.backgroundImageId as string | null) : null;
+    const backgroundDim = 'backgroundDim' in body ? (body.backgroundDim as number | null) : null;
+    if (backgroundPreset !== null && backgroundImageId !== null) {
+      return jsonResponse(
+        { error: { code: 'invalid_request', message: 'Set a preset or an image, not both' } },
+        400,
+      );
+    }
+    state.backgroundDefault = { backgroundPreset, backgroundImageId, backgroundDim };
+    return jsonResponse({ defaultBackground: state.backgroundDefault });
   }
 
   // T-0237: in-memory chat folders, seeded on first GET with Personal and

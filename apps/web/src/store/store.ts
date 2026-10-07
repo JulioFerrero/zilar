@@ -44,6 +44,7 @@ import {
   getChatBackgroundDefault,
   listChatPrefs,
   patchTopic,
+  putChatBackgroundDefault,
   putChatPref,
   removeTopicAi,
   removeTopicMember,
@@ -260,6 +261,11 @@ export interface ChatStore {
   setMuted: (chatId: string, duration: MuteDurationId | null) => Promise<void>;
   /** Archives or unarchives a chat/topic. Optimistic with rollback. */
   setArchived: (chatId: string, archived: boolean) => Promise<void>;
+  /** T-0462: picks (or clears) a chat's own background preset. Optimistic. */
+  setChatBackground: (chatId: string, presetId: string | null) => Promise<void>;
+  /** T-0462: picks (or clears) the caller's global background default.
+   *  Optimistic with rollback. */
+  setDefaultBackground: (presetId: string | null) => Promise<void>;
   /** Per-user archived DMs/AI chats/groups (not topics: those hide inside
    *  their group's own Archived toggle), newest activity first. */
   /** Pins of a chat, newest first; empty until `loadPins` resolves. */
@@ -1113,6 +1119,35 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
             chats: applyChatPrefs(state.chats, Object.values(prefs), Date.now()),
           };
         });
+      },
+      // T-0462: the mock store writes the background override through the same
+      // in-memory mock API as the other prefs.
+      setChatBackground: async (chatId, presetId) => {
+        const saved = await putChatPref(chatId, {
+          backgroundPreset: presetId,
+          backgroundImageId: null,
+          backgroundDim: null,
+        });
+        set((state) => {
+          const prefs = { ...state.chatPrefs };
+          if (saved === null) {
+            delete prefs[chatId.toLowerCase()];
+          } else {
+            prefs[chatId.toLowerCase()] = saved;
+          }
+          return {
+            chatPrefs: prefs,
+            chats: applyChatPrefs(state.chats, Object.values(prefs), Date.now()),
+          };
+        });
+      },
+      setDefaultBackground: async (presetId) => {
+        const saved = await putChatBackgroundDefault({
+          backgroundPreset: presetId,
+          backgroundImageId: null,
+          backgroundDim: null,
+        });
+        set({ defaultBackground: saved });
       },
       archivedChats: () =>
         get().chats.filter((chat) => chat.archived === true && chat.topic === undefined),

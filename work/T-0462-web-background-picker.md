@@ -1,7 +1,7 @@
 ---
 id: T-0462
 title: "Backgrounds E (web): 'Chat background' dialog from the chat menu — pick a preset for this chat or for all chats"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0462-web-background-picker
 model: auto
@@ -100,4 +100,80 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**Status:** done — all checks pass. T-0461 already painted backgrounds; this task adds the picker.
+
+### What I did
+
+- `apps/web/src/lib/api.ts`: added the three optional/nullable background fields to
+  `PutChatPrefInput`; added `putChatBackgroundDefault(input: ChatBackgroundChoice)`, which
+  `PUT`s `/chat-background` and returns `defaultBackground`.
+- `apps/web/src/mock/api.ts`: `PUT /chat-prefs/:chatJid` now accepts and stores
+  `backgroundPreset`/`backgroundImageId`/`backgroundDim`; a row is deleted only when mute,
+  archive, pin **and** all three background fields are default. Added `backgroundDefault` to
+  the mock state, `GET /chat-background` returns it, and a new `PUT /chat-background` writes
+  it (rejecting a preset together with an image).
+- `apps/web/src/store/realStore.ts`: `updatePref`'s optimistic row and its delete-when-default
+  check now carry the three background fields (patch value, else previous, else null). Added
+  `putChatBackgroundDefault` to `ApiClient` and to the default API object, plus
+  `setChatBackground(chatId, presetId)` and optimistic-with-rollback
+  `setDefaultBackground(presetId)`.
+- `apps/web/src/store/store.ts`: declared both actions on `ChatStore` and implemented them in
+  the mock store (through `putChatPref` and `putChatBackgroundDefault`).
+- `apps/web/src/components/ChatBackgroundDialog.tsx` (new): a `Dialog` titled "Chat background"
+  with a `radio` `SegmentedControl` ("This chat" / "All chats"), a 4-column grid of the 7 preset
+  swatches (each uses `chatBackgroundStyle` with a fixed square size and rounded corners, a
+  title-cased `aria-label`, `aria-pressed`, and a lucide `Check` when selected), a "Use default"
+  button that sends null, and an inline `role="alert"` "Couldn't save the background" on failure.
+  "This chat" selects the chat's own preset (none when unset); "All chats" selects the default,
+  else `slate`.
+- `apps/web/src/components/ChatHeader.tsx`: a "Chat background" `MenuItem` in both the topic and
+  non-topic menus, just before `ChatPrefMenuItems`; it closes the menu and opens the dialog.
+- Tests: new `ChatBackgroundDialog.test.tsx` (5 cases); 2 new cases in
+  `ChatHeader.menu.test.tsx`; 3 new cases in `realStore.test.tsx`. Added the
+  `putChatBackgroundDefault` stub to the five test fakes (`realStore.test.tsx`, `reload.test.tsx`,
+  `realStore.forward.test.tsx`, `realStore.media.test.tsx`, `realStore.topics.test.tsx`).
+
+### Commands and results
+
+- `pnpm install`: Done (0 errors).
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot ChatBackgroundDialog`: 1 file, **5 passed**.
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot ChatHeader`: 1 file, **4 passed**.
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot src/store/realStore.test.tsx`: 1 file, **132 passed**.
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot ChatBackgroundDialog ChatHeader realStore reload`: 7 files, **178 passed**.
+- `pnpm gate` (second run):
+  ```
+  PASS  install (frozen)  (1.9s)
+  PASS  format  (20.5s)
+  PASS  lint  (1.2s)
+  PASS  typecheck  (11.3s)
+  PASS  tests @zilar/web  (34.1s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+  The first gate run failed only `format` on `apps/web/src/lib/api.ts` and
+  `apps/web/src/mock/api.ts`; I fixed it with `pnpm exec prettier --write` on those two files and
+  re-ran the gate, which then passed.
+
+### Notes / deviations
+
+- No deviations from the spec. No new dependencies. No file changed outside the Allowed list.
+- The mock `PUT /chat-background` validates field types and rejects a preset together with an
+  image, mirroring the server rule, but keeps the rest deliberately light like the existing mock.
+
+### Fix round
+
+- `ChatBackgroundDialog.tsx`: the dialog's close handler now resets `error` to false and `scope`
+  to `'chat'` so a reopen never shows a stale alert or the previous scope. (An effect was tried
+  first; oxlint's `react(set-state-in-effect)` rule rejects it, so the reset lives in the close
+  handler.)
+- `ChatBackgroundDialog.test.tsx`: added "failed save → close → reopen shows no alert and
+  'This chat' selected", "All chats + Use default → `setDefaultBackground(null)`", plus a
+  small stateful harness for the reopen case (7 dialog tests total).
+- `mock/api.ts`: `PUT /chat-prefs/:chatJid` now answers `400 invalid_request` when the merged
+  row would carry both a preset and an image, matching the mock `PUT /chat-background`.
+- Commands: `pnpm --filter @zilar/web test ... ChatBackgroundDialog ChatHeader realStore reload`
+  → 7 files, **180 passed**; `pnpm gate` → **GATE PASS**.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-07). A "Chat background" item in both chat menus opens ChatBackgroundDialog: This chat / All chats, 7 preset swatches with aria-pressed and a Check icon, and Use default. Saves are optimistic with rollback and an inline alert, and the dialog resets on reopen (lead fix round). updatePref now keeps background fields and deletes a row only when everything is default. The mock API mirrors the server rules. Nit accepted: mock PUT /chat-background replaces the whole row.
