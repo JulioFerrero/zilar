@@ -455,7 +455,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0426](T-0426-mobile-ai-sheet-buttons-kit.md) | Mobile: AI activity Refresh, tool sheet Show all/less and Close on the kit Button | 2026-10-06 |
 | [T-0504](T-0504-effect-server-config.md) | Effect F5: server config on Effect Schema + Config | running | auto | | |
 | [T-0520](T-0520-effect-http-chat-prefs-folders.md) | Effect C (HTTP): chat-prefs, chat-folders on HttpApi | running | auto | T-0514 | |
-| [T-0521](T-0521-audit-atom-react-plan.md) | Audit: zustand to atom-react plan | running | auto | | |
 | [T-0522](T-0522-effect-sql-contacts-directory.md) | Effect C1: contacts, directory services on effect/sql | running | auto | T-0510 | |
 | [T-0523](T-0523-agents-g6-extract-listener.md) | Agents G6: extract the room listener | running | auto | T-0516 | |
 | [T-0524](T-0524-effect-mobile-api-batch-1.md) | Effect E batch 1: mobile invites, chat-prefs, search, audit API | running | auto | T-0506 | |
@@ -554,3 +553,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0506](T-0506-effect-mobile-pins-api.md) | Effect E pilot: mobile pins-api on Effect Schema | 2026-10-07 |
 | [T-0505](T-0505-effect-web-api-1.md) | Effect D1: web api.ts on Effect Schema, part 1 | 2026-10-07 |
 | [T-0518](T-0518-effect-http-blocks-directory-tests.md) | Effect C (HTTP) follow-up: blocks/directory tests on the Effect path | 2026-10-07 |
+| [T-0521](T-0521-audit-atom-react-plan.md) | Audit: zustand to atom-react plan | 2026-10-07 |
