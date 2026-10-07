@@ -2,6 +2,18 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-07 afternoon (upload lock):**
+- **Julio's decisions** are in `docs/audit/upload-auth-plan.md` §7: server streaming; forwards keep their file; 404 now and delete later; break old builds after a redirect window.
+- **Merged:**
+  - T-0452: the plan;
+  - T-0453: `GET /api/files?chat=&url=`, member-only, with Range;
+  - T-0454: web loads same-origin `/upload` files through it.
+- **Next:**
+  - **mobile (when Julio frees the PC):** bearer headers on `expo-image`, `expo-video` and the voice player for `/api/files`;
+  - **cutover (Julio, live server):** Caddy sends `GET /upload/*` to the server route as a redirect window, keeps PUT on ejabberd, and must not log the `url` query;
+  - **later:** a deletion job, after the read-write volume mount.
+- **No workers running.**
+
 **2026-10-07 midday:**
 - **AI memory is complete (M1-M6).**
   - Merged since the morning: T-0446 (compactor), T-0448 (mobile polish), T-0450 (web polish) and T-0451 (mobile room memory sheet).
