@@ -1,7 +1,7 @@
 ---
 id: T-0504
 title: "Effect F5: server config on Effect Schema + Effect Config provider behind loadServerConfig — same values, same defaults, same secret-free error messages; config.test.ts unchanged"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0504-effect-server-config
 model: auto
@@ -81,4 +81,58 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### Status
+Done. `pnpm gate` ends with `GATE PASS` and every changed file is inside the Allowed files. `config.test.ts` is untouched and green; the new `config.effect.test.ts` passes.
+
+### What I built
+- **`apps/server/src/config.ts`** — rewrote the definition with Effect Schema. No `zod` import remains (and no `zod` anywhere else in the two config files). The schema reproduces every key, default, transform, custom message and cross-field mail/GitHub rule:
+  - field schemas: `Schema.Literals` + `Schema.withDecodingDefaultKey` for enums/flags, a string→`Schema.Int` port/coerce helper with `1..65535` bounds, `Schema.URL`-equivalent custom `makeFilter` predicates (`new URL`), a comma-split string→array origin schema, a trimmed `LISTENER_MODEL`, and the `AGENT_TOOL_MAX_ROUNDS` pattern.
+  - cross-field rules (`GITHUB_APP_*` set together, `checkMailConfig`) run on the raw env map after decode and are appended after the field issues, mirroring zod's `superRefine` order — including the case where a field and a mail rule both fail (`SMTP_PORT` + "SMTP_USER and SMTP_PASSWORD must be set together").
+  - derived values (`MAIL_TRANSPORT`, `BETTER_AUTH_URL`, `AGENT_TOOL_MAX_ROUNDS`, origin-normalized/deduplicated `WEB_ORIGINS`) applied in a small `finalizeConfig`, whose `ReturnType` is the public `ServerConfig` type.
+  - `loadServerConfig` keeps its signature and synchronous `ConfigError` throw; `loadServerConfigOrExit` unchanged.
+  - `formatIssues` walks the Effect issue tree (`Composite`/`Pointer`/`Filter`/`Encoding`/`MissingKey`/`InvalidValue`/`InvalidType`) to `name (reason)` pairs, `path || 'env'`, deduplicated and joined with `, `. Values are never read or printed (no `reportInput`).
+  - `ServerConfig` is exported as both the config type and a `Context.Service` tag (the tag only exists in value space, so `import type { ServerConfig }` still means the config shape). `ServerConfigLive` provides it.
+- **`apps/server/src/xmpp/config.ts`** — also moved to Effect Schema (the plan §4.2 F5 file list and the Allowed files include it; the spec said T-0494 had already converted it, but the merged file still imported `zod`). Keeps `xmppEnvSchema`, `XmppEnv`, `XmppConfig` and `loadXmppConfig`; the error is still `Invalid XMPP configuration:\n- NAME: reason`, names never values.
+- **`apps/server/src/config.effect.test.ts`** (new, 4 tests) — `ServerConfigLive` provides the config parsed from `process.env`, and the `BETTER_AUTH_SECRET`/`DATABASE_URL`/`SMTP_PASSWORD` error messages contain the variable name and not the value.
+
+### Chosen approach: direct Schema decode, not a ConfigProvider
+The task allowed either. I decode the normalized env map directly with `Schema.decodeUnknownExit(..., { errors: 'all' })` and did **not** route through `ConfigProvider`/`Config.schema`, because:
+1. `Config.schema` stops at the first error. The message contract requires listing every invalid variable in one error (`config.test.ts` "lists every invalid variable" expects all eight names); I measured `Config.schema` returning only `DATABASE_URL (missing)` for `{}` where the contract needs both missing names.
+2. The cross-field `superRefine` rules and the derived values need the decoded whole object, and the `name (reason)` formatting needs the raw `SchemaIssue` tree. A `ConfigProvider` wrapper adds a second error type and a provider-path layer without changing a single message or value.
+3. `emptyMailSettingsAsUnset` already normalizes the map (undefined dropped, the 7 empty-means-unset keys deleted), so the provider seam has nothing left to do.
+I therefore kept the single Schema definition and the map seam, and used `Config`/`ConfigProvider` nowhere.
+
+### `ServerConfigLive`: `Layer.sync`, not `Layer.succeed`
+`Layer.succeed(ServerConfig, loadServerConfig(process.env))` would parse the environment at module import time; `config.ts` is imported by many tests whose environment lacks `DATABASE_URL`/`BETTER_AUTH_SECRET`/XMPP vars, so every import would throw. `ServerConfigLive = Layer.sync(ServerConfig, () => loadServerConfig(process.env))` is the same layer built from `process.env`, but parsed when the layer is provided. The new test sets the required process env vars and restores them in `finally`.
+
+### Deviations from the spec (honest)
+- **`TRUSTED_PROXY_HOPS` with a non-numeric value** (for example `two`) now renders `TRUSTED_PROXY_HOPS (invalid)`, where zod rendered `... (missing)` (zod's `z.coerce.number()` produced `NaN` and its issue carried `input === undefined`). Both name the variable and never print the value, and the test only asserts that; I did not special-case the zod quirk because reproducing it would require reporting the input.
+- **Comparison probe** against the old implementation's message for representative bad envs is byte-identical for all cases except that one: `missing all`, non-postgres `DATABASE_URL` (`invalid database url`), bad/empty port, invalid/empty `WEB_ORIGINS` (`WEB_ORIGINS.1` / `WEB_ORIGINS.0` / `WEB_ORIGINS`), short secret, the SMTP rules, malformed mailbox, GitHub trio (`env (...)`), the multi-invalid list, storage dirs, rounds, GIF rating, listener model.
+- **`xmpp/config.ts` was converted too** (see above); its existing test file was not touched and passes.
+- No dependency added; `zod` stays in `apps/server/package.json` for the other server files.
+
+### Commands run (real results)
+- `pnpm install` → `Done in 17.2s`.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/config src/xmpp/config src/logger` → `Test Files 4 passed (4)`, `Tests 68 passed (68)`.
+- `pnpm gate` (from the repo root) → summary:
+  ```
+  gate: 4 changed file(s) against main
+  PASS  install (frozen)  (2.8s)
+  PASS  format  (40.9s)
+  PASS  lint  (1.7s)
+  PASS  typecheck  (41.6s)
+  PASS  tests @zilar/server  (619.2s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+  The first gate run failed only `format` on `config.ts`; I ran `prettier --write` on the changed files and re-ran gate, which passed.
+
+### Files changed
+`apps/server/src/config.ts`, `apps/server/src/xmpp/config.ts`, `apps/server/src/config.effect.test.ts` (new), `work/T-0504-effect-server-config.md` (status only).
+
+### Open questions
+None. The two conscious choices above (direct Schema decode; `Layer.sync`) are the only places I departed from the plan's wording, both for correctness of the stated acceptance criteria.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-08). The server and XMPP config decode with Effect Schema behind the same loadServerConfig, with the same values (full toEqual snapshots unchanged) and secret-free error messages. ServerConfigLive is Layer.sync, so env is read lazily. Pre-review clean; the nit (TRUSTED_PROXY_HOPS=two now says invalid, not missing) is accepted.
