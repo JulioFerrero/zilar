@@ -454,7 +454,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0425](T-0425-mobile-profile-buttons-kit.md) | Mobile: profile and contact card buttons on the kit Button | 2026-10-06 |
 | [T-0426](T-0426-mobile-ai-sheet-buttons-kit.md) | Mobile: AI activity Refresh, tool sheet Show all/less and Close on the kit Button | 2026-10-06 |
 | [T-0450](T-0450-web-forward-memory-polish.md) | Web polish: Forget once per click; multi-select order and reset tests | running | auto | T-0439, T-0447 | |
-| [T-0449](T-0449-mobile-ai-memory-dm.md) | AI memory M6a (mobile): Memory section on the AI screen | running | auto | T-0441, T-0443 | |
 | [T-0448](T-0448-mobile-media-forward-polish.md) | Mobile polish: media grid, keys, dates; no swipe while selecting; no empty forward | running | auto | T-0436, T-0445 | |
 | [T-0446](T-0446-ai-memory-compactor.md) | AI memory M3c: compactor after each reply (4 nodes, AI's model, daily limit) | running | auto | T-0444 | |
 | [T-0427](T-0427-mobile-forwarded-header.md) | Mobile: forwarded messages show 'Forwarded from X [in Y]' | 2026-10-06 |
@@ -479,3 +478,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0445](T-0445-mobile-forward-multiselect.md) | Mobile: multi-select forwarding (Select, selection bar, forward in chat order) | 2026-10-06 |
 | [T-0444](T-0444-ai-memory-tools.md) | AI memory M3b: recall, memory_zoom and remember tools with a secret check | 2026-10-06 |
 | [T-0447](T-0447-web-ai-memory-rooms.md) | AI memory M5b (web): 'What <AI> remembers' dialog from room panels | 2026-10-06 |
+| [T-0449](T-0449-mobile-ai-memory-dm.md) | AI memory M6a (mobile): Memory section on the AI screen | 2026-10-07 |

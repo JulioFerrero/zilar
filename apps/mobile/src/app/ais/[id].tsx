@@ -12,9 +12,11 @@ import { ModelPicker } from '@/components/ais/model-picker';
 import { ProviderPicker } from '@/components/ais/provider-picker';
 import { RoutinesSection } from '@/components/ais/routines-section';
 import { AiActivity } from '@/components/ais/ai-activity';
+import { AiMemorySection } from '@/components/ais/ai-memory-section';
 import { ToolsSection } from '@/components/ais/tools-section';
 import { useToolsApi } from '@/components/ais/use-tools-api';
 import { useAuditApi } from '@/components/ais/use-audit-api';
+import { useAiMemoryApi } from '@/components/ais/use-ai-memory-api';
 import { defaultModelFor } from '@/components/ais/models';
 import { AisScreenShell } from '@/components/ais/screen-shell';
 import { useAisApi } from '@/components/ais/use-ais-api';
@@ -43,6 +45,7 @@ function EditAi() {
   const { api: machinesApi } = useMachinesApi();
   const { api: toolsApi } = useToolsApi();
   const { api: auditApi } = useAuditApi();
+  const { api: memoryApi } = useAiMemoryApi();
   const params = useLocalSearchParams<{ id: string }>();
   const id = typeof params.id === 'string' ? params.id : '';
 
@@ -319,6 +322,10 @@ function EditAi() {
                 </Text>
               ) : null}
             </View>
+
+            {loaded !== null ? (
+              <AiMemorySection api={memoryApi} chat={loaded.jid} aiId={id} aiName={loaded.name} />
+            ) : null}
 
             <ToolsSection api={toolsApi} aiId={id} />
             <RoutinesSection api={toolsApi} aiId={id} />

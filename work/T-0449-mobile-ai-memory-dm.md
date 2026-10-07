@@ -1,7 +1,7 @@
 ---
 id: T-0449
 title: "AI memory M6a (mobile): a Memory section on the AI screen shows what the AI remembers in the owner's DM; forget a fact, clear memory"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0449-mobile-ai-memory-dm
 model: auto
@@ -94,4 +94,111 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+
+Mobile twin of web T-0443: a collapsible Memory section on the AI edit screen,
+loaded on demand, in the owner's DM.
+
+- `apps/mobile/src/lib/ai-memory-api.ts` (new): `AiMemory`/`AiMemoryFact`, the
+  `AiMemoryApi` interface (`getMemory`, `forgetFact`, `clear`), `AiMemoryApiError`
+  and `createAiMemoryApi(getToken, fetchImpl, apiUrl)` copied from `audit-api.ts`,
+  with a type-guard parser. `GET /api/ai-memory?chat&ai`,
+  `DELETE /api/ai-memory/facts/:id?chat&ai` (fact id `encodeURIComponent`) and
+  `POST /api/ai-memory/clear` with body `{ chat, ai }`. Token is required on all
+  three calls.
+- `apps/mobile/src/lib/ai-memory-api.test.ts` (new): URLs, methods, clear body,
+  bearer header, malformed response, 403 → `AiMemoryApiError` with code
+  `forbidden`, and the no-session 401.
+- `apps/mobile/src/mock/ai-memory.ts` (new): `createMockAiMemoryApi()`, in-memory,
+  same seed as the web mock (facts "Julio prefers short answers." / "The launch is
+  on Friday."; lines `#0-15 …`, `#16 2026-10-01 Julio: …`, `#17 2026-10-01 Dev-1: …`;
+  `canChange: true`). Forget and Clear mutate the copy like the server.
+- `apps/mobile/src/components/ais/use-ai-memory-api.ts` (new): copy of
+  `use-audit-api.ts` (same `?mock=` / `EXPO_PUBLIC_ZILAR_MOCK` gate).
+- `apps/mobile/src/components/ais/ai-memory-section.tsx` (new): `AiMemorySection`
+  with the web behaviour and texts. Closed by default with the help line and a
+  ghost `Show memory` (Brain) button; the `useEffect` is gated by `open`, so no
+  request happens until it is pressed. Open: loading / error `StateMessage`
+  "Could not load the memory" + Retry, "Pinned facts" (Trash2 button labelled
+  "Forget this fact" only when `canChange`; "Nothing pinned yet."), "Earlier in
+  this chat" (strip `^#\d+(?:-\d+)? `; "Nothing older than the recent messages
+  yet."), the "Clear memory" `ConfirmDialog` (title/message/confirmLabel as the
+  spec) and "Hide memory". Exports the fixed sentences, a presentational
+  `AiMemorySectionContent`, and the helpers `removeFact`,
+  `forgetAiMemoryFact` (server forget then fold the row out) and `clearAiMemory`
+  (clear then reload).
+- `apps/mobile/src/components/ais/ai-memory-section.test.tsx` (new): no call
+  before Show memory, facts + stripped lines, Forget wiring and row removal via
+  `forgetAiMemoryFact`, Clear via `clearAiMemory` (clear then reload) and the
+  dialog props/handlers (Cancel closes, Clear confirms), `canChange: false` hides
+  Forget and Clear, the empty texts, the load error with Retry, the inline forget
+  and clear alerts, and the mock API.
+- `apps/mobile/src/app/ais/[id].tsx`: `useAiMemoryApi()` and, before
+  `<ToolsSection …/>`, `{loaded !== null ? <AiMemorySection api={memoryApi}
+  chat={loaded.jid} aiId={id} aiName={loaded.name} /> : null}`.
+
+### Files changed
+
+All inside the task's Allowed files:
+`apps/mobile/src/lib/ai-memory-api.ts`,
+`apps/mobile/src/lib/ai-memory-api.test.ts`,
+`apps/mobile/src/mock/ai-memory.ts`,
+`apps/mobile/src/components/ais/use-ai-memory-api.ts`,
+`apps/mobile/src/components/ais/ai-memory-section.tsx`,
+`apps/mobile/src/components/ais/ai-memory-section.test.tsx`,
+`apps/mobile/src/app/ais/[id].tsx`,
+`work/T-0449-mobile-ai-memory-dm.md`.
+
+### Commands and real results
+
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot ai-memory`
+  → `Test Files 2 passed (2)`, `Tests 21 passed (21)`.
+- `pnpm gate` from the repo root:
+
+```
+gate: 8 changed file(s) against main
+PASS  install (frozen)  (2.6s)
+PASS  format  (29.9s)
+PASS  lint  (0.9s)
+PASS  typecheck  (11.6s)
+PASS  tests @zilar/mobile  (3.4s)
+scope: every changed file is inside the Allowed files
+GATE PASS
+```
+
+### Deviations / notes
+
+- The mobile test harness renders with `renderToStaticMarkup`, so effects never
+  run (see `ai-activity.test.tsx` and `routines-section.test.tsx`). The
+  interactive behaviour is therefore covered the way those sections do it: the
+  presentational `AiMemorySectionContent` for every state and handler wiring, plus
+  the exported `forgetAiMemoryFact` / `clearAiMemory` helpers with a `vi.fn()`
+  fake API. "No call before Show memory" is asserted on the stateful
+  `AiMemorySection` (its `open` flag starts false and its effect is gated).
+- `ConfirmDialog` in this app requires `busy` and `busyLabel` (the spec wrote
+  them optional), so the section passes `busy={false}` and `busyLabel="Clearing…"`.
+- The "Clear memory" trigger is an outline button with `text-danger`; the dialog
+  uses the kit `ConfirmDialog` (not `Alert`).
+
+### Blocked / needs a decision
+
+None.
+
+### Fix round 1
+
+- `forget` now removes the fact with a functional update
+  (`setMemory((current) => current === null ? current : removeFact(current, factId))`)
+  and a synchronous `forgettingRef` guard, so two quick Forget taps can no longer
+  bring a removed fact back. A `forgettingId` state disables that row's Forget
+  button while its forget is pending, and `requestForgetFact` treats an
+  `AiMemoryApiError` with status 404 as success (no row, no error); any other
+  failure still shows "Could not forget that fact".
+- Tests: `removeFact` (one removed, the others kept; removing the same id twice
+  is harmless), `requestForgetFact` (calls the API; 404 resolves; other errors
+  rethrow) and the disabled pending row.
+- Commands: `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot
+  ai-memory` → 2 files, 26 passed; `pnpm gate` → `GATE PASS`.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-07) after one lead fix round (two quick Forget taps could bring a removed fact back; now a functional update with removeFact, a disabled row while pending, and 404 as success). The AI screen has a Memory section that loads on demand through ai-memory-api.ts (type guards, bearer, fixed errors) and a mock with the web seed. It shows the facts with Forget, the stripped earlier lines and Clear memory behind ConfirmDialog. Not checked on the emulator yet. Nit for a later pass: the "no request before Show memory" test cannot run effects in this harness.
