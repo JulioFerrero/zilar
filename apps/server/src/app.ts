@@ -28,10 +28,10 @@ import { createDraftsRoutes } from './drafts/routes';
 import { createKeyCipher, type KeyCipher } from './connections/crypto';
 import type { ProviderProbe } from './connections/probe';
 import { createConnectionsRoutes, type ConnectionsLogger } from './connections/routes';
-import { createBlocksRoutes } from './blocks/routes';
-import { createContactsRoutes } from './contacts/routes';
+import { createBlocksApi } from './blocks/api';
+import { createContactsApi } from './contacts/api';
 import { createContactRequestsApi } from './contact-requests/api';
-import { createDirectoryRoutes } from './directory/routes';
+import { createDirectoryApi } from './directory/api';
 import { createHandlesApi } from './handles/api';
 import { mountEffectRoutes } from './effect/http';
 import { registerSqlRuntime } from './effect/sql';
@@ -323,7 +323,8 @@ export function createApp({
       ...setup,
     }),
   );
-  app.route('/api', createContactsRoutes({ auth, db, config }));
+  const contactsApi = createContactsApi({ auth, db, config, logger });
+  mountEffectRoutes(app, contactsApi.routes, contactsApi.handler);
   // @usernames and contact requests (T-0163): session-required, rate
   // limited; the sweep asserts every one of them answers 401 unauthenticated.
   const handlesApi = createHandlesApi({ auth, db, audit: auditRecorder, logger });
@@ -339,11 +340,13 @@ export function createApp({
   mountEffectRoutes(app, contactRequestsApi.routes, contactRequestsApi.handler);
   // User blocks (T-0171): session-required, write-rate-limited; the sweep
   // asserts every one of them answers 401 unauthenticated.
-  app.route('/api', createBlocksRoutes({ auth, db, audit: auditRecorder }));
+  const blocksApi = createBlocksApi({ auth, db, audit: auditRecorder, logger });
+  mountEffectRoutes(app, blocksApi.routes, blocksApi.handler);
   // Public groups and channels (T-0164): the Explore directory and the
   // exact `@handle` lookup — public rows only, session-required, rate
   // limited; the sweep asserts both answer 401 unauthenticated.
-  app.route('/api', createDirectoryRoutes({ auth, db }));
+  const directoryApi = createDirectoryApi({ auth, db, logger });
+  mountEffectRoutes(app, directoryApi.routes, directoryApi.handler);
   app.route(
     '/api',
     createMachinesRoutes({
