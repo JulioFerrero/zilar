@@ -217,6 +217,23 @@ describe('AiMemorySection', () => {
     onShow?.();
     expect(a.onShow).toHaveBeenCalledTimes(1);
   });
+
+  it('starts open with no Show or Hide button when initiallyOpen', () => {
+    const { api } = fakeApi();
+    const markup = renderToStaticMarkup(
+      createElement(AiMemorySection, {
+        api,
+        chat: CHAT,
+        aiId: AI,
+        aiName: NAME,
+        initiallyOpen: true,
+      }),
+    );
+
+    expect(markup).not.toContain('Show memory');
+    expect(markup).not.toContain('Hide memory');
+    expect(markup).toContain('Loading the memory…');
+  });
 });
 
 describe('AiMemorySectionContent', () => {
@@ -307,6 +324,20 @@ describe('AiMemorySectionContent', () => {
 
     (props['onCancel'] as () => void)();
     expect(a.onCancelClear).toHaveBeenCalledTimes(1);
+  });
+
+  it('hides the Hide button when initiallyOpen', () => {
+    const a = actions();
+    const t = AiMemorySectionContent({
+      state: state(),
+      aiName: NAME,
+      actions: a,
+      initiallyOpen: true,
+    }) as unknown as ReactElement;
+
+    expect(pressByLabel(t, 'Hide memory')).toBeUndefined();
+    expect(pressByLabel(t, 'Show memory')).toBeUndefined();
+    expect(pressByLabel(t, 'Clear memory')).toBeDefined();
   });
 
   it('hides the dialog until Clear memory is pressed', () => {

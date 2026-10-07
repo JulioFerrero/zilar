@@ -18,6 +18,8 @@ import { PinsSheet } from '@/components/chat/pins-sheet';
 import { SelectionBar } from '@/components/chat/selection-bar';
 import { TaskStrip } from '@/components/chat/task-strip';
 import { TopicInfoSheet } from '@/components/chat/topic-sheets';
+import { AiMemorySheet } from '@/components/ais/ai-memory-sheet';
+import { useAiMemoryApi } from '@/components/ais/use-ai-memory-api';
 import { useVoicePlayerHost } from '@/components/chat/voice-player';
 import { Text } from '@/components/ui/text';
 import { API_URL } from '@/lib/auth';
@@ -169,6 +171,8 @@ function Chat() {
   const [infoOpen, setInfoOpen] = useState(false);
   const [infoMembers, setInfoMembers] = useState<{ userId: string; name: string }[]>([]);
   const [infoAis, setInfoAis] = useState<{ id: string; name: string }[]>([]);
+  const { api: memoryApi } = useAiMemoryApi();
+  const [memoryAi, setMemoryAi] = useState<{ id: string; name: string } | null>(null);
   const [infoBusy, setInfoBusy] = useState(false);
   const [infoError, setInfoError] = useState('');
   const [infoRolesError, setInfoRolesError] = useState('');
@@ -1053,6 +1057,16 @@ function Chat() {
             );
           }
         }}
+        onOpenAiMemory={(ai) => {
+          setInfoOpen(false);
+          setMemoryAi(ai);
+        }}
+      />
+      <AiMemorySheet
+        api={memoryApi}
+        chat={chat.id}
+        ai={memoryAi}
+        onClose={() => setMemoryAi(null)}
       />
       <PinsSheet
         open={pinsOpen}

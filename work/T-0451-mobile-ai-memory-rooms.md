@@ -1,7 +1,7 @@
 ---
 id: T-0451
 title: "AI memory M6b (mobile): each AI in the topic info sheet opens a 'What <AI> remembers' sheet"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0451-mobile-ai-memory-rooms
 model: auto
@@ -69,4 +69,24 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- **`ai-memory-section.tsx`:** added optional `initiallyOpen?: boolean` (default `false`) to `AiMemorySection` and threaded it through to `AiMemorySectionContent`. When true the section mounts open (`useState(initiallyOpen)`), so the load effect fires at once, and neither the Show nor the Hide button renders. Everything else (Forget/Clear gated by `canChange`, fixed error lines) is unchanged.
+- **`ai-memory-sheet.tsx` (new):** `AiMemorySheet({ api, chat, ai, onClose })` renders `<BottomSheet visible={ai !== null} onClose={onClose} closeLabel="Close memory" title={\`What ${name} remembers\`}>` with `<AiMemorySection … initiallyOpen />` inside only when `ai` is set.
+- **`topic-sheets.tsx`:** `TopicInfoSheet` takes optional `onOpenAiMemory?: (ai) => void`. When set, each AI row ends with a `Pressable` icon button (Brain, `accessibilityRole="button"`, `accessibilityLabel={\`What ${ai.name} remembers\`}`) that calls it with that AI.
+- **`[id].tsx`:** added `const { api: memoryApi } = useAiMemoryApi()` and `memoryAi` state; passes `onOpenAiMemory={(ai) => { setInfoOpen(false); setMemoryAi(ai); }}` (info sheet closes first, sheets never stack) and renders `<AiMemorySheet api={memoryApi} chat={chat.id} ai={memoryAi} onClose={() => setMemoryAi(null)} />` next to `TopicInfoSheet`.
+- **Tests:** `ai-memory-section.test.tsx` — `initiallyOpen` mounts open with no Show/Hide button (loading line shown), and `AiMemorySectionContent` with `initiallyOpen` wires no Show/Hide but keeps Clear. New `ai-memory-sheet.test.tsx` — title plus `Close memory`, loading-at-once with no toggles; `ai={null}` renders no title and no section. New `topic-sheets-memory.test.tsx` — per-AI "What <name> remembers" buttons, pressing each calls the prop with that AI (via a `Pressable` handler collector, since the sheet uses hooks); without the prop no button renders.
+
+### Files changed
+All inside Allowed files: `ai-memory-section.tsx`, `ai-memory-section.test.tsx`, `ai-memory-sheet.tsx` (new), `ai-memory-sheet.test.tsx` (new), `topic-sheets.tsx`, `topic-sheets-memory.test.tsx` (new), `[id].tsx`, this task file.
+
+### Commands and real results
+- `pnpm install` → done in 25.3s, exit 0.
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot ai-memory topic-sheets` → `Test Files 5 passed (5)`, `Tests 40 passed (40)`.
+- `pnpm gate` → `PASS install (frozen)`, `PASS format`, `PASS lint`, `PASS typecheck`, `PASS tests @zilar/mobile`, `scope: every changed file is inside the Allowed files`, `GATE PASS`.
+
+### Problems / deviations / open questions
+None. One judgment call: `AiMemorySectionContent` (the pure view) also takes `initiallyOpen` so the Hide button can be suppressed — the prop the spec names lives on `AiMemorySection` as specified. No other test broke. Security checklist: no secrets/URLs logged; no new network route (reuses the T-0449 memory API); no deletes/updates scoping change; Forget/Clear visibility still follows the server's `canChange`.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-07). Each AI in the topic info sheet has a Brain button, "What <AI> remembers". It closes the info sheet and opens AiMemorySheet (kit BottomSheet) with AiMemorySection already open for that room; Forget and Clear follow canChange. Not checked on the emulator yet (Julio is using the PC). Nit, unreachable today: the section has no key={ai.id} if a caller ever switches AIs without closing.
