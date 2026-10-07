@@ -1,6 +1,14 @@
 import { and, count, eq, inArray, isNotNull } from 'drizzle-orm';
 import type { ServerDatabase } from '../db/client';
-import { ais, chatPrefs, contacts, topics, xmppAccounts } from '../db/schema';
+import {
+  ais,
+  chatBackgroundDefaults,
+  chatBackgrounds,
+  chatPrefs,
+  contacts,
+  topics,
+  xmppAccounts,
+} from '../db/schema';
 import { HttpError } from '../errors';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 import { canSeeTopic } from '../topics/access';
@@ -8,9 +16,35 @@ import { canSeeTopic } from '../topics/access';
 export const CHAT_PREFS_MAX_ROWS = 200;
 export const CHAT_PREFS_MAX_PINNED = 20;
 
+// Mirrors `CHAT_BACKGROUND_PRESET_IDS` in `packages/ui-tokens` (T-0457). The
+// server keeps its own copy so it does not depend on the UI package.
+export const CHAT_BACKGROUND_PRESET_IDS = [
+  'slate',
+  'gold',
+  'blue',
+  'navy',
+  'forest',
+  'wine',
+  'amber',
+] as const;
+
+/** The three nullable background columns, shared by the pref and the default. */
+export interface BackgroundFields {
+  backgroundPreset: string | null;
+  backgroundImageId: string | null;
+  backgroundDim: number | null;
+}
+
+/** `undefined` keeps the stored value; `null` clears it. */
+export interface BackgroundFieldsInput {
+  backgroundPreset?: string | null | undefined;
+  backgroundImageId?: string | null | undefined;
+  backgroundDim?: number | null | undefined;
+}
+
 export type ChatPrefRow = typeof chatPrefs.$inferSelect;
 
-export interface ChatPrefView {
+export interface ChatPrefView extends BackgroundFields {
   chatJid: string;
   mutedUntil: string | null;
   archived: boolean;
@@ -125,8 +159,51 @@ export function toChatPrefView(row: ChatPrefRow): ChatPrefView {
     mutedUntil: row.mutedUntil === null ? null : row.mutedUntil.toISOString(),
     archived: row.archived,
     pinnedAt: row.pinnedAt === null ? null : row.pinnedAt.toISOString(),
+    backgroundPreset: row.backgroundPreset,
+    backgroundImageId: row.backgroundImageId,
+    backgroundDim: row.backgroundDim,
     updatedAt: row.updatedAt.toISOString(),
   };
+}
+
+// Merges a background patch with the stored values and rejects the invalid
+// combinations. An image id that does not exist and one owned by another user
+// answer the same error, so an id cannot be probed. Shared by the per-chat
+// pref and the per-user default.
+async function resolveBackgroundFields(
+  db: ServerDatabase,
+  userId: string,
+  existing: BackgroundFields | undefined,
+  input: BackgroundFieldsInput,
+): Promise<BackgroundFields> {
+  const backgroundPreset =
+    input.backgroundPreset === undefined
+      ? (existing?.backgroundPreset ?? null)
+      : input.backgroundPreset;
+  const backgroundImageId =
+    input.backgroundImageId === undefined
+      ? (existing?.backgroundImageId ?? null)
+      : input.backgroundImageId;
+  const backgroundDim =
+    input.backgroundDim === undefined ? (existing?.backgroundDim ?? null) : input.backgroundDim;
+
+  if (backgroundPreset !== null && backgroundImageId !== null) {
+    throw new HttpError(400, 'invalid_request', 'Choose a preset or an image');
+  }
+  if (backgroundDim !== null && backgroundImageId === null) {
+    throw new HttpError(400, 'invalid_request', 'Dim needs an image');
+  }
+  if (backgroundImageId !== null) {
+    const [image] = await db
+      .select({ id: chatBackgrounds.id })
+      .from(chatBackgrounds)
+      .where(and(eq(chatBackgrounds.id, backgroundImageId), eq(chatBackgrounds.userId, userId)))
+      .limit(1);
+    if (image === undefined) {
+      throw new HttpError(400, 'invalid_request', 'Unknown background image');
+    }
+  }
+  return { backgroundPreset, backgroundImageId, backgroundDim };
 }
 
 export async function listChatPrefs(db: ServerDatabase, userId: string): Promise<ChatPrefView[]> {
@@ -134,7 +211,7 @@ export async function listChatPrefs(db: ServerDatabase, userId: string): Promise
   return rows.map(toChatPrefView).sort((a, b) => a.chatJid.localeCompare(b.chatJid));
 }
 
-export interface PutChatPrefInput {
+export interface PutChatPrefInput extends BackgroundFieldsInput {
   userId: string;
   bare: string;
   /** `undefined` leaves the field; `null` clears it. */
@@ -169,8 +246,16 @@ export async function putChatPref(
       : input.pinned
         ? (existing?.pinnedAt ?? input.now)
         : null;
+  const background = await resolveBackgroundFields(db, input.userId, existing, input);
 
-  if (mutedUntil === null && archived === false && pinnedAt === null) {
+  if (
+    mutedUntil === null &&
+    archived === false &&
+    pinnedAt === null &&
+    background.backgroundPreset === null &&
+    background.backgroundImageId === null &&
+    background.backgroundDim === null
+  ) {
     if (existing !== undefined) {
       await db
         .delete(chatPrefs)
@@ -206,15 +291,83 @@ export async function putChatPref(
       mutedUntil,
       archived,
       pinnedAt,
+      ...background,
       updatedAt: input.now,
     })
     .onConflictDoUpdate({
       target: [chatPrefs.userId, chatPrefs.chatJid],
-      set: { mutedUntil, archived, pinnedAt, updatedAt: input.now },
+      set: { mutedUntil, archived, pinnedAt, ...background, updatedAt: input.now },
     })
     .returning();
   if (!row) {
     throw new HttpError(500, 'internal_error', 'Could not save the chat preference');
   }
   return toChatPrefView(row);
+}
+
+export interface PutChatBackgroundDefaultInput extends BackgroundFieldsInput {
+  now: Date;
+}
+
+/** The per-user global background default; all null when there is no row. */
+export async function getChatBackgroundDefault(
+  db: ServerDatabase,
+  userId: string,
+): Promise<BackgroundFields> {
+  const [row] = await db
+    .select({
+      backgroundPreset: chatBackgroundDefaults.backgroundPreset,
+      backgroundImageId: chatBackgroundDefaults.backgroundImageId,
+      backgroundDim: chatBackgroundDefaults.backgroundDim,
+    })
+    .from(chatBackgroundDefaults)
+    .where(eq(chatBackgroundDefaults.userId, userId))
+    .limit(1);
+  return row ?? { backgroundPreset: null, backgroundImageId: null, backgroundDim: null };
+}
+
+/**
+ * Partial update of the per-user background default. A write that lands back
+ * on all defaults deletes the row instead of keeping it.
+ */
+export async function putChatBackgroundDefault(
+  db: ServerDatabase,
+  userId: string,
+  input: PutChatBackgroundDefaultInput,
+): Promise<BackgroundFields> {
+  const [existing] = await db
+    .select()
+    .from(chatBackgroundDefaults)
+    .where(eq(chatBackgroundDefaults.userId, userId))
+    .limit(1);
+
+  const background = await resolveBackgroundFields(db, userId, existing, input);
+
+  if (
+    background.backgroundPreset === null &&
+    background.backgroundImageId === null &&
+    background.backgroundDim === null
+  ) {
+    if (existing !== undefined) {
+      await db.delete(chatBackgroundDefaults).where(eq(chatBackgroundDefaults.userId, userId));
+    }
+    return { backgroundPreset: null, backgroundImageId: null, backgroundDim: null };
+  }
+
+  const [row] = await db
+    .insert(chatBackgroundDefaults)
+    .values({ userId, ...background, updatedAt: input.now })
+    .onConflictDoUpdate({
+      target: chatBackgroundDefaults.userId,
+      set: { ...background, updatedAt: input.now },
+    })
+    .returning();
+  if (!row) {
+    throw new HttpError(500, 'internal_error', 'Could not save the background default');
+  }
+  return {
+    backgroundPreset: row.backgroundPreset,
+    backgroundImageId: row.backgroundImageId,
+    backgroundDim: row.backgroundDim,
+  };
 }

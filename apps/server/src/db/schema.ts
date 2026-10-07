@@ -593,6 +593,32 @@ export const pinnedMessages = pgTable(
   ],
 );
 
+// Chat background images (T-0458): one row per uploaded wallpaper, owned by a
+// single user. Only the owner may reference it from a pref; the bytes live on
+// disk under `BACKGROUND_STORAGE_DIR` as a random `<uuid>.<ext>` (never user
+// input), like avatars. The per-user preset list and its checks mirror the
+// shared tokens; the ids are repeated here because the server does not depend
+// on `@zilar/ui-tokens`.
+export const chatBackgrounds = pgTable(
+  'chat_backgrounds',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    mime: text('mime', { enum: ['image/webp', 'image/png'] }).notNull(),
+    width: integer('width'),
+    height: integer('height'),
+    bytes: integer('bytes'),
+    storageKey: text('storage_key').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('chat_backgrounds_user_idx').on(table.userId),
+    check('chat_backgrounds_mime_check', sql`${table.mime} IN ('image/webp', 'image/png')`),
+  ],
+);
+
 // Per-user chat preferences (T-0113): mute (with a duration), archive and
 // pin, for a DM, a group General room, or an individual topic room. One row
 // per (user, chat JID); a row back at all defaults is deleted, not kept.
@@ -611,12 +637,61 @@ export const chatPrefs = pgTable(
     mutedUntil: timestamp('muted_until', { withTimezone: true }),
     archived: boolean('archived').notNull().default(false),
     pinnedAt: timestamp('pinned_at', { withTimezone: true }),
+    backgroundPreset: text('background_preset'),
+    backgroundImageId: text('background_image_id').references(() => chatBackgrounds.id, {
+      onDelete: 'set null',
+    }),
+    backgroundDim: integer('background_dim'),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     primaryKey({ columns: [table.userId, table.chatJid] }),
     check('chat_prefs_jid_length_check', sql`char_length(${table.chatJid}) BETWEEN 1 AND 255`),
+    check(
+      'chat_prefs_background_preset_check',
+      sql`${table.backgroundPreset} IS NULL OR ${table.backgroundPreset} IN ('slate', 'gold', 'blue', 'navy', 'forest', 'wine', 'amber')`,
+    ),
+    check(
+      'chat_prefs_background_dim_check',
+      sql`${table.backgroundDim} IS NULL OR ${table.backgroundDim} BETWEEN 0 AND 80`,
+    ),
+    check(
+      'chat_prefs_background_exclusive_check',
+      sql`NOT (${table.backgroundPreset} IS NOT NULL AND ${table.backgroundImageId} IS NOT NULL)`,
+    ),
     index('chat_prefs_user_idx').on(table.userId),
+  ],
+);
+
+// Global per-user background default (T-0458): one row per user, no sentinel
+// chat JID. The per-chat pref on `chat_prefs` wins over this row. Deleted, not
+// kept, when every field is back at its default.
+export const chatBackgroundDefaults = pgTable(
+  'chat_background_defaults',
+  {
+    userId: text('user_id')
+      .primaryKey()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    backgroundPreset: text('background_preset'),
+    backgroundImageId: text('background_image_id').references(() => chatBackgrounds.id, {
+      onDelete: 'set null',
+    }),
+    backgroundDim: integer('background_dim'),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    check(
+      'chat_background_defaults_preset_check',
+      sql`${table.backgroundPreset} IS NULL OR ${table.backgroundPreset} IN ('slate', 'gold', 'blue', 'navy', 'forest', 'wine', 'amber')`,
+    ),
+    check(
+      'chat_background_defaults_dim_check',
+      sql`${table.backgroundDim} IS NULL OR ${table.backgroundDim} BETWEEN 0 AND 80`,
+    ),
+    check(
+      'chat_background_defaults_exclusive_check',
+      sql`NOT (${table.backgroundPreset} IS NOT NULL AND ${table.backgroundImageId} IS NOT NULL)`,
+    ),
   ],
 );
 
