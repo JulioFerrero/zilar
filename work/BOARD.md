@@ -454,7 +454,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0425](T-0425-mobile-profile-buttons-kit.md) | Mobile: profile and contact card buttons on the kit Button | 2026-10-06 |
 | [T-0426](T-0426-mobile-ai-sheet-buttons-kit.md) | Mobile: AI activity Refresh, tool sheet Show all/less and Close on the kit Button | 2026-10-06 |
 | [T-0451](T-0451-mobile-ai-memory-rooms.md) | AI memory M6b (mobile): 'What <AI> remembers' sheet from the topic info sheet | running | auto | T-0449 | |
-| [T-0448](T-0448-mobile-media-forward-polish.md) | Mobile polish: media grid, keys, dates; no swipe while selecting; no empty forward | running | auto | T-0436, T-0445 | |
 | [T-0427](T-0427-mobile-forwarded-header.md) | Mobile: forwarded messages show 'Forwarded from X [in Y]' | 2026-10-06 |
 | [T-0428](T-0428-mobile-new-chat-menu-sheet.md) | Mobile: New chat menu on the kit ActionSheet with icons | 2026-10-06 |
 | [T-0429](T-0429-mobile-dismiss-banner.md) | Mobile: DismissBanner replaces 12 copied chat screen banners | 2026-10-06 |
@@ -480,3 +479,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0449](T-0449-mobile-ai-memory-dm.md) | AI memory M6a (mobile): Memory section on the AI screen | 2026-10-07 |
 | [T-0450](T-0450-web-forward-memory-polish.md) | Web polish: Forget once per click; multi-select order and reset tests | 2026-10-07 |
 | [T-0446](T-0446-ai-memory-compactor.md) | AI memory M3c: compactor after each reply (4 nodes, AI's model, daily limit) | 2026-10-07 |
+| [T-0448](T-0448-mobile-media-forward-polish.md) | Mobile polish: media grid, keys, dates; no swipe while selecting; no empty forward | 2026-10-07 |

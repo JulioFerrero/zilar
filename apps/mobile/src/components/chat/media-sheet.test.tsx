@@ -1,6 +1,15 @@
-import { createElement } from 'react';
+// @vitest-environment jsdom
+import { createRequire } from 'node:module';
+import { act, createElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
+
+// `react-dom/client` ships no bundled types and mobile has no `@types/react-dom`,
+// so load it through a typed require handle rather than an untyped import.
+const nodeRequire = createRequire(import.meta.url);
+const { createRoot } = nodeRequire('react-dom/client') as {
+  createRoot: (container: Element) => { render(node: ReactNode): void; unmount(): void };
+};
 
 import {
   formatDuration,
@@ -31,6 +40,7 @@ vi.mock('lucide-react-native', () => ({
 vi.mock('../ui/text', () => ({ Text: 'Text' }));
 vi.mock('../ui/button', () => ({ Button: 'Button' }));
 vi.mock('../ui/bottom-sheet', () => ({ BottomSheet: 'BottomSheet' }));
+vi.mock('../ui/segmented-control', () => ({ SegmentedControl: 'SegmentedControl' }));
 vi.mock('../../store/chat-store-provider', () => ({ useChatStore: () => undefined }));
 
 const BASE: MediaSheetContentProps = {
@@ -86,6 +96,82 @@ describe('MediaSheetContent', () => {
   it('shows Load more only while a next cursor exists', () => {
     expect(render({ next: 'cursor' })).toContain('Load more');
     expect(render({ next: null })).not.toContain('Load more');
+  });
+
+  it('draws an Image tile for a remote https image', () => {
+    const html = render({
+      tab: 'media',
+      items: [
+        {
+          messageId: 'm-1',
+          chat: 'ana',
+          at: '2026-09-30T11:00:00Z',
+          senderName: 'Ana',
+          kind: 'image',
+          url: 'https://files.zilar.test/a.jpg',
+          name: 'a.jpg',
+        },
+      ],
+    });
+    expect(html).toContain('Image');
+    expect(html).toContain('Show a.jpg in chat');
+  });
+
+  it('renders a gradient url and a file item without an Image tile', () => {
+    const html = render({
+      tab: 'media',
+      items: [
+        {
+          messageId: 'm-1',
+          chat: 'ana',
+          at: '2026-09-30T11:00:00Z',
+          senderName: 'Ana',
+          kind: 'image',
+          url: 'gradient:sunrise',
+        },
+        {
+          messageId: 'm-2',
+          chat: 'ana',
+          at: '2026-09-30T11:00:00Z',
+          senderName: 'Ana',
+          kind: 'file',
+          url: 'https://files.zilar.test/report.pdf',
+          name: 'report.pdf',
+        },
+      ],
+    });
+    expect(html).not.toContain('Image');
+    expect(html).toContain('report.pdf');
+  });
+
+  it('renders two identical rows without a duplicate-key warning', async () => {
+    // The duplicate-key warning only fires in the client reconciler, so this
+    // renders through `react-dom/client` (jsdom) instead of static markup.
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const item = {
+      messageId: 'm-1',
+      chat: 'ana',
+      at: '2026-09-30T11:00:00Z',
+      senderName: 'Ana',
+      kind: 'link' as const,
+      linkUrl: 'https://example.test/a',
+    };
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        createElement(MediaSheetContent, { ...BASE, tab: 'links', items: [item, { ...item }] }),
+      );
+    });
+    const logged = errorSpy.mock.calls.flat().join(' ');
+    expect(logged).not.toContain('same key');
+    await act(async () => {
+      root.unmount();
+    });
+    container.remove();
+    errorSpy.mockRestore();
   });
 });
 

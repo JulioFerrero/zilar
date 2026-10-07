@@ -311,8 +311,10 @@ function Chat() {
   };
 
   const forwardSelected = () => {
-    setForwarding(selectedInOrder(loadedMessages ?? [], selectedIds));
+    const list = selectedInOrder(loadedMessages ?? [], selectedIds);
     setSelectedIds([]);
+    if (list.length === 0) return;
+    setForwarding(list);
   };
 
   // The manager bit (archive gate, role controls) and the owner picker read

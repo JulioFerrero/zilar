@@ -26,14 +26,16 @@ function ReplyAction({ progress, color }: { progress: SharedValue<number>; color
 type SwipeToReplyProps = {
   color: string;
   onReply: () => void;
+  enabled?: boolean;
   children: ReactNode;
 };
 
 /**
  * Wraps a message row so swiping it right reveals a reply arrow. Releasing past
- * ~60 px triggers a light haptic and sets the reply.
+ * ~60 px triggers a light haptic and sets the reply. `enabled` lets the parent
+ * switch the gesture off, e.g. while the row is in select mode.
  */
-export function SwipeToReply({ color, onReply, children }: SwipeToReplyProps) {
+export function SwipeToReply({ color, onReply, enabled = true, children }: SwipeToReplyProps) {
   const swipeRef = useRef<SwipeableMethods>(null);
 
   const haptic = () => {
@@ -43,6 +45,7 @@ export function SwipeToReply({ color, onReply, children }: SwipeToReplyProps) {
   return (
     <Swipeable
       ref={swipeRef}
+      enabled={enabled}
       leftThreshold={REPLY_THRESHOLD}
       overshootLeft={false}
       renderLeftActions={(progress) => <ReplyAction progress={progress} color={color} />}

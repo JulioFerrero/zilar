@@ -401,7 +401,11 @@ export function MessageBubble({
 
   return (
     <>
-      <SwipeToReply color={colors.incomingMeta} onReply={() => onReply(message)}>
+      <SwipeToReply
+        color={colors.incomingMeta}
+        enabled={selecting !== true}
+        onReply={() => onReply(message)}
+      >
         <View
           className={cn(
             'relative flex-row px-2',

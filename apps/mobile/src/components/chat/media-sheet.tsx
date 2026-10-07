@@ -57,6 +57,13 @@ function rowKey(item: MediaItem): string {
   return `${item.messageId}:${item.linkUrl ?? item.kind}`;
 }
 
+/** The grid draws a tile only for a real remote image, never a mock or file. */
+function isRemoteImage(item: MediaItem): boolean {
+  if (item.kind !== 'image' && item.kind !== 'gif') return false;
+  const url = item.url?.toLowerCase();
+  return url !== undefined && (url.startsWith('http://') || url.startsWith('https://'));
+}
+
 function dateOf(item: MediaItem): string {
   return formatShortDate(new Date(item.at));
 }
@@ -149,19 +156,19 @@ function MediaGrid({
 }) {
   return (
     <View className="flex-row flex-wrap gap-1 pt-2">
-      {items.map((item) =>
-        item.url === undefined ? (
-          <FileRow key={rowKey(item)} item={item} onShowInChat={onShowInChat} />
-        ) : (
+      {items.map((item, index) =>
+        isRemoteImage(item) ? (
           <Pressable
-            key={rowKey(item)}
+            key={`${rowKey(item)}:${index}`}
             accessibilityRole="button"
             accessibilityLabel={`Show ${item.name ?? 'media'} in chat`}
             onPress={() => onShowInChat(item)}
             className="h-24 w-[31%] overflow-hidden rounded-md bg-surface-raised active:opacity-70"
           >
-            <Image source={{ uri: item.url }} resizeMode="cover" className="h-full w-full" />
+            <Image source={{ uri: item.url ?? '' }} resizeMode="cover" className="h-full w-full" />
           </Pressable>
+        ) : (
+          <FileRow key={`${rowKey(item)}:${index}`} item={item} onShowInChat={onShowInChat} />
         ),
       )}
     </View>
@@ -181,11 +188,11 @@ function MediaRowList({
 }) {
   return (
     <View className="pt-1">
-      {items.map((item) => {
+      {items.map((item, index) => {
         if (tab === 'links') {
           return (
             <LinkRow
-              key={rowKey(item)}
+              key={`${rowKey(item)}:${index}`}
               item={item}
               onShowInChat={onShowInChat}
               onOpenLink={onOpenLink}
@@ -193,9 +200,11 @@ function MediaRowList({
           );
         }
         if (tab === 'voice') {
-          return <VoiceRow key={rowKey(item)} item={item} onShowInChat={onShowInChat} />;
+          return (
+            <VoiceRow key={`${rowKey(item)}:${index}`} item={item} onShowInChat={onShowInChat} />
+          );
         }
-        return <FileRow key={rowKey(item)} item={item} onShowInChat={onShowInChat} />;
+        return <FileRow key={`${rowKey(item)}:${index}`} item={item} onShowInChat={onShowInChat} />;
       })}
     </View>
   );
