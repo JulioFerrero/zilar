@@ -1,7 +1,7 @@
 ---
 id: T-0473
 title: "Env examples: document AVATAR_STORAGE_DIR and BACKGROUND_STORAGE_DIR (and correct the storage note)"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0473-env-examples-storage
 model: auto
@@ -65,4 +65,58 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+Updated both env examples so the avatar and background storage dirs are
+documented, and corrected the deploy storage note to match the real backup
+archives and the voice storage.
+
+- **`deploy/.env.example`** (storage safety block, comments only — compose sets
+  the values): added avatars (`avatar-data` volume,
+  `AVATAR_STORAGE_DIR=/data/avatars`, fixed) and background wallpapers (same
+  volume, no separate volume, `BACKGROUND_STORAGE_DIR=/data/avatars/backgrounds`,
+  fixed). Rewrote the backup sentence to name all three file volumes
+  (`uploads.tgz + stickers.tgz + avatars.tgz`) and replaced "Voice: not built"
+  with "not stored separately — the recording is sent as a normal attachment on
+  the upload volume", matching `docs/INSTALL_DOCKER.md` §"Storage, quotas, disk".
+- **`apps/server/.env.example`**: appended a commented storage block with the
+  defaults for `STICKER_STORAGE_DIR`, `AVATAR_STORAGE_DIR` and
+  `BACKGROUND_STORAGE_DIR`, each with a one-line comment. All three are really
+  read by `apps/server/src/config.ts` (lines 67, 72, 77), so all three lines are
+  included.
+
+### Files changed
+- `deploy/.env.example`
+- `apps/server/.env.example`
+- `work/T-0473-env-examples-storage.md` (status + this report)
+
+### Commands and real results
+- `grep -n STORAGE apps/server/.env.example` → no matches before the change
+  (confirmed the file had no storage dir lines).
+- `grep -n "tgz" deploy/zilar` → backup writes `uploads.tgz`, `stickers.tgz`
+  and `avatars.tgz` (lines 926-928, 965-969, 991).
+- `grep -n ... deploy/docker-compose.yml` → `AVATAR_STORAGE_DIR: /data/avatars`
+  (line 148), `BACKGROUND_STORAGE_DIR: /data/avatars/backgrounds` (line 153),
+  `avatar-data` volume at `/data/avatars` (line 218).
+- `pnpm install` → done in 19.3s, exit 0.
+- `pnpm gate` → exit 0, output:
+  ```
+  gate: 3 changed file(s) against main
+  PASS  install (frozen)  (1.8s)
+  PASS  format  (27.6s)
+  PASS  lint  (1.4s)
+  PASS  typecheck  (19.8s)
+  PASS  tests @zilar/server  (2.7s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+  No file outside the Allowed files.
+
+### Problems / deviations
+None. No config or env test broke. Comments/example lines only; no code change.
+
+### Open questions
+None.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-07). Both env examples now document the sticker, avatar and background storage dirs. The deploy storage note lists avatars.tgz and says where voice notes live. Pre-review clean.
