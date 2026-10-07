@@ -30,7 +30,7 @@ function stubPlay(audio: HTMLAudioElement): void {
 
 describe('VoiceMessage player (T-0166)', () => {
   it('uses theme tokens for the waveform, never hardcoded hex', () => {
-    const { container } = render(<VoiceMessage voice={voice} own={true} />);
+    const { container } = render(<VoiceMessage chatId="c-ana" voice={voice} own={true} />);
     const bars = container.querySelectorAll('span[aria-hidden="true"] > span');
     expect(bars.length).toBeGreaterThan(0);
     for (const bar of bars) {
@@ -40,7 +40,7 @@ describe('VoiceMessage player (T-0166)', () => {
   });
 
   it('returns to Play and resets progress when the track ends', () => {
-    render(<VoiceMessage voice={voice} own={false} />);
+    render(<VoiceMessage chatId="c-ana" voice={voice} own={false} />);
     const audio = playableAudio();
     stubPlay(audio);
 
@@ -52,7 +52,7 @@ describe('VoiceMessage player (T-0166)', () => {
   });
 
   it('follows pauses that come from outside the button', () => {
-    render(<VoiceMessage voice={voice} own={false} />);
+    render(<VoiceMessage chatId="c-ana" voice={voice} own={false} />);
     const audio = playableAudio();
     stubPlay(audio);
 
@@ -66,8 +66,12 @@ describe('VoiceMessage player (T-0166)', () => {
   it('pauses the first message when a second one starts', () => {
     render(
       <>
-        <VoiceMessage voice={voice} own={false} />
-        <VoiceMessage voice={{ ...voice, url: 'http://files.zilar.test/other.m4a' }} own={true} />
+        <VoiceMessage chatId="c-ana" voice={voice} own={false} />
+        <VoiceMessage
+          chatId="c-ana"
+          voice={{ ...voice, url: 'http://files.zilar.test/other.m4a' }}
+          own={true}
+        />
       </>,
     );
     const audios = document.querySelectorAll('audio');
@@ -93,7 +97,7 @@ describe('VoiceMessage player (T-0166)', () => {
   });
 
   it('shows the unavailable state when the audio errors', () => {
-    render(<VoiceMessage voice={voice} own={false} />);
+    render(<VoiceMessage chatId="c-ana" voice={voice} own={false} />);
     fireEvent.error(playableAudio());
 
     const button = screen.getByLabelText('Play voice message');
@@ -102,7 +106,7 @@ describe('VoiceMessage player (T-0166)', () => {
   });
 
   it('retries playback when the button is clicked after an error', () => {
-    render(<VoiceMessage voice={voice} own={false} />);
+    render(<VoiceMessage chatId="c-ana" voice={voice} own={false} />);
     const audio = playableAudio();
     fireEvent.error(audio);
     expect(screen.getByLabelText('Play voice message').getAttribute('title')).toBe(
@@ -118,7 +122,7 @@ describe('VoiceMessage player (T-0166)', () => {
 
   it('shows the unavailable state without a url instead of doing nothing', () => {
     const { url: _url, ...withoutUrl } = voice;
-    render(<VoiceMessage voice={withoutUrl} own={false} />);
+    render(<VoiceMessage chatId="c-ana" voice={withoutUrl} own={false} />);
 
     const button = screen.getByLabelText('Play voice message');
     expect(button.getAttribute('title')).toBe('Audio unavailable');

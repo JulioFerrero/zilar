@@ -224,4 +224,18 @@ describe('ChatMediaPanel (T-0434)', () => {
     expect(await screen.findByRole('link', { name: 'one.example.com' })).toBeTruthy();
     expect(screen.getByRole('link', { name: 'two.example.com' })).toBeTruthy();
   });
+
+  it('loads a same-origin upload through the file route', async () => {
+    const url = `${window.location.origin}/upload/ana/stage.png`;
+    const routed = message({
+      id: 'm-img-route',
+      attachment: { kind: 'image', url, name: 'stage.png', size: 245_760, mime: 'image/png' },
+    });
+    renderPanel({ messagesByChat: { 'c-ana': [routed] } });
+
+    const image = await screen.findByRole('img', { name: 'stage.png' });
+    expect(image.getAttribute('src')).toBe(
+      `/api/files?chat=${encodeURIComponent('c-ana')}&url=${encodeURIComponent(url)}`,
+    );
+  });
 });

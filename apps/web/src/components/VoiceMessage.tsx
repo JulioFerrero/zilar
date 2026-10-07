@@ -6,6 +6,7 @@ import { IconButton } from '@/components/ui/icon-button';
 import { StateMessage } from '@/components/ui/state-message';
 import { cn } from '@/lib/utils';
 import { ApiError, getVoiceTranscript } from '@/lib/api';
+import { mediaSrc } from '@/lib/attachments';
 import { useVoiceTranscriptionEnabled } from '@/lib/useVoiceTranscription';
 
 const TICK_MS = 100;
@@ -50,7 +51,16 @@ function friendlyTranscriptError(error: unknown): string {
   return error instanceof Error ? error.message : 'Transcription failed. Try again.';
 }
 
-export function VoiceMessage({ voice, own }: { voice: VoiceMeta; own: boolean }) {
+export function VoiceMessage({
+  chatId,
+  voice,
+  own,
+}: {
+  /** The chat JID, required by `GET /api/files`, which checks membership. */
+  chatId: string;
+  voice: VoiceMeta;
+  own: boolean;
+}) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [playing, setPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -66,6 +76,9 @@ export function VoiceMessage({ voice, own }: { voice: VoiceMeta; own: boolean })
   });
   const labelId = useId();
   const playable = voice.url !== undefined && voice.url !== '' && !failed;
+  // Playback goes through the file route; transcription keeps the raw URL.
+  const audioSrc =
+    voice.url === undefined || voice.url === '' ? undefined : mediaSrc(chatId, voice.url);
   const transcriptionEnabled = useVoiceTranscriptionEnabled();
   const canTranscribe = transcriptionEnabled && voice.url !== undefined && voice.url !== '';
   const showControl = voice.transcript !== undefined || canTranscribe;
@@ -207,7 +220,7 @@ export function VoiceMessage({ voice, own }: { voice: VoiceMeta; own: boolean })
       {voice.url !== undefined && (
         <audio
           ref={audioRef}
-          src={voice.url}
+          src={audioSrc}
           preload="metadata"
           aria-labelledby={labelId}
           onPlay={(event) => onAudioPlay(event.currentTarget)}

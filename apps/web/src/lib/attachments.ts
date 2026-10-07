@@ -82,6 +82,33 @@ export function safeHttpUrl(url: string): string | undefined {
 }
 
 /**
+ * The URL the web should load a file from. A same-origin `/upload/` file is
+ * routed through `GET /api/files` (T-0454), where the server checks the session
+ * and the chat membership; every other URL — another origin (dev's ejabberd on
+ * `:5280`), `blob:`, `data:` or garbage — is returned untouched so it keeps
+ * loading directly.
+ */
+export function mediaSrc(
+  chatId: string,
+  url: string,
+  origin: string = window.location.origin,
+): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return url;
+  }
+  if (parsed.origin !== origin) {
+    return url;
+  }
+  if (!parsed.pathname.startsWith('/upload/') || parsed.pathname.length <= '/upload/'.length) {
+    return url;
+  }
+  return `/api/files?chat=${encodeURIComponent(chatId)}&url=${encodeURIComponent(url)}`;
+}
+
+/**
  * Just enough of the XMPP token to build the trusted media set: the WebSocket
  * service URL and the XMPP domain the server issued for this session. Both are
  * where the upload service answers in dev and production.

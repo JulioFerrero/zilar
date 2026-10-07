@@ -5,7 +5,7 @@ import { SegmentedControl } from './ui/segmented-control';
 import { Sheet } from './ui/sheet';
 import { StateMessage } from './ui/state-message';
 import type { MediaItem, MediaPage, MediaTab } from '@/lib/api';
-import { formatFileSize, safeHttpUrl } from '@/lib/attachments';
+import { formatFileSize, mediaSrc, safeHttpUrl } from '@/lib/attachments';
 import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
 
 const TABS: { value: MediaTab; label: string }[] = [
@@ -140,7 +140,15 @@ function LinkRow({ item, onJump }: { item: MediaItem; onJump: (item: MediaItem) 
   );
 }
 
-function MediaThumb({ item, onJump }: { item: MediaItem; onJump: (item: MediaItem) => void }) {
+function MediaThumb({
+  chatId,
+  item,
+  onJump,
+}: {
+  chatId: string;
+  item: MediaItem;
+  onJump: (item: MediaItem) => void;
+}) {
   if (item.url === undefined) {
     return null;
   }
@@ -152,7 +160,12 @@ function MediaThumb({ item, onJump }: { item: MediaItem; onJump: (item: MediaIte
       aria-label={`Show ${label} in chat`}
       className="aspect-square overflow-hidden rounded-lg bg-surface-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
     >
-      <img src={item.url} alt={label} loading="lazy" className="size-full object-cover" />
+      <img
+        src={mediaSrc(chatId, item.url)}
+        alt={label}
+        loading="lazy"
+        className="size-full object-cover"
+      />
     </button>
   );
 }
@@ -315,7 +328,12 @@ export function ChatMediaPanel({ chatId, onClose }: { chatId: string; onClose: (
                 {withUrl.length > 0 && (
                   <div className="grid grid-cols-3 gap-1">
                     {withUrl.map((item, index) => (
-                      <MediaThumb key={mediaItemKey(item, index)} item={item} onJump={jump} />
+                      <MediaThumb
+                        key={mediaItemKey(item, index)}
+                        chatId={chatId}
+                        item={item}
+                        onJump={jump}
+                      />
                     ))}
                   </div>
                 )}

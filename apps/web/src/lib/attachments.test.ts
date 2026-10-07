@@ -9,6 +9,7 @@ import {
   formatFileSize,
   gifBlobType,
   isTrustedMediaUrl,
+  mediaSrc,
   readImageSize,
   safeHttpUrl,
   trustedMediaHosts,
@@ -99,6 +100,33 @@ describe('safeHttpUrl', () => {
     expect(safeHttpUrl('javascript:alert(1)')).toBeUndefined();
     expect(safeHttpUrl('data:image/png;base64,AAAA')).toBeUndefined();
     expect(safeHttpUrl('not a url')).toBeUndefined();
+  });
+});
+
+describe('mediaSrc', () => {
+  const origin = 'https://zilar.test';
+
+  it('routes a same-origin /upload/ file through the file route', () => {
+    const url = 'https://zilar.test/upload/x/y.png';
+
+    expect(mediaSrc('c-ana', url, origin)).toBe(
+      `/api/files?chat=${encodeURIComponent('c-ana')}&url=${encodeURIComponent(url)}`,
+    );
+  });
+
+  it('leaves another origin, blob:, data:, a bare /upload/ and garbage unchanged', () => {
+    const untouched = [
+      'http://localhost:5280/upload/x/y.png',
+      'blob:https://zilar.test/abc',
+      'data:image/png;base64,AAAA',
+      'https://zilar.test/upload/',
+      'https://zilar.test/other/y.png',
+      'not a url',
+    ];
+
+    for (const url of untouched) {
+      expect(mediaSrc('c-ana', url, origin)).toBe(url);
+    }
   });
 });
 

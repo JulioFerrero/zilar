@@ -13,7 +13,7 @@ const file: Attachment = {
 
 describe('FileMessage', () => {
   it('shows the name, size and type and a download link', () => {
-    render(<FileMessage attachment={file} own={false} />);
+    render(<FileMessage chatId="c-ana" attachment={file} own={false} />);
 
     expect(screen.getByText('tickets.pdf')).toBeTruthy();
     expect(screen.getByText('2.3 MB · application/pdf')).toBeTruthy();
@@ -25,7 +25,7 @@ describe('FileMessage', () => {
   });
 
   it('shows Uploading… and no link while the bytes are in flight', () => {
-    render(<FileMessage attachment={file} own uploading />);
+    render(<FileMessage chatId="c-ana" attachment={file} own uploading />);
 
     expect(screen.getByText('Uploading…')).toBeTruthy();
     expect(screen.queryByLabelText('Download tickets.pdf')).toBeNull();
@@ -33,7 +33,7 @@ describe('FileMessage', () => {
 
   it('shows a Retry on failure instead of a link', () => {
     const onRetry = vi.fn();
-    render(<FileMessage attachment={file} own failed onRetry={onRetry} />);
+    render(<FileMessage chatId="c-ana" attachment={file} own failed onRetry={onRetry} />);
 
     expect(screen.getByText('Upload failed')).toBeTruthy();
     fireEvent.click(screen.getByLabelText('Retry upload'));
@@ -42,9 +42,24 @@ describe('FileMessage', () => {
   });
 
   it('never links a javascript: URL', () => {
-    render(<FileMessage attachment={{ ...file, url: 'javascript:alert(1)' }} own={false} />);
+    render(
+      <FileMessage
+        chatId="c-ana"
+        attachment={{ ...file, url: 'javascript:alert(1)' }}
+        own={false}
+      />,
+    );
 
     expect(screen.queryByRole('link')).toBeNull();
     expect(screen.getByText('tickets.pdf')).toBeTruthy();
+  });
+
+  it('downloads a same-origin upload through the file route', () => {
+    const url = `${window.location.origin}/upload/ana/tickets.pdf`;
+    const expected = `/api/files?chat=${encodeURIComponent('c-ana')}&url=${encodeURIComponent(url)}`;
+
+    render(<FileMessage chatId="c-ana" attachment={{ ...file, url }} own={false} />);
+
+    expect(screen.getByLabelText('Download tickets.pdf').getAttribute('href')).toBe(expected);
   });
 });

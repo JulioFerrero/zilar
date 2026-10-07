@@ -543,6 +543,7 @@ export function MessageBubble({
                 {message.image !== undefined && (
                   <div className={cn('relative', hasText ? 'px-1.5 pt-1.5' : 'p-1.5')}>
                     <ImageMessage
+                      chatId={message.chatId}
                       url={message.image.url}
                       alt="Photo"
                       width={message.image.width}
@@ -561,6 +562,7 @@ export function MessageBubble({
                 {attachmentImage && message.attachment !== undefined && (
                   <div className={cn('relative', hasText ? 'px-1.5 pt-1.5' : 'p-1.5')}>
                     <ImageMessage
+                      chatId={message.chatId}
                       url={message.attachment.url}
                       alt={message.attachment.name}
                       width={message.attachment.width}
@@ -600,6 +602,7 @@ export function MessageBubble({
                 {attachmentFile && message.attachment !== undefined && (
                   <div className="px-3 py-1.5">
                     <FileMessage
+                      chatId={message.chatId}
                       attachment={message.attachment}
                       own={own}
                       uploading={isSending && !failed}
@@ -619,7 +622,7 @@ export function MessageBubble({
 
                 {gifVideo && message.attachment !== undefined && (
                   <div className={cn('relative', hasText ? 'px-1.5 pt-1.5' : 'p-1.5')}>
-                    <GifMessage attachment={message.attachment} />
+                    <GifMessage chatId={message.chatId} attachment={message.attachment} />
                     {sendFailed ? (
                       <SendFailure
                         chatId={chat.id}
@@ -653,7 +656,7 @@ export function MessageBubble({
 
                 {message.voice !== undefined && (
                   <div className="px-3 py-1.5">
-                    <VoiceMessage voice={message.voice} own={own} />
+                    <VoiceMessage chatId={message.chatId} voice={message.voice} own={own} />
                     {sendFailed && (
                       <SendFailure
                         chatId={chat.id}

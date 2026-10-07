@@ -47,7 +47,7 @@ describe('isGifVideoAttachment', () => {
 
 describe('GifMessage', () => {
   it('renders a looping muted inline video', () => {
-    render(<GifMessage attachment={gifVideo()} />);
+    render(<GifMessage chatId="c-ana" attachment={gifVideo()} />);
     const video = document.querySelector('video');
     expect(video).not.toBeNull();
     expect(video?.loop).toBe(true);
@@ -56,10 +56,19 @@ describe('GifMessage', () => {
   });
 
   it('falls back to a tile when the video breaks', () => {
-    render(<GifMessage attachment={gifVideo()} />);
+    render(<GifMessage chatId="c-ana" attachment={gifVideo()} />);
     const video = document.querySelector('video');
     expect(video).not.toBeNull();
     fireEvent.error(video as HTMLVideoElement);
     expect(screen.getByText('Video unavailable')).toBeTruthy();
+  });
+
+  it('loads a same-origin upload through the file route', () => {
+    const url = `${window.location.origin}/upload/ana/gif-abc123.mp4`;
+    const expected = `/api/files?chat=${encodeURIComponent('c-ana')}&url=${encodeURIComponent(url)}`;
+
+    render(<GifMessage chatId="c-ana" attachment={{ ...gifVideo(), url }} />);
+
+    expect(document.querySelector('video')?.getAttribute('src')).toBe(expected);
   });
 });

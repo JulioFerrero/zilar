@@ -6,6 +6,7 @@ describe('ImageMessage', () => {
   it('reserves the aspect ratio from the known size and is lazy', () => {
     render(
       <ImageMessage
+        chatId="c-ana"
         url="https://files.zilar.test/stage.png"
         alt="stage.png"
         width={800}
@@ -22,7 +23,9 @@ describe('ImageMessage', () => {
   });
 
   it('links only http(s) images and opens them safely', () => {
-    render(<ImageMessage url="https://files.zilar.test/stage.png" alt="stage.png" />);
+    render(
+      <ImageMessage chatId="c-ana" url="https://files.zilar.test/stage.png" alt="stage.png" />,
+    );
 
     const link = screen.getByRole('link');
     expect(link.getAttribute('href')).toBe('https://files.zilar.test/stage.png');
@@ -31,18 +34,29 @@ describe('ImageMessage', () => {
   });
 
   it('never links a javascript: URL', () => {
-    render(<ImageMessage url="javascript:alert(1)" alt="bad" />);
+    render(<ImageMessage chatId="c-ana" url="javascript:alert(1)" alt="bad" />);
 
     expect(screen.queryByRole('link')).toBeNull();
     expect(screen.getByRole('img')).toBeTruthy();
   });
 
   it('shows a small tile when the image is broken', () => {
-    render(<ImageMessage url="https://files.zilar.test/gone.png" alt="gone.png" />);
+    render(<ImageMessage chatId="c-ana" url="https://files.zilar.test/gone.png" alt="gone.png" />);
 
     fireEvent.error(screen.getByRole('img'));
 
     expect(screen.getByText('Image unavailable')).toBeTruthy();
     expect(screen.queryByRole('img')).toBeNull();
+  });
+
+  it('loads a same-origin upload through the file route', () => {
+    const url = `${window.location.origin}/upload/ana/stage.png`;
+    const expected = `/api/files?chat=${encodeURIComponent('c-ana')}&url=${encodeURIComponent(url)}`;
+
+    render(<ImageMessage chatId="c-ana" url={url} alt="stage.png" />);
+
+    const image = screen.getByRole('img') as HTMLImageElement;
+    expect(image.getAttribute('src')).toBe(expected);
+    expect(screen.getByRole('link').getAttribute('href')).toBe(expected);
   });
 });

@@ -1,7 +1,7 @@
 ---
 id: T-0454
 title: "Upload lock 2 (web): images, GIFs, files, voice notes and the media panel load this server's /upload files through /api/files"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0454-web-files-through-route
 model: auto
@@ -68,4 +68,54 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+
+- Added `mediaSrc(chatId, url, origin = window.location.origin)` to `apps/web/src/lib/attachments.ts`. It returns `/api/files?chat=<enc>&url=<enc>` only when `new URL(url)` parses, its origin equals `origin`, and its pathname starts with `/upload/` and is longer than `/upload/`. Everything else (another origin — including dev's `http://<host>:5280/upload/…`, `blob:`, `data:`, a bare `/upload/`, garbage) comes back unchanged.
+- Applied it at every load site and added a `chatId` prop where missing:
+  - `ImageMessage`: `src`, and the open-in-new-tab `href`. Linkability still decided by `safeHttpUrl(raw)`; when linkable the `href` points at the mapped `src`.
+  - `FileMessage`: `href` (linkability still from `safeHttpUrl(raw)`).
+  - `GifMessage`: `<video src>` and `href`; `isTrustedGifUrl`/`isGifVideoAttachment` trust checks still take the raw URL.
+  - `VoiceMessage`: the `<audio src>` only. `voice.url` is still what `toggleTranscript`/`retryTranscript` send to `getVoiceTranscript`, and the transcript cache is still keyed by the raw URL.
+  - `ChatMediaPanel` `MediaThumb`: `src`, using the panel's `chatId`.
+  - `MessageBubble` passes `message.chatId` to all five components.
+- Tests:
+  - `attachments.test.ts`: `mediaSrc` maps a same-origin `/upload/x/y.png` and leaves another origin, `blob:`, `data:`, a bare `/upload/`, another path and garbage unchanged (origin passed explicitly).
+  - `ImageMessage`, `FileMessage`, `GifMessage`, `VoiceMessage`, `ChatMediaPanel` tests: one new case each asserting a same-origin upload renders `/api/files?chat=…&url=…` (URL built from `window.location.origin`), plus all existing renders updated for `chatId`.
+  - `VoiceMessage.test.tsx` new case also asserts the transcription POST body still carries the raw `url`.
+  - `VoiceMessage.player.test.tsx` renders updated for `chatId` (no behavioural change).
+
+### Files changed (all inside Allowed files)
+
+`apps/web/src/lib/attachments.ts`, `apps/web/src/lib/attachments.test.ts`, `apps/web/src/components/{ImageMessage,FileMessage,GifMessage,VoiceMessage,ChatMediaPanel,MessageBubble}.tsx` and the matching `ImageMessage/FileMessage/GifMessage/VoiceMessage/VoiceMessage.player/ChatMediaPanel` `.test.tsx`, plus this task file. `git status --porcelain` lists exactly 15 entries, all in scope.
+
+### Commands and real results
+
+- `pnpm install` — done in 32.9s, exit 0.
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot attachments ImageMessage FileMessage GifMessage VoiceMessage ChatMediaPanel MessageBubble`
+  - First run: 2 files failed, 12 tests failed — I had forgotten `import { mediaSrc }` in `VoiceMessage.tsx` (`ReferenceError: mediaSrc is not defined`). Fixed the import.
+  - Second run: `Test Files 8 passed (8)`, `Tests 75 passed (75)`.
+- `pnpm gate` (from repo root)
+  - First run: `GATE FAIL` — `format` failed on `FileMessage.test.tsx`, `ImageMessage.test.tsx`, `VoiceMessage.test.tsx`. Ran `pnpm exec prettier --write` on those three files.
+  - Second run:
+    ```
+    gate: 15 changed file(s) against main
+    PASS  install (frozen)  (0.9s)
+    PASS  format  (15.2s)
+    PASS  lint  (0.9s)
+    PASS  typecheck  (8.5s)
+    PASS  tests @zilar/web  (32.9s)
+    scope: every changed file is inside the Allowed files
+    GATE PASS
+    ```
+
+### Deviations / decisions
+
+- The spec says apply `mediaSrc` to `href` while trust checks keep the raw URL. `mediaSrc` returns a relative `/api/files…` path for a same-origin upload, so `safeHttpUrl(mediaSrc(...))` would be `undefined` and remove the link. I therefore keep the linkability decision on the raw URL (`safeHttpUrl(url)`) and set `href` to the mapped `src` when it is linkable. Same-origin uploads are http(s) and linkable; the raw URL is still what the safety check sees.
+
+### Problems / open questions
+
+None.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-07). mediaSrc(chatId, url) maps a same-origin /upload/ URL to /api/files?chat=&url= and leaves every other URL alone (the dev :5280 origin, blob:, data:). It is applied to ImageMessage src and href, FileMessage href, GifMessage src and href, the VoiceMessage audio src and ChatMediaPanel thumbs. Trust checks and voice transcription keep the raw URL. Pre-review clean.

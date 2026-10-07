@@ -55,7 +55,7 @@ afterEach(() => {
 describe('VoiceMessage', () => {
   it('toggles the transcript', () => {
     stubTranscription({ enabled: true });
-    render(<VoiceMessage voice={voice} own={false} />);
+    render(<VoiceMessage chatId="c-ana" voice={voice} own={false} />);
 
     expect(screen.queryByText('hello from the transcript')).toBeNull();
 
@@ -69,7 +69,7 @@ describe('VoiceMessage', () => {
 
   it('shows the duration and a play button', () => {
     stubTranscription({ enabled: true });
-    render(<VoiceMessage voice={voice} own={false} />);
+    render(<VoiceMessage chatId="c-ana" voice={voice} own={false} />);
     expect(screen.getByText('0:12')).toBeTruthy();
     expect(screen.getByLabelText('Play voice message')).toBeTruthy();
   });
@@ -77,7 +77,7 @@ describe('VoiceMessage', () => {
   it('shows nothing at all when transcription is not enabled', async () => {
     stubTranscription({ enabled: false });
     const { transcript: _transcript, ...withoutTranscript } = voice;
-    render(<VoiceMessage voice={withoutTranscript} own={true} />);
+    render(<VoiceMessage chatId="c-ana" voice={withoutTranscript} own={true} />);
     // The control appears only for the embedded transcript (none here) or
     // while the server says enabled — neither, so no button, ever.
     expect(screen.queryByLabelText('Show transcript')).toBeNull();
@@ -90,7 +90,9 @@ describe('VoiceMessage', () => {
     resetVoiceTranscriptionCache();
     resetVoiceTranscriptCache();
     const { transcript: _transcript, ...withoutTranscript } = voice;
-    const { unmount } = render(<VoiceMessage voice={withoutTranscript} own={false} />);
+    const { unmount } = render(
+      <VoiceMessage chatId="c-ana" voice={withoutTranscript} own={false} />,
+    );
 
     expect(await screen.findByLabelText('Show transcript')).toBeTruthy();
     fireEvent.click(screen.getByLabelText('Show transcript'));
@@ -103,7 +105,7 @@ describe('VoiceMessage', () => {
 
     // …and neither does meeting the same message again after a remount.
     unmount();
-    render(<VoiceMessage voice={withoutTranscript} own={false} />);
+    render(<VoiceMessage chatId="c-ana" voice={withoutTranscript} own={false} />);
     fireEvent.click(await screen.findByLabelText('Show transcript'));
     expect(await screen.findByText('heard at http://files.zilar.test/voice-a.m4a')).toBeTruthy();
 
@@ -122,7 +124,7 @@ describe('VoiceMessage', () => {
     resetVoiceTranscriptionCache();
     resetVoiceTranscriptCache();
     const { transcript: _transcript, ...withoutTranscript } = voice;
-    render(<VoiceMessage voice={withoutTranscript} own={false} />);
+    render(<VoiceMessage chatId="c-ana" voice={withoutTranscript} own={false} />);
 
     fireEvent.click(await screen.findByLabelText('Show transcript'));
     expect(await screen.findByText(/Transcription failed/)).toBeTruthy();
@@ -130,5 +132,23 @@ describe('VoiceMessage', () => {
     await screen.findByText(/Transcription failed/);
     const posts = calls.filter((call) => call === 'POST /api/voice/transcript');
     expect(posts).toHaveLength(2);
+  });
+
+  it('plays a same-origin upload through the file route but transcribes the raw URL', async () => {
+    const { fetchMock } = stubTranscription({ enabled: true });
+    const url = `${window.location.origin}/upload/ana/voice.m4a`;
+    const { transcript: _transcript, ...withoutTranscript } = voice;
+    render(<VoiceMessage chatId="c-ana" voice={{ ...withoutTranscript, url }} own={false} />);
+
+    const expected = `/api/files?chat=${encodeURIComponent('c-ana')}&url=${encodeURIComponent(url)}`;
+    expect(document.querySelector('audio')?.getAttribute('src')).toBe(expected);
+
+    fireEvent.click(await screen.findByLabelText('Show transcript'));
+    expect(await screen.findByText(`heard at ${url}`)).toBeTruthy();
+
+    const [, postInit] = fetchMock.mock.calls.find(([target]) =>
+      (target as string).endsWith('/voice/transcript'),
+    ) as [string, RequestInit];
+    expect(JSON.parse(postInit.body as string)).toEqual({ url });
   });
 });
