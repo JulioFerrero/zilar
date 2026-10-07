@@ -349,3 +349,40 @@ Tasks 1–2 are server, 3 is shared, 4–5 are web; 6–7 are **mobile** and wai
    applied as a black overlay.
 6. **Animated backgrounds?** Recommended: **still images only** for v1 (avatars
    already reject animated, `apps/server/src/avatars/service.ts:79-81`).
+
+---
+
+## 8. Decisions (Julio, 2026-10-07) and lead changes
+
+1. **Scope:** both. The order for one chat is:
+   1. my per-chat choice;
+   2. the group background (see 4);
+   3. my global default;
+   4. `slate`.
+2. **Images:** yes, in a later PR after the presets. Still images only, 0-80% dim, default 40%.
+3. **Colours:** Julio wants coloured grounds and the brand gold, not the §2 list. The Zilar icon is a silver planet with a gold moon (`tools/brand-3d/main.js:134-137`, gold `#f0b445`). There is no brand blue, so the blue below is a plain blue. Dots are 1 px on a 22 px cell.
+
+   The final preset list replaces §2:
+
+   | id | ground | dot | note |
+   | --- | --- | --- | --- |
+   | `slate` | `#0a0a0a` | `#1c1c1c` | default, today's look |
+   | `gold` | `#0a0a0a` | `#715625` | brand gold `#f0b445` at 45% over the panel |
+   | `blue` | `#0a0a0a` | `#204074` | `#3b82f6` at 45% over the panel |
+   | `navy` | `#0b1322` | `#1d3357` | coloured ground |
+   | `forest` | `#0a1510` | `#1b3a2a` | coloured ground |
+   | `wine` | `#160a10` | `#42192b` | coloured ground |
+   | `amber` | `#15100a` | `#4a3818` | gold-tinted ground |
+
+   Every ground stays darker than the incoming bubble `#161616` in luminance.
+4. **Group backgrounds:** admins can set one per group, and every member sees it unless that member set their own per-chat choice. The group background is stored per room. Its image is readable by members of that room, and not owner-only like a personal image.
+
+**New task order** (one schema task at a time):
+- **A. shared:** the preset tokens.
+- **B. server:** personal prefs (the `chat_prefs` columns, `chat_background_defaults`, the `chat_backgrounds` table and its schema, the API).
+- **C. server:** image upload and serving.
+- **D. web:** render.
+- **E. web:** picker.
+- **F. server:** the group background (admin write, member read, image read for members).
+- **G. web:** the group background in the group panel.
+- **Mobile:** render and picker wait.
