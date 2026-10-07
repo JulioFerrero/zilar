@@ -1,7 +1,7 @@
 ---
 id: T-0469
 title: "Audit: release readiness — Effect 4.0 adoption status, README/docs freshness, and what a release could miss"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0469-release-readiness-audit
 model: auto
@@ -84,4 +84,84 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+
+Wrote `docs/audit/release-readiness.md` (355 lines) answering the three
+questions with `file:line` and command evidence. No code, config or package
+change. I read `AGENTS.md`, `docs/ROADMAP_EFFECT.md`, `docs/EFFECT_GUIDE.md`,
+`docs/FEATURES.md`, `docs/RELEASING.md`, `docs/SERVER_CONFIG.md`,
+`docs/INSTALL_DOCKER.md`, `docs/INSTALL.md`, `docs/USER_GUIDE.md`,
+`apps/server/src/config.ts`, `deploy/docker-compose.yml`,
+`deploy/caddy/Caddyfile`, `deploy/zilar`, `work/BOARD.md` and every README
+named in the spec.
+
+### Files changed
+
+- `docs/audit/release-readiness.md` (new)
+- `work/T-0469-release-readiness-audit.md` (status + this Report)
+
+### Findings (short)
+
+- **Effect 4.0:** installed (`apps/server/package.json:23` `^4.0.0`,
+  lockfile `effect@4.0.0`). Adopted in exactly one module,
+  `apps/server/src/voice-transcription/pipeline.ts`, plus its test. "All the
+  project" is **no, by design** (`ROADMAP_EFFECT.md:8,26`); all other candidate
+  areas are open. T-0172 was a host fix, not the planned Effect push rewrite.
+- **Docs:** stale READMEs `apps/mobile/README.md` and
+  `packages/runner-tunnel/README.md`; stale main docs `FEATURES.md`,
+  `USER_GUIDE.md`, `SERVER_CONFIG.md`, `INSTALL_DOCKER.md`; `SERVER_CONFIG.md`
+  misses `AVATAR_STORAGE_DIR` and `BACKGROUND_STORAGE_DIR`; `INSTALL_DOCKER.md`
+  misses `BACKGROUND_STORAGE_DIR` and still says Voice is "Planned".
+  Ready-to-paste `FEATURES.md` rows are in §2a.
+- **Release checklist:** 6 migrations since the real latest tag `v0.1.13`
+  (7 since the spec's `v0.1.9`); background wallpapers are already covered by
+  `avatars.tgz` (`deploy/zilar:968-969`); the upload-lock cutover is pending
+  and mobile still loads `/upload` directly; auto-deploy secrets and the
+  tag-vs-auto-deploy wording in `RELEASING.md` need attention; local `main` is
+  2 commits ahead of `origin/main` at audit time.
+
+### Deviations from the spec
+
+- The spec's "Verified facts" say the latest tag is `v0.1.9`; `git tag |
+  sort -V` shows **`v0.1.13`** (2026-10-03), and `FEATURES.md:156` itself
+  records the v0.1.13 release. I reported both the requested
+  `v0.1.9..main` migration list (7 files) and the correct `v0.1.13..main`
+  list (6 files) instead of silently using the wrong tag. This is itself a
+  release-readiness finding, not an edit to the spec.
+- The spec's `FEATURES.md` examples are the post-2026-10-05 features; I also
+  listed the user-visible 2026-10-05 features that are missing from the file
+  (blocking, chat folders, mobile mention picker, bottom bar, settings hub) as
+  a separate group, because they are absent too.
+
+### Commands run (real results)
+
+```
+$ pnpm install
+Done in 18.9s (peer warning: @types/react-dom wants @types/react ^19.3.0, found 19.2.18)
+
+$ pnpm gate
+gate: 2 changed file(s) against main
+PASS  install (frozen)  (1.4s)
+PASS  format  (17.3s)
+PASS  lint  (0.9s)
+PASS  typecheck  (1.5s)
+scope: every changed file is inside the Allowed files
+GATE PASS
+```
+
+Single test files: none — no test file was touched (docs-only task), so there
+was nothing to run with `pnpm --filter <package> test`.
+
+### Blocked / needs a decision
+
+Nothing blocked. Two items are flagged for Julio in §3–§4 of the audit: the
+mobile version/buildNumber bump and the upload-lock cutover.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-07). docs/audit/release-readiness.md finds:
+- Effect 4.0.0 is installed, but only the voice-transcription pipeline uses it (by design for routes and UI; the other candidate areas are still open);
+- FEATURES.md, the USER_GUIDE, README, the mobile README and the runner-tunnel README are stale, with ready rows;
+- AVATAR and BACKGROUND_STORAGE_DIR are undocumented;
+- the release checklist covers 6 migrations since v0.1.13 (it corrected the lead's v0.1.9), no backup before an auto-deploy migration, and the RELEASING sections 1 and 9 clash.
+It also gives a fix order.
