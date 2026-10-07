@@ -1,7 +1,7 @@
 ---
 id: T-0460
 title: "Backgrounds C (server): upload, list, serve (owner only) and delete background images; deleting clears prefs that use it"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0460-server-background-images
 model: auto
@@ -89,7 +89,7 @@ This is plan `docs/audit/chat-backgrounds-plan.md` §4 and §8, task C. T-0458 c
 `AGENTS.md`, `docs/audit/chat-backgrounds-plan.md` §4 and §8, `apps/server/src/avatars/service.ts`, `apps/server/src/avatars/routes.ts`, `apps/server/src/avatars/routes.test.ts` (fixtures), `apps/server/src/stickers/image.ts`, `apps/server/src/chat-prefs/service.ts`, `apps/server/src/db/schema.ts` (`chatBackgrounds`, `chatPrefs`, `chatBackgroundDefaults`), `apps/server/src/config.ts:60-75`, `apps/server/src/index.ts:95-125`, `apps/server/src/app.ts:140-230` and `:440-460`.
 
 ### Allowed files
-`apps/server/src/stickers/image.ts`, `apps/server/src/stickers/image.test.ts`, `apps/server/src/backgrounds/service.ts`, `apps/server/src/backgrounds/routes.ts`, `apps/server/src/backgrounds/routes.test.ts`, `apps/server/src/config.ts`, `apps/server/src/index.ts`, `apps/server/src/app.ts`, `deploy/docker-compose.yml`, `work/T-0460-server-background-images.md`.
+`apps/server/src/stickers/image.ts`, `apps/server/src/stickers/image.test.ts`, `apps/server/src/backgrounds/service.ts`, `apps/server/src/backgrounds/routes.ts`, `apps/server/src/backgrounds/routes.test.ts`, `apps/server/src/config.ts`, `apps/server/src/config.test.ts`, `apps/server/src/index.ts`, `apps/server/src/app.ts`, `deploy/docker-compose.yml`, `work/T-0460-server-background-images.md`.
 
 If any other test breaks (for example a config snapshot test), stop and report BLOCKED with the file name.
 
@@ -109,4 +109,88 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**Status: review.** Feature complete; `pnpm gate` ends `GATE PASS` (see below).
+The first pass was blocked by the full-config snapshots in
+`apps/server/src/config.test.ts`; the lead then added that file to the Allowed
+files and I updated it (see the follow-up section).
+
+### What I did
+- `apps/server/src/stickers/image.ts`: added `StickerProbeLimits` and threaded an
+  optional second `limits` parameter through `probeStickerBytes`, `parsePng`,
+  `parseWebp` and `checkDimensions`. Unset fields keep today's sticker
+  constants, so sticker and avatar behaviour is unchanged.
+- New `apps/server/src/backgrounds/service.ts`: constants (`BACKGROUND_MAX_BYTES`
+  1 MiB, `BACKGROUND_MAX_SIDE` 2048, `BACKGROUND_MIN_SIDE` 64,
+  `BACKGROUND_MAX_PER_USER` 20, upload rate 20/hour), `backgroundUrlFor`,
+  `checkBackgroundBytes` (wallpaper limits; rejects animated images and sides
+  under 64), `uploadBackground` (count read + insert under
+  `pg_advisory_xact_lock(hashtext('background:' + userId))`, file removed on
+  failure), `listBackgrounds` (newest first), `readBackgroundFile` (unknown id,
+  foreign id and missing file all return `null`) and `deleteBackground` (one
+  transaction: nulls `backgroundImageId` + `backgroundDim` on the user's prefs and
+  defaults, deletes rows back at all defaults, deletes the image row, then `rm`s
+  the file best-effort; unknown/foreign returns `false`).
+- New `apps/server/src/backgrounds/routes.ts`: `POST /backgrounds` (201; raw body
+  with the avatar content-length pre-check + `readCapped`, 413/400/409),
+  `GET /backgrounds`, `GET /backgrounds/:id` (exact avatar GET headers),
+  `DELETE /backgrounds/:id` (204). Every route requires a session; unknown and
+  foreign ids answer the same 404 "Background not found".
+- `apps/server/src/config.ts`: `BACKGROUND_STORAGE_DIR` default
+  `./data/backgrounds`, next to `AVATAR_STORAGE_DIR`.
+- `apps/server/src/index.ts`: resolve + `ensureWritableDir` for it, and add it to
+  `warnOnContainerLayerStorage`.
+- `apps/server/src/app.ts`: `backgroundStorageDir` / `backgroundNow` /
+  `backgroundUploadLimiter` test overrides and the route mount.
+- `deploy/docker-compose.yml`: `BACKGROUND_STORAGE_DIR: /data/avatars/backgrounds`
+  with a comment that it reuses the existing `avatar-data` volume.
+- `apps/server/src/stickers/image.test.ts`: one case — a 1024 px PNG refused by
+  the default limits is accepted with custom limits.
+- `apps/server/src/backgrounds/routes.test.ts`: the 13 cases listed in the spec.
+- `apps/server/src/config.test.ts`: added `BACKGROUND_STORAGE_DIR` to the two
+  full-config `toEqual` expectations and a defaults/parse/empty test mirroring
+  the avatar one.
+
+The plan section §8.4 says a personal background image is read by its owner only
+(not a capability URL, unlike avatars); the read route is scoped to
+`row.userId === user.id` accordingly.
+
+### Commands I ran (real results)
+- `pnpm install` — Done; `pnpm-lock.yaml` unchanged.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot backgrounds stickers/image avatars`
+  — **3 files passed, 46 tests passed**.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot config.test`
+  — **3 files passed, 67 tests passed** (before the `config.test.ts` fix the two
+  full-config snapshots failed, each missing the new key).
+- `pnpm gate` summary lines:
+  ```
+  gate: 11 changed file(s) against main
+  PASS  install (frozen)  (1.0s)
+  PASS  format  (13.1s)
+  PASS  lint  (0.9s)
+  PASS  typecheck  (6.9s)
+  PASS  tests @zilar/server  (237.4s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+  (The first `pnpm gate` of the session stopped at `format`; after
+  `prettier --write` on the files it flagged, later runs reached the tests.
+  Before the `config.test.ts` fix the gate was red only on those two snapshots.)
+
+### Follow-up after the blocked report
+The lead approved option 1 and added `apps/server/src/config.test.ts` to the
+Allowed files. I added `BACKGROUND_STORAGE_DIR: './data/backgrounds'` to the two
+full-config `toEqual` expectations and a defaults/parse/empty test mirroring the
+`AVATAR_STORAGE_DIR` one. No other file changed.
+
+### Acceptance status
+- Upload / list / read / delete, owner-only 404, caps and formats: implemented,
+  covered by the passing focused tests.
+- Delete clears `backgroundImageId`/`backgroundDim` and drops all-default rows:
+  implemented, covered by the passing focused tests.
+- Production stores files on the existing avatar volume: compose updated.
+- `pnpm gate` ends `GATE PASS` with no out-of-scope files: **yes** — the scope
+  line reports every changed file inside the Allowed files.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-07). Routes POST, GET (list), GET :id and DELETE :id under /backgrounds, all with a session. Reads and deletes are scoped by (id, userId), with the same 404. Images are still PNG or WebP, at most 1 MiB, 64-2048 px, 20 per user, with the cap held under an advisory lock. Delete nulls the image id and dim on prefs and defaults and drops all-default rows. The probe got optional limits; sticker and avatar behaviour is unchanged. Production uses BACKGROUND_STORAGE_DIR=/data/avatars/backgrounds on the existing volume. Lead widened Allowed files for config.test.ts. Nits accepted: the write sits inside the transaction, the etag uses the raw param, and the missing-file 404 is untested.

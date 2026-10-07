@@ -11,6 +11,15 @@ export const STICKER_MAX_DIMENSION = 512;
  *  claiming 60 000 × 60 000 is a decompression bomb, not a sticker. */
 export const STICKER_MAX_DECODED_BYTES = 4 * 1024 * 1024;
 
+/** Overrides the module defaults for one probe. Callers that accept larger
+ *  images than a sticker (wallpapers) pass their own caps; unset fields keep
+ *  the sticker defaults, so existing callers behave byte for byte as before. */
+export interface StickerProbeLimits {
+  maxBytes?: number;
+  maxDimension?: number;
+  maxDecodedBytes?: number;
+}
+
 export type StickerMime = 'image/webp' | 'image/png';
 
 export interface StickerImageInfo {
@@ -143,14 +152,17 @@ function readU32LE(bytes: Uint8Array, offset: number): number {
 function checkDimensions(
   width: number,
   height: number,
+  limits: StickerProbeLimits = {},
 ): { ok: true } | { ok: false; error: StickerProbeError } {
+  const maxDimension = limits.maxDimension ?? STICKER_MAX_DIMENSION;
+  const maxDecodedBytes = limits.maxDecodedBytes ?? STICKER_MAX_DECODED_BYTES;
   if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1) {
     return { ok: false, error: 'invalid_dimensions' };
   }
-  if (width > STICKER_MAX_DIMENSION || height > STICKER_MAX_DIMENSION) {
+  if (width > maxDimension || height > maxDimension) {
     return { ok: false, error: 'too_large' };
   }
-  if (width * height * 4 > STICKER_MAX_DECODED_BYTES) {
+  if (width * height * 4 > maxDecodedBytes) {
     return { ok: false, error: 'decode_too_large' };
   }
   return { ok: true };
@@ -160,6 +172,7 @@ function checkDimensions(
  *  bytes of width/height. Truncated headers fail closed. */
 function parsePng(
   bytes: Uint8Array,
+  limits: StickerProbeLimits = {},
 ): { ok: true; info: StickerImageInfo } | { ok: false; error: StickerProbeError } {
   if (bytes.length < 24) {
     return { ok: false, error: 'truncated' };
@@ -172,7 +185,7 @@ function parsePng(
   }
   const width = readU32BE(bytes, 16);
   const height = readU32BE(bytes, 20);
-  const checked = checkDimensions(width, height);
+  const checked = checkDimensions(width, height, limits);
   if (!checked.ok) {
     return checked;
   }
@@ -187,6 +200,7 @@ function parsePng(
  */
 function parseWebp(
   bytes: Uint8Array,
+  limits: StickerProbeLimits = {},
 ): { ok: true; info: StickerImageInfo } | { ok: false; error: StickerProbeError } {
   if (bytes.length < 21) {
     return { ok: false, error: 'truncated' };
@@ -203,7 +217,7 @@ function parseWebp(
     }
     const width = readU16LE(bytes, 26) & 0x3fff;
     const height = readU16LE(bytes, 28) & 0x3fff;
-    const checked = checkDimensions(width, height);
+    const checked = checkDimensions(width, height, limits);
     if (!checked.ok) {
       return checked;
     }
@@ -223,7 +237,7 @@ function parseWebp(
     const bits = readU32LE(bytes, 21);
     const width = (bits & 0x3fff) + 1;
     const height = ((bits >> 14) & 0x3fff) + 1;
-    const checked = checkDimensions(width, height);
+    const checked = checkDimensions(width, height, limits);
     if (!checked.ok) {
       return checked;
     }
@@ -238,7 +252,7 @@ function parseWebp(
     }
     const width = readU24LE(bytes, 24) + 1;
     const height = readU24LE(bytes, 27) + 1;
-    const checked = checkDimensions(width, height);
+    const checked = checkDimensions(width, height, limits);
     if (!checked.ok) {
       return checked;
     }
@@ -261,18 +275,21 @@ export type StickerProbeResult =
  * animated WebP or an APNG) for callers that only accept stills. Never
  * trusts the caller's content type or file name.
  */
-export function probeStickerBytes(bytes: Uint8Array): StickerProbeResult {
+export function probeStickerBytes(
+  bytes: Uint8Array,
+  limits: StickerProbeLimits = {},
+): StickerProbeResult {
   if (bytes.byteLength === 0) {
     return { ok: false, error: 'too_small' };
   }
-  if (bytes.byteLength > STICKER_MAX_BYTES) {
+  if (bytes.byteLength > (limits.maxBytes ?? STICKER_MAX_BYTES)) {
     return { ok: false, error: 'too_large' };
   }
   if (isPng(bytes)) {
-    return parsePng(bytes);
+    return parsePng(bytes, limits);
   }
   if (isWebp(bytes)) {
-    return parseWebp(bytes);
+    return parseWebp(bytes, limits);
   }
   if (bytes.byteLength < 12) {
     return { ok: false, error: 'too_small' };

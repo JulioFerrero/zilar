@@ -107,6 +107,10 @@ await warnOnEmptyStorageDir({
 const avatarDir = resolveStorageDir(config.AVATAR_STORAGE_DIR);
 await ensureWritableDir(avatarDir, 'AVATAR_STORAGE_DIR');
 
+// Background wallpapers (T-0460): same rules as the avatar dir.
+const backgroundDir = resolveStorageDir(config.BACKGROUND_STORAGE_DIR);
+await ensureWritableDir(backgroundDir, 'BACKGROUND_STORAGE_DIR');
+
 // T-0156: warn once (ids/paths only) when the file stores sit on the
 // container layer in production (no mount: files lost on replace), and when
 // GIF search is half-configured (provider without a key). Absolute paths
@@ -116,6 +120,7 @@ await warnOnContainerLayerStorage({
   dirs: [
     { envName: 'STICKER_STORAGE_DIR', dir: stickerDir },
     { envName: 'AVATAR_STORAGE_DIR', dir: avatarDir },
+    { envName: 'BACKGROUND_STORAGE_DIR', dir: backgroundDir },
   ],
   isProduction: config.NODE_ENV === 'production',
   warn: (message) => logger.warn(message),

@@ -52,6 +52,7 @@ describe('loadServerConfig', () => {
       WEB_BASE_URL: 'http://localhost:5173',
       STICKER_STORAGE_DIR: './data/stickers',
       AVATAR_STORAGE_DIR: './data/avatars',
+      BACKGROUND_STORAGE_DIR: './data/backgrounds',
       TRUSTED_PROXY_HOPS: 0,
       GIF_RATING: 'pg-13',
       MAIL_TRANSPORT: 'console',
@@ -97,6 +98,7 @@ describe('loadServerConfig', () => {
       WEB_BASE_URL: 'http://localhost:5173',
       STICKER_STORAGE_DIR: './data/stickers',
       AVATAR_STORAGE_DIR: './data/avatars',
+      BACKGROUND_STORAGE_DIR: './data/backgrounds',
       TRUSTED_PROXY_HOPS: 0,
       GIF_RATING: 'pg-13',
       MAIL_TRANSPORT: undefined,
@@ -500,6 +502,22 @@ describe('loadServerConfig', () => {
         .AVATAR_STORAGE_DIR,
     ).toBe('/var/lib/zilar/avatars');
     expect(configErrorMessage({ ...base, AVATAR_STORAGE_DIR: '' })).toContain('AVATAR_STORAGE_DIR');
+  });
+
+  it('defaults the background storage dir, parses an explicit one, rejects an empty one', () => {
+    const base = {
+      DATABASE_URL: VALID_DATABASE_URL,
+      BETTER_AUTH_SECRET: VALID_SECRET,
+      ...VALID_XMPP_ENV,
+    };
+    expect(loadServerConfig(base).BACKGROUND_STORAGE_DIR).toBe('./data/backgrounds');
+    expect(
+      loadServerConfig({ ...base, BACKGROUND_STORAGE_DIR: '/var/lib/zilar/backgrounds' })
+        .BACKGROUND_STORAGE_DIR,
+    ).toBe('/var/lib/zilar/backgrounds');
+    expect(configErrorMessage({ ...base, BACKGROUND_STORAGE_DIR: '' })).toContain(
+      'BACKGROUND_STORAGE_DIR',
+    );
   });
 
   it('leaves GIFs unconfigured by default and parses an explicit provider', () => {

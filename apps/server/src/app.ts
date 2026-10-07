@@ -45,6 +45,7 @@ import { createMediaRoutes } from './media/routes';
 import { createFilesRoutes } from './files/routes';
 import { createGifsRoutes } from './gifs/routes';
 import { createAvatarsRoutes } from './avatars/routes';
+import { createBackgroundsRoutes } from './backgrounds/routes';
 import { createStickersRoutes } from './stickers/routes';
 import { createTopicsRoutes } from './topics/routes';
 import { createMachinesRoutes } from './machines/routes';
@@ -150,6 +151,12 @@ export interface AppDependencies {
   avatarNow?: () => number;
   /** T-0165: overrides the avatar upload limiter (tests inject a window). */
   avatarUploadLimiter?: { allow: (key: string) => boolean };
+  /** T-0460: background storage dir override; defaults to the parsed config. */
+  backgroundStorageDir?: string;
+  /** T-0460: injected in tests so the background upload rate window can advance. */
+  backgroundNow?: () => number;
+  /** T-0460: overrides the background upload limiter (tests inject a window). */
+  backgroundUploadLimiter?: { allow: (key: string) => boolean };
   /** T-0120: injected in tests so the upload rate window can advance. */
   stickerNow?: () => number;
   /** T-0120: overrides the sticker upload limiter (cap tests inject a pass). */
@@ -223,6 +230,9 @@ export function createApp({
   avatarStorageDir,
   avatarNow,
   avatarUploadLimiter,
+  backgroundStorageDir,
+  backgroundNow,
+  backgroundUploadLimiter,
   telegramClient,
   telegramImportNow,
   voiceTranscription,
@@ -453,6 +463,19 @@ export function createApp({
       audit: auditRecorder,
       ...(avatarNow === undefined ? {} : { now: avatarNow }),
       ...(avatarUploadLimiter === undefined ? {} : { uploadLimiter: avatarUploadLimiter }),
+    }),
+  );
+  // Background images (T-0460): upload / list / serve / delete personal
+  // wallpapers, owner-only. The storage dir comes from
+  // `BACKGROUND_STORAGE_DIR`; tests override it with a temp dir.
+  app.route(
+    '/api',
+    createBackgroundsRoutes({
+      auth,
+      db,
+      storageDir: backgroundStorageDir ?? config.BACKGROUND_STORAGE_DIR,
+      ...(backgroundNow === undefined ? {} : { now: backgroundNow }),
+      ...(backgroundUploadLimiter === undefined ? {} : { uploadLimiter: backgroundUploadLimiter }),
     }),
   );
   // Integration settings (T-0162 + Email): owner-only; everyone else gets
