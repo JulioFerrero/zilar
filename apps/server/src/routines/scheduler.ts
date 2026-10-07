@@ -2,6 +2,7 @@
 // routines exactly once and runs them through `executeRoutine` in
 // `execute.ts`. Tests call `tick()` directly with a fake clock and fake
 // `runTool`/`post` ports; production wires the real ones in `index.ts`.
+import { Cause, Effect, Schedule, type Fiber } from 'effect';
 import { and, asc, eq, isNull, lte } from 'drizzle-orm';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
@@ -46,7 +47,7 @@ export function createRoutineScheduler(
   const tickMs = options.tickMs ?? 30_000;
   const now = options.now ?? (() => new Date());
   const maxPerTick = options.maxPerTick ?? 5;
-  let timer: NodeJS.Timeout | null = null;
+  let fiber: Fiber.Fiber<void, never> | null = null;
   let closed = false;
   let running = false;
 
@@ -66,34 +67,40 @@ export function createRoutineScheduler(
     }
   }
 
-  function schedule(): void {
-    if (closed) {
-      return;
-    }
-    timer = setTimeout(() => {
-      timer = null;
-      void tick()
-        .catch((error: unknown) => {
-          options.logger.error({ err: errorName(error) }, 'routines scheduler tick failed');
-        })
-        .finally(() => {
-          schedule();
-        });
-    }, tickMs);
-    timer.unref();
+  // The background loop repeats the tick with `Schedule.spaced`, first
+  // after one interval. Interrupting the fiber stops it and clears its
+  // timer; the `running` flag below already keeps direct `tick()` calls
+  // from overlapping.
+  function loop(): Effect.Effect<void, never, never> {
+    const tickEffect = Effect.promise(() => tick()).pipe(
+      Effect.catchCause((cause) =>
+        Effect.sync(() => {
+          options.logger.error(
+            { err: errorName(Cause.squash(cause)) },
+            'routines scheduler tick failed',
+          );
+        }),
+      ),
+    );
+    return Effect.sleep(tickMs).pipe(
+      Effect.andThen(Effect.repeat(tickEffect, Schedule.spaced(tickMs))),
+    );
   }
 
   return {
     start(): void {
       // First run after one interval, not at boot, so startup is never
       // blocked. `index.ts` starts the scheduler after `serve()` resolves.
-      schedule();
+      if (closed || fiber !== null) {
+        return;
+      }
+      fiber = Effect.runFork(loop());
     },
     stop(): void {
       closed = true;
-      if (timer !== null) {
-        clearTimeout(timer);
-        timer = null;
+      if (fiber !== null) {
+        fiber.interruptUnsafe();
+        fiber = null;
       }
     },
     tick,
@@ -172,24 +179,36 @@ async function runClaimed(
   now: () => Date,
 ): Promise<void> {
   const at = now();
-  for (let index = 0; index < claimed.length; index += MAX_CONCURRENT_RUNS) {
-    const batch = claimed.slice(index, index + MAX_CONCURRENT_RUNS);
-    const tickNow = (): Date => at;
-    await Promise.all(
-      batch.map((row) =>
-        executeRoutine({ runTool: options.runTool, post: options.post }, row, {
-          db: options.db,
-          now: tickNow,
-          audit: options.audit,
-          logger: options.logger,
-        }).catch((error: unknown) => {
-          // `executeRoutine` handles every expected failure itself; this
-          // is the backstop for a database write failing mid-run.
-          options.logger.error({ err: errorName(error), routineId: row.id }, 'routine run failed');
-        }),
-      ),
-    );
-  }
+  const tickNow = (): Date => at;
+  // `concurrency` starts the next run as soon as a slot frees instead of
+  // waiting for a batch; per-row errors are still caught and logged. The
+  // next run can only start earlier, never overlap more runs.
+  await Effect.runPromise(
+    Effect.forEach(
+      claimed,
+      (row) =>
+        Effect.promise(() =>
+          executeRoutine({ runTool: options.runTool, post: options.post }, row, {
+            db: options.db,
+            now: tickNow,
+            audit: options.audit,
+            logger: options.logger,
+          }),
+        ).pipe(
+          Effect.catchCause((cause) => {
+            // `executeRoutine` handles every expected failure itself; this
+            // is the backstop for a database write failing mid-run.
+            return Effect.sync(() => {
+              options.logger.error(
+                { err: errorName(Cause.squash(cause)), routineId: row.id },
+                'routine run failed',
+              );
+            });
+          }),
+        ),
+      { concurrency: MAX_CONCURRENT_RUNS, discard: true },
+    ),
+  );
 }
 
 function errorName(error: unknown): string {
