@@ -2,6 +2,15 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-07 evening:**
+- **Backgrounds done on web and server:** T-0457 to T-0466 merged (presets, own images with dim, groups set by admins; my per-chat choice wins). Mobile render and picker wait for a free PC.
+- **Julio's next picks:**
+  - web kit cleanup: T-0467 audit refresh, running;
+  - listener + delegation: T-0468 plan, running;
+  - then pilot polish;
+  - plus a release check: T-0469 (Effect status, READMEs, release checklist), spec ready, launches when a slot frees.
+- **The rule stays:** 2 workers, no mobile.
+
 **2026-10-07 late afternoon (backgrounds):**
 - **Merged:**
   - T-0455: the "Remembered: <fact>" line;
