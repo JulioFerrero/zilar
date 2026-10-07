@@ -501,3 +501,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0469](T-0469-release-readiness-audit.md) | Audit: release readiness (Effect status, docs freshness, release checklist) | 2026-10-07 |
 | [T-0471](T-0471-docs-catch-up.md) | Docs catch-up: FEATURES, USER_GUIDE, READMEs, storage dirs, RELEASING | 2026-10-07 |
 | [T-0470](T-0470-listener-schema.md) | Listener S1 (schema): listener columns, delegation flags, ai_delegations | 2026-10-07 |
+| [T-0473](T-0473-env-examples-storage.md) | Env examples: avatar and background storage dirs | 2026-10-07 |
