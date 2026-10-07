@@ -59,6 +59,39 @@ export const chatGrid = {
 } as const;
 
 /**
+ * The chat background presets from `docs/audit/chat-backgrounds-plan.md` §8:
+ * a coloured 1 px dot on a dark ground. Web, mobile and the server's
+ * validation all read this one list. Every ground keeps a relative luminance
+ * below `palette.bubbleIn` so the incoming bubble stays visible.
+ */
+export const CHAT_BACKGROUND_PRESET_IDS = [
+  'slate',
+  'gold',
+  'blue',
+  'navy',
+  'forest',
+  'wine',
+  'amber',
+] as const;
+
+export type ChatBackgroundPresetId = (typeof CHAT_BACKGROUND_PRESET_IDS)[number];
+
+export const DEFAULT_CHAT_BACKGROUND_PRESET: ChatBackgroundPresetId = 'slate';
+
+export const chatBackgroundPresets: Record<
+  ChatBackgroundPresetId,
+  { ground: string; dot: string }
+> = {
+  slate: { ground: palette.panel, dot: chatGrid.dot },
+  gold: { ground: '#0a0a0a', dot: '#715625' },
+  blue: { ground: '#0a0a0a', dot: '#204074' },
+  navy: { ground: '#0b1322', dot: '#1d3357' },
+  forest: { ground: '#0a1510', dot: '#1b3a2a' },
+  wine: { ground: '#160a10', dot: '#42192b' },
+  amber: { ground: '#15100a', dot: '#4a3818' },
+};
+
+/**
  * The gradient and shadow strings exactly as in
  * `apps/mobile/src/lib/depth.ts` (which is also what the web utilities in
  * `apps/web/src/index.css` render, modulo CSS whitespace).

@@ -1,7 +1,7 @@
 ---
 id: T-0457
 title: "Backgrounds A (shared): chatBackgroundPresets tokens (7 presets, slate default) in packages/ui-tokens"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0457-background-preset-tokens
 model: auto
@@ -69,4 +69,38 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- Added the chat background preset tokens to `packages/ui-tokens/src/index.ts` immediately after `chatGrid`, with a doc comment pointing to `docs/audit/chat-backgrounds-plan.md` §8: `CHAT_BACKGROUND_PRESET_IDS`, `ChatBackgroundPresetId`, `DEFAULT_CHAT_BACKGROUND_PRESET` (`'slate'`) and `chatBackgroundPresets` with exactly the 7 id/ground/dot values from the spec table (`slate`'s ground/dot alias `palette.panel` / `chatGrid.dot`).
+- Extended `packages/ui-tokens/src/index.test.ts` with a `chatBackgroundPresets` describe block: ids unique and equal to the preset keys; default is `slate` and slate matches `chatGrid`; every ground and dot is a 7-character `#rrggbb`; every ground's sRGB relative luminance is below `palette.bubbleIn` (`#161616`). A small local `luminance()` helper implements the sRGB formula.
+
+### Files changed
+- `packages/ui-tokens/src/index.ts`
+- `packages/ui-tokens/src/index.test.ts`
+- `work/T-0457-background-preset-tokens.md` (status + report only)
+
+### Commands and results
+- `pnpm install` — exit 0 (1170 packages, warnings about deprecated subdeps and one unmet peer in `apps/mobile`, pre-existing).
+- `pnpm --filter @zilar/ui-tokens test --maxWorkers=2 --reporter=dot src/index.test.ts` — 1 test file passed, 9 tests passed.
+- `pnpm gate` (first run) — GATE FAIL: only step `FAIL format (23.1s)`; Prettier flagged `packages/ui-tokens/src/index.test.ts` (long `.toEqual([...])` line). Scope line already said "every changed file is inside the Allowed files".
+- `pnpm exec prettier --write packages/ui-tokens/src/index.test.ts` — reformatted the one file.
+- `pnpm gate` (second run) — GATE PASS. Summary lines:
+  ```
+  gate: 3 changed file(s) against main
+  PASS  install (frozen)  (1.2s)
+  PASS  format  (18.0s)
+  PASS  lint  (1.4s)
+  PASS  typecheck  (2.0s)
+  PASS  tests @zilar/ui-tokens  (0.7s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Problems / deviations
+- First gate run failed on formatting only; fixed by formatting the single file, no check was disabled. No spec deviation. No other test broke.
+
+### Blocked / needs a decision
+- None.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-07). The 7 presets are exported with exactly the spec values; slate reuses chatGrid. Tests cover unique ids, the default, the hex shape and luminance below bubbleIn. Pre-review clean.

@@ -1,8 +1,25 @@
 import { describe, expect, it } from 'vitest';
 
-import { depth, palette, platformDifferences, radius } from './index';
+import {
+  CHAT_BACKGROUND_PRESET_IDS,
+  DEFAULT_CHAT_BACKGROUND_PRESET,
+  chatBackgroundPresets,
+  chatGrid,
+  depth,
+  palette,
+  platformDifferences,
+  radius,
+} from './index';
 
 const HEX = /^#[0-9a-f]{6}$/;
+
+function luminance(hex: string): number {
+  const channel = (offset: number): number => {
+    const value = Number.parseInt(hex.slice(offset, offset + 2), 16) / 255;
+    return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * channel(1) + 0.7152 * channel(3) + 0.0722 * channel(5);
+}
 
 describe('palette', () => {
   it('holds every D24 value as a 6-digit lowercase hex', () => {
@@ -51,6 +68,38 @@ describe('platformDifferences', () => {
       expect(difference.web.length).toBeGreaterThan(0);
       expect(difference.mobile.length).toBeGreaterThan(0);
       expect(difference.note.length).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe('chatBackgroundPresets', () => {
+  it('lists unique ids that match the preset keys', () => {
+    expect(new Set(CHAT_BACKGROUND_PRESET_IDS).size).toBe(CHAT_BACKGROUND_PRESET_IDS.length);
+    expect(Object.keys(chatBackgroundPresets).sort()).toEqual(
+      [...CHAT_BACKGROUND_PRESET_IDS].sort(),
+    );
+  });
+
+  it('defaults to slate and keeps the slate look from chatGrid', () => {
+    expect(DEFAULT_CHAT_BACKGROUND_PRESET).toBe('slate');
+    expect(chatBackgroundPresets.slate.ground).toBe(chatGrid.background);
+    expect(chatBackgroundPresets.slate.dot).toBe(chatGrid.dot);
+  });
+
+  it('holds every ground and dot as a 7-character #rrggbb', () => {
+    for (const id of CHAT_BACKGROUND_PRESET_IDS) {
+      const preset = chatBackgroundPresets[id];
+      expect(preset.ground, `${id}.ground`).toMatch(HEX);
+      expect(preset.dot, `${id}.dot`).toMatch(HEX);
+      expect(preset.ground.length).toBe(7);
+      expect(preset.dot.length).toBe(7);
+    }
+  });
+
+  it('keeps every ground darker than the incoming bubble in luminance', () => {
+    const bubbleLuminance = luminance(palette.bubbleIn);
+    for (const id of CHAT_BACKGROUND_PRESET_IDS) {
+      expect(luminance(chatBackgroundPresets[id].ground), id).toBeLessThan(bubbleLuminance);
     }
   });
 });
