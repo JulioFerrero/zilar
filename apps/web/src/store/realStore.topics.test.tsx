@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { Schema } from 'effect';
 import type { ChatMessage, Occupant, XmppCore, XmppCoreOptions } from '@zilar/xmpp-core';
 import {
   TOPIC_REFRESH_INTERVAL_MS,
@@ -349,7 +350,7 @@ describe('topics store mapping (T-0111)', () => {
     const apiMock = api as unknown as Record<string, ReturnType<typeof vi.fn>>;
     const { topicSchema } = await import('@/lib/api');
     (apiMock.patchTopic as ReturnType<typeof vi.fn>).mockResolvedValue(
-      topicSchema.parse({ ...bugTopic(), archived: true }),
+      Schema.decodeUnknownSync(topicSchema)({ ...bugTopic(), archived: true }),
     );
     (apiMock.getChats as ReturnType<typeof vi.fn>).mockResolvedValue([
       groupEntry({ topics: [topic()] }),
@@ -369,7 +370,7 @@ describe('topics store mapping (T-0111)', () => {
     const apiMock = api as unknown as Record<string, ReturnType<typeof vi.fn>>;
     const { topicSchema } = await import('@/lib/api');
     (apiMock.patchTopic as ReturnType<typeof vi.fn>).mockResolvedValue(
-      topicSchema.parse({ ...bugTopic(), archived: true }),
+      Schema.decodeUnknownSync(topicSchema)({ ...bugTopic(), archived: true }),
     );
     (apiMock.getChats as ReturnType<typeof vi.fn>).mockResolvedValue([
       groupEntry({ topics: [topic()] }),
@@ -527,7 +528,7 @@ describe('topics store mapping (T-0111)', () => {
     const bugId = 'bug-topic@rooms.zilar.test';
     const apiMock = api as unknown as Record<string, ReturnType<typeof vi.fn>>;
     const { topicSchema } = await import('@/lib/api');
-    const updated = topicSchema.parse({
+    const updated = Schema.decodeUnknownSync(topicSchema)({
       ...bugTopic(),
       visibility: 'private',
       roles: [{ id: 'role-designers', name: 'Designers', memberCount: 2 }],
@@ -559,7 +560,7 @@ describe('topics store mapping (T-0111)', () => {
     const apiMock = api as unknown as Record<string, ReturnType<typeof vi.fn>>;
     const { topicSchema } = await import('@/lib/api');
     (apiMock.patchTopic as ReturnType<typeof vi.fn>).mockResolvedValue(
-      topicSchema.parse({ ...bugTopic(), archived: true }),
+      Schema.decodeUnknownSync(topicSchema)({ ...bugTopic(), archived: true }),
     );
     (apiMock.getChats as ReturnType<typeof vi.fn>).mockResolvedValue([groupEntry()]);
     store.getState().openChat(bugId);
@@ -592,7 +593,7 @@ describe('topics store mapping (T-0111)', () => {
     const apiMock = api as unknown as Record<string, ReturnType<typeof vi.fn>>;
     const { topicSchema } = await import('@/lib/api');
     (apiMock.patchTopic as ReturnType<typeof vi.fn>).mockResolvedValue(
-      topicSchema.parse({ ...bugTopic(), archived: true }),
+      Schema.decodeUnknownSync(topicSchema)({ ...bugTopic(), archived: true }),
     );
     // No General anywhere: the refreshed list has no topic from this group.
     (apiMock.getChats as ReturnType<typeof vi.fn>).mockResolvedValue([]);
@@ -612,7 +613,7 @@ describe('topics store mapping (T-0111)', () => {
     const apiMock = api as unknown as Record<string, ReturnType<typeof vi.fn>>;
     const { topicSchema } = await import('@/lib/api');
     (apiMock.patchTopic as ReturnType<typeof vi.fn>).mockResolvedValue(
-      topicSchema.parse({ ...bugTopic(), archived: true }),
+      Schema.decodeUnknownSync(topicSchema)({ ...bugTopic(), archived: true }),
     );
     (apiMock.getChats as ReturnType<typeof vi.fn>).mockResolvedValue([]);
     store.getState().openChat(bugId);

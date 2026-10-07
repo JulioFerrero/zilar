@@ -1,7 +1,7 @@
 ---
 id: T-0505
 title: "Effect lane D1: web lib/api.ts on Effect Schema, part 1 — response helpers accept Effect Schema (zod kept as a temporary second path), sections up to Pinned messages converted"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0505-effect-web-api-1
 model: auto
@@ -72,7 +72,9 @@ Julio, 2026-10-07: the whole codebase on Effect 4, with Effect Schema replacing 
 `AGENTS.md`, `docs/EFFECT_GUIDE.md`, `docs/audit/effect-everywhere-plan.md` §2.5 and §2.6, `packages/protocol/src/common.ts`, `apps/web/src/lib/api.ts:1-340` and `:1550-1600`, then each section you convert.
 
 ### Allowed files
-`apps/web/src/lib/api.ts`, `apps/web/src/lib/api.decode.test.ts`, `work/T-0505-effect-web-api-1.md`.
+`apps/web/src/lib/api.ts`, `apps/web/src/lib/api.decode.test.ts`, `apps/web/src/lib/api.topics.test.ts`, `apps/web/src/lib/api.invite-links.test.ts`, `apps/web/src/store/realStore.topics.test.tsx`, `work/T-0505-effect-web-api-1.md`.
+
+Lead, 2026-10-08 (option 1 of the blocked report): the three test files above may change **only** their `topicSchema` / `groupInviteLinkSchema` `.parse` / `.safeParse` calls, to `Schema.decodeUnknownSync(...)` / a boolean decode check. No assertion changes.
 
 If `apps/web/package.json` lacks `effect`, add it (`^4.0.0`), add `apps/web/package.json` and `pnpm-lock.yaml` to these Allowed files, and say so in the Report.
 
@@ -92,4 +94,54 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
-## Review (written by Claude)
+**Done. `pnpm gate` ends with `GATE PASS` and every changed file is inside the Allowed files.**
+
+### What I did
+- Added the temporary dual path in `apps/web/src/lib/api.ts`:
+  - `type ResponseSchema<T> = z.ZodType<T> | Schema.Codec<T>`;
+  - `decodeResponse<T>(schema, raw)` returns `{ ok: true; value } | { ok: false }`, detects the schema kind with `Schema.isSchema`, decodes Effect Schemas non-strictly via `Schema.decodeUnknownExit(schema)`, and is the only place that branches on the kind (marked `// T-0505..T-0507: zod path removed in part 3`);
+  - `request` and `searchRequest` now take `ResponseSchema<T>` and call `decodeResponse`; the `invalid_response` behaviour is unchanged.
+- Converted every schema, `z.infer` type and direct parse from the top of the file through "Pinned messages" (through the line that was 1023) to Effect Schema: `struct(...)` from `@zilar/protocol` for objects, `Schema.mutable(Schema.Array(...))` for arrays, `Schema.NullOr` for nullable, `Schema.Literals` for enums, `Schema.Literal`/`Schema.Null` for literals/null, `Schema.optional` for `.optional()`. This includes `errorBodySchema` (now `struct` + `Schema.StructWithRest` so the extra body fields stay on `detail`), `toApiError`, `chatEntryTopics`, and `putChatPref`'s union/`chatPrefSchema.parse`.
+- Sections after that line (AI memory onward, including `searchPageSchema`, `stickerSchema`, `gifPageSchema`, `avatarUrlSchema`, `backgroundImageSchema`) stay on zod, untouched.
+- Added `apps/web/src/lib/api.decode.test.ts` covering all three cases.
+- Updated the three test files the lead added to Allowed files, changing only the `topicSchema` / `groupInviteLinkSchema` `.parse` / `.safeParse` calls to `Schema.decodeUnknownSync(...)` / `Schema.is(...)`; no assertion changed.
+
+### Files changed
+- `apps/web/src/lib/api.ts` — helper + schemas/parses through "Pinned messages".
+- `apps/web/src/lib/api.decode.test.ts` — new decode test.
+- `apps/web/src/lib/api.topics.test.ts` — `.parse` → `Schema.decodeUnknownSync`, `.safeParse(...).success` → `Schema.is(...)`.
+- `apps/web/src/lib/api.invite-links.test.ts` — `.parse` → `Schema.decodeUnknownSync`.
+- `apps/web/src/store/realStore.topics.test.tsx` — six `.parse` calls → `Schema.decodeUnknownSync`.
+- `work/T-0505-effect-web-api-1.md` — this report and status.
+
+`apps/web/package.json` already had `"effect": "^4.0.2"`, so the task's conditional dependency change did not apply and `pnpm-lock.yaml` was untouched.
+
+### Commands run (real results)
+- `pnpm install` → exit 0, `Done in 23.3s using pnpm v10.32.1`.
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot src/lib/api.decode.test.ts src/lib/api.topics.test.ts src/lib/api.invite-links.test.ts src/store/realStore.topics.test.tsx` → `Test Files 4 passed (4)`, `Tests 51 passed (51)`.
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot src/lib src/mock` → `Test Files 36 passed (36)`, `Tests 414 passed (414)`.
+- `pnpm exec prettier --write` on the five touched source/test files (only `api.ts` needed reformatting).
+- `pnpm gate` (from the repo root) summary:
+  ```
+  gate: 6 changed file(s) against main
+  PASS  install (frozen)  (2.8s)
+  PASS  format  (55.0s)
+  PASS  lint  (2.5s)
+  PASS  typecheck  (36.8s)
+  PASS  tests @zilar/web  (120.6s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Deviations from the spec (all deliberate)
+1. **`Schema.optional`, not `Schema.optionalKey`, for every zod `.optional()`.** With `exactOptionalPropertyTypes: true` (root `tsconfig.base.json`), zod `.optional()` infers `key?: T | undefined`; `Schema.optional` reproduces exactly that, while `Schema.optionalKey` would give `key?: T` and change the exported types. This also matches the merged T-0494 protocol conversion (`packages/protocol/src/task.ts` uses `Schema.optional`) and the spec's "or `optional` where `undefined` is a value".
+2. **`errorBodySchema` uses `Schema.StructWithRest(Schema.Struct({ code, message }), [Schema.Record(Schema.String, Schema.Unknown)])`** to keep zod's `.catchall(z.unknown())` extra fields as `detail`.
+3. **`TopicApprovalRule` (`api.ts`) stays `z.infer<typeof approvalRuleSchema>`** because `approvalRuleSchema` is defined after the converted range and remains zod in this part.
+4. **`decodeResponse` stays module-private.** The new test exercises it through the public `getMe` (Effect schema) and `listConnections` (zod schema) paths rather than importing it directly.
+5. The three test files were edited only in the way the lead approved (option 1); no other test or assertion changed.
+
+### Open questions
+None.
+
+
+Approved (lead, 2026-10-08). The web api.ts response helpers accept Effect Schema through one decodeResponse branch point, with zod kept as a temporary second path. Every section up to Pinned messages is converted. Per the lead decision, the three test files changed only their parse calls. Pre-review clean; the nit (an unreachable ParseError in place of a ZodError in putChatPref) is accepted. Part 2 is T-0507.
