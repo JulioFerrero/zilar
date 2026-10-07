@@ -2,6 +2,7 @@ import { chmod, mkdir, stat, writeFile } from 'node:fs/promises';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { Result, Schema } from 'effect';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { generateRunnerKeypair } from '@zilar/runner-tunnel';
 import {
@@ -231,7 +232,7 @@ describe('identity storage', () => {
   it('rejects an http:// hubUrl in the identity file', async () => {
     const { IdentitySchema } = await import('./identity.ts');
     const keypair = generateRunnerKeypair();
-    const parsed = IdentitySchema.safeParse({
+    const parsed = Schema.decodeUnknownResult(IdentitySchema, { onExcessProperty: 'error' })({
       version: 1,
       serverUrl: 'https://zilar.example.com',
       machineId: 'm1',
@@ -241,10 +242,9 @@ describe('identity storage', () => {
       createdAt: new Date().toISOString(),
       hubUrl: 'http://zilar.example.com:3189/tunnel',
     });
-    expect(parsed.success).toBe(false);
-    if (!parsed.success) {
-      const text = JSON.stringify(parsed.error.issues);
-      expect(text).toMatch(/ws:\/\/ or wss:\/\//);
+    expect(Result.isFailure(parsed)).toBe(true);
+    if (Result.isFailure(parsed)) {
+      expect(parsed.failure.message).toMatch(/ws:\/\/ or wss:\/\//);
     }
   });
 });

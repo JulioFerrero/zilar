@@ -2,28 +2,43 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { Exit, Schema } from 'effect';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { z } from 'zod';
 import { CapabilitiesSchema, detectCapabilities } from './capabilities.ts';
 
 // A local copy of the server's capability schema. The runner is its own
 // source of truth and the test asserts the produced report matches this
 // schema without importing server code.
-const ServerCapabilitiesSchema = z.strictObject({
-  os: z.string().trim().min(1).max(64),
-  os_version: z.string().trim().min(1).max(64),
-  arch: z.string().trim().min(1).max(64),
-  cpu: z.string().trim().min(1).max(128),
-  cores: z.number().int().min(1).max(1024),
-  ram_gb: z.number().min(0).max(1000000),
-  disk_free_gb: z.number().min(0).max(1000000),
-  power: z.string().trim().min(1).max(64),
-  drivers: z.array(z.string().trim().min(1).max(64)).max(32),
-  tools: z
-    .record(z.string().min(1).max(128), z.unknown())
-    .refine((t: Record<string, unknown>) => Object.keys(t).length <= 64),
-  labels: z.array(z.string().trim().min(1).max(64)).max(32),
-  runner_version: z.string().trim().min(1).max(64),
+const ServerCapabilitiesSchema = Schema.Struct({
+  os: Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
+  os_version: Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
+  arch: Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
+  cpu: Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(128)),
+  cores: Schema.Number.check(
+    Schema.isInt(),
+    Schema.isGreaterThanOrEqualTo(1),
+    Schema.isLessThanOrEqualTo(1024),
+  ),
+  ram_gb: Schema.Number.check(
+    Schema.isGreaterThanOrEqualTo(0),
+    Schema.isLessThanOrEqualTo(1000000),
+  ),
+  disk_free_gb: Schema.Number.check(
+    Schema.isGreaterThanOrEqualTo(0),
+    Schema.isLessThanOrEqualTo(1000000),
+  ),
+  power: Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
+  drivers: Schema.Array(Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(64))).check(
+    Schema.isMaxLength(32),
+  ),
+  tools: Schema.Record(
+    Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(128)),
+    Schema.Unknown,
+  ).check(Schema.makeFilter((t: Readonly<Record<string, unknown>>) => Object.keys(t).length <= 64)),
+  labels: Schema.Array(Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(64))).check(
+    Schema.isMaxLength(32),
+  ),
+  runner_version: Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
 });
 
 interface FakeOs {
@@ -79,7 +94,11 @@ describe('detectCapabilities', () => {
       execFile: dockerPresent,
       runnerVersion: '0.1.0',
     });
-    expect(ServerCapabilitiesSchema.safeParse(report).success).toBe(true);
+    expect(
+      Exit.isSuccess(
+        Schema.decodeUnknownExit(ServerCapabilitiesSchema, { onExcessProperty: 'error' })(report),
+      ),
+    ).toBe(true);
     expect(report.os).toBe('linux');
     expect(report.arch).toBe('x64');
     expect(report.cpu).toBe('Test CPU');
@@ -142,6 +161,10 @@ describe('detectCapabilities', () => {
       execFile: dockerPresent,
       runnerVersion: '0.1.0',
     });
-    expect(CapabilitiesSchema.safeParse(report).success).toBe(true);
+    expect(
+      Exit.isSuccess(
+        Schema.decodeUnknownExit(CapabilitiesSchema, { onExcessProperty: 'error' })(report),
+      ),
+    ).toBe(true);
   });
 });

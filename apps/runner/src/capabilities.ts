@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import { statfs } from 'node:fs/promises';
 import os from 'node:os';
 import { promisify } from 'node:util';
-import { z } from 'zod';
+import { Schema } from 'effect';
 
 const execFileAsync = promisify(execFile);
 
@@ -15,32 +15,61 @@ async function statfsBytesAvailable(path: string): Promise<{ bsize: number; bava
 // (apps/server/src/machines/routes.ts). The runner is the source of truth
 // here: anything this rejects will also be rejected by the server.
 const MAX_DRIVERS = 32;
+const MAX_LABELS = 32;
 const MAX_STRING = 64;
+const MAX_TOOLS = 64;
+const MAX_TOOL_KEY = 128;
 
 function trimCapped(value: string, max: number): string {
   return value.trim().slice(0, max);
 }
 
-export const CapabilitiesSchema = z.strictObject({
-  os: z.string().trim().min(1).max(MAX_STRING),
-  os_version: z.string().trim().min(1).max(MAX_STRING),
-  arch: z.string().trim().min(1).max(MAX_STRING),
-  cpu: z.string().trim().min(1).max(128),
-  cores: z.number().int().min(1).max(1024),
-  ram_gb: z.number().min(0).max(1000000),
-  disk_free_gb: z.number().min(0).max(1000000),
-  power: z.string().trim().min(1).max(MAX_STRING),
-  drivers: z.array(z.string().trim().min(1).max(MAX_STRING)).max(MAX_DRIVERS),
-  tools: z
-    .record(z.string().min(1).max(128), z.unknown())
-    .refine((tools: Record<string, unknown>) => Object.keys(tools).length <= 64, {
-      message: 'tools must have at most 64 entries',
-    }),
-  labels: z.array(z.string().trim().min(1).max(MAX_STRING)).max(32),
-  runner_version: z.string().trim().min(1).max(MAX_STRING),
+// `Schema.Trim` trims on decode like zod's `.trim()`, then the length checks
+// run against the trimmed value.
+function trimmedString(max: number) {
+  return Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(max));
+}
+
+// Effect's `Schema.Record` does not run checks on its key schema, so the
+// key bounds that zod's `z.record(z.string().min(1).max(128), ...)` enforced
+// are checked here alongside the entry cap.
+const toolsFilter = Schema.makeFilter((tools: Readonly<Record<string, unknown>>) => {
+  const keys = Object.keys(tools);
+  if (keys.length > MAX_TOOLS) return 'tools must have at most 64 entries';
+  for (const key of keys) {
+    if (key.length < 1 || key.length > MAX_TOOL_KEY) {
+      return `tools keys must be between 1 and ${MAX_TOOL_KEY} characters`;
+    }
+  }
+  return true;
 });
 
-export type Capabilities = z.infer<typeof CapabilitiesSchema>;
+export const CapabilitiesSchema = Schema.Struct({
+  os: trimmedString(MAX_STRING),
+  os_version: trimmedString(MAX_STRING),
+  arch: trimmedString(MAX_STRING),
+  cpu: trimmedString(128),
+  cores: Schema.Number.check(
+    Schema.isInt(),
+    Schema.isGreaterThanOrEqualTo(1),
+    Schema.isLessThanOrEqualTo(1024),
+  ),
+  ram_gb: Schema.Number.check(
+    Schema.isGreaterThanOrEqualTo(0),
+    Schema.isLessThanOrEqualTo(1000000),
+  ),
+  disk_free_gb: Schema.Number.check(
+    Schema.isGreaterThanOrEqualTo(0),
+    Schema.isLessThanOrEqualTo(1000000),
+  ),
+  power: trimmedString(MAX_STRING),
+  drivers: Schema.Array(trimmedString(MAX_STRING)).check(Schema.isMaxLength(MAX_DRIVERS)),
+  tools: Schema.Record(Schema.String, Schema.Unknown).check(toolsFilter),
+  labels: Schema.Array(trimmedString(MAX_STRING)).check(Schema.isMaxLength(MAX_LABELS)),
+  runner_version: trimmedString(MAX_STRING),
+});
+
+export type Capabilities = typeof CapabilitiesSchema.Type;
 
 export interface CapabilityDeps {
   os: typeof os;
@@ -129,5 +158,5 @@ export async function detectCapabilities(
     runner_version: trimCapped(merged.runnerVersion, MAX_STRING),
   };
 
-  return CapabilitiesSchema.parse(report);
+  return Schema.decodeUnknownSync(CapabilitiesSchema, { onExcessProperty: 'error' })(report);
 }

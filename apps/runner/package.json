@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@zilar/runner-tunnel": "workspace:*",
-    "zod": "^4.6.5"
+    "effect": "^4.0.0"
   },
   "devDependencies": {
     "@zilar/server": "workspace:*",

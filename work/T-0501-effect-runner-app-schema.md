@@ -1,7 +1,7 @@
 ---
 id: T-0501
 title: "Effect lane F: apps/runner zod to Effect Schema (pair response, identity file, capabilities report); only the test lines that call zod change"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0501-effect-runner-app-schema
 model: auto
@@ -87,4 +87,43 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- `apps/runner/package.json`: removed `zod`, added `effect` at `^4.0.0` (same range as `apps/server`); ran `pnpm install` (lockfile updated).
+- `apps/runner/src/pair.ts`: `pairResponseSchema` is now `Schema.Struct` with `Schema.String.check(isMinLength(1), isMaxLength(128))` and `Schema.Literal('pending')`. The 201 branch decodes with `Schema.decodeUnknownExit(schema, { onExcessProperty: 'error' })` and checks `Exit.isFailure`; on failure it still throws `PairError('malformed_response', 'The server response did not include a machine id.')`. Success value read from `parsed.value.machineId`.
+- `apps/runner/src/identity.ts`: `IdentitySchema` is now `Schema.Struct`; `version` is `Schema.Literal(IDENTITY_VERSION)`, the string fields are `Schema.String.check(isMinLength/isMaxLength)`, `hubUrl` is `Schema.optionalKey(...)`, and `RunnerIdentity = typeof IdentitySchema.Type`. `loadIdentity` decodes with `onExcessProperty: 'error'` and still throws `IdentityError(..., 'corrupt')` on failure.
+- `apps/runner/src/capabilities.ts`: `CapabilitiesSchema` is now `Schema.Struct`; strings use `Schema.Trim.check(isMinLength(1), isMaxLength(max))` (trims on decode, then checks length), numbers use `isInt`/`isGreaterThanOrEqualTo`/`isLessThanOrEqualTo`, arrays use `Schema.Array(...).check(Schema.isMaxLength(...))`, and `Capabilities = typeof CapabilitiesSchema.Type`. `detectCapabilities` still throws on an invalid report via `Schema.decodeUnknownSync(CapabilitiesSchema, { onExcessProperty: 'error' })(report)`.
+
+### Test changes (only the zod-calling lines, plus the imports they need)
+- `capabilities.test.ts`: replaced `import { z } from 'zod'` with `import { Exit, Schema } from 'effect'`; ported `ServerCapabilitiesSchema` to `Schema.Struct` with the same bounds; replaced both `safeParse(...).success` assertions with `Exit.isSuccess(Schema.decodeUnknownExit(S, { onExcessProperty: 'error' })(x))`. Inputs, expected outcomes and all other tests unchanged.
+- `identity.test.ts`: added `import { Result, Schema } from 'effect'`; the `http://` hubUrl case now decodes with `Schema.decodeUnknownResult(IdentitySchema, { onExcessProperty: 'error' })`, asserts `Result.isFailure`, and asserts `parsed.failure.message` matches `/ws:\/\/ or wss:\/\//`. Same input as before.
+
+### Deviations from the spec (worth a reviewer look)
+- **URL fields stay strings.** The spec points at `Schema.URL`/`Schema.URLFromString`, but those decode to a `URL` instance, which would change `RunnerIdentity.serverUrl`/`hubUrl` from `string` to `URL` and break `buildIdentity`/`summarizeIdentity`/`cli.ts` (all outside the Allowed test surface). I used a `Schema.makeFilter` string check instead (`isUrlString` via `new URL`) so the type and the exact string round-trip are unchanged. The `hubUrl` filter returns `'hubUrl must use ws:// or wss://'` for a valid non-ws URL, which the identity test asserts.
+- **`tools` key bounds are enforced in a filter.** Effect's `Schema.Record` does not run checks on its key schema (verified with a scratch script), while zod's `z.record(z.string().min(1).max(128), ...)` did. To keep the 1..128 key bound, `tools` uses `Schema.Record(Schema.String, Schema.Unknown).check(toolsFilter)`, where the filter checks the 64-entry cap (message `'tools must have at most 64 entries'`) and the 1..128 key length. The test mirror keeps `Schema.String.check(isMinLength(1), isMaxLength(128))` as the key schema for parity.
+
+### Commands and real results
+- `pnpm install`: done in 11.4s (earlier run 27.3s), 1 package added; lockfile updated.
+- `pnpm --filter @zilar/runner test --maxWorkers=2 --reporter=dot src/capabilities.test.ts src/identity.test.ts src/pair.test.ts`: **3 files passed, 33 tests passed**.
+- `pnpm --filter @zilar/runner typecheck`: exits 0 (run twice while iterating).
+- `pnpm gate` (from repo root), final run:
+  ```
+  gate: 8 changed file(s) against main
+  PASS  install (frozen)  (3.0s)
+  PASS  format  (53.6s)
+  PASS  lint  (0.9s)
+  PASS  typecheck  (10.4s)
+  PASS  tests @zilar/runner  (8.6s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+  The 8 changed files are the 7 Allowed files plus the task file itself.
+
+### Files changed
+`apps/runner/package.json`, `pnpm-lock.yaml`, `apps/runner/src/pair.ts`, `apps/runner/src/identity.ts`, `apps/runner/src/capabilities.ts`, `apps/runner/src/capabilities.test.ts`, `apps/runner/src/identity.test.ts`, `work/T-0501-effect-runner-app-schema.md`.
+
+### Problems / open questions
+None. Both deviations are forced by Effect 4.0.0 behaviour (URL codecs return `URL`, Record ignores key checks); behaviour, types and messages are preserved.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-07). apps/runner has no zod. The pair response, identity file and capabilities report decode with Effect Schema, with the same errors, the same trimming and the hubUrl message. Only the zod-calling test lines changed, as the spec allowed. A worker finding for the guide: Schema.Record does not run checks on its key schema, so key bounds need a filter on the record. One nit, accepted: the test mirror declares key checks that are not enforced.

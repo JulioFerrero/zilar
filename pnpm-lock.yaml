@@ -209,9 +209,9 @@ importers:
       '@zilar/runner-tunnel':
         specifier: workspace:*
         version: link:../../packages/runner-tunnel
-      zod:
-        specifier: ^4.6.5
-        version: 4.6.5
+      effect:
+        specifier: ^4.0.0
+        version: 4.0.0
     devDependencies:
       '@zilar/server':
         specifier: workspace:*
