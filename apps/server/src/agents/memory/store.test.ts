@@ -401,6 +401,35 @@ describe('memory store', () => {
       expect(rows).toEqual([{ summary: 'first' }]);
     });
 
+    it('cuts a summary to one line and drops a trailing lone high surrogate', async () => {
+      const aiId = await seedAi(context);
+      const chatKey = 'dm:a';
+
+      await putNode(context.db, aiId, chatKey, { lo: 0, hi: 16 }, 'x'.repeat(300));
+      const [stored] = await context.db
+        .select({ summary: aiMemoryNodes.summary })
+        .from(aiMemoryNodes)
+        .where(and(eq(aiMemoryNodes.aiId, aiId), eq(aiMemoryNodes.chatKey, chatKey)));
+      expect(stored?.summary).toBe('x'.repeat(280));
+
+      // An astral character straddling the cut: slice(0, 280) leaves its high
+      // half, which must not survive on its own.
+      const cutSummary = `${'a'.repeat(279)}\u{1F600}tail`;
+      await putNode(context.db, aiId, chatKey, { lo: 16, hi: 32 }, cutSummary);
+      const rows = await context.db
+        .select({ summary: aiMemoryNodes.summary })
+        .from(aiMemoryNodes)
+        .where(
+          and(
+            eq(aiMemoryNodes.aiId, aiId),
+            eq(aiMemoryNodes.chatKey, chatKey),
+            eq(aiMemoryNodes.lo, 16),
+          ),
+        );
+      expect(rows[0]?.summary).toBe('a'.repeat(279));
+      expect(rows[0]?.summary ?? '').not.toMatch(/[\uD800-\uDBFF]$/);
+    });
+
     it('builds the compaction input from rows or child summaries', async () => {
       const aiId = await seedAi(context);
       const chatKey = 'dm:a';
@@ -412,8 +441,8 @@ describe('memory store', () => {
         Array.from({ length: 16 }, (_, seq) => lineFor(seq)),
       );
       expect(await compactionInput(context.db, aiId, chatKey, { lo: 0, hi: 32 })).toEqual([
-        'L',
-        'R',
+        '#0-15 L',
+        '#16-31 R',
       ]);
     });
 

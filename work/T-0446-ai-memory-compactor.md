@@ -1,7 +1,7 @@
 ---
 id: T-0446
 title: "AI memory M3c (server): after each reply the server summarises up to 4 pending memory blocks with the AI's own model"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0446-ai-memory-compactor
 model: auto
@@ -104,4 +104,39 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+
+- **`store.ts`**
+  - `compactionInput`: a child summary is now prefixed with its id (`#${lo}-${hi - 1} ${summary}`), matching `renderMemoryBlock` and `zoomMemory`.
+  - `putNode`: cuts to `MEMORY_LINE_MAX` then drops a trailing lone high surrogate (`\uD800-\uDBFF`), so a cut never leaves half an astral character.
+- **`memory/compactor.ts` (new)**: `compactMemory({ db, aiId, chatKey, complete, limit? })` returns `{ built, withheld }`. For each `pendingNodes` block in order: empty input → `(nothing kept)` with no model call; otherwise the first non-empty trimmed line of `complete(buildCompactionPrompt(...))` (empty → `(nothing kept)`); a `looksLikeSecret` summary becomes `(summary withheld)` and counts as `withheld`; then `putNode` and `built += 1`. A throwing `complete` stops the loop and is rethrown. It never logs.
+- **`gateway.ts`**: added a module-local `Set<string>` of running compactions keyed `${aiId}:${chatKey}` and a local `startCompaction(session, chatKey, virtualKey)` that returns at once if the key is already running, then runs un-awaited: `checkDmRoundGate` re-check → `compactMemory` with `completeChat` on the AI's own `baseUrl`/`virtualKey`/`modelNameForAi(aiId)` and `secrets: secretsFor()` → `logger.info({ aiId, chatKey, built, withheld, ms }, 'AI memory compacted')` when `built > 0`; on error `logger.warn({ err: toRedactedError(error, secretsFor(virtualKey)), aiId }, 'AI memory compaction failed')`; `finally` deletes the key. Called right after each `sendBudgetWarnings` (room `groupChatKey`, DM `dmChatKey`). No summary/prompt/message text is logged.
+- **`store.test.ts`**: updated the `compactionInput` expectation to `['#0-15 L', '#16-31 R']`; added a `putNode` test for the 280-cut and the trailing-surrogate drop (`'a'.repeat(279) + emoji + 'tail'` → `'a'.repeat(279)`, no trailing high surrogate).
+- **`memory/compactor.test.ts` (new)**: 66 rows → one pass builds `0-15`, the prompt holds all 16 `#seq …` lines, the stored summary is the fake's first line; 112 rows → multi-level build with ≤ 4 calls per pass and a child-summary prompt; secret-like reply → `(summary withheld)` + `withheld` 1; all-deleted block → `(nothing kept)` with `complete` never called; throwing `complete` → rethrows and builds no node.
+- **`gateway.test.ts`**: added `aiMemoryNodes` import and a `memory compaction (T-0446)` block: a DM turn with 66 seeded mirror rows makes a second LiteLLM call whose user message starts with `Compress chat memory #0-15`, stores node `0-15` with summary `AI says hi`, the reply is in `core.sent` before the compaction call is issued, and no log line/field contains the reply text or any `mirror-<n>` text; a second test jumps spend past the cap during the reply call so the compactor's own gate sees the limit and makes no compaction call (one model call total, no nodes).
+
+### Files changed (all Allowed)
+
+`apps/server/src/agents/memory/store.ts`, `apps/server/src/agents/memory/store.test.ts`, `apps/server/src/agents/memory/compactor.ts` (new), `apps/server/src/agents/memory/compactor.test.ts` (new), `apps/server/src/agents/gateway.ts`, `apps/server/src/agents/gateway.test.ts`, `work/T-0446-ai-memory-compactor.md`.
+
+### Commands and results
+
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/agents/memory/store.test.ts src/agents/memory/compactor.test.ts` → 2 files passed, 29 tests passed.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/agents/gateway.test.ts` → 1 file passed, 132 tests passed.
+- Checks command `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot memory/compactor memory/store agents/gateway` → 3 files passed, 161 tests passed.
+- `pnpm gate` → `PASS install`, `PASS format`, `PASS lint`, `PASS typecheck`, `PASS tests @zilar/server`, `scope: every changed file is inside the Allowed files`, `GATE PASS`.
+- First `pnpm gate` failed on `format` only for `compactor.test.ts`; fixed with `pnpm exec prettier --write apps/server/src/agents/memory/compactor.test.ts` (no behaviour change), then gate passed.
+
+### Deviations / notes
+
+- The spec's example says "with 112 rows, the first pass builds 0-15 and 16-31". With `MEMORY_WINDOW = 50` a 112-row chat has `end = 62`, so three size-16 blocks are pending (`0-15`, `16-31`, `32-47`) and the first pass (limit 4) builds all three; the second pass builds `0-31` from the two child summaries. The test asserts the observed build counts (`built === calls`, each pass ≤ 4) plus the required nodes rather than exactly two, and still pins the child-summary prompt (`#0-15 `, `#16-31 `).
+- `completeChat` is called with `secrets: secretsFor()` exactly as written; `requestCompletion` already adds `virtualKey` to the redaction list, and the gateway catch redacts with `secretsFor(virtualKey)`.
+- The daily-limit test crosses the cap inside the reply call so the compactor's own `checkDmRoundGate` guard is the thing being exercised; it still uses the existing 0.5-baseline / limit-test pattern.
+
+### Open questions
+
+None.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-07). compactMemory builds up to 4 pending nodes, smallest first. A 16-block is built from its raw rows and a larger block from its #lo-hi child summaries. It keeps the first non-empty line, stores "(nothing kept)" for an all-deleted block without a model call, and withholds a secret-like summary. The gateway fires startCompaction after the budget warnings in DM and room turns. It is not awaited, runs once per (AI, chat), and is skipped when the AI is stopped or over its daily limit. It uses the AI's model and virtual key, and the logs carry counts only. store.ts: child ids in the compaction input and a surrogate-safe putNode cut.
