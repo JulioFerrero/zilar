@@ -63,6 +63,16 @@ const dmEntrySchema = z.object({
   isAi: z.boolean().optional(),
 });
 
+// T-0466: the group's shared background, set by owners/admins. Optional on
+// entries and details so payloads from an older server still parse.
+const groupBackgroundSchema = z.object({
+  backgroundPreset: z.string().nullable(),
+  backgroundImageId: z.string().nullable(),
+  backgroundDim: z.number().nullable(),
+});
+
+export type GroupBackground = z.infer<typeof groupBackgroundSchema>;
+
 const groupEntrySchema = z.object({
   kind: z.literal('group'),
   chatJid: z.string(),
@@ -90,6 +100,8 @@ const groupEntrySchema = z.object({
   // T-0165: the group's picture, when it has one. Optional so older
   // payloads parse (treated as none).
   avatarUrl: z.string().optional(),
+  // T-0466: the group's shared background. Optional so older payloads parse.
+  background: groupBackgroundSchema.optional(),
 });
 
 const chatEntrySchema = z.discriminatedUnion('kind', [dmEntrySchema, groupEntrySchema]);
@@ -161,6 +173,8 @@ const groupDetailSchema = z.object({
   handle: z.string().nullable().optional(),
   // T-0165: the group's picture. Optional so older payloads parse.
   avatarUrl: z.string().optional(),
+  // T-0466: the group's shared background. Optional so older payloads parse.
+  background: groupBackgroundSchema.optional(),
   members: z.array(groupMemberSchema),
   ais: z.array(groupAiSchema),
 });
@@ -586,6 +600,19 @@ export function setMembersCanCreateTopics(
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ membersCanCreateTopics }),
+  });
+}
+
+// T-0466: owners and admins set the group's shared background. A member gets
+// 403; `null` fields clear them.
+export function setGroupBackground(
+  groupId: string,
+  background: GroupBackground,
+): Promise<GroupDetail> {
+  return request(`/groups/${encodeURIComponent(groupId)}`, groupDetailSchema, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ background }),
   });
 }
 

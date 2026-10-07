@@ -182,6 +182,16 @@ export interface ChatSummary {
   groupTitle?: string;
   /** Present when the chat is a group topic (T-0111). */
   topic?: TopicInfo;
+  /**
+   * T-0466: the group's shared background (owners/admins set it, every
+   * member sees it). Optional so mobile, which does not read it yet, is
+   * untouched.
+   */
+  groupBackground?: {
+    backgroundPreset: string | null;
+    backgroundImageId: string | null;
+    backgroundDim: number | null;
+  };
 }
 
 export interface DateSeparatorItem {

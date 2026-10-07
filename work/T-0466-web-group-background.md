@@ -1,7 +1,7 @@
 ---
 id: T-0466
 title: "Backgrounds G2 (web): paint the group background (my chat > group > my default > slate); owners/admins set it in the group panel"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0466-web-group-background
 model: auto
@@ -106,4 +106,100 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+
+Implemented the web side of group backgrounds as specified.
+
+1. **API (`apps/web/src/lib/api.ts`)**: added `groupBackgroundSchema` (three
+   nullable fields) and its `GroupBackground` type; added `background` as an
+   optional field to `groupEntrySchema` and `groupDetailSchema`; added
+   `setGroupBackground(groupId, background)` (PATCH `/groups/:id` with
+   `{ background }`).
+2. **Shared type (`packages/chat-core/src/types.ts`)**: added optional
+   `groupBackground` to `ChatSummary` with a one-line doc. Mobile is untouched.
+3. **Store**:
+   - `realStore.ts`: `summaryFor` sets `groupBackground` from `entry.background`
+     on group rows; `summaryForTopic` takes a new final `groupBackground?`
+     parameter and `summariesFor` passes `entry.background`; `applyGroupDetail`
+     now also patches `groupBackground` onto every chat of that group from
+     `detail.background` (only when the field is present, so older servers do
+     not clear it); new action `setGroupBackground(chatId, background)` follows
+     the `setMembersCanCreateTopics` pattern (resolve group, PATCH, apply detail).
+   - `store.ts`: declared `setGroupBackground` in the store interface and
+     implemented it in the mock store (updates `groupInfos` and every chat of
+     the group), following the same pattern.
+   - `mock/api.ts`: the mock `PATCH /groups/:id` now accepts `{ background }`
+     and stores it on the mock detail.
+4. **Paint (`apps/web/src/lib/chatBackground.ts`)**: `effectiveBackground` has a
+   new third `group?` argument; order is pref, group, fallback, slate.
+   `MessageList.tsx` passes `chat.groupBackground`.
+5. **Dialog (`ChatBackgroundDialog.tsx`)**: new optional `groupId` prop. In group
+   mode the title is "Group background", the This chat / All chats switch is not
+   rendered, picks call `store.setGroupBackground(chat.id, …)` (preset clears the
+   image fields, image sets preset null + dim), "Use default" becomes "No group
+   background" and sends all nulls, and the selection is read from
+   `store.groupInfo(chat.id)?.background`. Without the prop behaviour is
+   unchanged.
+6. **`GroupPanel.tsx`**: manager-only "Group background" button with a lucide
+   `Image` icon next to "Topic settings"; opens `ChatBackgroundDialog` with
+   `groupId={info.id}`.
+
+### Tests added
+
+- `lib/chatBackground.test.ts`: group over default, pref over group, group image
+  with dim, empty group falls back to default.
+- `components/MessageList.test.tsx`: group `wine` paints with no own pref; own
+  `gold` pref wins.
+- `components/ChatBackgroundDialog.test.tsx`: group mode hides the scope switch
+  and titles "Group background"; "No group background" sends all nulls; a preset
+  pick sends the preset fields.
+- `components/GroupPanel.test.tsx`: owner/admin sees the control, member does
+  not, and picking `forest` calls `setGroupBackground('c-devteam', { preset,
+  null, null })`.
+- Added `setGroupBackground` to the five existing `realStore.*`/`reload` fake
+  API objects (compile-only change).
+
+### Files changed
+
+All 19 changed files are inside the Allowed files list: `apps/web/src/lib/api.ts`,
+`packages/chat-core/src/types.ts`, `apps/web/src/store/store.ts`,
+`apps/web/src/store/realStore.ts`, the four `realStore.*` test fakes +
+`reload.test.tsx`, `apps/web/src/lib/chatBackground.ts` +
+`chatBackground.test.ts`, `MessageList.tsx` + `.test.tsx`,
+`ChatBackgroundDialog.tsx` + `.test.tsx`, `GroupPanel.tsx` + `.test.tsx`,
+`apps/web/src/mock/api.ts`, and this task file.
+
+### Commands and real results
+
+- `pnpm install` — Done in 20.1s (pre-existing peer-dependency warning, unrelated).
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot chatBackground ChatBackgroundDialog GroupPanel MessageList`
+  — 4 files passed, 80 tests passed.
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot realStore reload`
+  — 5 files passed, 171 tests passed.
+- `pnpm gate` (from repo root):
+  ```
+  gate: 19 changed file(s) against main
+  PASS  install (frozen)  (1.1s)
+  PASS  format  (18.2s)
+  PASS  lint  (1.0s)
+  PASS  typecheck  (11.2s)
+  PASS  tests @zilar/chat-core  (1.0s)
+  PASS  tests @zilar/web  (51.2s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Problems / deviations
+
+- None. No dependencies added; no files outside the Allowed list were touched.
+- The web only renders and writes through `PATCH /groups/:id`; permission
+  enforcement (member 403, image ownership) is server-side (T-0463/T-0465). The
+  UI hides the control from non-managers and the member test confirms it.
+
+### Open questions
+
+- None.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-07). effectiveBackground gives pref, then group, then default, then slate. ChatSummary.groupBackground (optional, chat-core) is set from list entries and from applyGroupDetail. setGroupBackground PATCHes /groups/:id. ChatBackgroundDialog has a group mode ("Group background", no scope switch, "No group background"), opened from a manager-only GroupPanel row. Pre-review clean.

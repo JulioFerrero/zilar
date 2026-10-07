@@ -24,6 +24,7 @@ import type {
   ChatPref,
   Contact,
   CreateTopicInput,
+  GroupBackground,
   GroupDetail,
   Me,
   MediaItem,
@@ -50,6 +51,7 @@ import {
   removeTopicMember,
   setGroupVisibility as setGroupVisibilityApi,
   setMembersCanCreateTopics,
+  setGroupBackground as setGroupBackgroundApi,
   setTopicRoles,
 } from '@/lib/api';
 import {
@@ -243,6 +245,8 @@ export interface ChatStore {
   joinPublicGroup: (groupId: string) => Promise<string | undefined>;
   /** Flips the group's "members can create topics" switch. Rejects on failure. */
   setMembersCanCreateTopics: (chatId: string, allowed: boolean) => Promise<void>;
+  /** T-0466: sets or clears the group's shared background (owner/admin). */
+  setGroupBackground: (chatId: string, background: GroupBackground) => Promise<void>;
   /**
    * Server chat-preference rows by lowercased chat JID (T-0113). Loaded with
    * the chat list; mute/archive/pin actions patch one row optimistically and
@@ -1034,6 +1038,25 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
         }
         const updated = await setMembersCanCreateTopics(groupId, allowed);
         set((state) => ({ groupInfos: { ...state.groupInfos, [chatId]: updated } }));
+      },
+      // T-0466 (mock): the group's shared background goes through the mock
+      // API's PATCH and paints every chat of that group, like the real store.
+      setGroupBackground: async (chatId, background) => {
+        const groupId = get().groupInfos[chatId]?.id;
+        if (groupId === undefined) {
+          throw new Error('This group is not available yet.');
+        }
+        const updated = await setGroupBackgroundApi(groupId, background);
+        const nextBackground = updated.background;
+        set((state) => ({
+          groupInfos: { ...state.groupInfos, [chatId]: updated },
+          chats:
+            nextBackground === undefined
+              ? state.chats
+              : state.chats.map((chat) =>
+                  chat.groupId === groupId ? { ...chat, groupBackground: nextBackground } : chat,
+                ),
+        }));
       },
       // T-0164 (mock): visibility flips through the mock API's PATCH, and
       // joining appends the mock user like the mock's link join does.

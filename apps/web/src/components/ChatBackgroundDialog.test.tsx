@@ -99,6 +99,20 @@ function renderReopenable(overrides: Partial<ChatStoreState> = {}) {
   return { store };
 }
 
+function renderGroupDialog(overrides: Partial<ChatStoreState> = {}) {
+  const store = createChatStore({ chats: [chat] });
+  store.setState(overrides);
+  const onClose = vi.fn();
+  render(
+    <AuthProvider value={auth}>
+      <ChatStoreProvider store={store}>
+        <ChatBackgroundDialog chat={chat} groupId="g-devteam" open onClose={onClose} />
+      </ChatStoreProvider>
+    </AuthProvider>,
+  );
+  return { store, onClose };
+}
+
 afterEach(() => {
   cleanup();
 });
@@ -378,5 +392,45 @@ describe('ChatBackgroundDialog images (T-0464)', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('ChatBackgroundDialog group mode (T-0466)', () => {
+  it('hides the scope switch and titles the dialog "Group background"', () => {
+    renderGroupDialog();
+
+    expect(screen.getByRole('dialog', { name: 'Group background' })).toBeTruthy();
+    expect(screen.queryByRole('radio', { name: 'This chat' })).toBeNull();
+    expect(screen.queryByRole('radio', { name: 'All chats' })).toBeNull();
+  });
+
+  it('sends all nulls from "No group background"', async () => {
+    const setGroupBackground = vi.fn(async () => {});
+    renderGroupDialog({ setGroupBackground });
+
+    fireEvent.click(screen.getByRole('button', { name: 'No group background' }));
+
+    await waitFor(() =>
+      expect(setGroupBackground).toHaveBeenCalledWith('c-ana', {
+        backgroundPreset: null,
+        backgroundImageId: null,
+        backgroundDim: null,
+      }),
+    );
+  });
+
+  it('picks a group preset through setGroupBackground', async () => {
+    const setGroupBackground = vi.fn(async () => {});
+    renderGroupDialog({ setGroupBackground });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Forest' }));
+
+    await waitFor(() =>
+      expect(setGroupBackground).toHaveBeenCalledWith('c-ana', {
+        backgroundPreset: 'forest',
+        backgroundImageId: null,
+        backgroundDim: null,
+      }),
+    );
   });
 });

@@ -58,15 +58,17 @@ function resolveChoice(
 }
 
 /**
- * The chat's look: its own preset or image wins, else the caller's global
- * default if it has one, else the slate grid.
+ * The chat's look: its own preset or image wins, then the group's shared
+ * background, then the caller's global default, else the slate grid.
  */
 export function effectiveBackground(
   pref: BackgroundFields | undefined,
   fallback: BackgroundFields | null,
+  group?: BackgroundFields | null,
 ): EffectiveBackground {
   return (
     resolveChoice(pref) ??
+    resolveChoice(group) ??
     resolveChoice(fallback) ?? { kind: 'preset', id: DEFAULT_CHAT_BACKGROUND_PRESET }
   );
 }

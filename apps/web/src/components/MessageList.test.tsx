@@ -582,3 +582,45 @@ describe('MessageList chat backgrounds (T-0461)', () => {
     expect(screen.getByTestId('message-list').getAttribute('style')).toBeNull();
   });
 });
+
+describe('MessageList group backgrounds (T-0466)', () => {
+  const groupChat: ChatSummary = {
+    ...chat,
+    kind: 'group',
+    groupBackground: { backgroundPreset: 'wine', backgroundImageId: null, backgroundDim: null },
+  };
+
+  it('paints the group background when the chat has no own pref', () => {
+    renderMessages(
+      { historyState: { 'c-ana': 'ready' }, messagesByChat: { 'c-ana': [hello()] } },
+      groupChat,
+    );
+
+    // jsdom serialises the wine dot `#42192b` as rgb(66, 25, 43).
+    expect(screen.getByTestId('message-list').getAttribute('style')).toContain('rgb(66, 25, 43)');
+  });
+
+  it('paints the chat pref over the group background', () => {
+    const store = renderMessages(
+      { historyState: { 'c-ana': 'ready' }, messagesByChat: { 'c-ana': [hello()] } },
+      groupChat,
+    );
+
+    act(() => {
+      store.setState({
+        chatPrefs: {
+          'c-ana': {
+            chatJid: 'c-ana',
+            mutedUntil: null,
+            archived: false,
+            pinnedAt: null,
+            updatedAt: '2026-10-07T00:00:00.000Z',
+            backgroundPreset: 'gold',
+          },
+        },
+      });
+    });
+
+    expect(screen.getByTestId('message-list').getAttribute('style')).toContain('rgb(113, 86, 37)');
+  });
+});

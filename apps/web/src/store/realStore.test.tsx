@@ -330,6 +330,13 @@ function fakeApi(overrides: Partial<ApiClient> = {}): ApiClient {
       members: [],
       ais: [],
     })),
+    setGroupBackground: vi.fn(async () => ({
+      id: 'g1',
+      title: 'Team',
+      createdBy: 'u-me',
+      members: [],
+      ais: [],
+    })),
     listChatPrefs: vi.fn(async () => []),
     getChatBackgroundDefault: vi.fn(async () => ({
       backgroundPreset: null,

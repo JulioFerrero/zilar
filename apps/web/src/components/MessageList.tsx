@@ -40,10 +40,14 @@ export function MessageList({
 }) {
   const store = useChatStore();
   const storeApi = useChatStoreApi();
-  // T-0461: the chat's own background, else the caller's default, else slate
-  // (which paints no inline style, exactly as before).
+  // T-0461/T-0466: the chat's own background, else the group's shared one,
+  // else the caller's default, else slate (which paints no inline style).
   const backgroundStyle = chatBackgroundStyle(
-    effectiveBackground(store.chatPrefs[chat.id.toLowerCase()], store.defaultBackground),
+    effectiveBackground(
+      store.chatPrefs[chat.id.toLowerCase()],
+      store.defaultBackground,
+      chat.groupBackground,
+    ),
   );
   const messages = store.messages(chat.id);
   // Unknown means never requested, which the real store reports as loading:

@@ -3413,6 +3413,23 @@ export async function mockRequest(
     if (typeof body.membersCanCreateTopics === 'boolean') {
       updated = { ...updated, membersCanCreateTopics: body.membersCanCreateTopics };
     }
+    // T-0466: the group's shared background. All-null clears it.
+    if (
+      body.background !== undefined &&
+      body.background !== null &&
+      typeof body.background === 'object'
+    ) {
+      const raw = body.background as Record<string, unknown>;
+      updated = {
+        ...updated,
+        background: {
+          backgroundPreset: typeof raw.backgroundPreset === 'string' ? raw.backgroundPreset : null,
+          backgroundImageId:
+            typeof raw.backgroundImageId === 'string' ? raw.backgroundImageId : null,
+          backgroundDim: typeof raw.backgroundDim === 'number' ? raw.backgroundDim : null,
+        },
+      };
+    }
     if (body.visibility === 'private' || body.visibility === 'public') {
       if (body.visibility === 'private') {
         updated = { ...updated, visibility: 'private', handle: null };

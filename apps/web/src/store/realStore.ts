@@ -91,6 +91,7 @@ import {
   removeTopicMember as removeTopicMemberRequest,
   revokeGroupInviteLink as revokeGroupInviteLinkRequest,
   searchDirectory as searchDirectoryRequest,
+  setGroupBackground as setGroupBackgroundRequest,
   setGroupVisibility as setGroupVisibilityRequest,
   setMembersCanCreateTopics as setMembersCanCreateTopicsRequest,
   setTopicRoles as setTopicRolesRequest,
@@ -104,6 +105,7 @@ import {
   type CreateTopicInput,
   type DirectoryEntry,
   type DirectoryPage,
+  type GroupBackground,
   type GroupDetail,
   type GroupInviteLink,
   type GroupMember,
@@ -321,6 +323,7 @@ export interface ApiClient {
   removeTopicAi(topicId: string, aiId: string): Promise<Topic>;
   setTopicRoles(topicId: string, input: SetTopicRolesInput): Promise<Topic>;
   setMembersCanCreateTopics(groupId: string, allowed: boolean): Promise<GroupDetail>;
+  setGroupBackground(groupId: string, background: GroupBackground): Promise<GroupDetail>;
   listChatPrefs(): Promise<ChatPref[]>;
   getChatBackgroundDefault(): Promise<ChatBackgroundChoice>;
   putChatBackgroundDefault(input: ChatBackgroundChoice): Promise<ChatBackgroundChoice>;
@@ -389,6 +392,7 @@ const realApi: ApiClient = {
   removeTopicAi: removeTopicAiRequest,
   setTopicRoles: setTopicRolesRequest,
   setMembersCanCreateTopics: setMembersCanCreateTopicsRequest,
+  setGroupBackground: setGroupBackgroundRequest,
   listChatPrefs: listChatPrefsRequest,
   getChatBackgroundDefault: getChatBackgroundDefaultRequest,
   putChatBackgroundDefault: putChatBackgroundDefaultRequest,
@@ -641,6 +645,8 @@ function summaryFor(entry: ChatEntry): ChatSummary {
     handle: entry.handle ?? null,
     // T-0165: the group's picture rides the entry, like DMs carry theirs.
     ...(entry.avatarUrl === undefined ? {} : { avatarUrl: entry.avatarUrl }),
+    // T-0466: the group's shared background rides the entry too.
+    ...(entry.background === undefined ? {} : { groupBackground: entry.background }),
     ...(chatKind === 'channel'
       ? {
           chatKind: 'channel' as const,
@@ -672,6 +678,7 @@ function summaryForTopic(
   visibility: 'private' | 'public' = 'private',
   handle: string | null = null,
   avatarUrl?: string | undefined,
+  groupBackground?: GroupBackground,
 ): ChatSummary {
   return {
     id: topic.chatJid,
@@ -689,6 +696,8 @@ function summaryForTopic(
     handle,
     // T-0165: topic rows keep their group's picture too.
     ...(avatarUrl === undefined ? {} : { avatarUrl }),
+    // T-0466: topic rows keep their group's shared background too.
+    ...(groupBackground === undefined ? {} : { groupBackground }),
     ...(channel === null
       ? {}
       : {
@@ -747,6 +756,7 @@ export function summariesFor(entry: ChatEntry): ChatSummary[] {
       entry.visibility,
       entry.handle,
       entry.avatarUrl,
+      entry.background,
     ),
   );
 }
@@ -2265,7 +2275,18 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       }
       groupMembers.set(chatId, members);
       groupInfos.set(chatId, detail);
-      set((state) => ({ groupInfos: { ...state.groupInfos, [chatId]: detail } }));
+      // T-0466: the group's shared background paints every chat of that
+      // group, not only the chat the detail was loaded for.
+      const nextBackground = detail.background;
+      set((state) => ({
+        groupInfos: { ...state.groupInfos, [chatId]: detail },
+        chats:
+          nextBackground === undefined
+            ? state.chats
+            : state.chats.map((chat) =>
+                chat.groupId === detail.id ? { ...chat, groupBackground: nextBackground } : chat,
+              ),
+      }));
     }
 
     // Maps the usable mentions of a message to names: the known group member,
@@ -3718,6 +3739,19 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         }
         const domain = mine.slice(mine.indexOf('@') + 1);
         const detail = await api.setMembersCanCreateTopics(groupId, allowed);
+        applyGroupDetail(chatId, detail, domain);
+      },
+      // T-0466: owners/admins set the group's shared background; the detail
+      // refresh repaints every chat of the group at once.
+      setGroupBackground: async (chatId, background) => {
+        const chat = get().chats.find((entry) => entry.id === chatId);
+        const groupId = chat?.groupId ?? groupIds.get(chatId);
+        const mine = myJid();
+        if (groupId === undefined || mine === undefined) {
+          throw new Error('This group is not available yet.');
+        }
+        const domain = mine.slice(mine.indexOf('@') + 1);
+        const detail = await api.setGroupBackground(groupId, background);
         applyGroupDetail(chatId, detail, domain);
       },
       // T-0164: the owner flips a group public (with a handle) or back to

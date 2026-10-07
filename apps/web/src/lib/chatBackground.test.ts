@@ -37,6 +37,33 @@ describe('effectiveBackground', () => {
       id: 'slate',
     });
   });
+
+  // T-0466: the group background sits between the per-chat pref and the
+  // caller's global default.
+  it('prefers the group background over the global default', () => {
+    expect(
+      effectiveBackground(unset, { backgroundPreset: 'gold' }, { backgroundPreset: 'navy' }),
+    ).toEqual({ kind: 'preset', id: 'navy' });
+  });
+
+  it('prefers the per-chat preset over the group background', () => {
+    expect(
+      effectiveBackground({ backgroundPreset: 'gold' }, null, { backgroundPreset: 'navy' }),
+    ).toEqual({ kind: 'preset', id: 'gold' });
+  });
+
+  it('paints a group image with its dim', () => {
+    expect(
+      effectiveBackground(undefined, null, { backgroundImageId: 'g-1', backgroundDim: 25 }),
+    ).toEqual({ kind: 'image', imageId: 'g-1', dim: 25 });
+  });
+
+  it('falls back to the default when the group background is empty', () => {
+    expect(effectiveBackground(unset, { backgroundPreset: 'wine' }, unset)).toEqual({
+      kind: 'preset',
+      id: 'wine',
+    });
+  });
 });
 
 describe('chatBackgroundStyle', () => {

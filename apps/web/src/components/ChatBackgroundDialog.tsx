@@ -53,17 +53,20 @@ function uploadErrorMessage(error: unknown): string {
 }
 
 /**
- * T-0462/T-0464: pick a shared preset (or one of the caller's uploaded
- * images) for this chat or for all chats, dim an image and delete one. The
- * store paints the choice optimistically; a failed write rolls back and shows
- * a fixed sentence here.
+ * T-0462/T-0464/T-0466: pick a shared preset (or one of the caller's uploaded
+ * images) for this chat, for all chats, or for a group when `groupId` is set,
+ * dim an image and delete one. The store paints the choice optimistically; a
+ * failed write rolls back and shows a fixed sentence here.
  */
 export function ChatBackgroundDialog({
   chat,
+  groupId,
   open,
   onClose,
 }: {
   chat: ChatSummary;
+  /** T-0466: when set, the dialog edits the group's shared background. */
+  groupId?: string;
   open: boolean;
   onClose: () => void;
 }) {
@@ -96,13 +99,25 @@ export function ChatBackgroundDialog({
   const chatImageId = chatPref?.backgroundImageId ?? null;
   const defaultPreset = store.defaultBackground?.backgroundPreset ?? null;
   const defaultImageId = store.defaultBackground?.backgroundImageId ?? null;
+  // T-0466: a group dialog reads the group's shared background; otherwise the
+  // scope picks between the chat's own pref and the caller's default.
+  const isGroup = groupId !== undefined;
+  const groupBackground = isGroup ? store.groupInfo(chat.id)?.background : undefined;
   // "This chat" shows the chat's own preset (none when unset); "All chats"
   // shows the caller's default, falling back to slate.
-  const selected: string | null =
-    scope === 'chat' ? chatPreset : (defaultPreset ?? DEFAULT_CHAT_BACKGROUND_PRESET);
-  const selectedImageId = scope === 'chat' ? chatImageId : defaultImageId;
-  const storedDim =
-    scope === 'chat'
+  const selected: string | null = isGroup
+    ? (groupBackground?.backgroundPreset ?? null)
+    : scope === 'chat'
+      ? chatPreset
+      : (defaultPreset ?? DEFAULT_CHAT_BACKGROUND_PRESET);
+  const selectedImageId = isGroup
+    ? (groupBackground?.backgroundImageId ?? null)
+    : scope === 'chat'
+      ? chatImageId
+      : defaultImageId;
+  const storedDim = isGroup
+    ? (groupBackground?.backgroundDim ?? null)
+    : scope === 'chat'
       ? (chatPref?.backgroundDim ?? null)
       : (store.defaultBackground?.backgroundDim ?? null);
   // A live drag wins while it names the selected image; otherwise the stored
@@ -155,7 +170,13 @@ export function ChatBackgroundDialog({
     setDimDraft(null);
     setError(false);
     try {
-      if (scope === 'chat') {
+      if (isGroup) {
+        await store.setGroupBackground(chat.id, {
+          backgroundPreset: presetId,
+          backgroundImageId: null,
+          backgroundDim: null,
+        });
+      } else if (scope === 'chat') {
         await store.setChatBackground(chat.id, presetId);
       } else {
         await store.setDefaultBackground(presetId);
@@ -174,7 +195,13 @@ export function ChatBackgroundDialog({
   ): Promise<void> => {
     setError(false);
     try {
-      if (targetScope === 'chat') {
+      if (isGroup) {
+        await store.setGroupBackground(chat.id, {
+          backgroundPreset: null,
+          backgroundImageId: imageId,
+          backgroundDim: nextDim,
+        });
+      } else if (targetScope === 'chat') {
         await store.setChatBackgroundImage(chat.id, imageId, nextDim);
       } else {
         await store.setDefaultBackgroundImage(imageId, nextDim);
@@ -231,6 +258,16 @@ export function ChatBackgroundDialog({
   // The server clears a deleted image from any pref that referenced it; the
   // store is patched to match so the chat stops painting the now-404 URL.
   const clearDeletedSelection = async (id: string): Promise<void> => {
+    if (isGroup) {
+      if (groupBackground?.backgroundImageId === id) {
+        await store.setGroupBackground(chat.id, {
+          backgroundPreset: null,
+          backgroundImageId: null,
+          backgroundDim: null,
+        });
+      }
+      return;
+    }
     if (chatImageId === id) {
       await store.setChatBackground(chat.id, null);
     }
@@ -272,22 +309,24 @@ export function ChatBackgroundDialog({
   };
 
   return (
-    <Dialog open={open} onClose={close} title="Chat background">
-      <SegmentedControl
-        options={[
-          { value: 'chat', label: 'This chat' },
-          { value: 'all', label: 'All chats' },
-        ]}
-        value={scope}
-        onChange={(value) => {
-          clearDimTimer();
-          setDimDraft(null);
-          setError(false);
-          setScope(value === 'all' ? 'all' : 'chat');
-        }}
-        ariaLabel="Background scope"
-        mode="radio"
-      />
+    <Dialog open={open} onClose={close} title={isGroup ? 'Group background' : 'Chat background'}>
+      {!isGroup && (
+        <SegmentedControl
+          options={[
+            { value: 'chat', label: 'This chat' },
+            { value: 'all', label: 'All chats' },
+          ]}
+          value={scope}
+          onChange={(value) => {
+            clearDimTimer();
+            setDimDraft(null);
+            setError(false);
+            setScope(value === 'all' ? 'all' : 'chat');
+          }}
+          ariaLabel="Background scope"
+          mode="radio"
+        />
+      )}
       <div className="mt-4 grid grid-cols-4 gap-3">
         {CHAT_BACKGROUND_PRESET_IDS.map((id) => {
           const isSelected = selected === id;
@@ -414,7 +453,7 @@ export function ChatBackgroundDialog({
           onClick={() => void choose(null)}
           className="text-[13px] font-medium text-muted-foreground hover:text-foreground"
         >
-          Use default
+          {isGroup ? 'No group background' : 'Use default'}
         </button>
         {error && (
           <span role="alert" className="text-[12px] text-danger">
