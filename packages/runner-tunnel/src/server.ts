@@ -4,7 +4,7 @@ import net from 'node:net';
 import { randomBytes } from 'node:crypto';
 import { WebSocketServer } from 'ws';
 import type { WebSocket } from 'ws';
-import { Effect, Schema } from 'effect';
+import { Duration, Effect, Fiber, Schedule, Schema } from 'effect';
 import {
   CLOSE_AUTH,
   CLOSE_MALFORMED,
@@ -74,7 +74,7 @@ interface ServerConn {
   nonce: Buffer | null;
   mux: StreamMux | null;
   lastPongAt: number;
-  handshakeTimer: NodeJS.Timeout | null;
+  handshakeFiber: Fiber.Fiber<void, never> | null;
   /** Engine streams this connection opened but the runner has not settled yet. */
   pendingOpens: Map<number, PendingOpen>;
 }
@@ -99,7 +99,7 @@ export class TunnelServer {
   private readonly conns = new Set<ServerConn>();
   private readonly live = new Map<string, ServerConn>();
   private readonly previews = new Map<string, { runnerId: string; port: number }>();
-  private readonly heartbeatTimer: NodeJS.Timeout;
+  private readonly heartbeatFiber: Fiber.Fiber<number, never>;
   private readonly unsubscribeRevoke: () => void;
   private closed = false;
   private droppedFromDeadConns = 0;
@@ -132,10 +132,19 @@ export class TunnelServer {
       this.handleConnection(ws);
     });
 
-    this.heartbeatTimer = setInterval(() => {
-      this.checkHeartbeats();
-    }, this.heartbeatIntervalMs);
-    this.heartbeatTimer.unref();
+    // The heartbeat sweep is one Effect program: `checkHeartbeats` repeated
+    // with a fixed spacing, the first run after one interval (as `setInterval`
+    // did, `repeat` runs once immediately otherwise). `catchDefect` keeps the
+    // sweep alive if one bad connection throws; `close` interrupts the fiber in
+    // place of the old unref'd timer, so the process can still exit.
+    this.heartbeatFiber = Effect.runFork(
+      Effect.repeat(
+        Effect.sync(() => {
+          this.checkHeartbeats();
+        }).pipe(Effect.catchDefect(() => Effect.sync(() => undefined))),
+        Schedule.spaced(Duration.millis(this.heartbeatIntervalMs)),
+      ).pipe(Effect.delay(Duration.millis(this.heartbeatIntervalMs))),
+    );
 
     this.unsubscribeRevoke = registry.onRevoke((runnerId) => {
       const conn = this.live.get(runnerId);
@@ -283,9 +292,13 @@ export class TunnelServer {
       return;
     }
     this.closed = true;
-    clearInterval(this.heartbeatTimer);
+    await Effect.runPromise(Fiber.interrupt(this.heartbeatFiber));
     this.unsubscribeRevoke();
     for (const conn of this.conns) {
+      const handshake = this.takeHandshakeFiber(conn);
+      if (handshake !== null) {
+        await Effect.runPromise(Fiber.interrupt(handshake));
+      }
       try {
         conn.ws.terminate();
       } catch {
@@ -304,20 +317,23 @@ export class TunnelServer {
       nonce: null,
       mux: null,
       lastPongAt: Date.now(),
-      handshakeTimer: null,
+      handshakeFiber: null,
       pendingOpens: new Map(),
     };
     this.conns.add(conn);
-    conn.handshakeTimer = setTimeout(() => {
-      if (conn.state !== 'ready') {
-        try {
-          ws.close(CLOSE_AUTH, 'handshake timeout');
-        } catch {
-          // Already gone.
-        }
-      }
-    }, this.handshakeTimeoutMs);
-    conn.handshakeTimer.unref();
+    // One fiber per connection: the handshake deadline. It is interrupted
+    // where the old `clearTimeout` ran (on ready, on drop and in `close`).
+    conn.handshakeFiber = Effect.runFork(
+      Effect.sleep(Duration.millis(this.handshakeTimeoutMs)).pipe(
+        Effect.andThen(
+          Effect.sync(() => {
+            if (conn.state !== 'ready') {
+              this.closeWith(conn, CLOSE_AUTH, 'handshake timeout');
+            }
+          }),
+        ),
+      ),
+    );
 
     ws.on('message', (data, isBinary) => {
       if (isBinary) {
@@ -339,9 +355,9 @@ export class TunnelServer {
   }
 
   private dropConn(conn: ServerConn, code: number, reason: string): void {
-    if (conn.handshakeTimer !== null) {
-      clearTimeout(conn.handshakeTimer);
-      conn.handshakeTimer = null;
+    const handshake = this.takeHandshakeFiber(conn);
+    if (handshake !== null) {
+      Effect.runFork(Fiber.interrupt(handshake));
     }
     this.conns.delete(conn);
     if (conn.mux !== null) {
@@ -361,6 +377,13 @@ export class TunnelServer {
     } catch {
       // Already dying.
     }
+  }
+
+  /** Detach a connection's pending handshake fiber so the caller can interrupt it. */
+  private takeHandshakeFiber(conn: ServerConn): Fiber.Fiber<void, never> | null {
+    const fiber = conn.handshakeFiber;
+    conn.handshakeFiber = null;
+    return fiber;
   }
 
   private handleBinary(conn: ServerConn, bytes: Buffer): void {
@@ -442,9 +465,9 @@ export class TunnelServer {
     conn.state = 'ready';
     conn.mux = new StreamMux(conn.ws, 2, { highWaterMarkBytes: this.highWaterMarkBytes });
     conn.lastPongAt = Date.now();
-    if (conn.handshakeTimer !== null) {
-      clearTimeout(conn.handshakeTimer);
-      conn.handshakeTimer = null;
+    const handshake = this.takeHandshakeFiber(conn);
+    if (handshake !== null) {
+      Effect.runFork(Fiber.interrupt(handshake));
     }
     this.live.set(runnerId, conn);
     try {
