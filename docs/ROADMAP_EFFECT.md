@@ -9,6 +9,12 @@ Julio: "i will like all the codebase to be effect 4.0 please". His answers:
 - **Schema:** Effect Schema replaces zod everywhere.
 - **Apps:** web and mobile convert now, in parallel with the server.
 
+**Decisions after the plan (Julio, 2026-10-07), overriding its recommendations where they differ:**
+- **DB:** `effect/sql` + `@effect/sql-pg`; drizzle and drizzle-kit go. Tests use `@effect/sql-pglite`. The spike T-0496 settles migrations and better-auth.
+- **HTTP:** Effect's own server (`HttpApi`/`HttpRouter` + `@effect/platform-node`) replaces Hono entirely. Modules move under Hono first, then the edge flips. better-auth is mounted with `HttpEffect.fromWebHandler`.
+- **State:** `@effect/atom-react` replaces zustand on web and mobile. `jotai-effect` is not Effect-TS.
+- **Mobile:** converts now; the +2.8 MiB bundle is accepted.
+
 This supersedes rules 2 and 3 and the "Not converted" line below, and the new-feature half of each pair is dropped: conversions only. The architecture per layer and the ordered task split come from the plan audit T-0490 (`docs/audit/effect-everywhere-plan.md`); this file is rewritten from it. The first logic conversions (T-0483 to T-0489) follow the old rules and stay valid.
 
 ## Rules
