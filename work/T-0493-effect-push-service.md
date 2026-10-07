@@ -1,7 +1,7 @@
 ---
 id: T-0493
 title: "Effect convert: push delivery pipeline (device lookup, MAM-race retry, send, mark) in Effect, handleIncomingPush unchanged"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0493-effect-push-service
 model: auto
@@ -72,4 +72,77 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- Converted the delivery pipeline in `apps/server/src/push/service.ts` to Effect 4 inside, `Promise` at the edge:
+  - `resolveAndSend` → `resolveAndSendEffect`, `sendPayload` → `sendPayloadEffect`, `newestMessageForUser` → `newestMessageForUserEffect` (all `Effect.fnUntraced`).
+  - Added private typed errors `Undecryptable`, `ArchiveUnavailable`, `SendFailed` (they never leave the module).
+  - The archive retry is an explicit loop: exactly 3 reads, `Effect.sleep(Duration.millis(300))` between reads, sticky muted/hidden stop, unchanged.
+  - `openDevice` lifted with `Effect.try` → `Undecryptable`; the archive read and `resolveCandidate` lifted with `Effect.tryPromise` → `ArchiveUnavailable` (the old `try/catch` around `newestMessageForUser` turned any throw from those into `archive-unavailable`).
+  - `sender.send` and the `gone` cleanup share one `tryPromise`, exactly like the old `try`; a throw runs `markDeviceFailed` and then fails `SendFailed`.
+  - `handleIncomingPush` is still `async … Promise<PushOutcome>` and never throws: it runs `Effect.runPromise` and maps the three typed errors with `Effect.catchTags` to the same dropped outcomes and warn logs (ids only). `deviceByNode` / `markDeviceUsed` stay at the edge as before.
+  - Removed the now-unused `sleep` helper.
+- No export's name, type or signature changed; `service.test.ts` is untouched.
+
+### Deviation worth flagging
+Spec bullet "the DB calls (drizzle) wrapped in `Effect.tryPromise`": inside the archive-lookup contract I used `Effect.tryPromise` (→ `ArchiveUnavailable`) because the old code caught any throw from that whole step. For calls whose old behaviour was to reject (`showPreviewsForUser`, `markDeviceFailed`) I used `Effect.promise` via `awaitDb`, matching `docs/EFFECT_GUIDE.md` ("DB failures stay defects … never double-wrap"). Mapping those to a typed error would have changed behaviour. `deviceByNode` / `markDeviceUsed` stay plain awaits at the boundary, as before.
+
+### Line counts
+- `apps/server/src/push/service.ts`: 491 → 533 lines.
+
+### Tests
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot push/service` → `Test Files 1 passed (1)`, `Tests 20 passed (20)`.
+- I did not add `service.effect.test.ts` (optional in the spec): the existing suite already covers the retry race (`reads === 3`), per-node dedupe, undecryptable, archive-down and send-fail paths.
+
+### Gate
+```
+gate: 2 changed file(s) against main
+PASS  install (frozen)  (6.7s)
+PASS  format  (85.4s)
+PASS  lint  (1.9s)
+PASS  typecheck  (50.4s)
+PASS  tests @zilar/server  (39.8s)
+scope: every changed file is inside the Allowed files
+GATE PASS
+```
+
+### Files changed
+- `apps/server/src/push/service.ts`
+- `work/T-0493-effect-push-service.md`
+
+### Open questions
+None.
+
+### Round (fix round, 2026-10-07)
+- Findings fixed: must-fix 0, should-fix 1 of 1.
+- **Finding 1 (sync throw inside the archive scan):** in `resolveAndSendEffect`,
+  `newestMessageForUserEffect(...)` is now piped through
+  `Effect.catchDefect(() => Effect.fail(new ArchiveUnavailable()))`. A
+  synchronous throw in the scan's own bookkeeping (e.g. `rows.length` when the
+  cast archive answer is not an array) now becomes the typed `archive-unavailable`
+  outcome instead of an Effect defect that rejected the never-throwing
+  `handleIncomingPush`. This reproduces the old
+  `try { scan = await newestMessageForUser(...) } catch` exactly; the typed
+  `ArchiveUnavailable` from the lifted promises still flows through unchanged.
+- Test added: `apps/server/src/push/service.effect.test.ts` (new, Allowed). A
+  broken `ArchivePool` whose `query` resolves to `null`; asserts
+  `handleIncomingPush` resolves to `{ kind: 'dropped', reason: 'archive-unavailable' }`
+  and sends nothing. Verified it fails (boundary rejects with the defect) when
+  the `catchDefect` pipe is reverted, and passes with it.
+- Single test run: `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot push/service`
+  → 2 files passed, 21 tests passed (20 existing + 1 new).
+- `pnpm gate` from the repo root:
+  ```
+  gate: 3 changed file(s) against main
+  PASS  install (frozen)  (3.1s)
+  PASS  format  (78.0s)
+  PASS  lint  (1.5s)
+  PASS  typecheck  (44.6s)
+  PASS  tests @zilar/server  (66.8s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+- `apps/server/src/push/service.ts`: 533 → 540 lines (+7). New test file: 87 lines.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-07). The push delivery pipeline runs on Effect with typed internal errors. The archive lookup keeps 3 reads 300 ms apart and the sticky muted/hidden stop. handleIncomingPush keeps its signature and never throws; outcomes, logs and dedupe marks are identical. The existing tests are untouched. Pre-review clean after one auto round.
