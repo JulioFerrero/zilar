@@ -2,6 +2,32 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-07 23:10, Julio asleep ("dont stop working… dont make questions"):**
+- **The lead decides alone tonight.** Anything that is Julio's call goes to "Waiting for Julio" below.
+- **Merged tonight:**
+  - T-0492: the transcription provider;
+  - T-0493: the push pipeline;
+  - T-0487: the mailer.
+- **Merge queue** (one at a time, run by the lead's runner script):
+  - T-0495: the runtime and pino logger. The lead sent 3 fix rounds for redaction: objects become fields, Errors become `err`;
+  - T-0485: Giphy;
+  - T-0483: Telegram import. A fix round added an edge catch-all so the token can never leak;
+  - T-0497: the recovery loop.
+- **Running:**
+  - T-0494: the protocol on Effect Schema plus every consumer;
+  - T-0496: the `effect/sql` spike on pins;
+  - T-0499: agent-drivers;
+  - T-0500: runner-tunnel schemas;
+  - T-0501: apps/runner schemas.
+- **Launching:**
+  - T-0498 (the HttpApi adapter, handles pilot), after T-0495 merges;
+  - T-0502 (lead CLI schemas);
+  - T-0503 (the audit that splits the agents module into small tasks).
+- **Found on main:** `apps/server/src/topics/backfill.test.ts` fails, because migration 0045 (T-0470) adds a foreign key to `topics` that the test's exclusion list doesn't skip. The gate missed it because it only runs related tests. T-0494 carries the one-line fix (lead-approved). Follow-up: the merge gate should run the whole server suite at least once a day.
+- **Decisions the lead took:**
+  - workers may not run `npx` or detached `python` processes; they use `pnpm exec` and run the gate in the foreground;
+  - the draft hub stays as it is: its sync ordering needs no Effect, so it moves with the drafts route later.
+
 **2026-10-07 late night (Effect everywhere):**
 - **Julio:** "all the codebase to be effect 4.0". That means frameworks too, Effect Schema instead of zod, and web and mobile now. **No new features.** Use as many workers as the PC handles; it ran 9 at a load around 44 with 52% memory free.
 - **Merged since the last update:**
