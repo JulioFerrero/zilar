@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { Effect, Schedule, type Fiber } from 'effect';
 import { and, eq, lt } from 'drizzle-orm';
 import { ARGS_HASH_PATTERN } from '@zilar/protocol';
 import type { AuditEntry, AuditRecorder } from '../audit/service';
@@ -137,11 +138,11 @@ function listActions(
     .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
 }
 
-// Handle returned by `startRecoveryStuckTimer`. The sweeper pattern: a
-// unref'd timer that runs `recoverStuck` on a cadence, with `close()` to
-// stop it on shutdown. The timer never re-runs an action: `recoverStuck`
-// only marks `running` rows as `failed` and cancels `waiting` rows whose
-// approval is past due.
+// Handle returned by `startRecoveryStuckTimer`. A background Effect fiber
+// that runs `recoverStuck` on a cadence, with `close()` to stop it on
+// shutdown. The loop never re-runs an action: `recoverStuck` only marks
+// `running` rows as `failed` and cancels `waiting` rows whose approval is
+// past due.
 export interface RecoveryStuckHandle {
   close: () => void;
 }
@@ -157,40 +158,45 @@ export function startRecoveryStuckTimer({
   logger,
   intervalMs = 5 * 60 * 1000,
 }: StartRecoveryStuckTimerOptions): RecoveryStuckHandle {
-  let timer: NodeJS.Timeout | null = null;
-  let closed = false;
+  let fiber: Fiber.Fiber<void, never> | null = null;
 
-  function schedule(): void {
-    if (closed) {
-      return;
+  // Today's tick: run `recoverStuck`, log a failure with the error class
+  // name only, and let the loop carry on either way.
+  async function tick(): Promise<void> {
+    try {
+      await gateway.recoverStuck();
+    } catch (error) {
+      logger.error({ err: errorName(error) }, 'recoverStuck tick failed');
     }
-    timer = setTimeout(() => {
-      timer = null;
-      void gateway
-        .recoverStuck()
-        .catch((error: unknown) => {
-          logger.error({ err: errorName(error) }, 'recoverStuck tick failed');
-        })
-        .finally(() => {
-          schedule();
-        });
-    }, intervalMs);
-    timer.unref();
+  }
+
+  // The background loop repeats the tick with `Schedule.spaced`, first
+  // after one interval. The tick runs uninterruptibly so an in-flight
+  // sweep finishes after `close()`, the same shutdown behaviour as the
+  // approvals sweeper; only the sleep between ticks is interruptible.
+  function loop(): Effect.Effect<void, never, never> {
+    const tickEffect = Effect.uninterruptible(Effect.promise(() => tick()));
+    return Effect.sleep(intervalMs).pipe(
+      Effect.andThen(Effect.repeat(tickEffect, Schedule.spaced(intervalMs))),
+    );
   }
 
   // First run after one interval, not at boot. `index.ts` starts the
   // recovery loop after `serve()` resolves so the API is already
   // listening and the timer delay never blocks startup. Callers that
   // want an immediate sweep can call `gateway.recoverStuck()` themselves.
-  schedule();
+  fiber = Effect.runFork(loop());
 
   return {
     close(): void {
-      closed = true;
-      if (timer !== null) {
-        clearTimeout(timer);
-        timer = null;
+      if (fiber !== null) {
+        fiber.interruptUnsafe();
+        fiber = null;
       }
+      // An in-flight tick keeps running, but the timer is stopped and no
+      // new tick is scheduled. `index.ts` calls `close()` before the
+      // database close so the in-flight queries settle on the live
+      // connection.
     },
   };
 }
