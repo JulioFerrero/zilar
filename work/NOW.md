@@ -2,6 +2,26 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-08 01:05, Julio asleep, Effect night continues:**
+- **Merged since 23:45:**
+  - T-0498: the HttpApi adapter;
+  - T-0496: pins on effect/sql;
+  - T-0509, T-0513, T-0515, T-0512, T-0510;
+  - T-0516 and T-0517: agents G2 and G3;
+  - T-0494: protocol on Effect Schema. `phone:smoke` passed, the first Effect bundle on Hermes;
+  - T-0514: blocks, contacts and directory on HttpApi.
+- **Merge queue:**
+  - T-0519: contact-requests on effect/sql. The recovery test was re-seamed and now really reaches the insert;
+  - T-0508: web drafts, tools and cache on Schema;
+  - T-0506: the mobile pins pilot. The Expo export is 12.2 MB, and `phone:smoke` passed.
+- **Running:**
+  - T-0504: server config;
+  - T-0505: web `api.ts` part 1. It was blocked because tests call zod `.parse` on two schemas; the lead allowed those 3 test files, changing their parse calls only;
+  - T-0518: blocks and directory tests;
+  - T-0521: the atom-react audit;
+  - launching: T-0520 (chat-prefs and chat-folders HTTP), T-0522 (contacts and directory on effect/sql), T-0523 (agents G6, the listener) and T-0524 (mobile API batch 1).
+- **Next:** T-0507 (web `api.ts` part 2) after T-0505; agents G5, G4 and G7; more HTTP and effect/sql modules; mobile API batches 2 and up; atom-react after the T-0521 plan.
+
 **2026-10-07 23:45, Julio asleep, Effect night continues:**
 - **Merged since 23:10:**
   - T-0495: runtime and logger;
