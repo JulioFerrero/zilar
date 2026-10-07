@@ -2,6 +2,15 @@
 
 Julio's idea (2026-10-03): alternate one task that writes NEW code in Effect with one task that REDOES old code in Effect, and so on. This file is the plan; the board holds the tasks.
 
+## Update 2026-10-07: the whole codebase
+
+Julio: "i will like all the codebase to be effect 4.0 please". His answers:
+- **Scope:** everything, frameworks too. The server HTTP layer, DB access and config move onto Effect.
+- **Schema:** Effect Schema replaces zod everywhere.
+- **Apps:** web and mobile convert now, in parallel with the server.
+
+This supersedes rules 2 and 3 and the "Not converted" line below, and the new-feature half of each pair is dropped: conversions only. The architecture per layer and the ordered task split come from the plan audit T-0490 (`docs/audit/effect-everywhere-plan.md`); this file is rewritten from it. The first logic conversions (T-0483 to T-0489) follow the old rules and stay valid.
+
 ## Rules
 
 1. **Gate first.** T-0173 is a spike on one small server module plus a worker guide. The series only starts if the spike is judged good (tests unchanged, review stays easy, no surprises). If not, we stop there and lose half a day.
