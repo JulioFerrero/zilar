@@ -4,17 +4,11 @@ import {
   type ChatMessage,
   type SendMessageOptions,
   type XmppCore,
-  type XmppCoreOptions,
 } from '@zilar/xmpp-core';
 import type { Payload } from '@zilar/protocol';
-import { and, eq, inArray } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
-import {
-  DEFAULT_LITELLM_BASE_URL,
-  redactSecrets,
-  type FetchLike,
-  type LitellmAdminClient,
-} from '../ai/litellm-client';
+import { DEFAULT_LITELLM_BASE_URL, type LitellmAdminClient } from '../ai/litellm-client';
 import { modelNameForAi } from '../ai/model-entry';
 import {
   ensureAiModel,
@@ -26,26 +20,11 @@ import {
   type AiServiceDeps,
 } from '../ais/service';
 import type { KeyCipher } from '../connections/crypto';
-import type { ServerDatabase } from '../db/client';
-import {
-  ais,
-  groupAis,
-  groupMembers,
-  groups,
-  llmVirtualKeys,
-  topicAis,
-  topicMembers,
-  topics,
-  user,
-} from '../db/schema';
-import { sharedDraftHub, type DraftHub } from '../drafts/hub';
+import { ais, groups, llmVirtualKeys, topics } from '../db/schema';
+import { sharedDraftHub } from '../drafts/hub';
 import { onGroupAi, onTopicAi } from '../groups/events';
-import { allowedTopicAiIds } from '../topics/access';
-import type { EjabberdAdminClient } from '../xmpp/admin-client';
-import type { XmppConfig } from '../xmpp/config';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 import { issueXmppToken } from '../xmpp/token';
-import type { GroupRole } from '../groups/service';
 import {
   bareJid,
   buildDmMessages,
@@ -67,7 +46,6 @@ import { compactMemory } from './memory/compactor';
 import { indexMemory, type MemoryScope } from './memory/indexer';
 import { looksLikeSecret } from './memory/secrets';
 import { addFact, listFacts, recallMemory, renderMemoryBlock, zoomMemory } from './memory/store';
-import type { ArchivePool } from '../search/service';
 import { getAiUsage, type AiUsage } from '../ais/usage';
 import {
   completeChat,
@@ -96,435 +74,56 @@ import {
   UPDATE_PERSONA_TOOL,
 } from './tools';
 import { createDelegation, finishDelegation, getDelegationForAi } from './delegation/service';
-import type { ActionGateway, DeniedReason, RequestOutcome } from '../actions/gateway';
+import type { RequestOutcome } from '../actions/gateway';
+import {
+  GATEWAY_RESOURCE,
+  GROUP_JOIN_SKEW_MS,
+  GROUP_RATE_WINDOW_MS,
+  GROUP_TURNS_PER_WINDOW,
+  LISTENER_EVERY_N_DEFAULT,
+  LISTENER_QUIET_MS_DEFAULT,
+  RECONCILE_INTERVAL_MS,
+  RETRY_BASE_DELAY_MS,
+  ROUND_MAX_AI_TURNS,
+  ROUND_MAX_HOPS,
+  XMPP_TOKEN_TTL_SECONDS,
+  denialReasonForModel,
+  errorName,
+  formatModelText,
+  isAiSender,
+  retryDelayMs,
+  toRedactedError,
+  type AgentGateway,
+  type AgentGatewayConfig,
+  type AgentGatewayDeps,
+  type AiSession,
+  type PendingMessage,
+  type RoomListenerState,
+  type RoomPendingMessage,
+  type RoomRound,
+  type RoomSubscription,
+} from './gateway/contracts';
+import { listAiRooms, loadActiveAi, loadOwnerName, loadRoomGateState } from './gateway/db';
 
-export interface GatewayLogger {
-  info: (fields: Record<string, unknown>, message: string) => void;
-  warn: (fields: Record<string, unknown>, message: string) => void;
-}
-
-export interface AgentGatewayDeps {
-  db: ServerDatabase;
-  xmpp: XmppConfig;
-  adminClient: EjabberdAdminClient;
-  /** Absent when LiteLLM is not configured: the gateway stays off. */
-  litellm?: LitellmAdminClient;
-  /** Absent when the key master key is not configured: the gateway stays off. */
-  cipher?: KeyCipher;
-  logger: GatewayLogger;
-  /** T-0156: counts logger for the tool-turn counts line (rounds, tool
-   * calls, ms — ids and counts only, never content). Falls back to
-   * `logger` so production keeps the line the T-0106 review deferred. */
-  turnLogger?: GatewayLogger;
-  litellmBaseUrl?: string;
-  /** Only used to redact log lines; never sent anywhere. */
-  masterKeyForRedaction?: string;
-  /** T-0475: the server-paid room listener (plan §2). Absent means the
-   * listener is off, so a room message without an AI mention wakes nobody.
-   * `quietMs` and `everyN` tune the debounce (defaults below). `complete`
-   * is injected in tests. */
-  listener?: {
-    model: string;
-    virtualKey: string;
-    quietMs?: number;
-    everyN?: number;
-    complete?: typeof completeChat;
-  };
-  createCore?: (options: XmppCoreOptions) => XmppCore;
-  fetchImpl?: FetchLike;
-  now?: () => Date;
-  /** Draft hub for live reply drafts. Defaults to the shared server hub. */
-  drafts?: { hub?: DraftHub };
-  /** Optional action gateway. When present, every DM turn also offers the
-   * `request_action` tool, and tool calls route through it. Absent = no
-   * action tool, no behaviour change for the persona tools. */
-  actions?: ActionGateway;
-  /** T-0106: whether `TOOLS_ENABLED` is on. The tool guide rides the system
-   * prompt only when this is true AND tool/routine adapters are registered
-   * for the turn's context. Defaults to false (today's prompts). */
-  toolsEnabled?: boolean;
-  /** T-0106: how many tool rounds one turn may run. Defaults to 1
-   * (today's behaviour, byte for byte). Production passes
-   * `AGENT_TOOL_MAX_ROUNDS` (6 when `TOOLS_ENABLED` is on). */
-  toolMaxRounds?: number;
-  /** Memory archive. Absent means memory is read but never indexed. */
-  archive?: ArchivePool;
-}
-
-export interface AgentGatewayConfig {
-  enabled: boolean;
-  reconcileIntervalMs?: number;
-  retryBaseDelayMs?: number;
-}
-
-// Safety net: a missed notifier event is picked up at most this late.
-export const RECONCILE_INTERVAL_MS = 60_000;
-
-// First reconnect delay after a failed connect; doubles per attempt.
-export const RETRY_BASE_DELAY_MS = 5_000;
-export const RETRY_MAX_DELAY_MS = 60_000;
-
-// Fresh-token TTL for each AI login. xmpp-core asks `getToken` on every
-// (re)connect, so no connection ever runs on a stale token.
-const XMPP_TOKEN_TTL_SECONDS = 300;
-
-// Every gateway logs each AI in with the same fixed resource, so ejabberd
-// replaces the old session when a new gateway logs in. The replaced gateway
-// stands down (see the `replaced` handler): the newest gateway wins.
-export const GATEWAY_RESOURCE = 'gateway';
-
-// Privacy and cost rules for groups (T-0054, see the Report): any human
-// member may trigger an AI by @mentioning it, and the owner pays under the
-// AI's capped virtual key. The AI only sees room messages sent while it is a
-// member (plus the MAM history that membership grants). Every log line below
-// carries ids only: the AI id, the group id and the message id. Never bodies,
-// names or keys.
-
-// Per AI per room: at most this many turns in the sliding window below. The
-// rest are dropped with one log line.
-export const GROUP_TURNS_PER_WINDOW = 6;
-export const GROUP_RATE_WINDOW_MS = 10 * 60_000;
-
-// T-0479: at most this many AI turns per human room message, across every AI
-// in the room. A new human message opens a fresh round.
-export const ROUND_MAX_AI_TURNS = 4;
-
-// T-0481: at most this many AI-to-AI handoffs per human room message. A
-// handoff turn counts against ROUND_MAX_AI_TURNS too.
-export const ROUND_MAX_HOPS = 2;
-
-// A live room message carries ~now as its timestamp, while history replayed
-// on join carries its original (older) stamp. Anything older than the join
-// minus this skew is treated as replayed history and never wakes the AI.
-export const GROUP_JOIN_SKEW_MS = 60_000;
-
-// T-0475: the listener scores a room after this much quiet, or early once this
-// many human messages have queued without a mention (plan §2.1).
-export const LISTENER_QUIET_MS_DEFAULT = 20_000;
-export const LISTENER_EVERY_N_DEFAULT = 12;
-
-interface PendingMessage {
-  id: string;
-  body: string;
-  fromJid: string;
-}
-
-interface RoomPendingMessage {
-  id: string;
-  body: string;
-  fromJid: string;
-  fromResolved: boolean;
-  fromNick?: string;
-  timestamp: Date;
-  /** T-0479: set by a listener wake, never by a mention. */
-  wake?: true;
-  /** T-0481: set on an AI-to-AI handoff queued by another AI's @mention. */
-  handoff?: true;
-  /** T-0482: set on the synthetic trigger `delegate` queues on the worker's
-   * session; its id is the delegation row to finish when the turn ends. */
-  delegationId?: string;
-}
-
-// T-0479: the per-room round budget, shared by every AI session in the room
-// and keyed by the human message that opened it.
-interface RoomRound {
-  humanMessageId: string;
-  aiTurns: number;
-  /** T-0481: AI-to-AI hops already spent in this round. */
-  hops: number;
-  /** T-0481: AI message ids already counted, so several sessions seeing the
-   * same stanza spend one hop. */
-  handoffIds: Set<string>;
-}
-
-interface RoomSubscription {
-  groupId: string;
-  /** The topic this room belongs to. Set for every room subscription. */
-  topicId: string;
-  joinedAtMs: number;
-  nick: string;
-}
-
-// T-0475: one debounce window per room, at the gateway level, shared by every
-// AI session in it. `seen` dedupes the stanza each session receives; `count`
-// is the messages since the last check and `generation` invalidates a scoring
-// call whose window a newer human message replaced.
-interface RoomListenerMessage {
-  id: string;
-  sender: string;
-  text: string;
-  fromJid: string;
-  fromResolved: boolean;
-  fromNick?: string;
-  timestamp: Date;
-}
-
-interface RoomListenerState {
-  groupId: string;
-  topicId: string;
-  window: RoomListenerMessage[];
-  seen: Set<string>;
-  count: number;
-  generation: number;
-  inFlight: boolean;
-  timer: ReturnType<typeof setTimeout> | undefined;
-}
-
-interface AiSession {
-  aiId: string;
-  aiJid: string;
-  core: XmppCore;
-  busy: boolean;
-  pending: PendingMessage[];
-  stopped: boolean;
-  retryAttempt: number;
-  retryTimer: ReturnType<typeof setTimeout> | undefined;
-  unsubs: Array<() => void>;
-  /** Rooms the AI currently holds a join for, keyed by bare room JID. */
-  rooms: Map<string, RoomSubscription>;
-  /** One coalescing queue per room, like the DM queue. */
-  roomPending: Map<string, RoomPendingMessage[]>;
-  /** Rooms with a turn in flight. */
-  roomBusy: Set<string>;
-  /** Turn timestamps (ms) per room for the rate limit. */
-  roomTurns: Map<string, number[]>;
-}
-
-export interface AgentGateway {
-  start: () => Promise<void>;
-  stop: () => Promise<void>;
-  /** The periodic safety net, exposed so tests can drive it directly. */
-  reconcile: () => Promise<void>;
-  size: () => number;
-  aiIds: () => string[];
-  /**
-   * Posts a message from the AI's own live XMPP session into the chat the
-   * action gateway asked about. Returns `true` when the message went out
-   * and `false` (sending nothing) when the AI has no live session, when
-   * the AI is unknown, or — for a group — when the AI is not currently
-   * subscribed to the room. Used by the action gateway to announce tier-2
-   * requests and their outcomes; a stopped AI (kill switch) returns
-   * `false`, so nothing is posted.
-   */
-  postToChat: (input: {
-    aiId: string;
-    groupId: string | null;
-    topicId?: string;
-    text: string;
-    payload?: Payload;
-  }) => Promise<boolean>;
-}
-
-function isAiSender(bare: string): boolean {
-  return (bare.split('@')[0] ?? '').startsWith('ai-');
-}
-
-function retryDelayMs(attempt: number, baseMs: number): number {
-  return Math.min(baseMs * 2 ** (attempt - 1), RETRY_MAX_DELAY_MS);
-}
-
-function errorName(error: unknown): string {
-  if (error instanceof Error) {
-    return error.name;
-  }
-  return typeof error;
-}
-
-// The model-facing wording for a `denied` outcome. We never echo the
-// adapter's reason beyond the stable enum: only `unknown_action`,
-// `invalid_args`, `ai_not_active`, and `ai_not_in_group` (T-0090).
-function denialReasonForModel(reason: DeniedReason): string {
-  switch (reason) {
-    case 'unknown_action':
-      return 'unknown action';
-    case 'invalid_args':
-      return 'invalid arguments';
-    case 'ai_not_active':
-      return 'the AI is not active';
-    case 'ai_not_in_group':
-      return 'the AI is not in that topic';
-  }
-}
-
-// Appends an adapter's `modelText` to an executed outcome as a labelled
-// untrusted block (T-0105): the model's only way to read a tool's source
-// or a test run's output. `undefined` (the adapter returned none) appends
-// nothing. Tool output is data, never instructions: the wrapper names it
-// as untrusted so the model treats it accordingly.
-function formatModelText(modelText: string | undefined): string {
-  if (modelText === undefined) {
-    return '';
-  }
-  return `\n\n<untrusted-tool-output>\n${modelText}\n</untrusted-tool-output>`;
-}
-
-function toRedactedError(error: unknown, secrets: readonly string[]): Error {
-  if (error instanceof Error) {
-    const redacted = new Error(redactSecrets(error.message, secrets));
-    redacted.name = error.name;
-    redacted.stack = redactSecrets(error.stack ?? '', secrets);
-    return redacted;
-  }
-  return new Error(redactSecrets(String(error), secrets));
-}
-
-async function loadActiveAi(db: ServerDatabase, aiId: string): Promise<ActiveAiForGateway | null> {
-  const [row] = await db
-    .select({
-      id: ais.id,
-      jid: ais.jid,
-      localpart: ais.localpart,
-      owner: ais.owner,
-      name: ais.name,
-      persona: ais.persona,
-    })
-    .from(ais)
-    .where(and(eq(ais.id, aiId), eq(ais.status, 'active')))
-    .limit(1);
-  return row ?? null;
-}
-
-async function loadOwnerName(db: ServerDatabase, ownerId: string): Promise<string> {
-  const [row] = await db
-    .select({ name: user.name })
-    .from(user)
-    .where(eq(user.id, ownerId))
-    .limit(1);
-  const name = row?.name?.trim() ?? '';
-  return name === '' ? 'owner' : name;
-}
-
-// Every room an AI belongs to (T-0109): for each `group_ais` row the
-// group's General room, plus each non-archived topic where the AI is in
-// `topic_ais`. Every subscription carries the topic id (and still the group
-// id) so the turn knows which topic it is answering in.
-async function listAiRooms(
-  db: ServerDatabase,
-  aiId: string,
-): Promise<Array<{ groupId: string; topicId: string; roomLocalpart: string }>> {
-  const groupRows = await db
-    .select({ groupId: groupAis.groupId, roomLocalpart: groups.roomLocalpart })
-    .from(groupAis)
-    .innerJoin(groups, eq(groups.id, groupAis.groupId))
-    .where(eq(groupAis.aiId, aiId));
-  if (groupRows.length === 0) {
-    return [];
-  }
-  const groupIds = groupRows.map((row) => row.groupId);
-  const topicRows = await db
-    .select({
-      id: topics.id,
-      groupId: topics.groupId,
-      roomLocalpart: topics.roomLocalpart,
-      visibility: topics.visibility,
-      isGeneral: topics.isGeneral,
-      archivedAt: topics.archivedAt,
-    })
-    .from(topics)
-    .where(inArray(topics.groupId, groupIds));
-  const topicAiRows = await db
-    .select({ topicId: topicAis.topicId })
-    .from(topicAis)
-    .where(eq(topicAis.aiId, aiId));
-  const inTopic = new Set(topicAiRows.map((row) => row.topicId));
-  // The owner's visibility is a live derived rule (see `allowedTopicAiIds`):
-  // a private topic counts only while the AI's owner is a topic member. The
-  // rows stay, so adding the owner back brings the AI back automatically.
-  const allowedByTopic = new Map<string, Set<string>>();
-  for (const topic of topicRows) {
-    if (!topic.isGeneral && topic.archivedAt === null && inTopic.has(topic.id)) {
-      allowedByTopic.set(topic.id, await allowedTopicAiIds(db, topic));
-    }
-  }
-  const rooms: Array<{ groupId: string; topicId: string; roomLocalpart: string }> = [];
-  for (const topic of topicRows) {
-    if (topic.isGeneral) {
-      continue;
-    }
-    if (topic.archivedAt !== null) {
-      continue;
-    }
-    if (inTopic.has(topic.id) && (allowedByTopic.get(topic.id)?.has(aiId) ?? false)) {
-      rooms.push({ groupId: topic.groupId, topicId: topic.id, roomLocalpart: topic.roomLocalpart });
-    }
-  }
-  // General rooms ride on the `group_ais` rows themselves (one General topic
-  // per group, always public, never archived).
-  const generals = new Map(
-    topicRows.filter((row) => row.isGeneral).map((row) => [row.groupId, row]),
-  );
-  for (const group of groupRows) {
-    const general = generals.get(group.groupId);
-    if (general) {
-      rooms.push({
-        groupId: group.groupId,
-        topicId: general.id,
-        roomLocalpart: general.roomLocalpart,
-      });
-    } else {
-      // No General row yet (pre-backfill data in a test): fall back to the
-      // group's own room so existing AIs keep answering in General.
-      rooms.push({ groupId: group.groupId, topicId: '', roomLocalpart: group.roomLocalpart });
-    }
-  }
-  return rooms;
-}
-
-interface RoomGateState {
-  /** Bare JIDs of the current human members, lowercased. */
-  memberJids: Set<string>;
-  /** Per-member role for the gate that decides whether a sender may wake an
-   * AI for an action (T-0098). Keys are lowercased bare JIDs. */
-  memberRolesByJid: Map<string, GroupRole>;
-}
-
-// The fresh gate for one topic turn: who may trigger the AI, and which
-// nicks belong to AIs. For a General topic the humans are every group
-// member; for any other topic they are that topic's members (public topics:
-// every group member; private topics: the `topic_members` rows). Member JIDs
-// are derived with the same `localpartFor` the provisioning uses, so no
-// extra mapping table is needed. Roles come from `group_members` and are
-// looked up per turn so a promotion or demotion that lands between turns is
-// picked up the next time the AI wakes. A message from someone who is not a
-// topic member cannot wake the AI (they cannot even be in the room, but it
-// is asserted anyway). The `request_action` role check (T-0098: sender is
-// group owner/admin) stays, and additionally requires the sender to be in
-// the topic.
-async function loadRoomGateState(
-  db: ServerDatabase,
-  groupId: string,
-  domain: string,
-  topicId: string,
-): Promise<RoomGateState | null> {
-  const [group] = await db.select({ id: groups.id }).from(groups).where(eq(groups.id, groupId));
-  if (!group) {
-    return null;
-  }
-  const [topic] = await db.select().from(topics).where(eq(topics.id, topicId)).limit(1);
-  let memberIds: Set<string> | null = null;
-  if (topic && !topic.isGeneral && topic.visibility === 'private') {
-    const rows = await db
-      .select({ userId: topicMembers.userId })
-      .from(topicMembers)
-      .where(eq(topicMembers.topicId, topic.id));
-    memberIds = new Set(rows.map((row) => row.userId));
-  }
-  const members = await db
-    .select({ userId: groupMembers.userId, role: groupMembers.role })
-    .from(groupMembers)
-    .where(eq(groupMembers.groupId, groupId));
-  const memberRolesByJid = new Map<string, GroupRole>();
-  const memberJids = new Set<string>();
-  for (const row of members) {
-    if (memberIds !== null && !memberIds.has(row.userId)) {
-      continue;
-    }
-    const bare = normBareJid(jidFor(localpartFor(row.userId), domain));
-    memberJids.add(bare);
-    memberRolesByJid.set(bare, row.role);
-  }
-  return { memberJids, memberRolesByJid };
-}
+export type {
+  AgentGateway,
+  AgentGatewayConfig,
+  AgentGatewayDeps,
+  GatewayLogger,
+} from './gateway/contracts';
+export {
+  GATEWAY_RESOURCE,
+  GROUP_JOIN_SKEW_MS,
+  GROUP_RATE_WINDOW_MS,
+  GROUP_TURNS_PER_WINDOW,
+  LISTENER_EVERY_N_DEFAULT,
+  LISTENER_QUIET_MS_DEFAULT,
+  RECONCILE_INTERVAL_MS,
+  RETRY_BASE_DELAY_MS,
+  RETRY_MAX_DELAY_MS,
+  ROUND_MAX_AI_TURNS,
+  ROUND_MAX_HOPS,
+} from './gateway/contracts';
 
 // Agent gateway v0: keeps every active AI online over XMPP and replies to the
 // AI's owner in their DM. The AI id always comes from the gateway's own
