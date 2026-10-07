@@ -7,7 +7,6 @@ import { Checkbox } from './ui/checkbox';
 import { Dialog } from './ui/dialog';
 import { SegmentedControl } from './ui/segmented-control';
 import { TextInput } from './ui/text-input';
-import { cn } from '@/lib/utils';
 import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
 import type { GroupDetail, GroupRole, PublicAi, TopicKind, TopicVisibility } from '@/lib/api';
 import { listGroupRoles } from '@/lib/api';
@@ -227,27 +226,14 @@ export function NewTopicDialog({
       </label>
 
       <div className="mt-3 flex flex-col gap-1.5">
-        <span id="new-topic-type" className="text-[14px] font-medium">
-          Type
-        </span>
-        <div role="group" aria-labelledby="new-topic-type" className="flex flex-wrap gap-1.5">
-          {TYPE_CHIPS.map((chip) => (
-            <button
-              key={chip.kind}
-              type="button"
-              aria-pressed={kind === chip.kind}
-              onClick={() => setKind(chip.kind)}
-              className={cn(
-                'rounded-full border px-3 py-1.5 text-[13px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40',
-                kind === chip.kind
-                  ? 'raised-segment border-border-strong text-foreground'
-                  : 'border-border text-muted-foreground hover:text-foreground',
-              )}
-            >
-              {chip.label}
-            </button>
-          ))}
-        </div>
+        <span className="text-[14px] font-medium">Type</span>
+        <SegmentedControl
+          mode="radio"
+          ariaLabel="Type"
+          options={TYPE_CHIPS.map((chip) => ({ value: chip.kind, label: chip.label }))}
+          value={kind}
+          onChange={(next) => setKind(next as TopicKind)}
+        />
       </div>
 
       <div className="mt-3 flex flex-col gap-1.5">

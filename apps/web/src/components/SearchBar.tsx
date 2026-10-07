@@ -1,5 +1,6 @@
 import { Search } from 'lucide-react';
 import { useEffect, useRef } from 'react';
+import { Chip } from './ui/chip';
 import { Well } from './ui/well';
 import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
 
@@ -42,15 +43,15 @@ export function SearchBar() {
     <Well className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-[10px] px-2.5">
       <Search className="size-[15px] shrink-0 text-subtle-foreground" aria-hidden="true" />
       {scopedChat !== undefined && (
-        <button
-          type="button"
+        <Chip
+          tone="accent"
           onClick={clearScope}
           title={`Searching only in ${scopedChat.title} — click to search everywhere`}
-          aria-label={`Searching only in ${scopedChat.title}. Activate to search all chats.`}
-          className="max-w-[120px] shrink-0 truncate rounded-full bg-accent/20 px-2 py-0.5 text-[11px] font-medium text-foreground"
+          ariaLabel={`Searching only in ${scopedChat.title}. Activate to search all chats.`}
+          className="max-w-[120px] shrink-0 truncate text-[11px]"
         >
           {scopedChat.title}
-        </button>
+        </Chip>
       )}
       <input
         ref={inputRef}

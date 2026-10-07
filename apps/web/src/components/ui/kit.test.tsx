@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 import { Badge } from './badge';
 import { Button } from './button';
+import { Chip } from './chip';
 import { Card, SectionLabel } from './card';
 import { Dialog } from './dialog';
 import { Sheet } from './sheet';
@@ -52,6 +53,50 @@ describe('Badge', () => {
     expect(badge.className).toContain('ml-auto');
     expect(badge.className).toContain('shrink-0');
     expect(badge.className).toContain('rounded-full');
+  });
+});
+
+describe('Chip', () => {
+  it('reports aria-pressed on when pressed', () => {
+    render(
+      <Chip pressed ariaLabel="Reacted 👍">
+        👍
+      </Chip>,
+    );
+    expect(screen.getByRole('button', { name: 'Reacted 👍' }).getAttribute('aria-pressed')).toBe(
+      'true',
+    );
+  });
+
+  it('reports aria-pressed off when pressed is false', () => {
+    render(
+      <Chip pressed={false} ariaLabel="Reacted 👍">
+        👍
+      </Chip>,
+    );
+    expect(screen.getByRole('button', { name: 'Reacted 👍' }).getAttribute('aria-pressed')).toBe(
+      'false',
+    );
+  });
+
+  it('omits aria-pressed when pressed is not given', () => {
+    render(<Chip ariaLabel="Searching only in Dev team">Dev team</Chip>);
+    expect(
+      screen
+        .getByRole('button', { name: 'Searching only in Dev team' })
+        .hasAttribute('aria-pressed'),
+    ).toBe(false);
+  });
+
+  it('calls onClick when clicked', () => {
+    const onClick = vi.fn();
+    render(
+      <Chip ariaLabel="Reacted 👍" onClick={onClick}>
+        👍
+      </Chip>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Reacted 👍' }));
+    expect(onClick).toHaveBeenCalledTimes(1);
   });
 });
 
