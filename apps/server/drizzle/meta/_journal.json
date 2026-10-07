@@ -316,6 +316,13 @@
       "when": 1791373116477,
       "tag": "0044_demonic_gressill",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1791382244484,
+      "tag": "0045_remarkable_dragon_lord",
+      "breakpoints": true
     }
   ]
 }
