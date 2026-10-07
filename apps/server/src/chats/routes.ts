@@ -6,7 +6,7 @@ import { avatarIdsByOwner, avatarUrlFor } from '../avatars/service';
 import type { ServerConfig } from '../config';
 import { listContacts } from '../contacts/service';
 import type { ServerDatabase } from '../db/client';
-import { listGroupsForUser, type GroupRole } from '../groups/service';
+import { listGroupsForUser, type GroupBackground, type GroupRole } from '../groups/service';
 import { toTopicViews, visibleTopics, type TopicView } from '../topics/access';
 
 export type ChatListEntry =
@@ -42,6 +42,9 @@ export type ChatListEntry =
       handle: string | null;
       /** Visible topics (archived excluded); General keeps the group chatJid. */
       topics: TopicView[];
+      // T-0465: the group background set by an owner/admin, so the list can
+      // paint it without a second request.
+      background: GroupBackground;
     };
 
 export interface ChatsRoutesDependencies {
@@ -120,6 +123,7 @@ export function createChatsRoutes({ auth, db, config }: ChatsRoutesDependencies)
         visibility: group.visibility,
         handle: group.handle,
         topics: [],
+        background: group.background,
       })),
     ];
 

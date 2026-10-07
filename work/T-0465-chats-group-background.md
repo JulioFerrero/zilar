@@ -1,7 +1,7 @@
 ---
 id: T-0465
 title: "Backgrounds G1 (server): GET /api/chats group entries carry the group background"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0465-chats-group-background
 model: auto
@@ -49,4 +49,34 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- `apps/server/src/chats/routes.ts`: imported `type GroupBackground` from `../groups/service`, added `background: GroupBackground` to the group variant of `ChatListEntry`, and set `background: group.background` on every group entry built from `listGroupsForUser`.
+- `apps/server/src/chats/chats.test.ts`: added `background` to the local `ChatsBody` entry type and one test, "carries every group background in the chat list". It creates two groups, sets `groups.background_preset = 'navy'` on one directly with the DB, and asserts the painted group's entry has `{ backgroundPreset: 'navy', backgroundImageId: null, backgroundDim: null }` while the other has all three nulls.
+
+### Files changed
+- `apps/server/src/chats/routes.ts`
+- `apps/server/src/chats/chats.test.ts`
+- `work/T-0465-chats-group-background.md`
+
+### Commands and results
+- `pnpm install`: done, exit 0.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot chats/chats`: 1 file passed, 8 tests passed, exit 0.
+- `pnpm gate`: exit 0, ended with `GATE PASS`. Summary lines:
+  - `gate: 3 changed file(s) against main`
+  - `PASS  install (frozen)  (2.9s)`
+  - `PASS  format  (31.2s)`
+  - `PASS  lint  (1.8s)`
+  - `PASS  typecheck  (14.5s)`
+  - `PASS  tests @zilar/server  (355.7s)`
+  - `scope: every changed file is inside the Allowed files`
+  - `GATE PASS`
+
+### Problems / deviations
+- None. No other test broke; no exact `toEqual` on the whole chat entry existed.
+
+### Open questions
+- None.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-07). Group entries in GET /api/chats now carry background (GroupBackground), with a test for set and unset. Pre-review clean.
