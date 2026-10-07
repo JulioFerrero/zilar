@@ -1,7 +1,7 @@
 ---
 id: T-0472
 title: "Listener S2 (server): pure scoring core — roster, prompt, strict JSON parse, eagerness threshold (no gateway wiring yet)"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0472-listener-score-core
 model: auto
@@ -83,4 +83,50 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+Built the pure listener scoring core in a new `apps/server/src/agents/listener/` folder. Nothing calls it yet (S3 wires the gateway) and there are no DB writes.
+
+- `score.ts`:
+  - `LISTENER_THRESHOLDS = { eager: 0.4, normal: 0.6, quiet: 0.8 }` and `thresholdFor(eagerness)`.
+  - `loadRoster(db, { groupId, topicId? })`: `topicAis` when `topicId` is set, otherwise `groupAis`, joined to `ais`; summary is the first line of `persona`, trimmed and cut to `PERSONA_SUMMARY_MAX_LENGTH`; sorted by name, then id.
+  - `buildListenerMessages({ roster, window, roomSummary? })`: system message (job + untrusted-data line + required JSON shape) and a user message with the roster, optional room summary and the window. Window capped at the last 40 messages; each text cut to 500 chars.
+  - `parseListenerOutput(raw, rosterIds)`: strips one surrounding ```json/``` fence, `JSON.parse` then a zod `.strict()` object (`scores` 0-1 numbers, `reason`, `message_ids`). Unknown ids dropped, missing id = 0, `reason` cut to 200, `message_ids` capped at 20 ids of 64 chars; any garbage/out-of-range/extra key gives `null`.
+  - `scoreRoom(...)`: calls the injected `complete` **without `tools`**, wakes ids with score `>= thresholdFor(eagerness)` sorted by score descending. Empty roster, parse failure or a thrown call all return `null`; the function never throws.
+- `score.test.ts`: 13 tests covering the threshold map, `loadRoster` for a group and a topic, the prompt caps/framing/roster ids, the parser (valid, fenced, unknown id, out-of-range, garbage, cuts) and `scoreRoom` (wake order, no `tools`, thrown error, parse failure, empty roster).
+
+### Files changed
+- `apps/server/src/agents/listener/score.ts` (new)
+- `apps/server/src/agents/listener/score.test.ts` (new)
+- `work/T-0472-listener-score-core.md` (report/status)
+
+### Commands and real results
+- `pnpm install`: done, no error.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot agents/listener`: 1 file passed, 13 tests passed.
+- `pnpm gate`: `GATE PASS`, with summary lines:
+  - `gate: 3 changed file(s) against main`
+  - `PASS install (frozen) (2.4s)`
+  - `PASS format (27.9s)`
+  - `PASS lint (2.4s)`
+  - `PASS typecheck (16.6s)`
+  - `PASS tests @zilar/server (11.3s)`
+  - `scope: every changed file is inside the Allowed files`
+  - `GATE PASS`
+
+### Deviations / notes
+- The spec did not name a type for the window rows; I added and exported `ListenerWindowMessage { id, sender, text }` and `ScoreRoomInput`/`ScoreRoomResult`.
+- `scoreRoom` returns `null` (not `{ wake: [] }`) on an empty roster, a parse failure and a thrown error; a successful parse with nobody above the threshold returns `{ wake: [], reason, messageIds }`.
+- The parser is `.strict()`: an extra key invalidates the whole output (fails safe, wakes nobody).
+- The system prompt is exported as `LISTENER_SYSTEM_MESSAGE`; the module exports only the pieces the spec asks for plus the input/output types.
+
+### Blocked / needs a decision
+None.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-07). agents/listener/score.ts provides:
+- the eagerness thresholds;
+- loadRoster (topic or group AIs, a first-line summary capped at 200);
+- a tool-free prompt with the untrusted-data line and the 40/500 caps;
+- a strict zod parser (fence strip, unknown ids dropped);
+- scoreRoom, which never throws and wakes nobody on failure.
+Nits accepted (test only): the 200 cap and one fixture are not exercised directly.
