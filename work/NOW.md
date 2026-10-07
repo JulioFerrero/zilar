@@ -2,6 +2,37 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-07 23:45, Julio asleep, Effect night continues:**
+- **Merged since 23:10:**
+  - T-0495: runtime and logger;
+  - T-0485: Giphy;
+  - T-0483: Telegram import;
+  - T-0497: recovery loop;
+  - T-0499: agent-drivers;
+  - T-0500: runner-tunnel schemas;
+  - T-0501: apps/runner schemas;
+  - T-0502: lead CLI schemas. Live `state.json` decode checked first;
+  - T-0503: the agents split plan;
+  - T-0511: tunnel server timers.
+- **Merging:** T-0498 (HttpApi adapter, handles pilot; P1 gate passed) and T-0496 (pins on effect/sql, plus the migration plan).
+- **Approved, waiting for a fix before merge:**
+  - T-0494 (protocol on Effect Schema): after T-0496 merges, the worker regenerates the lockfile, then phone:smoke runs on the emulator (the first Effect bundle on Hermes);
+  - T-0509 (RunnerClient): T-0511's new pong-timeout test is flaky (it failed 1 in 5 on main), and the T-0509 worker makes it deterministic.
+- **Running:**
+  - T-0512: agents G1 extraction;
+  - T-0513: agents C1, the model call on Effect.
+- **Paused:** T-0510 (blocks on effect/sql) waits for T-0496 in main; it was launched too early.
+- **Ready after T-0494:**
+  - T-0504: server config;
+  - T-0505 and T-0507: web api.ts parts 1 and 2;
+  - T-0506: mobile pins pilot;
+  - T-0508: web drafts, tools and cache.
+- **Lead decisions tonight:**
+  - **effect/sql:** better-auth moves to a custom adapter over effect/sql; drizzle-kit migrations stay until the last step, then one transaction per migration;
+  - **agents plan:** the oversized G1, G8 and C2 are split;
+  - **effect version:** ^4.0.2 everywhere;
+  - **lead tooling:** the lead runner script now runs `pnpm install --frozen-lockfile` in main after each merge, because the lead CLI broke once when T-0502 added `effect` to devtools.
+
 **2026-10-07 23:10, Julio asleep ("dont stop working… dont make questions"):**
 - **The lead decides alone tonight.** Anything that is Julio's call goes to "Waiting for Julio" below.
 - **Merged tonight:**
