@@ -454,6 +454,13 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0425](T-0425-mobile-profile-buttons-kit.md) | Mobile: profile and contact card buttons on the kit Button | 2026-10-06 |
 | [T-0426](T-0426-mobile-ai-sheet-buttons-kit.md) | Mobile: AI activity Refresh, tool sheet Show all/less and Close on the kit Button | 2026-10-06 |
 | [T-0482](T-0482-delegate-tools.md) | Listener S5b (server): delegate + task_status tools, worker turn, stored result | running | auto | T-0480, T-0481 | |
+| [T-0483](T-0483-effect-telegram-import.md) | Effect convert: Telegram import client | running | auto | T-0173 | |
+| [T-0484](T-0484-effect-guarded-fetch.md) | Effect convert: web-tools guarded GET | running | auto | T-0173 | |
+| [T-0485](T-0485-effect-giphy.md) | Effect convert: Giphy provider | running | auto | T-0173 | |
+| [T-0486](T-0486-effect-runner-hub.md) | Effect convert: runner hub loops | running | auto | T-0173 | |
+| [T-0487](T-0487-effect-mailer.md) | Effect convert: SMTP mailer send | running | auto | T-0173 | |
+| [T-0488](T-0488-effect-background-loops.md) | Effect convert: routines scheduler + approvals sweeper | running | auto | T-0173 | |
+| [T-0489](T-0489-effect-run-tool.md) | Effect convert: sandbox runTool | running | auto | T-0173 | |
 | [T-0427](T-0427-mobile-forwarded-header.md) | Mobile: forwarded messages show 'Forwarded from X [in Y]' | 2026-10-06 |
 | [T-0428](T-0428-mobile-new-chat-menu-sheet.md) | Mobile: New chat menu on the kit ActionSheet with icons | 2026-10-06 |
 | [T-0429](T-0429-mobile-dismiss-banner.md) | Mobile: DismissBanner replaces 12 copied chat screen banners | 2026-10-06 |
