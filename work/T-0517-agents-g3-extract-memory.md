@@ -1,7 +1,7 @@
 ---
 id: T-0517
 title: "Agents G3: move loadMemoryContext and startCompaction (+ runningCompactions) out of createAgentGateway into agents/gateway/memory.ts; zero behaviour change"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0517-agents-g3-extract-memory
 model: auto
@@ -54,4 +54,71 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- Created `apps/server/src/agents/gateway/memory.ts` exporting `createMemoryRunner(ctx)`.
+  It holds exactly what the two functions close over: `deps` (`db`, `archive`, `fetchImpl`),
+  `logger`, `baseUrl`, `modelNameForAi`, `secretsFor`, `nowMs`, `toRedactedError` and
+  `checkDmRoundGate` (injected as a callback, so this task does not depend on T-0516).
+  `runningCompactions` now lives inside the runner, one `Set` per gateway. Both function
+  bodies were moved verbatim; only the enclosing function changed.
+- In `createAgentGateway` the two function declarations were replaced by one creation line
+  `const { loadMemoryContext, startCompaction } = createMemoryRunner({ ... })`. Every call
+  site is unchanged (same arguments; `startCompaction` is still not awaited).
+- Dropped the imports that are now only used by the moved code (`compactMemory`,
+  `indexMemory`/`MemoryScope`, `listFacts`, `renderMemoryBlock`, `MemoryContext`) and added
+  the `createMemoryRunner` import. `toRedactedError` and `modelNameForAi` stay imported in
+  `gateway.ts` because other regions still use them.
+
+### Files changed
+- `apps/server/src/agents/gateway.ts` (imports, runner creation, removed two function bodies)
+- `apps/server/src/agents/gateway/memory.ts` (new)
+- `work/T-0517-agents-g3-extract-memory.md` (this task file)
+
+### Commands run
+- `pnpm install` → Done, 0 errors (peer-dependency warning only).
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/agents` →
+  Test Files 16 passed | 1 skipped (17); Tests 430 passed | 1 skipped (431). Agents tests unchanged.
+- `pnpm gate` (from repo root) →
+  ```
+  gate: 3 changed file(s) against main
+  PASS  install (frozen)
+  PASS  format
+  PASS  lint
+  PASS  typecheck
+  PASS  tests @zilar/server
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Rebase onto T-0516 (G2)
+- Main gained `gateway/budget.ts` (`createBudgetGate`) while this branch moved the memory
+  functions. Conflict in `gateway.ts` resolved by keeping both: `budgetGate` is created
+  first, then `createMemoryRunner({ ..., checkDmRoundGate: budgetGate.checkDmRoundGate })`.
+  Removed the now-duplicated inline `startCompaction`/`runningCompactions` and inline
+  `checkDmRoundGate`, and dropped the `getAiUsage`/`AiUsage` plus `listFacts`/
+  `renderMemoryBlock` imports. Imports keep both `./gateway/budget` and `./gateway/memory`.
+  `status: merged` kept.
+- Post-rebase `pnpm install` → Done, 0 errors.
+- Post-rebase `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/agents` →
+  Test Files 16 passed | 1 skipped (17); Tests 430 passed | 1 skipped (431).
+- Post-rebase `pnpm gate` →
+  ```
+  gate: 3 changed file(s) against main
+  PASS  install (frozen)
+  PASS  format
+  PASS  lint
+  PASS  typecheck
+  PASS  tests @zilar/server
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Problems / deviations
+- None. Pure extraction, no logic change, no Effect, no new dependencies, no test edits.
+
+### Open questions
+- None.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-08). G3 is a pure extraction: loadMemoryContext, startCompaction and runningCompactions moved verbatim into agents/gateway/memory.ts (createMemoryRunner), with checkDmRoundGate injected. The agents tests are unchanged. Pre-review clean. It may need a rebase after T-0516 (both edit gateway.ts).
