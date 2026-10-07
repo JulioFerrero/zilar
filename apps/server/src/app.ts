@@ -30,7 +30,7 @@ import type { ProviderProbe } from './connections/probe';
 import { createConnectionsRoutes, type ConnectionsLogger } from './connections/routes';
 import { createBlocksRoutes } from './blocks/routes';
 import { createContactsRoutes } from './contacts/routes';
-import { createContactRequestsRoutes } from './contact-requests/routes';
+import { createContactRequestsApi } from './contact-requests/api';
 import { createDirectoryRoutes } from './directory/routes';
 import { createHandlesApi } from './handles/api';
 import { mountEffectRoutes } from './effect/http';
@@ -323,10 +323,15 @@ export function createApp({
   // limited; the sweep asserts every one of them answers 401 unauthenticated.
   const handlesApi = createHandlesApi({ auth, db, audit: auditRecorder, logger });
   mountEffectRoutes(app, handlesApi.routes, handlesApi.handler);
-  app.route(
-    '/api',
-    createContactRequestsRoutes({ auth, db, config, adminClient, audit: auditRecorder }),
-  );
+  const contactRequestsApi = createContactRequestsApi({
+    auth,
+    db,
+    config,
+    adminClient,
+    audit: auditRecorder,
+    logger,
+  });
+  mountEffectRoutes(app, contactRequestsApi.routes, contactRequestsApi.handler);
   // User blocks (T-0171): session-required, write-rate-limited; the sweep
   // asserts every one of them answers 401 unauthenticated.
   app.route('/api', createBlocksRoutes({ auth, db, audit: auditRecorder }));

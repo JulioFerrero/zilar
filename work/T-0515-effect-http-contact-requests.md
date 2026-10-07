@@ -1,7 +1,7 @@
 ---
 id: T-0515
 title: "Effect C (HTTP): contact-requests routes (6 endpoints + users/by-handle) onto the HttpApi adapter; contact-requests tests unchanged"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0515-effect-http-contact-requests
 model: auto
@@ -67,4 +67,55 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+
+Moved `contact-requests` onto the Effect `HttpApi` adapter, following `docs/EFFECT_GUIDE.md` ("Moving a server route module onto Effect HTTP") and `apps/server/src/handles/api.ts` as the worked example.
+
+- Added `apps/server/src/contact-requests/api.ts`:
+  - group `contactRequests`, `.prefix('/api')`, `.middleware(Session)` then `.middleware(ContactRequestsSchemaErrors)`;
+  - the 6 endpoints with the same methods and paths, and six exact routes in `CONTACT_REQUESTS_API_ROUTES`;
+  - the same exported rate-limit constants (`CONTACT_REQUEST_CREATE_*`, `CONTACT_REQUEST_READ_*`, `BY_HANDLE_*`) and injectable `now` / `createLimiter` / `readLimiter` / `byHandleLimiter`;
+  - the same limiter order: `Session`, then each endpoint's limiter as an endpoint middleware that runs **before** decode (so an invalid create body still spends the create budget), then the service call;
+  - `POST /contact-requests` body strict via `HttpApi.PayloadParseOptions: { onExcessProperty: 'error' }`, with the legacy zod schema kept only to rebuild `issues[0].message` (same shim pattern as handles);
+  - the 200-vs-201 split answered with raw `HttpServerResponse.jsonUnsafe` (200 `{ request, incoming: true }` when `reverseOf` is set, else 201 `{ request }`); every service `HttpError` goes through `withErrorEnvelope` unchanged.
+- `apps/server/src/app.ts`: replaced the one `app.route('/api', createContactRequestsRoutes(...))` mount with `createContactRequestsApi({ ..., logger })` + `mountEffectRoutes(app, ...)`; changed the import to `./contact-requests/api`.
+- Deleted `apps/server/src/contact-requests/routes.ts` (`git rm`).
+- Tests unchanged.
+
+### Files changed
+
+- `apps/server/src/contact-requests/api.ts` (new)
+- `apps/server/src/contact-requests/routes.ts` (deleted)
+- `apps/server/src/app.ts` (import + mount only)
+- `work/T-0515-effect-http-contact-requests.md` (this report / status)
+
+### Commands and real results
+
+- `pnpm install` — done, 1171 packages, 19s.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot contact-requests/contact-requests.test.ts` — **1 file passed, 15 tests passed**.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot blocks authz-sweep app.test` — **3 files passed, 28 tests passed** (includes the 401 sweep, which now sees the 6 exact mounted routes).
+- `pnpm gate` (first run) — `FAIL format` on the new `api.ts` only (`scope: every changed file is inside the Allowed files`). Ran `pnpm exec prettier --write apps/server/src/contact-requests/api.ts`, then:
+- `pnpm gate` — **GATE PASS**:
+  ```
+  gate: 4 changed file(s) against main
+  PASS  install (frozen)  (2.5s)
+  PASS  format  (29.3s)
+  PASS  lint  (1.6s)
+  PASS  typecheck  (12.9s)
+  PASS  tests @zilar/server  (513.6s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Notes / deviations
+
+- No deviation from the spec. `logger` was added to the new API's dependency object (required by `sessionLayer`/`withErrorEnvelope`); `app.ts` already had `logger` in scope, so no other call sites changed.
+- The only schema failure path in this module is the create payload; the group's schema-error middleware rebuilds the legacy zod message from the cached body like handles. Path params are `Schema.String`, so they cannot fail decode.
+
+### Blocked / needs a decision
+
+None.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-08). contact-requests is served by Effect HttpApi through the adapter: the same seven endpoints, the 200 or 201 split on POST, a strict body with the legacy message, and the same limiter order. app.ts changes only the mount; the tests are unchanged and the gate passed. Pre-review clean.

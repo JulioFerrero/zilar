@@ -457,7 +457,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0510](T-0510-effect-sql-blocks-runtime.md) | Effect C1: blocks on effect/sql + runtime wiring | running | auto | T-0496 | |
 | [T-0512](T-0512-agents-g1-extract-contracts.md) | Agents G1: extract contracts and DB lookups | running | auto | T-0503 | |
 | [T-0514](T-0514-effect-http-blocks-contacts-directory.md) | Effect C (HTTP): blocks, contacts, directory on HttpApi | running | auto | T-0498 | |
-| [T-0515](T-0515-effect-http-contact-requests.md) | Effect C (HTTP): contact-requests on HttpApi | running | auto | T-0498 | |
 | [T-0427](T-0427-mobile-forwarded-header.md) | Mobile: forwarded messages show 'Forwarded from X [in Y]' | 2026-10-06 |
 | [T-0428](T-0428-mobile-new-chat-menu-sheet.md) | Mobile: New chat menu on the kit ActionSheet with icons | 2026-10-06 |
 | [T-0429](T-0429-mobile-dismiss-banner.md) | Mobile: DismissBanner replaces 12 copied chat screen banners | 2026-10-06 |
@@ -539,3 +538,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0509](T-0509-effect-runner-client-lifecycle.md) | Effect F: RunnerClient lifecycle on Effect | 2026-10-07 |
 | [T-0513](T-0513-agents-c1-completion-effect.md) | Agents C1: model call on Effect | 2026-10-07 |
 | [T-0496](T-0496-db-effect-sql-spike.md) | Effect F3 spike: pins on effect/sql + migration plan | 2026-10-07 |
+| [T-0515](T-0515-effect-http-contact-requests.md) | Effect C (HTTP): contact-requests on HttpApi | 2026-10-07 |
