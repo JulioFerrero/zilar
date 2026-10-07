@@ -4,6 +4,7 @@
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
+import type { RequestIdVariables } from 'hono/request-id';
 import { contactRequests, user, userBlocks } from '../db/schema';
 import {
   bootstrapUser,
@@ -16,7 +17,8 @@ import {
 } from '../test-support';
 import { claimHandle } from '../handles/store';
 import { createRateLimiter } from '../rate-limit';
-import { BLOCK_WRITE_RATE_LIMIT_MAX, createBlocksRoutes } from './routes';
+import { mountEffectRoutes } from '../effect/http';
+import { BLOCK_WRITE_RATE_LIMIT_MAX, createBlocksApi } from './api';
 import { blockUser, listBlockedUsers, MAX_BLOCK_LIST_ROWS, unblockUser } from './service';
 
 function authHeaders(cookie: string): Record<string, string> {
@@ -297,27 +299,19 @@ describe('blocks', () => {
   it('refuses reads after the injected read limiter is exhausted', async () => {
     const alice = await withHandle('alice@example.com', 'alice_rl');
     const { Hono } = await import('hono');
-    const { HttpError } = await import('../errors');
-    const wrapper = new Hono();
-    wrapper.onError((error, c) => {
-      if (error instanceof HttpError) {
-        return c.json({ error: { code: error.code, message: error.message } }, error.status);
-      }
-      throw error;
+    const wrapper = new Hono<{ Variables: RequestIdVariables }>();
+    const blocksApi = createBlocksApi({
+      auth: context.auth,
+      db: context.db,
+      logger: context.logger,
+      readLimiter: createRateLimiter({ max: 1, windowMs: 60_000 }),
     });
-    wrapper.route(
-      '/',
-      createBlocksRoutes({
-        auth: context.auth,
-        db: context.db,
-        readLimiter: createRateLimiter({ max: 1, windowMs: 60_000 }),
-      }),
-    );
-    const first = await wrapper.request('/blocks', {
+    mountEffectRoutes(wrapper, blocksApi.routes, blocksApi.handler);
+    const first = await wrapper.request('/api/blocks', {
       headers: authHeaders(alice.cookie),
     });
     expect(first.status).toBe(200);
-    const second = await wrapper.request('/blocks', {
+    const second = await wrapper.request('/api/blocks', {
       headers: authHeaders(alice.cookie),
     });
     expect(second.status).toBe(429);
@@ -327,30 +321,20 @@ describe('blocks', () => {
     const alice = await withHandle('alice@example.com', 'alice_i');
     const bob = await withHandle('bob@example.com', 'bob_i');
     const { Hono } = await import('hono');
-    const { HttpError } = await import('../errors');
-    // A standalone route object has no error mapper, so mount it on a
-    // wrapper with the same HttpError mapping `app.ts` uses.
-    const wrapper = new Hono();
-    wrapper.onError((error, c) => {
-      if (error instanceof HttpError) {
-        return c.json({ error: { code: error.code, message: error.message } }, error.status);
-      }
-      throw error;
+    const wrapper = new Hono<{ Variables: RequestIdVariables }>();
+    const blocksApi = createBlocksApi({
+      auth: context.auth,
+      db: context.db,
+      logger: context.logger,
+      writeLimiter: createRateLimiter({ max: 1, windowMs: 60_000 }),
     });
-    wrapper.route(
-      '/',
-      createBlocksRoutes({
-        auth: context.auth,
-        db: context.db,
-        writeLimiter: createRateLimiter({ max: 1, windowMs: 60_000 }),
-      }),
-    );
-    const first = await wrapper.request(`/blocks/${bob.id}`, {
+    mountEffectRoutes(wrapper, blocksApi.routes, blocksApi.handler);
+    const first = await wrapper.request(`/api/blocks/${bob.id}`, {
       method: 'PUT',
       headers: authHeaders(alice.cookie),
     });
     expect(first.status).toBe(200);
-    const second = await wrapper.request(`/blocks/${bob.id}`, {
+    const second = await wrapper.request(`/api/blocks/${bob.id}`, {
       method: 'PUT',
       headers: authHeaders(alice.cookie),
     });

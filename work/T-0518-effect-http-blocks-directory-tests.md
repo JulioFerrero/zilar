@@ -1,7 +1,7 @@
 ---
 id: T-0518
 title: "Effect C (HTTP) follow-up: blocks limiter tests target the Effect mount, legacy createBlocksRoutes deleted; directory 400 and limiter paths get through-app tests"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0518-effect-http-blocks-directory-tests
 model: auto
@@ -59,4 +59,62 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+
+**1. Blocks limiter tests now exercise the Effect mount.**
+Both tests keep their names, scenario and assertions (first call 200, second 429 `rate_limited`). They now build a minimal Hono app, mount the real Effect handler with an injected limiter, and call it:
+
+```ts
+const wrapper = new Hono<{ Variables: RequestIdVariables }>();
+const blocksApi = createBlocksApi({
+  auth: context.auth, db: context.db, logger: context.logger,
+  readLimiter: createRateLimiter({ max: 1, windowMs: 60_000 }), // writeLimiter in the write test
+});
+mountEffectRoutes(wrapper, blocksApi.routes, blocksApi.handler);
+const first = await wrapper.request('/api/blocks', { headers: authHeaders(alice.cookie) });
+```
+
+The old wrapper's manual `onError` HttpError mapper is gone: the Effect path answers 429 through `httpErrorResponse`, exactly like production.
+
+**2. Deleted the legacy factory.** Removed `createBlocksRoutes` and its now-unused `Hono` / `requireSession` imports from `apps/server/src/blocks/api.ts`, deleted `apps/server/src/blocks/routes.ts`, and rewrote the stale header comment (it said the Hono router was "deleted" while claiming the factory was "the same as the deleted `routes.ts`"). `blocks.test.ts` now imports `createBlocksApi` and `BLOCK_WRITE_RATE_LIMIT_MAX` from `./api`.
+
+**3. Directory 400 and 429 through the full app** (`groups/visibility.test.ts`, `testApp`):
+- `?kind=bogus` → 400 `invalid_request`, message `Expected "group" | "channel"\n  at ["kind"]` (the Effect Schema text T-0514 chose).
+- `?q=<101 chars>` → 400 `invalid_request`, message `Expected a value with a length of at most 100\n  at ["q"]`.
+- limiter exhausted: `DIRECTORY_RATE_LIMIT_MAX` (30) requests all 200, the `31st` is 429 `rate_limited`. `testApp` cannot inject the directory limiter (doing so would need `app.ts`, which is outside the Allowed files), so I used the spec's fallback of calling it `DIRECTORY_RATE_LIMIT_MAX + 1` times through the full app.
+
+**4.** No other test changes. `apps/server/src/test-support.ts` was **not** changed: neither blocks (standalone mount) nor directory (full-app loop) needed an injection seam.
+
+### Files changed (all inside the Allowed files)
+- `apps/server/src/blocks/blocks.test.ts` (two limiter tests rewritten onto the Effect mount)
+- `apps/server/src/blocks/api.ts` (header comment fixed, `createBlocksRoutes` + unused imports removed)
+- `apps/server/src/blocks/routes.ts` (deleted)
+- `apps/server/src/groups/visibility.test.ts` (two directory tests added)
+- `work/T-0518-effect-http-blocks-directory-tests.md` (this report + status)
+
+### Commands run (real results)
+- `pnpm install` → `Done in 14s` (only warnings: 3 deprecated subdeps; mobile peer `@types/react-dom` wants `@types/react@^19.3.0`, found 19.2.18 — pre-existing).
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot blocks groups/visibility` → **2 files, 38 tests passed**.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot blocks groups/visibility authz-sweep` → **3 files, 43 tests passed**; the 401 sweep still lists `PUT/DELETE /api/blocks/:userId`, `GET /api/blocks`, `GET /api/directory`, `GET /api/groups/by-handle/:handle` as 401.
+- `pnpm gate` (repo root) → first run **GATE FAIL** at typecheck: the wrapper was `new Hono()` and `mountEffectRoutes` wants `ServerApp = Hono<{ Variables: RequestIdVariables }>`. Fixed the test type; second run:
+  ```
+  gate: 5 changed file(s) against main
+  PASS  install (frozen)  (1.5s)
+  PASS  format  (30.8s)
+  PASS  lint  (0.7s)
+  PASS  typecheck  (18.8s)
+  PASS  tests @zilar/server  (567.8s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Deviations / problems
+- The blocks limiter tests mount the Effect handler on a local Hono wrapper (the spec's first allowed option) rather than `testApp`, because injecting the blocks limiters through `testApp` would need changes to `app.ts`, which is outside the Allowed files.
+- Directory limiter exhaustion goes through the full app with 31 calls (the spec's stated fallback); no injection seam was added.
+
+### Open questions
+- None.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-08). The blocks limiter tests now run on the real Effect mount. The legacy Hono blocks routes are deleted. The directory 400 and 429 cases were added through the full app. Pre-review clean; the nit (the stale BlocksRoutesDependencies name) is accepted.

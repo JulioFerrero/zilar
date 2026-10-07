@@ -9,6 +9,7 @@ import { aiLimits, ais, groupAis, groupMembers, groups, providerConnections } fr
 import { aiLocalpart } from '../ais/service';
 import { joinPublicGroup } from './join';
 import { PUBLIC_GROUP_MAX_MEMBERS } from '../directory/service';
+import { DIRECTORY_RATE_LIMIT_MAX } from '../directory/api';
 import {
   bootstrapUser,
   contactOf,
@@ -510,6 +511,38 @@ describe('public groups and channels', () => {
     const page = (await (await directoryRequest(strangerCookie)).json()) as DirectoryBody;
     expect(page.entries.map((entry) => entry.id)).toEqual([second.id, first.id]);
     expect(page.next).toBeNull();
+  });
+
+  it('rejects a bad kind and an overlong query with the schema 400', async () => {
+    const user = await bootstrapUser(context, app, 'directory-400@example.com');
+
+    const badKind = await directoryRequest(user.cookie, '?kind=bogus');
+    expect(badKind.status).toBe(400);
+    const badKindBody = (await badKind.json()) as { error: { code: string; message: string } };
+    expect(badKindBody.error.code).toBe('invalid_request');
+    expect(badKindBody.error.message).toBe('Expected "group" | "channel"\n  at ["kind"]');
+
+    const longQuery = await directoryRequest(user.cookie, `?q=${'a'.repeat(101)}`);
+    expect(longQuery.status).toBe(400);
+    const longQueryBody = (await longQuery.json()) as { error: { code: string; message: string } };
+    expect(longQueryBody.error.code).toBe('invalid_request');
+    expect(longQueryBody.error.message).toBe(
+      'Expected a value with a length of at most 100\n  at ["q"]',
+    );
+  });
+
+  it('answers 429 once the directory limiter is exhausted', async () => {
+    const user = await bootstrapUser(context, app, 'directory-limit@example.com');
+
+    for (let attempt = 0; attempt < DIRECTORY_RATE_LIMIT_MAX; attempt += 1) {
+      const response = await directoryRequest(user.cookie);
+      expect(response.status).toBe(200);
+      await response.text();
+    }
+
+    const limited = await directoryRequest(user.cookie);
+    expect(limited.status).toBe(429);
+    expect(((await limited.json()) as { error: { code: string } }).error.code).toBe('rate_limited');
   });
 
   it('treats LIKE wildcards in the query as literal text', async () => {

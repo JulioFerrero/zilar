@@ -1,11 +1,7 @@
 // Blocks module on the Effect `HttpApi` adapter (T-0514): the same methods,
-// paths, limiter order and answers as the deleted Hono router, mounted under
-// Hono by `apps/server/src/effect/http.ts`. Handlers keep calling the drizzle
+// paths, limiter order and answers as the old Hono router, mounted under Hono
+// by `apps/server/src/effect/http.ts`. Handlers keep calling the drizzle
 // store; the DB rewrite is a separate lane.
-//
-// `createBlocksRoutes` is kept next to the Effect mount because
-// `blocks.test.ts` imports it from `./routes` and mounts it on a Hono wrapper
-// to exercise the injected rate limiters. `routes.ts` re-exports it.
 
 import { Effect, Layer, Schema } from 'effect';
 import { HttpServer, HttpServerRequest, HttpRouter } from 'effect/http';
@@ -16,11 +12,9 @@ import {
   HttpApiGroup,
   HttpApiMiddleware,
 } from 'effect/http-api';
-import { Hono } from 'hono';
 import type { Logger } from 'pino';
 import type { AuditRecorder } from '../audit/service';
 import type { Auth } from '../auth/auth';
-import { requireSession } from '../auth/session';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
@@ -231,57 +225,4 @@ export function createBlocksApi(deps: BlocksApiDependencies): EffectApiMount {
   );
 
   return { handler, routes: BLOCKS_API_ROUTES };
-}
-
-// The legacy Hono factory, kept only so `blocks.test.ts` can mount the routes
-// on its own wrapper with an injected limiter. Production uses
-// `createBlocksApi`. Behavior is byte-identical to the deleted `routes.ts`.
-export function createBlocksRoutes(deps: BlocksRoutesDependencies): Hono {
-  const routes = new Hono();
-  const now = deps.now ?? Date.now;
-  const writeLimiter =
-    deps.writeLimiter ??
-    createRateLimiter({
-      max: BLOCK_WRITE_RATE_LIMIT_MAX,
-      windowMs: BLOCK_WRITE_RATE_LIMIT_WINDOW_MS,
-      now,
-    });
-  const readLimiter =
-    deps.readLimiter ??
-    createRateLimiter({
-      max: BLOCK_READ_RATE_LIMIT_MAX,
-      windowMs: BLOCK_READ_RATE_LIMIT_WINDOW_MS,
-      now,
-    });
-  const service = serviceFor(deps);
-
-  // Blocks `:userId`, idempotent. Unknown users answer 404, yourself 400.
-  routes.put('/blocks/:userId', async (c) => {
-    const { user } = await requireSession(deps.auth, c.req.raw.headers);
-    if (!writeLimiter.allow(user.id)) {
-      throw new HttpError(429, 'rate_limited', 'Too many attempts, try again later');
-    }
-    return c.json(await blockUser(service, user.id, c.req.param('userId')));
-  });
-
-  // Unblocks `:userId`, idempotent: unblocking someone never blocked still
-  // answers success.
-  routes.delete('/blocks/:userId', async (c) => {
-    const { user } = await requireSession(deps.auth, c.req.raw.headers);
-    if (!writeLimiter.allow(user.id)) {
-      throw new HttpError(429, 'rate_limited', 'Too many attempts, try again later');
-    }
-    return c.json(await unblockUser(service, user.id, c.req.param('userId')));
-  });
-
-  // The blocker's list, newest first.
-  routes.get('/blocks', async (c) => {
-    const { user } = await requireSession(deps.auth, c.req.raw.headers);
-    if (!readLimiter.allow(user.id)) {
-      throw new HttpError(429, 'rate_limited', 'Too many attempts, try again later');
-    }
-    return c.json(await listBlockedUsers(service, user.id));
-  });
-
-  return routes;
 }
