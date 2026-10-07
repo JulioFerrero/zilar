@@ -86,17 +86,21 @@ export function AiMemorySectionContent({
   state,
   aiName,
   actions,
+  initiallyOpen = false,
 }: {
   state: AiMemorySectionState;
   aiName: string;
   actions: AiMemorySectionActions;
+  /** When true the section mounts already open (the rooms sheet), so the
+   * Show and Hide buttons are hidden. */
+  initiallyOpen?: boolean;
 }) {
   const { open, status, memory, forgetError, forgettingId, clearError, confirmingClear } = state;
   return (
     <View accessibilityLabel="Memory" className="gap-2 border-t border-divider pt-4">
       <View className="flex-row items-center justify-between">
         <Text className="text-[14px] font-medium">Memory</Text>
-        {open ? (
+        {open && !initiallyOpen ? (
           <Button
             variant="ghost"
             size="sm"
@@ -239,13 +243,19 @@ export function AiMemorySection({
   chat,
   aiId,
   aiName,
+  initiallyOpen = false,
 }: {
   api: AiMemoryApi;
   chat: string;
   aiId: string;
   aiName: string;
+  /**
+   * Mounts the section already open (the rooms sheet): it loads at once
+   * and shows neither the Show nor the Hide button.
+   */
+  initiallyOpen?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(initiallyOpen);
   const [status, setStatus] = useState<AiMemoryStatus>('loading');
   const [memory, setMemory] = useState<AiMemory | null>(null);
   const [forgetError, setForgetError] = useState('');
@@ -323,6 +333,7 @@ export function AiMemorySection({
   return (
     <AiMemorySectionContent
       aiName={aiName}
+      initiallyOpen={initiallyOpen}
       state={{
         open,
         status,

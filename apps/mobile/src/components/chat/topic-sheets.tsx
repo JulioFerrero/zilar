@@ -1,4 +1,4 @@
-import { Check, Lock } from 'lucide-react-native';
+import { Brain, Check, Lock } from 'lucide-react-native';
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
@@ -153,6 +153,7 @@ export function TopicInfoSheet({
   onPickApprover,
   onRetryRoles,
   onRetryGroupRoles,
+  onOpenAiMemory,
 }: {
   chat: ChatSummary | null;
   groupTitle: string;
@@ -184,6 +185,9 @@ export function TopicInfoSheet({
   onPickApprover: (roleId: string | null) => void;
   onRetryRoles: () => void;
   onRetryGroupRoles: () => void;
+  /** Opens the "What <AI> remembers" sheet for an AI. When unset the AI
+   * rows show no memory button. */
+  onOpenAiMemory?: (ai: { id: string; name: string }) => void;
 }) {
   const scheme = asColorScheme(useColorScheme().colorScheme);
   const topic = chat?.topic;
@@ -250,6 +254,16 @@ export function TopicInfoSheet({
                 <Text numberOfLines={1} className="flex-1 text-[15px] text-foreground">
                   {ai.name}
                 </Text>
+                {onOpenAiMemory !== undefined ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`What ${ai.name} remembers`}
+                    onPress={() => onOpenAiMemory(ai)}
+                    className="rounded-full p-2 active:bg-surface-raised"
+                  >
+                    <Brain size={16} color={MUTED_FOREGROUND[scheme]} />
+                  </Pressable>
+                ) : null}
               </View>
             ))}
             {ais.length === 0 ? (
