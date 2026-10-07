@@ -1,7 +1,7 @@
 ---
 id: T-0455
 title: "AI memory: when remember saves a fact, the reply ends with a plain 'Remembered: <fact>' line"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0455-memory-remembered-line
 model: auto
@@ -56,4 +56,39 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Status: review
+
+### What I did
+- `tools.ts`: added `REMEMBERED_FACT_MAX_LENGTH = 280` and exported `formatRememberedLine(text)`, which returns `\n\nRemembered: <clean>` (plain text, no emoji). Extracted the sanitize loop into a private `sanitizeLine(text, maxLength)`; `sanitizeSummary` now delegates to it with its existing 200 cap, so its behavior is unchanged.
+- `gateway.ts`: the `remember` branch now returns `{ content: 'ok', notice: formatRememberedLine(call.text) }` on `saved`. `duplicate` (`already remembered`), `invalid` and `refused` return no notice, so the line is appended once per saved fact on both the DM and room reply paths.
+- Tests added: exact `formatRememberedLine` output, control characters/newlines/tabs collapsed to spaces, and a 300-character input capped to 280 characters after the prefix (`tools.test.ts`); DM reply ends with `noted\n\nRemembered: The launch is on Friday.`, a duplicate fact adds no line, and a member's room turn that saves a fact gets `@Ana noted\n\nRemembered: The launch is on Friday.` (`gateway.test.ts`).
+
+### Files changed
+- `apps/server/src/agents/tools.ts`
+- `apps/server/src/agents/tools.test.ts`
+- `apps/server/src/agents/gateway.ts`
+- `apps/server/src/agents/gateway.test.ts`
+- `work/T-0455-memory-remembered-line.md` (status + this report)
+
+### Commands run
+- `pnpm install` → done, 1170 packages, exit 0.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot agents/tools agents/gateway` → `Test Files 2 passed (2)`, `Tests 174 passed (174)`, exit 0.
+- `pnpm gate` (repo root), summary lines:
+  - `gate: 5 changed file(s) against main`
+  - `PASS  install (frozen)  (1.0s)`
+  - `PASS  format  (13.2s)`
+  - `PASS  lint  (1.0s)`
+  - `PASS  typecheck  (7.0s)`
+  - `PASS  tests @zilar/server  (33.5s)`
+  - `scope: every changed file is inside the Allowed files`
+  - `GATE PASS`
+
+### Deviations from the spec
+- The existing DM `remember` test asserted the fact never appeared in the combined logs *and* the sent reply. The spec now requires the fact in the reply, so I narrowed that assertion to the logger only (`JSON.stringify(logger.calls)` must not contain the fact) and added the reply assertion. The "without logging the text" guarantee is preserved.
+
+### Blocked / needs a decision
+None. No new dependencies. No files touched outside the Allowed list.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-07). formatRememberedLine adds a plain "Remembered: <fact>" line (sanitized, capped at 280, no emoji) as a notice on a saved fact, so it rides on DM and room replies. Duplicate or refused facts add nothing. sanitizeSummary was refactored into a shared sanitizeLine. Pre-review clean.

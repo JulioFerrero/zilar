@@ -4,6 +4,7 @@ import {
   buildGroupTools,
   buildTools,
   formatPersonaUpdatedLine,
+  formatRememberedLine,
   MEMORY_TOOLS,
   MEMORY_ZOOM_TOOL,
   parseToolArguments,
@@ -370,5 +371,21 @@ describe('persona reply lines', () => {
 
   it('holds the exact restored line', () => {
     expect(PERSONA_RESTORED_LINE).toBe('\n\n↩️ Persona restored.');
+  });
+});
+
+describe('formatRememberedLine', () => {
+  it('formats the exact remembered line without emoji', () => {
+    expect(formatRememberedLine('The launch is on Friday.')).toBe(
+      '\n\nRemembered: The launch is on Friday.',
+    );
+  });
+
+  it('turns newlines and tabs into spaces', () => {
+    expect(formatRememberedLine('a\nb\tc')).toBe('\n\nRemembered: a b c');
+  });
+
+  it('caps the fact at 280 characters after the prefix', () => {
+    expect(formatRememberedLine('x'.repeat(300))).toBe(`\n\nRemembered: ${'x'.repeat(280)}`);
   });
 });

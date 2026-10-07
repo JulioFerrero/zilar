@@ -1958,8 +1958,33 @@ describe('agent gateway', () => {
 
       expect(await factsFor(seeded.aiId, `dm:${seeded.ownerJid}`)).toEqual([fact]);
       expect(toolMessageOf(calls[1]!)?.content).toBe('ok');
-      const everything = `${JSON.stringify(logger.calls)}\n${JSON.stringify(core.sent)}`;
-      expect(everything).not.toContain(fact);
+      expect(core.sent[0]?.text).toBe(`noted\n\nRemembered: ${fact}`);
+      expect(JSON.stringify(logger.calls)).not.toContain(fact);
+    });
+
+    it('adds no remembered line for a duplicate fact', async () => {
+      const seeded = await seedAi(context);
+      const cores: FakeCore[] = [];
+      const fact = 'The launch is on Friday.';
+      await context.db.insert(aiMemoryFacts).values({
+        id: randomUUID(),
+        aiId: seeded.aiId,
+        chatKey: `dm:${seeded.ownerJid}`,
+        text: fact,
+      });
+      const { fetchImpl, calls } = scriptedFetch([
+        toolCallResponse([{ id: 'call-1', name: 'remember', args: { text: fact } }]),
+        completionResponse('noted'),
+      ]);
+      const { gateway: started } = harness(cores, fetchImpl, new FakeLitellm());
+      await started.start();
+      const core = await coreFor(cores, seeded.aiJid);
+
+      core.receive(incoming(seeded.aiJid, seeded.ownerJid, 'm-1', 'remember the launch'));
+      await waitFor(() => core.sent.length === 1);
+
+      expect(toolMessageOf(calls[1]!)?.content).toBe('already remembered');
+      expect(core.sent[0]?.text).toBe('noted');
     });
 
     it('refuses a secret-looking fact and stores nothing', async () => {
@@ -2971,6 +2996,52 @@ describe('agent gateway', () => {
         content: 'Things you were asked to remember in this chat:\n- the room rule is be brief',
       });
       expect(messages.filter((message) => message.role === 'system')).toHaveLength(2);
+    });
+
+    it('appends the remembered line when a member turn saves a fact', async () => {
+      const fact = 'The launch is on Friday.';
+      const responses = [
+        jsonResponse({
+          choices: [
+            {
+              message: {
+                content: null,
+                tool_calls: [
+                  {
+                    id: 'call-1',
+                    type: 'function',
+                    function: { name: 'remember', arguments: JSON.stringify({ text: fact }) },
+                  },
+                ],
+              },
+            },
+          ],
+        }),
+        completionResponse('noted'),
+      ];
+      let index = 0;
+      const calls: Call[] = [];
+      const fetchImpl: FetchLike = (url, init) => {
+        calls.push({ url, init });
+        const response = responses[Math.min(index, responses.length - 1)]!;
+        index += 1;
+        return Promise.resolve(response.clone());
+      };
+      const { seeded, member, roomJid, core } = await roomSetup({
+        fetch: () => ({ fetchImpl, calls }),
+      });
+
+      core.receive(mention(seeded, member, roomJid, 'm-1'));
+      await waitFor(() => core.sent.length === 1);
+
+      expect(core.sent[0]?.text).toBe(`@Ana noted\n\nRemembered: ${fact}`);
+      const facts = await context.db
+        .select({ text: aiMemoryFacts.text })
+        .from(aiMemoryFacts)
+        .where(
+          and(eq(aiMemoryFacts.aiId, seeded.aiId), eq(aiMemoryFacts.chatKey, `room:${roomJid}`)),
+        );
+      expect(facts.map((row) => row.text)).toEqual([fact]);
     });
 
     it('joins on the ai-added event and leaves on ai-removed', async () => {
