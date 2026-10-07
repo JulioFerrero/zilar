@@ -455,7 +455,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0426](T-0426-mobile-ai-sheet-buttons-kit.md) | Mobile: AI activity Refresh, tool sheet Show all/less and Close on the kit Button | 2026-10-06 |
 | [T-0483](T-0483-effect-telegram-import.md) | Effect convert: Telegram import client | running | auto | T-0173 | |
 | [T-0485](T-0485-effect-giphy.md) | Effect convert: Giphy provider | running | auto | T-0173 | |
-| [T-0486](T-0486-effect-runner-hub.md) | Effect convert: runner hub loops | running | auto | T-0173 | |
 | [T-0487](T-0487-effect-mailer.md) | Effect convert: SMTP mailer send | running | auto | T-0173 | |
 | [T-0488](T-0488-effect-background-loops.md) | Effect convert: routines scheduler + approvals sweeper | running | auto | T-0173 | |
 | [T-0491](T-0491-watch-scroll-columns.md) | lead watch: keyboard scroll + two columns when wide | running | auto | — | |
@@ -522,3 +521,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0489](T-0489-effect-run-tool.md) | Effect convert: sandbox runTool | 2026-10-07 |
 | [T-0490](T-0490-effect-everywhere-plan.md) | Audit + plan: whole codebase on Effect 4 | 2026-10-07 |
 | [T-0482](T-0482-delegate-tools.md) | Listener S5b (server): delegate + task_status tools | 2026-10-07 |
+| [T-0486](T-0486-effect-runner-hub.md) | Effect convert: runner hub loops | 2026-10-07 |
