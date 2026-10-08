@@ -1,7 +1,7 @@
 ---
 id: T-0629
 title: "effect/sql: actions/gateway.ts statements off drizzle except the approval+pending-action transaction (it passes tx to createApproval in approvals/service.ts); same race-safe claims, cancels, audits and denials; tests unchanged"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0629-effect-sql-action-gateway
 model: auto
@@ -64,4 +64,78 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+
+Moved every statement listed in the spec from drizzle to `effect/sql` in
+`apps/server/src/actions/gateway.ts`, keeping the same guards, zero-row
+returns, audits, announcements and denial reasons:
+
+- `runOnApprovalDecided`: pending row by `approval_id`, approval
+  (`status`, `expires_at`), AI status, post-verify status read, and the
+  race-safe `UPDATE … SET status = 'running', started_at = … WHERE id = …
+  AND status = 'waiting' RETURNING *` claim.
+- `runRecoverStuck`: guarded stuck update (`status = 'running' AND
+  started_at < cutoff RETURNING *`), the `waiting` rows, and the per-row
+  approval read.
+- `cancelPending` and `finishPending`: guarded updates (`waiting` and
+  `running`).
+- `readAiStatus`, `isAiInGroup`, and the topic read in `isAiInTopic`.
+
+A private `runSql(db, effect)` helper calls `sqlRuntimeFor(db).runPromise`
+(same shape as `pins/service.ts`). Rows are read with the schema-inferred
+types `AiStatusRow` / `PendingActionRow`; `RETURNING *` and `SELECT *`
+return camelCased columns and `timestamptz` as `Date`, so
+`approval.expiresAt.getTime()` still works and no explicit conversion was
+needed. The `args` jsonb keys are untouched (`transformJson: false`).
+
+**Left on drizzle, with a comment:** the one transaction at what was
+478-511 that passes `tx` to `createApproval` and inserts the
+`pending_actions` row on the same `tx`. It moves when the approvals service
+moves (C1). I added a comment above it saying why.
+
+Dropped the now-unused `drizzle-orm` import and the `approvals`, `groupAis`,
+`topics` schema imports; kept `ais` and `pendingActions` for their
+`$inferSelect` types (same pattern as the pins pilot). No test files
+changed.
+
+### Files changed
+
+- `apps/server/src/actions/gateway.ts`
+- `work/T-0629-effect-sql-action-gateway.md` (status/report)
+
+### Commands and results
+
+- `pnpm install`: done, 1173 packages, no errors.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/actions/gateway.test.ts`: 46 passed.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/actions src/approvals`: 16 files, 257 passed (includes `flow.e2e.test.ts` and `recovery-loop.effect.test.ts`).
+- `pnpm gate`: first run FAILed on `format` (prettier on my file); ran
+  `pnpm exec prettier --write apps/server/src/actions/gateway.ts`, then:
+  ```
+  gate: 2 changed file(s) against main
+  PASS  install (frozen)  (0.9s)
+  PASS  format  (15.6s)
+  PASS  lint  (1.0s)
+  PASS  typecheck  (10.2s)
+  PASS  tests @zilar/server  (14.7s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Problems / deviations
+
+- None functional. Formatting was the only gate failure and was fixed on the
+  allowed file.
+
+### Open questions
+
+- None.
+
 ## Review (written by Claude)
+
+**2026-10-08, lead:** approved.
+- **Pre-review:** clean, 1 nit. The packet head is 606b6d10, the current HEAD.
+- **Lead check of the SQL:**
+  - the claim (`status = waiting` to `running`) keeps its guard, so exactly one caller wins;
+  - cancel and finish keep their status guards, and the stuck sweep keeps its cutoff;
+  - the 478-511 transaction stays on drizzle until the approvals service moves.
+- **Nit, for the cleanup task:** the inline row types should become `Pick<$inferSelect>`.

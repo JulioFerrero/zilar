@@ -1,10 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { Effect, Schedule, type Fiber } from 'effect';
-import { and, eq, lt } from 'drizzle-orm';
+import { SqlClient, SqlError } from 'effect/sql';
 import { ARGS_HASH_PATTERN } from '@zilar/protocol';
 import type { AuditEntry, AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
-import { ais, approvals, groupAis, pendingActions, topics } from '../db/schema';
+import { ais, pendingActions } from '../db/schema';
+import { sqlRuntimeFor } from '../effect/sql';
 import { createApproval, verifyApproval } from '../approvals/service';
 import { allowedTopicAiIds } from '../topics/access';
 import { findActiveRule } from '../approvals/rules';
@@ -116,6 +117,17 @@ export type DeniedReason = PolicyDenialReason;
 // schema inference for places where we hand-pick columns.
 type AiStatusRow = Pick<typeof ais.$inferSelect, 'id' | 'status'>;
 type PendingActionRow = typeof pendingActions.$inferSelect;
+
+// Every statement below runs on the `effect/sql` client registered for this
+// database (see `../effect/sql`), matching the pins pilot. The exported
+// functions stay `async` so routes, the approvals route and the tests keep
+// their shape during the transition.
+function runSql<A>(
+  db: ServerDatabase,
+  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
+): Promise<A> {
+  return sqlRuntimeFor(db).runPromise(effect);
+}
 
 export function createActionGateway(deps: ActionGatewayDependencies): ActionGateway {
   const now = deps.now ?? (() => new Date());
@@ -467,6 +479,12 @@ async function runApprovalPath(
 
   const expiresAt = new Date(at.getTime() + APPROVAL_TTL_MS);
 
+  // This one transaction stays on drizzle: it passes `tx` to
+  // `createApproval` (still a drizzle transaction client) and inserts the
+  // `pending_actions` row on the same `tx`, so it moves when the approvals
+  // service moves to `effect/sql` (C1 in `docs/audit/effect-sql-migration.md`).
+  // Every other statement in this module runs on `effect/sql`.
+
   // One transaction: if either insert fails nothing is left behind. The
   // approval row carries `args_hash`; the pending-action row carries the
   // exact parsed args. The hash is computed from the parsed args, the
@@ -564,22 +582,31 @@ async function runOnApprovalDecided(
   now: () => Date,
 ): Promise<void> {
   const at = now();
-  const [pending] = await deps.db
-    .select()
-    .from(pendingActions)
-    .where(eq(pendingActions.approvalId, approvalId))
-    .limit(1);
+  const [pending] = await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<PendingActionRow>`SELECT * FROM pending_actions
+        WHERE approval_id = ${approvalId} LIMIT 1`;
+    }),
+  );
   if (!pending) {
     return;
   }
   if (pending.status !== 'waiting') {
     return;
   }
-  const [approval] = await deps.db
-    .select()
-    .from(approvals)
-    .where(eq(approvals.id, approvalId))
-    .limit(1);
+  const [approval] = await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{
+        status: string;
+        expiresAt: Date;
+      }>`SELECT status, expires_at FROM approvals
+        WHERE id = ${approvalId} LIMIT 1`;
+    }),
+  );
   if (!approval) {
     return;
   }
@@ -587,11 +614,14 @@ async function runOnApprovalDecided(
   // Re-check the AI status: a stop between request and approval must
   // cancel the action. The approval service has already accepted the
   // human's decision; the kill switch wins here.
-  const [ai] = await deps.db
-    .select({ id: ais.id, status: ais.status })
-    .from(ais)
-    .where(eq(ais.id, pending.aiId))
-    .limit(1);
+  const [ai] = await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<AiStatusRow>`SELECT id, status FROM ais
+        WHERE id = ${pending.aiId} LIMIT 1`;
+    }),
+  );
   if (!ai || ai.status !== 'active') {
     await cancelPending(deps, pending, 'ai_not_active', at);
     return;
@@ -616,11 +646,14 @@ async function runOnApprovalDecided(
     // approval to tell them apart: `consumed` means a peer won the
     // verify race, anything else (denied / expired / wrong hash) means
     // we should cancel.
-    const [postVerify] = await deps.db
-      .select({ status: approvals.status })
-      .from(approvals)
-      .where(eq(approvals.id, approvalId))
-      .limit(1);
+    const [postVerify] = await runSql(
+      deps.db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ status: string }>`SELECT status FROM approvals
+          WHERE id = ${approvalId} LIMIT 1`;
+      }),
+    );
     if (postVerify?.status !== 'consumed') {
       await cancelPending(deps, pending, 'denied', at);
     }
@@ -630,11 +663,16 @@ async function runOnApprovalDecided(
   // The race-safe claim. Exactly one caller wins; the loser sees zero rows
   // updated and returns silently. After this point a crash leaves it
   // `running`, which `recoverStuck` reports — never re-executes.
-  const claimed = await deps.db
-    .update(pendingActions)
-    .set({ status: 'running', startedAt: at })
-    .where(and(eq(pendingActions.id, pending.id), eq(pendingActions.status, 'waiting')))
-    .returning();
+  const claimed = await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<PendingActionRow>`UPDATE pending_actions
+        SET status = 'running', started_at = ${at}
+        WHERE id = ${pending.id} AND status = 'waiting'
+        RETURNING *`;
+    }),
+  );
   if (claimed.length === 0) {
     return;
   }
@@ -703,11 +741,16 @@ async function runRecoverStuck(deps: ActionGatewayDependencies, now: () => Date)
   const at = now();
   const stuckCutoff = new Date(at.getTime() - STUCK_RUNNING_MS);
 
-  const stuck = await deps.db
-    .update(pendingActions)
-    .set({ status: 'failed', finishedAt: at })
-    .where(and(eq(pendingActions.status, 'running'), lt(pendingActions.startedAt, stuckCutoff)))
-    .returning();
+  const stuck = await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<PendingActionRow>`UPDATE pending_actions
+        SET status = 'failed', finished_at = ${at}
+        WHERE status = 'running' AND started_at < ${stuckCutoff}
+        RETURNING *`;
+    }),
+  );
   for (const row of stuck) {
     await deps.audit.record({
       actorUserId: null,
@@ -723,16 +766,27 @@ async function runRecoverStuck(deps: ActionGatewayDependencies, now: () => Date)
     });
   }
 
-  const orphaned = await deps.db
-    .select()
-    .from(pendingActions)
-    .where(eq(pendingActions.status, 'waiting'));
+  const orphaned = await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<PendingActionRow>`SELECT * FROM pending_actions
+        WHERE status = 'waiting'`;
+    }),
+  );
   for (const row of orphaned) {
-    const [approval] = await deps.db
-      .select({ id: approvals.id, expiresAt: approvals.expiresAt, status: approvals.status })
-      .from(approvals)
-      .where(eq(approvals.id, row.approvalId))
-      .limit(1);
+    const [approval] = await runSql(
+      deps.db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{
+          id: string;
+          expiresAt: Date;
+          status: string;
+        }>`SELECT id, expires_at, status FROM approvals
+          WHERE id = ${row.approvalId} LIMIT 1`;
+      }),
+    );
     if (!approval) {
       continue;
     }
@@ -748,11 +802,16 @@ async function cancelPending(
   reason: 'denied' | 'ai_not_active',
   at: Date,
 ): Promise<void> {
-  const updated = await deps.db
-    .update(pendingActions)
-    .set({ status: 'cancelled', finishedAt: at })
-    .where(and(eq(pendingActions.id, row.id), eq(pendingActions.status, 'waiting')))
-    .returning();
+  const updated = await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<PendingActionRow>`UPDATE pending_actions
+        SET status = 'cancelled', finished_at = ${at}
+        WHERE id = ${row.id} AND status = 'waiting'
+        RETURNING *`;
+    }),
+  );
   if (updated.length === 0) {
     return;
   }
@@ -786,10 +845,15 @@ async function finishPending(
   summary: string | null,
   at: Date,
 ): Promise<void> {
-  await deps.db
-    .update(pendingActions)
-    .set({ status, resultSummary: summary, finishedAt: at })
-    .where(and(eq(pendingActions.id, row.id), eq(pendingActions.status, 'running')));
+  await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`UPDATE pending_actions
+        SET status = ${status}, result_summary = ${summary}, finished_at = ${at}
+        WHERE id = ${row.id} AND status = 'running'`;
+    }),
+  );
 }
 
 async function writeAllowAudit(
@@ -834,20 +898,26 @@ async function writeResultAudit(
 }
 
 async function readAiStatus(db: ServerDatabase, aiId: string): Promise<AiStatusRow | null> {
-  const [row] = await db
-    .select({ id: ais.id, status: ais.status })
-    .from(ais)
-    .where(eq(ais.id, aiId))
-    .limit(1);
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<AiStatusRow>`SELECT id, status FROM ais
+        WHERE id = ${aiId} LIMIT 1`;
+    }),
+  );
   return row ?? null;
 }
 
 async function isAiInGroup(db: ServerDatabase, aiId: string, groupId: string): Promise<boolean> {
-  const [row] = await db
-    .select({ aiId: groupAis.aiId })
-    .from(groupAis)
-    .where(and(eq(groupAis.groupId, groupId), eq(groupAis.aiId, aiId)))
-    .limit(1);
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ aiId: string }>`SELECT ai_id FROM group_ais
+        WHERE group_id = ${groupId} AND ai_id = ${aiId} LIMIT 1`;
+    }),
+  );
   return row !== undefined;
 }
 
@@ -865,17 +935,20 @@ async function isAiInTopic(
   if (topicId === undefined) {
     return false;
   }
-  const [topic] = await db
-    .select({
-      id: topics.id,
-      groupId: topics.groupId,
-      visibility: topics.visibility,
-      isGeneral: topics.isGeneral,
-      archivedAt: topics.archivedAt,
-    })
-    .from(topics)
-    .where(eq(topics.id, topicId))
-    .limit(1);
+  const [topic] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{
+        id: string;
+        groupId: string;
+        visibility: 'public' | 'private';
+        isGeneral: boolean;
+        archivedAt: Date | null;
+      }>`SELECT id, group_id, visibility, is_general, archived_at FROM topics
+        WHERE id = ${topicId} LIMIT 1`;
+    }),
+  );
   // The topic must belong to the group and be live: an archived topic's
   // room is gone (the AI left it), so nothing may fire there anymore.
   if (!topic || topic.groupId !== groupId || topic.archivedAt !== null) {
