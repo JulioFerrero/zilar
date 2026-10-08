@@ -1,7 +1,7 @@
 ---
 id: T-0666
 title: "effect/sql phase 1: add deleteRoomMemoryEffect next to the drizzle deleteRoomMemory in agents/memory/store.ts; one test; drizzle version unchanged"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0666-room-memory-delete-effect
 model: auto
@@ -49,4 +49,36 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- `apps/server/src/agents/memory/store.ts`: added `deleteRoomMemoryEffect(aiId, roomLocalparts)` after `deleteRoomMemory`. It returns `Effect.Effect<void, SqlError.SqlError, SqlClient.SqlClient>`, builds the same `room:<localpart>` prefixes (deduplicated), returns early for an empty list, and runs the same four deletes in the same order (`ai_memory_messages`, `ai_memory_nodes`, `ai_memory_facts`, `ai_memory_state`), each scoped by `ai_id` and `split_part(chat_key, '@', 1) IN ${sql.in(prefixes)}`. The client is taken with `yield* SqlClient.SqlClient`, the same pattern as `addFact` (`store.ts:393`), so the drizzle `sql` import is shadowed inside the function only.
+- Updated the comment above `deleteRoomMemory` to point at the Effect version. `deleteRoomMemory` is unchanged.
+- `apps/server/src/agents/memory/cleanup.test.ts`: imported `sqlRuntimeFor` and `deleteRoomMemoryEffect`, and added two tests after the drizzle pair: "deleteRoomMemoryEffect deletes only one AI and only the named rooms" and "deleteRoomMemoryEffect does nothing for an empty list". They run the Effect through `sqlRuntimeFor(context.db).runPromise(...)` and make the same assertions as the drizzle tests.
+- Drizzle version and `drizzle-orm` version unchanged. No dependencies added.
+
+### Files changed
+- `apps/server/src/agents/memory/store.ts`
+- `apps/server/src/agents/memory/cleanup.test.ts`
+- `work/T-0666-room-memory-delete-effect.md` (status and this Report)
+
+### Commands and results
+- `pnpm install`: done (37.9s).
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/agents/memory/cleanup` (the single test file): 1 file passed, 6 tests passed (the existing tests and the two new Effect tests).
+- `pnpm gate` (from the worktree root, log kept in the scratchpad): exit 0.
+  - `PASS install (frozen) (2.2s)`
+  - `PASS format (43.5s)`
+  - `PASS lint (1.3s)`
+  - `PASS typecheck (18.0s)`
+  - `PASS tests @zilar/server (16.6s)`
+  - `scope: every changed file is inside the Allowed files`
+  - `GATE PASS`
+
+### Problems / deviations
+- None. The spec's column and table names match `apps/server/src/db/schema.ts` (`ai_memory_messages`, `ai_memory_nodes`, `ai_memory_facts`, `ai_memory_state`, with `ai_id` and `chat_key`).
+- The early return for an empty list sits inside `Effect.gen`, before the client is read. It issues no query in that case, which matches the drizzle version.
+
+### Blocked / needs a decision
+- None.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Haiku 5.5, as a Claude Code subagent, in one round with no fix needed (about 3.5 min). The lead reviewed the diff directly. It keeps the same prefixes, the same empty-list return (no query), the same four deletes in the same order, and `sql.in`. Both test copies make real assertions. The gate passed.

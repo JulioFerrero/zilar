@@ -527,6 +527,7 @@ export function buildCompactionPrompt(blockId: string, inputLines: string[]): st
 //
 // This one stays on drizzle: `groups/service.ts` calls it inside its own
 // drizzle transaction (`removeGroupAi`). It moves when that transaction does.
+// `deleteRoomMemoryEffect` below is the same delete on effect/sql (T-0666).
 export async function deleteRoomMemory(
   db: ServerDatabase,
   aiId: string,
@@ -572,6 +573,29 @@ export async function deleteRoomMemory(
         sql`split_part(${aiMemoryState.chatKey}, '@', 1) IN (${keys})`,
       ),
     );
+}
+
+// T-0666: the same delete as `deleteRoomMemory`, on effect/sql. Same prefixes,
+// same order, same scope. The drizzle version stays until its caller moves.
+export function deleteRoomMemoryEffect(
+  aiId: string,
+  roomLocalparts: string[],
+): Effect.Effect<void, SqlError.SqlError, SqlClient.SqlClient> {
+  return Effect.gen(function* () {
+    const prefixes = [...new Set(roomLocalparts)].map((localpart) => `room:${localpart}`);
+    if (prefixes.length === 0) {
+      return;
+    }
+    const sql = yield* SqlClient.SqlClient;
+    yield* sql`DELETE FROM ai_memory_messages
+      WHERE ai_id = ${aiId} AND split_part(chat_key, '@', 1) IN ${sql.in(prefixes)}`;
+    yield* sql`DELETE FROM ai_memory_nodes
+      WHERE ai_id = ${aiId} AND split_part(chat_key, '@', 1) IN ${sql.in(prefixes)}`;
+    yield* sql`DELETE FROM ai_memory_facts
+      WHERE ai_id = ${aiId} AND split_part(chat_key, '@', 1) IN ${sql.in(prefixes)}`;
+    yield* sql`DELETE FROM ai_memory_state
+      WHERE ai_id = ${aiId} AND split_part(chat_key, '@', 1) IN ${sql.in(prefixes)}`;
+  });
 }
 
 // "Clear memory": forget every node and fact of the chat and move the floor to
