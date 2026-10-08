@@ -10,7 +10,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0660](T-0660-ais-ensure-change-model-effect-sql.md) | effect/sql: ais model transactions and the gateway decrypt (C3) | in-progress | auto | T-0652 | |
-| [T-0661](T-0661-typecheck-with-tsgo.md) | typecheck with tsgo in every package | in-progress | auto | T-0659 | |
 | [T-0662](T-0662-sweeper-survivors-and-dry-run.md) | sweeper: report SIGKILL survivors, dry run keeps the throttle | in-progress | haiku-5.5 | | Haiku 5.5 test worker (Claude Code subagent) |
 | [T-0663](T-0663-rules-revoke-effect.md) | effect/sql phase 1: rules revoke as an Effect | in-progress | auto | | removeGroupAi chain |
 | [T-0664](T-0664-tools-deletes-effect.md) | effect/sql phase 1: tools deletes as Effects | in-progress | auto | | removeGroupAi chain |
@@ -695,3 +694,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0659](T-0659-server-drop-zod-dependency.md) | drop the zod dependency from the server | 2026-10-08 |
 | [T-0658](T-0658-autopilot-sweeper.md) | autopilot sweeps leftover test and typecheck processes | 2026-10-08 |
 | [T-0656](T-0656-gate-slots-and-nice.md) | gate slots, nice, Gradle stop, turbo globalDependencies | 2026-10-08 |
+| [T-0661](T-0661-typecheck-with-tsgo.md) | TypeScript 7.0.2 (native tsc) everywhere; mobile keeps the TS 6 API for Expo via @typescript/typescript6 | 2026-10-08 |
