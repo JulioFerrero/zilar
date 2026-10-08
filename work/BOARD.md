@@ -455,7 +455,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0426](T-0426-mobile-ai-sheet-buttons-kit.md) | Mobile: AI activity Refresh, tool sheet Show all/less and Close on the kit Button | 2026-10-06 |
 | [T-0555](T-0555-effect-http-ais.md) | Effect C (HTTP): AI management on HttpApi | planned | auto | T-0548 | |
 | [T-0557](T-0557-effect-http-connections.md) | Effect C (HTTP): provider-key connections on HttpApi | planned | auto | T-0548 | |
-| [T-0558](T-0558-effect-http-search.md) | Effect C (HTTP): message search on HttpApi | planned | auto | T-0548 | |
 | [T-0559](T-0559-effect-http-tools.md) | Effect C (HTTP): tools on HttpApi | planned | auto | T-0554 | |
 | [T-0560](T-0560-effect-http-media.md) | Effect C (HTTP): media gallery on HttpApi | planned | auto | T-0548 | |
 | [T-0561](T-0561-effect-http-auth-me-invites.md) | Effect C (HTTP): /me and invites on HttpApi | planned | auto | T-0548 | |
@@ -593,3 +592,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0553](T-0553-effect-http-approvals.md) | Effect C (HTTP): approvals on HttpApi | 2026-10-08 |
 | [T-0556](T-0556-agents-g4-extract-tool-exec.md) | Agents G4: extract the tool executor | 2026-10-08 |
 | [T-0562](T-0562-agents-g9-extract-lifecycle.md) | Agents G9: extract start/stop/reconcile | 2026-10-08 |
+| [T-0558](T-0558-effect-http-search.md) | Effect C (HTTP): message search on HttpApi | 2026-10-08 |

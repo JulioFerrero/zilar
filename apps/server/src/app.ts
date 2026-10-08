@@ -43,7 +43,7 @@ import { createInviteLinksRoutes, type TestInviteLinksOverrides } from './invite
 import { createPinsApi } from './pins/api';
 import { createPushApi } from './push/api';
 import { createRolesApi } from './roles/api';
-import { createSearchRoutes, type SearchRoutesDependencies } from './search/routes';
+import { createSearchApi, type SearchRoutesDependencies } from './search/api';
 import { createMediaRoutes } from './media/routes';
 import { createFilesRoutes } from './files/routes';
 import { createGifsRoutes } from './gifs/routes';
@@ -419,17 +419,15 @@ export function createApp({
   // Message search (T-0117) mounts always: without an archive pool every
   // search answers 501 `search_unavailable` instead of 404ing, so the web
   // can hide the feature. Never used by the AI gateway.
-  app.route(
-    '/api',
-    createSearchRoutes({
-      auth,
-      db,
-      config,
-      logger,
-      ...(archive === undefined ? {} : { archive }),
-      ...(searchNow === undefined ? {} : { now: searchNow }),
-    }),
-  );
+  const searchApi = createSearchApi({
+    auth,
+    db,
+    config,
+    logger,
+    ...(archive === undefined ? {} : { archive }),
+    ...(searchNow === undefined ? {} : { now: searchNow }),
+  });
+  mountEffectRoutes(app, searchApi.routes, searchApi.handler);
   // Media gallery (T-0431) mounts the same way: without an archive pool every
   // request answers 501 `media_unavailable` instead of 404ing.
   app.route(

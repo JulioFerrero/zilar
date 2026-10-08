@@ -1,11 +1,7 @@
-import { Hono } from 'hono';
-import { z } from 'zod';
 import type { Auth } from '../auth/auth';
-import { requireSession } from '../auth/session';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
-import { createRateLimiter } from '../rate-limit';
 import type { Logger } from 'pino';
 import {
   allowedArchives,
@@ -46,14 +42,12 @@ export interface SearchRoutesDependencies {
   now?: () => number;
 }
 
-const querySchema = z
-  .object({
-    q: z.string().min(1).max(100),
-    chat: z.string().min(1).max(256).optional(),
-    limit: z.coerce.number().int().min(1).max(SEARCH_MAX_LIMIT).optional(),
-    before: z.coerce.number().int().positive().optional(),
-  })
-  .strict();
+export interface SearchQuery {
+  q: string;
+  chat?: string;
+  limit?: number;
+  before?: number;
+}
 
 export interface SearchItem {
   chatJid: string;
@@ -299,214 +293,208 @@ function exactInCodeMarks(
   };
 }
 
-export function createSearchRoutes(deps: SearchRoutesDependencies): Hono {
-  const routes = new Hono();
-  const limiter = createRateLimiter({
-    max: SEARCH_RATE_LIMIT_MAX,
-    windowMs: SEARCH_RATE_LIMIT_WINDOW_MS,
-    now: deps.now ?? Date.now,
-  });
+export interface SearchResult {
+  items: SearchItem[];
+  nextBefore?: string;
+}
 
-  routes.get('/search', async (c) => {
-    const { user } = await requireSession(deps.auth, c.req.raw.headers);
-    if (deps.archive === undefined) {
-      throw new HttpError(501, 'search_unavailable', 'Message search is not configured');
-    }
-    if (!limiter.allow(user.id)) {
-      throw new HttpError(429, 'rate_limited', 'Too many searches, try again later');
-    }
-    const parsed = querySchema.safeParse(c.req.query());
-    if (!parsed.success) {
-      throw new HttpError(400, 'invalid_request', 'Invalid search query');
-    }
-    const q = parsed.data.q.trim();
-    if (q.length < 2 || q.length > 100) {
-      throw new HttpError(400, 'invalid_request', 'Invalid search query');
-    }
+// The search core shared by the Effect `HttpApi` adapter (`api.ts`): session,
+// archive and rate-limit checks run in the endpoint middleware (in the same
+// order as the old Hono route), so this starts at the decoded query. The log
+// carries only the result count and duration — never the query.
+export async function runSearch(
+  deps: SearchRoutesDependencies,
+  userId: string,
+  query: SearchQuery,
+): Promise<SearchResult> {
+  if (deps.archive === undefined) {
+    throw new HttpError(501, 'search_unavailable', 'Message search is not configured');
+  }
+  const q = query.q.trim();
+  if (q.length < 2 || q.length > 100) {
+    throw new HttpError(400, 'invalid_request', 'Invalid search query');
+  }
 
-    const allowed = await allowedArchives(deps.db, deps.config, user.id);
-    const chat = parsed.data.chat?.trim();
-    const filter = chat === undefined || chat === '' ? null : resolveChatFilter(allowed, chat);
-    if (chat !== undefined && chat !== '' && filter === null) {
-      throw new HttpError(404, 'not_found', 'Chat not found');
+  const allowed = await allowedArchives(deps.db, deps.config, userId);
+  const chat = query.chat?.trim();
+  const filter = chat === undefined || chat === '' ? null : resolveChatFilter(allowed, chat);
+  if (chat !== undefined && chat !== '' && filter === null) {
+    throw new HttpError(404, 'not_found', 'Chat not found');
+  }
+
+  const limit = query.limit ?? SEARCH_DEFAULT_LIMIT;
+  const cutoffMicros = BigInt(Date.now() - SEARCH_WINDOW_MS) * 1000n;
+  const beforeMicros = query.before === undefined ? null : BigInt(query.before);
+
+  // Sanitized folded tokens (never raw SQL): earlier terms are whole
+  // words, the last term matches as a prefix. No tokens means a query of
+  // only operators/punctuation — answer an empty list, not a 500.
+  const terms = searchTerms(q);
+  const tsquery = terms.length === 0 ? null : buildTsQuery(terms);
+
+  const start = performance.now();
+  const scopeInput = { owners: allowed, filter, cutoffMicros, beforeMicros };
+  let rows: ArchiveRow[];
+  let editRows: ArchiveEditRow[];
+  try {
+    if (tsquery === null) {
+      rows = [];
+      editRows = [];
+    } else {
+      const built = buildArchiveQuery({ tsquery, ...scopeInput });
+      const edits = buildArchiveEditsQuery(scopeInput);
+      [rows, editRows] = await Promise.all([
+        deps.archive.query(built.text, built.values),
+        deps.archive.query(edits.text, edits.values),
+      ]);
     }
+  } catch {
+    throw new HttpError(502, 'search_failed', 'Message search failed, try again later');
+  }
 
-    const limit = parsed.data.limit ?? SEARCH_DEFAULT_LIMIT;
-    const cutoffMicros = BigInt(Date.now() - SEARCH_WINDOW_MS) * 1000n;
-    const beforeMicros = parsed.data.before === undefined ? null : BigInt(parsed.data.before);
+  // Corrections store the new full body in a second row naming the
+  // original origin_id; retractions store a fallback-body row naming the
+  // target. Neither need contain the query text, so they arrive through
+  // the edits query. Newest wins per chat+target: a correction target
+  // hides every older row for that target (the matching row itself may
+  // be an older correction), and a retraction hides everything plus the
+  // retract rows themselves (their txt is only the stock fallback).
+  const latestByTarget = new Map<string, bigint>();
+  const retractedByTarget = new Map<string, bigint>();
+  for (const edit of editRows) {
+    const chatJid = chatJidFor(edit);
+    const at = BigInt(edit.timestamp);
+    const corrected = correctionTarget(edit.xml);
+    if (corrected !== null) {
+      const key = `${chatJid}|${corrected}`;
+      if ((latestByTarget.get(key) ?? -1n) < at) {
+        latestByTarget.set(key, at);
+      }
+    }
+    const retracted = retractTarget(edit.xml);
+    if (retracted !== null) {
+      const key = `${chatJid}|${retracted}`;
+      if ((retractedByTarget.get(key) ?? -1n) < at) {
+        retractedByTarget.set(key, at);
+      }
+    }
+  }
+  const seen = new Set<string>();
+  const items: SearchItem[] = [];
+  let oldest: bigint | null = null;
+  const ownJid = ownBareJid(allowed, deps.config.xmpp.domain);
+  const pushItem = (
+    row: ArchiveRow,
+    chatJid: string,
+    key: string,
+    snippet: string,
+    marks: Array<[number, number]>,
+    match: 'exact' | 'fuzzy',
+  ): void => {
+    seen.add(key);
+    items.push({
+      chatJid,
+      messageId: row.originId,
+      senderName: senderNameFor(row, ownJid, allowed.peerNames),
+      at: timestampToIso(row.timestamp),
+      snippet,
+      marks,
+      match,
+    });
+    oldest = BigInt(row.timestamp);
+  };
+  // A candidate survives when it is not a retract row, not retracted, and
+  // not superseded by a newer correction. Same handling for both passes.
+  const visibleKey = (row: ArchiveRow): string | null => {
+    // A retract row is never a hit itself: its `txt` is only the stock
+    // fallback sentence, and the XML namespace matched the query.
+    if (retractTarget(row.xml) !== null) {
+      return null;
+    }
+    const chatJid = chatJidFor(row);
+    const key = `${chatJid}|${correctionTarget(row.xml) ?? row.originId}`;
+    const at = BigInt(row.timestamp);
+    const retractedAt = retractedByTarget.get(key);
+    if (retractedAt !== undefined && retractedAt >= at) {
+      return null;
+    }
+    const latestAt = latestByTarget.get(key);
+    if (latestAt !== undefined && latestAt > at) {
+      return null;
+    }
+    if (seen.has(key)) {
+      return null;
+    }
+    return key;
+  };
+  for (const row of rows) {
+    const key = visibleKey(row);
+    if (key === null) {
+      continue;
+    }
+    const chatJid = chatJidFor(row);
+    const { snippet, marks } = headlineToSnippet(row.headline);
+    // ts_headline cannot mark accent-folded hits (its match ran on the
+    // raw text), so re-mark in code when it marked nothing: the same
+    // token rule as the query, with folded matching on both sides.
+    const marked = exactInCodeMarks(terms, snippet, marks);
+    pushItem(row, chatJid, key, marked.snippet, marked.marks, 'exact');
+    if (items.length >= limit) {
+      break;
+    }
+  }
 
-    // Sanitized folded tokens (never raw SQL): earlier terms are whole
-    // words, the last term matches as a prefix. No tokens means a query of
-    // only operators/punctuation — answer an empty list, not a 500.
-    const terms = searchTerms(q);
-    const tsquery = terms.length === 0 ? null : buildTsQuery(terms);
-
-    const start = performance.now();
-    const scopeInput = { owners: allowed, filter, cutoffMicros, beforeMicros };
-    let rows: ArchiveRow[];
-    let editRows: ArchiveEditRow[];
+  // Typo-tolerance second pass: only when the first pass is short, never
+  // for a query shorter than 3 characters. It reuses the same scope,
+  // cutoff, cap and newest-first order, de-duplicates against the first
+  // pass (same edit/retraction handling), and keeps the same cursor
+  // semantics (`nextBefore` is the oldest returned timestamp), so exact
+  // hits rank before fuzzy ones and paging stays correct.
+  if (
+    tsquery !== null &&
+    items.length < limit &&
+    q.trim().length >= SEARCH_MIN_FUZZY_QUERY_CHARS &&
+    terms.length > 0
+  ) {
     try {
-      if (tsquery === null) {
-        rows = [];
-        editRows = [];
-      } else {
-        const built = buildArchiveQuery({ tsquery, ...scopeInput });
-        const edits = buildArchiveEditsQuery(scopeInput);
-        [rows, editRows] = await Promise.all([
-          deps.archive.query(built.text, built.values),
-          deps.archive.query(edits.text, edits.values),
-        ]);
+      const fuzzy = buildFuzzyCandidatesQuery(scopeInput);
+      const candidates = await deps.archive.query(fuzzy.text, fuzzy.values);
+      for (const row of candidates) {
+        if (items.length >= limit) {
+          break;
+        }
+        const key = visibleKey(row);
+        if (key === null) {
+          continue;
+        }
+        const body = row.body ?? '';
+        const spans = matchMessageTerms(terms, body, true);
+        if (spans === null) {
+          continue;
+        }
+        const chatJid = chatJidFor(row);
+        const { snippet, marks } = windowSnippet(body, spans);
+        pushItem(row, chatJid, key, snippet, marks, 'fuzzy');
       }
     } catch {
       throw new HttpError(502, 'search_failed', 'Message search failed, try again later');
     }
+  }
 
-    // Corrections store the new full body in a second row naming the
-    // original origin_id; retractions store a fallback-body row naming the
-    // target. Neither need contain the query text, so they arrive through
-    // the edits query. Newest wins per chat+target: a correction target
-    // hides every older row for that target (the matching row itself may
-    // be an older correction), and a retraction hides everything plus the
-    // retract rows themselves (their txt is only the stock fallback).
-    const latestByTarget = new Map<string, bigint>();
-    const retractedByTarget = new Map<string, bigint>();
-    for (const edit of editRows) {
-      const chatJid = chatJidFor(edit);
-      const at = BigInt(edit.timestamp);
-      const corrected = correctionTarget(edit.xml);
-      if (corrected !== null) {
-        const key = `${chatJid}|${corrected}`;
-        if ((latestByTarget.get(key) ?? -1n) < at) {
-          latestByTarget.set(key, at);
-        }
-      }
-      const retracted = retractTarget(edit.xml);
-      if (retracted !== null) {
-        const key = `${chatJid}|${retracted}`;
-        if ((retractedByTarget.get(key) ?? -1n) < at) {
-          retractedByTarget.set(key, at);
-        }
-      }
-    }
-    const seen = new Set<string>();
-    const items: SearchItem[] = [];
-    let oldest: bigint | null = null;
-    const ownJid = ownBareJid(allowed, deps.config.xmpp.domain);
-    const pushItem = (
-      row: ArchiveRow,
-      chatJid: string,
-      key: string,
-      snippet: string,
-      marks: Array<[number, number]>,
-      match: 'exact' | 'fuzzy',
-    ): void => {
-      seen.add(key);
-      items.push({
-        chatJid,
-        messageId: row.originId,
-        senderName: senderNameFor(row, ownJid, allowed.peerNames),
-        at: timestampToIso(row.timestamp),
-        snippet,
-        marks,
-        match,
-      });
-      oldest = BigInt(row.timestamp);
-    };
-    // A candidate survives when it is not a retract row, not retracted, and
-    // not superseded by a newer correction. Same handling for both passes.
-    const visibleKey = (row: ArchiveRow): string | null => {
-      // A retract row is never a hit itself: its `txt` is only the stock
-      // fallback sentence, and the XML namespace matched the query.
-      if (retractTarget(row.xml) !== null) {
-        return null;
-      }
-      const chatJid = chatJidFor(row);
-      const key = `${chatJid}|${correctionTarget(row.xml) ?? row.originId}`;
-      const at = BigInt(row.timestamp);
-      const retractedAt = retractedByTarget.get(key);
-      if (retractedAt !== undefined && retractedAt >= at) {
-        return null;
-      }
-      const latestAt = latestByTarget.get(key);
-      if (latestAt !== undefined && latestAt > at) {
-        return null;
-      }
-      if (seen.has(key)) {
-        return null;
-      }
-      return key;
-    };
-    for (const row of rows) {
-      const key = visibleKey(row);
-      if (key === null) {
-        continue;
-      }
-      const chatJid = chatJidFor(row);
-      const { snippet, marks } = headlineToSnippet(row.headline);
-      // ts_headline cannot mark accent-folded hits (its match ran on the
-      // raw text), so re-mark in code when it marked nothing: the same
-      // token rule as the query, with folded matching on both sides.
-      const marked = exactInCodeMarks(terms, snippet, marks);
-      pushItem(row, chatJid, key, marked.snippet, marked.marks, 'exact');
-      if (items.length >= limit) {
-        break;
-      }
-    }
+  // The log carries only the result count and duration — never the query.
+  deps.logger.info(
+    {
+      userId,
+      results: items.length,
+      durationMs: Math.round(performance.now() - start),
+    },
+    'search',
+  );
 
-    // Typo-tolerance second pass: only when the first pass is short, never
-    // for a query shorter than 3 characters. It reuses the same scope,
-    // cutoff, cap and newest-first order, de-duplicates against the first
-    // pass (same edit/retraction handling), and keeps the same cursor
-    // semantics (`nextBefore` is the oldest returned timestamp), so exact
-    // hits rank before fuzzy ones and paging stays correct.
-    if (
-      tsquery !== null &&
-      items.length < limit &&
-      q.trim().length >= SEARCH_MIN_FUZZY_QUERY_CHARS &&
-      terms.length > 0
-    ) {
-      try {
-        const fuzzy = buildFuzzyCandidatesQuery(scopeInput);
-        const candidates = await deps.archive.query(fuzzy.text, fuzzy.values);
-        for (const row of candidates) {
-          if (items.length >= limit) {
-            break;
-          }
-          const key = visibleKey(row);
-          if (key === null) {
-            continue;
-          }
-          const body = row.body ?? '';
-          const spans = matchMessageTerms(terms, body, true);
-          if (spans === null) {
-            continue;
-          }
-          const chatJid = chatJidFor(row);
-          const { snippet, marks } = windowSnippet(body, spans);
-          pushItem(row, chatJid, key, snippet, marks, 'fuzzy');
-        }
-      } catch {
-        throw new HttpError(502, 'search_failed', 'Message search failed, try again later');
-      }
-    }
-
-    // The log carries only the result count and duration — never the query.
-    deps.logger.info(
-      {
-        userId: user.id,
-        results: items.length,
-        durationMs: Math.round(performance.now() - start),
-      },
-      'search',
-    );
-
-    return c.json({
-      items,
-      ...(oldest === null || items.length < limit ? {} : { nextBefore: oldest.toString() }),
-    });
-  });
-
-  return routes;
+  return {
+    items,
+    ...(oldest === null || items.length < limit ? {} : { nextBefore: oldest.toString() }),
+  };
 }
 
 function tagAttribute(xml: string, tag: string): string | null {
