@@ -13,6 +13,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0634](T-0634-effect-sql-memory-indexer.md) | effect/sql: AI memory indexer | in-progress | auto | T-0596 | |
 | [T-0635](T-0635-effect-sql-memory-store.md) | effect/sql: AI memory store | in-progress | auto | T-0596 | |
 | [T-0636](T-0636-effect-sql-sticker-files.md) | effect/sql: sticker favorites, files and import (stickers service part B) | in-progress | auto | T-0633 | |
+| [T-0637](T-0637-retire-drafts-hono-wrapper.md) | Hono: retire the drafts test wrapper | in-progress | auto | | |
 
 ## Follow-ups
 
