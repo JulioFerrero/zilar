@@ -14,10 +14,9 @@ import {
   HttpApiGroup,
   HttpApiMiddleware,
 } from 'effect/http-api';
-import { eq } from 'drizzle-orm';
+import { SqlClient } from 'effect/sql';
 import type { Logger } from 'pino';
 import type { ServerDatabase } from '../db/client';
-import { voiceTranscripts } from '../db/schema';
 import { HttpError } from '../errors';
 import {
   CurrentUser,
@@ -30,6 +29,7 @@ import {
   type EffectApiMount,
   type EffectApiRoute,
 } from '../effect/http';
+import { sqlRuntimeFor } from '../effect/sql';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
 import {
   defaultAudioFetcher,
@@ -296,11 +296,14 @@ export function createVoiceTranscriptionApi(
             // covers the re-check + insert below, with `onConflictDoNothing`
             // as the backstop).
             const [fastHit] = yield* Effect.promise(() =>
-              db
-                .select({ text: voiceTranscripts.text })
-                .from(voiceTranscripts)
-                .where(eq(voiceTranscripts.urlHash, urlHash))
-                .limit(1),
+              sqlRuntimeFor(db).runPromise(
+                Effect.gen(function* () {
+                  const sql = yield* SqlClient.SqlClient;
+                  return yield* sql<{
+                    text: string;
+                  }>`SELECT text FROM voice_transcripts WHERE url_hash = ${urlHash} LIMIT 1`;
+                }),
+              ),
             );
             // Every successful request is audited, cache hits included (ids
             // and the URL hash only, never the text).

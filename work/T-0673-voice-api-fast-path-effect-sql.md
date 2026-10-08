@@ -1,7 +1,7 @@
 ---
 id: T-0673
 title: "effect/sql: move the voice transcript fast-path cache read in voice-transcription/api.ts (~line 298) onto effect/sql and drop the file's drizzle imports"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0673-voice-api-fast-path-effect-sql
 model: auto
@@ -51,4 +51,26 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**What I did**
+- `apps/server/src/voice-transcription/api.ts`: the fast-path cache read (was lines 298-304) now runs `sqlRuntimeFor(db).runPromise(Effect.gen(...))` with `` sql<{ text: string }>`SELECT text FROM voice_transcripts WHERE url_hash = ${urlHash} LIMIT 1` `` inside the same `Effect.promise`, so a DB failure is still a defect and `fastHit` keeps its shape.
+- Removed `import { eq } from 'drizzle-orm'` and `import { voiceTranscripts } from '../db/schema'`. Added `import { SqlClient } from 'effect/sql'` and `import { sqlRuntimeFor } from '../effect/sql'`.
+- `prettier --write` on that one file (the first gate run failed format on it). The only change it made was the line wrap of the `sql<{ text: string }>` generic.
+- Status set to `in-progress`, then `review`. Nothing else in the task file changed.
+
+**Files changed:** `apps/server/src/voice-transcription/api.ts`, `work/T-0673-voice-api-fast-path-effect-sql.md`.
+
+**Checks**
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/voice-transcription/routes.test`: 25 passed, 0 failed (1 file). The test file was not edited. It imports `eq` from drizzle but does not mock it.
+- `pnpm gate` (final run): `PASS install (frozen)`, `PASS format`, `PASS lint`, `PASS typecheck`, `PASS tests @zilar/server`, `scope: every changed file is inside the Allowed files`, `GATE PASS`. Earlier run failed only on `format` (prettier on api.ts), fixed as above.
+
+**Problems / deviations**
+- The header comment at `api.ts:4` still says "Handlers keep calling the drizzle pipeline". I left it because the spec says change nothing else. It is now stale for this handler; the lead can decide whether to fix it.
+- Acceptance "no drizzle import": `grep -c drizzle` on the file gives 1, but that is the comment on line 4, not an import.
+
+**Open questions**
+- None.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Haiku 5.5, in one round (about 5.4 min). The lead reviewed the diff directly: the same read with the same defect behaviour, and no drizzle import. The gate passed.
+- **Follow-up (noted by the worker):** the header at `voice-transcription/api.ts:4` still says it calls the drizzle pipeline.
