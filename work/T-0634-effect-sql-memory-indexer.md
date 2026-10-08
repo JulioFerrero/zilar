@@ -1,7 +1,7 @@
 ---
 id: T-0634
 title: "effect/sql: agents/memory/indexer.ts off drizzle; the per-chat transaction (advisory lock, cursor read with bigint kept through BigInt, max seq, correction and retraction rewrites with covering-node drops, ON CONFLICT DO NOTHING inserts with dense seqs, cursor upsert) in one sql.withTransaction; tests unchanged"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0634-effect-sql-memory-indexer
 model: auto
@@ -65,4 +65,66 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+
+Moved `apps/server/src/agents/memory/indexer.ts` off drizzle onto `effect/sql`, keeping the exported
+signature, the one-transaction shape and the same steps, order, counts and dense seqs.
+
+- Added a private `runSql(db, effect)` (`sqlRuntimeFor(db).runPromise(effect)`), like `pins/service.ts`,
+  and wrapped the whole pass in `sql.withTransaction`. The raw
+  `pg_advisory_xact_lock(hashtext(lockKey))` statement is still the first statement inside the
+  transaction, and the cursor read still happens inside it.
+- `targetSeq` and `dropCoveringNodes` now return `Effect` pipelines that read `SqlClient.SqlClient`,
+  with the same `WHERE` predicates (`lo <= seq AND hi > seq`).
+- Cursor: `SELECT indexed_through_micros FROM ai_memory_state ...` — because a `bigint` column reads
+  back as a string, it is wrapped with `BigInt(stored)` before the cutoff comparison (bigint rule kept).
+- Max seq: `SELECT max(seq) AS seq FROM ai_memory_messages ...`; `Number(… ?? -1) + 1` kept.
+- Insert: parameterized `INSERT ... ON CONFLICT (ai_id, chat_key, message_id) DO NOTHING RETURNING seq`;
+  `nextSeq` and `inserted` advance only when `RETURNING` returned a row, so seqs stay dense.
+- Cursor upsert: `INSERT ... ON CONFLICT (ai_id, chat_key) DO UPDATE SET indexed_through_micros =
+  EXCLUDED.indexed_through_micros, updated_at = EXCLUDED.updated_at`.
+- Removed the `drizzle-orm` and `db/schema` imports; the file has no value import from either
+  (grep: no matches). `ArchivePool` remains unchanged and the archive read is unchanged.
+
+### Files changed
+
+- `apps/server/src/agents/memory/indexer.ts`
+- `work/T-0634-effect-sql-memory-indexer.md` (status + this Report)
+
+No test files changed.
+
+### Commands and results
+
+- `pnpm install` → Done in 13.3s.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/agents/memory src/agents/gateway`
+  → **Test Files 8 passed (8)**, **Tests 240 passed (240)**, 42.92s. Tests unchanged.
+- `pnpm gate` (first run) → `FAIL format` on `indexer.ts` (prettier style); everything else passed.
+  Fixed with `pnpm exec prettier --write apps/server/src/agents/memory/indexer.ts`, then:
+- `pnpm gate` (second run) →
+  ```
+  gate: 2 changed file(s) against main
+  PASS  install (frozen)  (1.0s)
+  PASS  format  (14.9s)
+  PASS  lint  (1.1s)
+  PASS  typecheck  (11.8s)
+  PASS  tests @zilar/server  (16.6s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Notes / deviations
+
+- None. No new dependencies, no test changes, no architectural decisions needed.
+- Security: the per-chat advisory lock and the read-the-state-inside-the-transaction rule are preserved;
+  the `WHERE` clauses are still scoped by `ai_id` + `chat_key`.
+
 ## Review (written by Claude)
+
+**2026-10-08, lead:** approved.
+- **Pre-review:** clean, no findings. The packet head is fc574991, the current HEAD.
+- **Lead check:**
+  - one `sql.withTransaction` holds the per-chat advisory lock;
+  - the cursor goes through `BigInt(stored)`;
+  - inserts keep `ON CONFLICT DO NOTHING RETURNING seq`, and `nextSeq` and `inserted` advance only on a real insert, so seqs stay dense;
+  - the cursor upsert is inside the transaction;
+  - no drizzle import is left.
