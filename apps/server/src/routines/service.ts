@@ -12,7 +12,7 @@
 import { randomUUID } from 'node:crypto';
 import { and, eq, isNull } from 'drizzle-orm';
 import { Effect, Exit, Schema, SchemaIssue } from 'effect';
-import { SqlClient } from 'effect/sql';
+import { SqlClient, SqlError } from 'effect/sql';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
 import { routines } from '../db/schema';
@@ -550,8 +550,9 @@ export async function deleteRoutinesForAiInTopic(
 
 // Soft-deletes every active routine of one AI in every topic of a group.
 // Stays on drizzle: `groups/service.ts` `removeGroupAi` calls it inside a
-// drizzle transaction and hands that transaction in. It moves to effect/sql
-// when `removeGroupAi`'s transaction moves. Returns the deleted ids.
+// drizzle transaction and hands that transaction in. The effect/sql version
+// below (`deleteRoutinesForAiInGroupEffect`) replaces it when that transaction
+// moves to effect/sql. Returns the deleted ids.
 export async function deleteRoutinesForAiInGroup(
   tx: ServerDatabase,
   input: { aiId: string; groupId: string; now: Date },
@@ -568,6 +569,21 @@ export async function deleteRoutinesForAiInGroup(
     )
     .returning();
   return rows.map((row) => row.id);
+}
+
+export function deleteRoutinesForAiInGroupEffect(input: {
+  aiId: string;
+  groupId: string;
+  now: Date;
+}): Effect.Effect<string[], SqlError.SqlError, SqlClient.SqlClient> {
+  return Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const rows = yield* sql<{ id: string }>`UPDATE routines
+      SET deleted_at = ${input.now.toISOString()}, updated_at = ${input.now.toISOString()}
+      WHERE ai_id = ${input.aiId} AND group_id = ${input.groupId} AND deleted_at IS NULL
+      RETURNING id`;
+    return rows.map((row) => row.id);
+  });
 }
 
 // Soft-deletes every active routine running one tool. Called from
