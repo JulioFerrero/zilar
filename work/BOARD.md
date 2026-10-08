@@ -465,6 +465,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0601](T-0601-litellm-client-schema.md) | Effect Schema: LiteLLM admin client | planned | auto | T-0571 | |
 | [T-0602](T-0602-effect-http-stickers-binary.md) | Effect C (HTTP): stickers part B, upload and file | planned | auto | T-0582 | |
 | [T-0603](T-0603-agent-tool-args-effect.md) | Tool args T-B: model tool arguments on Effect Schema | planned | auto | T-0594 | |
+| [T-0604](T-0604-tool-routine-schemas-effect.md) | Tool args T-E: tool and routine schemas on Effect Schema | planned | auto | T-0594 | |
 | [T-0427](T-0427-mobile-forwarded-header.md) | Mobile: forwarded messages show 'Forwarded from X [in Y]' | 2026-10-06 |
 | [T-0428](T-0428-mobile-new-chat-menu-sheet.md) | Mobile: New chat menu on the kit ActionSheet with icons | 2026-10-06 |
 | [T-0429](T-0429-mobile-dismiss-banner.md) | Mobile: DismissBanner replaces 12 copied chat screen banners | 2026-10-06 |
