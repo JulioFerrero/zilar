@@ -47,7 +47,7 @@ import { createPushApi } from './push/api';
 import { createRolesApi } from './roles/api';
 import { createSearchApi, type SearchRoutesDependencies } from './search/api';
 import { createMediaApi } from './media/api';
-import { createFilesRoutes } from './files/routes';
+import { createFilesApi } from './files/api';
 import { createGifsRoutes } from './gifs/routes';
 import { createAvatarsApi } from './avatars/api';
 import { createBackgroundsApi } from './backgrounds/api';
@@ -439,17 +439,15 @@ export function createApp({
     ...(searchNow === undefined ? {} : { now: searchNow }),
   });
   mountEffectRoutes(app, mediaApi.routes, mediaApi.handler);
-  app.route(
-    '/api',
-    createFilesRoutes({
-      auth,
-      db,
-      config,
-      logger,
-      ...(archive === undefined ? {} : { archive }),
-      ...(searchNow === undefined ? {} : { now: searchNow }),
-    }),
-  );
+  const filesApi = createFilesApi({
+    auth,
+    db,
+    config,
+    logger,
+    ...(archive === undefined ? {} : { archive }),
+    ...(searchNow === undefined ? {} : { now: searchNow }),
+  });
+  mountEffectRoutes(app, filesApi.routes, filesApi.handler);
   app.route('/api', createDraftsRoutes({ auth }));
   // Stickers (T-0120): packs, uploads and file serving. The storage dir
   // comes from `STICKER_STORAGE_DIR`; tests override it with a temp dir.

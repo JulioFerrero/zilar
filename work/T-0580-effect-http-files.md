@@ -1,7 +1,7 @@
 ---
 id: T-0580
 title: "Effect C (HTTP): GET /files (member-only upload proxy with Range) onto HttpApi; the upstream body is STREAMED to the client (never buffered); same 501/429/400/404/502 order, texts and passthrough headers; item-11 wrapper for the test mount; zod query to Effect Schema; tests unchanged"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0580-effect-http-files
 model: auto
@@ -84,4 +84,84 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Done. `GET /api/files` is served by Effect `HttpApi`, with the same order,
+statuses, texts, logs and headers, and the upstream body is streamed through
+without buffering.
+
+What I did:
+- Created `apps/server/src/files/api.ts`: `createFilesApi(deps)` plus
+  `FILES_API_ROUTES` (`GET /api/files`). The handler keeps the exact step
+  order: session (via `.middleware(Session)` + `CurrentUser`, 401 first),
+  501 `files_unavailable` "Files are not configured", 429 `rate_limited`
+  "Too many requests, try again later", strict hand-decoded query
+  (`Schema.Struct({ chat: 1..256, url: 1..2048 })` over the raw
+  `URLSearchParams` view, first value wins, `onExcessProperty: 'error'`;
+  failure gives 400 `invalid_request` "Invalid file query"), then the 404
+  `not_found` "File not found" resolutions (`toInternalUploadUrl` null,
+  `allowedArchives`/`resolveChatFilter` null, blocked DM), the drizzle
+  `findFileRow` moved as is (with on-demand `indexChat` and the warn-only
+  failure log carrying `userId` and the error name), then the upstream fetch
+  with only the caller's `Range` header and a 30s timeout (throw gives a warn
+  log and 502 `file_unavailable` "The file could not be loaded"), and finally
+  200/206/416 answered with `passthroughHeaders(...)` vs the same 502 for any
+  other status. `passthroughHeaders` and `encodeRfc5987` are verbatim copies.
+  The deps type `FilesRoutesDependencies` and the constants
+  `FILES_RATE_LIMIT_MAX` / `FILES_RATE_LIMIT_WINDOW_MS` /
+  `FILES_FETCH_TIMEOUT_MS` live here (no zod anywhere).
+- The streamed answer is `HttpServerResponse.raw(upstream.body, { status,
+  headers })`. Proof it does not buffer: `raw` wraps the passed value as-is
+  as a `Raw` body ("pass through a body value already understood by the
+  underlying runtime, such as a Web `Response`, `Blob`, or `ReadableStream`,
+  for later platform conversion" —
+  `node_modules/.pnpm/effect@4.0.2/node_modules/effect/dist/http/HttpServerResponse.d.ts`,
+  `raw` docs), and the web conversion for a `Raw` body that is not a
+  `Response` builds the answer directly as `new Response(body.body, ...)`
+  (same package, `dist/http/HttpServerResponse.js`, `toWeb`, `case "Raw"`),
+  so the upstream web `ReadableStream` flows into the client response
+  untouched. `HttpApiBuilder` also returns a handler-returned
+  `HttpServerResponse` untouched (`dist/http-api/HttpApiBuilder.js`,
+  `if (Response.isHttpServerResponse(response)) { return response; }`).
+- Rewrote `apps/server/src/files/routes.ts` as the item-11 wrapper:
+  re-exports the deps type, constants, `createFilesApi` and
+  `FILES_API_ROUTES`, and keeps `createFilesRoutes(deps): Hono` registering
+  each pair from `FILES_API_ROUTES` on a `new Hono()` (path minus `/api`)
+  and forwarding `context.req.raw` to `api.handler`.
+- `apps/server/src/app.ts`: replaced
+  `app.route('/api', createFilesRoutes(...))` with `mountEffectRoutes(app,
+  filesApi.routes, filesApi.handler)` at the same position.
+- Tests: `apps/server/src/files/*.test.ts` (14 tests), the authz sweep and
+  `app.test` all pass unchanged (no test file touched).
+
+Files changed (all inside Allowed files):
+- `apps/server/src/files/api.ts` (new)
+- `apps/server/src/files/routes.ts` (wrapper + re-exports)
+- `apps/server/src/app.ts` (mount)
+- `work/T-0580-effect-http-files.md` (this report)
+
+Commands and real results:
+- `pnpm install`: done (14.5s).
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/files/routes.test.ts`: first run 8 passed, 6 failed — all 500s on the success path because I had imported `HttpServer` but not `HttpServerResponse` (`ReferenceError: HttpServerResponse is not defined`, found via a temporary repro test that printed the logged defect; repro deleted afterwards). After adding the import: 14 passed.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot files authz-sweep app.test`: 3 files, 28 tests, all passed.
+- `pnpm gate` (first run): GATE FAIL on format only (`apps/server/src/files/routes.ts`); fixed with `prettier --write` on my own files. Second run: `PASS install (frozen) (4.3s)`, `PASS format (46.5s)`, `PASS lint (1.0s)`, `PASS typecheck (0.9s)`, `PASS tests @zilar/server (828.7s)`, `scope: every changed file is inside the Allowed files`, `GATE PASS`.
+
+Deviations: none. The success schema question (guide item 8) does not apply:
+the endpoint declares no payload/query/success schema, and the raw
+`HttpServerResponse` (status + headers + stream) is returned untouched, so
+nothing is stripped.
+
+Security checklist: session check first (401 before any decode); unknown and
+invisible chats answer the same 404; only the `Range` header crosses into
+ejabberd; logs carry ids and error names only; the limiter (600/min) is
+checked before the query decode, as before.
+
+Open questions: none.
+
 ## Review (written by Claude)
+
+**2026-10-08, lead:** approved.
+- **Pre-review:** clean. The packet (09:34) is newer than HEAD e9e598d6.
+- **No test file changed.**
+- **Lead check:**
+  - the upstream body is passed as is with `HttpServerResponse.raw(upstream.body, ...)` (`api.ts:297`), and nothing reads it with `.text()` or `.arrayBuffer()`;
+  - the 30-second fetch timeout is kept;
+  - only `Range` is sent to ejabberd, and the response headers go through the same allowlist.
