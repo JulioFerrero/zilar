@@ -1,7 +1,7 @@
 ---
 id: T-0579
 title: "Review follow-ups: two stale comments (transcription provider 'validated with zod', push config failedKeysOf 'missing') and one new test pinning that parseListenerOutput rejects an excess top-level key"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0579-server-review-followups
 model: auto
@@ -60,4 +60,25 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+- Fixed the two stale comments (comment text only):
+  - `apps/server/src/voice-transcription/provider.ts:5`: "validated with zod" -> "validated with Effect Schema (`transcriptionResponseSchema`)".
+  - `apps/server/src/push/config.ts:85-86` (`failedKeysOf`): now says it returns the field name (dotted for nested structs) for each failure; no `'missing'` literal.
+- Added one test in `describe('parseListenerOutput')` (`apps/server/src/agents/listener/score.test.ts`): `'{"scores": {"a": 0.5}, "reason": "r", "message_ids": [], "extra": 1}'` with roster `['a']` gives `null`. Nothing else changed in that file.
+- Added `error.message` assertions (`{ error: { code: 'invalid_request', message } }` envelope) to the three PATCH /api/me tests in `apps/server/src/auth/auth.test.ts`: empty/whitespace -> 'name must not be empty'; 65 chars -> 'name must be at most 64 characters'; control chars -> 'name must not contain control characters'. No new tests there.
+- Proven the excess-key test fails without the option: temporarily replaced `{ onExcessProperty: 'error' }` with `({})` in `score.ts:159`, ran `agents/listener/score` -> 1 failed / 13 passed, failing test "rejects an output with an extra top-level key"; restored the file (`git checkout -- score.ts`); `git status` confirms `score.ts` unmodified.
+- Security checklist: no secrets touched; no deletes/updates; no new routes; no caps changed; no audit entries; error messages are the fixed user-facing sentences (no raw server text leaked).
+- Commands:
+  - `pnpm install`: ok (12.2s).
+  - `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot agents/listener/score auth/auth`: 2 files, 50 passed.
+  - Negative proof run (option removed): 1 failed (extra top-level key), 13 passed.
+  - `pnpm gate`: PASS install (1.9s), PASS format (26.6s), PASS lint (1.2s), PASS typecheck (14.5s), PASS tests @zilar/server (487.0s); scope: every changed file inside Allowed files; GATE PASS.
+  - Changed files (5): the 4 Allowed source/test files + this task file. No files outside Allowed files.
+
 ## Review (written by Claude)
+
+**2026-10-08, lead:** approved.
+- **Pre-review:** clean. The packet (09:04) is newer than HEAD 63a77a6f.
+- **Lead check:** the lead read the whole diff.
+  - The two comments are now accurate.
+  - The excess-key test was proven to fail without the option (the worker removed it, saw 1 failure, then restored it).
+  - The three `/me` name texts are now asserted exactly in `auth.test.ts`.

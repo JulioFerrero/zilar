@@ -82,8 +82,8 @@ class PushConfigError extends Error {
   }
 }
 
-// Collects the struct-key paths of every failed field: `missing` for an
-// absent required key, the field name for anything else.
+// Collects the struct-key paths of every failed field: the field name
+// (dotted for nested structs) for each failure.
 function failedKeysOf(
   issue: SchemaIssue.Issue,
   path: ReadonlyArray<PropertyKey> = [],

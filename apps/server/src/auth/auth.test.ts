@@ -687,6 +687,9 @@ describe('auth flows', () => {
       for (const name of ['', '   ', '\t\n']) {
         const response = await patchName(app, cookie, { name });
         expect(response.status).toBe(400);
+        expect(await response.json()).toMatchObject({
+          error: { code: 'invalid_request', message: 'name must not be empty' },
+        });
       }
     });
 
@@ -694,6 +697,9 @@ describe('auth flows', () => {
       const { app, cookie } = await signedIn();
       const response = await patchName(app, cookie, { name: 'a'.repeat(65) });
       expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({
+        error: { code: 'invalid_request', message: 'name must be at most 64 characters' },
+      });
     });
 
     it('accepts exactly 64 characters', async () => {
@@ -707,6 +713,9 @@ describe('auth flows', () => {
       for (const name of ['Ada\u0000Lovelace', 'Ada\u001fLovelace', 'Ada\u007fLovelace']) {
         const response = await patchName(app, cookie, { name });
         expect(response.status).toBe(400);
+        expect(await response.json()).toMatchObject({
+          error: { code: 'invalid_request', message: 'name must not contain control characters' },
+        });
       }
     });
 

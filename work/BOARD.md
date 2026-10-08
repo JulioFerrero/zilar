@@ -456,7 +456,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0571](T-0571-audit-tool-args-schema.md) | Audit + plan: AI tool argument layer from zod to Effect Schema | planned | auto | T-0564 | |
 | [T-0577](T-0577-effect-http-backgrounds.md) | Effect C (HTTP): background images on HttpApi | planned | auto | T-0573 | |
 | [T-0578](T-0578-effect-http-setup.md) | Effect C (HTTP): first-run setup on HttpApi | planned | auto | T-0572 | |
-| [T-0579](T-0579-server-review-followups.md) | Review follow-ups: two comments, listener excess-key test, /me name message asserts | planned | auto | T-0570 | |
 | [T-0580](T-0580-effect-http-files.md) | Effect C (HTTP): file proxy with a streamed body | planned | auto | T-0573 | |
 | [T-0581](T-0581-effect-http-drafts-sse.md) | Effect C (HTTP): AI draft stream (SSE) pilot | planned | auto | T-0573 | |
 | [T-0582](T-0582-effect-http-stickers-json.md) | Effect C (HTTP): stickers part A, the JSON routes | planned | auto | T-0577 | |
@@ -612,3 +611,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0575](T-0575-stale-server-path-comments.md) | Comments: client comments point at live server api files | 2026-10-08 |
 | [T-0561](T-0561-effect-http-auth-me-invites.md) | Effect C (HTTP): /me and account invites on HttpApi | 2026-10-08 |
 | [T-0576](T-0576-effect-http-avatars.md) | Effect C (HTTP): avatars on HttpApi | 2026-10-08 |
+| [T-0579](T-0579-server-review-followups.md) | Review follow-ups: comments and two pinning tests | 2026-10-08 |
