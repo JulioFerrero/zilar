@@ -37,7 +37,7 @@ import { mountEffectRoutes } from './effect/http';
 import { registerSqlRuntime } from './effect/sql';
 import type { ServerDatabase } from './db/client';
 import { HttpError } from './errors';
-import { createGroupsRoutes } from './groups/routes';
+import { createGroupsApi } from './groups/api';
 import { createInviteLinksRoutes, type TestInviteLinksOverrides } from './invite-links/routes';
 import { createPinsApi } from './pins/api';
 import { createPushRoutes } from './push/routes';
@@ -358,10 +358,15 @@ export function createApp({
       ...(isMachineOnline === undefined ? {} : { isMachineOnline }),
     }),
   );
-  app.route(
-    '/api',
-    createGroupsRoutes({ auth, db, config, adminClient, logger, audit: auditRecorder }),
-  );
+  const groupsApi = createGroupsApi({
+    auth,
+    db,
+    config,
+    adminClient,
+    logger,
+    audit: auditRecorder,
+  });
+  mountEffectRoutes(app, groupsApi.routes, groupsApi.handler);
   app.route(
     '/api',
     createInviteLinksRoutes({

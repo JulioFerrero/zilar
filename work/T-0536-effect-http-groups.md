@@ -1,7 +1,7 @@
 ---
 id: T-0536
 title: "Effect C (HTTP): groups routes (create, read, members, roles change, AIs, patch, join) onto the HttpApi adapter (T-0498 recipe), zod to Effect Schema; mount order kept; every route test unchanged"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0536-effect-http-groups
 model: auto
@@ -74,4 +74,48 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+
+- **`apps/server/src/groups/api.ts`** (new): the groups module on the Effect `HttpApi` adapter, following the T-0498 recipe (`chat-folders/api.ts` and `roles/api.ts`). The same ten routes, methods, paths, status codes, bodies and audit calls as the deleted Hono router:
+  - five Effect body schemas replacing the zod ones: `CreateGroupBody` (trimmed 1..100 title, `memberIds` 1..50 non-empty strings defaulting to `[]`, optional `kind`/`description`/`visibility`/`handle`), `AddMembersBody` (1..50 non-empty ids), `AddAiBody` (non-empty `aiId`), `ChangeRoleBody` (strict, `admin`/`member`), `PatchGroupBody` (strict, with the strict nested `background` object: preset enum from `CHAT_BACKGROUND_PRESET_IDS`, 1..64 image id, int dim 0..80, all nullable/optional; plus `membersCanCreateTopics`, `visibility`, `handle`, `listenerEnabled`, `listenerEagerness`). `onExcessProperty: 'error'` on the two zod-strict routes only.
+  - step order per route preserved: `Session` first, then the module-local rate-limit middleware before the decode for `PUT .../role` and `POST .../join`, then the service. The two limiters are injectable (`roleLimiter`/`joinLimiter`) and keep the `now` seam.
+  - output schemas for every JSON body, including `GroupDetailView` with `createdAt: Schema.Date` (JSON-stringifies to the same ISO string Hono produced).
+  - `GroupsSchemaErrors` maps decode failures to the same `400 invalid_request`; `GroupsRoleRateLimit` answers `429 rate_limited` "Too many role changes, try again later" and `GroupsJoinRateLimit` "Too many join attempts, try again later", byte-identical to the old texts.
+- **`apps/server/src/app.ts`**: replaced the `createGroupsRoutes` import and the `app.route('/api', ...)` call with `createGroupsApi(...)` + `mountEffectRoutes(...)` **at the same position** (after the directory mount, before invite-links), so `/api/groups/by-handle/:handle` still reaches the directory module.
+- **`apps/server/src/groups/routes.ts`**: deleted. Grep confirmed the only importer was `app.ts` (mobile has a comment pointing at the path, not an import).
+- **No test changed.** `groups/service.ts`, `groups/join.ts` and `groups/visibility.ts` untouched.
+
+### Commands run
+
+- `pnpm install` — done (49.2s).
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot groups` — **2 test files passed, 80 passed** (`groups.test.ts`, `visibility.test.ts`).
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot topics roles invite-links authz-sweep app.test` — **6 test files passed, 90 passed**.
+- `pnpm gate` (from repo root):
+  ```
+  gate: 4 changed file(s) against main
+  PASS  install (frozen)  (1.1s)
+  PASS  format  (16.7s)
+  PASS  lint  (1.1s)
+  PASS  typecheck  (12.8s)
+  PASS  tests @zilar/server  (598.7s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Files changed
+
+`apps/server/src/groups/api.ts` (new), `apps/server/src/groups/routes.ts` (deleted), `apps/server/src/app.ts`, `work/T-0536-effect-http-groups.md`.
+
+### Deviations / notes
+
+- **Changed generic decode message:** the old zod path used `parsed.error.issues[0]?.message ?? 'Invalid request'`; the Effect path uses `error.cause.message || 'Invalid request'`, so a malformed/absent body now carries the Effect Schema message instead of the first zod issue. Grep found no test asserting those texts (only service-level messages like "Unknown background image" are asserted, and those are unchanged). The two rate-limit messages and all service-facing messages are unchanged.
+- I added optional `roleLimiter`/`joinLimiter` injection in addition to the existing `now` seam, like `blocks/api.ts` and `pins/api.ts` do; production (`app.ts`) passes neither, so behavior is unchanged.
+- `agents/gateway.test.ts` does not call these HTTP routes (it inserts rows directly), per grep, so it needed no run.
+
+### Blocked / needs a decision
+
+None.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-08). Groups is served by Effect HttpApi at the same mount position, so by-handle still reaches directory. The ten routes keep their step order (limiter before decode on role and join), statuses and texts; strictness matches zod per route, and no zod is left. Lead check: the GroupDetailView output schema lists every GroupDetail field, so no field is stripped. Pre-review clean, 0 nits.

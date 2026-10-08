@@ -456,7 +456,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0532](T-0532-effect-mobile-api-batch-3.md) | Effect E batch 3: mobile media, groups, integrations, transcripts; zod leaves mobile | planned | auto | T-0527 | |
 | [T-0533](T-0533-effect-http-xmpp-chats-memory.md) | Effect C (HTTP): xmpp token, chats, AI memory on HttpApi | planned | auto | T-0520 | |
 | [T-0535](T-0535-effect-sql-connections-machines-registry.md) | Effect C1: connections service, machine registry on effect/sql | running | auto | T-0510 | |
-| [T-0536](T-0536-effect-http-groups.md) | Effect C (HTTP): groups on HttpApi | planned | auto | T-0525 | |
 | [T-0537](T-0537-effect-scripts-shots.md) | Effect: screenshot scripts on Effect Schema | planned | auto | T-0530 | |
 | [T-0538](T-0538-mobile-api-error-envelope.md) | Mobile polish: shared lenient error envelope, search abort race | planned | auto | T-0532 | |
 | [T-0539](T-0539-effect-http-topics.md) | Effect C (HTTP): topics on HttpApi | planned | auto | T-0536 | |
@@ -571,3 +570,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0531](T-0531-atom-react-mobile-m1.md) | atom-react M1: mobile stores on an atom registry | 2026-10-08 |
 | [T-0534](T-0534-agents-g5b-session-registry.md) | Agents G5b: extract the session lifecycle | 2026-10-08 |
 | [T-0528](T-0528-effect-sql-chat-prefs-folders.md) | Effect C1: chat-prefs, chat-folders services on effect/sql | 2026-10-08 |
+| [T-0536](T-0536-effect-http-groups.md) | Effect C (HTTP): groups on HttpApi | 2026-10-08 |
