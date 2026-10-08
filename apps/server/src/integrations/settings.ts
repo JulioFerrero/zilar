@@ -19,7 +19,7 @@ import type { ServerDatabase } from '../db/client';
 import { sqlRuntimeFor } from '../effect/sql';
 import type { createSettingsCipher } from '../setup/crypto';
 
-// The mail helpers (`getMailSettings`, `saveMailSettings`,
+// The mail helpers (`getMailSettings`, `saveMailSettingsEffect`,
 // `settingsCipherFor`, `RESEND_API_KEY_SETTING`, `MAIL_FROM_SETTING`)
 // live in `setup/settings.ts` and are used as-is; this module adds only
 // the Telegram bot token key.

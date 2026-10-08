@@ -3,9 +3,9 @@
 // it replaces. `routes.ts` keeps the `createSetupRoutes` wrapper for the
 // route-shape test; `app.ts` mounts this API at the same position.
 //
-// The two `deps.db.transaction(...)` blocks, `takeSetupLock`, the settings
-// helpers and `createSetupInvite` stay drizzle and unchanged here. They move
-// later with the settings modules.
+// Both transactions run on `effect/sql` (`sql.withTransaction` inside a
+// `runSql` on the registered runtime), through the effects in
+// `setup/settings.ts`; the drizzle versions are gone in T-0675.
 //
 // The body is decoded manually inside the POST handler (Effect Schema, same
 // trims, lowercase, bounds, email rule and texts as the old zod schema), so
@@ -16,7 +16,7 @@ import { randomUUID } from 'node:crypto';
 import { Effect, Layer, Result, Schema, SchemaGetter, SchemaIssue } from 'effect';
 import { HttpServer, HttpServerRequest, HttpRouter } from 'effect/http';
 import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
-import { eq } from 'drizzle-orm';
+import { SqlClient, SqlError } from 'effect/sql';
 import type { Auth } from '../auth/auth';
 import { INVITE_HEADER } from '../auth/auth';
 import {
@@ -25,7 +25,7 @@ import {
   generateInviteCode,
 } from '../auth/invites';
 import { createResendMailer, type Mailer } from '../auth/mailer';
-import { invites } from '../db/schema';
+import { sqlRuntimeFor } from '../effect/sql';
 import {
   requestIdOf,
   socketAddressOf,
@@ -38,17 +38,27 @@ import { clientIpFrom } from '../http/client-ip';
 import { createRateLimiter } from '../rate-limit';
 import type { SetupRoutesDependencies } from './routes';
 import {
-  deleteMailSettings,
+  deleteMailSettingsEffect,
   getMailSettings,
   needsSetup,
-  saveMailSettings,
+  needsSetupEffect,
+  saveMailSettingsEffect,
   settingsCipherFor,
-  takeSetupLock,
-  type SetupTransaction,
+  takeSetupLockEffect,
 } from './settings';
 
 export const SETUP_RATE_LIMIT_MAX = 5;
 export const SETUP_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
+
+// Every setup query runs on the `effect/sql` client registered for this
+// database (see `../effect/sql`). A rejection here is a defect for the caller,
+// exactly like the drizzle `db.transaction` rejection it replaces.
+function runSql<A, E>(
+  db: SetupRoutesDependencies['db'],
+  effect: Effect.Effect<A, E, SqlClient.SqlClient>,
+): Promise<A> {
+  return sqlRuntimeFor(db).runPromise(effect);
+}
 
 // zod v4's practical email check (`z.email()`), kept so an address the setup
 // page accepted before is still accepted.
@@ -235,15 +245,24 @@ export function createSetupApi(deps: SetupRoutesDependencies): EffectApiMount {
             const cipher = settingsCipherFor(deps.config);
             let inviteCode: string | null = null;
             const stored = yield* Effect.promise(() =>
-              deps.db.transaction(async (tx: SetupTransaction) => {
-                await takeSetupLock(tx);
-                // Re-check inside the lock: a concurrent setup (or a sign-up
-                // racing the check above) must not create a second invite.
-                if (await needsSetup(tx)) {
-                  await saveMailSettings(tx, cipher, { resendApiKey, from });
-                  inviteCode = await createSetupInvite(tx);
-                }
-              }),
+              runSql(
+                deps.db,
+                Effect.gen(function* () {
+                  const sql = yield* SqlClient.SqlClient;
+                  yield* sql.withTransaction(
+                    Effect.gen(function* () {
+                      yield* takeSetupLockEffect();
+                      // Re-check inside the lock: a concurrent setup (or a
+                      // sign-up racing the check above) must not create a
+                      // second invite.
+                      if (yield* needsSetupEffect()) {
+                        yield* saveMailSettingsEffect(cipher, { resendApiKey, from });
+                        inviteCode = yield* createSetupInvite();
+                      }
+                    }),
+                  );
+                }),
+              ),
             ).pipe(
               Effect.map((value) => ({ ok: true as const, value })),
               Effect.catchDefect((defect) => Effect.succeed({ ok: false as const, defect })),
@@ -279,17 +298,25 @@ export function createSetupApi(deps: SetupRoutesDependencies): EffectApiMount {
             );
             if (!sent.ok) {
               const rolledBack = yield* Effect.promise(() =>
-                deps.db.transaction(async (tx) => {
-                  await takeSetupLock(tx);
-                  // Roll back the settings AND the invite only while setup is
-                  // still open (no user signed up in the meantime). Never delete
-                  // on a concurrent success: both rows belong to the finished
-                  // setup then.
-                  if (await needsSetup(tx)) {
-                    await deleteMailSettings(tx);
-                    await tx.delete(invites).where(eq(invites.code, code));
-                  }
-                }),
+                runSql(
+                  deps.db,
+                  Effect.gen(function* () {
+                    const sql = yield* SqlClient.SqlClient;
+                    yield* sql.withTransaction(
+                      Effect.gen(function* () {
+                        yield* takeSetupLockEffect();
+                        // Roll back the settings AND the invite only while
+                        // setup is still open (no user signed up in the
+                        // meantime). Never delete on a concurrent success:
+                        // both rows belong to the finished setup then.
+                        if (yield* needsSetupEffect()) {
+                          yield* deleteMailSettingsEffect();
+                          yield* sql`DELETE FROM invites WHERE code = ${code}`;
+                        }
+                      }),
+                    );
+                  }),
+                ),
               ).pipe(
                 Effect.map((value) => ({ ok: true as const, value })),
                 Effect.catchDefect((defect) => Effect.succeed({ ok: false as const, defect })),
@@ -362,29 +389,30 @@ async function mailConfigured(deps: SetupRoutesDependencies): Promise<boolean> {
   return (await getMailSettings(deps.db, settingsCipherFor(deps.config))) !== null;
 }
 
-// Inserts the first-admin invite directly: `createInvite` takes the full
-// database, not a transaction, and this insert must commit atomically
-// with the settings above. Same single-use, 7-day shape as a bootstrap
-// invite (see `auth/invites.ts`).
-async function createSetupInvite(tx: SetupTransaction): Promise<string> {
-  const now = new Date();
-  const code = generateInviteCode();
-  const [invite] = await tx
-    .insert(invites)
-    .values({
-      id: randomUUID(),
-      code,
-      createdBy: null,
-      createdAt: now,
-      expiresAt: new Date(now.getTime() + DEFAULT_INVITE_TTL_DAYS * 24 * 60 * 60 * 1000),
-      maxUses: DEFAULT_INVITE_MAX_USES,
-      uses: 0,
-    })
-    .returning();
-  if (!invite) {
-    throw new HttpError(500, 'internal_error', 'Setup failed, try again');
-  }
-  return invite.code;
+// Inserts the first-admin invite directly: the setup transaction must commit
+// it atomically with the settings above. Same single-use, 7-day shape as a
+// bootstrap invite (see `auth/invites.ts`).
+function createSetupInvite(): Effect.Effect<
+  string,
+  HttpError | SqlError.SqlError,
+  SqlClient.SqlClient
+> {
+  return Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const now = new Date();
+    const code = generateInviteCode();
+    const rows = yield* sql<{ code: string }>`INSERT INTO invites
+      (id, code, created_by, created_at, expires_at, max_uses, uses)
+      VALUES (${randomUUID()}, ${code}, ${null}, ${now},
+        ${new Date(now.getTime() + DEFAULT_INVITE_TTL_DAYS * 24 * 60 * 60 * 1000)},
+        ${DEFAULT_INVITE_MAX_USES}, ${0})
+      RETURNING code`;
+    const invite = rows[0];
+    if (invite === undefined) {
+      return yield* Effect.fail(new HttpError(500, 'internal_error', 'Setup failed, try again'));
+    }
+    return invite.code;
+  });
 }
 
 // Sends the test sign-in code to the admin email through the new mailer:

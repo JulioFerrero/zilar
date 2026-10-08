@@ -18,7 +18,7 @@ import type { ServerDatabase } from '../db/client';
 import { sqlRuntimeFor } from '../effect/sql';
 import { HttpError } from '../errors';
 import type { RateLimiter } from '../rate-limit';
-import { getMailSettings, settingsCipherFor, type SetupTransaction } from '../setup/settings';
+import { getMailSettings, settingsCipherFor } from '../setup/settings';
 import type { TelegramClient } from '../stickers/telegram-import';
 import {
   deleteStoredTelegramToken,
@@ -230,4 +230,3 @@ export async function sendWorkingTestMail(input: { mailer: Mailer; email: string
 
 export { TELEGRAM_BOT_TOKEN_SETTING };
 export { deleteStoredTelegramToken, saveStoredTelegramToken };
-export type { SetupTransaction };
