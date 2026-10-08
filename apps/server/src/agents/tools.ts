@@ -1,4 +1,6 @@
-import { z } from 'zod';
+import { Exit, Schema } from 'effect';
+import { struct } from '@zilar/protocol';
+import { firstIssueReason } from './tool-arg-issues';
 
 export const UPDATE_PERSONA_TOOL = 'update_persona';
 export const REVERT_PERSONA_TOOL = 'revert_persona';
@@ -26,68 +28,68 @@ export const ACTION_NAME_MAX_LENGTH = 100;
 // anything outside this set; everything else fails parse.
 const ACTION_NAME_PATTERN = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/;
 
-export const UpdatePersonaArgsSchema = z
-  .object({
-    persona: z.string().trim().min(1).max(PERSONA_MAX_LENGTH),
-    summary: z.string().trim().min(1).max(PERSONA_SUMMARY_MAX_LENGTH),
-  })
-  .strict();
+export const UpdatePersonaArgsSchema = struct({
+  persona: Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(PERSONA_MAX_LENGTH)),
+  summary: Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(PERSONA_SUMMARY_MAX_LENGTH)),
+});
 
-export const RevertPersonaArgsSchema = z.object({}).strict();
+export const RevertPersonaArgsSchema = struct({}).check(
+  Schema.makeFilter((value) =>
+    Object.keys(value).length === 0
+      ? undefined
+      : `Unrecognized key: "${String(Object.keys(value)[0])}"`,
+  ),
+);
 
-export const RecallArgsSchema = z
-  .object({
-    query: z.string().trim().min(1).max(100),
-  })
-  .strict();
+export const RecallArgsSchema = struct({
+  query: Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(100)),
+});
 
 // The block id shape OptMem uses (`64-79`): one open, one close, both capped
 // at 9 digits so an absurd id is a parse failure, never a bad query.
-export const MemoryZoomArgsSchema = z
-  .object({
-    block: z.string().regex(/^\d{1,9}-\d{1,9}$/),
-  })
-  .strict();
+export const MemoryZoomArgsSchema = struct({
+  block: Schema.String.check(Schema.isPattern(/^\d{1,9}-\d{1,9}$/)),
+});
 
-export const RememberArgsSchema = z
-  .object({
-    text: z.string().trim().min(1).max(280),
-  })
-  .strict();
+export const RememberArgsSchema = struct({
+  text: Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(280)),
+});
 
 // T-0482: the `delegate` tool's arguments. `objective` is the only required
 // text; the rest are hints. `to` is an AI id from the roster that the tool
 // description lists, never a name taken from model output. The service caps
 // and cuts these values itself, so the schema only rejects out-of-shape input.
-export const DelegateArgsSchema = z
-  .object({
-    to: z.string().trim().min(1).max(64),
-    objective: z.string().trim().min(1).max(1000),
-    context_summary: z.string().trim().max(1200).optional(),
-    acceptance: z.array(z.string().trim().min(1).max(300)).max(10).optional(),
-    return_format: z.string().trim().max(200).optional(),
-  })
-  .strict();
+export const DelegateArgsSchema = struct({
+  to: Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
+  objective: Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(1000)),
+  context_summary: Schema.optional(Schema.Trim.check(Schema.isMaxLength(1200))),
+  acceptance: Schema.optional(
+    Schema.mutable(
+      Schema.Array(Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(300))),
+    ).check(Schema.isMaxLength(10)),
+  ),
+  return_format: Schema.optional(Schema.Trim.check(Schema.isMaxLength(200))),
+});
 
-export const TaskStatusArgsSchema = z
-  .object({
-    task_id: z.string().trim().min(1).max(64),
-  })
-  .strict();
+export const TaskStatusArgsSchema = struct({
+  task_id: Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
+});
 
 // `args` is a JSON object (never an array, never a primitive): a JSON
 // object is the shape every adapter's zod schema expects. `action` rides
 // through to the gateway unchanged, but its pattern is checked so a
 // crafted model call cannot smuggle a foreign name into the registry.
-export const RequestActionArgsSchema = z
-  .object({
-    action: z.string().trim().min(1).max(ACTION_NAME_MAX_LENGTH).regex(ACTION_NAME_PATTERN),
-    args: z.record(z.string(), z.unknown()),
-  })
-  .strict();
+export const RequestActionArgsSchema = struct({
+  action: Schema.Trim.check(
+    Schema.isMinLength(1),
+    Schema.isMaxLength(ACTION_NAME_MAX_LENGTH),
+    Schema.isPattern(ACTION_NAME_PATTERN),
+  ),
+  args: Schema.Record(Schema.String, Schema.Unknown),
+});
 
-export type UpdatePersonaArgs = z.infer<typeof UpdatePersonaArgsSchema>;
-export type RequestActionArgs = z.infer<typeof RequestActionArgsSchema>;
+export type UpdatePersonaArgs = Schema.Schema.Type<typeof UpdatePersonaArgsSchema>;
+export type RequestActionArgs = Schema.Schema.Type<typeof RequestActionArgsSchema>;
 
 export type ParsedToolArguments =
   | { ok: true; tool: typeof UPDATE_PERSONA_TOOL; persona: string; summary: string }
@@ -132,10 +134,10 @@ export function safeToolName(name: string): string {
   return out;
 }
 
-// Validates one raw tool call's `arguments` (a JSON string) with zod. Unknown
-// tool names and invalid arguments are never executed; the caller reports
-// `invalid: <reason>` back to the model. Reasons carry no argument values, so
-// the persona text can never leak through them.
+// Validates one raw tool call's `arguments` (a JSON string) with Effect
+// Schema. Unknown tool names and invalid arguments are never executed; the
+// caller reports `invalid: <reason>` back to the model. Reasons carry no
+// argument values, so the persona text can never leak through them.
 export function parseToolArguments(toolName: string, argsJson: string): ParsedToolArguments {
   if (
     toolName !== UPDATE_PERSONA_TOOL &&
@@ -160,85 +162,104 @@ export function parseToolArguments(toolName: string, argsJson: string): ParsedTo
     return { ok: false, reason: 'arguments are not valid JSON' };
   }
   if (toolName === REVERT_PERSONA_TOOL) {
-    const parsed = RevertPersonaArgsSchema.safeParse(parsedJson);
-    if (!parsed.success) {
-      return { ok: false, reason: firstIssue(parsed.error) };
+    const parsed = decodeToolArguments(RevertPersonaArgsSchema, parsedJson);
+    if (!parsed.ok) {
+      return { ok: false, reason: parsed.reason };
     }
     return { ok: true, tool: REVERT_PERSONA_TOOL };
   }
   if (toolName === UPDATE_PERSONA_TOOL) {
-    const parsed = UpdatePersonaArgsSchema.safeParse(parsedJson);
-    if (!parsed.success) {
-      return { ok: false, reason: firstIssue(parsed.error) };
+    const parsed = decodeToolArguments(UpdatePersonaArgsSchema, parsedJson);
+    if (!parsed.ok) {
+      return { ok: false, reason: parsed.reason };
     }
     return {
       ok: true,
       tool: UPDATE_PERSONA_TOOL,
-      persona: parsed.data.persona,
-      summary: parsed.data.summary,
+      persona: parsed.value.persona,
+      summary: parsed.value.summary,
     };
   }
   if (toolName === RECALL_TOOL) {
-    const parsed = RecallArgsSchema.safeParse(parsedJson);
-    if (!parsed.success) {
-      return { ok: false, reason: firstIssue(parsed.error) };
+    const parsed = decodeToolArguments(RecallArgsSchema, parsedJson);
+    if (!parsed.ok) {
+      return { ok: false, reason: parsed.reason };
     }
-    return { ok: true, tool: RECALL_TOOL, query: parsed.data.query };
+    return { ok: true, tool: RECALL_TOOL, query: parsed.value.query };
   }
   if (toolName === MEMORY_ZOOM_TOOL) {
-    const parsed = MemoryZoomArgsSchema.safeParse(parsedJson);
-    if (!parsed.success) {
-      return { ok: false, reason: firstIssue(parsed.error) };
+    const parsed = decodeToolArguments(MemoryZoomArgsSchema, parsedJson);
+    if (!parsed.ok) {
+      return { ok: false, reason: parsed.reason };
     }
-    return { ok: true, tool: MEMORY_ZOOM_TOOL, block: parsed.data.block };
+    return { ok: true, tool: MEMORY_ZOOM_TOOL, block: parsed.value.block };
   }
   if (toolName === REMEMBER_TOOL) {
-    const parsed = RememberArgsSchema.safeParse(parsedJson);
-    if (!parsed.success) {
-      return { ok: false, reason: firstIssue(parsed.error) };
+    const parsed = decodeToolArguments(RememberArgsSchema, parsedJson);
+    if (!parsed.ok) {
+      return { ok: false, reason: parsed.reason };
     }
-    return { ok: true, tool: REMEMBER_TOOL, text: parsed.data.text };
+    return { ok: true, tool: REMEMBER_TOOL, text: parsed.value.text };
   }
   if (toolName === DELEGATE_TOOL) {
-    const parsed = DelegateArgsSchema.safeParse(parsedJson);
-    if (!parsed.success) {
-      return { ok: false, reason: firstIssue(parsed.error) };
+    const parsed = decodeToolArguments(DelegateArgsSchema, parsedJson);
+    if (!parsed.ok) {
+      return { ok: false, reason: parsed.reason };
     }
     return {
       ok: true,
       tool: DELEGATE_TOOL,
-      to: parsed.data.to,
-      objective: parsed.data.objective,
-      ...(parsed.data.context_summary === undefined
+      to: parsed.value.to,
+      objective: parsed.value.objective,
+      ...(parsed.value.context_summary === undefined
         ? {}
-        : { context_summary: parsed.data.context_summary }),
-      ...(parsed.data.acceptance === undefined ? {} : { acceptance: parsed.data.acceptance }),
-      ...(parsed.data.return_format === undefined
+        : { context_summary: parsed.value.context_summary }),
+      ...(parsed.value.acceptance === undefined ? {} : { acceptance: parsed.value.acceptance }),
+      ...(parsed.value.return_format === undefined
         ? {}
-        : { return_format: parsed.data.return_format }),
+        : { return_format: parsed.value.return_format }),
     };
   }
   if (toolName === TASK_STATUS_TOOL) {
-    const parsed = TaskStatusArgsSchema.safeParse(parsedJson);
-    if (!parsed.success) {
-      return { ok: false, reason: firstIssue(parsed.error) };
+    const parsed = decodeToolArguments(TaskStatusArgsSchema, parsedJson);
+    if (!parsed.ok) {
+      return { ok: false, reason: parsed.reason };
     }
-    return { ok: true, tool: TASK_STATUS_TOOL, task_id: parsed.data.task_id };
+    return { ok: true, tool: TASK_STATUS_TOOL, task_id: parsed.value.task_id };
   }
-  const parsed = RequestActionArgsSchema.safeParse(parsedJson);
-  if (!parsed.success) {
-    return { ok: false, reason: firstIssue(parsed.error) };
+  const parsed = decodeToolArguments(RequestActionArgsSchema, parsedJson);
+  if (!parsed.ok) {
+    return { ok: false, reason: parsed.reason };
   }
   return {
     ok: true,
     tool: REQUEST_ACTION_TOOL,
-    action: parsed.data.action,
-    args: parsed.data.args,
+    action: parsed.value.action,
+    args: { ...parsed.value.args },
   };
 }
 
-function firstIssue(error: z.ZodError): string {
-  return error.issues[0]?.message ?? 'invalid arguments';
+// Decodes one tool call's arguments with Effect Schema. All eight schemas are
+// strict, so an extra key fails; `errors: 'all'` collects every issue and the
+// first one is turned into a value-free reason for the model (see
+// `firstIssueReason`).
+function decodeToolArguments<S extends Schema.ConstraintDecoder<unknown>>(
+  schema: S,
+  raw: unknown,
+): { ok: true; value: S['Type'] } | { ok: false; reason: string } {
+  const exit = Schema.decodeUnknownExit(schema, { errors: 'all', onExcessProperty: 'error' })(raw);
+  if (Exit.isSuccess(exit)) {
+    return { ok: true, value: exit.value };
+  }
+  for (const reason of exit.cause.reasons) {
+    if (reason._tag === 'Fail') {
+      const message = firstIssueReason(reason.error.issue, raw);
+      if (message !== undefined) {
+        return { ok: false, reason: message };
+      }
+    }
+  }
+  return { ok: false, reason: 'invalid arguments' };
 }
 
 export interface ChatToolDefinition {
