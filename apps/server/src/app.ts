@@ -40,7 +40,8 @@ import { registerSqlRuntime } from './effect/sql';
 import type { ServerDatabase } from './db/client';
 import { HttpError } from './errors';
 import { createGroupsApi } from './groups/api';
-import { createInviteLinksRoutes, type TestInviteLinksOverrides } from './invite-links/routes';
+import { createInviteLinksApi } from './invite-links/api';
+import type { TestInviteLinksOverrides } from './invite-links/routes';
 import { createPinsApi } from './pins/api';
 import { createPushApi } from './push/api';
 import { createRolesApi } from './roles/api';
@@ -370,18 +371,16 @@ export function createApp({
     audit: auditRecorder,
   });
   mountEffectRoutes(app, groupsApi.routes, groupsApi.handler);
-  app.route(
-    '/api',
-    createInviteLinksRoutes({
-      auth,
-      db,
-      config,
-      adminClient,
-      logger,
-      audit: auditRecorder,
-      ...(testInviteLinksOverrides === undefined ? {} : testInviteLinksOverrides),
-    }),
-  );
+  const inviteLinksApi = createInviteLinksApi({
+    auth,
+    db,
+    config,
+    adminClient,
+    logger,
+    audit: auditRecorder,
+    ...(testInviteLinksOverrides === undefined ? {} : testInviteLinksOverrides),
+  });
+  mountEffectRoutes(app, inviteLinksApi.routes, inviteLinksApi.handler);
   const rolesApi = createRolesApi({ auth, db, config, adminClient, logger, audit: auditRecorder });
   mountEffectRoutes(app, rolesApi.routes, rolesApi.handler);
   const aiMemoryApi = createAiMemoryApi({ auth, db, config, logger });
