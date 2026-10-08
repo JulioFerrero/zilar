@@ -458,6 +458,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0554](T-0554-effect-http-routines.md) | Effect C (HTTP): routines on HttpApi | planned | auto | T-0539 | |
 | [T-0555](T-0555-effect-http-ais.md) | Effect C (HTTP): AI management on HttpApi | planned | auto | T-0548 | |
 | [T-0556](T-0556-agents-g4-extract-tool-exec.md) | Agents G4: extract the tool executor | planned | auto | T-0549 | |
+| [T-0557](T-0557-effect-http-connections.md) | Effect C (HTTP): provider-key connections on HttpApi | planned | auto | T-0548 | |
 | [T-0427](T-0427-mobile-forwarded-header.md) | Mobile: forwarded messages show 'Forwarded from X [in Y]' | 2026-10-06 |
 | [T-0428](T-0428-mobile-new-chat-menu-sheet.md) | Mobile: New chat menu on the kit ActionSheet with icons | 2026-10-06 |
 | [T-0429](T-0429-mobile-dismiss-banner.md) | Mobile: DismissBanner replaces 12 copied chat screen banners | 2026-10-06 |
