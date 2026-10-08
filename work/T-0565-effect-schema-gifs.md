@@ -1,7 +1,7 @@
 ---
 id: T-0565
 title: "Effect Schema, server batch 2: gifs/provider.ts and gifs/giphy.ts drop zod for Effect Schema; GifItem/GifPage types identical; Giphy response parsing drops the same bad items; tests unchanged"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0565-effect-schema-gifs
 model: auto
@@ -72,4 +72,51 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**Outcome:** done.
+
+**What I did**
+- Replaced zod with Effect Schema in `apps/server/src/gifs/provider.ts` and `apps/server/src/gifs/giphy.ts`. No `zod` import remains in either file (`routes.ts` and `token.ts` still use zod and were left untouched, as instructed).
+- `provider.ts`: `gifItemSchema` / `gifPageSchema` are now `struct(...)` from `@zilar/protocol` (mutable fields, the same shape as `z.infer`). Same rules: `id` 1..128, `title` max 100, URLs validated with `isUrl` (any scheme `new URL()` accepts, matching `z.url()`) and max 2048, optional `mp4Url`/`gifUrl`, `width`/`height` int 1..20000, optional `sizeBytes` int 0..100 MiB, page `nextPos` max 128. `GifItem` / `GifPage` are derived from the schemas (`typeof schema.Type`); `GifSearchOptions` and `GifProvider` are unchanged.
+- `giphy.ts`: `renditionSchema`, `gifObjectSchema` and `giphyResponseSchema` are Effect schemas; the old `.loose()` behaviour is kept with `Schema.StructWithRest(..., [Schema.Record(Schema.String, Schema.Unknown)])`. `safeParse` became `Schema.decodeUnknownExit` + `Exit.isSuccess`; `gifPageSchema.parse(...)` became `Schema.decodeUnknownSync(gifPageSchema)(...)`.
+- Every branch is preserved: a failed item decode drops that item (`return undefined`), a failed response decode returns `{ items: [] }`, and the final page decode still throws on a bad page. The inline item validator now decodes through the shared `gifItemSchema` (identical rules) instead of repeating them.
+
+**Files changed**
+- `apps/server/src/gifs/provider.ts`
+- `apps/server/src/gifs/giphy.ts`
+- `work/T-0565-effect-schema-gifs.md`
+
+**Commands and results**
+- `pnpm install` — completed (peer-dependency warnings only).
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot gifs` — 3 test files passed, 27 tests passed.
+- `pnpm gate` (final run) summary lines:
+  - `PASS  install (frozen)  (6.0s)`
+  - `PASS  format  (109.3s)`
+  - `PASS  lint  (1.9s)`
+  - `PASS  typecheck  (1.8s)`
+  - `PASS  tests @zilar/server  (1258.4s)`
+  - `scope: every changed file is inside the Allowed files`
+  - `GATE PASS`
+- Notes: an earlier gate run failed on `format` (prettier wanted to reflow `GifDimensionSchema` in `provider.ts`); fixed with `prettier --write` on the two files only. The long `tests @zilar/server` step is load from other workers' gates running in parallel on the shared machine, not a hang — the same package tests pass in ~50s when run alone.
+
+**Tests**
+- `apps/server/src/gifs/gifs.test.ts`, `apps/server/src/gifs/giphy.effect.test.ts` and `apps/server/src/gifs/routes.test.ts` are unchanged and green.
+- No test imports a gifs schema, so no test needed an edit.
+
+**Deviations / notes**
+- The inline item validator in `giphy.ts` now reuses the exported `gifItemSchema` rather than duplicating the rules; behaviour is identical (same rules, item dropped on failure).
+- Two code comments still mention zod where they explain the equivalent old behaviour (matching repo style, e.g. `apps/server/src/push/api.ts`); there is no `zod` import left.
+
+**Open questions**
+- None.
+
 ## Review (written by Claude)
+
+**2026-10-08, lead:** approved.
+- **Pre-review:** clean, 0 findings. The packet (07:18) is newer than HEAD d7569e84 (07:14).
+- **No test file changed.**
+- **Lead check:** the lead read the whole diff.
+  - The rules are the same: url, lengths and int ranges.
+  - `isInt` rejects the `NaN` a bad width could produce, as zod did.
+  - The loose Giphy objects stay loose through `StructWithRest`.
+  - The drop-item, empty-page and throw branches are kept.
+  - The inline item validator now reuses `gifItemSchema`, which has the same rules.

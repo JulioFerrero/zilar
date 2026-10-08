@@ -455,7 +455,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0426](T-0426-mobile-ai-sheet-buttons-kit.md) | Mobile: AI activity Refresh, tool sheet Show all/less and Close on the kit Button | 2026-10-06 |
 | [T-0560](T-0560-effect-http-media.md) | Effect C (HTTP): media gallery on HttpApi | planned | auto | T-0548 | |
 | [T-0561](T-0561-effect-http-auth-me-invites.md) | Effect C (HTTP): /me and invites on HttpApi | planned | auto | T-0548 | |
-| [T-0565](T-0565-effect-schema-gifs.md) | Effect Schema: gifs provider and Giphy parser | planned | auto | T-0562 | |
 | [T-0566](T-0566-effect-http-invite-links.md) | Effect C (HTTP): group invite links on HttpApi | planned | auto | T-0563 | |
 | [T-0568](T-0568-effect-sql-delegation.md) | effect/sql: AI delegation service | planned | auto | T-0556 | |
 | [T-0569](T-0569-effect-schema-server-leaf-batch-2.md) | Effect Schema: server leaf batch 2 (git token, prices, transcription, listener) | planned | auto | T-0563 | |
@@ -600,3 +599,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0557](T-0557-effect-http-connections.md) | Effect C (HTTP): provider-key connections on HttpApi | 2026-10-08 |
 | [T-0567](T-0567-effect-sql-gateway-db.md) | effect/sql: agents gateway db helpers | 2026-10-08 |
 | [T-0564](T-0564-effect-schema-server-leaf-batch-1.md) | Effect Schema: server leaf batch 1 | 2026-10-08 |
+| [T-0565](T-0565-effect-schema-gifs.md) | Effect Schema: gifs provider and Giphy parser | 2026-10-08 |
