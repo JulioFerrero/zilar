@@ -12,6 +12,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0683](T-0683-topic-roles-and-helpers-effect-sql.md) | effect/sql: setTopicRoles + topic helpers | in-progress | haiku-5.5 | T-0680 | topics slice 3a |
 | [T-0685](T-0685-delete-setup-routes.md) | A7: delete the setup Hono wrapper | in-progress | haiku-5.5 | T-0675 | |
 | [T-0684](T-0684-approvals-service-effect-sql.md) | effect/sql: rest of approvals/service.ts | in-progress | auto | T-0672 | |
+| [T-0686](T-0686-group-member-writes-effect-sql.md) | effect/sql: group member writes | in-progress | haiku-5.5 | T-0682 | groups slice 4 |
 
 ## Follow-ups
 
