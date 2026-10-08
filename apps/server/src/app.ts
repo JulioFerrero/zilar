@@ -28,7 +28,8 @@ import { loadPushConfig, type PushConfig } from './push/config';
 import { createDraftsRoutes } from './drafts/routes';
 import { createKeyCipher, type KeyCipher } from './connections/crypto';
 import type { ProviderProbe } from './connections/probe';
-import { createConnectionsRoutes, type ConnectionsLogger } from './connections/routes';
+import { createConnectionsApi } from './connections/api';
+import { type ConnectionsLogger } from './connections/routes';
 import { createBlocksApi } from './blocks/api';
 import { createContactsApi } from './contacts/api';
 import { createContactRequestsApi } from './contact-requests/api';
@@ -590,16 +591,14 @@ export function createApp({
     (config.ZILAR_KEY_ENCRYPTION_KEY === undefined
       ? undefined
       : createKeyCipher(config.ZILAR_KEY_ENCRYPTION_KEY));
-  app.route(
-    '/api',
-    createConnectionsRoutes({
-      auth,
-      db,
-      logger: connections?.logger ?? logger,
-      ...(connectionsCipher === undefined ? {} : { cipher: connectionsCipher }),
-      ...(connections?.probe === undefined ? {} : { probe: connections.probe }),
-    }),
-  );
+  const connectionsApi = createConnectionsApi({
+    auth,
+    db,
+    logger: connections?.logger ?? logger,
+    ...(connectionsCipher === undefined ? {} : { cipher: connectionsCipher }),
+    ...(connections?.probe === undefined ? {} : { probe: connections.probe }),
+  });
+  mountEffectRoutes(app, connectionsApi.routes, connectionsApi.handler);
 
   // AIs always mount. Creating one needs both the key cipher (to seal its
   // gateway key) and the LiteLLM admin client; when either is missing every
