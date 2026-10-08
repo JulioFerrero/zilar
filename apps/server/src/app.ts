@@ -26,7 +26,7 @@ import { createChatPrefsApi } from './chat-prefs/api';
 import { createChatFoldersApi } from './chat-folders/api';
 import type { ServerConfig } from './config';
 import { loadPushConfig, type PushConfig } from './push/config';
-import { createDraftsRoutes } from './drafts/routes';
+import { createDraftsApi } from './drafts/api';
 import { createKeyCipher, type KeyCipher } from './connections/crypto';
 import type { ProviderProbe } from './connections/probe';
 import { createConnectionsApi } from './connections/api';
@@ -448,7 +448,8 @@ export function createApp({
     ...(searchNow === undefined ? {} : { now: searchNow }),
   });
   mountEffectRoutes(app, filesApi.routes, filesApi.handler);
-  app.route('/api', createDraftsRoutes({ auth }));
+  const draftsApi = createDraftsApi({ auth, logger });
+  mountEffectRoutes(app, draftsApi.routes, draftsApi.handler);
   // Stickers (T-0120): packs, uploads and file serving. The storage dir
   // comes from `STICKER_STORAGE_DIR`; tests override it with a temp dir.
   // The bot token resolves per request: env wins, else the stored

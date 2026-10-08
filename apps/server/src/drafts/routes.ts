@@ -1,81 +1,36 @@
+// The item-11 wrapper (EFFECT_GUIDE): `createDraftsRoutes` keeps the old
+// Hono factory signature for the tests that mount it directly, but the route
+// is served by the Effect `HttpApi` handler in `./api`.
 import { Hono } from 'hono';
-import { streamSSE } from 'hono/streaming';
 import type { Auth } from '../auth/auth';
-import { requireSession } from '../auth/session';
-import type { DraftHubEvent } from './events';
+import { createDraftsApi, DRAFTS_API_ROUTES } from './api';
 import { sharedDraftHub, type DraftHub } from './hub';
 
-// A comment line this often keeps the connection (and any proxy buffer)
-// alive between turns. Carried as an SSE comment, so event parsers ignore it.
-export const DRAFT_SSE_HEARTBEAT_MS = 25_000;
+export { DRAFT_SSE_HEARTBEAT_MS } from './api';
 
 export interface DraftsRoutesDependencies {
   auth: Auth;
   hub?: DraftHub;
 }
 
-// `GET /api/drafts/stream`: the caller's own AI drafts as `event: draft` /
-// `event: end` with JSON `data:`. Same signed-in session as the other `/api`
-// routes (401 otherwise). No history and no replay: a client that connects
-// mid-turn gets the next cumulative `draft`.
+/**
+ * Compatibility factory for the unchanged Hono-level `routes.test.ts`, which
+ * mounts it under `/api` on its own Hono. It builds the Effect mount and
+ * registers the module route relative to the mount prefix; production wiring
+ * in `app.ts` uses `createDraftsApi` with `mountEffectRoutes`.
+ */
 export function createDraftsRoutes({ auth, hub = sharedDraftHub }: DraftsRoutesDependencies): Hono {
+  const api = createDraftsApi({ auth, hub });
   const routes = new Hono();
-
-  routes.get('/drafts/stream', async (c) => {
-    const { user } = await requireSession(auth, c.req.raw.headers);
-    c.header('Cache-Control', 'no-cache');
-    c.header('X-Accel-Buffering', 'no');
-    return streamSSE(c, async (stream) => {
-      const queue: DraftHubEvent[] = [];
-      let wake: (() => void) | undefined;
-      const unsubscribe = hub.subscribe(user.id, (event) => {
-        queue.push(event);
-        wake?.();
-      });
-      let aborted = false;
-      stream.onAbort(() => {
-        aborted = true;
-        wake?.();
-      });
-      try {
-        while (!aborted) {
-          while (queue.length > 0 && !aborted) {
-            const event = queue.shift() as DraftHubEvent;
-            await stream.writeSSE({ event: event.type, data: JSON.stringify(event) });
-          }
-          if (aborted) {
-            break;
-          }
-          // Either an event arrives or the heartbeat fires. The length check
-          // inside the executor closes the race between draining and waiting.
-          const notified = await new Promise<boolean>((resolve) => {
-            if (queue.length > 0) {
-              resolve(true);
-              return;
-            }
-            const timer = setTimeout(() => {
-              wake = undefined;
-              resolve(false);
-            }, DRAFT_SSE_HEARTBEAT_MS);
-            wake = () => {
-              clearTimeout(timer);
-              wake = undefined;
-              resolve(true);
-            };
-          });
-          if (aborted) {
-            break;
-          }
-          if (!notified) {
-            await stream.write(': heartbeat\n\n');
-          }
-        }
-      } finally {
-        // Client disconnect lands here through `onAbort`: no leaked listener.
-        unsubscribe();
-      }
+  for (const route of DRAFTS_API_ROUTES) {
+    const local = route.path.replace(/^\/api/, '');
+    routes.on(route.method, local, (context) => {
+      // The Effect router matches the full `/api`-prefixed path, so rewrite
+      // the local test URL back to it before forwarding.
+      const url = new URL(context.req.raw.url);
+      url.pathname = `${route.path}${url.pathname.slice(local.length)}`;
+      return api.handler(new Request(url, context.req.raw));
     });
-  });
-
+  }
   return routes;
 }

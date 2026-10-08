@@ -210,6 +210,7 @@ Hono stays the outer edge until every module has moved. Each module becomes an `
    `HttpServerResponse.uint8Array(bytes, { headers })`; `HttpApiBuilder` returns
    any handler-returned `HttpServerResponse` untouched, headers included.
 13. **Client IP (`invite-links/api.ts`, `machines/api.ts`):** `forwardRequest` strips any client copy of `x-zilar-socket-address` and stamps the real socket address (T-0563); read it with `socketAddressOf(request)`. For the trusted-proxy rule, use `clientIpFrom({ forwardedFor, socketAddress }, hops)` from `apps/server/src/http/client-ip.ts`. A test seam `getClientIp` takes the Effect request, so tests that pass `() => '10.0.0.1'` stay unchanged. An item-11 wrapper must delete the header and stamp its own value before forwarding (`machines/routes.ts`).
+14. **Server-Sent Events (`drafts/api.ts`):** declare the endpoint with no payload schema and return `HttpServerResponse.stream(frames.pipe(Stream.encodeText), { headers })`. Build frames with `Stream.unwrap(Effect.acquireRelease(subscribe, unsubscribe))` around a `Queue.unbounded` the hub listener offers into with `offerUnsafe`; drain it with `Stream.fromEffectRepeat(Queue.take(queue).pipe(Effect.timeoutOption(heartbeat)))` so idleness answers the heartbeat comment. `toReadableStreamWith` cancels the fiber on disconnect, which runs the unsubscribe.
 
 ## Moving a server service onto effect/sql (T-0496, T-0510, T-0519)
 
