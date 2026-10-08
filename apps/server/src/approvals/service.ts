@@ -1,6 +1,6 @@
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { and, count, desc, eq, gt, inArray, lt, or } from 'drizzle-orm';
-import { z } from 'zod';
+import { Result, Schema } from 'effect';
 import { ARGS_HASH_PATTERN } from '@zilar/protocol';
 import type { ServerDatabase } from '../db/client';
 import {
@@ -28,43 +28,70 @@ export type ApprovalDecision = 'approve_once' | 'approve_always' | 'deny';
 export const MAX_PENDING_APPROVALS_PER_AI = 50;
 export const MAX_APPROVAL_EXPIRY_MS = 24 * 60 * 60 * 1000;
 
-const actionSchema = z.string().min(1).max(100);
-const summarySchema = z.string().min(1).max(500);
-const detailsSchema = z.string().max(20000).optional();
-const argsHashSchema = z.string().regex(ARGS_HASH_PATTERN);
-const noteSchema = z.string().max(500).optional();
-const requestedBySchema = z.string().min(1).max(3071);
-const groupIdSchema = z.string().min(1).max(128).optional();
-const topicIdSchema = z.string().min(1).max(128).optional();
-const aiIdSchema = z.string().min(1).max(128);
+const actionSchema = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(100));
+const summarySchema = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(500));
+const detailsSchema = Schema.optional(Schema.String.check(Schema.isMaxLength(20000)));
+const argsHashSchema = Schema.String.check(Schema.isPattern(ARGS_HASH_PATTERN));
+const noteSchema = Schema.optional(Schema.String.check(Schema.isMaxLength(500)));
+const requestedBySchema = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(3071));
+const groupIdSchema = Schema.optional(
+  Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(128)),
+);
+const topicIdSchema = Schema.optional(
+  Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(128)),
+);
+const aiIdSchema = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(128));
 
-const worstCaseSchema = z
-  .object({
-    currency: z.enum(['EUR', 'USD']),
-    amount: z.number().finite().nonnegative(),
-  })
-  .strict();
+const worstCaseSchema = Schema.Struct({
+  currency: Schema.Literals(['EUR', 'USD']),
+  amount: Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0)),
+});
 
-export const CreateApprovalInputSchema = z
-  .object({
-    aiId: aiIdSchema,
-    groupId: groupIdSchema,
-    topicId: topicIdSchema,
-    action: actionSchema,
-    summary: summarySchema,
-    details: detailsSchema,
-    argsHash: argsHashSchema,
-    worstCase: worstCaseSchema.optional(),
-    requestedBy: requestedBySchema,
-    expiresAt: z.date(),
-  })
-  .strict()
+// The only validation text the callers ever see is the refine below; every
+// other failure is mapped to `Invalid approval request` so no input value can
+// reach an error message (Effect's default texts may quote the value).
+const GROUP_TOPIC_REFINE_MESSAGE = 'groupId and topicId must be set together';
+const INVALID_APPROVAL_REQUEST_MESSAGE = 'Invalid approval request';
+
+export const CreateApprovalInputSchema = Schema.Struct({
+  aiId: aiIdSchema,
+  groupId: groupIdSchema,
+  topicId: topicIdSchema,
+  action: actionSchema,
+  summary: summarySchema,
+  details: detailsSchema,
+  argsHash: argsHashSchema,
+  worstCase: Schema.optional(worstCaseSchema),
+  requestedBy: requestedBySchema,
+  expiresAt: Schema.Date,
+}).pipe(
   // T-0110: the scope is (AI, topic) — group and topic ids travel together.
-  .refine((data) => (data.groupId === undefined) === (data.topicId === undefined), {
-    message: 'groupId and topicId must be set together',
-  });
+  Schema.check(
+    Schema.makeFilter((data) =>
+      (data.groupId === undefined) === (data.topicId === undefined)
+        ? undefined
+        : GROUP_TOPIC_REFINE_MESSAGE,
+    ),
+  ),
+);
 
-export type CreateApprovalInput = z.infer<typeof CreateApprovalInputSchema>;
+export type CreateApprovalInput = typeof CreateApprovalInputSchema.Type;
+
+// Strict decode (unknown keys rejected, like the old `z.strictObject`). The
+// refine text is preserved; any other failure falls back to the fixed generic
+// text, so a value is never echoed.
+function parseCreateApprovalInput(input: unknown): CreateApprovalInput {
+  const result = Schema.decodeUnknownResult(CreateApprovalInputSchema, {
+    onExcessProperty: 'error',
+  })(input);
+  if (Result.isSuccess(result)) {
+    return result.success;
+  }
+  const message = result.failure.message.includes(GROUP_TOPIC_REFINE_MESSAGE)
+    ? GROUP_TOPIC_REFINE_MESSAGE
+    : INVALID_APPROVAL_REQUEST_MESSAGE;
+  throw new ApprovalServiceError('invalid_request', message);
+}
 
 // T-0099: the predicate the routes pass to `decideApproval` so the
 // service can accept or refuse an `approve_always` decision. Absent =
@@ -154,14 +181,7 @@ export async function createApproval(
   input: CreateApprovalInput,
   now: Date,
 ): Promise<ApprovalRow> {
-  const parsed = CreateApprovalInputSchema.safeParse(input);
-  if (!parsed.success) {
-    throw new ApprovalServiceError(
-      'invalid_request',
-      parsed.error.issues[0]?.message ?? 'Invalid approval request',
-    );
-  }
-  const data = parsed.data;
+  const data = parseCreateApprovalInput(input);
 
   if (data.expiresAt.getTime() <= now.getTime()) {
     throw new ApprovalServiceError('invalid_request', 'expires_at must be in the future');
@@ -259,8 +279,8 @@ export async function decideApproval(
   },
   now: Date,
 ): Promise<DecideApprovalResult | null> {
-  const noteParsed = noteSchema.safeParse(params.note);
-  if (!noteParsed.success) {
+  const noteResult = Schema.decodeUnknownResult(noteSchema)(params.note);
+  if (Result.isFailure(noteResult)) {
     throw new ApprovalServiceError('invalid_request', 'Invalid note');
   }
 

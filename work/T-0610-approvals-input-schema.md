@@ -1,7 +1,7 @@
 ---
 id: T-0610
 title: "Effect Schema: approvals/service.ts zod to Effect Schema (CreateApprovalInputSchema strict with the groupId/topicId refine, worstCase, the note check); same accept/reject, same ApprovalServiceError codes, the refine text kept; error texts never echo input values; tests unchanged"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0610-approvals-input-schema
 model: auto
@@ -85,4 +85,83 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+
+Converted `apps/server/src/approvals/service.ts` from zod to Effect Schema. The file no longer imports zod (the only remaining `z.` is the text "z.strictObject" inside a comment).
+
+- **Schemas:**
+  - Strings use `Schema.String.check(Schema.isMinLength(n), Schema.isMaxLength(m))`; optional fields use `Schema.optional(...)` (per `docs/EFFECT_GUIDE.md`, because of `exactOptionalPropertyTypes`).
+  - `argsHash` uses `Schema.isPattern(ARGS_HASH_PATTERN)`; the pattern is anchored (`/^[0-9a-f]{64}$/`), so it matches zod's `.regex`.
+  - `worstCase` is a `Schema.Struct` with `Schema.Literals(['EUR','USD'])` and `Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0))`.
+  - `expiresAt` uses `Schema.Date` (rejects an invalid `Date`, like `z.date()`).
+  - `CreateApprovalInputSchema` is strict via the decode option `{ onExcessProperty: 'error' }` (applies to the outer object and the nested `worstCase`), and carries the group/topic refine via `Schema.check(Schema.makeFilter(...))` keeping the exact text `groupId and topicId must be set together`.
+- **Parse sites:**
+  - `createApproval` calls a new local `parseCreateApprovalInput(input)` that runs `Schema.decodeUnknownResult(CreateApprovalInputSchema, { onExcessProperty: 'error' })`. On failure it keeps the refine text when present and otherwise throws `ApprovalServiceError('invalid_request', 'Invalid approval request')`. Because the message is always one of two constants, no input value can be echoed (Effect's default messages may quote the value).
+  - `decideApproval` validates the note with `Schema.decodeUnknownResult(noteSchema)` and still throws `ApprovalServiceError('invalid_request', 'Invalid note')`.
+  - `ApprovalServiceError.errorCode` values and all other logic are unchanged.
+- `CreateApprovalInput` is now `typeof CreateApprovalInputSchema.Type`; the TypeScript shape is unchanged (optional keys stay optional), so `service.test.ts` and `actions/gateway.ts` compile unchanged.
+
+### Files changed
+
+- `apps/server/src/approvals/service.ts` (conversion)
+- `work/T-0610-approvals-input-schema.md` (status + this Report only)
+
+### Probe results
+
+Temporary probe script against the exported schema plus the same message mapping (script removed afterwards):
+
+| Input | Result |
+| --- | --- |
+| valid input | accepted |
+| an extra key | `Invalid approval request` |
+| an extra key inside `worstCase` | `Invalid approval request` |
+| `amount: -1` | `Invalid approval request` |
+| `amount: NaN` | `Invalid approval request` |
+| an invalid `Date` (`new Date(NaN)`) | `Invalid approval request` |
+| `groupId` without `topicId` | `groupId and topicId must be set together` |
+| `topicId` without `groupId` | `groupId and topicId must be set together` |
+| a 501-character `summary` | `Invalid approval request` (message did not contain the summary) |
+
+### Commands and real results
+
+- `pnpm install` → `Done in 23.5s` (exit 0).
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot approvals actions authz-sweep` → **17 test files passed, 262 tests passed** (342.61s).
+- `pnpm gate` (from repo root):
+  ```
+  gate: 2 changed file(s) against main
+  PASS  install (frozen)  (2.6s)
+  PASS  format  (25.8s)
+  PASS  lint  (1.2s)
+  PASS  typecheck  (1.0s)
+  PASS  tests @zilar/server  (2072.6s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+  (The test step runs `vitest --changed main` for the server package and is long under the shared machine's load; earlier attempts were killed by environment restarts, not by test failures.)
+
+### Tests
+
+All listed tests are unchanged and green: `approvals/*.test.ts`, `actions/*.test.ts`, and `authz-sweep`.
+
+### Deviations / notes
+
+- None from the spec. `effect` was already a dependency; no dependencies added.
+- Every non-refine decode failure maps to the fixed `Invalid approval request` text rather than Effect's default text, which is what keeps values out of messages.
+
+### Blocked / needs a decision
+
+- none
+
 ## Review (written by Claude)
+
+**2026-10-08, lead:** approved.
+- **Pre-review:** clean, 2 nits. The packet (18:11) is newer than HEAD 8f7cf309.
+- **No test file changed.**
+- **Lead check:**
+  - there is no zod;
+  - the decode is strict for the outer object and `worstCase`;
+  - `Schema.Date` rejects an invalid Date, and `Schema.Finite` rejects NaN;
+  - every returned message is a fixed string (the refine text or `Invalid approval request`), so no input value is echoed.
+- **Follow-ups (nits):**
+  - the refine is detected by a substring of the full error text (`service.ts:90`), so an overlong summary that contains that sentence would get the refine text. That is harmless, but a later task should read the issue tree instead;
+  - a stale `z.strictObject` comment (`service.ts:80`).
