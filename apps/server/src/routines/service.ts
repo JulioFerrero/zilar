@@ -3,12 +3,18 @@
 // personal chat with the AI's owner), posting the tool's output as the AI.
 // `createRoutine` is called by the T-0105 adapter after a human approved;
 // this task exposes no HTTP route that creates a routine.
+//
+// Every query runs on the `effect/sql` client registered for this database
+// (see `../effect/sql`); `deleteRoutinesForAiInGroup` is the one exception,
+// because its caller (`groups/service.ts`) hands it a drizzle transaction.
 import { randomUUID } from 'node:crypto';
-import { and, count, eq, isNull } from 'drizzle-orm';
-import { Exit, Schema, SchemaIssue } from 'effect';
+import { and, eq, isNull } from 'drizzle-orm';
+import { Effect, Exit, Schema, SchemaIssue } from 'effect';
+import { SqlClient } from 'effect/sql';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
-import { aiTools, aiToolVersions, routines } from '../db/schema';
+import { routines } from '../db/schema';
+import { sqlRuntimeFor } from '../effect/sql';
 import { nextRunAfter, parseRoutineSchedule, type RoutineSchedule } from './schedule';
 
 export const MAX_ROUTINES_PER_TOPIC = 10;
@@ -30,6 +36,27 @@ export type RoutinePausedReason = 'user' | 'failures' | 'hosts_changed';
 export type RoutineLastStatus = 'ok' | 'error' | 'skipped';
 
 export type RoutineRow = typeof routines.$inferSelect;
+
+// The tool columns `createRoutine` checks before inserting a routine; the
+// effect/sql row comes back camelCased like the drizzle row it replaced.
+type RoutineToolRow = {
+  id: string;
+  aiId: string;
+  groupId: string | null;
+  topicId: string | null;
+  name: string;
+  currentVersion: number;
+  approvedHosts: string[];
+  deletedAt: Date | null;
+};
+
+type RoutineToolNameRow = {
+  name: string;
+};
+
+type RoutineVersionRow = {
+  hosts: string[];
+};
 
 export interface CreateRoutineInput {
   aiId: string;
@@ -60,6 +87,16 @@ export interface PublicRoutine {
   approvedHosts: string[];
   /** `personal` means the owner's DM with the AI; `group` a group topic. */
   scope: 'personal' | 'group';
+}
+
+// Every query runs on the `effect/sql` client registered for this database
+// (see `../effect/sql`). The exported functions stay `async` so routes and
+// tests keep their shape during the transition.
+function runSql<A, E>(
+  db: ServerDatabase,
+  effect: Effect.Effect<A, E, SqlClient.SqlClient>,
+): Promise<A> {
+  return sqlRuntimeFor(db).runPromise(effect);
 }
 
 const TITLE_CONTROL_CHARS = String.fromCharCode(
@@ -160,20 +197,16 @@ export async function createRoutine(
       );
     }
   }
-  const [tool] = await db
-    .select({
-      id: aiTools.id,
-      aiId: aiTools.aiId,
-      groupId: aiTools.groupId,
-      topicId: aiTools.topicId,
-      name: aiTools.name,
-      currentVersion: aiTools.currentVersion,
-      approvedHosts: aiTools.approvedHosts,
-      deletedAt: aiTools.deletedAt,
-    })
-    .from(aiTools)
-    .where(eq(aiTools.id, input.toolId))
-    .limit(1);
+  const tool = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const [row] = yield* sql<RoutineToolRow>`SELECT id, ai_id, group_id, topic_id, name,
+          current_version, approved_hosts, deleted_at
+        FROM ai_tools WHERE id = ${input.toolId} LIMIT 1`;
+      return row ?? null;
+    }),
+  );
   if (
     !tool ||
     tool.deletedAt !== null ||
@@ -183,11 +216,15 @@ export async function createRoutine(
   ) {
     throw new RoutineServiceError('invalid_request', 'The tool does not belong to this chat');
   }
-  const [version] = await db
-    .select({ hosts: aiToolVersions.hosts })
-    .from(aiToolVersions)
-    .where(and(eq(aiToolVersions.toolId, tool.id), eq(aiToolVersions.version, tool.currentVersion)))
-    .limit(1);
+  const version = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const [row] = yield* sql<RoutineVersionRow>`SELECT hosts FROM ai_tool_versions
+        WHERE tool_id = ${tool.id} AND version = ${tool.currentVersion} LIMIT 1`;
+      return row ?? null;
+    }),
+  );
   if (!version) {
     throw new RoutineServiceError('invalid_request', 'The tool has no current version');
   }
@@ -211,30 +248,31 @@ export async function createRoutine(
   }
   await enforceRoutineLimit(db, input.aiId, input.topicId);
   const nextRunAt = nextRunAfter(schedule.value, now);
-  const [inserted] = await db
-    .insert(routines)
-    .values({
-      id: randomUUID(),
-      aiId: input.aiId,
-      groupId: input.groupId,
-      topicId: input.topicId,
-      toolId: tool.id,
-      title: title.value,
-      schedule: schedule.value,
-      input: input.input ?? null,
-      approvedHosts: approved,
-      status: 'active',
-      pausedReason: null,
-      nextRunAt,
-      lastRunAt: null,
-      lastStatus: null,
-      consecutiveFailures: 0,
-      createdBy: input.userId,
-      createdAt: now,
-      updatedAt: now,
-      deletedAt: null,
-    })
-    .returning();
+  const inserted = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      // jsonb is written as a cast string, or NULL when there is no input.
+      const routineInput =
+        input.input === undefined || input.input === null
+          ? sql`NULL`
+          : sql`${JSON.stringify(input.input)}::jsonb`;
+      const [row] = yield* sql<RoutineRow>`INSERT INTO routines (
+          id, ai_id, group_id, topic_id, tool_id, title, schedule, input,
+          approved_hosts, status, paused_reason, next_run_at, last_run_at,
+          last_status, consecutive_failures, created_by, created_at, updated_at,
+          deleted_at
+        ) VALUES (
+          ${randomUUID()}, ${input.aiId}, ${input.groupId}, ${input.topicId},
+          ${tool.id}, ${title.value}, ${JSON.stringify(schedule.value)}::jsonb,
+          ${routineInput}, ${JSON.stringify(approved)}::jsonb, 'active', NULL,
+          ${nextRunAt.toISOString()}, NULL, NULL, 0, ${input.userId},
+          ${now.toISOString()}, ${now.toISOString()}, NULL
+        )
+        RETURNING *`;
+      return row ?? null;
+    }),
+  );
   if (!inserted) {
     throw new Error('Failed to create routine');
   }
@@ -260,15 +298,26 @@ export async function getRoutine(
   db: ServerDatabase,
   id: string,
 ): Promise<{ routine: RoutineRow; toolName: string } | null> {
-  const [row] = await db.select().from(routines).where(eq(routines.id, id)).limit(1);
+  const row = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const [found] = yield* sql<RoutineRow>`SELECT * FROM routines WHERE id = ${id} LIMIT 1`;
+      return found ?? null;
+    }),
+  );
   if (!row || row.deletedAt !== null) {
     return null;
   }
-  const [tool] = await db
-    .select({ name: aiTools.name })
-    .from(aiTools)
-    .where(eq(aiTools.id, row.toolId))
-    .limit(1);
+  const tool = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const [found] = yield* sql<RoutineToolNameRow>`SELECT name FROM ai_tools
+        WHERE id = ${row.toolId} LIMIT 1`;
+      return found ?? null;
+    }),
+  );
   const schedule = parseRoutineSchedule(row.schedule);
   if (!schedule.ok) {
     return null;
@@ -281,7 +330,13 @@ export async function listRoutinesForAi(
   db: ServerDatabase,
   aiId: string,
 ): Promise<PublicRoutine[]> {
-  const rows = await db.select().from(routines).where(eq(routines.aiId, aiId));
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<RoutineRow>`SELECT * FROM routines WHERE ai_id = ${aiId}`;
+    }),
+  );
   return toPublicRoutines(db, rows);
 }
 
@@ -290,7 +345,13 @@ export async function listRoutinesForTopic(
   db: ServerDatabase,
   topicId: string,
 ): Promise<PublicRoutine[]> {
-  const rows = await db.select().from(routines).where(eq(routines.topicId, topicId));
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<RoutineRow>`SELECT * FROM routines WHERE topic_id = ${topicId}`;
+    }),
+  );
   return toPublicRoutines(db, rows);
 }
 
@@ -309,13 +370,26 @@ export async function pauseRoutine(
   now: Date,
   audit?: AuditRecorder,
 ): Promise<PauseRoutineResult> {
-  const [updated] = await db
-    .update(routines)
-    .set({ status: 'paused', pausedReason: 'user', updatedAt: now })
-    .where(and(eq(routines.id, id), eq(routines.status, 'active'), isNull(routines.deletedAt)))
-    .returning();
+  const updated = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const [row] = yield* sql<RoutineRow>`UPDATE routines
+        SET status = 'paused', paused_reason = 'user', updated_at = ${now.toISOString()}
+        WHERE id = ${id} AND status = 'active' AND deleted_at IS NULL
+        RETURNING *`;
+      return row ?? null;
+    }),
+  );
   if (!updated) {
-    const [row] = await db.select().from(routines).where(eq(routines.id, id)).limit(1);
+    const row = await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        const [found] = yield* sql<RoutineRow>`SELECT * FROM routines WHERE id = ${id} LIMIT 1`;
+        return found ?? null;
+      }),
+    );
     if (!row || row.deletedAt !== null) {
       throw new RoutineServiceError('not_found', 'Routine not found');
     }
@@ -354,7 +428,14 @@ export async function resumeRoutine(
   now: Date,
   audit?: AuditRecorder,
 ): Promise<ResumeRoutineResult> {
-  const [row] = await db.select().from(routines).where(eq(routines.id, id)).limit(1);
+  const row = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const [found] = yield* sql<RoutineRow>`SELECT * FROM routines WHERE id = ${id} LIMIT 1`;
+      return found ?? null;
+    }),
+  );
   if (!row || row.deletedAt !== null) {
     throw new RoutineServiceError('not_found', 'Routine not found');
   }
@@ -371,17 +452,19 @@ export async function resumeRoutine(
   if (!schedule.ok) {
     throw new RoutineServiceError('invalid_request', schedule.message);
   }
-  const [updated] = await db
-    .update(routines)
-    .set({
-      status: 'active',
-      pausedReason: null,
-      consecutiveFailures: 0,
-      nextRunAt: nextRunAfter(schedule.value, now),
-      updatedAt: now,
-    })
-    .where(and(eq(routines.id, id), eq(routines.status, 'paused'), isNull(routines.deletedAt)))
-    .returning();
+  const updated = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const [result] = yield* sql<RoutineRow>`UPDATE routines
+        SET status = 'active', paused_reason = NULL, consecutive_failures = 0,
+            next_run_at = ${nextRunAfter(schedule.value, now).toISOString()},
+            updated_at = ${now.toISOString()}
+        WHERE id = ${id} AND status = 'paused' AND deleted_at IS NULL
+        RETURNING *`;
+      return result ?? null;
+    }),
+  );
   if (!updated) {
     throw new RoutineServiceError('not_found', 'Routine not found');
   }
@@ -416,11 +499,17 @@ export async function deleteRoutine(
   now: Date,
   audit?: AuditRecorder,
 ): Promise<DeleteRoutineResult> {
-  const [updated] = await db
-    .update(routines)
-    .set({ deletedAt: now, updatedAt: now })
-    .where(and(eq(routines.id, id), isNull(routines.deletedAt)))
-    .returning();
+  const updated = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const [row] = yield* sql<RoutineRow>`UPDATE routines
+        SET deleted_at = ${now.toISOString()}, updated_at = ${now.toISOString()}
+        WHERE id = ${id} AND deleted_at IS NULL
+        RETURNING *`;
+      return row ?? null;
+    }),
+  );
   if (!updated) {
     return { deleted: false };
   }
@@ -441,30 +530,29 @@ export async function deleteRoutine(
   return { deleted: true };
 }
 
-// Soft-deletes every active routine of one AI in one topic. Takes the
-// caller's transaction (topic-AI removal): deletes the routines there.
-// Returns the deleted ids.
+// Soft-deletes every active routine of one AI in one topic. Called from
+// topic-AI removal with the top-level `deps.db`. Returns the deleted ids.
 export async function deleteRoutinesForAiInTopic(
-  tx: ServerDatabase,
+  db: ServerDatabase,
   input: { aiId: string; topicId: string; now: Date },
 ): Promise<string[]> {
-  const rows = await tx
-    .update(routines)
-    .set({ deletedAt: input.now, updatedAt: input.now })
-    .where(
-      and(
-        eq(routines.aiId, input.aiId),
-        eq(routines.topicId, input.topicId),
-        isNull(routines.deletedAt),
-      ),
-    )
-    .returning();
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ id: string }>`UPDATE routines
+        SET deleted_at = ${input.now.toISOString()}, updated_at = ${input.now.toISOString()}
+        WHERE ai_id = ${input.aiId} AND topic_id = ${input.topicId} AND deleted_at IS NULL
+        RETURNING id`;
+    }),
+  );
   return rows.map((row) => row.id);
 }
 
 // Soft-deletes every active routine of one AI in every topic of a group.
-// Takes the caller's transaction (`removeGroupAi`): deletes the routines
-// there. Returns the deleted ids.
+// Stays on drizzle: `groups/service.ts` `removeGroupAi` calls it inside a
+// drizzle transaction and hands that transaction in. It moves to effect/sql
+// when `removeGroupAi`'s transaction moves. Returns the deleted ids.
 export async function deleteRoutinesForAiInGroup(
   tx: ServerDatabase,
   input: { aiId: string; groupId: string; now: Date },
@@ -489,11 +577,16 @@ export async function deleteRoutinesForTool(
   db: ServerDatabase,
   input: { toolId: string; now: Date },
 ): Promise<string[]> {
-  const rows = await db
-    .update(routines)
-    .set({ deletedAt: input.now, updatedAt: input.now })
-    .where(and(eq(routines.toolId, input.toolId), isNull(routines.deletedAt)))
-    .returning();
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ id: string }>`UPDATE routines
+        SET deleted_at = ${input.now.toISOString()}, updated_at = ${input.now.toISOString()}
+        WHERE tool_id = ${input.toolId} AND deleted_at IS NULL
+        RETURNING id`;
+    }),
+  );
   return rows.map((row) => row.id);
 }
 
@@ -502,15 +595,17 @@ async function enforceRoutineLimit(
   aiId: string,
   topicId: string | null,
 ): Promise<void> {
-  const rows = await db
-    .select({ total: count() })
-    .from(routines)
-    .where(
-      topicId === null
-        ? and(eq(routines.aiId, aiId), isNull(routines.topicId), isNull(routines.deletedAt))
-        : and(eq(routines.aiId, aiId), eq(routines.topicId, topicId), isNull(routines.deletedAt)),
-    );
-  if (Number(rows[0]?.total ?? 0) >= MAX_ROUTINES_PER_TOPIC) {
+  const row = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const topic = topicId === null ? sql`topic_id IS NULL` : sql`topic_id = ${topicId}`;
+      const [counter] = yield* sql<{ total: number }>`SELECT count(*)::int AS total
+        FROM routines WHERE ai_id = ${aiId} AND ${topic} AND deleted_at IS NULL`;
+      return counter ?? null;
+    }),
+  );
+  if (Number(row?.total ?? 0) >= MAX_ROUTINES_PER_TOPIC) {
     throw new RoutineServiceError(
       'routine_limit',
       `A topic has at most ${MAX_ROUTINES_PER_TOPIC} routines`,
@@ -518,7 +613,10 @@ async function enforceRoutineLimit(
   }
 }
 
-async function toPublicRoutines(db: ServerDatabase, rows: RoutineRow[]): Promise<PublicRoutine[]> {
+async function toPublicRoutines(
+  db: ServerDatabase,
+  rows: readonly RoutineRow[],
+): Promise<PublicRoutine[]> {
   const live = rows.filter((row) => row.deletedAt === null);
   const result: PublicRoutine[] = [];
   for (const row of live) {
@@ -526,11 +624,15 @@ async function toPublicRoutines(db: ServerDatabase, rows: RoutineRow[]): Promise
     if (!schedule.ok) {
       continue;
     }
-    const [tool] = await db
-      .select({ name: aiTools.name })
-      .from(aiTools)
-      .where(eq(aiTools.id, row.toolId))
-      .limit(1);
+    const tool = await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        const [found] = yield* sql<RoutineToolNameRow>`SELECT name FROM ai_tools
+          WHERE id = ${row.toolId} LIMIT 1`;
+        return found ?? null;
+      }),
+    );
     result.push(toPublicRoutine(row, tool?.name ?? '', schedule.value));
   }
   result.sort((a, b) => a.id.localeCompare(b.id));

@@ -1,7 +1,7 @@
 ---
 id: T-0627
 title: "effect/sql: routines/service.ts off drizzle except deleteRoutinesForAiInGroup (it runs inside the groups/service.ts drizzle transaction); jsonb written as JSON text, count(*)::int; same errors, audits, public shape; tests unchanged"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0627-effect-sql-routines-service
 model: auto
@@ -58,4 +58,84 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+
+Moved every function in `apps/server/src/routines/service.ts` except
+`deleteRoutinesForAiInGroup` from drizzle to `effect/sql`, following the pins
+recipe (`docs/audit/effect-sql-migration.md` §(a)) and the
+`apps/server/src/tools/service.ts` examples.
+
+- Added a private `runSql(db, effect)` helper (`sqlRuntimeFor(db).runPromise`).
+- Reads: `createRoutine`'s `ai_tools` lookup and `ai_tool_versions` hosts
+  lookup, `getRoutine`, `listRoutinesForAi`, `listRoutinesForTopic`,
+  `toPublicRoutines`'s per-row tool-name read, and `enforceRoutineLimit`
+  (`SELECT count(*)::int AS total`).
+- Writes: `createRoutine`'s insert (`RETURNING *`), `pauseRoutine`,
+  `resumeRoutine`, `deleteRoutine`, `deleteRoutinesForAiInTopic` (now takes the
+  top-level `db`, as `topics/service.ts:921` already passes `deps.db`),
+  `deleteRoutinesForTool`.
+- jsonb (`schedule`, `input`, `approved_hosts`) written as JSON text:
+  `${JSON.stringify(x)}::jsonb`; nullable `input` as `NULL` (same pattern as
+  `audit/service.ts:200`). Timestamps written as `now.toISOString()`.
+- Every guard (`status = 'active'`, `status = 'paused'`, `deleted_at IS NULL`),
+  error code, message, audit entry and return shape kept identical.
+- `deleteRoutinesForAiInGroup` and its caller left untouched, with a comment
+  saying it moves when `removeGroupAi`'s transaction moves. After the move the
+  drizzle imports in the file serve only that function (`and`, `eq`, `isNull`,
+  `routines`); `count` and the `aiTools`/`aiToolVersions` imports are gone.
+- `RoutineRow` stays the type-only `typeof routines.$inferSelect`; the rows come
+  back camelCased via `transformResultNames`, and timestamptz comes back as
+  `Date` (as pins/tools already rely on).
+
+### Files changed
+
+- `apps/server/src/routines/service.ts` (only source file).
+- `work/T-0627-effect-sql-routines-service.md` (front matter status + this report).
+
+### Commands run (real results)
+
+- `pnpm install`: done, no blockers.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/routines/service.test.ts`:
+  1 file passed, 19 tests passed.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/routines src/tools src/topics src/groups`:
+  12 files passed, 273 tests passed (56.1s). Tests unchanged.
+- `pnpm gate` (first run): FAILED on `@zilar/server#typecheck` — `sql<RoutineRow>`
+  returns `readonly RoutineRow[]`, which does not satisfy the private
+  `toPublicRoutines(rows: RoutineRow[])` parameter (2 errors at
+  service.ts:340 and :355). Scope check was already clean.
+- Fix: changed the private helper to `rows: readonly RoutineRow[]`.
+- `pnpm gate` (after fix):
+  ```
+  PASS  install (frozen)  (1.3s)
+  PASS  format  (15.6s)
+  PASS  lint  (0.6s)
+  PASS  typecheck  (7.5s)
+  PASS  tests @zilar/server  (6.2s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Notes / deviations
+
+- No test file was changed; all listed tests pass unchanged.
+- No drizzle/Hono/zod patterns were altered outside the converted functions.
+- Error mapping: like `tools/service.ts`, the routines service has no
+  HTTP-level mapping of `SqlError` (its callers treat thrown errors as before);
+  I kept that shape rather than inventing an error map the spec did not ask for.
+
+### Open questions
+
+- None.
+
 ## Review (written by Claude)
+
+**2026-10-08, lead:** approved.
+- **Pre-review:** clean, 1 nit, 1 follow-up. The packet head is b08317c5, the current HEAD.
+- **Lead check:**
+  - the insert binds every value;
+  - jsonb is written as `::jsonb` casts, and a missing `input` becomes SQL NULL;
+  - every guard and error text is kept;
+  - `deleteRoutinesForAiInGroup` stays on drizzle, with its comment;
+  - 68 service tests are green.
+- **Nit, for the cleanup task:** the effect/sql comment is duplicated at `service.ts:7` and `:92`.
+- **Follow-up:** the cap of 10 routines is check-then-insert, so two concurrent creates can pass it. This was true before the conversion; fix it later with a lock.
