@@ -54,7 +54,8 @@ import { createTopicsApi } from './topics/api';
 import { createMachinesRoutes } from './machines/routes';
 import { createDbMachineRegistry, type DbMachineRegistry } from './machines/registry';
 import { serverVersion } from './version';
-import { createToolsRoutes, type ToolsRoutesDependencies } from './tools/routes';
+import { createToolsApi } from './tools/api';
+import type { ToolsRoutesDependencies } from './tools/routes';
 import { createRoutinesApi } from './routines/api';
 import type { ToolRunner } from './tools/types';
 import type { VoiceEngine } from './voice/engine';
@@ -550,7 +551,8 @@ export function createApp({
     audit: auditRecorder,
     ...(toolRunner === undefined ? {} : { toolRunner }),
   };
-  app.route('/api', createToolsRoutes(toolsDeps));
+  const toolsApi = createToolsApi({ ...toolsDeps, logger });
+  mountEffectRoutes(app, toolsApi.routes, toolsApi.handler);
   const routinesApi = createRoutinesApi({ auth, db, audit: auditRecorder, logger });
   mountEffectRoutes(app, routinesApi.routes, routinesApi.handler);
   const xmppApi = createXmppApi({ auth, db, adminClient, xmppConfig: config.xmpp, logger });

@@ -1,7 +1,7 @@
 ---
 id: T-0559
 title: "Effect C (HTTP): tools routes (lists per AI/group/topic, detail, versions, runs, revert, delete, run) onto the HttpApi adapter, zod to Effect Schema; 16 KiB input refine and run order kept; createToolsRoutes stays as a thin Hono wrapper; tests unchanged"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0559-effect-http-tools
 model: auto
@@ -71,4 +71,90 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+Moved the tools module onto the Effect `HttpApi` adapter (recipe items 8-11),
+following `routines/api.ts` (T-0554) and `push/api.ts` (T-0543):
+- **New `apps/server/src/tools/api.ts`**: ten routes on `HttpApi` group `tools`
+  (prefix `/api`), with `Session` middleware, a module-local schema-error layer
+  (400 `invalid_request`), and `createToolsApi` exporting `{ handler, routes }`
+  plus `TOOLS_API_ROUTES` (exact method+path pairs).
+- **`apps/server/src/tools/routes.ts`**: now the thin item-11 `createToolsRoutes`
+  wrapper (builds the Effect mount, registers relative paths on a `new Hono()`,
+  forwards `context.req.raw`). Keeps and re-exports `TOOL_RUN_RATE_LIMIT_MAX`,
+  `TOOL_RUN_RATE_LIMIT_WINDOW_MS`, `MAX_TOOL_RUN_INPUT_BYTES` and
+  `ToolsRoutesDependencies`; zod schemas and old handlers removed.
+- **`apps/server/src/app.ts`**: `mountEffectRoutes(app, toolsApi.routes,
+  toolsApi.handler)` at the same position (right before routines).
+
+Step order kept everywhere. Revert/run bodies decode **manually inside the
+handlers** (like push, not as endpoint payloads), so each route keeps session
+-> decode (400 `Invalid revert body` / `Invalid run body`, byte-identical) ->
+access (404 `Tool not found` unless manager) -> limiter (429
+`Too many tool runs, try again in a minute`) -> runner check (501
+`runner_unavailable`) -> `runToolVersion`. A malformed JSON body answers
+`Invalid JSON body`, as the old `readJson` did. Unparseable/non-stringifiable
+or >16 KiB `input` answers `Invalid run body`, as the old zod refine did.
+Service errors map identically (`not_found`->404, `ai_not_active`->409,
+`version_limit`/`tool_limit`->400 with code, else 400 `invalid_request`;
+unknown rejections stay 500). Audit calls (`tool.reverted`, `tool.deleted`,
+`tool.run`) carry ids/names/versions only — no source, output or input in
+audit or logs, as before.
+
+### Success-schema field comparison (item 8)
+- List/detail (`PublicTool` + scope): all 11 service fields + `scope`
+  (`id aiId groupId topicId name description currentVersion hosts
+  approvedHosts lastRunStatus updatedAt scope`); detail adds `source`.
+  Dates encode as ISO strings, `hosts`/`approvedHosts` as copied arrays.
+- Versions (`PublicToolVersion`): all 7 fields, no source. Single version
+  (`ToolVersionDetail`): all 8 fields incl. `source`.
+- Runs (`PublicToolRun`): all 10 fields (`id toolId version trigger status
+  errorKind durationMs fetchCount outputText createdAt`).
+- Revert answer: the old `toVersionWire` shape (7 version fields + `toolName`).
+- Run answer: the old `toRunWire` shape (`ok/output|error/logs/durationMs/
+  fetchCount`); `output.data` stays optional so a data-less output encodes
+  exactly like `c.json` did.
+
+### Decode texts (item 10)
+No test-asserted text changed: every decode failure answers the old
+byte-identical message (`Invalid revert body`, `Invalid run body`,
+`Invalid JSON body`). The group schema-error layer only covers params
+(always strings, never fires).
+
+### Commands and real results
+- `pnpm install`: ok (20.8s).
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot
+  src/tools/routes.test.ts`: 19 passed.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot tools
+  authz-sweep app.test`: 13 files, 227 tests, all passed.
+- `pnpm gate` (final tree): `PASS install (7.9s)`, `PASS format (123.8s)`,
+  `PASS lint (2.0s)`, `PASS typecheck (45.7s)`,
+  `PASS tests @zilar/server (1834.6s)`,
+  `scope: every changed file is inside the Allowed files`, `GATE PASS`.
+  (An earlier gate on the pre-dedup tree also passed; the only later change
+  was making `routes.ts` re-export `MAX_TOOL_RUN_INPUT_BYTES` from `api.ts`
+  instead of redefining it.)
+
+### Problems
+- First test run: all 9 POST tests 500'd. Cause: I used
+  `Effect.catchAllCause`, which does not exist in Effect 4 (guide confirms);
+  fixed to `Effect.catchCause` like push. Found via a file-writing pino log.
+- `pnpm exec prettier --write apps/server/src/tools/api.ts` (single file)
+  to fix a format check failure; typecheck then needed the wrapper's
+  `new Hono()` typed with `RequestIdVariables` (as routines does).
+- Gate runs take 15-35 min on this shared machine (parallel workers in other
+  worktrees); ran the gate twice in the background and waited.
+
+### Deviations / open questions
+None. Tests unchanged; no new dependencies.
+
 ## Review (written by Claude)
+
+**2026-10-08, lead:** approved.
+- **Pre-review:** clean, 0 findings, at HEAD 24fa0ab2.
+- **No test file changed** (diff stat: `app.ts`, `tools/api.ts`, `tools/routes.ts`, the task file).
+- **Output schemas checked by the lead against main, field by field:**
+  - list items: the 11 `PublicTool` fields plus `scope` (`listToolsForAi` and `listToolsForGroup` add it);
+  - detail: the same plus `source`, as in `toToolWire`;
+  - versions, runs, revert: the same fields as before;
+  - run: matches `toRunWire` and `RunToolResult`, with `output.data` optional as in `ToolOutput`.
+- **Gate:** passed at the worker, 227 tests.
