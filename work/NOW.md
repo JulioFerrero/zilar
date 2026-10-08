@@ -2,6 +2,24 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-08 14:40, Effect migration continues:**
+- **Merged since 11:35:**
+  - **Effect HTTP:** T-0578 (setup), T-0581 (drafts SSE), T-0582 (stickers JSON), T-0586 (GIFs);
+  - **effect/sql:** T-0587, T-0588, T-0589, T-0590, T-0591, T-0592, T-0593 (connections, routines, the startup count, and the inline reads in memory, media, /me, approvals, routines and push);
+  - **tool arguments plan:** T-0571 (the plan), T-0594 (T-A, the decode seam), T-0595 (T-F, sandbox), T-0597 (T-C, demo), T-0598 (T-D, web tools);
+  - T-0596: dead zod schemas dropped from pins, roles and topics.
+- **Approved, in the merge queue:**
+  - T-0600: ejabberd admin client;
+  - T-0603: T-B, the model tool arguments. The reasons keep zod's wording and never echo a value;
+  - T-0601: LiteLLM admin client;
+  - T-0602: stickers part B. **Every sticker route is now on Effect HTTP**;
+  - T-0599: draft events, the invite CLI and the routine title;
+  - T-0604: T-E, the tool and routine schemas. All 32 error texts in its files were checked byte for byte.
+- **Running (effect/sql, transactions included):** T-0605 (topic access), T-0606 (avatars and backgrounds), T-0607 (push devices and machines), T-0608 (roles), T-0609 (invite-link join), T-0611 (public group join). **Effect Schema:** T-0610 (approval input).
+- **Next:** T-0612 (T-G: the action registry takes Effect schemas only), after T-0604 merges.
+- **Left on zod after the queue:** the legacy blocks in stickers, contact-requests and handles (exact 400 texts), plus `db/schema.ts`.
+- **Follow-ups noted:** five stale "zod" comments; six near-copies of the first-issue message walker. Each copy has its own special cases, so merging them waits.
+
 **2026-10-08 11:35, Julio back; Effect migration continues:**
 - **Merged since 08:55:**
   - T-0576 (avatars HTTP), T-0577 (backgrounds HTTP) and T-0580 (file proxy HTTP, with a streamed body);
