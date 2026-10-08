@@ -13,6 +13,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0631](T-0631-effect-sql-media-indexer.md) | effect/sql: media indexer | in-progress | auto | T-0596 | |
 | [T-0632](T-0632-effect-sql-review-nits.md) | Review nits: files comment, routines comment, gateway row types | in-progress | auto | T-0629 | |
 | [T-0633](T-0633-effect-sql-sticker-packs.md) | effect/sql: sticker packs and panel (stickers service part A) | in-progress | auto | T-0596 | |
+| [T-0634](T-0634-effect-sql-memory-indexer.md) | effect/sql: AI memory indexer | in-progress | auto | T-0596 | |
 
 ## Follow-ups
 
