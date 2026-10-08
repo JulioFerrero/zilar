@@ -1,7 +1,7 @@
 ---
 id: T-0660
 title: "effect/sql (C3): ensureAiModel's and changeAiModel's locked transactions in ais/service.ts, the gateway AI lookup, and connections decryptForGatewayUse move to effect/sql; connections/service.ts drops drizzle; same locks, order, errors and tests"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0660-ais-ensure-change-model-effect-sql
 model: auto
@@ -86,4 +86,90 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Status: done. Both `ais/service.ts` transactions and the gateway lookups now run
+on `effect/sql`; `connections/service.ts` no longer imports drizzle.
+
+### What I did
+
+**`apps/server/src/connections/service.ts`**
+- Dropped the `drizzle-orm` and `../db/schema` imports.
+- Added `decryptForGatewayUseEffect(cipher, connectionId)`: a `SqlClient` effect
+  that `SELECT`s `encrypted_key FROM provider_connections WHERE id = ?`, fails
+  with the same `new Error('Connection not found')` on no row, and returns
+  `cipher.decrypt(...)`.
+- `decryptForGatewayUse(db, cipher, id)` is now `runSql(db, decryptForGatewayUseEffect(...))`;
+  widened `runSql` to `runSql<A, E>` with `SqlError.SqlError | E`.
+- Rewrote the stale "stays on drizzle" comment.
+
+**`apps/server/src/ais/service.ts`**
+- Imported `decryptForGatewayUseEffect` and dropped the now-unused
+  `providerConnections` schema import (and the now-unused drizzle `sql` import).
+- Replaced `findGatewayAiIn(txDb, aiId)` with `findGatewayAiEffect(aiId)`: one
+  `effect/sql` `SELECT` with the same columns and joins
+  (`ais ⋈ ai_limits ⟕ llm_virtual_keys ⋈ provider_connections`, `WHERE ais.id = ?`).
+  Columns are listed explicitly; `transformResultNames` camelCases them into
+  `GatewayAiRecord` (`per_day_usd`→`perDayUsd`, `provider_connection_id`→
+  `providerConnectionId`, …). No unaliased `ai_id` is selected from the two
+  tables that both carry one.
+- `findAiForGateway(db, aiId)` is now `runSql(db, findGatewayAiEffect(aiId))`.
+- `ensureAiModel`: the body under `withAiEnsureLock` is now
+  `runSql(deps.db, sql.withTransaction(…))`. Same advisory lock, same
+  re-read-after-lock, same early returns, same errors (`AI <id> not found`,
+  `AI <id> has no virtual key` via `Effect.fail`). `decryptForGatewayUseEffect`
+  and the LiteLLM calls (wrapped in `Effect.tryPromise({ catch: (error) => error })`)
+  ride the transaction. Final `UPDATE llm_virtual_keys SET litellm_model_id = ?`
+  is raw SQL.
+- `changeAiModel`: the main transaction is `runSql(deps.db, sql.withTransaction(…))`
+  with the same lock, the same `findGatewayAiEffect` re-read, the same 404 when
+  the row is missing/foreign, the same no-op early return, the same
+  `HttpError`/`updateFailed()` failures (`Effect.fail` so the `catch` receives
+  the same object), the same `decryptForGatewayUseEffect`, then the optional
+  `deleteModel(old)` and `deletedOld = true` immediately after it, then
+  `deleteModelsNamed`, `registerModelWithKey`, and the two raw-SQL updates. The
+  `catch` (log, `deletedOld` recovery transaction, `throw updateFailed()`) is
+  unchanged.
+- All exported signatures unchanged; no test changed.
+
+### Files changed (all inside Allowed files)
+- `apps/server/src/ais/service.ts`
+- `apps/server/src/connections/service.ts`
+- `work/T-0660-ais-ensure-change-model-effect-sql.md`
+
+### Commands and real results
+- `pnpm install` — done, 1173 packages, one unrelated peer warning
+  (`@types/react` for mobile), no errors.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/ais/service src/ais/routes src/connections src/agents/gateway`
+  — `Test Files 6 passed | 1 skipped (7)`, `Tests 274 passed | 1 skipped (275)`,
+  44.31s. This is the task's Checks command.
+- `pnpm gate` — first run: FAIL on `format` (`apps/server/src/ais/service.ts`
+  prettier style, the wrapped import). Fixed only that file with
+  `pnpm exec prettier --write apps/server/src/ais/service.ts`. Second run:
+  ```
+  PASS  install (frozen)  (1.3s)
+  PASS  format  (21.1s)
+  PASS  lint  (1.7s)
+  PASS  typecheck  (13.2s)
+  PASS  tests @zilar/server  (15.9s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Acceptance
+- `ais/service.ts` has no `.transaction(` and no `findGatewayAiIn` (grep: no
+  matches).
+- `connections/service.ts` has no `drizzle` import or reference (grep count: 0).
+- All tests pass unchanged, including the `ensureAiModel` concurrency tests.
+- `pnpm gate` ends with `GATE PASS` and lists no file outside the Allowed files.
+
+### Problems / deviations
+- None. One pre-gate formatting fix (see above); no test or spec change.
+
+### Open questions
+- None.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved.
+- **Pre-review:** clean after the lead fix round; the packet head is f7e6c87f, the current HEAD. The decrypt now fails with the original error, and the lock comment is fixed.
+- **Result:** `ais/service.ts` has no `.transaction(` left, and `connections/service.ts` has no drizzle left.
+- **Nits I accepted, for the follow-ups:** the module header at `ais/service.ts:23-26` understates the migration, and the `decryptForGatewayUseEffect` error channel is `unknown` (it could be `SqlError | Error`).

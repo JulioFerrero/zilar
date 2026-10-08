@@ -1,12 +1,16 @@
 import { randomUUID } from 'node:crypto';
 import { Effect } from 'effect';
 import { SqlClient, type SqlError } from 'effect/sql';
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import type { KeyCipher } from '../connections/crypto';
-import { decryptForGatewayUse, findOwnedConnection } from '../connections/service';
+import {
+  decryptForGatewayUse,
+  decryptForGatewayUseEffect,
+  findOwnedConnection,
+} from '../connections/service';
 import { ROSTER_GROUP } from '../contacts/service';
 import type { ServerDatabase } from '../db/client';
-import { aiLimits, ais, llmVirtualKeys, machines, providerConnections, user } from '../db/schema';
+import { aiLimits, ais, llmVirtualKeys, machines, user } from '../db/schema';
 import { sqlRuntimeFor } from '../effect/sql';
 import { HttpError } from '../errors';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
@@ -207,15 +211,7 @@ export async function findOwnedAi(
 // (`ensureAiModel`) that have no owner in hand. Not exported: no route may use
 // it.
 async function findAiForGateway(db: ServerDatabase, aiId: string): Promise<GatewayAiRecord | null> {
-  const [row] = await db
-    .select({ ...aiColumns, provider: providerConnections.provider, owner: ais.owner })
-    .from(ais)
-    .innerJoin(aiLimits, eq(aiLimits.aiId, ais.id))
-    .leftJoin(llmVirtualKeys, eq(llmVirtualKeys.aiId, ais.id))
-    .innerJoin(providerConnections, eq(providerConnections.id, ais.providerConnectionId))
-    .where(eq(ais.id, aiId))
-    .limit(1);
-  return row ?? null;
+  return runSql(db, findGatewayAiEffect(aiId));
 }
 
 // The public form of one owned AI, shaped for the API and the wizard.
@@ -862,21 +858,47 @@ async function registerModelWithKey(
   return modelId;
 }
 
-// Reads one AI with its connection's provider inside a transaction. The
-// gateway-only paths share it so the row is always fresh under the lock.
-async function findGatewayAiIn(
-  txDb: ServerDatabase,
+// Reads one AI with its connection's provider through `effect/sql`. The
+// gateway-only paths share it so the row is always fresh under the lock. It is
+// one statement, so a caller inside `sql.withTransaction` reads on the
+// transaction's connection.
+//
+// Columns are listed explicitly and camelCased by `transformResultNames`, so
+// the row matches `GatewayAiRecord`; both `ai_limits` and `llm_virtual_keys`
+// carry an `ai_id`, which is why none is selected unaliased.
+function findGatewayAiEffect(
   aiId: string,
-): Promise<GatewayAiRecord | null> {
-  const [ai] = await txDb
-    .select({ ...aiColumns, provider: providerConnections.provider, owner: ais.owner })
-    .from(ais)
-    .innerJoin(aiLimits, eq(aiLimits.aiId, ais.id))
-    .leftJoin(llmVirtualKeys, eq(llmVirtualKeys.aiId, ais.id))
-    .innerJoin(providerConnections, eq(providerConnections.id, ais.providerConnectionId))
-    .where(eq(ais.id, aiId))
-    .limit(1);
-  return ai ?? null;
+): Effect.Effect<GatewayAiRecord | null, SqlError.SqlError, SqlClient.SqlClient> {
+  return Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const [row] = yield* sql<GatewayAiRecord>`SELECT
+      ais.id,
+      ais.name,
+      ais.template,
+      ais.persona,
+      ais.model,
+      ais.jid,
+      ais.status,
+      ais.provider_connection_id,
+      ais.machine_id,
+      ais.created_at,
+      ais.can_delegate,
+      ais.accepts_delegation,
+      ais.localpart,
+      ais.owner,
+      ai_limits.per_day_usd,
+      ai_limits.per_month_usd,
+      llm_virtual_keys.litellm_key_id,
+      llm_virtual_keys.litellm_model_id,
+      provider_connections.provider
+    FROM ais
+    INNER JOIN ai_limits ON ai_limits.ai_id = ais.id
+    LEFT JOIN llm_virtual_keys ON llm_virtual_keys.ai_id = ais.id
+    INNER JOIN provider_connections ON provider_connections.id = ais.provider_connection_id
+    WHERE ais.id = ${aiId}
+    LIMIT 1`;
+    return row ?? null;
+  });
 }
 
 // Backfills the private LiteLLM model on an AI created before this task, and
@@ -895,46 +917,61 @@ export async function ensureAiModel(deps: AiServiceDeps, aiId: string): Promise<
   }
 
   return withAiEnsureLock(aiId, () =>
-    deps.db.transaction(async (tx) => {
-      // Cross-process serialization. The lock is held to the end of this
-      // transaction, so everything below runs exactly once per AI.
-      await tx.execute(
-        sql`SELECT pg_advisory_xact_lock(hashtext(${aiId}), ${ENSURE_MODEL_LOCK_SCOPE})`,
-      );
-      // The transaction's own connection: the unit-test database shares a
-      // single connection, so every read inside the lock must ride `tx`.
-      const txDb = tx as unknown as ServerDatabase;
-      const ai = await findGatewayAiIn(txDb, aiId);
-      if (!ai) {
-        throw new Error(`AI ${aiId} not found`);
-      }
-      if (ai.litellmModelId !== null) {
-        return;
-      }
-      if (ai.litellmKeyId === null) {
-        throw new Error(`AI ${aiId} has no virtual key`);
-      }
+    runSql(
+      deps.db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql.withTransaction(
+          Effect.gen(function* () {
+            // Cross-process serialization. The lock is held to the end of this
+            // transaction, so everything below runs exactly once per AI.
+            yield* sql`SELECT pg_advisory_xact_lock(hashtext(${aiId}), ${ENSURE_MODEL_LOCK_SCOPE})`;
+            // The transaction's own connection: the unit-test database shares a
+            // single connection, so every read inside the lock runs inside the
+            // effect/sql transaction.
+            const ai = yield* findGatewayAiEffect(aiId);
+            if (!ai) {
+              return yield* Effect.fail(new Error(`AI ${aiId} not found`));
+            }
+            if (ai.litellmModelId !== null) {
+              return;
+            }
+            if (ai.litellmKeyId === null) {
+              return yield* Effect.fail(new Error(`AI ${aiId} has no virtual key`));
+            }
+            const keyId = ai.litellmKeyId;
 
-      const modelName = modelNameForAi(ai.id);
-      // A previous attempt may have registered `ai-<id>` without storing the
-      // id (a crash between `addModel` and the row update). Reclaim the name
-      // so the orphan is not left behind.
-      await deleteModelsNamed(deps, ai.id, modelName);
+            const modelName = modelNameForAi(ai.id);
+            // A previous attempt may have registered `ai-<id>` without storing the
+            // id (a crash between `addModel` and the row update). Reclaim the name
+            // so the orphan is not left behind.
+            yield* Effect.tryPromise({
+              try: () => deleteModelsNamed(deps, ai.id, modelName),
+              catch: (error) => error,
+            });
 
-      const providerKey = await decryptForGatewayUse(txDb, deps.cipher, ai.providerConnectionId);
-      const modelId = await registerModelWithKey(deps, {
-        aiId: ai.id,
-        keyId: ai.litellmKeyId,
-        modelName,
-        litellmModel: litellmModelFor(ai.provider, ai.model),
-        apiKey: providerKey,
-      });
+            const providerKey = yield* decryptForGatewayUseEffect(
+              deps.cipher,
+              ai.providerConnectionId,
+            );
+            const modelId = yield* Effect.tryPromise({
+              try: () =>
+                registerModelWithKey(deps, {
+                  aiId: ai.id,
+                  keyId,
+                  modelName,
+                  litellmModel: litellmModelFor(ai.provider, ai.model),
+                  apiKey: providerKey,
+                }),
+              catch: (error) => error,
+            });
 
-      await tx
-        .update(llmVirtualKeys)
-        .set({ litellmModelId: modelId })
-        .where(eq(llmVirtualKeys.aiId, ai.id));
-    }),
+            yield* sql`UPDATE llm_virtual_keys SET litellm_model_id = ${modelId}
+              WHERE ai_id = ${ai.id}`;
+          }),
+        );
+      }),
+    ),
   );
 }
 
@@ -997,49 +1034,63 @@ export async function changeAiModel(deps: AiServiceDeps, input: ChangeAiModelInp
     const litellmModel = litellmModelFor(connection.provider, model);
     let deletedOld = false;
     try {
-      await deps.db.transaction(async (tx) => {
-        await tx.execute(
-          sql`SELECT pg_advisory_xact_lock(hashtext(${ai.id}), ${ENSURE_MODEL_LOCK_SCOPE})`,
-        );
-        const txDb = tx as unknown as ServerDatabase;
-        const fresh = await findGatewayAiIn(txDb, ai.id);
-        if (!fresh || fresh.owner !== input.ownerId) {
-          throw new HttpError(404, 'not_found', 'AI not found');
-        }
-        if (
-          fresh.model === model &&
-          fresh.providerConnectionId === input.providerConnectionId &&
-          fresh.litellmModelId !== null
-        ) {
-          return;
-        }
-        if (fresh.litellmKeyId === null) {
-          throw updateFailed();
-        }
+      await runSql(
+        deps.db,
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql.withTransaction(
+            Effect.gen(function* () {
+              yield* sql`SELECT pg_advisory_xact_lock(hashtext(${ai.id}), ${ENSURE_MODEL_LOCK_SCOPE})`;
+              const fresh = yield* findGatewayAiEffect(ai.id);
+              if (!fresh || fresh.owner !== input.ownerId) {
+                return yield* Effect.fail(new HttpError(404, 'not_found', 'AI not found'));
+              }
+              if (
+                fresh.model === model &&
+                fresh.providerConnectionId === input.providerConnectionId &&
+                fresh.litellmModelId !== null
+              ) {
+                return;
+              }
+              if (fresh.litellmKeyId === null) {
+                return yield* Effect.fail(updateFailed());
+              }
+              const keyId = fresh.litellmKeyId;
 
-        const providerKey = await decryptForGatewayUse(txDb, deps.cipher, connection.id);
-        if (fresh.litellmModelId !== null) {
-          await deps.litellm.deleteModel(fresh.litellmModelId);
-        }
-        deletedOld = true;
-        await deleteModelsNamed(deps, ai.id, modelName);
-        const created = await registerModelWithKey(deps, {
-          aiId: ai.id,
-          keyId: fresh.litellmKeyId,
-          modelName,
-          litellmModel,
-          apiKey: providerKey,
-        });
+              const providerKey = yield* decryptForGatewayUseEffect(deps.cipher, connection.id);
+              const previousModelId = fresh.litellmModelId;
+              if (previousModelId !== null) {
+                yield* Effect.tryPromise({
+                  try: () => deps.litellm.deleteModel(previousModelId),
+                  catch: (error) => error,
+                });
+              }
+              deletedOld = true;
+              yield* Effect.tryPromise({
+                try: () => deleteModelsNamed(deps, ai.id, modelName),
+                catch: (error) => error,
+              });
+              const created = yield* Effect.tryPromise({
+                try: () =>
+                  registerModelWithKey(deps, {
+                    aiId: ai.id,
+                    keyId,
+                    modelName,
+                    litellmModel,
+                    apiKey: providerKey,
+                  }),
+                catch: (error) => error,
+              });
 
-        await tx
-          .update(ais)
-          .set({ model, providerConnectionId: connection.id, updatedAt: new Date() })
-          .where(eq(ais.id, ai.id));
-        await tx
-          .update(llmVirtualKeys)
-          .set({ litellmModelId: created })
-          .where(eq(llmVirtualKeys.aiId, ai.id));
-      });
+              yield* sql`UPDATE ais SET model = ${model},
+                provider_connection_id = ${connection.id}, updated_at = ${new Date()}
+                WHERE id = ${ai.id}`;
+              yield* sql`UPDATE llm_virtual_keys SET litellm_model_id = ${created}
+                WHERE ai_id = ${ai.id}`;
+            }),
+          );
+        }),
+      );
     } catch (error) {
       if (error instanceof HttpError) {
         throw error;

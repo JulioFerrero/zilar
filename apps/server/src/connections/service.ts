@@ -1,9 +1,7 @@
-import { eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
-import { providerConnections } from '../db/schema';
 import { sqlRuntimeFor } from '../effect/sql';
 import type { KeyCipher } from './crypto';
 import type { ProviderId } from './providers';
@@ -34,12 +32,12 @@ export interface CreateConnectionInput {
   label: string | null;
 }
 
-// Every query except `decryptForGatewayUse` runs on the `effect/sql` client
-// registered for this database (see `../effect/sql`). The exported functions
-// stay `async` so routes and tests keep their shape during the transition.
-function runSql<A>(
+// Every query runs on the `effect/sql` client registered for this database
+// (see `../effect/sql`). The exported functions stay `async` so routes and
+// tests keep their shape during the transition.
+function runSql<A, E>(
   db: ServerDatabase,
-  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
+  effect: Effect.Effect<A, SqlError.SqlError | E, SqlClient.SqlClient>,
 ): Promise<A> {
   return sqlRuntimeFor(db).runPromise(effect);
 }
@@ -148,27 +146,35 @@ export async function countAisUsingConnection(
   return Number(row?.total ?? 0);
 }
 
-// This query stays on drizzle: it moves together with the `ais/service.ts`
-// transactions, which call it with a drizzle transaction inside an advisory
-// lock (an effect/sql runtime is registered per top-level db, not per drizzle
-// transaction).
-//
 // The seam for the LLM gateway: decrypts a stored key in memory for the one
 // request that needs it. This is the only place outside `crypto` that the
 // plaintext exists, and it never crosses a route or a response. M2 wires this
 // into the gateway's request path; nothing calls it yet.
+export function decryptForGatewayUseEffect(
+  cipher: KeyCipher,
+  connectionId: string,
+): Effect.Effect<string, unknown, SqlClient.SqlClient> {
+  return Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const [row] = yield* sql<{ encryptedKey: string }>`SELECT encrypted_key
+      FROM provider_connections WHERE id = ${connectionId} LIMIT 1`;
+    if (!row) {
+      return yield* Effect.fail(new Error('Connection not found'));
+    }
+    return yield* Effect.try({
+      try: () => cipher.decrypt(row.encryptedKey),
+      catch: (error) => error,
+    });
+  });
+}
+
+// Promise wrapper kept for callers that are still plain `async` (routes and
+// `createAi`); the model transactions use `decryptForGatewayUseEffect` directly
+// so the read rides the transaction's connection.
 export async function decryptForGatewayUse(
   db: ServerDatabase,
   cipher: KeyCipher,
   connectionId: string,
 ): Promise<string> {
-  const [row] = await db
-    .select({ encryptedKey: providerConnections.encryptedKey })
-    .from(providerConnections)
-    .where(eq(providerConnections.id, connectionId))
-    .limit(1);
-  if (!row) {
-    throw new Error('Connection not found');
-  }
-  return cipher.decrypt(row.encryptedKey);
+  return runSql(db, decryptForGatewayUseEffect(cipher, connectionId));
 }
