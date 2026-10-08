@@ -1,6 +1,7 @@
 import { Data, Effect, Exit, Schema, SchemaGetter, type Effect as EffectType } from 'effect';
 import { struct } from '@zilar/protocol';
 
+import { errorFieldsOf } from './api-error-body';
 import type { SnapshotPinKind } from './pin-snapshot';
 
 export type PinKind = SnapshotPinKind;
@@ -99,15 +100,6 @@ const PinsListSchema = struct({
   pins: Schema.mutable(Schema.Array(PinSchema)),
 });
 
-// The server's error envelope. A missing or malformed envelope keeps the fixed
-// fallbacks used by `requestEffect`.
-const ErrorBodySchema = struct({
-  error: struct({
-    code: Schema.optional(Schema.String),
-    message: Schema.optional(Schema.String),
-  }),
-});
-
 /** A pin row the viewer may see; malformed rows return null and are dropped. */
 export function parsePin(value: unknown): Pin | null {
   const decoded = Schema.decodeUnknownExit(PinSchema)(value);
@@ -157,12 +149,11 @@ const requestEffect = Effect.fnUntraced(function* (
   );
 
   if (!response.ok) {
-    const decoded = Schema.decodeUnknownExit(ErrorBodySchema)(body);
-    const error = Exit.isSuccess(decoded) ? decoded.value.error : undefined;
+    const error = errorFieldsOf(body);
     return yield* new PinsRequestError({
       status: response.status,
-      code: error?.code ?? 'request_failed',
-      message: error?.message ?? `Request failed (${response.status})`,
+      code: error.code ?? 'request_failed',
+      message: error.message ?? `Request failed (${response.status})`,
     });
   }
   return body;

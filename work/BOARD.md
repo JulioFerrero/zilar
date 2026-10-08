@@ -453,7 +453,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0414](T-0414-web-forward-store-action.md) | Web store: forwardMessages sends copies with a forward origin, optional comment | 2026-10-06 |
 | [T-0425](T-0425-mobile-profile-buttons-kit.md) | Mobile: profile and contact card buttons on the kit Button | 2026-10-06 |
 | [T-0426](T-0426-mobile-ai-sheet-buttons-kit.md) | Mobile: AI activity Refresh, tool sheet Show all/less and Close on the kit Button | 2026-10-06 |
-| [T-0538](T-0538-mobile-api-error-envelope.md) | Mobile polish: shared lenient error envelope, search abort race | planned | auto | T-0532 | |
 | [T-0539](T-0539-effect-http-topics.md) | Effect C (HTTP): topics on HttpApi | planned | auto | T-0536 | |
 | [T-0541](T-0541-effect-mobile-api-batch-4.md) | Effect E batch 4: mobile directory, chat-folders, profile, approvals API | planned | auto | T-0538 | |
 | [T-0542](T-0542-effect-http-output-schema-check.md) | Effect C (HTTP) check: no stripped response fields | planned | auto | T-0536 | |
@@ -575,3 +574,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0537](T-0537-effect-scripts-shots.md) | Effect: screenshot scripts on Effect Schema | 2026-10-08 |
 | [T-0533](T-0533-effect-http-xmpp-chats-memory.md) | Effect C (HTTP): xmpp token, chats, AI memory on HttpApi | 2026-10-08 |
 | [T-0540](T-0540-agents-g7-extract-dm-turn.md) | Agents G7: extract the DM turn | 2026-10-08 |
+| [T-0538](T-0538-mobile-api-error-envelope.md) | Mobile polish: shared lenient error envelope, search abort race | 2026-10-08 |

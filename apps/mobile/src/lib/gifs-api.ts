@@ -1,6 +1,7 @@
 import { Data, Effect, Exit, Schema, type Effect as EffectType } from 'effect';
 import { struct } from '@zilar/protocol';
 
+import { errorFieldsOf } from './api-error-body';
 import { API_URL } from './auth';
 import { getSessionToken } from './session-token';
 import type { GifItem } from './gifs';
@@ -60,15 +61,6 @@ const GifItemSchema = struct({
 const GifEnvelopeSchema = struct({
   items: Schema.mutable(Schema.Array(Schema.Unknown)),
   nextPos: Schema.optional(Schema.Unknown),
-});
-
-// The server's error envelope. A missing or malformed envelope keeps the fixed
-// fallbacks used by `gifRequestEffect`.
-const ErrorBodySchema = struct({
-  error: struct({
-    code: Schema.optional(Schema.String),
-    message: Schema.optional(Schema.String),
-  }),
 });
 
 /** One GIF row the panel may show; malformed rows return null. */
@@ -180,12 +172,11 @@ const gifRequestEffect = Effect.fnUntraced(function* (
     () => response.json().catch(() => null) as Promise<unknown>,
   );
   if (!response.ok) {
-    const decoded = Schema.decodeUnknownExit(ErrorBodySchema)(body);
-    const error = Exit.isSuccess(decoded) ? decoded.value.error : undefined;
+    const error = errorFieldsOf(body);
     return yield* new GifsRequestError({
       status: response.status,
-      code: error?.code ?? 'request_failed',
-      message: error?.message ?? `Request failed (${response.status})`,
+      code: error.code ?? 'request_failed',
+      message: error.message ?? `Request failed (${response.status})`,
     });
   }
   const envelope = Schema.decodeUnknownExit(GifEnvelopeSchema)(body);

@@ -66,4 +66,17 @@ describe('search schema', () => {
       message: 'Bad query',
     });
   });
+
+  it('lets a cancel win when an error response arrives', async () => {
+    const controller = new AbortController();
+    const fetchImpl = vi.fn(async () => {
+      controller.abort();
+      return jsonResponse({ error: { code: 'invalid_request', message: 'Bad query' } }, 400);
+    });
+    const api = createSearchApi(async () => 't', fetchImpl as unknown as typeof fetch);
+
+    await expect(
+      api.searchMessages({ q: 'terrace', signal: controller.signal }),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+  });
 });

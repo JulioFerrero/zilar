@@ -1,6 +1,7 @@
 import { Data, Effect, Exit, Schema, type Effect as EffectType } from 'effect';
 import { struct } from '@zilar/protocol';
 
+import { errorFieldsOf } from './api-error-body';
 import { API_URL } from './auth';
 
 /**
@@ -58,15 +59,6 @@ const MemorySchema = struct({
   canChange: Schema.Boolean,
 });
 
-// The server's error envelope. A missing or malformed envelope keeps the fixed
-// fallbacks used by `requestEffect`.
-const ErrorBodySchema = struct({
-  error: struct({
-    code: Schema.optional(Schema.String),
-    message: Schema.optional(Schema.String),
-  }),
-});
-
 function parseAiMemory(value: unknown): AiMemory | null {
   const decoded = Schema.decodeUnknownExit(MemorySchema)(value);
   return Exit.isSuccess(decoded) ? decoded.value : null;
@@ -110,12 +102,11 @@ const requestEffect = Effect.fnUntraced(function* (
   );
 
   if (!response.ok) {
-    const decoded = Schema.decodeUnknownExit(ErrorBodySchema)(body);
-    const error = Exit.isSuccess(decoded) ? decoded.value.error : undefined;
+    const error = errorFieldsOf(body);
     return yield* new AiMemoryRequestError({
       status: response.status,
-      code: error?.code ?? 'request_failed',
-      message: error?.message ?? `Request failed (${response.status})`,
+      code: error.code ?? 'request_failed',
+      message: error.message ?? `Request failed (${response.status})`,
     });
   }
   return body;

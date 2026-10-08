@@ -15,8 +15,8 @@ only; on any other ABI or on iOS the module reports `unavailable`.
 ## Layout
 
 - `src/` — the JS surface: `isAvailable`, `modelStatus`, `downloadModel`,
-  `transcribe`, plus the pinned model URL/checksum and the zod-validated
-  result parsing.
+  `transcribe`, plus the pinned model URL/checksum and the Effect
+  Schema-validated result parsing.
 - `android/` — the Expo module: Kotlin (`ZilarWhistleModule.kt`), a small C++
   JNI shim (`src/main/cpp/whistle-jni.cpp`, `CMakeLists.txt` linking
   `libneedle.a` and the NDK `c++_shared`), and `build.gradle` which fetches

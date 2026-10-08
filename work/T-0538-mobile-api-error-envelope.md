@@ -1,7 +1,7 @@
 ---
 id: T-0538
 title: "Mobile polish after lane E: one shared lenient error-envelope schema for every Effect API client (restores per-field fallback), the search abort-vs-error race, and the zilar-whistle README"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0538-mobile-api-error-envelope
 model: auto
@@ -64,4 +64,42 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
-## Review (written by Claude)
+### What I did
+- Added `apps/mobile/src/lib/api-error-body.ts`: one shared lenient envelope schema (`ErrorBodySchema`) and `errorFieldsOf(body): { code?; message? }`. A non-string `code` or `message` becomes `undefined` on its own; a missing or non-object `error` gives both `undefined`.
+- Switched all twelve clients to it and deleted each local copy: `pins-api.ts`, `ai-memory-api.ts`, `connections-api.ts`, `roles-api.ts`, `gifs-api.ts`, `media-api.ts`, `groups-api.ts`, `audit-api.ts`, `chat-prefs-api.ts`, `invites-api.ts`, `search-api.ts`, `integrations-api.ts`. Each keeps its own fallback texts and error class/status/code; only the envelope decode changed. Removed `SchemaGetter` from the five clients that imported it only for that schema (audit, search, invites, chat-prefs, integrations) and kept it in `pins`, `media`, `connections`, which use it for other lenient fields.
+- `search-api.ts`: added an abort check right after `fetch` resolves and before reading the body, so a cancel always wins over a 4xx/5xx. The existing pre-fetch and post-parse checks stay.
+- `apps/mobile/modules/zilar-whistle/README.md`: changed "zod-validated" to "Effect Schema-validated"; no other README edits.
+- Tests: new `api-error-body.test.ts` (valid envelope; bad `code` keeps message; bad `message` keeps code; missing `error`; non-object `error`; `null`/non-JSON body) and a new case in `search-api.effect.test.ts` for a cancel racing a 400, expecting `AbortError`. Existing tests are unchanged.
+
+### Files changed
+- `apps/mobile/src/lib/api-error-body.ts`, `apps/mobile/src/lib/api-error-body.test.ts` (new)
+- the twelve clients listed above
+- `apps/mobile/src/lib/search-api.effect.test.ts`
+- `apps/mobile/modules/zilar-whistle/README.md`
+- `work/T-0538-mobile-api-error-envelope.md`
+
+### Commands (real results)
+- `pnpm install` → done, 1173 packages added, only the pre-existing `@types/react-dom` peer warning.
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot src/lib/api-error-body.test.ts src/lib/search-api.effect.test.ts` → 2 files, 11 tests passed.
+- First `pnpm gate` → **GATE FAIL** on `format`: `apps/mobile/src/lib/invites-api.ts: SyntaxError: ':' expected (45:10)`. The edit that deleted the local schema had also dropped the `InviteSchema` fields; I restored them.
+- Second `pnpm gate` → **GATE PASS**:
+  ```
+  PASS  install (frozen)  (3.1s)
+  PASS  format  (60.1s)
+  PASS  lint  (1.5s)
+  PASS  typecheck  (22.3s)
+  PASS  tests @zilar/mobile  (35.4s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+  I did not run the task's `pnpm --filter @zilar/mobile test --reporter=dot src/lib` as a separate command; gate's `tests @zilar/mobile` runs the same mobile suite.
+
+### Deviations / notes
+- The suggested helper return type `{ code?: string; message?: string }` is built with conditional spreads, because `exactOptionalPropertyTypes` rejects an explicit `code: undefined`; absent fields are omitted instead.
+- No security-relevant surface changed: no secrets, logging, routes or data access; only the error-envelope decode, one abort check and a README line.
+
+### Open questions
+- None.
+
+
+Approved (lead, 2026-10-08). One shared lenient envelope (api-error-body.ts) now serves all twelve mobile clients, restoring per-field fallback. Search checks abort right after fetch, before reading the body, and a new test pins it. README fixed. phone:smoke passed on the galena AVD. Nit accepted: a cancel during json() on an error response still loses (millisecond window, pre-existing).

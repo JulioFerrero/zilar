@@ -13,6 +13,8 @@
 import { Data, Effect, Exit, Schema, type Effect as EffectType } from 'effect';
 import { struct } from '@zilar/protocol';
 
+import { errorFieldsOf } from './api-error-body';
+
 export interface RoleHolder {
   userId: string;
   name: string;
@@ -63,15 +65,6 @@ const RolesListSchema = struct({
   roles: Schema.mutable(Schema.Array(CustomGroupRoleSchema)),
 });
 
-// The server's error envelope. A missing or malformed envelope keeps the fixed
-// fallbacks used by `requestEffect`.
-const ErrorBodySchema = struct({
-  error: struct({
-    code: Schema.optional(Schema.String),
-    message: Schema.optional(Schema.String),
-  }),
-});
-
 /** A role row the viewer may see: malformed rows return null and are dropped. */
 export function parseCustomGroupRole(value: unknown): CustomGroupRole | null {
   const decoded = Schema.decodeUnknownExit(CustomGroupRoleSchema)(value);
@@ -117,12 +110,11 @@ const requestEffect = Effect.fnUntraced(function* (
   );
 
   if (!response.ok) {
-    const decoded = Schema.decodeUnknownExit(ErrorBodySchema)(body);
-    const error = Exit.isSuccess(decoded) ? decoded.value.error : undefined;
+    const error = errorFieldsOf(body);
     return yield* new RolesRequestError({
       status: response.status,
-      code: error?.code ?? 'request_failed',
-      message: error?.message ?? `Request failed (${response.status})`,
+      code: error.code ?? 'request_failed',
+      message: error.message ?? `Request failed (${response.status})`,
     });
   }
   return body;

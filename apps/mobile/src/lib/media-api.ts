@@ -1,6 +1,8 @@
 import { Data, Effect, Exit, Schema, SchemaGetter, type Effect as EffectType } from 'effect';
 import { struct } from '@zilar/protocol';
 
+import { errorFieldsOf } from './api-error-body';
+
 /**
  * The mobile media-gallery client (T-0436), the twin of `pins-api.ts`: it
  * pages `GET /api/media?chat&type&before&limit` (T-0431), returning
@@ -133,15 +135,6 @@ const MediaPageSchema = struct({
   next: Schema.optional(Schema.Unknown),
 });
 
-// The server's error envelope. A missing or malformed envelope keeps the fixed
-// fallbacks used by `requestEffect`.
-const ErrorBodySchema = struct({
-  error: struct({
-    code: Schema.optional(Schema.String),
-    message: Schema.optional(Schema.String),
-  }),
-});
-
 /**
  * A gallery row the viewer may see; a malformed row returns null and is
  * dropped by the list. Optional fields are only copied when the server sent
@@ -210,12 +203,11 @@ const requestEffect = Effect.fnUntraced(function* (
   );
 
   if (!response.ok) {
-    const decoded = Schema.decodeUnknownExit(ErrorBodySchema)(body);
-    const error = Exit.isSuccess(decoded) ? decoded.value.error : undefined;
+    const error = errorFieldsOf(body);
     return yield* new MediaRequestError({
       status: response.status,
-      code: error?.code ?? 'request_failed',
-      message: error?.message ?? `Request failed (${response.status})`,
+      code: error.code ?? 'request_failed',
+      message: error.message ?? `Request failed (${response.status})`,
     });
   }
   return body;

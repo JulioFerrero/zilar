@@ -1,6 +1,7 @@
-import { Data, Effect, Exit, Schema, SchemaGetter, type Effect as EffectType } from 'effect';
+import { Data, Effect, Exit, Schema, type Effect as EffectType } from 'effect';
 import { struct } from '@zilar/protocol';
 
+import { errorFieldsOf } from './api-error-body';
 import { API_URL } from './auth';
 
 /**
@@ -65,24 +66,6 @@ const DeletedPrefsSchema = struct({
   prefs: Schema.Null,
 });
 
-// The server's error envelope is decoded field by field, so a malformed `code`
-// does not discard a valid `message` (and vice versa). A missing or malformed
-// envelope keeps the fixed fallbacks used by `requestEffect`, as the old
-// per-field guards did.
-const LenientErrorStringSchema = Schema.Unknown.pipe(
-  Schema.decodeTo(Schema.UndefinedOr(Schema.String), {
-    decode: SchemaGetter.transform((value) => (typeof value === 'string' ? value : undefined)),
-    encode: SchemaGetter.transform((value) => value),
-  }),
-);
-
-const ErrorBodySchema = struct({
-  error: struct({
-    code: Schema.optional(LenientErrorStringSchema),
-    message: Schema.optional(LenientErrorStringSchema),
-  }),
-});
-
 /** A pref row the server sent; malformed rows return null and are dropped. */
 export function parseChatPref(value: unknown): ChatPref | null {
   const decoded = Schema.decodeUnknownExit(ChatPrefSchema)(value);
@@ -138,12 +121,11 @@ const requestEffect = Effect.fnUntraced(function* (
   );
 
   if (!response.ok) {
-    const decoded = Schema.decodeUnknownExit(ErrorBodySchema)(body);
-    const error = Exit.isSuccess(decoded) ? decoded.value.error : undefined;
+    const error = errorFieldsOf(body);
     return yield* new ChatPrefsRequestError({
       status: response.status,
-      code: error?.code ?? 'request_failed',
-      message: error?.message ?? `Request failed (${response.status})`,
+      code: error.code ?? 'request_failed',
+      message: error.message ?? `Request failed (${response.status})`,
     });
   }
   return body;

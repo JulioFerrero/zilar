@@ -1,6 +1,7 @@
 import { Data, Effect, Exit, Schema, type Effect as EffectType } from 'effect';
 import { struct } from '@zilar/protocol';
 
+import { errorFieldsOf } from './api-error-body';
 import { API_URL } from './auth';
 import type { GroupMember, TokenProvider } from './chat-api';
 
@@ -91,15 +92,6 @@ const GroupMembersEnvelopeSchema = struct({
 
 const IdAckSchema = struct({ id: Schema.String });
 
-// The server's error envelope. A missing or malformed envelope keeps the fixed
-// fallbacks used by `requestEffect`.
-const ErrorBodySchema = struct({
-  error: struct({
-    code: Schema.optional(Schema.String),
-    message: Schema.optional(Schema.String),
-  }),
-});
-
 function parseGroupMembers(value: unknown): GroupMember[] | null {
   const decoded = Schema.decodeUnknownExit(GroupMembersEnvelopeSchema)(value);
   if (!Exit.isSuccess(decoded)) {
@@ -161,12 +153,11 @@ const requestEffect = Effect.fnUntraced(function* (
   );
 
   if (!response.ok) {
-    const decoded = Schema.decodeUnknownExit(ErrorBodySchema)(body);
-    const error = Exit.isSuccess(decoded) ? decoded.value.error : undefined;
+    const error = errorFieldsOf(body);
     return yield* new GroupsRequestError({
       status: response.status,
-      code: error?.code ?? 'request_failed',
-      message: error?.message ?? `Request failed (${response.status})`,
+      code: error.code ?? 'request_failed',
+      message: error.message ?? `Request failed (${response.status})`,
     });
   }
   return body;
