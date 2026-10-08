@@ -14,6 +14,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0676](T-0676-topic-ais-effect-sql.md) | effect/sql: topic AIs (add, remove, dropped) | in-progress | haiku-5.5 | | topics slice 1 of 3 |
 | [T-0677](T-0677-ais-stop-resume-assign-effect-sql.md) | effect/sql: ais stop, resume, assign, findUserName | in-progress | haiku-5.5 | T-0671 | |
 | [T-0678](T-0678-group-ais-and-topic-helpers-effect-sql.md) | effect/sql: addGroupAi + group-topic helpers | in-progress | haiku-5.5 | T-0670 | groups slice 2 |
+| [T-0679](T-0679-delete-last-drizzle-deletes.md) | effect/sql cleanup: delete drizzle deleteToolsForAiInTopic + deleteRoomMemory, stale comments | in-progress | haiku-5.5 | T-0676 | |
 
 ## Follow-ups
 
