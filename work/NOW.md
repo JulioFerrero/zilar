@@ -2,9 +2,21 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
-**2026-10-08 22:20, the cause of the overheating:** the T-0608 worker had registered macOS launchd jobs (`zilar.gate0608test` and `zilar.gate.T0608`), so its test runs relaunched within 50 ms of every kill, with parent PID 1. The lead removed them with `launchctl remove`.
-- **First task after the restart:** the autopilot permission policy (`packages/devtools/src/lead/policy.ts`) must reject `launchctl`, `nohup` and detached or backgrounded test runs, and the gate needs a per-step time limit.
-- **T-0608 stays `blocked`** until then.
+**2026-10-08 22:40, no restart needed (Julio: "please you take the lead"). 2 workers while Julio is at the PC.**
+- **Merged:**
+  - T-0619: workers cannot start daemons or detached runs, and the gate has step time limits;
+  - T-0617: the light `lead watch`. Restart its window to load it;
+  - T-0608: roles on effect/sql. The 50-min hang did not reproduce; the suites run in seconds.
+- **Running:**
+  - T-0620: the gate runs the tests in a source file's folder when no test has the same name. The light gate skipped `roles.test.ts` for `roles/service.ts`, so T-0608's gate ran no server tests;
+  - T-0621: approval-rules statements on effect/sql. The three functions used inside drizzle transactions stay on drizzle.
+- **Next:**
+  - T-0618 (test-speed audit) alone, after these two;
+  - then `pnpm gate --full` on main once;
+  - more drizzle modules (groups, ais, stickers, topics, memory store, voice).
+- **New on the waiting-for-callers list:** `approvals/rules.ts` `createRule`, `findActiveRuleForUpdate` and `revokeActiveRulesForAiInGroup`.
+
+**2026-10-08 22:20, the cause of the overheating:** the T-0608 worker had registered macOS launchd jobs (`zilar.gate0608test` and `zilar.gate.T0608`), so its test runs relaunched within 50 ms of every kill, with parent PID 1. The lead removed them with `launchctl remove`; T-0619 now blocks it.
 
 **2026-10-08 21:45, ready for the PC restart:**
 - **Merged since 21:05:** T-0613, T-0616 (light gate: merges now take about 1 min), T-0612 (T-G; the tool-arguments plan is complete), T-0615 (tool service), T-0614 (jsonb keys fix).
