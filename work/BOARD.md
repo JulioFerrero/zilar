@@ -12,6 +12,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0684](T-0684-approvals-service-effect-sql.md) | effect/sql: rest of approvals/service.ts | in-progress | auto | T-0672 | |
 | [T-0687](T-0687-create-patch-topic-effect-sql.md) | effect/sql: createTopic + patchTopic; topics/service.ts drops drizzle | in-progress | haiku-5.5 | T-0683 | topics slice 3b |
 | [T-0688](T-0688-create-patch-group-effect-sql.md) | effect/sql: createGroup + patchGroup; groups/service.ts drops drizzle | in-progress | haiku-5.5 | T-0686 | groups slice 5 |
+| [T-0689](T-0689-plan-edge-flip.md) | plan (no code): B1 edge flip, Hono edge → Effect HTTP | in-progress | auto | | |
 
 ## Follow-ups
 
