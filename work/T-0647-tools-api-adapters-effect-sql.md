@@ -1,7 +1,7 @@
 ---
 id: T-0647
 title: "effect/sql: tools/api.ts and tools/adapters.ts reads (F9); every drizzle select becomes an effect/sql statement or an existing topics/access.ts helper; no drizzle import left in either file; same tests"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0647-tools-api-adapters-effect-sql
 model: auto
@@ -67,4 +67,52 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+
+Moved every drizzle read in `apps/server/src/tools/adapters.ts` and `apps/server/src/tools/api.ts` onto `effect/sql`, following the recipe in `apps/server/src/actions/production-announcer.ts:46-51`. Signatures, return shapes, statuses, messages and the order of checks are unchanged; no test or schema file was touched.
+
+**`adapters.ts`**
+- Dropped the `drizzle-orm` (`eq`) and `../db/schema` (`ais`) imports.
+- Added a private `runSql(db, effect)` that calls `sqlRuntimeFor(db).runPromise(effect)`.
+- `ownerOf` now runs `` SELECT owner FROM ais WHERE id = ${aiId} LIMIT 1 `` through `runSql` and keeps the same throw when there is no row.
+
+**`api.ts`**
+- Dropped the `drizzle-orm` (`and`, `eq`) import and the `../db/schema` value import; added `SqlClient`/`type SqlError` from `effect/sql`, `sqlRuntimeFor` from `../effect/sql`, and `getTopic` + `type TopicRow` from `../topics/access`.
+- Added the same private `runSql(db, effect)` helper.
+- Topic-by-id reads at the two `Effect.gen` handlers now call `getTopic(db, id)` (`const [topic] = …` became `const topic = …`; the `!topic` checks are unchanged).
+- `toolAccess` and `toolAccessIncludingDeleted` also read their topic with `getTopic`.
+- `listToolsForGroup` reads its topics with `` sql<TopicRow>`SELECT * FROM topics WHERE group_id = ${groupId}` ``.
+- The remaining reads (group_ais/topic_ais `ai_id` sets, `ais.owner` by id, the five `ai_tools` columns, `findOwnedAiRow`, `findMembership`) are `effect/sql` statements selecting the same columns through `runSql`; those inside `Effect.gen` handlers stay wrapped in `Effect.promise(() => runSql(...))`.
+
+### Files changed
+- `apps/server/src/tools/adapters.ts`
+- `apps/server/src/tools/api.ts`
+- `work/T-0647-tools-api-adapters-effect-sql.md` (front matter status + this Report)
+
+### Verification
+- `git grep -n "drizzle-orm" apps/server/src/tools/api.ts apps/server/src/tools/adapters.ts` → no output.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/tools/routes src/tools/adapters` → 2 test files passed, 46 tests passed.
+- `pnpm gate` (repo root) summary:
+  ```
+  gate: 3 changed file(s) against main
+  PASS  install (frozen)  (1.1s)
+  PASS  format  (17.4s)
+  PASS  lint  (1.2s)
+  PASS  typecheck  (12.9s)
+  PASS  tests @zilar/server  (25.7s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Deviations / notes
+- Dropped the `../db/schema` import entirely rather than keeping a type-only import: none of its types are referenced after the conversion (`TopicRow` comes from `../topics/access`).
+- No blocking questions.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved.
+- **Pre-review:** clean. The packet head is 5f3f1166, the current HEAD.
+- **Lead check:**
+  - each effect/sql statement selects the same columns as the drizzle query it replaces;
+  - topic-by-id reads go through `getTopic`;
+  - there is no drizzle import left in `tools/api.ts` or `tools/adapters.ts`.
