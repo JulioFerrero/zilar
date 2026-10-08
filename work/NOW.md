@@ -2,6 +2,23 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-08 08:55, Julio asleep, Effect night continues:**
+- **Merged since 07:15:**
+  - **effect/sql:** T-0567 (gateway db helpers), T-0568 (delegation service), T-0574 (sign-up invites, XMPP provisioning and the invite CLI runtime);
+  - **Effect Schema:** T-0564, T-0565, T-0569 and T-0570 (server leaf parsers, gifs, push config, provider ids, templates);
+  - **Effect HTTP:** T-0566 (invite links, client IP), T-0572 (machines and runner pairing), T-0560 (media gallery), T-0573 (voice, the binary pilot, guide item 12) and T-0561 (/me and account invites);
+  - **comments:** T-0575 (client comments now point at the live server `api.ts` files).
+- **Guide (`docs/EFFECT_GUIDE.md`):** Effect 4.0.2 drops `{ message }` on length checks; `Schema.Finite` for `z.number()`; item 13 on the client IP; every database needs a registered sql runtime, and never inside a module; jsonb.
+- **Approved, merge queued:** T-0576 (avatars HTTP).
+- **Running:**
+  - T-0571: the plan for the AI tool argument layer, the biggest zod block left;
+  - T-0577: background images HTTP;
+  - T-0578: first-run setup HTTP;
+  - T-0579: review follow-ups;
+  - T-0580: the file proxy HTTP, with a streamed body.
+- **Left on Hono after these:** drafts (SSE), stickers (multipart), gifs (media proxy), the git proxy, and the better-auth handler.
+- **For Julio:** `apps/server/src/ai/routes.ts` (`POST /ai/virtual-keys`, a spike) is mounted only by its test, never in `app.ts`. Delete it or keep it?
+
 **2026-10-08 07:15, Julio asleep, Effect night continues:**
 - **Merged since 05:20:**
   - T-0556 and T-0562: agents G4 (the tool executor) and G9 (start, stop and reconcile). **Every gateway extraction G1-G9 is done**;
