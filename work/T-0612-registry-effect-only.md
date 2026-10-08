@@ -1,7 +1,7 @@
 ---
 id: T-0612
 title: "Tool args T-G: the action registry takes Effect schemas only (ArgsSchema loses its zod member, decodeActionArgs loses the zod branch, registry.ts drops zod); the fake adapters in the actions and approval-rule tests switch from z.object to Schema.Struct with the same assertions"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0612-registry-effect-only
 model: auto
@@ -66,4 +66,56 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+
+- `apps/server/src/actions/registry.ts`: `ArgsSchema<Args>` is now `Schema.Codec<Args, unknown, never>`; deleted the `import type { z } from 'zod'`, the `safeParse` branch and the cast inside `decodeActionArgs`, and updated the two comments that referenced zod / plan T-A.
+- Switched the five test files' fake adapters to Effect Schema and removed their `zod` imports. Only the schema constructors and imports changed; every assertion is byte-identical:
+  - `registry.test.ts`: one fake -> `Schema.Struct({ value: Schema.String })`.
+  - `policy.test.ts`: `echoSchema`; `strictSchema` -> `Schema.Struct({ required: Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0)) })`; the `adapter` parameter type -> `Schema.Codec<unknown, unknown, never>`.
+  - `gateway.test.ts`: 11 fakes.
+  - `flow.e2e.test.ts`: 4 fakes; `z.string().min(1).max(64)` -> `Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64))`.
+  - `approvals/rules.test.ts`: 2 fakes; the trimming `text` schema -> `Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(200))`.
+- `policy.ts` and `gateway.ts` were left unchanged: neither imports zod and typecheck did not require a change.
+- Grep confirmations: `from 'zod'` prints nothing under `apps/server/src/actions/` nor in `apps/server/src/approvals/rules.test.ts`; `ZodType|from 'zod'` prints nothing across `actions`, `tools`, `web-tools`, `agents` and `sandbox` (test files excluded), so no production adapter cast is left.
+
+### Commands and results
+
+- `git diff --stat` before committing: 7 files, all inside the Allowed list.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot actions approvals/rules`: **Test Files 11 passed (11), Tests 183 passed (183)** (30.85s). Run before the commits and again after: same result both times.
+- `pnpm gate` from the repo root:
+
+  ```
+  gate: 7 changed file(s) against main
+  PASS  install (frozen)  (2.0s)
+  PASS  format  (42.9s)
+  PASS  lint  (1.3s)
+  PASS  typecheck  (1.2s)
+  PASS  tests @zilar/server  (833.7s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+  The 833.7s test time is machine contention from parallel workers (load average above 100), not a hang.
+
+### Problems / deviations
+
+- Strictness change: the old zod fakes were not `.strict()`, while the Effect decode is strict. No test passes an extra key to a fake adapter, so nothing failed for that reason and no assertion was changed. The full `actions` + `approvals/rules` run and the gate are green.
+- No deviations from the Spec.
+
+### Blocked / needs a decision
+
+- Nothing blocked.
+
+### Open questions
+
+- None.
+
 ## Review (written by Claude)
+
+**2026-10-08, lead:** approved.
+- **Pre-review:** clean. The packet (21:19) is newer than HEAD c7e0f289.
+- **Lead check:**
+  - there is no zod import under `actions/`;
+  - the test diffs change only the fake-adapter constructors (no `expect` line changed);
+  - the gate passes.
+- **The tool-arguments plan (T-A to T-G) is complete.**

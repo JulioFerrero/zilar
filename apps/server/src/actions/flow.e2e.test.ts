@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
+import { Schema } from 'effect';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { z } from 'zod';
 import { createApp } from '../app';
 import { createAuditRecorder, type AuditEntry, type AuditRecorder } from '../audit/service';
 import {
@@ -58,7 +58,9 @@ function tier0Adapter(): FakeAdapter {
     name: 'flow.tier0',
     description: 'Tier-0 adapter that records every call.',
     tier: 0,
-    argsSchema: z.object({ value: z.string().min(1).max(64) }),
+    argsSchema: Schema.Struct({
+      value: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
+    }),
     describe: (args) => ({ summary: `tier0 ${(args as { value: string }).value}` }),
     execute: async (ctx, args) => {
       calls.push({ ctx, args });
@@ -74,7 +76,9 @@ function tier2Adapter(overrides: { throwWith?: string } = {}): FakeAdapter {
     name: 'flow.tier2',
     description: 'Tier-2 adapter that records every call.',
     tier: 2,
-    argsSchema: z.object({ value: z.string().min(1).max(64) }),
+    argsSchema: Schema.Struct({
+      value: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
+    }),
     describe: (args) => ({ summary: `tier2 ${(args as { value: string }).value}` }),
     estimateCost: () => ({ currency: 'EUR' as const, amount: 1.25 }),
     execute: async (ctx, args) => {
@@ -594,7 +598,9 @@ describe('action flow e2e through real HTTP routes (T-0096)', () => {
       name: 'flow.always',
       description: 'Tier-2 adapter that opts into always-allow.',
       tier: 2,
-      argsSchema: z.object({ value: z.string().min(1).max(64) }),
+      argsSchema: Schema.Struct({
+        value: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
+      }),
       describe: (args) => ({ summary: `always ${(args as { value: string }).value}` }),
       allowAlways: true,
       execute: async (_ctx, args) => {
@@ -759,7 +765,9 @@ describe('action flow e2e through real HTTP routes (T-0096)', () => {
       name: 'flow.always',
       description: 'Tier-2 adapter that opts into always-allow.',
       tier: 2,
-      argsSchema: z.object({ value: z.string().min(1).max(64) }),
+      argsSchema: Schema.Struct({
+        value: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
+      }),
       describe: (args) => ({ summary: `always ${(args as { value: string }).value}` }),
       allowAlways: true,
       execute: async (_ctx, args) => {

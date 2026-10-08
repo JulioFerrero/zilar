@@ -1,5 +1,4 @@
 import { Schema } from 'effect';
-import { z } from 'zod';
 import { describe, expect, it } from 'vitest';
 import {
   ADAPTER_DESCRIPTION_MAX_LENGTH,
@@ -17,7 +16,7 @@ function makeAdapter(overrides: Partial<ActionAdapter<unknown>> = {}): ActionAda
     name: 'demo.echo',
     description: 'Echoes the input back.',
     tier: 0,
-    argsSchema: z.object({ value: z.string() }),
+    argsSchema: Schema.Struct({ value: Schema.String }),
     describe: () => ({ summary: 'echo' }),
     execute: async () => ({ summary: 'ok' }),
     ...overrides,
