@@ -1,3 +1,8 @@
+import { Data, Effect, Exit, Schema, SchemaGetter, type Effect as EffectType } from 'effect';
+import { struct } from '@zilar/protocol';
+
+import { errorFieldsOf } from './api-error-body';
+
 /** The signed-in profile, from `GET /api/me` (T-0015/T-0020). */
 export interface Me {
   id: string;
@@ -19,52 +24,113 @@ export class AuthApiError extends Error {
   }
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
+// A lenient field: a missing or non-string `jid` decodes to `null` instead of
+// failing the profile, exactly like the old type guard.
+const LenientJidSchema = Schema.Unknown.pipe(
+  Schema.withDecodingDefault(Effect.succeed(null)),
+  Schema.decodeTo(Schema.NullOr(Schema.String), {
+    decode: SchemaGetter.transform((value) => (typeof value === 'string' ? value : null)),
+    encode: SchemaGetter.transform((value) => value),
+  }),
+);
+
+const MeSchema = struct({
+  id: Schema.String,
+  email: Schema.String,
+  name: Schema.String,
+  jid: LenientJidSchema,
+});
 
 function parseMe(value: unknown): Me | null {
-  if (!isRecord(value)) return null;
-  const { id, email, name } = value;
-  if (typeof id !== 'string' || typeof email !== 'string' || typeof name !== 'string') {
-    return null;
-  }
-  const jid = value['jid'];
-  return { id, email, name, jid: typeof jid === 'string' ? jid : null };
+  const decoded = Schema.decodeUnknownExit(MeSchema)(value);
+  return Exit.isSuccess(decoded) ? decoded.value : null;
 }
 
-async function request(
+// The invite check answers a bare `{ valid: boolean }`; anything else,
+// including a non-object body, means "not valid".
+const InviteCheckSchema = struct({
+  valid: Schema.optional(Schema.Boolean),
+});
+
+// The internal failures, one per case. They carry no field beyond what the old
+// `AuthApiError` already surfaced; the `Promise` edge maps each back to that
+// same error, status, code and message.
+class AuthNetworkError extends Data.TaggedError('AuthNetworkError') {}
+class AuthRequestError extends Data.TaggedError('AuthRequestError')<{
+  readonly status: number;
+  readonly code: string;
+  readonly message: string;
+}> {}
+class AuthInvalidResponse extends Data.TaggedError('AuthInvalidResponse') {}
+
+const requestEffect = Effect.fnUntraced(function* (
   apiUrl: string,
   path: string,
   token: string,
   init: RequestInit,
   fetchImpl: typeof fetch,
-): Promise<unknown> {
-  let response: Response;
-  try {
-    response = await fetchImpl(`${apiUrl}${path}`, {
-      ...init,
-      headers: {
-        accept: 'application/json',
-        authorization: `Bearer ${token}`,
-        ...init.headers,
-      },
-    });
-  } catch {
-    throw new AuthApiError(0, 'network_error', 'Could not reach the server');
-  }
+): EffectType.fn.Return<unknown, AuthNetworkError | AuthRequestError> {
+  const response = yield* Effect.tryPromise({
+    try: (signal) =>
+      fetchImpl(`${apiUrl}${path}`, {
+        ...init,
+        signal,
+        headers: {
+          accept: 'application/json',
+          authorization: `Bearer ${token}`,
+          ...init.headers,
+        },
+      }),
+    catch: () => new AuthNetworkError(),
+  });
 
-  const body: unknown = await response.json().catch(() => null);
+  const body: unknown = yield* Effect.promise(
+    () => response.json().catch(() => null) as Promise<unknown>,
+  );
+
   if (!response.ok) {
-    const error = isRecord(body) && isRecord(body['error']) ? body['error'] : null;
-    const code = typeof error?.['code'] === 'string' ? error['code'] : 'request_failed';
-    const message =
-      typeof error?.['message'] === 'string'
-        ? error['message']
-        : `Request failed (${response.status})`;
-    throw new AuthApiError(response.status, code, message);
+    const error = errorFieldsOf(body);
+    return yield* new AuthRequestError({
+      status: response.status,
+      code: error.code ?? 'request_failed',
+      message: error.message ?? `Request failed (${response.status})`,
+    });
   }
   return body;
+});
+
+function runMeRequest(
+  apiUrl: string,
+  token: string,
+  init: RequestInit,
+  fetchImpl: typeof fetch,
+  path: string,
+): Promise<Me> {
+  const effect = Effect.fnUntraced(function* (): EffectType.fn.Return<
+    Me,
+    AuthNetworkError | AuthRequestError | AuthInvalidResponse
+  > {
+    const body = yield* requestEffect(apiUrl, path, token, init, fetchImpl);
+    const me = parseMe(body);
+    if (me === null) {
+      return yield* new AuthInvalidResponse();
+    }
+    return me;
+  });
+  return Effect.runPromise(
+    effect().pipe(
+      Effect.catchTags({
+        AuthNetworkError: () =>
+          Effect.fail(new AuthApiError(0, 'network_error', 'Could not reach the server')),
+        AuthRequestError: (error) =>
+          Effect.fail(new AuthApiError(error.status, error.code, error.message)),
+        AuthInvalidResponse: () =>
+          Effect.fail(
+            new AuthApiError(200, 'invalid_response', 'The server sent an unexpected response'),
+          ),
+      }),
+    ),
+  );
 }
 
 export async function fetchMe(
@@ -72,12 +138,7 @@ export async function fetchMe(
   token: string,
   fetchImpl: typeof fetch = fetch,
 ): Promise<Me> {
-  const body = await request(apiUrl, '/api/me', token, { method: 'GET' }, fetchImpl);
-  const me = parseMe(body);
-  if (me === null) {
-    throw new AuthApiError(200, 'invalid_response', 'The server sent an unexpected response');
-  }
-  return me;
+  return runMeRequest(apiUrl, token, { method: 'GET' }, fetchImpl, '/api/me');
 }
 
 export async function updateMe(
@@ -86,9 +147,8 @@ export async function updateMe(
   name: string,
   fetchImpl: typeof fetch = fetch,
 ): Promise<Me> {
-  const body = await request(
+  return runMeRequest(
     apiUrl,
-    '/api/me',
     token,
     {
       method: 'PATCH',
@@ -96,12 +156,8 @@ export async function updateMe(
       body: JSON.stringify({ name }),
     },
     fetchImpl,
+    '/api/me',
   );
-  const me = parseMe(body);
-  if (me === null) {
-    throw new AuthApiError(200, 'invalid_response', 'The server sent an unexpected response');
-  }
-  return me;
 }
 
 /** Checks an invite link without leaking anything about its creator. */
@@ -110,17 +166,32 @@ export async function checkInvite(
   code: string,
   fetchImpl: typeof fetch = fetch,
 ): Promise<boolean> {
-  let response: Response;
-  try {
-    response = await fetchImpl(`${apiUrl}/api/invites/${encodeURIComponent(code)}`, {
-      headers: { accept: 'application/json' },
+  const effect = Effect.fnUntraced(function* (): EffectType.fn.Return<boolean, AuthNetworkError> {
+    const response = yield* Effect.tryPromise({
+      // No `signal`: the test pins the exact `fetch` init for this call.
+      try: () =>
+        fetchImpl(`${apiUrl}/api/invites/${encodeURIComponent(code)}`, {
+          headers: { accept: 'application/json' },
+        }),
+      catch: () => new AuthNetworkError(),
     });
-  } catch {
-    throw new AuthApiError(0, 'network_error', 'Could not reach the server');
-  }
-  const body: unknown = await response.json().catch(() => null);
-  if (!response.ok || !isRecord(body)) {
-    return false;
-  }
-  return body['valid'] === true;
+    const body: unknown = yield* Effect.promise(
+      () => response.json().catch(() => null) as Promise<unknown>,
+    );
+    if (!response.ok) {
+      return false;
+    }
+    const decoded = Schema.decodeUnknownExit(InviteCheckSchema)(body);
+    if (!Exit.isSuccess(decoded)) {
+      return false;
+    }
+    return decoded.value.valid === true;
+  });
+  return Effect.runPromise(
+    effect().pipe(
+      Effect.catchTag('AuthNetworkError', () =>
+        Effect.fail(new AuthApiError(0, 'network_error', 'Could not reach the server')),
+      ),
+    ),
+  );
 }

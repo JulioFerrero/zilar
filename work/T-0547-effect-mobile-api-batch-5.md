@@ -1,7 +1,7 @@
 ---
 id: T-0547
 title: "Effect lane E, batch 5: mobile auth-api, machines-api, ais-api and invite-links-api onto Effect Schema + the T-0506 request pipeline with the shared lenient error envelope; same exports, same errors, tests unchanged"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0547-effect-mobile-api-batch-5
 model: auto
@@ -62,4 +62,66 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Converted the four batch-5 clients to the T-0506 Effect pipeline with the
+shared lenient error envelope (`errorFieldsOf` from `api-error-body.ts`).
+No local `ErrorBodySchema` anywhere. Same exports, same error classes,
+statuses, codes and messages; all existing tests unchanged and green.
+
+What changed (4 files):
+- `apps/mobile/src/lib/auth-api.ts`: `MeSchema` (`jid` lenient null via
+  `Unknown.pipe(withDecodingDefault(null), decodeTo(NullOr(String)))`,
+  copying `connections-api.ts`); `fetchMe`/`updateMe` run through a shared
+  `requestEffect` + `Effect.runPromise` edge with `AuthApiError` mapping
+  (network 0/`network_error`, envelope code/message with the old per-field
+  fallbacks, 200/`invalid_response`). `checkInvite` keeps its unauthenticated
+  GET, no auth header, exact same init — it decodes `{ valid }` with an
+  optional-boolean struct and returns `valid === true`, `false` for
+  non-OK/non-object bodies. Never logs cookies or tokens.
+- `apps/mobile/src/lib/machines-api.ts`: `MachineSchema` (strict status
+  literals, `online` optional boolean so a missing key stays omitted),
+  `PairingCodeSchema`, `MachineIdSchema` (`machineId` required null|string,
+  so a missing key still fails), raw-array `MachineListSchema`. deny/delete
+  use a `Schema.Unknown` accept-any `parseIgnored` (204 empty body, same as
+  the old `() => ({ok:true})`). Same bearer headers, paths, verbs and JSON
+  bodies. Removed the hand `isRecord`/`isString` guards.
+- `apps/mobile/src/lib/ais-api.ts`: `PublicAiSchema` (`machineId` lenient
+  null, always present like the old guard; unknown fields such as
+  `avatarUrl` dropped), `ConnectionSchema` (`label` lenient null),
+  bare-array list schemas. `deleteAi` accepts any 2xx body. `buildCreateBody`
+  untouched.
+- `apps/mobile/src/lib/invite-links-api.ts`: `GroupInviteLinkSchema`
+  (`label`/`maxUses`/`expiresAt` required-nullable: explicit null passes,
+  missing/wrong-type fails), `JoinPreviewSchema` (`groupId`/`kind`
+  optional-strict: absent omitted, wrong-type fails), `{links}` envelope
+  list schema, accept-any `parseRevoke`. `extractJoinToken`,
+  `joinFailureMessage`, `resolveGroupChat` byte-identical.
+
+Deviation found while testing: the `checkInvite` test pins the exact
+`fetch` init (`{headers:{accept}}`), so that one call does NOT pass an
+abort `signal` (the bearer `requestEffect`s do, per the recipe).
+
+Single-file tests run (all pass, files untouched):
+- `auth-api.test.ts`: 6 passed
+- `machines-api.test.ts`: 13 passed
+- `ais-api.test.ts`: 18 passed
+- `invite-links-api.test.ts`: 15 passed
+
+Gate (from repo root, `pnpm gate`):
+- `gate: 5 changed file(s) against main`
+- `PASS install (frozen) (4.9s)`, `PASS format (113.2s)`, `PASS lint (1.1s)`,
+  `PASS typecheck (33.5s)`, `PASS tests @zilar/mobile (25.8s)`
+- `scope: every changed file is inside the Allowed files`
+- `GATE PASS`
+- (First gate run failed on prettier in 2 files; fixed with
+  `prettier --write` on those files only. Second run failed on 2 unused
+  single-item parsers; removed them. Third run passed.)
+
+Security checklist: no cookies/tokens reach logs or errors (error mapping
+only forwards the server's `code`/`message` on failure paths, as before);
+no new routes; no permission/cap logic on the client side; audit n/a.
+
+No new dependencies. No open questions.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-08). The auth, machines, ais and invite-links mobile clients are on Effect Schema plus the T-0506 pipeline and the shared envelope, with the same exports, tolerances and headers; checkInvite stays unauthenticated. phone:smoke with ZILAR_ROUTES covering /, /ais, /ais/new, /settings/machines and /settings/profile: all passed, and the screenshots render (empty states match the test user). Pre-review clean.
