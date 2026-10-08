@@ -1,7 +1,7 @@
 ---
 id: T-0631
 title: "effect/sql: media/indexer.ts off drizzle; the cursor read (bigint as string, keep BigInt), and the per-chat transaction (link delete, retraction update, ON CONFLICT DO NOTHING inserts with an exact inserted count, cursor upsert, cap prune) in one sql.withTransaction; tests unchanged"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0631-effect-sql-media-indexer
 model: auto
@@ -58,4 +58,50 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**Status:** review
+
+### What I did
+- Moved `indexChat`'s cursor read and its single per-chat transaction onto `effect/sql` in `apps/server/src/media/indexer.ts`; dropped the `drizzle-orm` and `db/schema` value imports (the file now imports `Effect`, `SqlClient`/`SqlError` and `sqlRuntimeFor`).
+- The cursor read is `` SELECT indexed_through_micros FROM media_index_state ... `` typed as `{ indexedThroughMicros: string }`, then wrapped in `BigInt(stored)` as before (no math before the `BigInt`).
+- Replaced the drizzle `MediaItemInsert` / `MediaTransaction` types with a local `MediaItemRow` interface and a private `runSql(db, effect)` helper (same shape as `pins/service.ts`).
+- The whole transaction is one `sql.withTransaction`, in the same order: link delete for a correction, `deleted = true` update for a retraction, `insertItems` with `ON CONFLICT (archive_owner, chat_jid, message_id, kind, ref) DO NOTHING ... RETURNING id` counting only inserted rows, the cursor upsert `ON CONFLICT (archive_owner, chat_jid) DO UPDATE` with `Number(lastMicros)`, then the raw cap-prune `DELETE`. `waveform` is written as `${JSON.stringify(x)}::jsonb` (NULL when absent); `at_micros` binds the number.
+- `buildIndexQuery` and the archive read are untouched; `indexChat`'s signature and `{ read, inserted, done }` result are unchanged.
+- No test files changed.
+
+### Files changed
+- `apps/server/src/media/indexer.ts`
+- `work/T-0631-effect-sql-media-indexer.md`
+
+### Commands run
+- `pnpm install` — Done (13.3s), only the pre-existing `@types/react-dom` peer warning.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/media/indexer.test.ts` — 1 file passed, 15 tests passed.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/media src/files` — 3 files passed, 39 tests passed.
+- `pnpm gate` — summary:
+  ```
+  gate: 2 changed file(s) against main
+  PASS  install (frozen)  (1.4s)
+  PASS  format  (18.7s)
+  PASS  lint  (1.0s)
+  PASS  typecheck  (9.8s)
+  PASS  tests @zilar/server  (9.3s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Notes / deviations
+- None. `MediaItemRow` is the local replacement for the drizzle insert type; the helper `insertItems` now builds one multi-row `INSERT` with the same conflict target and counts `RETURNING id`.
+- The added `runSql` allows a `SqlError.SqlError` error channel; the exported `indexChat` still returns a Promise and propagates the error unchanged, as before.
+
+### Blocked / needs a decision
+- None.
+
 ## Review (written by Claude)
+
+**2026-10-08, lead:** approved.
+- **Pre-review:** clean, no findings. The packet head is d597f8d9, the current HEAD.
+- **Lead check:**
+  - one `sql.withTransaction`, in the same order;
+  - the cursor bigint goes through `BigInt(stored)` before any comparison;
+  - the insert keeps `ON CONFLICT DO NOTHING RETURNING id`, so the inserted count is exact;
+  - `waveform` is written as `::jsonb` or NULL;
+  - the cursor upsert is inside the transaction.

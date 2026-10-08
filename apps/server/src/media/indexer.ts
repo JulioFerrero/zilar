@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import { and, eq, sql } from 'drizzle-orm';
+import { Effect } from 'effect';
+import { SqlClient, SqlError } from 'effect/sql';
 import { decodePayload, type Payload } from '@zilar/protocol';
 import type { ServerDatabase } from '../db/client';
-import { mediaIndexState, mediaItems } from '../db/schema';
+import { sqlRuntimeFor } from '../effect/sql';
 import { correctionTarget, retractTarget, stanzaFrom } from '../search/routes';
 import type { ArchivePool, ArchiveRow } from '../search/service';
 
@@ -217,8 +218,40 @@ function extractMediaItemsUnsafe(row: ArchiveRow): ExtractedMediaItem[] {
   return items;
 }
 
-type MediaItemInsert = typeof mediaItems.$inferInsert;
-type MediaTransaction = Parameters<Parameters<ServerDatabase['transaction']>[0]>[0];
+// Every query runs on the `effect/sql` client registered for this database
+// (see `../effect/sql`). The exported functions stay `async` so routes and
+// tests keep their shape during the transition.
+function runSql<A>(
+  db: ServerDatabase,
+  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
+): Promise<A> {
+  return sqlRuntimeFor(db).runPromise(effect);
+}
+
+// The `media_items` row the indexer writes. Local to this file now that the
+// insert is raw SQL; the columns mirror `db/schema.ts:1393-1434`, and a
+// `bigint` read would come back as a string (none is read here).
+interface MediaItemRow {
+  id: string;
+  archiveOwner: string;
+  chatJid: string;
+  messageId: string;
+  atMicros: number;
+  senderJid: string;
+  kind: MediaKind;
+  url: string | null;
+  name: string | null;
+  mime: string | null;
+  size: number | null;
+  width: number | null;
+  height: number | null;
+  durationMs: number | null;
+  waveform: number[] | null;
+  linkUrl: string | null;
+  linkHost: string | null;
+  ref: string;
+  deleted: boolean;
+}
 
 interface RowBase {
   archiveOwner: string;
@@ -231,7 +264,7 @@ interface RowBase {
 // `ref` is the row's identity inside its message: the URL for a media item,
 // the link URL for a link. Empty only for a voice note without a URL, which is
 // still unique by `kind`.
-function toInsert(item: ExtractedMediaItem, base: RowBase): MediaItemInsert {
+function toInsert(item: ExtractedMediaItem, base: RowBase): MediaItemRow {
   return {
     id: randomUUID(),
     archiveOwner: base.archiveOwner,
@@ -255,24 +288,31 @@ function toInsert(item: ExtractedMediaItem, base: RowBase): MediaItemInsert {
   };
 }
 
-async function insertItems(tx: MediaTransaction, rows: MediaItemInsert[]): Promise<number> {
+// `ON CONFLICT (archive_owner, chat_jid, message_id, kind, ref) DO NOTHING`
+// (the unique index at `schema.ts:1419-1426`) with `RETURNING`, so the count
+// is the rows actually inserted and a re-run inserts nothing. `waveform` is
+// jsonb, so it is stringified and cast; every other value binds directly.
+function insertItems(
+  sql: SqlClient.SqlClient,
+  rows: MediaItemRow[],
+): Effect.Effect<number, SqlError.SqlError> {
   if (rows.length === 0) {
-    return 0;
+    return Effect.succeed(0);
   }
-  const inserted = await tx
-    .insert(mediaItems)
-    .values(rows)
-    .onConflictDoNothing({
-      target: [
-        mediaItems.archiveOwner,
-        mediaItems.chatJid,
-        mediaItems.messageId,
-        mediaItems.kind,
-        mediaItems.ref,
-      ],
-    })
-    .returning();
-  return inserted.length;
+  const tuples = rows.map(
+    (row) => sql`(${row.id}, ${row.archiveOwner}, ${row.chatJid}, ${row.messageId},
+      ${row.atMicros}, ${row.senderJid}, ${row.kind}, ${row.url}, ${row.name},
+      ${row.mime}, ${row.size}, ${row.width}, ${row.height}, ${row.durationMs},
+      ${row.waveform === null ? sql`NULL` : sql`${JSON.stringify(row.waveform)}::jsonb`},
+      ${row.linkUrl}, ${row.linkHost}, ${row.ref}, ${row.deleted})`,
+  );
+  return sql<{ id: string }>`INSERT INTO media_items (
+      id, archive_owner, chat_jid, message_id, at_micros, sender_jid, kind,
+      url, name, mime, size, width, height, duration_ms, waveform,
+      link_url, link_host, ref, deleted)
+    VALUES ${sql.csv(tuples)}
+    ON CONFLICT (archive_owner, chat_jid, message_id, kind, ref) DO NOTHING
+    RETURNING id`.pipe(Effect.map((inserted) => inserted.length));
 }
 
 // One fully parameterized query, like search's (`$n` bindings, never built SQL).
@@ -310,13 +350,16 @@ export async function indexChat(input: IndexChatInput): Promise<IndexChatResult>
   const maxRows = input.maxRows ?? MEDIA_ITEMS_CAP_PER_CHAT;
   const cutoffMicros = BigInt(now.getTime() - MEDIA_WINDOW_MS) * 1000n;
 
-  const state = await db
-    .select({ indexedThroughMicros: mediaIndexState.indexedThroughMicros })
-    .from(mediaIndexState)
-    .where(
-      and(eq(mediaIndexState.archiveOwner, archiveOwner), eq(mediaIndexState.chatJid, chatJid)),
-    )
-    .limit(1);
+  const state = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ indexedThroughMicros: string }>`SELECT indexed_through_micros
+        FROM media_index_state
+        WHERE archive_owner = ${archiveOwner} AND chat_jid = ${chatJid}
+        LIMIT 1`;
+    }),
+  );
   const stored = state[0]?.indexedThroughMicros;
   const storedMicros = stored === undefined ? cutoffMicros : BigInt(stored);
   // Never read older than the 12-month window, even if the cursor is stale.
@@ -325,87 +368,79 @@ export async function indexChat(input: IndexChatInput): Promise<IndexChatResult>
   const built = buildIndexQuery({ archiveOwner, scope, cursorMicros, limit: MEDIA_INDEX_MAX_ROWS });
   const rows = await archive.query(built.text, built.values);
 
-  let inserted = 0;
-  let lastMicros: bigint | null = null;
+  const result = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      let inserted = 0;
+      let lastMicros: bigint | null = null;
 
-  await db.transaction(async (tx) => {
-    for (const row of rows) {
-      const atMicros = Number(BigInt(row.timestamp));
-      lastMicros = BigInt(row.timestamp);
-      const senderJid = senderJidFor(row);
-      const base = { archiveOwner, chatJid, atMicros, senderJid };
+      yield* sql.withTransaction(
+        Effect.gen(function* () {
+          for (const row of rows) {
+            const atMicros = Number(BigInt(row.timestamp));
+            lastMicros = BigInt(row.timestamp);
+            const senderJid = senderJidFor(row);
+            const base = { archiveOwner, chatJid, atMicros, senderJid };
 
-      // A correction names its target: the new text replaces the target's
-      // links. The correction row itself is never indexed.
-      const corrected = correctionTarget(row.xml);
-      if (corrected !== null) {
-        await tx
-          .delete(mediaItems)
-          .where(
-            and(
-              eq(mediaItems.archiveOwner, archiveOwner),
-              eq(mediaItems.chatJid, chatJid),
-              eq(mediaItems.messageId, corrected),
-              eq(mediaItems.kind, 'link'),
-            ),
-          );
-        const links = extractLinks(row.body ?? '').map((link) =>
-          toInsert(
-            { kind: 'link', linkUrl: link.url, linkHost: link.host },
-            { ...base, messageId: corrected },
-          ),
-        );
-        inserted += await insertItems(tx, links);
-        continue;
-      }
+            // A correction names its target: the new text replaces the target's
+            // links. The correction row itself is never indexed.
+            const corrected = correctionTarget(row.xml);
+            if (corrected !== null) {
+              yield* sql`DELETE FROM media_items
+                WHERE archive_owner = ${archiveOwner} AND chat_jid = ${chatJid}
+                  AND message_id = ${corrected} AND kind = 'link'`;
+              const links = extractLinks(row.body ?? '').map((link) =>
+                toInsert(
+                  { kind: 'link', linkUrl: link.url, linkHost: link.host },
+                  { ...base, messageId: corrected },
+                ),
+              );
+              inserted += yield* insertItems(sql, links);
+              continue;
+            }
 
-      // A retraction hides every row of the target message, links included.
-      const retracted = retractTarget(row.xml);
-      if (retracted !== null) {
-        await tx
-          .update(mediaItems)
-          .set({ deleted: true })
-          .where(
-            and(
-              eq(mediaItems.archiveOwner, archiveOwner),
-              eq(mediaItems.chatJid, chatJid),
-              eq(mediaItems.messageId, retracted),
-            ),
-          );
-        continue;
-      }
+            // A retraction hides every row of the target message, links included.
+            const retracted = retractTarget(row.xml);
+            if (retracted !== null) {
+              yield* sql`UPDATE media_items SET deleted = true
+                WHERE archive_owner = ${archiveOwner} AND chat_jid = ${chatJid}
+                  AND message_id = ${retracted}`;
+              continue;
+            }
 
-      const items = extractMediaItems(row);
-      if (items.length > 0) {
-        inserted += await insertItems(
-          tx,
-          items.map((item) => toInsert(item, { ...base, messageId: row.originId })),
-        );
-      }
-    }
+            const items = extractMediaItems(row);
+            if (items.length > 0) {
+              inserted += yield* insertItems(
+                sql,
+                items.map((item) => toInsert(item, { ...base, messageId: row.originId })),
+              );
+            }
+          }
 
-    if (lastMicros !== null) {
-      const through = Number(lastMicros);
-      await tx
-        .insert(mediaIndexState)
-        .values({ archiveOwner, chatJid, indexedThroughMicros: through, updatedAt: now })
-        .onConflictDoUpdate({
-          target: [mediaIndexState.archiveOwner, mediaIndexState.chatJid],
-          set: { indexedThroughMicros: through, updatedAt: now },
-        });
-    }
+          if (lastMicros !== null) {
+            const through = Number(lastMicros);
+            yield* sql`INSERT INTO media_index_state
+                (archive_owner, chat_jid, indexed_through_micros, updated_at)
+              VALUES (${archiveOwner}, ${chatJid}, ${through}, ${now})
+              ON CONFLICT (archive_owner, chat_jid)
+              DO UPDATE SET indexed_through_micros = ${through}, updated_at = ${now}`;
+          }
 
-    // One atomic statement prunes the chat down to the cap, oldest first. The
-    // cap is never a check-then-insert.
-    await tx.execute(
-      sql`DELETE FROM media_items WHERE id IN (
-        SELECT id FROM media_items
-        WHERE archive_owner = ${archiveOwner} AND chat_jid = ${chatJid}
-        ORDER BY at_micros DESC, id DESC
-        OFFSET ${maxRows}
-      )`,
-    );
-  });
+          // One atomic statement prunes the chat down to the cap, oldest first.
+          // The cap is never a check-then-insert.
+          yield* sql`DELETE FROM media_items WHERE id IN (
+            SELECT id FROM media_items
+            WHERE archive_owner = ${archiveOwner} AND chat_jid = ${chatJid}
+            ORDER BY at_micros DESC, id DESC
+            OFFSET ${maxRows}
+          )`;
+        }),
+      );
 
-  return { read: rows.length, inserted, done: rows.length < MEDIA_INDEX_MAX_ROWS };
+      return { inserted };
+    }),
+  );
+
+  return { read: rows.length, inserted: result.inserted, done: rows.length < MEDIA_INDEX_MAX_ROWS };
 }
