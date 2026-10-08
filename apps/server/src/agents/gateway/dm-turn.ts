@@ -1,12 +1,10 @@
 import type { ChatMessage } from '@zilar/xmpp-core';
 import { randomUUID } from 'node:crypto';
-import { eq } from 'drizzle-orm';
 import type { DraftHub } from '../../drafts/hub';
 import { jidFor, localpartFor } from '../../xmpp/provisioning';
 import { modelNameForAi } from '../../ai/model-entry';
 import { ensureAiModel, type AiServiceDeps } from '../../ais/service';
 import type { KeyCipher } from '../../connections/crypto';
-import { llmVirtualKeys } from '../../db/schema';
 import {
   bareJid,
   buildDmMessages,
@@ -24,7 +22,7 @@ import {
   type GatewayLogger,
   type PendingMessage,
 } from './contracts';
-import { loadActiveAi, loadOwnerName } from './db';
+import { loadActiveAi, loadEncryptedVirtualKey, loadOwnerName } from './db';
 import type { createLiveSession } from './live';
 import type { MemoryRunner } from './memory';
 
@@ -158,16 +156,12 @@ export function createDmTurn(ctx: DmTurnContext) {
     let virtualKey: string | undefined;
     try {
       await ensureAiModel(aiDeps(), session.aiId);
-      const [keyRow] = await deps.db
-        .select({ encryptedKey: llmVirtualKeys.encryptedKey })
-        .from(llmVirtualKeys)
-        .where(eq(llmVirtualKeys.aiId, session.aiId))
-        .limit(1);
-      if (!keyRow) {
+      const encryptedKey = await loadEncryptedVirtualKey(deps.db, session.aiId);
+      if (encryptedKey === null) {
         throw new Error(`AI ${session.aiId} has no virtual key`);
       }
       // Decrypted in memory only; never stored, logged or returned.
-      virtualKey = (deps.cipher as KeyCipher).decrypt(keyRow.encryptedKey);
+      virtualKey = (deps.cipher as KeyCipher).decrypt(encryptedKey);
 
       let history: ChatMessage[] = [];
       try {

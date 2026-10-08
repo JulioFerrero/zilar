@@ -1,7 +1,7 @@
 ---
 id: T-0583
 title: "effect/sql: the last inline drizzle reads in the agent gateway (live.ts owner/room lookups, listener.ts group listener settings + topic isGeneral, dm-turn.ts virtual key read) and listener/score.ts loadRoster move to effect/sql helpers in gateway/db.ts; same results; tests unchanged"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0583-effect-sql-gateway-inline-queries
 model: auto
@@ -76,4 +76,27 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Did: moved the last inline drizzle reads in the agent gateway to effect/sql.
+- `gateway/db.ts`: added `loadAiOwnerId`, `loadGroupRoomLocalpart`, `loadTopicRoomRow` (`roomLocalpart`, `archivedAt`), `loadGroupListenerSettings`, `loadTopicIsGeneral`, `loadEncryptedVirtualKey`, all via the existing `runSql` with explicit row types.
+- `gateway/live.ts`: `loadOwnerId`/`loadRoomJid`/`loadTopicRoomJid` now call the db.ts helpers; same nulls, same `roomJidFor` mapping. Removed `drizzle-orm`/`db/schema` imports.
+- `gateway/listener.ts`: `fireRoomListener` reads group listener settings + topic isGeneral via helpers; same early-return control flow. Removed `drizzle-orm`/`db/schema` imports.
+- `gateway/dm-turn.ts`: virtual-key read via `loadEncryptedVirtualKey`; the `AI ${id} has no virtual key` throw stays in dm-turn.ts. Decrypted key stays in-memory only, never logged.
+- `listener/score.ts`: `loadRoster` rewritten with local `runSql` (sqlRuntimeFor) + `sql<RosterRow>` joins on `topic_ais`/`group_ais`; same mapping and sort. No import from gateway.
+- Verified: none of the four files imports `drizzle-orm` or `db/schema` (grep: no output). No test files touched.
+
+Checks:
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot agents/gateway agents/listener agents/integration agents/reply actions/gateway`: 5 passed files, 1 skipped file; 276 passed tests, 1 skipped. Duration ~207s.
+- `pnpm gate`: GATE PASS. PASS install (frozen), format, lint, typecheck, tests @zilar/server; scope: every changed file is inside the Allowed files. (First gate run failed on format in listener.ts/live.ts; fixed with prettier --write on the touched files, then re-ran gate to PASS.)
+
+Security checklist: reads only (SELECT … LIMIT 1 / joins by id); virtual key decrypted in memory, never logged; no new routes; no caps/uniqueness changes; no audit changes.
+
+Files changed: `apps/server/src/agents/gateway/db.ts`, `live.ts`, `listener.ts`, `dm-turn.ts`, `apps/server/src/agents/listener/score.ts`, task file.
+
 ## Review (written by Claude)
+
+**2026-10-08, lead:** approved.
+- **Pre-review:** clean. The packet (09:19) is newer than HEAD 7c5a8ed7.
+- **No test file changed.**
+- **Lead check:**
+  - the 6 new helpers in `gateway/db.ts` and the two roster joins in `score.ts` are the same selects as the drizzle versions (`LIMIT 1` where it was);
+  - grep finds no `drizzle-orm` or `db/schema` import in `live.ts`, `listener.ts`, `dm-turn.ts` or `score.ts`.

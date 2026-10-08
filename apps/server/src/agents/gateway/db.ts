@@ -47,6 +47,32 @@ interface GateTopicRow {
   visibility: 'public' | 'private';
 }
 
+interface AiOwnerRow {
+  owner: string;
+}
+
+interface RoomLocalpartRow {
+  roomLocalpart: string;
+}
+
+interface TopicRoomRow {
+  roomLocalpart: string;
+  archivedAt: Date | null;
+}
+
+interface GroupListenerSettings {
+  listenerEnabled: boolean;
+  listenerEagerness: 'quiet' | 'normal' | 'eager';
+}
+
+interface TopicIsGeneralRow {
+  isGeneral: boolean;
+}
+
+interface EncryptedVirtualKeyRow {
+  encryptedKey: string;
+}
+
 interface TopicMemberRow {
   userId: string;
 }
@@ -165,6 +191,89 @@ export async function listAiRooms(
     }
   }
   return rooms;
+}
+
+export async function loadAiOwnerId(db: ServerDatabase, aiId: string): Promise<string | null> {
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<AiOwnerRow>`SELECT owner FROM ais WHERE id = ${aiId} LIMIT 1`;
+    }),
+  );
+  return row?.owner ?? null;
+}
+
+export async function loadGroupRoomLocalpart(
+  db: ServerDatabase,
+  groupId: string,
+): Promise<string | null> {
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<RoomLocalpartRow>`SELECT room_localpart FROM groups WHERE id = ${groupId} LIMIT 1`;
+    }),
+  );
+  return row?.roomLocalpart ?? null;
+}
+
+export async function loadTopicRoomRow(
+  db: ServerDatabase,
+  topicId: string,
+): Promise<{ roomLocalpart: string; archivedAt: Date | null } | null> {
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<TopicRoomRow>`SELECT room_localpart, archived_at FROM topics WHERE id = ${topicId} LIMIT 1`;
+    }),
+  );
+  return row === undefined
+    ? null
+    : { roomLocalpart: row.roomLocalpart, archivedAt: row.archivedAt };
+}
+
+export async function loadGroupListenerSettings(
+  db: ServerDatabase,
+  groupId: string,
+): Promise<GroupListenerSettings | null> {
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<GroupListenerSettings>`SELECT listener_enabled, listener_eagerness FROM groups WHERE id = ${groupId} LIMIT 1`;
+    }),
+  );
+  return row ?? null;
+}
+
+export async function loadTopicIsGeneral(
+  db: ServerDatabase,
+  topicId: string,
+): Promise<boolean | null> {
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<TopicIsGeneralRow>`SELECT is_general FROM topics WHERE id = ${topicId} LIMIT 1`;
+    }),
+  );
+  return row?.isGeneral ?? null;
+}
+
+export async function loadEncryptedVirtualKey(
+  db: ServerDatabase,
+  aiId: string,
+): Promise<string | null> {
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<EncryptedVirtualKeyRow>`SELECT encrypted_key FROM llm_virtual_keys WHERE ai_id = ${aiId} LIMIT 1`;
+    }),
+  );
+  return row?.encryptedKey ?? null;
 }
 
 interface RoomGateState {

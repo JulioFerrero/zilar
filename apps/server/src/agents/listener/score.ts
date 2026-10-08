@@ -6,10 +6,10 @@
 // handled as untrusted data and the module never throws: any failure wakes
 // nobody.
 
-import { eq } from 'drizzle-orm';
-import { Exit, Schema } from 'effect';
+import { Effect, Exit, Schema } from 'effect';
+import { SqlClient, SqlError } from 'effect/sql';
 import type { ServerDatabase } from '../../db/client';
-import { ais, groupAis, topicAis } from '../../db/schema';
+import { sqlRuntimeFor } from '../../effect/sql';
 import type { CompleteChatInput, ModelRequestMessage } from '../reply';
 import { PERSONA_SUMMARY_MAX_LENGTH } from '../tools';
 
@@ -42,21 +42,44 @@ function summaryOf(persona: string): string {
   return firstLine.trim().slice(0, PERSONA_SUMMARY_MAX_LENGTH);
 }
 
+function runSql<A>(
+  db: ServerDatabase,
+  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
+): Promise<A> {
+  return sqlRuntimeFor(db).runPromise(effect);
+}
+
+interface RosterRow {
+  id: string;
+  name: string;
+  persona: string;
+}
+
 // The AIs in a topic when `topicId` is given, otherwise the AIs in the group.
 // Sorted by name, then id, so the same room always produces the same prompt.
 export async function loadRoster(db: ServerDatabase, input: LoadRosterInput): Promise<RosterAi[]> {
   const rows =
     input.topicId !== undefined
-      ? await db
-          .select({ id: ais.id, name: ais.name, persona: ais.persona })
-          .from(topicAis)
-          .innerJoin(ais, eq(ais.id, topicAis.aiId))
-          .where(eq(topicAis.topicId, input.topicId))
-      : await db
-          .select({ id: ais.id, name: ais.name, persona: ais.persona })
-          .from(groupAis)
-          .innerJoin(ais, eq(ais.id, groupAis.aiId))
-          .where(eq(groupAis.groupId, input.groupId));
+      ? await runSql(
+          db,
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            return yield* sql<RosterRow>`SELECT a.id, a.name, a.persona
+              FROM topic_ais ta
+              INNER JOIN ais a ON a.id = ta.ai_id
+              WHERE ta.topic_id = ${input.topicId}`;
+          }),
+        )
+      : await runSql(
+          db,
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            return yield* sql<RosterRow>`SELECT a.id, a.name, a.persona
+              FROM group_ais ga
+              INNER JOIN ais a ON a.id = ga.ai_id
+              WHERE ga.group_id = ${input.groupId}`;
+          }),
+        );
   return rows
     .map((row) => ({ id: row.id, name: row.name, summary: summaryOf(row.persona) }))
     .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
