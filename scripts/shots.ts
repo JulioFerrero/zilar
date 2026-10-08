@@ -1,14 +1,15 @@
 /**
  * The screenshot shot table (T-0131, T-0133): every shot as plain data,
- * validated with zod before the browser even starts.
+ * validated with Effect Schema before the browser even starts.
  *
  * This module has no side effects so tests can import it: importing
  * `screenshots.ts` would launch the capture run (`await main()`).
  *
- * It also has no imports at all (zod is injected by the caller): the file
- * is typechecked both by `scripts/tsconfig.json` (node types, zod path
- * mapping) and as part of `@zilar/web` (via the `shots.test.ts` import,
- * whose tsconfig has neither), so it must not rely on either.
+ * It also has no imports at all (the Effect `Schema` module is injected by
+ * the caller): the file is typechecked both by `scripts/tsconfig.json`
+ * (node types, effect path mapping) and as part of `@zilar/web` (via the
+ * `shots.test.ts` import, whose module resolution cannot see `effect` from
+ * here), so it must not rely on either.
  */
 export const DESKTOP = { width: 1440, height: 900 };
 export const PHONE = { width: 390, height: 844 };
@@ -28,18 +29,20 @@ export const SHOT_SETUPS = [
 ] as const;
 
 /**
- * The zod subset the shot table needs, typed structurally (methods, so
- * both the real zod module and `z` satisfy it under either tsconfig).
+ * The slice of the Effect `Schema` module the shot table needs, typed
+ * structurally (methods, so the real module satisfies it) with no reference
+ * to `effect` at all: `@zilar/web` resolves bare specifiers from its own
+ * `node_modules`, so a `typeof import('effect')` here would not compile
+ * there.
  */
-export interface ZodLib {
-  enum(values: readonly [string, ...string[]]): {
-    array(): { parse(value: unknown): unknown };
-  };
-  object(shape: Record<string, unknown>): {
-    array(): { parse(value: unknown): unknown };
-  };
-  string(): unknown;
-  number(): unknown;
+export interface SchemaModule {
+  readonly String: unknown;
+  readonly Number: unknown;
+  Struct(fields: unknown): unknown;
+  Literals(values: unknown): unknown;
+  Array(schema: unknown): unknown;
+  mutable(schema: unknown): unknown;
+  decodeUnknownSync(schema: unknown): (value: unknown) => unknown;
 }
 
 export interface Shot {
@@ -57,8 +60,8 @@ export interface ShotDef {
   viewport: { width: number; height: number };
   /**
    * Named setup, implemented in `runSetup`. Keeps the shot table
-   * serializable so it can be validated with zod; the enum on the schema
-   * fails a typo here before the browser even starts.
+   * serializable so it can be validated with Effect Schema; the literal
+   * union on the schema fails a typo here before the browser even starts.
    */
   setup: string;
 }
@@ -110,18 +113,21 @@ export const PHONE_SHOTS: ShotDef[] = [
   { name: 'search-phone.png', path: '/', viewport: PHONE, setup: 'searchTickets' },
 ];
 
-/** Validates shot rows: `setup` is an enum, so a typo fails here. */
-export function parseShots(zod: ZodLib, shots: ShotDef[]): Shot[] {
-  const schema = zod.object({
-    name: zod.string(),
-    path: zod.string(),
-    viewport: zod.object({ width: zod.number(), height: zod.number() }),
-    setup: zod.enum(SHOT_SETUPS),
+/**
+ * Validates shot rows: `setup` is a literal union, so a typo fails here
+ * before the browser starts.
+ */
+export function parseShots(schema: SchemaModule, shots: ShotDef[]): Shot[] {
+  const shot = schema.Struct({
+    name: schema.String,
+    path: schema.String,
+    viewport: schema.Struct({ width: schema.Number, height: schema.Number }),
+    setup: schema.Literals(SHOT_SETUPS),
   });
-  return schema.array().parse(shots) as Shot[];
+  return schema.decodeUnknownSync(schema.mutable(schema.Array(shot)))(shots) as Shot[];
 }
 
 /** Every shot as plain data, validated before the browser even starts. */
-export function shotTable(zod: ZodLib): Shot[] {
-  return parseShots(zod, [...DESKTOP_SHOTS, ...PHONE_SHOTS]);
+export function shotTable(schema: SchemaModule): Shot[] {
+  return parseShots(schema, [...DESKTOP_SHOTS, ...PHONE_SHOTS]);
 }

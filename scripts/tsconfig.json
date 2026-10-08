@@ -6,7 +6,7 @@
     "allowImportingTsExtensions": true,
     "paths": {
       "playwright": ["../node_modules/playwright"],
-      "zod": ["../apps/web/node_modules/zod"]
+      "effect": ["../apps/web/node_modules/effect"]
     }
   },
   "include": ["screenshots.ts"]

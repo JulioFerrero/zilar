@@ -22,13 +22,13 @@ const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..');
 const outDir = join(root, 'docs', 'screenshots');
 
-// Playwright and zod live in workspace packages, not at the root, so
+// Playwright and effect live in workspace packages, not at the root, so
 // resolve them from the web app like the app's own tooling does. The shot
 // table lives in `./shots.ts` (side-effect free, so tests can import it
-// too); zod is injected into it here.
+// too); the Effect `Schema` module is injected into it here.
 const requireFromWeb = createRequire(join(root, 'apps', 'web', 'package.json'));
 const { chromium } = requireFromWeb('playwright') as typeof import('playwright');
-const zod = requireFromWeb('zod') as typeof import('zod');
+const { Schema } = requireFromWeb('effect') as typeof import('effect');
 import type { Shot } from './shots.ts';
 import { shotTable } from './shots.ts';
 type Browser = import('playwright').Browser;
@@ -158,7 +158,7 @@ function checkSizes(dir: string, shots: Shot[]): void {
 }
 
 async function main(): Promise<void> {
-  const shots = shotTable(zod);
+  const shots = shotTable(Schema);
   // Capture into a temp dir first: a mid-run failure must never leave a
   // half-fresh set in `docs/screenshots/`. Only a complete run swaps in.
   const staging = mkdtempSync(join(tmpdir(), 'zilar-screenshots-'));

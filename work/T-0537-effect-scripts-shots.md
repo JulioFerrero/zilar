@@ -1,7 +1,7 @@
 ---
 id: T-0537
 title: "Effect: scripts/shots.ts + scripts/screenshots.ts take Effect Schema instead of an injected zod lib, so `pnpm screenshots` works after zod left apps/web; shots.test.ts drops its zod-shaped adapter"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0537-effect-scripts-shots
 model: auto
@@ -59,6 +59,47 @@ pnpm gate
 
 ---
 
-## Report (written by the worker when done)
+## Report
+
+### What I did
+Swapped the screenshot scripts from zod to Effect Schema, keeping `scripts/shots.ts` import-free.
+
+- **`scripts/shots.ts`**: removed the injected `ZodLib` and replaced it with an injected structural `SchemaModule` (the `String`/`Number`/`Struct`/`Literals`/`Array`/`mutable`/`decodeUnknownSync` members used). No `effect` reference at all, so the file stays import-free and still compiles under both tsconfigs. `parseShots(schema, shots)` now builds the schema with `schema.Struct(...)` + `schema.Literals(SHOT_SETUPS)` and decodes via `schema.decodeUnknownSync(schema.mutable(schema.Array(shot)))`. Updated the header comment and the `ShotDef.setup` comment.
+- **`scripts/screenshots.ts`**: `requireFromWeb('effect')` instead of `'zod'`, injecting `Schema` into `shotTable(Schema)`; updated the comment.
+- **`scripts/tsconfig.json`**: path mapping `"effect": ["../apps/web/node_modules/effect"]` replaces the zod mapping.
+- **`apps/web/src/shots.test.ts`**: dropped the `effectLib`/`LibSchema` adapter and `ZodLib` import; passes the real `Schema` directly to `shotTable`/`parseShots`. The three assertions are unchanged.
+
+### Files changed (all inside Allowed files)
+`scripts/shots.ts`, `scripts/screenshots.ts`, `scripts/tsconfig.json`, `apps/web/src/shots.test.ts`, `work/T-0537-effect-scripts-shots.md`.
+
+No zod reference is left under `scripts/` (checked with a grep for `zod|Zod`: no matches).
+
+### Note on the structural type (deviation from the first option)
+The spec allowed `typeof import('effect').Schema` "if both tsconfigs accept it". It does **not**: `@zilar/web`'s `tsconfig.json` resolves bare specifiers from `apps/web/node_modules` starting at the importing file, so `effect` is not visible from `scripts/`, and `pnpm gate` failed with `TS2307: Cannot find module 'effect'` on that line. I therefore used the spec's first option, a structural type. The first gate run failed on this; the fix is the structural `SchemaModule`.
+
+### Commands I ran (real results)
+- `pnpm install` -> done in 20.3s (after the worktree was freshly checked out).
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot shots` -> `Test Files 1 passed (1)`, `Tests 3 passed (3)`. Run twice (before and after the structural-type change); same result.
+- Runtime proof (spec item 5), against the final code:
+  `node --experimental-strip-types --input-type=module -e "...requireFromWeb('effect')... shotTable(Schema)..."`
+  -> `effect resolved via requireFromWeb; shotTable -> 17 shots; first: signin-desktop.png`.
+- `pnpm gate` (final run) -> GATE PASS:
+  ```
+  gate: 5 changed file(s) against main
+  PASS  install (frozen)  (1.2s)
+  PASS  format  (17.2s)
+  PASS  lint  (1.3s)
+  PASS  typecheck  (10.5s)
+  PASS  tests @zilar/web  (2.8s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+I did not run the full `pnpm screenshots` capture (needs a browser and the dev server), as the spec instructed.
+
+### Problems / open questions
+None outstanding. The only wrinkle was the module-resolution issue above, resolved within scope.
 
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-08). The screenshot scripts take an injected Effect Schema module (Literals for the setup enum), screenshots.ts loads effect through apps/web, and the tsconfig maps effect. shots.test.ts lost its adapter and keeps its three assertions. No zod is left under scripts/. Pre-review clean, 0 nits.
