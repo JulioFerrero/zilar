@@ -49,7 +49,7 @@ import { createGifsRoutes } from './gifs/routes';
 import { createAvatarsRoutes } from './avatars/routes';
 import { createBackgroundsRoutes } from './backgrounds/routes';
 import { createStickersRoutes } from './stickers/routes';
-import { createTopicsRoutes } from './topics/routes';
+import { createTopicsApi } from './topics/api';
 import { createMachinesRoutes } from './machines/routes';
 import { createDbMachineRegistry, type DbMachineRegistry } from './machines/registry';
 import { serverVersion } from './version';
@@ -385,10 +385,15 @@ export function createApp({
   mountEffectRoutes(app, aiMemoryApi.routes, aiMemoryApi.handler);
   const pinsApi = createPinsApi({ auth, db, config, audit: auditRecorder, logger });
   mountEffectRoutes(app, pinsApi.routes, pinsApi.handler);
-  app.route(
-    '/api',
-    createTopicsRoutes({ auth, db, config, adminClient, logger, audit: auditRecorder }),
-  );
+  const topicsApi = createTopicsApi({
+    auth,
+    db,
+    config,
+    adminClient,
+    logger,
+    audit: auditRecorder,
+  });
+  mountEffectRoutes(app, topicsApi.routes, topicsApi.handler);
   const chatsApi = createChatsApi({ auth, db, config, logger });
   mountEffectRoutes(app, chatsApi.routes, chatsApi.handler);
   // Chat prefs and folders (T-0113/T-0232) on the Effect adapter: session

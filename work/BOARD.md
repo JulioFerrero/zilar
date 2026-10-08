@@ -453,7 +453,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0414](T-0414-web-forward-store-action.md) | Web store: forwardMessages sends copies with a forward origin, optional comment | 2026-10-06 |
 | [T-0425](T-0425-mobile-profile-buttons-kit.md) | Mobile: profile and contact card buttons on the kit Button | 2026-10-06 |
 | [T-0426](T-0426-mobile-ai-sheet-buttons-kit.md) | Mobile: AI activity Refresh, tool sheet Show all/less and Close on the kit Button | 2026-10-06 |
-| [T-0539](T-0539-effect-http-topics.md) | Effect C (HTTP): topics on HttpApi | planned | auto | T-0536 | |
 | [T-0543](T-0543-effect-http-push.md) | Effect C (HTTP): push on HttpApi | planned | auto | T-0536 | |
 | [T-0544](T-0544-effect-http-integrations.md) | Effect C (HTTP): integration settings on HttpApi | planned | auto | T-0536 | |
 | [T-0545](T-0545-effect-http-voice-transcription.md) | Effect C (HTTP): voice transcription on HttpApi | planned | auto | T-0536 | |
@@ -580,3 +579,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0547](T-0547-effect-mobile-api-batch-5.md) | Effect E batch 5: mobile auth, machines, ais, invite-links API | 2026-10-08 |
 | [T-0546](T-0546-agents-g8a-extract-group-turn.md) | Agents G8a: extract the group turn | 2026-10-08 |
 | [T-0542](T-0542-effect-http-output-schema-check.md) | Effect C (HTTP) check: no stripped response fields | 2026-10-08 |
+| [T-0539](T-0539-effect-http-topics.md) | Effect C (HTTP): topics on HttpApi | 2026-10-08 |
