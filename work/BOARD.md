@@ -12,6 +12,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0626](T-0626-audit-effect-last-mile.md) | Audit: the Effect last mile, plus the bigint check | in-progress | auto | | |
 | [T-0639](T-0639-retire-connections-hono-wrapper.md) | Hono: retire the connections test wrapper | in-progress | auto | | |
 | [T-0640](T-0640-retire-routines-hono-wrapper.md) | Hono: retire the routines test wrapper | in-progress | auto | | |
+| [T-0641](T-0641-retire-approvals-hono-wrapper.md) | Hono: retire the approvals test wrapper | in-progress | auto | | |
 
 ## Follow-ups
 
