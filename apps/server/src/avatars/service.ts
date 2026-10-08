@@ -1,11 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import { and, eq, inArray, sql } from 'drizzle-orm';
-import { Schema } from 'effect';
+import { Effect, Schema } from 'effect';
+import { SqlClient } from 'effect/sql';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
-import { ais, avatars, groupMembers, user, type AvatarOwnerKind } from '../db/schema';
+import type { avatars, AvatarOwnerKind } from '../db/schema';
+import { sqlRuntimeFor } from '../effect/sql';
 import { HttpError } from '../errors';
 import { probeStickerBytes, type StickerImageInfo } from '../stickers/image';
 import { resolveStorageDir } from '../stickers/service';
@@ -25,6 +26,16 @@ export const avatarOwnerKindSchema = Schema.Literals(['user', 'ai', 'group']);
 export type AvatarKind = typeof avatarOwnerKindSchema.Type;
 
 export type AvatarRow = typeof avatars.$inferSelect;
+
+// Every query runs on the `effect/sql` client registered for this database
+// (see `../effect/sql`). The exported functions stay `async` so routes and
+// tests keep their shape during the transition.
+function runSql<A, E>(
+  db: ServerDatabase,
+  effect: Effect.Effect<A, E, SqlClient.SqlClient>,
+): Promise<A> {
+  return sqlRuntimeFor(db).runPromise(effect);
+}
 
 function extensionFor(mime: 'image/webp' | 'image/png'): string {
   return mime === 'image/webp' ? 'webp' : 'png';
@@ -129,24 +140,39 @@ export async function checkAvatarWritePermission(
     if (ownerId !== userId) {
       throw new HttpError(404, 'not_found', 'Avatar not found');
     }
-    const [row] = await db.select({ id: user.id }).from(user).where(eq(user.id, ownerId)).limit(1);
+    const [row] = await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ id: string }>`SELECT id FROM "user" WHERE id = ${ownerId} LIMIT 1`;
+      }),
+    );
     if (!row) {
       throw new HttpError(404, 'not_found', 'Avatar not found');
     }
     return;
   }
   if (kind === 'group') {
-    const [membership] = await db
-      .select({ role: groupMembers.role })
-      .from(groupMembers)
-      .where(and(eq(groupMembers.groupId, ownerId), eq(groupMembers.userId, userId)))
-      .limit(1);
+    const [membership] = await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ role: string }>`SELECT role FROM group_members
+          WHERE group_id = ${ownerId} AND user_id = ${userId} LIMIT 1`;
+      }),
+    );
     if (!membership || (membership.role !== 'owner' && membership.role !== 'admin')) {
       throw new HttpError(404, 'not_found', 'Avatar not found');
     }
     return;
   }
-  const [ai] = await db.select({ owner: ais.owner }).from(ais).where(eq(ais.id, ownerId)).limit(1);
+  const [ai] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ owner: string }>`SELECT owner FROM ais WHERE id = ${ownerId} LIMIT 1`;
+    }),
+  );
   if (!ai || ai.owner !== userId) {
     throw new HttpError(404, 'not_found', 'Avatar not found');
   }
@@ -187,41 +213,34 @@ export async function uploadAvatar(
   // swaps it, so the old file removed below is exactly the replaced one.
   let oldStorageKey: string | null = null;
   try {
-    await deps.db.transaction(async (tx) => {
-      await tx.execute(
-        sql`SELECT pg_advisory_xact_lock(hashtext(${'avatar:' + kind + ':' + ownerId}))`,
-      );
-      const [previous] = await tx
-        .select({ storageKey: avatars.storageKey })
-        .from(avatars)
-        .where(and(eq(avatars.ownerKind, kind), eq(avatars.ownerId, ownerId)))
-        .limit(1);
-      oldStorageKey = previous?.storageKey ?? null;
-      await tx
-        .insert(avatars)
-        .values({
-          id,
-          ownerKind: kind,
-          ownerId,
-          mime: info.mime,
-          width: info.width,
-          height: info.height,
-          bytes: bytes.byteLength,
-          storageKey,
-        })
-        .onConflictDoUpdate({
-          target: [avatars.ownerKind, avatars.ownerId],
-          set: {
-            id,
-            mime: info.mime,
-            width: info.width,
-            height: info.height,
-            bytes: bytes.byteLength,
-            storageKey,
-            createdAt: new Date(),
-          },
-        });
-    });
+    await runSql(
+      deps.db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql.withTransaction(
+          Effect.gen(function* () {
+            yield* sql`SELECT pg_advisory_xact_lock(hashtext(${'avatar:' + kind + ':' + ownerId}))`;
+            const [previous] = yield* sql<{ storageKey: string }>`SELECT storage_key FROM avatars
+              WHERE owner_kind = ${kind} AND owner_id = ${ownerId} LIMIT 1`;
+            oldStorageKey = previous?.storageKey ?? null;
+            yield* sql`INSERT INTO avatars
+                (id, owner_kind, owner_id, mime, width, height, bytes, storage_key)
+              VALUES (
+                ${id}, ${kind}, ${ownerId}, ${info.mime}, ${info.width}, ${info.height},
+                ${bytes.byteLength}, ${storageKey}
+              )
+              ON CONFLICT (owner_kind, owner_id) DO UPDATE SET
+                id = ${id},
+                mime = ${info.mime},
+                width = ${info.width},
+                height = ${info.height},
+                bytes = ${bytes.byteLength},
+                storage_key = ${storageKey},
+                created_at = ${new Date().toISOString()}`;
+          }),
+        );
+      }),
+    );
   } catch (error) {
     await rm(join(storageDir, storageKey), { force: true }).catch(() => {});
     if (error instanceof HttpError) {
@@ -266,29 +285,25 @@ export async function deleteAvatar(
 ): Promise<void> {
   await checkAvatarWritePermission(deps.db, kind, ownerId, userId);
   let storageKey: string | null = null;
-  await deps.db.transaction(async (tx) => {
-    await tx.execute(
-      sql`SELECT pg_advisory_xact_lock(hashtext(${'avatar:' + kind + ':' + ownerId}))`,
-    );
-    const [row] = await tx
-      .select({ storageKey: avatars.storageKey })
-      .from(avatars)
-      .where(and(eq(avatars.ownerKind, kind), eq(avatars.ownerId, ownerId)))
-      .limit(1);
-    if (!row) {
-      return;
-    }
-    storageKey = row.storageKey;
-    await tx
-      .delete(avatars)
-      .where(
-        and(
-          eq(avatars.ownerKind, kind),
-          eq(avatars.ownerId, ownerId),
-          eq(avatars.storageKey, row.storageKey),
-        ),
+  await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql.withTransaction(
+        Effect.gen(function* () {
+          yield* sql`SELECT pg_advisory_xact_lock(hashtext(${'avatar:' + kind + ':' + ownerId}))`;
+          const [row] = yield* sql<{ storageKey: string }>`SELECT storage_key FROM avatars
+            WHERE owner_kind = ${kind} AND owner_id = ${ownerId} LIMIT 1`;
+          if (row === undefined) {
+            return;
+          }
+          storageKey = row.storageKey;
+          yield* sql`DELETE FROM avatars
+            WHERE owner_kind = ${kind} AND owner_id = ${ownerId} AND storage_key = ${row.storageKey}`;
+        }),
       );
-  });
+    }),
+  );
   if (storageKey === null) {
     return;
   }
@@ -320,7 +335,13 @@ export async function readAvatarFile(
   deps: AvatarsServiceDeps,
   avatarId: string,
 ): Promise<AvatarFile | null> {
-  const [row] = await deps.db.select().from(avatars).where(eq(avatars.id, avatarId)).limit(1);
+  const [row] = await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<AvatarRow>`SELECT * FROM avatars WHERE id = ${avatarId} LIMIT 1`;
+    }),
+  );
   if (!row) {
     return null;
   }
@@ -354,9 +375,14 @@ export async function avatarIdsByOwner(
   if (unique.length === 0) {
     return new Map();
   }
-  const rows = await db
-    .select({ id: avatars.id, ownerId: avatars.ownerId })
-    .from(avatars)
-    .where(and(eq(avatars.ownerKind, kind), inArray(avatars.ownerId, unique)));
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ id: string; ownerId: string }>`SELECT id, owner_id
+        FROM avatars
+        WHERE owner_kind = ${kind} AND owner_id IN ${sql.in(unique)}`;
+    }),
+  );
   return new Map(rows.map((row) => [row.ownerId, row.id]));
 }
