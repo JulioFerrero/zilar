@@ -556,57 +556,70 @@ export async function deleteAi(deps: AiServiceDeps, id: string, ownerId: string)
     //    transaction. A retry then sees `litellmKeyId === null` and never
     //    calls revoke again, while the row (and the model id it carries)
     //    survives until the model is gone too.
-    await deps.db.transaction(async (tx) => {
-      await tx.execute(
-        sql`SELECT pg_advisory_xact_lock(hashtext(${ai.id}), ${ENSURE_MODEL_LOCK_SCOPE})`,
-      );
-      const [keyRow] = await tx
-        .select({ litellmKeyId: llmVirtualKeys.litellmKeyId })
-        .from(llmVirtualKeys)
-        .where(eq(llmVirtualKeys.aiId, ai.id))
-        .limit(1);
-      if (!keyRow || keyRow.litellmKeyId === null) {
-        return;
-      }
-      try {
-        await deps.litellm.revokeKey(keyRow.litellmKeyId);
-      } catch (error) {
-        deps.logger.warn({ err: error, aiId: ai.id }, 'could not revoke the AI virtual key');
-        throw teardownFailed();
-      }
-      await tx
-        .update(llmVirtualKeys)
-        .set({ litellmKeyId: null })
-        .where(eq(llmVirtualKeys.aiId, ai.id));
-    });
+    await runSql(
+      deps.db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql.withTransaction(
+          Effect.gen(function* () {
+            yield* sql`SELECT pg_advisory_xact_lock(hashtext(${ai.id}), ${ENSURE_MODEL_LOCK_SCOPE})`;
+            const [keyRow] = yield* sql<{ litellmKeyId: string | null }>`SELECT litellm_key_id
+              FROM llm_virtual_keys WHERE ai_id = ${ai.id} LIMIT 1`;
+            if (!keyRow || keyRow.litellmKeyId === null) {
+              return;
+            }
+            const keyId = keyRow.litellmKeyId;
+            yield* Effect.tryPromise({
+              try: () => deps.litellm.revokeKey(keyId),
+              catch: (error) => {
+                deps.logger.warn(
+                  { err: error, aiId: ai.id },
+                  'could not revoke the AI virtual key',
+                );
+                return teardownFailed();
+              },
+            });
+            yield* sql`UPDATE llm_virtual_keys SET litellm_key_id = NULL WHERE ai_id = ${ai.id}`;
+          }),
+        );
+      }),
+    );
 
     // 2. Delete the private model currently registered for this AI, re-read
     //    under the lock (a model switch may have replaced it after step 0),
     //    plus any stray `ai-<id>` entries. `deleteModel` treats an
     //    already-gone model as success; an AI with no model id is skipped.
-    await deps.db.transaction(async (tx) => {
-      await tx.execute(
-        sql`SELECT pg_advisory_xact_lock(hashtext(${ai.id}), ${ENSURE_MODEL_LOCK_SCOPE})`,
-      );
-      const [keyRow] = await tx
-        .select({ litellmModelId: llmVirtualKeys.litellmModelId })
-        .from(llmVirtualKeys)
-        .where(eq(llmVirtualKeys.aiId, ai.id))
-        .limit(1);
-      if (keyRow?.litellmModelId != null) {
-        try {
-          await deps.litellm.deleteModel(keyRow.litellmModelId);
-        } catch (error) {
-          deps.logger.warn({ err: error, aiId: ai.id }, 'could not delete the AI private model');
-          throw teardownFailed();
-        }
-      }
-      await deleteModelsNamed(deps, ai.id, modelNameForAi(ai.id));
+    await runSql(
+      deps.db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql.withTransaction(
+          Effect.gen(function* () {
+            yield* sql`SELECT pg_advisory_xact_lock(hashtext(${ai.id}), ${ENSURE_MODEL_LOCK_SCOPE})`;
+            const [keyRow] = yield* sql<{ litellmModelId: string | null }>`SELECT litellm_model_id
+              FROM llm_virtual_keys WHERE ai_id = ${ai.id} LIMIT 1`;
+            const modelId = keyRow?.litellmModelId ?? null;
+            if (modelId !== null) {
+              yield* Effect.tryPromise({
+                try: () => deps.litellm.deleteModel(modelId),
+                catch: (error) => {
+                  deps.logger.warn(
+                    { err: error, aiId: ai.id },
+                    'could not delete the AI private model',
+                  );
+                  return teardownFailed();
+                },
+              });
+            }
+            yield* Effect.promise(() => deleteModelsNamed(deps, ai.id, modelNameForAi(ai.id)));
 
-      // 3. Nothing is left to revoke or delete on the gateway side, so the key
-      //    row goes.
-      await tx.delete(llmVirtualKeys).where(eq(llmVirtualKeys.aiId, ai.id));
-    });
+            // 3. Nothing is left to revoke or delete on the gateway side, so the key
+            //    row goes.
+            yield* sql`DELETE FROM llm_virtual_keys WHERE ai_id = ${ai.id}`;
+          }),
+        );
+      }),
+    );
   });
 
   const ownerLocalpart = localpartFor(ownerId);
@@ -639,7 +652,13 @@ export async function deleteAi(deps: AiServiceDeps, id: string, ownerId: string)
     throw teardownFailed();
   }
 
-  await deps.db.delete(ais).where(eq(ais.id, ai.id));
+  await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`DELETE FROM ais WHERE id = ${ai.id}`;
+    }),
+  );
   emitAiLifecycle({ type: 'deleted', aiId: ai.id });
 }
 
@@ -1034,23 +1053,23 @@ export async function changeAiModel(deps: AiServiceDeps, input: ChangeAiModelInp
         // The owner is re-checked as in the main path; a row that is gone or
         // no longer ours is left alone, and the update failure still stands.
         try {
-          await deps.db.transaction(async (tx) => {
-            await tx.execute(
-              sql`SELECT pg_advisory_xact_lock(hashtext(${ai.id}), ${ENSURE_MODEL_LOCK_SCOPE})`,
-            );
-            const [ownerRow] = await tx
-              .select({ owner: ais.owner })
-              .from(ais)
-              .where(eq(ais.id, ai.id))
-              .limit(1);
-            if (!ownerRow || ownerRow.owner !== input.ownerId) {
-              return;
-            }
-            await tx
-              .update(llmVirtualKeys)
-              .set({ litellmModelId: null })
-              .where(eq(llmVirtualKeys.aiId, ai.id));
-          });
+          await runSql(
+            deps.db,
+            Effect.gen(function* () {
+              const sql = yield* SqlClient.SqlClient;
+              yield* sql.withTransaction(
+                Effect.gen(function* () {
+                  yield* sql`SELECT pg_advisory_xact_lock(hashtext(${ai.id}), ${ENSURE_MODEL_LOCK_SCOPE})`;
+                  const [ownerRow] = yield* sql<{ owner: string }>`SELECT owner FROM ais
+                    WHERE id = ${ai.id} LIMIT 1`;
+                  if (!ownerRow || ownerRow.owner !== input.ownerId) {
+                    return;
+                  }
+                  yield* sql`UPDATE llm_virtual_keys SET litellm_model_id = NULL WHERE ai_id = ${ai.id}`;
+                }),
+              );
+            }),
+          );
         } catch (clearError) {
           deps.logger.warn({ err: clearError, aiId: ai.id }, 'could not clear the AI model id');
         }
