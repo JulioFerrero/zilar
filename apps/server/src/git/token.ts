@@ -1,5 +1,5 @@
+import { Exit, Schema } from 'effect';
 import { importPKCS8, SignJWT } from 'jose';
-import { z } from 'zod';
 import type { ServerConfig } from '../config';
 
 // Mints and caches a GitHub App installation access token. The token is held
@@ -28,9 +28,9 @@ export class GitTokenError extends Error {
   }
 }
 
-const InstallationTokenSchema = z.object({
-  token: z.string().min(1),
-  expires_at: z.string().min(1),
+const InstallationTokenSchema = Schema.Struct({
+  token: Schema.String.pipe(Schema.check(Schema.isMinLength(1))),
+  expires_at: Schema.String.pipe(Schema.check(Schema.isMinLength(1))),
 });
 
 export interface GitHubAppTokenClientOptions {
@@ -101,17 +101,17 @@ export function createGitHubAppTokenClient(
       throw new GitTokenError('GitHub token response was not JSON');
     }
 
-    const parsed = InstallationTokenSchema.safeParse(body);
-    if (!parsed.success) {
+    const parsed = Schema.decodeUnknownExit(InstallationTokenSchema)(body);
+    if (!Exit.isSuccess(parsed)) {
       throw new GitTokenError('GitHub token response had an unexpected shape');
     }
 
-    const expiresAt = new Date(parsed.data.expires_at);
+    const expiresAt = new Date(parsed.value.expires_at);
     if (Number.isNaN(expiresAt.getTime())) {
       throw new GitTokenError('GitHub token response had an invalid expiry');
     }
 
-    return { token: parsed.data.token, expiresAt };
+    return { token: parsed.value.token, expiresAt };
   }
 
   function isFresh(expiresAt: Date): boolean {

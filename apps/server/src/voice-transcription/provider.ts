@@ -11,15 +11,12 @@
 // `TranscriptionProviderError` as before. `fetchFn` is injected so tests
 // use a fake provider, never a real endpoint or key.
 
-import { Data, Duration, Effect, type Effect as EffectType } from 'effect';
-import { z } from 'zod';
+import { Data, Duration, Effect, Exit, Schema, type Effect as EffectType } from 'effect';
 
-const transcriptionResponseSchema = z
-  .object({
-    text: z.string(),
-    language: z.string().optional(),
-  })
-  .catchall(z.unknown());
+const transcriptionResponseSchema = Schema.Struct({
+  text: Schema.String,
+  language: Schema.optional(Schema.String),
+});
 
 export interface TranscriptionResult {
   text: string;
@@ -98,14 +95,14 @@ const transcribeAudioEffect = Effect.fnUntraced(function* (
     // The endpoint answered, but refused (bad key, bad model, 5xx).
     return yield* new ProviderRejected();
   }
-  const parsed = transcriptionResponseSchema.safeParse(raw);
-  if (!parsed.success) {
+  const parsed = Schema.decodeUnknownExit(transcriptionResponseSchema)(raw);
+  if (!Exit.isSuccess(parsed)) {
     return yield* new ProviderRejected();
   }
   // Empty text is a valid answer (silence transcribes to nothing): the
   // verify call proves the endpoint works either way, and a real message
   // with no speech honestly has no words.
-  return { text: parsed.data.text.trim(), language: parsed.data.language ?? null };
+  return { text: parsed.value.text.trim(), language: parsed.value.language ?? null };
 });
 
 export async function transcribeAudio(

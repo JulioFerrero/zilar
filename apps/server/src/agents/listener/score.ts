@@ -7,7 +7,7 @@
 // nobody.
 
 import { eq } from 'drizzle-orm';
-import { z } from 'zod';
+import { Exit, Schema } from 'effect';
 import type { ServerDatabase } from '../../db/client';
 import { ais, groupAis, topicAis } from '../../db/schema';
 import type { CompleteChatInput, ModelRequestMessage } from '../reply';
@@ -116,13 +116,16 @@ const LISTENER_REASON_MAX = 200;
 const LISTENER_MESSAGE_IDS_MAX = 20;
 const LISTENER_MESSAGE_ID_MAX = 64;
 
-const ListenerOutputSchema = z
-  .object({
-    scores: z.record(z.string(), z.number().min(0).max(1)),
-    reason: z.string(),
-    message_ids: z.array(z.string()),
-  })
-  .strict();
+const ListenerOutputSchema = Schema.Struct({
+  scores: Schema.Record(
+    Schema.String,
+    Schema.Finite.pipe(
+      Schema.check(Schema.isGreaterThanOrEqualTo(0), Schema.isLessThanOrEqualTo(1)),
+    ),
+  ),
+  reason: Schema.String,
+  message_ids: Schema.Array(Schema.String),
+});
 
 // Strips one surrounding ```json (or ```) fence, leaving anything else as is.
 function stripCodeFence(raw: string): string {
@@ -153,23 +156,25 @@ export function parseListenerOutput(
   raw: string,
   rosterIds: readonly string[],
 ): ListenerOutput | null {
-  const parsed = ListenerOutputSchema.safeParse(parseJson(stripCodeFence(raw)));
-  if (!parsed.success) {
+  const parsed = Schema.decodeUnknownExit(ListenerOutputSchema, { onExcessProperty: 'error' })(
+    parseJson(stripCodeFence(raw)),
+  );
+  if (!Exit.isSuccess(parsed)) {
     return null;
   }
   const scores = new Map<string, number>();
   for (const id of rosterIds) {
     scores.set(id, 0);
   }
-  for (const [id, score] of Object.entries(parsed.data.scores)) {
+  for (const [id, score] of Object.entries(parsed.value.scores)) {
     if (scores.has(id)) {
       scores.set(id, score);
     }
   }
   return {
     scores,
-    reason: parsed.data.reason.slice(0, LISTENER_REASON_MAX),
-    messageIds: parsed.data.message_ids
+    reason: parsed.value.reason.slice(0, LISTENER_REASON_MAX),
+    messageIds: parsed.value.message_ids
       .slice(0, LISTENER_MESSAGE_IDS_MAX)
       .map((id) => id.slice(0, LISTENER_MESSAGE_ID_MAX)),
   };
