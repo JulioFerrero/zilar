@@ -14,7 +14,7 @@ import { createApprovalsApi } from './approvals/api';
 import { createAuditRecorder, type AuditRecorder } from './audit/service';
 import { createAuditApi } from './audit/api';
 import type { Auth } from './auth/auth';
-import { createAuthRoutes } from './auth/routes';
+import { createAuthApi } from './auth/api';
 import { CurrentMailer, createMailer } from './auth/mailer';
 import { createSetupRoutes, type SetupRoutesDependencies } from './setup/routes';
 import { createGetBotToken } from './integrations/routes';
@@ -309,7 +309,8 @@ export function createApp({
   });
 
   app.all('/api/auth/*', (c) => auth.handler(c.req.raw));
-  app.route('/api', createAuthRoutes({ auth, db, config, adminClient, logger }));
+  const authApi = createAuthApi({ auth, db, config, adminClient, logger });
+  mountEffectRoutes(app, authApi.routes, authApi.handler);
   // First-run setup (T-0161): public while no user exists, same 404 as an
   // unknown route once setup is done. Allowlisted in the authz sweep.
   // Without an explicit mailer the routes build one from the config, like
