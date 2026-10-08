@@ -3,6 +3,7 @@ import {
   decodePayload,
   encodePayload,
   ForwardOriginSchema,
+  isValid,
   type ForwardOrigin,
   type Payload,
 } from '@zilar/protocol';
@@ -929,15 +930,15 @@ export function parseForward(stanza: XmppElement): ForwardOrigin | undefined {
   const element = stanza.getChild('forward', ZILAR_FORWARD_NAMESPACE);
   if (element === undefined) return undefined;
   const chat = element.getChild('chat');
-  const result = ForwardOriginSchema.safeParse({
+  const candidate = {
     sender_id: element.attrs['sender'],
     sender_name: element.getChildText('name'),
     chat_id: chat?.attrs['jid'],
     chat_name: chat?.attrs['name'],
     original_id: element.attrs['id'],
     original_at: element.attrs['at'],
-  });
-  return result.success ? result.data : undefined;
+  };
+  return isValid(ForwardOriginSchema)(candidate) ? candidate : undefined;
 }
 
 // The id the sender generated: its `<origin-id/>` (XEP-0359) when present, else

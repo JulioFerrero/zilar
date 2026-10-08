@@ -81,10 +81,6 @@ vi.mock('@/store/chat-store-provider', () => ({
   useChatStoreApi: () => ({ getState: () => ({}) }),
 }));
 
-vi.mock('zustand', () => ({
-  useStore: (_store: unknown, selector: (state: unknown) => unknown) => selector({}),
-}));
-
 vi.mock('@/components/chat/message-actions-sheet', () => ({
   MessageActionsSheet: ({
     canCopy,

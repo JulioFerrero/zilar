@@ -1,7 +1,7 @@
-import { z } from 'zod';
-import { ArtifactRefSchema, BudgetSchema, IdSchema, JidSchema } from './common';
+import { Schema } from 'effect';
+import { ArtifactRefSchema, BudgetSchema, IdSchema, JidSchema, struct } from './common';
 
-export const TaskStateSchema = z.enum([
+export const TaskStateSchema = Schema.Literals([
   'submitted',
   'working',
   'input-required',
@@ -11,45 +11,52 @@ export const TaskStateSchema = z.enum([
   'rejected',
 ]);
 
-export type TaskState = z.infer<typeof TaskStateSchema>;
+export type TaskState = typeof TaskStateSchema.Type;
 
-export const TaskSchema = z.strictObject({
+export const TaskSchema = struct({
   id: IdSchema,
   room: JidSchema,
-  title: z.string().min(1).max(200),
-  owner: JidSchema.optional(),
+  title: Schema.String.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(200))),
+  owner: Schema.optional(JidSchema),
   state: TaskStateSchema,
-  depends_on: z.array(IdSchema),
-  acceptance: z.array(z.string()),
-  budget: BudgetSchema.optional(),
-  source_message_id: IdSchema.optional(),
-  artifacts: z.array(ArtifactRefSchema),
+  depends_on: Schema.mutable(Schema.Array(IdSchema)),
+  acceptance: Schema.mutable(Schema.Array(Schema.String)),
+  budget: Schema.optional(BudgetSchema),
+  source_message_id: Schema.optional(IdSchema),
+  artifacts: Schema.mutable(Schema.Array(ArtifactRefSchema)),
 });
 
-export type Task = z.infer<typeof TaskSchema>;
+export type Task = typeof TaskSchema.Type;
 
-export const DecisionSchema = z.strictObject({
+export const DecisionSchema = struct({
   id: IdSchema,
-  text: z.string().min(1).max(1000),
+  text: Schema.String.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(1000))),
   author: JidSchema,
-  source_message_id: IdSchema.optional(),
+  source_message_id: Schema.optional(IdSchema),
 });
 
-export type Decision = z.infer<typeof DecisionSchema>;
+export type Decision = typeof DecisionSchema.Type;
 
-export const BoardArtifactSchema = ArtifactRefSchema.extend({ id: IdSchema });
+export const BoardArtifactSchema = Schema.Struct({
+  ...ArtifactRefSchema.fields,
+  id: Schema.mutableKey(IdSchema),
+});
 
-export type BoardArtifact = z.infer<typeof BoardArtifactSchema>;
+export type BoardArtifact = typeof BoardArtifactSchema.Type;
 
-export const BoardUpdateSchema = z.discriminatedUnion('op', [
-  z.strictObject({ op: z.literal('task.created'), room: JidSchema, task: TaskSchema }),
-  z.strictObject({ op: z.literal('task.updated'), room: JidSchema, task: TaskSchema }),
-  z.strictObject({ op: z.literal('decision.added'), room: JidSchema, decision: DecisionSchema }),
-  z.strictObject({
-    op: z.literal('artifact.added'),
+export const BoardUpdateSchema = Schema.Union([
+  struct({ op: Schema.Literal('task.created'), room: JidSchema, task: TaskSchema }),
+  struct({ op: Schema.Literal('task.updated'), room: JidSchema, task: TaskSchema }),
+  struct({
+    op: Schema.Literal('decision.added'),
+    room: JidSchema,
+    decision: DecisionSchema,
+  }),
+  struct({
+    op: Schema.Literal('artifact.added'),
     room: JidSchema,
     artifact: BoardArtifactSchema,
   }),
 ]);
 
-export type BoardUpdate = z.infer<typeof BoardUpdateSchema>;
+export type BoardUpdate = typeof BoardUpdateSchema.Type;

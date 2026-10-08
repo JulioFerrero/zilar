@@ -1,5 +1,5 @@
 import type { Payload, Sticker } from '@zilar/protocol';
-import { StickerSchema } from '@zilar/protocol';
+import { StickerSchema, isValid } from '@zilar/protocol';
 
 import { ApprovalCard } from '@/components/chat/approval-card';
 import { ProgressCard } from '@/components/chat/progress-card';
@@ -16,8 +16,7 @@ export function stickerOf(message: {
   if (card === undefined || card.type !== 'sticker') {
     return undefined;
   }
-  const parsed = StickerSchema.safeParse(card.data);
-  return parsed.success ? parsed.data : undefined;
+  return isValid(StickerSchema)(card.data) ? card.data : undefined;
 }
 
 /** Renders the AI card payloads from `@zilar/protocol`. */

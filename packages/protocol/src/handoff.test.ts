@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { HandoffSchema } from './index';
+import { decodeOrThrow, HandoffSchema, isValid } from './index';
 
 const example = {
   task_id: 't-17',
@@ -21,11 +21,8 @@ const example = {
 
 describe('HandoffSchema', () => {
   it('parses the plan example verbatim', () => {
-    const result = HandoffSchema.safeParse(example);
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data).toEqual(example);
-    }
+    expect(isValid(HandoffSchema)(example)).toBe(true);
+    expect(decodeOrThrow(HandoffSchema)(example)).toEqual(example);
   });
 
   it('rejects a handoff without objective', () => {
@@ -45,31 +42,27 @@ describe('HandoffSchema', () => {
       return_format: 'PR link + 3-line summary',
       reply_to: 'thread:m-31',
     };
-    expect(HandoffSchema.safeParse(withoutObjective).success).toBe(false);
+    expect(isValid(HandoffSchema)(withoutObjective)).toBe(false);
   });
 
   it('rejects a negative budget max', () => {
-    expect(
-      HandoffSchema.safeParse({ ...example, budget: { currency: 'EUR', max: -1 } }).success,
-    ).toBe(false);
+    expect(isValid(HandoffSchema)({ ...example, budget: { currency: 'EUR', max: -1 } })).toBe(
+      false,
+    );
   });
 
   it('rejects an unknown artifact kind', () => {
-    expect(
-      HandoffSchema.safeParse({ ...example, artifacts: [{ kind: 'video', ref: 'm-1' }] }).success,
-    ).toBe(false);
+    expect(isValid(HandoffSchema)({ ...example, artifacts: [{ kind: 'video', ref: 'm-1' }] })).toBe(
+      false,
+    );
   });
 
   it('rejects a from JID without @', () => {
-    expect(HandoffSchema.safeParse({ ...example, from: 'boss.example.com' }).success).toBe(false);
+    expect(isValid(HandoffSchema)({ ...example, from: 'boss.example.com' })).toBe(false);
   });
 
   it('rejects a context_summary longer than 2000 characters', () => {
-    expect(HandoffSchema.safeParse({ ...example, context_summary: 'a'.repeat(2001) }).success).toBe(
-      false,
-    );
-    expect(HandoffSchema.safeParse({ ...example, context_summary: 'a'.repeat(2000) }).success).toBe(
-      true,
-    );
+    expect(isValid(HandoffSchema)({ ...example, context_summary: 'a'.repeat(2001) })).toBe(false);
+    expect(isValid(HandoffSchema)({ ...example, context_summary: 'a'.repeat(2000) })).toBe(true);
   });
 });

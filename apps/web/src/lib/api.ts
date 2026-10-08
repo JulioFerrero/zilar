@@ -1,5 +1,6 @@
-import { z } from 'zod';
+import { Effect, Exit, Schema } from 'effect';
 import { FOLDER_ICONS, type FolderChatType, type FolderIcon } from '@zilar/chat-core';
+import { struct } from '@zilar/protocol';
 import { isMockApiEnabled } from '@/mock/gate';
 import { mockRequest } from '@/mock/api';
 
@@ -21,92 +22,108 @@ export class ApiError extends Error {
   }
 }
 
-const errorBodySchema = z.object({
-  error: z.object({ code: z.string(), message: z.string() }).catchall(z.unknown()),
+type ResponseSchema<T> = Schema.Codec<T, unknown>;
+
+/**
+ * Decodes one response body with an Effect Schema. The decode is
+ * non-strict (unknown keys are dropped).
+ */
+function decodeResponse<T>(
+  schema: ResponseSchema<T>,
+  raw: unknown,
+): { ok: true; value: T } | { ok: false } {
+  const result = Schema.decodeUnknownExit(schema)(raw);
+  return Exit.isSuccess(result) ? { ok: true, value: result.value } : { ok: false };
+}
+
+const errorBodySchema = struct({
+  error: Schema.StructWithRest(Schema.Struct({ code: Schema.String, message: Schema.String }), [
+    Schema.Record(Schema.String, Schema.Unknown),
+  ]),
 });
 
-const meSchema = z.object({
-  id: z.string(),
-  email: z.string(),
-  name: z.string(),
-  image: z.string().nullable().optional(),
+const meSchema = struct({
+  id: Schema.String,
+  email: Schema.String,
+  name: Schema.String,
+  image: Schema.optional(Schema.NullOr(Schema.String)),
   // T-0163: the caller's own `@username`. Optional (not just nullable) so
   // payloads from an older server still parse — absent reads like null.
-  handle: z.string().nullable().optional(),
+  handle: Schema.optional(Schema.NullOr(Schema.String)),
   // T-0165: the caller's own picture, when set. Optional so older payloads
   // parse (treated as none).
-  avatarUrl: z.string().optional(),
-  jid: z.string().nullable().optional(),
+  avatarUrl: Schema.optional(Schema.String),
+  jid: Schema.optional(Schema.NullOr(Schema.String)),
 });
 
-export type Me = z.infer<typeof meSchema>;
+export type Me = typeof meSchema.Type;
 
-const contactSchema = z.object({
-  userId: z.string(),
-  name: z.string(),
-  jid: z.string(),
-  avatarUrl: z.string().optional(),
+const contactSchema = struct({
+  userId: Schema.String,
+  name: Schema.String,
+  jid: Schema.String,
+  avatarUrl: Schema.optional(Schema.String),
   // T-0163: the contact's `@username`. Optional so payloads from an older
   // server still parse (treated as none).
-  handle: z.string().nullable().optional(),
+  handle: Schema.optional(Schema.NullOr(Schema.String)),
 });
 
-export type Contact = z.infer<typeof contactSchema>;
+export type Contact = typeof contactSchema.Type;
 
-const dmEntrySchema = z.object({
-  kind: z.literal('dm'),
-  chatJid: z.string(),
-  title: z.string(),
-  userId: z.string().optional(),
-  avatarUrl: z.string().optional(),
+const dmEntrySchema = struct({
+  kind: Schema.Literal('dm'),
+  chatJid: Schema.String,
+  title: Schema.String,
+  userId: Schema.optional(Schema.String),
+  avatarUrl: Schema.optional(Schema.String),
   /** Set on the caller's AIs; absent or false for human contacts. */
-  isAi: z.boolean().optional(),
+  isAi: Schema.optional(Schema.Boolean),
 });
 
 // T-0466: the group's shared background, set by owners/admins. Optional on
 // entries and details so payloads from an older server still parse.
-const groupBackgroundSchema = z.object({
-  backgroundPreset: z.string().nullable(),
-  backgroundImageId: z.string().nullable(),
-  backgroundDim: z.number().nullable(),
+const groupBackgroundSchema = struct({
+  backgroundPreset: Schema.NullOr(Schema.String),
+  backgroundImageId: Schema.NullOr(Schema.String),
+  backgroundDim: Schema.NullOr(Schema.Number),
 });
 
-export type GroupBackground = z.infer<typeof groupBackgroundSchema>;
+export type GroupBackground = typeof groupBackgroundSchema.Type;
 
-const groupEntrySchema = z.object({
-  kind: z.literal('group'),
-  chatJid: z.string(),
-  title: z.string(),
-  groupId: z.string(),
-  memberCount: z.number(),
-  role: z.enum(['owner', 'admin', 'member']),
+const groupEntrySchema = struct({
+  kind: Schema.Literal('group'),
+  chatJid: Schema.String,
+  title: Schema.String,
+  groupId: Schema.String,
+  memberCount: Schema.Number,
+  role: Schema.Literals(['owner', 'admin', 'member']),
   // T-0124: `group` behaves as before; `channel` is the broadcast feed (its
   // General topic is the feed). Optional so older payloads parse as groups.
-  chatKind: z.enum(['group', 'channel']).optional(),
+  chatKind: Schema.optional(Schema.Literals(['group', 'channel'])),
   // T-0124: the same count under the usual channel name, for channels only.
-  subscriberCount: z.number().optional(),
+  subscriberCount: Schema.optional(Schema.Number),
   // T-0124: the channel's short blurb. Optional so older payloads parse.
-  description: z.string().nullable().optional(),
+  description: Schema.optional(Schema.NullOr(Schema.String)),
   // T-0164: `public` groups are in the directory; `private` stay
   // invite-only. Optional so older payloads parse as private.
-  visibility: z.enum(['private', 'public']).optional(),
+  visibility: Schema.optional(Schema.Literals(['private', 'public'])),
   // T-0164: the group's `@handle` while public, null while private.
   // Optional so older payloads parse as none.
-  handle: z.string().nullable().optional(),
+  handle: Schema.optional(Schema.NullOr(Schema.String)),
   // T-0111: present on servers with topics (T-0108); absent on older ones.
   // Parsed loosely here — each entry is validated by `topicSchema` when
   // mapping to chats — and unknown entries are dropped there.
-  topics: z.array(z.unknown()).optional(),
+  topics: Schema.optional(Schema.mutable(Schema.Array(Schema.Unknown))),
   // T-0165: the group's picture, when it has one. Optional so older
   // payloads parse (treated as none).
-  avatarUrl: z.string().optional(),
+  avatarUrl: Schema.optional(Schema.String),
   // T-0466: the group's shared background. Optional so older payloads parse.
-  background: groupBackgroundSchema.optional(),
+  background: Schema.optional(groupBackgroundSchema),
 });
 
-const chatEntrySchema = z.discriminatedUnion('kind', [dmEntrySchema, groupEntrySchema]);
+const chatEntrySchema = Schema.Union([dmEntrySchema, groupEntrySchema]);
 
-export type ChatEntry = z.infer<typeof chatEntrySchema>;
+export type ChatEntry = typeof chatEntrySchema.Type;
 
 /**
  * The validated topics of a group chat entry: entries that parse as
@@ -119,104 +136,110 @@ export function chatEntryTopics(entry: ChatEntry): Topic[] {
   }
   const result: Topic[] = [];
   for (const raw of entry.topics) {
-    const parsed = topicSchema.safeParse(raw);
-    if (parsed.success) {
-      result.push(parsed.data);
+    const parsed = decodeResponse(topicSchema, raw);
+    if (parsed.ok) {
+      result.push(parsed.value);
     }
   }
   return result;
 }
 
-const chatsSchema = z.object({ chats: z.array(chatEntrySchema) });
+const chatsSchema = struct({ chats: Schema.mutable(Schema.Array(chatEntrySchema)) });
 
-const groupMemberSchema = z.object({
-  userId: z.string(),
-  name: z.string(),
-  role: z.enum(['owner', 'admin', 'member']),
+const groupMemberSchema = struct({
+  userId: Schema.String,
+  name: Schema.String,
+  role: Schema.Literals(['owner', 'admin', 'member']),
   // T-0163: the member's `@username`. Optional so payloads from an older
   // server still parse (treated as none).
-  handle: z.string().nullable().optional(),
+  handle: Schema.optional(Schema.NullOr(Schema.String)),
   // T-0116: the custom group roles this member holds. Optional so payloads
   // from an older server still parse (treated as none).
-  roles: z.array(z.object({ id: z.string(), name: z.string() })).optional(),
+  roles: Schema.optional(
+    Schema.mutable(Schema.Array(struct({ id: Schema.String, name: Schema.String }))),
+  ),
   // T-0165: the member's picture. Optional so older payloads parse.
-  avatarUrl: z.string().optional(),
+  avatarUrl: Schema.optional(Schema.String),
 });
 
-const groupAiSchema = z.object({
-  aiId: z.string(),
-  jid: z.string(),
-  name: z.string(),
-  ownerId: z.string(),
+const groupAiSchema = struct({
+  aiId: Schema.String,
+  jid: Schema.String,
+  name: Schema.String,
+  ownerId: Schema.String,
   // T-0165: the AI's picture. Optional so older payloads parse.
-  avatarUrl: z.string().optional(),
+  avatarUrl: Schema.optional(Schema.String),
 });
 
 // T-0478: the group's AI listener. `available` is the server's
 // `LISTENER_ENABLED` flag: when false the controls stay disabled. Optional
 // on details so payloads from an older server still parse.
-const groupListenerSchema = z.object({
-  enabled: z.boolean(),
-  eagerness: z.enum(['quiet', 'normal', 'eager']),
-  available: z.boolean(),
+const groupListenerSchema = struct({
+  enabled: Schema.Boolean,
+  eagerness: Schema.Literals(['quiet', 'normal', 'eager']),
+  available: Schema.Boolean,
 });
 
-export type ListenerEagerness = z.infer<typeof groupListenerSchema>['eagerness'];
+export type ListenerEagerness = (typeof groupListenerSchema.Type)['eagerness'];
 
-const groupDetailSchema = z.object({
-  id: z.string(),
-  title: z.string(),
-  createdBy: z.string(),
+const groupDetailSchema = struct({
+  id: Schema.String,
+  title: Schema.String,
+  createdBy: Schema.String,
   // T-0108: plain members may create topics when the switch is on. Optional
   // so payloads from an older server still parse (treated as off).
-  membersCanCreateTopics: z.boolean().optional(),
+  membersCanCreateTopics: Schema.optional(Schema.Boolean),
   // T-0124: `channel` is the broadcast feed. Optional so older payloads
   // parse as groups.
-  kind: z.enum(['group', 'channel']).optional(),
+  kind: Schema.optional(Schema.Literals(['group', 'channel'])),
   // T-0124: the channel's short blurb. Optional so older payloads parse.
-  description: z.string().nullable().optional(),
+  description: Schema.optional(Schema.NullOr(Schema.String)),
   // T-0164: `public` groups hold exactly one handle row and appear in the
   // directory; `private` stay invite-only. Optional so older payloads parse
   // as private.
-  visibility: z.enum(['private', 'public']).optional(),
+  visibility: Schema.optional(Schema.Literals(['private', 'public'])),
   // T-0164: the group's `@handle` while public, null while private.
   // Optional so older payloads parse as none.
-  handle: z.string().nullable().optional(),
+  handle: Schema.optional(Schema.NullOr(Schema.String)),
   // T-0165: the group's picture. Optional so older payloads parse.
-  avatarUrl: z.string().optional(),
+  avatarUrl: Schema.optional(Schema.String),
   // T-0466: the group's shared background. Optional so older payloads parse.
-  background: groupBackgroundSchema.optional(),
+  background: Schema.optional(groupBackgroundSchema),
   // T-0478: the AI listener switch and eagerness. Optional so older
   // payloads parse (treated as off and unavailable).
-  listener: groupListenerSchema.optional(),
-  members: z.array(groupMemberSchema),
-  ais: z.array(groupAiSchema),
+  listener: Schema.optional(groupListenerSchema),
+  members: Schema.mutable(Schema.Array(groupMemberSchema)),
+  ais: Schema.mutable(Schema.Array(groupAiSchema)),
 });
 
-export type GroupMember = z.infer<typeof groupMemberSchema>;
-export type GroupAi = z.infer<typeof groupAiSchema>;
-export type GroupDetail = z.infer<typeof groupDetailSchema>;
+export type GroupMember = typeof groupMemberSchema.Type;
+export type GroupAi = typeof groupAiSchema.Type;
+export type GroupDetail = typeof groupDetailSchema.Type;
 
-const inviteSchema = z.object({
-  code: z.string(),
-  url: z.string(),
-  expiresAt: z.string().optional(),
+const inviteSchema = struct({
+  code: Schema.String,
+  url: Schema.String,
+  expiresAt: Schema.optional(Schema.String),
 });
 
-export type Invite = z.infer<typeof inviteSchema>;
+export type Invite = typeof inviteSchema.Type;
 
-const xmppTokenSchema = z.object({
-  jid: z.string(),
-  token: z.string(),
-  expiresAt: z.string(),
-  service: z.string(),
-  domain: z.string(),
-  mucDomain: z.string(),
+const xmppTokenSchema = struct({
+  jid: Schema.String,
+  token: Schema.String,
+  expiresAt: Schema.String,
+  service: Schema.String,
+  domain: Schema.String,
+  mucDomain: Schema.String,
 });
 
-export type XmppToken = z.infer<typeof xmppTokenSchema>;
+export type XmppToken = typeof xmppTokenSchema.Type;
 
-async function request<T>(path: string, schema: z.ZodType<T>, init: RequestInit = {}): Promise<T> {
+async function request<T>(
+  path: string,
+  schema: ResponseSchema<T>,
+  init: RequestInit = {},
+): Promise<T> {
   let response: Response;
   if (isMockApiEnabled()) {
     // Standalone mock mode: answer locally, never touch the network (T-0069).
@@ -242,26 +265,26 @@ async function request<T>(path: string, schema: z.ZodType<T>, init: RequestInit 
     throw toApiError(response.status, raw);
   }
 
-  const parsed = schema.safeParse(raw);
-  if (!parsed.success) {
+  const parsed = decodeResponse(schema, raw);
+  if (!parsed.ok) {
     throw new ApiError(
       response.status,
       'invalid_response',
       'The server sent an unexpected response',
     );
   }
-  return parsed.data;
+  return parsed.value;
 }
 
 // Builds the ApiError for a failed response: `code`/`message` plus any
 // extra body fields on `detail` (e.g. `nextChangeAt`), minus the `requestId`
 // the server adds for tracing.
 function toApiError(status: number, raw: unknown): ApiError {
-  const parsed = errorBodySchema.safeParse(raw);
-  if (!parsed.success) {
+  const parsed = decodeResponse(errorBodySchema, raw);
+  if (!parsed.ok) {
     return new ApiError(status, 'request_failed', `Request failed (${status})`);
   }
-  const { code, message, requestId: _requestId, ...detail } = parsed.data.error;
+  const { code, message, requestId: _requestId, ...detail } = parsed.value.error;
   void _requestId;
   return new ApiError(status, code, message, detail as Record<string, unknown>);
 }
@@ -284,7 +307,7 @@ export async function getChats(): Promise<ChatEntry[]> {
 }
 
 export async function getContacts(): Promise<Contact[]> {
-  return request('/contacts', z.array(contactSchema));
+  return request('/contacts', Schema.mutable(Schema.Array(contactSchema)));
 }
 
 export function createGroup(input: {
@@ -329,7 +352,7 @@ export function createInvite(): Promise<Invite> {
 }
 
 export function getInvite(code: string): Promise<{ valid: boolean }> {
-  return request(`/invites/${encodeURIComponent(code)}`, z.object({ valid: z.boolean() }));
+  return request(`/invites/${encodeURIComponent(code)}`, struct({ valid: Schema.Boolean }));
 }
 
 export function getXmppToken(): Promise<XmppToken> {
@@ -344,80 +367,86 @@ export function getXmppToken(): Promise<XmppToken> {
 // carries its visible `topics` (archived excluded); older servers omit the
 // field, and the store treats such a group exactly as before. A topic the
 // viewer may not see is a 404 everywhere, byte-identical to a missing id.
-export const topicKindSchema = z.enum(['chat', 'task', 'bug', 'ui', 'routine']);
+export const topicKindSchema = Schema.Literals(['chat', 'task', 'bug', 'ui', 'routine']);
 
-export type TopicKind = z.infer<typeof topicKindSchema>;
+export type TopicKind = typeof topicKindSchema.Type;
 
-export const topicStatusSchema = z.enum(['open', 'in_progress', 'in_review', 'blocked', 'done']);
+export const topicStatusSchema = Schema.Literals([
+  'open',
+  'in_progress',
+  'in_review',
+  'blocked',
+  'done',
+]);
 
-export type TopicStatus = z.infer<typeof topicStatusSchema>;
+export type TopicStatus = typeof topicStatusSchema.Type;
 
-export const topicVisibilitySchema = z.enum(['public', 'private']);
+export const topicVisibilitySchema = Schema.Literals(['public', 'private']);
 
-export type TopicVisibility = z.infer<typeof topicVisibilitySchema>;
+export type TopicVisibility = typeof topicVisibilitySchema.Type;
 
-export const topicOwnerSchema = z.object({
-  kind: z.enum(['user', 'ai']),
-  id: z.string(),
-  name: z.string(),
+export const topicOwnerSchema = struct({
+  kind: Schema.Literals(['user', 'ai']),
+  id: Schema.String,
+  name: Schema.String,
 });
 
-export type TopicOwner = z.infer<typeof topicOwnerSchema>;
+export type TopicOwner = typeof topicOwnerSchema.Type;
 
-export const topicAiSchema = z.object({
-  id: z.string(),
-  name: z.string(),
+export const topicAiSchema = struct({
+  id: Schema.String,
+  name: Schema.String,
 });
 
-export type TopicAi = z.infer<typeof topicAiSchema>;
+export type TopicAi = typeof topicAiSchema.Type;
 
 // T-0116: a custom group role attached to a topic (`roles`) or named as its
 // approver (`approverRole`). `memberCount` counts current holders.
-export const topicRoleSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  memberCount: z.number(),
+export const topicRoleSchema = struct({
+  id: Schema.String,
+  name: Schema.String,
+  memberCount: Schema.Number,
 });
 
-export type TopicRole = z.infer<typeof topicRoleSchema>;
+export type TopicRole = typeof topicRoleSchema.Type;
 
-export const approverRoleSchema = z.object({
-  id: z.string(),
-  name: z.string(),
+export const approverRoleSchema = struct({
+  id: Schema.String,
+  name: Schema.String,
 });
 
-export type ApproverRole = z.infer<typeof approverRoleSchema>;
+export type ApproverRole = typeof approverRoleSchema.Type;
 
-export const topicSchema = z.object({
-  id: z.string(),
-  groupId: z.string(),
-  name: z.string(),
-  glyph: z.string(),
-  chatJid: z.string(),
+export const topicSchema = struct({
+  id: Schema.String,
+  groupId: Schema.String,
+  name: Schema.String,
+  glyph: Schema.String,
+  chatJid: Schema.String,
   visibility: topicVisibilitySchema,
   kind: topicKindSchema,
   status: topicStatusSchema,
-  owner: topicOwnerSchema.nullable(),
-  linkUrl: z.string().nullable(),
-  linkLabel: z.string().nullable(),
-  isGeneral: z.boolean(),
-  archived: z.boolean(),
-  memberCount: z.number(),
-  ais: z.array(topicAiSchema),
+  owner: Schema.NullOr(topicOwnerSchema),
+  linkUrl: Schema.NullOr(Schema.String),
+  linkLabel: Schema.NullOr(Schema.String),
+  isGeneral: Schema.Boolean,
+  archived: Schema.Boolean,
+  memberCount: Schema.Number,
+  ais: Schema.mutable(Schema.Array(topicAiSchema)),
   // T-0116: roles with access and the approver role. Optional so payloads
   // from an older server still parse (treated as none).
-  roles: z.array(topicRoleSchema).optional(),
-  approverRole: approverRoleSchema.nullable().optional(),
+  roles: Schema.optional(Schema.mutable(Schema.Array(topicRoleSchema))),
+  approverRole: Schema.optional(Schema.NullOr(approverRoleSchema)),
 });
 
-export type Topic = z.infer<typeof topicSchema>;
+export type Topic = typeof topicSchema.Type;
 
-export const topicMemberSchema = z.object({
-  userId: z.string(),
-  name: z.string(),
+export const topicMemberSchema = struct({
+  userId: Schema.String,
+  name: Schema.String,
 });
 
-export type TopicMember = z.infer<typeof topicMemberSchema>;
+export type TopicMember = typeof topicMemberSchema.Type;
 
 export interface CreateTopicInput {
   name: string;
@@ -447,7 +476,7 @@ export interface PatchTopicInput {
 export function listGroupTopics(groupId: string): Promise<Topic[]> {
   return request(
     `/groups/${encodeURIComponent(groupId)}/topics`,
-    z.object({ topics: z.array(topicSchema) }),
+    struct({ topics: Schema.mutable(Schema.Array(topicSchema)) }),
   ).then(({ topics }) => topics);
 }
 
@@ -478,7 +507,7 @@ export function archiveTopic(id: string): Promise<Topic> {
 export function listTopicMembers(id: string): Promise<TopicMember[]> {
   return request(
     `/topics/${encodeURIComponent(id)}/members`,
-    z.object({ members: z.array(topicMemberSchema) }),
+    struct({ members: Schema.mutable(Schema.Array(topicMemberSchema)) }),
   ).then(({ members }) => members);
 }
 
@@ -503,7 +532,7 @@ export function removeTopicMember(id: string, userId: string): Promise<Topic> {
 export function listTopicAis(id: string): Promise<TopicAi[]> {
   return request(
     `/topics/${encodeURIComponent(id)}/ais`,
-    z.object({ ais: z.array(topicAiSchema) }),
+    struct({ ais: Schema.mutable(Schema.Array(topicAiSchema)) }),
   ).then(({ ais }) => ais);
 }
 
@@ -526,25 +555,25 @@ export function removeTopicAi(id: string, aiId: string): Promise<Topic> {
 // approver rights). Reading needs only membership; every write needs a
 // group owner/admin.
 
-export const groupRoleMemberSchema = z.object({
-  userId: z.string(),
-  name: z.string(),
+export const groupRoleMemberSchema = struct({
+  userId: Schema.String,
+  name: Schema.String,
 });
 
-export type GroupRoleMember = z.infer<typeof groupRoleMemberSchema>;
+export type GroupRoleMember = typeof groupRoleMemberSchema.Type;
 
-export const groupRoleSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  members: z.array(groupRoleMemberSchema),
+export const groupRoleSchema = struct({
+  id: Schema.String,
+  name: Schema.String,
+  members: Schema.mutable(Schema.Array(groupRoleMemberSchema)),
 });
 
-export type GroupRole = z.infer<typeof groupRoleSchema>;
+export type GroupRole = typeof groupRoleSchema.Type;
 
 export function listGroupRoles(groupId: string): Promise<GroupRole[]> {
   return request(
     `/groups/${encodeURIComponent(groupId)}/roles`,
-    z.object({ roles: z.array(groupRoleSchema) }),
+    struct({ roles: Schema.mutable(Schema.Array(groupRoleSchema)) }),
   ).then(({ roles }) => roles);
 }
 
@@ -571,7 +600,7 @@ export function renameGroupRole(groupId: string, roleId: string, name: string): 
 export async function deleteGroupRole(groupId: string, roleId: string): Promise<void> {
   await request(
     `/groups/${encodeURIComponent(groupId)}/roles/${encodeURIComponent(roleId)}`,
-    z.null(),
+    Schema.Null,
     { method: 'DELETE' },
   );
 }
@@ -652,14 +681,16 @@ export function setGroupBackground(
 // through the existing per-group list (each row carries its `topicId`).
 // Declared as a type alias (not a const) because the approval schemas are
 // defined further below in this file.
-export type TopicApprovalRule = z.infer<typeof approvalRuleSchema>;
+export type TopicApprovalRule = typeof approvalRuleSchema.Type;
 
 // --- Channels (T-0124) -------------------------------------------------------
 // One-way broadcast feeds: only owner/admins post (the room is moderated and
 // subscribers are visitors), everyone else subscribes, reads and mutes. A
 // channel is a group with one feed (its General topic): no more topics, and
 // the member list is visible to admins only (subscribers see the count).
-export const groupMemberListSchema = z.object({ members: z.array(groupMemberSchema) });
+export const groupMemberListSchema = struct({
+  members: Schema.mutable(Schema.Array(groupMemberSchema)),
+});
 
 export function listGroupMembers(groupId: string): Promise<GroupMember[]> {
   return request(`/groups/${encodeURIComponent(groupId)}/members`, groupMemberListSchema).then(
@@ -698,51 +729,56 @@ export function listTopicApprovalRules(groupId: string): Promise<TopicApprovalRu
   return listGroupApprovalRules(groupId);
 }
 
-export const topicToolSchema = z.object({
-  id: z.string(),
-  aiId: z.string(),
-  groupId: z.string().nullable(),
-  topicId: z.string().nullable(),
-  name: z.string(),
-  description: z.string(),
-  currentVersion: z.number(),
-  hosts: z.array(z.string()),
-  lastRunStatus: z.string().nullable(),
-  updatedAt: z.string(),
+export const topicToolSchema = struct({
+  id: Schema.String,
+  aiId: Schema.String,
+  groupId: Schema.NullOr(Schema.String),
+  topicId: Schema.NullOr(Schema.String),
+  name: Schema.String,
+  description: Schema.String,
+  currentVersion: Schema.Number,
+  hosts: Schema.mutable(Schema.Array(Schema.String)),
+  lastRunStatus: Schema.NullOr(Schema.String),
+  updatedAt: Schema.String,
 });
 
-export type TopicTool = z.infer<typeof topicToolSchema>;
+export type TopicTool = typeof topicToolSchema.Type;
 
 export function listTopicTools(topicId: string): Promise<TopicTool[]> {
-  return request(`/topics/${encodeURIComponent(topicId)}/tools`, z.array(topicToolSchema));
+  return request(
+    `/topics/${encodeURIComponent(topicId)}/tools`,
+    Schema.mutable(Schema.Array(topicToolSchema)),
+  );
 }
 
 // --- Group invite links (T-0115) -------------------------------------------
 // Shareable links that join a group as `member` (`${WEB}/j/<token>` on the
 // web). The token is shown once at creation and never stored — the list
 // below carries hints, labels, uses and state, never tokens.
-export const groupInviteLinkSchema = z.object({
-  id: z.string(),
-  label: z.string().nullable(),
-  tokenHint: z.string(),
-  uses: z.number(),
-  maxUses: z.number().nullable(),
-  expiresAt: z.string().nullable(),
-  revoked: z.boolean(),
-  createdAt: z.string(),
+export const groupInviteLinkSchema = struct({
+  id: Schema.String,
+  label: Schema.NullOr(Schema.String),
+  tokenHint: Schema.String,
+  uses: Schema.Number,
+  maxUses: Schema.NullOr(Schema.Number),
+  expiresAt: Schema.NullOr(Schema.String),
+  revoked: Schema.Boolean,
+  createdAt: Schema.String,
 });
 
-export type GroupInviteLink = z.infer<typeof groupInviteLinkSchema>;
+export type GroupInviteLink = typeof groupInviteLinkSchema.Type;
 
-const groupInviteLinksSchema = z.object({ links: z.array(groupInviteLinkSchema) });
-
-const createdInviteLinkSchema = z.object({
-  id: z.string(),
-  token: z.string(),
-  url: z.string(),
+const groupInviteLinksSchema = struct({
+  links: Schema.mutable(Schema.Array(groupInviteLinkSchema)),
 });
 
-export type CreatedInviteLink = z.infer<typeof createdInviteLinkSchema>;
+const createdInviteLinkSchema = struct({
+  id: Schema.String,
+  token: Schema.String,
+  url: Schema.String,
+});
+
+export type CreatedInviteLink = typeof createdInviteLinkSchema.Type;
 
 export interface CreateGroupInviteLinkInput {
   label?: string;
@@ -771,7 +807,7 @@ export function listGroupInviteLinks(groupId: string): Promise<GroupInviteLink[]
 export async function revokeGroupInviteLink(groupId: string, linkId: string): Promise<void> {
   await request(
     `/groups/${encodeURIComponent(groupId)}/invite-links/${encodeURIComponent(linkId)}`,
-    z.null(),
+    Schema.Null,
     { method: 'DELETE' },
   );
 }
@@ -783,24 +819,24 @@ export async function revokeGroupInviteLink(groupId: string, linkId: string): Pr
 // as `member` and returns the group id; an existing member answers
 // `alreadyMember: true` without consuming a use.
 
-export const joinPreviewSchema = z.object({
-  groupTitle: z.string(),
-  memberCount: z.number(),
-  alreadyMember: z.boolean(),
-  groupId: z.string().optional(),
+export const joinPreviewSchema = struct({
+  groupTitle: Schema.String,
+  memberCount: Schema.Number,
+  alreadyMember: Schema.Boolean,
+  groupId: Schema.optional(Schema.String),
   // T-0124: `channel` previews read "Join channel" (and count subscribers);
   // absent on older servers = a group.
-  kind: z.enum(['group', 'channel']).optional(),
+  kind: Schema.optional(Schema.Literals(['group', 'channel'])),
 });
 
-export type JoinPreview = z.infer<typeof joinPreviewSchema>;
+export type JoinPreview = typeof joinPreviewSchema.Type;
 
-const joinResultSchema = z.object({
-  groupId: z.string(),
-  alreadyMember: z.boolean(),
+const joinResultSchema = struct({
+  groupId: Schema.String,
+  alreadyMember: Schema.Boolean,
 });
 
-export type JoinResult = z.infer<typeof joinResultSchema>;
+export type JoinResult = typeof joinResultSchema.Type;
 
 export function previewJoinLink(token: string): Promise<JoinPreview> {
   return request(`/join/${encodeURIComponent(token)}`, joinPreviewSchema);
@@ -816,22 +852,22 @@ export function joinByLink(token: string): Promise<JoinResult> {
 // group covers its topics (the pref sits on the General room JID and the
 // client applies it to every topic unless the topic has its own row).
 
-const chatPrefSchema = z.object({
-  chatJid: z.string(),
-  mutedUntil: z.string().nullable(),
-  archived: z.boolean(),
-  pinnedAt: z.string().nullable(),
-  updatedAt: z.string(),
+const chatPrefSchema = struct({
+  chatJid: Schema.String,
+  mutedUntil: Schema.NullOr(Schema.String),
+  archived: Schema.Boolean,
+  pinnedAt: Schema.NullOr(Schema.String),
+  updatedAt: Schema.String,
   // T-0461: per-chat background override (T-0458). All null when the chat
   // inherits the caller's global default.
-  backgroundPreset: z.string().nullable().optional(),
-  backgroundImageId: z.string().nullable().optional(),
-  backgroundDim: z.number().nullable().optional(),
+  backgroundPreset: Schema.optional(Schema.NullOr(Schema.String)),
+  backgroundImageId: Schema.optional(Schema.NullOr(Schema.String)),
+  backgroundDim: Schema.optional(Schema.NullOr(Schema.Number)),
 });
 
-export type ChatPref = z.infer<typeof chatPrefSchema>;
+export type ChatPref = typeof chatPrefSchema.Type;
 
-const chatPrefsSchema = z.object({ prefs: z.array(chatPrefSchema) });
+const chatPrefsSchema = struct({ prefs: Schema.mutable(Schema.Array(chatPrefSchema)) });
 
 export interface PutChatPrefInput {
   mutedUntil?: string | null | undefined;
@@ -851,18 +887,18 @@ export function listChatPrefs(): Promise<ChatPref[]> {
 // T-0461: the caller's global chat background default (T-0458). `GET
 // /chat-background` returns it under `defaultBackground`; all-null means the
 // caller never chose one, so chats fall back to the slate grid.
-const chatBackgroundChoiceSchema = z.object({
-  backgroundPreset: z.string().nullable(),
-  backgroundImageId: z.string().nullable(),
-  backgroundDim: z.number().nullable(),
+const chatBackgroundChoiceSchema = struct({
+  backgroundPreset: Schema.NullOr(Schema.String),
+  backgroundImageId: Schema.NullOr(Schema.String),
+  backgroundDim: Schema.NullOr(Schema.Number),
 });
 
-export type ChatBackgroundChoice = z.infer<typeof chatBackgroundChoiceSchema>;
+export type ChatBackgroundChoice = typeof chatBackgroundChoiceSchema.Type;
 
 export function getChatBackgroundDefault(): Promise<ChatBackgroundChoice> {
   return request(
     '/chat-background',
-    z.object({ defaultBackground: chatBackgroundChoiceSchema }),
+    struct({ defaultBackground: chatBackgroundChoiceSchema }),
   ).then((body) => body.defaultBackground);
 }
 
@@ -871,7 +907,7 @@ export function getChatBackgroundDefault(): Promise<ChatBackgroundChoice> {
 export function putChatBackgroundDefault(
   input: ChatBackgroundChoice,
 ): Promise<ChatBackgroundChoice> {
-  return request('/chat-background', z.object({ defaultBackground: chatBackgroundChoiceSchema }), {
+  return request('/chat-background', struct({ defaultBackground: chatBackgroundChoiceSchema }), {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
@@ -884,7 +920,7 @@ export async function putChatPref(
 ): Promise<ChatPref | null> {
   const raw: unknown = await request(
     `/chat-prefs/${encodeURIComponent(chatJid)}`,
-    z.union([chatPrefSchema, z.object({ prefs: z.null() })]),
+    Schema.Union([chatPrefSchema, struct({ prefs: Schema.Null })]),
     {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -894,7 +930,7 @@ export async function putChatPref(
   if (typeof raw === 'object' && raw !== null && 'prefs' in raw) {
     return null;
   }
-  return chatPrefSchema.parse(raw);
+  return Schema.decodeUnknownSync(chatPrefSchema)(raw);
 }
 
 // --- Chat folders (T-0237) ---------------------------------------------------
@@ -902,26 +938,28 @@ export async function putChatPref(
 // the client only lists and syncs them here (create/rename/delete/reorder
 // UI is T-0238). The wire shape mirrors `ChatFolder` in chat-core.
 
-const folderChatTypeSchema = z.enum(['dm', 'group', 'channel', 'ai']);
-const folderIconSchema = z.enum(FOLDER_ICONS);
+const folderChatTypeSchema = Schema.Literals(['dm', 'group', 'channel', 'ai']);
+const folderIconSchema = Schema.Literals(FOLDER_ICONS);
 
-export const chatFolderSchema = z.object({
-  id: z.string(),
-  name: z.string(),
+export const chatFolderSchema = struct({
+  id: Schema.String,
+  name: Schema.String,
   icon: folderIconSchema,
-  position: z.number(),
-  includeTypes: z.array(folderChatTypeSchema),
-  includeChats: z.array(z.string()),
-  excludeChats: z.array(z.string()),
-  excludeMuted: z.boolean(),
-  excludeRead: z.boolean(),
+  position: Schema.Number,
+  includeTypes: Schema.mutable(Schema.Array(folderChatTypeSchema)),
+  includeChats: Schema.mutable(Schema.Array(Schema.String)),
+  excludeChats: Schema.mutable(Schema.Array(Schema.String)),
+  excludeMuted: Schema.Boolean,
+  excludeRead: Schema.Boolean,
 });
 
-export type ApiChatFolder = z.infer<typeof chatFolderSchema>;
+export type ApiChatFolder = typeof chatFolderSchema.Type;
 
-const chatFoldersSchema = z.object({ folders: z.array(chatFolderSchema) });
-const chatFolderResultSchema = z.object({ folder: chatFolderSchema });
-const chatFolderDeletedSchema = z.object({ deleted: z.literal(true) });
+const chatFoldersSchema = struct({
+  folders: Schema.mutable(Schema.Array(chatFolderSchema)),
+});
+const chatFolderResultSchema = struct({ folder: chatFolderSchema });
+const chatFolderDeletedSchema = struct({ deleted: Schema.Literal(true) });
 
 export interface CreateChatFolderInput {
   name: string;
@@ -976,24 +1014,24 @@ export async function deleteChatFolder(id: string): Promise<void> {
 // arrive newest first. The snapshot (`senderName`/`text`/`kind`) is display
 // only: the server trusts it for rendering, never for authorization.
 
-export const pinKindSchema = z.enum(['text', 'image', 'file', 'voice', 'card']);
+export const pinKindSchema = Schema.Literals(['text', 'image', 'file', 'voice', 'card']);
 
-export type PinKind = z.infer<typeof pinKindSchema>;
+export type PinKind = typeof pinKindSchema.Type;
 
-export const pinSchema = z.object({
-  id: z.string(),
-  chat: z.string(),
-  messageId: z.string(),
-  senderName: z.string(),
-  text: z.string(),
+export const pinSchema = struct({
+  id: Schema.String,
+  chat: Schema.String,
+  messageId: Schema.String,
+  senderName: Schema.String,
+  text: Schema.String,
   kind: pinKindSchema,
-  pinnedBy: z.string(),
-  pinnedAt: z.string(),
+  pinnedBy: Schema.String,
+  pinnedAt: Schema.String,
 });
 
-export type Pin = z.infer<typeof pinSchema>;
+export type Pin = typeof pinSchema.Type;
 
-const pinsSchema = z.object({ pins: z.array(pinSchema) });
+const pinsSchema = struct({ pins: Schema.mutable(Schema.Array(pinSchema)) });
 
 export interface PinMessageInput {
   chat: string;
@@ -1027,20 +1065,20 @@ export async function unpinMessage(id: string): Promise<void> {
 // server answers the pinned facts and the cover lines; `canChange` is false
 // for a room member who may only view.
 
-const aiMemoryFactSchema = z.object({
-  id: z.string(),
-  text: z.string(),
+const aiMemoryFactSchema = struct({
+  id: Schema.String,
+  text: Schema.String,
 });
 
-export const aiMemorySchema = z.object({
-  facts: z.array(aiMemoryFactSchema),
-  lines: z.array(z.string()),
-  canChange: z.boolean(),
+export const aiMemorySchema = struct({
+  facts: Schema.mutable(Schema.Array(aiMemoryFactSchema)),
+  lines: Schema.mutable(Schema.Array(Schema.String)),
+  canChange: Schema.Boolean,
 });
 
-export type AiMemory = z.infer<typeof aiMemorySchema>;
+export type AiMemory = typeof aiMemorySchema.Type;
 
-const okResponseSchema = z.object({ ok: z.literal(true) });
+const okResponseSchema = struct({ ok: Schema.Literal(true) });
 
 export function getAiMemory(chat: string, aiId: string): Promise<AiMemory> {
   const params = new URLSearchParams();
@@ -1080,36 +1118,36 @@ export async function clearAiMemory(chat: string, aiId: string): Promise<void> {
 // tab; `before` is the `next` cursor of the previous page (microseconds as a
 // string). Items arrive newest first.
 
-export const mediaTabSchema = z.enum(['media', 'files', 'links', 'voice']);
+export const mediaTabSchema = Schema.Literals(['media', 'files', 'links', 'voice']);
 
-export type MediaTab = z.infer<typeof mediaTabSchema>;
+export type MediaTab = typeof mediaTabSchema.Type;
 
-export const mediaItemSchema = z.object({
-  messageId: z.string(),
-  chat: z.string(),
-  at: z.string(),
-  senderName: z.string(),
-  kind: z.enum(['image', 'file', 'gif', 'voice', 'link']),
-  url: z.string().optional(),
-  name: z.string().optional(),
-  size: z.number().optional(),
-  mime: z.string().optional(),
-  width: z.number().optional(),
-  height: z.number().optional(),
-  durationMs: z.number().optional(),
-  waveform: z.array(z.number()).optional(),
-  linkUrl: z.string().optional(),
-  linkHost: z.string().optional(),
+export const mediaItemSchema = struct({
+  messageId: Schema.String,
+  chat: Schema.String,
+  at: Schema.String,
+  senderName: Schema.String,
+  kind: Schema.Literals(['image', 'file', 'gif', 'voice', 'link']),
+  url: Schema.optional(Schema.String),
+  name: Schema.optional(Schema.String),
+  size: Schema.optional(Schema.Number),
+  mime: Schema.optional(Schema.String),
+  width: Schema.optional(Schema.Number),
+  height: Schema.optional(Schema.Number),
+  durationMs: Schema.optional(Schema.Number),
+  waveform: Schema.optional(Schema.mutable(Schema.Array(Schema.Number))),
+  linkUrl: Schema.optional(Schema.String),
+  linkHost: Schema.optional(Schema.String),
 });
 
-export type MediaItem = z.infer<typeof mediaItemSchema>;
+export type MediaItem = typeof mediaItemSchema.Type;
 
-export const mediaPageSchema = z.object({
-  items: z.array(mediaItemSchema),
-  next: z.string().nullable(),
+export const mediaPageSchema = struct({
+  items: Schema.mutable(Schema.Array(mediaItemSchema)),
+  next: Schema.NullOr(Schema.String),
 });
 
-export type MediaPage = z.infer<typeof mediaPageSchema>;
+export type MediaPage = typeof mediaPageSchema.Type;
 
 export interface ListChatMediaInput {
   chat: string;
@@ -1136,64 +1174,64 @@ export function listChatMedia(input: ListChatMediaInput): Promise<MediaPage> {
 // `ApiError` already carries the server's `code` and `status`, so callers can
 // branch without parsing the message again.
 
-const aiTemplateSchema = z.enum(['dev', 'marketing', 'fun', 'custom']);
+const aiTemplateSchema = Schema.Literals(['dev', 'marketing', 'fun', 'custom']);
 
-export type AiTemplate = z.infer<typeof aiTemplateSchema>;
+export type AiTemplate = typeof aiTemplateSchema.Type;
 
-const aiLimitsSchema = z.object({
-  perDayUsd: z.number(),
-  perMonthUsd: z.number(),
+const aiLimitsSchema = struct({
+  perDayUsd: Schema.Number,
+  perMonthUsd: Schema.Number,
 });
 
-export type AiLimits = z.infer<typeof aiLimitsSchema>;
+export type AiLimits = typeof aiLimitsSchema.Type;
 
 // T-0058: the AI's spend summary. Optional (not just nullable) so responses
 // from older servers still parse; absent means "unavailable" like null.
-const aiUsageSchema = z.object({
-  todayUsd: z.number(),
-  windowUsd: z.number(),
+const aiUsageSchema = struct({
+  todayUsd: Schema.Number,
+  windowUsd: Schema.Number,
 });
 
-export type AiUsage = z.infer<typeof aiUsageSchema>;
+export type AiUsage = typeof aiUsageSchema.Type;
 
-const publicAiSchema = z.object({
-  id: z.string(),
-  name: z.string(),
+const publicAiSchema = struct({
+  id: Schema.String,
+  name: Schema.String,
   template: aiTemplateSchema,
-  persona: z.string(),
-  model: z.string(),
-  jid: z.string(),
+  persona: Schema.String,
+  model: Schema.String,
+  jid: Schema.String,
   // `stopped` is the owner kill switch (T-0080): the AI is paused, not
   // deleted, and a resume brings it back.
-  status: z.enum(['active', 'disabled', 'stopped']),
-  providerConnectionId: z.string(),
+  status: Schema.Literals(['active', 'disabled', 'stopped']),
+  providerConnectionId: Schema.String,
   limits: aiLimitsSchema,
-  usage: aiUsageSchema.nullable().optional(),
+  usage: Schema.optional(Schema.NullOr(aiUsageSchema)),
   // T-0091: the AI's home machine id, or null when it runs on the platform.
   // Optional so a payload from a server that has not been upgraded yet
   // still parses — the panel renders the same way when it is absent.
-  machineId: z.string().nullable().optional(),
+  machineId: Schema.optional(Schema.NullOr(Schema.String)),
   // T-0165: the AI's picture, when it has one. Optional so older payloads
   // parse (treated as none).
-  avatarUrl: z.string().optional(),
+  avatarUrl: Schema.optional(Schema.String),
   // T-0478: the owner's delegation opt-ins. Optional so older payloads parse
   // (treated as off).
-  canDelegate: z.boolean().optional(),
-  acceptsDelegation: z.boolean().optional(),
-  createdAt: z.string(),
+  canDelegate: Schema.optional(Schema.Boolean),
+  acceptsDelegation: Schema.optional(Schema.Boolean),
+  createdAt: Schema.String,
 });
 
-export type PublicAi = z.infer<typeof publicAiSchema>;
+export type PublicAi = typeof publicAiSchema.Type;
 
-const connectionSchema = z.object({
-  id: z.string(),
-  provider: z.string(),
-  label: z.string().nullable(),
-  status: z.string(),
-  createdAt: z.string(),
+const connectionSchema = struct({
+  id: Schema.String,
+  provider: Schema.String,
+  label: Schema.NullOr(Schema.String),
+  status: Schema.String,
+  createdAt: Schema.String,
 });
 
-export type Connection = z.infer<typeof connectionSchema>;
+export type Connection = typeof connectionSchema.Type;
 
 export interface CreateAiInput {
   name: string;
@@ -1216,7 +1254,7 @@ export interface UpdateAiInput {
 }
 
 export function listAis(): Promise<PublicAi[]> {
-  return request('/ais', z.array(publicAiSchema));
+  return request('/ais', Schema.mutable(Schema.Array(publicAiSchema)));
 }
 
 export function getAi(id: string): Promise<PublicAi> {
@@ -1248,7 +1286,7 @@ export function updateAi(id: string, input: UpdateAiInput): Promise<PublicAi> {
 }
 
 export async function deleteAi(id: string): Promise<void> {
-  await request(`/ais/${encodeURIComponent(id)}`, z.null(), { method: 'DELETE' });
+  await request(`/ais/${encodeURIComponent(id)}`, Schema.Null, { method: 'DELETE' });
 }
 
 // T-0080: the owner's kill switch. Both return the fresh public AI so the
@@ -1276,7 +1314,7 @@ export function setAiMachine(aiId: string, machineId: string | null): Promise<Pu
 }
 
 export function listConnections(): Promise<Connection[]> {
-  return request('/connections', z.array(connectionSchema));
+  return request('/connections', Schema.mutable(Schema.Array(connectionSchema)));
 }
 
 // T-0074: `ConnectionsPage` used to call `fetch` directly with its own copy of
@@ -1303,12 +1341,12 @@ export function createConnection(input: CreateConnectionInput): Promise<Connecti
   });
 }
 
-const connectionTestResultSchema = z.object({
-  ok: z.boolean(),
-  message: z.string().optional(),
+const connectionTestResultSchema = struct({
+  ok: Schema.Boolean,
+  message: Schema.optional(Schema.String),
 });
 
-export type ConnectionTestResult = z.infer<typeof connectionTestResultSchema>;
+export type ConnectionTestResult = typeof connectionTestResultSchema.Type;
 
 export function testConnection(id: string): Promise<ConnectionTestResult> {
   return request(`/connections/${encodeURIComponent(id)}/test`, connectionTestResultSchema, {
@@ -1317,7 +1355,7 @@ export function testConnection(id: string): Promise<ConnectionTestResult> {
 }
 
 export async function deleteConnection(id: string): Promise<void> {
-  await request(`/connections/${encodeURIComponent(id)}`, z.null(), { method: 'DELETE' });
+  await request(`/connections/${encodeURIComponent(id)}`, Schema.Null, { method: 'DELETE' });
 }
 
 // --- Machines (T-0070) ---------------------------------------------------
@@ -1348,25 +1386,25 @@ export interface Machine {
   online?: boolean | undefined;
 }
 
-const machineStatusSchema = z.enum(['pending', 'approved', 'revoked']);
+const machineStatusSchema = Schema.Literals(['pending', 'approved', 'revoked']);
 
-export const machineSchema = z.object({
-  id: z.string(),
-  name: z.string(),
+export const machineSchema = struct({
+  id: Schema.String,
+  name: Schema.String,
   status: machineStatusSchema,
-  os: z.string(),
-  osVersion: z.string(),
-  arch: z.string(),
-  cpu: z.string(),
-  cores: z.number(),
-  ramGb: z.number(),
-  diskFreeGb: z.number(),
-  drivers: z.array(z.string()),
-  fingerprint: z.string(),
-  createdAt: z.string(),
-  approvedAt: z.string().nullable(),
-  lastSeenAt: z.string().nullable(),
-  online: z.boolean().optional(),
+  os: Schema.String,
+  osVersion: Schema.String,
+  arch: Schema.String,
+  cpu: Schema.String,
+  cores: Schema.Number,
+  ramGb: Schema.Number,
+  diskFreeGb: Schema.Number,
+  drivers: Schema.mutable(Schema.Array(Schema.String)),
+  fingerprint: Schema.String,
+  createdAt: Schema.String,
+  approvedAt: Schema.NullOr(Schema.String),
+  lastSeenAt: Schema.NullOr(Schema.String),
+  online: Schema.optional(Schema.Boolean),
 });
 
 export interface PairingCode {
@@ -1374,13 +1412,13 @@ export interface PairingCode {
   expiresAt: string;
 }
 
-const pairingCodeSchema = z.object({
-  code: z.string(),
-  expiresAt: z.string(),
+const pairingCodeSchema = struct({
+  code: Schema.String,
+  expiresAt: Schema.String,
 });
 
 export function listMachines(): Promise<Machine[]> {
-  return request('/machines', z.array(machineSchema));
+  return request('/machines', Schema.mutable(Schema.Array(machineSchema)));
 }
 
 export function createPairingCode(): Promise<PairingCode> {
@@ -1394,7 +1432,7 @@ export function approveMachine(id: string): Promise<Machine> {
 }
 
 export async function denyMachine(id: string): Promise<void> {
-  await request(`/machines/${encodeURIComponent(id)}/deny`, z.null(), { method: 'POST' });
+  await request(`/machines/${encodeURIComponent(id)}/deny`, Schema.Null, { method: 'POST' });
 }
 
 export function revokeMachine(id: string): Promise<Machine> {
@@ -1412,7 +1450,7 @@ export function renameMachine(id: string, name: string): Promise<Machine> {
 }
 
 export async function deleteMachine(id: string): Promise<void> {
-  await request(`/machines/${encodeURIComponent(id)}`, z.null(), { method: 'DELETE' });
+  await request(`/machines/${encodeURIComponent(id)}`, Schema.Null, { method: 'DELETE' });
 }
 
 // --- Approvals (T-0076) ---------------------------------------------------
@@ -1426,45 +1464,54 @@ export type ApprovalStatus =
 
 export type ApprovalDecision = 'approve_once' | 'approve_always' | 'deny';
 
-const approvalWorstCaseSchema = z
-  .object({
-    currency: z.enum(['EUR', 'USD']),
-    amount: z.number(),
-  })
-  .nullable();
+const approvalWorstCaseSchema = Schema.NullOr(
+  struct({
+    currency: Schema.Literals(['EUR', 'USD']),
+    amount: Schema.Number,
+  }),
+);
 
-export const publicApprovalSchema = z.object({
-  id: z.string(),
-  aiId: z.string(),
-  groupId: z.string().nullable(),
+export const publicApprovalSchema = struct({
+  id: Schema.String,
+  aiId: Schema.String,
+  groupId: Schema.NullOr(Schema.String),
   // T-0110: the topic the approval belongs to. Optional so older payloads
   // parse (a missing topic reads like a group approval).
-  topicId: z.string().nullable().optional(),
-  topicName: z.string().nullable().optional(),
-  action: z.string(),
-  summary: z.string(),
-  details: z.string().nullable(),
-  argsHash: z.string(),
+  topicId: Schema.optional(Schema.NullOr(Schema.String)),
+  topicName: Schema.optional(Schema.NullOr(Schema.String)),
+  action: Schema.String,
+  summary: Schema.String,
+  details: Schema.NullOr(Schema.String),
+  argsHash: Schema.String,
   worstCase: approvalWorstCaseSchema,
-  requestedBy: z.string(),
-  status: z.enum(['pending', 'approved_once', 'approved_always', 'denied', 'consumed', 'expired']),
-  decidedAt: z.string().nullable(),
-  note: z.string().nullable(),
-  expiresAt: z.string(),
-  createdAt: z.string(),
+  requestedBy: Schema.String,
+  status: Schema.Literals([
+    'pending',
+    'approved_once',
+    'approved_always',
+    'denied',
+    'consumed',
+    'expired',
+  ]),
+  decidedAt: Schema.NullOr(Schema.String),
+  note: Schema.NullOr(Schema.String),
+  expiresAt: Schema.String,
+  createdAt: Schema.String,
   // T-0100: whether `approve_always` is a real choice for this action.
   // Optional with a `false` default so a payload from a server that has not
   // been upgraded yet still parses — the card just hides the third button.
-  alwaysEligible: z.boolean().default(false),
+  alwaysEligible: Schema.Boolean.pipe(Schema.withDecodingDefaultTypeKey(Effect.succeed(false))),
   // T-0134/T-0141: display names of the holders of the topic's approver
   // role, resolved server-side in one batched query per list so the card
   // never fetches the topic per approval (N+1). Optional with an empty
   // default so payloads from an older server still parse — the card hides
   // the approver line.
-  approverNames: z.array(z.string()).default([]),
+  approverNames: Schema.mutable(Schema.Array(Schema.String)).pipe(
+    Schema.withDecodingDefaultTypeKey(Effect.succeed([])),
+  ),
 });
 
-export type PublicApproval = z.infer<typeof publicApprovalSchema>;
+export type PublicApproval = typeof publicApprovalSchema.Type;
 
 export function getApproval(id: string): Promise<PublicApproval> {
   return request(`/approvals/${encodeURIComponent(id)}`, publicApprovalSchema);
@@ -1473,7 +1520,7 @@ export function getApproval(id: string): Promise<PublicApproval> {
 // T-0081: the inbox page lists everything pending. The server already filters
 // by pending, unexpired, decidable by the caller, newest first, max 100.
 export function listApprovals(): Promise<PublicApproval[]> {
-  return request('/approvals', z.array(publicApprovalSchema));
+  return request('/approvals', Schema.mutable(Schema.Array(publicApprovalSchema)));
 }
 
 export function decideApproval(
@@ -1495,33 +1542,36 @@ export function decideApproval(
 // approvals schemas. The two list routes 404 for a viewer who may not
 // manage the rules, and so does revoke; all three flow through `ApiError`.
 
-export const approvalRuleSchema = z.object({
-  id: z.string(),
-  action: z.string(),
-  scope: z.enum(['personal', 'group']),
-  groupId: z.string().nullable(),
+export const approvalRuleSchema = struct({
+  id: Schema.String,
+  action: Schema.String,
+  scope: Schema.Literals(['personal', 'group']),
+  groupId: Schema.NullOr(Schema.String),
   // T-0110: the rule's topic scope. Optional so older payloads parse.
-  topicId: z.string().nullable().optional(),
-  topicName: z.string().nullable().optional(),
-  createdAt: z.string(),
-  createdBy: z.string(),
+  topicId: Schema.optional(Schema.NullOr(Schema.String)),
+  topicName: Schema.optional(Schema.NullOr(Schema.String)),
+  createdAt: Schema.String,
+  createdBy: Schema.String,
 });
 
-export type ApprovalRule = z.infer<typeof approvalRuleSchema>;
+export type ApprovalRule = typeof approvalRuleSchema.Type;
 
 export function listAiApprovalRules(aiId: string): Promise<ApprovalRule[]> {
-  return request(`/ais/${encodeURIComponent(aiId)}/approval-rules`, z.array(approvalRuleSchema));
+  return request(
+    `/ais/${encodeURIComponent(aiId)}/approval-rules`,
+    Schema.mutable(Schema.Array(approvalRuleSchema)),
+  );
 }
 
 export function listGroupApprovalRules(groupId: string): Promise<ApprovalRule[]> {
   return request(
     `/groups/${encodeURIComponent(groupId)}/approval-rules`,
-    z.array(approvalRuleSchema),
+    Schema.mutable(Schema.Array(approvalRuleSchema)),
   );
 }
 
 export async function revokeApprovalRule(id: string): Promise<void> {
-  await request(`/approval-rules/${encodeURIComponent(id)}`, z.null(), { method: 'DELETE' });
+  await request(`/approval-rules/${encodeURIComponent(id)}`, Schema.Null, { method: 'DELETE' });
 }
 
 // --- Message search (T-0117) -----------------------------------------------
@@ -1529,22 +1579,27 @@ export async function revokeApprovalRule(id: string): Promise<void> {
 // arrive as plain text plus `marks` ranges; the client highlights with
 // spans and never renders HTML.
 
-const searchMarkSchema = z.tuple([z.number().int().min(0), z.number().int().min(0)]);
+const searchMarkSchema = Schema.mutable(
+  Schema.Tuple([
+    Schema.Int.pipe(Schema.check(Schema.isGreaterThanOrEqualTo(0))),
+    Schema.Int.pipe(Schema.check(Schema.isGreaterThanOrEqualTo(0))),
+  ]),
+);
 
-const searchItemSchema = z.object({
-  chatJid: z.string(),
-  messageId: z.string(),
-  senderName: z.string(),
-  at: z.string(),
-  snippet: z.string(),
-  marks: z.array(searchMarkSchema),
+const searchItemSchema = struct({
+  chatJid: Schema.String,
+  messageId: Schema.String,
+  senderName: Schema.String,
+  at: Schema.String,
+  snippet: Schema.String,
+  marks: Schema.mutable(Schema.Array(searchMarkSchema)),
 });
 
-export type SearchItem = z.infer<typeof searchItemSchema>;
+export type SearchItem = typeof searchItemSchema.Type;
 
-const searchPageSchema = z.object({
-  items: z.array(searchItemSchema),
-  nextBefore: z.string().optional(),
+const searchPageSchema = struct({
+  items: Schema.mutable(Schema.Array(searchItemSchema)),
+  nextBefore: Schema.optional(Schema.String),
 });
 
 export interface SearchMessagesInput {
@@ -1557,7 +1612,7 @@ export interface SearchMessagesInput {
 
 async function searchRequest<T>(
   params: URLSearchParams,
-  schema: z.ZodType<T>,
+  schema: ResponseSchema<T>,
   signal?: AbortSignal,
 ): Promise<T> {
   let response: Response;
@@ -1588,15 +1643,15 @@ async function searchRequest<T>(
   if (!response.ok) {
     throw toApiError(response.status, raw);
   }
-  const parsed = schema.safeParse(raw);
-  if (!parsed.success) {
+  const parsed = decodeResponse(schema, raw);
+  if (!parsed.ok) {
     throw new ApiError(
       response.status,
       'invalid_response',
       'The server sent an unexpected response',
     );
   }
-  return parsed.data;
+  return parsed.value;
 }
 
 export function searchMessages(
@@ -1620,38 +1675,38 @@ export function searchMessages(
 // User-made packs: the panel lists mine in order (with stickers), discover
 // lists `server`-visible packs, and files are served same-origin so the
 // renderer can auto-load them without leaking the viewer's IP.
-export const stickerSchema = z.object({
-  id: z.string(),
-  packId: z.string(),
-  emoji: z.string().nullable(),
-  mime: z.enum(['image/webp', 'image/png']),
-  width: z.number(),
-  height: z.number(),
-  bytes: z.number(),
-  url: z.string(),
+export const stickerSchema = struct({
+  id: Schema.String,
+  packId: Schema.String,
+  emoji: Schema.NullOr(Schema.String),
+  mime: Schema.Literals(['image/webp', 'image/png']),
+  width: Schema.Number,
+  height: Schema.Number,
+  bytes: Schema.Number,
+  url: Schema.String,
 });
 
-export type Sticker = z.infer<typeof stickerSchema>;
+export type Sticker = typeof stickerSchema.Type;
 
-export const stickerPackSchema = z.object({
-  id: z.string(),
-  ownerId: z.string(),
-  title: z.string(),
-  visibility: z.enum(['private', 'server']),
+export const stickerPackSchema = struct({
+  id: Schema.String,
+  ownerId: Schema.String,
+  title: Schema.String,
+  visibility: Schema.Literals(['private', 'server']),
   // Set by the Telegram importer (`telegram:<name>`); absent otherwise.
-  importedFrom: z.string().optional(),
-  stickers: z.array(stickerSchema),
-  createdAt: z.string(),
-  updatedAt: z.string(),
+  importedFrom: Schema.optional(Schema.String),
+  stickers: Schema.mutable(Schema.Array(stickerSchema)),
+  createdAt: Schema.String,
+  updatedAt: Schema.String,
 });
 
-export type StickerPack = z.infer<typeof stickerPackSchema>;
+export type StickerPack = typeof stickerPackSchema.Type;
 
-const stickerPacksSchema = z.object({ packs: z.array(stickerPackSchema) });
+const stickerPacksSchema = struct({ packs: Schema.mutable(Schema.Array(stickerPackSchema)) });
 
-const discoverPacksSchema = z.object({
-  packs: z.array(stickerPackSchema),
-  next: z.string().nullable(),
+const discoverPacksSchema = struct({
+  packs: Schema.mutable(Schema.Array(stickerPackSchema)),
+  next: Schema.NullOr(Schema.String),
 });
 
 export function listStickerPacks(): Promise<StickerPack[]> {
@@ -1681,13 +1736,13 @@ export function discoverStickerPacks(
 }
 
 export async function addStickerPanelPack(packId: string): Promise<void> {
-  await request(`/sticker-panel/${encodeURIComponent(packId)}`, z.object({ ok: z.boolean() }), {
+  await request(`/sticker-panel/${encodeURIComponent(packId)}`, struct({ ok: Schema.Boolean }), {
     method: 'PUT',
   });
 }
 
 export async function removeStickerPanelPack(packId: string): Promise<void> {
-  await request(`/sticker-panel/${encodeURIComponent(packId)}`, z.object({ ok: z.boolean() }), {
+  await request(`/sticker-panel/${encodeURIComponent(packId)}`, struct({ ok: Schema.Boolean }), {
     method: 'DELETE',
   });
 }
@@ -1699,34 +1754,34 @@ export async function removeStickerPanelPack(packId: string): Promise<void> {
 // user's session). The device list carries labels and dates only — never
 // the endpoint URL or keys.
 
-const pushConfigSchema = z.object({
-  vapidPublicKey: z.string().min(1),
-  pushJid: z.string().min(1),
+const pushConfigSchema = struct({
+  vapidPublicKey: Schema.String.pipe(Schema.check(Schema.isMinLength(1))),
+  pushJid: Schema.String.pipe(Schema.check(Schema.isMinLength(1))),
 });
 
-export type PushConfig = z.infer<typeof pushConfigSchema>;
+export type PushConfig = typeof pushConfigSchema.Type;
 
-const registeredDeviceSchema = z.object({
-  id: z.string().min(1),
-  node: z.string().min(1),
-  jid: z.string().min(1),
+const registeredDeviceSchema = struct({
+  id: Schema.String.pipe(Schema.check(Schema.isMinLength(1))),
+  node: Schema.String.pipe(Schema.check(Schema.isMinLength(1))),
+  jid: Schema.String.pipe(Schema.check(Schema.isMinLength(1))),
 });
 
-export type RegisteredDevice = z.infer<typeof registeredDeviceSchema>;
+export type RegisteredDevice = typeof registeredDeviceSchema.Type;
 
-const pushDeviceSchema = z.object({
-  id: z.string(),
-  userAgent: z.string().nullable(),
-  createdAt: z.string(),
-  lastUsedAt: z.string().nullable(),
-  inactive: z.boolean(),
+const pushDeviceSchema = struct({
+  id: Schema.String,
+  userAgent: Schema.NullOr(Schema.String),
+  createdAt: Schema.String,
+  lastUsedAt: Schema.NullOr(Schema.String),
+  inactive: Schema.Boolean,
 });
 
-export type PushDevice = z.infer<typeof pushDeviceSchema>;
+export type PushDevice = typeof pushDeviceSchema.Type;
 
-const pushDevicesSchema = z.object({ devices: z.array(pushDeviceSchema) });
+const pushDevicesSchema = struct({ devices: Schema.mutable(Schema.Array(pushDeviceSchema)) });
 
-const pushSettingsSchema = z.object({ showPreviews: z.boolean() });
+const pushSettingsSchema = struct({ showPreviews: Schema.Boolean });
 
 export function getPushConfig(): Promise<PushConfig> {
   return request('/push/config', pushConfigSchema);
@@ -1757,7 +1812,7 @@ export function listPushDevices(): Promise<PushDevice[]> {
 export function removePushDevice(id: string): Promise<void> {
   return request(
     `/push/subscriptions/${encodeURIComponent(id)}`,
-    z.object({ removed: z.boolean() }),
+    struct({ removed: Schema.Boolean }),
     { method: 'DELETE' },
   ).then(() => undefined);
 }
@@ -1775,7 +1830,7 @@ export function setPushSettings(showPreviews: boolean): Promise<{ showPreviews: 
 }
 
 export function sendTestPushNotification(subscriptionId: string): Promise<void> {
-  return request('/push/test', z.object({ sent: z.boolean() }), {
+  return request('/push/test', struct({ sent: Schema.Boolean }), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ subscriptionId }),
@@ -1784,7 +1839,7 @@ export function sendTestPushNotification(subscriptionId: string): Promise<void> 
 
 /** Reorders the caller's whole panel atomically (exact id permutation). */
 export async function reorderStickerPanelPacks(order: string[]): Promise<void> {
-  await request('/sticker-panel', z.object({ ok: z.boolean() }), {
+  await request('/sticker-panel', struct({ ok: Schema.Boolean }), {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ order }),
@@ -1805,7 +1860,7 @@ export function patchStickerPack(
 export function deleteStickerPack(packId: string): Promise<{ warning: string }> {
   return request(
     `/sticker-packs/${encodeURIComponent(packId)}`,
-    z.object({ warning: z.string() }),
+    struct({ warning: Schema.String }),
     {
       method: 'DELETE',
     },
@@ -1815,7 +1870,7 @@ export function deleteStickerPack(packId: string): Promise<{ warning: string }> 
 export function deletePackSticker(packId: string, stickerId: string): Promise<{ ok: boolean }> {
   return request(
     `/sticker-packs/${encodeURIComponent(packId)}/stickers/${encodeURIComponent(stickerId)}`,
-    z.object({ ok: z.boolean() }),
+    struct({ ok: Schema.Boolean }),
     { method: 'DELETE' },
   );
 }
@@ -1859,21 +1914,23 @@ export async function uploadStickerFile(
   if (!response.ok) {
     throw toApiError(response.status, raw);
   }
-  const parsed = stickerSchema.safeParse(raw);
-  if (!parsed.success) {
+  const parsed = decodeResponse(stickerSchema, raw);
+  if (!parsed.ok) {
     throw new ApiError(
       response.status,
       'invalid_response',
       'The server sent an unexpected response',
     );
   }
-  return parsed.data;
+  return parsed.value;
 }
 
 // --- Sticker favorites (T-0121) --------------------------------------------
 // One user's starred stickers, at most 200, oldest first.
 
-const stickerFavoritesSchema = z.object({ favorites: z.array(stickerSchema) });
+const stickerFavoritesSchema = struct({
+  favorites: Schema.mutable(Schema.Array(stickerSchema)),
+});
 
 export function listStickerFavorites(): Promise<Sticker[]> {
   return request('/sticker-favorites', stickerFavoritesSchema).then((body) => body.favorites);
@@ -1889,7 +1946,7 @@ export function addStickerFavorite(stickerId: string): Promise<Sticker> {
 
 export async function removeStickerFavorite(stickerId: string): Promise<void> {
   const params = new URLSearchParams({ sticker_id: stickerId });
-  await request(`/sticker-favorites?${params.toString()}`, z.object({ ok: z.boolean() }), {
+  await request(`/sticker-favorites?${params.toString()}`, struct({ ok: Schema.Boolean }), {
     method: 'DELETE',
   });
 }
@@ -1902,15 +1959,15 @@ export async function removeStickerFavorite(stickerId: string): Promise<void> {
 // fills the gaps. Imported packs are personal-use only (`importedFrom` is
 // set, visibility stays private, the UI says so).
 
-export const telegramImportResultSchema = z.object({
+export const telegramImportResultSchema = struct({
   pack: stickerPackSchema,
-  imported: z.number(),
-  skippedAnimated: z.number(),
-  skippedInvalid: z.number(),
-  partial: z.boolean().optional(),
+  imported: Schema.Number,
+  skippedAnimated: Schema.Number,
+  skippedInvalid: Schema.Number,
+  partial: Schema.optional(Schema.Boolean),
 });
 
-export type TelegramImportResult = z.infer<typeof telegramImportResultSchema>;
+export type TelegramImportResult = typeof telegramImportResultSchema.Type;
 
 export function importTelegramStickers(input: string): Promise<TelegramImportResult> {
   return request('/sticker-packs/import/telegram', telegramImportResultSchema, {
@@ -1926,38 +1983,38 @@ export function importTelegramStickers(input: string): Promise<TelegramImportRes
 // never returned by the server, not even masked — only `configured` and
 // `source` say whether one is set.
 
-const integrationsTelegramSchema = z.object({
-  configured: z.boolean(),
-  source: z.enum(['env', 'stored']).nullable(),
+const integrationsTelegramSchema = struct({
+  configured: Schema.Boolean,
+  source: Schema.NullOr(Schema.Literals(['env', 'stored'])),
 });
 
-const integrationsEmailSchema = z.object({
-  configured: z.boolean(),
-  source: z.enum(['env', 'stored']).nullable(),
-  from: z.string().nullable(),
+const integrationsEmailSchema = struct({
+  configured: Schema.Boolean,
+  source: Schema.NullOr(Schema.Literals(['env', 'stored'])),
+  from: Schema.NullOr(Schema.String),
 });
 
-const integrationsStatusSchema = z.object({
+const integrationsStatusSchema = struct({
   telegram: integrationsTelegramSchema,
   email: integrationsEmailSchema,
-  voiceTranscription: z
-    .object({
-      configured: z.boolean(),
-      baseUrl: z.string().nullable(),
-      model: z.string().nullable(),
-    })
-    .optional(),
-  canManage: z.boolean(),
+  voiceTranscription: Schema.optional(
+    struct({
+      configured: Schema.Boolean,
+      baseUrl: Schema.NullOr(Schema.String),
+      model: Schema.NullOr(Schema.String),
+    }),
+  ),
+  canManage: Schema.Boolean,
 });
 
-export type IntegrationsStatus = z.infer<typeof integrationsStatusSchema>;
+export type IntegrationsStatus = typeof integrationsStatusSchema.Type;
 
 export function getIntegrationsStatus(): Promise<IntegrationsStatus> {
   return request('/settings/integrations', integrationsStatusSchema);
 }
 
 export async function saveTelegramBotToken(botToken: string): Promise<void> {
-  await request('/settings/integrations/telegram', z.object({ ok: z.boolean() }), {
+  await request('/settings/integrations/telegram', struct({ ok: Schema.Boolean }), {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ botToken }),
@@ -1965,7 +2022,7 @@ export async function saveTelegramBotToken(botToken: string): Promise<void> {
 }
 
 export async function removeTelegramBotToken(): Promise<void> {
-  await request('/settings/integrations/telegram', z.object({ ok: z.boolean() }), {
+  await request('/settings/integrations/telegram', struct({ ok: Schema.Boolean }), {
     method: 'DELETE',
   });
 }
@@ -1980,7 +2037,7 @@ export async function saveEmailSettings(input: SaveEmailSettingsInput): Promise<
     input.resendApiKey === undefined
       ? { from: input.from }
       : { from: input.from, resendApiKey: input.resendApiKey };
-  await request('/settings/integrations/email', z.object({ ok: z.boolean() }), {
+  await request('/settings/integrations/email', struct({ ok: Schema.Boolean }), {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -1999,11 +2056,11 @@ export interface SaveVoiceTranscriptionInput {
 }
 
 export function getVoiceTranscriptionStatus(): Promise<{ enabled: boolean }> {
-  return request('/voice/transcription', z.object({ enabled: z.boolean() }));
+  return request('/voice/transcription', struct({ enabled: Schema.Boolean }));
 }
 
 export function getVoiceTranscript(url: string): Promise<{ text: string }> {
-  return request('/voice/transcript', z.object({ text: z.string() }), {
+  return request('/voice/transcript', struct({ text: Schema.String }), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ url }),
@@ -2020,7 +2077,7 @@ export async function saveVoiceTranscriptionSettings(
   if (input.model !== undefined) {
     body['model'] = input.model;
   }
-  await request('/settings/integrations/voice-transcription', z.object({ ok: z.boolean() }), {
+  await request('/settings/integrations/voice-transcription', struct({ ok: Schema.Boolean }), {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -2028,7 +2085,7 @@ export async function saveVoiceTranscriptionSettings(
 }
 
 export async function removeVoiceTranscriptionSettings(): Promise<void> {
-  await request('/settings/integrations/voice-transcription', z.object({ ok: z.boolean() }), {
+  await request('/settings/integrations/voice-transcription', struct({ ok: Schema.Boolean }), {
     method: 'DELETE',
   });
 }
@@ -2040,21 +2097,21 @@ export async function removeVoiceTranscriptionSettings(): Promise<void> {
 // (`/api/gifs/media/:token`). An unconfigured provider answers 501
 // `gifs_unavailable` and the panel hides the tab.
 
-export const gifResultSchema = z.object({
-  id: z.string(),
-  title: z.string(),
-  mediaToken: z.string(),
-  kind: z.enum(['image', 'video']),
-  width: z.number(),
-  height: z.number(),
-  sizeBytes: z.number().optional(),
+export const gifResultSchema = struct({
+  id: Schema.String,
+  title: Schema.String,
+  mediaToken: Schema.String,
+  kind: Schema.Literals(['image', 'video']),
+  width: Schema.Number,
+  height: Schema.Number,
+  sizeBytes: Schema.optional(Schema.Number),
 });
 
-export type GifResult = z.infer<typeof gifResultSchema>;
+export type GifResult = typeof gifResultSchema.Type;
 
-const gifPageSchema = z.object({
-  items: z.array(gifResultSchema),
-  nextPos: z.string().optional(),
+const gifPageSchema = struct({
+  items: Schema.mutable(Schema.Array(gifResultSchema)),
+  nextPos: Schema.optional(Schema.String),
 });
 
 export interface GifPage {
@@ -2094,15 +2151,15 @@ async function gifRequest(
   if (!response.ok) {
     throw toApiError(response.status, raw);
   }
-  const parsed = gifPageSchema.safeParse(raw);
-  if (!parsed.success) {
+  const parsed = decodeResponse(gifPageSchema, raw);
+  if (!parsed.ok) {
     throw new ApiError(
       response.status,
       'invalid_response',
       'The server sent an unexpected response',
     );
   }
-  return parsed.data;
+  return parsed.value;
 }
 
 export function searchGifs(query: string, pos?: string, signal?: AbortSignal): Promise<GifPage> {
@@ -2130,32 +2187,32 @@ export function gifMediaUrl(mediaToken: string): string {
 // --- Audit log (T-0079, T-0084) --------------------------------------------
 // The wire contract lives in apps/server/src/audit/routes.ts and service.ts.
 
-const auditCostSchema = z
-  .object({
-    currency: z.enum(['EUR', 'USD']),
-    amount: z.number(),
-  })
-  .nullable();
+const auditCostSchema = Schema.NullOr(
+  struct({
+    currency: Schema.Literals(['EUR', 'USD']),
+    amount: Schema.Number,
+  }),
+);
 
-export const publicAuditEntrySchema = z.object({
-  id: z.string(),
-  at: z.string(),
-  aiId: z.string().nullable(),
-  groupId: z.string().nullable(),
-  action: z.string(),
-  subjectId: z.string().nullable(),
-  argsHash: z.string().nullable(),
+export const publicAuditEntrySchema = struct({
+  id: Schema.String,
+  at: Schema.String,
+  aiId: Schema.NullOr(Schema.String),
+  groupId: Schema.NullOr(Schema.String),
+  action: Schema.String,
+  subjectId: Schema.NullOr(Schema.String),
+  argsHash: Schema.NullOr(Schema.String),
   cost: auditCostSchema,
-  result: z.enum(['ok', 'denied', 'error']),
-  detail: z.record(z.string(), z.unknown()).nullable(),
-  actorUserId: z.string().nullable(),
+  result: Schema.Literals(['ok', 'denied', 'error']),
+  detail: Schema.NullOr(Schema.Record(Schema.String, Schema.Unknown)),
+  actorUserId: Schema.NullOr(Schema.String),
 });
 
-export type PublicAuditEntry = z.infer<typeof publicAuditEntrySchema>;
+export type PublicAuditEntry = typeof publicAuditEntrySchema.Type;
 
-const auditPageSchema = z.object({
-  entries: z.array(publicAuditEntrySchema),
-  next: z.string().nullable(),
+const auditPageSchema = struct({
+  entries: Schema.mutable(Schema.Array(publicAuditEntrySchema)),
+  next: Schema.NullOr(Schema.String),
 });
 
 export interface ListAuditPage {
@@ -2198,23 +2255,23 @@ export function listAudit(input: ListAuditInput): Promise<ListAuditPage> {
 // the setup page (never in storage, URL or logs) and rides the sign-up
 // request itself.
 
-const setupStatusSchema = z.object({
-  needsSetup: z.boolean(),
-  mailConfigured: z.boolean(),
+const setupStatusSchema = struct({
+  needsSetup: Schema.Boolean,
+  mailConfigured: Schema.Boolean,
 });
 
-export type SetupStatus = z.infer<typeof setupStatusSchema>;
+export type SetupStatus = typeof setupStatusSchema.Type;
 
 export function getSetupStatus(): Promise<SetupStatus> {
   return request('/setup/status', setupStatusSchema);
 }
 
-const setupResultSchema = z.object({
-  ok: z.boolean(),
-  inviteCode: z.string(),
+const setupResultSchema = struct({
+  ok: Schema.Boolean,
+  inviteCode: Schema.String,
 });
 
-export type SetupResult = z.infer<typeof setupResultSchema>;
+export type SetupResult = typeof setupResultSchema.Type;
 
 export interface SetupInput {
   resendApiKey: string;
@@ -2237,9 +2294,9 @@ export function postSetup(input: SetupInput): Promise<SetupResult> {
 
 export type HandleCheckReason = 'invalid' | 'reserved' | 'taken';
 
-const handleCheckSchema = z.object({
-  available: z.boolean(),
-  reason: z.enum(['invalid', 'reserved', 'taken']).optional(),
+const handleCheckSchema = struct({
+  available: Schema.Boolean,
+  reason: Schema.optional(Schema.Literals(['invalid', 'reserved', 'taken'])),
 });
 
 export interface HandleCheck {
@@ -2253,7 +2310,7 @@ export function checkHandle(handle: string): Promise<HandleCheck> {
   return request(`/handles/check?${params.toString()}`, handleCheckSchema);
 }
 
-const claimedHandleSchema = z.object({ handle: z.string() });
+const claimedHandleSchema = struct({ handle: Schema.String });
 
 export function claimHandle(handle: string): Promise<{ handle: string }> {
   return request('/me/handle', claimedHandleSchema, {
@@ -2266,15 +2323,22 @@ export function claimHandle(handle: string): Promise<{ handle: string }> {
 export type ContactRelation =
   'none' | 'contact' | 'request_sent' | 'request_received' | 'self' | 'blocked';
 
-const handleProfileSchema = z.object({
-  userId: z.string(),
-  name: z.string(),
-  handle: z.string(),
-  image: z.string().nullable(),
-  relation: z.enum(['none', 'contact', 'request_sent', 'request_received', 'self', 'blocked']),
+const handleProfileSchema = struct({
+  userId: Schema.String,
+  name: Schema.String,
+  handle: Schema.String,
+  image: Schema.NullOr(Schema.String),
+  relation: Schema.Literals([
+    'none',
+    'contact',
+    'request_sent',
+    'request_received',
+    'self',
+    'blocked',
+  ]),
 });
 
-export type HandleProfile = z.infer<typeof handleProfileSchema>;
+export type HandleProfile = typeof handleProfileSchema.Type;
 
 export function lookupByHandle(handle: string): Promise<HandleProfile> {
   return request(`/users/by-handle/${encodeURIComponent(handle)}`, handleProfileSchema);
@@ -2282,27 +2346,27 @@ export function lookupByHandle(handle: string): Promise<HandleProfile> {
 
 export type ContactRequestStatus = 'pending' | 'accepted' | 'declined' | 'cancelled';
 
-export const contactRequestPersonSchema = z.object({
-  userId: z.string(),
-  name: z.string(),
-  handle: z.string().nullable(),
-  image: z.string().nullable(),
+export const contactRequestPersonSchema = struct({
+  userId: Schema.String,
+  name: Schema.String,
+  handle: Schema.NullOr(Schema.String),
+  image: Schema.NullOr(Schema.String),
 });
 
-export type ContactRequestPerson = z.infer<typeof contactRequestPersonSchema>;
+export type ContactRequestPerson = typeof contactRequestPersonSchema.Type;
 
-export const contactRequestViewSchema = z.object({
-  id: z.string(),
-  status: z.enum(['pending', 'accepted', 'declined', 'cancelled']),
-  createdAt: z.string(),
+export const contactRequestViewSchema = struct({
+  id: Schema.String,
+  status: Schema.Literals(['pending', 'accepted', 'declined', 'cancelled']),
+  createdAt: Schema.String,
   other: contactRequestPersonSchema,
 });
 
-export type ContactRequestView = z.infer<typeof contactRequestViewSchema>;
+export type ContactRequestView = typeof contactRequestViewSchema.Type;
 
-const contactRequestListSchema = z.object({
-  incoming: z.array(contactRequestViewSchema),
-  outgoing: z.array(contactRequestViewSchema),
+const contactRequestListSchema = struct({
+  incoming: Schema.mutable(Schema.Array(contactRequestViewSchema)),
+  outgoing: Schema.mutable(Schema.Array(contactRequestViewSchema)),
 });
 
 export interface ContactRequestList {
@@ -2310,22 +2374,22 @@ export interface ContactRequestList {
   outgoing: ContactRequestView[];
 }
 
-const contactRequestRowSchema = z.object({
-  id: z.string(),
-  fromUserId: z.string(),
-  toUserId: z.string(),
-  status: z.enum(['pending', 'accepted', 'declined', 'cancelled']),
-  createdAt: z.string(),
-  decidedAt: z.string().optional(),
+const contactRequestRowSchema = struct({
+  id: Schema.String,
+  fromUserId: Schema.String,
+  toUserId: Schema.String,
+  status: Schema.Literals(['pending', 'accepted', 'declined', 'cancelled']),
+  createdAt: Schema.String,
+  decidedAt: Schema.optional(Schema.String),
 });
 
-export type ContactRequestRow = z.infer<typeof contactRequestRowSchema>;
+export type ContactRequestRow = typeof contactRequestRowSchema.Type;
 
-const createdRequestSchema = z.object({
+const createdRequestSchema = struct({
   request: contactRequestRowSchema,
   // Present when the other side already asked: the web offers "Accept" on
   // the existing request instead of creating a second row.
-  incoming: z.boolean().optional(),
+  incoming: Schema.optional(Schema.Boolean),
 });
 
 export function sendContactRequest(handle: string): Promise<{
@@ -2343,7 +2407,7 @@ export function listContactRequests(): Promise<ContactRequestList> {
   return request('/contact-requests', contactRequestListSchema);
 }
 
-const decidedRequestSchema = z.object({ request: contactRequestRowSchema });
+const decidedRequestSchema = struct({ request: contactRequestRowSchema });
 
 export function acceptContactRequest(id: string): Promise<{ request: ContactRequestRow }> {
   return request(`/contact-requests/${encodeURIComponent(id)}/accept`, decidedRequestSchema, {
@@ -2368,19 +2432,19 @@ export function cancelContactRequest(id: string): Promise<{ request: ContactRequ
 // requests never reach the blocker. Writes answer `{ blocked: true/false }`,
 // the list answers newest first.
 
-const blockResultSchema = z.object({ blocked: z.boolean() });
+const blockResultSchema = struct({ blocked: Schema.Boolean });
 
-const blockedPersonSchema = z.object({
-  userId: z.string(),
-  name: z.string(),
-  handle: z.string().nullable(),
-  image: z.string().nullable(),
-  jid: z.string().nullable(),
+const blockedPersonSchema = struct({
+  userId: Schema.String,
+  name: Schema.String,
+  handle: Schema.NullOr(Schema.String),
+  image: Schema.NullOr(Schema.String),
+  jid: Schema.NullOr(Schema.String),
 });
 
-export type BlockedPerson = z.infer<typeof blockedPersonSchema>;
+export type BlockedPerson = typeof blockedPersonSchema.Type;
 
-const blockedListSchema = z.object({ blocked: z.array(blockedPersonSchema) });
+const blockedListSchema = struct({ blocked: Schema.mutable(Schema.Array(blockedPersonSchema)) });
 
 export function blockUser(userId: string): Promise<{ blocked: boolean }> {
   return request(`/blocks/${encodeURIComponent(userId)}`, blockResultSchema, {
@@ -2404,24 +2468,24 @@ export async function listBlockedUsers(): Promise<BlockedPerson[]> {
 // `@username`s), appears in the directory, and joins with one tap. A
 // private group stays invisible and invite-only, exactly as before.
 
-export const directoryEntrySchema = z.object({
-  id: z.string(),
-  kind: z.enum(['group', 'channel']),
-  title: z.string(),
-  handle: z.string(),
-  description: z.string().nullable(),
-  memberCount: z.number(),
-  joined: z.boolean(),
+export const directoryEntrySchema = struct({
+  id: Schema.String,
+  kind: Schema.Literals(['group', 'channel']),
+  title: Schema.String,
+  handle: Schema.String,
+  description: Schema.NullOr(Schema.String),
+  memberCount: Schema.Number,
+  joined: Schema.Boolean,
   // T-0165: the group's picture, when it has one. Optional so older
   // payloads parse (treated as none).
-  avatarUrl: z.string().optional(),
+  avatarUrl: Schema.optional(Schema.String),
 });
 
-export type DirectoryEntry = z.infer<typeof directoryEntrySchema>;
+export type DirectoryEntry = typeof directoryEntrySchema.Type;
 
-const directoryPageSchema = z.object({
-  entries: z.array(directoryEntrySchema),
-  next: z.string().nullable(),
+const directoryPageSchema = struct({
+  entries: Schema.mutable(Schema.Array(directoryEntrySchema)),
+  next: Schema.NullOr(Schema.String),
 });
 
 export interface DirectoryPage {
@@ -2456,12 +2520,12 @@ export function lookupGroupByHandle(handle: string): Promise<DirectoryEntry> {
   return request(`/groups/by-handle/${encodeURIComponent(handle)}`, directoryEntrySchema);
 }
 
-const publicJoinResultSchema = z.object({
-  groupId: z.string(),
-  alreadyMember: z.boolean(),
+const publicJoinResultSchema = struct({
+  groupId: Schema.String,
+  alreadyMember: Schema.Boolean,
 });
 
-export type PublicJoinResult = z.infer<typeof publicJoinResultSchema>;
+export type PublicJoinResult = typeof publicJoinResultSchema.Type;
 
 // Joins a public group or channel with one request (private or unknown
 // answers the same 404; a full group 409 `group_full`; joining twice is
@@ -2502,7 +2566,7 @@ export function checkGroupHandle(handle: string): Promise<HandleCheck> {
 // the server validates by magic bytes (static WebP/PNG only, square,
 // 64–512 px, ≤ 256 KB). The response carries the new `url`
 // (`/api/avatars/<id>`), which every list route also serves as `avatarUrl`.
-const avatarUrlSchema = z.object({ url: z.string() });
+const avatarUrlSchema = struct({ url: Schema.String });
 
 export function uploadAvatar(
   kind: 'user' | 'ai' | 'group',
@@ -2536,19 +2600,19 @@ async function uploadAvatarBytes(path: string, blob: Blob): Promise<{ url: strin
   if (!response.ok) {
     throw toApiError(response.status, raw);
   }
-  const parsed = avatarUrlSchema.safeParse(raw);
-  if (!parsed.success) {
+  const parsed = decodeResponse(avatarUrlSchema, raw);
+  if (!parsed.ok) {
     throw new ApiError(
       response.status,
       'invalid_response',
       'The server sent an unexpected response',
     );
   }
-  return parsed.data;
+  return parsed.value;
 }
 
 export async function removeAvatar(kind: 'user' | 'ai' | 'group', ownerId: string): Promise<void> {
-  await request(`/avatars/${kind}/${encodeURIComponent(ownerId)}`, z.object({ ok: z.boolean() }), {
+  await request(`/avatars/${kind}/${encodeURIComponent(ownerId)}`, struct({ ok: Schema.Boolean }), {
     method: 'DELETE',
   });
 }
@@ -2557,29 +2621,31 @@ export async function removeAvatar(kind: 'user' | 'ai' | 'group', ownerId: strin
 // Personal wallpapers for the chat background dialog. The client resizes and
 // re-encodes before upload (`lib/background-image.ts`); the server validates
 // by magic bytes (WebP/PNG, 64-2048 px, at most 1 MiB, at most 20 per user).
-const backgroundImageSchema = z.object({
-  id: z.string(),
-  url: z.string(),
-  width: z.number(),
-  height: z.number(),
+const backgroundImageSchema = struct({
+  id: Schema.String,
+  url: Schema.String,
+  width: Schema.Number,
+  height: Schema.Number,
 });
 
-export type BackgroundImage = z.infer<typeof backgroundImageSchema>;
+export type BackgroundImage = typeof backgroundImageSchema.Type;
 
-const backgroundListItemSchema = z.object({
-  id: z.string(),
-  url: z.string(),
-  width: z.number().nullable(),
-  height: z.number().nullable(),
-  createdAt: z.string(),
+const backgroundListItemSchema = struct({
+  id: Schema.String,
+  url: Schema.String,
+  width: Schema.NullOr(Schema.Number),
+  height: Schema.NullOr(Schema.Number),
+  createdAt: Schema.String,
 });
 
-export type BackgroundListItem = z.infer<typeof backgroundListItemSchema>;
+export type BackgroundListItem = typeof backgroundListItemSchema.Type;
 
-const backgroundListSchema = z.object({ backgrounds: z.array(backgroundListItemSchema) });
+const backgroundListSchema = struct({
+  backgrounds: Schema.mutable(Schema.Array(backgroundListItemSchema)),
+});
 
 // The POST twin of `uploadAvatarBytes`: a raw-body fetch with a mock branch,
-// `toApiError` on failure and a zod parse of the reply.
+// `toApiError` on failure and an Effect Schema parse of the reply.
 export async function uploadBackground(blob: Blob): Promise<BackgroundImage> {
   let response: Response;
   if (isMockApiEnabled()) {
@@ -2604,15 +2670,15 @@ export async function uploadBackground(blob: Blob): Promise<BackgroundImage> {
   if (!response.ok) {
     throw toApiError(response.status, raw);
   }
-  const parsed = backgroundImageSchema.safeParse(raw);
-  if (!parsed.success) {
+  const parsed = decodeResponse(backgroundImageSchema, raw);
+  if (!parsed.ok) {
     throw new ApiError(
       response.status,
       'invalid_response',
       'The server sent an unexpected response',
     );
   }
-  return parsed.data;
+  return parsed.value;
 }
 
 export function listBackgrounds(): Promise<BackgroundListItem[]> {
@@ -2620,5 +2686,5 @@ export function listBackgrounds(): Promise<BackgroundListItem[]> {
 }
 
 export async function deleteBackground(id: string): Promise<void> {
-  await request(`/backgrounds/${encodeURIComponent(id)}`, z.null(), { method: 'DELETE' });
+  await request(`/backgrounds/${encodeURIComponent(id)}`, Schema.Null, { method: 'DELETE' });
 }

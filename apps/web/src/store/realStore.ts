@@ -37,6 +37,7 @@ import {
   PayloadSchema,
   StickerSchema,
   VoiceMetaSchema,
+  isValid,
 } from '@zilar/protocol';
 import { clearChatListCache, readChatListCache, writeChatListCache } from './chatListCache';
 import {
@@ -47,8 +48,7 @@ import {
   type XmppCore,
   type XmppCoreOptions,
 } from '@zilar/xmpp-core';
-import type { StoreApi } from 'zustand/vanilla';
-import { createStore } from 'zustand/vanilla';
+import { createAtomStore, type StoreApi } from './atomStore';
 import {
   ApiError,
   addGroupAi as addGroupAiRequest,
@@ -783,7 +783,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       }
     });
 
-  return createStore<ChatStoreState>((set, get) => {
+  return createAtomStore<ChatStoreState>((set, get) => {
     let core: XmppCore | undefined;
     let unsubscribers: Array<() => void> = [];
     let typingTimers: Record<string, ReturnType<typeof setTimeout>> = {};
@@ -3399,8 +3399,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
     // of putting junk on the wire.
     function forwardOriginFor(message: UiMessage): ForwardOrigin | undefined {
       if (message.forward !== undefined) {
-        const reused = ForwardOriginSchema.safeParse(message.forward);
-        return reused.success ? reused.data : undefined;
+        return isValid(ForwardOriginSchema)(message.forward) ? message.forward : undefined;
       }
       const createdAt = message.createdAt.getTime();
       if (Number.isNaN(createdAt)) {
@@ -3416,8 +3415,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         ...(originalId === undefined ? {} : { original_id: originalId }),
         original_at: new Date(createdAt).toISOString(),
       };
-      const parsed = ForwardOriginSchema.safeParse(candidate);
-      return parsed.success ? parsed.data : undefined;
+      return isValid(ForwardOriginSchema)(candidate) ? candidate : undefined;
     }
 
     // The reused payload of a forwarded message: a sticker or other card as-is,
@@ -3426,17 +3424,15 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
     // with the protocol schema before the optimistic insert, like `sendSticker`.
     function forwardedPayloadFor(message: UiMessage): Payload | undefined {
       if (message.card !== undefined) {
-        return PayloadSchema.safeParse(message.card).success ? message.card : undefined;
+        return isValid(PayloadSchema)(message.card) ? message.card : undefined;
       }
       if (message.attachment !== undefined) {
         const data = message.attachment;
-        return AttachmentSchema.safeParse(data).success
-          ? { v: 0, type: 'attachment', data }
-          : undefined;
+        return isValid(AttachmentSchema)(data) ? { v: 0, type: 'attachment', data } : undefined;
       }
       if (message.voice !== undefined) {
         const { transcript: _transcript, ...data } = message.voice;
-        return VoiceMetaSchema.safeParse(data).success ? { v: 0, type: 'voice', data } : undefined;
+        return isValid(VoiceMetaSchema)(data) ? { v: 0, type: 'voice', data } : undefined;
       }
       return undefined;
     }
@@ -4358,7 +4354,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           height: sticker.height,
           mime: sticker.mime,
         };
-        if (!StickerSchema.safeParse(data).success) {
+        if (!isValid(StickerSchema)(data)) {
           set({ actionError: { chatId, message: 'That sticker could not be sent.' } });
           return;
         }
@@ -4478,7 +4474,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         if (message === undefined || payload === undefined) {
           return;
         }
-        if (!StickerSchema.safeParse(payload.data).success) {
+        if (!isValid(StickerSchema)(payload.data)) {
           markStickerFailed(chatId, messageId);
           return;
         }

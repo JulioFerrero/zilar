@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Effect } from 'effect';
-import { HttpServerResponse } from 'effect/http';
+import { HttpServerRequest, HttpServerResponse } from 'effect/http';
 import type { Logger } from 'pino';
 import { HttpError } from '../errors';
 import {
@@ -10,7 +10,12 @@ import {
   testApp,
   type TestContext,
 } from '../test-support';
-import { withErrorEnvelope } from './http';
+import {
+  mountEffectRoutes,
+  SOCKET_ADDRESS_HEADER,
+  socketAddressOf,
+  withErrorEnvelope,
+} from './http';
 
 const silentLogger = { error: () => undefined } as unknown as Logger;
 
@@ -178,5 +183,29 @@ describe('effect http adapter', () => {
     expect(await response.json()).toMatchObject({
       error: { code: 'forbidden', message: 'Origin is not allowed' },
     });
+  });
+
+  it('strips a forged socket-address header before the Effect handler', async () => {
+    const { Hono } = await import('hono');
+    const seen: Array<string> = [];
+    const wrapper = new Hono<{ Variables: { requestId: string } }>();
+    mountEffectRoutes(wrapper, [{ method: 'GET', path: '/api/probe' }], async (request) => {
+      const seenRequest = HttpServerRequest.fromWeb(request);
+      const program = Effect.map(HttpServerRequest.HttpServerRequest, (serverRequest) =>
+        socketAddressOf(serverRequest),
+      );
+      seen.push(
+        await Effect.runPromise(
+          Effect.provideService(program, HttpServerRequest.HttpServerRequest, seenRequest),
+        ),
+      );
+      return new Response('ok');
+    });
+    const response = await wrapper.request('/api/probe', {
+      headers: { [SOCKET_ADDRESS_HEADER]: '203.0.113.99' },
+    });
+    expect(response.status).toBe(200);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).not.toBe('203.0.113.99');
   });
 });

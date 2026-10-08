@@ -23,9 +23,9 @@ import {
   INTEGRATIONS_EMAIL_RATE_LIMIT_MAX,
   INTEGRATIONS_TELEGRAM_RATE_LIMIT_MAX,
   createGetBotToken,
-  createIntegrationsRoutes,
   type IntegrationsRoutesDependencies,
 } from './routes';
+import { INTEGRATIONS_API_ROUTES } from './api';
 import { getStoredTelegramToken, TELEGRAM_BOT_TOKEN_SETTING } from './settings';
 import { MAIL_FROM_SETTING, RESEND_API_KEY_SETTING, settingsCipherFor } from '../setup/settings';
 import type { TelegramClient } from '../stickers/telegram-import';
@@ -505,18 +505,11 @@ describe('PUT /api/settings/integrations/email', () => {
 
 describe('integrations route shape', () => {
   it('registers exactly GET, PUT/DELETE telegram and PUT email under /api/settings/integrations', () => {
-    const sub = createIntegrationsRoutes({
-      auth: context.auth,
-      db: context.db,
-      config: context.config,
-      logger: context.logger,
-      mailer: liveMailer,
-    });
-    const paths = sub.routes.map((route) => `${route.method}|${route.path}`);
-    expect(paths).toContain('GET|/settings/integrations');
-    expect(paths).toContain('PUT|/settings/integrations/telegram');
-    expect(paths).toContain('DELETE|/settings/integrations/telegram');
-    expect(paths).toContain('PUT|/settings/integrations/email');
-    expect(paths).toHaveLength(4);
+    const routes = INTEGRATIONS_API_ROUTES.map((route) => `${route.method}|${route.path}`);
+    expect(routes).toContain('GET|/api/settings/integrations');
+    expect(routes).toContain('PUT|/api/settings/integrations/telegram');
+    expect(routes).toContain('DELETE|/api/settings/integrations/telegram');
+    expect(routes).toContain('PUT|/api/settings/integrations/email');
+    expect(routes).toHaveLength(4);
   });
 });

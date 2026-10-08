@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ApprovalRequestSchema } from '@zilar/protocol';
+import { ApprovalRequestSchema, decodeOrThrow } from '@zilar/protocol';
 import {
   APPROVAL_POLL_INTERVAL_MS,
   useApprovalPolling,
@@ -8,7 +8,7 @@ import {
   type VisibilitySource,
 } from './useApprovalPolling';
 
-const baseRequest = ApprovalRequestSchema.parse({
+const baseRequest = decodeOrThrow(ApprovalRequestSchema)({
   id: 'apr-42',
   room: 'dev-team@rooms.zilar.test',
   ai: 'dev-1@ai.zilar.test',
@@ -364,7 +364,7 @@ describe('useApprovalPolling', () => {
 
     const { rerender } = renderHook(
       ({ id }) =>
-        useApprovalPolling(ApprovalRequestSchema.parse({ ...baseRequest, id }), {
+        useApprovalPolling(decodeOrThrow(ApprovalRequestSchema)({ ...baseRequest, id }), {
           visibility: harness.visibility,
           timers: harness.timers,
           now: harness.now,
@@ -387,7 +387,7 @@ describe('useApprovalPolling', () => {
   it('does one final read after expires_at passes', async () => {
     const harness = createHarness();
     const expiresAt = new Date(Date.now() + 1_000).toISOString();
-    const request = ApprovalRequestSchema.parse({ ...baseRequest, expires_at: expiresAt });
+    const request = decodeOrThrow(ApprovalRequestSchema)({ ...baseRequest, expires_at: expiresAt });
     const expiresAtMs = new Date(expiresAt).getTime();
     harness.setNow(expiresAtMs - 500);
 

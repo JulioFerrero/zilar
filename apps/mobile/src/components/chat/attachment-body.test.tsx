@@ -79,10 +79,6 @@ vi.mock('@/store/chat-store-provider', () => ({
   useChatStoreApi: () => ({ getState: () => ({}) }),
 }));
 
-vi.mock('zustand', () => ({
-  useStore: (_store: unknown, selector: (state: unknown) => unknown) => selector({}),
-}));
-
 function bodyMessage(overrides: Partial<UiMessage> = {}): UiMessage {
   return {
     id: 'm-attachment-1',

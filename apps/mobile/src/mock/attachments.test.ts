@@ -2,14 +2,14 @@ import type { Attachment } from '@zilar/protocol';
 import { describe, expect, it } from 'vitest';
 
 import { mockDemoAttachments } from './attachments';
-import { AttachmentSchema } from '@zilar/protocol';
+import { AttachmentSchema, isValid } from '@zilar/protocol';
 
 describe('mock demo attachments (T-0150)', () => {
   it('ships two generated images and a file that pass AttachmentSchema', () => {
     const demos = mockDemoAttachments();
     expect(demos).toHaveLength(3);
     for (const attachment of demos) {
-      expect(AttachmentSchema.safeParse(attachment).success).toBe(true);
+      expect(isValid(AttachmentSchema)(attachment)).toBe(true);
     }
     expect(demos.filter((item) => item.kind === 'image')).toHaveLength(2);
     expect(demos.filter((item) => item.kind === 'file')).toHaveLength(1);

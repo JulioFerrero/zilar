@@ -1,9 +1,9 @@
 import { render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ProgressSchema } from '@zilar/protocol';
+import { ProgressSchema, decodeOrThrow } from '@zilar/protocol';
 import { ProgressCard } from './ProgressCard';
 
-const progress = ProgressSchema.parse({
+const progress = decodeOrThrow(ProgressSchema)({
   ai: 'dev-1@ai.zilar.test',
   stage: 'Running e2e tests',
   detail: '12 of 15 specs',

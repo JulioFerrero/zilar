@@ -96,6 +96,19 @@ export function sqlRuntimeFor(db: ServerDatabase): SqlRuntime {
   return runtime;
 }
 
+// Disposes the runtime for one database and forgets it, so a later
+// `sqlRuntimeFor(db)` throws instead of handing back a closed pool. The entry
+// is removed first: a second dispose call is a no-op (idempotent), and no
+// other caller can race a half-disposed runtime.
+export async function disposeSqlRuntime(db: ServerDatabase): Promise<void> {
+  const runtime = runtimes.get(db);
+  if (runtime === undefined) {
+    return;
+  }
+  runtimes.delete(db);
+  await runtime.dispose();
+}
+
 // Test layer: a fresh PGlite per use, started from a snapshot of a database
 // migrated by drizzle. The snapshot idea is the one `test-support.ts` uses;
 // this copy exists so a module test can ask for a SQL client without going

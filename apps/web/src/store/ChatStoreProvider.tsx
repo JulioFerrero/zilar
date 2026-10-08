@@ -1,7 +1,7 @@
+import { RegistryContext, useAtomValue } from '@effect/atom-react';
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import { useStore } from 'zustand';
-import type { StoreApi } from 'zustand/vanilla';
 import { useAuth } from '@/auth/AuthProvider';
+import type { StoreApi } from '@/store/atomStore';
 import { isMockMode } from '@/mock/gate';
 import { createRealChatStore } from '@/store/realStore';
 import { createChatStore, type ChatStoreState } from '@/store/store';
@@ -31,7 +31,11 @@ export function ChatStoreProvider({
     return () => value.getState().stop();
   }, [store, value, auth.status]);
 
-  return <ChatStoreContext.Provider value={value}>{children}</ChatStoreContext.Provider>;
+  return (
+    <RegistryContext.Provider value={value.registry}>
+      <ChatStoreContext.Provider value={value}>{children}</ChatStoreContext.Provider>
+    </RegistryContext.Provider>
+  );
 }
 
 export function useChatStoreApi(): StoreApi<ChatStoreState> {
@@ -43,5 +47,5 @@ export function useChatStoreApi(): StoreApi<ChatStoreState> {
 }
 
 export function useChatStore(): ChatStoreState {
-  return useStore(useChatStoreApi(), (state) => state);
+  return useAtomValue(useChatStoreApi().atom);
 }

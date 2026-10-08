@@ -1,4 +1,4 @@
-import { StickerSchema, type Attachment } from '@zilar/protocol';
+import { StickerSchema, isValid, type Attachment } from '@zilar/protocol';
 import { ArrowUp, Paperclip, Smile, X } from 'lucide-react-native';
 import { useCallback, useMemo, useState } from 'react';
 import { Keyboard, Pressable, TextInput, View } from 'react-native';
@@ -395,7 +395,7 @@ export function Composer({
       height: sticker.height,
       mime: sticker.mime,
     };
-    if (!StickerSchema.safeParse(data).success) {
+    if (!isValid(StickerSchema)(data)) {
       onSendSticker(sticker);
       return;
     }

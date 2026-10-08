@@ -453,9 +453,11 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0414](T-0414-web-forward-store-action.md) | Web store: forwardMessages sends copies with a forward origin, optional comment | 2026-10-06 |
 | [T-0425](T-0425-mobile-profile-buttons-kit.md) | Mobile: profile and contact card buttons on the kit Button | 2026-10-06 |
 | [T-0426](T-0426-mobile-ai-sheet-buttons-kit.md) | Mobile: AI activity Refresh, tool sheet Show all/less and Close on the kit Button | 2026-10-06 |
-| [T-0494](T-0494-protocol-effect-schema.md) | Effect B1: protocol on Effect Schema + every consumer | running | auto | T-0490 | |
-| [T-0510](T-0510-effect-sql-blocks-runtime.md) | Effect C1: blocks on effect/sql + runtime wiring | running | auto | T-0496 | |
-| [T-0512](T-0512-agents-g1-extract-contracts.md) | Agents G1: extract contracts and DB lookups | running | auto | T-0503 | |
+| [T-0561](T-0561-effect-http-auth-me-invites.md) | Effect C (HTTP): /me and invites on HttpApi | planned | auto | T-0548 | |
+| [T-0571](T-0571-audit-tool-args-schema.md) | Audit + plan: AI tool argument layer from zod to Effect Schema | planned | auto | T-0564 | |
+| [T-0574](T-0574-effect-sql-invites-provisioning.md) | effect/sql: sign-up invites and XMPP provisioning | planned | auto | T-0568 | |
+| [T-0572](T-0572-effect-http-machines.md) | Effect C (HTTP): machines and runner pairing on HttpApi | planned | auto | T-0566 | |
+| [T-0576](T-0576-effect-http-avatars.md) | Effect C (HTTP): avatars on HttpApi | planned | auto | T-0573 | |
 | [T-0427](T-0427-mobile-forwarded-header.md) | Mobile: forwarded messages show 'Forwarded from X [in Y]' | 2026-10-06 |
 | [T-0428](T-0428-mobile-new-chat-menu-sheet.md) | Mobile: New chat menu on the kit ActionSheet with icons | 2026-10-06 |
 | [T-0429](T-0429-mobile-dismiss-banner.md) | Mobile: DismissBanner replaces 12 copied chat screen banners | 2026-10-06 |
@@ -537,3 +539,68 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0509](T-0509-effect-runner-client-lifecycle.md) | Effect F: RunnerClient lifecycle on Effect | 2026-10-07 |
 | [T-0513](T-0513-agents-c1-completion-effect.md) | Agents C1: model call on Effect | 2026-10-07 |
 | [T-0496](T-0496-db-effect-sql-spike.md) | Effect F3 spike: pins on effect/sql + migration plan | 2026-10-07 |
+| [T-0515](T-0515-effect-http-contact-requests.md) | Effect C (HTTP): contact-requests on HttpApi | 2026-10-07 |
+| [T-0512](T-0512-agents-g1-extract-contracts.md) | Agents G1: extract contracts and DB lookups | 2026-10-07 |
+| [T-0510](T-0510-effect-sql-blocks-runtime.md) | Effect C1: blocks on effect/sql + runtime wiring | 2026-10-07 |
+| [T-0516](T-0516-agents-g2-extract-budget.md) | Agents G2: extract the budget gate | 2026-10-07 |
+| [T-0494](T-0494-protocol-effect-schema.md) | Effect B1: protocol on Effect Schema + every consumer | 2026-10-07 |
+| [T-0514](T-0514-effect-http-blocks-contacts-directory.md) | Effect C (HTTP): blocks, contacts, directory on HttpApi | 2026-10-07 |
+| [T-0517](T-0517-agents-g3-extract-memory.md) | Agents G3: extract memory context and compaction | 2026-10-07 |
+| [T-0519](T-0519-effect-sql-contact-requests.md) | Effect C1: contact-requests on effect/sql | 2026-10-07 |
+| [T-0508](T-0508-effect-web-drafts-tools-cache.md) | Effect D4: web drafts, tools, chatListCache on Effect Schema | 2026-10-07 |
+| [T-0506](T-0506-effect-mobile-pins-api.md) | Effect E pilot: mobile pins-api on Effect Schema | 2026-10-07 |
+| [T-0505](T-0505-effect-web-api-1.md) | Effect D1: web api.ts on Effect Schema, part 1 | 2026-10-07 |
+| [T-0518](T-0518-effect-http-blocks-directory-tests.md) | Effect C (HTTP) follow-up: blocks/directory tests on the Effect path | 2026-10-07 |
+| [T-0521](T-0521-audit-atom-react-plan.md) | Audit: zustand to atom-react plan | 2026-10-07 |
+| [T-0504](T-0504-effect-server-config.md) | Effect F5: server config on Effect Schema | 2026-10-07 |
+| [T-0523](T-0523-agents-g6-extract-listener.md) | Agents G6: extract the room listener | 2026-10-07 |
+| [T-0520](T-0520-effect-http-chat-prefs-folders.md) | Effect C (HTTP): chat-prefs, chat-folders on HttpApi | 2026-10-07 |
+| [T-0524](T-0524-effect-mobile-api-batch-1.md) | Effect E batch 1: mobile invites, chat-prefs, search, audit API | 2026-10-07 |
+| [T-0522](T-0522-effect-sql-contacts-directory.md) | Effect C1: contacts, directory services on effect/sql | 2026-10-07 |
+| [T-0526](T-0526-atom-react-web-w1.md) | atom-react W1: web stores on an atom registry | 2026-10-07 |
+| [T-0507](T-0507-effect-web-api-2.md) | Effect D2: web api.ts on Effect Schema, part 2 | 2026-10-07 |
+| [T-0527](T-0527-effect-mobile-api-batch-2.md) | Effect E batch 2: mobile roles, gifs, ai-memory, connections API | 2026-10-08 |
+| [T-0529](T-0529-agents-g5a-live-wrappers.md) | Agents G5a: extract the live-session wrappers and postToChat | 2026-10-08 |
+| [T-0525](T-0525-effect-http-pins-roles-audit.md) | Effect C (HTTP): pins, roles, audit on HttpApi | 2026-10-08 |
+| [T-0530](T-0530-effect-web-api-3.md) | Effect D3: web api.ts part 3, zod leaves web | 2026-10-08 |
+| [T-0531](T-0531-atom-react-mobile-m1.md) | atom-react M1: mobile stores on an atom registry | 2026-10-08 |
+| [T-0534](T-0534-agents-g5b-session-registry.md) | Agents G5b: extract the session lifecycle | 2026-10-08 |
+| [T-0528](T-0528-effect-sql-chat-prefs-folders.md) | Effect C1: chat-prefs, chat-folders services on effect/sql | 2026-10-08 |
+| [T-0536](T-0536-effect-http-groups.md) | Effect C (HTTP): groups on HttpApi | 2026-10-08 |
+| [T-0532](T-0532-effect-mobile-api-batch-3.md) | Effect E batch 3: zod leaves mobile | 2026-10-08 |
+| [T-0535](T-0535-effect-sql-connections-machines-registry.md) | Effect C1: machine registry on effect/sql | 2026-10-08 |
+| [T-0537](T-0537-effect-scripts-shots.md) | Effect: screenshot scripts on Effect Schema | 2026-10-08 |
+| [T-0533](T-0533-effect-http-xmpp-chats-memory.md) | Effect C (HTTP): xmpp token, chats, AI memory on HttpApi | 2026-10-08 |
+| [T-0540](T-0540-agents-g7-extract-dm-turn.md) | Agents G7: extract the DM turn | 2026-10-08 |
+| [T-0538](T-0538-mobile-api-error-envelope.md) | Mobile polish: shared lenient error envelope, search abort race | 2026-10-08 |
+| [T-0541](T-0541-effect-mobile-api-batch-4.md) | Effect E batch 4: mobile directory, chat-folders, profile, approvals API | 2026-10-08 |
+| [T-0547](T-0547-effect-mobile-api-batch-5.md) | Effect E batch 5: mobile auth, machines, ais, invite-links API | 2026-10-08 |
+| [T-0546](T-0546-agents-g8a-extract-group-turn.md) | Agents G8a: extract the group turn | 2026-10-08 |
+| [T-0542](T-0542-effect-http-output-schema-check.md) | Effect C (HTTP) check: no stripped response fields | 2026-10-08 |
+| [T-0539](T-0539-effect-http-topics.md) | Effect C (HTTP): topics on HttpApi | 2026-10-08 |
+| [T-0550](T-0550-effect-mobile-api-batch-6.md) | Effect E batch 6: mobile contacts, stickers API | 2026-10-08 |
+| [T-0551](T-0551-effect-mobile-api-batch-7.md) | Effect E batch 7: mobile topics, chat API | 2026-10-08 |
+| [T-0548](T-0548-effect-sql-ai-usage-search-archives.md) | Effect C1: AI usage and search archives on effect/sql | 2026-10-08 |
+| [T-0552](T-0552-effect-mobile-api-batch-8.md) | Effect E batch 8: mobile tools API (last client) | 2026-10-08 |
+| [T-0544](T-0544-effect-http-integrations.md) | Effect C (HTTP): integration settings on HttpApi | 2026-10-08 |
+| [T-0549](T-0549-agents-g8b-extract-group-ingest.md) | Agents G8b: extract the group ingest | 2026-10-08 |
+| [T-0543](T-0543-effect-http-push.md) | Effect C (HTTP): push on HttpApi | 2026-10-08 |
+| [T-0554](T-0554-effect-http-routines.md) | Effect C (HTTP): routines on HttpApi | 2026-10-08 |
+| [T-0545](T-0545-effect-http-voice-transcription.md) | Effect C (HTTP): voice transcription on HttpApi | 2026-10-08 |
+| [T-0553](T-0553-effect-http-approvals.md) | Effect C (HTTP): approvals on HttpApi | 2026-10-08 |
+| [T-0556](T-0556-agents-g4-extract-tool-exec.md) | Agents G4: extract the tool executor | 2026-10-08 |
+| [T-0562](T-0562-agents-g9-extract-lifecycle.md) | Agents G9: extract start/stop/reconcile | 2026-10-08 |
+| [T-0558](T-0558-effect-http-search.md) | Effect C (HTTP): message search on HttpApi | 2026-10-08 |
+| [T-0563](T-0563-effect-http-socket-address.md) | Effect C (HTTP) adapter: socket address and shared client IP | 2026-10-08 |
+| [T-0555](T-0555-effect-http-ais.md) | Effect C (HTTP): AI management on HttpApi | 2026-10-08 |
+| [T-0559](T-0559-effect-http-tools.md) | Effect C (HTTP): tools routes on HttpApi | 2026-10-08 |
+| [T-0557](T-0557-effect-http-connections.md) | Effect C (HTTP): provider-key connections on HttpApi | 2026-10-08 |
+| [T-0567](T-0567-effect-sql-gateway-db.md) | effect/sql: agents gateway db helpers | 2026-10-08 |
+| [T-0564](T-0564-effect-schema-server-leaf-batch-1.md) | Effect Schema: server leaf batch 1 | 2026-10-08 |
+| [T-0565](T-0565-effect-schema-gifs.md) | Effect Schema: gifs provider and Giphy parser | 2026-10-08 |
+| [T-0568](T-0568-effect-sql-delegation.md) | effect/sql: AI delegation service | 2026-10-08 |
+| [T-0566](T-0566-effect-http-invite-links.md) | Effect C (HTTP): group invite links on HttpApi | 2026-10-08 |
+| [T-0569](T-0569-effect-schema-server-leaf-batch-2.md) | Effect Schema: server leaf batch 2 | 2026-10-08 |
+| [T-0570](T-0570-effect-schema-server-batch-3.md) | Effect Schema: push config, subscriptions, AI templates, provider ids | 2026-10-08 |
+| [T-0573](T-0573-effect-http-voice.md) | Effect C (HTTP): voice conversion, the binary pilot | 2026-10-08 |
+| [T-0560](T-0560-effect-http-media.md) | Effect C (HTTP): media gallery on HttpApi | 2026-10-08 |

@@ -1,7 +1,8 @@
-import { and, eq } from 'drizzle-orm';
+import { Effect } from 'effect';
+import { SqlClient, SqlError } from 'effect/sql';
 import type { LitellmAdminClient } from '../ai/litellm-client';
 import type { ServerDatabase } from '../db/client';
-import { aiDailySpend, aiLimits, ais, llmVirtualKeys } from '../db/schema';
+import { sqlRuntimeFor } from '../effect/sql';
 
 export interface AiUsageLogger {
   warn: (fields: Record<string, unknown>, message: string) => void;
@@ -30,6 +31,26 @@ export function utcDayString(now: Date): string {
   return now.toISOString().slice(0, 10);
 }
 
+function runSql<A>(
+  db: ServerDatabase,
+  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
+): Promise<A> {
+  return sqlRuntimeFor(db).runPromise(effect);
+}
+
+// `numeric` columns come back as strings from node-postgres (and PGlite), so
+// these stay `string` and the reads below keep the same `Number(...)`
+// conversion the drizzle version did.
+interface AiLimitRow {
+  perDayUsd: string;
+  perMonthUsd: string;
+  litellmKeyId: string | null;
+}
+
+interface BaselineRow {
+  baselineUsd: string;
+}
+
 // Reads one AI's spend from LiteLLM's cumulative key spend and derives today's
 // spend from the stored baseline, as decided in T-0058:
 // - the first read of a UTC day records the current spend as the baseline, so
@@ -46,17 +67,18 @@ export function utcDayString(now: Date): string {
 // only break the AI while LiteLLM hiccups. Log lines carry the AI id, never
 // the key or its spend source: only ids travel here.
 export async function getAiUsage(deps: AiUsageDeps, aiId: string): Promise<AiUsage | null> {
-  const [row] = await deps.db
-    .select({
-      perDayUsd: aiLimits.perDayUsd,
-      perMonthUsd: aiLimits.perMonthUsd,
-      litellmKeyId: llmVirtualKeys.litellmKeyId,
-    })
-    .from(ais)
-    .innerJoin(aiLimits, eq(aiLimits.aiId, ais.id))
-    .leftJoin(llmVirtualKeys, eq(llmVirtualKeys.aiId, ais.id))
-    .where(eq(ais.id, aiId))
-    .limit(1);
+  const [row] = await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<AiLimitRow>`SELECT l.per_day_usd, l.per_month_usd, k.litellm_key_id
+        FROM ais a
+        INNER JOIN ai_limits l ON l.ai_id = a.id
+        LEFT JOIN llm_virtual_keys k ON k.ai_id = a.id
+        WHERE a.id = ${aiId}
+        LIMIT 1`;
+    }),
+  );
   if (!row || row.litellmKeyId === null) {
     return null;
   }
@@ -81,19 +103,28 @@ export async function getAiUsage(deps: AiUsageDeps, aiId: string): Promise<AiUsa
   const windowUsd = Math.max(0, spend);
   const day = utcDayString((deps.now ?? (() => new Date()))());
 
-  const [baseline] = await deps.db
-    .select({ baselineUsd: aiDailySpend.baselineUsd })
-    .from(aiDailySpend)
-    .where(and(eq(aiDailySpend.aiId, aiId), eq(aiDailySpend.day, day)))
-    .limit(1);
+  const [baseline] = await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<BaselineRow>`SELECT baseline_usd FROM ai_daily_spend
+        WHERE ai_id = ${aiId} AND day = ${day}
+        LIMIT 1`;
+    }),
+  );
   if (!baseline) {
     // First read of the day: record the baseline. `ON CONFLICT DO NOTHING`
     // so two concurrent first reads insert exactly one row and both answer
     // today 0.
-    await deps.db
-      .insert(aiDailySpend)
-      .values({ aiId, day, baselineUsd: usd(windowUsd) })
-      .onConflictDoNothing();
+    await runSql(
+      deps.db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO ai_daily_spend (ai_id, day, baseline_usd)
+          VALUES (${aiId}, ${day}, ${usd(windowUsd)})
+          ON CONFLICT DO NOTHING`;
+      }),
+    );
     return {
       todayUsd: 0,
       windowUsd,
@@ -109,10 +140,15 @@ export async function getAiUsage(deps: AiUsageDeps, aiId: string): Promise<AiUsa
   if (windowUsd < baselineUsd) {
     // The key's 30-day window has reset: the cumulative spend dropped back.
     // Store the new spend as today's baseline and answer 0.
-    await deps.db
-      .update(aiDailySpend)
-      .set({ baselineUsd: usd(windowUsd), updatedAt: new Date() })
-      .where(and(eq(aiDailySpend.aiId, aiId), eq(aiDailySpend.day, day)));
+    await runSql(
+      deps.db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`UPDATE ai_daily_spend
+          SET baseline_usd = ${usd(windowUsd)}, updated_at = ${new Date().toISOString()}
+          WHERE ai_id = ${aiId} AND day = ${day}`;
+      }),
+    );
     return {
       todayUsd: 0,
       windowUsd,

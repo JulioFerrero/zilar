@@ -13,6 +13,7 @@
 import { Context, Effect, Layer } from 'effect';
 import { HttpServerRequest, HttpServerResponse } from 'effect/http';
 import { HttpApiMiddleware } from 'effect/http-api';
+import { getConnInfo } from '@hono/node-server/conninfo';
 import type { Hono } from 'hono';
 import type { Context as HonoContext } from 'hono';
 import type { RequestIdVariables } from 'hono/request-id';
@@ -21,6 +22,7 @@ import type { Auth } from '../auth/auth';
 import { HttpError } from '../errors';
 
 export const REQUEST_ID_HEADER = 'x-request-id';
+export const SOCKET_ADDRESS_HEADER = 'x-zilar-socket-address';
 
 /** The slice of the signed-in user an Effect handler may read. */
 export interface SessionUser {
@@ -77,6 +79,14 @@ export function sessionLayer(auth: Auth, logger: Logger): Layer.Layer<Session> {
 
 export function requestIdOf(request: HttpServerRequest.HttpServerRequest): string {
   return request.headers[REQUEST_ID_HEADER] ?? '';
+}
+
+/**
+ * Reads the socket address `forwardRequest` stamped onto the request. A
+ * client can never forge it: the header is deleted and re-set at the edge.
+ */
+export function socketAddressOf(request: HttpServerRequest.HttpServerRequest): string {
+  return request.headers[SOCKET_ADDRESS_HEADER] ?? 'unknown';
 }
 
 /**
@@ -155,7 +165,21 @@ function forwardRequest(context: HonoContext<{ Variables: RequestIdVariables }>)
   if (requestId) {
     headers.set(REQUEST_ID_HEADER, requestId);
   }
+  // Strip any client-forged value first: only the edge may set it.
+  headers.delete(SOCKET_ADDRESS_HEADER);
+  headers.set(SOCKET_ADDRESS_HEADER, readSocketAddress(context));
   return new Request(context.req.raw, { headers });
+}
+
+// The socket address as the server sees it: the same `getConnInfo` read
+// with the same `'unknown'` fallback as the Hono route modules use.
+function readSocketAddress(context: HonoContext<{ Variables: RequestIdVariables }>): string {
+  try {
+    const address = getConnInfo(context).remote.address;
+    return typeof address === 'string' && address.length > 0 ? address : 'unknown';
+  } catch {
+    return 'unknown';
+  }
 }
 
 /**

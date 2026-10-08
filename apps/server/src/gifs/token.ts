@@ -1,12 +1,13 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { z } from 'zod';
+import { Exit, Schema } from 'effect';
+import { struct } from '@zilar/protocol';
 
 export const GIF_TOKEN_TTL_MS = 15 * 60 * 1000;
 
-const tokenPayloadSchema = z.object({
-  u: z.string().min(1).max(128),
-  m: z.string().min(1).max(2048),
-  e: z.number().int().positive(),
+const tokenPayloadSchema = struct({
+  u: Schema.String.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(128))),
+  m: Schema.String.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(2048))),
+  e: Schema.Number.pipe(Schema.check(Schema.isInt(), Schema.isGreaterThan(0))),
 });
 
 /**
@@ -52,17 +53,17 @@ export function createGifTokenIssuer(options: {
       if (left.length !== right.length || !timingSafeEqual(left, right)) {
         return undefined;
       }
-      const parsed = tokenPayloadSchema.safeParse(JSON.parse(payload));
-      if (!parsed.success) {
+      const exit = Schema.decodeUnknownExit(tokenPayloadSchema)(JSON.parse(payload));
+      if (!Exit.isSuccess(exit)) {
         return undefined;
       }
-      if (parsed.data.u !== userId) {
+      if (exit.value.u !== userId) {
         return undefined;
       }
-      if (parsed.data.e <= now()) {
+      if (exit.value.e <= now()) {
         return undefined;
       }
-      return parsed.data.m;
+      return exit.value.m;
     },
   };
 }

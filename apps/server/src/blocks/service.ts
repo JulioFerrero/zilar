@@ -2,11 +2,16 @@
 // the blocked person: their requests look successful and handle lookups
 // answer 404. Reads and writes here assume the caller already holds a
 // session; the routes own the rate limit.
+//
+// Every query runs on the `effect/sql` client registered for this database
+// (see `../effect/sql`). The exported functions stay `async` so routes and
+// tests keep their shape during the transition.
 
-import { and, desc, eq, or, sql } from 'drizzle-orm';
+import { Effect } from 'effect';
+import { SqlClient, SqlError } from 'effect/sql';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
-import { contactRequests, handles, user, userBlocks, xmppAccounts } from '../db/schema';
+import { sqlRuntimeFor } from '../effect/sql';
 import { HttpError } from '../errors';
 
 // The list endpoint caps server-side; nobody should keep 500 blocks, but
@@ -28,6 +33,13 @@ export interface BlockedUserView {
   jid: string | null;
 }
 
+function runSql<A>(
+  db: ServerDatabase,
+  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
+): Promise<A> {
+  return sqlRuntimeFor(db).runPromise(effect);
+}
+
 function serviceNow(deps: BlocksDeps): Date {
   return deps.now ? deps.now() : new Date();
 }
@@ -47,7 +59,7 @@ function auditFor(deps: BlocksDeps, action: string, actorUserId: string, subject
   });
 }
 
-// A DM peer JID maps to one of our users through `xmppAccounts.jid`. An AI
+// A DM peer JID maps to one of our users through `xmpp_accounts.jid`. An AI
 // peer has no row (and therefore no block). The lookup folds case like
 // `resolveChatFilter`.
 export async function isDmBlocked(
@@ -55,25 +67,28 @@ export async function isDmBlocked(
   userId: string,
   peerJid: string,
 ): Promise<boolean> {
-  const [peer] = await db
-    .select({ userId: xmppAccounts.userId })
-    .from(xmppAccounts)
-    .where(sql`lower(${xmppAccounts.jid}) = ${peerJid.toLowerCase()}`)
-    .limit(1);
+  const [peer] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ userId: string }>`SELECT user_id FROM xmpp_accounts
+        WHERE lower(jid) = ${peerJid.toLowerCase()} LIMIT 1`;
+    }),
+  );
   if (peer === undefined) {
     return false;
   }
   // Either direction hides the DM: a block is silent.
-  const [block] = await db
-    .select({ userId: userBlocks.userId })
-    .from(userBlocks)
-    .where(
-      or(
-        and(eq(userBlocks.userId, userId), eq(userBlocks.blockedUserId, peer.userId)),
-        and(eq(userBlocks.userId, peer.userId), eq(userBlocks.blockedUserId, userId)),
-      ),
-    )
-    .limit(1);
+  const [block] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ userId: string }>`SELECT user_id FROM user_blocks
+        WHERE (user_id = ${userId} AND blocked_user_id = ${peer.userId})
+           OR (user_id = ${peer.userId} AND blocked_user_id = ${userId})
+        LIMIT 1`;
+    }),
+  );
   return block !== undefined;
 }
 
@@ -91,47 +106,43 @@ export async function blockUser(
     throw new HttpError(400, 'invalid_request', 'You cannot block yourself');
   }
   const now = serviceNow(deps);
-  const inserted = await deps.db.transaction(async (tx) => {
-    // A request A→B can otherwise commit after this block cancels the
-    // pending rows: `createContactRequest` serializes on
-    // `contact-sender:<sender>`, so this transaction takes the blocked
-    // person's sender key too, BEFORE the cancel update. The sender key
-    // comes first, then `user-block:`, in both transactions that need the
-    // pair — `createContactRequest` only ever takes the sender key — so no
-    // lock order exists to deadlock. (PGlite has one connection per
-    // database, which is why the handle-comment rule in
-    // `createContactRequest` folds keys into one critical section; here the
-    // two takes are sequential on the same connection, never held while
-    // waiting on another.)
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${'contact-sender:' + targetId}))`);
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${'user-block:' + userId}))`);
-    const [target] = await tx
-      .select({ id: user.id })
-      .from(user)
-      .where(eq(user.id, targetId))
-      .limit(1);
-    if (!target) {
-      throw new HttpError(404, 'not_found', 'User not found');
-    }
-    const [row] = await tx
-      .insert(userBlocks)
-      .values({ userId, blockedUserId: targetId, createdAt: now })
-      .onConflictDoNothing()
-      .returning();
-    await tx
-      .update(contactRequests)
-      .set({ status: 'cancelled', decidedAt: now })
-      .where(
-        and(
-          eq(contactRequests.status, 'pending'),
-          or(
-            and(eq(contactRequests.fromUserId, userId), eq(contactRequests.toUserId, targetId)),
-            and(eq(contactRequests.fromUserId, targetId), eq(contactRequests.toUserId, userId)),
-          ),
-        ),
-      );
-    return row !== undefined;
+  const insert = Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    return yield* sql.withTransaction(
+      Effect.gen(function* () {
+        // A request A→B can otherwise commit after this block cancels the
+        // pending rows: `createContactRequest` serializes on
+        // `contact-sender:<sender>`, so this transaction takes the blocked
+        // person's sender key too, BEFORE the cancel update. The sender key
+        // comes first, then `user-block:`, in both transactions that need the
+        // pair — `createContactRequest` only ever takes the sender key — so no
+        // lock order exists to deadlock. (PGlite has one connection per
+        // database, which is why the handle-comment rule in
+        // `createContactRequest` folds keys into one critical section; here the
+        // two takes are sequential on the same connection, never held while
+        // waiting on another.)
+        yield* sql`SELECT pg_advisory_xact_lock(hashtext(${'contact-sender:' + targetId}))`;
+        yield* sql`SELECT pg_advisory_xact_lock(hashtext(${'user-block:' + userId}))`;
+        const [target] = yield* sql<{ id: string }>`SELECT id FROM "user"
+          WHERE id = ${targetId} LIMIT 1`;
+        if (target === undefined) {
+          return yield* Effect.fail(new HttpError(404, 'not_found', 'User not found'));
+        }
+        const rows = yield* sql<{ userId: string }>`INSERT INTO user_blocks
+            (user_id, blocked_user_id, created_at)
+          VALUES (${userId}, ${targetId}, ${now.toISOString()})
+          ON CONFLICT DO NOTHING
+          RETURNING user_id`;
+        yield* sql`UPDATE contact_requests
+          SET status = 'cancelled', decided_at = ${now.toISOString()}
+          WHERE status = 'pending'
+            AND ((from_user_id = ${userId} AND to_user_id = ${targetId})
+              OR (from_user_id = ${targetId} AND to_user_id = ${userId}))`;
+        return rows.length > 0;
+      }),
+    );
   });
+  const inserted = await sqlRuntimeFor(deps.db).runPromise(insert);
   // Audited once, after the commit, by the call that actually inserted the
   // row; an idempotent re-block adds nothing. Ids only, never names.
   if (inserted) {
@@ -148,10 +159,15 @@ export async function unblockUser(
   userId: string,
   targetId: string,
 ): Promise<{ blocked: false }> {
-  const [deleted] = await deps.db
-    .delete(userBlocks)
-    .where(and(eq(userBlocks.userId, userId), eq(userBlocks.blockedUserId, targetId)))
-    .returning();
+  const [deleted] = await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ userId: string }>`DELETE FROM user_blocks
+        WHERE user_id = ${userId} AND blocked_user_id = ${targetId}
+        RETURNING user_id`;
+    }),
+  );
   if (deleted) {
     auditFor(deps, 'user.unblocked', userId, targetId);
   }
@@ -166,21 +182,21 @@ export async function listBlockedUsers(
   deps: BlocksDeps,
   userId: string,
 ): Promise<{ blocked: BlockedUserView[] }> {
-  const rows = await deps.db
-    .select({
-      userId: user.id,
-      name: user.name,
-      image: user.image,
-      handle: handles.handle,
-      jid: xmppAccounts.jid,
-    })
-    .from(userBlocks)
-    .innerJoin(user, eq(user.id, userBlocks.blockedUserId))
-    .leftJoin(handles, eq(handles.userId, user.id))
-    .leftJoin(xmppAccounts, eq(xmppAccounts.userId, user.id))
-    .where(eq(userBlocks.userId, userId))
-    .orderBy(desc(userBlocks.createdAt))
-    .limit(MAX_BLOCK_LIST_ROWS);
+  const rows = await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<BlockedUserView>`SELECT u.id AS user_id, u.name, u.image,
+          h.handle, x.jid
+        FROM user_blocks b
+        INNER JOIN "user" u ON u.id = b.blocked_user_id
+        LEFT JOIN handles h ON h.user_id = u.id
+        LEFT JOIN xmpp_accounts x ON x.user_id = u.id
+        WHERE b.user_id = ${userId}
+        ORDER BY b.created_at DESC
+        LIMIT ${MAX_BLOCK_LIST_ROWS}`;
+    }),
+  );
   return {
     blocked: rows.map((row) => ({
       userId: row.userId,

@@ -3,11 +3,17 @@
 // Rows are read from `groups` joined to their single `handles` row (the
 // shared namespace with T-0163 `@username`s) and counted from
 // `group_members`.
+//
+// Every query runs on the `effect/sql` client registered for this database
+// (see `../effect/sql`). The exported functions stay `async` so routes and
+// tests keep their shape during the transition; calls into modules still on
+// drizzle (`avatarIdsByOwner`) stay drizzle and keep taking `db`.
 
-import { and, count, desc, eq, ilike, inArray, lt, or } from 'drizzle-orm';
+import { Effect } from 'effect';
+import { SqlClient, SqlError, type Statement } from 'effect/sql';
 import { avatarIdsByOwner, avatarUrlFor } from '../avatars/service';
 import type { ServerDatabase } from '../db/client';
-import { groupMembers, groups, handles } from '../db/schema';
+import { sqlRuntimeFor } from '../effect/sql';
 import { HttpError } from '../errors';
 
 export const DIRECTORY_PAGE_SIZE = 20;
@@ -70,6 +76,22 @@ export interface SearchDirectoryInput {
   cursor?: string | undefined;
 }
 
+interface DirectoryRow {
+  id: string;
+  kind: GroupKind;
+  title: string;
+  handle: string | null;
+  description: string | null;
+  createdAt: Date;
+}
+
+function runSql<A>(
+  db: ServerDatabase,
+  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
+): Promise<A> {
+  return sqlRuntimeFor(db).runPromise(effect);
+}
+
 // Newest first when `q` is empty, so Explore shows fresh groups; with a
 // query, handle-then-title prefix matches come first (exact handle first),
 // then newest — the deterministic tie-break is `(created_at, id)` with a
@@ -88,40 +110,44 @@ export async function searchDirectory(
   const before = input.cursor === undefined ? null : decodeCursor(input.cursor);
   const lower = raw.toLowerCase();
 
-  // The cursor walks the public rows newest-first; with a query the same
-  // walk is filtered to prefix matches, so pagination never skips or repeats.
-  const conditions = [eq(groups.visibility, 'public')];
-  if (input.kind !== undefined) {
-    conditions.push(eq(groups.kind, input.kind));
-  }
-  if (hasQuery) {
-    conditions.push(
-      or(ilike(handles.handle, `${escapeLike(raw)}%`), ilike(groups.title, `${escapeLike(raw)}%`))!,
-    );
-  }
-  if (before !== null) {
-    conditions.push(
-      or(
-        lt(groups.createdAt, before.createdAt),
-        and(eq(groups.createdAt, before.createdAt), lt(groups.id, before.id)),
-      )!,
-    );
-  }
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
 
-  const rows = await db
-    .select({
-      id: groups.id,
-      kind: groups.kind,
-      title: groups.title,
-      handle: handles.handle,
-      description: groups.description,
-      createdAt: groups.createdAt,
-    })
-    .from(groups)
-    .innerJoin(handles, eq(handles.groupId, groups.id))
-    .where(and(...conditions))
-    .orderBy(desc(groups.createdAt), desc(groups.id))
-    .limit(DIRECTORY_PAGE_SIZE + 1);
+      // The cursor walks the public rows newest-first; with a query the same
+      // walk is filtered to prefix matches, so pagination never skips or
+      // repeats.
+      const conditions: Array<Statement.Fragment> = [sql`g.visibility = 'public'`];
+      if (input.kind !== undefined) {
+        conditions.push(sql`g.kind = ${input.kind}`);
+      }
+      if (hasQuery) {
+        conditions.push(
+          sql.or([
+            sql`h.handle ILIKE ${escapeLike(raw) + '%'}`,
+            sql`g.title ILIKE ${escapeLike(raw) + '%'}`,
+          ]),
+        );
+      }
+      if (before !== null) {
+        conditions.push(
+          sql.or([
+            sql`g.created_at < ${before.createdAt}`,
+            sql.and([sql`g.created_at = ${before.createdAt}`, sql`g.id < ${before.id}`]),
+          ]),
+        );
+      }
+
+      return yield* sql<DirectoryRow>`SELECT g.id, g.kind, g.title, h.handle,
+          g.description, g.created_at
+        FROM groups g
+        INNER JOIN handles h ON h.group_id = g.id
+        WHERE ${sql.and(conditions)}
+        ORDER BY g.created_at DESC, g.id DESC
+        LIMIT ${DIRECTORY_PAGE_SIZE + 1}`;
+    }),
+  );
 
   const page = rows.slice(0, DIRECTORY_PAGE_SIZE);
   if (page.length === 0) {
@@ -198,19 +224,24 @@ export async function publicGroupForHandle(
   if (lower === '') {
     throw new HttpError(404, 'not_found', 'No public group with that handle');
   }
-  const [row] = await db
-    .select({
-      id: groups.id,
-      kind: groups.kind,
-      title: groups.title,
-      handle: handles.handle,
-      description: groups.description,
-      visibility: groups.visibility,
-    })
-    .from(handles)
-    .innerJoin(groups, eq(groups.id, handles.groupId))
-    .where(eq(handles.handleLower, lower))
-    .limit(1);
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{
+        id: string;
+        kind: GroupKind;
+        title: string;
+        handle: string;
+        description: string | null;
+        visibility: string;
+      }>`SELECT g.id, g.kind, g.title, h.handle, g.description, g.visibility
+        FROM handles h
+        INNER JOIN groups g ON g.id = h.group_id
+        WHERE h.handle_lower = ${lower}
+        LIMIT 1`;
+    }),
+  );
   // A handle row for a user is not a group; a group row that is private
   // (invisible while the retire path settles) reads exactly like unknown.
   if (!row || row.visibility !== 'public') {
@@ -243,11 +274,16 @@ async function countMembers(db: ServerDatabase, groupIds: string[]): Promise<Map
   if (groupIds.length === 0) {
     return new Map();
   }
-  const rows = await db
-    .select({ groupId: groupMembers.groupId, total: count() })
-    .from(groupMembers)
-    .where(inArray(groupMembers.groupId, [...new Set(groupIds)]))
-    .groupBy(groupMembers.groupId);
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ groupId: string; total: number }>`SELECT group_id, count(*)::int AS total
+        FROM group_members
+        WHERE group_id IN ${sql.in([...new Set(groupIds)])}
+        GROUP BY group_id`;
+    }),
+  );
   return new Map(rows.map((row) => [row.groupId, Number(row.total)]));
 }
 
@@ -259,11 +295,13 @@ async function membershipsOf(
   if (groupIds.length === 0) {
     return new Set();
   }
-  const rows = await db
-    .select({ groupId: groupMembers.groupId })
-    .from(groupMembers)
-    .where(
-      and(eq(groupMembers.userId, viewerId), inArray(groupMembers.groupId, [...new Set(groupIds)])),
-    );
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ groupId: string }>`SELECT group_id FROM group_members
+        WHERE user_id = ${viewerId} AND group_id IN ${sql.in([...new Set(groupIds)])}`;
+    }),
+  );
   return new Set(rows.map((row) => row.groupId));
 }

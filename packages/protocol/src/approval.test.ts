@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ApprovalDecisionSchema, ApprovalRequestSchema } from './index';
+import { ApprovalDecisionSchema, ApprovalRequestSchema, decodeOrThrow, isValid } from './index';
 
 const request = {
   id: 'a-1',
@@ -16,11 +16,8 @@ const request = {
 
 describe('ApprovalRequestSchema', () => {
   it('accepts a full approval request', () => {
-    const result = ApprovalRequestSchema.safeParse(request);
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data).toEqual(request);
-    }
+    expect(isValid(ApprovalRequestSchema)(request)).toBe(true);
+    expect(decodeOrThrow(ApprovalRequestSchema)(request)).toEqual(request);
   });
 
   it('accepts a request without optional fields', () => {
@@ -34,31 +31,23 @@ describe('ApprovalRequestSchema', () => {
       requested_by: request.requested_by,
       expires_at: request.expires_at,
     };
-    expect(ApprovalRequestSchema.safeParse(minimal).success).toBe(true);
+    expect(isValid(ApprovalRequestSchema)(minimal)).toBe(true);
   });
 
   it('rejects an uppercase args_hash', () => {
-    expect(ApprovalRequestSchema.safeParse({ ...request, args_hash: 'A'.repeat(64) }).success).toBe(
-      false,
-    );
+    expect(isValid(ApprovalRequestSchema)({ ...request, args_hash: 'A'.repeat(64) })).toBe(false);
   });
 
   it('rejects a short args_hash', () => {
-    expect(ApprovalRequestSchema.safeParse({ ...request, args_hash: 'a'.repeat(63) }).success).toBe(
-      false,
-    );
+    expect(isValid(ApprovalRequestSchema)({ ...request, args_hash: 'a'.repeat(63) })).toBe(false);
   });
 
   it('rejects a non-hex args_hash', () => {
-    expect(ApprovalRequestSchema.safeParse({ ...request, args_hash: 'g'.repeat(64) }).success).toBe(
-      false,
-    );
+    expect(isValid(ApprovalRequestSchema)({ ...request, args_hash: 'g'.repeat(64) })).toBe(false);
   });
 
   it('rejects a summary longer than 500 characters', () => {
-    expect(ApprovalRequestSchema.safeParse({ ...request, summary: 'a'.repeat(501) }).success).toBe(
-      false,
-    );
+    expect(isValid(ApprovalRequestSchema)({ ...request, summary: 'a'.repeat(501) })).toBe(false);
   });
 
   it('rejects a missing requested_by', () => {
@@ -71,11 +60,11 @@ describe('ApprovalRequestSchema', () => {
       args_hash: request.args_hash,
       expires_at: request.expires_at,
     };
-    expect(ApprovalRequestSchema.safeParse(withoutRequester).success).toBe(false);
+    expect(isValid(ApprovalRequestSchema)(withoutRequester)).toBe(false);
   });
 
   it('rejects an extra key', () => {
-    expect(ApprovalRequestSchema.safeParse({ ...request, extra: true }).success).toBe(false);
+    expect(isValid(ApprovalRequestSchema)({ ...request, extra: true })).toBe(false);
   });
 });
 
@@ -89,29 +78,22 @@ const decision = {
 
 describe('ApprovalDecisionSchema', () => {
   it('accepts a decision with a note', () => {
-    const result = ApprovalDecisionSchema.safeParse(decision);
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data).toEqual(decision);
-    }
+    expect(isValid(ApprovalDecisionSchema)(decision)).toBe(true);
+    expect(decodeOrThrow(ApprovalDecisionSchema)(decision)).toEqual(decision);
   });
 
   it('accepts every documented decision', () => {
     for (const value of ['approve_once', 'approve_always', 'deny']) {
-      expect(ApprovalDecisionSchema.safeParse({ ...decision, decision: value }).success).toBe(true);
+      expect(isValid(ApprovalDecisionSchema)({ ...decision, decision: value })).toBe(true);
     }
   });
 
   it('rejects an unknown decision', () => {
-    expect(ApprovalDecisionSchema.safeParse({ ...decision, decision: 'maybe' }).success).toBe(
-      false,
-    );
+    expect(isValid(ApprovalDecisionSchema)({ ...decision, decision: 'maybe' })).toBe(false);
   });
 
   it('rejects a note longer than 500 characters', () => {
-    expect(ApprovalDecisionSchema.safeParse({ ...decision, note: 'a'.repeat(501) }).success).toBe(
-      false,
-    );
+    expect(isValid(ApprovalDecisionSchema)({ ...decision, note: 'a'.repeat(501) })).toBe(false);
   });
 
   it('rejects a missing decided_by', () => {
@@ -120,10 +102,10 @@ describe('ApprovalDecisionSchema', () => {
       decision: decision.decision,
       decided_at: decision.decided_at,
     };
-    expect(ApprovalDecisionSchema.safeParse(withoutDecider).success).toBe(false);
+    expect(isValid(ApprovalDecisionSchema)(withoutDecider)).toBe(false);
   });
 
   it('rejects an extra key', () => {
-    expect(ApprovalDecisionSchema.safeParse({ ...decision, extra: true }).success).toBe(false);
+    expect(isValid(ApprovalDecisionSchema)({ ...decision, extra: true })).toBe(false);
   });
 });

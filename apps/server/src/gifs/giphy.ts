@@ -1,11 +1,11 @@
 import { lookup as dnsLookup } from 'node:dns/promises';
 import { request as httpsRequest } from 'node:https';
 import { isIP } from 'node:net';
-import { Data, Duration, Effect, type Effect as EffectType } from 'effect';
-import { z } from 'zod';
+import { Data, Duration, Effect, Exit, Schema, type Effect as EffectType } from 'effect';
+import { struct } from '@zilar/protocol';
 import { classifyIp } from '../sandbox/ip-guard';
 import type { GifPage, GifProvider, GifSearchOptions } from './provider';
-import { gifPageSchema } from './provider';
+import { gifItemSchema, gifPageSchema } from './provider';
 
 // Giphy media hosts, from the public docs' rendition URLs
 // (`mediaN.giphy.com/media/<id>/…`). The API endpoint host is allowed too,
@@ -29,40 +29,54 @@ const GIPHY_RATINGS = ['g', 'pg', 'pg-13', 'r'] as const;
 
 export type GiphyRating = (typeof GIPHY_RATINGS)[number];
 
-const renditionSchema = z
-  .object({
-    url: z.string().optional(),
-    mp4: z.string().optional(),
-    webp: z.string().optional(),
-    width: z.string().optional(),
-    height: z.string().optional(),
-    size: z.string().optional(),
-    mp4_size: z.string().optional(),
-    webp_size: z.string().optional(),
-  })
-  .loose();
+// Unknown keys are kept, like the old zod `.loose()`: Giphy adds renditions
+// and fields as it likes and only the ones we read matter.
+const passthrough = [Schema.Record(Schema.String, Schema.Unknown)] as const;
 
-const gifObjectSchema = z
-  .object({
-    id: z.string().optional(),
-    title: z.string().optional(),
-    images: z.record(z.string(), z.unknown()).optional(),
-  })
-  .loose();
+const renditionSchema = Schema.StructWithRest(
+  struct({
+    url: Schema.optional(Schema.String),
+    mp4: Schema.optional(Schema.String),
+    webp: Schema.optional(Schema.String),
+    width: Schema.optional(Schema.String),
+    height: Schema.optional(Schema.String),
+    size: Schema.optional(Schema.String),
+    mp4_size: Schema.optional(Schema.String),
+    webp_size: Schema.optional(Schema.String),
+  }),
+  passthrough,
+);
 
-const giphyResponseSchema = z
-  .object({
-    data: z.array(z.unknown()),
-    pagination: z
-      .object({
-        offset: z.number().optional(),
-        count: z.number().optional(),
-        total_count: z.number().optional(),
-      })
-      .loose()
-      .optional(),
-  })
-  .loose();
+const gifObjectSchema = Schema.StructWithRest(
+  struct({
+    id: Schema.optional(Schema.String),
+    title: Schema.optional(Schema.String),
+    images: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
+  }),
+  passthrough,
+);
+
+const giphyResponseSchema = Schema.StructWithRest(
+  struct({
+    data: Schema.Array(Schema.Unknown),
+    pagination: Schema.optional(
+      Schema.StructWithRest(
+        struct({
+          offset: Schema.optional(Schema.Number),
+          count: Schema.optional(Schema.Number),
+          total_count: Schema.optional(Schema.Number),
+        }),
+        passthrough,
+      ),
+    ),
+  }),
+  passthrough,
+);
+
+function decodeRendition(value: unknown): typeof renditionSchema.Type | undefined {
+  const decoded = Schema.decodeUnknownExit(renditionSchema)(value);
+  return Exit.isSuccess(decoded) ? decoded.value : undefined;
+}
 
 function positiveInt(value: string | undefined): number | undefined {
   if (value === undefined || value === '') {
@@ -94,24 +108,16 @@ function httpsOnAllowlist(url: string): URL | undefined {
 // the original. Anything off the media allowlist is dropped, which drops the
 // whole item — never a provider URL the UI did not vet.
 function toItem(raw: unknown): GifPage['items'][number] | undefined {
-  const parsed = gifObjectSchema.safeParse(raw);
-  if (!parsed.success) {
+  const parsed = Schema.decodeUnknownExit(gifObjectSchema)(raw);
+  if (!Exit.isSuccess(parsed)) {
     return undefined;
   }
-  const images = parsed.data.images ?? {};
-  const fixed: unknown = images['fixed_width'];
-  const downsized: unknown = images['downsized'];
-  const downsizedSmall: unknown = images['downsized_small'];
-  const original: unknown = images['original'];
-  const fixedRendition = renditionSchema.safeParse(fixed);
-  const downsizedRendition = renditionSchema.safeParse(downsized);
-  const smallRendition = renditionSchema.safeParse(downsizedSmall);
-  const originalRendition = renditionSchema.safeParse(original);
+  const images = parsed.value.images ?? {};
   const candidates = [
-    fixedRendition.success ? fixedRendition.data : undefined,
-    downsizedRendition.success ? downsizedRendition.data : undefined,
-    smallRendition.success ? smallRendition.data : undefined,
-    originalRendition.success ? originalRendition.data : undefined,
+    decodeRendition(images['fixed_width']),
+    decodeRendition(images['downsized']),
+    decodeRendition(images['downsized_small']),
+    decodeRendition(images['original']),
   ];
   for (const candidate of candidates) {
     if (candidate === undefined) {
@@ -134,8 +140,8 @@ function toItem(raw: unknown): GifPage['items'][number] | undefined {
       positiveInt(candidate.size) ??
       positiveInt(candidate.webp_size);
     const item = {
-      id: typeof parsed.data.id === 'string' ? parsed.data.id.slice(0, 128) : 'unknown',
-      title: (typeof parsed.data.title === 'string' ? parsed.data.title : '').slice(0, 100),
+      id: typeof parsed.value.id === 'string' ? parsed.value.id.slice(0, 128) : 'unknown',
+      title: (typeof parsed.value.title === 'string' ? parsed.value.title : '').slice(0, 100),
       previewUrl: url.toString(),
       ...(mp4 === undefined ? {} : { mp4Url: mp4.toString() }),
       gifUrl: url.toString(),
@@ -143,43 +149,27 @@ function toItem(raw: unknown): GifPage['items'][number] | undefined {
       height,
       ...(size === undefined ? {} : { sizeBytes: size }),
     };
-    const validated = z
-      .object({
-        id: z.string().min(1).max(128),
-        title: z.string().max(100),
-        previewUrl: z.url().max(2048),
-        mp4Url: z.url().max(2048).optional(),
-        gifUrl: z.url().max(2048).optional(),
-        width: z.number().int().min(1).max(20000),
-        height: z.number().int().min(1).max(20000),
-        sizeBytes: z
-          .number()
-          .int()
-          .min(0)
-          .max(100 * 1024 * 1024)
-          .optional(),
-      })
-      .safeParse(item);
-    if (validated.success) {
-      return validated.data;
+    const validated = Schema.decodeUnknownExit(gifItemSchema)(item);
+    if (Exit.isSuccess(validated)) {
+      return validated.value;
     }
   }
   return undefined;
 }
 
 export function parseGiphyResponse(body: unknown): GifPage {
-  const parsed = giphyResponseSchema.safeParse(body);
-  if (!parsed.success) {
+  const parsed = Schema.decodeUnknownExit(giphyResponseSchema)(body);
+  if (!Exit.isSuccess(parsed)) {
     return { items: [] };
   }
   const items: GifPage['items'] = [];
-  for (const raw of parsed.data.data) {
+  for (const raw of parsed.value.data) {
     const item = toItem(raw);
     if (item !== undefined) {
       items.push(item);
     }
   }
-  const pagination = parsed.data.pagination;
+  const pagination = parsed.value.pagination;
   const offset = pagination?.offset ?? 0;
   const count = pagination?.count ?? items.length;
   const total = pagination?.total_count ?? offset + count;
@@ -327,7 +317,7 @@ export function createGiphyProvider(options: GiphyProviderOptions): GifProvider 
     } catch {
       return yield* new GiphyRequestFailed();
     }
-    return gifPageSchema.parse(parseGiphyResponse(body));
+    return Schema.decodeUnknownSync(gifPageSchema)(parseGiphyResponse(body));
   });
 
   const runCall = (path: string, query: Record<string, string>): Promise<GifPage> =>

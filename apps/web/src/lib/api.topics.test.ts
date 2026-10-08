@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { Schema } from 'effect';
 
 vi.mock('@/mock/gate', () => ({
   isMockApiEnabled: vi.fn(() => false),
@@ -64,13 +65,13 @@ function topicFixture(overrides: Record<string, unknown> = {}): Record<string, u
 
 describe('topics API (T-0111)', () => {
   it('topicSchema parses a server-shaped topic', () => {
-    const parsed = topicSchema.parse(topicFixture());
+    const parsed = Schema.decodeUnknownSync(topicSchema)(topicFixture());
     expect(parsed.name).toBe('General');
     expect(parsed.ais).toEqual([]);
   });
 
   it('topicSchema rejects an unknown visibility', () => {
-    expect(topicSchema.safeParse({ ...topicFixture(), visibility: 'secret' }).success).toBe(false);
+    expect(Schema.is(topicSchema)({ ...topicFixture(), visibility: 'secret' })).toBe(false);
   });
 
   it('chatEntryTopics validates each topic and drops malformed ones', () => {

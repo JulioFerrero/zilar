@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PollSchema, PollVoteSchema } from './index';
+import { decodeOrThrow, isValid, PollSchema, PollVoteSchema } from './index';
 
 const poll = {
   id: 'p-1',
@@ -14,29 +14,24 @@ const poll = {
 
 describe('PollSchema', () => {
   it('accepts a poll', () => {
-    const result = PollSchema.safeParse(poll);
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data).toEqual(poll);
-    }
+    expect(isValid(PollSchema)(poll)).toBe(true);
+    expect(decodeOrThrow(PollSchema)(poll)).toEqual(poll);
   });
 
   it('rejects duplicate option ids', () => {
     expect(
-      PollSchema.safeParse({
+      isValid(PollSchema)({
         ...poll,
         options: [
           { id: 'o-1', label: 'Beach' },
           { id: 'o-1', label: 'Mountains' },
         ],
-      }).success,
+      }),
     ).toBe(false);
   });
 
   it('rejects a single option', () => {
-    expect(
-      PollSchema.safeParse({ ...poll, options: [{ id: 'o-1', label: 'Beach' }] }).success,
-    ).toBe(false);
+    expect(isValid(PollSchema)({ ...poll, options: [{ id: 'o-1', label: 'Beach' }] })).toBe(false);
   });
 
   it('rejects more than 10 options', () => {
@@ -44,30 +39,30 @@ describe('PollSchema', () => {
       id: `o-${index}`,
       label: `Option ${index}`,
     }));
-    expect(PollSchema.safeParse({ ...poll, options }).success).toBe(false);
+    expect(isValid(PollSchema)({ ...poll, options })).toBe(false);
   });
 
   it('rejects an empty option label', () => {
     expect(
-      PollSchema.safeParse({
+      isValid(PollSchema)({
         ...poll,
         options: [
           { id: 'o-1', label: '' },
           { id: 'o-2', label: 'Mountains' },
         ],
-      }).success,
+      }),
     ).toBe(false);
   });
 
   it('rejects an extra key on an option', () => {
     expect(
-      PollSchema.safeParse({
+      isValid(PollSchema)({
         ...poll,
         options: [
           { id: 'o-1', label: 'Beach', extra: true },
           { id: 'o-2', label: 'Mountains' },
         ],
-      }).success,
+      }),
     ).toBe(false);
   });
 });
@@ -80,33 +75,30 @@ const vote = {
 
 describe('PollVoteSchema', () => {
   it('accepts a vote', () => {
-    const result = PollVoteSchema.safeParse(vote);
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data).toEqual(vote);
-    }
+    expect(isValid(PollVoteSchema)(vote)).toBe(true);
+    expect(decodeOrThrow(PollVoteSchema)(vote)).toEqual(vote);
   });
 
   it('rejects duplicate option_ids', () => {
-    expect(PollVoteSchema.safeParse({ ...vote, option_ids: ['o-1', 'o-1'] }).success).toBe(false);
+    expect(isValid(PollVoteSchema)({ ...vote, option_ids: ['o-1', 'o-1'] })).toBe(false);
   });
 
   it('rejects an empty option_ids list', () => {
-    expect(PollVoteSchema.safeParse({ ...vote, option_ids: [] }).success).toBe(false);
+    expect(isValid(PollVoteSchema)({ ...vote, option_ids: [] })).toBe(false);
   });
 
   it('rejects more than 10 option_ids', () => {
     const optionIds = Array.from({ length: 11 }, (_, index) => `o-${index}`);
-    expect(PollVoteSchema.safeParse({ ...vote, option_ids: optionIds }).success).toBe(false);
+    expect(isValid(PollVoteSchema)({ ...vote, option_ids: optionIds })).toBe(false);
   });
 
   it('rejects a missing voter', () => {
-    expect(
-      PollVoteSchema.safeParse({ poll_id: vote.poll_id, option_ids: vote.option_ids }).success,
-    ).toBe(false);
+    expect(isValid(PollVoteSchema)({ poll_id: vote.poll_id, option_ids: vote.option_ids })).toBe(
+      false,
+    );
   });
 
   it('rejects an extra key', () => {
-    expect(PollVoteSchema.safeParse({ ...vote, extra: true }).success).toBe(false);
+    expect(isValid(PollVoteSchema)({ ...vote, extra: true })).toBe(false);
   });
 });

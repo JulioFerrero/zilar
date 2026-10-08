@@ -1,3 +1,7 @@
+import { Data, Effect, Exit, Schema, SchemaGetter, type Effect as EffectType } from 'effect';
+import { struct } from '@zilar/protocol';
+
+import { errorFieldsOf } from './api-error-body';
 import { API_URL } from './auth';
 
 /**
@@ -5,10 +9,11 @@ import { API_URL } from './auth';
  * `apps/web/src/lib/api.ts`. The wire contract lives in
  * `apps/server/src/approvals/routes.ts` and `apps/server/src/approvals/service.ts`.
  *
- * Mobile has no zod, so — like `ais-api.ts` and `chat-api.ts` — the boundary is
- * validated with type guards. `ApprovalsApiError` keeps the server's `code` and
- * `status`, so the card can branch on the error without parsing the message
- * again (404 = not decidable, 409 = race / expired).
+ * The boundary is validated with Effect Schema (T-0541, the T-0506 recipe):
+ * the request is an Effect pipeline, cut back to a `Promise` at the edge
+ * with `Effect.runPromise`. `ApprovalsApiError` keeps the server's `code`
+ * and `status`, so the card can branch on the error without parsing the
+ * message again (404 = not decidable, 409 = race / expired).
  */
 
 export type ApprovalStatus =
@@ -72,122 +77,97 @@ export class ApprovalsApiError extends Error {
   }
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
+// A lenient field: a missing or non-string value decodes to `null` instead of
+// failing the row, exactly like the old type guard. The key may be absent
+// (older servers omit it).
+const LenientNullableStringSchema = Schema.Unknown.pipe(
+  Schema.withDecodingDefault(Effect.succeed(null)),
+  Schema.decodeTo(Schema.NullOr(Schema.String), {
+    decode: SchemaGetter.transform((value) => (typeof value === 'string' ? value : null)),
+    encode: SchemaGetter.transform((value) => value),
+  }),
+);
 
-function isString(value: unknown): value is string {
-  return typeof value === 'string';
-}
+const ApprovalStatusSchema = Schema.Literals([
+  'pending',
+  'approved_once',
+  'approved_always',
+  'denied',
+  'consumed',
+  'expired',
+]);
 
-function isApprovalStatus(value: unknown): value is ApprovalStatus {
-  return (
-    value === 'pending' ||
-    value === 'approved_once' ||
-    value === 'approved_always' ||
-    value === 'denied' ||
-    value === 'consumed' ||
-    value === 'expired'
-  );
-}
+const ApprovalWorstCaseSchema = struct({
+  currency: Schema.Literals(['EUR', 'USD']),
+  amount: Schema.Number,
+});
 
-function isApprovalCurrency(value: unknown): value is 'EUR' | 'USD' {
-  return value === 'EUR' || value === 'USD';
-}
+const PublicApprovalSchema = struct({
+  id: Schema.String,
+  aiId: Schema.String,
+  groupId: LenientNullableStringSchema,
+  action: Schema.String,
+  summary: Schema.String,
+  details: LenientNullableStringSchema,
+  argsHash: Schema.String,
+  worstCase: Schema.NullOr(ApprovalWorstCaseSchema),
+  requestedBy: Schema.String,
+  status: ApprovalStatusSchema,
+  decidedAt: LenientNullableStringSchema,
+  note: LenientNullableStringSchema,
+  expiresAt: Schema.String,
+  createdAt: Schema.String,
+});
 
-function parseWorstCase(value: unknown): ApprovalWorstCase | null {
-  if (!isRecord(value)) return null;
-  const currency = value['currency'];
-  const amount = value['amount'];
-  if (!isApprovalCurrency(currency) || typeof amount !== 'number') return null;
-  return { currency, amount };
-}
+const ApprovalRuleSchema = struct({
+  id: Schema.String,
+  action: Schema.String,
+  scope: Schema.Literals(['personal', 'group']),
+  groupId: LenientNullableStringSchema,
+  // Optional on the wire (older servers omit them); a non-string value
+  // reads like absence rather than failing the whole list.
+  topicId: LenientNullableStringSchema,
+  topicName: LenientNullableStringSchema,
+  createdAt: Schema.String,
+  createdBy: Schema.String,
+});
+
+// The list endpoints answer with a bare array; one malformed row fails the
+// whole list, like the old `parseList`.
+const ApprovalListEnvelopeSchema = Schema.mutable(Schema.Array(Schema.Unknown));
 
 function parsePublicApproval(value: unknown): PublicApproval | null {
-  if (!isRecord(value)) return null;
-  const id = value['id'];
-  const aiId = value['aiId'];
-  const groupId = value['groupId'];
-  const action = value['action'];
-  const summary = value['summary'];
-  const details = value['details'];
-  const argsHash = value['argsHash'];
-  const requestedBy = value['requestedBy'];
-  const status = value['status'];
-  const decidedAt = value['decidedAt'];
-  const note = value['note'];
-  const expiresAt = value['expiresAt'];
-  const createdAt = value['createdAt'];
-  if (
-    !isString(id) ||
-    !isString(aiId) ||
-    !isString(action) ||
-    !isString(summary) ||
-    !isString(argsHash) ||
-    !isString(requestedBy) ||
-    !isString(expiresAt) ||
-    !isString(createdAt) ||
-    !isApprovalStatus(status)
-  ) {
-    return null;
-  }
-  const worstCase = parseWorstCase(value['worstCase']);
-  if (value['worstCase'] !== null && worstCase === null) {
-    return null;
-  }
-  return {
-    id,
-    aiId,
-    groupId: isString(groupId) ? groupId : null,
-    action,
-    summary,
-    details: isString(details) ? details : null,
-    argsHash,
-    worstCase,
-    requestedBy,
-    status,
-    decidedAt: isString(decidedAt) ? decidedAt : null,
-    note: isString(note) ? note : null,
-    expiresAt,
-    createdAt,
-  };
-}
-
-function isApprovalRuleScope(value: unknown): value is ApprovalRuleScope {
-  return value === 'personal' || value === 'group';
+  const decoded = Schema.decodeUnknownExit(PublicApprovalSchema)(value);
+  return Exit.isSuccess(decoded) ? decoded.value : null;
 }
 
 function parseApprovalRule(value: unknown): ApprovalRule | null {
-  if (!isRecord(value)) return null;
-  const id = value['id'];
-  const action = value['action'];
-  const scope = value['scope'];
-  const groupId = value['groupId'];
-  const topicId = value['topicId'];
-  const topicName = value['topicName'];
-  const createdAt = value['createdAt'];
-  const createdBy = value['createdBy'];
-  if (
-    !isString(id) ||
-    !isString(action) ||
-    !isApprovalRuleScope(scope) ||
-    !isString(createdAt) ||
-    !isString(createdBy)
-  ) {
-    return null;
+  const decoded = Schema.decodeUnknownExit(ApprovalRuleSchema)(value);
+  return Exit.isSuccess(decoded) ? decoded.value : null;
+}
+
+function parseApprovalList(value: unknown): PublicApproval[] | null {
+  const decoded = Schema.decodeUnknownExit(ApprovalListEnvelopeSchema)(value);
+  if (!Exit.isSuccess(decoded)) return null;
+  const parsed: PublicApproval[] = [];
+  for (const item of decoded.value) {
+    const approval = parsePublicApproval(item);
+    if (approval === null) return null;
+    parsed.push(approval);
   }
-  return {
-    id,
-    action,
-    scope,
-    groupId: isString(groupId) ? groupId : null,
-    // Optional on the wire (older servers omit them); a non-string value
-    // reads like absence rather than failing the whole list.
-    topicId: isString(topicId) ? topicId : null,
-    topicName: isString(topicName) ? topicName : null,
-    createdAt,
-    createdBy,
-  };
+  return parsed;
+}
+
+function parseApprovalRuleList(value: unknown): ApprovalRule[] | null {
+  const decoded = Schema.decodeUnknownExit(ApprovalListEnvelopeSchema)(value);
+  if (!Exit.isSuccess(decoded)) return null;
+  const parsed: ApprovalRule[] = [];
+  for (const item of decoded.value) {
+    const rule = parseApprovalRule(item);
+    if (rule === null) return null;
+    parsed.push(rule);
+  }
+  return parsed;
 }
 
 /** The exact POST body the server's strict `decisionSchema` accepts. */
@@ -198,38 +178,53 @@ export function buildDecisionBody(
   return note === undefined ? { decision } : { decision, note };
 }
 
-async function request(
+// The internal failures, one per case. They carry no field beyond what the
+// old `ApprovalsApiError` already surfaced; the `Promise` edge maps each back
+// to that same error, status, code and message.
+class ApprovalsNetworkError extends Data.TaggedError('ApprovalsNetworkError') {}
+class ApprovalsRequestError extends Data.TaggedError('ApprovalsRequestError')<{
+  readonly status: number;
+  readonly code: string;
+  readonly message: string;
+}> {}
+class ApprovalsUnauthorized extends Data.TaggedError('ApprovalsUnauthorized') {}
+class ApprovalsInvalidResponse extends Data.TaggedError('ApprovalsInvalidResponse') {}
+
+const requestEffect = Effect.fnUntraced(function* (
   apiUrl: string,
   path: string,
   token: string,
   init: RequestInit,
   fetchImpl: typeof fetch,
-): Promise<unknown> {
-  let response: Response;
-  try {
-    response = await fetchImpl(`${apiUrl}${path}`, {
-      ...init,
-      headers: {
-        accept: 'application/json',
-        authorization: `Bearer ${token}`,
-        ...init.headers,
-      },
-    });
-  } catch {
-    throw new ApprovalsApiError(0, 'network_error', 'Could not reach the server');
-  }
+): EffectType.fn.Return<unknown, ApprovalsNetworkError | ApprovalsRequestError> {
+  const response = yield* Effect.tryPromise({
+    try: (signal) =>
+      fetchImpl(`${apiUrl}${path}`, {
+        ...init,
+        signal,
+        headers: {
+          accept: 'application/json',
+          authorization: `Bearer ${token}`,
+          ...init.headers,
+        },
+      }),
+    catch: () => new ApprovalsNetworkError(),
+  });
 
-  const body: unknown = await response.json().catch(() => null);
+  const body: unknown = yield* Effect.promise(
+    () => response.json().catch(() => null) as Promise<unknown>,
+  );
+
   if (!response.ok) {
-    const error = isRecord(body) && isRecord(body['error']) ? body['error'] : null;
-    const code = isString(error?.['code']) ? error['code'] : 'request_failed';
-    const message = isString(error?.['message'])
-      ? error['message']
-      : `Request failed (${response.status})`;
-    throw new ApprovalsApiError(response.status, code, message);
+    const error = errorFieldsOf(body);
+    return yield* new ApprovalsRequestError({
+      status: response.status,
+      code: error.code ?? 'request_failed',
+      message: error.message ?? `Request failed (${response.status})`,
+    });
   }
   return body;
-}
+});
 
 /** The production `ApprovalsApi`: bearer auth, `fetch`, and the build-time API URL. */
 export function createApprovalsApi(
@@ -237,36 +232,51 @@ export function createApprovalsApi(
   fetchImpl: typeof fetch = fetch,
   apiUrl: string = API_URL,
 ): ApprovalsApi {
-  const parseList = <T>(value: unknown, parseItem: (item: unknown) => T | null): T[] | null => {
-    if (!Array.isArray(value)) return null;
-    const parsed: T[] = [];
-    for (const item of value) {
-      const result = parseItem(item);
-      if (result === null) return null;
-      parsed.push(result);
-    }
-    return parsed;
-  };
-  const withToken = async (
+  const withTokenEffect = Effect.fnUntraced(function* (
     path: string,
     init: RequestInit,
     parse: (value: unknown) => unknown,
-  ): Promise<unknown> => {
-    const token = await getToken();
+  ): EffectType.fn.Return<
+    unknown,
+    ApprovalsUnauthorized | ApprovalsNetworkError | ApprovalsRequestError | ApprovalsInvalidResponse
+  > {
+    const token = yield* Effect.promise(() => getToken());
     if (token === undefined) {
-      throw new ApprovalsApiError(401, 'unauthorized', 'No session');
+      return yield* new ApprovalsUnauthorized();
     }
-    const body = await request(apiUrl, path, token, init, fetchImpl);
+    const body = yield* requestEffect(apiUrl, path, token, init, fetchImpl);
     const parsed = parse(body);
     if (parsed === null) {
-      throw new ApprovalsApiError(
-        200,
-        'invalid_response',
-        'The server sent an unexpected response',
-      );
+      return yield* new ApprovalsInvalidResponse();
     }
     return parsed;
-  };
+  });
+
+  const withToken = (
+    path: string,
+    init: RequestInit,
+    parse: (value: unknown) => unknown,
+  ): Promise<unknown> =>
+    Effect.runPromise(
+      withTokenEffect(path, init, parse).pipe(
+        Effect.catchTags({
+          ApprovalsUnauthorized: () =>
+            Effect.fail(new ApprovalsApiError(401, 'unauthorized', 'No session')),
+          ApprovalsNetworkError: () =>
+            Effect.fail(new ApprovalsApiError(0, 'network_error', 'Could not reach the server')),
+          ApprovalsRequestError: (error) =>
+            Effect.fail(new ApprovalsApiError(error.status, error.code, error.message)),
+          ApprovalsInvalidResponse: () =>
+            Effect.fail(
+              new ApprovalsApiError(
+                200,
+                'invalid_response',
+                'The server sent an unexpected response',
+              ),
+            ),
+        }),
+      ),
+    );
 
   return {
     async getApproval(id) {
@@ -291,16 +301,14 @@ export function createApprovalsApi(
       return result as PublicApproval;
     },
     async listApprovals() {
-      const body = await withToken('/api/approvals', { method: 'GET' }, (value) =>
-        parseList(value, parsePublicApproval),
-      );
+      const body = await withToken('/api/approvals', { method: 'GET' }, parseApprovalList);
       return body as PublicApproval[];
     },
     async listAiApprovalRules(aiId) {
       const body = await withToken(
         `/api/ais/${encodeURIComponent(aiId)}/approval-rules`,
         { method: 'GET' },
-        (value) => parseList(value, parseApprovalRule),
+        parseApprovalRuleList,
       );
       return body as ApprovalRule[];
     },
@@ -308,7 +316,7 @@ export function createApprovalsApi(
       const body = await withToken(
         `/api/groups/${encodeURIComponent(groupId)}/approval-rules`,
         { method: 'GET' },
-        (value) => parseList(value, parseApprovalRule),
+        parseApprovalRuleList,
       );
       return body as ApprovalRule[];
     },

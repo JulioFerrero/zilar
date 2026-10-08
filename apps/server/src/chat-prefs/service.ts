@@ -1,17 +1,17 @@
-import { and, count, eq, inArray, isNotNull } from 'drizzle-orm';
+// Chat preferences and the per-user background default (T-0113, T-0458).
+//
+// Every query runs on the `effect/sql` client registered for this database
+// (see `../effect/sql`). The exported functions stay `async` so routes and
+// tests keep their shape during the transition.
+
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
-import {
-  ais,
-  chatBackgroundDefaults,
-  chatBackgrounds,
-  chatPrefs,
-  contacts,
-  topics,
-  xmppAccounts,
-} from '../db/schema';
+import type { chatPrefs } from '../db/schema';
+import { sqlRuntimeFor } from '../effect/sql';
 import { HttpError } from '../errors';
+import { canSeeTopic, type TopicRow } from '../topics/access';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
-import { canSeeTopic } from '../topics/access';
 
 export const CHAT_PREFS_MAX_ROWS = 200;
 export const CHAT_PREFS_MAX_PINNED = 20;
@@ -52,6 +52,13 @@ export interface ChatPrefView extends BackgroundFields {
   updatedAt: string;
 }
 
+function runSql<A, E>(
+  db: ServerDatabase,
+  effect: Effect.Effect<A, E, SqlClient.SqlClient>,
+): Promise<A> {
+  return sqlRuntimeFor(db).runPromise(effect);
+}
+
 // A MUC room JID (`localpart@mucDomain`) is visible to the caller when any
 // non-archived topic with that room is visible to them (General, or a topic
 // they can see under T-0108's rule).
@@ -60,7 +67,14 @@ async function canSeeRoomJid(
   roomLocalpart: string,
   userId: string,
 ): Promise<boolean> {
-  const rows = await db.select().from(topics).where(eq(topics.roomLocalpart, roomLocalpart));
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<TopicRow>`SELECT * FROM topics
+        WHERE room_localpart = ${roomLocalpart}`;
+    }),
+  );
   for (const row of rows) {
     if (await canSeeTopic(db, row, userId)) {
       return true;
@@ -72,23 +86,32 @@ async function canSeeRoomJid(
 // A DM JID is the XMPP account of one of the caller's contacts, or one of the
 // caller's own AIs. Everything is compared as lowercased bare JIDs.
 async function canDm(db: ServerDatabase, bare: string, userId: string, domain: string) {
-  const contactRows = await db
-    .select({ contactUserId: contacts.contactUserId })
-    .from(contacts)
-    .where(eq(contacts.userId, userId));
+  const contactRows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ contactUserId: string }>`SELECT contact_user_id FROM contacts
+        WHERE user_id = ${userId}`;
+    }),
+  );
   if (contactRows.length === 0) {
-    const owned = await db.select({ jid: ais.jid }).from(ais).where(eq(ais.owner, userId));
+    const owned = await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ jid: string }>`SELECT jid FROM ais WHERE owner = ${userId}`;
+      }),
+    );
     return owned.some((ai) => ai.jid.toLowerCase() === bare);
   }
-  const accountRows = await db
-    .select({ userId: xmppAccounts.userId, jid: xmppAccounts.jid })
-    .from(xmppAccounts)
-    .where(
-      inArray(
-        xmppAccounts.userId,
-        contactRows.map((row) => row.contactUserId),
-      ),
-    );
+  const accountRows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ userId: string; jid: string }>`SELECT user_id, jid FROM xmpp_accounts
+        WHERE user_id IN ${sql.in(contactRows.map((row) => row.contactUserId))}`;
+    }),
+  );
   const jidByUserId = new Map(accountRows.map((row) => [row.userId, row.jid.toLowerCase()]));
   for (const row of contactRows) {
     const known = jidByUserId.get(row.contactUserId);
@@ -104,7 +127,13 @@ async function canDm(db: ServerDatabase, bare: string, userId: string, domain: s
       return true;
     }
   }
-  const owned = await db.select({ jid: ais.jid }).from(ais).where(eq(ais.owner, userId));
+  const owned = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ jid: string }>`SELECT jid FROM ais WHERE owner = ${userId}`;
+    }),
+  );
   return owned.some((ai) => ai.jid.toLowerCase() === bare);
 }
 
@@ -194,11 +223,14 @@ async function resolveBackgroundFields(
     throw new HttpError(400, 'invalid_request', 'Dim needs an image');
   }
   if (backgroundImageId !== null) {
-    const [image] = await db
-      .select({ id: chatBackgrounds.id })
-      .from(chatBackgrounds)
-      .where(and(eq(chatBackgrounds.id, backgroundImageId), eq(chatBackgrounds.userId, userId)))
-      .limit(1);
+    const [image] = await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ id: string }>`SELECT id FROM chat_backgrounds
+          WHERE id = ${backgroundImageId} AND user_id = ${userId} LIMIT 1`;
+      }),
+    );
     if (image === undefined) {
       throw new HttpError(400, 'invalid_request', 'Unknown background image');
     }
@@ -207,7 +239,13 @@ async function resolveBackgroundFields(
 }
 
 export async function listChatPrefs(db: ServerDatabase, userId: string): Promise<ChatPrefView[]> {
-  const rows = await db.select().from(chatPrefs).where(eq(chatPrefs.userId, userId));
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<ChatPrefRow>`SELECT * FROM chat_prefs WHERE user_id = ${userId}`;
+    }),
+  );
   return rows.map(toChatPrefView).sort((a, b) => a.chatJid.localeCompare(b.chatJid));
 }
 
@@ -231,11 +269,14 @@ export async function putChatPref(
   db: ServerDatabase,
   input: PutChatPrefInput,
 ): Promise<ChatPrefView | null> {
-  const [existing] = await db
-    .select()
-    .from(chatPrefs)
-    .where(and(eq(chatPrefs.userId, input.userId), eq(chatPrefs.chatJid, input.bare)))
-    .limit(1);
+  const [existing] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<ChatPrefRow>`SELECT * FROM chat_prefs
+        WHERE user_id = ${input.userId} AND chat_jid = ${input.bare} LIMIT 1`;
+    }),
+  );
 
   const mutedUntil =
     input.mutedUntil === undefined ? (existing?.mutedUntil ?? null) : input.mutedUntil;
@@ -257,48 +298,74 @@ export async function putChatPref(
     background.backgroundDim === null
   ) {
     if (existing !== undefined) {
-      await db
-        .delete(chatPrefs)
-        .where(and(eq(chatPrefs.userId, input.userId), eq(chatPrefs.chatJid, input.bare)));
+      await runSql(
+        db,
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`DELETE FROM chat_prefs
+            WHERE user_id = ${input.userId} AND chat_jid = ${input.bare}`;
+        }),
+      );
     }
     return null;
   }
 
   if (existing === undefined) {
-    const [total] = await db
-      .select({ total: count() })
-      .from(chatPrefs)
-      .where(eq(chatPrefs.userId, input.userId));
+    const [total] = await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ total: number }>`SELECT count(*)::int AS total FROM chat_prefs
+          WHERE user_id = ${input.userId}`;
+      }),
+    );
     if (Number(total?.total ?? 0) >= CHAT_PREFS_MAX_ROWS) {
       throw new HttpError(409, 'too_many_prefs', 'Too many chat preferences');
     }
   }
   if (pinnedAt !== null && (existing === undefined || existing.pinnedAt === null)) {
-    const [pinned] = await db
-      .select({ total: count() })
-      .from(chatPrefs)
-      .where(and(eq(chatPrefs.userId, input.userId), isNotNull(chatPrefs.pinnedAt)));
+    const [pinned] = await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ total: number }>`SELECT count(*)::int AS total FROM chat_prefs
+          WHERE user_id = ${input.userId} AND pinned_at IS NOT NULL`;
+      }),
+    );
     if (Number(pinned?.total ?? 0) >= CHAT_PREFS_MAX_PINNED) {
       throw new HttpError(409, 'too_many_pins', 'Too many pinned chats');
     }
   }
 
-  const [row] = await db
-    .insert(chatPrefs)
-    .values({
-      userId: input.userId,
-      chatJid: input.bare,
-      mutedUntil,
-      archived,
-      pinnedAt,
-      ...background,
-      updatedAt: input.now,
-    })
-    .onConflictDoUpdate({
-      target: [chatPrefs.userId, chatPrefs.chatJid],
-      set: { mutedUntil, archived, pinnedAt, ...background, updatedAt: input.now },
-    })
-    .returning();
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<ChatPrefRow>`INSERT INTO chat_prefs
+          (user_id, chat_jid, muted_until, archived, pinned_at,
+            background_preset, background_image_id, background_dim, updated_at)
+        VALUES (
+          ${input.userId},
+          ${input.bare},
+          ${mutedUntil === null ? null : mutedUntil.toISOString()},
+          ${archived},
+          ${pinnedAt === null ? null : pinnedAt.toISOString()},
+          ${background.backgroundPreset},
+          ${background.backgroundImageId},
+          ${background.backgroundDim},
+          ${input.now.toISOString()}
+        )
+        ON CONFLICT (user_id, chat_jid) DO UPDATE SET
+          muted_until = EXCLUDED.muted_until,
+          archived = EXCLUDED.archived,
+          pinned_at = EXCLUDED.pinned_at,
+          background_preset = EXCLUDED.background_preset,
+          background_image_id = EXCLUDED.background_image_id,
+          background_dim = EXCLUDED.background_dim,
+          updated_at = EXCLUDED.updated_at
+        RETURNING *`;
+    }),
+  );
   if (!row) {
     throw new HttpError(500, 'internal_error', 'Could not save the chat preference');
   }
@@ -314,15 +381,14 @@ export async function getChatBackgroundDefault(
   db: ServerDatabase,
   userId: string,
 ): Promise<BackgroundFields> {
-  const [row] = await db
-    .select({
-      backgroundPreset: chatBackgroundDefaults.backgroundPreset,
-      backgroundImageId: chatBackgroundDefaults.backgroundImageId,
-      backgroundDim: chatBackgroundDefaults.backgroundDim,
-    })
-    .from(chatBackgroundDefaults)
-    .where(eq(chatBackgroundDefaults.userId, userId))
-    .limit(1);
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<BackgroundFields>`SELECT background_preset, background_image_id, background_dim
+        FROM chat_background_defaults WHERE user_id = ${userId} LIMIT 1`;
+    }),
+  );
   return row ?? { backgroundPreset: null, backgroundImageId: null, backgroundDim: null };
 }
 
@@ -335,11 +401,14 @@ export async function putChatBackgroundDefault(
   userId: string,
   input: PutChatBackgroundDefaultInput,
 ): Promise<BackgroundFields> {
-  const [existing] = await db
-    .select()
-    .from(chatBackgroundDefaults)
-    .where(eq(chatBackgroundDefaults.userId, userId))
-    .limit(1);
+  const [existing] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<BackgroundFields>`SELECT * FROM chat_background_defaults
+        WHERE user_id = ${userId} LIMIT 1`;
+    }),
+  );
 
   const background = await resolveBackgroundFields(db, userId, existing, input);
 
@@ -349,19 +418,38 @@ export async function putChatBackgroundDefault(
     background.backgroundDim === null
   ) {
     if (existing !== undefined) {
-      await db.delete(chatBackgroundDefaults).where(eq(chatBackgroundDefaults.userId, userId));
+      await runSql(
+        db,
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`DELETE FROM chat_background_defaults WHERE user_id = ${userId}`;
+        }),
+      );
     }
     return { backgroundPreset: null, backgroundImageId: null, backgroundDim: null };
   }
 
-  const [row] = await db
-    .insert(chatBackgroundDefaults)
-    .values({ userId, ...background, updatedAt: input.now })
-    .onConflictDoUpdate({
-      target: chatBackgroundDefaults.userId,
-      set: { ...background, updatedAt: input.now },
-    })
-    .returning();
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<BackgroundFields>`INSERT INTO chat_background_defaults
+          (user_id, background_preset, background_image_id, background_dim, updated_at)
+        VALUES (
+          ${userId},
+          ${background.backgroundPreset},
+          ${background.backgroundImageId},
+          ${background.backgroundDim},
+          ${input.now.toISOString()}
+        )
+        ON CONFLICT (user_id) DO UPDATE SET
+          background_preset = EXCLUDED.background_preset,
+          background_image_id = EXCLUDED.background_image_id,
+          background_dim = EXCLUDED.background_dim,
+          updated_at = EXCLUDED.updated_at
+        RETURNING background_preset, background_image_id, background_dim`;
+    }),
+  );
   if (!row) {
     throw new HttpError(500, 'internal_error', 'Could not save the background default');
   }

@@ -11,7 +11,7 @@
 //
 // Both hosts are fixed. Every number must be finite or the symbol is
 // reported as unavailable. No API key anywhere.
-import { z } from 'zod';
+import { Exit, Schema } from 'effect';
 
 export const COINGECKO_HOST = 'api.coingecko.com';
 export const STOOQ_HOST = 'stooq.com';
@@ -54,19 +54,21 @@ export function stooqUrl(symbols: string[]): string {
   return `https://${STOOQ_HOST}/q/l/?${params.toString()}`;
 }
 
-const coingeckoSchema = z.record(
-  z.string(),
-  z.object({
-    usd: z.number().finite(),
-    last_updated_at: z.number().int().nonnegative().optional(),
+const coingeckoSchema = Schema.Record(
+  Schema.String,
+  Schema.Struct({
+    usd: Schema.Finite,
+    last_updated_at: Schema.optional(
+      Schema.Number.pipe(Schema.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0))),
+    ),
   }),
 );
 
-const stooqRowSchema = z.object({
-  symbol: z.string().min(1),
-  date: z.string(),
-  time: z.string(),
-  close: z.number().finite(),
+const stooqRowSchema = Schema.Struct({
+  symbol: Schema.String.pipe(Schema.check(Schema.isMinLength(1))),
+  date: Schema.String,
+  time: Schema.String,
+  close: Schema.Finite,
 });
 
 export interface PriceLine {
@@ -81,9 +83,9 @@ export function coingeckoLines(
   ids: string[],
   body: string,
 ): { lines: PriceLine[]; unknownIds: Set<string> } {
-  let parsed: z.infer<typeof coingeckoSchema>;
+  let parsed: typeof coingeckoSchema.Type;
   try {
-    parsed = coingeckoSchema.parse(JSON.parse(body));
+    parsed = Schema.decodeUnknownSync(coingeckoSchema)(JSON.parse(body));
   } catch {
     return {
       lines: symbols.map((symbol) => ({
@@ -162,16 +164,16 @@ export function parseStooqCsv(body: string): Map<string, StooqQuote> {
     if (quotes.has(key)) {
       continue;
     }
-    const checked = stooqRowSchema.safeParse({
+    const checked = Schema.decodeUnknownExit(stooqRowSchema)({
       symbol,
       date: at(row, 'date') ?? '',
       time: at(row, 'time') ?? '',
       close,
     });
-    if (!checked.success) {
+    if (!Exit.isSuccess(checked)) {
       continue;
     }
-    quotes.set(key, checked.data);
+    quotes.set(key, checked.value);
   }
   return quotes;
 }

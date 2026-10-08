@@ -1,4 +1,5 @@
-import { z } from 'zod';
+import { Result, Schema } from 'effect';
+import { struct } from '@zilar/protocol';
 
 // The draft-stream contract, mirrored from `apps/server/src/drafts/events.ts`
 // (T-0041). The web app cannot import server code, so the shapes are copied
@@ -10,22 +11,22 @@ import { z } from 'zod';
 //   harmless and a client that connects mid-turn renders the next one.
 // - `end` is published after the server sent the final XMPP message (or the
 //   failure text).
-const draftEventSchema = z.object({
-  type: z.literal('draft'),
-  chatJid: z.string().min(1),
-  turnId: z.string().uuid(),
-  text: z.string(),
+const draftEventSchema = struct({
+  type: Schema.Literal('draft'),
+  chatJid: Schema.String.pipe(Schema.check(Schema.isMinLength(1))),
+  turnId: Schema.String.pipe(Schema.check(Schema.isUUID())),
+  text: Schema.String,
 });
 
-const endEventSchema = z.object({
-  type: z.literal('end'),
-  chatJid: z.string().min(1),
-  turnId: z.string().uuid(),
-  outcome: z.enum(['sent', 'failed']),
+const endEventSchema = struct({
+  type: Schema.Literal('end'),
+  chatJid: Schema.String.pipe(Schema.check(Schema.isMinLength(1))),
+  turnId: Schema.String.pipe(Schema.check(Schema.isUUID())),
+  outcome: Schema.Literals(['sent', 'failed']),
 });
 
-export type DraftEvent = z.infer<typeof draftEventSchema>;
-export type DraftEndEvent = z.infer<typeof endEventSchema>;
+export type DraftEvent = typeof draftEventSchema.Type;
+export type DraftEndEvent = typeof endEventSchema.Type;
 export type DraftHubEvent = DraftEvent | DraftEndEvent;
 
 export type DraftEventListener = (event: DraftHubEvent) => void;
@@ -46,7 +47,10 @@ function defaultDraftSource(url: string): DraftEventSource {
   return new EventSource(url);
 }
 
-function parseEvent<T>(schema: z.ZodType<T>, data: unknown): T | undefined {
+function parseEvent<S extends Schema.ConstraintDecoder<unknown>>(
+  schema: S,
+  data: unknown,
+): S['Type'] | undefined {
   if (typeof data !== 'string') {
     return undefined;
   }
@@ -56,8 +60,8 @@ function parseEvent<T>(schema: z.ZodType<T>, data: unknown): T | undefined {
   } catch {
     return undefined;
   }
-  const parsed = schema.safeParse(json);
-  return parsed.success ? parsed.data : undefined;
+  const parsed = Schema.decodeUnknownResult(schema)(json);
+  return Result.isSuccess(parsed) ? parsed.success : undefined;
 }
 
 /**

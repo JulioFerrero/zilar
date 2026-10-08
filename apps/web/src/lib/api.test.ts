@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { Exit, Schema } from 'effect';
 
 vi.mock('@/mock/gate', () => ({
   isMockApiEnabled: vi.fn(() => false),
@@ -67,7 +68,7 @@ afterEach(() => {
 
 describe('machines API', () => {
   it('parses a server-shaped machine response', () => {
-    const parsed = machineSchema.parse({
+    const parsed = Schema.decodeUnknownSync(machineSchema)({
       id: 'm-1',
       name: 'julio-mbp',
       status: 'approved',
@@ -90,7 +91,7 @@ describe('machines API', () => {
   });
 
   it('accepts a machine response without `online`', () => {
-    const parsed = machineSchema.parse({
+    const parsed = Schema.decodeUnknownSync(machineSchema)({
       id: 'm-2',
       name: 'office-linux',
       status: 'pending',
@@ -409,7 +410,7 @@ const approvalFixture = {
 
 describe('approvals API', () => {
   it('publicApprovalSchema parses a server-shaped approval', () => {
-    const parsed = publicApprovalSchema.parse(approvalFixture);
+    const parsed = Schema.decodeUnknownSync(publicApprovalSchema)(approvalFixture);
     expect(parsed.status).toBe('pending');
     expect(parsed.worstCase).toEqual({ currency: 'EUR', amount: 0.4 });
   });
@@ -418,16 +419,22 @@ describe('approvals API', () => {
     // T-0141: the list payload carries the names (T-0134); older servers
     // omit the field and the card hides the line.
     expect(
-      publicApprovalSchema.parse({ ...approvalFixture, approverNames: ['Designers', 'Luis'] })
-        .approverNames,
+      Schema.decodeUnknownSync(publicApprovalSchema)({
+        ...approvalFixture,
+        approverNames: ['Designers', 'Luis'],
+      }).approverNames,
     ).toEqual(['Designers', 'Luis']);
-    expect(publicApprovalSchema.parse(approvalFixture).approverNames).toEqual([]);
+    expect(Schema.decodeUnknownSync(publicApprovalSchema)(approvalFixture).approverNames).toEqual(
+      [],
+    );
   });
 
   it('publicApprovalSchema rejects an unknown status', () => {
-    expect(publicApprovalSchema.safeParse({ ...approvalFixture, status: 'gone' }).success).toBe(
-      false,
-    );
+    expect(
+      Exit.isSuccess(
+        Schema.decodeUnknownExit(publicApprovalSchema)({ ...approvalFixture, status: 'gone' }),
+      ),
+    ).toBe(false);
   });
 
   it('getApproval hits GET /api/approvals/:id and URL-encodes the id', async () => {
@@ -552,17 +559,20 @@ describe('approval rules API (T-0100)', () => {
   it('publicApprovalSchema defaults alwaysEligible to false when missing (older server)', () => {
     const oldShape: Record<string, unknown> = { ...approvalFixture };
     delete oldShape['alwaysEligible'];
-    const parsed = publicApprovalSchema.parse(oldShape);
+    const parsed = Schema.decodeUnknownSync(publicApprovalSchema)(oldShape);
     expect(parsed.alwaysEligible).toBe(false);
   });
 
   it('publicApprovalSchema parses alwaysEligible true', () => {
-    const parsed = publicApprovalSchema.parse({ ...approvalFixture, alwaysEligible: true });
+    const parsed = Schema.decodeUnknownSync(publicApprovalSchema)({
+      ...approvalFixture,
+      alwaysEligible: true,
+    });
     expect(parsed.alwaysEligible).toBe(true);
   });
 
   it('approvalRuleSchema parses a server-shaped rule', () => {
-    const parsed = approvalRuleSchema.parse({
+    const parsed = Schema.decodeUnknownSync(approvalRuleSchema)({
       id: 'rule-1',
       action: 'merge_pull_request',
       scope: 'personal',

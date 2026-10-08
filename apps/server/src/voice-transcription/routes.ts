@@ -40,73 +40,25 @@
 
 import { createHash } from 'node:crypto';
 import { isIP } from 'node:net';
-import { asc, eq } from 'drizzle-orm';
-import { Hono } from 'hono';
+import { asc } from 'drizzle-orm';
 import type { Logger } from 'pino';
-import { z } from 'zod';
 import type { AuditRecorder } from '../audit/service';
 import type { Auth } from '../auth/auth';
-import { requireSession } from '../auth/session';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
-import { user, voiceTranscripts } from '../db/schema';
-import { HttpError } from '../errors';
-import {
-  defaultAudioFetcher,
-  defaultTranscriber,
-  fetchAndTranscribe,
-  shareInFlight,
-  VOICE_FETCH_TIMEOUT_MS,
-  VOICE_TRANSCRIPT_MAX_BYTES,
-  type AudioFetcher,
-  type Transcriber,
-} from './pipeline';
-import { createRateLimiter, type RateLimiter } from '../rate-limit';
+import { user } from '../db/schema';
+import type { RateLimiter } from '../rate-limit';
 import { classifyIp } from '../sandbox/ip-guard';
-import { settingsCipherFor, type SetupTransaction } from '../setup/settings';
-import { silentVerificationWav, TranscriptionProviderError } from './provider';
-import {
-  deleteVoiceTranscriptionSettings,
-  getVoiceTranscriptionSettings,
-  saveVoiceTranscriptionSettings,
-  VOICE_TRANSCRIPTION_DEFAULT_MODEL,
-  type VoiceTranscriptionSettings,
-} from './settings';
+import { settingsCipherFor } from '../setup/settings';
+import type { AudioFetcher, Transcriber } from './pipeline';
+import { getVoiceTranscriptionSettings, type VoiceTranscriptionSettings } from './settings';
 
 export const VOICE_TRANSCRIPT_RATE_LIMIT_MAX = 10;
 export const VOICE_TRANSCRIPT_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
 export const VOICE_TRANSCRIPT_RATE_LIMIT_OWNER_MAX = 10;
 export const VOICE_TRANSCRIPT_RATE_LIMIT_OWNER_WINDOW_MS = 10 * 60 * 1000;
 
-export { VOICE_FETCH_TIMEOUT_MS, VOICE_TRANSCRIPT_MAX_BYTES };
-
-const transcriptBodySchema = z
-  .object({
-    url: z.string().min(1, { message: 'url must not be empty' }).max(2048, {
-      message: 'url must be at most 2048 characters',
-    }),
-  })
-  .strict();
-
-const voiceSettingsBodySchema = z
-  .object({
-    baseUrl: z.string().trim().min(1, { message: 'baseUrl must not be empty' }).max(512, {
-      message: 'baseUrl must be at most 512 characters',
-    }),
-    apiKey: z
-      .string()
-      .trim()
-      .min(1, { message: 'apiKey must not be empty' })
-      .max(512, { message: 'apiKey must be at most 512 characters' })
-      .optional(),
-    model: z
-      .string()
-      .trim()
-      .min(1, { message: 'model must not be empty' })
-      .max(128, { message: 'model must be at most 128 characters' })
-      .optional(),
-  })
-  .strict();
+export { VOICE_FETCH_TIMEOUT_MS, VOICE_TRANSCRIPT_MAX_BYTES } from './pipeline';
 
 export interface VoiceTranscriptionRoutesDependencies {
   auth: Auth;
@@ -132,13 +84,9 @@ export type { AudioFetcher, FetchedAudio, Transcriber } from './pipeline';
 // the fetch leg); re-exported here so existing importers keep working.
 export { AudioUnavailableError } from './pipeline';
 
-function notFound(): HttpError {
-  return new HttpError(404, 'not_found', 'Not found');
-}
-
 // The server owner is the user with the earliest `createdAt`: there is no
 // global admin role, so the first account to exist owns the integrations.
-async function isOwner(db: ServerDatabase, userId: string): Promise<boolean> {
+export async function isOwner(db: ServerDatabase, userId: string): Promise<boolean> {
   const [first] = await db
     .select({ id: user.id })
     .from(user)
@@ -149,240 +97,6 @@ async function isOwner(db: ServerDatabase, userId: string): Promise<boolean> {
 
 export function voiceTranscriptUrlHash(url: string): string {
   return createHash('sha256').update(url, 'utf8').digest('hex');
-}
-
-export function createVoiceTranscriptionRoutes(deps: VoiceTranscriptionRoutesDependencies): Hono {
-  const routes = new Hono();
-  const now = deps.now ?? Date.now;
-  const transcriptLimiter =
-    deps.transcriptLimiter ??
-    createRateLimiter({
-      max: VOICE_TRANSCRIPT_RATE_LIMIT_MAX,
-      windowMs: VOICE_TRANSCRIPT_RATE_LIMIT_WINDOW_MS,
-      now,
-    });
-  const settingsLimiter =
-    deps.settingsLimiter ??
-    createRateLimiter({
-      max: VOICE_TRANSCRIPT_RATE_LIMIT_OWNER_MAX,
-      windowMs: VOICE_TRANSCRIPT_RATE_LIMIT_OWNER_WINDOW_MS,
-      now,
-    });
-  const fetchAudio = deps.audioFetcher ?? defaultAudioFetcher;
-  const transcribe = deps.transcribe ?? defaultTranscriber();
-  // In-flight transcripts by URL hash: two simultaneous taps on the same
-  // voice message share one fetch + provider call instead of double-billing.
-  // `shareInFlight` removes the entry in `finally`, so a failure (or an
-  // interrupted request) never poisons the next tap; the DB row (re-checked
-  // under the lock at insert time) is the durable cache, this map only
-  // dedupes the overlap window.
-  const inFlight = shareInFlight();
-
-  async function requireOwner(userId: string): Promise<void> {
-    if (!(await isOwner(deps.db, userId))) {
-      throw notFound();
-    }
-  }
-
-  async function storedSettings(): Promise<VoiceTranscriptionSettings | null> {
-    try {
-      return await getVoiceTranscriptionSettings(deps.db, settingsCipherFor(deps.config));
-    } catch {
-      // Fail closed (reads as "not configured"), but say so: a DB or
-      // decrypt failure must not silently look like an unset endpoint. The
-      // message is fixed — no error text, no key.
-      deps.logger.warn({}, 'voice transcription settings could not be read');
-      return null;
-    }
-  }
-
-  routes.get('/voice/transcription', async (c) => {
-    await requireSession(deps.auth, c.req.raw.headers);
-    const settings = await storedSettings();
-    return c.json({ enabled: settings !== null });
-  });
-
-  routes.post('/voice/transcript', async (c) => {
-    const { user: caller } = await requireSession(deps.auth, c.req.raw.headers);
-    const settings = await storedSettings();
-    if (settings === null) {
-      throw new HttpError(
-        501,
-        'transcription_not_configured',
-        'Voice transcription is not set up on this server',
-      );
-    }
-    // Validation before the rate limiter: malformed requests must not burn
-    // the caller's budget. Cached hits still count (fine — they cost a row
-    // read, and the budget is generous).
-    const body = await c.req.json().catch(() => null);
-    const parsed = transcriptBodySchema.safeParse(body);
-    if (!parsed.success) {
-      throw new HttpError(
-        400,
-        'invalid_request',
-        parsed.error.issues[0]?.message ?? 'Invalid request',
-      );
-    }
-    // The URL is validated against this install before any request is made:
-    // same origin as `PUBLIC_URL`, path under `/upload/`.
-    const internalUrl = toInternalUploadUrl(parsed.data.url, deps.config);
-    if (internalUrl === null) {
-      throw new HttpError(400, 'invalid_request', 'The voice URL is not from this server');
-    }
-    if (!transcriptLimiter.allow(caller.id)) {
-      throw new HttpError(429, 'rate_limited', 'Too many attempts, try again later');
-    }
-    const urlHash = voiceTranscriptUrlHash(parsed.data.url);
-
-    // Fast path: the durable cache, no lock. Misses share one in-flight
-    // fetch + provider call per URL hash (no transaction and no advisory
-    // lock is held across the network — the lock only covers the re-check
-    // + insert below, with `onConflictDoNothing` as the backstop).
-    const [fastHit] = await deps.db
-      .select({ text: voiceTranscripts.text })
-      .from(voiceTranscripts)
-      .where(eq(voiceTranscripts.urlHash, urlHash))
-      .limit(1);
-    // Every successful request is audited, cache hits included (ids and the
-    // URL hash only, never the text).
-    const auditRequested = (): void => {
-      void deps.audit?.record({
-        actorUserId: caller.id,
-        aiId: null,
-        groupId: null,
-        action: 'voice.transcript_requested',
-        subjectId: null,
-        argsHash: null,
-        costCurrency: null,
-        costAmount: null,
-        result: 'ok',
-        detail: { urlHash },
-      });
-    };
-    if (fastHit !== undefined) {
-      auditRequested();
-      return c.json({ text: fastHit.text });
-    }
-
-    const text = await inFlight.run(urlHash, () =>
-      fetchAndTranscribe({
-        db: deps.db,
-        urlHash,
-        internalUrl,
-        settings,
-        fetchAudio,
-        transcribe,
-      }),
-    );
-
-    auditRequested();
-    return c.json({ text });
-  });
-
-  routes.put('/settings/integrations/voice-transcription', async (c) => {
-    const { user: caller } = await requireSession(deps.auth, c.req.raw.headers);
-    await requireOwner(caller.id);
-    if (!settingsLimiter.allow(caller.id)) {
-      throw new HttpError(429, 'rate_limited', 'Too many attempts, try again later');
-    }
-    const body = await c.req.json().catch(() => null);
-    const parsed = voiceSettingsBodySchema.safeParse(body);
-    if (!parsed.success) {
-      throw new HttpError(
-        400,
-        'invalid_request',
-        parsed.error.issues[0]?.message ?? 'Invalid request',
-      );
-    }
-    const { normalized, problem } = normalizeBaseUrl(parsed.data.baseUrl);
-    if (normalized === null) {
-      throw new HttpError(400, 'invalid_request', problem ?? 'The base URL is not valid');
-    }
-    const candidate: VoiceTranscriptionSettings = {
-      baseUrl: normalized,
-      apiKey: parsed.data.apiKey ?? null,
-      model: parsed.data.model ?? VOICE_TRANSCRIPTION_DEFAULT_MODEL,
-    };
-
-    // Verify before storing: the silent WAV goes through the real provider
-    // path (same `transcribe` seam the transcript route uses). A clip the
-    // endpoint accepts proves the URL/key/model work; a refusal answers 422
-    // `endpoint_rejected`, a transport failure 422 `endpoint_unreachable` —
-    // and nothing is stored either way.
-    try {
-      await transcribe({
-        baseUrl: candidate.baseUrl,
-        apiKey: candidate.apiKey,
-        model: candidate.model,
-        audio: silentVerificationWav(),
-        filename: 'verify.wav',
-        mime: 'audio/wav',
-      });
-    } catch (error) {
-      if (error instanceof TranscriptionProviderError && error.kind === 'unreachable') {
-        throw new HttpError(
-          422,
-          'endpoint_unreachable',
-          'The transcription endpoint could not be reached. Check the URL.',
-        );
-      }
-      if (error instanceof TranscriptionProviderError) {
-        throw new HttpError(
-          422,
-          'endpoint_rejected',
-          'The transcription endpoint rejected the test request. Check the URL, key and model.',
-        );
-      }
-      throw new HttpError(
-        422,
-        'endpoint_unreachable',
-        'The transcription endpoint could not be reached. Check the URL.',
-      );
-    }
-
-    const cipher = settingsCipherFor(deps.config);
-    await deps.db.transaction(async (tx: SetupTransaction) => {
-      await saveVoiceTranscriptionSettings(tx, cipher, candidate);
-    });
-
-    void deps.audit?.record({
-      actorUserId: caller.id,
-      aiId: null,
-      groupId: null,
-      action: 'integrations.voice_transcription_set',
-      subjectId: null,
-      argsHash: null,
-      costCurrency: null,
-      costAmount: null,
-      result: 'ok',
-      detail: null,
-    });
-    return c.json({ ok: true });
-  });
-
-  routes.delete('/settings/integrations/voice-transcription', async (c) => {
-    const { user: caller } = await requireSession(deps.auth, c.req.raw.headers);
-    await requireOwner(caller.id);
-    await deps.db.transaction(async (tx: SetupTransaction) => {
-      await deleteVoiceTranscriptionSettings(tx);
-    });
-    void deps.audit?.record({
-      actorUserId: caller.id,
-      aiId: null,
-      groupId: null,
-      action: 'integrations.voice_transcription_removed',
-      subjectId: null,
-      argsHash: null,
-      costCurrency: null,
-      costAmount: null,
-      result: 'ok',
-      detail: null,
-    });
-    return c.json({ ok: true });
-  });
-
-  return routes;
 }
 
 export interface VoiceTranscriptionPublicStatus {
@@ -447,7 +161,7 @@ export function toInternalUploadUrl(
 
 // https is required unless the host is `localhost` or a private address the
 // owner typed on purpose (self-hosted Whisper on the LAN).
-function normalizeBaseUrl(raw: string): { normalized: string | null; problem?: string } {
+export function normalizeBaseUrl(raw: string): { normalized: string | null; problem?: string } {
   let parsed: URL;
   try {
     parsed = new URL(raw);

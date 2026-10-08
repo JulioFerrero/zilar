@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { Schema } from 'effect';
 
 // The fixed list of providers matched from the plan §20.3 (OpenAI, Anthropic,
 // Google Gemini, DeepSeek, xAI, OpenRouter) plus GitHub (needed for git
@@ -16,4 +16,4 @@ export const PROVIDER_IDS = [
 
 export type ProviderId = (typeof PROVIDER_IDS)[number];
 
-export const ProviderIdSchema = z.enum(PROVIDER_IDS);
+export const ProviderIdSchema = Schema.Literals(PROVIDER_IDS);

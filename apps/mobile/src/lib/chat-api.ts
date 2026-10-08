@@ -1,13 +1,18 @@
+import { Data, Effect, Exit, Schema, SchemaGetter, type Effect as EffectType } from 'effect';
+import { struct } from '@zilar/protocol';
+
 import { API_URL } from './auth';
 import type { Me } from './auth-api';
+import { errorFieldsOf } from './api-error-body';
 import { parseTopic, type Topic } from './topics-api';
 
 export type { Me };
 
 /**
- * The server APIs the real chat store needs, validated by hand at the boundary
- * (mobile has no zod, so this follows the `auth-api.ts` type-guard style). The
- * session token comes from a `TokenProvider` so tests can inject a fake.
+ * The server APIs the real chat store needs, validated at the boundary with
+ * Effect Schema (T-0551, the T-0506 recipe). The session token comes from a
+ * `TokenProvider` so tests can inject a fake. The request is an Effect
+ * pipeline, cut back to a `Promise` at the edge with `Effect.runPromise`.
  */
 
 export interface Contact {
@@ -111,270 +116,300 @@ export class ChatApiError extends Error {
   }
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
+// A lenient nullable string: a missing or non-string value decodes to `null`
+// instead of failing the row (the viewer's own JID on `Me`, absent on older
+// payloads), exactly like the old type guard.
+const LenientNullStringSchema = Schema.Unknown.pipe(
+  Schema.withDecodingDefault(Effect.succeed(null)),
+  Schema.decodeTo(Schema.NullOr(Schema.String), {
+    decode: SchemaGetter.transform((value) => (typeof value === 'string' ? value : null)),
+    encode: SchemaGetter.transform((value) => value),
+  }),
+);
 
-function isString(value: unknown): value is string {
-  return typeof value === 'string';
-}
+// A lenient optional string: a missing or non-string value decodes to
+// `undefined` (absent) instead of failing the row (contact and DM avatar
+// urls), exactly like the old `optionalString` guard.
+const LenientOptionalStringSchema = Schema.Unknown.pipe(
+  Schema.withDecodingDefault(Effect.succeed(undefined)),
+  Schema.decodeTo(Schema.UndefinedOr(Schema.String), {
+    decode: SchemaGetter.transform((value) => (typeof value === 'string' ? value : undefined)),
+    encode: SchemaGetter.transform((value) => value),
+  }),
+);
 
-function optionalString(value: unknown): string | undefined {
-  return isString(value) ? value : undefined;
-}
+const MeSchema = struct({
+  id: Schema.String,
+  email: Schema.String,
+  name: Schema.String,
+  jid: LenientNullStringSchema,
+});
+
+const ContactSchema = struct({
+  userId: Schema.String,
+  name: Schema.String,
+  jid: Schema.String,
+  avatarUrl: LenientOptionalStringSchema,
+});
+
+const GroupRoleSchema = Schema.Literals(['owner', 'admin', 'member']);
+
+const DmEntrySchema = struct({
+  kind: Schema.Literals(['dm']),
+  chatJid: Schema.String,
+  title: Schema.String,
+  userId: Schema.String,
+  avatarUrl: LenientOptionalStringSchema,
+});
+
+const GroupEntryRawSchema = struct({
+  kind: Schema.Literals(['group']),
+  chatJid: Schema.String,
+  title: Schema.String,
+  groupId: Schema.String,
+  memberCount: Schema.Number,
+  role: GroupRoleSchema,
+  // T-0144: absent on older servers (still parses, as before); a malformed
+  // channel field rejects the entry rather than rendering half of it.
+  chatKind: Schema.optional(Schema.Literals(['group', 'channel'])),
+  subscriberCount: Schema.optional(Schema.Number),
+  description: Schema.optional(Schema.NullOr(Schema.String)),
+  // T-0139: the server's `topics` on the entry. Absent on older servers
+  // (still parses, as before); a non-array rejects the entry, while
+  // malformed rows inside a valid array are dropped by `parseTopic`.
+  topics: Schema.optional(Schema.Array(Schema.Unknown)),
+});
+
+const RoleChipSchema = struct({
+  id: Schema.String,
+  name: Schema.String,
+});
+
+const GroupMemberRawSchema = struct({
+  userId: Schema.String,
+  name: Schema.String,
+  role: GroupRoleSchema,
+  // T-0227: null or absent on older servers (no handle); an empty handle
+  // reads as absent too, like the hand validator. A non-string handle
+  // rejects the detail rather than rendering half of it.
+  handle: Schema.optional(Schema.NullOr(Schema.String)),
+  // T-0116: absent on older servers (treated as none); a malformed entry
+  // rejects the detail rather than rendering half of it.
+  roles: Schema.optional(Schema.mutable(Schema.Array(RoleChipSchema))),
+});
+
+// T-0108: the plain-members-may-create switch. Optional so older servers
+// still parse (treated as off); anything but an explicit boolean reads as
+// absent, like the hand validator.
+const LenientSwitchSchema = Schema.Unknown.pipe(
+  Schema.withDecodingDefault(Effect.succeed(undefined)),
+  Schema.decodeTo(Schema.UndefinedOr(Schema.Boolean), {
+    decode: SchemaGetter.transform((value) =>
+      value === true ? true : value === false ? false : undefined,
+    ),
+    encode: SchemaGetter.transform((value) => value),
+  }),
+);
+
+const GroupAiSchema = struct({
+  aiId: Schema.String,
+  jid: Schema.String,
+  name: Schema.String,
+  ownerId: Schema.String,
+});
+
+const GroupDetailRawSchema = struct({
+  id: Schema.String,
+  title: Schema.String,
+  createdBy: Schema.String,
+  members: Schema.mutable(Schema.Array(GroupMemberRawSchema)),
+  membersCanCreateTopics: LenientSwitchSchema,
+  // T-0144: absent on older servers (treated as a group); malformed channel
+  // fields reject the detail rather than rendering half of it.
+  kind: Schema.optional(Schema.Literals(['group', 'channel'])),
+  description: Schema.optional(Schema.NullOr(Schema.String)),
+  // The group AIs ride along when present; ignored when absent or not an
+  // array. A malformed entry inside a valid array rejects the detail.
+  ais: Schema.Unknown.pipe(
+    Schema.withDecodingDefault(Effect.succeed(undefined)),
+    Schema.decodeTo(Schema.UndefinedOr(Schema.Array(Schema.Unknown)), {
+      decode: SchemaGetter.transform((value) =>
+        Array.isArray(value) ? (value as ReadonlyArray<unknown>) : undefined,
+      ),
+      encode: SchemaGetter.transform((value) => value),
+    }),
+  ),
+});
+
+const XmppTokenSchema = struct({
+  jid: Schema.String,
+  token: Schema.String,
+  expiresAt: Schema.String,
+  service: Schema.String,
+  domain: Schema.String,
+  mucDomain: Schema.String,
+});
+
+const ChatsListSchema = struct({
+  chats: Schema.mutable(Schema.Array(Schema.Unknown)),
+});
+
+const ContactsListSchema = Schema.mutable(Schema.Array(ContactSchema));
 
 function parseMe(value: unknown): Me | null {
-  if (!isRecord(value)) return null;
-  const { id, email, name } = value;
-  const jid = value['jid'];
-  if (!isString(id) || !isString(email) || !isString(name)) return null;
-  return { id, email, name, jid: isString(jid) ? jid : null };
-}
-
-function parseContact(value: unknown): Contact | null {
-  if (!isRecord(value)) return null;
-  const userId = value['userId'];
-  const name = value['name'];
-  const jid = value['jid'];
-  if (!isString(userId) || !isString(name) || !isString(jid)) return null;
-  const avatarUrl = optionalString(value['avatarUrl']);
-  return { userId, name, jid, ...(avatarUrl === undefined ? {} : { avatarUrl }) };
-}
-
-function isGroupRole(value: unknown): value is GroupRole {
-  return value === 'owner' || value === 'admin' || value === 'member';
+  const decoded = Schema.decodeUnknownExit(MeSchema)(value);
+  return Exit.isSuccess(decoded) ? decoded.value : null;
 }
 
 function parseChatEntry(value: unknown): ChatEntry | null {
-  if (!isRecord(value)) return null;
-  const kind = value['kind'];
-  const chatJid = value['chatJid'];
-  const title = value['title'];
-  if (!isString(chatJid) || !isString(title)) return null;
-  if (kind === 'dm') {
-    const userId = value['userId'];
-    if (!isString(userId)) return null;
-    const avatarUrl = optionalString(value['avatarUrl']);
-    return {
-      kind: 'dm',
-      chatJid,
-      title,
-      userId,
-      ...(avatarUrl === undefined ? {} : { avatarUrl }),
-    };
+  const dm = Schema.decodeUnknownExit(DmEntrySchema)(value);
+  if (Exit.isSuccess(dm)) {
+    const { avatarUrl, ...rest } = dm.value;
+    return avatarUrl === undefined ? rest : { ...rest, avatarUrl };
   }
-  if (kind === 'group') {
-    const groupId = value['groupId'];
-    const memberCount = value['memberCount'];
-    const role = value['role'];
-    if (!isString(groupId) || typeof memberCount !== 'number' || !isGroupRole(role)) return null;
-    // T-0144: the channel fields, so the store maps the feed row with
-    // `chatKind`/`subscriberCount`/`description`/`myRole` like web. Absent
-    // on older servers (still parses, as before); malformed channel fields
-    // reject the entry rather than rendering half of it.
-    const rawChatKind = value['chatKind'];
-    let chatKind: 'group' | 'channel' | undefined;
-    if (rawChatKind !== undefined) {
-      if (rawChatKind !== 'group' && rawChatKind !== 'channel') return null;
-      chatKind = rawChatKind;
-    }
-    const rawSubscriberCount = value['subscriberCount'];
-    let subscriberCount: number | undefined;
-    if (rawSubscriberCount !== undefined) {
-      if (typeof rawSubscriberCount !== 'number') return null;
-      subscriberCount = rawSubscriberCount;
-    }
-    const rawDescription = value['description'];
-    let description: string | null | undefined;
-    if (rawDescription !== undefined) {
-      if (rawDescription !== null && !isString(rawDescription)) return null;
-      description = rawDescription;
-    }
-    // T-0139: keep the server's `topics` on the entry (validated with
-    // `parseTopic`, the same shape the topics API uses — never trust the
-    // wire; malformed rows are dropped, never rendered), so the store maps
-    // a General-only group to its topic row. Absent on older servers
-    // (still parses, as before).
-    const rawTopics = value['topics'];
-    let topics: Topic[] | undefined;
-    if (rawTopics !== undefined) {
-      if (!Array.isArray(rawTopics)) return null;
-      topics = [];
-      for (const raw of rawTopics) {
-        const topic = parseTopic(raw);
-        if (topic !== null) {
-          topics.push(topic);
-        }
+  const group = Schema.decodeUnknownExit(GroupEntryRawSchema)(value);
+  if (!Exit.isSuccess(group)) return null;
+  const raw = group.value;
+  // T-0139: keep the server's `topics` on the entry (validated with
+  // `parseTopic`, the same shape the topics API uses — never trust the
+  // wire; malformed rows are dropped, never rendered).
+  let topics: Topic[] | undefined;
+  if (raw.topics !== undefined) {
+    topics = [];
+    for (const entry of raw.topics) {
+      const topic = parseTopic(entry);
+      if (topic !== null) {
+        topics.push(topic);
       }
-    }
-    return {
-      kind: 'group',
-      chatJid,
-      title,
-      groupId,
-      memberCount,
-      role,
-      ...(topics === undefined ? {} : { topics }),
-      ...(chatKind === undefined ? {} : { chatKind }),
-      ...(subscriberCount === undefined ? {} : { subscriberCount }),
-      ...(description === undefined ? {} : { description }),
-    };
-  }
-  return null;
-}
-
-function parseGroupDetail(value: unknown): GroupDetail | null {
-  if (!isRecord(value)) return null;
-  const id = value['id'];
-  const title = value['title'];
-  const createdBy = value['createdBy'];
-  const members = value['members'];
-  if (!isString(id) || !isString(title) || !isString(createdBy) || !Array.isArray(members)) {
-    return null;
-  }
-  const parsed: GroupMember[] = [];
-  for (const member of members) {
-    if (!isRecord(member)) return null;
-    const userId = member['userId'];
-    const name = member['name'];
-    const role = member['role'];
-    if (!isString(userId) || !isString(name) || !isGroupRole(role)) return null;
-    // T-0227: the member's `@handle` (like web since T-0169). Null or absent
-    // on older servers (no handle); a non-string handle rejects the detail
-    // rather than rendering half of it.
-    const rawHandleValue = member['handle'];
-    if (rawHandleValue !== undefined && rawHandleValue !== null && !isString(rawHandleValue)) {
-      return null;
-    }
-    const rawHandle =
-      rawHandleValue === undefined || rawHandleValue === null || rawHandleValue === ''
-        ? undefined
-        : rawHandleValue;
-    // T-0116: custom role chips. Absent on older servers (treated as none);
-    // a malformed entry rejects the detail rather than rendering half of it.
-    const roles: { id: string; name: string }[] = [];
-    const rawRoles = member['roles'];
-    if (rawRoles !== undefined) {
-      if (!Array.isArray(rawRoles)) return null;
-      for (const entry of rawRoles) {
-        if (!isRecord(entry)) return null;
-        const id = entry['id'];
-        const roleName = entry['name'];
-        if (!isString(id) || !isString(roleName)) return null;
-        roles.push({ id, name: roleName });
-      }
-    }
-    parsed.push({
-      userId,
-      name,
-      role,
-      roles,
-      ...(rawHandle === undefined ? {} : { handle: rawHandle }),
-    });
-  }
-  // T-0108: the plain-members-may-create switch. Optional so older servers
-  // still parse (treated as off).
-  const membersCanCreateTopics =
-    value['membersCanCreateTopics'] === true
-      ? true
-      : value['membersCanCreateTopics'] === false
-        ? false
-        : undefined;
-  // T-0144: the channel flag + blurb. Optional so older servers still parse
-  // (treated as a group); malformed channel fields reject the detail rather
-  // than rendering half of it.
-  const rawKind = value['kind'];
-  let kind: 'group' | 'channel' | undefined;
-  if (rawKind !== undefined) {
-    if (rawKind !== 'group' && rawKind !== 'channel') return null;
-    kind = rawKind;
-  }
-  const rawDescription = value['description'];
-  let description: string | null | undefined;
-  if (rawDescription !== undefined) {
-    if (rawDescription !== null && !isString(rawDescription)) return null;
-    description = rawDescription;
-  }
-  // The group AIs ride along when present, so the new-topic sheet can offer
-  // the viewer's own unticked; ignored when absent.
-  const ais: GroupAi[] = [];
-  const rawAis = value['ais'];
-  if (Array.isArray(rawAis)) {
-    for (const entry of rawAis) {
-      if (!isRecord(entry)) return null;
-      const aiId = entry['aiId'];
-      const jid = entry['jid'];
-      const name = entry['name'];
-      const ownerId = entry['ownerId'];
-      if (!isString(aiId) || !isString(jid) || !isString(name) || !isString(ownerId)) return null;
-      ais.push({ aiId, jid, name, ownerId });
     }
   }
   return {
-    id,
-    title,
-    createdBy,
-    members: parsed,
-    ais,
-    ...(membersCanCreateTopics === undefined ? {} : { membersCanCreateTopics }),
-    ...(kind === undefined ? {} : { kind }),
-    ...(description === undefined ? {} : { description }),
+    kind: 'group',
+    chatJid: raw.chatJid,
+    title: raw.title,
+    groupId: raw.groupId,
+    memberCount: raw.memberCount,
+    role: raw.role,
+    ...(topics === undefined ? {} : { topics }),
+    ...(raw.chatKind === undefined ? {} : { chatKind: raw.chatKind }),
+    ...(raw.subscriberCount === undefined ? {} : { subscriberCount: raw.subscriberCount }),
+    ...(raw.description === undefined ? {} : { description: raw.description }),
   };
 }
 
-function parseXmppToken(value: unknown): XmppToken | null {
-  if (!isRecord(value)) return null;
-  const jid = value['jid'];
-  const token = value['token'];
-  const expiresAt = value['expiresAt'];
-  const service = value['service'];
-  const domain = value['domain'];
-  const mucDomain = value['mucDomain'];
-  if (
-    !isString(jid) ||
-    !isString(token) ||
-    !isString(expiresAt) ||
-    !isString(service) ||
-    !isString(domain) ||
-    !isString(mucDomain)
-  ) {
-    return null;
+function parseGroupDetail(value: unknown): GroupDetail | null {
+  const decoded = Schema.decodeUnknownExit(GroupDetailRawSchema)(value);
+  if (!Exit.isSuccess(decoded)) return null;
+  const raw = decoded.value;
+  const members: GroupMember[] = [];
+  for (const member of raw.members) {
+    const handle =
+      member.handle === undefined || member.handle === null || member.handle === ''
+        ? undefined
+        : member.handle;
+    members.push({
+      userId: member.userId,
+      name: member.name,
+      role: member.role,
+      roles: member.roles ?? [],
+      ...(handle === undefined ? {} : { handle }),
+    });
   }
-  return { jid, token, expiresAt, service, domain, mucDomain };
+  const ais: GroupAi[] = [];
+  if (Array.isArray(raw.ais)) {
+    for (const entry of raw.ais) {
+      const ai = Schema.decodeUnknownExit(GroupAiSchema)(entry);
+      if (!Exit.isSuccess(ai)) return null;
+      ais.push(ai.value);
+    }
+  }
+  return {
+    id: raw.id,
+    title: raw.title,
+    createdBy: raw.createdBy,
+    members,
+    ais,
+    ...(raw.membersCanCreateTopics === undefined
+      ? {}
+      : { membersCanCreateTopics: raw.membersCanCreateTopics }),
+    ...(raw.kind === undefined ? {} : { kind: raw.kind }),
+    ...(raw.description === undefined ? {} : { description: raw.description }),
+  };
 }
 
-async function request(
+function parseChatsList(value: unknown): ChatEntry[] | null {
+  const decoded = Schema.decodeUnknownExit(ChatsListSchema)(value);
+  if (!Exit.isSuccess(decoded)) return null;
+  const chats: ChatEntry[] = [];
+  for (const entry of decoded.value.chats) {
+    const parsed = parseChatEntry(entry);
+    if (parsed === null) return null;
+    chats.push(parsed);
+  }
+  return chats;
+}
+
+function parseContactsList(value: unknown): Contact[] | null {
+  const decoded = Schema.decodeUnknownExit(ContactsListSchema)(value);
+  if (!Exit.isSuccess(decoded)) return null;
+  return decoded.value.map((contact) => {
+    const { avatarUrl, ...rest } = contact;
+    return avatarUrl === undefined ? rest : { ...rest, avatarUrl };
+  });
+}
+
+function parseXmppToken(value: unknown): XmppToken | null {
+  const decoded = Schema.decodeUnknownExit(XmppTokenSchema)(value);
+  return Exit.isSuccess(decoded) ? decoded.value : null;
+}
+
+// The internal failures, one per case. They carry no field beyond what the old
+// `ChatApiError` already surfaced; the `Promise` edge maps each back to that
+// same error, status, code and message.
+class ChatNetworkError extends Data.TaggedError('ChatNetworkError') {}
+class ChatRequestError extends Data.TaggedError('ChatRequestError')<{
+  readonly status: number;
+  readonly code: string;
+  readonly message: string;
+}> {}
+class ChatUnauthorized extends Data.TaggedError('ChatUnauthorized') {}
+class ChatInvalidResponse extends Data.TaggedError('ChatInvalidResponse') {}
+
+const requestEffect = Effect.fnUntraced(function* (
   apiUrl: string,
   path: string,
   token: string,
   init: RequestInit,
   fetchImpl: typeof fetch,
-): Promise<unknown> {
-  let response: Response;
-  try {
-    response = await fetchImpl(`${apiUrl}${path}`, {
-      ...init,
-      headers: {
-        accept: 'application/json',
-        authorization: `Bearer ${token}`,
-        ...init.headers,
-      },
-    });
-  } catch {
-    throw new ChatApiError(0, 'network_error', 'Could not reach the server');
-  }
+): EffectType.fn.Return<unknown, ChatNetworkError | ChatRequestError> {
+  const response = yield* Effect.tryPromise({
+    try: (signal) =>
+      fetchImpl(`${apiUrl}${path}`, {
+        ...init,
+        signal,
+        headers: {
+          accept: 'application/json',
+          authorization: `Bearer ${token}`,
+          ...init.headers,
+        },
+      }),
+    catch: () => new ChatNetworkError(),
+  });
 
-  const body: unknown = await response.json().catch(() => null);
+  const body: unknown = yield* Effect.promise(
+    () => response.json().catch(() => null) as Promise<unknown>,
+  );
+
   if (!response.ok) {
-    const error = isRecord(body) && isRecord(body['error']) ? body['error'] : null;
-    const code = isString(error?.['code']) ? error['code'] : 'request_failed';
-    const message = isString(error?.['message'])
-      ? error['message']
-      : `Request failed (${response.status})`;
-    throw new ChatApiError(response.status, code, message);
+    const error = errorFieldsOf(body);
+    return yield* new ChatRequestError({
+      status: response.status,
+      code: error.code ?? 'request_failed',
+      message: error.message ?? `Request failed (${response.status})`,
+    });
   }
   return body;
-}
+});
 
 /** The production `ChatApi`: bearer auth, `fetch`, and the build-time API URL. */
 export function createChatApi(
@@ -382,47 +417,57 @@ export function createChatApi(
   fetchImpl: typeof fetch = fetch,
   apiUrl: string = API_URL,
 ): ChatApi {
-  const withToken = async (path: string, init: RequestInit, parse: (value: unknown) => unknown) => {
-    const token = await getToken();
+  const withTokenEffect = Effect.fnUntraced(function* (
+    path: string,
+    init: RequestInit,
+    parse: (value: unknown) => unknown,
+  ): EffectType.fn.Return<
+    unknown,
+    ChatUnauthorized | ChatNetworkError | ChatRequestError | ChatInvalidResponse
+  > {
+    const token = yield* Effect.promise(() => getToken());
     if (token === undefined) {
-      throw new ChatApiError(401, 'unauthorized', 'No session');
+      return yield* new ChatUnauthorized();
     }
-    const body = await request(apiUrl, path, token, init, fetchImpl);
+    const body = yield* requestEffect(apiUrl, path, token, init, fetchImpl);
     const parsed = parse(body);
     if (parsed === null) {
-      throw new ChatApiError(200, 'invalid_response', 'The server sent an unexpected response');
+      return yield* new ChatInvalidResponse();
     }
     return parsed;
-  };
+  });
+
+  const withToken = (
+    path: string,
+    init: RequestInit,
+    parse: (value: unknown) => unknown,
+  ): Promise<unknown> =>
+    Effect.runPromise(
+      withTokenEffect(path, init, parse).pipe(
+        Effect.catchTags({
+          ChatUnauthorized: () => Effect.fail(new ChatApiError(401, 'unauthorized', 'No session')),
+          ChatNetworkError: () =>
+            Effect.fail(new ChatApiError(0, 'network_error', 'Could not reach the server')),
+          ChatRequestError: (error) =>
+            Effect.fail(new ChatApiError(error.status, error.code, error.message)),
+          ChatInvalidResponse: () =>
+            Effect.fail(
+              new ChatApiError(200, 'invalid_response', 'The server sent an unexpected response'),
+            ),
+        }),
+      ),
+    );
 
   return {
     async getMe() {
       return (await withToken('/api/me', { method: 'GET' }, parseMe)) as Me;
     },
     async getChats() {
-      const body = await withToken('/api/chats', { method: 'GET' }, (value) => {
-        if (!isRecord(value) || !Array.isArray(value['chats'])) return null;
-        const chats: ChatEntry[] = [];
-        for (const entry of value['chats']) {
-          const parsed = parseChatEntry(entry);
-          if (parsed === null) return null;
-          chats.push(parsed);
-        }
-        return chats;
-      });
+      const body = await withToken('/api/chats', { method: 'GET' }, parseChatsList);
       return body as ChatEntry[];
     },
     async getContacts() {
-      const body = await withToken('/api/contacts', { method: 'GET' }, (value) => {
-        if (!Array.isArray(value)) return null;
-        const contacts: Contact[] = [];
-        for (const entry of value) {
-          const parsed = parseContact(entry);
-          if (parsed === null) return null;
-          contacts.push(parsed);
-        }
-        return contacts;
-      });
+      const body = await withToken('/api/contacts', { method: 'GET' }, parseContactsList);
       return body as Contact[];
     },
     async getGroup(groupId) {

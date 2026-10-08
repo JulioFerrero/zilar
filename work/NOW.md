@@ -2,6 +2,129 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-08 07:15, Julio asleep, Effect night continues:**
+- **Merged since 05:20:**
+  - T-0556 and T-0562: agents G4 (the tool executor) and G9 (start, stop and reconcile). **Every gateway extraction G1-G9 is done**;
+  - T-0558, T-0555, T-0559 and T-0557: message search, AI management, tools and provider-key connections HTTP;
+  - T-0563: the Effect HTTP adapter now carries the real socket address, with one shared client-IP rule. This unblocks invite-links, machines and setup.
+- **Approved, merge queued:**
+  - T-0567: the gateway db helpers on effect/sql;
+  - T-0564: zod leaf batch 1 (stream, xmpp and gif tokens, model entry, push protocol).
+- **Running:**
+  - T-0560: media gallery HTTP. It stalled twice and was moved to the paid Muse;
+  - T-0561: /me and account invites HTTP;
+  - T-0565: gifs provider and Giphy parser;
+  - T-0566: invite-links HTTP, the first to use the socket address;
+  - T-0568: the delegation service on effect/sql;
+  - T-0569: zod leaf batch 2 (GitHub token, prices, transcription, listener score).
+- **Next:**
+  - T-0570: push config, subscriptions, AI templates and provider ids;
+  - T-0571: an audit and plan for the AI tool argument layer, the biggest zod block left.
+- **Deferred:** machines HTTP, because its test types `getClientIp` on a Hono `Context`. It needs a small design first.
+
+**2026-10-08 05:20, Julio asleep, Effect night continues:**
+- **Merged since 03:50:**
+  - T-0539 (topics HTTP);
+  - T-0550, T-0551 and T-0552: mobile API batches 6-8. **Every mobile API client is now on Effect Schema**;
+  - T-0548 (AI usage and search archives on effect/sql);
+  - T-0544, T-0543, T-0554, T-0545 and T-0553: integration settings, push, routines, voice transcription and approvals HTTP;
+  - T-0549: agents G8b, the group ingest.
+- **Approved, merge queued:** T-0556 (agents G4, the tool executor).
+- **Running:**
+  - T-0555: AI management HTTP, in an auto fix round with 2 should-fix items;
+  - T-0557: provider-key connections HTTP;
+  - T-0558: message search HTTP;
+  - T-0559: tools HTTP;
+  - T-0560: media gallery HTTP;
+  - T-0561: /me and account invites HTTP.
+- **Next:** T-0562, agents G9 (start, stop and reconcile), after G4 merges.
+- **Model note:** during DeepSeek peak (01-04 UTC) the free Muse often stopped or hit its rate limit, and most workers fell back to the paid contributor Muse. T-0548 was switched by hand after two stalls.
+- **Recipe additions in `docs/EFFECT_GUIDE.md`:**
+  - item 8: output schemas strip unlisted keys, so check them field by field;
+  - item 11: a thin Hono wrapper for tests that mount the old factory.
+- **Hono modules left after this wave:** avatars, files, voice, drafts (SSE), the `ai` virtual keys, stickers, gifs (streams), backgrounds (bytes), invite-links (needs the socket IP), machines (the IP again) and setup (the IP again).
+
+**2026-10-08 03:50, Julio asleep, Effect night continues:**
+- **Merged since 03:00:**
+  - T-0536 (groups HTTP), T-0532 (zod leaves mobile), T-0535 (machine registry on effect/sql), T-0537 (screenshot scripts) and T-0533 (xmpp, chats and AI memory HTTP);
+  - T-0528, T-0540 (agents G7, the DM turn), T-0538 (one lenient mobile error envelope);
+  - T-0541 and T-0547 (mobile API batches 4 and 5);
+  - T-0546 (agents G8a, the group turn) and T-0542 (audit: no HttpApi response drops a field).
+- **Merge queue:** T-0539, topics HTTP. It was rebased after an `app.ts` conflict.
+- **Running:**
+  - T-0543, T-0544 and T-0545: push, integration settings and voice transcription HTTP;
+  - T-0548: AI usage and search archives on effect/sql. It stalled once and was nudged to resume;
+  - T-0549: agents G8b, the group ingest;
+  - T-0550 and T-0551: mobile batches 6 and 7 (contacts, stickers, topics, chat).
+- **Mobile QA rule:** for branches that change only lib code, the smoke opens the screens that use the changed clients through `ZILAR_ROUTES` (now in `docs/LEAD_HANDOFF.md`).
+- **Left on mobile after T-0550/T-0551:** `tools-api.ts` only.
+
+**2026-10-08 03:00, Julio asleep, Effect night continues:**
+- **Merged since 02:00:**
+  - T-0507 and T-0530: **zod is gone from web**;
+  - T-0527 (mobile batch 2), T-0529 (agents G5a), T-0525 (pins, roles and audit HTTP);
+  - T-0531: **zustand is gone from mobile.** `phone:smoke` passed;
+  - T-0534 (agents G5b), T-0528 (chat-prefs and chat-folders on effect/sql).
+- **Approved, in the merge queue:**
+  - T-0536 (groups HTTP);
+  - T-0532: **zod leaves mobile.** `phone:smoke` passed. It was rebased after a lockfile conflict;
+  - T-0535 (machine registry on effect/sql);
+  - T-0537 (screenshot scripts);
+  - T-0533 (xmpp, chats and AI memory HTTP; rebased after an `app.ts` conflict).
+- **Running or launching:**
+  - T-0540: agents G7, the DM turn;
+  - T-0539: topics HTTP;
+  - T-0542: checks that no HttpApi response drops a field;
+  - T-0538: one lenient error envelope for mobile, plus the search abort race;
+  - T-0543: push HTTP;
+  - T-0544: integration settings HTTP;
+  - T-0545: voice transcription HTTP.
+- **Written, waiting:** T-0541, mobile API batch 4, after T-0538.
+- **Lead decisions:**
+  - output schemas strip unlisted keys, so `docs/EFFECT_GUIDE.md` now requires a field-by-field check (T-0542 audits the merged modules);
+  - `connections/service.ts` stays on drizzle until `ais/service.ts` moves its transactions (T-0535 re-scope).
+- **Flake noted:** `Composer.voice.test.tsx:83` failed once in T-0530's merge gate under load, then passed 7 times in a row; the merge was retried.
+
+**2026-10-08 02:00, Julio asleep, Effect night continues:**
+- **Merged since 01:05:**
+  - T-0519, T-0508 and T-0506 (the mobile pins pilot);
+  - T-0505 (web `api.ts` part 1), T-0518, T-0521 (the atom-react plan), T-0504 (server config);
+  - T-0523 (agents G6, the listener), T-0520 (chat-prefs and chat-folders HTTP), T-0524 (mobile API batch 1);
+  - T-0522 (contacts and directory on effect/sql);
+  - T-0526: **zustand is gone from web.** The stores run on an atom registry behind a zustand-compatible API. Bundle +16.7 kB gzip. The lead checked it in a browser in mock mode, side by side with main.
+- **Merge queue:** T-0507 (web `api.ts` part 2), T-0527 (mobile batch 2), T-0529 (agents G5a), T-0525 (pins, roles and audit HTTP).
+- **Running or launching:**
+  - T-0528: chat-prefs and chat-folders on effect/sql;
+  - T-0530: web `api.ts` part 3, after which zod leaves web;
+  - T-0531: atom-react M1, after which zustand leaves mobile;
+  - T-0532: mobile batch 3, after which zod leaves mobile;
+  - T-0533: xmpp, chats and AI memory HTTP;
+  - T-0534: agents G5b.
+- **Lead decisions:**
+  - atom-react W1 swaps the container (one atom per store) instead of moving a pilot slice; slice atoms come later;
+  - invite-links and backgrounds HTTP wait. The Effect adapter loses the socket IP that the join limiter needs, and backgrounds stream bytes. Each needs its own design.
+- **Runner incident:** the lead's runner script hit the 2-hour background limit at 01:39 and was restarted detached. One queued merge line was lost to a queue-file race and was re-added.
+
+**2026-10-08 01:05, Julio asleep, Effect night continues:**
+- **Merged since 23:45:**
+  - T-0498: the HttpApi adapter;
+  - T-0496: pins on effect/sql;
+  - T-0509, T-0513, T-0515, T-0512, T-0510;
+  - T-0516 and T-0517: agents G2 and G3;
+  - T-0494: protocol on Effect Schema. `phone:smoke` passed, the first Effect bundle on Hermes;
+  - T-0514: blocks, contacts and directory on HttpApi.
+- **Merge queue:**
+  - T-0519: contact-requests on effect/sql. The recovery test was re-seamed and now really reaches the insert;
+  - T-0508: web drafts, tools and cache on Schema;
+  - T-0506: the mobile pins pilot. The Expo export is 12.2 MB, and `phone:smoke` passed.
+- **Running:**
+  - T-0504: server config;
+  - T-0505: web `api.ts` part 1. It was blocked because tests call zod `.parse` on two schemas; the lead allowed those 3 test files, changing their parse calls only;
+  - T-0518: blocks and directory tests;
+  - T-0521: the atom-react audit;
+  - launching: T-0520 (chat-prefs and chat-folders HTTP), T-0522 (contacts and directory on effect/sql), T-0523 (agents G6, the listener) and T-0524 (mobile API batch 1).
+- **Next:** T-0507 (web `api.ts` part 2) after T-0505; agents G5, G4 and G7; more HTTP and effect/sql modules; mobile API batches 2 and up; atom-react after the T-0521 plan.
+
 **2026-10-07 23:45, Julio asleep, Effect night continues:**
 - **Merged since 23:10:**
   - T-0495: runtime and logger;

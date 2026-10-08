@@ -130,10 +130,6 @@ vi.mock('@/store/chat-store-provider', () => {
   };
 });
 
-vi.mock('zustand', () => ({
-  useStore: (_store: unknown, selector: (state: unknown) => unknown) => selector({}),
-}));
-
 vi.mock('@/components/contacts/use-contacts-api', () => ({
   useContactsApi: () => ({ api: {} }),
 }));

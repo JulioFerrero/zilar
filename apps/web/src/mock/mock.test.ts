@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { UiMessage } from '@zilar/chat-core';
-import { ApprovalRequestSchema, PayloadSchema, StickerSchema } from '@zilar/protocol';
+import { ApprovalRequestSchema, PayloadSchema, StickerSchema, isValid } from '@zilar/protocol';
 import { mockChats, mockMessages } from '@/mock';
 import { mockDemoStickerPacks } from './helpers';
 import { mockRequest, resetMockApi, setMockDelay } from './api';
@@ -48,14 +48,14 @@ describe('mock data', () => {
   it('has only valid card payloads and a valid approval request', () => {
     for (const message of allMessages) {
       if (message.card !== undefined) {
-        expect(PayloadSchema.safeParse(message.card).success).toBe(true);
+        expect(isValid(PayloadSchema)(message.card)).toBe(true);
       }
     }
 
     const approval = allMessages.find((message) => message.card?.type === 'approval.request');
     expect(approval).toBeDefined();
     if (approval?.card?.type === 'approval.request') {
-      expect(ApprovalRequestSchema.safeParse(approval.card.data).success).toBe(true);
+      expect(isValid(ApprovalRequestSchema)(approval.card.data)).toBe(true);
     }
   });
 });
@@ -74,7 +74,7 @@ describe('mock sticker demo packs (T-0120)', () => {
         // The exact shape a send builds: it must validate, or the panel
         // shows "That sticker could not be sent."
         expect(
-          Schema.safeParse({
+          isValid(Schema)({
             pack_id: pack.id,
             sticker_id: sticker.id,
             url: sticker.url,
@@ -82,7 +82,7 @@ describe('mock sticker demo packs (T-0120)', () => {
             width: 200,
             height: 200,
             mime: 'image/png',
-          }).success,
+          }),
         ).toBe(true);
       }
     }
@@ -133,7 +133,7 @@ describe('mock sticker demo packs (T-0120)', () => {
     const first = packs[0]!.stickers[0]!;
     const url = first.url;
     expect(
-      StickerSchema.safeParse({
+      isValid(StickerSchema)({
         pack_id: packs[0]!.id,
         sticker_id: first.id,
         url,
@@ -141,7 +141,7 @@ describe('mock sticker demo packs (T-0120)', () => {
         width: 200,
         height: 200,
         mime: 'image/png',
-      }).success,
+      }),
     ).toBe(true);
   });
 
@@ -180,7 +180,7 @@ describe('mock sticker demo packs (T-0120)', () => {
       // packs/stickers mint UUIDs, so a user-created mock sticker validates
       // exactly like a server one (the mock send swaps nothing here).
       expect(
-        StickerSchema.safeParse({
+        isValid(StickerSchema)({
           pack_id: pack.id,
           sticker_id: sticker.id,
           url: sticker.url,
@@ -188,7 +188,7 @@ describe('mock sticker demo packs (T-0120)', () => {
           width: sticker.width,
           height: sticker.height,
           mime: sticker.mime,
-        }).success,
+        }),
       ).toBe(true);
 
       const starred = await mockRequest('/sticker-favorites', {

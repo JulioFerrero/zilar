@@ -1,37 +1,47 @@
-import { z } from 'zod';
-import { IdSchema, IsoDateTimeSchema, JidSchema, MoneySchema } from './common';
+import { Schema } from 'effect';
+import { IdSchema, IsoDateTimeSchema, JidSchema, MoneySchema, isHttpUrl, struct } from './common';
 
-export const ProgressSchema = z.strictObject({
+export const ProgressSchema = struct({
   ai: JidSchema,
-  task_id: IdSchema.optional(),
-  stage: z.string().min(1).max(100),
-  detail: z.string().max(500).optional(),
-  percent: z.int().min(0).max(100).optional(),
+  task_id: Schema.optional(IdSchema),
+  stage: Schema.String.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(100))),
+  detail: Schema.optional(Schema.String.pipe(Schema.check(Schema.isMaxLength(500)))),
+  percent: Schema.optional(
+    Schema.Int.pipe(
+      Schema.check(Schema.isGreaterThanOrEqualTo(0), Schema.isLessThanOrEqualTo(100)),
+    ),
+  ),
 });
 
-export type Progress = z.infer<typeof ProgressSchema>;
+export type Progress = typeof ProgressSchema.Type;
 
-export const PreviewSchema = z.strictObject({
+const HttpUrlSchema = Schema.String.pipe(
+  Schema.check(
+    Schema.makeFilter((value) => (isHttpUrl(value) ? undefined : 'must be an http(s) URL')),
+  ),
+);
+
+export const PreviewSchema = struct({
   ai: JidSchema,
-  url: z.url({ protocol: /^https?$/ }),
-  label: z.string().max(100).optional(),
-  expires_at: IsoDateTimeSchema.optional(),
+  url: HttpUrlSchema,
+  label: Schema.optional(Schema.String.pipe(Schema.check(Schema.isMaxLength(100)))),
+  expires_at: Schema.optional(IsoDateTimeSchema),
 });
 
-export type Preview = z.infer<typeof PreviewSchema>;
+export type Preview = typeof PreviewSchema.Type;
 
-export const CostTokensSchema = z.strictObject({
-  input: z.int().nonnegative(),
-  output: z.int().nonnegative(),
+export const CostTokensSchema = struct({
+  input: Schema.Int.pipe(Schema.check(Schema.isGreaterThanOrEqualTo(0))),
+  output: Schema.Int.pipe(Schema.check(Schema.isGreaterThanOrEqualTo(0))),
 });
 
-export type CostTokens = z.infer<typeof CostTokensSchema>;
+export type CostTokens = typeof CostTokensSchema.Type;
 
-export const CostSchema = z.strictObject({
+export const CostSchema = struct({
   ai: JidSchema,
-  room: JidSchema.optional(),
+  room: Schema.optional(JidSchema),
   amount: MoneySchema,
-  tokens: CostTokensSchema.optional(),
+  tokens: Schema.optional(CostTokensSchema),
 });
 
-export type Cost = z.infer<typeof CostSchema>;
+export type Cost = typeof CostSchema.Type;

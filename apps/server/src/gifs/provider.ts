@@ -1,34 +1,50 @@
-import { z } from 'zod';
+import { Schema } from 'effect';
+import { isUrl, struct } from '@zilar/protocol';
+
+// zod `z.url()` accepts any scheme, so the filter accepts any parseable URL.
+const GifUrlSchema = Schema.String.pipe(
+  Schema.check(
+    Schema.isMaxLength(2048),
+    Schema.makeFilter((value) => (isUrl(value) ? undefined : 'must be a URL')),
+  ),
+);
+
+const GifDimensionSchema = Schema.Number.pipe(
+  Schema.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(1), Schema.isLessThanOrEqualTo(20000)),
+);
+
+const GifSizeSchema = Schema.Number.pipe(
+  Schema.check(
+    Schema.isInt(),
+    Schema.isGreaterThanOrEqualTo(0),
+    Schema.isLessThanOrEqualTo(100 * 1024 * 1024),
+  ),
+);
 
 /**
  * One GIF result: only the fields the UI needs. Provider-specific junk is
  * dropped when the adapter parses the provider response through this schema.
  */
-export const gifItemSchema = z.object({
-  id: z.string().min(1).max(128),
-  title: z.string().max(100),
-  previewUrl: z.url().max(2048),
-  mp4Url: z.url().max(2048).optional(),
-  gifUrl: z.url().max(2048).optional(),
-  width: z.number().int().min(1).max(20000),
-  height: z.number().int().min(1).max(20000),
-  sizeBytes: z
-    .number()
-    .int()
-    .min(0)
-    .max(100 * 1024 * 1024)
-    .optional(),
+export const gifItemSchema = struct({
+  id: Schema.String.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(128))),
+  title: Schema.String.pipe(Schema.check(Schema.isMaxLength(100))),
+  previewUrl: GifUrlSchema,
+  mp4Url: Schema.optional(GifUrlSchema),
+  gifUrl: Schema.optional(GifUrlSchema),
+  width: GifDimensionSchema,
+  height: GifDimensionSchema,
+  sizeBytes: Schema.optional(GifSizeSchema),
 });
 
-export type GifItem = z.infer<typeof gifItemSchema>;
+export type GifItem = typeof gifItemSchema.Type;
 
-export const gifPageSchema = z.object({
-  items: z.array(gifItemSchema),
+export const gifPageSchema = struct({
+  items: Schema.mutable(Schema.Array(gifItemSchema)),
   /** The `pos` value to pass for the next page, when there is one. */
-  nextPos: z.string().max(128).optional(),
+  nextPos: Schema.optional(Schema.String.pipe(Schema.check(Schema.isMaxLength(128)))),
 });
 
-export type GifPage = z.infer<typeof gifPageSchema>;
+export type GifPage = typeof gifPageSchema.Type;
 
 export interface GifSearchOptions {
   limit: number;

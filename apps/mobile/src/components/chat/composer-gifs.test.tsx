@@ -85,10 +85,6 @@ vi.mock('@/store/chat-store-provider', () => ({
   useChatStoreApi: () => ({ getState: () => ({}) }),
 }));
 
-vi.mock('zustand', () => ({
-  useStore: (_store: unknown, selector: (state: unknown) => unknown) => selector({}),
-}));
-
 vi.mock('@/lib/auth', () => ({
   API_URL: 'http://127.0.0.1:3188',
 }));

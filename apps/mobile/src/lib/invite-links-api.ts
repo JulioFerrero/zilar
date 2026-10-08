@@ -1,4 +1,8 @@
+import { Data, Effect, Exit, Schema, type Effect as EffectType } from 'effect';
+import { struct } from '@zilar/protocol';
+
 import { API_URL } from './auth';
+import { errorFieldsOf } from './api-error-body';
 import type { TokenProvider } from './chat-api';
 
 /**
@@ -8,10 +12,11 @@ import type { TokenProvider } from './chat-api';
  * join-by-link preview and join. The wire contract lives in
  * `apps/server/src/invite-links/{routes,service}.ts` (T-0115).
  *
- * Mobile has no zod, so — like `topics-api.ts` — the boundary is validated
- * with type guards: malformed rows return null and throw `invalid_response`.
- * The token is shown once at creation in `url` and never stored — the list
- * carries hints, labels, uses and state, never tokens.
+ * The boundary is validated with Effect Schema (T-0506 recipe): the request is
+ * an Effect pipeline, cut back to a `Promise` at the edge with
+ * `Effect.runPromise`. Malformed rows fail the decode and throw
+ * `invalid_response`. The token is shown once at creation in `url` and never
+ * stored — the list carries hints, labels, uses and state, never tokens.
  */
 
 export interface GroupInviteLink {
@@ -76,129 +81,120 @@ export class InviteLinksApiError extends Error {
   }
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
+// `label`, `maxUses` and `expiresAt` are nullable but required: an explicit
+// `null` decodes to `null`, while a missing key or a wrong type fails the row,
+// exactly like the old type guards.
+const GroupInviteLinkSchema = struct({
+  id: Schema.String,
+  label: Schema.NullOr(Schema.String),
+  tokenHint: Schema.String,
+  uses: Schema.Number,
+  maxUses: Schema.NullOr(Schema.Number),
+  expiresAt: Schema.NullOr(Schema.String),
+  revoked: Schema.Boolean,
+  createdAt: Schema.String,
+});
 
-function isString(value: unknown): value is string {
-  return typeof value === 'string';
-}
+const CreatedInviteLinkSchema = struct({
+  id: Schema.String,
+  token: Schema.String,
+  url: Schema.String,
+});
 
-function nullableString(value: unknown): string | null | undefined {
-  if (value === null) return null;
-  return isString(value) ? value : undefined;
-}
+// `groupId` and `kind` are optional: absent keys are omitted from the preview,
+// but a present key with the wrong type fails it — an older server that omits
+// `kind` still parses (treated as a group).
+const JoinPreviewSchema = struct({
+  groupTitle: Schema.String,
+  memberCount: Schema.Number,
+  alreadyMember: Schema.Boolean,
+  groupId: Schema.optional(Schema.String),
+  kind: Schema.optional(Schema.Literals(['group', 'channel'])),
+});
 
-function nullableNumber(value: unknown): number | null | undefined {
-  if (value === null) return null;
-  return typeof value === 'number' ? value : undefined;
-}
+const JoinResultSchema = struct({
+  groupId: Schema.String,
+  alreadyMember: Schema.Boolean,
+});
 
-function parseInviteLink(value: unknown): GroupInviteLink | null {
-  if (!isRecord(value)) return null;
-  const id = value['id'];
-  const tokenHint = value['tokenHint'];
-  const uses = value['uses'];
-  const revoked = value['revoked'];
-  const createdAt = value['createdAt'];
-  if (
-    !isString(id) ||
-    !isString(tokenHint) ||
-    typeof uses !== 'number' ||
-    typeof revoked !== 'boolean' ||
-    !isString(createdAt)
-  ) {
-    return null;
-  }
-  const label = nullableString(value['label']);
-  const maxUses = nullableNumber(value['maxUses']);
-  const expiresAt = nullableString(value['expiresAt']);
-  if (label === undefined || maxUses === undefined || expiresAt === undefined) {
-    return null;
-  }
-  return { id, label, tokenHint, uses, maxUses, expiresAt, revoked, createdAt };
-}
+const InviteLinkListSchema = struct({
+  links: Schema.mutable(Schema.Array(GroupInviteLinkSchema)),
+});
 
 function parseCreatedInviteLink(value: unknown): CreatedInviteLink | null {
-  if (!isRecord(value)) return null;
-  const id = value['id'];
-  const token = value['token'];
-  const url = value['url'];
-  if (!isString(id) || !isString(token) || !isString(url)) return null;
-  return { id, token, url };
+  const decoded = Schema.decodeUnknownExit(CreatedInviteLinkSchema)(value);
+  return Exit.isSuccess(decoded) ? decoded.value : null;
 }
 
 function parseJoinPreview(value: unknown): JoinPreview | null {
-  if (!isRecord(value)) return null;
-  const groupTitle = value['groupTitle'];
-  const memberCount = value['memberCount'];
-  const alreadyMember = value['alreadyMember'];
-  if (
-    !isString(groupTitle) ||
-    typeof memberCount !== 'number' ||
-    typeof alreadyMember !== 'boolean'
-  ) {
-    return null;
-  }
-  const groupId = value['groupId'];
-  if (groupId !== undefined && !isString(groupId)) return null;
-  // T-0144: the preview kind ("Join channel" vs "Join the group"). Optional
-  // so older servers still parse; malformed rejects the preview.
-  const rawKind = value['kind'];
-  let kind: 'group' | 'channel' | undefined;
-  if (rawKind !== undefined) {
-    if (rawKind !== 'group' && rawKind !== 'channel') return null;
-    kind = rawKind;
-  }
-  return {
-    groupTitle,
-    memberCount,
-    alreadyMember,
-    ...(groupId === undefined ? {} : { groupId }),
-    ...(kind === undefined ? {} : { kind }),
-  };
+  const decoded = Schema.decodeUnknownExit(JoinPreviewSchema)(value);
+  return Exit.isSuccess(decoded) ? decoded.value : null;
 }
 
 function parseJoinResult(value: unknown): JoinResult | null {
-  if (!isRecord(value)) return null;
-  const groupId = value['groupId'];
-  const alreadyMember = value['alreadyMember'];
-  if (!isString(groupId) || typeof alreadyMember !== 'boolean') return null;
-  return { groupId, alreadyMember };
+  const decoded = Schema.decodeUnknownExit(JoinResultSchema)(value);
+  return Exit.isSuccess(decoded) ? decoded.value : null;
 }
 
-async function request(
+function parseInviteLinkList(value: unknown): GroupInviteLink[] | null {
+  const decoded = Schema.decodeUnknownExit(InviteLinkListSchema)(value);
+  return Exit.isSuccess(decoded) ? decoded.value.links : null;
+}
+
+// revoke answers 204 with no body; any 2xx body is accepted and ignored,
+// exactly like the old hand validator.
+function parseRevoke(value: unknown): Record<string, never> | null {
+  const decoded = Schema.decodeUnknownExit(Schema.Unknown)(value);
+  return Exit.isSuccess(decoded) ? {} : null;
+}
+
+// The internal failures, one per case. They carry no field beyond what the old
+// `InviteLinksApiError` already surfaced; the `Promise` edge maps each back to
+// that same error, status, code and message.
+class InviteLinksNetworkError extends Data.TaggedError('InviteLinksNetworkError') {}
+class InviteLinksRequestError extends Data.TaggedError('InviteLinksRequestError')<{
+  readonly status: number;
+  readonly code: string;
+  readonly message: string;
+}> {}
+class InviteLinksUnauthorized extends Data.TaggedError('InviteLinksUnauthorized') {}
+class InviteLinksInvalidResponse extends Data.TaggedError('InviteLinksInvalidResponse') {}
+
+const requestEffect = Effect.fnUntraced(function* (
   apiUrl: string,
   path: string,
   token: string,
   init: RequestInit,
   fetchImpl: typeof fetch,
-): Promise<unknown> {
-  let response: Response;
-  try {
-    response = await fetchImpl(`${apiUrl}${path}`, {
-      ...init,
-      headers: {
-        accept: 'application/json',
-        authorization: `Bearer ${token}`,
-        ...init.headers,
-      },
-    });
-  } catch {
-    throw new InviteLinksApiError(0, 'network_error', 'Could not reach the server');
-  }
+): EffectType.fn.Return<unknown, InviteLinksNetworkError | InviteLinksRequestError> {
+  const response = yield* Effect.tryPromise({
+    try: (signal) =>
+      fetchImpl(`${apiUrl}${path}`, {
+        ...init,
+        signal,
+        headers: {
+          accept: 'application/json',
+          authorization: `Bearer ${token}`,
+          ...init.headers,
+        },
+      }),
+    catch: () => new InviteLinksNetworkError(),
+  });
 
-  const body: unknown = await response.json().catch(() => null);
+  const body: unknown = yield* Effect.promise(
+    () => response.json().catch(() => null) as Promise<unknown>,
+  );
+
   if (!response.ok) {
-    const error = isRecord(body) && isRecord(body['error']) ? body['error'] : null;
-    const code = isString(error?.['code']) ? error['code'] : 'request_failed';
-    const message = isString(error?.['message'])
-      ? error['message']
-      : `Request failed (${response.status})`;
-    throw new InviteLinksApiError(response.status, code, message);
+    const error = errorFieldsOf(body);
+    return yield* new InviteLinksRequestError({
+      status: response.status,
+      code: error.code ?? 'request_failed',
+      message: error.message ?? `Request failed (${response.status})`,
+    });
   }
   return body;
-}
+});
 
 /** The production `InviteLinksApi`: bearer auth, `fetch`, and the build-time API URL. */
 export function createInviteLinksApi(
@@ -206,26 +202,54 @@ export function createInviteLinksApi(
   fetchImpl: typeof fetch = fetch,
   apiUrl: string = API_URL,
 ): InviteLinksApi {
-  const withToken = async (
+  const withTokenEffect = Effect.fnUntraced(function* (
     path: string,
     init: RequestInit,
     parse: (value: unknown) => unknown,
-  ): Promise<unknown> => {
-    const token = await getToken();
+  ): EffectType.fn.Return<
+    unknown,
+    | InviteLinksUnauthorized
+    | InviteLinksNetworkError
+    | InviteLinksRequestError
+    | InviteLinksInvalidResponse
+  > {
+    const token = yield* Effect.promise(() => getToken());
     if (token === undefined) {
-      throw new InviteLinksApiError(401, 'unauthorized', 'No session');
+      return yield* new InviteLinksUnauthorized();
     }
-    const body = await request(apiUrl, path, token, init, fetchImpl);
+    const body = yield* requestEffect(apiUrl, path, token, init, fetchImpl);
     const parsed = parse(body);
     if (parsed === null) {
-      throw new InviteLinksApiError(
-        200,
-        'invalid_response',
-        'The server sent an unexpected response',
-      );
+      return yield* new InviteLinksInvalidResponse();
     }
     return parsed;
-  };
+  });
+
+  const withToken = (
+    path: string,
+    init: RequestInit,
+    parse: (value: unknown) => unknown,
+  ): Promise<unknown> =>
+    Effect.runPromise(
+      withTokenEffect(path, init, parse).pipe(
+        Effect.catchTags({
+          InviteLinksUnauthorized: () =>
+            Effect.fail(new InviteLinksApiError(401, 'unauthorized', 'No session')),
+          InviteLinksNetworkError: () =>
+            Effect.fail(new InviteLinksApiError(0, 'network_error', 'Could not reach the server')),
+          InviteLinksRequestError: (error) =>
+            Effect.fail(new InviteLinksApiError(error.status, error.code, error.message)),
+          InviteLinksInvalidResponse: () =>
+            Effect.fail(
+              new InviteLinksApiError(
+                200,
+                'invalid_response',
+                'The server sent an unexpected response',
+              ),
+            ),
+        }),
+      ),
+    );
 
   return {
     async createGroupInviteLink(groupId, input = {}) {
@@ -244,16 +268,7 @@ export function createInviteLinksApi(
       const body = await withToken(
         `/api/groups/${encodeURIComponent(groupId)}/invite-links`,
         { method: 'GET' },
-        (value) => {
-          if (!isRecord(value) || !Array.isArray(value['links'])) return null;
-          const links: GroupInviteLink[] = [];
-          for (const entry of value['links']) {
-            const link = parseInviteLink(entry);
-            if (link === null) return null;
-            links.push(link);
-          }
-          return links;
-        },
+        parseInviteLinkList,
       );
       return body as GroupInviteLink[];
     },
@@ -261,7 +276,7 @@ export function createInviteLinksApi(
       await withToken(
         `/api/groups/${encodeURIComponent(groupId)}/invite-links/${encodeURIComponent(linkId)}`,
         { method: 'DELETE' },
-        () => ({}),
+        parseRevoke,
       );
     },
     async previewJoinLink(token) {

@@ -5,15 +5,16 @@
  * protocol package is untouched, and the bubble keeps them as local state.
  */
 
-import { z } from 'zod';
+import { Exit, Schema } from 'effect';
+import { struct } from '@zilar/protocol';
 
 /** One stored transcript: the text plus the detected language, if any. */
-export const StoredTranscriptSchema = z.object({
-  text: z.string().min(1),
-  language: z.string().optional(),
+export const StoredTranscriptSchema = struct({
+  text: Schema.String.pipe(Schema.check(Schema.isMinLength(1))),
+  language: Schema.optional(Schema.String),
 });
 
-export type StoredTranscript = z.infer<typeof StoredTranscriptSchema>;
+export type StoredTranscript = typeof StoredTranscriptSchema.Type;
 
 export type TranscriptMap = Record<string, StoredTranscript>;
 
@@ -62,7 +63,7 @@ function defaultTranscriptFile(): TranscriptFile {
 
 /**
  * Parses the raw file content entry by entry (T-0179, round 1): valid
- * entries survive, only the invalid ones are dropped. A whole-file zod
+ * entries survive, only the invalid ones are dropped. A whole-file schema
  * check would wipe the cache because of one bad entry; here a hostile
  * entry never takes the good ones with it. Missing or unparsable data
  * resolves to {}.
@@ -82,9 +83,9 @@ export function parseTranscripts(raw: string | null | undefined): TranscriptMap 
   }
   const kept: TranscriptMap = {};
   for (const [key, value] of Object.entries(parsed)) {
-    const entry = StoredTranscriptSchema.safeParse(value);
-    if (entry.success) {
-      kept[key] = entry.data;
+    const entry = Schema.decodeUnknownExit(StoredTranscriptSchema)(value);
+    if (Exit.isSuccess(entry)) {
+      kept[key] = entry.value;
     }
   }
   return kept;

@@ -197,6 +197,42 @@ Hono stays the outer edge until every module has moved. Each module becomes an `
 5. **Layer:** `HttpApiBuilder.group(...)`, then `HttpApiBuilder.layer(api)` with the group, `sessionLayer` and the schema-error layer provided, then `HttpRouter.toWebHandler(layer.pipe(Layer.provide(HttpServer.layerServices)), { disableLogger: true })`. **Keep the router logger off:** it logs full URLs, which would bypass Hono's redacted path logging.
 6. **Mount:** export `{ handler, routes }` with the exact `{ method, path }` pairs, then replace the module's `app.route('/api', …)` line with `mountEffectRoutes(app, routes, handler)`. **Use exact routes, not a wildcard,** so the authz sweep test still sees every route.
 7. **Proof:** the module's existing Hono-level test passes unchanged. If it cannot, stop and report BLOCKED.
+8. **Output schemas strip unknown keys.** An endpoint's success schema is an encoder, so a field the service returns but the schema omits silently disappears for web and mobile, and TypeScript does not catch it. List every field of the service's return type, and compare the two side by side in the Report.
+9. **Step order:** when the old route checked the rate limiter before decoding the body, use an endpoint middleware for the limiter (see `pins/api.ts` and `groups/api.ts`).
+10. **Message texts:** a test-asserted text stays byte-identical. A generic decode message may become Schema's text; list the old and new texts in the Report.
+11. **Tests that mount the old Hono factory directly:** keep `createXRoutes(deps): Hono` exported as a thin wrapper. It builds the Effect API, registers each pair from an exported `X_API_ROUTES` list on a `new Hono()` (path minus `/api`), and forwards `context.req.raw` to `api.handler`. The tests stay unchanged; the wrapper goes away when those tests move to `createApp` (see `push/api.ts`, T-0543).
+12. **Binary bodies (`voice/api.ts`):** declare the endpoint with no payload
+   schema and read the body from `request.request.stream` (an Effect `Stream`)
+   with `Stream.runForEachWhile`, stopping as soon as the running total passes
+   the cap, so the body is never buffered whole. Answer raw bytes with
+   `HttpServerResponse.uint8Array(bytes, { headers })`; `HttpApiBuilder` returns
+   any handler-returned `HttpServerResponse` untouched, headers included.
+
+## Moving a server service onto effect/sql (T-0496, T-0510, T-0519)
+
+The recipe is `docs/audit/effect-sql-migration.md` §(a). The examples are `apps/server/src/pins/service.ts`, `apps/server/src/blocks/service.ts` and `apps/server/src/contact-requests/service.ts`.
+- **Signatures:** keep the exported signatures. `db: ServerDatabase` stays the key for `sqlRuntimeFor(db).runPromise(...)`. `createApp` registers the runtime once (T-0510).
+- **Transactions:** `sql.withTransaction`, with the same raw `pg_advisory_xact_lock(hashtext(...))` statements in the same order. Lock order across modules: `contact-sender:` before `user-block:`.
+- **Unique violations:** check `SqlError.SqlError` with `reason._tag === 'UniqueViolation'`. It exposes the constraint name. Keep the raw `code === '23505'` fallback, and never match message text.
+- **Race recovery:** re-read through a fresh `runSql(deps.db, …)` after the transaction rejects, never inside the aborted transaction.
+- **Testing a unique-violation race:** PGlite has one connection, so a real race cannot run. Add test-only deps hooks: `onInsert` fires inside the transaction just before the INSERT and can throw a real `new SqlError.SqlError({ reason: new SqlError.UniqueViolation({ constraint }) })`; `onRecovery` fires on the fresh connection and can seed the concurrent winner and trace the order. Production never sets them.
+- **Rows:** `SELECT *` and `RETURNING *` come back camelCased through `transformResultNames` (`apps/server/src/effect/sql.ts`).
+
+## Moving a mobile API client onto Effect (T-0506)
+
+`apps/mobile/src/lib/pins-api.ts` is the worked example for the other `*-api.ts` files.
+- **Decode:** decode the boundary with Effect Schema (`struct` from `@zilar/protocol`).
+- **Lenient fields:** a field the client must tolerate (an unknown kind becomes a default) is `Schema.Unknown.pipe(Schema.decodeTo(Target, { decode: SchemaGetter.transform(fn) }))`.
+- **Requests:** run the request as an Effect pipeline, cut back to a `Promise` at the edge with `Effect.runPromise`. Keep the error class with the same `status`, `code` and `message`.
+- **Exported parsers:** keep each exported `parseX` as a thin wrapper over the schema.
+- **Proof:** `expo export` runs the Hermes bundle check (12.2 MB hbc after T-0506), and `pnpm phone:smoke` checks it on the emulator.
+
+## Web API client (T-0505)
+
+- **The response helpers:** `decodeResponse` in `apps/web/src/lib/api.ts` accepts a zod schema or an Effect Schema until the last section moves.
+- **Optional fields:** use `Schema.optional`, not `optionalKey`, because of `exactOptionalPropertyTypes`.
+- **zod `.catchall`:** becomes `Schema.StructWithRest(struct, [Schema.Record(Schema.String, Schema.Unknown)])`.
+- **Tests:** a test that called zod `.parse` on an exported schema changes only that call, to `Schema.decodeUnknownSync(schema)(x)`.
 
 ## Whole-codebase conversion (2026-10-07)
 

@@ -1,8 +1,7 @@
 import type { MentionMember, MessageStatus, UiMessage } from '@zilar/chat-core';
 import { defaultFolders, sortFolders, splitLinks } from '@zilar/chat-core';
-import { StickerSchema } from '@zilar/protocol';
-import { create, type StoreApi, type UseBoundStore } from 'zustand';
-
+import { StickerSchema, isValid } from '@zilar/protocol';
+import { createBoundStore, type UseBoundStore } from './atomStore';
 import type {
   CreatedInviteLink,
   CreateGroupInviteLinkInput,
@@ -358,8 +357,8 @@ function mockMediaItems(messages: readonly UiMessage[], tab: MediaTab): MediaIte
 export function createChatStore(
   phase: MockDraftPhase | undefined = readMockDraftPhase(),
   load: MockLoadScenario | undefined = readMockLoadScenario(),
-): UseBoundStore<StoreApi<ChatStoreState>> {
-  return create<ChatStoreState>()((set, get) => {
+): UseBoundStore<ChatStoreState> {
+  return createBoundStore<ChatStoreState>((set, get) => {
     // In-memory custom roles (T-0137): each mock store gets its own copy of
     // the seeded Designers/Devs roles, plus the attached roles + approver
     // role per topic id. Writes mutate the copies and bump
@@ -1220,7 +1219,7 @@ export function createChatStore(
           height: sticker.height,
           mime: sticker.mime,
         };
-        if (!StickerSchema.safeParse(data).success) {
+        if (!isValid(StickerSchema)(data)) {
           set({ actionError: { chatId, message: 'That sticker could not be sent.' } });
           return;
         }
@@ -1313,7 +1312,7 @@ export function createChatStore(
           return;
         }
         // A drifted payload that no longer validates stays failed.
-        if (!StickerSchema.safeParse(payload.data).success) {
+        if (!isValid(StickerSchema)(payload.data)) {
           return;
         }
         set((state) => ({

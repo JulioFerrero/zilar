@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { Exit, Schema } from 'effect';
 
 // One tool call the model asked for, rebuilt from the pieces the stream
 // carries: `id` and `name` arrive first, `arguments` in later chunks, all
@@ -27,32 +27,32 @@ export class ChatStreamInterruptedError extends Error {
 // One `data:` line off a `stream: true` chat-completions response. LiteLLM
 // passes the OpenAI shape through: `choices[0].delta` carries `content` or
 // `tool_calls` pieces. Unknown fields (role, finish_reason, ids) are ignored.
-const StreamDeltaSchema = z.object({
-  choices: z
-    .array(
-      z.object({
-        delta: z
-          .object({
-            content: z.string().nullable().optional(),
-            tool_calls: z
-              .array(
-                z.object({
-                  index: z.number(),
-                  id: z.string().optional(),
-                  function: z
-                    .object({
-                      name: z.string().nullable().optional(),
-                      arguments: z.string().nullable().optional(),
-                    })
-                    .optional(),
+const StreamDeltaSchema = Schema.Struct({
+  choices: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        delta: Schema.optional(
+          Schema.Struct({
+            content: Schema.optional(Schema.NullOr(Schema.String)),
+            tool_calls: Schema.optional(
+              Schema.Array(
+                Schema.Struct({
+                  index: Schema.Number,
+                  id: Schema.optional(Schema.String),
+                  function: Schema.optional(
+                    Schema.Struct({
+                      name: Schema.optional(Schema.NullOr(Schema.String)),
+                      arguments: Schema.optional(Schema.NullOr(Schema.String)),
+                    }),
+                  ),
                 }),
-              )
-              .optional(),
-          })
-          .optional(),
+              ),
+            ),
+          }),
+        ),
       }),
-    )
-    .optional(),
+    ),
+  ),
 });
 
 // Reads a `text/event-stream` chat-completions body to `[DONE]`, being robust
@@ -85,11 +85,11 @@ export async function consumeChatCompletionStream(
     } catch {
       throw new ChatStreamInterruptedError('a data line was not valid JSON');
     }
-    const parsed = StreamDeltaSchema.safeParse(json);
-    if (!parsed.success) {
+    const exit = Schema.decodeUnknownExit(StreamDeltaSchema)(json);
+    if (!Exit.isSuccess(exit)) {
       throw new ChatStreamInterruptedError('a data line had an unexpected shape');
     }
-    for (const choice of parsed.data.choices ?? []) {
+    for (const choice of exit.value.choices ?? []) {
       const delta = choice.delta;
       if (delta === undefined) {
         continue;

@@ -65,10 +65,9 @@ import {
 } from '@/lib/chatPrefs';
 import type { MuteDurationId } from '@/lib/chatPrefs';
 import { classify, cleanFilename, objectUrlFor } from '@/lib/attachments';
-import { StickerSchema } from '@zilar/protocol';
+import { StickerSchema, isValid } from '@zilar/protocol';
 import { sampleVoiceDataUrl } from '@/lib/voice';
-import type { StoreApi } from 'zustand/vanilla';
-import { createStore } from 'zustand/vanilla';
+import { createAtomStore, type StoreApi } from './atomStore';
 import {
   currentUserId as defaultCurrentUserId,
   mockChats,
@@ -832,7 +831,7 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
   // The `leaveTopic` row re-check reads it alongside the painted list.
   const archivedTopicIds = new Set<string>();
 
-  return createStore<ChatStoreState>((set, get) => {
+  return createAtomStore<ChatStoreState>((set, get) => {
     const setStatus = (chatId: string, messageId: string, status: MessageStatus): void => {
       set((state) => {
         const list = state.messagesByChat[chatId] ?? [];
@@ -1594,7 +1593,7 @@ export function createChatStore(seed: ChatStoreSeed = {}): StoreApi<ChatStoreSta
         };
         // Same guard as the real store: tampered recents must refuse loudly,
         // never leave a bubble behind.
-        if (!StickerSchema.safeParse(data).success) {
+        if (!isValid(StickerSchema)(data)) {
           set({ actionError: { chatId, message: 'That sticker could not be sent.' } });
           return;
         }

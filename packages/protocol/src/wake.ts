@@ -1,11 +1,13 @@
-import { z } from 'zod';
-import { IdSchema, JidSchema } from './common';
+import { Schema } from 'effect';
+import { IdSchema, JidSchema, struct } from './common';
 
-export const WakeReasonSchema = z.strictObject({
+export const WakeReasonSchema = struct({
   ai: JidSchema,
-  score: z.number().min(0).max(1),
-  reason: z.string().min(1).max(300),
-  message_ids: z.array(IdSchema).max(50),
+  score: Schema.Number.pipe(
+    Schema.check(Schema.isGreaterThanOrEqualTo(0), Schema.isLessThanOrEqualTo(1)),
+  ),
+  reason: Schema.String.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(300))),
+  message_ids: Schema.mutable(Schema.Array(IdSchema)).pipe(Schema.check(Schema.isMaxLength(50))),
 });
 
-export type WakeReason = z.infer<typeof WakeReasonSchema>;
+export type WakeReason = typeof WakeReasonSchema.Type;

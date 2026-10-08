@@ -1,5 +1,6 @@
 import type { ChatSummary } from '@zilar/chat-core';
-import { z } from 'zod';
+import { Result, Schema } from 'effect';
+import { struct } from '@zilar/protocol';
 import type { StorageLike } from './realStore';
 
 // The last chat list the user saw, so a reload paints it at once in the same
@@ -9,35 +10,41 @@ export const CHAT_LIST_CACHE_KEY = 'zilar:chatList';
 const CACHE_VERSION = 1;
 const MAX_CACHED_CHATS = 200;
 
-const lastMessageSchema = z
-  .object({
-    id: z.string(),
-    chatId: z.string(),
-    senderId: z.string(),
-    senderName: z.string(),
-    text: z.string().optional(),
-    createdAt: z.string(),
-    status: z.string(),
-  })
-  .passthrough();
+// Unknown keys are kept, like the old zod `.passthrough()`: a newer build may
+// add fields to a cached summary and an older cache must still paint it.
+const passthrough = [Schema.Record(Schema.String, Schema.Unknown)] as const;
 
-const cachedChatSchema = z
-  .object({
-    id: z.string(),
-    title: z.string(),
-    kind: z.string(),
-    isAI: z.boolean(),
-    space: z.string(),
-    unread: z.number(),
-    muted: z.boolean(),
-    lastMessage: lastMessageSchema.optional(),
-  })
-  .passthrough();
+const lastMessageSchema = Schema.StructWithRest(
+  struct({
+    id: Schema.String,
+    chatId: Schema.String,
+    senderId: Schema.String,
+    senderName: Schema.String,
+    text: Schema.optional(Schema.String),
+    createdAt: Schema.String,
+    status: Schema.String,
+  }),
+  passthrough,
+);
 
-const cacheSchema = z.object({
-  version: z.literal(CACHE_VERSION),
-  userId: z.string(),
-  chats: z.array(cachedChatSchema),
+const cachedChatSchema = Schema.StructWithRest(
+  struct({
+    id: Schema.String,
+    title: Schema.String,
+    kind: Schema.String,
+    isAI: Schema.Boolean,
+    space: Schema.String,
+    unread: Schema.Number,
+    muted: Schema.Boolean,
+    lastMessage: Schema.optional(lastMessageSchema),
+  }),
+  passthrough,
+);
+
+const cacheSchema = struct({
+  version: Schema.Literal(CACHE_VERSION),
+  userId: Schema.String,
+  chats: Schema.mutable(Schema.Array(cachedChatSchema)),
 });
 
 /** The cached list for `userId`, or null when there is none or it is unusable. */
@@ -53,11 +60,11 @@ export function readChatListCache(
     if (raw === null) {
       return null;
     }
-    const parsed = cacheSchema.safeParse(JSON.parse(raw));
-    if (!parsed.success || (userId !== undefined && parsed.data.userId !== userId)) {
+    const parsed = Schema.decodeUnknownResult(cacheSchema)(JSON.parse(raw));
+    if (!Result.isSuccess(parsed) || (userId !== undefined && parsed.success.userId !== userId)) {
       return null;
     }
-    const chats = parsed.data.chats.map((chat) => {
+    const chats = parsed.success.chats.map((chat) => {
       const { lastMessage, lastSeenAt: _lastSeenAt, online: _online, ...rest } = chat;
       const summary = { ...rest } as unknown as ChatSummary;
       if (lastMessage !== undefined) {
@@ -71,7 +78,7 @@ export function readChatListCache(
       }
       return summary;
     });
-    return { userId: parsed.data.userId, chats };
+    return { userId: parsed.success.userId, chats };
   } catch {
     return null;
   }

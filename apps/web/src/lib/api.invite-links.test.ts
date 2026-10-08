@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { Schema } from 'effect';
 
 vi.mock('@/mock/gate', () => ({
   isMockApiEnabled: vi.fn(() => false),
@@ -47,7 +48,7 @@ function linkFixture(overrides: Record<string, unknown> = {}): Record<string, un
 
 describe('group invite links API (T-0115)', () => {
   it('groupInviteLinkSchema parses a server-shaped link without a token', () => {
-    const parsed = groupInviteLinkSchema.parse(linkFixture());
+    const parsed = Schema.decodeUnknownSync(groupInviteLinkSchema)(linkFixture());
     expect(parsed.tokenHint).toBe('ab12');
     expect('token' in parsed).toBe(false);
   });

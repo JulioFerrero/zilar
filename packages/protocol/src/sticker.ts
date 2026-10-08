@@ -1,4 +1,5 @@
-import { z } from 'zod';
+import { Schema } from 'effect';
+import { struct } from './common';
 
 export const STICKER_MIME_VALUES = ['image/webp', 'image/png'] as const;
 
@@ -12,26 +13,32 @@ export type StickerMime = (typeof STICKER_MIME_VALUES)[number];
  * `emoji` (or nothing) as the body instead. Rendering still fetches only
  * same-origin sticker URLs (see `isSameOriginStickerUrl` on web).
  */
-export const StickerSchema = z.strictObject({
-  pack_id: z.uuid(),
-  sticker_id: z.uuid(),
+export const StickerSchema = struct({
+  pack_id: Schema.String.pipe(Schema.check(Schema.isUUID())),
+  sticker_id: Schema.String.pipe(Schema.check(Schema.isUUID())),
   /** The server file URL at send time, used as a fallback. */
-  url: z
-    .string()
-    .min(1)
-    .max(2048)
-    .refine(
-      (value) =>
+  url: Schema.String.pipe(
+    Schema.check(
+      Schema.isMinLength(1),
+      Schema.isMaxLength(2048),
+      Schema.makeFilter((value) =>
         value.startsWith('/api/stickers/') ||
         value.startsWith('http://') ||
-        value.startsWith('https://'),
-      { message: 'sticker url must be a /api/stickers/ path or an http(s) URL' },
+        value.startsWith('https://')
+          ? undefined
+          : 'sticker url must be a /api/stickers/ path or an http(s) URL',
+      ),
     ),
+  ),
   /** Shown when the client cannot render the sticker. */
-  emoji: z.string().max(8).optional(),
-  width: z.int().min(1).max(512),
-  height: z.int().min(1).max(512),
-  mime: z.enum(STICKER_MIME_VALUES),
+  emoji: Schema.optional(Schema.String.pipe(Schema.check(Schema.isMaxLength(8)))),
+  width: Schema.Int.pipe(
+    Schema.check(Schema.isGreaterThanOrEqualTo(1), Schema.isLessThanOrEqualTo(512)),
+  ),
+  height: Schema.Int.pipe(
+    Schema.check(Schema.isGreaterThanOrEqualTo(1), Schema.isLessThanOrEqualTo(512)),
+  ),
+  mime: Schema.Literals(STICKER_MIME_VALUES),
 });
 
-export type Sticker = z.infer<typeof StickerSchema>;
+export type Sticker = typeof StickerSchema.Type;
