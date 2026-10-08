@@ -1,7 +1,7 @@
 ---
 id: T-0654
 title: "zod: db/schema.ts drops its two zod enums (E4); GroupKind and AvatarOwnerKind become plain union types; no runtime or table change"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0654-db-schema-drop-zod
 model: auto
@@ -57,4 +57,45 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+Type-only change in `apps/server/src/db/schema.ts`, exactly per the spec:
+- Deleted `import { z } from 'zod';`.
+- Replaced `groupKindSchema` / `GroupKind` (lines 213-214) with
+  `export type GroupKind = 'group' | 'channel';`.
+- Replaced `avatarOwnerKindSchema` / `AvatarOwnerKind` (lines 898-899) with
+  `export type AvatarOwnerKind = 'user' | 'ai' | 'group';`.
+- Reworded the T-0164 comment to "...the service owns the friendly errors".
+- No table, column, migration or runtime change; nothing else touched.
+
+### Files changed
+- `apps/server/src/db/schema.ts`
+- `work/T-0654-db-schema-drop-zod.md` (status + this Report)
+
+### Commands and real results
+- `pnpm install`: done, 13 workspace projects, no errors.
+- `git grep -n "zod\|groupKindSchema\|avatarOwnerKindSchema" apps/server/src/db/schema.ts`: no matches (exit 1) — acceptance holds.
+- `git grep -n "groupKindSchema\|avatarOwnerKindSchema" -- ':!work' ':!apps/server/src/db/schema.ts'`: only
+  `apps/server/src/avatars/api.ts` and `apps/server/src/avatars/service.ts`, which define/import their own
+  Effect-Schema versions — nothing imports the removed `db/schema` exports.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/avatars`: 1 test file passed, 18 tests passed.
+- `pnpm gate` (repo root):
+
+  ```
+  gate: 2 changed file(s) against main
+  PASS  install (frozen)  (1.5s)
+  PASS  format  (23.6s)
+  PASS  lint  (1.6s)
+  PASS  typecheck  (15.4s)
+  PASS  tests @zilar/server  (16.8s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Problems / deviations
+None. No blockers, no open questions.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved.
+- **Pre-review:** clean. The packet head is da993743, the current HEAD.
+- **Lead check:** the diff is exactly the two union types, the dropped import and the comment.

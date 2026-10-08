@@ -1,5 +1,4 @@
 import { sql } from 'drizzle-orm';
-import { z } from 'zod';
 import {
   bigint,
   boolean,
@@ -210,8 +209,7 @@ export const userBlocks = pgTable(
 
 // A group is backed by a members-only XMPP MUC room. The room localpart is
 // random and never derived from the title.
-export const groupKindSchema = z.enum(['group', 'channel']);
-export type GroupKind = z.infer<typeof groupKindSchema>;
+export type GroupKind = 'group' | 'channel';
 
 export const groups = pgTable(
   'groups',
@@ -236,8 +234,8 @@ export const groups = pgTable(
     // T-0164: `private` groups stay invisible and invite-only, like before;
     // `public` ones hold exactly one `handles` row (`group_id`) and appear in
     // the directory, joinable by anyone signed in. Defaults to private. The
-    // check keeps raw writes inside the two values (the service and zod own
-    // the friendly errors).
+    // check keeps raw writes inside the two values (the service owns the
+    // friendly errors).
     visibility: text('visibility', { enum: ['private', 'public'] })
       .notNull()
       .default('private'),
@@ -895,8 +893,7 @@ export const userStickerPacks = pgTable(
 // read time (`/api/avatars/<id>`), falling back to `user.image` when there
 // is no row. `owner_id` carries no FK on purpose — one column names a user,
 // an AI or a group id, and exactly one of the three tables owns it.
-export const avatarOwnerKindSchema = z.enum(['user', 'ai', 'group']);
-export type AvatarOwnerKind = z.infer<typeof avatarOwnerKindSchema>;
+export type AvatarOwnerKind = 'user' | 'ai' | 'group';
 
 export const avatars = pgTable(
   'avatars',
