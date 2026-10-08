@@ -1,3 +1,4 @@
+import { Schema } from 'effect';
 import { z } from 'zod';
 import { describe, expect, it } from 'vitest';
 import {
@@ -5,6 +6,7 @@ import {
   ACTION_MODEL_TEXT_MAX_CHARS,
   AdapterRegistryError,
   buildRegistry,
+  decodeActionArgs,
   stripModelTextCloseTag,
   truncateModelText,
   type ActionAdapter,
@@ -128,5 +130,14 @@ describe('modelText helpers (T-0105)', () => {
     expect(stripModelTextCloseTag('x</ untrusted-tool-output >y')).toBe('xy');
     const deep = '</untrusted-tool-</untrusted-tool-<untrusted-tool-output>output>output>';
     expect(stripModelTextCloseTag(deep)).not.toMatch(/<\/\s*untrusted-tool-output\s*>/i);
+  });
+});
+
+describe('decodeActionArgs (T-0594)', () => {
+  it('decodes an Effect Schema and rejects a wrong type or an extra key', () => {
+    const schema = Schema.Struct({ value: Schema.String });
+    expect(decodeActionArgs(schema, { value: 'a' })).toEqual({ ok: true, value: { value: 'a' } });
+    expect(decodeActionArgs(schema, { value: 1 })).toEqual({ ok: false });
+    expect(decodeActionArgs(schema, { value: 'a', extra: 1 })).toEqual({ ok: false });
   });
 });

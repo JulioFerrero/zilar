@@ -457,7 +457,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0590](T-0590-effect-sql-api-inline-reads.md) | effect/sql: inline reads in the memory, media and /me APIs | planned | auto | T-0584 | |
 | [T-0591](T-0591-effect-sql-approvals-api-reads.md) | effect/sql: approvals API reads | planned | auto | T-0584 | |
 | [T-0592](T-0592-effect-sql-routines-api-reads.md) | effect/sql: routines API reads | planned | auto | T-0588 | |
-| [T-0594](T-0594-tool-args-decode-seam.md) | Tool args T-A: registry and gateway decode seam (zod or Effect) | planned | auto | T-0571 | |
 | [T-0595](T-0595-sandbox-schemas-effect.md) | Tool args T-F: sandbox schemas on Effect Schema | planned | auto | T-0571 | |
 | [T-0596](T-0596-dead-zod-service-schemas.md) | Effect Schema: drop dead zod schemas in the pins, roles and topics services | planned | auto | T-0571 | |
 | [T-0597](T-0597-demo-args-effect.md) | Tool args T-C: demo.echo args on Effect Schema | planned | auto | T-0594 | |
@@ -627,3 +626,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0571](T-0571-audit-tool-args-schema.md) | Audit: tool-args layer zod to Effect Schema plan | 2026-10-08 |
 | [T-0589](T-0589-effect-sql-startup-and-audit-nits.md) | effect/sql: startup sticker count, plus the audit issue-text nits | 2026-10-08 |
 | [T-0582](T-0582-effect-http-stickers-json.md) | Effect C (HTTP): stickers part A, the JSON routes | 2026-10-08 |
+| [T-0594](T-0594-tool-args-decode-seam.md) | Tool args T-A: registry and gateway decode seam | 2026-10-08 |

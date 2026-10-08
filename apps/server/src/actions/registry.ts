@@ -1,4 +1,30 @@
+import { Exit, Schema } from 'effect';
 import type { z } from 'zod';
+
+// The args schema an adapter carries while the tool layer moves off zod
+// (plan T-A). A zod schema is recognized at decode time by its `safeParse`
+// method; an Effect schema decodes service-free. A later task removes the
+// zod member.
+export type ArgsSchema<Args> = z.ZodType<Args> | Schema.Codec<Args, unknown, never>;
+
+// The one decode seam for adapter args. Callers only need success or failure
+// and the decoded value: the deny reason is the fixed `invalid_args`, so no
+// message is produced here (the plan's issue walker belongs to T-B). The
+// Effect branch is strict (`onExcessProperty: 'error'`) to match the zod
+// schemas' `.strict()`.
+export function decodeActionArgs<Args>(
+  schema: ArgsSchema<Args>,
+  raw: unknown,
+): { ok: true; value: Args } | { ok: false } {
+  if (typeof (schema as { safeParse?: unknown }).safeParse === 'function') {
+    const parsed = (schema as z.ZodType<Args>).safeParse(raw);
+    return parsed.success ? { ok: true, value: parsed.data } : { ok: false };
+  }
+  const exit = Schema.decodeUnknownExit(schema as Schema.Codec<Args, unknown, never>, {
+    onExcessProperty: 'error',
+  })(raw);
+  return Exit.isSuccess(exit) ? { ok: true, value: exit.value } : { ok: false };
+}
 
 // The context the adapter receives at execution time. `aiId`, `groupId`
 // and `topicId` come from the gateway (never from the request), so an
@@ -74,8 +100,9 @@ export interface ActionCost {
   amount: number;
 }
 
-// One adapter. `argsSchema` is a zod schema; the gateway calls
-// `safeParse(input.args)` and uses the parsed value as the
+// One adapter. `argsSchema` is a zod or Effect schema while the tool layer
+// moves (plan T-A); a later task removes zod. The gateway calls
+// `decodeActionArgs(input.args)` and uses the parsed value as the
 // canonical-JSON/args-hash input. `describe` builds the card text
 // (`summary` is the bolded line, `details` the body, both bounded).
 // `description` is one short line the model sees in the `request_action`
@@ -92,7 +119,7 @@ export interface ActionAdapter<Args> {
   name: string;
   description: string;
   tier: 0 | 1 | 2;
-  argsSchema: z.ZodType<Args>;
+  argsSchema: ArgsSchema<Args>;
   describe: (args: Args) => { summary: string; details?: string };
   estimateCost?: (args: Args) => ActionCost;
   /**

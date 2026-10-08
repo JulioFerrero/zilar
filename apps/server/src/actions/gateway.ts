@@ -14,6 +14,7 @@ export type { ActionAnnouncer };
 import { argsHash } from './canonical';
 import { policy, type PolicyDenialReason } from './policy';
 import {
+  decodeActionArgs,
   stripModelTextCloseTag,
   truncateModelText,
   type ActionAdapter,
@@ -271,14 +272,14 @@ async function runAllowedAction(
   params: RequestParams,
   adapter: ActionAdapter<unknown>,
 ): Promise<RequestOutcome> {
-  const parse = adapter.argsSchema.safeParse(params.args);
-  if (!parse.success) {
-    // The policy already ran the same safeParse, so this is a defence in
+  const parsed = decodeActionArgs(adapter.argsSchema, params.args);
+  if (!parsed.ok) {
+    // The policy already ran the same decode, so this is a defence in
     // depth. It cannot trip in production but a custom adapter that
     // mutates state between calls could in theory disagree.
     return { status: 'denied', reason: 'invalid_args' };
   }
-  const parsedArgs = parse.data;
+  const parsedArgs = parsed.value;
   const ctx: ActionContext = {
     aiId: params.aiId,
     groupId: params.groupId ?? null,
@@ -328,8 +329,8 @@ async function runAutoApprovedAction(
   adapter: ActionAdapter<unknown>,
   ruleId: string,
 ): Promise<RequestOutcome> {
-  const parse = adapter.argsSchema.safeParse(params.args);
-  if (!parse.success) {
+  const parsed = decodeActionArgs(adapter.argsSchema, params.args);
+  if (!parsed.ok) {
     // Defence in depth: invalid args fall through to the normal
     // approval path. We do this by reporting the same denial the
     // allow path would; the policy has the same order, but a custom
@@ -337,7 +338,7 @@ async function runAutoApprovedAction(
     // disagree.
     return { status: 'denied', reason: 'invalid_args' };
   }
-  const parsedArgs = parse.data;
+  const parsedArgs = parsed.value;
   const ctx: ActionContext = {
     aiId: params.aiId,
     groupId: params.groupId ?? null,
@@ -418,8 +419,8 @@ async function runApprovalPath(
   adapter: ActionAdapter<unknown>,
   at: Date,
 ): Promise<RequestOutcome> {
-  const parse = adapter.argsSchema.safeParse(params.args);
-  if (!parse.success) {
+  const parsed = decodeActionArgs(adapter.argsSchema, params.args);
+  if (!parsed.ok) {
     return { status: 'denied', reason: 'invalid_args' };
   }
   // T-0132: an adapter may bind server-side state into the stored args
@@ -427,7 +428,7 @@ async function runApprovalPath(
   // hook runs before policy-relevant checks below so a stale card can
   // never be described or stored; a throw (e.g. a missing tool) becomes
   // the gateway's generic `failed`, never a leak and never `denied`.
-  let parsedArgs: unknown = parse.data;
+  let parsedArgs: unknown = parsed.value;
   if (adapter.prepareArgs !== undefined) {
     const prepareCtx: ActionContext = {
       aiId: params.aiId,
@@ -436,7 +437,7 @@ async function runApprovalPath(
       requestId: 'prepare-' + randomUUID(),
     };
     try {
-      parsedArgs = await adapter.prepareArgs(prepareCtx, parse.data);
+      parsedArgs = await adapter.prepareArgs(prepareCtx, parsed.value);
     } catch (error) {
       deps.logger.warn(
         { err: errorName(error), action: params.action, aiId: params.aiId },

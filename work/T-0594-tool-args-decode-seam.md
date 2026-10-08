@@ -1,7 +1,7 @@
 ---
 id: T-0594
 title: "Tool args T-A: the registry/gateway decode seam: `argsSchema` accepts zod OR Effect Schema during the move; one `decodeActionArgs` helper replaces the four `.safeParse` calls in policy.ts and gateway.ts; `invalid_args` unchanged; tests unchanged"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0594-tool-args-decode-seam
 model: auto
@@ -68,4 +68,74 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+
+Introduced the transitional decode seam (plan T-A). `apps/server/src/actions/registry.ts` now exports `type ArgsSchema<Args> = z.ZodType<Args> | Schema.Codec<Args, unknown, never>` and `decodeActionArgs(schema, raw)`, which returns `{ ok: true; value: Args } | { ok: false }`. `ActionAdapter.argsSchema` is typed `ArgsSchema<Args>` and the comment above it now says "zod or Effect schema while the tool layer moves (plan T-A); a later task removes zod".
+
+The four `.safeParse` sites now go through the helper and read `.value` where they read `.data`, with the same denials:
+- `actions/policy.ts:47` -> `decodeActionArgs(...)`; still `{ kind: 'deny', reason: 'invalid_args' }` (also changed the adjacent comment from "the adapter's zod schema" to "the adapter's args schema").
+- `actions/gateway.ts:274` (`runAllowedAction`), `:331` (`runAutoApprovedAction`), `:421` (`runApprovalPath`); all still `{ status: 'denied', reason: 'invalid_args' }`. The `prepareArgs` call at `:439` now passes `parsed.value`.
+
+Added one test to `actions/registry.test.ts` (`describe('decodeActionArgs (T-0594)')`): builds `Schema.Struct({ value: Schema.String })`, accepts `{ value: 'a' }`, rejects `{ value: 1 }` and `{ value: 'a', extra: 1 }`.
+
+### Finding for the Report (spec asked to check this)
+
+The spec says "every zod args schema in the codebase is `.strict()`". Grep shows that is **almost** true, not exactly:
+- strict: all 8 schemas in `tools/adapters.ts`, all 5 in `web-tools/adapters.ts`, both in `routines/schedule.ts`.
+- **not strict:** `actions/demo.ts:20` `DemoEchoArgsSchema = z.object({ text: ... })`, and every fake adapter in the tests (`registry.test.ts:19`, `gateway.test.ts` x11, `policy.test.ts`, `flow.e2e.test.ts` x4, `approvals/rules.test.ts` x2) uses plain `z.object`.
+
+So `onExcessProperty: 'error'` matches the strict production schemas but not `demo.echo`. That is harmless in T-A: demo still decodes through the zod branch (`safeParse`), so its behaviour is unchanged. It is a flag for **T-C**: if `demo.echo` moves to Effect Schema through this helper, extra keys change from silently stripped (zod default) to rejected. T-C decides/records that.
+
+### Effect type (spec asked which one)
+
+`Schema.Codec<Args, unknown, never>` typechecks and is what I used. `Schema.decodeUnknownExit` is declared `<S extends ConstraintDecoder<unknown>>` (`node_modules/effect/dist/Schema.d.ts:1263`), and `Schema.Codec<T, E, RD, RE>` has `Encoded=E`, `DecodingServices=RD`, `EncodingServices=RE` (`:843`); `Schema.Codec<Args, unknown, never>` satisfies that constraint and gives `S["Type"] = Args`, so `exit.value` is typed `Args`. `Schema.Schema<Args>` is type-only (`:739`) and does not carry `Encoded`/service fields, so it is the wrong member for this call.
+
+### Files changed
+
+- `apps/server/src/actions/registry.ts` (union type + `decodeActionArgs` + comment; `argsSchema` type)
+- `apps/server/src/actions/policy.ts` (one call site + import + comment)
+- `apps/server/src/actions/gateway.ts` (import + four call sites, `.data` -> `.value`)
+- `apps/server/src/actions/registry.test.ts` (one new test; `Schema` import)
+- `work/T-0594-tool-args-decode-seam.md` (this report)
+
+### Commands and real results
+
+- `pnpm install`: done in 55.7s, 1173 packages added; the usual peer-dep warning for `@types/react-dom` in `apps/mobile` (pre-existing, not mine).
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot actions/registry.test.ts`: **14 passed (1 file)**, including the new Effect-branch test.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot actions approvals agents/tools web-tools tools/adapters` (spec Checks): **405 passed (25 files)**.
+- `pnpm gate` (repo root): summary lines:
+  ```
+  gate: 5 changed file(s) against main
+  PASS  install (frozen)  (4.8s)
+  PASS  format  (73.2s)
+  PASS  lint  (1.6s)
+  PASS  typecheck  (52.6s)
+  PASS  tests @zilar/server  (1904.5s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Existing tests
+
+All existing tests pass unchanged; the only test edit is the one added test (plus its `Schema` import). Nothing else was reformatted.
+
+### Security checklist
+
+Pure refactor of arg decoding; no new route, no new write, no DB, no audit or log change. The deny reason stays the fixed `invalid_args`; no schema message is logged or returned (callers discard it, same as before).
+
+### Deviations / open questions
+
+- Only deviation is the `demo.echo` non-strict schema noted above; not a blocker for T-A and no behaviour change here, but it should be an explicit choice in T-C.
+- No other open questions.
+
 ## Review (written by Claude)
+
+**2026-10-08, lead:** approved.
+- **Pre-review:** clean, 1 nit and 1 follow-up. The packet (13:34) is newer than HEAD ee3974f6.
+- **Lead check:**
+  - `ArgsSchema<Args>` is `z.ZodType<Args> | Schema.Codec<Args, unknown, never>`;
+  - `decodeActionArgs` branches on `safeParse` and decodes Effect strictly;
+  - the four call sites keep the same `invalid_args` denials;
+  - one new registry test covers the Effect branch.
+- **Follow-up, for T-C (demo):** `DemoEchoArgsSchema` is the one non-strict zod args schema. Moving it to Effect through this seam turns stripped extra keys into a rejection, and the T-C spec must record that change.
+- **Nit:** the comment at `registry.ts:105` names the old call shape.
