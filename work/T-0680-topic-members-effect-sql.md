@@ -1,7 +1,7 @@
 ---
 id: T-0680
 title: "effect/sql: move listTopicMembers, addTopicMember and removeTopicMember in topics/service.ts onto effect/sql (topics slice 2 of 3)"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0680-topic-members-effect-sql
 model: auto
@@ -56,4 +56,30 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**What I did** (only `apps/server/src/topics/service.ts` changed)
+- `listTopicMembers`: the public-topic query, the direct `topic_members` query, the `"user"` `IN` query (via `sql.in`) and the `group_members` query are now `runSql` statements. The T-0116 comment and the JS filter/sort are unchanged.
+- `addTopicMember`: the insert is an `INSERT ... ON CONFLICT DO NOTHING` through `runSql`; the re-read is `getTopic`.
+- `removeTopicMember`: the existence select, the delete, the `remaining` select and the drained `UPDATE topics SET archived_at, updated_at` are `runSql` statements. Timestamps are passed as `new Date().toISOString()`.
+- Removed the now-unused `user` import from `../db/schema`. The drizzle imports `and`, `eq`, `inArray`, `sql` and the other schema tables are still used by other functions, so they stay.
+- `effect/sql` returns a readonly array, so the public-branch sort now sorts a copy (`[...rows].sort`). The first gate run caught this in typecheck (TS2339). Prettier then reflowed one line in the same file.
+
+**Commands run**
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/topics/topics.test`: 32 passed, 0 failed (before the sort fix, which only changed the sort's receiver).
+- `pnpm gate` (final run, exit 0):
+  - `PASS  install (frozen)`
+  - `PASS  format`
+  - `PASS  lint`
+  - `PASS  typecheck`
+  - `PASS  tests @zilar/server`
+  - `scope: every changed file is inside the Allowed files`
+  - `GATE PASS`
+
+**Deviations / notes**
+- Acceptance says "the three functions have no drizzle calls". The three function bodies have no drizzle query builder calls left (no `.select`, `.insert`, `.delete` or `.update` on `deps.db`). They still call helpers that use drizzle internally: `requireVisibleTopic`, `requireManagedTopic`, `getGroupMembership`, `canSeeTopic`, `canManageTopic` (in `access.ts`) and `topicRoleHolderIds` (in `roles/service`). The spec says to change no other function and those files are not in Allowed files, so I left them.
+- Unsure: whether the acceptance wording means those helper calls too. If it does, it needs a follow-up task in `access.ts` and `roles/service`.
+- The `topics.test.ts` file is unchanged and uses drizzle only for its own setup, not for mocks.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Haiku 5.5, in one round (about 4.8 min). The lead reviewed the diff directly: the same reads and writes, the empty-ids guard kept before `sql.in`, and the re-read through `getTopic`. The gate passed.
+- **Note:** the helpers it calls (`requireVisibleTopic`, `getGroupMembership`, `topicRoleHolderIds`) live in other modules and were out of scope.

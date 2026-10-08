@@ -12,7 +12,6 @@ import {
   topicMembers,
   topicRoleAccess,
   topics,
-  user,
 } from '../db/schema';
 import { HttpError } from '../errors';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
@@ -488,21 +487,33 @@ export async function listTopicMembers(
 ): Promise<Array<{ userId: string; name: string }>> {
   const topic = await requireVisibleTopic(deps.db, topicId, userId);
   if (topic.visibility !== 'private') {
-    const rows = await deps.db
-      .select({ userId: groupMembers.userId, name: user.name })
-      .from(groupMembers)
-      .innerJoin(user, eq(user.id, groupMembers.userId))
-      .where(eq(groupMembers.groupId, topic.groupId));
-    return rows.sort((a, b) => a.name.localeCompare(b.name) || a.userId.localeCompare(b.userId));
+    const rows = await runSql(
+      deps.db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ userId: string; name: string }>`
+          SELECT group_members.user_id, "user".name
+          FROM group_members
+          INNER JOIN "user" ON "user".id = group_members.user_id
+          WHERE group_members.group_id = ${topic.groupId}`;
+      }),
+    );
+    return [...rows].sort(
+      (a, b) => a.name.localeCompare(b.name) || a.userId.localeCompare(b.userId),
+    );
   }
   // T-0116: direct members plus the holders of the topic's roles (still
   // group members). Everyone holding the topic can see the full list: role
   // membership is not secret.
   const [direct, holders] = await Promise.all([
-    deps.db
-      .select({ userId: topicMembers.userId })
-      .from(topicMembers)
-      .where(eq(topicMembers.topicId, topic.id)),
+    runSql(
+      deps.db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ userId: string }>`
+          SELECT user_id FROM topic_members WHERE topic_id = ${topic.id}`;
+      }),
+    ),
     topicRoleHolderIds(deps.db, topic.id, topic.groupId),
   ]);
   const ids = new Set(direct.map((row) => row.userId));
@@ -512,16 +523,24 @@ export async function listTopicMembers(
   if (ids.size === 0) {
     return [];
   }
-  const rows = await deps.db
-    .select({ userId: user.id, name: user.name })
-    .from(user)
-    .where(inArray(user.id, [...ids]));
+  const rows = await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ userId: string; name: string }>`
+        SELECT id AS user_id, name FROM "user" WHERE id IN ${sql.in([...ids])}`;
+    }),
+  );
   // `topic_members` rows for users who left the group no longer count (the
   // room sync drops them too); the join above only returns live users.
-  const memberRows = await deps.db
-    .select({ userId: groupMembers.userId })
-    .from(groupMembers)
-    .where(eq(groupMembers.groupId, topic.groupId));
+  const memberRows = await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ userId: string }>`
+        SELECT user_id FROM group_members WHERE group_id = ${topic.groupId}`;
+    }),
+  );
   const memberIds = new Set(memberRows.map((row) => row.userId));
   return rows
     .filter((row) => memberIds.has(row.userId))
@@ -542,11 +561,17 @@ export async function addTopicMember(
   if (!membership) {
     throw new HttpError(400, 'invalid_request', 'Topic members must be group members');
   }
-  await deps.db
-    .insert(topicMembers)
-    .values({ topicId: topic.id, userId: targetUserId, addedBy: actorId })
-    .onConflictDoNothing();
-  const [updated] = await deps.db.select().from(topics).where(eq(topics.id, topic.id)).limit(1);
+  await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql`
+        INSERT INTO topic_members (topic_id, user_id, added_by)
+        VALUES (${topic.id}, ${targetUserId}, ${actorId})
+        ON CONFLICT DO NOTHING`;
+    }),
+  );
+  const updated = await getTopic(deps.db, topic.id);
   if (!updated) {
     throw toMissingTopic();
   }
@@ -581,11 +606,16 @@ export async function removeTopicMember(
   if (topic.visibility !== 'private') {
     throw new HttpError(400, 'not_private', 'Only private topics have members');
   }
-  const [existing] = await deps.db
-    .select({ userId: topicMembers.userId })
-    .from(topicMembers)
-    .where(and(eq(topicMembers.topicId, topic.id), eq(topicMembers.userId, targetUserId)))
-    .limit(1);
+  const [existing] = await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ userId: string }>`
+        SELECT user_id FROM topic_members
+        WHERE topic_id = ${topic.id} AND user_id = ${targetUserId}
+        LIMIT 1`;
+    }),
+  );
   if (!existing) {
     throw new HttpError(404, 'not_found', 'That user is not a member of this topic');
   }
@@ -597,14 +627,23 @@ export async function removeTopicMember(
       'Only a manager or the member themselves can remove a member',
     );
   }
-  await deps.db
-    .delete(topicMembers)
-    .where(and(eq(topicMembers.topicId, topic.id), eq(topicMembers.userId, targetUserId)));
+  await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql`
+        DELETE FROM topic_members WHERE topic_id = ${topic.id} AND user_id = ${targetUserId}`;
+    }),
+  );
 
-  const remaining = await deps.db
-    .select({ userId: topicMembers.userId })
-    .from(topicMembers)
-    .where(eq(topicMembers.topicId, topic.id));
+  const remaining = await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ userId: string }>`
+        SELECT user_id FROM topic_members WHERE topic_id = ${topic.id}`;
+    }),
+  );
   // T-0116: the topic drains only when the direct rows AND the role holders
   // are gone — a holder the role still grants access to keeps it alive.
   const holders =
@@ -613,10 +652,16 @@ export async function removeTopicMember(
       : new Set<string>();
   let updated = (await getTopic(deps.db, topic.id)) ?? topic;
   if (remaining.length === 0 && holders.size === 0) {
-    await deps.db
-      .update(topics)
-      .set({ archivedAt: new Date(), updatedAt: new Date() })
-      .where(eq(topics.id, topic.id));
+    await runSql(
+      deps.db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql`
+          UPDATE topics
+          SET archived_at = ${new Date().toISOString()}, updated_at = ${new Date().toISOString()}
+          WHERE id = ${topic.id}`;
+      }),
+    );
     updated = (await getTopic(deps.db, topic.id)) ?? topic;
     // The room still holds the just-removed members: desired members is now
     // empty, so the sync below removes everyone from the room.
