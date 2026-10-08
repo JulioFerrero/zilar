@@ -10,7 +10,7 @@ import type { AiLogger } from './ais/service';
 import { createAiMemoryApi } from './agents/memory/api';
 import { createActionGateway, type ActionGateway } from './actions/gateway';
 import type { AlwaysEligiblePredicate } from './approvals/service';
-import { createApprovalsRoutes } from './approvals/routes';
+import { createApprovalsApi } from './approvals/api';
 import { createAuditRecorder, type AuditRecorder } from './audit/service';
 import { createAuditApi } from './audit/api';
 import type { Auth } from './auth/auth';
@@ -537,17 +537,15 @@ export function createApp({
       ...(gifNow === undefined ? {} : { now: gifNow }),
     }),
   );
-  app.route(
-    '/api',
-    createApprovalsRoutes({
-      auth,
-      db,
-      audit: auditRecorder,
-      logger,
-      onDecided: (approvalId) => gateway.onApprovalDecided(approvalId),
-      ...(alwaysEligible === undefined ? {} : { alwaysEligible }),
-    }),
-  );
+  const approvalsApi = createApprovalsApi({
+    auth,
+    db,
+    audit: auditRecorder,
+    logger,
+    onDecided: (approvalId) => gateway.onApprovalDecided(approvalId),
+    ...(alwaysEligible === undefined ? {} : { alwaysEligible }),
+  });
+  mountEffectRoutes(app, approvalsApi.routes, approvalsApi.handler);
   const toolsDeps: ToolsRoutesDependencies = {
     auth,
     db,
