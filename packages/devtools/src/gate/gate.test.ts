@@ -97,8 +97,22 @@ describe('selectTestFiles', () => {
     ]);
   });
 
-  it('selects nothing for a source file with no sibling test', () => {
-    expect(selectTestFiles(['packages/a/src/lonely.ts'], testFiles)).toEqual([]);
+  it('falls back to the tests directly in the source file folder', () => {
+    expect(selectTestFiles(['packages/a/src/lonely.ts'], testFiles)).toEqual([
+      'packages/a/src/other.test.ts',
+      'packages/a/src/service.effect.test.ts',
+      'packages/a/src/service.test.ts',
+    ]);
+  });
+
+  it('still selects nothing for a source file in a folder with no tests', () => {
+    expect(selectTestFiles(['packages/a/src/empty/x.ts'], testFiles)).toEqual([]);
+  });
+
+  it('does not pick tests from a subfolder for the folder fallback', () => {
+    expect(selectTestFiles(['packages/a/src/lonely.ts'], testFiles)).not.toContain(
+      'packages/a/src/nested/deep.test.ts',
+    );
   });
 
   it('ignores a non-code file', () => {

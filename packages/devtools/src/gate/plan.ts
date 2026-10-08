@@ -45,12 +45,26 @@ export function isTestFile(file: string): boolean {
   return TEST_FILE.test(file);
 }
 
+function dirOf(file: string): string {
+  const slash = file.lastIndexOf('/');
+  return slash < 0 ? '' : file.slice(0, slash);
+}
+
+function baseOf(file: string): string {
+  const slash = file.lastIndexOf('/');
+  return file.slice(slash + 1);
+}
+
 // The nearest tests for a set of changed files: the changed test files
 // themselves, plus for every changed `dir/name.ts(x)` the tests in `dir` whose
 // name starts with `name.` (so `service.ts` picks `service.test.ts` and
-// `service.effect.test.ts`). A source file with no sibling test selects none.
-// `exists` guards against a changed test file the branch deleted: it is still in
-// the diff but must not be handed to Vitest, which would fail on a missing file.
+// `service.effect.test.ts`). When no test is named after the source file, every
+// test sitting directly in `dir` is selected instead, so a file whose tests live
+// under a different name (`roles/service.ts` and `roles/roles.test.ts`) still
+// gets its folder's tests; tests in subfolders are not. A folder with no tests
+// selects nothing. `exists` guards against a changed test file the branch
+// deleted: it is still in the diff but must not be handed to Vitest, which would
+// fail on a missing file.
 export function selectTestFiles(
   changedFiles: string[],
   testFiles: string[],
@@ -68,16 +82,13 @@ export function selectTestFiles(
     if (source === null) {
       continue;
     }
-    const slash = changed.lastIndexOf('/');
-    const dir = slash < 0 ? '' : changed.slice(0, slash);
-    const name = changed.slice(slash + 1, changed.length - source[0].length);
-    for (const testFile of testFiles) {
-      const testSlash = testFile.lastIndexOf('/');
-      const testDir = testSlash < 0 ? '' : testFile.slice(0, testSlash);
-      const testName = testFile.slice(testSlash + 1);
-      if (testDir === dir && testName.startsWith(`${name}.`)) {
-        selected.add(testFile);
-      }
+    const dir = dirOf(changed);
+    const base = baseOf(changed);
+    const name = base.slice(0, base.length - source[0].length);
+    const siblings = testFiles.filter((testFile) => dirOf(testFile) === dir);
+    const named = siblings.filter((testFile) => baseOf(testFile).startsWith(`${name}.`));
+    for (const testFile of named.length > 0 ? named : siblings) {
+      selected.add(testFile);
     }
   }
   return [...selected].sort();
