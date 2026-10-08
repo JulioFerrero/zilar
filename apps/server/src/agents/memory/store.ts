@@ -6,15 +6,12 @@
 //
 // Every query runs on the `effect/sql` client registered for this database
 // (see `../../effect/sql`). The exported functions stay `async` so routes and
-// tests keep their shape during the transition. `deleteRoomMemory` stays on
-// drizzle until its callers' transactions move.
+// tests keep their shape during the transition.
 
 import { randomUUID } from 'node:crypto';
 import { Effect } from 'effect';
 import { SqlClient, SqlError, type Statement } from 'effect/sql';
-import { and, eq, sql } from 'drizzle-orm';
 import type { ServerDatabase } from '../../db/client';
-import { aiMemoryFacts, aiMemoryMessages, aiMemoryNodes, aiMemoryState } from '../../db/schema';
 import { sqlRuntimeFor } from '../../effect/sql';
 import {
   type Block,
@@ -525,58 +522,8 @@ export function buildCompactionPrompt(blockId: string, inputLines: string[]): st
 // stay. The caller passes a room list only, and the delete is scoped to the
 // one AI.
 //
-// This one stays on drizzle: `groups/service.ts` calls it inside its own
-// drizzle transaction (`removeGroupAi`). It moves when that transaction does.
-// `deleteRoomMemoryEffect` below is the same delete on effect/sql (T-0666).
-export async function deleteRoomMemory(
-  db: ServerDatabase,
-  aiId: string,
-  roomLocalparts: string[],
-): Promise<void> {
-  const prefixes = [...new Set(roomLocalparts)].map((localpart) => `room:${localpart}`);
-  if (prefixes.length === 0) {
-    return;
-  }
-  const keys = sql.join(
-    prefixes.map((prefix) => sql`${prefix}`),
-    sql`, `,
-  );
-  await db
-    .delete(aiMemoryMessages)
-    .where(
-      and(
-        eq(aiMemoryMessages.aiId, aiId),
-        sql`split_part(${aiMemoryMessages.chatKey}, '@', 1) IN (${keys})`,
-      ),
-    );
-  await db
-    .delete(aiMemoryNodes)
-    .where(
-      and(
-        eq(aiMemoryNodes.aiId, aiId),
-        sql`split_part(${aiMemoryNodes.chatKey}, '@', 1) IN (${keys})`,
-      ),
-    );
-  await db
-    .delete(aiMemoryFacts)
-    .where(
-      and(
-        eq(aiMemoryFacts.aiId, aiId),
-        sql`split_part(${aiMemoryFacts.chatKey}, '@', 1) IN (${keys})`,
-      ),
-    );
-  await db
-    .delete(aiMemoryState)
-    .where(
-      and(
-        eq(aiMemoryState.aiId, aiId),
-        sql`split_part(${aiMemoryState.chatKey}, '@', 1) IN (${keys})`,
-      ),
-    );
-}
-
-// T-0666: the same delete as `deleteRoomMemory`, on effect/sql. Same prefixes,
-// same order, same scope. The drizzle version stays until its caller moves.
+// T-0666: the delete runs on effect/sql, in the order messages, nodes, facts,
+// state.
 export function deleteRoomMemoryEffect(
   aiId: string,
   roomLocalparts: string[],

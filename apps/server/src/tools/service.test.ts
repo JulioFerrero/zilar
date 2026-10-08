@@ -27,7 +27,6 @@ import {
   approveToolHosts,
   deleteTool,
   deleteToolsForAiInGroupEffect,
-  deleteToolsForAiInTopic,
   deleteToolsForAiInTopicEffect,
   getTool,
   getVersion,
@@ -781,44 +780,7 @@ describe('tools service (T-0103)', () => {
     });
   });
 
-  describe('deleteToolsForAiInGroup', () => {
-    it('deleteToolsForAiInTopic soft-deletes only that topic tools', async () => {
-      const { groupId, generalTopicId } = await seedGroup(context, ownerId, [], [aiId]);
-      const otherTopicId = await seedTopic(context, groupId, ownerId, 'Other');
-      const generalTool = await saveToolVersion(
-        context.db,
-        {
-          aiId,
-          groupId,
-          topicId: generalTopicId,
-          userId: ownerId,
-          ...baseInput({ name: 'general-tool' }),
-        },
-        NOW,
-      );
-      const otherTool = await saveToolVersion(
-        context.db,
-        {
-          aiId,
-          groupId,
-          topicId: otherTopicId,
-          userId: ownerId,
-          ...baseInput({ name: 'other-tool' }),
-        },
-        NOW,
-      );
-      const deleted = await context.db.transaction(async (rawTx) =>
-        deleteToolsForAiInTopic(rawTx as unknown as typeof context.db, {
-          aiId,
-          topicId: otherTopicId,
-          now: NOW,
-        }),
-      );
-      expect(deleted).toEqual([otherTool.tool.id]);
-      expect(await getTool(context.db, otherTool.tool.id)).toBeNull();
-      expect(await getTool(context.db, generalTool.tool.id)).not.toBeNull();
-    });
-
+  describe('AI removal deletes', () => {
     it('deleteToolsForAiInGroupEffect soft-deletes that AI group tools only', async () => {
       const { groupId, generalTopicId } = await seedGroup(context, ownerId, [], [aiId]);
       const other = await seedGroup(context, ownerId, [], [aiId]);

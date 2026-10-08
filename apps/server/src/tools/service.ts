@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Effect, Schema } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
-import { and, eq, isNull } from 'drizzle-orm';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
 import { aiToolRuns, aiToolVersions, aiTools } from '../db/schema';
@@ -124,9 +123,7 @@ interface AppendVersionResult {
 
 // Every query runs on the `effect/sql` client registered for this database
 // (see `../effect/sql`). The exported functions stay `async` so routes and
-// tests keep their shape during the transition. `deleteToolsForAiInTopic`
-// is the one exception: `service.test.ts` drives it inside a drizzle
-// transaction, so it stays on drizzle.
+// tests keep their shape during the transition.
 function runSql<A, E>(
   db: ServerDatabase,
   effect: Effect.Effect<A, E, SqlClient.SqlClient>,
@@ -605,29 +602,6 @@ export async function deleteTool(
   }
   await deleteRoutinesForTool(db, { toolId, now });
   return { deleted: true };
-}
-
-// Soft-deletes every active tool of one AI in one topic. Called from
-// topic-AI removal with `deps.db`, but `service.test.ts` drives it inside
-// a drizzle transaction and passes the transaction, so it stays on
-// drizzle. Returns the deleted tool ids. `deleteToolsForAiInTopicEffect`
-// below is the same delete for callers that already hold a `SqlClient`.
-export async function deleteToolsForAiInTopic(
-  tx: ServerDatabase,
-  input: { aiId: string; topicId: string; now: Date },
-): Promise<string[]> {
-  const rows = await tx
-    .update(aiTools)
-    .set({ deletedAt: input.now, updatedAt: input.now })
-    .where(
-      and(
-        eq(aiTools.aiId, input.aiId),
-        eq(aiTools.topicId, input.topicId),
-        isNull(aiTools.deletedAt),
-      ),
-    )
-    .returning();
-  return rows.map((row) => row.id);
 }
 
 // Effect versions of the two deletes (T-0664): one AI's tools in one topic,

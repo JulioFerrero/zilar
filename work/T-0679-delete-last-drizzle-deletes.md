@@ -1,7 +1,7 @@
 ---
 id: T-0679
 title: "effect/sql cleanup: delete the now-unused drizzle deleteToolsForAiInTopic (tools/service.ts) and deleteRoomMemory (agents/memory/store.ts) with their drizzle-only tests; fix the stale comments in tools, memory and voice"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0679-delete-last-drizzle-deletes
 model: auto
@@ -60,4 +60,40 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**What I did**
+- `tools/service.ts`: deleted `deleteToolsForAiInTopic` and its comment; removed the drizzle import (`and, eq, isNull`), which had no other user; rewrote the header comment so it no longer calls it "the one exception".
+- `tools/service.test.ts`: deleted the drizzle test `deleteToolsForAiInTopic soft-deletes only that topic tools` and its import; renamed the describe to `'AI removal deletes'`. The Effect tests stay.
+- `agents/memory/store.ts`: deleted `deleteRoomMemory`, its drizzle comment and the drizzle import (`and, eq, sql`). The import of the four `aiMemory*` tables was also unused afterwards and was removed (lint caught it on the first gate run). Rewrote the header sentence that said it "stays on drizzle", and the T-0666 comment above `deleteRoomMemoryEffect`.
+- `agents/memory/cleanup.test.ts`: deleted the two drizzle tests (`deleteRoomMemory deletes only one AI…`, `… does nothing for an empty list`) and the `deleteRoomMemory` import. The `drizzle-orm` import stays because `countMemory` still uses `and`/`eq`.
+- `voice-transcription/api.ts` header: "Handlers keep calling the drizzle pipeline; the DB rewrite is a separate lane" now says the handlers call the pipeline and the database runs on effect/sql.
+- `voice-transcription/pipeline.ts` header: "The Hono route handlers and zod validation stay as they are" now says the Effect HttpApi handlers in `api.ts` call this module and validate with Effect Schema. I also changed "between the Hono handlers" to "between the HTTP handlers" in the same header.
+- Behaviour: none changed. Only the drizzle-only functions and their tests were removed.
+
+**Callers checked first**: `git grep` over `apps packages` found no production caller of `deleteRoomMemory` or `deleteToolsForAiInTopic`. The only remaining users were their tests. The old comment in `store.ts` said `groups/service.ts` called `deleteRoomMemory` inside `removeGroupAi`, but that is no longer true, so the Effect version is the only one in use.
+
+**Commands run**
+- `pnpm install`: exit 0.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/tools/service.test src/agents/memory/cleanup.test`: 2 files passed, 50 tests passed.
+- Acceptance greps: `git grep -n "deleteToolsForAiInTopic\b\|deleteRoomMemory\b" apps/server/src` finds nothing (the `…Effect` names do not match `\b`). `git grep drizzle` in `tools/service.ts` and `agents/memory/store.ts` finds nothing.
+- First `pnpm gate`: FAIL at lint (the four unused `aiMemory*` imports in `store.ts`). Fixed by removing that import line.
+- Final `pnpm gate` (exit 0):
+  ```
+  PASS  install (frozen)  (1.9s)
+  PASS  format  (36.8s)
+  PASS  lint  (1.0s)
+  PASS  typecheck  (4.8s)
+  PASS  tests @zilar/server  (56.8s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+  The gate reported 7 changed files against main, all in the Allowed list.
+
+**Deviations**: the T-0442 paragraph ("removing an AI from a room deletes that room's memory at once…") was kept above `deleteRoomMemoryEffect`, because it describes what the remaining Effect function does. I did not delete it with the drizzle comment.
+
+**Open questions**: none. The Effect variants `deleteToolsForAiInTopicEffect` and `deleteToolsForAiInGroupEffect` in `tools/service.ts` are kept, as the spec says.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Haiku 5.5, in one round (about 5 min). The lead reviewed the diff directly.
+- **Result:** both drizzle deletes and their drizzle-only tests are gone, the describe is renamed, and the voice headers now describe today's state. `tools/service.ts` and `agents/memory/store.ts` no longer import drizzle. The gate passed.
+- **Correction, mine:** my acceptance grep used a `\b` that cannot match before `Effect`; the worker reported this correctly.

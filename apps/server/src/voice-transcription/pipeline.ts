@@ -1,11 +1,11 @@
 // The transcript pipeline as Effect code (T-0173). This module owns the
-// logic between the Hono handlers and the database: fetch the audio with a
+// logic between the HTTP handlers and the database: fetch the audio with a
 // timeout and size cap, call the provider with a timeout, single-flight per
 // URL hash, cache re-check and insert, the fixed error mapping.
 //
-// The Hono route handlers and zod validation stay as they are. Everything
-// here runs through `Effect.runPromise` at the edge, so callers see plain
-// `Promise`s and the existing tests do not change.
+// The Effect HttpApi handlers in `api.ts` call this module, and they validate
+// input with Effect Schema. Everything here runs through `Effect.runPromise`
+// at the edge, so callers see plain `Promise`s.
 //
 // Errors are typed (`Data.TaggedError`): `AudioUnavailable` (fetch leg
 // failed), `VoiceTooLarge`, `NotAudio`, `TranscriptionFailed` (provider

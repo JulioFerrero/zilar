@@ -1,8 +1,8 @@
 // Voice transcription routes on the Effect `HttpApi` adapter (T-0545): the
 // same methods, paths, statuses, bodies, limiter order and audit calls as the
 // old Hono router (`routes.ts`), mounted under Hono by
-// `apps/server/src/effect/http.ts`. Handlers keep calling the drizzle
-// pipeline; the DB rewrite is a separate lane. The owner settings carry the
+// `apps/server/src/effect/http.ts`. The handlers call the pipeline, and the
+// database reads and writes run on effect/sql. The owner settings carry the
 // provider API key, which never appears in a response, log line or error text.
 
 import { Effect, Layer, Schema } from 'effect';
