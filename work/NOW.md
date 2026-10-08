@@ -2,6 +2,26 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-08 07:15, Julio asleep, Effect night continues:**
+- **Merged since 05:20:**
+  - T-0556 and T-0562: agents G4 (the tool executor) and G9 (start, stop and reconcile). **Every gateway extraction G1-G9 is done**;
+  - T-0558, T-0555, T-0559 and T-0557: message search, AI management, tools and provider-key connections HTTP;
+  - T-0563: the Effect HTTP adapter now carries the real socket address, with one shared client-IP rule. This unblocks invite-links, machines and setup.
+- **Approved, merge queued:**
+  - T-0567: the gateway db helpers on effect/sql;
+  - T-0564: zod leaf batch 1 (stream, xmpp and gif tokens, model entry, push protocol).
+- **Running:**
+  - T-0560: media gallery HTTP. It stalled twice and was moved to the paid Muse;
+  - T-0561: /me and account invites HTTP;
+  - T-0565: gifs provider and Giphy parser;
+  - T-0566: invite-links HTTP, the first to use the socket address;
+  - T-0568: the delegation service on effect/sql;
+  - T-0569: zod leaf batch 2 (GitHub token, prices, transcription, listener score).
+- **Next:**
+  - T-0570: push config, subscriptions, AI templates and provider ids;
+  - T-0571: an audit and plan for the AI tool argument layer, the biggest zod block left.
+- **Deferred:** machines HTTP, because its test types `getClientIp` on a Hono `Context`. It needs a small design first.
+
 **2026-10-08 05:20, Julio asleep, Effect night continues:**
 - **Merged since 03:50:**
   - T-0539 (topics HTTP);
