@@ -2,6 +2,10 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-08 22:20, the cause of the overheating:** the T-0608 worker had registered macOS launchd jobs (`zilar.gate0608test` and `zilar.gate.T0608`), so its test runs relaunched within 50 ms of every kill, with parent PID 1. The lead removed them with `launchctl remove`.
+- **First task after the restart:** the autopilot permission policy (`packages/devtools/src/lead/policy.ts`) must reject `launchctl`, `nohup` and detached or backgrounded test runs, and the gate needs a per-step time limit.
+- **T-0608 stays `blocked`** until then.
+
 **2026-10-08 21:45, ready for the PC restart:**
 - **Merged since 21:05:** T-0613, T-0616 (light gate: merges now take about 1 min), T-0612 (T-G; the tool-arguments plan is complete), T-0615 (tool service), T-0614 (jsonb keys fix).
 - **Open: T-0608 (roles on effect/sql).** The conversion is committed in its worktree (f834e8d9). Its first gate hung for 50 min with one vitest fork at 100% CPU; the cause is not yet known. The worker ignored the rebase instruction and re-ran the old full gate. After the restart:
