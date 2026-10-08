@@ -1,7 +1,7 @@
 ---
 id: T-0544
 title: "Effect C (HTTP): owner integration settings (GET, Telegram PUT/DELETE, email PUT) onto the HttpApi adapter, zod to Effect Schema; secrets never in responses or logs; helpers stay in routes.ts; only the route-shape test is rewritten"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0544-effect-http-integrations
 model: auto
@@ -66,4 +66,100 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Done. Integration settings are served by Effect `HttpApi`; all answers,
+the owner-only 404 and the no-secret-leak guarantees are unchanged, and only
+the route-shape test changed.
+
+What I did:
+- Created `apps/server/src/integrations/api.ts`: `HttpApiGroup 'integrations'`
+  (`.prefix('/api')`, `.middleware(Session)`) with four endpoints —
+  `GET /settings/integrations`, `PUT /settings/integrations/telegram`,
+  `DELETE /settings/integrations/telegram`, `PUT /settings/integrations/email` —
+  plus `INTEGRATIONS_API_ROUTES` (4 method+path pairs) and
+  `createIntegrationsApi(deps: IntegrationsRoutesDependencies)`.
+  Handlers keep the exact step order, statuses, bodies, audit calls and texts
+  of the old Hono routes (including `PUT email` re-checking the env guard in
+  the handler, and `DELETE telegram` having no limiter).
+- Rate limiters run as endpoint middlewares before the payload decode, with
+  the old order preserved exactly: telegram middleware does owner-404, then
+  429, then decode; email middleware does owner-404, then env-409, then 429,
+  then decode. A non-owner therefore still gets 404 without spending budget.
+- `integrations/routes.ts`: Hono factory and the two zod schemas removed.
+  Kept and exported: the 4 rate-limit constants,
+  `IntegrationsRoutesDependencies` (unchanged, so `createApp`'s
+  `integrations` override type still resolves), `BotTokenResolverDeps`,
+  `createGetBotToken`, `IntegrationSource`, and the helpers `api.ts` calls
+  (`isOwner`, `notFound`, `isMailbox`, `isInvalidToken`, `telegramStatusFor`,
+  `mailStatusFor`, `envMailConfigured`, `ownerEmailFor`,
+  `sendWorkingTestMail`, plus re-exports of the settings-store functions).
+  The `voiceTranscriptionStatusFor` import moved to `api.ts` (GET handler).
+- `app.ts`: same position, now `createIntegrationsApi({...})` +
+  `mountEffectRoutes(app, integrationsApi.routes, integrationsApi.handler)`;
+  `createGetBotToken` still imported from `./integrations/routes`.
+- `routes.test.ts`: only the shape test rewritten (asserts the same four
+  pairs with length 4 on `INTEGRATIONS_API_ROUTES`); import line drops
+  `createIntegrationsRoutes`, adds `INTEGRATIONS_API_ROUTES` from `./api`.
+  Every other test byte-identical.
+
+Success schemas vs service return fields (item 8, side by side):
+- GET returns `{ telegram: { configured, source }, email: { configured,
+  source, from }, voiceTranscription: { configured, baseUrl, model },
+  canManage: true }`; schemas `TelegramStatus`/`EmailStatus`/
+  `VoiceTranscriptionStatus`/`IntegrationsView` list every one of those
+  fields (`source: NullOr('env'|'stored')`, `from/baseUrl/model:
+  NullOr(String)`, `canManage: Boolean`). No field omitted.
+- The three writes return `{ ok: true }`; `OkResult` is `{ ok: Boolean }`.
+
+Message texts (item 10): all fixed user-facing texts byte-identical
+(`invalid_token`, `try_later`, `mail_send_failed`, `managed_by_environment`,
+`rate_limited`/`Too many attempts, try again later`, owner 404 `not_found`).
+Only the generic 400 decode text changed: zod's first-issue messages
+(`botToken must not be empty`, `botToken must be at most 256 characters`,
+`from must not be empty`, `from must be at most 320 characters`,
+`resendApiKey must not be empty/at most 256…`, `Invalid request` fallback)
+are now Effect Schema messages, except the two custom-refine texts I kept
+identical via `makeFilter` (`botToken must not contain spaces`, `from must
+be a valid sender address` ×2). The `invalid_request` code and the
+`Strict` excess-key 400 behaviour are unchanged. No test asserted the old
+400 texts (bad-body tests assert status only).
+
+Problems: two rounds of failures, both fixed. (1) `Effect.gen` JS
+try/catch does not catch `Effect.promise` rejections (they are defects):
+the 422 `invalid_token` and 422 `mail_send_failed` paths rendered 500.
+Fixed with `Effect.catchDefect` mapping to `Effect.die(new HttpError(...))`
+(the envelope renders `HttpError` defects with their status), per the
+guide's provider pattern. (2) `pnpm gate` format then lint fixes:
+prettier reformatted the two files; removed unused `HttpServerResponse`
+and `Auth` imports flagged by oxlint.
+
+Secrets: no secret in any response, log or error text — same fixed
+messages, audit `detail: null`, status answers carry only
+`configured`/`source`/`from`. The sentinel tests
+(`routes.test.ts` ~line 317 telegram, ~line 481 email) pass unchanged.
+
+Commands (real results):
+- `pnpm install`: ok (11.5s).
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot
+  src/integrations/routes.test.ts`: 22 passed.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot
+  integrations voice-transcription authz-sweep app.test`: 7 files, 76
+  passed.
+- `pnpm exec prettier --write` on the two touched files (format fix only).
+- `pnpm gate` (background, machine heavily shared): `gate: 5 changed
+  file(s) against main` / `PASS install (frozen) (7.4s)` / `PASS format
+  (87.1s)` / `PASS lint (2.2s)` / `PASS typecheck (1.8s)` /
+  `PASS tests @zilar/server (1697.9s)` /
+  `scope: every changed file is inside the Allowed files` / `GATE PASS`.
+
+Deviations: none from the spec. Open questions: none.
+
+Security checklist: secrets never in logs/audit/errors/URLs (sentinel
+tests pass); deletes scoped (DELETE removes only the stored token row);
+no caps/uniqueness rules involved; permission (owner) checked before any
+effect in every handler and in the limiter middlewares; non-owner gets the
+same 404 as unknown; routes mounted exactly so the 401 sweep still sees
+all four; audit entries carry ids only (`detail: null`).
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-08). The owner integration settings (GET, Telegram PUT/DELETE, email PUT) are served by Effect HttpApi, with the same step order, the owner-only 404, the limiters, fixed texts, and no secrets in responses or logs (the sentinel tests are unchanged). Lead check: the IntegrationsView, telegram, email and voiceTranscription status schemas match the old c.json shapes field for field. The only test edit is the shape test, now on INTEGRATIONS_API_ROUTES. Pre-review clean.

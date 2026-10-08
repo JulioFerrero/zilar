@@ -17,7 +17,8 @@ import type { Auth } from './auth/auth';
 import { createAuthRoutes } from './auth/routes';
 import { CurrentMailer, createMailer } from './auth/mailer';
 import { createSetupRoutes, type SetupRoutesDependencies } from './setup/routes';
-import { createIntegrationsRoutes, createGetBotToken } from './integrations/routes';
+import { createGetBotToken } from './integrations/routes';
+import { createIntegrationsApi } from './integrations/api';
 import { settingsCipherFor } from './setup/settings';
 import { createChatsApi } from './chats/api';
 import { createChatPrefsApi } from './chat-prefs/api';
@@ -512,18 +513,16 @@ export function createApp({
   // Integration settings (T-0162 + Email): owner-only; everyone else gets
   // the same 404 as an unknown route. Covered by the 401 sweep as
   // session-required routes (never allowlisted).
-  app.route(
-    '/api',
-    createIntegrationsRoutes({
-      auth,
-      db,
-      config,
-      logger,
-      mailer: currentMailer,
-      audit: auditRecorder,
-      ...integrations,
-    }),
-  );
+  const integrationsApi = createIntegrationsApi({
+    auth,
+    db,
+    config,
+    logger,
+    mailer: currentMailer,
+    audit: auditRecorder,
+    ...integrations,
+  });
+  mountEffectRoutes(app, integrationsApi.routes, integrationsApi.handler);
   const auditApi = createAuditApi({ auth, db, logger });
   mountEffectRoutes(app, auditApi.routes, auditApi.handler);
   // GIFs (T-0122): search, trending and the media proxy. Mounted always: an
