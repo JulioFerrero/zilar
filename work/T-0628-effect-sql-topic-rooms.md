@@ -1,7 +1,7 @@
 ---
 id: T-0628
 title: "effect/sql: topics/rooms.ts reads (desiredMembers, the AI member and channel-voice reads, visibleRoomLocalparts, the room-option reconcile) off drizzle; same affiliations, same logs; tests unchanged"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0628-effect-sql-topic-rooms
 model: auto
@@ -67,4 +67,53 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+
+Moved every read in `apps/server/src/topics/rooms.ts` off drizzle onto `effect/sql`, with the same filters and row shapes:
+
+- Added a private `runSql(db, effect)` (`sqlRuntimeFor(db).runPromise(...)`, same shape as `pins/service.ts`).
+- Added a small `readGroupMembers(db, groupId)` helper (the query the code ran three times, unchanged: `SELECT user_id, role FROM group_members WHERE group_id = $1`).
+- Converted:
+  - `desiredMembers`: the group `kind` (`SELECT kind FROM "groups" WHERE id = $1 LIMIT 1`), the group members, and the private `topic_members` user ids.
+  - `addTopicAiMembers`: the General `group_ais JOIN ais` read (`jid, status`) and the `topic_ais JOIN ais` read (`id, jid`).
+  - `applyChannelAiVoice`: the `group_ais JOIN ais` read (`jid, owner, status`) and the group members.
+  - `visibleRoomLocalparts`: the user's `group_members.group_id` rows.
+  - `reconcileRoomSubscriptionOptions`: every `topics.room_localpart` (`SELECT room_localpart FROM topics`).
+- Removed the `drizzle-orm` and `db/schema` value imports. The file imports `Effect`, `SqlClient`, `SqlError`, `sqlRuntimeFor`. No exported signature changed; `TopicRoomDeps.db` stays `ServerDatabase`; the calls to `topicRoleHolderIds`, `allowedTopicAiIds`, `visibleTopics` and `userIdsWithDevices` are untouched.
+- Rows are typed inline with the camelCase names `transformResultNames` produces (`user_id` → `userId`, etc.). `"groups"` is quoted because `GROUPS` is a Postgres keyword.
+- No test file was changed.
+
+### Files changed
+
+- `apps/server/src/topics/rooms.ts`
+- `work/T-0628-effect-sql-topic-rooms.md`
+
+### Commands and real results
+
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/topics src/groups src/invite-links src/push` → `Test Files 15 passed | 1 skipped (16)`, `Tests 203 passed | 1 skipped (204)`.
+- `pnpm gate` (final run) →
+  ```
+  gate: 2 changed file(s) against main
+  PASS  install (frozen)  (0.9s)
+  PASS  format  (12.8s)
+  PASS  lint  (0.5s)
+  PASS  typecheck  (6.4s)
+  PASS  tests @zilar/server  (10.2s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+  The first gate run failed on `format` (prettier), then on `typecheck` (a `readonly` array return type); both fixed inside `rooms.ts` only. All listed tests are unchanged.
+
+### Problems / deviations
+
+- No deviations from the spec. The two files touched are exactly the Allowed files.
+
+### Open questions
+
+- None.
+
 ## Review (written by Claude)
+
+**2026-10-08, lead:** approved.
+- **Pre-review:** clean, no findings. The packet head is d61865bb, the current HEAD.
+- **Lead check of the SQL:** the eight reads keep their filters and joins, and every value is a bound parameter. No drizzle import is left.
