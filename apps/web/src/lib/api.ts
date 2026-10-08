@@ -1,5 +1,4 @@
 import { Effect, Exit, Schema } from 'effect';
-import { z } from 'zod';
 import { FOLDER_ICONS, type FolderChatType, type FolderIcon } from '@zilar/chat-core';
 import { struct } from '@zilar/protocol';
 import { isMockApiEnabled } from '@/mock/gate';
@@ -23,28 +22,18 @@ export class ApiError extends Error {
   }
 }
 
-type ResponseSchema<T> = z.ZodType<T> | Schema.Codec<T, unknown>;
-
-function isEffectSchema<T>(schema: ResponseSchema<T>): schema is Schema.Codec<T, unknown> {
-  return Schema.isSchema(schema);
-}
+type ResponseSchema<T> = Schema.Codec<T, unknown>;
 
 /**
- * Decodes one response body with either a zod schema or an Effect Schema.
- * Effect Schemas decode non-strict (unknown keys are dropped), like zod's
- * `z.object`. This is the only place that branches on the schema kind.
+ * Decodes one response body with an Effect Schema. The decode is
+ * non-strict (unknown keys are dropped).
  */
 function decodeResponse<T>(
   schema: ResponseSchema<T>,
   raw: unknown,
 ): { ok: true; value: T } | { ok: false } {
-  // T-0505..T-0507: zod path removed in part 3
-  if (isEffectSchema(schema)) {
-    const result = Schema.decodeUnknownExit(schema)(raw);
-    return Exit.isSuccess(result) ? { ok: true, value: result.value } : { ok: false };
-  }
-  const parsed = schema.safeParse(raw);
-  return parsed.success ? { ok: true, value: parsed.data } : { ok: false };
+  const result = Schema.decodeUnknownExit(schema)(raw);
+  return Exit.isSuccess(result) ? { ok: true, value: result.value } : { ok: false };
 }
 
 const errorBodySchema = struct({
@@ -1994,38 +1983,38 @@ export function importTelegramStickers(input: string): Promise<TelegramImportRes
 // never returned by the server, not even masked — only `configured` and
 // `source` say whether one is set.
 
-const integrationsTelegramSchema = z.object({
-  configured: z.boolean(),
-  source: z.enum(['env', 'stored']).nullable(),
+const integrationsTelegramSchema = struct({
+  configured: Schema.Boolean,
+  source: Schema.NullOr(Schema.Literals(['env', 'stored'])),
 });
 
-const integrationsEmailSchema = z.object({
-  configured: z.boolean(),
-  source: z.enum(['env', 'stored']).nullable(),
-  from: z.string().nullable(),
+const integrationsEmailSchema = struct({
+  configured: Schema.Boolean,
+  source: Schema.NullOr(Schema.Literals(['env', 'stored'])),
+  from: Schema.NullOr(Schema.String),
 });
 
-const integrationsStatusSchema = z.object({
+const integrationsStatusSchema = struct({
   telegram: integrationsTelegramSchema,
   email: integrationsEmailSchema,
-  voiceTranscription: z
-    .object({
-      configured: z.boolean(),
-      baseUrl: z.string().nullable(),
-      model: z.string().nullable(),
-    })
-    .optional(),
-  canManage: z.boolean(),
+  voiceTranscription: Schema.optional(
+    struct({
+      configured: Schema.Boolean,
+      baseUrl: Schema.NullOr(Schema.String),
+      model: Schema.NullOr(Schema.String),
+    }),
+  ),
+  canManage: Schema.Boolean,
 });
 
-export type IntegrationsStatus = z.infer<typeof integrationsStatusSchema>;
+export type IntegrationsStatus = typeof integrationsStatusSchema.Type;
 
 export function getIntegrationsStatus(): Promise<IntegrationsStatus> {
   return request('/settings/integrations', integrationsStatusSchema);
 }
 
 export async function saveTelegramBotToken(botToken: string): Promise<void> {
-  await request('/settings/integrations/telegram', z.object({ ok: z.boolean() }), {
+  await request('/settings/integrations/telegram', struct({ ok: Schema.Boolean }), {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ botToken }),
@@ -2033,7 +2022,7 @@ export async function saveTelegramBotToken(botToken: string): Promise<void> {
 }
 
 export async function removeTelegramBotToken(): Promise<void> {
-  await request('/settings/integrations/telegram', z.object({ ok: z.boolean() }), {
+  await request('/settings/integrations/telegram', struct({ ok: Schema.Boolean }), {
     method: 'DELETE',
   });
 }
@@ -2048,7 +2037,7 @@ export async function saveEmailSettings(input: SaveEmailSettingsInput): Promise<
     input.resendApiKey === undefined
       ? { from: input.from }
       : { from: input.from, resendApiKey: input.resendApiKey };
-  await request('/settings/integrations/email', z.object({ ok: z.boolean() }), {
+  await request('/settings/integrations/email', struct({ ok: Schema.Boolean }), {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -2067,11 +2056,11 @@ export interface SaveVoiceTranscriptionInput {
 }
 
 export function getVoiceTranscriptionStatus(): Promise<{ enabled: boolean }> {
-  return request('/voice/transcription', z.object({ enabled: z.boolean() }));
+  return request('/voice/transcription', struct({ enabled: Schema.Boolean }));
 }
 
 export function getVoiceTranscript(url: string): Promise<{ text: string }> {
-  return request('/voice/transcript', z.object({ text: z.string() }), {
+  return request('/voice/transcript', struct({ text: Schema.String }), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ url }),
@@ -2088,7 +2077,7 @@ export async function saveVoiceTranscriptionSettings(
   if (input.model !== undefined) {
     body['model'] = input.model;
   }
-  await request('/settings/integrations/voice-transcription', z.object({ ok: z.boolean() }), {
+  await request('/settings/integrations/voice-transcription', struct({ ok: Schema.Boolean }), {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -2096,7 +2085,7 @@ export async function saveVoiceTranscriptionSettings(
 }
 
 export async function removeVoiceTranscriptionSettings(): Promise<void> {
-  await request('/settings/integrations/voice-transcription', z.object({ ok: z.boolean() }), {
+  await request('/settings/integrations/voice-transcription', struct({ ok: Schema.Boolean }), {
     method: 'DELETE',
   });
 }
@@ -2108,21 +2097,21 @@ export async function removeVoiceTranscriptionSettings(): Promise<void> {
 // (`/api/gifs/media/:token`). An unconfigured provider answers 501
 // `gifs_unavailable` and the panel hides the tab.
 
-export const gifResultSchema = z.object({
-  id: z.string(),
-  title: z.string(),
-  mediaToken: z.string(),
-  kind: z.enum(['image', 'video']),
-  width: z.number(),
-  height: z.number(),
-  sizeBytes: z.number().optional(),
+export const gifResultSchema = struct({
+  id: Schema.String,
+  title: Schema.String,
+  mediaToken: Schema.String,
+  kind: Schema.Literals(['image', 'video']),
+  width: Schema.Number,
+  height: Schema.Number,
+  sizeBytes: Schema.optional(Schema.Number),
 });
 
-export type GifResult = z.infer<typeof gifResultSchema>;
+export type GifResult = typeof gifResultSchema.Type;
 
-const gifPageSchema = z.object({
-  items: z.array(gifResultSchema),
-  nextPos: z.string().optional(),
+const gifPageSchema = struct({
+  items: Schema.mutable(Schema.Array(gifResultSchema)),
+  nextPos: Schema.optional(Schema.String),
 });
 
 export interface GifPage {
@@ -2162,15 +2151,15 @@ async function gifRequest(
   if (!response.ok) {
     throw toApiError(response.status, raw);
   }
-  const parsed = gifPageSchema.safeParse(raw);
-  if (!parsed.success) {
+  const parsed = decodeResponse(gifPageSchema, raw);
+  if (!parsed.ok) {
     throw new ApiError(
       response.status,
       'invalid_response',
       'The server sent an unexpected response',
     );
   }
-  return parsed.data;
+  return parsed.value;
 }
 
 export function searchGifs(query: string, pos?: string, signal?: AbortSignal): Promise<GifPage> {
@@ -2198,32 +2187,32 @@ export function gifMediaUrl(mediaToken: string): string {
 // --- Audit log (T-0079, T-0084) --------------------------------------------
 // The wire contract lives in apps/server/src/audit/routes.ts and service.ts.
 
-const auditCostSchema = z
-  .object({
-    currency: z.enum(['EUR', 'USD']),
-    amount: z.number(),
-  })
-  .nullable();
+const auditCostSchema = Schema.NullOr(
+  struct({
+    currency: Schema.Literals(['EUR', 'USD']),
+    amount: Schema.Number,
+  }),
+);
 
-export const publicAuditEntrySchema = z.object({
-  id: z.string(),
-  at: z.string(),
-  aiId: z.string().nullable(),
-  groupId: z.string().nullable(),
-  action: z.string(),
-  subjectId: z.string().nullable(),
-  argsHash: z.string().nullable(),
+export const publicAuditEntrySchema = struct({
+  id: Schema.String,
+  at: Schema.String,
+  aiId: Schema.NullOr(Schema.String),
+  groupId: Schema.NullOr(Schema.String),
+  action: Schema.String,
+  subjectId: Schema.NullOr(Schema.String),
+  argsHash: Schema.NullOr(Schema.String),
   cost: auditCostSchema,
-  result: z.enum(['ok', 'denied', 'error']),
-  detail: z.record(z.string(), z.unknown()).nullable(),
-  actorUserId: z.string().nullable(),
+  result: Schema.Literals(['ok', 'denied', 'error']),
+  detail: Schema.NullOr(Schema.Record(Schema.String, Schema.Unknown)),
+  actorUserId: Schema.NullOr(Schema.String),
 });
 
-export type PublicAuditEntry = z.infer<typeof publicAuditEntrySchema>;
+export type PublicAuditEntry = typeof publicAuditEntrySchema.Type;
 
-const auditPageSchema = z.object({
-  entries: z.array(publicAuditEntrySchema),
-  next: z.string().nullable(),
+const auditPageSchema = struct({
+  entries: Schema.mutable(Schema.Array(publicAuditEntrySchema)),
+  next: Schema.NullOr(Schema.String),
 });
 
 export interface ListAuditPage {
@@ -2266,23 +2255,23 @@ export function listAudit(input: ListAuditInput): Promise<ListAuditPage> {
 // the setup page (never in storage, URL or logs) and rides the sign-up
 // request itself.
 
-const setupStatusSchema = z.object({
-  needsSetup: z.boolean(),
-  mailConfigured: z.boolean(),
+const setupStatusSchema = struct({
+  needsSetup: Schema.Boolean,
+  mailConfigured: Schema.Boolean,
 });
 
-export type SetupStatus = z.infer<typeof setupStatusSchema>;
+export type SetupStatus = typeof setupStatusSchema.Type;
 
 export function getSetupStatus(): Promise<SetupStatus> {
   return request('/setup/status', setupStatusSchema);
 }
 
-const setupResultSchema = z.object({
-  ok: z.boolean(),
-  inviteCode: z.string(),
+const setupResultSchema = struct({
+  ok: Schema.Boolean,
+  inviteCode: Schema.String,
 });
 
-export type SetupResult = z.infer<typeof setupResultSchema>;
+export type SetupResult = typeof setupResultSchema.Type;
 
 export interface SetupInput {
   resendApiKey: string;
@@ -2305,9 +2294,9 @@ export function postSetup(input: SetupInput): Promise<SetupResult> {
 
 export type HandleCheckReason = 'invalid' | 'reserved' | 'taken';
 
-const handleCheckSchema = z.object({
-  available: z.boolean(),
-  reason: z.enum(['invalid', 'reserved', 'taken']).optional(),
+const handleCheckSchema = struct({
+  available: Schema.Boolean,
+  reason: Schema.optional(Schema.Literals(['invalid', 'reserved', 'taken'])),
 });
 
 export interface HandleCheck {
@@ -2321,7 +2310,7 @@ export function checkHandle(handle: string): Promise<HandleCheck> {
   return request(`/handles/check?${params.toString()}`, handleCheckSchema);
 }
 
-const claimedHandleSchema = z.object({ handle: z.string() });
+const claimedHandleSchema = struct({ handle: Schema.String });
 
 export function claimHandle(handle: string): Promise<{ handle: string }> {
   return request('/me/handle', claimedHandleSchema, {
@@ -2334,15 +2323,22 @@ export function claimHandle(handle: string): Promise<{ handle: string }> {
 export type ContactRelation =
   'none' | 'contact' | 'request_sent' | 'request_received' | 'self' | 'blocked';
 
-const handleProfileSchema = z.object({
-  userId: z.string(),
-  name: z.string(),
-  handle: z.string(),
-  image: z.string().nullable(),
-  relation: z.enum(['none', 'contact', 'request_sent', 'request_received', 'self', 'blocked']),
+const handleProfileSchema = struct({
+  userId: Schema.String,
+  name: Schema.String,
+  handle: Schema.String,
+  image: Schema.NullOr(Schema.String),
+  relation: Schema.Literals([
+    'none',
+    'contact',
+    'request_sent',
+    'request_received',
+    'self',
+    'blocked',
+  ]),
 });
 
-export type HandleProfile = z.infer<typeof handleProfileSchema>;
+export type HandleProfile = typeof handleProfileSchema.Type;
 
 export function lookupByHandle(handle: string): Promise<HandleProfile> {
   return request(`/users/by-handle/${encodeURIComponent(handle)}`, handleProfileSchema);
@@ -2350,27 +2346,27 @@ export function lookupByHandle(handle: string): Promise<HandleProfile> {
 
 export type ContactRequestStatus = 'pending' | 'accepted' | 'declined' | 'cancelled';
 
-export const contactRequestPersonSchema = z.object({
-  userId: z.string(),
-  name: z.string(),
-  handle: z.string().nullable(),
-  image: z.string().nullable(),
+export const contactRequestPersonSchema = struct({
+  userId: Schema.String,
+  name: Schema.String,
+  handle: Schema.NullOr(Schema.String),
+  image: Schema.NullOr(Schema.String),
 });
 
-export type ContactRequestPerson = z.infer<typeof contactRequestPersonSchema>;
+export type ContactRequestPerson = typeof contactRequestPersonSchema.Type;
 
-export const contactRequestViewSchema = z.object({
-  id: z.string(),
-  status: z.enum(['pending', 'accepted', 'declined', 'cancelled']),
-  createdAt: z.string(),
+export const contactRequestViewSchema = struct({
+  id: Schema.String,
+  status: Schema.Literals(['pending', 'accepted', 'declined', 'cancelled']),
+  createdAt: Schema.String,
   other: contactRequestPersonSchema,
 });
 
-export type ContactRequestView = z.infer<typeof contactRequestViewSchema>;
+export type ContactRequestView = typeof contactRequestViewSchema.Type;
 
-const contactRequestListSchema = z.object({
-  incoming: z.array(contactRequestViewSchema),
-  outgoing: z.array(contactRequestViewSchema),
+const contactRequestListSchema = struct({
+  incoming: Schema.mutable(Schema.Array(contactRequestViewSchema)),
+  outgoing: Schema.mutable(Schema.Array(contactRequestViewSchema)),
 });
 
 export interface ContactRequestList {
@@ -2378,22 +2374,22 @@ export interface ContactRequestList {
   outgoing: ContactRequestView[];
 }
 
-const contactRequestRowSchema = z.object({
-  id: z.string(),
-  fromUserId: z.string(),
-  toUserId: z.string(),
-  status: z.enum(['pending', 'accepted', 'declined', 'cancelled']),
-  createdAt: z.string(),
-  decidedAt: z.string().optional(),
+const contactRequestRowSchema = struct({
+  id: Schema.String,
+  fromUserId: Schema.String,
+  toUserId: Schema.String,
+  status: Schema.Literals(['pending', 'accepted', 'declined', 'cancelled']),
+  createdAt: Schema.String,
+  decidedAt: Schema.optional(Schema.String),
 });
 
-export type ContactRequestRow = z.infer<typeof contactRequestRowSchema>;
+export type ContactRequestRow = typeof contactRequestRowSchema.Type;
 
-const createdRequestSchema = z.object({
+const createdRequestSchema = struct({
   request: contactRequestRowSchema,
   // Present when the other side already asked: the web offers "Accept" on
   // the existing request instead of creating a second row.
-  incoming: z.boolean().optional(),
+  incoming: Schema.optional(Schema.Boolean),
 });
 
 export function sendContactRequest(handle: string): Promise<{
@@ -2411,7 +2407,7 @@ export function listContactRequests(): Promise<ContactRequestList> {
   return request('/contact-requests', contactRequestListSchema);
 }
 
-const decidedRequestSchema = z.object({ request: contactRequestRowSchema });
+const decidedRequestSchema = struct({ request: contactRequestRowSchema });
 
 export function acceptContactRequest(id: string): Promise<{ request: ContactRequestRow }> {
   return request(`/contact-requests/${encodeURIComponent(id)}/accept`, decidedRequestSchema, {
@@ -2436,19 +2432,19 @@ export function cancelContactRequest(id: string): Promise<{ request: ContactRequ
 // requests never reach the blocker. Writes answer `{ blocked: true/false }`,
 // the list answers newest first.
 
-const blockResultSchema = z.object({ blocked: z.boolean() });
+const blockResultSchema = struct({ blocked: Schema.Boolean });
 
-const blockedPersonSchema = z.object({
-  userId: z.string(),
-  name: z.string(),
-  handle: z.string().nullable(),
-  image: z.string().nullable(),
-  jid: z.string().nullable(),
+const blockedPersonSchema = struct({
+  userId: Schema.String,
+  name: Schema.String,
+  handle: Schema.NullOr(Schema.String),
+  image: Schema.NullOr(Schema.String),
+  jid: Schema.NullOr(Schema.String),
 });
 
-export type BlockedPerson = z.infer<typeof blockedPersonSchema>;
+export type BlockedPerson = typeof blockedPersonSchema.Type;
 
-const blockedListSchema = z.object({ blocked: z.array(blockedPersonSchema) });
+const blockedListSchema = struct({ blocked: Schema.mutable(Schema.Array(blockedPersonSchema)) });
 
 export function blockUser(userId: string): Promise<{ blocked: boolean }> {
   return request(`/blocks/${encodeURIComponent(userId)}`, blockResultSchema, {
@@ -2472,24 +2468,24 @@ export async function listBlockedUsers(): Promise<BlockedPerson[]> {
 // `@username`s), appears in the directory, and joins with one tap. A
 // private group stays invisible and invite-only, exactly as before.
 
-export const directoryEntrySchema = z.object({
-  id: z.string(),
-  kind: z.enum(['group', 'channel']),
-  title: z.string(),
-  handle: z.string(),
-  description: z.string().nullable(),
-  memberCount: z.number(),
-  joined: z.boolean(),
+export const directoryEntrySchema = struct({
+  id: Schema.String,
+  kind: Schema.Literals(['group', 'channel']),
+  title: Schema.String,
+  handle: Schema.String,
+  description: Schema.NullOr(Schema.String),
+  memberCount: Schema.Number,
+  joined: Schema.Boolean,
   // T-0165: the group's picture, when it has one. Optional so older
   // payloads parse (treated as none).
-  avatarUrl: z.string().optional(),
+  avatarUrl: Schema.optional(Schema.String),
 });
 
-export type DirectoryEntry = z.infer<typeof directoryEntrySchema>;
+export type DirectoryEntry = typeof directoryEntrySchema.Type;
 
-const directoryPageSchema = z.object({
-  entries: z.array(directoryEntrySchema),
-  next: z.string().nullable(),
+const directoryPageSchema = struct({
+  entries: Schema.mutable(Schema.Array(directoryEntrySchema)),
+  next: Schema.NullOr(Schema.String),
 });
 
 export interface DirectoryPage {
@@ -2524,12 +2520,12 @@ export function lookupGroupByHandle(handle: string): Promise<DirectoryEntry> {
   return request(`/groups/by-handle/${encodeURIComponent(handle)}`, directoryEntrySchema);
 }
 
-const publicJoinResultSchema = z.object({
-  groupId: z.string(),
-  alreadyMember: z.boolean(),
+const publicJoinResultSchema = struct({
+  groupId: Schema.String,
+  alreadyMember: Schema.Boolean,
 });
 
-export type PublicJoinResult = z.infer<typeof publicJoinResultSchema>;
+export type PublicJoinResult = typeof publicJoinResultSchema.Type;
 
 // Joins a public group or channel with one request (private or unknown
 // answers the same 404; a full group 409 `group_full`; joining twice is
@@ -2570,7 +2566,7 @@ export function checkGroupHandle(handle: string): Promise<HandleCheck> {
 // the server validates by magic bytes (static WebP/PNG only, square,
 // 64–512 px, ≤ 256 KB). The response carries the new `url`
 // (`/api/avatars/<id>`), which every list route also serves as `avatarUrl`.
-const avatarUrlSchema = z.object({ url: z.string() });
+const avatarUrlSchema = struct({ url: Schema.String });
 
 export function uploadAvatar(
   kind: 'user' | 'ai' | 'group',
@@ -2604,19 +2600,19 @@ async function uploadAvatarBytes(path: string, blob: Blob): Promise<{ url: strin
   if (!response.ok) {
     throw toApiError(response.status, raw);
   }
-  const parsed = avatarUrlSchema.safeParse(raw);
-  if (!parsed.success) {
+  const parsed = decodeResponse(avatarUrlSchema, raw);
+  if (!parsed.ok) {
     throw new ApiError(
       response.status,
       'invalid_response',
       'The server sent an unexpected response',
     );
   }
-  return parsed.data;
+  return parsed.value;
 }
 
 export async function removeAvatar(kind: 'user' | 'ai' | 'group', ownerId: string): Promise<void> {
-  await request(`/avatars/${kind}/${encodeURIComponent(ownerId)}`, z.object({ ok: z.boolean() }), {
+  await request(`/avatars/${kind}/${encodeURIComponent(ownerId)}`, struct({ ok: Schema.Boolean }), {
     method: 'DELETE',
   });
 }
@@ -2625,29 +2621,31 @@ export async function removeAvatar(kind: 'user' | 'ai' | 'group', ownerId: strin
 // Personal wallpapers for the chat background dialog. The client resizes and
 // re-encodes before upload (`lib/background-image.ts`); the server validates
 // by magic bytes (WebP/PNG, 64-2048 px, at most 1 MiB, at most 20 per user).
-const backgroundImageSchema = z.object({
-  id: z.string(),
-  url: z.string(),
-  width: z.number(),
-  height: z.number(),
+const backgroundImageSchema = struct({
+  id: Schema.String,
+  url: Schema.String,
+  width: Schema.Number,
+  height: Schema.Number,
 });
 
-export type BackgroundImage = z.infer<typeof backgroundImageSchema>;
+export type BackgroundImage = typeof backgroundImageSchema.Type;
 
-const backgroundListItemSchema = z.object({
-  id: z.string(),
-  url: z.string(),
-  width: z.number().nullable(),
-  height: z.number().nullable(),
-  createdAt: z.string(),
+const backgroundListItemSchema = struct({
+  id: Schema.String,
+  url: Schema.String,
+  width: Schema.NullOr(Schema.Number),
+  height: Schema.NullOr(Schema.Number),
+  createdAt: Schema.String,
 });
 
-export type BackgroundListItem = z.infer<typeof backgroundListItemSchema>;
+export type BackgroundListItem = typeof backgroundListItemSchema.Type;
 
-const backgroundListSchema = z.object({ backgrounds: z.array(backgroundListItemSchema) });
+const backgroundListSchema = struct({
+  backgrounds: Schema.mutable(Schema.Array(backgroundListItemSchema)),
+});
 
 // The POST twin of `uploadAvatarBytes`: a raw-body fetch with a mock branch,
-// `toApiError` on failure and a zod parse of the reply.
+// `toApiError` on failure and an Effect Schema parse of the reply.
 export async function uploadBackground(blob: Blob): Promise<BackgroundImage> {
   let response: Response;
   if (isMockApiEnabled()) {
@@ -2672,15 +2670,15 @@ export async function uploadBackground(blob: Blob): Promise<BackgroundImage> {
   if (!response.ok) {
     throw toApiError(response.status, raw);
   }
-  const parsed = backgroundImageSchema.safeParse(raw);
-  if (!parsed.success) {
+  const parsed = decodeResponse(backgroundImageSchema, raw);
+  if (!parsed.ok) {
     throw new ApiError(
       response.status,
       'invalid_response',
       'The server sent an unexpected response',
     );
   }
-  return parsed.data;
+  return parsed.value;
 }
 
 export function listBackgrounds(): Promise<BackgroundListItem[]> {
@@ -2688,5 +2686,5 @@ export function listBackgrounds(): Promise<BackgroundListItem[]> {
 }
 
 export async function deleteBackground(id: string): Promise<void> {
-  await request(`/backgrounds/${encodeURIComponent(id)}`, z.null(), { method: 'DELETE' });
+  await request(`/backgrounds/${encodeURIComponent(id)}`, Schema.Null, { method: 'DELETE' });
 }

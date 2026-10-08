@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { z } from 'zod';
+import { Schema } from 'effect';
 
 vi.mock('@/mock/gate', () => ({
   isMockMode: vi.fn(() => true),
@@ -42,6 +42,12 @@ import { isMockApiEnabled } from '@/mock/gate';
 import { mockRequest, resetMockApi, setMockDelay } from './api';
 
 const mockEnabled = vi.mocked(isMockApiEnabled);
+
+/** The mock error bodies: `{ error: { code } }` and the richer variant. */
+const errorCodeSchema = Schema.Struct({ error: Schema.Struct({ code: Schema.String }) });
+const errorCodeMessageSchema = Schema.Struct({
+  error: Schema.Struct({ code: Schema.String, message: Schema.String }),
+});
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status });
@@ -263,15 +269,15 @@ describe('mockRequest', () => {
       body: JSON.stringify({ provider: 'github', key: 'ghp_test', label: 'Work' }),
     });
     expect(created.status).toBe(201);
-    const createdBody = z
-      .object({
-        id: z.string(),
-        provider: z.string(),
-        label: z.string().nullable(),
-        status: z.string(),
-        createdAt: z.string(),
-      })
-      .parse(await created.json());
+    const createdBody = Schema.decodeUnknownSync(
+      Schema.Struct({
+        id: Schema.String,
+        provider: Schema.String,
+        label: Schema.NullOr(Schema.String),
+        status: Schema.String,
+        createdAt: Schema.String,
+      }),
+    )(await created.json());
     expect(createdBody.provider).toBe('github');
     expect(createdBody.label).toBe('Work');
     expect(await listConnections()).toHaveLength(3);
@@ -293,7 +299,7 @@ describe('mockRequest', () => {
   it('answers 404 mock_not_implemented for anything else', async () => {
     const response = await mockRequest('/nope');
     expect(response.status).toBe(404);
-    const body = z.object({ error: z.object({ code: z.string() }) }).parse(await response.json());
+    const body = Schema.decodeUnknownSync(errorCodeSchema)(await response.json());
     expect(body.error.code).toBe('mock_not_implemented');
   });
 
@@ -399,9 +405,7 @@ describe('mockRequest', () => {
     expect(approved).toBeDefined();
     const response = await mockRequest(`/machines/${approved!.id}/approve`, { method: 'POST' });
     expect(response.status).toBe(409);
-    const body = z
-      .object({ error: z.object({ code: z.string(), message: z.string() }) })
-      .parse(await response.json());
+    const body = Schema.decodeUnknownSync(errorCodeMessageSchema)(await response.json());
     expect(body.error.code).toBe('invalid_transition');
   });
 
@@ -411,7 +415,7 @@ describe('mockRequest', () => {
     expect(approved).toBeDefined();
     const response = await mockRequest(`/machines/${approved!.id}`, { method: 'DELETE' });
     expect(response.status).toBe(409);
-    const body = z.object({ error: z.object({ code: z.string() }) }).parse(await response.json());
+    const body = Schema.decodeUnknownSync(errorCodeSchema)(await response.json());
     expect(body.error.code).toBe('revoke_first');
   });
 
@@ -421,7 +425,7 @@ describe('mockRequest', () => {
     expect(revoked).toBeDefined();
     const response = await mockRequest(`/machines/${revoked!.id}/revoke`, { method: 'POST' });
     expect(response.status).toBe(409);
-    const body = z.object({ error: z.object({ code: z.string() }) }).parse(await response.json());
+    const body = Schema.decodeUnknownSync(errorCodeSchema)(await response.json());
     expect(body.error.code).toBe('invalid_transition');
   });
 
@@ -493,9 +497,7 @@ describe('mockRequest', () => {
       body: JSON.stringify({ decision: 'deny' }),
     });
     expect(response.status).toBe(409);
-    const body = z
-      .object({ error: z.object({ code: z.string(), message: z.string() }) })
-      .parse(await response.json());
+    const body = Schema.decodeUnknownSync(errorCodeMessageSchema)(await response.json());
     expect(body.error.code).toBe('not_pending');
   });
 
@@ -508,7 +510,7 @@ describe('mockRequest', () => {
   it('an unknown approval id answers 404 not_found', async () => {
     const response = await mockRequest('/approvals/no-such', { method: 'GET' });
     expect(response.status).toBe(404);
-    const body = z.object({ error: z.object({ code: z.string() }) }).parse(await response.json());
+    const body = Schema.decodeUnknownSync(errorCodeSchema)(await response.json());
     expect(body.error.code).toBe('not_found');
   });
 
@@ -518,7 +520,7 @@ describe('mockRequest', () => {
       body: JSON.stringify({ decision: 'maybe' }),
     });
     expect(response.status).toBe(400);
-    const body = z.object({ error: z.object({ code: z.string() }) }).parse(await response.json());
+    const body = Schema.decodeUnknownSync(errorCodeSchema)(await response.json());
     expect(body.error.code).toBe('invalid_request');
   });
 
@@ -579,14 +581,12 @@ describe('mockRequest', () => {
   it('stop / resume on an unknown AI answers 404 not_found', async () => {
     const stop = await mockRequest('/ais/no-such/stop', { method: 'POST' });
     expect(stop.status).toBe(404);
-    const stopBody = z.object({ error: z.object({ code: z.string() }) }).parse(await stop.json());
+    const stopBody = Schema.decodeUnknownSync(errorCodeSchema)(await stop.json());
     expect(stopBody.error.code).toBe('not_found');
 
     const resume = await mockRequest('/ais/no-such/resume', { method: 'POST' });
     expect(resume.status).toBe(404);
-    const resumeBody = z
-      .object({ error: z.object({ code: z.string() }) })
-      .parse(await resume.json());
+    const resumeBody = Schema.decodeUnknownSync(errorCodeSchema)(await resume.json());
     expect(resumeBody.error.code).toBe('not_found');
   });
 
@@ -625,14 +625,14 @@ describe('mockRequest', () => {
   it('rejects an audit request with both groupId and aiId with 400 invalid_request', async () => {
     const response = await mockRequest('/audit?aiId=a-1&groupId=g-devteam', { method: 'GET' });
     expect(response.status).toBe(400);
-    const body = z.object({ error: z.object({ code: z.string() }) }).parse(await response.json());
+    const body = Schema.decodeUnknownSync(errorCodeSchema)(await response.json());
     expect(body.error.code).toBe('invalid_request');
   });
 
   it('rejects an audit request without aiId with 400 invalid_request', async () => {
     const response = await mockRequest('/audit', { method: 'GET' });
     expect(response.status).toBe(400);
-    const body = z.object({ error: z.object({ code: z.string() }) }).parse(await response.json());
+    const body = Schema.decodeUnknownSync(errorCodeSchema)(await response.json());
     expect(body.error.code).toBe('invalid_request');
   });
 });
