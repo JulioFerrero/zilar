@@ -2,6 +2,38 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-08 21:05, finishing before Julio restarts the PC** ("try to finish the task, i will restart the pc when the current tasks finish"):
+- **Merged this evening:** T-0599, T-0602 to T-0607 (including T-0604, T-G's prerequisite), T-0609, T-0610, T-0611; T-0613 is merging.
+- **Finishing (nothing new launches):** T-0608 (roles), T-0612 (T-G, Effect-only action registry), T-0614 (**bug:** effect/sql renamed keys inside jsonb, for example routine tool input `max_items` became `maxItems`; not live, since auto-deploy is off), T-0615 (tool service), T-0616 (light gate).
+- **After the restart:** T-0617 (lighter `lead watch`) and T-0618 (test-speed audit, run it alone). Then batch a `pnpm gate --full` on main.
+- **Rules from today:**
+  - 2 workers while Julio is at the PC, 4 while he is away;
+  - workers run only the nearest tests, and a full run is batched when nothing else tests;
+  - paused tasks get `status: blocked`.
+- **Tooling:**
+  - opencode upgraded from 2.0.12 to 2.0.25;
+  - the Expo dev server (port 8091) and Julio's iati `next dev` servers are stopped.
+
+**Open follow-ups (small; bundle them into one cleanup task when there is a slot):**
+- **Stale comments:**
+  - `apps/web/src/lib/api.ts:1116` (it points at `media/routes.ts`, now `media/api.ts`);
+  - `apps/server/src/voice-transcription/provider.ts:5` ("zod");
+  - `push/config.ts:85-86` (a "missing" literal that does not exist);
+  - `avatars/routes.ts:3` (says re-exported, it is not);
+  - `audit/service.ts:42` (`entryIssueMessage`);
+  - `web-tools/adapters.test.ts:218`, `ai/litellm-client.ts:310`, `routines/schedule.ts:2` and `approvals/service.ts:80` (they still say zod);
+  - `actions/registry.ts:105` (the call shape).
+- **Dead code:**
+  - `stickers/api.ts:692` (`void DiscoverQuery`), and `api.ts:98` hardcodes 60 instead of `STICKER_PACK_TITLE_MAX`;
+  - `invite-links/routes.ts` `clientIpFor` is unused;
+  - the `drafts/routes.ts` wrapper skips `forwardRequest`, and `DRAFTS_API_ROUTES` repeats `/api`.
+- **Fragile checks:**
+  - `approvals/service.ts:90` detects the refine by a substring (read the issue tree instead);
+  - `push/api.ts` `isUniqueViolation` should check `SqlError.reason._tag` (it works today through `cause.code`).
+- **Duplication:** the first-issue message walker is copied in `auth/api.ts`, `xmpp/admin-client.ts`, `xmpp/config.ts`, `audit/service.ts`, `routines/service.ts:93` and `setup/api.ts:128`. Each has its own special cases, so merging them needs care.
+- **Test gap:** `agents/listener/score.test.ts` has no excess-key case for `parseListenerOutput`.
+- **Still on drizzle, waiting for their callers:** `connections/service.ts` `decryptForGatewayUse` (it gets an `ais/service.ts` transaction) and `tools/service.ts` `deleteToolsForAiInGroup` (it gets a `groups/service.ts` transaction).
+
 **PAUSED 2026-10-08 ~16:10 (Julio: "the pc is about to explote and im in call, can you stop all?"):**
 - **The lead stopped:**
   - the autopilot;
