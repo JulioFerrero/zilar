@@ -59,7 +59,7 @@ import { createRoutinesApi } from './routines/api';
 import type { ToolRunner } from './tools/types';
 import type { VoiceEngine } from './voice/engine';
 import { createVoiceRoutes } from './voice/routes';
-import { createVoiceTranscriptionRoutes } from './voice-transcription/routes';
+import { createVoiceTranscriptionApi } from './voice-transcription/api';
 import type { EjabberdAdminClient } from './xmpp/admin-client';
 import { createXmppApi } from './xmpp/api';
 
@@ -572,17 +572,15 @@ export function createApp({
   // settings. Covered by the 401 sweep as session-required routes (never
   // allowlisted). Tests inject the audio fetcher and the transcriber so no
   // request ever reaches ejabberd or a real provider.
-  app.route(
-    '/api',
-    createVoiceTranscriptionRoutes({
-      auth,
-      db,
-      config,
-      logger,
-      audit: auditRecorder,
-      ...voiceTranscription,
-    }),
-  );
+  const voiceTranscriptionApi = createVoiceTranscriptionApi({
+    auth,
+    db,
+    config,
+    logger,
+    audit: auditRecorder,
+    ...voiceTranscription,
+  });
+  mountEffectRoutes(app, voiceTranscriptionApi.routes, voiceTranscriptionApi.handler);
 
   // Provider-key connections always mount: with no envelope-encryption master
   // key configured, each route answers 503 (`connections_unavailable`) rather

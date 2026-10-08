@@ -453,7 +453,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0414](T-0414-web-forward-store-action.md) | Web store: forwardMessages sends copies with a forward origin, optional comment | 2026-10-06 |
 | [T-0425](T-0425-mobile-profile-buttons-kit.md) | Mobile: profile and contact card buttons on the kit Button | 2026-10-06 |
 | [T-0426](T-0426-mobile-ai-sheet-buttons-kit.md) | Mobile: AI activity Refresh, tool sheet Show all/less and Close on the kit Button | 2026-10-06 |
-| [T-0545](T-0545-effect-http-voice-transcription.md) | Effect C (HTTP): voice transcription on HttpApi | planned | auto | T-0536 | |
 | [T-0553](T-0553-effect-http-approvals.md) | Effect C (HTTP): approvals on HttpApi | planned | auto | T-0539 | |
 | [T-0555](T-0555-effect-http-ais.md) | Effect C (HTTP): AI management on HttpApi | planned | auto | T-0548 | |
 | [T-0556](T-0556-agents-g4-extract-tool-exec.md) | Agents G4: extract the tool executor | planned | auto | T-0549 | |
@@ -588,3 +587,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0549](T-0549-agents-g8b-extract-group-ingest.md) | Agents G8b: extract the group ingest | 2026-10-08 |
 | [T-0543](T-0543-effect-http-push.md) | Effect C (HTTP): push on HttpApi | 2026-10-08 |
 | [T-0554](T-0554-effect-http-routines.md) | Effect C (HTTP): routines on HttpApi | 2026-10-08 |
+| [T-0545](T-0545-effect-http-voice-transcription.md) | Effect C (HTTP): voice transcription on HttpApi | 2026-10-08 |
