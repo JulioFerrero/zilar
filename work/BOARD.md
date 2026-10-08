@@ -11,7 +11,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0672](T-0672-approvals-decision-effect-sql.md) | effect/sql (C1): approval decision transaction + createRule | in-progress | auto | | |
 | [T-0675](T-0675-setup-transactions-effect-sql.md) | effect/sql phase 2 (C4): setup transactions, SetupTransaction gone | in-progress | auto | T-0667, T-0669 | |
-| [T-0678](T-0678-group-ais-and-topic-helpers-effect-sql.md) | effect/sql: addGroupAi + group-topic helpers | in-progress | haiku-5.5 | T-0670 | groups slice 2 |
 | [T-0679](T-0679-delete-last-drizzle-deletes.md) | effect/sql cleanup: delete drizzle deleteToolsForAiInTopic + deleteRoomMemory, stale comments | in-progress | haiku-5.5 | T-0676 | |
 | [T-0680](T-0680-topic-members-effect-sql.md) | effect/sql: topic members (list, add, remove) | in-progress | haiku-5.5 | T-0676 | topics slice 2 of 3 |
 | [T-0681](T-0681-ais-create-effect-sql.md) | effect/sql: createAi + compensateCreate; ais/service.ts drops drizzle | in-progress | haiku-5.5 | T-0677 | |
@@ -710,3 +709,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0673](T-0673-voice-api-fast-path-effect-sql.md) | effect/sql: voice API fast-path read | 2026-10-08 |
 | [T-0676](T-0676-topic-ais-effect-sql.md) | effect/sql: topic AIs (add, remove, dropped) | 2026-10-08 |
 | [T-0677](T-0677-ais-stop-resume-assign-effect-sql.md) | effect/sql: ais stop, resume, assign, findUserName | 2026-10-08 |
+| [T-0678](T-0678-group-ais-and-topic-helpers-effect-sql.md) | effect/sql: addGroupAi + group-topic helpers | 2026-10-08 |

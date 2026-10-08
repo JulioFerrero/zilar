@@ -14,7 +14,6 @@ import {
   groups,
   handles,
   retiredHandles,
-  topicAis,
   topicMembers,
   topics,
   user,
@@ -24,7 +23,7 @@ import { HttpError } from '../errors';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 import { emitGroupAi, emitTopicAi } from './events';
-import { aiMayBeInTopic } from '../topics/access';
+import { aiMayBeInTopic, type TopicRow } from '../topics/access';
 import { recordAudit, type AuditRecorder } from '../audit/service';
 import { dropMemberRoles, roleHoldersByGroup, topicRoleHolderIds } from '../roles/service';
 import { revokeActiveRulesForAiInGroupEffect } from '../approvals/rules';
@@ -967,11 +966,14 @@ export async function addGroupAi(
     throw new HttpError(404, 'not_found', 'AI not found');
   }
 
-  const [existing] = await db
-    .select({ aiId: groupAis.aiId })
-    .from(groupAis)
-    .where(and(eq(groupAis.groupId, input.groupId), eq(groupAis.aiId, input.aiId)))
-    .limit(1);
+  const [existing] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ aiId: string }>`SELECT ai_id FROM group_ais
+        WHERE group_id = ${input.groupId} AND ai_id = ${input.aiId} LIMIT 1`;
+    }),
+  );
   if (existing) {
     const detail = await getGroupDetail(db, input.groupId);
     if (!detail) {
@@ -986,28 +988,41 @@ export async function addGroupAi(
     throw new HttpError(409, 'ai_not_active', 'Resume the AI before adding it to a group');
   }
 
-  const memberRows = await db
-    .select({ userId: groupMembers.userId })
-    .from(groupMembers)
-    .where(eq(groupMembers.groupId, input.groupId));
-  const aiRows = await db
-    .select({ aiId: groupAis.aiId })
-    .from(groupAis)
-    .where(eq(groupAis.groupId, input.groupId));
+  const [memberRows, aiRows] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const members = yield* sql<{ userId: string }>`SELECT user_id FROM group_members
+        WHERE group_id = ${input.groupId}`;
+      const aiLinks = yield* sql<{ aiId: string }>`SELECT ai_id FROM group_ais
+        WHERE group_id = ${input.groupId}`;
+      return [members, aiLinks] as const;
+    }),
+  );
   if (memberRows.length + aiRows.length + 1 > MAX_GROUP_MEMBERS) {
     throw new HttpError(400, 'invalid_request', `A group has at most ${MAX_GROUP_MEMBERS} members`);
   }
 
   try {
-    await db.transaction(async (tx) => {
-      await adminClient.setAffiliation(group.roomLocalpart, ai.jid, 'member');
-      // Two concurrent adds both pass the check above: the loser lands here
-      // and still answers 200, keeping the add idempotent.
-      await tx
-        .insert(groupAis)
-        .values({ groupId: input.groupId, aiId: input.aiId, addedBy: input.actorId })
-        .onConflictDoNothing({ target: [groupAis.groupId, groupAis.aiId] });
-    });
+    await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql.withTransaction(
+          Effect.gen(function* () {
+            yield* Effect.tryPromise({
+              try: () => adminClient.setAffiliation(group.roomLocalpart, ai.jid, 'member'),
+              catch: (error) => error,
+            });
+            // Two concurrent adds both pass the check above: the loser lands here
+            // and still answers 200, keeping the add idempotent.
+            yield* sql`INSERT INTO group_ais (group_id, ai_id, added_by)
+              VALUES (${input.groupId}, ${input.aiId}, ${input.actorId})
+              ON CONFLICT (group_id, ai_id) DO NOTHING`;
+          }),
+        );
+      }),
+    );
   } catch (error) {
     throw mapXmppError(error);
   }
@@ -1020,11 +1035,14 @@ export async function addGroupAi(
   // heals it.
   if (group.kind === 'channel') {
     try {
-      const [feed] = await db
-        .select()
-        .from(topics)
-        .where(and(eq(topics.groupId, input.groupId), eq(topics.isGeneral, true)))
-        .limit(1);
+      const [feed] = await runSql(
+        db,
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<TopicRow>`SELECT * FROM topics
+            WHERE group_id = ${input.groupId} AND is_general = true LIMIT 1`;
+        }),
+      );
       if (feed) {
         await syncTopicRoom({ db, adminClient, domain: input.domain, logger: input.logger }, feed);
       }
@@ -1334,6 +1352,17 @@ function mapXmppError(error: unknown): HttpError {
   return new HttpError(503, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
 }
 
+async function groupTopicRows(db: ServerDatabase, groupId: string): Promise<TopicRow[]> {
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<TopicRow>`SELECT * FROM topics WHERE group_id = ${groupId}`;
+    }),
+  );
+  return [...rows];
+}
+
 // T-0108: re-apply the desired members to every active topic room of the
 // group (public topics gain/lose the person; private topics drop anyone
 // whose `topic_members` row is gone). Best effort: the database is the
@@ -1347,7 +1376,7 @@ async function syncGroupTopicRooms(
   domain: string,
   logger: InviteLogger,
 ): Promise<void> {
-  const rows = await db.select().from(topics).where(eq(topics.groupId, groupId));
+  const rows = await groupTopicRows(db, groupId);
   for (const topic of rows) {
     if (topic.archivedAt !== null) {
       continue;
@@ -1365,16 +1394,21 @@ async function syncGroupTopicRooms(
 // so a live gateway session leaves the room without waiting for reconcile.
 // The `topic_ais` rows stay: re-adding the owner brings the AI back.
 async function emitDroppedGroupTopicAis(db: ServerDatabase, groupId: string): Promise<void> {
-  const topicRows = await db.select().from(topics).where(eq(topics.groupId, groupId));
+  const topicRows = await groupTopicRows(db, groupId);
   for (const topic of topicRows) {
     if (topic.isGeneral || topic.archivedAt !== null || topic.visibility !== 'private') {
       continue;
     }
-    const aiRows = await db
-      .select({ aiId: topicAis.aiId, owner: ais.owner, status: ais.status })
-      .from(topicAis)
-      .innerJoin(ais, eq(ais.id, topicAis.aiId))
-      .where(eq(topicAis.topicId, topic.id));
+    const aiRows = await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ aiId: string; owner: string; status: string }>`SELECT topic_ais.ai_id,
+          ais.owner, ais.status FROM topic_ais
+          INNER JOIN ais ON ais.id = topic_ais.ai_id
+          WHERE topic_ais.topic_id = ${topic.id}`;
+      }),
+    );
     for (const row of aiRows) {
       const allowed = await aiMayBeInTopic(db, topic, {
         id: row.aiId,
@@ -1392,24 +1426,33 @@ async function emitDroppedGroupTopicAis(db: ServerDatabase, groupId: string): Pr
 // holders count as members — a topic a role still grants access to stays
 // alive even with zero direct rows.
 async function archiveDrainedPrivateTopics(db: ServerDatabase, groupId: string): Promise<void> {
-  const rows = await db.select().from(topics).where(eq(topics.groupId, groupId));
+  const rows = await groupTopicRows(db, groupId);
   for (const topic of rows) {
     if (topic.archivedAt !== null || topic.visibility !== 'private' || topic.isGeneral) {
       continue;
     }
-    const [row] = await db
-      .select({ total: count() })
-      .from(topicMembers)
-      .where(eq(topicMembers.topicId, topic.id));
+    const [row] = await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ total: number }>`SELECT count(*)::int AS total FROM topic_members
+          WHERE topic_id = ${topic.id}`;
+      }),
+    );
     if (Number(row?.total ?? 0) !== 0) {
       continue;
     }
     const holders = await topicRoleHolderIds(db, topic.id, groupId);
     if (holders.size === 0) {
-      await db
-        .update(topics)
-        .set({ archivedAt: new Date(), updatedAt: new Date() })
-        .where(eq(topics.id, topic.id));
+      const now = new Date();
+      await runSql(
+        db,
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`UPDATE topics SET archived_at = ${now}, updated_at = ${now}
+            WHERE id = ${topic.id}`;
+        }),
+      );
     }
   }
 }

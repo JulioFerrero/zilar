@@ -1,7 +1,7 @@
 ---
 id: T-0678
 title: "effect/sql: move addGroupAi and the three group-topic helpers (syncGroupTopicRooms, emitDroppedGroupTopicAis, archiveDrainedPrivateTopics) in groups/service.ts onto effect/sql"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0678-group-ais-and-topic-helpers-effect-sql
 model: auto
@@ -54,4 +54,36 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What was done
+All statements in the four functions of `apps/server/src/groups/service.ts` now run through `runSql` / effect/sql. No other function was changed.
+- `addGroupAi`: the existence check, the member and AI count reads, and the General-topic read (channel feed) use `sql` tagged templates. The add transaction is `sql.withTransaction`, with `setAffiliation` inside `Effect.tryPromise({ try, catch: (error) => error })` and the `INSERT ... ON CONFLICT (group_id, ai_id) DO NOTHING` in the same transaction. The whole block is still under `try/catch` with `mapXmppError`. The feed read stays inside the best-effort `try` as before.
+- `syncGroupTopicRooms`, `emitDroppedGroupTopicAis`, `archiveDrainedPrivateTopics`: the topics read goes through a new private helper `groupTopicRows` (`SELECT * FROM topics`, typed `TopicRow`, returned as a mutable copy). The per-topic AI join (`topic_ais` join `ais`), the `count(*)::int` of `topic_members`, and the `UPDATE topics SET archived_at, updated_at` use `sql`. The UPDATE passes one JS `new Date()` for both columns, the same convention as `removeGroupAi`, not SQL `now()`.
+- Imports: added `type TopicRow` from `../topics/access`; removed `topicAis`, which became unused.
+
+### Files changed
+- `apps/server/src/groups/service.ts`
+- `work/T-0678-group-ais-and-topic-helpers-effect-sql.md` (status and this Report)
+
+### Commands and results
+- `pnpm install`: done.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/groups/groups.test src/topics/topics.test`: 2 files passed, 88 tests passed, 0 failed.
+- First `pnpm gate`: GATE FAIL at typecheck (`src/groups/service.ts(1356,3)`: `sql` returns a readonly array, so `groupTopicRows` could not return `TopicRow[]`). Fixed by copying the rows into a mutable array.
+- Second `pnpm gate` (final), exit 0:
+  - `gate: 2 changed file(s) against main`
+  - `PASS install (frozen)`, `PASS format`, `PASS lint`, `PASS typecheck`, `PASS tests @zilar/server (28.6s)`
+  - `scope: every changed file is inside the Allowed files`
+  - `GATE PASS`
+- Acceptance check: no `db.select / db.insert / db.update / db.delete / db.transaction / tx.` call is left inside `addGroupAi`, `syncGroupTopicRooms`, `emitDroppedGroupTopicAis`, or `archiveDrainedPrivateTopics`.
+
+### Deviations and notes
+- The four functions still call helpers that use drizzle internally, all outside the Allowed files, and I left them as they are: `requireGroup`, `getMembership`, `findOwnedAi`, `getGroupDetail`, `syncTopicRoom`, `aiMayBeInTopic`, `topicRoleHolderIds`.
+- The tests do not mock drizzle; they use drizzle only for setup, so no stop was needed.
+- A first gate run wrote its log one directory above the worktree. I deleted that file. The final log is in the scratchpad, not in the worktree.
+
+### Blocked / needs a decision
+None.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Haiku 5.5, in one round (about 4.4 min). The lead reviewed the diff directly.
+- **Result:** the `addGroupAi` transaction follows the `removeGroupAi` shape (the XMPP call through `Effect.tryPromise` inside `sql.withTransaction`, then `ON CONFLICT (group_id, ai_id) DO NOTHING`), and the reads are the same. A shared `groupTopicRows` helper reads the topics with `SELECT *`. The count uses `count(*)::int`, and the archive timestamps use a JS `Date`, as the old code did. The gate passed.
