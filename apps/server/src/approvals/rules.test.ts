@@ -25,9 +25,11 @@ import {
   listActiveRulesForAi,
   listActiveRulesForTopic,
   revokeActiveRulesForAiInGroup,
+  revokeActiveRulesForAiInGroupEffect,
   revokeActiveRulesForAiInTopic,
   revokeRule,
 } from './rules';
+import { sqlRuntimeFor } from '../effect/sql';
 import { buildAlwaysEligible, buildRegistry, type ActionAdapter } from '../actions/registry';
 import { createActionGateway } from '../actions/gateway';
 import { createAuditRecorder } from '../audit/service';
@@ -728,6 +730,43 @@ describe('approval rules service (T-0099)', () => {
         actorId: ownerId,
         now,
       });
+      expect(revoked).toHaveLength(1);
+      expect(revoked[0]?.id).toBe(group.rule.id);
+
+      const [personalRow] = await context.db
+        .select()
+        .from(approvalRules)
+        .where(eq(approvalRules.id, personal.rule.id));
+      expect(personalRow?.revokedAt).toBeNull();
+      const [groupRow] = await context.db
+        .select()
+        .from(approvalRules)
+        .where(eq(approvalRules.id, group.rule.id));
+      expect(groupRow?.revokedAt).not.toBeNull();
+    });
+
+    it('revokes the group rule through the Effect helper and leaves personal rules alone', async () => {
+      const ownerId = await seedUser(context);
+      const { aiId } = await seedAi(context, ownerId);
+      const { groupId, generalTopicId } = await seedGroup(
+        context,
+        ownerId,
+        [{ userId: ownerId, role: 'owner' }],
+        [aiId],
+      );
+      const personal = await createRule(
+        context.db,
+        { aiId, groupId: null, topicId: null, action: 'demo.echo', createdBy: ownerId },
+        now,
+      );
+      const group = await createRule(
+        context.db,
+        { aiId, groupId, topicId: generalTopicId, action: 'demo.echo', createdBy: ownerId },
+        now,
+      );
+      const revoked = await sqlRuntimeFor(context.db).runPromise(
+        revokeActiveRulesForAiInGroupEffect({ aiId, groupId, actorId: ownerId, now }),
+      );
       expect(revoked).toHaveLength(1);
       expect(revoked[0]?.id).toBe(group.rule.id);
 

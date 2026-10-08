@@ -274,7 +274,8 @@ export async function revokeActiveRulesForAiInTopic(
 
 // `revokeActiveRulesForAiInGroup` stays on drizzle for now: its caller
 // (`groups/service.ts` `removeGroupAi`) passes a drizzle transaction, so the
-// revoke must run on it. It moves once that caller's transaction moves.
+// revoke must run on it. `revokeActiveRulesForAiInGroupEffect` below is the
+// same revoke as an Effect, for `removeGroupAi` once its transaction moves.
 
 // Bulk revoke helper used by `removeGroupAi`: revokes the AI's active rules
 // in every topic of the group. `now` is supplied so the caller's
@@ -295,6 +296,25 @@ export async function revokeActiveRulesForAiInGroup(
     )
     .returning();
   return rows.map((row) => ({ id: row.id, action: row.action }));
+}
+
+// The same bulk revoke as an Effect, for `removeGroupAi` once its transaction
+// moves to `sql.withTransaction`. It updates `approval_rules` directly, so the
+// caller supplies `now` to share the timestamp with the rest of its work.
+export function revokeActiveRulesForAiInGroupEffect(input: {
+  aiId: string;
+  groupId: string;
+  actorId: string | null;
+  now: Date;
+}): Effect.Effect<Array<{ id: string; action: string }>, SqlError.SqlError, SqlClient.SqlClient> {
+  return Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const rows = yield* sql<{ id: string; action: string }>`UPDATE approval_rules
+      SET revoked_at = ${input.now.toISOString()}, revoked_by = ${input.actorId}
+      WHERE ai_id = ${input.aiId} AND group_id = ${input.groupId}
+        AND revoked_at IS NULL RETURNING id, action`;
+    return rows.map((row) => ({ id: row.id, action: row.action }));
+  });
 }
 
 // Whether the user is an owner/admin of `groupId`. Used by the routes for
