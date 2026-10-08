@@ -459,6 +459,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0580](T-0580-effect-http-files.md) | Effect C (HTTP): file proxy with a streamed body | planned | auto | T-0573 | |
 | [T-0581](T-0581-effect-http-drafts-sse.md) | Effect C (HTTP): AI draft stream (SSE) pilot | planned | auto | T-0573 | |
 | [T-0582](T-0582-effect-http-stickers-json.md) | Effect C (HTTP): stickers part A, the JSON routes | planned | auto | T-0577 | |
+| [T-0584](T-0584-effect-audit-service.md) | Effect: audit service on effect/sql and Effect Schema | planned | auto | T-0583 | |
 | [T-0427](T-0427-mobile-forwarded-header.md) | Mobile: forwarded messages show 'Forwarded from X [in Y]' | 2026-10-06 |
 | [T-0428](T-0428-mobile-new-chat-menu-sheet.md) | Mobile: New chat menu on the kit ActionSheet with icons | 2026-10-06 |
 | [T-0429](T-0429-mobile-dismiss-banner.md) | Mobile: DismissBanner replaces 12 copied chat screen banners | 2026-10-06 |
