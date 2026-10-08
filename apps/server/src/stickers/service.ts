@@ -4,10 +4,12 @@ import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync, readFileSync } from 'node:fs';
 import { and, asc, count, desc, eq, inArray, sql } from 'drizzle-orm';
-import { Option, Schema } from 'effect';
+import { Effect, Option, Schema } from 'effect';
+import { SqlClient, SqlError } from 'effect/sql';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
 import { stickerFavorites, stickerPacks, stickers, userStickerPacks } from '../db/schema';
+import { sqlRuntimeFor } from '../effect/sql';
 import { HttpError } from '../errors';
 import { probeErrorCode, probeStickerBytes, STICKER_MAX_BYTES } from './image';
 import type { StickerImageInfo } from './image';
@@ -60,6 +62,26 @@ export interface StickersServiceDeps {
   /** Base path of the file route, e.g. `/api/stickers`. */
   fileBasePath?: string;
   audit?: AuditRecorder;
+}
+
+// The pack and panel functions run on the `effect/sql` client registered for
+// this database (see `../effect/sql`). The exported functions stay `async` so
+// routes and tests keep their shape. Favorites, uploads and the Telegram
+// import (part B) still use drizzle.
+function runSql<A>(
+  deps: StickersServiceDeps,
+  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
+): Promise<A> {
+  return sqlRuntimeFor(deps.db).runPromise(effect);
+}
+
+// A pack or panel write answers 503 for any failure that is not the module's
+// own `HttpError`. A failure raised inside the effect/sql transaction keeps
+// its `HttpError` instance (the pins pattern), so a 400 never becomes a 503.
+function mapStickerError(error: unknown): HttpError {
+  return error instanceof HttpError
+    ? error
+    : new HttpError(503, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
 }
 
 /**
@@ -246,11 +268,13 @@ async function requireVisiblePack(
   packId: string,
   userId: string,
 ): Promise<StickerPackRow> {
-  const [pack] = await deps.db
-    .select()
-    .from(stickerPacks)
-    .where(eq(stickerPacks.id, packId))
-    .limit(1);
+  const [pack] = await runSql(
+    deps,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<StickerPackRow>`SELECT * FROM sticker_packs WHERE id = ${packId} LIMIT 1`;
+    }),
+  );
   if (!pack) {
     throw new HttpError(404, 'not_found', 'Sticker pack not found');
   }
@@ -265,11 +289,13 @@ async function requireOwnedPack(
   packId: string,
   userId: string,
 ): Promise<StickerPackRow> {
-  const [pack] = await deps.db
-    .select()
-    .from(stickerPacks)
-    .where(eq(stickerPacks.id, packId))
-    .limit(1);
+  const [pack] = await runSql(
+    deps,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<StickerPackRow>`SELECT * FROM sticker_packs WHERE id = ${packId} LIMIT 1`;
+    }),
+  );
   // Non-owners get the same 404 as a missing id (never 403), so private
   // pack ids cannot be probed — and a missing pack never leaks whether the
   // visibility would have allowed it.
@@ -283,35 +309,35 @@ export async function listPanelPacks(
   deps: StickersServiceDeps,
   userId: string,
 ): Promise<StickerPackView[]> {
-  const links = await deps.db
-    .select()
-    .from(userStickerPacks)
-    .where(eq(userStickerPacks.userId, userId))
-    .orderBy(asc(userStickerPacks.position), asc(userStickerPacks.addedAt));
+  const links = await runSql(
+    deps,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ packId: string }>`SELECT pack_id FROM user_sticker_packs
+        WHERE user_id = ${userId}
+        ORDER BY position ASC, added_at ASC`;
+    }),
+  );
   if (links.length === 0) {
     return [];
   }
   const packIds = links.map((link) => link.packId);
-  const packs = await deps.db
-    .select()
-    .from(stickerPacks)
-    .where(
-      sql`${stickerPacks.id} IN (${sql.join(
-        packIds.map((id) => sql`${id}`),
-        sql`, `,
-      )})`,
-    );
+  const packs = await runSql(
+    deps,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<StickerPackRow>`SELECT * FROM sticker_packs WHERE id IN ${sql.in(packIds)}`;
+    }),
+  );
   const byId = new Map(packs.map((pack) => [pack.id, pack]));
-  const rows = await deps.db
-    .select()
-    .from(stickers)
-    .where(
-      sql`${stickers.packId} IN (${sql.join(
-        packIds.map((id) => sql`${id}`),
-        sql`, `,
-      )})`,
-    )
-    .orderBy(asc(stickers.position));
+  const rows = await runSql(
+    deps,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<StickerRow>`SELECT * FROM stickers WHERE pack_id IN ${sql.in(packIds)}
+        ORDER BY position ASC`;
+    }),
+  );
   const byPack = new Map<string, StickerRow[]>();
   for (const row of rows) {
     const list = byPack.get(row.packId) ?? [];
@@ -337,45 +363,43 @@ export async function createPack(
   const now = new Date();
   const id = randomUUID();
   try {
-    await deps.db.transaction(async (tx) => {
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`sticker-packs:${userId}`}))`);
-      const [counter] = await tx
-        .select({ total: count() })
-        .from(stickerPacks)
-        .where(eq(stickerPacks.ownerId, userId));
-      if (Number(counter?.total ?? 0) >= STICKER_PACKS_MAX_PER_USER) {
-        throw new HttpError(
-          400,
-          'pack_limit',
-          `A user has at most ${STICKER_PACKS_MAX_PER_USER} packs`,
+    await sqlRuntimeFor(deps.db).runPromise(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql.withTransaction(
+          Effect.gen(function* () {
+            yield* sql`SELECT pg_advisory_xact_lock(hashtext(${`sticker-packs:${userId}`}))`;
+            const [counter] = yield* sql<{ total: number }>`SELECT count(*)::int AS total
+              FROM sticker_packs WHERE owner_id = ${userId}`;
+            if (Number(counter?.total ?? 0) >= STICKER_PACKS_MAX_PER_USER) {
+              return yield* Effect.fail(
+                new HttpError(
+                  400,
+                  'pack_limit',
+                  `A user has at most ${STICKER_PACKS_MAX_PER_USER} packs`,
+                ),
+              );
+            }
+            const [ownLinks] = yield* sql<{ total: number }>`SELECT count(*)::int AS total
+              FROM user_sticker_packs WHERE user_id = ${userId}`;
+            yield* sql`INSERT INTO sticker_packs (id, owner_id, title, visibility, created_at, updated_at)
+              VALUES (${id}, ${userId}, ${body.title}, ${body.visibility ?? 'private'}, ${now.toISOString()}, ${now.toISOString()})`;
+            yield* sql`INSERT INTO user_sticker_packs (user_id, pack_id, position, added_at)
+              VALUES (${userId}, ${id}, ${Number(ownLinks?.total ?? 0)}, ${now.toISOString()})`;
+          }),
         );
-      }
-      const [ownLinks] = await tx
-        .select({ total: count() })
-        .from(userStickerPacks)
-        .where(eq(userStickerPacks.userId, userId));
-      await tx.insert(stickerPacks).values({
-        id,
-        ownerId: userId,
-        title: body.title,
-        visibility: body.visibility ?? 'private',
-        createdAt: now,
-        updatedAt: now,
-      });
-      await tx.insert(userStickerPacks).values({
-        userId,
-        packId: id,
-        position: Number(ownLinks?.total ?? 0),
-        addedAt: now,
-      });
-    });
+      }),
+    );
   } catch (error) {
-    if (error instanceof HttpError) {
-      throw error;
-    }
-    throw new HttpError(503, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
+    throw mapStickerError(error);
   }
-  const [pack] = await deps.db.select().from(stickerPacks).where(eq(stickerPacks.id, id)).limit(1);
+  const [pack] = await runSql(
+    deps,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<StickerPackRow>`SELECT * FROM sticker_packs WHERE id = ${id} LIMIT 1`;
+    }),
+  );
   if (!pack) {
     throw new HttpError(503, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
   }
@@ -401,51 +425,68 @@ export async function patchPack(
   // holding the pack's advisory lock: two concurrent reorders serialize
   // instead of interleaving positions, and a concurrent deleteSticker fails
   // the exact-once validation instead of silently dropping rows.
-  await deps.db.transaction(async (tx) => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${packId}))`);
-    if (body.order !== undefined) {
-      const rows = await tx.select().from(stickers).where(eq(stickers.packId, packId));
-      const ids = new Set(rows.map((row) => row.id));
-      // Completeness alone is not enough: a doubled id with a dropped one
-      // passes it while corrupting the pack, so duplicates fail distinctly.
-      if (new Set(body.order).size !== body.order.length) {
-        throw new HttpError(400, 'duplicate_order', 'order must not list a sticker twice');
-      }
-      if (body.order.length !== rows.length || !body.order.every((id) => ids.has(id))) {
-        throw new HttpError(400, 'invalid_request', 'order must list every sticker exactly once');
-      }
-      for (let index = 0; index < body.order.length; index += 1) {
-        await tx
-          .update(stickers)
-          .set({ position: index })
-          .where(and(eq(stickers.id, body.order[index]!), eq(stickers.packId, packId)));
-      }
-    }
-    if (body.title !== undefined || body.visibility !== undefined || body.order !== undefined) {
-      await tx
-        .update(stickerPacks)
-        .set({
-          ...(body.title === undefined ? {} : { title: body.title }),
-          ...(body.visibility === undefined ? {} : { visibility: body.visibility }),
-          updatedAt: new Date(),
-        })
-        .where(and(eq(stickerPacks.id, packId), eq(stickerPacks.ownerId, userId)));
-    }
-  });
-  const [updated] = await deps.db
-    .select()
-    .from(stickerPacks)
-    .where(eq(stickerPacks.id, packId))
-    .limit(1);
+  await sqlRuntimeFor(deps.db).runPromise(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql.withTransaction(
+        Effect.gen(function* () {
+          yield* sql`SELECT pg_advisory_xact_lock(hashtext(${packId}))`;
+          if (body.order !== undefined) {
+            const rows = yield* sql<{
+              id: string;
+            }>`SELECT id FROM stickers WHERE pack_id = ${packId}`;
+            const ids = new Set(rows.map((row) => row.id));
+            // Completeness alone is not enough: a doubled id with a dropped one
+            // passes it while corrupting the pack, so duplicates fail distinctly.
+            if (new Set(body.order).size !== body.order.length) {
+              return yield* Effect.fail(
+                new HttpError(400, 'duplicate_order', 'order must not list a sticker twice'),
+              );
+            }
+            if (body.order.length !== rows.length || !body.order.every((id) => ids.has(id))) {
+              return yield* Effect.fail(
+                new HttpError(400, 'invalid_request', 'order must list every sticker exactly once'),
+              );
+            }
+            for (let index = 0; index < body.order.length; index += 1) {
+              yield* sql`UPDATE stickers SET position = ${index}
+                WHERE id = ${body.order[index]!} AND pack_id = ${packId}`;
+            }
+          }
+          if (
+            body.title !== undefined ||
+            body.visibility !== undefined ||
+            body.order !== undefined
+          ) {
+            yield* sql`UPDATE sticker_packs SET
+                title = COALESCE(${body.title ?? null}, title),
+                visibility = COALESCE(${body.visibility ?? null}, visibility),
+                updated_at = ${new Date().toISOString()}
+              WHERE id = ${packId} AND owner_id = ${userId}`;
+          }
+        }),
+      );
+    }),
+  );
+  const [updated] = await runSql(
+    deps,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<StickerPackRow>`SELECT * FROM sticker_packs WHERE id = ${packId} LIMIT 1`;
+    }),
+  );
   if (!updated) {
     throw new HttpError(404, 'not_found', 'Sticker pack not found');
   }
-  const rows = await deps.db
-    .select()
-    .from(stickers)
-    .where(eq(stickers.packId, packId))
-    .orderBy(asc(stickers.position));
-  return toPackView(deps, updated, rows);
+  const rows = await runSql(
+    deps,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<StickerRow>`SELECT * FROM stickers WHERE pack_id = ${packId}
+        ORDER BY position ASC`;
+    }),
+  );
+  return toPackView(deps, updated, [...rows]);
 }
 
 export async function deletePack(
@@ -454,8 +495,20 @@ export async function deletePack(
   userId: string,
 ): Promise<{ warning: string }> {
   await requireOwnedPack(deps, packId, userId);
-  const rows = await deps.db.select().from(stickers).where(eq(stickers.packId, packId));
-  await deps.db.delete(stickerPacks).where(eq(stickerPacks.id, packId));
+  const rows = await runSql(
+    deps,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<StickerRow>`SELECT * FROM stickers WHERE pack_id = ${packId}`;
+    }),
+  );
+  await runSql(
+    deps,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`DELETE FROM sticker_packs WHERE id = ${packId}`;
+    }),
+  );
   const { rm } = await import('node:fs/promises');
   // Files are removed after the row: a crash in between orphans files on
   // disk (harmless — they are never served without the row), never metadata.
@@ -478,37 +531,41 @@ export async function discoverPacks(
   cursor: string | undefined,
 ): Promise<{ packs: StickerPackView[]; next: string | null }> {
   const limit = DISCOVER_PAGE_SIZE;
-  const conditions = [eq(stickerPacks.visibility, 'server' as const)];
   const trimmed = query?.trim() ?? '';
-  if (trimmed !== '') {
-    // `%`, `_` and the escape char are wildcards in LIKE: escape them so
-    // `q=%` matches a literal percent instead of every pack. Drizzle's
-    // `ilike` emits no ESCAPE clause, so the pattern runs as raw SQL with
-    // an explicit backslash escape (still a bound parameter, no injection).
-    conditions.push(
-      sql`${stickerPacks.title} ILIKE ${`%${escapeLike(trimmed.slice(0, 60))}%`} ESCAPE '\\'`,
-    );
-  }
-  if (cursor !== undefined && cursor !== '') {
-    conditions.push(sql`${stickerPacks.id} > ${cursor}`);
-  }
-  const packs = await deps.db
-    .select()
-    .from(stickerPacks)
-    .where(and(...conditions))
-    .orderBy(asc(stickerPacks.id))
-    .limit(limit + 1);
+  const packs = await runSql(
+    deps,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      // `%`, `_` and the escape char are wildcards in LIKE: escape them so
+      // `q=%` matches a literal percent instead of every pack. The pattern
+      // runs as raw SQL with an explicit backslash escape (still a bound
+      // parameter, no injection).
+      const titleCondition =
+        trimmed === ''
+          ? sql``
+          : sql`AND title ILIKE ${`%${escapeLike(trimmed.slice(0, 60))}%`} ESCAPE '\\'`;
+      const cursorCondition =
+        cursor === undefined || cursor === '' ? sql`` : sql`AND id > ${cursor}`;
+      return yield* sql<StickerPackRow>`SELECT * FROM sticker_packs
+        WHERE visibility = 'server' ${titleCondition} ${cursorCondition}
+        ORDER BY id ASC
+        LIMIT ${limit + 1}`;
+    }),
+  );
   const page = packs.slice(0, limit);
   const next = packs.length > limit && page.length > 0 ? (page[page.length - 1]!.id ?? null) : null;
   const views: StickerPackView[] = [];
   for (const pack of page) {
-    const rows = await deps.db
-      .select()
-      .from(stickers)
-      .where(eq(stickers.packId, pack.id))
-      .orderBy(asc(stickers.position))
-      .limit(STICKERS_MAX_PER_PACK);
-    views.push(toPackView(deps, pack, rows));
+    const rows = await runSql(
+      deps,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<StickerRow>`SELECT * FROM stickers WHERE pack_id = ${pack.id}
+          ORDER BY position ASC
+          LIMIT ${STICKERS_MAX_PER_PACK}`;
+      }),
+    );
+    views.push(toPackView(deps, pack, [...rows]));
   }
   return { packs: views, next };
 }
@@ -524,35 +581,36 @@ export async function addPanelPack(
 ): Promise<void> {
   await requireVisiblePack(deps, packId, userId);
   try {
-    await deps.db.transaction(async (tx) => {
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`sticker-panel:${userId}`}))`);
-      const [existing] = await tx
-        .select({ packId: userStickerPacks.packId })
-        .from(userStickerPacks)
-        .where(and(eq(userStickerPacks.userId, userId), eq(userStickerPacks.packId, packId)))
-        .limit(1);
-      if (existing) {
-        return;
-      }
-      const [counter] = await tx
-        .select({ total: count() })
-        .from(userStickerPacks)
-        .where(eq(userStickerPacks.userId, userId));
-      if (Number(counter?.total ?? 0) >= STICKER_PANEL_MAX) {
-        throw new HttpError(400, 'panel_full', `A panel holds at most ${STICKER_PANEL_MAX} packs`);
-      }
-      await tx.insert(userStickerPacks).values({
-        userId,
-        packId,
-        position: Number(counter?.total ?? 0),
-        addedAt: new Date(),
-      });
-    });
+    await sqlRuntimeFor(deps.db).runPromise(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql.withTransaction(
+          Effect.gen(function* () {
+            yield* sql`SELECT pg_advisory_xact_lock(hashtext(${`sticker-panel:${userId}`}))`;
+            const [existing] = yield* sql<{ packId: string }>`SELECT pack_id FROM user_sticker_packs
+              WHERE user_id = ${userId} AND pack_id = ${packId} LIMIT 1`;
+            if (existing) {
+              return;
+            }
+            const [counter] = yield* sql<{ total: number }>`SELECT count(*)::int AS total
+              FROM user_sticker_packs WHERE user_id = ${userId}`;
+            if (Number(counter?.total ?? 0) >= STICKER_PANEL_MAX) {
+              return yield* Effect.fail(
+                new HttpError(
+                  400,
+                  'panel_full',
+                  `A panel holds at most ${STICKER_PANEL_MAX} packs`,
+                ),
+              );
+            }
+            yield* sql`INSERT INTO user_sticker_packs (user_id, pack_id, position, added_at)
+              VALUES (${userId}, ${packId}, ${Number(counter?.total ?? 0)}, ${new Date().toISOString()})`;
+          }),
+        );
+      }),
+    );
   } catch (error) {
-    if (error instanceof HttpError) {
-      throw error;
-    }
-    throw new HttpError(503, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
+    throw mapStickerError(error);
   }
 }
 
@@ -561,9 +619,13 @@ export async function removePanelPack(
   packId: string,
   userId: string,
 ): Promise<void> {
-  await deps.db
-    .delete(userStickerPacks)
-    .where(and(eq(userStickerPacks.userId, userId), eq(userStickerPacks.packId, packId)));
+  await runSql(
+    deps,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`DELETE FROM user_sticker_packs WHERE user_id = ${userId} AND pack_id = ${packId}`;
+    }),
+  );
 }
 
 const reorderPanelBodySchema = Schema.Struct({
@@ -603,41 +665,38 @@ export async function reorderPanelPacks(
   body: ReorderPanelBody,
 ): Promise<void> {
   try {
-    await deps.db.transaction(async (tx) => {
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`sticker-panel:${userId}`}))`);
-      const links = await tx
-        .select({ packId: userStickerPacks.packId })
-        .from(userStickerPacks)
-        .where(eq(userStickerPacks.userId, userId));
-      const current = new Set(links.map((link) => link.packId));
-      if (
-        body.order.length !== links.length ||
-        !body.order.every((id) => current.has(id)) ||
-        new Set(body.order).size !== body.order.length
-      ) {
-        throw new HttpError(
-          400,
-          'invalid_request',
-          'order must list every panel pack exactly once',
+    await sqlRuntimeFor(deps.db).runPromise(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql.withTransaction(
+          Effect.gen(function* () {
+            yield* sql`SELECT pg_advisory_xact_lock(hashtext(${`sticker-panel:${userId}`}))`;
+            const links = yield* sql<{ packId: string }>`SELECT pack_id FROM user_sticker_packs
+              WHERE user_id = ${userId}`;
+            const current = new Set(links.map((link) => link.packId));
+            if (
+              body.order.length !== links.length ||
+              !body.order.every((id) => current.has(id)) ||
+              new Set(body.order).size !== body.order.length
+            ) {
+              return yield* Effect.fail(
+                new HttpError(
+                  400,
+                  'invalid_request',
+                  'order must list every panel pack exactly once',
+                ),
+              );
+            }
+            for (let index = 0; index < body.order.length; index += 1) {
+              yield* sql`UPDATE user_sticker_packs SET position = ${index}
+                WHERE user_id = ${userId} AND pack_id = ${body.order[index]!}`;
+            }
+          }),
         );
-      }
-      for (let index = 0; index < body.order.length; index += 1) {
-        await tx
-          .update(userStickerPacks)
-          .set({ position: index })
-          .where(
-            and(
-              eq(userStickerPacks.userId, userId),
-              eq(userStickerPacks.packId, body.order[index]!),
-            ),
-          );
-      }
-    });
+      }),
+    );
   } catch (error) {
-    if (error instanceof HttpError) {
-      throw error;
-    }
-    throw new HttpError(503, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
+    throw mapStickerError(error);
   }
 }
 

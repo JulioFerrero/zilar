@@ -10,7 +10,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0626](T-0626-audit-effect-last-mile.md) | Audit: the Effect last mile, plus the bigint check | in-progress | auto | | |
-| [T-0633](T-0633-effect-sql-sticker-packs.md) | effect/sql: sticker packs and panel (stickers service part A) | in-progress | auto | T-0596 | |
 | [T-0634](T-0634-effect-sql-memory-indexer.md) | effect/sql: AI memory indexer | in-progress | auto | T-0596 | |
 | [T-0635](T-0635-effect-sql-memory-store.md) | effect/sql: AI memory store | in-progress | auto | T-0596 | |
 
@@ -664,3 +663,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0630](T-0630-effect-sql-group-turn.md) | group turn reads on effect/sql | 2026-10-08 |
 | [T-0632](T-0632-effect-sql-review-nits.md) | review nits: comments and row types | 2026-10-08 |
 | [T-0631](T-0631-effect-sql-media-indexer.md) | media indexer on effect/sql | 2026-10-08 |
+| [T-0633](T-0633-effect-sql-sticker-packs.md) | sticker packs and panel on effect/sql | 2026-10-08 |
