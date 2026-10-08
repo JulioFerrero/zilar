@@ -169,6 +169,8 @@ Each item was hit by a worker in a merged task; trust these over memory of v3.
 - **A loop must survive a throw:** a bare `repeat` stops at the first defect, with no log. Wrap the inner effect in `Effect.catchDefect(...)` and log there. Do **not** use `catchCause`: it also sees the normal interruption at `close()` and logs a false error. `catchAllCause` does not exist in v4 (T-0486, T-0488).
 - **Timers keep the process alive:** Effect's sleep uses a plain `setTimeout` without `unref`. A loop fiber must be interrupted on shutdown (`index.ts` already calls each `close`/`stop`), or the process won't exit (T-0486).
 - **Schema, strict objects:** zod's `z.strictObject` becomes a decode with `{ onExcessProperty: 'error' }`. `Schema.is` ignores excess keys, so don't use it for strict checks (T-0494). A plain `z.object` strips unknown keys, which is the Effect default. `.passthrough()` becomes `Schema.StructWithRest`.
+- **Schema, custom messages:** in effect 4.0.2 the `{ message }` option on `isMinLength` and `isMaxLength` does **not** reach the issue annotations, so code that walks the issues for a message falls back to its generic text. A `Schema.makeFilter` that returns the text does carry it, and so does the first line of the `SchemaError` message. When a zod message must stay byte-identical, prove each text with a test or a quick check (T-0561 pre-review).
+- **Schema, numbers:** `z.number()` rejects `NaN` and `±Infinity`; `Schema.Number` accepts them. Use `Schema.Finite` (and `Schema.isInt()`, which also rejects `NaN`) wherever the zod schema had `z.number()` (T-0565, T-0569).
 - **Schema, record keys:** `Schema.Record(key, value)` does **not** run checks on the key schema. Bound key length or count with a check on the whole record (T-0501).
 - **Schema, mutability:** Struct fields and Arrays are readonly. Use `struct()` from `@zilar/protocol` (`mutableKey` on every field) and `Schema.mutable(Schema.Array(...))` to keep zod's mutable types (T-0494).
 - **`Effect.catch`** is exported as `catch_ as catch`, which our tsc setting doesn't pick up. Use `catchTag` / `catchTags` (T-0173).
@@ -207,6 +209,7 @@ Hono stays the outer edge until every module has moved. Each module becomes an `
    the cap, so the body is never buffered whole. Answer raw bytes with
    `HttpServerResponse.uint8Array(bytes, { headers })`; `HttpApiBuilder` returns
    any handler-returned `HttpServerResponse` untouched, headers included.
+13. **Client IP (`invite-links/api.ts`, `machines/api.ts`):** `forwardRequest` strips any client copy of `x-zilar-socket-address` and stamps the real socket address (T-0563); read it with `socketAddressOf(request)`. For the trusted-proxy rule, use `clientIpFrom({ forwardedFor, socketAddress }, hops)` from `apps/server/src/http/client-ip.ts`. A test seam `getClientIp` takes the Effect request, so tests that pass `() => '10.0.0.1'` stay unchanged. An item-11 wrapper must delete the header and stamp its own value before forwarding (`machines/routes.ts`).
 
 ## Moving a server service onto effect/sql (T-0496, T-0510, T-0519)
 
@@ -216,7 +219,9 @@ The recipe is `docs/audit/effect-sql-migration.md` §(a). The examples are `apps
 - **Unique violations:** check `SqlError.SqlError` with `reason._tag === 'UniqueViolation'`. It exposes the constraint name. Keep the raw `code === '23505'` fallback, and never match message text.
 - **Race recovery:** re-read through a fresh `runSql(deps.db, …)` after the transaction rejects, never inside the aborted transaction.
 - **Testing a unique-violation race:** PGlite has one connection, so a real race cannot run. Add test-only deps hooks: `onInsert` fires inside the transaction just before the INSERT and can throw a real `new SqlError.SqlError({ reason: new SqlError.UniqueViolation({ constraint }) })`; `onRecovery` fires on the fresh connection and can seed the concurrent winner and trace the order. Production never sets them.
-- **Rows:** `SELECT *` and `RETURNING *` come back camelCased through `transformResultNames` (`apps/server/src/effect/sql.ts`).
+- **Rows:** `SELECT *` and `RETURNING *` come back camelCased through `transformResultNames` (`apps/server/src/effect/sql.ts`). `timestamptz` columns come back as `Date`.
+- **Every database needs a registered runtime:** `createApp` and `createTestContext` register one. A test or CLI that builds its own `db` calls `registerSqlRuntime(db, url)` itself and `disposeSqlRuntime(db)` on teardown (`auth/invites.test.ts`, `auth/invite-cli.ts`, T-0574). **Never register inside a domain module.**
+- **jsonb:** write `${JSON.stringify(value)}::jsonb`; the driver parses jsonb back on read (T-0568).
 
 ## Moving a mobile API client onto Effect (T-0506)
 
