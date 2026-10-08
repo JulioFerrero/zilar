@@ -2,6 +2,22 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-08 21:45, ready for the PC restart:**
+- **Merged since 21:05:** T-0613, T-0616 (light gate: merges now take about 1 min), T-0612 (T-G; the tool-arguments plan is complete), T-0615 (tool service), T-0614 (jsonb keys fix).
+- **Open: T-0608 (roles on effect/sql).** The conversion is committed in its worktree (f834e8d9). Its first gate hung for 50 min with one vitest fork at 100% CPU; the cause is not yet known. The worker ignored the rebase instruction and re-ran the old full gate. After the restart:
+  1. `git rebase main` in `../zilar-T-0608`;
+  2. run `src/roles`, `src/topics`, `src/groups` and `src/approvals` one at a time with `timeout 300`;
+  3. find the hang.
+- **Next after the restart:**
+  - T-0617 (lighter `lead watch`, plus a median tok/s);
+  - T-0618 (test-speed audit; run it alone);
+  - then `pnpm gate --full` on main once.
+- **New follow-ups:**
+  - the gate needs a per-step time limit (a hung test ate an hour);
+  - `AGENTS.md:30,69` still says the gate runs every touched package's tests;
+  - `tools/service.ts` `deleteToolsForAiInTopic` stays on drizzle (a test drives it inside a raw drizzle transaction);
+  - Spotlight indexes the `zilar-T-*` worktrees (Julio may exclude `~/personal-projects`).
+
 **2026-10-08 21:05, finishing before Julio restarts the PC** ("try to finish the task, i will restart the pc when the current tasks finish"):
 - **Merged this evening:** T-0599, T-0602 to T-0607 (including T-0604, T-G's prerequisite), T-0609, T-0610, T-0611; T-0613 is merging.
 - **Finishing (nothing new launches):** T-0608 (roles), T-0612 (T-G, Effect-only action registry), T-0614 (**bug:** effect/sql renamed keys inside jsonb, for example routine tool input `max_items` became `maxItems`; not live, since auto-deploy is off), T-0615 (tool service), T-0616 (light gate).
