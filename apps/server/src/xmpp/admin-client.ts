@@ -1,49 +1,63 @@
 import { randomBytes } from 'node:crypto';
-import { z } from 'zod';
-import { JidSchema, isJid, isValid } from '@zilar/protocol';
+import { Exit, Schema, SchemaIssue } from 'effect';
+import { JidSchema, isJid, isValid, struct } from '@zilar/protocol';
 import type { XmppConfig } from './config';
 
 // Localparts and room ids are lowercase by design; they become part of a JID.
 // They are validated before any HTTP request goes out.
-const NameSchema = z
-  .string()
-  .regex(
-    /^[a-z0-9._-]{1,64}$/,
-    'must be 1-64 characters of lowercase letters, digits, ".", "_" or "-"',
-  );
+const NameSchema = Schema.String.pipe(
+  Schema.check(
+    Schema.makeFilter((value: string) =>
+      /^[a-z0-9._-]{1,64}$/.test(value)
+        ? undefined
+        : 'must be 1-64 characters of lowercase letters, digits, ".", "_" or "-"',
+    ),
+  ),
+);
 
-const PasswordSchema = z.string().min(1, 'must not be empty').max(1024);
+const PasswordSchema = Schema.String.pipe(
+  Schema.check(
+    Schema.makeFilter((value: string) => (value.length >= 1 ? undefined : 'must not be empty')),
+    Schema.isMaxLength(1024),
+  ),
+);
 
-// The shared protocol rule, re-checked on the zod side while the server still
-// builds these objects with zod.
-const BareJidSchema = z.string().refine(isJid, 'must be a bare JID (local@domain)');
+// The shared protocol rule, re-checked here; `isJid` is the same rule the
+// protocol package applies to `JidSchema`.
+const BareJidSchema = Schema.String.pipe(
+  Schema.check(
+    Schema.makeFilter((value: string) =>
+      isJid(value) ? undefined : 'must be a bare JID (local@domain)',
+    ),
+  ),
+);
 
 // MUC/Sub nodes a push device subscribes to: room messages only. Presence,
 // affiliations and subject changes never notify.
 const PUSH_SUBSCRIPTION_NODES = 'urn:xmpp:mucsub:nodes:messages';
 
-export const RoomAffiliationSchema = z.enum(['owner', 'admin', 'member', 'none']);
-export type RoomAffiliation = z.infer<typeof RoomAffiliationSchema>;
+export const RoomAffiliationSchema = Schema.Literals(['owner', 'admin', 'member', 'none']);
+export type RoomAffiliation = Schema.Schema.Type<typeof RoomAffiliationSchema>;
 
-export const RosterSubscriptionSchema = z.enum(['none', 'to', 'from', 'both']);
-export type RosterSubscription = z.infer<typeof RosterSubscriptionSchema>;
+export const RosterSubscriptionSchema = Schema.Literals(['none', 'to', 'from', 'both']);
+export type RosterSubscription = Schema.Schema.Type<typeof RosterSubscriptionSchema>;
 
 // A roster entry as returned by `get_roster`.
-export const RosterEntrySchema = z.object({
+export const RosterEntrySchema = struct({
   jid: BareJidSchema,
-  nick: z.string(),
+  nick: Schema.String,
   subscription: RosterSubscriptionSchema,
-  pending: z.string(),
-  groups: z.array(z.string()),
+  pending: Schema.String,
+  groups: Schema.mutable(Schema.Array(Schema.String)),
 });
-export type RosterEntry = z.infer<typeof RosterEntrySchema>;
+export type RosterEntry = Schema.Schema.Type<typeof RosterEntrySchema>;
 
-export const RoomAffiliationEntrySchema = z.object({
+export const RoomAffiliationEntrySchema = struct({
   jid: BareJidSchema,
-  affiliation: z.string().min(1),
-  reason: z.string(),
+  affiliation: Schema.String.pipe(Schema.check(Schema.isMinLength(1))),
+  reason: Schema.String,
 });
-export type RoomAffiliationEntry = z.infer<typeof RoomAffiliationEntrySchema>;
+export type RoomAffiliationEntry = Schema.Schema.Type<typeof RoomAffiliationEntrySchema>;
 
 export type CreateRoomOptions = {
   title?: string;
@@ -126,8 +140,25 @@ export class EjabberdApiError extends Error {
 
 type ApiResponse = { status: number; ok: boolean; body: unknown };
 
-const MutationResultSchema = z.union([z.literal(0), z.literal('')]);
-const CheckAccountResultSchema = z.union([z.literal(0), z.literal(1)]);
+const MutationResultSchema = Schema.Union([Schema.Literal(0), Schema.Literal('')]);
+const CheckAccountResultSchema = Schema.Union([Schema.Literal(0), Schema.Literal(1)]);
+
+const RoomOptionNameSchema = Schema.String.pipe(
+  Schema.check(Schema.isMinLength(1), Schema.isMaxLength(128)),
+);
+const RoomOptionValueSchema = Schema.String.pipe(Schema.check(Schema.isMaxLength(4096)));
+const SubscriptionNickSchema = Schema.String.pipe(
+  Schema.check(Schema.isMinLength(1), Schema.isMaxLength(1024)),
+);
+const RosterNickSchema = Schema.String.pipe(Schema.check(Schema.isMaxLength(1024)));
+const RosterGroupSchema = Schema.String.pipe(
+  Schema.check(Schema.isMinLength(1), Schema.isMaxLength(1024)),
+);
+const RosterGroupsSchema = Schema.Array(RosterGroupSchema).check(Schema.isMinLength(1));
+const InvitationTargetsSchema = Schema.Array(BareJidSchema).check(
+  Schema.isMinLength(1),
+  Schema.isMaxLength(1000),
+);
 
 function basicAuthHeader(user: string, password: string): string {
   return `Basic ${Buffer.from(`${user}:${password}`, 'utf8').toString('base64')}`;
@@ -169,14 +200,43 @@ function mentionsAlreadyExists(body: unknown): boolean {
   return text.includes('already registered') || text.includes('already exists');
 }
 
-function parseName(value: string, label: string): string {
-  const result = NameSchema.safeParse(value);
-  if (!result.success) {
-    throw new Error(
-      `${label} "${value}" is invalid: ${result.error.issues[0]?.message ?? 'invalid'}`,
-    );
+function firstIssueMessage(issue: SchemaIssue.Issue): string | undefined {
+  switch (issue._tag) {
+    case 'Composite':
+    case 'AnyOf':
+      for (const child of issue.issues) {
+        const message = firstIssueMessage(child);
+        if (message !== undefined) {
+          return message;
+        }
+      }
+      return undefined;
+    case 'Pointer':
+    case 'Filter':
+    case 'Encoding':
+      return firstIssueMessage(issue.issue);
+    case 'InvalidValue': {
+      const message = issue.annotations?.message;
+      return typeof message === 'string' && message.length > 0 ? message : undefined;
+    }
+    default:
+      return undefined;
   }
-  return result.data;
+}
+
+function parseName(value: string, label: string): string {
+  const exit = Schema.decodeUnknownExit(NameSchema)(value);
+  if (Exit.isFailure(exit)) {
+    let message: string | undefined;
+    for (const reason of exit.cause.reasons) {
+      if (reason._tag === 'Fail') {
+        message = firstIssueMessage(reason.error.issue);
+        break;
+      }
+    }
+    throw new Error(`${label} "${value}" is invalid: ${message ?? 'invalid'}`);
+  }
+  return exit.value;
 }
 
 function splitBareJid(value: string): { user: string; host: string } {
@@ -225,8 +285,8 @@ export function createEjabberdAdminClient(
 
   function expectMutationResult(command: string, response: ApiResponse): void {
     const result = expectOk(command, response);
-    const parsed = MutationResultSchema.safeParse(result);
-    if (!parsed.success) {
+    const parsed = Schema.decodeUnknownExit(MutationResultSchema)(result);
+    if (Exit.isFailure(parsed)) {
       fail(command, response, `unexpected result: ${errorText(result)}`);
     }
   }
@@ -240,8 +300,8 @@ export function createEjabberdAdminClient(
         password: randomBytes(32).toString('base64url'),
       });
       if (response.ok && !isErrorBody(response.body)) {
-        const parsed = z.string().safeParse(response.body);
-        if (!parsed.success) {
+        const parsed = Schema.decodeUnknownExit(Schema.String)(response.body);
+        if (Exit.isFailure(parsed)) {
           fail('register', response, `unexpected result: ${errorText(response.body)}`);
         }
         return { created: true };
@@ -262,16 +322,16 @@ export function createEjabberdAdminClient(
       const user = parseName(localpart, 'localpart');
       const response = await call('check_account', { user, host: config.domain });
       const result = expectOk('check_account', response);
-      const parsed = CheckAccountResultSchema.safeParse(result);
-      if (!parsed.success) {
+      const parsed = Schema.decodeUnknownExit(CheckAccountResultSchema)(result);
+      if (Exit.isFailure(parsed)) {
         fail('check_account', response, `unexpected result: ${errorText(result)}`);
       }
-      return parsed.data === 0;
+      return parsed.value === 0;
     },
 
     async changePassword(localpart: string, password: string): Promise<void> {
       const user = parseName(localpart, 'localpart');
-      const newpass = PasswordSchema.parse(password);
+      const newpass = Schema.decodeUnknownSync(PasswordSchema)(password);
       const response = await call('change_password', {
         user,
         host: config.domain,
@@ -319,8 +379,8 @@ export function createEjabberdAdminClient(
         options: roomOptions,
       });
       if (response.ok && !isErrorBody(response.body)) {
-        const parsed = MutationResultSchema.safeParse(response.body);
-        if (!parsed.success) {
+        const parsed = Schema.decodeUnknownExit(MutationResultSchema)(response.body);
+        if (Exit.isFailure(parsed)) {
           fail('create_room_with_opts', response, `unexpected result: ${errorText(response.body)}`);
         }
         return { created: true };
@@ -334,7 +394,7 @@ export function createEjabberdAdminClient(
     async setAffiliation(roomId: string, jid: string, affiliation: RoomAffiliation): Promise<void> {
       const room = parseName(roomId, 'roomId');
       const { user, host } = splitBareJid(jid);
-      const parsedAffiliation = RoomAffiliationSchema.parse(affiliation);
+      const parsedAffiliation = Schema.decodeUnknownSync(RoomAffiliationSchema)(affiliation);
       const response = await call('set_room_affiliation', {
         room,
         service: config.mucDomain,
@@ -352,11 +412,13 @@ export function createEjabberdAdminClient(
         service: config.mucDomain,
       });
       const result = expectOk('get_room_affiliations', response);
-      const parsed = z.array(RoomAffiliationEntrySchema).safeParse(result);
-      if (!parsed.success) {
+      const parsed = Schema.decodeUnknownExit(
+        Schema.mutable(Schema.Array(RoomAffiliationEntrySchema)),
+      )(result);
+      if (Exit.isFailure(parsed)) {
         fail('get_room_affiliations', response, `unexpected result: ${errorText(result)}`);
       }
-      return parsed.data;
+      return parsed.value;
     },
 
     async destroyRoom(roomId: string): Promise<void> {
@@ -367,8 +429,8 @@ export function createEjabberdAdminClient(
 
     async changeRoomOption(roomId: string, option: string, value: string): Promise<void> {
       const room = parseName(roomId, 'roomId');
-      const optionName = z.string().min(1).max(128).parse(option);
-      const optionValue = z.string().max(4096).parse(value);
+      const optionName = Schema.decodeUnknownSync(RoomOptionNameSchema)(option);
+      const optionValue = Schema.decodeUnknownSync(RoomOptionValueSchema)(value);
       const response = await call('change_room_option', {
         name: room,
         service: config.mucDomain,
@@ -381,7 +443,7 @@ export function createEjabberdAdminClient(
     async subscribeRoom(roomId: string, userJid: string, nick: string): Promise<void> {
       const room = parseName(roomId, 'roomId');
       const { user, host } = splitBareJid(userJid);
-      const subscriptionNick = z.string().min(1).max(1024).parse(nick);
+      const subscriptionNick = Schema.decodeUnknownSync(SubscriptionNickSchema)(nick);
       const response = await call('subscribe_room', {
         user,
         host,
@@ -392,8 +454,8 @@ export function createEjabberdAdminClient(
       });
       // The command answers the subscribed node list, not a status code.
       const result = expectOk('subscribe_room', response);
-      const parsed = z.array(z.string()).safeParse(result);
-      if (!parsed.success) {
+      const parsed = Schema.decodeUnknownExit(Schema.Array(Schema.String))(result);
+      if (Exit.isFailure(parsed)) {
         fail('subscribe_room', response, `unexpected result: ${errorText(result)}`);
       }
     },
@@ -416,7 +478,7 @@ export function createEjabberdAdminClient(
       options: SendDirectInvitationOptions = {},
     ): Promise<void> {
       const room = parseName(roomId, 'roomId');
-      const targets = z.array(BareJidSchema).min(1).max(1000).parse(users);
+      const targets = Schema.decodeUnknownSync(InvitationTargetsSchema)(users);
       const response = await call('send_direct_invitation', {
         room,
         service: config.mucDomain,
@@ -434,9 +496,9 @@ export function createEjabberdAdminClient(
     ): Promise<void> {
       const localuser = parseName(localpart, 'localpart');
       const { user, host } = splitBareJid(contactJid);
-      const nick = z.string().max(1024).parse(options.nick);
-      const groups = z.array(z.string().min(1).max(1024)).min(1).parse(options.groups);
-      const subs = RosterSubscriptionSchema.parse(options.subs ?? 'both');
+      const nick = Schema.decodeUnknownSync(RosterNickSchema)(options.nick);
+      const groups = Schema.decodeUnknownSync(RosterGroupsSchema)(options.groups);
+      const subs = Schema.decodeUnknownSync(RosterSubscriptionSchema)(options.subs ?? 'both');
       const response = await call('add_rosteritem', {
         localuser,
         localhost: config.domain,
@@ -465,11 +527,13 @@ export function createEjabberdAdminClient(
       const user = parseName(localpart, 'localpart');
       const response = await call('get_roster', { user, host: config.domain });
       const result = expectOk('get_roster', response);
-      const parsed = z.array(RosterEntrySchema).safeParse(result);
-      if (!parsed.success) {
+      const parsed = Schema.decodeUnknownExit(Schema.mutable(Schema.Array(RosterEntrySchema)))(
+        result,
+      );
+      if (Exit.isFailure(parsed)) {
         fail('get_roster', response, `unexpected result: ${errorText(result)}`);
       }
-      return parsed.data;
+      return parsed.value;
     },
   };
 }
