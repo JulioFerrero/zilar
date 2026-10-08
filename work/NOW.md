@@ -2,6 +2,21 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-08 03:50, Julio asleep, Effect night continues:**
+- **Merged since 03:00:**
+  - T-0536 (groups HTTP), T-0532 (zod leaves mobile), T-0535 (machine registry on effect/sql), T-0537 (screenshot scripts) and T-0533 (xmpp, chats and AI memory HTTP);
+  - T-0528, T-0540 (agents G7, the DM turn), T-0538 (one lenient mobile error envelope);
+  - T-0541 and T-0547 (mobile API batches 4 and 5);
+  - T-0546 (agents G8a, the group turn) and T-0542 (audit: no HttpApi response drops a field).
+- **Merge queue:** T-0539, topics HTTP. It was rebased after an `app.ts` conflict.
+- **Running:**
+  - T-0543, T-0544 and T-0545: push, integration settings and voice transcription HTTP;
+  - T-0548: AI usage and search archives on effect/sql. It stalled once and was nudged to resume;
+  - T-0549: agents G8b, the group ingest;
+  - T-0550 and T-0551: mobile batches 6 and 7 (contacts, stickers, topics, chat).
+- **Mobile QA rule:** for branches that change only lib code, the smoke opens the screens that use the changed clients through `ZILAR_ROUTES` (now in `docs/LEAD_HANDOFF.md`).
+- **Left on mobile after T-0550/T-0551:** `tools-api.ts` only.
+
 **2026-10-08 03:00, Julio asleep, Effect night continues:**
 - **Merged since 02:00:**
   - T-0507 and T-0530: **zod is gone from web**;
