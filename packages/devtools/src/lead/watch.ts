@@ -9,14 +9,20 @@ import { render as renderInk } from 'ink';
 import { Result, Schema } from 'effect';
 import type { OpenCodeClient } from './client.js';
 import { OpencodeCliClient } from './client.js';
-import { collectSnapshot } from './collect-snapshot.js';
+import {
+  collectSnapshot,
+  listSessionMessages,
+  loadGitCache,
+  saveGitCache,
+} from './collect-snapshot.js';
+import type { GitCache, MessageCache, WorktreeGit } from './collect-snapshot.js';
 import type { GitRunner } from './git.js';
 import { RealGitRunner } from './git.js';
 import { loadState, stateFilePath } from './state.js';
 import { findTaskFile } from './launch.js';
 import { parseFrontMatter } from './task-file.js';
 
-export const REFRESH_INTERVAL_MS = 3_000;
+export const REFRESH_INTERVAL_MS = 10_000;
 
 export type FileKind = 'created' | 'modified' | 'deleted';
 
@@ -242,12 +248,14 @@ export interface SessionSpeed {
   spark: number[];
 }
 
-// Average output speed, gap between steps, latest context size, and a 10-bar
+// Median output speed, gap between steps, latest context size, and a 10-bar
 // sparkline of the per-step tok/s of the last 10 steps. Messages come back
 // newest-first; the analysis is built from the most recent 20 assistant
-// steps, then narrowed to the last 10 for the sparkline. Fewer than 2
-// usable completed steps (with `time.completed` set and a non-zero gap)
-// returns `null`. Defensive on unknown shapes: never throws.
+// steps, then narrowed to the last 10 for the sparkline. The shown speed is
+// the median of those same per-step values, so one step that waited on a hung
+// tool never drags it down. Fewer than 2 usable completed steps (with
+// `time.completed` set and a non-zero gap) returns `null`. Defensive on
+// unknown shapes: never throws.
 export function sessionSpeed(messages: unknown[]): SessionSpeed | null {
   if (!Array.isArray(messages) || messages.length === 0) {
     return null;
@@ -269,14 +277,11 @@ export function sessionSpeed(messages: unknown[]): SessionSpeed | null {
   // Newest-first → oldest-first so the gaps line up.
   steps.reverse();
   const newest = steps[steps.length - 1]!;
-  const totalOut = steps.reduce((sum, step) => sum + step.tokensOut, 0);
-  const totalDur = steps.reduce((sum, step) => sum + step.duration, 0);
   const gaps: number[] = [];
   for (let i = 1; i < steps.length; i += 1) {
     gaps.push(steps[i]!.created - steps[i - 1]!.created);
   }
   const totalGap = gaps.reduce((sum, gap) => sum + gap, 0);
-  const tokPerSec = totalDur > 0 ? totalOut / (totalDur / 1000) : 0;
   const secPerStep = gaps.length > 0 ? totalGap / gaps.length / 1000 : 0;
   const context = newest.contextSize;
   const recent = steps.slice(-10);
@@ -285,11 +290,23 @@ export function sessionSpeed(messages: unknown[]): SessionSpeed | null {
     spark.push(step.duration > 0 ? step.tokensOut / (step.duration / 1000) : 0);
   }
   return {
-    tokPerSec,
+    tokPerSec: median(spark),
     secPerStep,
     context,
     spark,
   };
+}
+
+function median(values: number[]): number {
+  if (values.length === 0) {
+    return 0;
+  }
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 1) {
+    return sorted[mid] ?? 0;
+  }
+  return ((sorted[mid - 1] ?? 0) + (sorted[mid] ?? 0)) / 2;
 }
 
 interface SpeedStep {
@@ -469,9 +486,15 @@ export async function collectFiles(
   runner: GitRunner,
   worktree: string,
   fallback: ChangedFile[],
+  cached?: WorktreeGit,
 ): Promise<ChangedFile[]> {
   if (worktree === '' || !fs.existsSync(worktree)) {
     return fallback;
+  }
+  // A cached snapshot from `collectSnapshot` already carries the diff for the
+  // current HEAD, so no `git merge-base` or `git diff` runs here.
+  if (cached !== undefined) {
+    return cached.ok ? parseChangedFiles(cached.nameStatus, cached.porcelain) : fallback;
   }
   let nameStatus = '';
   let porcelain = '';
@@ -517,10 +540,14 @@ export async function buildView(
   statePath: string,
   client: OpenCodeClient,
   runner: GitRunner,
-  fileCache: Map<string, ChangedFile[]>,
+  gitCache: GitCache,
   now: number,
 ): Promise<WatchView> {
   const clock = formatClock(new Date(now));
+  // One list per session for this refresh: `collectSnapshot` fills the cache
+  // and the live-step read below reuses it instead of spawning `opencode2`
+  // again for a session it already listed.
+  const messages: MessageCache = new Map();
   let snapshot;
   try {
     snapshot = await collectSnapshot({
@@ -529,6 +556,8 @@ export async function buildView(
       statePath,
       root,
       now,
+      messages,
+      gitCache,
     });
   } catch {
     return { ...previous, refreshFailed: true };
@@ -547,17 +576,15 @@ export async function buildView(
     }
     const phaseId = task.phase.id;
     const running = isRunningPhase(phaseId);
-    const previous = fileCache.get(task.id) ?? [];
-    const files = await collectFiles(runner, record.worktree, previous);
-    fileCache.set(task.id, files);
+    const files = await collectFiles(runner, record.worktree, [], gitCache.get(record.worktree));
     const sessionId = chooseSessionId(phaseId, record.sessionId, record.prereview?.sessionId);
     let step: string | null = null;
     let speed: SessionSpeed | null = null;
     if (running) {
       try {
-        const messages = await client.listMessages(sessionId, 20);
-        step = liveStep(messages);
-        speed = sessionSpeed(messages);
+        const list = await listSessionMessages(client, messages, sessionId, 20);
+        step = liveStep(list);
+        speed = sessionSpeed(list);
       } catch {
         step = null;
         speed = null;
@@ -602,15 +629,19 @@ function findRepoRoot(): string {
 // and print it as a single JSON line. Hidden `--data` flag on `lead watch`.
 export async function runWatchData(): Promise<void> {
   const root = findRepoRoot();
+  const statePath = stateFilePath();
+  const cachePath = path.join(path.dirname(statePath), 'watch-cache.json');
+  const gitCache = loadGitCache(cachePath);
   const view = await buildView(
     { clock: formatClock(new Date()), refreshFailed: false, mergedToday: 0, entries: [] },
     root,
-    stateFilePath(),
+    statePath,
     new OpencodeCliClient(),
     new RealGitRunner(),
-    new Map<string, ChangedFile[]>(),
+    gitCache,
     Date.now(),
   );
+  saveGitCache(cachePath, gitCache);
   process.stdout.write(`${JSON.stringify(view)}\n`);
 }
 

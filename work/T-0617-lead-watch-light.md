@@ -1,7 +1,7 @@
 ---
 id: T-0617
 title: "lead watch: far fewer processes per refresh (today about six spawns per active task every 3 s: two git calls, up to three opencode2 message lists of the same session, and the changed-file git calls); fetch each session's messages once per refresh, slow the refresh, cache git results by HEAD; same screen"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0617-lead-watch-light
 model: auto
@@ -53,4 +53,113 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+
+- **One message list per session per refresh.** Added a per-refresh `MessageCache`
+  (session id → `{ messages, limit }`) in `collect-snapshot.ts` and a
+  `listSessionMessages` helper. `buildView` creates the cache, passes it to
+  `collectSnapshot`, and reuses it for the live step/speed read instead of
+  spawning `opencode2` a second time for a session already listed. The
+  pre-review fetch was raised from 5 to 20 so the one stored list also covers
+  `buildView`'s 20-message read (the spec's "larger limit"); `summarizeSession`
+  only reads the newest message, so its state is unchanged.
+- **Skip unchanged git work.** Added `readWorktreeGit` + a `GitCache` in
+  `collect-snapshot.ts`; `collectSnapshot` fills it and `buildView`/`collectFiles`
+  read from it. The key is the worktree's `HEAD` plus the `git status --porcelain`
+  output; on a hit no `git log`, `git rev-list`, `git merge-base` or `git diff`
+  runs. The cache is persisted to `watch-cache.json` next to the state file
+  (validated with Effect `Schema`), because the watcher spawns a fresh `--data`
+  process on every refresh and an in-memory cache alone would reset. `collectFiles`
+  gained an optional cached-snapshot argument; `lead snapshot` (no cache) keeps
+  its old, smaller set of git calls.
+- **Interval 3 s → 10 s.** `REFRESH_INTERVAL_MS = 10_000`; the clock keeps its
+  own 1 s timer. The screen is unchanged.
+- **Honest speed.** `sessionSpeed` now returns the median of the last 10 per-step
+  tok/s values (exactly the sparkline values) instead of `totalOut / totalDur`,
+  so a single step that waited on a hung tool no longer drags the shown speed down.
+
+### Decision: HEAD + `git status --porcelain`, not `.git/HEAD` + index mtime
+
+I chose the `git status --porcelain` key. (a) The tasks run in linked worktrees,
+where `.git` is a **file** pointing at the real gitdir, so `.git/HEAD` cannot be
+read directly. (b) New untracked files (the common `created` case) do not change
+the index mtime, so an index-mtime key would keep showing a stale changed-files
+line. `git status --porcelain` reflects tracked and untracked changes, so a cache
+hit is safe. Cost: one `git status` (plus one `git rev-parse` for HEAD) always
+runs, but it replaces up to six git calls.
+
+### Before / after: child processes per refresh
+
+Measured with a test double (counting `runner.run` git calls + `client.listMessages`
+= `spawnSync` child processes), 10 synthetic tasks that each have a worker session,
+a pre-review session and a running session:
+
+| | git calls | opencode2 calls | total per refresh |
+|---|---|---|---|
+| before (old code, computed from the file) | 60 + 1 root = 61 | 30 | 91 |
+| after, cold cache | 60 + 1 root = 61 | 20 | 81 |
+| after, unchanged worktree (warm cache) | 20 + 1 root = 21 | 20 | 41 |
+
+The "before" number is computed from the code I read (each task: `rev-parse`,
+`log`, `rev-list` in the snapshot, `merge-base`, `diff`, `status` for the files,
+plus three `listMessages`); the "after" numbers are measured. In the steady state
+(HEAD and status unchanged) this is 91 → 41, i.e. 55% fewer child processes per
+refresh, and with the 3 s → 10 s interval that is roughly 1820 → 246 per minute.
+Per task: git 6 → 2, opencode2 3 → 2. The `--data` node process itself is still
+one per refresh (I did not change the spawn model).
+
+### Files changed
+
+`packages/devtools/src/lead/collect-snapshot.ts`, `watch.ts`, `watch.test.ts`,
+`collect-snapshot.test.ts`, and this task file. All inside the Allowed files.
+
+### Tests
+
+- Kept green: no test pinned the interval or the call counts. `watch-app.test.tsx`
+  imports `REFRESH_INTERVAL_MS` but never asserts its value.
+- Renamed one test: `"computes averages over four completed assistant steps"` →
+  `"computes the median step speed over four completed assistant steps"`. No
+  assertion value changed: four identical steps have the same mean and median
+  (400/24).
+- Added: (1) `buildView` fetches a session's messages once per refresh
+  (`listed == [{ sessionId, limit: 30 }]`) and reuses them for the live step;
+  (2) one very long step does not drag the speed down (median 200 vs average 161);
+  (3) `readWorktreeGit` reuses the cache (6 git calls → 2) and recomputes when the
+  status changes; (4) the git cache file round-trips and bad/missing files yield
+  an empty cache.
+
+### Commands
+
+- `pnpm install` → done, 1173 packages added/reused.
+- `pnpm --filter @zilar/devtools test --maxWorkers=2 --reporter=dot src/lead/watch src/lead/collect-snapshot`
+  → Test Files 4 passed (4), Tests 132 passed (132).
+- `pnpm gate` first failed on `format` (2 files); I ran
+  `pnpm exec prettier --write packages/devtools/src/lead/collect-snapshot.ts packages/devtools/src/lead/watch.ts`
+  and re-ran the gate, which passed.
+- `pnpm gate` → `GATE PASS`:
+  - `PASS install (frozen) (1.0s)`, `PASS format (13.4s)`, `PASS lint (0.9s)`,
+    `PASS typecheck (3.2s)`, `PASS tests @zilar/devtools (1.1s)`
+  - `gate: 5 changed file(s) against main`
+  - `scope: every changed file is inside the Allowed files`
+
+### Deviations / open questions
+
+- I added a persisted git cache file (`~/.zilar-lead/watch-cache.json`) rather
+  than an in-memory map, because a fresh `--data` process per refresh would
+  otherwise never hit the cache. If you would rather not write a cache file, the
+  alternative is to change the watcher to a long-lived child process (out of this
+  task's scope).
+- `readWorktreeGit` spends one `git status` even on a hit; I judged that cheaper
+  than the calls it saves and safer than the index-mtime key (see above).
+
 ## Review (written by Claude)
+
+**2026-10-08, lead:** approved.
+- **Pre-review:** clean, 3 nits. The packet (22:37) is newer than HEAD 3aa0a5ec.
+- **Lead check:**
+  - the refresh is 10 s;
+  - each session is fetched once per refresh, and git results are cached by HEAD and status;
+  - measured: 91 to 41 child processes per refresh with a warm cache, about 1820 to 246 a minute;
+  - tok/s is now the median of the per-step values;
+  - the gate passes.
+- **Possible follow-up:** the `--data` node process is still spawned once per refresh; moving it in-process would save the rest.

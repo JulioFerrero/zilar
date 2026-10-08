@@ -256,7 +256,7 @@ describe('sessionSpeed', () => {
     };
   }
 
-  it('computes averages over four completed assistant steps', () => {
+  it('computes the median step speed over four completed assistant steps', () => {
     const messages = [
       step(4_000, 10_000, 100, 0, 158_705, 0), // newest
       step(3_000, 9_000, 100, 0, 120_000, 0),
@@ -304,6 +304,21 @@ describe('sessionSpeed', () => {
     const speed = sessionSpeed(messages);
     expect(speed).not.toBeNull();
     expect(speed!.tokPerSec).toBeCloseTo(100 / 2, 4);
+  });
+
+  it('shows the median step speed, so one very long step does not drag it down', () => {
+    const messages = [
+      step(5_000, 6_000, 5, 0, 10, 0), // newest: 1 s of wait for 5 tokens → 5 tok/s
+      step(4_000, 4_500, 100, 0, 10, 0), // 200 tok/s
+      step(3_000, 3_500, 100, 0, 10, 0),
+      step(2_000, 2_500, 100, 0, 10, 0),
+      step(1_000, 1_500, 100, 0, 10, 0), // oldest
+    ];
+    const speed = sessionSpeed(messages);
+    expect(speed).not.toBeNull();
+    // The old average would be 805 / 5 = 161 tok/s; the median stays at 200.
+    expect(speed!.tokPerSec).toBeCloseTo(200, 4);
+    expect(speed!.spark).toEqual([200, 200, 200, 200, 5]);
   });
 });
 
@@ -383,6 +398,87 @@ describe('buildView', () => {
       expect(view.entries.map((e) => e.id)).toEqual(['T-KEEP']);
     } finally {
       fs.rmSync(statePath, { force: true });
+    }
+  });
+
+  it('fetches a session once per refresh and reuses it for the live step', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'watch-root-'));
+    const worktree = fs.mkdtempSync(path.join(os.tmpdir(), 'watch-wt-'));
+    const statePath = path.join(root, 'state.json');
+    const listed: { sessionId: string; limit: number }[] = [];
+    const messages = [
+      {
+        type: 'assistant',
+        time: { created: 1, completed: 2 },
+        tokens: { input: 10, output: 10, reasoning: 0, cache: { read: 0 } },
+        content: [{ type: 'text', text: 'hi' }],
+      },
+    ];
+    const client: OpenCodeClient = {
+      ...fakeClient(),
+      async listMessages(sessionId: string, limit: number): Promise<unknown[]> {
+        listed.push({ sessionId, limit });
+        return messages;
+      },
+    };
+    const gitStdout = (args: string[]): string => {
+      if (args[0] === 'rev-parse') {
+        return `${'a'.repeat(40)}\n`;
+      }
+      if (args[0] === 'merge-base') {
+        return 'abc123\n';
+      }
+      if (args[0] === 'log') {
+        return '1700000000\n';
+      }
+      if (args[0] === 'rev-list') {
+        return '1\n';
+      }
+      return '';
+    };
+    const runner: GitRunner = {
+      run(cwd: string, args: string[]): GitResult {
+        return cwd === worktree ? { ok: true, stdout: gitStdout(args) } : { ok: false, stdout: '' };
+      },
+    };
+    fs.mkdirSync(path.join(root, 'work'), { recursive: true });
+    fs.mkdirSync(path.join(worktree, 'work'), { recursive: true });
+    fs.writeFileSync(
+      path.join(worktree, 'work', 'T-0001-foo.md'),
+      '---\nid: T-0001\ntitle: Test task\nstatus: todo\nbranch: task/T-0001\nmodel: meta/muse-spark-1.3-contributor\n---\n',
+    );
+    fs.writeFileSync(
+      statePath,
+      JSON.stringify({
+        version: 1,
+        tasks: {
+          'T-0001': {
+            task: 'T-0001',
+            sessionId: 'ses_worker',
+            worktree,
+            model: 'meta/muse-spark-1.3-contributor',
+            role: 'worker',
+            startedAt: new Date(0).toISOString(),
+          },
+        },
+      }),
+    );
+    try {
+      const view = await buildView(
+        { clock: '00:00:00', refreshFailed: false, mergedToday: 0, entries: [] },
+        root,
+        statePath,
+        client,
+        runner,
+        new Map(),
+        Date.now(),
+      );
+      expect(listed).toEqual([{ sessionId: 'ses_worker', limit: 30 }]);
+      expect(view.entries.map((e) => e.id)).toEqual(['T-0001']);
+      expect(view.entries[0]!.step).toBe('writing a reply');
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+      fs.rmSync(worktree, { recursive: true, force: true });
     }
   });
 });
