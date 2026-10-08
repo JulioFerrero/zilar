@@ -13,9 +13,8 @@
 // the summary is clean while `modelText` carries the text.
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { z } from 'zod';
 import type { ActionAdapter, ActionContext } from '../actions/registry';
-import { buildRegistry } from '../actions/registry';
+import { buildRegistry, decodeActionArgs } from '../actions/registry';
 import {
   buildWebToolsAdapters,
   MAX_FETCH_CHARS,
@@ -100,11 +99,11 @@ async function run(
   args: unknown,
 ): Promise<{ summary: string; modelText?: string }> {
   const adapter = byName(adapters, name);
-  const parsed = (adapter.argsSchema as z.ZodType<unknown>).safeParse(args);
-  if (!parsed.success) {
+  const parsed = decodeActionArgs(adapter.argsSchema, args);
+  if (!parsed.ok) {
     return { summary: 'invalid_args' };
   }
-  return adapter.execute(ctx, parsed.data);
+  return adapter.execute(ctx, parsed.value);
 }
 
 const WIKIPEDIA_SEARCH = JSON.stringify({

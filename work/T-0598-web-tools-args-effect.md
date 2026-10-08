@@ -1,7 +1,7 @@
 ---
 id: T-0598
 title: "Tool args T-D: web-tools/adapters.ts five arg schemas + two Wikipedia response schemas zod to Effect Schema through the T-0594 seam; same accept/reject; the test helper decodes through decodeActionArgs; no zod left in web-tools/adapters.ts or its test"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0598-web-tools-args-effect
 model: auto
@@ -68,4 +68,100 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+
+Converted the seven schemas in `apps/server/src/web-tools/adapters.ts` from zod to
+Effect Schema, and pointed the five adapter `argsSchema` fields at the T-0594 seam.
+
+- Removed `import { z } from 'zod'`; added `import { Schema } from 'effect'` and the
+  `ArgsSchema` type import from `../actions/registry`.
+- `webFetchArgsSchema`: `Schema.Struct` with `url` (`isMinLength(1)`,
+  `isMaxLength(MAX_FETCH_URL_CHARS)`) and optional `maxChars` (`Schema.Number` with
+  `isInt()`, `isGreaterThanOrEqualTo(1)`, `isLessThanOrEqualTo(MAX_FETCH_CHARS)`).
+  This is `z.number().int().min(1).max(...)`; `isInt()` rejects `NaN` and `Infinity`
+  like the old `z.number().int()`. Cast at line 185.
+- `webWikipediaArgsSchema`: `query` = `Schema.Trim.check(isMinLength(1), isMaxLength(200))`
+  (trim before the length checks, like `.trim().min().max()`). `lang` optional, checked
+  with `Schema.makeFilter` returning the byte-identical text `lang must be 2-3 letters`
+  for anything not matching `/^[a-zA-Z]{2,3}$/`. I used `makeFilter` rather than a
+  `{ message }` option because `docs/EFFECT_GUIDE.md` ("Effect 4 facts") warns that
+  `{ message }` on some checks does not reach the issue annotations; `makeFilter` is the
+  documented carrier. Cast at line 318.
+- `webPriceArgsSchema`: `symbols` = `Schema.Array(Schema.String.check(Schema.isPattern(PRICE_SYMBOL_PATTERN)))`
+  with array-level `isMinLength(1)` / `isMaxLength(MAX_PRICE_SYMBOLS)`. Cast at line 389.
+- `webFeedArgsSchema`: same shape as `web.fetch` with `limit` bounded by `MAX_FEED_LIMIT`.
+  Cast at line 490.
+- `webSearchArgsSchema`: `query` = `Schema.Trim.check(isMinLength(1), isMaxLength(MAX_SEARCH_QUERY_CHARS))`.
+  Cast at line 540.
+- `wikipediaSearchSchema` / `wikipediaExtractSchema`: `Schema.Struct`/`Schema.Record`
+  equivalents (not strict, so unknown keys strip by default, matching the old plain
+  `z.object`). `pageid` = `Schema.Int`; `missing` = `Schema.optional(Schema.Unknown)`.
+- `parseWikipediaSearch` / `parseWikipediaExtract`: now `typeof schema.Type` and
+  `Schema.decodeUnknownSync(schema)(JSON.parse(body))` inside the existing `try`; any
+  failure still returns `null`. The public signatures and the `WikipediaArticle` shape
+  are unchanged.
+- `apps/server/src/web-tools/adapters.test.ts`: only the helper (line ~102) and its
+  imports changed. Dropped `import { z } from 'zod'`, added `decodeActionArgs` to the
+  existing `../actions/registry` import, and the helper now calls
+  `decodeActionArgs(adapter.argsSchema, args)` and uses `.ok` / `.value`.
+
+All other files are untouched. No dependency was added.
+
+### Commands run (real results)
+
+- `pnpm install` — Done, exited 0.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot web-tools actions`
+  — `Test Files 16 passed (16)`, `Tests 203 passed (203)`, exited 0.
+- Inline probe of the lang check (no file written):
+  `node --input-type=module -e '...'` in `apps/server` — `accept en: Success`,
+  `reject abcd first line: lang must be 2-3 letters`. The message survives byte-identical.
+- `pnpm gate` (repo root) — summary:
+  ```
+  gate: 3 changed file(s) against main
+  PASS  install (frozen)  (1.7s)
+  PASS  format  (43.2s)
+  PASS  lint  (2.8s)
+  PASS  typecheck  (67.4s)
+  PASS  tests @zilar/server  (11.0s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Files changed
+
+- `apps/server/src/web-tools/adapters.ts` (seven schemas, imports, five casts, two parse helpers)
+- `apps/server/src/web-tools/adapters.test.ts` (imports + the `run` helper only)
+- `work/T-0598-web-tools-args-effect.md` (status + this Report)
+
+### Deviations / decisions
+
+- `lang` uses `Schema.makeFilter` instead of `isPattern(..., { message })`; the spec
+  allowed either, and I chose the guide's documented carrier and probed it. The text is
+  discarded at the seam anyway (`decodeActionArgs` returns only `ok`/`false`), so no
+  behaviour depends on it.
+- `Schema.Number.pipe(Schema.check(Schema.isInt(), ...))` is used instead of `Schema.Int`
+  for the bounded integers, matching the nearby web-tools style
+  (`web-tools/prices.ts:62`); it rejects `NaN`/`Infinity` like `z.number().int()`.
+- The word "zod" still appears in one pre-existing explanatory comment in the test
+  (`adapters.test.ts:218`); it is prose, not an import or call, and the spec says only
+  the helper and imports change, so I left it.
+
+### Blocked / needs a decision
+
+None.
+
+### Security checklist
+
+No boundary, route, delete/update scope, permission, audit or secret handling changed:
+this task only swaps the validation library behind the existing `argsSchema` seam, and
+accept/reject behaviour is covered by the unchanged tests (203 passed).
+
 ## Review (written by Claude)
+
+**2026-10-08, lead:** approved.
+- **Pre-review:** clean, 1 nit. The packet (13:59) is newer than HEAD 8b11d540.
+- **Lead check:**
+  - grep finds no zod import in `web-tools/adapters.ts` or its test;
+  - the five arg schemas and the two Wikipedia response schemas are converted;
+  - in the test file, only the helper changed.
+- **Follow-up (nit):** a comment at `adapters.test.ts:218` still says "the zod schema".
