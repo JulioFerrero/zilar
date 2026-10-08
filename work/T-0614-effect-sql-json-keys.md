@@ -1,7 +1,7 @@
 ---
 id: T-0614
 title: "effect/sql: stop camelCasing keys inside jsonb values (transformJson: false on the three clients in effect/sql.ts); routine input, audit detail and machine capabilities read back byte-identical to what was written; drop T-0607's local capability() fallback; one regression test"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0614-effect-sql-json-keys
 model: auto
@@ -63,4 +63,62 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+1. `apps/server/src/effect/sql.ts`: added `transformJson: false` to the three client configs named in the spec — `SqlLive` (`PgClient.layerConfig`), `sqlLayerFor`'s PGlite layer, and `sqlLayerFor`'s pg layer — with a comment explaining that `transformResultNames` camelCases column names but jsonb values are data and must read back exactly as written.
+2. `apps/server/src/machines/service.ts`: removed the T-0607 `capability()` fallback (and its comment) and read the stored keys directly (`capabilities['os_version']`, `capabilities['ram_gb']`, ...). Removed the now-unused `snakeToCamel` import. `toPublicMachine` output is unchanged.
+3. `apps/server/src/effect/sql.test.ts`: added a regression test that inserts `{ max_items: 2, nested_key: { inner_key: 1 } }::jsonb` into a temp table through a runtime built by `registerSqlRuntime` (which uses `sqlLayerFor`), reads it back with `SELECT *`, and asserts the column name `payload_column` is camelCased to `payloadColumn` while the jsonb keys are untouched.
+4. Reader audit of the five jsonb object columns:
+   - `machines.capabilities`: the only effect/sql reader is `machines/service.ts` (`toPublicMachine`), fixed above.
+   - `routines.schedule`: read by `routines/scheduler.ts` via effect/sql; the stored keys are already camelCase (`everyMinutes`, `timezone`, ...), so the transform was a no-op and behaviour is unchanged.
+   - `routines.input`: read by `routines/scheduler.ts` → `routines/execute.ts:147`; now preserved exactly as written (this is the bug the task fixes).
+   - `audit_log.detail`: returned by `audit/service.ts:410`; now keys stay as written. Existing audit tests pass unchanged.
+   - `pending_actions.args`: all readers (`actions/gateway.ts`) use drizzle `db.select`, not effect/sql, so they were never affected.
+   - `waveform`, `approved_hosts`, string/number arrays are unaffected.
+   No reader depended on camelCased nested jsonb keys, so nothing else needed changing.
+
+### Files changed
+`apps/server/src/effect/sql.ts`, `apps/server/src/machines/service.ts`, `apps/server/src/effect/sql.test.ts`, `work/T-0614-effect-sql-json-keys.md` — all inside the Allowed files.
+
+### Commands and real results
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot effect/sql machines routines audit` → **14 files, 168 tests passed**.
+- Regression test fails without step 1: with `transformJson: false` temporarily removed from the PGlite config, the new test failed showing `maxItems`/`nestedKey`/`innerKey`; it passes with the fix.
+- `pnpm gate` (from repo root) → **GATE PASS**. Summary lines:
+  - `PASS  install (frozen)  (3.8s)`
+  - `PASS  format  (62.5s)`
+  - `PASS  lint  (0.9s)`
+  - `PASS  typecheck  (1.1s)`
+  - `PASS  tests @zilar/server  (790.3s)`
+  - `scope: every changed file is inside the Allowed files`
+  - `GATE PASS`
+
+### Deviations / notes
+- The spec enumerates "three client configs". `SqlTest` (the test-only layer around line 131 of `sql.ts`) also sets `transformResultNames`; it was not in that list, so the first round left it unchanged. The fix round below adds `transformJson: false` to it, per PREREVIEW finding 1.
+- The regression test uses a temp table, which the spec explicitly allows.
+
+### Blocked / needs a decision
+None.
+
+### Round (fix round, after PREREVIEW)
+- Findings fixed: **finding 1 (should-fix)** — added `transformJson: false` to the `SqlTest` layer in `apps/server/src/effect/sql.ts` (line 144), so it matches the other three clients and stops renaming keys inside jsonb values. **finding 2 (nit)** was not touched: it is not in any line this round changes, per the fix-round rule that nits are left alone unless already modified. The local `runtimeFor` helper (`sql.test.ts:21-25`) is used only by the two migration-count tests, which read no jsonb, so it is harmless today.
+- Test added: `apps/server/src/effect/sql.test.ts` — "keeps jsonb keys as written through the SqlTest layer too". It writes `{ max_items: 2, nested_key: { inner_key: 1 } }::jsonb` to a temp table through the `SqlTest` layer and asserts the value reads back unchanged (column name still camelCased). It fails without the fix (`maxItems`/`nestedKey`) and passes with it.
+- Single test run: `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/effect/sql.test.ts` → 1 file, **5 tests passed** (with the fix). With the `SqlTest` flag temporarily removed: **1 failed, 4 passed**, showing `maxItems`/`nestedKey`.
+- `pnpm gate` (from repo root) → **GATE PASS**:
+  - `PASS  install (frozen)  (1.1s)`
+  - `PASS  format  (17.0s)`
+  - `PASS  lint  (0.6s)`
+  - `PASS  typecheck  (9.1s)`
+  - `PASS  tests @zilar/server  (333.9s)`
+  - `scope: every changed file is inside the Allowed files`
+  - `GATE PASS`
+- No disagreements with the findings.
+
 ## Review (written by Claude)
+
+**2026-10-08, lead:** approved.
+- **Pre-review:** clean after 1 automatic round. The packet (21:38) is newer than HEAD 95a6be94.
+- **Lead check:**
+  - `transformJson: false` is on all four clients (`SqlLive`, both `sqlLayerFor` layers, `SqlTest`);
+  - the `capability()` fallback is gone;
+  - two regression tests pin that jsonb keys stay as written while column names stay camelCase;
+  - the gate passes.
+- **The jsonb key-renaming bug (routine input, audit detail, machine capabilities) is fixed.**

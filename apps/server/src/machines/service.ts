@@ -3,7 +3,7 @@ import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
 import type { machinePairingCodes, machines } from '../db/schema';
-import { snakeToCamel, sqlRuntimeFor } from '../effect/sql';
+import { sqlRuntimeFor } from '../effect/sql';
 import {
   generatePairingCode,
   hashPairingCode,
@@ -106,14 +106,14 @@ export function toPublicMachine(
     id: row.id,
     name: row.name,
     status: row.status,
-    os: asString(capability(capabilities, 'os')),
-    osVersion: asString(capability(capabilities, 'os_version')),
-    arch: asString(capability(capabilities, 'arch')),
-    cpu: asString(capability(capabilities, 'cpu')),
-    cores: asNumber(capability(capabilities, 'cores')),
-    ramGb: asNumber(capability(capabilities, 'ram_gb')),
-    diskFreeGb: asNumber(capability(capabilities, 'disk_free_gb')),
-    drivers: asStringArray(capability(capabilities, 'drivers')),
+    os: asString(capabilities['os']),
+    osVersion: asString(capabilities['os_version']),
+    arch: asString(capabilities['arch']),
+    cpu: asString(capabilities['cpu']),
+    cores: asNumber(capabilities['cores']),
+    ramGb: asNumber(capabilities['ram_gb']),
+    diskFreeGb: asNumber(capabilities['disk_free_gb']),
+    drivers: asStringArray(capabilities['drivers']),
     fingerprint: fingerprintOfPublicKey(row.publicKey),
     online: isOnline?.(row.id) ?? false,
     createdAt: row.createdAt,
@@ -443,14 +443,6 @@ export async function deleteMachine(
     }),
   );
   return row !== undefined;
-}
-
-// `effect/sql` applies the same camelCase transform to nested jsonb keys as it
-// does to column names, so a stored capability key like `os_version` arrives as
-// `osVersion`. Read the transformed key, falling back to the stored snake_case
-// key for a row that did not go through the driver.
-function capability(capabilities: Record<string, unknown>, key: string): unknown {
-  return capabilities[snakeToCamel(key)] ?? capabilities[key];
 }
 
 function asString(value: unknown): string {

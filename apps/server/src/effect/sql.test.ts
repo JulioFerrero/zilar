@@ -4,11 +4,15 @@ import { drizzle } from 'drizzle-orm/pglite';
 import { Effect, ManagedRuntime } from 'effect';
 import { SqlClient } from 'effect/sql';
 import { describe, expect, it } from 'vitest';
+import type { ServerDatabase } from '../db/client';
 import { migrationsFolder, runMigrations } from '../db/migrate';
 import * as schema from '../db/schema';
 import {
   SQL_MIGRATIONS_TABLE,
   SqlTest,
+  disposeSqlRuntime,
+  freshMigratedPglite,
+  registerSqlRuntime,
   runSqlMigrations,
   snakeToCamel,
   sqlFileLoader,
@@ -38,6 +42,49 @@ describe('effect/sql', () => {
     });
     const total = await Effect.runPromise(Effect.provide(program, SqlTest));
     expect(total).toBe(0);
+  });
+
+  it('keeps jsonb keys as written and only camelCases column names', async () => {
+    const pglite = await freshMigratedPglite();
+    const db = drizzle(pglite, { schema }) as unknown as ServerDatabase;
+    const runtime = registerSqlRuntime(db, '');
+    try {
+      const stored = { max_items: 2, nested_key: { inner_key: 1 } };
+      const rows = await runtime.runPromise(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`CREATE TEMP TABLE jsonb_probe (id text, payload_column jsonb)`;
+          yield* sql`INSERT INTO jsonb_probe (id, payload_column)
+            VALUES ('one', ${JSON.stringify(stored)}::jsonb)`;
+          return yield* sql<{
+            id: string;
+            payloadColumn: typeof stored;
+          }>`SELECT * FROM jsonb_probe`;
+        }),
+      );
+      expect(rows).toHaveLength(1);
+      // The column name is camelCased, the jsonb keys are untouched.
+      expect(rows[0]?.payloadColumn).toEqual(stored);
+    } finally {
+      await disposeSqlRuntime(db);
+      await pglite.close();
+    }
+  });
+
+  it('keeps jsonb keys as written through the SqlTest layer too', async () => {
+    const stored = { max_items: 2, nested_key: { inner_key: 1 } };
+    const program = Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`CREATE TEMP TABLE jsonb_layer_probe (id text, payload_column jsonb)`;
+      yield* sql`INSERT INTO jsonb_layer_probe (id, payload_column)
+        VALUES ('one', ${JSON.stringify(stored)}::jsonb)`;
+      const rows = yield* sql<{
+        payloadColumn: typeof stored;
+      }>`SELECT * FROM jsonb_layer_probe`;
+      return rows[0]?.payloadColumn;
+    });
+    const value = await Effect.runPromise(Effect.provide(program, SqlTest));
+    expect(value).toEqual(stored);
   });
 
   it('adopts a database drizzle already migrated without re-running the history', async () => {
