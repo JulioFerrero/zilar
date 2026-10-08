@@ -19,6 +19,16 @@ Standing decisions: release v0.1.13 is live at https://chat.zilar.app (merges re
 - A PACKET READY line means the pre-review finished. It is only current if `state.packetReadyForHead` equals the worktree HEAD. Deleting `PREREVIEW.md` makes the autopilot print a spurious "PRE-REVIEW STALLED" line: ignore it.
 - Fix round to an idle worker: write a prompt file with numbered findings, one commit each, exact test names, "keep status review"; `lead reply T-XXXX <file>`. Never reply while the worker turn is running (it interrupts).
 - Merge: write the Review in the task file (status `merged`), commit it, then `lead merge T-XXXX --summary "..."`; it rebases and runs `pnpm gate`, and refuses on red. On a rebase conflict follow `docs/LEAD_LOOP.md` ("When a rebase conflicts"): the lead starts the rebase, the worker resolves the files, the lead continues. The registry files `apps/mobile/src/lib/settings-items.ts` and `components/chat/new-chat-button.tsx` conflict most; `settings-items.ts` has `merge=union`, which can leave a row outside the array, so the gate must pass after any rebase.
+- **The lead's merge runner (2026-10-08).** Merges take 6-20 minutes, so the lead does not run them by hand. A small zsh loop runs one line of a queue file at a time:
+  - `spec T-X` copies a spec into `work/`, commits and pushes;
+  - `launch T-X` runs the spec check, then `lead launch`, then waits 20 s;
+  - `merge T-X <summary>` runs `lead merge`, then `pnpm install --frozen-lockfile`;
+  - `file <repo path>` copies a prepared file over the repo path, commits and pushes.
+
+  Any failure goes to a `failed.txt` file and pauses the loop; the lead fixes the cause, empties the file, and puts the line back at the front.
+  - **Reference copy:** `~/.zilar-lead/runner/runner.sh`. Its `TMP=` line points at an old session's folder, so a new session sets that to its own scratch folder (holding `queue.txt`, `failed.txt`, `specs/` and `files/`) and starts it detached with `nohup zsh runner.sh >> runner.log 2>&1 &`.
+  - **Queue order:** put launches ahead of merges.
+  - **Monitor waits:** never `pgrep -f` a pattern that also appears in the Monitor's own command line, or the wait never ends.
 - **While a merge runs, push nothing to main except `work/BOARD.md`.** `lead merge` compares the squash with the branch (excluding only the board). A docs or NOW commit pushed during the gate makes the merge stop with "squash result differs from <branch>; nothing pushed" (T-0602, 2026-10-08), and the squash commit is left unpushed on local main. To recover:
   1. confirm that `git log origin/main..main` shows only that squash;
   2. `git reset --hard origin/main` in the main checkout;
