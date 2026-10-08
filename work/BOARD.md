@@ -454,7 +454,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0425](T-0425-mobile-profile-buttons-kit.md) | Mobile: profile and contact card buttons on the kit Button | 2026-10-06 |
 | [T-0426](T-0426-mobile-ai-sheet-buttons-kit.md) | Mobile: AI activity Refresh, tool sheet Show all/less and Close on the kit Button | 2026-10-06 |
 | [T-0608](T-0608-effect-sql-roles-service.md) | effect/sql: roles service, transactions included | planned | auto | T-0596 | |
-| [T-0611](T-0611-effect-sql-group-join.md) | effect/sql: public group join transaction | planned | auto | T-0596 | |
 | [T-0612](T-0612-registry-effect-only.md) | Tool args T-G: action registry on Effect Schema only | planned | auto | T-0604 | |
 | [T-0613](T-0613-effect-sql-handles-visibility.md) | effect/sql: handle store and group visibility switch | planned | auto | T-0596 | |
 | [T-0614](T-0614-effect-sql-json-keys.md) | effect/sql: keep jsonb keys as written (bug: routine input keys renamed) | planned | auto | T-0607 | |
@@ -644,3 +643,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0606](T-0606-effect-sql-avatars-backgrounds.md) | effect/sql: avatar and background services | 2026-10-08 |
 | [T-0610](T-0610-approvals-input-schema.md) | Effect Schema: approval input schema | 2026-10-08 |
 | [T-0607](T-0607-effect-sql-push-store-machines.md) | effect/sql: push device store and machine service | 2026-10-08 |
+| [T-0611](T-0611-effect-sql-group-join.md) | effect/sql: public group join transaction | 2026-10-08 |

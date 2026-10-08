@@ -1,7 +1,7 @@
 ---
 id: T-0611
 title: "effect/sql: groups/join.ts (public group join) off drizzle; the transaction keeps the per-group advisory lock before the occupant count, the in-tx re-check, the room call with 503 rollback and the ON CONFLICT DO NOTHING insert; same 404/409/503 answers; tests unchanged"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0611-effect-sql-group-join
 model: auto
@@ -68,4 +68,84 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+
+Converted `apps/server/src/groups/join.ts` from drizzle to `effect/sql` (recipe
+`docs/audit/effect-sql-migration.md` §(a), pins example). Same shape: the
+exported `joinPublicGroup` stays `async`, a private `runSql(deps, effect)` runs
+each effect through `sqlRuntimeFor(deps.db)`, and the module keeps no value
+import from `drizzle-orm` or `db/schema` (only a type-only `groups` import for
+the row type, matching `chat-folders/service.ts:10`).
+
+Order, lock and answers are unchanged:
+
+1. group lookup `SELECT * FROM groups WHERE id = ${groupId} LIMIT 1`; unknown or
+   non-`public` → 404 `not_found` "Group not found";
+2. membership pre-check → `alreadyMember: true`;
+3. pre-check `countOccupants + 1 > maxMembers` → 409 `group_full`;
+4. `sql.withTransaction`: `pg_advisory_xact_lock(hashtext('group-join:'||id))`
+   **before** counting; in-tx membership re-check; in-tx `countOccupants`;
+   `setAffiliation` via `Effect.tryPromise` (an `HttpError` is rethrown, anything
+   else → 503 `xmpp_unavailable`); insert with `ON CONFLICT (group_id, user_id)
+   DO NOTHING RETURNING group_id` and `inserted.length > 0`. Every failure inside
+   the transaction is in the effect error channel, so it rolls back and the same
+   `HttpError` reaches the caller;
+5. after the commit: `syncPublicTopicsByLink`, best-effort invitation (logged),
+   audit record — unchanged.
+
+`countOccupants` is now an `Effect` that yields `SqlClient`, so it resolves to
+the transaction connection inside the transaction and to the plain runtime
+outside it. It uses `count(*)::int AS total` over `group_members` + `group_ais`.
+
+### Files changed
+
+- `apps/server/src/groups/join.ts` (only value file changed; formatted by
+  prettier).
+- `work/T-0611-effect-sql-group-join.md` (this Report + status).
+
+### Commands run (real results)
+
+- `pnpm install` — exit 0 (1173 packages, 3 deprecated subdeps warning; the
+  `@types/react-dom` peer warning is pre-existing mobile noise).
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot groups/visibility.test.ts`
+  — 1 file, **24 passed** (the join-cap tests included).
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot groups invite-links authz-sweep`
+  — 4 files, **106 passed**, 0 failed.
+- `pnpm gate` — **GATE PASS**:
+  ```
+  gate: 2 changed file(s) against main
+  PASS  install (frozen)  (1.4s)
+  PASS  format  (24.0s)
+  PASS  lint  (0.9s)
+  PASS  typecheck  (1.0s)
+  PASS  tests @zilar/server  (548.0s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Notes / deviations
+
+- No test file was edited; every listed test is unchanged and green.
+- The insert returns `group_id`, not `id`: `group_members` has the composite
+  primary key `(group_id, user_id)` and no `id` column (`db/schema.ts:339-352`).
+  The check is still `inserted.length > 0`.
+- No drizzle value import remains in `join.ts`.
+- Environment note: earlier `pnpm gate` attempts were killed by the harness /
+  timed out only in unrelated files (`push/service.effect.test.ts`,
+  `search/search.test.ts`, `push/component.test.ts`) while load average was ~40
+  from parallel workers. Those files are unrelated to this change and the final
+  foreground gate above passed all of `@zilar/server`.
+- Security checklist: cap enforced atomically (advisory lock in the transaction,
+  state re-read inside it); unknown/private both 404; audit detail carries ids
+  only; no new route. Nothing changed there.
+
 ## Review (written by Claude)
+
+**2026-10-08, lead:** approved.
+- **Pre-review:** clean. The packet (18:32) is newer than HEAD 789b576f.
+- **No test file changed.**
+- **Lead check:**
+  - only a type import from the schema is left;
+  - the `group-join:` lock is taken inside `withTransaction` before the occupant count;
+  - the insert is `ON CONFLICT (group_id, user_id) DO NOTHING`;
+  - the gate passes.
