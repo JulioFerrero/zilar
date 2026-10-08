@@ -10,7 +10,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0626](T-0626-audit-effect-last-mile.md) | Audit: the Effect last mile, plus the bigint check | in-progress | auto | | |
-| [T-0635](T-0635-effect-sql-memory-store.md) | effect/sql: AI memory store | in-progress | auto | T-0596 | |
 | [T-0636](T-0636-effect-sql-sticker-files.md) | effect/sql: sticker favorites, files and import (stickers service part B) | in-progress | auto | T-0633 | |
 | [T-0638](T-0638-retire-files-hono-wrapper.md) | Hono: retire the files test wrapper | in-progress | auto | | |
 
@@ -667,3 +666,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0633](T-0633-effect-sql-sticker-packs.md) | sticker packs and panel on effect/sql | 2026-10-08 |
 | [T-0634](T-0634-effect-sql-memory-indexer.md) | AI memory indexer on effect/sql | 2026-10-08 |
 | [T-0637](T-0637-retire-drafts-hono-wrapper.md) | retire the drafts Hono test wrapper | 2026-10-08 |
+| [T-0635](T-0635-effect-sql-memory-store.md) | AI memory store on effect/sql | 2026-10-08 |

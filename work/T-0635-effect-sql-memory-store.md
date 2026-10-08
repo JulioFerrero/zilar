@@ -1,7 +1,7 @@
 ---
 id: T-0635
 title: "effect/sql: agents/memory/store.ts off drizzle except deleteRoomMemory (groups/service.ts calls it inside its drizzle transaction); reads, addFact under its advisory lock, clearMemory in one transaction, putNode ON CONFLICT DO NOTHING; same output lines; tests unchanged"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0635-effect-sql-memory-store
 model: auto
@@ -71,4 +71,48 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**Status:** done. Every function listed in the spec now runs on `effect/sql`; `deleteRoomMemory` stays on drizzle.
+
+**What changed** — only `apps/server/src/agents/memory/store.ts`
+- Imports: added `Effect` (`effect`), `SqlClient`, `SqlError`, `type Statement` (`effect/sql`) and `sqlRuntimeFor`; trimmed the drizzle import to `and, eq, sql` (only `deleteRoomMemory` still uses it). Added a private `runSql(db, effect)` that runs each effect through `sqlRuntimeFor(db).runPromise`, matching `pins/service.ts`.
+- Converted to raw tagged-template SQL with bound parameters: `readFloor` (`floor_seq`), `readTotal` (`max(seq) AS max_seq`, still `Number(...) + 1`, 0 when null), `loadRows`, `loadSingle`, `loadNodeMap`, `listFacts`, `deleteFact`, `putNode`, `clearMemory`.
+- `recallMemory`: conditions are a `Statement.Fragment[]` (`ai_id = $1`, `chat_key = $2`, `deleted = false`, `seq >= floor`, then one `text ILIKE $n ESCAPE '\'` per word via `escapeLike`), combined with `sql.and`; the count uses `count(*)::int AS count`; the newest `MEMORY_RECALL_MAX` by `seq DESC` are reversed, then the same `Newest 30 of N matches.` note.
+- `addFact`: one `sql.withTransaction` — the raw `pg_advisory_xact_lock(hashtext('ai-memory-facts:' || aiId || ':' || chatKey))`, the case-insensitive `lower(text) = lower($1)` duplicate check, the insert, then the oldest rows past `MEMORY_FACTS_MAX` deleted with `id IN ${sql.in(oldest)}` guarded by `excess > 0`.
+- `putNode`: `INSERT ... ON CONFLICT DO NOTHING`.
+- `clearMemory`: one `sql.withTransaction` — `max(seq)`, delete nodes, delete facts, upsert `ai_memory_state` with `ON CONFLICT (ai_id, chat_key) DO UPDATE SET floor_seq = $1, updated_at = $2`; the insert sets only `ai_id, chat_key, floor_seq` (`indexed_through_micros` defaults to 0).
+- `deleteRoomMemory` is untouched (four deletes and the table references byte-identical) apart from the comment the spec asked for: it moves when `removeGroupAi`'s transaction moves.
+- Rows: `timestamptz` reaches `formatRow` as a `Date`; `seq`/`lo`/`hi`/`floor_seq` come back as numbers. `effect/sql` returns `ReadonlyArray`, so `loadRows` and `listFacts` copy with `[...rows]` and `recallMemory` uses `[...rows].reverse()`.
+
+**Not changed:** every exported signature; `memoryRange`, `renderMemoryBlock`, `zoomMemory`, `pendingNodes`, `compactionInput`, `buildCompactionPrompt`; all test files. No new dependencies.
+
+**Commands run (real results)**
+- `pnpm install` — done (1173 packages added/reused).
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/agents/memory/store.test.ts` — 1 file, 24 passed.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/agents/memory src/agents/gateway src/groups src/topics` — 12 files, 353 passed, 0 failed (118.4s).
+- `pnpm gate` — first run FAILED (format on `store.ts`, then `TS4104`/`TS2339` readonly-array errors); after fixing and re-running:
+  ```
+  gate: 2 changed file(s) against main
+  PASS  install (frozen)  (0.9s)
+  PASS  format  (15.7s)
+  PASS  lint  (0.7s)
+  PASS  typecheck  (9.5s)
+  PASS  tests @zilar/server  (6.6s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+**Tests:** unchanged, all green.
+
+**Problems / deviations:** none.
+
+**Open questions:** none.
+
 ## Review (written by Claude)
+
+**2026-10-08, lead:** approved.
+- **Pre-review:** clean, no findings. The packet head is c881f8ba, the current HEAD.
+- **Lead check:**
+  - `addFact` keeps its advisory lock, duplicate check, insert and capped trim in one transaction, with a guarded `sql.in`;
+  - `clearMemory` runs in one transaction;
+  - recall keeps bound `ILIKE ... ESCAPE` per word and `count(*)::int`;
+  - `deleteRoomMemory` is untouched on drizzle, with its comment.
