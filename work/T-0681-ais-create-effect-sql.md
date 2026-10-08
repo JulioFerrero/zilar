@@ -1,7 +1,7 @@
 ---
 id: T-0681
 title: "effect/sql: move the last drizzle in ais/service.ts (createAi's four statements and compensateCreate's delete) onto effect/sql; the file drops drizzle"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0681-ais-create-effect-sql
 model: auto
@@ -56,4 +56,38 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**What I did**
+- `apps/server/src/ais/service.ts`: the five statements in `createAi` (ais insert, ai_limits insert, llm_virtual_keys insert, ais status update) and the one in `compensateCreate` (`DELETE FROM ais`) now run through `runSql` with `` sql`…` `` statements, same columns, values and order. Steps 3 and 4 are still inside the provisioning `try`, so a failure there still runs `compensateCreate` and the 502 mapping. Timestamps use `${new Date()}`.
+- Removed the `drizzle-orm` import (`eq`) and the `../db/schema` import (`aiLimits, ais, llmVirtualKeys`).
+- Rewrote the header comment: every database call in the file runs on effect/sql. It no longer lists `withAiEnsureLock`.
+- One comment at about line 471 (the `updateAi` COALESCE note) still says "the drizzle `set({...})` built before". It is a historical note, not an import, so I left it. Say if you want it removed.
+
+**Files changed**
+- `apps/server/src/ais/service.ts`
+- `work/T-0681-ais-create-effect-sql.md` (status and this Report)
+
+**Commands run (real results)**
+- `pnpm install`: done.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/ais`: 4 test files passed, 1 skipped (`integration.test.ts`, which is gated by `ZILAR_AIS_INTEGRATION=1` and needs a real server). Tests: 96 passed, 2 skipped. `service.test.ts`, `routes.test.ts`, `litellm-model.test.ts` and `usage.test.ts` pass unchanged. The create rollback tests in `routes.test.ts` (lines 569, 590, 607, 636: XMPP account, roster, virtual key, model failures) and the 502 tests pass.
+- `pnpm gate` (run from the worktree root, log kept in the scratchpad, not in the worktree):
+  - `gate: 2 changed file(s) against main`
+  - `PASS install (frozen)`
+  - `PASS format`
+  - `PASS lint`
+  - `PASS typecheck`
+  - `PASS tests @zilar/server`
+  - `scope: every changed file is inside the Allowed files`
+  - `GATE PASS`
+
+**Checks against the spec**
+- `service.ts` has no drizzle or `db/schema` import. Verified with grep.
+- The ais tests pass with no test edits.
+
+**Open questions / deviations**
+- None blocking. No existing test makes the new database writes fail (the ais/ai_limits inserts, the llm_virtual_keys insert, the status update or the compensating delete). The rollback tests fail the XMPP, LiteLLM and roster calls instead, so the new SQL in those paths is covered only by the happy path and by the rollback path running after those external failures.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Haiku 5.5, in one round (about 2.8 min). The lead reviewed the diff directly.
+- **Result:** the same five statements with the same columns, values and order; steps 3 and 4 are still inside the provisioning `try`, so the rollback still runs. **`ais/service.ts` now has no drizzle import.** The gate passed.
+- **Follow-up:** a historical comment at about line 471 mentions drizzle.

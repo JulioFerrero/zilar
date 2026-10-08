@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Effect } from 'effect';
 import { SqlClient, type SqlError } from 'effect/sql';
-import { eq } from 'drizzle-orm';
 import type { KeyCipher } from '../connections/crypto';
 import {
   decryptForGatewayUse,
@@ -10,7 +9,6 @@ import {
 } from '../connections/service';
 import { ROSTER_GROUP } from '../contacts/service';
 import type { ServerDatabase } from '../db/client';
-import { aiLimits, ais, llmVirtualKeys } from '../db/schema';
 import { sqlRuntimeFor } from '../effect/sql';
 import { HttpError } from '../errors';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
@@ -20,11 +18,8 @@ import { modelNameForAi } from '../ai/model-entry';
 import { isLlmProvider, litellmModelFor } from './litellm-model';
 import { defaultPersonaFor, type AiTemplate } from './templates';
 
-// The reads (`listAis`, `listActiveAisForGateway`, `findOwnedAi`,
-// `findGatewayAiEffect`) and the three chat-driven persona/limit writes run on
-// the `effect/sql` client registered for this database (see `../effect/sql`).
-// The remaining writes still use drizzle: `createAi`, `compensateCreate` and
-// `withAiEnsureLock`.
+// Every database call in this file (reads, writes and rollback) runs on the
+// `effect/sql` client registered for this database (see `../effect/sql`).
 // The exported functions stay `async` so routes and tests keep their shape
 // during the transition.
 function runSql<A, E>(
@@ -313,23 +308,22 @@ export async function createAi(deps: AiServiceDeps, input: CreateAiInput): Promi
     throw provisioningFailed();
   }
 
-  await deps.db.insert(ais).values({
-    id,
-    owner: input.ownerId,
-    name: input.name,
-    template: input.template,
-    persona,
-    providerConnectionId: input.providerConnectionId,
-    model: input.model,
-    localpart,
-    jid,
-    status: 'disabled',
-  });
-  await deps.db.insert(aiLimits).values({
-    aiId: id,
-    perDayUsd: usd(input.limits.perDayUsd),
-    perMonthUsd: usd(input.limits.perMonthUsd),
-  });
+  await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO ais (id, owner, name, template, persona, provider_connection_id, model, localpart, jid, status)
+        VALUES (${id}, ${input.ownerId}, ${input.name}, ${input.template}, ${persona}, ${input.providerConnectionId}, ${input.model}, ${localpart}, ${jid}, 'disabled')`;
+    }),
+  );
+  await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO ai_limits (ai_id, per_day_usd, per_month_usd)
+        VALUES (${id}, ${usd(input.limits.perDayUsd)}, ${usd(input.limits.perMonthUsd)})`;
+    }),
+  );
 
   let registered = false;
   let keyId: string | undefined;
@@ -368,19 +362,22 @@ export async function createAi(deps: AiServiceDeps, input: CreateAiInput): Promi
       metadata: { ai_id: id },
     });
     keyId = issued.id;
-    await deps.db.insert(llmVirtualKeys).values({
-      aiId: id,
-      litellmKeyId: issued.id,
-      litellmModelId: modelId,
-      encryptedKey: deps.cipher.encrypt(issued.key),
-      budgetUsd: usd(input.limits.perMonthUsd),
-      budgetDuration: VIRTUAL_KEY_BUDGET_DURATION,
-    });
+    await runSql(
+      deps.db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO llm_virtual_keys (ai_id, litellm_key_id, litellm_model_id, encrypted_key, budget_usd, budget_duration)
+          VALUES (${id}, ${issued.id}, ${modelId}, ${deps.cipher.encrypt(issued.key)}, ${usd(input.limits.perMonthUsd)}, ${VIRTUAL_KEY_BUDGET_DURATION})`;
+      }),
+    );
 
-    await deps.db
-      .update(ais)
-      .set({ status: 'active', updatedAt: new Date() })
-      .where(eq(ais.id, id));
+    await runSql(
+      deps.db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`UPDATE ais SET status = 'active', updated_at = ${new Date()} WHERE id = ${id}`;
+      }),
+    );
   } catch (error) {
     deps.logger.warn({ err: error, aiId: id }, 'AI provisioning failed; rolling back');
     await compensateCreate(deps, {
@@ -1373,7 +1370,13 @@ async function compensateCreate(
     }
   }
   try {
-    await deps.db.delete(ais).where(eq(ais.id, context.id));
+    await runSql(
+      deps.db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`DELETE FROM ais WHERE id = ${context.id}`;
+      }),
+    );
   } catch (error) {
     deps.logger.warn({ err: error, aiId: context.id }, 'rollback could not delete the AI rows');
   }
