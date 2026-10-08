@@ -24,6 +24,7 @@ import {
 } from '../test-support';
 import { setTestAppInviteLinks } from '../app';
 import { trustedClientIp } from './routes';
+import { joinByInviteLink, type InviteLinkServiceDeps } from './service';
 
 interface CreatedLinkBody {
   id: string;
@@ -375,7 +376,7 @@ describe('group invite links', () => {
     const groupId = await lonelyGroup(owner);
     const link = (await (await createLink(owner.cookie, groupId)).json()) as CreatedLinkBody;
 
-    // Park the first join at the start of its transaction — past its
+    // Park the first join right before its transaction — past its
     // pre-transaction member check, before its claim, while it holds no
     // lock — so the second join commits first. The first join's in-tx
     // re-check must then see the committed membership and answer
@@ -383,41 +384,40 @@ describe('group invite links', () => {
     // impossible on PGlite: parking inside the open transaction blocks the
     // second join's queries behind it. The `onConflictDoNothing` no-row
     // backstop only triggers under real Postgres concurrency.)
+    const serviceDeps: InviteLinkServiceDeps = {
+      db: context.db,
+      adminClient: context.adminClient,
+      domain: TEST_XMPP_DOMAIN,
+      logger: context.logger,
+    };
     let releaseFirst!: () => void;
     const firstGate = new Promise<void>((resolve) => {
       releaseFirst = resolve;
     });
-    let parkedTransactions = 0;
-    const db = context.db as unknown as {
-      transaction<T>(callback: (tx: unknown) => Promise<T>): Promise<T>;
+    let parked = 0;
+    const firstDeps: InviteLinkServiceDeps = {
+      ...serviceDeps,
+      beforeJoinTransaction: async () => {
+        parked += 1;
+        await firstGate;
+      },
     };
-    const realTransaction = db.transaction.bind(db);
-    let transactionCalls = 0;
-    db.transaction = ((callback: (tx: unknown) => Promise<boolean>) => {
-      transactionCalls += 1;
-      if (transactionCalls === 1) {
-        parkedTransactions += 1;
-        return firstGate.then(() => realTransaction(callback));
-      }
-      return realTransaction(callback);
-    }) as typeof db.transaction;
 
     try {
-      const first = join(link.token, friend.cookie);
+      const first = joinByInviteLink(firstDeps, link.token, friend.id);
       const deadline = Date.now() + 5000;
-      while (parkedTransactions === 0 && Date.now() < deadline) {
+      while (parked === 0 && Date.now() < deadline) {
         await new Promise((resolve) => setTimeout(resolve, 5));
       }
-      expect(parkedTransactions).toBe(1);
+      expect(parked).toBe(1);
 
-      const second = await join(link.token, friend.cookie);
-      expect(second.status).toBe(200);
-      expect(await second.json()).toEqual({ groupId, alreadyMember: false });
+      // The second join commits first: it takes the honest join path.
+      const second = await joinByInviteLink(serviceDeps, link.token, friend.id);
+      expect(second).toEqual({ groupId, alreadyMember: false });
       releaseFirst();
-      const firstResponse = await first;
-      expect(firstResponse.status).toBe(200);
+      const firstResult = await first;
       // The loser path: 200 with `alreadyMember: true`, not a second join.
-      expect(await firstResponse.json()).toEqual({ groupId, alreadyMember: true });
+      expect(firstResult).toEqual({ groupId, alreadyMember: true });
     } finally {
       releaseFirst();
     }

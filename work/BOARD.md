@@ -456,7 +456,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0606](T-0606-effect-sql-avatars-backgrounds.md) | effect/sql: avatar and background services, transactions included | planned | auto | T-0590 | |
 | [T-0607](T-0607-effect-sql-push-store-machines.md) | effect/sql: push device store and machine service, transactions included | planned | auto | T-0593 | |
 | [T-0608](T-0608-effect-sql-roles-service.md) | effect/sql: roles service, transactions included | planned | auto | T-0596 | |
-| [T-0609](T-0609-effect-sql-invite-links-service.md) | effect/sql: invite-link service and the join transaction | planned | auto | T-0596 | |
 | [T-0610](T-0610-approvals-input-schema.md) | Effect Schema: approval input schema | planned | auto | T-0596 | |
 | [T-0611](T-0611-effect-sql-group-join.md) | effect/sql: public group join transaction | planned | auto | T-0596 | |
 | [T-0612](T-0612-registry-effect-only.md) | Tool args T-G: action registry on Effect Schema only | planned | auto | T-0604 | |
@@ -642,3 +641,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0604](T-0604-tool-routine-schemas-effect.md) | Tool args T-E: tool and routine schemas on Effect Schema | 2026-10-08 |
 | [T-0599](T-0599-zod-small-trio.md) | Effect Schema: draft events, invite CLI and routine title | 2026-10-08 |
 | [T-0605](T-0605-effect-sql-topic-access.md) | effect/sql: topic access reads | 2026-10-08 |
+| [T-0609](T-0609-effect-sql-invite-links-service.md) | effect/sql: invite-link service and the join transaction | 2026-10-08 |
