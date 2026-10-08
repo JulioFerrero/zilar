@@ -458,7 +458,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0545](T-0545-effect-http-voice-transcription.md) | Effect C (HTTP): voice transcription on HttpApi | planned | auto | T-0536 | |
 | [T-0548](T-0548-effect-sql-ai-usage-search-archives.md) | Effect C1: AI usage and search archives on effect/sql | planned | auto | T-0535 | |
 | [T-0549](T-0549-agents-g8b-extract-group-ingest.md) | Agents G8b: extract the group ingest | planned | auto | T-0546 | |
-| [T-0551](T-0551-effect-mobile-api-batch-7.md) | Effect E batch 7: mobile topics, chat API | planned | auto | T-0547 | |
 | [T-0552](T-0552-effect-mobile-api-batch-8.md) | Effect E batch 8: mobile tools API (last client) | planned | auto | T-0547 | |
 | [T-0427](T-0427-mobile-forwarded-header.md) | Mobile: forwarded messages show 'Forwarded from X [in Y]' | 2026-10-06 |
 | [T-0428](T-0428-mobile-new-chat-menu-sheet.md) | Mobile: New chat menu on the kit ActionSheet with icons | 2026-10-06 |
@@ -581,3 +580,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0542](T-0542-effect-http-output-schema-check.md) | Effect C (HTTP) check: no stripped response fields | 2026-10-08 |
 | [T-0539](T-0539-effect-http-topics.md) | Effect C (HTTP): topics on HttpApi | 2026-10-08 |
 | [T-0550](T-0550-effect-mobile-api-batch-6.md) | Effect E batch 6: mobile contacts, stickers API | 2026-10-08 |
+| [T-0551](T-0551-effect-mobile-api-batch-7.md) | Effect E batch 7: mobile topics, chat API | 2026-10-08 |

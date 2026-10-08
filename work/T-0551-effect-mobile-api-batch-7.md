@@ -1,7 +1,7 @@
 ---
 id: T-0551
 title: "Effect lane E, batch 7: mobile topics-api and chat-api onto Effect Schema + the T-0506 request pipeline with the shared lenient error envelope; same exports (parseTopic and friends stay), same errors, tests unchanged"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0551-effect-mobile-api-batch-7
 model: auto
@@ -70,4 +70,74 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Converted `apps/mobile/src/lib/topics-api.ts` and `apps/mobile/src/lib/chat-api.ts`
+to the T-0506 Effect recipe (Effect Schema decodes + shared
+`errorFieldsOf` envelope + `Effect.runPromise` at the edge). Same exports,
+signatures, defaults and errors; no existing test touched.
+
+Tolerant spots and the schema construct now handling each:
+- topics-api: unknown kind/status/visibility (incl. absent key) -> `chat` /
+  `open` / `private` via `Schema.Unknown` + `withDecodingDefault` +
+  `decodeTo(..., transform(parseTopicKind/Status/Visibility))`.
+- topics-api: `roles` absent -> `[]` (`Schema.optional`), malformed role entry
+  or non-array -> row null; `approverRole` absent/null -> null
+  (`optional(NullOr(...))` + `?? null`), malformed object -> row null.
+- topics-api: `owner`/`linkUrl`/`linkLabel` stay required `NullOr`
+  (absent or wrong type -> row null, as before); `ais` entries all must parse.
+- topics-api: `chatEntryTopics` non-array/missing -> `[]`, malformed rows
+  dropped via `parseTopic` (struct wrapper + loop).
+- topics-api: `membersCanCreateTopics` any non-boolean -> `false` via lenient
+  boolean with decoding default `false`.
+- chat-api: `Me.jid` missing/non-string -> null (lenient null-string);
+  contact/DM `avatarUrl` missing/non-string -> absent (lenient optional-string).
+- chat-api: group `chatKind`/`subscriberCount`/`description` malformed ->
+  entry null (strict `optional`); `topics` non-array -> entry null, malformed
+  rows inside dropped via `parseTopic`.
+- chat-api: member `handle` null/absent/`''` -> absent
+  (`optional(NullOr(String))` + map), non-string -> detail null; member
+  `roles` absent -> `[]`, malformed -> detail null.
+- chat-api: `membersCanCreateTopics` non-boolean -> absent (lenient
+  tri-state); group `ais` absent/non-array -> `[]`, malformed entry in an
+  array -> detail null.
+- Both: network throw -> `(0, network_error)`; non-JSON error body keeps
+  per-field fallbacks (`request_failed` / `Request failed (N)`) via the
+  shared envelope; no session -> `(401, unauthorized)` before fetch;
+  undecodable success body -> `(200, invalid_response)`.
+
+Files changed:
+- `apps/mobile/src/lib/topics-api.ts` (Effect Schema + pipeline)
+- `apps/mobile/src/lib/chat-api.ts` (Effect Schema + pipeline)
+- `apps/mobile/src/lib/topics-api.effect.test.ts` (new: network/fallback/401)
+- `apps/mobile/src/lib/chat-api.effect.test.ts` (new: network/fallback/401)
+
+Commands (real results):
+- `pnpm install --prefer-offline`: ok.
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot
+  src/lib/chat-api.test.ts src/lib/chat-api.topics.test.ts
+  src/lib/topics-api.test.ts`: 3 files, 34 passed.
+- Same runner for `src/lib/topics.test.ts`, 5 chat component suites and
+  `src/store`: 352 passed, 1 skipped.
+- Same runner for the 2 new effect suites: 6 passed.
+- `pnpm gate`: GATE PASS (install, format, lint, typecheck, mobile tests;
+  scope: every changed file inside Allowed files). First gate run failed on
+  prettier for `chat-api.ts` + `topics-api.effect.test.ts`; fixed with
+  `prettier --write` on those two files, re-ran affected tests (18 passed),
+  second gate run passed.
+
+Security checklist: no secrets/tokens in logs or errors (typed errors carry
+only status/code/message); no deletes/updates here beyond the existing
+API shapes (unchanged paths/bodies); no caps/uniqueness logic; permission
+check (token present) runs before any fetch; 401/404 answers unchanged;
+no new routes; audit untouched (ids only, as before).
+
+Round 2 (fix round): fixed prereview finding 1 (non-array group `ais`
+now tolerated as `[]` via a lenient `Unknown`-with-default + array-or-undefined
+transform, instead of a strict optional array). Tests added: group detail
+with `ais: "oops"` in `chat-api.effect.test.ts` resolves with `ais: []`.
+Single tests: `chat-api.effect.test.ts` + `chat-api.test.ts`: 2 files,
+16 passed. `pnpm gate`: GATE PASS (install, format, lint, typecheck,
+mobile tests; scope: every changed file inside Allowed files).
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-08) after one auto fix round (non-array group ais now reads as []). The topics and chat mobile clients are on Effect Schema plus the T-0506 pipeline and the shared envelope, with the same exports, parse defaults and per-entry tolerance. phone:smoke passed on / and /settings/folders, and the lead opened the test group by hand: the chat list, group header (2 members, 0 AIs, 1 topic) and General topic all load live data. Pre-review clean.
