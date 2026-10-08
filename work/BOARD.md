@@ -10,7 +10,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0652](T-0652-ais-delete-and-model-clear-effect-sql.md) | effect/sql: ais delete and model-clear transactions | in-progress | auto | T-0648 | |
-| [T-0653](T-0653-stickers-drop-zod.md) | zod: stickers API without the legacy schemas | in-progress | auto | | |
 | [T-0655](T-0655-gate-affected-typecheck.md) | gate: affected-only typecheck, shared Turbo cache | in-progress | auto | | |
 | [T-0657](T-0657-tsgo-spike.md) | Spike: tsgo vs tsc on server and protocol | in-progress | auto | | |
 
@@ -685,3 +684,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0650](T-0650-handles-drop-zod.md) | handles without the legacy zod schema | 2026-10-08 |
 | [T-0651](T-0651-contact-requests-drop-zod.md) | contact requests without the legacy zod schema | 2026-10-08 |
 | [T-0654](T-0654-db-schema-drop-zod.md) | db/schema.ts enums become plain unions | 2026-10-08 |
+| [T-0653](T-0653-stickers-drop-zod.md) | stickers API without the legacy zod schemas | 2026-10-08 |

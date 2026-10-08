@@ -1,7 +1,7 @@
 ---
 id: T-0653
 title: "zod: drop the legacy schemas in stickers/api.ts (E3); discover and favorite-delete decode with the existing Effect Schemas; invalid bodies answer the same 400 invalid_request with fixed per-route messages ('Nothing to update' kept); add tests"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0653-stickers-drop-zod
 model: auto
@@ -87,4 +87,60 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**What I did**
+- Removed `import { z } from 'zod'`, `stickerVisibilityZod`, the five `legacy*BodySchema`s, `legacyMessage` and `legacyDiscoverQuerySchema` from `apps/server/src/stickers/api.ts`.
+- Replaced `matchLegacyBodyMessage` with `matchSchemaErrorMessage`, which returns the fixed per-route message by path and still reads the cached body only to tell `{}` apart for the patch route (new `isEmptyRecord` helper).
+- `discover` now decodes `record` with `Schema.decodeUnknownOption(DiscoverQuery)`; on `None` it throws the fixed 400. Updated the `DiscoverQuery` comment.
+- `removeFavorite` now decodes with `Schema.decodeUnknownOption(FavoriteBody, STRICT_PAYLOAD)`; on `None` it throws the fixed 400.
+- `importTelegram` throws the fixed telegram message when the manual `TelegramImportBody` decode fails (still after the 501 token check).
+- Updated the comments that described the zod path; also updated the `parseJsonOrNull` comment, which referenced the deleted legacy schema. Left `stickers/api.ts:724` (emoji message) and `stickers/routes.ts:5` untouched, as the spec says.
+- Added two tests in `apps/server/src/stickers/routes.test.ts`. No existing assertion changed.
+
+**Fixed messages now used**
+
+| Route | Message |
+| --- | --- |
+| telegram import | `input must be a string of 1 to 512 characters, with no other keys` |
+| sticker panel | `order must be a list of at most ${STICKER_PANEL_MAX} sticker ids, with no other keys` |
+| sticker favorites (add/remove) | `sticker_id must be a UUID, with no other keys` |
+| create pack | `title must be 1 to 60 characters and visibility private or server, with no other keys` |
+| patch pack, body `{}` | `Nothing to update` |
+| patch pack, other bodies | `title must be 1 to 60 characters, visibility private or server and order at most ${STICKERS_MAX_PER_PACK} ids, with no other keys` |
+| discover | `q must be at most 60 characters and cursor at most 128` |
+
+**Files changed**
+- `apps/server/src/stickers/api.ts`
+- `apps/server/src/stickers/routes.test.ts`
+- `work/T-0653-stickers-drop-zod.md` (status + this report only)
+
+**Commands and real results**
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/stickers/routes src/stickers/telegram-import-routes src/stickers/favorites` -> Test Files 3 passed (3), Tests 62 passed (62).
+- `git grep -n "from 'zod'" apps/server/src/stickers` -> no matches (exit 1).
+- `pnpm gate` from the repo root:
+
+```
+gate: 3 changed file(s) against main
+PASS  install (frozen)  (1.7s)
+PASS  format  (25.2s)
+PASS  lint  (1.1s)
+PASS  typecheck  (14.3s)
+PASS  tests @zilar/server  (30.2s)
+scope: every changed file is inside the Allowed files
+GATE PASS
+```
+
+**Deviations / notes**
+- I also updated the `parseJsonOrNull` comment (old lines 193-194): it said the legacy schema reports `expected object, received null`, and that schema no longer exists. Comment-only change, same file.
+- Left the emoji comment at `api.ts:724` ("Byte-identical to the old zod ...") unchanged: the spec says the emoji message does not come from zod and to leave it, and it is not in the listed comment lines.
+- No open questions.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved.
+- **Pre-review:** clean. The packet head is dd80de0d, the current HEAD.
+- **Lead check:**
+  - there is no zod import in `stickers/`;
+  - `discover` and `removeFavorite` decode with the Effect Schemas;
+  - the fixed messages match the spec, and `{}` on a PATCH keeps "Nothing to update";
+  - two new tests;
+  - no existing assertion was removed.
