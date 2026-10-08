@@ -1,7 +1,7 @@
 ---
 id: T-0578
 title: "Effect C (HTTP): first-run setup (GET /setup/status, POST /setup) onto HttpApi; per-IP limiter via clientIpFrom + socketAddressOf; item-11 wrapper kept for the route-shape test; zod body to Effect Schema with the same first-issue texts; transactions unchanged; tests unchanged"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0578-effect-http-setup
 model: auto
@@ -85,4 +85,39 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Done. First-run setup is served by Effect `HttpApi`; all listed tests pass unchanged; `pnpm gate` ends with GATE PASS and every changed file is inside the Allowed files.
+
+What I did:
+- Created `apps/server/src/setup/api.ts`: `SetupGroup` (`GET /setup/status`, `POST /setup`, no `Session` middleware — public routes) with `.prefix('/api')`, `SetupApi`, `SETUP_API_ROUTES`, and `createSetupApi(deps)`. Step order kept exactly: needsSetup 404 -> per-IP limiter 429 -> manual body decode 400 -> drizzle transaction verbatim (moved code, `takeSetupLock` + re-check + `saveMailSettings` + `createSetupInvite`) -> test send -> rollback transaction on send failure (warn with `errName` only, then 422 `mail_send_failed`) -> mailer swap -> `setup.completed` audit (ids only) -> `{ ok: true, inviteCode }`.
+- Body decode runs manually in the handler (`request.request.json` with bad-JSON-as-`null`, `Schema.decodeUnknownResult`), so the limiter still runs before the decode. First-issue texts via one `makeFilter` per field (T-0561 pitfall: `{ message }` on `isMinLength`/`isMaxLength` doesn't reach annotations in effect 4.0.2) and a `firstMessage` walk (Composite-first-child / Pointer / Filter / inner `InvalidValue` message annotation), fallback "Invalid request". `adminEmail` is `Schema.Trim` + `decodeTo` lowercase transform (T-0506 recipe) before the checks; email rule is zod v4's practical `z.email()` pattern.
+- Rewrote `apps/server/src/setup/routes.ts` as the item-11 wrapper: keeps `SetupRoutesDependencies` (with `getClientIp` now taking the Effect request, as T-0566), re-exports the rate-limit constants from `./api`, registers one `routes.on(method, path)` per `SETUP_API_ROUTES` entry, strips `SOCKET_ADDRESS_HEADER` and stamps the `getConnInfo` socket address. No zod, no Hono handlers left.
+- `apps/server/src/app.ts`: replaced `app.route('/api', createSetupRoutes(...))` with `mountEffectRoutes(app, setupApi.routes, setupApi.handler)` at the same position with the same deps. `SetupRoutesDependencies` still imported from `./setup/routes`.
+
+Files changed: `apps/server/src/setup/api.ts` (new), `apps/server/src/setup/routes.ts`, `apps/server/src/app.ts`, `work/T-0578-effect-http-setup.md`.
+
+Commands and real results:
+- `pnpm install`: ok (19.4s).
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot setup/routes.test.ts`: 16 passed.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot setup/`: 23 passed (2 files).
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot setup authz-sweep app.test`: 4 files, 37 tests, all passed.
+- Throwaway end-to-end proof (temporary test, since deleted): POST /api/setup answered byte-identical first-issue texts for all 7 custom messages (`resendApiKey must not be empty`, `resendApiKey must be at most 256 characters`, `from must not be empty`, `from must be at most 320 characters`, `adminEmail must not be empty`, `adminEmail must be at most 320 characters`, `adminEmail must be a valid email address`) plus 200 for `ADMIN@EXAMPLE.COM` (lowercase path). 1 passed, then removed.
+- `pnpm gate`: `PASS install (frozen) (2.6s)`, `PASS format (42.6s)`, `PASS lint (1.2s)`, `PASS typecheck (1.0s)`, `PASS tests @zilar/server (882.0s)`, `scope: every changed file is inside the Allowed files`, `GATE PASS`. (First gate run failed format on my 2 files — fixed with prettier on those files; second failed lint — removed 2 unused imports and 3 useless regex escapes; the regex is verified identical to zod's on 10 sample addresses.)
+
+Problems / deviations:
+- `Schema.decodeUnknownEither` does not exist in effect 4.0.2; used `Schema.decodeUnknownResult` instead — its failure is a `SchemaError` wrapper, so the message walk reads `decoded.failure.issue` (found by dumping the real tree; initial version read `.failure` directly and fell back to "Invalid request").
+- `await` is illegal inside `Effect.gen`; the send and rollback use the `Effect.promise(...).pipe(map/catchDefect)` outcome pattern from `machines/api.ts`.
+- Success schemas list every returned field (`SetupStatus`: needsSetup, mailConfigured; `SetupResult`: ok, inviteCode) — side-by-side check per guide item 8.
+
+Security checklist: secrets never logged (rollback warn carries `errName` only; 422 text is fixed); transaction + advisory lock + in-lock re-check unchanged; 404-before-429 order kept; wrapper strips client-forged socket header; audit carries ids only; no new routes (same two, covered by the authz sweep allowlist).
+
+Open questions: none.
+
 ## Review (written by Claude)
+
+**2026-10-08, lead:** approved.
+- **Pre-review:** clean, 0 findings. The packet (09:36) is newer than HEAD f7f7b485.
+- **No test file changed.**
+- **Lead check:**
+  - the step order is kept: 404, 429, 400, then the transaction with the lock, the test send, the rollback, and an audit with ids only;
+  - the client IP comes from the Effect request.
+- **Follow-up:** `clientIpFor` in `invite-links/routes.ts` is now unused.

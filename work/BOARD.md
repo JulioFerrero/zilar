@@ -454,7 +454,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0425](T-0425-mobile-profile-buttons-kit.md) | Mobile: profile and contact card buttons on the kit Button | 2026-10-06 |
 | [T-0426](T-0426-mobile-ai-sheet-buttons-kit.md) | Mobile: AI activity Refresh, tool sheet Show all/less and Close on the kit Button | 2026-10-06 |
 | [T-0571](T-0571-audit-tool-args-schema.md) | Audit + plan: AI tool argument layer from zod to Effect Schema | planned | auto | T-0564 | |
-| [T-0578](T-0578-effect-http-setup.md) | Effect C (HTTP): first-run setup on HttpApi | planned | auto | T-0572 | |
 | [T-0581](T-0581-effect-http-drafts-sse.md) | Effect C (HTTP): AI draft stream (SSE) pilot | planned | auto | T-0573 | |
 | [T-0582](T-0582-effect-http-stickers-json.md) | Effect C (HTTP): stickers part A, the JSON routes | planned | auto | T-0577 | |
 | [T-0586](T-0586-effect-http-gifs.md) | Effect C (HTTP): GIF search, trending and media proxy | planned | auto | T-0580 | |
@@ -618,3 +617,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0580](T-0580-effect-http-files.md) | Effect C (HTTP): file proxy with a streamed body | 2026-10-08 |
 | [T-0584](T-0584-effect-audit-service.md) | Effect: audit service on effect/sql and Effect Schema | 2026-10-08 |
 | [T-0585](T-0585-delete-ai-virtual-keys-spike.md) | Delete the unmounted /ai/virtual-keys spike | 2026-10-08 |
+| [T-0578](T-0578-effect-http-setup.md) | Effect C (HTTP): first-run setup on HttpApi | 2026-10-08 |

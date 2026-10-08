@@ -16,7 +16,8 @@ import { createAuditApi } from './audit/api';
 import type { Auth } from './auth/auth';
 import { createAuthApi } from './auth/api';
 import { CurrentMailer, createMailer } from './auth/mailer';
-import { createSetupRoutes, type SetupRoutesDependencies } from './setup/routes';
+import { createSetupApi } from './setup/api';
+import { type SetupRoutesDependencies } from './setup/routes';
 import { createGetBotToken } from './integrations/routes';
 import { createIntegrationsApi } from './integrations/api';
 import { settingsCipherFor } from './setup/settings';
@@ -316,18 +317,16 @@ export function createApp({
   // Without an explicit mailer the routes build one from the config, like
   // `index.ts` does for production.
   const currentMailer = mailer ?? new CurrentMailer(createMailer(config, logger));
-  app.route(
-    '/api',
-    createSetupRoutes({
-      auth,
-      db,
-      config,
-      mailer: currentMailer,
-      logger,
-      audit: auditRecorder,
-      ...setup,
-    }),
-  );
+  const setupApi = createSetupApi({
+    auth,
+    db,
+    config,
+    mailer: currentMailer,
+    logger,
+    audit: auditRecorder,
+    ...setup,
+  });
+  mountEffectRoutes(app, setupApi.routes, setupApi.handler);
   const contactsApi = createContactsApi({ auth, db, config, logger });
   mountEffectRoutes(app, contactsApi.routes, contactsApi.handler);
   // @usernames and contact requests (T-0163): session-required, rate
