@@ -1,10 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { Effect } from 'effect';
 import { SqlClient, type SqlError } from 'effect/sql';
-import { eq } from 'drizzle-orm';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
-import { groups, topicMembers, topicRoleAccess, topics } from '../db/schema';
 import { HttpError } from '../errors';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { randomRoomLocalpart, type InviteLogger } from '../groups/service';
@@ -227,11 +225,30 @@ async function assertMembersAreGroupMembers(
   }
 }
 
+// Removes a half-created topic: its member rows first, then the topic row.
+async function deleteTopicRows(db: ServerDatabase, topicId: string): Promise<void> {
+  await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`DELETE FROM topic_members WHERE topic_id = ${topicId}`;
+      yield* sql`DELETE FROM topics WHERE id = ${topicId}`;
+    }),
+  );
+}
+
 export async function createTopic(
   deps: TopicServiceDeps,
   input: CreateTopicInput,
 ): Promise<TopicRow> {
-  const [group] = await deps.db.select().from(groups).where(eq(groups.id, input.groupId)).limit(1);
+  const [group] = await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ kind: string; membersCanCreateTopics: boolean }>`
+        SELECT * FROM groups WHERE id = ${input.groupId} LIMIT 1`;
+    }),
+  );
   const membership = group ? await getGroupMembership(deps.db, input.groupId, input.actorId) : null;
   // A stranger sees the same 404 as a missing group.
   if (!group || !membership) {
@@ -267,26 +284,42 @@ export async function createTopic(
     const room = await uniqueRoomLocalpart(deps.db, deps.adminClient);
     roomLocalpart = room.localpart;
     roomCreated = room.roomCreated;
-    await deps.db.insert(topics).values({
-      id: topicId,
-      groupId: input.groupId,
-      name: input.name,
-      glyph: input.glyph ?? defaultGlyph(input.name),
-      roomLocalpart,
-      visibility,
-      kind: input.kind ?? 'chat',
-      status: 'open',
-      ownerUserId,
-      ownerAiId,
-      linkUrl: input.linkUrl ?? null,
-      linkLabel: input.linkLabel ?? null,
-      isGeneral: false,
-      createdBy: input.actorId,
-    });
+    await runSql(
+      deps.db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO topics ${sql.insert({
+          id: topicId,
+          group_id: input.groupId,
+          name: input.name,
+          glyph: input.glyph ?? defaultGlyph(input.name),
+          room_localpart: roomLocalpart,
+          visibility,
+          kind: input.kind ?? 'chat',
+          status: 'open',
+          owner_user_id: ownerUserId,
+          owner_ai_id: ownerAiId,
+          link_url: input.linkUrl ?? null,
+          link_label: input.linkLabel ?? null,
+          is_general: false,
+          created_by: input.actorId,
+        })}`;
+      }),
+    );
     if (visibility === 'private') {
-      await deps.db
-        .insert(topicMembers)
-        .values(memberIds.map((userId) => ({ topicId, userId, addedBy: input.actorId })));
+      await runSql(
+        deps.db,
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO topic_members ${sql.insert(
+            memberIds.map((userId) => ({
+              topic_id: topicId,
+              user_id: userId,
+              added_by: input.actorId,
+            })),
+          )}`;
+        }),
+      );
     }
   } catch (error) {
     if (roomCreated || roomLocalpart !== '') {
@@ -294,12 +327,11 @@ export async function createTopic(
     }
     // Roll the row back when the insert raced another writer (name or
     // localpart clashed after the check): the room is gone either way.
-    await deps.db.delete(topicMembers).where(eq(topicMembers.topicId, topicId));
-    await deps.db.delete(topics).where(eq(topics.id, topicId));
+    await deleteTopicRows(deps.db, topicId);
     throw mapXmppError(error);
   }
 
-  const [topic] = await deps.db.select().from(topics).where(eq(topics.id, topicId)).limit(1);
+  const topic = await getTopic(deps.db, topicId);
   if (!topic) {
     if (roomLocalpart !== '') {
       await destroyQuietly(deps.adminClient, roomLocalpart);
@@ -310,8 +342,7 @@ export async function createTopic(
     await syncTopicRoom(deps, topic);
   } catch (error) {
     await destroyQuietly(deps.adminClient, roomLocalpart);
-    await deps.db.delete(topicMembers).where(eq(topicMembers.topicId, topicId));
-    await deps.db.delete(topics).where(eq(topics.id, topicId));
+    await deleteTopicRows(deps.db, topicId);
     throw error instanceof HttpError
       ? error
       : new HttpError(502, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
@@ -320,6 +351,17 @@ export async function createTopic(
     await deps.audit.record(toAuditEntry(topic, 'topic.created', input.actorId));
   }
   return topic;
+}
+
+// effect/sql writes column names as given (the client has no query-name
+// transform), so the camelCase patch becomes snake_case columns first.
+function snakeCaseKeys(patch: Partial<TopicRow>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(patch).map(([key, value]) => [
+      key.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`),
+      value,
+    ]),
+  );
 }
 
 export interface PatchTopicInput extends PatchTopicBody {
@@ -423,33 +465,52 @@ export async function patchTopic(
   const goingPrivate = topic.visibility === 'public' && nextVisibility === 'private';
   const goingPublic = topic.visibility === 'private' && nextVisibility === 'public';
 
-  await deps.db.update(topics).set(patch).where(eq(topics.id, topic.id));
+  await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`UPDATE topics SET ${sql.update(snakeCaseKeys(patch))} WHERE id = ${topic.id}`;
+    }),
+  );
   if (goingPrivate) {
     const memberIds = [...new Set(input.memberIds ?? [])];
     if (!memberIds.includes(input.actorId)) {
       memberIds.push(input.actorId);
     }
-    await deps.db
-      .insert(topicMembers)
-      .values(memberIds.map((userId) => ({ topicId: topic.id, userId, addedBy: input.actorId })))
-      .onConflictDoNothing();
+    await runSql(
+      deps.db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO topic_members ${sql.insert(
+          memberIds.map((userId) => ({
+            topic_id: topic.id,
+            user_id: userId,
+            added_by: input.actorId,
+          })),
+        )} ON CONFLICT DO NOTHING`;
+      }),
+    );
   }
   // Going public ends everything private access rested on: direct members,
   // attached roles and the approver role. Clearing the roles now keeps them
   // from silently coming back if the topic is made private again.
   let clearedRoleIds: string[] = [];
   if (goingPublic) {
-    await deps.db.delete(topicMembers).where(eq(topicMembers.topicId, topic.id));
-    const attached = await deps.db
-      .select({ roleId: topicRoleAccess.roleId })
-      .from(topicRoleAccess)
-      .where(eq(topicRoleAccess.topicId, topic.id));
-    clearedRoleIds = attached.map((row) => row.roleId);
-    await deps.db.delete(topicRoleAccess).where(eq(topicRoleAccess.topicId, topic.id));
-    await deps.db.update(topics).set({ approverRoleId: null }).where(eq(topics.id, topic.id));
+    clearedRoleIds = await runSql(
+      deps.db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`DELETE FROM topic_members WHERE topic_id = ${topic.id}`;
+        const attached = yield* sql<{ roleId: string }>`
+          SELECT role_id FROM topic_role_access WHERE topic_id = ${topic.id}`;
+        yield* sql`DELETE FROM topic_role_access WHERE topic_id = ${topic.id}`;
+        yield* sql`UPDATE topics SET approver_role_id = NULL WHERE id = ${topic.id}`;
+        return attached.map((row) => row.roleId);
+      }),
+    );
   }
 
-  const [updated] = await deps.db.select().from(topics).where(eq(topics.id, topic.id)).limit(1);
+  const updated = await getTopic(deps.db, topic.id);
   if (!updated) {
     throw toMissingTopic();
   }
