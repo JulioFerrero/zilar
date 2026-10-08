@@ -116,6 +116,13 @@ describe('parseRoutineSchedule', () => {
     expect(parseRoutineSchedule({ kind: 'interval', everyMinutes: 60, jitter: 5 }).ok).toBe(false);
     expect(parseRoutineSchedule(null).ok).toBe(false);
   });
+
+  it('names the union for an unknown kind', () => {
+    expect(parseRoutineSchedule({ kind: 'weekly' })).toEqual({
+      ok: false,
+      message: "kind must be 'daily' or 'interval'",
+    });
+  });
 });
 
 describe('nextRunAfter (interval)', () => {

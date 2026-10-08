@@ -1,7 +1,7 @@
 ---
 id: T-0604
 title: "Tool args T-E: the coupled tool + routine schemas (tools/schemas.ts, routines/schedule.ts, tools/adapters.ts, tools/service.ts) zod to Effect Schema with the §3.1 custom texts byte-identical; adapter casts flip to the Effect type; parseToolVersionInput/parseRoutineSchedule keep their { ok } signatures; tools/adapters.test parse calls switch; one schedule union test"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0604-tool-routine-schemas-effect
 model: auto
@@ -74,4 +74,161 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+
+Converted the four coupled files from zod to Effect Schema, keeping the
+`{ ok }` helper signatures and every §3.1 text byte-identical.
+
+- `apps/server/src/tools/schemas.ts`: `toolNameSchema`,
+  `toolDescriptionSchema`, `toolMessageSchema`, `toolSourceSchema`,
+  `singleHostSchema` (trim, then the ten rules, then lowercase),
+  `toolHostsSchema` (max 5 then dedupe, `Schema.mutable(Schema.Array(...))`)
+  and `toolVersionInputSchema` (`struct()` from `@zilar/protocol`, so decoded
+  fields stay mutable like the zod types). `parseToolVersionInput` keeps its
+  `{ ok }` signature; unknown keys are stripped (the old schema was a
+  non-strict `z.object`).
+- `apps/server/src/routines/schedule.ts`: `dailyScheduleSchema`,
+  `intervalScheduleSchema`, `routineScheduleSchema` (`Schema.Union` of two
+  structs with a `kind` literal), the exported types via
+  `Schema.Schema.Type`, and `parseRoutineSchedule` (strict decode, keeps its
+  `{ ok }` signature and the daily `weekdays` default). The union's empty
+  `AnyOf` returns the lead-mandated fixed text
+  `kind must be 'daily' or 'interval'`.
+- `apps/server/src/tools/adapters.ts`: all arg schemas on `struct()` +
+  `Effect Schema`; dropped the zod import; `inputField` return type and the
+  ten `as unknown as z.ZodType<unknown>` casts flipped to
+  `Schema.Codec<unknown, unknown, never>`; `toolSaveArgsSchema` no longer
+  calls `.strict()` (strictness comes from the gateway's decode option).
+- `apps/server/src/tools/service.ts`: `toolHostsSchema.parse(...)` →
+  `Schema.decodeUnknownSync(toolHostsSchema)(...)` (still throws on bad
+  input); added the `effect` import.
+- `apps/server/src/tools/adapters.test.ts`: dropped the zod import; the five
+  parse sites now use `decodeActionArgs` from `../actions/registry` with the
+  same expectations.
+- `apps/server/src/routines/schedule.test.ts`: one new test pinning
+  `parseRoutineSchedule({ kind: 'weekly' })` → `kind must be 'daily' or 'interval'`.
+
+`EFFECT_GUIDE.md` "custom messages" and the task say the `{ message }` option
+on `isMinLength`/`isMaxLength` does not reach the issue annotations, so every
+custom rule is a `Schema.makeFilter` that returns the text. A small issue-tree
+walker (first custom `InvalidValue`/`Filter` annotation, else the error
+message's first line) extracts the first message in `parseToolVersionInput`
+and `parseRoutineSchedule`.
+
+### Files changed
+
+All inside the Allowed files:
+`apps/server/src/tools/schemas.ts`, `apps/server/src/routines/schedule.ts`,
+`apps/server/src/tools/adapters.ts`, `apps/server/src/tools/service.ts`,
+`apps/server/src/tools/adapters.test.ts`,
+`apps/server/src/routines/schedule.test.ts`,
+`work/T-0604-tool-routine-schemas-effect.md`.
+
+### Commands run
+
+Single-file runs while working (both green):
+
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/routines/schedule.test.ts`
+  → 1 file, 23 passed.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/tools/adapters.test.ts`
+  → 1 file, 27 passed.
+
+Task's Checks command:
+
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot tools routines actions`
+  → 25 files, 411 passed.
+
+`pnpm gate` (first run failed only on `format`; I ran
+`pnpm exec prettier --write` on the three flagged files, then re-ran):
+
+```
+gate: 7 changed file(s) against main
+PASS  install (frozen)  (1.6s)
+PASS  format  (20.7s)
+PASS  lint  (0.9s)
+PASS  typecheck  (9.8s)
+PASS  tests @zilar/server  (352.8s)
+scope: every changed file is inside the Allowed files
+GATE PASS
+```
+
+### Text probe (`pnpm --filter @zilar/server exec tsx -e "..."`, final code)
+
+32 custom texts across the four files; all PASS. The wildcard text is
+unreachable through the composed `singleHostSchema` (the charset regex rejects
+`*` first, exactly as the old zod chain did), so it is probed in isolation.
+
+```
+PASS name: "name must match ^[a-z][a-z0-9_-]{1,39}$"
+PASS description-empty: "description must not be empty"
+PASS description-max: "description must be at most 200 characters"
+PASS description-control: "description must not contain control characters"
+PASS message-empty: "message must not be empty"
+PASS message-max: "message must be at most 200 characters"
+PASS message-control: "message must not contain control characters"
+PASS source-empty: "source must not be empty"
+PASS source-max: "source must be at most 65536 bytes"
+PASS host-empty-entry: "hosts must not contain an empty entry"
+PASS host-max253: "each host must be at most 253 characters"
+PASS host-charset: "each host must be letters, digits, dots or hyphens"
+PASS host-needs-dot: "each host must contain at least one dot"
+PASS host-start-end-dot: "each host must not start or end with a dot"
+PASS host-empty-label: "each host must not contain an empty label"
+PASS host-ip: "each host must not be an IP literal"
+PASS host-label-len: "each host label must be 1-63 characters"
+PASS host-label-hyphen: "each host label must not start or end with a hyphen"
+PASS hosts-max: "at most 5 hosts"
+PASS host-wildcard(isolated): "each host must not contain a wildcard"
+PASS time: "time must be HH:MM (00:00-23:59)"
+PASS timezone-empty: "timezone must not be empty"
+PASS timezone-unknown: "unknown IANA time zone"
+PASS weekdays-dup: "weekdays must not contain duplicates"
+PASS everyMinutes-int: "everyMinutes must be an integer"
+PASS everyMinutes-min: "everyMinutes must be at least 60"
+PASS everyMinutes-max: "everyMinutes must be at most 10080"
+PASS union-kind: "kind must be 'daily' or 'interval'"
+PASS tool.run-input: "input must serialise to at most 16384 bytes"
+PASS routine.schedule-input: "input must serialise to at most 2048 bytes"
+PASS routine-title-empty: "title must not be empty"
+PASS routine-title-max: "title must be at most 80 characters"
+```
+
+### Deviations / notes
+
+- **33 vs 32 texts.** §3.1 has 31 message rows; row 250 covers two texts
+  (`tool.run` 16384 and `routine.schedule` 2048), and the union adds one. The
+  `lang must be 2-3 letters` text is in `web-tools/adapters.ts`, which is T-D's
+  Allowed file, not this task's. Counted within these four files: 32. All pass.
+- **No `Schema.Trim` on description/message.** The plan §3.1 table writes
+  `Schema.Trim.check(...)` for `tools/schemas.ts:20,21,30,31`, but the zod
+  code there has no `.trim()` (`tools/schemas.ts` uses `z.string().min/max`).
+  Adding trim would change accept/reject behaviour (a whitespace-only
+  description is accepted today, rejected after trim), so I used plain
+  `Schema.String.check(...)`. Trim is kept only where zod had it
+  (`singleHostSchema`).
+- **Custom-message construction.** As instructed, every custom text is a
+  `Schema.makeFilter` (not `{ message }` on `isMinLength`/`isMaxLength`),
+  because Effect 4.0.2 drops those annotations and the `parse*` helpers walk
+  the issue tree.
+- **`toolVersionInputSchema` stays non-strict** for `parseToolVersionInput`
+  (strips unknown keys, matching the old `z.object`); the adapter path applies
+  `onExcessProperty: 'error'` in `decodeActionArgs`, matching the old
+  `toolVersionInputSchema.strict()`.
+- **Union text** is the fixed `kind must be 'daily' or 'interval'` from the
+  task (the plan's `Invalid discriminator value...` wording is overridden).
+
+### Open questions
+
+None.
+
 ## Review (written by Claude)
+
+**2026-10-08, lead:** approved.
+- **Pre-review:** clean, 1 nit. The packet (14:35) is newer than HEAD f34d6f03.
+- **Lead check:**
+  - the four files have no zod;
+  - the probe passes all 32 texts in scope (the 33rd, `lang`, is in T-0598's file);
+  - the union text is pinned by the one new `schedule.test.ts` case;
+  - the `adapters.test.ts` changes are only the parse-call swaps, with the same expectations;
+  - not adding `Trim` where zod had none is correct (the plan table was wrong there).
+- **Follow-up (nit):** the `schedule.ts:2` header still says zod.

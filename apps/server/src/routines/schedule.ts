@@ -10,69 +10,138 @@
 //   (fall back) runs once, at the first occurrence.
 // - `{ kind: 'interval', everyMinutes: number }` with
 //   60 <= everyMinutes <= 10 080: nothing runs more often than hourly.
-import { z } from 'zod';
+import { Exit, Schema, SchemaIssue } from 'effect';
+import { struct } from '@zilar/protocol';
 
 export const MIN_INTERVAL_MINUTES = 60;
 export const MAX_INTERVAL_MINUTES = 10_080;
 
-const dailyScheduleSchema = z
-  .object({
-    kind: z.literal('daily'),
-    time: z
-      .string()
-      .regex(/^([01]\d|2[0-3]):[0-5]\d$/, { message: 'time must be HH:MM (00:00-23:59)' }),
-    timezone: z.string().min(1, { message: 'timezone must not be empty' }),
-    weekdays: z.array(z.number().int().min(1).max(7)).min(1).max(7).optional(),
-  })
-  .strict()
-  .superRefine((value, ctx) => {
-    if (!isKnownTimeZone(value.timezone)) {
-      ctx.addIssue({ code: 'custom', path: ['timezone'], message: 'unknown IANA time zone' });
-    }
-    if (value.weekdays !== undefined && new Set(value.weekdays).size !== value.weekdays.length) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['weekdays'],
-        message: 'weekdays must not contain duplicates',
-      });
-    }
-  });
+// Every custom message is a `makeFilter` text: effect 4 drops the
+// `{ message }` option on `isMinLength`/`isMaxLength`, but a filter that
+// returns the text carries it on the issue annotations.
+const timeSchema = Schema.String.check(
+  Schema.makeFilter((value: string) =>
+    /^([01]\d|2[0-3]):[0-5]\d$/.test(value) ? undefined : 'time must be HH:MM (00:00-23:59)',
+  ),
+);
 
-const intervalScheduleSchema = z
-  .object({
-    kind: z.literal('interval'),
-    everyMinutes: z
-      .number()
-      .int({ message: 'everyMinutes must be an integer' })
-      .min(MIN_INTERVAL_MINUTES, {
-        message: `everyMinutes must be at least ${MIN_INTERVAL_MINUTES}`,
-      })
-      .max(MAX_INTERVAL_MINUTES, {
-        message: `everyMinutes must be at most ${MAX_INTERVAL_MINUTES}`,
-      }),
-  })
-  .strict();
+const timezoneSchema = Schema.String.check(
+  Schema.makeFilter((value: string) =>
+    value.length >= 1 ? undefined : 'timezone must not be empty',
+  ),
+);
 
-export const routineScheduleSchema = z.discriminatedUnion('kind', [
-  dailyScheduleSchema,
-  intervalScheduleSchema,
-]);
+const everyMinutesSchema = Schema.Finite.check(
+  Schema.makeFilter((value: number) =>
+    Number.isInteger(value) ? undefined : 'everyMinutes must be an integer',
+  ),
+  Schema.makeFilter((value: number) =>
+    value >= MIN_INTERVAL_MINUTES
+      ? undefined
+      : `everyMinutes must be at least ${MIN_INTERVAL_MINUTES}`,
+  ),
+  Schema.makeFilter((value: number) =>
+    value <= MAX_INTERVAL_MINUTES
+      ? undefined
+      : `everyMinutes must be at most ${MAX_INTERVAL_MINUTES}`,
+  ),
+);
 
-export type DailySchedule = z.infer<typeof dailyScheduleSchema>;
-export type IntervalSchedule = z.infer<typeof intervalScheduleSchema>;
-export type RoutineSchedule = z.infer<typeof routineScheduleSchema>;
+const dailyScheduleSchema = struct({
+  kind: Schema.Literal('daily'),
+  time: timeSchema,
+  timezone: timezoneSchema,
+  weekdays: Schema.optional(
+    Schema.mutable(
+      Schema.Array(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 7 }))),
+    ).check(Schema.isMinLength(1), Schema.isMaxLength(7)),
+  ),
+}).check(
+  Schema.makeFilter((value) =>
+    isKnownTimeZone(value.timezone) ? undefined : 'unknown IANA time zone',
+  ),
+  Schema.makeFilter((value) =>
+    value.weekdays === undefined || new Set(value.weekdays).size === value.weekdays.length
+      ? undefined
+      : 'weekdays must not contain duplicates',
+  ),
+);
+
+const intervalScheduleSchema = struct({
+  kind: Schema.Literal('interval'),
+  everyMinutes: everyMinutesSchema,
+});
+
+export const routineScheduleSchema = Schema.Union([dailyScheduleSchema, intervalScheduleSchema]);
+
+export type DailySchedule = Schema.Schema.Type<typeof dailyScheduleSchema>;
+export type IntervalSchedule = Schema.Schema.Type<typeof intervalScheduleSchema>;
+export type RoutineSchedule = Schema.Schema.Type<typeof routineScheduleSchema>;
 
 export type ParsedSchedule = { ok: true; value: RoutineSchedule } | { ok: false; message: string };
 
+// Walks the issue tree depth-first for the first custom `makeFilter` text.
+function firstValidationMessage(issue: SchemaIssue.Issue): string | undefined {
+  switch (issue._tag) {
+    case 'Composite':
+    case 'AnyOf':
+      for (const child of issue.issues) {
+        const message = firstValidationMessage(child);
+        if (message !== undefined) {
+          return message;
+        }
+      }
+      return undefined;
+    case 'Pointer':
+    case 'Encoding':
+      return firstValidationMessage(issue.issue);
+    case 'Filter': {
+      const message = issue.filter.annotations?.message;
+      if (typeof message === 'string' && message.length > 0) {
+        return message;
+      }
+      return firstValidationMessage(issue.issue);
+    }
+    case 'InvalidValue': {
+      const message = issue.annotations?.message;
+      return typeof message === 'string' && message.length > 0 ? message : undefined;
+    }
+    default:
+      return undefined;
+  }
+}
+
+// A union whose `kind` matches no member decodes to an empty `AnyOf` with no
+// child issues, so no filter text is available: name the discriminator the
+// way the old zod error did.
+function scheduleMessage(issue: SchemaIssue.Issue, fullMessage: string): string {
+  const custom = firstValidationMessage(issue);
+  if (custom !== undefined) {
+    return custom;
+  }
+  if (issue._tag === 'AnyOf' && issue.issues.length === 0) {
+    return "kind must be 'daily' or 'interval'";
+  }
+  return fullMessage.split('\n')[0] ?? 'Invalid schedule';
+}
+
 // Validates an unknown schedule value at the boundary. `weekdays` defaults
 // to all days; the normalised value always carries it explicitly for daily
-// schedules.
+// schedules. Unknown keys are rejected, like the old strict zod schemas.
 export function parseRoutineSchedule(input: unknown): ParsedSchedule {
-  const parsed = routineScheduleSchema.safeParse(input);
-  if (!parsed.success) {
-    return { ok: false, message: parsed.error.issues[0]?.message ?? 'Invalid schedule' };
+  const exit = Schema.decodeUnknownExit(routineScheduleSchema, {
+    errors: 'all',
+    onExcessProperty: 'error',
+  })(input);
+  if (!Exit.isSuccess(exit)) {
+    for (const reason of exit.cause.reasons) {
+      if (reason._tag === 'Fail') {
+        return { ok: false, message: scheduleMessage(reason.error.issue, reason.error.message) };
+      }
+    }
+    return { ok: false, message: 'Invalid schedule' };
   }
-  const value = parsed.data;
+  const value = exit.value;
   if (value.kind === 'daily') {
     return {
       ok: true,

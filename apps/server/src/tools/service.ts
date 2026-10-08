@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { Schema } from 'effect';
 import { and, asc, count, desc, eq, inArray, isNull } from 'drizzle-orm';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
@@ -669,7 +670,7 @@ export async function approveToolHosts(
   now: Date,
   audit?: AuditRecorder,
 ): Promise<ToolDetail> {
-  const hosts = toolHostsSchema.parse(input.hosts);
+  const hosts = Schema.decodeUnknownSync(toolHostsSchema)(input.hosts);
   const tool = await getToolRow(db, input.toolId);
   if (!tool) {
     throw new ToolServiceError('not_found', 'Tool not found');
