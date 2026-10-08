@@ -1,18 +1,9 @@
 import { randomBytes } from 'node:crypto';
-import { and, desc, eq, inArray, lt, or } from 'drizzle-orm';
-import { z } from 'zod';
-import { ARGS_HASH_PATTERN } from '@zilar/protocol';
+import { Effect, Exit, Schema, SchemaIssue } from 'effect';
+import { SqlClient, SqlError } from 'effect/sql';
+import { ARGS_HASH_PATTERN, struct } from '@zilar/protocol';
 import type { ServerDatabase } from '../db/client';
-import {
-  ais,
-  auditLog,
-  groupMemberRoles,
-  groupMembers,
-  groups,
-  topicMembers,
-  topicRoleAccess,
-  topics,
-} from '../db/schema';
+import { sqlRuntimeFor } from '../effect/sql';
 
 // `action` is dotted: `domain.verb`, lowercase + underscores. Same regex the
 // protocol's approval schema already enforces for similar dotted ids.
@@ -22,38 +13,122 @@ const ACTION_PATTERN = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/;
 // quietly start storing secrets, free text or big payloads.
 const MAX_DETAIL_BYTES = 2 * 1024;
 
+// Every query runs on the `effect/sql` client registered for this database
+// (see `../effect/sql`). The exported functions stay `async` so routes and
+// tests keep their shape during the transition.
+function runSql<A>(
+  db: ServerDatabase,
+  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
+): Promise<A> {
+  return sqlRuntimeFor(db).runPromise(effect);
+}
+
 // We accept the few cost currencies the rest of the platform stores.
-const costCurrencySchema = z.enum(['EUR', 'USD']);
+const costCurrencySchema = Schema.Literals(['EUR', 'USD']);
 
 // `result` is a small closed set: the row must tell the reader whether the
 // action succeeded, was refused by policy, or failed because of an error.
-const resultSchema = z.enum(['ok', 'denied', 'error']);
+const resultSchema = Schema.Literals(['ok', 'denied', 'error']);
+
+// Nullable ids are strings of 1 to 128 characters.
+const nullableId = Schema.NullOr(
+  Schema.String.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(128))),
+);
+
+// Effect's `Record` does not run checks on the key schema, so both the key
+// length bound (1 to 64 characters, like the old zod key schema) and the
+// serialised-size bound live in one filter on the whole record. A filter that
+// returns a string carries it (see `entryIssueMessage` below), unlike the
+// `{ message }` option on length checks in Effect 4.0.2.
+const detailSchema = Schema.NullOr(
+  Schema.Record(Schema.String, Schema.Unknown).pipe(
+    Schema.check(
+      Schema.makeFilter((value) => {
+        for (const key of Object.keys(value)) {
+          if (key.length < 1 || key.length > 64) {
+            return 'detail keys must be 1 to 64 characters';
+          }
+        }
+        return serialisedSize(value) <= MAX_DETAIL_BYTES
+          ? undefined
+          : `detail must serialise to at most ${MAX_DETAIL_BYTES} bytes`;
+      }),
+    ),
+  ),
+);
 
 // The boundary validation: callers (the approvals and machines routes) hand
 // us an entry, and we reject malformed ones before they touch the database.
 // The spec forbids any free text: only ids, the action, a hash, optional
-// cost, and a small `detail` object.
-const entrySchema = z
-  .object({
-    actorUserId: z.string().min(1).max(128).nullable(),
-    aiId: z.string().min(1).max(128).nullable(),
-    groupId: z.string().min(1).max(128).nullable(),
-    action: z.string().regex(ACTION_PATTERN).max(100),
-    subjectId: z.string().min(1).max(128).nullable(),
-    argsHash: z.string().regex(ARGS_HASH_PATTERN).nullable(),
-    costCurrency: costCurrencySchema.nullable(),
-    costAmount: z.number().finite().nonnegative().nullable(),
-    result: resultSchema,
-    detail: z
-      .record(z.string().min(1).max(64), z.unknown())
-      .nullable()
-      .refine((value) => value === null || serialisedSize(value) <= MAX_DETAIL_BYTES, {
-        message: `detail must serialise to at most ${MAX_DETAIL_BYTES} bytes`,
-      }),
-  })
-  .strict();
+// cost, and a small `detail` object. `struct` (from `@zilar/protocol`) keeps
+// the zod shape: mutable fields, and excess keys rejected at decode time via
+// `onExcessProperty: 'error'` (see `decodeEntry`).
+const entrySchema = struct({
+  actorUserId: nullableId,
+  aiId: nullableId,
+  groupId: nullableId,
+  action: Schema.String.pipe(
+    Schema.check(Schema.isPattern(ACTION_PATTERN), Schema.isMaxLength(100)),
+  ),
+  subjectId: nullableId,
+  argsHash: Schema.NullOr(Schema.String.pipe(Schema.check(Schema.isPattern(ARGS_HASH_PATTERN)))),
+  costCurrency: Schema.NullOr(costCurrencySchema),
+  costAmount: Schema.NullOr(Schema.Finite.pipe(Schema.check(Schema.isGreaterThanOrEqualTo(0)))),
+  result: resultSchema,
+  detail: detailSchema,
+});
 
-export type AuditEntry = z.infer<typeof entrySchema>;
+export type AuditEntry = typeof entrySchema.Type;
+
+// The first decode message, like the old `parsed.error.issues[0]?.message`.
+// Walks the issue tree depth-first: a filter that returned a string carries
+// it on the `InvalidValue` message annotation. In Effect v4 the `{ message }`
+// option on length/pattern checks does NOT reach those annotations, but the
+// `SchemaError.message` already carries the filter text — so the size message
+// is matched there first (a test asserts its exact text).
+function firstIssueMessage(issue: SchemaIssue.Issue): string | undefined {
+  switch (issue._tag) {
+    case 'Composite':
+    case 'AnyOf':
+      for (const child of issue.issues) {
+        const message = firstIssueMessage(child);
+        if (message !== undefined) {
+          return message;
+        }
+      }
+      return undefined;
+    case 'Pointer':
+    case 'Filter':
+    case 'Encoding':
+      return firstIssueMessage(issue.issue);
+    case 'InvalidValue': {
+      const message = issue.annotations?.message;
+      return typeof message === 'string' && message.length > 0 ? message : undefined;
+    }
+    default:
+      return undefined;
+  }
+}
+
+function decodeEntry(entry: AuditEntry): AuditEntry {
+  const exit = Schema.decodeUnknownExit(entrySchema, {
+    errors: 'all',
+    onExcessProperty: 'error',
+  })(entry);
+  if (Exit.isSuccess(exit)) {
+    return exit.value;
+  }
+  for (const reason of exit.cause.reasons) {
+    if (reason._tag === 'Fail') {
+      const sizeText = `detail must serialise to at most ${MAX_DETAIL_BYTES} bytes`;
+      if (reason.error.message.includes(sizeText)) {
+        throw new Error(`Invalid audit entry: ${sizeText}`);
+      }
+      throw new Error(`Invalid audit entry: ${firstIssueMessage(reason.error.issue) ?? 'unknown'}`);
+    }
+  }
+  throw new Error('Invalid audit entry: unknown');
+}
 
 export interface AuditRecorderDeps {
   db: ServerDatabase;
@@ -104,34 +179,38 @@ export function createAuditRecorder({
 // must not fail on an audit write wrap this in `createAuditRecorder`. The
 // `now` parameter is injectable so tests can pin the timestamp.
 export async function recordAudit(db: ServerDatabase, entry: AuditEntry, now: Date): Promise<void> {
-  const parsed = entrySchema.safeParse(entry);
-  if (!parsed.success) {
-    throw new Error(`Invalid audit entry: ${parsed.error.issues[0]?.message ?? 'unknown'}`);
-  }
-  await db.insert(auditLog).values({
-    id: randomId(),
-    at: now,
-    actorUserId: parsed.data.actorUserId,
-    aiId: parsed.data.aiId,
-    groupId: parsed.data.groupId,
-    action: parsed.data.action,
-    subjectId: parsed.data.subjectId,
-    argsHash: parsed.data.argsHash,
-    costCurrency: parsed.data.costCurrency,
-    costAmount: parsed.data.costAmount === null ? null : parsed.data.costAmount.toFixed(2),
-    result: parsed.data.result,
-    detail: parsed.data.detail,
-  });
+  const parsed = decodeEntry(entry);
+  const id = randomId();
+  const costAmount = parsed.costAmount === null ? null : parsed.costAmount.toFixed(2);
+  await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      // jsonb is written as a cast string, or NULL when there is no detail.
+      const detail =
+        parsed.detail === null ? sql`NULL` : sql`${JSON.stringify(parsed.detail)}::jsonb`;
+      yield* sql`INSERT INTO audit_log (
+          id, at, actor_user_id, ai_id, group_id, action, subject_id, args_hash,
+          cost_currency, cost_amount, result, detail
+        ) VALUES (
+          ${id}, ${now}, ${parsed.actorUserId}, ${parsed.aiId}, ${parsed.groupId},
+          ${parsed.action}, ${parsed.subjectId}, ${parsed.argsHash},
+          ${parsed.costCurrency}, ${costAmount}, ${parsed.result}, ${detail}
+        )`;
+    }),
+  );
 }
 
 export const MAX_AUDIT_LIST_LIMIT = 200;
 export const DEFAULT_AUDIT_LIST_LIMIT = 50;
 
-const cursorSchema = z
-  .string()
-  .min(1)
-  .max(80)
-  .regex(/^[0-9a-zA-Z_:.\\-]+$/);
+const cursorSchema = Schema.String.pipe(
+  Schema.check(
+    Schema.isMinLength(1),
+    Schema.isMaxLength(80),
+    Schema.isPattern(/^[0-9a-zA-Z_:.\\-]+$/),
+  ),
+);
 
 // One result row, exactly as it appears in the API. Visibility rules are
 // applied by the list functions: a row's `actor_user_id` is only included
@@ -162,6 +241,24 @@ export interface ListAuditOptions {
   limit?: number;
   /** Cursor returned by a previous page. */
   before?: string;
+}
+
+// One audit row as the driver returns it: snake_case columns are camelCased
+// by `transformResultNames`, timestamptz comes back as a `Date`, and numeric
+// comes back as a string.
+interface AuditLogRow {
+  id: string;
+  at: Date;
+  actorUserId: string | null;
+  aiId: string | null;
+  groupId: string | null;
+  action: string;
+  subjectId: string | null;
+  argsHash: string | null;
+  costCurrency: 'EUR' | 'USD' | null;
+  costAmount: string | null;
+  result: 'ok' | 'denied' | 'error';
+  detail: Record<string, unknown> | null;
 }
 
 // Cursor format: `<ISO_AT>_<id>`, base64url. The id breaks ties when two rows
@@ -212,7 +309,7 @@ export async function listAuditForGroup(
   // Over-fetch so private-topic entries can be filtered without shrinking
   // the page more than needed; pagination stays newest-first and the cursor
   // still advances.
-  const page = await listForColumn(db, auditLog.groupId, groupId, limit * 2 + 1, before);
+  const page = await listForColumn(db, 'group', groupId, limit * 2 + 1, before);
   const kept = await filterHiddenTopicEntries(db, userId, page.entries);
   const entries = kept.slice(0, limit);
   const last = entries[entries.length - 1];
@@ -233,35 +330,45 @@ export async function listAuditForAi(
 ): Promise<ListAuditPage> {
   const limit = clampLimit(options.limit);
   const before = options.before === undefined ? null : parseCursor(options.before);
-  const [ai] = await db.select({ owner: ais.owner }).from(ais).where(eq(ais.id, aiId)).limit(1);
+  const [ai] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ owner: string }>`SELECT owner FROM ais WHERE id = ${aiId} LIMIT 1`;
+    }),
+  );
   if (!ai || ai.owner !== userId) {
     return { entries: [], next: null };
   }
-  return listForColumn(db, auditLog.aiId, aiId, limit, before);
+  return listForColumn(db, 'ai', aiId, limit, before);
 }
 
 // The shared `WHERE` and cursor logic. `limit + 1` rows are fetched so we
 // can tell the caller whether another page exists, without running two
-// queries.
+// queries. The column comes from a closed choice, so no untrusted name is
+// ever interpolated: each side builds its own fixed fragment.
 async function listForColumn(
   db: ServerDatabase,
-  column: typeof auditLog.groupId | typeof auditLog.aiId,
+  scope: 'group' | 'ai',
   value: string,
   limit: number,
   before: { at: Date; id: string } | null,
 ): Promise<ListAuditPage> {
-  const conditions = [eq(column, value)];
-  if (before !== null) {
-    conditions.push(
-      or(lt(auditLog.at, before.at), and(eq(auditLog.at, before.at), lt(auditLog.id, before.id)))!,
-    );
-  }
-  const rows = await db
-    .select()
-    .from(auditLog)
-    .where(and(...conditions))
-    .orderBy(desc(auditLog.at), desc(auditLog.id))
-    .limit(limit + 1);
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const scopeCondition = scope === 'group' ? sql`group_id = ${value}` : sql`ai_id = ${value}`;
+      const beforeCondition =
+        before === null
+          ? sql``
+          : sql`AND (at < ${before.at} OR (at = ${before.at} AND id < ${before.id}))`;
+      return yield* sql<AuditLogRow>`SELECT * FROM audit_log
+        WHERE ${scopeCondition} ${beforeCondition}
+        ORDER BY at DESC, id DESC
+        LIMIT ${limit + 1}`;
+    }),
+  );
   const page = rows.slice(0, limit);
   const hasMore = rows.length > limit;
   const next =
@@ -274,7 +381,7 @@ async function listForColumn(
 // Maps an internal row to the public shape. The caller is known to be
 // allowed to read this scope, so `actor_user_id` is always included: only
 // admins and AI owners ever see it.
-function toPublicAuditEntry(row: typeof auditLog.$inferSelect): PublicAuditEntry {
+function toPublicAuditEntry(row: AuditLogRow): PublicAuditEntry {
   const hasCost = row.costCurrency !== null && row.costAmount !== null;
   return {
     id: row.id,
@@ -291,25 +398,28 @@ function toPublicAuditEntry(row: typeof auditLog.$inferSelect): PublicAuditEntry
         }
       : null,
     result: row.result,
-    detail: (row.detail as Record<string, unknown> | null) ?? null,
+    detail: row.detail ?? null,
     actorUserId: row.actorUserId,
   };
 }
 
 function isGroupAdmin(db: ServerDatabase, groupId: string, userId: string): Promise<boolean> {
-  return db
-    .select({ role: groupMembers.role })
-    .from(groupMembers)
-    .innerJoin(groups, eq(groups.id, groupId))
-    .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, userId)))
-    .limit(1)
-    .then((rows) => {
-      if (rows.length === 0) {
-        return false;
-      }
-      const role = rows[0]!.role;
-      return role === 'owner' || role === 'admin';
-    });
+  return runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ role: string }>`SELECT gm.role FROM group_members gm
+        INNER JOIN groups g ON g.id = ${groupId}
+        WHERE gm.group_id = ${groupId} AND gm.user_id = ${userId}
+        LIMIT 1`;
+    }),
+  ).then((rows) => {
+    if (rows.length === 0) {
+      return false;
+    }
+    const role = rows[0]!.role;
+    return role === 'owner' || role === 'admin';
+  });
 }
 
 // Drops entries about a private topic the viewer cannot see. Topic actions
@@ -332,24 +442,37 @@ async function filterHiddenTopicEntries(
   if (subjectIds.length === 0) {
     return entries;
   }
-  const topicRows = await db.select().from(topics).where(inArray(topics.id, subjectIds));
+  const topicRows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ id: string; visibility: string }>`SELECT id, visibility FROM topics
+        WHERE id IN ${sql.in(subjectIds)}`;
+    }),
+  );
   const byId = new Map(topicRows.map((row) => [row.id, row]));
   let privateSeen: Set<string> = new Set();
   const privateIds = topicRows.filter((row) => row.visibility === 'private').map((row) => row.id);
   if (privateIds.length > 0) {
-    const memberRows = await db
-      .select({ topicId: topicMembers.topicId })
-      .from(topicMembers)
-      .where(and(inArray(topicMembers.topicId, privateIds), eq(topicMembers.userId, userId)));
+    const memberRows = await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ topicId: string }>`SELECT topic_id FROM topic_members
+          WHERE topic_id IN ${sql.in(privateIds)} AND user_id = ${userId}`;
+      }),
+    );
     privateSeen = new Set(memberRows.map((row) => row.topicId));
     // T-0116: topics reached through a role, not a direct row.
-    const roleRows = await db
-      .select({ topicId: topicRoleAccess.topicId })
-      .from(topicRoleAccess)
-      .innerJoin(groupMemberRoles, eq(groupMemberRoles.roleId, topicRoleAccess.roleId))
-      .where(
-        and(inArray(topicRoleAccess.topicId, privateIds), eq(groupMemberRoles.userId, userId)),
-      );
+    const roleRows = await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ topicId: string }>`SELECT tra.topic_id FROM topic_role_access tra
+          INNER JOIN group_member_roles gmr ON gmr.role_id = tra.role_id
+          WHERE tra.topic_id IN ${sql.in(privateIds)} AND gmr.user_id = ${userId}`;
+      }),
+    );
     for (const row of roleRows) {
       privateSeen.add(row.topicId);
     }
@@ -382,11 +505,11 @@ function clampLimit(limit: number | undefined): number {
 }
 
 function parseCursor(cursor: string): { at: Date; id: string } {
-  const parsed = cursorSchema.safeParse(cursor);
-  if (!parsed.success) {
+  const exit = Schema.decodeUnknownExit(cursorSchema)(cursor);
+  if (!Exit.isSuccess(exit)) {
     throw new Error('Invalid cursor');
   }
-  return decodeCursor(parsed.data);
+  return decodeCursor(exit.value);
 }
 
 function serialisedSize(value: unknown): number {
