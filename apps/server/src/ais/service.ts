@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Effect } from 'effect';
 import { SqlClient, type SqlError } from 'effect/sql';
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import type { KeyCipher } from '../connections/crypto';
 import {
   decryptForGatewayUse,
@@ -10,7 +10,7 @@ import {
 } from '../connections/service';
 import { ROSTER_GROUP } from '../contacts/service';
 import type { ServerDatabase } from '../db/client';
-import { aiLimits, ais, llmVirtualKeys, machines, user } from '../db/schema';
+import { aiLimits, ais, llmVirtualKeys } from '../db/schema';
 import { sqlRuntimeFor } from '../effect/sql';
 import { HttpError } from '../errors';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
@@ -23,8 +23,8 @@ import { defaultPersonaFor, type AiTemplate } from './templates';
 // The reads (`listAis`, `listActiveAisForGateway`, `findOwnedAi`,
 // `findGatewayAiEffect`) and the three chat-driven persona/limit writes run on
 // the `effect/sql` client registered for this database (see `../effect/sql`).
-// The remaining writes still use drizzle: `createAi`, `stopAi`, `resumeAi`,
-// `assignMachine`, `findUserName`, `compensateCreate` and `withAiEnsureLock`.
+// The remaining writes still use drizzle: `createAi`, `compensateCreate` and
+// `withAiEnsureLock`.
 // The exported functions stay `async` so routes and tests keep their shape
 // during the transition.
 function runSql<A, E>(
@@ -731,11 +731,16 @@ export async function stopAi(
   if (ai.status === 'disabled') {
     throw new HttpError(409, 'not_active', 'AI is not active');
   }
-  const updated = await deps.db
-    .update(ais)
-    .set({ status: 'stopped', updatedAt: new Date() })
-    .where(and(eq(ais.id, ai.id), eq(ais.status, 'active')))
-    .returning();
+  const updated = await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ id: string }>`UPDATE ais
+        SET status = 'stopped', updated_at = ${new Date()}
+        WHERE id = ${ai.id} AND status = 'active'
+        RETURNING id`;
+    }),
+  );
   if (updated.length === 0) {
     // A concurrent stop/resume/delete raced between the read and the update.
     // Re-read under the owner's view: if the row is now `stopped`, return it
@@ -778,11 +783,16 @@ export async function resumeAi(
   if (ai.status === 'disabled') {
     throw new HttpError(409, 'not_active', 'AI is not active');
   }
-  const updated = await deps.db
-    .update(ais)
-    .set({ status: 'active', updatedAt: new Date() })
-    .where(and(eq(ais.id, ai.id), eq(ais.status, 'stopped')))
-    .returning();
+  const updated = await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ id: string }>`UPDATE ais
+        SET status = 'active', updated_at = ${new Date()}
+        WHERE id = ${ai.id} AND status = 'stopped'
+        RETURNING id`;
+    }),
+  );
   if (updated.length === 0) {
     const fresh = await findOwnedAi(deps.db, ai.id, ownerId);
     if (fresh === null) {
@@ -827,26 +837,38 @@ export async function assignMachine(
     if (ai.machineId === null) {
       return toPublicAi(ai);
     }
-    await deps.db
-      .update(ais)
-      .set({ machineId: null, updatedAt: new Date() })
-      .where(eq(ais.id, ai.id));
+    await runSql(
+      deps.db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`UPDATE ais SET machine_id = NULL, updated_at = ${new Date()} WHERE id = ${ai.id}`;
+      }),
+    );
   } else {
-    const [machine] = await deps.db
-      .select({ ownerUserId: machines.ownerUserId, status: machines.status })
-      .from(machines)
-      .where(and(eq(machines.id, input.machineId), eq(machines.ownerUserId, input.ownerId)))
-      .limit(1);
+    const machineId = input.machineId;
+    const [machine] = await runSql(
+      deps.db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ owner_user_id: string; status: string }>`SELECT owner_user_id, status
+          FROM machines
+          WHERE id = ${machineId} AND owner_user_id = ${input.ownerId}
+          LIMIT 1`;
+      }),
+    );
     if (!machine || machine.status !== 'approved') {
       throw new HttpError(404, 'machine_not_found', 'Machine not found');
     }
-    if (ai.machineId === input.machineId) {
+    if (ai.machineId === machineId) {
       return toPublicAi(ai);
     }
-    await deps.db
-      .update(ais)
-      .set({ machineId: input.machineId, updatedAt: new Date() })
-      .where(eq(ais.id, ai.id));
+    await runSql(
+      deps.db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`UPDATE ais SET machine_id = ${machineId}, updated_at = ${new Date()} WHERE id = ${ai.id}`;
+      }),
+    );
   }
   const reloaded = await findOwnedAi(deps.db, ai.id, input.ownerId);
   if (reloaded === null) {
@@ -1280,7 +1302,13 @@ function hasRosterItem(entries: ReadonlyArray<{ jid: string }>, jid: string): bo
 }
 
 async function findUserName(db: ServerDatabase, userId: string): Promise<string> {
-  const [row] = await db.select({ name: user.name }).from(user).where(eq(user.id, userId)).limit(1);
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ name: string }>`SELECT name FROM "user" WHERE id = ${userId} LIMIT 1`;
+    }),
+  );
   return row?.name ?? '';
 }
 
