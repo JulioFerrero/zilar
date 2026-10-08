@@ -1,3 +1,7 @@
+import { Data, Effect, Exit, Schema, type Effect as EffectType } from 'effect';
+import { struct } from '@zilar/protocol';
+
+import { errorFieldsOf } from './api-error-body';
 import { API_URL } from './auth';
 
 /**
@@ -6,8 +10,9 @@ import { API_URL } from './auth';
  * in `apps/web/src/lib/api.ts`. The wire contract lives in
  * `apps/server/src/handles/routes.ts` and `apps/server/src/avatars/`.
  *
- * Mobile has no zod, so — like `ais-api.ts` — the boundary is validated
- * with type guards. `ProfileApiError` keeps the server's `code` and
+ * The boundary is validated with Effect Schema (T-0541, the T-0506 recipe):
+ * the request is an Effect pipeline, cut back to a `Promise` at the edge
+ * with `Effect.runPromise`. `ProfileApiError` keeps the server's `code` and
  * `status`, so screens can branch on the error without parsing the message
  * again (taken vs. reserved vs. invalid vs. rate limited; too_soon carries
  * the next-change date in the message, like web).
@@ -71,67 +76,63 @@ export class ProfileApiError extends Error {
   }
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
+const HandleCheckSchema = struct({
+  available: Schema.Boolean,
+  reason: Schema.optional(Schema.Literals(['invalid', 'reserved', 'taken'])),
+});
 
-function isString(value: unknown): value is string {
-  return typeof value === 'string';
-}
+const ClaimedHandleSchema = struct({
+  handle: Schema.String,
+});
 
-function isHandleCheckReason(value: unknown): value is HandleCheckReason {
-  return value === 'invalid' || value === 'reserved' || value === 'taken';
-}
+// An absent `handle` reads like null (older servers omit it); an absent
+// `avatarUrl` stays absent, like web's `meSchema`.
+const MyProfileSchema = struct({
+  id: Schema.String,
+  email: Schema.String,
+  name: Schema.String,
+  handle: Schema.optional(Schema.NullOr(Schema.String)),
+  avatarUrl: Schema.optional(Schema.String),
+});
+
+const AvatarUrlSchema = struct({
+  url: Schema.String,
+});
+
+// The handle claim carries the next-change date alongside the code (web
+// reads it the same way); anything that is not a parseable date is
+// dropped, so callers never format garbage.
+const NextChangeAtSchema = struct({
+  error: struct({
+    nextChangeAt: Schema.optional(Schema.String),
+  }),
+});
 
 function parseHandleCheck(value: unknown): HandleCheck | null {
-  if (!isRecord(value)) return null;
-  const available = value['available'];
-  if (typeof available !== 'boolean') return null;
-  const reason = value['reason'];
-  if (reason === undefined) {
-    return { available };
-  }
-  if (!isHandleCheckReason(reason)) return null;
-  return { available, reason };
+  const decoded = Schema.decodeUnknownExit(HandleCheckSchema)(value);
+  return Exit.isSuccess(decoded) ? decoded.value : null;
 }
 
 function parseClaimedHandle(value: unknown): { handle: string } | null {
-  if (!isRecord(value)) return null;
-  const handle = value['handle'];
-  if (!isString(handle)) return null;
-  return { handle };
+  const decoded = Schema.decodeUnknownExit(ClaimedHandleSchema)(value);
+  return Exit.isSuccess(decoded) ? decoded.value : null;
 }
 
 function parseMyProfile(value: unknown): MyProfile | null {
-  if (!isRecord(value)) return null;
-  const id = value['id'];
-  const email = value['email'];
-  const name = value['name'];
-  if (!isString(id) || !isString(email) || !isString(name)) {
-    return null;
-  }
-  const handle = value['handle'];
-  const avatarUrl = value['avatarUrl'];
-  if (handle !== null && handle !== undefined && !isString(handle)) {
-    return null;
-  }
-  if (avatarUrl !== undefined && !isString(avatarUrl)) {
-    return null;
-  }
+  const decoded = Schema.decodeUnknownExit(MyProfileSchema)(value);
+  if (!Exit.isSuccess(decoded)) return null;
   return {
-    id,
-    email,
-    name,
-    handle: isString(handle) ? handle : null,
-    ...(avatarUrl === undefined ? {} : { avatarUrl }),
+    id: decoded.value.id,
+    email: decoded.value.email,
+    name: decoded.value.name,
+    handle: decoded.value.handle ?? null,
+    ...(decoded.value.avatarUrl === undefined ? {} : { avatarUrl: decoded.value.avatarUrl }),
   };
 }
 
 function parseAvatarUrl(value: unknown): { url: string } | null {
-  if (!isRecord(value)) return null;
-  const url = value['url'];
-  if (!isString(url)) return null;
-  return { url };
+  const decoded = Schema.decodeUnknownExit(AvatarUrlSchema)(value);
+  return Exit.isSuccess(decoded) ? decoded.value : null;
 }
 
 /** Pulls the `{ code, message }` envelope out of a failed response body. */
@@ -140,17 +141,23 @@ export function parseApiErrorBody(body: unknown): {
   message: string | null;
   nextChangeAt?: string | undefined;
 } {
-  const error = isRecord(body) && isRecord(body['error']) ? body['error'] : null;
-  const code = isString(error?.['code']) ? error['code'] : 'request_failed';
-  const message = isString(error?.['message']) ? error['message'] : null;
-  // The handle claim carries the next-change date alongside the code (web
-  // reads it the same way); anything that is not a parseable date is
-  // dropped, so callers never format garbage.
-  const nextChangeAt = error?.['nextChangeAt'];
-  if (isString(nextChangeAt) && !Number.isNaN(new Date(nextChangeAt).getTime())) {
-    return { code, message, nextChangeAt };
+  const error = errorFieldsOf(body);
+  const nextChangeAt = parseNextChangeAt(body);
+  return {
+    code: error.code ?? 'request_failed',
+    message: error.message ?? null,
+    ...(nextChangeAt === undefined ? {} : { nextChangeAt }),
+  };
+}
+
+function parseNextChangeAt(body: unknown): string | undefined {
+  const decoded = Schema.decodeUnknownExit(NextChangeAtSchema)(body);
+  if (!Exit.isSuccess(decoded)) return undefined;
+  const nextChangeAt = decoded.value.error.nextChangeAt;
+  if (nextChangeAt === undefined || Number.isNaN(new Date(nextChangeAt).getTime())) {
+    return undefined;
   }
-  return { code, message };
+  return nextChangeAt;
 }
 
 export function avatarPutPath(ownerId: string): string {
@@ -170,39 +177,55 @@ export function avatarFileName(mimeType: string): string {
   return 'avatar.jpg';
 }
 
-async function request(
+// The internal failures, one per case. They carry no field beyond what the
+// old `ProfileApiError` already surfaced; the `Promise` edge maps each back
+// to that same error, status, code, message and `nextChangeAt`.
+class ProfileNetworkError extends Data.TaggedError('ProfileNetworkError') {}
+class ProfileRequestError extends Data.TaggedError('ProfileRequestError')<{
+  readonly status: number;
+  readonly code: string;
+  readonly message: string;
+  readonly nextChangeAt?: string | undefined;
+}> {}
+class ProfileUnauthorized extends Data.TaggedError('ProfileUnauthorized') {}
+class ProfileInvalidResponse extends Data.TaggedError('ProfileInvalidResponse') {}
+
+const requestEffect = Effect.fnUntraced(function* (
   apiUrl: string,
   path: string,
   token: string,
   init: RequestInit,
   fetchImpl: typeof fetch,
-): Promise<unknown> {
-  let response: Response;
-  try {
-    response = await fetchImpl(`${apiUrl}${path}`, {
-      ...init,
-      headers: {
-        accept: 'application/json',
-        authorization: `Bearer ${token}`,
-        ...init.headers,
-      },
-    });
-  } catch {
-    throw new ProfileApiError(0, 'network_error', 'Could not reach the server');
-  }
+): EffectType.fn.Return<unknown, ProfileNetworkError | ProfileRequestError> {
+  const response = yield* Effect.tryPromise({
+    try: (signal) =>
+      fetchImpl(`${apiUrl}${path}`, {
+        ...init,
+        signal,
+        headers: {
+          accept: 'application/json',
+          authorization: `Bearer ${token}`,
+          ...init.headers,
+        },
+      }),
+    catch: () => new ProfileNetworkError(),
+  });
 
-  const body: unknown = await response.json().catch(() => null);
+  const body: unknown = yield* Effect.promise(
+    () => response.json().catch(() => null) as Promise<unknown>,
+  );
+
   if (!response.ok) {
     const { code, message, nextChangeAt } = parseApiErrorBody(body);
-    throw new ProfileApiError(
-      response.status,
+    return yield* new ProfileRequestError({
+      status: response.status,
       code,
-      message ?? `Request failed (${response.status})`,
-      nextChangeAt,
-    );
+      message: message ?? `Request failed (${response.status})`,
+      ...(nextChangeAt === undefined ? {} : { nextChangeAt }),
+    });
   }
   return body;
-}
+});
 
 /** The production `ProfileApi`: bearer auth, `fetch`, and the build-time API URL. */
 export function createProfileApi(
@@ -210,22 +233,75 @@ export function createProfileApi(
   fetchImpl: typeof fetch = fetch,
   apiUrl: string = API_URL,
 ): ProfileApi {
-  const withToken = async (
+  const withTokenEffect = Effect.fnUntraced(function* (
     path: string,
     init: RequestInit,
     parse: (value: unknown) => unknown,
-  ): Promise<unknown> => {
-    const token = await getToken();
+  ): EffectType.fn.Return<
+    unknown,
+    ProfileUnauthorized | ProfileNetworkError | ProfileRequestError | ProfileInvalidResponse
+  > {
+    const token = yield* Effect.promise(() => getToken());
     if (token === undefined) {
-      throw new ProfileApiError(401, 'unauthorized', 'No session');
+      return yield* new ProfileUnauthorized();
     }
-    const body = await request(apiUrl, path, token, init, fetchImpl);
+    const body = yield* requestEffect(apiUrl, path, token, init, fetchImpl);
     const parsed = parse(body);
     if (parsed === null) {
-      throw new ProfileApiError(200, 'invalid_response', 'The server sent an unexpected response');
+      return yield* new ProfileInvalidResponse();
     }
     return parsed;
-  };
+  });
+
+  const withToken = (
+    path: string,
+    init: RequestInit,
+    parse: (value: unknown) => unknown,
+  ): Promise<unknown> =>
+    Effect.runPromise(
+      withTokenEffect(path, init, parse).pipe(
+        Effect.catchTags({
+          ProfileUnauthorized: () =>
+            Effect.fail(new ProfileApiError(401, 'unauthorized', 'No session')),
+          ProfileNetworkError: () =>
+            Effect.fail(new ProfileApiError(0, 'network_error', 'Could not reach the server')),
+          ProfileRequestError: (error) =>
+            Effect.fail(
+              new ProfileApiError(error.status, error.code, error.message, error.nextChangeAt),
+            ),
+          ProfileInvalidResponse: () =>
+            Effect.fail(
+              new ProfileApiError(
+                200,
+                'invalid_response',
+                'The server sent an unexpected response',
+              ),
+            ),
+        }),
+      ),
+    );
+
+  // The native upload path (`expo-file-system` PUT of the picked file): the
+  // bearer rides on the PUT itself, like the attachment uploader. A rejected
+  // upload propagates like the old `await` did; only the response decode
+  // changes.
+  const uploadNativeEffect = Effect.fnUntraced(function* (
+    ownerId: string,
+    blob: Blob,
+    uploader: (url: string, mimeType: string) => Promise<unknown>,
+  ): EffectType.fn.Return<{ url: string }, ProfileUnauthorized | ProfileInvalidResponse> {
+    const token = yield* Effect.promise(() => getToken());
+    if (token === undefined) {
+      return yield* new ProfileUnauthorized();
+    }
+    const parsed = parseAvatarUrl(
+      yield* Effect.promise(() => uploader(`${apiUrl}${avatarPutPath(ownerId)}`, blob.type)),
+    );
+    if (parsed === null) {
+      return yield* new ProfileInvalidResponse();
+    }
+    return parsed;
+  });
 
   return {
     async getMe() {
@@ -250,23 +326,22 @@ export function createProfileApi(
     },
     async uploadAvatar(ownerId, blob, uploader) {
       if (uploader !== undefined) {
-        // The native upload path (`expo-file-system` PUT of the picked file):
-        // the bearer rides on the PUT itself, like the attachment uploader.
-        const token = await getToken();
-        if (token === undefined) {
-          throw new ProfileApiError(401, 'unauthorized', 'No session');
-        }
-        const parsed = parseAvatarUrl(
-          await uploader(`${apiUrl}${avatarPutPath(ownerId)}`, blob.type),
+        return Effect.runPromise(
+          uploadNativeEffect(ownerId, blob, uploader).pipe(
+            Effect.catchTags({
+              ProfileUnauthorized: () =>
+                Effect.fail(new ProfileApiError(401, 'unauthorized', 'No session')),
+              ProfileInvalidResponse: () =>
+                Effect.fail(
+                  new ProfileApiError(
+                    200,
+                    'invalid_response',
+                    'The server sent an unexpected response',
+                  ),
+                ),
+            }),
+          ),
         );
-        if (parsed === null) {
-          throw new ProfileApiError(
-            200,
-            'invalid_response',
-            'The server sent an unexpected response',
-          );
-        }
-        return parsed;
       }
       const body = await withToken(
         avatarPutPath(ownerId),

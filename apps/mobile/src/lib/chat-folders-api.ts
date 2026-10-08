@@ -1,10 +1,13 @@
+import { Data, Effect, Exit, Schema, type Effect as EffectType } from 'effect';
 import {
   FOLDER_ICONS,
   type ChatFolder,
   type FolderChatType,
   type FolderIcon,
 } from '@zilar/chat-core';
+import { struct } from '@zilar/protocol';
 
+import { errorFieldsOf } from './api-error-body';
 import { API_URL } from './auth';
 
 /**
@@ -12,10 +15,11 @@ import { API_URL } from './auth';
  * T-0237): list, create, edit, reorder and delete the caller's folders. The
  * wire contract lives in `apps/server/src/chat-folders/routes.ts` (T-0232).
  *
- * Mobile has no zod, so — like `chat-prefs-api.ts` — the boundary is validated
- * with type guards. The list drops a row whose shape or icon is unknown rather
- * than failing the whole list; a write whose answer is malformed throws
- * `invalid_response`.
+ * The boundary is validated with Effect Schema (T-0541, the T-0506 recipe):
+ * the request is an Effect pipeline, cut back to a `Promise` at the edge
+ * with `Effect.runPromise`. The list drops a row whose shape or icon is
+ * unknown rather than failing the whole list; a write whose answer is
+ * malformed throws `invalid_response`.
  */
 
 /** The fields a new folder carries; the server defaults the chat lists. */
@@ -51,82 +55,40 @@ export class ChatFoldersApiError extends Error {
   }
 }
 
-const CHAT_TYPES: readonly FolderChatType[] = ['dm', 'group', 'channel', 'ai'];
-const FOLDER_ICON_NAMES = new Set<string>(FOLDER_ICONS);
+const FolderIconSchema = Schema.Literals(FOLDER_ICONS);
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
+const FolderChatTypeSchema = Schema.Literals(['dm', 'group', 'channel', 'ai']);
 
-function isString(value: unknown): value is string {
-  return typeof value === 'string';
-}
+const ChatFolderSchema = struct({
+  id: Schema.String,
+  name: Schema.String,
+  icon: FolderIconSchema,
+  position: Schema.Finite,
+  includeTypes: Schema.mutable(Schema.Array(FolderChatTypeSchema)),
+  includeChats: Schema.mutable(Schema.Array(Schema.String)),
+  excludeChats: Schema.mutable(Schema.Array(Schema.String)),
+  excludeMuted: Schema.Boolean,
+  excludeRead: Schema.Boolean,
+});
 
-function isFolderIcon(value: unknown): value is FolderIcon {
-  return isString(value) && FOLDER_ICON_NAMES.has(value);
-}
+// The list and order envelopes carry rows as `unknown`: one malformed row is
+// dropped from the list, while a write answers with one authoritative row.
+const FolderListEnvelopeSchema = struct({
+  folders: Schema.mutable(Schema.Array(Schema.Unknown)),
+});
 
-function isChatType(value: unknown): value is FolderChatType {
-  return isString(value) && (CHAT_TYPES as readonly string[]).includes(value);
-}
+const FolderRowEnvelopeSchema = struct({
+  folder: Schema.Unknown,
+});
 
-function stringArray(value: unknown): string[] | null {
-  if (!Array.isArray(value)) return null;
-  const entries: string[] = [];
-  for (const entry of value) {
-    if (!isString(entry)) return null;
-    entries.push(entry);
-  }
-  return entries;
-}
-
-function chatTypeArray(value: unknown): FolderChatType[] | null {
-  if (!Array.isArray(value)) return null;
-  const types: FolderChatType[] = [];
-  for (const entry of value) {
-    if (!isChatType(entry)) return null;
-    types.push(entry);
-  }
-  return types;
-}
+const FolderDeleteEnvelopeSchema = struct({
+  deleted: Schema.Boolean,
+});
 
 /** A folder row the server sent; malformed rows return null and are dropped. */
 export function parseChatFolder(value: unknown): ChatFolder | null {
-  if (!isRecord(value)) return null;
-  const id = value['id'];
-  const name = value['name'];
-  const icon = value['icon'];
-  const position = value['position'];
-  const includeTypes = chatTypeArray(value['includeTypes']);
-  const includeChats = stringArray(value['includeChats']);
-  const excludeChats = stringArray(value['excludeChats']);
-  const excludeMuted = value['excludeMuted'];
-  const excludeRead = value['excludeRead'];
-  if (
-    !isString(id) ||
-    !isString(name) ||
-    !isFolderIcon(icon) ||
-    typeof position !== 'number' ||
-    !Number.isFinite(position) ||
-    includeTypes === null ||
-    includeChats === null ||
-    excludeChats === null ||
-    typeof excludeMuted !== 'boolean' ||
-    typeof excludeRead !== 'boolean'
-  ) {
-    return null;
-  }
-  return {
-    id,
-    name,
-    icon,
-    position,
-    includeTypes,
-    includeChats,
-    excludeChats,
-    excludeMuted,
-    excludeRead,
-  };
+  const decoded = Schema.decodeUnknownExit(ChatFolderSchema)(value);
+  return Exit.isSuccess(decoded) ? decoded.value : null;
 }
 
 function invalidResponse(): ChatFoldersApiError {
@@ -154,26 +116,61 @@ function parseFolderRow(value: unknown): ChatFolder {
   return folder;
 }
 
-async function requireToken(getToken: () => Promise<string | undefined>): Promise<string> {
-  const token = await getToken();
-  if (token === undefined) {
-    throw new ChatFoldersApiError(401, 'unauthorized', 'No session');
-  }
-  return token;
+function parseFolderList(value: unknown): ChatFolder[] | null {
+  const decoded = Schema.decodeUnknownExit(FolderListEnvelopeSchema)(value);
+  return Exit.isSuccess(decoded) ? parseFolderRows(decoded.value.folders) : null;
 }
+
+function parseFolderWrite(value: unknown): ChatFolder | null {
+  const decoded = Schema.decodeUnknownExit(FolderRowEnvelopeSchema)(value);
+  if (!Exit.isSuccess(decoded)) return null;
+  try {
+    return parseFolderRow(decoded.value.folder);
+  } catch {
+    return null;
+  }
+}
+
+function parseFolderOrder(value: unknown): ChatFolder[] | null {
+  const decoded = Schema.decodeUnknownExit(FolderListEnvelopeSchema)(value);
+  if (!Exit.isSuccess(decoded)) return null;
+  try {
+    return decoded.value.folders.map(parseFolderRow);
+  } catch {
+    return null;
+  }
+}
+
+function parseFolderDelete(value: unknown): Record<string, unknown> | null {
+  const decoded = Schema.decodeUnknownExit(FolderDeleteEnvelopeSchema)(value);
+  if (!Exit.isSuccess(decoded) || decoded.value.deleted !== true) return null;
+  return {};
+}
+
+// The internal failures, one per case. They carry no field beyond what the
+// old `ChatFoldersApiError` already surfaced; the `Promise` edge maps each
+// back to that same error, status, code and message.
+class ChatFoldersNetworkError extends Data.TaggedError('ChatFoldersNetworkError') {}
+class ChatFoldersRequestError extends Data.TaggedError('ChatFoldersRequestError')<{
+  readonly status: number;
+  readonly code: string;
+  readonly message: string;
+}> {}
+class ChatFoldersUnauthorized extends Data.TaggedError('ChatFoldersUnauthorized') {}
+class ChatFoldersInvalidResponse extends Data.TaggedError('ChatFoldersInvalidResponse') {}
 
 interface RequestOptions {
   method?: string;
   body?: unknown;
 }
 
-async function request(
+const requestEffect = Effect.fnUntraced(function* (
   apiUrl: string,
   path: string,
   token: string,
   fetchImpl: typeof fetch,
   options?: RequestOptions,
-): Promise<unknown> {
+): EffectType.fn.Return<unknown, ChatFoldersNetworkError | ChatFoldersRequestError> {
   const headers: Record<string, string> = {
     accept: 'application/json',
     authorization: `Bearer ${token}`,
@@ -184,29 +181,31 @@ async function request(
     body = JSON.stringify(options.body);
   }
 
-  let response: Response;
-  try {
-    response = await fetchImpl(`${apiUrl}${path}`, {
-      method: options?.method ?? 'GET',
-      headers,
-      ...(body === undefined ? {} : { body }),
-    });
-  } catch {
-    throw new ChatFoldersApiError(0, 'network_error', 'Could not reach the server');
-  }
+  const response = yield* Effect.tryPromise({
+    try: (signal) =>
+      fetchImpl(`${apiUrl}${path}`, {
+        method: options?.method ?? 'GET',
+        headers,
+        signal,
+        ...(body === undefined ? {} : { body }),
+      }),
+    catch: () => new ChatFoldersNetworkError(),
+  });
 
-  const responseBody: unknown = await response.json().catch(() => null);
+  const responseBody: unknown = yield* Effect.promise(
+    () => response.json().catch(() => null) as Promise<unknown>,
+  );
+
   if (!response.ok) {
-    const error =
-      isRecord(responseBody) && isRecord(responseBody['error']) ? responseBody['error'] : null;
-    const code = isString(error?.['code']) ? error['code'] : 'request_failed';
-    const message = isString(error?.['message'])
-      ? error['message']
-      : `Request failed (${response.status})`;
-    throw new ChatFoldersApiError(response.status, code, message);
+    const error = errorFieldsOf(responseBody);
+    return yield* new ChatFoldersRequestError({
+      status: response.status,
+      code: error.code ?? 'request_failed',
+      message: error.message ?? `Request failed (${response.status})`,
+    });
   }
   return responseBody;
-}
+});
 
 /** The production `ChatFoldersApi`: bearer auth, `fetch`, the build API URL. */
 export function createChatFoldersApi(
@@ -214,65 +213,87 @@ export function createChatFoldersApi(
   fetchImpl: typeof fetch = fetch,
   apiUrl: string = API_URL,
 ): ChatFoldersApi {
+  const withTokenEffect = Effect.fnUntraced(function* (
+    path: string,
+    options: RequestOptions | undefined,
+    parse: (value: unknown) => unknown,
+  ): EffectType.fn.Return<
+    unknown,
+    | ChatFoldersUnauthorized
+    | ChatFoldersNetworkError
+    | ChatFoldersRequestError
+    | ChatFoldersInvalidResponse
+  > {
+    const token = yield* Effect.promise(() => getToken());
+    if (token === undefined) {
+      return yield* new ChatFoldersUnauthorized();
+    }
+    const body = yield* requestEffect(apiUrl, path, token, fetchImpl, options);
+    const parsed = parse(body);
+    if (parsed === null) {
+      return yield* new ChatFoldersInvalidResponse();
+    }
+    return parsed;
+  });
+
+  const withToken = (
+    path: string,
+    options: RequestOptions | undefined,
+    parse: (value: unknown) => unknown,
+  ): Promise<unknown> =>
+    Effect.runPromise(
+      withTokenEffect(path, options, parse).pipe(
+        Effect.catchTags({
+          ChatFoldersUnauthorized: () =>
+            Effect.fail(new ChatFoldersApiError(401, 'unauthorized', 'No session')),
+          ChatFoldersNetworkError: () =>
+            Effect.fail(new ChatFoldersApiError(0, 'network_error', 'Could not reach the server')),
+          ChatFoldersRequestError: (error) =>
+            Effect.fail(new ChatFoldersApiError(error.status, error.code, error.message)),
+          ChatFoldersInvalidResponse: () => Effect.fail(invalidResponse()),
+        }),
+      ),
+    );
+
   return {
     async listChatFolders() {
-      const token = await requireToken(getToken);
-      const body = await request(apiUrl, '/api/chat-folders', token, fetchImpl);
-      if (!isRecord(body) || !Array.isArray(body['folders'])) {
-        throw invalidResponse();
-      }
-      return parseFolderRows(body['folders']);
+      const body = await withToken('/api/chat-folders', undefined, parseFolderList);
+      return body as ChatFolder[];
     },
 
     async createChatFolder(input) {
-      const token = await requireToken(getToken);
-      const body = await request(apiUrl, '/api/chat-folders', token, fetchImpl, {
-        method: 'POST',
-        body: input,
-      });
-      return parseFolderRow(isRecord(body) ? body['folder'] : undefined);
+      const body = await withToken(
+        '/api/chat-folders',
+        { method: 'POST', body: input },
+        parseFolderWrite,
+      );
+      return body as ChatFolder;
     },
 
     async patchChatFolder(id, input) {
-      const token = await requireToken(getToken);
-      const body = await request(
-        apiUrl,
+      const body = await withToken(
         `/api/chat-folders/${encodeURIComponent(id)}`,
-        token,
-        fetchImpl,
         { method: 'PATCH', body: input },
+        parseFolderWrite,
       );
-      return parseFolderRow(isRecord(body) ? body['folder'] : undefined);
+      return body as ChatFolder;
     },
 
     async reorderChatFolders(ids) {
-      const token = await requireToken(getToken);
-      const body = await request(apiUrl, '/api/chat-folders/order', token, fetchImpl, {
-        method: 'PUT',
-        body: { ids },
-      });
-      if (!isRecord(body) || !Array.isArray(body['folders'])) {
-        throw invalidResponse();
-      }
-      const folders: ChatFolder[] = [];
-      for (const entry of body['folders']) {
-        folders.push(parseFolderRow(entry));
-      }
-      return folders;
+      const body = await withToken(
+        '/api/chat-folders/order',
+        { method: 'PUT', body: { ids } },
+        parseFolderOrder,
+      );
+      return body as ChatFolder[];
     },
 
     async deleteChatFolder(id) {
-      const token = await requireToken(getToken);
-      const body = await request(
-        apiUrl,
+      await withToken(
         `/api/chat-folders/${encodeURIComponent(id)}`,
-        token,
-        fetchImpl,
         { method: 'DELETE' },
+        parseFolderDelete,
       );
-      if (!isRecord(body) || body['deleted'] !== true) {
-        throw invalidResponse();
-      }
     },
   };
 }

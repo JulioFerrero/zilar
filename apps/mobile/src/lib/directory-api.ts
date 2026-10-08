@@ -1,3 +1,7 @@
+import { Data, Effect, Exit, Schema, type Effect as EffectType } from 'effect';
+import { struct } from '@zilar/protocol';
+
+import { errorFieldsOf } from './api-error-body';
 import { API_URL } from './auth';
 import type { TokenProvider } from './chat-api';
 
@@ -10,11 +14,12 @@ import type { TokenProvider } from './chat-api';
  * limited 30 per 10 minutes) and the visibility route in
  * `apps/server/src/groups/`.
  *
- * Mobile has no zod, so — like `chat-api.ts` — the boundary is validated
- * with type guards. `DirectoryApiError` keeps the server's `code` and
- * `status`, so screens can branch on the error without parsing the message
- * again (404 = unknown or private, 409 = full / handle taken, 429 = rate
- * limited).
+ * The boundary is validated with Effect Schema (T-0541, the T-0506 recipe):
+ * the request is an Effect pipeline, cut back to a `Promise` at the edge
+ * with `Effect.runPromise`. `DirectoryApiError` keeps the server's `code`
+ * and `status`, so screens can branch on the error without parsing the
+ * message again (404 = unknown or private, 409 = full / handle taken,
+ * 429 = rate limited).
  */
 
 export type DirectoryKind = 'group' | 'channel';
@@ -91,131 +96,121 @@ export class DirectoryApiError extends Error {
   }
 }
 
+const DirectoryKindSchema = Schema.Literals(['group', 'channel']);
+
+const DirectoryEntrySchema = struct({
+  id: Schema.String,
+  kind: DirectoryKindSchema,
+  title: Schema.String,
+  handle: Schema.String,
+  description: Schema.NullOr(Schema.String),
+  memberCount: Schema.Number,
+  joined: Schema.Boolean,
+  avatarUrl: Schema.optional(Schema.String),
+});
+
+const DirectoryPageSchema = struct({
+  entries: Schema.mutable(Schema.Array(DirectoryEntrySchema)),
+  next: Schema.NullOr(Schema.String),
+});
+
+const PublicJoinResultSchema = struct({
+  groupId: Schema.String,
+  alreadyMember: Schema.Boolean,
+});
+
+// Older servers omit both keys: absent reads like private with no handle, a
+// non-string handle or any other visibility value fails the row.
+const GroupVisibilitySchema = struct({
+  visibility: Schema.optional(Schema.Literals(['private', 'public'])),
+  handle: Schema.optional(Schema.NullOr(Schema.String)),
+});
+
+const HandleCheckSchema = struct({
+  available: Schema.Boolean,
+  reason: Schema.optional(Schema.Literals(['invalid', 'reserved', 'taken'])),
+});
+
+function parseDirectoryEntry(value: unknown): DirectoryEntry | null {
+  const decoded = Schema.decodeUnknownExit(DirectoryEntrySchema)(value);
+  return Exit.isSuccess(decoded) ? decoded.value : null;
+}
+
+function parseDirectoryPage(value: unknown): DirectoryPage | null {
+  const decoded = Schema.decodeUnknownExit(DirectoryPageSchema)(value);
+  return Exit.isSuccess(decoded) ? decoded.value : null;
+}
+
+function parsePublicJoinResult(value: unknown): PublicJoinResult | null {
+  const decoded = Schema.decodeUnknownExit(PublicJoinResultSchema)(value);
+  return Exit.isSuccess(decoded) ? decoded.value : null;
+}
+
+function parseGroupVisibility(value: unknown): GroupVisibilityState | null {
+  const decoded = Schema.decodeUnknownExit(GroupVisibilitySchema)(value);
+  if (!Exit.isSuccess(decoded)) return null;
+  return {
+    visibility: decoded.value.visibility ?? 'private',
+    handle: decoded.value.handle ?? null,
+  };
+}
+
+function parseHandleCheck(value: unknown): HandleCheck | null {
+  const decoded = Schema.decodeUnknownExit(HandleCheckSchema)(value);
+  return Exit.isSuccess(decoded) ? decoded.value : null;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
-function isString(value: unknown): value is string {
-  return typeof value === 'string';
-}
+// The internal failures, one per case. They carry no field beyond what the
+// old `DirectoryApiError` already surfaced; the `Promise` edge maps each back
+// to that same error, status, code and message.
+class DirectoryNetworkError extends Data.TaggedError('DirectoryNetworkError') {}
+class DirectoryRequestError extends Data.TaggedError('DirectoryRequestError')<{
+  readonly status: number;
+  readonly code: string;
+  readonly message: string;
+}> {}
+class DirectoryUnauthorized extends Data.TaggedError('DirectoryUnauthorized') {}
+class DirectoryInvalidResponse extends Data.TaggedError('DirectoryInvalidResponse') {}
 
-function isDirectoryKind(value: unknown): value is DirectoryKind {
-  return value === 'group' || value === 'channel';
-}
-
-function parseDirectoryEntry(value: unknown): DirectoryEntry | null {
-  if (!isRecord(value)) return null;
-  const id = value['id'];
-  const kind = value['kind'];
-  const title = value['title'];
-  const handle = value['handle'];
-  const description = value['description'];
-  const memberCount = value['memberCount'];
-  const joined = value['joined'];
-  const avatarUrl = value['avatarUrl'];
-  if (
-    !isString(id) ||
-    !isDirectoryKind(kind) ||
-    !isString(title) ||
-    !isString(handle) ||
-    (description !== null && !isString(description)) ||
-    typeof memberCount !== 'number' ||
-    typeof joined !== 'boolean' ||
-    (avatarUrl !== undefined && !isString(avatarUrl))
-  ) {
-    return null;
-  }
-  return {
-    id,
-    kind,
-    title,
-    handle,
-    description,
-    memberCount,
-    joined,
-    ...(avatarUrl === undefined ? {} : { avatarUrl }),
-  };
-}
-
-function parseDirectoryPage(value: unknown): DirectoryPage | null {
-  if (!isRecord(value) || !Array.isArray(value['entries'])) return null;
-  const entries: DirectoryEntry[] = [];
-  for (const entry of value['entries']) {
-    const parsed = parseDirectoryEntry(entry);
-    if (parsed === null) return null;
-    entries.push(parsed);
-  }
-  const next = value['next'];
-  if (next !== null && !isString(next)) return null;
-  return { entries, next };
-}
-
-function parsePublicJoinResult(value: unknown): PublicJoinResult | null {
-  if (!isRecord(value)) return null;
-  const groupId = value['groupId'];
-  const alreadyMember = value['alreadyMember'];
-  if (!isString(groupId) || typeof alreadyMember !== 'boolean') return null;
-  return { groupId, alreadyMember };
-}
-
-function parseGroupVisibility(value: unknown): GroupVisibilityState | null {
-  if (!isRecord(value)) return null;
-  const visibility = value['visibility'];
-  const handle = value['handle'];
-  // Older servers omit both: treated as private with no handle.
-  if (visibility !== undefined && visibility !== 'private' && visibility !== 'public') return null;
-  if (handle !== undefined && handle !== null && !isString(handle)) return null;
-  return {
-    visibility: visibility === 'public' ? 'public' : 'private',
-    handle: isString(handle) ? handle : null,
-  };
-}
-
-function isHandleCheckReason(value: unknown): value is HandleCheckReason {
-  return value === 'invalid' || value === 'reserved' || value === 'taken';
-}
-
-function parseHandleCheck(value: unknown): HandleCheck | null {
-  if (!isRecord(value)) return null;
-  const available = value['available'];
-  const reason = value['reason'];
-  if (typeof available !== 'boolean') return null;
-  if (reason !== undefined && !isHandleCheckReason(reason)) return null;
-  return { available, ...(reason === undefined ? {} : { reason }) };
-}
-
-async function request(
+const requestEffect = Effect.fnUntraced(function* (
   apiUrl: string,
   path: string,
   token: string,
   init: RequestInit,
   fetchImpl: typeof fetch,
-): Promise<unknown> {
-  let response: Response;
-  try {
-    response = await fetchImpl(`${apiUrl}${path}`, {
-      ...init,
-      headers: {
-        accept: 'application/json',
-        authorization: `Bearer ${token}`,
-        ...init.headers,
-      },
-    });
-  } catch {
-    throw new DirectoryApiError(0, 'network_error', 'Could not reach the server');
-  }
+): EffectType.fn.Return<unknown, DirectoryNetworkError | DirectoryRequestError> {
+  const response = yield* Effect.tryPromise({
+    try: (signal) =>
+      fetchImpl(`${apiUrl}${path}`, {
+        ...init,
+        signal,
+        headers: {
+          accept: 'application/json',
+          authorization: `Bearer ${token}`,
+          ...init.headers,
+        },
+      }),
+    catch: () => new DirectoryNetworkError(),
+  });
 
-  const body: unknown = await response.json().catch(() => null);
+  const body: unknown = yield* Effect.promise(
+    () => response.json().catch(() => null) as Promise<unknown>,
+  );
+
   if (!response.ok) {
-    const error = isRecord(body) && isRecord(body['error']) ? body['error'] : null;
-    const code = isString(error?.['code']) ? error['code'] : 'request_failed';
-    const message = isString(error?.['message'])
-      ? error['message']
-      : `Request failed (${response.status})`;
-    throw new DirectoryApiError(response.status, code, message);
+    const error = errorFieldsOf(body);
+    return yield* new DirectoryRequestError({
+      status: response.status,
+      code: error.code ?? 'request_failed',
+      message: error.message ?? `Request failed (${response.status})`,
+    });
   }
   return body;
-}
+});
 
 /** The exact PATCH body the server's visibility route accepts. */
 export function buildVisibilityBody(input: SetGroupVisibilityInput): Record<string, unknown> {
@@ -230,26 +225,51 @@ export function createDirectoryApi(
   fetchImpl: typeof fetch = fetch,
   apiUrl: string = API_URL,
 ): DirectoryApi {
-  const withToken = async (
+  const withTokenEffect = Effect.fnUntraced(function* (
     path: string,
     init: RequestInit,
     parse: (value: unknown) => unknown,
-  ): Promise<unknown> => {
-    const token = await getToken();
+  ): EffectType.fn.Return<
+    unknown,
+    DirectoryUnauthorized | DirectoryNetworkError | DirectoryRequestError | DirectoryInvalidResponse
+  > {
+    const token = yield* Effect.promise(() => getToken());
     if (token === undefined) {
-      throw new DirectoryApiError(401, 'unauthorized', 'No session');
+      return yield* new DirectoryUnauthorized();
     }
-    const body = await request(apiUrl, path, token, init, fetchImpl);
+    const body = yield* requestEffect(apiUrl, path, token, init, fetchImpl);
     const parsed = parse(body);
     if (parsed === null) {
-      throw new DirectoryApiError(
-        200,
-        'invalid_response',
-        'The server sent an unexpected response',
-      );
+      return yield* new DirectoryInvalidResponse();
     }
     return parsed;
-  };
+  });
+
+  const withToken = (
+    path: string,
+    init: RequestInit,
+    parse: (value: unknown) => unknown,
+  ): Promise<unknown> =>
+    Effect.runPromise(
+      withTokenEffect(path, init, parse).pipe(
+        Effect.catchTags({
+          DirectoryUnauthorized: () =>
+            Effect.fail(new DirectoryApiError(401, 'unauthorized', 'No session')),
+          DirectoryNetworkError: () =>
+            Effect.fail(new DirectoryApiError(0, 'network_error', 'Could not reach the server')),
+          DirectoryRequestError: (error) =>
+            Effect.fail(new DirectoryApiError(error.status, error.code, error.message)),
+          DirectoryInvalidResponse: () =>
+            Effect.fail(
+              new DirectoryApiError(
+                200,
+                'invalid_response',
+                'The server sent an unexpected response',
+              ),
+            ),
+        }),
+      ),
+    );
 
   return {
     async searchDirectory(input = {}) {
