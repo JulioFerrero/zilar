@@ -1,5 +1,4 @@
 import { randomUUID } from 'node:crypto';
-import { and, eq, isNull } from 'drizzle-orm';
 import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
@@ -42,9 +41,9 @@ type ApprovalRuleRow = typeof approvalRules.$inferSelect;
 // The top-level queries run on the `effect/sql` client registered for this
 // database (see `../effect/sql`). The exported functions stay `async` so
 // routes and tests keep their shape during the transition.
-function runSql<A>(
+function runSql<A, E>(
   db: ServerDatabase,
-  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
+  effect: Effect.Effect<A, E, SqlClient.SqlClient>,
 ): Promise<A> {
   return sqlRuntimeFor(db).runPromise(effect);
 }
@@ -58,9 +57,10 @@ function runSql<A>(
 //   - if the caller is not the AI owner and (for a group) not a group
 //     owner/admin, returns `null` so the caller cannot probe existence
 //
-// The `tx` parameter is the transaction the caller is already in
-// (typically the decision's `db.transaction`). A same-transaction write
-// means the decision + rule are atomic.
+// The read and the insert run on the caller's `effect/sql` client:
+// `createRuleEffect` is yielded inside the decision's `sql.withTransaction`
+// so the decision + rule are atomic, and `createRule` runs it standalone
+// for the routes and tests.
 export interface CreateRuleInput {
   aiId: string;
   groupId: string | null;
@@ -74,81 +74,92 @@ export interface CreateRuleResult {
   created: boolean;
 }
 
-// `findActiveRuleForUpdate` and `createRule` stay on drizzle for now: their
-// caller (`approvals/service.ts`) passes a drizzle transaction, so the read
-// and the insert must run on it. They move once that caller's transaction
-// moves.
-export async function findActiveRuleForUpdate(
-  tx: ServerDatabase,
-  input: { aiId: string; groupId: string | null; topicId: string | null; action: string },
-): Promise<ApprovalRuleRow | null> {
-  const baseFilter =
-    input.topicId === null
-      ? and(
-          eq(approvalRules.aiId, input.aiId),
-          isNull(approvalRules.topicId),
-          eq(approvalRules.action, input.action),
-          isNull(approvalRules.revokedAt),
-        )
-      : and(
-          eq(approvalRules.aiId, input.aiId),
-          eq(approvalRules.topicId, input.topicId),
-          eq(approvalRules.action, input.action),
-          isNull(approvalRules.revokedAt),
-        );
-  const [row] = await tx.select().from(approvalRules).where(baseFilter).limit(1);
-  return row ?? null;
+// The active-rule read and the atomic insert both run on the `effect/sql`
+// client now, so `approvals/service.ts` can yield them inside its
+// `sql.withTransaction` and the decision + rule share one transaction.
+// `createRule` stays as the `async` wrapper the routes and tests call.
+export function findActiveRuleEffect(input: {
+  aiId: string;
+  groupId: string | null;
+  topicId: string | null;
+  action: string;
+}): Effect.Effect<ApprovalRuleRow | null, SqlError.SqlError, SqlClient.SqlClient> {
+  return Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    if (input.topicId === null) {
+      const rows = yield* sql<ApprovalRuleRow>`SELECT * FROM approval_rules
+        WHERE ai_id = ${input.aiId} AND topic_id IS NULL
+          AND action = ${input.action} AND revoked_at IS NULL LIMIT 1`;
+      return rows[0] ?? null;
+    }
+    const rows = yield* sql<ApprovalRuleRow>`SELECT * FROM approval_rules
+      WHERE ai_id = ${input.aiId} AND topic_id = ${input.topicId}
+        AND action = ${input.action} AND revoked_at IS NULL LIMIT 1`;
+    return rows[0] ?? null;
+  });
 }
 
-// Inserts an active rule. Returns the new row and `created: true`, or the
-// existing active row and `created: false` when one already exists for the
-// same (aiId, chat, action). No race protection beyond the partial unique
+// Inserts an active rule, as an Effect so the caller can run it inside its
+// transaction. Returns the new row and `created: true`, or the existing
+// active row and `created: false` when one already exists for the same
+// (aiId, chat, action). No race protection beyond the partial unique
 // indexes — two concurrent callers racing on the same key both reach this
 // function, one wins the insert and the other falls back to a re-read.
-export async function createRule(
-  tx: ServerDatabase,
+export function createRuleEffect(
   input: CreateRuleInput,
   now: Date,
-): Promise<CreateRuleResult> {
-  const existing = await findActiveRuleForUpdate(tx, {
-    aiId: input.aiId,
-    groupId: input.groupId,
-    topicId: input.topicId,
-    action: input.action,
-  });
-  if (existing !== null) {
-    return { rule: toPublicRule(existing), created: false };
-  }
-
-  // `ON CONFLICT DO NOTHING` (not a caught unique violation): inside a
-  // Postgres transaction a failed statement aborts the whole transaction, so
-  // a concurrent inserter winning the partial unique index must not raise.
-  const [row] = await tx
-    .insert(approvalRules)
-    .values({
-      id: randomUUID(),
+): Effect.Effect<CreateRuleResult, SqlError.SqlError | Error, SqlClient.SqlClient> {
+  return Effect.gen(function* () {
+    const existing = yield* findActiveRuleEffect({
       aiId: input.aiId,
       groupId: input.groupId,
       topicId: input.topicId,
       action: input.action,
-      createdBy: input.createdBy,
-      createdAt: now,
-    })
-    .onConflictDoNothing()
-    .returning();
-  if (row !== undefined) {
-    return { rule: toPublicRule(row), created: true };
-  }
-  const winner = await findActiveRuleForUpdate(tx, {
-    aiId: input.aiId,
-    groupId: input.groupId,
-    topicId: input.topicId,
-    action: input.action,
+    });
+    if (existing !== null) {
+      return { rule: toPublicRule(existing), created: false };
+    }
+
+    // `ON CONFLICT DO NOTHING` (not a caught unique violation): inside a
+    // Postgres transaction a failed statement aborts the whole transaction, so
+    // a concurrent inserter winning the partial unique index must not raise.
+    const sql = yield* SqlClient.SqlClient;
+    const rows = yield* sql<ApprovalRuleRow>`INSERT INTO approval_rules
+        (id, ai_id, group_id, topic_id, action, created_by, created_at)
+      VALUES (
+        ${randomUUID()},
+        ${input.aiId},
+        ${input.groupId},
+        ${input.topicId},
+        ${input.action},
+        ${input.createdBy},
+        ${now}
+      )
+      ON CONFLICT DO NOTHING RETURNING *`;
+    const row = rows[0];
+    if (row !== undefined) {
+      return { rule: toPublicRule(row), created: true };
+    }
+    const winner = yield* findActiveRuleEffect({
+      aiId: input.aiId,
+      groupId: input.groupId,
+      topicId: input.topicId,
+      action: input.action,
+    });
+    if (winner === null) {
+      return yield* Effect.fail(new Error('Failed to create approval rule'));
+    }
+    return { rule: toPublicRule(winner), created: false };
   });
-  if (winner === null) {
-    throw new Error('Failed to create approval rule');
-  }
-  return { rule: toPublicRule(winner), created: false };
+}
+
+// Async wrapper kept for routes and tests during the transition.
+export async function createRule(
+  db: ServerDatabase,
+  input: CreateRuleInput,
+  now: Date,
+): Promise<CreateRuleResult> {
+  return runSql(db, createRuleEffect(input, now));
 }
 
 // One-shot lookup the action gateway uses before creating an approval:
@@ -158,22 +169,7 @@ export async function findActiveRule(
   db: ServerDatabase,
   input: { aiId: string; groupId: string | null; topicId: string | null; action: string },
 ): Promise<ApprovalRuleRow | null> {
-  return runSql(
-    db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      if (input.topicId === null) {
-        const rows = yield* sql<ApprovalRuleRow>`SELECT * FROM approval_rules
-          WHERE ai_id = ${input.aiId} AND topic_id IS NULL
-            AND action = ${input.action} AND revoked_at IS NULL LIMIT 1`;
-        return rows[0] ?? null;
-      }
-      const rows = yield* sql<ApprovalRuleRow>`SELECT * FROM approval_rules
-        WHERE ai_id = ${input.aiId} AND topic_id = ${input.topicId}
-          AND action = ${input.action} AND revoked_at IS NULL LIMIT 1`;
-      return rows[0] ?? null;
-    }),
-  );
+  return runSql(db, findActiveRuleEffect(input));
 }
 
 // Lists the active rules for an AI. The AI's owner only — the routes

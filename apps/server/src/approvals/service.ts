@@ -1,8 +1,10 @@
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { and, count, desc, eq, gt, inArray, lt, or } from 'drizzle-orm';
-import { Result, Schema } from 'effect';
+import { Effect, Result, Schema } from 'effect';
+import { SqlClient } from 'effect/sql';
 import { ARGS_HASH_PATTERN } from '@zilar/protocol';
 import type { ServerDatabase } from '../db/client';
+import { sqlRuntimeFor } from '../effect/sql';
 import {
   ais,
   approvals,
@@ -14,7 +16,17 @@ import {
   user,
 } from '../db/schema';
 import { canSeeTopic } from '../topics/access';
-import { createRule, isGroupAdmin } from './rules';
+import { createRuleEffect, isGroupAdmin } from './rules';
+
+// Every query runs on the `effect/sql` client registered for this database
+// (see `../effect/sql`). The exported functions stay `async` so routes and
+// tests keep their shape during the transition.
+function runSql<A, E>(
+  db: ServerDatabase,
+  effect: Effect.Effect<A, E, SqlClient.SqlClient>,
+): Promise<A> {
+  return sqlRuntimeFor(db).runPromise(effect);
+}
 
 // `approved_always` is treated exactly like `approved_once` for the
 // single-use path; T-0099 adds a separate standing-rule flow that the
@@ -172,6 +184,29 @@ export class ApprovalServiceError extends Error {
 
 type ApprovalRow = typeof approvals.$inferSelect;
 
+// The raw shape the driver returns for one `approvals` row. The effect/sql
+// client camelCases the columns but may hand back `timestamptz` as an ISO
+// string rather than a `Date`; `toApprovalRow` normalises the three
+// timestamp columns so the rest of the module keeps the drizzle row type.
+type ApprovalSqlRow = Omit<ApprovalRow, 'decidedAt' | 'expiresAt' | 'createdAt'> & {
+  decidedAt: Date | string | null;
+  expiresAt: Date | string;
+  createdAt: Date | string;
+};
+
+function toDate(value: Date | string): Date {
+  return value instanceof Date ? value : new Date(value);
+}
+
+function toApprovalRow(raw: ApprovalSqlRow): ApprovalRow {
+  return {
+    ...raw,
+    decidedAt: raw.decidedAt === null ? null : toDate(raw.decidedAt),
+    expiresAt: toDate(raw.expiresAt),
+    createdAt: toDate(raw.createdAt),
+  };
+}
+
 // Validates input at the boundary and writes one row. The AI must exist; if
 // `groupId` is set, `topicId` must name a topic of that group (both set or
 // both absent — personal chat). `expiresAt` must be in the future and at
@@ -326,56 +361,57 @@ export async function decideApproval(
   }
 
   // The decision + (optional) rule creation share one transaction. If
-  // either fails, both roll back.
+  // either fails, both roll back. The decision is one conditional UPDATE; the
+  // rule (on approve_always) is inserted on the same `effect/sql` client, so
+  // `sql.withTransaction` wraps both.
   let createdRule: CreatedApprovalRule | null = null;
-  const updated = await db.transaction(async (tx) => {
-    const [decisionRow] = await tx
-      .update(approvals)
-      .set({
-        status: decisionToStatus(params.decision),
-        decidedBy: params.userId,
-        decidedAt: now,
-        note: params.note ?? null,
-      })
-      .where(
-        and(
-          eq(approvals.id, row.id),
-          eq(approvals.status, 'pending'),
-          gt(approvals.expiresAt, now),
-        ),
-      )
-      .returning();
-    if (!decisionRow) {
-      // A concurrent decision won, or the row expired between our
-      // checks and the update. Signal "no row updated" so the caller
-      // can re-read and pick the right error.
-      return undefined;
-    }
+  const updated = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql.withTransaction(
+        Effect.gen(function* () {
+          const rows = yield* sql<ApprovalSqlRow>`UPDATE approvals
+            SET status = ${decisionToStatus(params.decision)},
+                decided_by = ${params.userId},
+                decided_at = ${now},
+                note = ${params.note ?? null}
+            WHERE id = ${row.id} AND status = 'pending' AND expires_at > ${now}
+            RETURNING *`;
+          const decisionRow = rows[0];
+          if (!decisionRow) {
+            // A concurrent decision won, or the row expired between our
+            // checks and the update. Signal "no row updated" so the caller
+            // can re-read and pick the right error.
+            return undefined;
+          }
 
-    if (params.decision === 'approve_always') {
-      // The rule shares the decision's transaction: both commit or neither.
-      const { rule, created } = await createRule(
-        tx as unknown as ServerDatabase,
-        {
-          aiId: row.aiId,
-          groupId: row.groupId,
-          topicId: row.topicId,
-          action: row.action,
-          createdBy: params.userId,
-        },
-        now,
+          if (params.decision === 'approve_always') {
+            // The rule shares the decision's transaction: both commit or neither.
+            const { rule, created } = yield* createRuleEffect(
+              {
+                aiId: row.aiId,
+                groupId: row.groupId,
+                topicId: row.topicId,
+                action: row.action,
+                createdBy: params.userId,
+              },
+              now,
+            );
+            createdRule = {
+              id: rule.id,
+              action: rule.action,
+              groupId: rule.groupId,
+              topicId: rule.topicId,
+              created,
+            };
+          }
+
+          return toApprovalRow(decisionRow);
+        }),
       );
-      createdRule = {
-        id: rule.id,
-        action: rule.action,
-        groupId: rule.groupId,
-        topicId: rule.topicId,
-        created,
-      };
-    }
-
-    return decisionRow;
-  });
+    }),
+  );
 
   if (!updated) {
     // A concurrent decision won, or the row expired between our checks and the
