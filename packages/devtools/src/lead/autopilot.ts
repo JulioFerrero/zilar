@@ -21,9 +21,18 @@ import {
 } from './doctor.js';
 import { startPrereviewSession } from './start-prereview.js';
 import { appendLog, loadState, updateState } from './state.js';
+import { leadProcessIds } from './processes.js';
+import {
+  defaultSweepDeps,
+  runSweep,
+  sweepLine,
+  SWEEP_INTERVAL_MS,
+  SWEEP_MAX_AGE_MS,
+  type SweepDeps,
+} from './sweeper.js';
 import { extractBlockedText, parseFrontMatter, splitModel } from './task-file.js';
 import { freshSessionRecord, startFreshWorkerSession } from './fresh-session.js';
-import type { DoctorRecord, TaskRecord } from './types.js';
+import type { DoctorRecord, StateFile, TaskRecord } from './types.js';
 
 export const POLL_MS = 15_000;
 const MESSAGE_LIMIT = 30;
@@ -34,6 +43,9 @@ export interface AutopilotDeps {
   statePath: string;
   promptsDirPath: string;
   repoRoot: string;
+  // Injected by runAutopilot (real OS by default). Tests that call tickOnce
+  // directly leave it unset, so no real process is ever touched.
+  sweeper?: SweepDeps;
 }
 
 export interface TickResult {
@@ -229,6 +241,66 @@ async function applyActions(
   return current;
 }
 
+// In-memory throttle for the process sweeper: at most one sweep every 5 min.
+let lastSweepAt: number | undefined;
+
+// Stops leftover vitest/tsc/tsgo/turbo processes that run in a known worktree
+// for too long, or at any age when the task file says `blocked`. Never touches
+// `opencode`, the lead's own pids, or anything outside the worktrees. Called
+// from tickOnce, but only when a sweeper is wired in, so unit tests that call
+// tickOnce directly never shell out.
+async function maybeSweep(
+  state: StateFile,
+  deps: AutopilotDeps,
+  dryRun: boolean,
+  now: number,
+): Promise<void> {
+  const sweeper = deps.sweeper;
+  if (sweeper === undefined) {
+    return;
+  }
+  if (lastSweepAt !== undefined && now - lastSweepAt < SWEEP_INTERVAL_MS) {
+    return;
+  }
+  lastSweepAt = now;
+  const worktreeRoots: string[] = [];
+  const blockedWorktrees: string[] = [];
+  const taskByWorktree = new Map<string, string>();
+  for (const [task, record] of Object.entries(state.tasks)) {
+    worktreeRoots.push(record.worktree);
+    taskByWorktree.set(record.worktree, task);
+    if (readTaskInfo(record.worktree, task)?.status === 'blocked') {
+      blockedWorktrees.push(record.worktree);
+    }
+  }
+  if (worktreeRoots.length === 0) {
+    return;
+  }
+  const lead = leadProcessIds();
+  const outcome = await runSweep(
+    {
+      worktreeRoots,
+      blockedWorktrees,
+      maxAgeMs: SWEEP_MAX_AGE_MS,
+      protectedPids: [lead.currentPid, lead.parentPid],
+      taskByWorktree,
+      dryRun,
+    },
+    sweeper,
+  );
+  if (dryRun) {
+    if (outcome.candidates.length > 0) {
+      console.log(`DRY: ${sweepLine(outcome.candidates)}`);
+    }
+    return;
+  }
+  if (outcome.stopped.length > 0) {
+    const line = sweepLine(outcome.stopped);
+    console.log(line);
+    appendLog(deps.statePath, line);
+  }
+}
+
 // One poll over every worker session in the state file. Read-only when
 // dryRun is set: it classifies and prints, but replies to nothing, prompts
 // nobody, starts no sessions, and saves no state.
@@ -239,6 +311,22 @@ export async function tickOnce(
   const result: TickResult = { escalations: [], errors: [] };
   const now = options.now ?? Date.now();
   const state = loadState(deps.statePath);
+  try {
+    await maybeSweep(state, deps, options.dryRun, now);
+  } catch (error) {
+    // The sweep must never break the task loop.
+    const line = `sweeper: autopilot error: ${error instanceof Error ? error.message : String(error)}`;
+    if (options.dryRun) {
+      console.error(`DRY: ${line}`);
+    } else {
+      try {
+        appendLog(deps.statePath, line);
+      } catch {
+        // Logging must never break the loop.
+      }
+    }
+    result.errors.push(line);
+  }
   const initialSessions = new Map<string, string>();
   for (const [task, record] of Object.entries(state.tasks)) {
     initialSessions.set(task, record.sessionId);
@@ -551,9 +639,13 @@ export async function runAutopilot(
   deps: AutopilotDeps,
   options: { once: boolean; dryRun: boolean },
 ): Promise<TickResult> {
+  // The real sweeper is wired here, not in tickOnce, so unit tests that call
+  // tickOnce directly never run `ps` or kill anything.
+  const active: AutopilotDeps =
+    deps.sweeper === undefined ? { ...deps, sweeper: defaultSweepDeps() } : deps;
   const combined: TickResult = { escalations: [], errors: [] };
   for (;;) {
-    const tick = await tickOnce(deps, { dryRun: options.dryRun });
+    const tick = await tickOnce(active, { dryRun: options.dryRun });
     combined.escalations.push(...tick.escalations);
     combined.errors.push(...tick.errors);
     if (options.once) {

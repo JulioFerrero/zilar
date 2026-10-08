@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-0658](T-0658-autopilot-sweeper.md) | autopilot: sweep leftover test and typecheck processes | in-progress | auto | | |
 | [T-0656](T-0656-gate-slots-and-nice.md) | gate: 2 slots plus a merge slot, nice, Gradle stop, turbo globalDependencies | in-progress | auto | T-0655 | |
 | [T-0660](T-0660-ais-ensure-change-model-effect-sql.md) | effect/sql: ais model transactions and the gateway decrypt (C3) | in-progress | auto | T-0652 | |
 | [T-0661](T-0661-typecheck-with-tsgo.md) | typecheck with tsgo in every package | in-progress | auto | T-0659 | |
@@ -690,3 +689,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0657](T-0657-tsgo-spike.md) | tsgo spike: same result as tsc, about 2-4x faster | 2026-10-08 |
 | [T-0652](T-0652-ais-delete-and-model-clear-effect-sql.md) | ais delete and model-clear transactions on effect/sql | 2026-10-08 |
 | [T-0659](T-0659-server-drop-zod-dependency.md) | drop the zod dependency from the server | 2026-10-08 |
+| [T-0658](T-0658-autopilot-sweeper.md) | autopilot sweeps leftover test and typecheck processes | 2026-10-08 |
