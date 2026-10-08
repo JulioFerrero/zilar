@@ -1,6 +1,5 @@
 import { eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
-import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   CLOSE_AUTH,
@@ -10,9 +9,9 @@ import {
   type RunnerKeypair,
 } from '@zilar/runner-tunnel';
 import { createApp } from '../app';
-import { HttpError } from '../errors';
 import { bootstrapUser, createTestContext, TEST_BASE_URL, type TestContext } from '../test-support';
 import { machines } from '../db/schema';
+import { createMachinesApi } from './api';
 import {
   assertRunnerHubConfig,
   createHubKeyRegistry,
@@ -24,7 +23,6 @@ import {
   type RunnerHub,
 } from './hub';
 import { createDbMachineRegistry } from './registry';
-import { createMachinesRoutes } from './routes';
 import type { ServerDatabase } from '../db/client';
 
 interface RunnerKey extends RunnerKeypair {}
@@ -672,26 +670,16 @@ describe('machines routes with the hub', () => {
     const realOnline = new Set([idA]);
     const isMachineOnline = (id: string): boolean => realOnline.has(id);
 
-    const routes = new Hono();
-    routes.onError((error, c) => {
-      if (error instanceof HttpError) {
-        return c.json({ error: { code: error.code, message: error.message } }, error.status);
-      }
-      throw error;
-    });
-    routes.route(
-      '/api',
-      createMachinesRoutes({
-        auth: context.auth,
-        db: context.db,
-        logger: context.logger,
-        isMachineOnline,
+    const response = await createMachinesApi({
+      auth: context.auth,
+      db: context.db,
+      logger: context.logger,
+      isMachineOnline,
+    }).handler(
+      new Request(`${TEST_BASE_URL}/api/machines`, {
+        headers: { cookie: user.cookie },
       }),
     );
-
-    const response = await routes.request(`${TEST_BASE_URL}/api/machines`, {
-      headers: { cookie: user.cookie },
-    });
     expect(response.status).toBe(200);
     const body = (await response.json()) as Array<Record<string, unknown>>;
     const byId = new Map(body.map((row) => [row['id'] as string, row]));

@@ -8,12 +8,16 @@
 // - the owner routes run the session middleware before anything else, and the
 //   public pair route runs the global then per-IP limiter before the body;
 // - the per-IP limiter reads `socketAddressOf` (the socket edge stamps the
-//   header); tests inject the IP by mounting the item-11 wrapper in
-//   `routes.ts`, which stamps `getClientIp` into the same header.
+//   header); tests stamp the socket header themselves before calling the
+//   handler.
 
 import { Effect, Layer, Option, Schema } from 'effect';
 import { HttpServer, HttpServerResponse, HttpRouter } from 'effect/http';
 import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
+import type { Logger } from 'pino';
+import type { AuditRecorder } from '../audit/service';
+import type { Auth } from '../auth/auth';
+import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
 import {
   CurrentUser,
@@ -27,7 +31,7 @@ import {
 } from '../effect/http';
 import { createRateLimiter } from '../rate-limit';
 import { hashPairingCode, normalizePairingCode } from './codes';
-import { createDbMachineRegistry } from './registry';
+import { createDbMachineRegistry, type DbMachineRegistry } from './registry';
 import {
   approveMachine,
   consumePairingCode,
@@ -43,7 +47,6 @@ import {
   toPublicMachine,
   verifyPairingSignature,
 } from './service';
-import type { MachinesRoutesDependencies } from './routes';
 
 // Pairing codes are minted sparingly: 10 per hour per user.
 export const PAIRING_CODE_RATE_LIMIT_MAX = 10;
@@ -54,6 +57,24 @@ export const PAIRING_CODE_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
 export const PAIR_GLOBAL_RATE_LIMIT_MAX = 30;
 export const PAIR_IP_RATE_LIMIT_MAX = 10;
 export const PAIR_RATE_LIMIT_WINDOW_MS = 60 * 1000;
+
+export interface MachinesApiDependencies {
+  auth: Auth;
+  db: ServerDatabase;
+  logger: MachinesLogger;
+  /** Audit recorder; production wires the server's own recorder. */
+  audit?: AuditRecorder;
+  /** Shared with the tunnel hub so revokes close live connections. */
+  registry?: DbMachineRegistry;
+  /** Injected in tests so rate-limit windows can advance without waiting. */
+  now?: () => number;
+  /** Injected by app.ts when the runner hub is on; absent = hub off. */
+  isMachineOnline?: (machineId: string) => boolean;
+}
+
+// The pino surface: the Effect envelope logs an unhandled failure through the
+// same `error` method the old `onError` used.
+export type MachinesLogger = Logger;
 
 const STRICT_DECODE = { onExcessProperty: 'error' } as const;
 
@@ -224,7 +245,7 @@ function toConflict(error: unknown): unknown {
 // has been replaced by the decoded value.
 const INVALID_JSON = Symbol('invalid-json');
 
-export function createMachinesApi(deps: MachinesRoutesDependencies): EffectApiMount {
+export function createMachinesApi(deps: MachinesApiDependencies): EffectApiMount {
   const logger = deps.logger;
   const now = deps.now ?? Date.now;
   const audit = deps.audit;

@@ -1,7 +1,7 @@
 ---
 id: T-0643
 title: "Hono: retire the machines item-11 wrapper (machines/routes.ts); move its deps type into api.ts; routes.test.ts and hub.test.ts call createMachinesApi(...).handler and stamp the socket header themselves; delete the wrapper; same assertions"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0643-retire-machines-hono-wrapper
 model: auto
@@ -63,4 +63,53 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- Moved `MachinesLogger` and the deps interface into `apps/server/src/machines/api.ts` as `export interface MachinesApiDependencies` (without `getClientIp`); typed `createMachinesApi` with it; dropped the `./routes` import. Added the type imports it now needs (`Logger`, `AuditRecorder`, `Auth`, `ServerDatabase`, and `DbMachineRegistry` from `./registry`).
+- Updated the header comment in `api.ts` (lines 10-12) to say the tests stamp the socket header themselves.
+- `routes.test.ts`: `mountMachines` now builds `createMachinesApi(...)` and returns `{ request(url, init) }`. Each request copies `init.headers`, sets `SOCKET_ADDRESS_HEADER` to `getClientIp?.() ?? 'unknown'` and calls `api.handler(new Request(url, { ...init, headers }))`. `getClientIp` is now `() => string`. Removed the now-unused `Hono`, `Context` and `HttpError` imports.
+- `hub.test.ts`: replaced the Hono mount with a direct `createMachinesApi({ ...same deps }).handler(new Request(url, init))`; removed the now-unused `Hono` and `HttpError` imports.
+- Deleted `apps/server/src/machines/routes.ts`.
+- Every assertion stayed; none needed changing, including the per-IP and global limit tests.
+
+### Files changed
+- `apps/server/src/machines/api.ts`
+- `apps/server/src/machines/routes.test.ts`
+- `apps/server/src/machines/hub.test.ts`
+- `apps/server/src/machines/routes.ts` (deleted)
+- `work/T-0643-retire-machines-hono-wrapper.md` (status + this Report)
+
+### Commands
+- `pnpm install` — completed (no errors).
+- `git grep -n "machines/routes'" apps` and `git grep -n "from './routes'" apps/server/src/machines` — no matches after the deletion.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/machines/routes src/machines/hub` — 3 test files passed, 48 tests passed (22.56s).
+- `pnpm gate` — GATE PASS. Summary lines:
+  - `gate: 5 changed file(s) against main`
+  - `PASS  install (frozen)  (1.3s)`
+  - `PASS  format  (21.1s)`
+  - `PASS  lint  (1.1s)`
+  - `PASS  typecheck  (15.7s)`
+  - `PASS  tests @zilar/server  (21.0s)`
+  - `scope: every changed file is inside the Allowed files`
+  - `GATE PASS`
+
+### Deviations
+- In `mountMachines` I destructure `getClientIp` out of `overrides` before spreading the rest into `createMachinesApi`, so the test-only seam is not passed to the API (which no longer accepts it). Behaviour matches the spec: the socket header is stamped per request.
+
+### Follow-ups (references outside the Allowed files, deliberately untouched)
+- `docs/EFFECT_GUIDE.md:212` (item 13) still names `machines/routes.ts` as an item-11 wrapper.
+- `docs/audit/effect-last-mile.md` lines 78, 114 and 349 still reference the file.
+- Older task files (`work/T-0068`, `T-0070`, `T-0071`, `T-0072`, `T-0075`, `T-0079`, `T-0083`) mention it historically.
+- `api.ts` header comment lines 3-4 already call the Hono router "deleted"; that is now literally true.
+
+No open questions.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved.
+- **Pre-review:** clean. The packet head is 49e4b21f, the current HEAD.
+- **Lead check:**
+  - the wrapper is deleted;
+  - the deps type is in `api.ts`;
+  - the tests stamp `SOCKET_ADDRESS_HEADER` themselves;
+  - no `expect` line changed.
+- **Follow-ups:** the doc references in `docs/EFFECT_GUIDE.md:212` and `docs/audit/effect-last-mile.md`.
