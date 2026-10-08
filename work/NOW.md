@@ -2,6 +2,24 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**PAUSED 2026-10-08 ~16:10 (Julio: "the pc is about to explote and im in call, can you stop all?"):**
+- **The lead stopped:**
+  - the autopilot;
+  - `lead watch`;
+  - opencode (all workers);
+  - the merge runner;
+  - the merge gate in progress.
+- **The cap after the resume is 3-4 workers.**
+- **Stopped mid-work, worktrees kept:**
+  - T-0606, T-0608, T-0610, T-0611, T-0613;
+  - T-0607 and T-0609, each in a lead-approved test-only fix round.
+- **Merged since 14:40:** T-0603, T-0601, T-0602, and probably T-0604 (check `git log`).
+- **Approved, not merged:**
+  - T-0599: its gate was SIGKILLed under memory pressure; no test failed. Retry it;
+  - T-0605.
+- **Not launched:** T-0612 (T-G).
+- **To resume:** follow the CLAUDE.md first actions (start the autopilot), then resume at most 4 workers with `lead reply`.
+
 **2026-10-08 14:40, Effect migration continues:**
 - **Merged since 11:35:**
   - **Effect HTTP:** T-0578 (setup), T-0581 (drafts SSE), T-0582 (stickers JSON), T-0586 (GIFs);
