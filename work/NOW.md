@@ -2,6 +2,32 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-08 03:00, Julio asleep, Effect night continues:**
+- **Merged since 02:00:**
+  - T-0507 and T-0530: **zod is gone from web**;
+  - T-0527 (mobile batch 2), T-0529 (agents G5a), T-0525 (pins, roles and audit HTTP);
+  - T-0531: **zustand is gone from mobile.** `phone:smoke` passed;
+  - T-0534 (agents G5b), T-0528 (chat-prefs and chat-folders on effect/sql).
+- **Approved, in the merge queue:**
+  - T-0536 (groups HTTP);
+  - T-0532: **zod leaves mobile.** `phone:smoke` passed. It was rebased after a lockfile conflict;
+  - T-0535 (machine registry on effect/sql);
+  - T-0537 (screenshot scripts);
+  - T-0533 (xmpp, chats and AI memory HTTP; rebased after an `app.ts` conflict).
+- **Running or launching:**
+  - T-0540: agents G7, the DM turn;
+  - T-0539: topics HTTP;
+  - T-0542: checks that no HttpApi response drops a field;
+  - T-0538: one lenient error envelope for mobile, plus the search abort race;
+  - T-0543: push HTTP;
+  - T-0544: integration settings HTTP;
+  - T-0545: voice transcription HTTP.
+- **Written, waiting:** T-0541, mobile API batch 4, after T-0538.
+- **Lead decisions:**
+  - output schemas strip unlisted keys, so `docs/EFFECT_GUIDE.md` now requires a field-by-field check (T-0542 audits the merged modules);
+  - `connections/service.ts` stays on drizzle until `ais/service.ts` moves its transactions (T-0535 re-scope).
+- **Flake noted:** `Composer.voice.test.tsx:83` failed once in T-0530's merge gate under load, then passed 7 times in a row; the merge was retried.
+
 **2026-10-08 02:00, Julio asleep, Effect night continues:**
 - **Merged since 01:05:**
   - T-0519, T-0508 and T-0506 (the mobile pins pilot);
