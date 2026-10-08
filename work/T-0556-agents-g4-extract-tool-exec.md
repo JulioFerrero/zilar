@@ -1,7 +1,7 @@
 ---
 id: T-0556
 title: "Agents G4: move the tool executor (executeToolCall, runRequestAction, withToolGuide) out of createAgentGateway into agents/gateway/tool-exec.ts verbatim; cross-seam reads as ctx callbacks; zero behaviour change"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0556-agents-g4-extract-tool-exec
 model: auto
@@ -66,4 +66,26 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Done. Pure extraction of the tool executor into `apps/server/src/agents/gateway/tool-exec.ts`; no logic change.
+
+What I did:
+- Created `apps/server/src/agents/gateway/tool-exec.ts` exporting `createToolExec(ctx)` returning `{ executeToolCall, runRequestAction, withToolGuide }`. The three function bodies (plus their leading comments) are the old `gateway.ts` lines 258-567 moved verbatim, now indented as factory methods. `runRequestAction` stays module-private to the factory but is returned because the spec allows "only what callers still use" — nothing outside the factory calls it directly; `executeToolCall` calls it internally.
+- `createToolExec` ctx: `{ deps, logger, sessions, roomRounds, sessionIsLive, pumpRoom, secretsFor }`. Checked the closure list from the spec against the code: the block uses `deps` (db/actions/now), `logger`, `sessions`, `roomRounds`, `sessionIsLive`, `pumpRoom`, `secretsFor`. It does NOT use `aiDeps` or `nowMs` (no matches in the moved block; `nowMs`/`aiDeps` matches the spec guessed are actually in the turn factories, not here). So the factory needs no lazy arrows for `aiDeps`/`nowMs`.
+- In `createAgentGateway`: `createToolExec` is created BEFORE `createDmTurn`, `createGroupTurn` and `createGroupIngest`, with `pumpRoom: (session, roomJid) => pumpRoom(session, roomJid)` as a lazy arrow (same pattern G8b used for `runGroupSessionTurn`), because `createGroupIngest` (which owns `pumpRoom`) is created later. `createDmTurn`/`createGroupTurn` call sites keep `executeToolCall, withToolGuide` unchanged. This is the "factory created before + lazy arrow for the later factory" option from the spec.
+- Removed the moved functions from `gateway.ts` and dropped the imports only they used (tool-guide, memory secrets/store, reply types, tools, delegation service, RequestOutcome, denialReasonForModel/errorName/formatModelText, RequestActionContext). `ROUND_MAX_HOPS` re-export kept (used in export block). `setPersonaFromChat`/`revertPersonaFromChat` import path fixed to `../../ais/service` in tool-exec.ts (nested one level deeper).
+
+Whitespace-insensitive diff: old block (gateway.ts @main lines 258-567) is a verbatim substring of new tool-exec.ts after stripping all whitespace (`old in new: True`); the +1787 non-whitespace chars are the file's imports, `ToolExecContext` interface, factory wrapper/destructuring and return statement. No logic edits, no renames.
+
+Files changed: `apps/server/src/agents/gateway.ts` (-337/+21), `apps/server/src/agents/gateway/tool-exec.ts` (new), this task file.
+
+Commands (real results):
+- `pnpm install`: ok (19.8s).
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/agents src/actions`: 25 files passed, 1 skipped; 559 tests passed, 1 skipped.
+- `pnpm gate`: GATE PASS — PASS install (1.2s), format (19.8s), lint, typecheck (9.6s), tests @zilar/server (64.4s); "scope: every changed file is inside the Allowed files". (First gate run failed on prettier formatting of the new file; fixed with `prettier --write` on the two touched source files, then PASS.)
+- Note: `pnpm gate` lists files changed against `main` including other workers' files (app.ts, push/*, BOARD.md, other tasks); the gate's own scope check confirms every file changed by me is inside my Allowed files.
+
+No deviations from spec; no open questions. Tests untouched.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-08). G4: executeToolCall, runRequestAction and withToolGuide moved into agents/gateway/tool-exec.ts (createToolExec). Lead diff (whitespace-insensitive) of the old block against the new file: identical except the factory return. The factory is created before the turn factories, with a lazy pumpRoom arrow. The agents and actions tests are unchanged (559 passed). Pre-review clean; GATE PASS.
