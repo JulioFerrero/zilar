@@ -1,4 +1,5 @@
-import { z } from 'zod';
+import { Data, Effect, Exit, Schema, SchemaGetter, type Effect as EffectType } from 'effect';
+import { struct } from '@zilar/protocol';
 
 import { API_URL } from './auth';
 
@@ -16,44 +17,47 @@ import { API_URL } from './auth';
  * travels only in the PUT body of its save call and is dropped by the caller
  * right after.
  *
- * The boundary is validated with zod (`zod` is a mobile dependency, used by
- * `voice-transcripts.ts`). `IntegrationsApiError` keeps the server's `code`
- * and `status`, so cards can branch on the error without parsing the message
- * again.
+ * The boundary is validated with Effect Schema (T-0532, the T-0506 recipe):
+ * the request is an Effect pipeline, cut back to a `Promise` at the edge with
+ * `Effect.runPromise`. `IntegrationsApiError` keeps the server's `code` and
+ * `status`, so cards can branch on the error without parsing the message
+ * again. A request body is never logged.
  */
 
-const telegramStatusSchema = z.object({
-  configured: z.boolean(),
-  source: z.enum(['env', 'stored']).nullable(),
+const SourceSchema = Schema.NullOr(Schema.Literals(['env', 'stored']));
+
+const TelegramStatusSchema = struct({
+  configured: Schema.Boolean,
+  source: SourceSchema,
 });
 
-const emailStatusSchema = z.object({
-  configured: z.boolean(),
-  source: z.enum(['env', 'stored']).nullable(),
-  from: z.string().nullable(),
+const EmailStatusSchema = struct({
+  configured: Schema.Boolean,
+  source: SourceSchema,
+  from: Schema.NullOr(Schema.String),
 });
 
-const voiceStatusSchema = z.object({
-  configured: z.boolean(),
-  baseUrl: z.string().nullable(),
-  model: z.string().nullable(),
+const VoiceStatusSchema = struct({
+  configured: Schema.Boolean,
+  baseUrl: Schema.NullOr(Schema.String),
+  model: Schema.NullOr(Schema.String),
 });
 
-const integrationsStatusSchema = z.object({
-  telegram: telegramStatusSchema,
-  email: emailStatusSchema,
-  voiceTranscription: voiceStatusSchema.optional(),
-  canManage: z.boolean(),
+const IntegrationsStatusSchema = struct({
+  telegram: TelegramStatusSchema,
+  email: EmailStatusSchema,
+  voiceTranscription: Schema.optional(VoiceStatusSchema),
+  canManage: Schema.Boolean,
 });
 
-const okSchema = z.object({ ok: z.boolean() });
+const OkSchema = struct({ ok: Schema.Boolean });
 
-const voiceTranscriptionStatusSchema = z.object({ enabled: z.boolean() });
+const VoiceTranscriptionStatusSchema = struct({ enabled: Schema.Boolean });
 
-export type TelegramIntegrationStatus = z.infer<typeof telegramStatusSchema>;
-export type EmailIntegrationStatus = z.infer<typeof emailStatusSchema>;
-export type VoiceIntegrationStatus = z.infer<typeof voiceStatusSchema>;
-export type IntegrationsStatus = z.infer<typeof integrationsStatusSchema>;
+export type TelegramIntegrationStatus = typeof TelegramStatusSchema.Type;
+export type EmailIntegrationStatus = typeof EmailStatusSchema.Type;
+export type VoiceIntegrationStatus = typeof VoiceStatusSchema.Type;
+export type IntegrationsStatus = typeof IntegrationsStatusSchema.Type;
 
 export interface SaveEmailSettingsInput {
   from: string;
@@ -107,71 +111,98 @@ export function buildSaveVoiceBody(input: SaveVoiceTranscriptionInput): Record<s
   return body;
 }
 
-function errorCodeOf(body: unknown): string {
-  if (typeof body !== 'object' || body === null) {
-    return 'request_failed';
-  }
-  const error = (body as Record<string, unknown>)['error'];
-  if (typeof error !== 'object' || error === null) {
-    return 'request_failed';
-  }
-  const code = (error as Record<string, unknown>)['code'];
-  return typeof code === 'string' ? code : 'request_failed';
+// The server's error envelope is decoded field by field, so a malformed `code`
+// does not discard a valid `message` (and vice versa). A missing or malformed
+// envelope keeps the fixed fallbacks used by `requestEffect`, as the old
+// per-field guards did.
+const LenientErrorStringSchema = Schema.Unknown.pipe(
+  Schema.decodeTo(Schema.UndefinedOr(Schema.String), {
+    decode: SchemaGetter.transform((value) => (typeof value === 'string' ? value : undefined)),
+    encode: SchemaGetter.transform((value) => value),
+  }),
+);
+
+const ErrorBodySchema = struct({
+  error: struct({
+    code: Schema.optional(LenientErrorStringSchema),
+    message: Schema.optional(LenientErrorStringSchema),
+  }),
+});
+
+function parseIntegrationsStatus(value: unknown): IntegrationsStatus | null {
+  const decoded = Schema.decodeUnknownExit(IntegrationsStatusSchema)(value);
+  return Exit.isSuccess(decoded) ? decoded.value : null;
 }
 
-function errorMessageOf(body: unknown, status: number): string {
-  if (typeof body === 'object' && body !== null) {
-    const error = (body as Record<string, unknown>)['error'];
-    if (typeof error === 'object' && error !== null) {
-      const message = (error as Record<string, unknown>)['message'];
-      if (typeof message === 'string') {
-        return message;
-      }
-    }
-  }
-  return `Request failed (${status})`;
+function parseVoiceTranscriptionStatus(value: unknown): { enabled: boolean } | null {
+  const decoded = Schema.decodeUnknownExit(VoiceTranscriptionStatusSchema)(value);
+  return Exit.isSuccess(decoded) ? decoded.value : null;
 }
 
-async function request<T>(
+function parseOk(value: unknown): unknown | null {
+  const decoded = Schema.decodeUnknownExit(OkSchema)(value);
+  return Exit.isSuccess(decoded) ? decoded.value : null;
+}
+
+// The internal failures, one per case. They carry no field beyond what the old
+// `IntegrationsApiError` already surfaced; the `Promise` edge maps each back to
+// that same error, status, code and message.
+class IntegrationsNetworkError extends Data.TaggedError('IntegrationsNetworkError') {}
+class IntegrationsRequestError extends Data.TaggedError('IntegrationsRequestError')<{
+  readonly status: number;
+  readonly code: string;
+  readonly message: string;
+}> {}
+class IntegrationsUnauthorized extends Data.TaggedError('IntegrationsUnauthorized') {}
+class IntegrationsInvalidResponse extends Data.TaggedError('IntegrationsInvalidResponse')<{
+  readonly status: number;
+}> {}
+
+const requestEffect = Effect.fnUntraced(function* (
   apiUrl: string,
   path: string,
   token: string,
-  schema: z.ZodType<T>,
+  parse: (value: unknown) => unknown,
   init: RequestInit,
   fetchImpl: typeof fetch,
-): Promise<T> {
-  let response: Response;
-  try {
-    response = await fetchImpl(`${apiUrl}${path}`, {
-      ...init,
-      headers: {
-        accept: 'application/json',
-        authorization: `Bearer ${token}`,
-        ...init.headers,
-      },
+): EffectType.fn.Return<
+  unknown,
+  IntegrationsNetworkError | IntegrationsRequestError | IntegrationsInvalidResponse
+> {
+  const response = yield* Effect.tryPromise({
+    try: (signal) =>
+      fetchImpl(`${apiUrl}${path}`, {
+        ...init,
+        signal,
+        headers: {
+          accept: 'application/json',
+          authorization: `Bearer ${token}`,
+          ...init.headers,
+        },
+      }),
+    catch: () => new IntegrationsNetworkError(),
+  });
+
+  const body: unknown = yield* Effect.promise(
+    () => response.json().catch(() => null) as Promise<unknown>,
+  );
+
+  if (!response.ok) {
+    const decoded = Schema.decodeUnknownExit(ErrorBodySchema)(body);
+    const error = Exit.isSuccess(decoded) ? decoded.value.error : undefined;
+    return yield* new IntegrationsRequestError({
+      status: response.status,
+      code: error?.code ?? 'request_failed',
+      message: error?.message ?? `Request failed (${response.status})`,
     });
-  } catch {
-    throw new IntegrationsApiError(0, 'network_error', 'Could not reach the server');
   }
 
-  const body: unknown = await response.json().catch(() => null);
-  if (!response.ok) {
-    throw new IntegrationsApiError(
-      response.status,
-      errorCodeOf(body),
-      errorMessageOf(body, response.status),
-    );
+  const parsed = parse(body);
+  if (parsed === null) {
+    return yield* new IntegrationsInvalidResponse({ status: response.status });
   }
-  const parsed = schema.safeParse(body);
-  if (!parsed.success) {
-    throw new IntegrationsApiError(
-      response.status,
-      'invalid_response',
-      'The server sent an unexpected response',
-    );
-  }
-  return parsed.data;
-}
+  return parsed;
+});
 
 /** The production `IntegrationsApi`: bearer auth, `fetch`, and the build-time API URL. */
 export function createIntegrationsApi(
@@ -179,31 +210,66 @@ export function createIntegrationsApi(
   fetchImpl: typeof fetch = fetch,
   apiUrl: string = API_URL,
 ): IntegrationsApi {
-  const withToken = <T>(
+  const withTokenEffect = Effect.fnUntraced(function* (
     path: string,
-    schema: z.ZodType<T>,
+    parse: (value: unknown) => unknown,
+    init: RequestInit,
+  ): EffectType.fn.Return<
+    unknown,
+    | IntegrationsUnauthorized
+    | IntegrationsNetworkError
+    | IntegrationsRequestError
+    | IntegrationsInvalidResponse
+  > {
+    const token = yield* Effect.promise(() => getToken());
+    if (token === undefined) {
+      return yield* new IntegrationsUnauthorized();
+    }
+    return yield* requestEffect(apiUrl, path, token, parse, init, fetchImpl);
+  });
+
+  const withToken = (
+    path: string,
+    parse: (value: unknown) => unknown,
     init: RequestInit = { method: 'GET' },
-  ): Promise<T> =>
-    getToken().then((token) => {
-      if (token === undefined) {
-        throw new IntegrationsApiError(401, 'unauthorized', 'No session');
-      }
-      return request(apiUrl, path, token, schema, init, fetchImpl);
-    });
+  ): Promise<unknown> =>
+    Effect.runPromise(
+      withTokenEffect(path, parse, init).pipe(
+        Effect.catchTags({
+          IntegrationsUnauthorized: () =>
+            Effect.fail(new IntegrationsApiError(401, 'unauthorized', 'No session')),
+          IntegrationsNetworkError: () =>
+            Effect.fail(new IntegrationsApiError(0, 'network_error', 'Could not reach the server')),
+          IntegrationsRequestError: (error) =>
+            Effect.fail(new IntegrationsApiError(error.status, error.code, error.message)),
+          IntegrationsInvalidResponse: (error) =>
+            Effect.fail(
+              new IntegrationsApiError(
+                error.status,
+                'invalid_response',
+                'The server sent an unexpected response',
+              ),
+            ),
+        }),
+      ),
+    );
 
   const putJson = (path: string, body: Record<string, unknown>): Promise<void> =>
-    withToken(path, okSchema, {
+    withToken(path, parseOk, {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),
     }).then(() => {});
 
   const remove = (path: string): Promise<void> =>
-    withToken(path, okSchema, { method: 'DELETE' }).then(() => {});
+    withToken(path, parseOk, { method: 'DELETE' }).then(() => {});
 
   return {
     getIntegrationsStatus() {
-      return withToken('/api/settings/integrations', integrationsStatusSchema);
+      return withToken(
+        '/api/settings/integrations',
+        parseIntegrationsStatus,
+      ) as Promise<IntegrationsStatus>;
     },
     saveTelegramBotToken(botToken) {
       return putJson('/api/settings/integrations/telegram', { botToken });
@@ -215,7 +281,9 @@ export function createIntegrationsApi(
       return putJson('/api/settings/integrations/email', buildSaveEmailBody(input));
     },
     getVoiceTranscriptionStatus() {
-      return withToken('/api/voice/transcription', voiceTranscriptionStatusSchema);
+      return withToken('/api/voice/transcription', parseVoiceTranscriptionStatus) as Promise<{
+        enabled: boolean;
+      }>;
     },
     saveVoiceTranscriptionSettings(input) {
       return putJson('/api/settings/integrations/voice-transcription', buildSaveVoiceBody(input));

@@ -1,3 +1,6 @@
+import { Data, Effect, Exit, Schema, type Effect as EffectType } from 'effect';
+import { struct } from '@zilar/protocol';
+
 import { API_URL } from './auth';
 import type { GroupMember, TokenProvider } from './chat-api';
 
@@ -7,8 +10,9 @@ import type { GroupMember, TokenProvider } from './chat-api';
  * one, read the members slice and flip a member's role. The wire contract
  * lives in `apps/server/src/groups/routes.ts` (T-0124).
  *
- * Mobile has no zod, so — like `chat-api.ts` — the boundary is validated
- * with type guards: a malformed payload throws `invalid_response`. Raw
+ * The boundary is validated with Effect Schema (T-0532, the T-0506 recipe):
+ * the request is an Effect pipeline, cut back to a `Promise` at the edge with
+ * `Effect.runPromise`. A malformed payload throws `invalid_response`. Raw
  * server messages never reach the UI; callers map status/code to their own
  * neutral lines.
  */
@@ -67,67 +71,106 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
-function isString(value: unknown): value is string {
-  return typeof value === 'string';
-}
+const NamedRoleSchema = struct({
+  id: Schema.String,
+  name: Schema.String,
+});
 
-function isGroupRole(value: unknown): value is 'owner' | 'admin' | 'member' {
-  return value === 'owner' || value === 'admin' || value === 'member';
-}
+const GroupMemberSchema = struct({
+  userId: Schema.String,
+  name: Schema.String,
+  role: Schema.Literals(['owner', 'admin', 'member']),
+  roles: Schema.optional(Schema.mutable(Schema.Array(NamedRoleSchema))),
+});
 
-function parseGroupMember(value: unknown): GroupMember | null {
-  if (!isRecord(value)) return null;
-  const userId = value['userId'];
-  const name = value['name'];
-  const role = value['role'];
-  if (!isString(userId) || !isString(name) || !isGroupRole(role)) return null;
-  const roles: { id: string; name: string }[] = [];
-  const rawRoles = value['roles'];
-  if (rawRoles !== undefined) {
-    if (!Array.isArray(rawRoles)) return null;
-    for (const entry of rawRoles) {
-      if (!isRecord(entry)) return null;
-      const id = entry['id'];
-      const roleName = entry['name'];
-      if (!isString(id) || !isString(roleName)) return null;
-      roles.push({ id, name: roleName });
-    }
+// The slice rejects as a whole when any member is malformed, so a half-rendered
+// audience never reaches the UI.
+const GroupMembersEnvelopeSchema = struct({
+  members: Schema.mutable(Schema.Array(GroupMemberSchema)),
+});
+
+const IdAckSchema = struct({ id: Schema.String });
+
+// The server's error envelope. A missing or malformed envelope keeps the fixed
+// fallbacks used by `requestEffect`.
+const ErrorBodySchema = struct({
+  error: struct({
+    code: Schema.optional(Schema.String),
+    message: Schema.optional(Schema.String),
+  }),
+});
+
+function parseGroupMembers(value: unknown): GroupMember[] | null {
+  const decoded = Schema.decodeUnknownExit(GroupMembersEnvelopeSchema)(value);
+  if (!Exit.isSuccess(decoded)) {
+    return null;
   }
-  return { userId, name, role, roles };
+  return decoded.value.members.map((member) => ({
+    userId: member.userId,
+    name: member.name,
+    role: member.role,
+    roles: member.roles ?? [],
+  }));
 }
 
-async function request(
+function parseIdAck(value: unknown): { id: string } | null {
+  const decoded = Schema.decodeUnknownExit(IdAckSchema)(value);
+  return Exit.isSuccess(decoded) ? decoded.value : null;
+}
+
+// The role and remove calls only require a JSON object; any record answers.
+function parseRecord(value: unknown): Record<string, unknown> | null {
+  return isRecord(value) ? value : null;
+}
+
+// The internal failures, one per case. They carry no field beyond what the old
+// `GroupsApiError` already surfaced; the `Promise` edge maps each back to that
+// same error, status, code and message.
+class GroupsNetworkError extends Data.TaggedError('GroupsNetworkError') {}
+class GroupsRequestError extends Data.TaggedError('GroupsRequestError')<{
+  readonly status: number;
+  readonly code: string;
+  readonly message: string;
+}> {}
+class GroupsUnauthorized extends Data.TaggedError('GroupsUnauthorized') {}
+class GroupsInvalidResponse extends Data.TaggedError('GroupsInvalidResponse') {}
+
+const requestEffect = Effect.fnUntraced(function* (
   apiUrl: string,
   path: string,
   token: string,
   init: RequestInit,
   fetchImpl: typeof fetch,
-): Promise<unknown> {
-  let response: Response;
-  try {
-    response = await fetchImpl(`${apiUrl}${path}`, {
-      ...init,
-      headers: {
-        accept: 'application/json',
-        authorization: `Bearer ${token}`,
-        ...init.headers,
-      },
-    });
-  } catch {
-    throw new GroupsApiError(0, 'network_error', 'Could not reach the server');
-  }
+): EffectType.fn.Return<unknown, GroupsNetworkError | GroupsRequestError> {
+  const response = yield* Effect.tryPromise({
+    try: (signal) =>
+      fetchImpl(`${apiUrl}${path}`, {
+        ...init,
+        signal,
+        headers: {
+          accept: 'application/json',
+          authorization: `Bearer ${token}`,
+          ...init.headers,
+        },
+      }),
+    catch: () => new GroupsNetworkError(),
+  });
 
-  const body: unknown = await response.json().catch(() => null);
+  const body: unknown = yield* Effect.promise(
+    () => response.json().catch(() => null) as Promise<unknown>,
+  );
+
   if (!response.ok) {
-    const error = isRecord(body) && isRecord(body['error']) ? body['error'] : null;
-    const code = isString(error?.['code']) ? error['code'] : 'request_failed';
-    const message = isString(error?.['message'])
-      ? error['message']
-      : `Request failed (${response.status})`;
-    throw new GroupsApiError(response.status, code, message);
+    const decoded = Schema.decodeUnknownExit(ErrorBodySchema)(body);
+    const error = Exit.isSuccess(decoded) ? decoded.value.error : undefined;
+    return yield* new GroupsRequestError({
+      status: response.status,
+      code: error?.code ?? 'request_failed',
+      message: error?.message ?? `Request failed (${response.status})`,
+    });
   }
   return body;
-}
+});
 
 /** The production `GroupsApi`: bearer auth, `fetch`, and the build-time API URL. */
 export function createGroupsApi(
@@ -135,22 +178,47 @@ export function createGroupsApi(
   fetchImpl: typeof fetch = fetch,
   apiUrl: string = API_URL,
 ): GroupsApi {
-  const withToken = async (
+  const withTokenEffect = Effect.fnUntraced(function* (
     path: string,
     init: RequestInit,
     parse: (value: unknown) => unknown,
-  ): Promise<unknown> => {
-    const token = await getToken();
+  ): EffectType.fn.Return<
+    unknown,
+    GroupsUnauthorized | GroupsNetworkError | GroupsRequestError | GroupsInvalidResponse
+  > {
+    const token = yield* Effect.promise(() => getToken());
     if (token === undefined) {
-      throw new GroupsApiError(401, 'unauthorized', 'No session');
+      return yield* new GroupsUnauthorized();
     }
-    const body = await request(apiUrl, path, token, init, fetchImpl);
+    const body = yield* requestEffect(apiUrl, path, token, init, fetchImpl);
     const parsed = parse(body);
     if (parsed === null) {
-      throw new GroupsApiError(200, 'invalid_response', 'The server sent an unexpected response');
+      return yield* new GroupsInvalidResponse();
     }
     return parsed;
-  };
+  });
+
+  const withToken = (
+    path: string,
+    init: RequestInit,
+    parse: (value: unknown) => unknown,
+  ): Promise<unknown> =>
+    Effect.runPromise(
+      withTokenEffect(path, init, parse).pipe(
+        Effect.catchTags({
+          GroupsUnauthorized: () =>
+            Effect.fail(new GroupsApiError(401, 'unauthorized', 'No session')),
+          GroupsNetworkError: () =>
+            Effect.fail(new GroupsApiError(0, 'network_error', 'Could not reach the server')),
+          GroupsRequestError: (error) =>
+            Effect.fail(new GroupsApiError(error.status, error.code, error.message)),
+          GroupsInvalidResponse: () =>
+            Effect.fail(
+              new GroupsApiError(200, 'invalid_response', 'The server sent an unexpected response'),
+            ),
+        }),
+      ),
+    );
 
   return {
     async createChannel(input) {
@@ -172,10 +240,7 @@ export function createGroupsApi(
               : {}),
           }),
         },
-        (value) => {
-          if (!isRecord(value) || !isString(value['id'])) return null;
-          return { id: value['id'] };
-        },
+        parseIdAck,
       );
       return body as { id: string };
     },
@@ -194,10 +259,7 @@ export function createGroupsApi(
               : {}),
           }),
         },
-        (value) => {
-          if (!isRecord(value) || !isString(value['id'])) return null;
-          return { id: value['id'] };
-        },
+        parseIdAck,
       );
       return body as { id: string };
     },
@@ -205,16 +267,7 @@ export function createGroupsApi(
       const body = await withToken(
         `/api/groups/${encodeURIComponent(groupId)}/members`,
         { method: 'GET' },
-        (value) => {
-          if (!isRecord(value) || !Array.isArray(value['members'])) return null;
-          const members: GroupMember[] = [];
-          for (const entry of value['members']) {
-            const member = parseGroupMember(entry);
-            if (member === null) return null;
-            members.push(member);
-          }
-          return members;
-        },
+        parseGroupMembers,
       );
       return body as GroupMember[];
     },
@@ -226,14 +279,14 @@ export function createGroupsApi(
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ role }),
         },
-        (value) => (isRecord(value) ? value : null),
+        parseRecord,
       );
     },
     async removeGroupMember(groupId, userId) {
       await withToken(
         `/api/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(userId)}`,
         { method: 'DELETE' },
-        (value) => (isRecord(value) ? value : null),
+        parseRecord,
       );
     },
   };

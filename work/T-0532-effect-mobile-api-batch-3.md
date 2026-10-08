@@ -1,7 +1,7 @@
 ---
 id: T-0532
 title: "Effect lane E, batch 3: mobile media-api, groups-api, integrations-api and voice-transcripts onto Effect Schema (+ the T-0506 request pipeline for the API clients); zod leaves apps/mobile; tests unchanged"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0532-effect-mobile-api-batch-3
 model: auto
@@ -53,6 +53,7 @@ Julio, 2026-10-07: the whole codebase on Effect 4, and Effect Schema replaces zo
 - `apps/mobile/src/lib/media-api.ts`, `apps/mobile/src/lib/groups-api.ts`, `apps/mobile/src/lib/integrations-api.ts`, `apps/mobile/src/lib/voice-transcripts.ts`;
 - the new, optional test files: `apps/mobile/src/lib/media-api.effect.test.ts`, `apps/mobile/src/lib/groups-api.effect.test.ts` and `apps/mobile/src/lib/integrations-api.effect.test.ts`;
 - `apps/mobile/package.json`, `pnpm-lock.yaml`;
+- added by the lead on 2026-10-08 (option 1 of the blocked report): `apps/mobile/modules/zilar-whistle/src/result.ts` and `apps/mobile/modules/zilar-whistle/package.json`;
 - `work/T-0532-effect-mobile-api-batch-3.md`.
 
 ### Checks
@@ -71,4 +72,29 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- `apps/mobile/src/lib/media-api.ts`: Effect Schema + the T-0506 pipeline. `parseMediaItem` is now a thin wrapper over `MediaItemSchema`; each optional field uses a lenient decode-to-`undefined` schema (a wrong shape is dropped, not fatal) and `at` keeps the `Date.parse` check. Same `MediaApiError` status/code/message for unauthorized, network throw, non-JSON body, request failure and invalid response.
+- `apps/mobile/src/lib/groups-api.ts`: same recipe. The members slice decodes as a whole (a malformed member → `invalid_response`); role/remove accept any JSON object; create acks require `{ id: string }`.
+- `apps/mobile/src/lib/integrations-api.ts`: zod removed. `TelegramIntegrationStatus`, `EmailIntegrationStatus`, `VoiceIntegrationStatus`, `IntegrationsStatus` are now `typeof <Schema>.Type` (same shape, `voiceTranscription` still optional). The request pipeline keeps per-field lenient error extraction, so a malformed `code` never discards a valid `message`; errors stay secret-free and no body is logged. `buildSaveEmailBody` / `buildSaveVoiceBody` unchanged.
+- `apps/mobile/src/lib/voice-transcripts.ts`: `StoredTranscriptSchema` is now an Effect Schema, `StoredTranscript` its `Type`; `parseTranscripts` uses `Schema.decodeUnknownExit` and keeps the per-entry tolerance; the file-system code is unchanged. Updated the stale "whole-file zod check" comment.
+- `apps/mobile/modules/zilar-whistle/src/result.ts` (added to Allowed files by the lead, option 1): `WhistleRawResultSchema` and `WhistleTranscriptSchema` are now `Schema.Struct` with the same field rules (strip unknown keys, `text`/`language` strings, timings numbers); the exported types are `typeof X.Type`; `parseWhistleResult` decodes with `Schema.decodeUnknownExit` and keeps the same `bad_result` branch and language fallback. Used `Schema.Struct` from `effect` (not `@zilar/protocol`'s `struct`) so the only dependency change is the one the lead authorised.
+- `apps/mobile/package.json`: removed `"zod": "^4.6.5"`.
+- `apps/mobile/modules/zilar-whistle/package.json` (added to Allowed files by the lead): replaced `"zod": "^4.6.5"` with `"effect": "^4.0.2"`.
+- `pnpm install` updated `pnpm-lock.yaml`. No test file was changed and no new test was added.
+
+### Commands and real results
+- `pnpm install`: ok.
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot src/lib/media-api.test.ts src/lib/groups-api.test.ts src/lib/voice-transcripts.test.ts src/components/integrations/integrations-api.test.ts`: **4 files, 48 tests passed**.
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot media groups integrations voice-transcripts new-channel-sheet visibility-fields real-store.channels` (the task's `Checks` selection): **14 files, 130 tests passed**.
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot src/lib/whistle-checksum.test.ts src/lib/whistle-native.test.ts`: **2 files, 22 tests passed**.
+- `rg -n "from ['\"]zod['\"]|require\(['\"]zod['\"]\)|\"zod\"" apps/mobile --glob '!**/node_modules/**' --glob '!**/.turbo/**'`: **no matches** (exit 1). The only remaining "zod" text under `apps/mobile` is prose: existing "mobile has no zod" comments in other `*-api.ts` files and `apps/mobile/modules/zilar-whistle/README.md` ("zod-validated"). The README is outside the Allowed files, so I left it untouched.
+- `pnpm gate` (final): `PASS install (frozen)`, `PASS format`, `PASS lint`, `PASS typecheck`, `PASS tests @zilar/mobile`; `scope: every changed file is inside the Allowed files`; **`GATE PASS`**.
+
+### History (for the merge)
+- Gate run 1 failed `format` on `integrations-api.ts` + `media-api.ts`; fixed with `pnpm exec prettier --write` on those two files.
+- Gate run 2 failed `typecheck` because `apps/mobile/modules/zilar-whistle/src/result.ts` still imported zod after zod left `apps/mobile`; I reported it as blocked and the lead extended the Allowed files (option 1), which this report reflects.
+
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-08). The mobile media, groups and integrations clients and voice-transcripts are on Effect Schema, and after the lead re-scope zilar-whistle result.ts is too. zod is gone from apps/mobile and from the whistle module. phone:smoke passed on the galena AVD. Pre-review clean. Follow-ups for a mobile polish task: the whistle README still says zod-validated, and the media/groups error envelopes decode whole-or-nothing (as in pins); integrations already has the lenient per-field shape.

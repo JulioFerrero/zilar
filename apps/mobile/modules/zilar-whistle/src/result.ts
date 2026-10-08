@@ -1,29 +1,29 @@
-import { z } from 'zod';
+import { Exit, Schema } from 'effect';
 
 import { normalizeWhistleLanguage } from './model';
 
 /** The JSON the native side resolves per chunk (`needle_transcribe` fields). */
-export const WhistleRawResultSchema = z.object({
-  text: z.string(),
-  language: z.string(),
-  ttftMs: z.number(),
-  decodeTps: z.number(),
-  audioMs: z.number(),
+export const WhistleRawResultSchema = Schema.Struct({
+  text: Schema.String,
+  language: Schema.String,
+  ttftMs: Schema.Number,
+  decodeTps: Schema.Number,
+  audioMs: Schema.Number,
 });
 
-export type WhistleRawResult = z.infer<typeof WhistleRawResultSchema>;
+export type WhistleRawResult = typeof WhistleRawResultSchema.Type;
 
 /** One finished on-device transcription, as the dev screen shows it. */
-export const WhistleTranscriptSchema = z.object({
-  text: z.string(),
-  language: z.string(),
-  ttftMs: z.number(),
-  decodeTps: z.number(),
-  audioMs: z.number(),
-  wallMs: z.number(),
+export const WhistleTranscriptSchema = Schema.Struct({
+  text: Schema.String,
+  language: Schema.String,
+  ttftMs: Schema.Number,
+  decodeTps: Schema.Number,
+  audioMs: Schema.Number,
+  wallMs: Schema.Number,
 });
 
-export type WhistleTranscript = z.infer<typeof WhistleTranscriptSchema>;
+export type WhistleTranscript = typeof WhistleTranscriptSchema.Type;
 
 export class WhistleError extends Error {
   readonly code: string;
@@ -42,12 +42,12 @@ export class WhistleError extends Error {
  * unsupported tag.
  */
 export function parseWhistleResult(raw: unknown): WhistleRawResult {
-  const parsed = WhistleRawResultSchema.safeParse(raw);
-  if (!parsed.success) {
+  const parsed = Schema.decodeUnknownExit(WhistleRawResultSchema)(raw);
+  if (!Exit.isSuccess(parsed)) {
     throw new WhistleError('bad_result', 'The transcription result was malformed');
   }
-  const language = normalizeWhistleLanguage(parsed.data.language) ?? '';
-  return { ...parsed.data, language };
+  const language = normalizeWhistleLanguage(parsed.value.language) ?? '';
+  return { ...parsed.value, language };
 }
 
 /** Maps a native rejection code to the fixed error the screen shows. */
