@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-0683](T-0683-topic-roles-and-helpers-effect-sql.md) | effect/sql: setTopicRoles + topic helpers | in-progress | haiku-5.5 | T-0680 | topics slice 3a |
 | [T-0684](T-0684-approvals-service-effect-sql.md) | effect/sql: rest of approvals/service.ts | in-progress | auto | T-0672 | |
 | [T-0686](T-0686-group-member-writes-effect-sql.md) | effect/sql: group member writes | in-progress | haiku-5.5 | T-0682 | groups slice 4 |
 | [T-0687](T-0687-create-patch-topic-effect-sql.md) | effect/sql: createTopic + patchTopic; topics/service.ts drops drizzle | in-progress | haiku-5.5 | T-0683 | topics slice 3b |
@@ -716,3 +715,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0672](T-0672-approvals-decision-effect-sql.md) | effect/sql (C1): approval decision transaction and createRule | 2026-10-08 |
 | [T-0682](T-0682-group-reads-effect-sql.md) | effect/sql: groups read helpers | 2026-10-08 |
 | [T-0685](T-0685-delete-setup-routes.md) | A7: setup Hono wrapper deleted | 2026-10-08 |
+| [T-0683](T-0683-topic-roles-and-helpers-effect-sql.md) | effect/sql: setTopicRoles and topic helpers | 2026-10-08 |

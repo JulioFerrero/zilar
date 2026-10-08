@@ -1,18 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { Effect } from 'effect';
 import { SqlClient, type SqlError } from 'effect/sql';
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
-import {
-  ais,
-  groupMembers,
-  groupRoles,
-  groups,
-  topicMembers,
-  topicRoleAccess,
-  topics,
-} from '../db/schema';
+import { groups, topicMembers, topicRoleAccess, topics } from '../db/schema';
 import { HttpError } from '../errors';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { randomRoomLocalpart, type InviteLogger } from '../groups/service';
@@ -95,11 +87,14 @@ async function uniqueRoomLocalpart(
 ): Promise<{ localpart: string; roomCreated: boolean }> {
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const localpart = randomRoomLocalpart();
-    const [existing] = await db
-      .select({ id: topics.id })
-      .from(topics)
-      .where(eq(topics.roomLocalpart, localpart))
-      .limit(1);
+    const [existing] = await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ id: string }>`
+          SELECT id FROM topics WHERE room_localpart = ${localpart} LIMIT 1`;
+      }),
+    );
     if (existing) {
       continue;
     }
@@ -149,7 +144,13 @@ async function assertNameFree(
   name: string,
   exceptId?: string,
 ): Promise<void> {
-  const rows = await db.select().from(topics).where(eq(topics.groupId, groupId));
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<TopicRow>`SELECT * FROM topics WHERE group_id = ${groupId}`;
+    }),
+  );
   const clash = rows.some(
     (row) =>
       row.archivedAt === null &&
@@ -176,7 +177,13 @@ async function assertOwner(
     }
     return { ownerUserId: owner.id, ownerAiId: null };
   }
-  const [ai] = await db.select({ id: ais.id }).from(ais).where(eq(ais.id, owner.id)).limit(1);
+  const [ai] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ id: string }>`SELECT id FROM ais WHERE id = ${owner.id} LIMIT 1`;
+    }),
+  );
   if (!ai) {
     throw new HttpError(400, 'invalid_request', 'The topic owner AI was not found');
   }
@@ -205,10 +212,15 @@ async function assertMembersAreGroupMembers(
   if (memberIds.length === 0) {
     return;
   }
-  const rows = await db
-    .select({ userId: groupMembers.userId })
-    .from(groupMembers)
-    .where(and(eq(groupMembers.groupId, groupId), inArray(groupMembers.userId, memberIds)));
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ userId: string }>`
+        SELECT user_id FROM group_members
+        WHERE group_id = ${groupId} AND user_id IN ${sql.in(memberIds)}`;
+    }),
+  );
   const known = new Set(rows.map((row) => row.userId));
   if (memberIds.some((id) => !known.has(id))) {
     throw new HttpError(400, 'invalid_request', 'Topic members must be group members');
@@ -770,10 +782,14 @@ export async function setTopicRoles(
   if (topic.isGeneral) {
     throw new HttpError(400, 'not_private', 'The General topic is public');
   }
-  const roles = await deps.db
-    .select()
-    .from(groupRoles)
-    .where(eq(groupRoles.groupId, topic.groupId));
+  const roles = await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ id: string }>`
+        SELECT * FROM group_roles WHERE group_id = ${topic.groupId}`;
+    }),
+  );
   const byId = new Map(roles.map((role) => [role.id, role]));
   const wanted = [...new Set(input.roleIds)];
   if (wanted.some((id) => !byId.has(id))) {
@@ -793,38 +809,39 @@ export async function setTopicRoles(
   // The approver update rides the same transaction so access and approver
   // can never disagree.
   const approverChanged = (topic.approverRoleId ?? null) !== input.approverRoleId;
-  const diff = await deps.db.transaction(async (tx) => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${topic.groupId}))`);
-    const rows = await tx
-      .select({ roleId: topicRoleAccess.roleId })
-      .from(topicRoleAccess)
-      .where(eq(topicRoleAccess.topicId, topic.id));
-    const liveIds = new Set(rows.map((row) => row.roleId));
-    const nextAdded = wanted.filter((id) => !liveIds.has(id));
-    const nextRemoved = [...liveIds].filter((id) => !wantedIds.has(id));
-    if (nextAdded.length > 0) {
-      await tx
-        .insert(topicRoleAccess)
-        .values(nextAdded.map((roleId) => ({ topicId: topic.id, roleId })))
-        .onConflictDoNothing();
-    }
-    if (nextRemoved.length > 0) {
-      await tx
-        .delete(topicRoleAccess)
-        .where(
-          and(eq(topicRoleAccess.topicId, topic.id), inArray(topicRoleAccess.roleId, nextRemoved)),
-        );
-    }
-    if (approverChanged) {
-      await tx
-        .update(topics)
-        .set({ approverRoleId: input.approverRoleId, updatedAt: new Date() })
-        .where(eq(topics.id, topic.id));
-    }
-    return { added: nextAdded, removed: nextRemoved };
-  });
+  const diff = await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql.withTransaction(
+        Effect.gen(function* () {
+          yield* sql`SELECT pg_advisory_xact_lock(hashtext(${topic.groupId}))`;
+          const rows = yield* sql<{ roleId: string }>`
+            SELECT role_id FROM topic_role_access WHERE topic_id = ${topic.id}`;
+          const liveIds = new Set(rows.map((row) => row.roleId));
+          const nextAdded = wanted.filter((id) => !liveIds.has(id));
+          const nextRemoved = [...liveIds].filter((id) => !wantedIds.has(id));
+          if (nextAdded.length > 0) {
+            yield* sql`INSERT INTO topic_role_access ${sql.insert(
+              nextAdded.map((roleId) => ({ topic_id: topic.id, role_id: roleId })),
+            )} ON CONFLICT DO NOTHING`;
+          }
+          if (nextRemoved.length > 0) {
+            yield* sql`DELETE FROM topic_role_access
+              WHERE topic_id = ${topic.id} AND role_id IN ${sql.in(nextRemoved)}`;
+          }
+          if (approverChanged) {
+            yield* sql`UPDATE topics
+              SET approver_role_id = ${input.approverRoleId}, updated_at = now()
+              WHERE id = ${topic.id}`;
+          }
+          return { added: nextAdded, removed: nextRemoved };
+        }),
+      );
+    }),
+  );
   const { added, removed } = diff;
-  const [updated] = await deps.db.select().from(topics).where(eq(topics.id, topic.id)).limit(1);
+  const updated = await getTopic(deps.db, topic.id);
   if (!updated) {
     throw toMissingTopic();
   }
