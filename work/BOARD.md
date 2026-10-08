@@ -13,6 +13,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0640](T-0640-retire-routines-hono-wrapper.md) | Hono: retire the routines test wrapper | in-progress | auto | | |
 | [T-0641](T-0641-retire-approvals-hono-wrapper.md) | Hono: retire the approvals test wrapper | in-progress | auto | | |
 | [T-0642](T-0642-retire-tools-hono-wrapper.md) | Hono: retire the tools test wrapper | in-progress | auto | | |
+| [T-0643](T-0643-retire-machines-hono-wrapper.md) | Hono: retire the machines test wrapper | in-progress | auto | | |
 
 ## Follow-ups
 
