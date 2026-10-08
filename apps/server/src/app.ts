@@ -30,7 +30,7 @@ import { createDraftsApi } from './drafts/api';
 import { createKeyCipher, type KeyCipher } from './connections/crypto';
 import type { ProviderProbe } from './connections/probe';
 import { createConnectionsApi } from './connections/api';
-import { type ConnectionsLogger } from './connections/routes';
+import { type ConnectionsLogger } from './connections/api';
 import { createBlocksApi } from './blocks/api';
 import { createContactsApi } from './contacts/api';
 import { createContactRequestsApi } from './contact-requests/api';
