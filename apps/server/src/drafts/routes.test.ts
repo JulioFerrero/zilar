@@ -9,7 +9,7 @@ import {
   type TestContext,
 } from '../test-support';
 import { createDraftHub, type DraftHub } from './hub';
-import { createDraftsRoutes, DRAFT_SSE_HEARTBEAT_MS } from './routes';
+import { createDraftsApi, DRAFT_SSE_HEARTBEAT_MS } from './api';
 
 const CHAT_JID = 'ai-abc@zilar.localhost';
 const decoder = new TextDecoder();
@@ -103,8 +103,15 @@ describe('GET /api/drafts/stream', () => {
     await context.close();
   });
 
+  // The Effect handler matches the full `/api`-prefixed path, so build the
+  // request against it directly instead of mounting the old Hono wrapper.
   function routesForCookie() {
-    return createDraftsRoutes({ auth: context.auth, hub });
+    const api = createDraftsApi({ auth: context.auth, hub });
+    return {
+      request(path: string, init?: RequestInit): Promise<Response> {
+        return api.handler(new Request(`${TEST_BASE_URL}/api${path}`, init));
+      },
+    };
   }
 
   it('returns 401 without a session', async () => {

@@ -1,7 +1,7 @@
 ---
 id: T-0637
 title: "Hono: retire the drafts item-11 wrapper (drafts/routes.ts); routes.test.ts calls createDraftsApi({ auth, hub }).handler with full /api URLs instead; delete the wrapper; same assertions"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0637-retire-drafts-hono-wrapper
 model: auto
@@ -55,4 +55,51 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- `apps/server/src/drafts/routes.test.ts`: replaced the `./routes` import with
+  `createDraftsApi, DRAFT_SSE_HEARTBEAT_MS` from `./api`. `routesForCookie()` now
+  builds the Effect mount once and returns `{ request(path, init) }`, which calls
+  `api.handler(new Request(`${TEST_BASE_URL}/api${path}`, init))` — the full
+  `/api`-prefixed path the Effect router matches. All 7 call sites, assertions,
+  timers and hub checks are unchanged.
+- Deleted `apps/server/src/drafts/routes.ts` (the item-11 Hono wrapper).
+- `git grep -n "drafts/routes" apps` → no output (nothing else imported it).
+
+### Files changed
+- `apps/server/src/drafts/routes.test.ts` (edited)
+- `apps/server/src/drafts/routes.ts` (deleted)
+- `work/T-0637-retire-drafts-hono-wrapper.md` (this report + status)
+
+### Commands run (real results)
+- `pnpm install` → Done in 14.7s.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/drafts`
+  → Test Files 2 passed (2); Tests 14 passed (14); Duration 6.45s.
+- `pnpm gate` → summary lines:
+  ```
+  gate: 3 changed file(s) against main
+  PASS  install (frozen)  (1.4s)
+  PASS  format  (21.0s)
+  PASS  lint  (1.1s)
+  PASS  typecheck  (17.6s)
+  PASS  tests @zilar/server  (7.6s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Problems / deviations
+None. The spec's alternative "change the call sites" was not needed: keeping
+`routes.request(path, init)` left all call sites untouched.
+
+### Blocked / needs a decision
+None.
+
+
 ## Review (written by Claude)
+
+**2026-10-08, lead:** approved.
+- **Pre-review:** clean, 1 follow-up. The packet head is 4445cc9a, the current HEAD.
+- **Lead check:**
+  - the wrapper is deleted;
+  - the test calls `createDraftsApi({ auth, hub }).handler` with full `/api` URLs;
+  - no assertion changed.
+- **Follow-up, for the next nits task:** the stale comment at `drafts/api.ts:146-148` still refers to the wrapper.
