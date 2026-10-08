@@ -1,4 +1,4 @@
-import { create, type StoreApi, type UseBoundStore } from 'zustand';
+import { createBoundStore, type UseBoundStore } from '../store/atomStore';
 
 import type { Me } from '../lib/auth-api';
 import type { SessionStorage } from './session-storage';
@@ -69,10 +69,10 @@ function isUnauthorized(error: unknown): boolean {
 export function createAuthStore(deps: {
   api: AuthApi;
   storage: SessionStorage;
-}): UseBoundStore<StoreApi<AuthStore>> {
+}): UseBoundStore<AuthStore> {
   const { api, storage } = deps;
 
-  return create<AuthStore>()((set) => ({
+  return createBoundStore<AuthStore>((set) => ({
     status: 'loading',
     me: null,
 

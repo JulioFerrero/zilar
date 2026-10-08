@@ -47,7 +47,7 @@ import {
   type Payload,
   type VoiceMeta,
 } from '@zilar/protocol';
-import { createStore, type StoreApi } from 'zustand/vanilla';
+import { createAtomStore, type StoreApi } from './atomStore';
 
 import {
   createChatApi,
@@ -443,7 +443,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
     return createVoicePort({ apiUrl: API_URL, getToken: getSessionToken, uploader });
   }
 
-  return createStore<ChatStoreState>((set, get) => {
+  return createAtomStore<ChatStoreState>((set, get) => {
     let core: XmppCore | undefined;
     let unsubscribers: Array<() => void> = [];
     let removeAppState: (() => void) | undefined;

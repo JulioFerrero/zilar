@@ -37,6 +37,9 @@ importers:
 
   apps/mobile:
     dependencies:
+      '@effect/atom-react':
+        specifier: 4.0.2
+        version: 4.0.2(effect@4.0.2)(react@19.2.3)(scheduler@0.27.0)
       '@expo-google-fonts/geist':
         specifier: ^0.4.2
         version: 0.4.2
@@ -172,6 +175,9 @@ importers:
       react-native-worklets:
         specifier: 0.10.1
         version: 0.10.1(@babel/core@7.29.7)(@react-native/metro-config@0.86.3(@babel/core@7.29.7))(react-native@0.86.3(@babel/core@7.29.7)(@react-native/metro-config@0.86.3(@babel/core@7.29.7))(@types/react@19.2.18)(react@19.2.3))(react@19.2.3)
+      scheduler:
+        specifier: ^0.27.0
+        version: 0.27.0
       tailwind-merge:
         specifier: ^3.7.0
         version: 3.7.0
@@ -184,9 +190,6 @@ importers:
       zod:
         specifier: ^4.6.5
         version: 4.6.5
-      zustand:
-        specifier: ^5.0.15
-        version: 5.0.15(@types/react@19.2.18)(react@19.2.3)
     devDependencies:
       '@babel/core':
         specifier: ^7.26.0
@@ -7611,6 +7614,12 @@ snapshots:
   '@dimforge/rapier3d-compat@0.12.0': {}
 
   '@drizzle-team/brocli@0.10.2': {}
+
+  '@effect/atom-react@4.0.2(effect@4.0.2)(react@19.2.3)(scheduler@0.27.0)':
+    dependencies:
+      effect: 4.0.2
+      react: 19.2.3
+      scheduler: 0.27.0
 
   '@effect/atom-react@4.0.2(effect@4.0.2)(react@19.3.0)(scheduler@0.27.0)':
     dependencies:

@@ -1,7 +1,7 @@
 ---
 id: T-0531
 title: "atom-react M1 (mobile): add @effect/atom-react, a zustand-compatible createAtomStore + bound-hook helper over an atom registry, swap real-store, chat-store (mock), session-store and the provider onto it, remove zustand from mobile; tests unchanged except dropping dead zustand mocks; Hermes export + phone smoke"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0531-atom-react-mobile-m1
 model: auto
@@ -75,4 +75,101 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Status: review. Branch `task/T-0531-atom-react-mobile-m1`.
+
+### What I did
+
+- **`apps/mobile/package.json`:** added `@effect/atom-react` `4.0.2`; added
+  `scheduler` `^0.27.0` because pnpm reported the atom-react peer unmet
+  (`found 0.28.0`, needs `>=0.25.0 <0.28.0`). Removed `zustand` (grep found no
+  import left; only two explanatory comments in the new `atomStore.ts`).
+- **`apps/mobile/src/store/atomStore.ts` (new):** ported the web
+  `createAtomStore<T>(initializer, registry?)` unchanged in behaviour: the whole
+  state lives in one `Atom.writable` held in an `AtomRegistry`, with partial and
+  updater `set`, `replace`, the `Object.is` skip on unchanged state,
+  `subscribe(listener)` called with `(state, prevState)` returning an
+  unsubscribe, `getInitialState`, and a synchronous `get()` that sees the last
+  `set`. Added `createBoundStore<T>(initializer)`: returns a callable hook
+  `(selector?) => selected` with `getState`, `getInitialState`, `setState`,
+  `subscribe`, `atom` and `registry` attached — the `create<T>()(…)`
+  replacement. The callable is `useSyncExternalStore` over the compat store
+  (zustand v5's `useStore`), so React re-renders only when `Object.is` on the
+  selected value changes.
+- **`apps/mobile/src/store/real-store.ts`:** `createStore` → `createAtomStore`,
+  `zustand/vanilla` `StoreApi` → the local type. No other line changed.
+- **`apps/mobile/src/store/chat-store.ts`:** `create<T>()(…)` →
+  `createBoundStore<T>(…)`; return type `UseBoundStore<StoreApi<ChatStoreState>>`
+  → the local `UseBoundStore<ChatStoreState>`. No other line changed.
+- **`apps/mobile/src/auth/session-store.ts`:** same swap for `AuthStore`. No
+  other line changed.
+- **`apps/mobile/src/store/chat-store-provider.tsx`:** `useChatStore(selector)`
+  now uses `useSyncExternalStore(store.subscribe, () => selector(store.getState()),
+  () => selector(store.getInitialState()))` instead of zustand `useStore`; the
+  `StoreApi` import is local. The `start()`/`stop()` effect and
+  `useChatStoreApi()` are unchanged.
+- **Six tests:** deleted only the `vi.mock('zustand', …)` block in
+  `message-bubble-layout`, `message-list`, `message-bubble-stickers`,
+  `message-bubble-ticks`, `attachment-body` and `composer-gifs`.
+- **`apps/mobile/src/store/atomStore.test.ts` (new):** 8 semantics tests (ported
+  from web) plus 2 for `createBoundStore`: the api is attached to the callable,
+  and a rendered probe re-renders only when the selected value changes (a
+  commit effect stays at 1 for a change to an unselected field and becomes 2
+  when the selected field changes).
+- **Hermes check:** ran `pnpm --filter @zilar/mobile exec expo export --platform
+  ios --output-dir tmp-export`; it succeeded and wrote
+  `apps/mobile/tmp-export/_expo/static/js/ios/entry-ebdcfaf643259acf4e736541b35ece36.hbc`
+  (12,994,295 bytes ≈ 13 MB as expo prints, 12.39 MiB). Deleted `tmp-export`
+  afterwards; it is not committed.
+
+### Files changed
+
+`apps/mobile/package.json`, `pnpm-lock.yaml`,
+`apps/mobile/src/store/atomStore.ts`, `apps/mobile/src/store/atomStore.test.ts`,
+`apps/mobile/src/store/real-store.ts`, `apps/mobile/src/store/chat-store.ts`,
+`apps/mobile/src/auth/session-store.ts`,
+`apps/mobile/src/store/chat-store-provider.tsx`, the six tests under
+`apps/mobile/src/components/chat/`, and this task file.
+
+### Commands and real results
+
+- `pnpm install`: ok; after adding `scheduler` the atom-react peer warning is
+  gone (only the pre-existing mobile `@types/react-dom` warning remains).
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot src/store/atomStore.test.ts`:
+  10 passed.
+- `… src/store/selector-stability.test.ts src/store/chat-store.test.ts src/auth/session-store.test.ts`:
+  3 files, 52 passed.
+- `… src/store/real-store.test.ts`: 80 passed.
+- `… the six component tests`: 6 files, 35 passed.
+- `pnpm --filter @zilar/mobile exec expo export --platform ios --output-dir tmp-export`:
+  exit 0; one iOS bundle, `entry-ebdcfaf643259acf4e736541b35ece36.hbc`,
+  12,994,295 bytes (T-0506 measured 12.2 MB).
+- `pnpm gate` (repo root): EXIT 0 —
+  `gate: 15 changed file(s) against main`, `PASS install (frozen)`,
+  `PASS format`, `PASS lint`, `PASS typecheck`,
+  `PASS tests @zilar/mobile`, `scope: every changed file is inside the Allowed
+  files`, `GATE PASS`.
+
+### Deviations and notes
+
+- **Selector hook choice.** Per the Spec's fallback I used
+  `useSyncExternalStore` over the compat store instead of
+  `useAtomValue(atom, selector)`, because the latter takes an inline selector
+  and would derive a new atom per render. This is byte-for-byte zustand v5's
+  `useStore` semantics, which the selector-stability test pins.
+- I did **not** add a `RegistryContext.Provider` in the mobile provider. The
+  compat hook does not read from the context (each store owns its registry, and
+  `createAtomStore` creates one per store), and the Spec only asked to replace
+  `useStore` with the stable selector hook. Web added the provider because its
+  `useChatStore()` reads `useAtomValue`. If the lead wants mobile consumers on
+  `useAtomValue` in M5, the provider should grow the `RegistryContext` wrapper
+  then.
+- The local `UseBoundStore<T>` is parameterised by the state type (`{ (): T;
+  <U>(selector): U } & StoreApi<T>`), so the two bound-store return annotations
+  change from `UseBoundStore<StoreApi<X>>` to `UseBoundStore<X>`. That is the
+  "types become local equivalents" swap.
+- `createAtomStore` keeps web's optional `providedRegistry` parameter untouched;
+  `createBoundStore` takes only the initializer.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-08). The mobile stores (real, mock and session) run on an atom registry through createAtomStore and createBoundStore. The bound hook and the provider use useSyncExternalStore with a selector, so selector stability holds. zustand is gone from mobile source; it stays only as a transitive dependency of @rn-primitives/portal. The six test edits are the dead zustand mocks only. Expo iOS export: 12.99 MB hbc. phone:smoke passed on the galena AVD, with the chat list showing live data, so WeakRef and the atom runtime work on Hermes. Pre-review clean, 0 nits.

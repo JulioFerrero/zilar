@@ -1,8 +1,13 @@
 import { useGlobalSearchParams } from 'expo-router';
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from 'react';
 import { AppState } from 'react-native';
-import { useStore } from 'zustand';
-import type { StoreApi } from 'zustand/vanilla';
 
 import { useSession } from '@/auth/session';
 
@@ -15,6 +20,7 @@ import { createAttachmentUploader, createSizeReader } from '../lib/attachment-na
 import { getSessionToken } from '../lib/session-token';
 import { API_URL } from '../lib/auth';
 import type { ChatStoreState } from './types';
+import type { StoreApi } from './atomStore';
 
 const ChatStoreContext = createContext<StoreApi<ChatStoreState> | null>(null);
 
@@ -71,7 +77,11 @@ export function useChatStore<T>(selector: (state: ChatStoreState) => T): T {
   if (store === null) {
     throw new Error('useChatStore must be used inside ChatStoreProvider');
   }
-  return useStore(store, selector);
+  return useSyncExternalStore(
+    store.subscribe,
+    () => selector(store.getState()),
+    () => selector(store.getInitialState()),
+  );
 }
 
 /**
