@@ -1,7 +1,7 @@
 ---
 id: T-0644
 title: "Hono: retire the audit item-11 wrapper (createAuditRoutes in audit/api.ts plus the audit/routes.ts shim); routes.test.ts calls createAuditApi(...).handler; audit/api.ts drops Hono; same assertions"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0644-retire-audit-hono-wrapper
 model: auto
@@ -61,4 +61,48 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**What I did**
+
+1. `apps/server/src/audit/api.ts`
+   - Removed the `Hono` and `hono/request-id` (`RequestIdVariables`) imports, the `pino` value import (now `import type { Logger } from 'pino'`), and `mountEffectRoutes` from the `../effect/http` import (all only used by the deleted wrapper).
+   - Deleted `AuditRoutesDependencies`, the cached `silentLogger`/`defaultLogger()`, and `createAuditRoutes`.
+   - Shortened the header comment to describe the Effect module only (no more Hono wrapper).
+   - Kept `createAuditApi`, `AuditApiDependencies`, `AUDIT_API_ROUTES`, `HttpError` and every other import actually used.
+2. `apps/server/src/audit/routes.test.ts`
+   - Dropped the `Hono` import, the `HttpError` import (only used by the removed `onError`) and the `./routes` import; added `import { pino } from 'pino'` and import `createAuditApi` from `./api`.
+   - `auditApp` is now `{ request(input, init) }` backed by `createAuditApi({ auth, db, logger: pino({ level: 'silent' }) }).handler(new Request(input, init))`; `auditApp = new Hono()`, the `onError` and `auditApp.route('/api', …)` are gone.
+   - The `request` helper signature/URLs (`${TEST_BASE_URL}/api/audit…`) and **every assertion are unchanged**; the `createAuditApi` group already carries the `/api` prefix, so the absolute URLs still match.
+3. Deleted `apps/server/src/audit/routes.ts`.
+4. `git grep -n "createAuditRoutes\|audit/routes'" apps` → no matches (exit 1). No doc comment outside the Allowed files needed updating.
+
+**Files changed**: `apps/server/src/audit/api.ts`, `apps/server/src/audit/routes.test.ts`, `apps/server/src/audit/routes.ts` (deleted), `work/T-0644-retire-audit-hono-wrapper.md`.
+
+**Commands and real results**
+
+- `pnpm install` → `Done in 18s` (one pre-existing peer-dep warning in `apps/mobile` for `@types/react-dom`, unrelated).
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/audit/routes` → `Test Files 1 passed (1)`, `Tests 11 passed (11)`.
+- `pnpm gate` → summary:
+  ```
+  gate: 4 changed file(s) against main
+  PASS  install (frozen)  (1.8s)
+  PASS  format  (21.0s)
+  PASS  lint  (1.2s)
+  PASS  typecheck  (13.3s)
+  PASS  tests @zilar/server  (16.1s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+**Problems / deviations**: none. Every assertion stayed; no error-rendering failure appeared, so no Blocked entry was needed. `app.ts` was not touched.
+
+**Security checklist**: no new routes, writes, logging, deletes or secrets; this is a pure retirement of a compatibility wrapper, so the checklist is unaffected.
+
 ## Review (written by Claude)
+
+**2026-10-08, lead:** approved.
+- **Pre-review:** clean. The packet head is aa2b8838, the current HEAD.
+- **Lead check:**
+  - the wrapper and the shim are deleted;
+  - `audit/api.ts` has no hono import;
+  - no `expect` line changed.
+- **Nit:** the comment at `api.ts:4` is accurate, because `app.ts` mounts the API with `mountEffectRoutes`; no change.

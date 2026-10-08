@@ -12,7 +12,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0641](T-0641-retire-approvals-hono-wrapper.md) | Hono: retire the approvals test wrapper | in-progress | auto | | |
 | [T-0642](T-0642-retire-tools-hono-wrapper.md) | Hono: retire the tools test wrapper | in-progress | auto | | |
 | [T-0643](T-0643-retire-machines-hono-wrapper.md) | Hono: retire the machines test wrapper | in-progress | auto | | |
-| [T-0644](T-0644-retire-audit-hono-wrapper.md) | Hono: retire the audit test wrapper | in-progress | auto | | |
 | [T-0645](T-0645-retire-push-hono-wrapper.md) | Hono: retire the push test wrapper | in-progress | auto | | |
 | [T-0646](T-0646-delete-invite-links-routes.md) | Hono: delete invite-links/routes.ts | in-progress | auto | | |
 
@@ -675,3 +674,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0626](T-0626-audit-effect-last-mile.md) | audit: the Effect last mile and the bigint check | 2026-10-08 |
 | [T-0639](T-0639-retire-connections-hono-wrapper.md) | retire the connections Hono test wrapper | 2026-10-08 |
 | [T-0640](T-0640-retire-routines-hono-wrapper.md) | retire the routines Hono test wrapper | 2026-10-08 |
+| [T-0644](T-0644-retire-audit-hono-wrapper.md) | retire the audit Hono test wrapper | 2026-10-08 |
