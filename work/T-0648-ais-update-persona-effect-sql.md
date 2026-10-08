@@ -1,7 +1,7 @@
 ---
 id: T-0648
 title: "effect/sql: the three self-contained transactions in ais/service.ts (updateAi :402, setPersonaFromChat :465, revertPersonaFromChat :490) move to sql.withTransaction; the rest of the file stays on drizzle; same tests"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0648-ais-update-persona-effect-sql
 model: auto
@@ -64,4 +64,46 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**Status:** done, ready for review.
+
+**What I did**
+- Added a private `runSql<A, E>(db, effect)` to `apps/server/src/ais/service.ts`, importing `Effect`, `SqlClient`, `type SqlError` and `sqlRuntimeFor` (same shape as `production-announcer.ts`; the error channel is `SqlError.SqlError | E` so a plain `Error` can flow through, following `handles/store.ts` / `groups/visibility.ts`).
+- Converted the three self-contained transactions to `runSql(db, Effect.gen(function* () { const sql = yield* SqlClient.SqlClient; return yield* sql.withTransaction(...) }))`:
+  - `updateAi` (now lines 416-453): one `UPDATE ais` with `COALESCE(${input.x ?? null}, x)` for `name`, `persona`, `can_delegate`, `accepts_delegation` plus `updated_at`, guarded by the same "any field defined" condition; then `UPDATE ai_limits` (`per_day_usd`, `per_month_usd`, `updated_at`) and `UPDATE llm_virtual_keys` (`budget_usd`) when `input.limits` is defined. Same statements, order and conditions as before.
+  - `setPersonaFromChat` (480-498): `SELECT persona ... LIMIT 1`, `Effect.fail(new Error(`AI ${aiId} not found`))` when missing, then `UPDATE ais SET previous_persona, persona, updated_at`; returns `trimmed` unchanged.
+  - `revertPersonaFromChat` (509-531): `SELECT persona, previous_persona`, same throw, `'nothing to undo'` when `previousPersona` is null, else swap both and return `'restored'`.
+- Left the other four drizzle transactions in the file untouched; every function signature, return value and error message is unchanged. No test changed.
+
+**Files changed**
+- `apps/server/src/ais/service.ts`
+- `work/T-0648-ais-update-persona-effect-sql.md`
+
+**Commands and real results**
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/ais/service src/agents/tools`: `Test Files 2 passed (2)`, `Tests 74 passed (74)`.
+- `pnpm gate` (first run): `FAIL format` — prettier flagged `apps/server/src/ais/service.ts`; scope check said "every changed file is inside the Allowed files".
+- `pnpm exec prettier --write apps/server/src/ais/service.ts`, then `pnpm gate` again:
+  ```
+  gate: 2 changed file(s) against main
+  PASS  install (frozen)  (0.9s)
+  PASS  format  (15.4s)
+  PASS  lint  (1.7s)
+  PASS  typecheck  (13.4s)
+  PASS  tests @zilar/server  (12.7s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+**Problems / deviations**
+- The spec's suggested `runSql` signature (as in `production-announcer.ts`) fixes the error channel to `SqlError.SqlError`, which cannot carry the `Error` thrown by the two persona functions. I used the generic `<A, E>` signature already used by `handles/store.ts` and `groups/visibility.ts`, keeping `SqlError.SqlError` in the union so the required import is used. Behavior and messages are unchanged.
+- Only formatting needed a fix (prettier), applied with `--write` to the single allowed file.
+
+**Open questions:** none.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved.
+- **Pre-review:** clean. The packet head is 203c0f9d, the current HEAD.
+- **Lead check:**
+  - the three transactions use `sql.withTransaction` with the same statements and order;
+  - the not-found errors are raised with `Effect.fail(new Error(...))`;
+  - the COALESCE partial update is valid, because those columns are NOT NULL.

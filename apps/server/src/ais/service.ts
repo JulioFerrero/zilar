@@ -1,10 +1,13 @@
 import { randomUUID } from 'node:crypto';
+import { Effect } from 'effect';
+import { SqlClient, type SqlError } from 'effect/sql';
 import { and, asc, eq, sql } from 'drizzle-orm';
 import type { KeyCipher } from '../connections/crypto';
 import { decryptForGatewayUse, findOwnedConnection } from '../connections/service';
 import { ROSTER_GROUP } from '../contacts/service';
 import type { ServerDatabase } from '../db/client';
 import { aiLimits, ais, llmVirtualKeys, machines, providerConnections, user } from '../db/schema';
+import { sqlRuntimeFor } from '../effect/sql';
 import { HttpError } from '../errors';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { ensureXmppAccount, jidFor, localpartFor } from '../xmpp/provisioning';
@@ -12,6 +15,17 @@ import type { LitellmAdminClient } from '../ai/litellm-client';
 import { modelNameForAi } from '../ai/model-entry';
 import { isLlmProvider, litellmModelFor } from './litellm-model';
 import { defaultPersonaFor, type AiTemplate } from './templates';
+
+// The three chat-driven persona/limit writes below run on the `effect/sql`
+// client registered for this database (see `../effect/sql`); the rest of the
+// module still reads and writes through drizzle. The exported functions stay
+// `async` so routes and tests keep their shape during the transition.
+function runSql<A, E>(
+  db: ServerDatabase,
+  effect: Effect.Effect<A, SqlError.SqlError | E, SqlClient.SqlClient>,
+): Promise<A> {
+  return sqlRuntimeFor(db).runPromise(effect);
+}
 
 // The server ceiling on an AI's monthly budget. The plan's example is EUR 20 a
 // month; the cap is a product safety limit (a client can never widen it) and a
@@ -399,43 +413,44 @@ export async function updateAi(deps: AiServiceDeps, input: UpdateAiInput): Promi
     }
   }
 
-  await deps.db.transaction(async (tx) => {
-    if (
-      input.name !== undefined ||
-      input.persona !== undefined ||
-      input.canDelegate !== undefined ||
-      input.acceptsDelegation !== undefined
-    ) {
-      await tx
-        .update(ais)
-        .set({
-          ...(input.name === undefined ? {} : { name: input.name }),
-          ...(input.persona === undefined ? {} : { persona: input.persona }),
-          ...(input.canDelegate === undefined ? {} : { canDelegate: input.canDelegate }),
-          ...(input.acceptsDelegation === undefined
-            ? {}
-            : { acceptsDelegation: input.acceptsDelegation }),
-          updatedAt: new Date(),
-        })
-        .where(eq(ais.id, ai.id));
-    }
-    if (input.limits !== undefined) {
-      await tx
-        .update(aiLimits)
-        .set({
-          perDayUsd: usd(input.limits.perDayUsd),
-          perMonthUsd: usd(input.limits.perMonthUsd),
-          updatedAt: new Date(),
-        })
-        .where(eq(aiLimits.aiId, ai.id));
-      // Keep the key row's stored budget in step with the cap pushed to
-      // LiteLLM above, in the same transaction.
-      await tx
-        .update(llmVirtualKeys)
-        .set({ budgetUsd: usd(input.limits.perMonthUsd) })
-        .where(eq(llmVirtualKeys.aiId, ai.id));
-    }
-  });
+  await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql.withTransaction(
+        Effect.gen(function* () {
+          if (
+            input.name !== undefined ||
+            input.persona !== undefined ||
+            input.canDelegate !== undefined ||
+            input.acceptsDelegation !== undefined
+          ) {
+            // Every column here is NOT NULL, so a null means "keep the current
+            // value": COALESCE gives the same partial update the drizzle
+            // `set({...})` built before.
+            yield* sql`UPDATE ais SET
+              name = COALESCE(${input.name ?? null}, name),
+              persona = COALESCE(${input.persona ?? null}, persona),
+              can_delegate = COALESCE(${input.canDelegate ?? null}, can_delegate),
+              accepts_delegation = COALESCE(${input.acceptsDelegation ?? null}, accepts_delegation),
+              updated_at = ${new Date()}
+              WHERE id = ${ai.id}`;
+          }
+          if (input.limits !== undefined) {
+            yield* sql`UPDATE ai_limits SET
+              per_day_usd = ${usd(input.limits.perDayUsd)},
+              per_month_usd = ${usd(input.limits.perMonthUsd)},
+              updated_at = ${new Date()}
+              WHERE ai_id = ${ai.id}`;
+            // Keep the key row's stored budget in step with the cap pushed to
+            // LiteLLM above, in the same transaction.
+            yield* sql`UPDATE llm_virtual_keys SET budget_usd = ${usd(input.limits.perMonthUsd)}
+              WHERE ai_id = ${ai.id}`;
+          }
+        }),
+      );
+    }),
+  );
 
   const updated = await findOwnedAi(deps.db, ai.id, input.ownerId);
   if (!updated) {
@@ -462,20 +477,24 @@ export async function setPersonaFromChat(
   if (trimmed === '') {
     throw new Error('persona must not be empty');
   }
-  await db.transaction(async (tx) => {
-    const [row] = await tx
-      .select({ persona: ais.persona })
-      .from(ais)
-      .where(eq(ais.id, aiId))
-      .limit(1);
-    if (!row) {
-      throw new Error(`AI ${aiId} not found`);
-    }
-    await tx
-      .update(ais)
-      .set({ previousPersona: row.persona, persona: trimmed, updatedAt: new Date() })
-      .where(eq(ais.id, aiId));
-  });
+  await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql.withTransaction(
+        Effect.gen(function* () {
+          const [row] = yield* sql<{ persona: string }>`SELECT persona FROM ais
+            WHERE id = ${aiId} LIMIT 1`;
+          if (!row) {
+            return yield* Effect.fail(new Error(`AI ${aiId} not found`));
+          }
+          yield* sql`UPDATE ais
+            SET previous_persona = ${row.persona}, persona = ${trimmed}, updated_at = ${new Date()}
+            WHERE id = ${aiId}`;
+        }),
+      );
+    }),
+  );
   return trimmed;
 }
 
@@ -487,24 +506,31 @@ export async function revertPersonaFromChat(
   db: ServerDatabase,
   aiId: string,
 ): Promise<'restored' | 'nothing to undo'> {
-  return db.transaction(async (tx) => {
-    const [row] = await tx
-      .select({ persona: ais.persona, previousPersona: ais.previousPersona })
-      .from(ais)
-      .where(eq(ais.id, aiId))
-      .limit(1);
-    if (!row) {
-      throw new Error(`AI ${aiId} not found`);
-    }
-    if (row.previousPersona === null) {
-      return 'nothing to undo';
-    }
-    await tx
-      .update(ais)
-      .set({ persona: row.previousPersona, previousPersona: row.persona, updatedAt: new Date() })
-      .where(eq(ais.id, aiId));
-    return 'restored';
-  });
+  return runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql.withTransaction(
+        Effect.gen(function* () {
+          const [row] = yield* sql<{
+            persona: string;
+            previousPersona: string | null;
+          }>`SELECT persona, previous_persona FROM ais
+            WHERE id = ${aiId} LIMIT 1`;
+          if (!row) {
+            return yield* Effect.fail(new Error(`AI ${aiId} not found`));
+          }
+          if (row.previousPersona === null) {
+            return 'nothing to undo' as const;
+          }
+          yield* sql`UPDATE ais
+            SET persona = ${row.previousPersona}, previous_persona = ${row.persona}, updated_at = ${new Date()}
+            WHERE id = ${aiId}`;
+          return 'restored' as const;
+        }),
+      );
+    }),
+  );
 }
 
 // Tears an AI down in reverse order: revoke the gateway key, delete the private
