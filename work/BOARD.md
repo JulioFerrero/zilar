@@ -456,7 +456,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0560](T-0560-effect-http-media.md) | Effect C (HTTP): media gallery on HttpApi | planned | auto | T-0548 | |
 | [T-0561](T-0561-effect-http-auth-me-invites.md) | Effect C (HTTP): /me and invites on HttpApi | planned | auto | T-0548 | |
 | [T-0571](T-0571-audit-tool-args-schema.md) | Audit + plan: AI tool argument layer from zod to Effect Schema | planned | auto | T-0564 | |
-| [T-0573](T-0573-effect-http-voice.md) | Effect C (HTTP): voice conversion, the binary pilot | planned | auto | T-0563 | |
 | [T-0574](T-0574-effect-sql-invites-provisioning.md) | effect/sql: sign-up invites and XMPP provisioning | planned | auto | T-0568 | |
 | [T-0572](T-0572-effect-http-machines.md) | Effect C (HTTP): machines and runner pairing on HttpApi | planned | auto | T-0566 | |
 | [T-0427](T-0427-mobile-forwarded-header.md) | Mobile: forwarded messages show 'Forwarded from X [in Y]' | 2026-10-06 |
@@ -603,3 +602,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0566](T-0566-effect-http-invite-links.md) | Effect C (HTTP): group invite links on HttpApi | 2026-10-08 |
 | [T-0569](T-0569-effect-schema-server-leaf-batch-2.md) | Effect Schema: server leaf batch 2 | 2026-10-08 |
 | [T-0570](T-0570-effect-schema-server-batch-3.md) | Effect Schema: push config, subscriptions, AI templates, provider ids | 2026-10-08 |
+| [T-0573](T-0573-effect-http-voice.md) | Effect C (HTTP): voice conversion, the binary pilot | 2026-10-08 |

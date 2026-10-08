@@ -61,7 +61,7 @@ import type { ToolsRoutesDependencies } from './tools/routes';
 import { createRoutinesApi } from './routines/api';
 import type { ToolRunner } from './tools/types';
 import type { VoiceEngine } from './voice/engine';
-import { createVoiceRoutes } from './voice/routes';
+import { createVoiceApi } from './voice/api';
 import { createVoiceTranscriptionApi } from './voice-transcription/api';
 import type { EjabberdAdminClient } from './xmpp/admin-client';
 import { createXmppApi } from './xmpp/api';
@@ -557,14 +557,13 @@ export function createApp({
   mountEffectRoutes(app, routinesApi.routes, routinesApi.handler);
   const xmppApi = createXmppApi({ auth, db, adminClient, xmppConfig: config.xmpp, logger });
   mountEffectRoutes(app, xmppApi.routes, xmppApi.handler);
-  app.route(
-    '/api',
-    createVoiceRoutes({
-      auth,
-      ...(voice === undefined ? {} : { engine: voice }),
-      ...(voiceMaxBytes === undefined ? {} : { maxBytes: voiceMaxBytes }),
-    }),
-  );
+  const voiceApi = createVoiceApi({
+    auth,
+    logger,
+    ...(voice === undefined ? {} : { engine: voice }),
+    ...(voiceMaxBytes === undefined ? {} : { maxBytes: voiceMaxBytes }),
+  });
+  mountEffectRoutes(app, voiceApi.routes, voiceApi.handler);
   // Voice transcripts on demand (T-0170): the enabled flag plus the
   // transcript route for any signed-in user, and the owner-only endpoint
   // settings. Covered by the 401 sweep as session-required routes (never

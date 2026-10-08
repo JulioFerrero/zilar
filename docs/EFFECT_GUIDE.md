@@ -201,6 +201,12 @@ Hono stays the outer edge until every module has moved. Each module becomes an `
 9. **Step order:** when the old route checked the rate limiter before decoding the body, use an endpoint middleware for the limiter (see `pins/api.ts` and `groups/api.ts`).
 10. **Message texts:** a test-asserted text stays byte-identical. A generic decode message may become Schema's text; list the old and new texts in the Report.
 11. **Tests that mount the old Hono factory directly:** keep `createXRoutes(deps): Hono` exported as a thin wrapper. It builds the Effect API, registers each pair from an exported `X_API_ROUTES` list on a `new Hono()` (path minus `/api`), and forwards `context.req.raw` to `api.handler`. The tests stay unchanged; the wrapper goes away when those tests move to `createApp` (see `push/api.ts`, T-0543).
+12. **Binary bodies (`voice/api.ts`):** declare the endpoint with no payload
+   schema and read the body from `request.request.stream` (an Effect `Stream`)
+   with `Stream.runForEachWhile`, stopping as soon as the running total passes
+   the cap, so the body is never buffered whole. Answer raw bytes with
+   `HttpServerResponse.uint8Array(bytes, { headers })`; `HttpApiBuilder` returns
+   any handler-returned `HttpServerResponse` untouched, headers included.
 
 ## Moving a server service onto effect/sql (T-0496, T-0510, T-0519)
 
