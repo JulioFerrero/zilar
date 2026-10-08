@@ -460,6 +460,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0570](T-0570-effect-schema-server-batch-3.md) | Effect Schema: push config, subscriptions, AI templates, provider ids | planned | auto | T-0557 | |
 | [T-0571](T-0571-audit-tool-args-schema.md) | Audit + plan: AI tool argument layer from zod to Effect Schema | planned | auto | T-0564 | |
 | [T-0573](T-0573-effect-http-voice.md) | Effect C (HTTP): voice conversion, the binary pilot | planned | auto | T-0563 | |
+| [T-0574](T-0574-effect-sql-invites-provisioning.md) | effect/sql: sign-up invites and XMPP provisioning | planned | auto | T-0568 | |
 | [T-0427](T-0427-mobile-forwarded-header.md) | Mobile: forwarded messages show 'Forwarded from X [in Y]' | 2026-10-06 |
 | [T-0428](T-0428-mobile-new-chat-menu-sheet.md) | Mobile: New chat menu on the kit ActionSheet with icons | 2026-10-06 |
 | [T-0429](T-0429-mobile-dismiss-banner.md) | Mobile: DismissBanner replaces 12 copied chat screen banners | 2026-10-06 |
