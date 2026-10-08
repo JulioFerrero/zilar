@@ -49,7 +49,7 @@ import { createRolesApi } from './roles/api';
 import { createSearchApi, type SearchRoutesDependencies } from './search/api';
 import { createMediaApi } from './media/api';
 import { createFilesApi } from './files/api';
-import { createGifsRoutes } from './gifs/routes';
+import { createGifsApi } from './gifs/api';
 import { createAvatarsApi } from './avatars/api';
 import { createBackgroundsApi } from './backgrounds/api';
 import { createStickersRoutes } from './stickers/routes';
@@ -517,17 +517,15 @@ export function createApp({
   // GIFs (T-0122): search, trending and the media proxy. Mounted always: an
   // unconfigured provider answers 501 `gifs_unavailable` instead of 404ing,
   // so the web can hide the tab.
-  app.route(
-    '/api',
-    createGifsRoutes({
-      auth,
-      config,
-      logger,
-      ...(gifProvider === undefined ? {} : { provider: gifProvider }),
-      ...(gifMediaFetcher === undefined ? {} : { mediaFetcher: gifMediaFetcher }),
-      ...(gifNow === undefined ? {} : { now: gifNow }),
-    }),
-  );
+  const gifsApi = createGifsApi({
+    auth,
+    config,
+    logger,
+    ...(gifProvider === undefined ? {} : { provider: gifProvider }),
+    ...(gifMediaFetcher === undefined ? {} : { mediaFetcher: gifMediaFetcher }),
+    ...(gifNow === undefined ? {} : { now: gifNow }),
+  });
+  mountEffectRoutes(app, gifsApi.routes, gifsApi.handler);
   const approvalsApi = createApprovalsApi({
     auth,
     db,

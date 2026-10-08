@@ -1,7 +1,7 @@
 ---
 id: T-0586
 title: "Effect C (HTTP): GIF search, trending and the media proxy onto HttpApi; query schemas zod to Effect Schema; same order, statuses, texts, headers and SSRF checks; tests unchanged"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0586-effect-http-gifs
 model: auto
@@ -78,4 +78,51 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Done. The three GIF routes are served by Effect `HttpApi`, tests unchanged and green.
+
+What I did:
+- Created `apps/server/src/gifs/api.ts` with `createGifsApi(deps)` and `GIFS_API_ROUTES`:
+  - Same step order per route: session (401 via `Session` middleware) -> 501 `gifs_unavailable` -> limiter (429 `rate_limited`) -> decode -> provider/fetch -> answer.
+  - Queries decoded manually in-handler from the raw `URLSearchParams` view (first value wins, like Hono's `c.req.query()`) with Effect Schemas under `{ onExcessProperty: 'error' }`, so unknown keys still 400. Fixed texts kept: "Invalid GIF search" (search), "Invalid GIF request" (trending).
+  - Search/trending success schemas (`GifResultPage`) list every field `shape`/`searchBody` produce: `id`, `title`, `mediaToken`, `kind` (`image`|`video`), `width`, `height`, optional `sizeBytes`, optional `nextPos`. Items with no media URL are dropped before encoding.
+  - Media route answers `HttpServerResponse.uint8Array` with exactly `content-type`, `content-length`, `x-content-type-options: nosniff`, `cache-control: private, max-age=86400`. All pre-fetch failures are the same 404 `not_found` "GIF media not found"; non-2xx, wrong type or throw is 502 `gif_media_failed`. SSRF checks kept: `https:` only, no user/password, host in `GIPHY_MEDIA_HOSTS`, `resolvePublicAddress` (rejects non-public), pinned fetch via shared `fetchProxiedMedia`.
+  - One deviation from the plain recipe: `HttpRouter.toWebHandler(..., { routerConfig: { maxParamLength: 4096 } })`. The Effect internal router (find-my-way) caps a path segment at 100 chars by default and 404s with an empty body above it; GIF media tokens are ~192 chars (base64url payload + signature). Verified by bisecting segment length (100 matched, 160 did not) and finding `maxParamLength: 100` in the router source. Token validation still runs inside the handler.
+- Rewrote `apps/server/src/gifs/routes.ts`: keeps `GifsRoutesDependencies`, `MediaFetch` (now an exported interface, same signature), `fetchProxiedMedia`, and all `GIF_*` constants. Hono factory and zod removed. No test mounted the factory (grep: only `createApp` and `fetchProxiedMedia` imports), so no item-11 wrapper.
+- `apps/server/src/app.ts`: `createGifsRoutes` -> `createGifsApi` + `mountEffectRoutes` at the same position (lines 518-531).
+- Service return vs schema, side by side: old `shape` returned `{ id, title, mediaToken, kind, width, height, sizeBytes? }` and `searchBody` returned `{ items, nextPos? }` — the new `GifResultItem`/`GifResultPage` list exactly those fields, all required unless marked optional (`sizeBytes`, `nextPos`).
+- Message texts: old and new are identical (no generic Schema text surfaces: every decode failure maps to the fixed 400 texts; the `GifsSchemaErrors` layer only guards future endpoints).
+- Security checklist: no secrets in logs (search logs counts/duration only, never `q`; request log still redacts `/api/gifs/media/:token`); token verify keeps unknown vs other-user at the same 404; limiter order unchanged (invalid queries still spend budget); all three routes covered by the authz sweep (exact routes mounted, sweep green).
+
+Files changed: `apps/server/src/gifs/api.ts` (new), `apps/server/src/gifs/routes.ts`, `apps/server/src/app.ts`, `work/T-0586-effect-http-gifs.md`.
+
+Commands and real results:
+- `pnpm install`: ok (20.3s).
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot gifs`: 3 files, 27 tests passed (after the maxParamLength fix; before it, 4 media tests failed with 404 on real-length tokens).
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot authz-sweep app.test`: 2 files, 14 tests passed.
+- `pnpm gate`: GATE PASS — install, format, lint, typecheck, tests @zilar/server all PASS; scope: every changed file inside Allowed files.
+- Single tests run while working: `gifs`, `authz-sweep app.test` as above (plus temporary debug tests, removed afterwards).
+
+Problems: the find-my-way 100-char segment cap (above); fixed with `routerConfig.maxParamLength: 4096`, which future long-token routes should copy.
+
+Blocked / needs a decision: none.
+
+## Round (fix round, 2026-10-08)
+
+Findings fixed:
+- Finding 1 (should-fix, bad token escape returns empty-body 404): confirmed with a scratch test — `GET /api/gifs/media/%ZZ` returned 404 with an empty body, because the Effect router's `safeDecodeURI` rejects the malformed escape before any handler runs. Fixed in `apps/server/src/gifs/api.ts` by wrapping the `HttpRouter.toWebHandler` handler: a 404 whose path is under `/api/gifs/media/` with a non-empty token segment is re-rendered as the same `not_found` "GIF media not found" JSON envelope (with the forwarded `x-request-id`) via `HttpServerResponse.toWeb`. Verified with the scratch test: 404 `application/json` `{"error":{"code":"not_found","message":"GIF media not found","requestId":"..."}}`. No test files changed (scratch test removed after verification).
+
+Disagreements:
+- Finding 2 (nit, sync-throwing provider gives 500 not 502): left as is. `Effect.promise` lifts only the rejection; a synchronously-throwing provider violates the `Promise`-returning port contract, and a 500 for a bug is the correct branch. No code line touched for this.
+
+Tests added: none (finding 1 verified with a temporary scratch test, removed; spec requires listed tests unchanged).
+
+Commands and real results:
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot gifs authz-sweep app.test`: 5 files, 41 passed, 0 failed.
+- `pnpm gate`: **GATE PASS** — install, format, lint, typecheck, tests @zilar/server all PASS; scope: every changed file inside Allowed files.
+
 ## Review (written by Claude)
+
+**2026-10-08, lead:** approved.
+- **Pre-review:** clean after 1 auto round. The packet (11:41) is newer than HEAD 9d924412.
+- **No test file changed.**
+- **Lead check:** the three GIF routes keep the same order, texts, SSRF checks and the 4 media headers, and there is no zod left in `gifs/`.
