@@ -13,6 +13,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0656](T-0656-gate-slots-and-nice.md) | gate: 2 slots plus a merge slot, nice, Gradle stop, turbo globalDependencies | in-progress | auto | T-0655 | |
 | [T-0659](T-0659-server-drop-zod-dependency.md) | zod: drop the server dependency | in-progress | auto | | |
 | [T-0660](T-0660-ais-ensure-change-model-effect-sql.md) | effect/sql: ais model transactions and the gateway decrypt (C3) | in-progress | auto | T-0652 | |
+| [T-0661](T-0661-typecheck-with-tsgo.md) | typecheck with tsgo in every package | in-progress | auto | T-0659 | |
 
 ## Follow-ups
 
