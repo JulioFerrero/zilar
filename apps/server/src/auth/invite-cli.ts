@@ -3,6 +3,7 @@ import { pathToFileURL } from 'node:url';
 import { loadServerConfigOrExit } from '../config';
 import { createDb } from '../db/client';
 import { runMigrations } from '../db/migrate';
+import { disposeSqlRuntime, registerSqlRuntime } from '../effect/sql';
 import { createInvite, DEFAULT_INVITE_MAX_USES, DEFAULT_INVITE_TTL_DAYS } from './invites';
 
 const inviteCliOptionsSchema = z.object({
@@ -54,6 +55,9 @@ async function main(): Promise<void> {
 
   try {
     await runMigrations(db);
+    // `createInvite` runs on `effect/sql`; this process never builds an app, so
+    // it registers (and below disposes) the runtime for its own database.
+    registerSqlRuntime(db, config.DATABASE_URL);
     const invite = await createInvite(db, {
       createdBy: null,
       maxUses: options.uses,
@@ -65,6 +69,9 @@ async function main(): Promise<void> {
     console.log(`Expires at: ${invite.expiresAt.toISOString()}`);
     console.log(`Maximum uses: ${invite.maxUses}`);
   } finally {
+    // Dispose the `effect/sql` pool before closing the drizzle client it shares
+    // the database with.
+    await disposeSqlRuntime(db);
     await close();
   }
 }

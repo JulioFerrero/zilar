@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { PgliteServerDatabase } from '../db/client';
 import { runMigrations } from '../db/migrate';
 import * as schema from '../db/schema';
+import { disposeSqlRuntime, registerSqlRuntime } from '../effect/sql';
 import {
   DEFAULT_INVITE_MAX_USES,
   consumeInvite,
@@ -23,10 +24,12 @@ describe('invites', () => {
   beforeEach(async () => {
     client = new PGlite();
     db = drizzle(client, { schema });
+    registerSqlRuntime(db, '');
     await runMigrations(db);
   });
 
   afterEach(async () => {
+    await disposeSqlRuntime(db);
     await client.close();
   });
 

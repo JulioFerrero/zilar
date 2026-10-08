@@ -1,7 +1,13 @@
+// T-0574: every query runs on the `effect/sql` client registered for this
+// database (see `../effect/sql`). The exported functions stay `async` so
+// callers and tests keep their shape.
+
 import { createHash } from 'node:crypto';
-import { eq } from 'drizzle-orm';
+import { Effect } from 'effect';
+import { SqlClient, SqlError } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
-import { xmppAccounts } from '../db/schema';
+import type { xmppAccounts } from '../db/schema';
+import { sqlRuntimeFor } from '../effect/sql';
 import type { EjabberdAdminClient } from './admin-client';
 
 // XMPP localparts must be `[a-z0-9._-]` (see the admin client). The localpart
@@ -14,6 +20,15 @@ export type XmppAccountStatus = {
   jid: string;
   provisioned: boolean;
 };
+
+type XmppAccountRow = typeof xmppAccounts.$inferSelect;
+
+function runSql<A>(
+  db: ServerDatabase,
+  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
+): Promise<A> {
+  return sqlRuntimeFor(db).runPromise(effect);
+}
 
 // The localpart of an XMPP account. Better Auth's default ids are random
 // alphanumeric strings (for example `ZHj28vfbcT5vss0u0vWhveDDnx5ptPkk`), so
@@ -46,13 +61,18 @@ export async function ensureXmppAccount(
   const localpart = localpartFor(userId);
   const jid = jidFor(localpart, domain);
 
-  await db
-    .insert(xmppAccounts)
-    .values({ userId, localpart, jid, provisioned: false })
-    .onConflictDoUpdate({
-      target: xmppAccounts.userId,
-      set: { localpart, jid, updatedAt: new Date() },
-    });
+  await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO xmpp_accounts (user_id, localpart, jid, provisioned)
+        VALUES (${userId}, ${localpart}, ${jid}, false)
+        ON CONFLICT (user_id) DO UPDATE SET
+          localpart = excluded.localpart,
+          jid = excluded.jid,
+          updated_at = ${new Date().toISOString()}`;
+    }),
+  );
 
   try {
     await adminClient.registerUser(localpart);
@@ -64,11 +84,16 @@ export async function ensureXmppAccount(
     throw error;
   }
 
-  const [row] = await db
-    .update(xmppAccounts)
-    .set({ provisioned: true, updatedAt: new Date() })
-    .where(eq(xmppAccounts.userId, userId))
-    .returning();
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<XmppAccountRow>`UPDATE xmpp_accounts
+        SET provisioned = true, updated_at = ${new Date().toISOString()}
+        WHERE user_id = ${userId}
+        RETURNING *`;
+    }),
+  );
 
   return { jid: row?.jid ?? jid, provisioned: row?.provisioned ?? true };
 }
@@ -77,11 +102,14 @@ export async function findXmppAccount(
   db: ServerDatabase,
   userId: string,
 ): Promise<typeof xmppAccounts.$inferSelect | null> {
-  const [row] = await db
-    .select()
-    .from(xmppAccounts)
-    .where(eq(xmppAccounts.userId, userId))
-    .limit(1);
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<XmppAccountRow>`SELECT * FROM xmpp_accounts
+        WHERE user_id = ${userId} LIMIT 1`;
+    }),
+  );
   return row ?? null;
 }
 
