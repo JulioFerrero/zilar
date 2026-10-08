@@ -12,9 +12,8 @@
 // same reason. No decode text changes: every failure answers byte-identical
 // codes and messages.
 //
-// `WebPushSubscriptionSchema` stays zod in `./subscriptions` (other files
-// import its type); this module carries a local Effect Schema with the same
-// rules.
+// The subscribe body reuses the Effect schemas in `./subscriptions`, so the
+// route and the stored subscription share one set of rules.
 
 import { randomUUID } from 'node:crypto';
 import { Effect, Layer, Option, Schema } from 'effect';
@@ -26,7 +25,7 @@ import {
   HttpApiGroup,
   HttpApiMiddleware,
 } from 'effect/http-api';
-import { isUrl, struct } from '@zilar/protocol';
+import { struct } from '@zilar/protocol';
 import type { Logger } from 'pino';
 import { Hono } from 'hono';
 import type { Auth } from '../auth/auth';
@@ -50,6 +49,7 @@ import { createPushCipher } from './crypto';
 import { pushConfigError, type PushConfig } from './config';
 import { parseNode, randomNode } from './protocol';
 import { createWebPushSender, isExpiredSubscription, type WebPushDelivery } from './sender';
+import { WebPushKeysSchema, WebPushSubscriptionSchema } from './subscriptions';
 import {
   devicesForUser,
   markDeviceFailed,
@@ -88,27 +88,14 @@ export interface PushApiDependencies extends PushRoutesDependencies {
   testLimiter?: RateLimiter;
 }
 
-// Local Effect Schema with the same rules as the zod
-// `WebPushSubscriptionSchema` in `./subscriptions` (which stays zod: other
-// files import its type). `struct` keeps zod's mutable field types.
-const PushKeysBody = struct({
-  p256dh: Schema.String.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(256))),
-  auth: Schema.String.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(256))),
-});
-
-// zod `z.url()` accepts any scheme, so the filter accepts any parseable URL.
-const PushEndpoint = Schema.String.pipe(
-  Schema.check(
-    Schema.isMaxLength(2048),
-    Schema.makeFilter((value) => (isUrl(value) ? undefined : 'must be a URL')),
-  ),
-);
-
-// Replaces `subscribeSchema` (zod): not strict, so unknown keys are stripped.
+// The subscribe body reuses the stored subscription schemas: the endpoint,
+// expiration time and keys are exactly `WebPushSubscriptionSchema`, and
+// `userAgent` is the extra device label. `struct` keeps zod's mutable field
+// types.
 const SubscribeBody = struct({
-  endpoint: PushEndpoint,
-  expirationTime: Schema.optional(Schema.NullOr(Schema.Number)),
-  keys: PushKeysBody,
+  endpoint: WebPushSubscriptionSchema.fields.endpoint,
+  expirationTime: WebPushSubscriptionSchema.fields.expirationTime,
+  keys: WebPushKeysSchema,
   userAgent: Schema.optional(
     Schema.NullOr(Schema.String.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(256)))),
   ),

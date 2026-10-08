@@ -18,9 +18,8 @@
 // invalid JSON body answers `Invalid JSON body`, a schema violation answers
 // `Invalid connection request`.
 //
-// `ProviderIdSchema` stays zod in `./providers` (its value is shared with the
-// service and probe boundary there); this module carries a local Effect Schema
-// with the same literals.
+// `ProviderIdSchema` in `./providers` is the single source of the provider
+// literals, shared with the service and the probe boundary.
 
 import { Effect, Layer, Option, Schema } from 'effect';
 import { HttpServer, HttpServerResponse, HttpRouter } from 'effect/http';
@@ -47,7 +46,7 @@ import {
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
 import type { KeyCipher } from './crypto';
 import { redactKey, createProviderProbe, type ProviderProbe } from './probe';
-import type { ProviderId } from './providers';
+import { ProviderIdSchema, type ProviderId } from './providers';
 import {
   countAisUsingConnection,
   createConnection as createConnectionRow,
@@ -83,23 +82,11 @@ export interface ConnectionsApiDependencies extends ConnectionsRoutesDependencie
   testLimiter?: RateLimiter;
 }
 
-// Local Effect Schema with the same literals as `PROVIDER_IDS` in
-// `./providers` (which stays zod: its value is shared outside this module).
-const ConnectionProvider = Schema.Literals([
-  'openai',
-  'anthropic',
-  'google',
-  'deepseek',
-  'xai',
-  'openrouter',
-  'github',
-]);
-
 // Replaces `CreateConnectionSchema` (zod strict): the key is trimmed because
 // pasted keys often carry a trailing newline. Excess keys fail the decode,
 // like the old `.strict()`.
 const CreateConnectionBody = Schema.Struct({
-  provider: ConnectionProvider,
+  provider: ProviderIdSchema,
   key: Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(16384)),
   label: Schema.optional(Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(256))),
 });
@@ -110,7 +97,7 @@ const STRICT_DECODE = { onExcessProperty: 'error' } as const;
 // one of them, so it can never reach a response.
 const ConnectionView = Schema.Struct({
   id: Schema.String,
-  provider: ConnectionProvider,
+  provider: ProviderIdSchema,
   label: Schema.NullOr(Schema.String),
   status: Schema.Literals(['active', 'revoked']),
   createdAt: Schema.Date,

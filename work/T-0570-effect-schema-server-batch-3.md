@@ -1,7 +1,7 @@
 ---
 id: T-0570
 title: "Effect Schema, server batch 3: push/config.ts, push/subscriptions.ts, ais/templates.ts and connections/providers.ts drop zod; same PushConfig type, defaults and boot-exit message; stale 'stays zod' comments fixed; tests unchanged"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0570-effect-schema-server-batch-3
 model: auto
@@ -81,4 +81,80 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Status: done. All four modules now use Effect Schema with the same rules,
+defaults and types; no `zod` import remains in any of them; the stale
+"stays zod" comments are gone; every listed test is unchanged and green.
+
+### Files changed (7; all inside the Allowed files)
+- `apps/server/src/push/config.ts` — ported `pushEnvSchema` to `Schema.Struct`
+  with local `withDefault`/`booleanFlagSchema` helpers copied from
+  `config.ts`, plus a `portSchema`-style check (`^\d+$` → int → 1..65535) and
+  a defaulted host pattern. `type PushConfig` is now
+  `Schema.Schema.Type<typeof pushEnvSchema>`. `loadPushConfig` decodes with
+  `Schema.decodeUnknownExit(schema, { errors: 'all' })`, collects the failing
+  struct-key paths and throws a module-private `PushConfigError` carrying
+  `failedKeys` (names only, never values). `loadPushConfigOrExit` checks
+  `failedKeys.includes('PUSH_COMPONENT_HOST')` and prints the same fixed
+  message + `process.exit(1)`; any other failure is rethrown. `pushConfigError`
+  is unchanged.
+- `apps/server/src/push/subscriptions.ts` — `WebPushKeysSchema`,
+  `WebPushSubscriptionSchema` (endpoint max 2048 + `isUrl`, nullable/optional
+  `expirationTime`, keys) and `UserAgentSchema` as Effect schemas via
+  `struct` from `@zilar/protocol` (keeps zod's mutable field types). Type is
+  `Schema.Schema.Type<...>`.
+- `apps/server/src/ais/templates.ts` — `AiTemplateSchema = Schema.Literals(AI_TEMPLATES)`;
+  `type AiTemplate = (typeof AI_TEMPLATES)[number]`.
+- `apps/server/src/connections/providers.ts` — `ProviderIdSchema = Schema.Literals(PROVIDER_IDS)`.
+- `apps/server/src/connections/api.ts` — dropped the local `ConnectionProvider`
+  literals; `CreateConnectionBody` and `ConnectionView` now use the imported
+  `ProviderIdSchema`. Fixed the two comments that said providers "stays zod".
+- `apps/server/src/push/api.ts` — dropped the local `PushKeysBody`/`PushEndpoint`;
+  `SubscribeBody` now reuses `WebPushSubscriptionSchema.fields.endpoint`,
+  `.expirationTime` and `WebPushKeysSchema` from `./subscriptions`, with the
+  local `userAgent` field kept as before. Fixed the two comments that said
+  `WebPushSubscriptionSchema` "stays zod". Rules, answers and order unchanged.
+- `work/T-0570-effect-schema-server-batch-3.md` — status + this Report.
+
+### Commands and real results
+- `pnpm install` — "Done in 21.4s".
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot push/ subscriptions connections ais`
+  — Test Files: 17 passed | 3 skipped (20); Tests: 196 passed | 4 skipped (200).
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot config.test.ts`
+  — Test Files: 3 passed (3); Tests: 69 passed (69).
+- `pnpm gate` (first run) — **GATE FAIL**: `FAIL format` (85.0s), Prettier
+  reported `apps/server/src/push/config.ts`.
+- `pnpm exec prettier --write apps/server/src/push/config.ts` — reformatted
+  one block (`Schema.isPattern(...)` argument layout); no logic change.
+- `pnpm gate` (second run):
+  ```
+  gate: 7 changed file(s) against main
+  PASS  install (frozen)  (5.6s)
+  PASS  format  (83.0s)
+  PASS  lint  (2.2s)
+  PASS  typecheck  (54.7s)
+  PASS  tests @zilar/server  (1332.8s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+  The 7 changed files are exactly the six source files plus this task file.
+
+### Deviations / notes
+- The host-failure detection mechanism was left to my choice by the spec; I
+  used a small typed `PushConfigError` with the failing key names rather than
+  inspecting Effect's issue tree in `loadPushConfigOrExit`. It never carries a
+  value.
+- Prettier reflowed the host `isPattern` call; the fixed host message text is
+  unchanged.
+- No test files were modified.
+
+### Blocked / needs a decision
+None.
+
 ## Review (written by Claude)
+
+**2026-10-08, lead:** approved.
+- **Pre-review:** 0 must-fix. The packet (07:58) is newer than HEAD d4975be5.
+- **No test file changed.**
+- **Gate:** passed at the worker.
+- **Lead check:** the push env schema keeps the defaults (`false`, `5347`, `127.0.0.1`), the port 1..65535, the host pattern with its fixed boot message, and the storage key of at least 32 characters. `PushConfig` is derived from the schema, and typecheck passed.
+- **Accepted nit:** the `failedKeysOf` comment at `push/config.ts:85` mentions a `missing` value that the code does not return. It is logged for a cleanup.

@@ -1,12 +1,12 @@
-import { z } from 'zod';
+import { Schema } from 'effect';
 
 // The templates the wizard (T-0032) offers. `custom` starts empty: its owner
 // must write the persona, because there is no sensible default for one.
 export const AI_TEMPLATES = ['dev', 'marketing', 'fun', 'custom'] as const;
 
-export const AiTemplateSchema = z.enum(AI_TEMPLATES);
+export const AiTemplateSchema = Schema.Literals(AI_TEMPLATES);
 
-export type AiTemplate = z.infer<typeof AiTemplateSchema>;
+export type AiTemplate = (typeof AI_TEMPLATES)[number];
 
 // Short, two-or-three-sentence personas. They are a starting point the owner
 // edits, not a full agent spec (tools, placement and memory come later).
