@@ -2,6 +2,23 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-08 23:55, 5 workers, on small files, smallest first (Julio: "for small files, spawn more workers"):**
+- **Merged since 23:00:**
+  - the effect/sql conversions: T-0625, T-0627 to T-0631, T-0633 to T-0636 (stickers fully off drizzle);
+  - the T-0626 audit (`docs/audit/effect-last-mile.md`, the plan to follow);
+  - T-0632 (review nits);
+  - the drafts, files and connections Hono wrappers retired (T-0637 to T-0639).
+- **Running:** the Hono wrappers for routines (T-0640), approvals (T-0641), tools (T-0642), machines (T-0643) and audit (T-0644).
+- **Next small files:**
+  - `invite-links/routes.ts` (A11, which edits `app.ts`, so it starts after T-0642);
+  - the push wrapper (A9).
+- **On hold:**
+  - `handles` E1 changes an error message the client sees;
+  - `git/routes.ts` waits for Julio's decision on the git proxy;
+  - the setup files wait for the C4 chain.
+- **Follow-ups:** stale doc comments that name the deleted `connections/routes.ts` and `routines/routes.ts` (in mobile and web).
+- **Load** is about 20 on 11 cores at 5 workers, so there is no 6th worker for now.
+
 **2026-10-08 23:00, 4 workers (Julio: "lets go up to 4 workers maybe?"):**
 - **Merged since 22:40:** T-0620 (the gate falls back to a folder's tests), T-0621 (approval rules), T-0622 (owner lookups), T-0623 (voice settings), T-0624 (announcer reads).
 - **Running:**
