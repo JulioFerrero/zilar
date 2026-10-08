@@ -1,9 +1,11 @@
 import { randomUUID } from 'node:crypto';
-import { Schema } from 'effect';
-import { and, asc, count, desc, eq, inArray, isNull } from 'drizzle-orm';
+import { Effect, Schema } from 'effect';
+import { SqlClient, SqlError } from 'effect/sql';
+import { and, eq, isNull } from 'drizzle-orm';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
-import { ais, aiToolRuns, aiTools, aiToolVersions } from '../db/schema';
+import { aiToolRuns, aiToolVersions, aiTools } from '../db/schema';
+import { sqlRuntimeFor } from '../effect/sql';
 import { deleteRoutinesForTool } from '../routines/service';
 import { parseToolVersionInput, toolHostsSchema } from './schemas';
 import type { ToolRunner, ToolRunResult } from './types';
@@ -36,6 +38,7 @@ export class ToolServiceError extends Error {
 
 type ToolRow = typeof aiTools.$inferSelect;
 type VersionRow = typeof aiToolVersions.$inferSelect;
+type RunRow = typeof aiToolRuns.$inferSelect;
 
 export interface SaveToolVersionInput {
   aiId: string;
@@ -119,6 +122,18 @@ interface AppendVersionResult {
   unchanged: boolean;
 }
 
+// Every query runs on the `effect/sql` client registered for this database
+// (see `../effect/sql`). The exported functions stay `async` so routes and
+// tests keep their shape during the transition. `deleteToolsForAiInGroup`
+// is the one exception: its caller (`groups/service.ts`) hands it a drizzle
+// transaction, so it stays on drizzle.
+function runSql<A, E>(
+  db: ServerDatabase,
+  effect: Effect.Effect<A, E, SqlClient.SqlClient>,
+): Promise<A> {
+  return sqlRuntimeFor(db).runPromise(effect);
+}
+
 // Creates the tool with version 1 when the name is new in that topic, or
 // appends version N+1 when source or hosts differ from the current
 // version. An identical save returns the current version with
@@ -149,63 +164,84 @@ export async function saveToolVersion(
   }
   const { name, description, source, hosts, message } = parsed.value;
 
-  const existing = await findActiveTool(db, input.aiId, input.topicId, name);
+  const existing = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* findActiveTool(sql, input.aiId, input.topicId, name);
+    }),
+  );
   if (!existing) {
-    await enforceToolLimit(db, input.aiId, input.topicId);
-    const createdResult = await db.transaction(async (rawTx) => {
-      const tx = rawTx as unknown as ServerDatabase;
-      const [inserted] = await tx
-        .insert(aiTools)
-        .values({
-          id: randomUUID(),
-          aiId: input.aiId,
-          groupId: input.groupId,
-          topicId: input.topicId,
-          name,
-          description,
-          currentVersion: 1,
-          createdBy: input.userId,
-          createdAt: now,
-          updatedAt: now,
-        })
-        .onConflictDoNothing()
-        .returning();
-      if (inserted !== undefined) {
-        const version = await insertVersion(tx, {
-          toolId: inserted.id,
-          version: 1,
-          source,
-          hosts,
-          message,
-          createdBy: input.userId,
-          now,
-        });
-        return {
-          tool: toToolDetail(inserted, version, null),
-          version: toVersionDetail(version),
-          unchanged: false,
-          created: true,
-        };
-      }
-      // Lost the race with a concurrent create of the same name: append
-      // to the winner's history instead.
-      const winner = await findActiveTool(tx, input.aiId, input.topicId, name);
-      if (!winner) {
-        throw new Error('Failed to create tool');
-      }
-      return {
-        ...(await appendVersion(tx, {
-          tool: winner,
-          description,
-          source,
-          hosts,
-          message,
-          userId: input.userId,
-          now,
-        })),
-        created: false,
-      };
-    });
+    await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* enforceToolLimit(sql, input.aiId, input.topicId);
+      }),
+    );
+    const createdResult = await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql.withTransaction(
+          Effect.gen(function* () {
+            const [inserted] = yield* sql<ToolRow>`INSERT INTO ai_tools
+                (id, ai_id, group_id, topic_id, name, description, current_version,
+                  created_by, created_at, updated_at)
+              VALUES (
+                ${randomUUID()},
+                ${input.aiId},
+                ${input.groupId},
+                ${input.topicId},
+                ${name},
+                ${description},
+                1,
+                ${input.userId},
+                ${now.toISOString()},
+                ${now.toISOString()}
+              )
+              ON CONFLICT DO NOTHING
+              RETURNING *`;
+            if (inserted !== undefined) {
+              const version = yield* insertVersion(sql, {
+                toolId: inserted.id,
+                version: 1,
+                source,
+                hosts,
+                message,
+                createdBy: input.userId,
+                now,
+              });
+              return {
+                tool: toToolDetail(inserted, version, null),
+                version: toVersionDetail(version),
+                unchanged: false,
+                created: true,
+              };
+            }
+            // Lost the race with a concurrent create of the same name: append
+            // to the winner's history instead. The `ON CONFLICT DO NOTHING`
+            // never aborts the transaction, so this read is safe here.
+            const winner = yield* findActiveTool(sql, input.aiId, input.topicId, name);
+            if (!winner) {
+              return yield* Effect.die(new Error('Failed to create tool'));
+            }
+            return {
+              ...(yield* appendVersion(sql, {
+                tool: winner,
+                description,
+                source,
+                hosts,
+                message,
+                userId: input.userId,
+                now,
+              })),
+              created: false,
+            };
+          }),
+        );
+      }),
+    );
     if (audit !== undefined && !createdResult.unchanged) {
       await recordSaveAudit(audit, {
         action: createdResult.created ? 'tool.created' : 'tool.updated',
@@ -219,30 +255,33 @@ export async function saveToolVersion(
     }
     return createdResult;
   }
-  const updatedResult = await db.transaction(async (rawTx) => {
-    const tx = rawTx as unknown as ServerDatabase;
-    const [locked] = await tx
-      .select()
-      .from(aiTools)
-      .where(eq(aiTools.id, existing.id))
-      .for('update')
-      .limit(1);
-    if (!locked || locked.deletedAt !== null) {
-      throw new ToolServiceError('not_found', 'Tool not found');
-    }
-    return {
-      ...(await appendVersion(tx, {
-        tool: locked,
-        description,
-        source,
-        hosts,
-        message,
-        userId: input.userId,
-        now,
-      })),
-      created: false,
-    };
-  });
+  const updatedResult = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql.withTransaction(
+        Effect.gen(function* () {
+          const [locked] = yield* sql<ToolRow>`SELECT * FROM ai_tools
+            WHERE id = ${existing.id} LIMIT 1 FOR UPDATE`;
+          if (!locked || locked.deletedAt !== null) {
+            return yield* Effect.fail(new ToolServiceError('not_found', 'Tool not found'));
+          }
+          return {
+            ...(yield* appendVersion(sql, {
+              tool: locked,
+              description,
+              source,
+              hosts,
+              message,
+              userId: input.userId,
+              now,
+            })),
+            created: false,
+          };
+        }),
+      );
+    }),
+  );
   if (audit !== undefined && !updatedResult.unchanged) {
     await recordSaveAudit(audit, {
       action: 'tool.updated',
@@ -270,71 +309,57 @@ interface AppendVersionInput {
 // Appends version N+1 inside the caller's transaction, or returns the
 // current version unchanged when source and hosts both match. The lock on
 // the tool row (taken by the caller) serialises concurrent appends.
-async function appendVersion(
-  tx: ServerDatabase,
+function appendVersion(
+  sql: SqlClient.SqlClient,
   input: AppendVersionInput,
-): Promise<AppendVersionResult> {
-  const [current] = await tx
-    .select()
-    .from(aiToolVersions)
-    .where(
-      and(
-        eq(aiToolVersions.toolId, input.tool.id),
-        eq(aiToolVersions.version, input.tool.currentVersion),
-      ),
-    )
-    .limit(1);
-  if (!current) {
-    throw new Error('Tool is missing its current version');
-  }
-  if (current.source === input.source && hostsEqual(current.hosts, input.hosts)) {
-    const [run] = await tx
-      .select({ status: aiToolRuns.status })
-      .from(aiToolRuns)
-      .where(eq(aiToolRuns.toolId, input.tool.id))
-      .orderBy(desc(aiToolRuns.createdAt), desc(aiToolRuns.id))
-      .limit(1);
+): Effect.Effect<AppendVersionResult, SqlError.SqlError | ToolServiceError> {
+  return Effect.gen(function* () {
+    const [current] = yield* sql<VersionRow>`SELECT * FROM ai_tool_versions
+      WHERE tool_id = ${input.tool.id} AND version = ${input.tool.currentVersion}
+      LIMIT 1`;
+    if (!current) {
+      return yield* Effect.die(new Error('Tool is missing its current version'));
+    }
+    if (current.source === input.source && hostsEqual(current.hosts, input.hosts)) {
+      const lastRunStatus = yield* latestRunStatus(sql, input.tool.id);
+      return {
+        tool: toToolDetail(input.tool, current, lastRunStatus),
+        version: toVersionDetail(current),
+        unchanged: true,
+      };
+    }
+    if (input.tool.currentVersion >= MAX_VERSIONS_PER_TOOL) {
+      return yield* Effect.fail(
+        new ToolServiceError(
+          'version_limit',
+          `A tool has at most ${MAX_VERSIONS_PER_TOOL} versions`,
+        ),
+      );
+    }
+    const next = input.tool.currentVersion + 1;
+    const version = yield* insertVersion(sql, {
+      toolId: input.tool.id,
+      version: next,
+      source: input.source,
+      hosts: input.hosts,
+      message: input.message,
+      createdBy: input.userId,
+      now: input.now,
+    });
+    const [updated] = yield* sql<ToolRow>`UPDATE ai_tools
+      SET description = ${input.description}, current_version = ${next}, updated_at = ${input.now.toISOString()}
+      WHERE id = ${input.tool.id}
+      RETURNING *`;
+    if (!updated) {
+      return yield* Effect.die(new Error('Tool disappeared while saving a version'));
+    }
+    const lastRunStatus = yield* latestRunStatus(sql, input.tool.id);
     return {
-      tool: toToolDetail(input.tool, current, run?.status ?? null),
-      version: toVersionDetail(current),
-      unchanged: true,
+      tool: toToolDetail(updated, version, lastRunStatus),
+      version: toVersionDetail(version),
+      unchanged: false,
     };
-  }
-  if (input.tool.currentVersion >= MAX_VERSIONS_PER_TOOL) {
-    throw new ToolServiceError(
-      'version_limit',
-      `A tool has at most ${MAX_VERSIONS_PER_TOOL} versions`,
-    );
-  }
-  const next = input.tool.currentVersion + 1;
-  const version = await insertVersion(tx, {
-    toolId: input.tool.id,
-    version: next,
-    source: input.source,
-    hosts: input.hosts,
-    message: input.message,
-    createdBy: input.userId,
-    now: input.now,
   });
-  const [updated] = await tx
-    .update(aiTools)
-    .set({ description: input.description, currentVersion: next, updatedAt: input.now })
-    .where(eq(aiTools.id, input.tool.id))
-    .returning();
-  if (!updated) {
-    throw new Error('Tool disappeared while saving a version');
-  }
-  const [run] = await tx
-    .select({ status: aiToolRuns.status })
-    .from(aiToolRuns)
-    .where(eq(aiToolRuns.toolId, input.tool.id))
-    .orderBy(desc(aiToolRuns.createdAt), desc(aiToolRuns.id))
-    .limit(1);
-  return {
-    tool: toToolDetail(updated, version, run?.status ?? null),
-    version: toVersionDetail(version),
-    unchanged: false,
-  };
 }
 
 // Lists the non-deleted tools of one AI in one topic (no source). The
@@ -343,34 +368,35 @@ export async function listTools(
   db: ServerDatabase,
   input: { aiId: string; groupId: string | null; topicId: string | null },
 ): Promise<PublicTool[]> {
-  const rows = await db
-    .select()
-    .from(aiTools)
-    .where(
-      input.topicId === null
-        ? and(eq(aiTools.aiId, input.aiId), isNull(aiTools.topicId), isNull(aiTools.deletedAt))
-        : and(
-            eq(aiTools.aiId, input.aiId),
-            eq(aiTools.topicId, input.topicId),
-            isNull(aiTools.deletedAt),
-          ),
-    )
-    .orderBy(asc(aiTools.name));
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const topic =
+        input.topicId === null ? sql`topic_id IS NULL` : sql`topic_id = ${input.topicId}`;
+      return yield* sql<ToolRow>`SELECT * FROM ai_tools
+        WHERE ai_id = ${input.aiId} AND ${topic} AND deleted_at IS NULL
+        ORDER BY name ASC`;
+    }),
+  );
   const result: PublicTool[] = [];
   for (const tool of rows) {
-    const [current] = await db
-      .select()
-      .from(aiToolVersions)
-      .where(
-        and(eq(aiToolVersions.toolId, tool.id), eq(aiToolVersions.version, tool.currentVersion)),
-      )
-      .limit(1);
-    const [run] = await db
-      .select({ status: aiToolRuns.status })
-      .from(aiToolRuns)
-      .where(eq(aiToolRuns.toolId, tool.id))
-      .orderBy(desc(aiToolRuns.createdAt), desc(aiToolRuns.id))
-      .limit(1);
+    const current = await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        const [row] = yield* sql<VersionRow>`SELECT * FROM ai_tool_versions
+          WHERE tool_id = ${tool.id} AND version = ${tool.currentVersion} LIMIT 1`;
+        return row ?? null;
+      }),
+    );
+    const lastRunStatus = await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* latestRunStatus(sql, tool.id);
+      }),
+    );
     result.push({
       id: tool.id,
       aiId: tool.aiId,
@@ -381,7 +407,7 @@ export async function listTools(
       currentVersion: tool.currentVersion,
       hosts: current?.hosts ?? [],
       approvedHosts: [...(tool.approvedHosts ?? [])],
-      lastRunStatus: run?.status ?? null,
+      lastRunStatus,
       updatedAt: tool.updatedAt,
     });
   }
@@ -391,25 +417,36 @@ export async function listTools(
 // One non-deleted tool with its current source, or null for a missing id
 // and a deleted one alike.
 export async function getTool(db: ServerDatabase, id: string): Promise<ToolDetail | null> {
-  const [tool] = await db.select().from(aiTools).where(eq(aiTools.id, id)).limit(1);
-  if (!tool || tool.deletedAt !== null) {
+  const tool = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* getToolRow(sql, id);
+    }),
+  );
+  if (!tool) {
     return null;
   }
-  const [current] = await db
-    .select()
-    .from(aiToolVersions)
-    .where(and(eq(aiToolVersions.toolId, tool.id), eq(aiToolVersions.version, tool.currentVersion)))
-    .limit(1);
+  const current = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const [row] = yield* sql<VersionRow>`SELECT * FROM ai_tool_versions
+        WHERE tool_id = ${tool.id} AND version = ${tool.currentVersion} LIMIT 1`;
+      return row ?? null;
+    }),
+  );
   if (!current) {
     return null;
   }
-  const [run] = await db
-    .select({ status: aiToolRuns.status })
-    .from(aiToolRuns)
-    .where(eq(aiToolRuns.toolId, tool.id))
-    .orderBy(desc(aiToolRuns.createdAt), desc(aiToolRuns.id))
-    .limit(1);
-  return toToolDetail(tool, current, run?.status ?? null);
+  const lastRunStatus = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* latestRunStatus(sql, tool.id);
+    }),
+  );
+  return toToolDetail(tool, current, lastRunStatus);
 }
 
 // Every version of a tool, newest first, without source. Returns null for
@@ -418,15 +455,25 @@ export async function listVersions(
   db: ServerDatabase,
   toolId: string,
 ): Promise<PublicToolVersion[] | null> {
-  const tool = await getToolRow(db, toolId);
+  const tool = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* getToolRow(sql, toolId);
+    }),
+  );
   if (!tool) {
     return null;
   }
-  const rows = await db
-    .select()
-    .from(aiToolVersions)
-    .where(eq(aiToolVersions.toolId, toolId))
-    .orderBy(desc(aiToolVersions.version));
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<VersionRow>`SELECT * FROM ai_tool_versions
+        WHERE tool_id = ${toolId}
+        ORDER BY version DESC`;
+    }),
+  );
   return rows.map(toPublicVersion);
 }
 
@@ -436,15 +483,24 @@ export async function getVersion(
   toolId: string,
   version: number,
 ): Promise<ToolVersionDetail | null> {
-  const tool = await getToolRow(db, toolId);
+  const tool = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* getToolRow(sql, toolId);
+    }),
+  );
   if (!tool) {
     return null;
   }
-  const [row] = await db
-    .select()
-    .from(aiToolVersions)
-    .where(and(eq(aiToolVersions.toolId, toolId), eq(aiToolVersions.version, version)))
-    .limit(1);
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<VersionRow>`SELECT * FROM ai_tool_versions
+        WHERE tool_id = ${toolId} AND version = ${version} LIMIT 1`;
+    }),
+  );
   return row ? toVersionDetail(row) : null;
 }
 
@@ -474,60 +530,56 @@ export async function revertTool(
   if (!parsed.ok) {
     throw new ToolServiceError('invalid_request', parsed.message);
   }
-  return db.transaction(async (rawTx) => {
-    const tx = rawTx as unknown as ServerDatabase;
-    const [tool] = await tx
-      .select()
-      .from(aiTools)
-      .where(eq(aiTools.id, input.toolId))
-      .for('update')
-      .limit(1);
-    if (!tool || tool.deletedAt !== null) {
-      throw new ToolServiceError('not_found', 'Tool not found');
-    }
-    const [old] = await tx
-      .select()
-      .from(aiToolVersions)
-      .where(and(eq(aiToolVersions.toolId, tool.id), eq(aiToolVersions.version, input.toVersion)))
-      .limit(1);
-    if (!old) {
-      throw new ToolServiceError('not_found', 'Tool version not found');
-    }
-    if (tool.currentVersion >= MAX_VERSIONS_PER_TOOL) {
-      throw new ToolServiceError(
-        'version_limit',
-        `A tool has at most ${MAX_VERSIONS_PER_TOOL} versions`,
+  return runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql.withTransaction(
+        Effect.gen(function* () {
+          const [tool] = yield* sql<ToolRow>`SELECT * FROM ai_tools
+            WHERE id = ${input.toolId} LIMIT 1 FOR UPDATE`;
+          if (!tool || tool.deletedAt !== null) {
+            return yield* Effect.fail(new ToolServiceError('not_found', 'Tool not found'));
+          }
+          const [old] = yield* sql<VersionRow>`SELECT * FROM ai_tool_versions
+            WHERE tool_id = ${tool.id} AND version = ${input.toVersion} LIMIT 1`;
+          if (!old) {
+            return yield* Effect.fail(new ToolServiceError('not_found', 'Tool version not found'));
+          }
+          if (tool.currentVersion >= MAX_VERSIONS_PER_TOOL) {
+            return yield* Effect.fail(
+              new ToolServiceError(
+                'version_limit',
+                `A tool has at most ${MAX_VERSIONS_PER_TOOL} versions`,
+              ),
+            );
+          }
+          const next = tool.currentVersion + 1;
+          const version = yield* insertVersion(sql, {
+            toolId: tool.id,
+            version: next,
+            source: old.source,
+            hosts: old.hosts,
+            message,
+            createdBy: input.userId,
+            now,
+          });
+          const [updated] = yield* sql<ToolRow>`UPDATE ai_tools
+            SET current_version = ${next}, updated_at = ${now.toISOString()}
+            WHERE id = ${tool.id}
+            RETURNING *`;
+          if (!updated) {
+            return yield* Effect.die(new Error('Tool disappeared while reverting'));
+          }
+          const lastRunStatus = yield* latestRunStatus(sql, tool.id);
+          return {
+            tool: toToolDetail(updated, version, lastRunStatus),
+            version: toVersionDetail(version),
+          };
+        }),
       );
-    }
-    const next = tool.currentVersion + 1;
-    const version = await insertVersion(tx, {
-      toolId: tool.id,
-      version: next,
-      source: old.source,
-      hosts: old.hosts,
-      message,
-      createdBy: input.userId,
-      now,
-    });
-    const [updated] = await tx
-      .update(aiTools)
-      .set({ currentVersion: next, updatedAt: now })
-      .where(eq(aiTools.id, tool.id))
-      .returning();
-    if (!updated) {
-      throw new Error('Tool disappeared while reverting');
-    }
-    const [run] = await tx
-      .select({ status: aiToolRuns.status })
-      .from(aiToolRuns)
-      .where(eq(aiToolRuns.toolId, tool.id))
-      .orderBy(desc(aiToolRuns.createdAt), desc(aiToolRuns.id))
-      .limit(1);
-    return {
-      tool: toToolDetail(updated, version, run?.status ?? null),
-      version: toVersionDetail(version),
-    };
-  });
+    }),
+  );
 }
 
 // Soft-deletes one tool by id, and soft-deletes the tool's routines with
@@ -538,11 +590,16 @@ export async function deleteTool(
   toolId: string,
   now: Date,
 ): Promise<{ deleted: boolean }> {
-  const [updated] = await db
-    .update(aiTools)
-    .set({ deletedAt: now, updatedAt: now })
-    .where(and(eq(aiTools.id, toolId), isNull(aiTools.deletedAt)))
-    .returning();
+  const [updated] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<ToolRow>`UPDATE ai_tools
+        SET deleted_at = ${now.toISOString()}, updated_at = ${now.toISOString()}
+        WHERE id = ${toolId} AND deleted_at IS NULL
+        RETURNING *`;
+    }),
+  );
   if (updated === undefined) {
     return { deleted: false };
   }
@@ -551,8 +608,9 @@ export async function deleteTool(
 }
 
 // Soft-deletes every active tool of one AI in one topic. Called from
-// topic-AI removal in the same transaction (the `tx` parameter is the
-// caller's transaction). Returns the deleted tool ids.
+// topic-AI removal with `deps.db`, but `service.test.ts` drives it inside
+// a drizzle transaction and passes the transaction, so it stays on
+// drizzle like `deleteToolsForAiInGroup`. Returns the deleted tool ids.
 export async function deleteToolsForAiInTopic(
   tx: ServerDatabase,
   input: { aiId: string; topicId: string; now: Date },
@@ -621,24 +679,38 @@ export async function runToolVersion(
   input: RunToolVersionInput,
   now: Date,
 ): Promise<{ result: ToolRunResult; run: PublicToolRun }> {
-  const tool = await getToolRow(deps.db, input.toolId);
+  const tool = await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* getToolRow(sql, input.toolId);
+    }),
+  );
   if (!tool) {
     throw new ToolServiceError('not_found', 'Tool not found');
   }
   const wantVersion = input.version ?? tool.currentVersion;
-  const [versionRow] = await deps.db
-    .select()
-    .from(aiToolVersions)
-    .where(and(eq(aiToolVersions.toolId, tool.id), eq(aiToolVersions.version, wantVersion)))
-    .limit(1);
+  const versionRow = await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const [row] = yield* sql<VersionRow>`SELECT * FROM ai_tool_versions
+        WHERE tool_id = ${tool.id} AND version = ${wantVersion} LIMIT 1`;
+      return row ?? null;
+    }),
+  );
   if (!versionRow) {
     throw new ToolServiceError('not_found', 'Tool version not found');
   }
-  const [ai] = await deps.db
-    .select({ status: ais.status })
-    .from(ais)
-    .where(eq(ais.id, tool.aiId))
-    .limit(1);
+  const ai = await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const [row] = yield* sql<{ status: string }>`SELECT status FROM ais
+        WHERE id = ${tool.aiId} LIMIT 1`;
+      return row ?? null;
+    }),
+  );
   if (!ai || ai.status !== 'active') {
     throw new ToolServiceError('ai_not_active', 'The AI is not active');
   }
@@ -671,32 +743,48 @@ export async function approveToolHosts(
   audit?: AuditRecorder,
 ): Promise<ToolDetail> {
   const hosts = Schema.decodeUnknownSync(toolHostsSchema)(input.hosts);
-  const tool = await getToolRow(db, input.toolId);
+  const tool = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* getToolRow(sql, input.toolId);
+    }),
+  );
   if (!tool) {
     throw new ToolServiceError('not_found', 'Tool not found');
   }
-  const [current] = await db
-    .select()
-    .from(aiToolVersions)
-    .where(and(eq(aiToolVersions.toolId, tool.id), eq(aiToolVersions.version, tool.currentVersion)))
-    .limit(1);
+  const current = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const [row] = yield* sql<VersionRow>`SELECT * FROM ai_tool_versions
+        WHERE tool_id = ${tool.id} AND version = ${tool.currentVersion} LIMIT 1`;
+      return row ?? null;
+    }),
+  );
   if (!current) {
     throw new ToolServiceError('not_found', 'Tool version not found');
   }
-  const [updated] = await db
-    .update(aiTools)
-    .set({ approvedHosts: hosts, updatedAt: now })
-    .where(eq(aiTools.id, tool.id))
-    .returning();
+  const [updated] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<ToolRow>`UPDATE ai_tools
+        SET approved_hosts = ${JSON.stringify(hosts)}::jsonb, updated_at = ${now.toISOString()}
+        WHERE id = ${tool.id}
+        RETURNING *`;
+    }),
+  );
   if (!updated) {
     throw new Error('Tool disappeared while approving hosts');
   }
-  const [run] = await db
-    .select({ status: aiToolRuns.status })
-    .from(aiToolRuns)
-    .where(eq(aiToolRuns.toolId, tool.id))
-    .orderBy(desc(aiToolRuns.createdAt), desc(aiToolRuns.id))
-    .limit(1);
+  const lastRunStatus = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* latestRunStatus(sql, tool.id);
+    }),
+  );
   if (audit !== undefined) {
     await audit.record({
       actorUserId: input.userId,
@@ -711,7 +799,7 @@ export async function approveToolHosts(
       detail: { name: tool.name, version: current.version, hosts },
     });
   }
-  return toToolDetail(updated, current, run?.status ?? null);
+  return toToolDetail(updated, current, lastRunStatus);
 }
 
 // Empties the tool's `approved_hosts` (T-0132 `tool.revoke_hosts`): the
@@ -723,32 +811,48 @@ export async function revokeToolHosts(
   now: Date,
   audit?: AuditRecorder,
 ): Promise<ToolDetail> {
-  const tool = await getToolRow(db, input.toolId);
+  const tool = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* getToolRow(sql, input.toolId);
+    }),
+  );
   if (!tool) {
     throw new ToolServiceError('not_found', 'Tool not found');
   }
-  const [current] = await db
-    .select()
-    .from(aiToolVersions)
-    .where(and(eq(aiToolVersions.toolId, tool.id), eq(aiToolVersions.version, tool.currentVersion)))
-    .limit(1);
+  const current = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const [row] = yield* sql<VersionRow>`SELECT * FROM ai_tool_versions
+        WHERE tool_id = ${tool.id} AND version = ${tool.currentVersion} LIMIT 1`;
+      return row ?? null;
+    }),
+  );
   if (!current) {
     throw new ToolServiceError('not_found', 'Tool version not found');
   }
-  const [updated] = await db
-    .update(aiTools)
-    .set({ approvedHosts: [], updatedAt: now })
-    .where(eq(aiTools.id, tool.id))
-    .returning();
+  const [updated] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<ToolRow>`UPDATE ai_tools
+        SET approved_hosts = ${JSON.stringify([])}::jsonb, updated_at = ${now.toISOString()}
+        WHERE id = ${tool.id}
+        RETURNING *`;
+    }),
+  );
   if (!updated) {
     throw new Error('Tool disappeared while revoking hosts');
   }
-  const [run] = await db
-    .select({ status: aiToolRuns.status })
-    .from(aiToolRuns)
-    .where(eq(aiToolRuns.toolId, tool.id))
-    .orderBy(desc(aiToolRuns.createdAt), desc(aiToolRuns.id))
-    .limit(1);
+  const lastRunStatus = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* latestRunStatus(sql, tool.id);
+    }),
+  );
   if (audit !== undefined) {
     await audit.record({
       actorUserId: input.userId,
@@ -763,7 +867,7 @@ export async function revokeToolHosts(
       detail: { name: tool.name },
     });
   }
-  return toToolDetail(updated, current, run?.status ?? null);
+  return toToolDetail(updated, current, lastRunStatus);
 }
 
 // Newest runs of a tool, newest first, capped at 20 for the public route.
@@ -773,16 +877,26 @@ export async function listRuns(
   toolId: string,
   limit = 20,
 ): Promise<PublicToolRun[] | null> {
-  const tool = await getToolRow(db, toolId);
+  const tool = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* getToolRow(sql, toolId);
+    }),
+  );
   if (!tool) {
     return null;
   }
-  const rows = await db
-    .select()
-    .from(aiToolRuns)
-    .where(eq(aiToolRuns.toolId, toolId))
-    .orderBy(desc(aiToolRuns.createdAt), desc(aiToolRuns.id))
-    .limit(Math.max(1, Math.min(limit, 50)));
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<RunRow>`SELECT * FROM ai_tool_runs
+        WHERE tool_id = ${toolId}
+        ORDER BY created_at DESC, id DESC
+        LIMIT ${Math.max(1, Math.min(limit, 50))}`;
+    }),
+  );
   return rows.map(toPublicRun);
 }
 
@@ -825,24 +939,29 @@ async function recordSaveAudit(audit: AuditRecorder, input: RecordSaveAuditInput
   });
 }
 
-async function insertVersion(tx: ServerDatabase, input: InsertVersionInput): Promise<VersionRow> {
-  const [row] = await tx
-    .insert(aiToolVersions)
-    .values({
-      id: randomUUID(),
-      toolId: input.toolId,
-      version: input.version,
-      source: input.source,
-      hosts: input.hosts,
-      message: input.message,
-      createdBy: input.createdBy,
-      createdAt: input.now,
-    })
-    .returning();
-  if (!row) {
-    throw new Error('Failed to insert tool version');
-  }
-  return row;
+function insertVersion(
+  sql: SqlClient.SqlClient,
+  input: InsertVersionInput,
+): Effect.Effect<VersionRow, SqlError.SqlError> {
+  return Effect.gen(function* () {
+    const [row] = yield* sql<VersionRow>`INSERT INTO ai_tool_versions
+        (id, tool_id, version, source, hosts, message, created_by, created_at)
+      VALUES (
+        ${randomUUID()},
+        ${input.toolId},
+        ${input.version},
+        ${input.source},
+        ${JSON.stringify(input.hosts)}::jsonb,
+        ${input.message},
+        ${input.createdBy},
+        ${input.now.toISOString()}
+      )
+      RETURNING *`;
+    if (!row) {
+      return yield* Effect.die(new Error('Failed to insert tool version'));
+    }
+    return row;
+  });
 }
 
 interface RecordRunInput {
@@ -855,98 +974,108 @@ interface RecordRunInput {
 
 // Inserts the run row and prunes older rows beyond the newest 50, in one
 // transaction. Output text is truncated to 2 KiB (UTF-8 bytes).
-async function recordRun(db: ServerDatabase, input: RecordRunInput): Promise<PublicToolRun> {
-  return db.transaction(async (rawTx) => {
-    const tx = rawTx as unknown as ServerDatabase;
-    const outputText = input.result.ok ? input.result.output.text : null;
-    const [row] = await tx
-      .insert(aiToolRuns)
-      .values({
-        id: randomUUID(),
-        toolId: input.toolId,
-        version: input.version,
-        trigger: input.trigger,
-        status: input.result.ok ? 'ok' : 'error',
-        errorKind: input.result.ok ? null : input.result.error.kind,
-        durationMs: input.result.durationMs,
-        fetchCount: input.result.fetchCount,
-        outputText: truncateBytes(outputText, MAX_RUN_OUTPUT_BYTES),
-        createdAt: input.now,
-      })
-      .returning();
-    if (!row) {
-      throw new Error('Failed to record tool run');
-    }
-    const newest = await tx
-      .select({ id: aiToolRuns.id })
-      .from(aiToolRuns)
-      .where(eq(aiToolRuns.toolId, input.toolId))
-      .orderBy(desc(aiToolRuns.createdAt), desc(aiToolRuns.id))
-      .limit(MAX_RUNS_PER_TOOL + 1);
-    const keepIds = new Set(newest.slice(0, MAX_RUNS_PER_TOOL).map((kept) => kept.id));
-    keepIds.add(row.id);
-    const stale = newest.map((kept) => kept.id).filter((id) => !keepIds.has(id));
-    if (stale.length > 0) {
-      await tx
-        .delete(aiToolRuns)
-        .where(and(eq(aiToolRuns.toolId, input.toolId), inArray(aiToolRuns.id, stale)));
-    }
-    return toPublicRun(row);
-  });
+function recordRun(db: ServerDatabase, input: RecordRunInput): Promise<PublicToolRun> {
+  return runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql.withTransaction(
+        Effect.gen(function* () {
+          const outputText = input.result.ok ? input.result.output.text : null;
+          const [row] = yield* sql<RunRow>`INSERT INTO ai_tool_runs
+              (id, tool_id, version, trigger, status, error_kind, duration_ms,
+                fetch_count, output_text, created_at)
+            VALUES (
+              ${randomUUID()},
+              ${input.toolId},
+              ${input.version},
+              ${input.trigger},
+              ${input.result.ok ? 'ok' : 'error'},
+              ${input.result.ok ? null : input.result.error.kind},
+              ${input.result.durationMs},
+              ${input.result.fetchCount},
+              ${truncateBytes(outputText, MAX_RUN_OUTPUT_BYTES)},
+              ${input.now.toISOString()}
+            )
+            RETURNING *`;
+          if (!row) {
+            return yield* Effect.die(new Error('Failed to record tool run'));
+          }
+          const newest = yield* sql<{ id: string }>`SELECT id FROM ai_tool_runs
+            WHERE tool_id = ${input.toolId}
+            ORDER BY created_at DESC, id DESC
+            LIMIT ${MAX_RUNS_PER_TOOL + 1}`;
+          const keepIds = new Set(newest.slice(0, MAX_RUNS_PER_TOOL).map((kept) => kept.id));
+          keepIds.add(row.id);
+          const stale = newest.map((kept) => kept.id).filter((id) => !keepIds.has(id));
+          if (stale.length > 0) {
+            yield* sql`DELETE FROM ai_tool_runs
+              WHERE tool_id = ${input.toolId} AND id IN ${sql.in(stale)}`;
+          }
+          return toPublicRun(row);
+        }),
+      );
+    }),
+  );
 }
 
-async function findActiveTool(
-  db: ServerDatabase,
+function findActiveTool(
+  sql: SqlClient.SqlClient,
   aiId: string,
   topicId: string | null,
   name: string,
-): Promise<ToolRow | null> {
-  const [row] = await db
-    .select()
-    .from(aiTools)
-    .where(
-      topicId === null
-        ? and(
-            eq(aiTools.aiId, aiId),
-            isNull(aiTools.topicId),
-            eq(aiTools.name, name),
-            isNull(aiTools.deletedAt),
-          )
-        : and(
-            eq(aiTools.aiId, aiId),
-            eq(aiTools.topicId, topicId),
-            eq(aiTools.name, name),
-            isNull(aiTools.deletedAt),
-          ),
-    )
-    .limit(1);
-  return row ?? null;
+): Effect.Effect<ToolRow | null, SqlError.SqlError> {
+  return Effect.gen(function* () {
+    const topic = topicId === null ? sql`topic_id IS NULL` : sql`topic_id = ${topicId}`;
+    const [row] = yield* sql<ToolRow>`SELECT * FROM ai_tools
+      WHERE ai_id = ${aiId} AND ${topic} AND name = ${name} AND deleted_at IS NULL
+      LIMIT 1`;
+    return row ?? null;
+  });
 }
 
-async function enforceToolLimit(
-  db: ServerDatabase,
+function enforceToolLimit(
+  sql: SqlClient.SqlClient,
   aiId: string,
   topicId: string | null,
-): Promise<void> {
-  const rows = await db
-    .select({ total: count() })
-    .from(aiTools)
-    .where(
-      topicId === null
-        ? and(eq(aiTools.aiId, aiId), isNull(aiTools.topicId), isNull(aiTools.deletedAt))
-        : and(eq(aiTools.aiId, aiId), eq(aiTools.topicId, topicId), isNull(aiTools.deletedAt)),
-    );
-  if (Number(rows[0]?.total ?? 0) >= MAX_TOOLS_PER_TOPIC) {
-    throw new ToolServiceError('tool_limit', `A topic has at most ${MAX_TOOLS_PER_TOPIC} tools`);
-  }
+): Effect.Effect<void, SqlError.SqlError | ToolServiceError> {
+  return Effect.gen(function* () {
+    const topic = topicId === null ? sql`topic_id IS NULL` : sql`topic_id = ${topicId}`;
+    const [row] = yield* sql<{ total: number }>`SELECT count(*)::int AS total FROM ai_tools
+      WHERE ai_id = ${aiId} AND ${topic} AND deleted_at IS NULL`;
+    if (Number(row?.total ?? 0) >= MAX_TOOLS_PER_TOPIC) {
+      return yield* Effect.fail(
+        new ToolServiceError('tool_limit', `A topic has at most ${MAX_TOOLS_PER_TOPIC} tools`),
+      );
+    }
+  });
 }
 
-async function getToolRow(db: ServerDatabase, toolId: string): Promise<ToolRow | null> {
-  const [tool] = await db.select().from(aiTools).where(eq(aiTools.id, toolId)).limit(1);
-  if (!tool || tool.deletedAt !== null) {
-    return null;
-  }
-  return tool;
+function getToolRow(
+  sql: SqlClient.SqlClient,
+  toolId: string,
+): Effect.Effect<ToolRow | null, SqlError.SqlError> {
+  return Effect.gen(function* () {
+    const [tool] = yield* sql<ToolRow>`SELECT * FROM ai_tools WHERE id = ${toolId} LIMIT 1`;
+    if (!tool || tool.deletedAt !== null) {
+      return null;
+    }
+    return tool;
+  });
+}
+
+// The newest run's status for one tool, or null when it has never run.
+function latestRunStatus(
+  sql: SqlClient.SqlClient,
+  toolId: string,
+): Effect.Effect<'ok' | 'error' | null, SqlError.SqlError> {
+  return Effect.gen(function* () {
+    const [run] = yield* sql<{ status: 'ok' | 'error' }>`SELECT status FROM ai_tool_runs
+      WHERE tool_id = ${toolId}
+      ORDER BY created_at DESC, id DESC
+      LIMIT 1`;
+    return run?.status ?? null;
+  });
 }
 
 function hostsEqual(a: readonly string[], b: readonly string[]): boolean {
@@ -1004,7 +1133,7 @@ function toVersionDetail(row: VersionRow): ToolVersionDetail {
   return { ...toPublicVersion(row), source: row.source };
 }
 
-function toPublicRun(row: typeof aiToolRuns.$inferSelect): PublicToolRun {
+function toPublicRun(row: RunRow): PublicToolRun {
   return {
     id: row.id,
     toolId: row.toolId,
@@ -1032,26 +1161,33 @@ export async function listToolsForAi(
     }
   >
 > {
-  const rows = await db
-    .select()
-    .from(aiTools)
-    .where(and(eq(aiTools.aiId, aiId), isNull(aiTools.deletedAt)))
-    .orderBy(asc(aiTools.name));
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<ToolRow>`SELECT * FROM ai_tools
+        WHERE ai_id = ${aiId} AND deleted_at IS NULL
+        ORDER BY name ASC`;
+    }),
+  );
   const result: Array<PublicTool & { scope: 'personal' | 'group' }> = [];
   for (const tool of rows) {
-    const [current] = await db
-      .select()
-      .from(aiToolVersions)
-      .where(
-        and(eq(aiToolVersions.toolId, tool.id), eq(aiToolVersions.version, tool.currentVersion)),
-      )
-      .limit(1);
-    const [run] = await db
-      .select({ status: aiToolRuns.status })
-      .from(aiToolRuns)
-      .where(eq(aiToolRuns.toolId, tool.id))
-      .orderBy(desc(aiToolRuns.createdAt), desc(aiToolRuns.id))
-      .limit(1);
+    const current = await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        const [row] = yield* sql<VersionRow>`SELECT * FROM ai_tool_versions
+          WHERE tool_id = ${tool.id} AND version = ${tool.currentVersion} LIMIT 1`;
+        return row ?? null;
+      }),
+    );
+    const lastRunStatus = await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* latestRunStatus(sql, tool.id);
+      }),
+    );
     result.push({
       id: tool.id,
       aiId: tool.aiId,
@@ -1062,13 +1198,10 @@ export async function listToolsForAi(
       currentVersion: tool.currentVersion,
       hosts: current?.hosts ?? [],
       approvedHosts: [...(tool.approvedHosts ?? [])],
-      lastRunStatus: run?.status ?? null,
+      lastRunStatus,
       updatedAt: tool.updatedAt,
       scope: tool.groupId === null ? 'personal' : 'group',
     });
   }
   return result;
 }
-
-// How many versions a tool has (append-only count, used to assert the
-// version cap without reading every row).

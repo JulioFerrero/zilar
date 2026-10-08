@@ -455,7 +455,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0426](T-0426-mobile-ai-sheet-buttons-kit.md) | Mobile: AI activity Refresh, tool sheet Show all/less and Close on the kit Button | 2026-10-06 |
 | [T-0608](T-0608-effect-sql-roles-service.md) | effect/sql: roles service, transactions included | planned | auto | T-0596 | |
 | [T-0614](T-0614-effect-sql-json-keys.md) | effect/sql: keep jsonb keys as written (bug: routine input keys renamed) | planned | auto | T-0607 | |
-| [T-0615](T-0615-effect-sql-tools-service.md) | effect/sql: tool service, transactions included | planned | auto | T-0604 | |
 | [T-0617](T-0617-lead-watch-light.md) | lead watch: far fewer processes per refresh | planned | auto | T-0596 | |
 | [T-0618](T-0618-test-speed-audit.md) | Audit: a faster, lighter server test setup | planned | auto | T-0596 | |
 | [T-0427](T-0427-mobile-forwarded-header.md) | Mobile: forwarded messages show 'Forwarded from X [in Y]' | 2026-10-06 |
@@ -647,3 +646,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0613](T-0613-effect-sql-handles-visibility.md) | effect/sql: handle store and group visibility switch | 2026-10-08 |
 | [T-0616](T-0616-gate-light-tests.md) | Gate: run only the nearest tests; --full for the batched full run | 2026-10-08 |
 | [T-0612](T-0612-registry-effect-only.md) | Tool args T-G: action registry on Effect Schema only | 2026-10-08 |
+| [T-0615](T-0615-effect-sql-tools-service.md) | effect/sql: tool service, transactions included | 2026-10-08 |
