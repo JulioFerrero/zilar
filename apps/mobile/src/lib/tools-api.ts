@@ -1,3 +1,7 @@
+import { Data, Effect, Exit, Schema, type Effect as EffectType } from 'effect';
+import { struct } from '@zilar/protocol';
+
+import { errorFieldsOf } from './api-error-body';
 import { API_URL } from './auth';
 
 /**
@@ -6,8 +10,9 @@ import { API_URL } from './auth';
  * `apps/web/src/lib/tools.ts`. The wire contract lives in
  * `apps/server/src/tools/routes.ts` and `apps/server/src/routines/routes.ts`.
  *
- * Mobile validates the boundary with type guards, like `approvals-api.ts`
- * and `ais-api.ts`. `ToolsApiError` keeps the server's `code` and `status`,
+ * The boundary is validated with Effect Schema (T-0506 recipe): the request is
+ * an Effect pipeline, cut back to a `Promise` at the edge with
+ * `Effect.runPromise`. `ToolsApiError` keeps the server's `code` and `status`,
  * so the sections can branch on the error (404 = empty list, like web).
  */
 
@@ -160,302 +165,202 @@ export class ToolsApiError extends Error {
   }
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
+const ToolListItemFields = {
+  id: Schema.String,
+  aiId: Schema.String,
+  groupId: Schema.NullOr(Schema.String),
+  topicId: Schema.NullOr(Schema.String),
+  name: Schema.String,
+  description: Schema.String,
+  currentVersion: Schema.Number,
+  hosts: Schema.mutable(Schema.Array(Schema.String)),
+  approvedHosts: Schema.optional(Schema.mutable(Schema.Array(Schema.String))),
+  lastRunStatus: Schema.NullOr(Schema.Literals(['ok', 'error'])),
+  updatedAt: Schema.String,
+  scope: Schema.optional(Schema.Literals(['personal', 'group'])),
+} as const;
 
-function isString(value: unknown): value is string {
-  return typeof value === 'string';
-}
+const ToolListItemSchema = struct(ToolListItemFields);
 
-function isStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((item): item is string => isString(item));
-}
+const ToolDetailSchema = struct({ ...ToolListItemFields, source: Schema.String });
 
-function isToolLastRunStatus(value: unknown): value is ToolLastRunStatus {
-  return value === 'ok' || value === 'error';
-}
+const ToolVersionFields = {
+  id: Schema.String,
+  toolId: Schema.String,
+  version: Schema.Number,
+  message: Schema.String,
+  hosts: Schema.mutable(Schema.Array(Schema.String)),
+  createdBy: Schema.String,
+  createdAt: Schema.String,
+  toolName: Schema.optional(Schema.String),
+} as const;
 
-function parseToolListItem(value: unknown): ToolListItem | null {
-  if (!isRecord(value)) return null;
-  const id = value['id'];
-  const aiId = value['aiId'];
-  const groupId = value['groupId'];
-  const topicId = value['topicId'];
-  const name = value['name'];
-  const description = value['description'];
-  const currentVersion = value['currentVersion'];
-  const hosts = value['hosts'];
-  const approvedHosts = value['approvedHosts'];
-  const lastRunStatus = value['lastRunStatus'];
-  const updatedAt = value['updatedAt'];
-  const scope = value['scope'];
-  if (
-    !isString(id) ||
-    !isString(aiId) ||
-    !isString(name) ||
-    !isString(description) ||
-    typeof currentVersion !== 'number' ||
-    !isStringArray(hosts) ||
-    !isString(updatedAt)
-  ) {
-    return null;
-  }
-  if (groupId !== null && !isString(groupId)) return null;
-  if (topicId !== null && !isString(topicId)) return null;
-  if (lastRunStatus !== null && !isToolLastRunStatus(lastRunStatus)) return null;
-  if (approvedHosts !== undefined && !isStringArray(approvedHosts)) return null;
-  if (scope !== undefined && scope !== 'personal' && scope !== 'group') return null;
-  return {
-    id,
-    aiId,
-    groupId,
-    topicId,
-    name,
-    description,
-    currentVersion,
-    hosts,
-    ...(approvedHosts === undefined ? {} : { approvedHosts }),
-    lastRunStatus,
-    updatedAt,
-    ...(scope === 'personal' || scope === 'group' ? { scope } : {}),
-  };
-}
+const ToolVersionSchema = struct(ToolVersionFields);
 
-function isRoutineStatus(value: unknown): value is RoutineStatus {
-  return value === 'active' || value === 'paused' || value === 'needs_approval';
-}
+const ToolVersionDetailSchema = struct({ ...ToolVersionFields, source: Schema.String });
 
-function isToolRunTrigger(value: unknown): value is ToolRunTrigger {
-  return value === 'manual' || value === 'routine' || value === 'ai';
-}
+const ToolRunSchema = struct({
+  id: Schema.String,
+  toolId: Schema.String,
+  version: Schema.Number,
+  trigger: Schema.Literals(['manual', 'routine', 'ai']),
+  status: Schema.Literals(['ok', 'error']),
+  errorKind: Schema.NullOr(Schema.String),
+  durationMs: Schema.Number,
+  fetchCount: Schema.Number,
+  outputText: Schema.NullOr(Schema.String),
+  createdAt: Schema.String,
+});
 
-function isToolRunStatus(value: unknown): value is ToolRunStatus {
-  return value === 'ok' || value === 'error';
-}
+const ToolRunOkSchema = struct({
+  ok: Schema.Literal(true),
+  output: struct({
+    text: Schema.String,
+    data: Schema.optional(Schema.Unknown),
+  }),
+  logs: Schema.String,
+  durationMs: Schema.Number,
+  fetchCount: Schema.Number,
+});
+
+const ToolRunFailSchema = struct({
+  ok: Schema.Literal(false),
+  error: struct({
+    kind: Schema.String,
+    message: Schema.String,
+  }),
+  logs: Schema.String,
+  durationMs: Schema.Number,
+  fetchCount: Schema.Number,
+});
+
+const ToolRunResultSchema = Schema.Union([ToolRunOkSchema, ToolRunFailSchema]);
+
+const RoutineSchema = struct({
+  id: Schema.String,
+  aiId: Schema.optional(Schema.String),
+  groupId: Schema.optional(Schema.NullOr(Schema.String)),
+  topicId: Schema.optional(Schema.NullOr(Schema.String)),
+  toolId: Schema.optional(Schema.String),
+  title: Schema.String,
+  toolName: Schema.String,
+  schedule: Schema.Unknown,
+  status: Schema.Literals(['active', 'paused', 'needs_approval']),
+  pausedReason: Schema.NullOr(Schema.Literals(['user', 'failures', 'hosts_changed'])),
+  nextRunAt: Schema.String,
+  lastRunAt: Schema.NullOr(Schema.String),
+  lastStatus: Schema.NullOr(Schema.Literals(['ok', 'error', 'skipped'])),
+  approvedHosts: Schema.mutable(Schema.Array(Schema.String)),
+  scope: Schema.optional(Schema.Literals(['personal', 'group'])),
+});
+
+// The lists are bare arrays (not envelopes); one bad row fails the whole
+// list, exactly like the old hand-rolled `parseList`. `Array` is made
+// mutable to keep the array types the API has always returned.
+const ToolListSchema = Schema.mutable(Schema.Array(ToolListItemSchema));
+const ToolVersionListSchema = Schema.mutable(Schema.Array(ToolVersionSchema));
+const ToolRunListSchema = Schema.mutable(Schema.Array(ToolRunSchema));
+const RoutineListSchema = Schema.mutable(Schema.Array(RoutineSchema));
 
 function parseToolDetail(value: unknown): ToolDetail | null {
-  const item = parseToolListItem(value);
-  if (item === null) return null;
-  if (!isRecord(value) || !isString(value['source'])) return null;
-  return { ...item, source: value['source'] };
+  const decoded = Schema.decodeUnknownExit(ToolDetailSchema)(value);
+  return Exit.isSuccess(decoded) ? decoded.value : null;
 }
 
 function parseToolVersion(value: unknown): ToolVersion | null {
-  if (!isRecord(value)) return null;
-  const id = value['id'];
-  const toolId = value['toolId'];
-  const version = value['version'];
-  const message = value['message'];
-  const hosts = value['hosts'];
-  const createdBy = value['createdBy'];
-  const createdAt = value['createdAt'];
-  const toolName = value['toolName'];
-  if (
-    !isString(id) ||
-    !isString(toolId) ||
-    typeof version !== 'number' ||
-    !isString(message) ||
-    !isStringArray(hosts) ||
-    !isString(createdBy) ||
-    !isString(createdAt)
-  ) {
-    return null;
-  }
-  if (toolName !== undefined && !isString(toolName)) return null;
-  return {
-    id,
-    toolId,
-    version,
-    message,
-    hosts,
-    createdBy,
-    createdAt,
-    ...(toolName === undefined ? {} : { toolName }),
-  };
+  const decoded = Schema.decodeUnknownExit(ToolVersionSchema)(value);
+  return Exit.isSuccess(decoded) ? decoded.value : null;
 }
 
 function parseToolVersionDetail(value: unknown): ToolVersionDetail | null {
-  const version = parseToolVersion(value);
-  if (version === null) return null;
-  if (!isRecord(value) || !isString(value['source'])) return null;
-  return { ...version, source: value['source'] };
-}
-
-function parseToolRun(value: unknown): ToolRun | null {
-  if (!isRecord(value)) return null;
-  const id = value['id'];
-  const toolId = value['toolId'];
-  const version = value['version'];
-  const trigger = value['trigger'];
-  const status = value['status'];
-  const errorKind = value['errorKind'];
-  const durationMs = value['durationMs'];
-  const fetchCount = value['fetchCount'];
-  const outputText = value['outputText'];
-  const createdAt = value['createdAt'];
-  if (
-    !isString(id) ||
-    !isString(toolId) ||
-    typeof version !== 'number' ||
-    !isToolRunTrigger(trigger) ||
-    !isToolRunStatus(status) ||
-    typeof durationMs !== 'number' ||
-    typeof fetchCount !== 'number' ||
-    !isString(createdAt)
-  ) {
-    return null;
-  }
-  if (errorKind !== null && !isString(errorKind)) return null;
-  if (outputText !== null && !isString(outputText)) return null;
-  return {
-    id,
-    toolId,
-    version,
-    trigger,
-    status,
-    errorKind,
-    durationMs,
-    fetchCount,
-    outputText,
-    createdAt,
-  };
+  const decoded = Schema.decodeUnknownExit(ToolVersionDetailSchema)(value);
+  return Exit.isSuccess(decoded) ? decoded.value : null;
 }
 
 function parseToolRunResult(value: unknown): ToolRunResult | null {
-  if (!isRecord(value)) return null;
-  const ok = value['ok'];
-  const logs = value['logs'];
-  const durationMs = value['durationMs'];
-  const fetchCount = value['fetchCount'];
-  if (
-    typeof logs !== 'string' ||
-    typeof durationMs !== 'number' ||
-    typeof fetchCount !== 'number'
-  ) {
-    return null;
-  }
-  if (ok === true) {
-    const output = value['output'];
-    if (!isRecord(output) || !isString(output['text'])) return null;
-    return {
-      ok: true,
-      output: {
-        text: output['text'],
-        ...(output['data'] === undefined ? {} : { data: output['data'] }),
-      },
-      logs,
-      durationMs,
-      fetchCount,
-    };
-  }
-  if (ok === false) {
-    const error = value['error'];
-    if (!isRecord(error) || !isString(error['kind']) || !isString(error['message'])) return null;
-    return {
-      ok: false,
-      error: { kind: error['kind'], message: error['message'] },
-      logs,
-      durationMs,
-      fetchCount,
-    };
-  }
-  return null;
-}
-
-function isRoutinePausedReason(value: unknown): value is RoutinePausedReason {
-  return value === 'user' || value === 'failures' || value === 'hosts_changed';
-}
-
-function isRoutineLastStatus(value: unknown): value is RoutineLastStatus {
-  return value === 'ok' || value === 'error' || value === 'skipped';
+  const decoded = Schema.decodeUnknownExit(ToolRunResultSchema)(value);
+  return Exit.isSuccess(decoded) ? decoded.value : null;
 }
 
 function parseRoutine(value: unknown): Routine | null {
-  if (!isRecord(value)) return null;
-  const id = value['id'];
-  const aiId = value['aiId'];
-  const groupId = value['groupId'];
-  const topicId = value['topicId'];
-  const toolId = value['toolId'];
-  const title = value['title'];
-  const toolName = value['toolName'];
-  const status = value['status'];
-  const pausedReason = value['pausedReason'];
-  const nextRunAt = value['nextRunAt'];
-  const lastRunAt = value['lastRunAt'];
-  const lastStatus = value['lastStatus'];
-  const approvedHosts = value['approvedHosts'];
-  const scope = value['scope'];
-  if (
-    !isString(id) ||
-    !isString(title) ||
-    !isString(toolName) ||
-    !isRoutineStatus(status) ||
-    !isString(nextRunAt) ||
-    !isStringArray(approvedHosts)
-  ) {
-    return null;
-  }
-  if (aiId !== undefined && !isString(aiId)) return null;
-  if (groupId !== undefined && groupId !== null && !isString(groupId)) return null;
-  if (topicId !== undefined && topicId !== null && !isString(topicId)) return null;
-  if (toolId !== undefined && !isString(toolId)) return null;
-  if (pausedReason !== null && !isRoutinePausedReason(pausedReason)) return null;
-  if (lastRunAt !== null && !isString(lastRunAt)) return null;
-  if (lastStatus !== null && !isRoutineLastStatus(lastStatus)) return null;
-  if (scope !== undefined && scope !== 'personal' && scope !== 'group') return null;
-  return {
-    id,
-    ...(aiId === undefined ? {} : { aiId }),
-    ...(groupId === undefined ? {} : { groupId }),
-    ...(topicId === undefined ? {} : { topicId }),
-    ...(toolId === undefined ? {} : { toolId }),
-    title,
-    toolName,
-    schedule: value['schedule'],
-    status,
-    pausedReason,
-    nextRunAt,
-    lastRunAt,
-    lastStatus,
-    approvedHosts,
-    ...(scope === 'personal' || scope === 'group' ? { scope } : {}),
-  };
+  const decoded = Schema.decodeUnknownExit(RoutineSchema)(value);
+  return Exit.isSuccess(decoded) ? decoded.value : null;
 }
 
-async function request(
+function parseToolList(value: unknown): ToolListItem[] | null {
+  const decoded = Schema.decodeUnknownExit(ToolListSchema)(value);
+  return Exit.isSuccess(decoded) ? decoded.value : null;
+}
+
+function parseToolVersionList(value: unknown): ToolVersion[] | null {
+  const decoded = Schema.decodeUnknownExit(ToolVersionListSchema)(value);
+  return Exit.isSuccess(decoded) ? decoded.value : null;
+}
+
+function parseToolRunList(value: unknown): ToolRun[] | null {
+  const decoded = Schema.decodeUnknownExit(ToolRunListSchema)(value);
+  return Exit.isSuccess(decoded) ? decoded.value : null;
+}
+
+function parseRoutineList(value: unknown): Routine[] | null {
+  const decoded = Schema.decodeUnknownExit(RoutineListSchema)(value);
+  return Exit.isSuccess(decoded) ? decoded.value : null;
+}
+
+// DELETE answers 204 with no body; any 2xx body is accepted and ignored,
+// exactly like the old hand validator.
+function parseDelete(value: unknown): undefined | null {
+  const decoded = Schema.decodeUnknownExit(Schema.Unknown)(value);
+  return Exit.isSuccess(decoded) ? undefined : null;
+}
+
+// The internal failures, one per case. They carry no field beyond what the old
+// `ToolsApiError` already surfaced; the `Promise` edge maps each back to that
+// same error, status, code and message.
+class ToolsNetworkError extends Data.TaggedError('ToolsNetworkError') {}
+class ToolsRequestError extends Data.TaggedError('ToolsRequestError')<{
+  readonly status: number;
+  readonly code: string;
+  readonly message: string;
+}> {}
+class ToolsUnauthorized extends Data.TaggedError('ToolsUnauthorized') {}
+class ToolsInvalidResponse extends Data.TaggedError('ToolsInvalidResponse') {}
+
+const requestEffect = Effect.fnUntraced(function* (
   apiUrl: string,
   path: string,
   token: string,
   init: RequestInit,
   fetchImpl: typeof fetch,
-): Promise<unknown> {
-  let response: Response;
-  try {
-    response = await fetchImpl(`${apiUrl}${path}`, {
-      ...init,
-      headers: {
-        accept: 'application/json',
-        authorization: `Bearer ${token}`,
-        ...init.headers,
-      },
-    });
-  } catch {
-    throw new ToolsApiError(0, 'network_error', 'Could not reach the server');
-  }
+): EffectType.fn.Return<unknown, ToolsNetworkError | ToolsRequestError> {
+  const response = yield* Effect.tryPromise({
+    try: (signal) =>
+      fetchImpl(`${apiUrl}${path}`, {
+        ...init,
+        signal,
+        headers: {
+          accept: 'application/json',
+          authorization: `Bearer ${token}`,
+          ...init.headers,
+        },
+      }),
+    catch: () => new ToolsNetworkError(),
+  });
 
-  const body: unknown = await response.json().catch(() => null);
+  const body: unknown = yield* Effect.promise(
+    () => response.json().catch(() => null) as Promise<unknown>,
+  );
+
   if (!response.ok) {
-    const error = isRecord(body) && isRecord(body['error']) ? body['error'] : null;
-    const code = isString(error?.['code']) ? error['code'] : 'request_failed';
-    const message = isString(error?.['message'])
-      ? error['message']
-      : `Request failed (${response.status})`;
-    throw new ToolsApiError(response.status, code, message);
+    const error = errorFieldsOf(body);
+    return yield* new ToolsRequestError({
+      status: response.status,
+      code: error.code ?? 'request_failed',
+      message: error.message ?? `Request failed (${response.status})`,
+    });
   }
   return body;
-}
+});
 
 /** The production `ToolsApi`: bearer auth, `fetch`, and the build-time API URL. */
 export function createToolsApi(
@@ -463,39 +368,54 @@ export function createToolsApi(
   fetchImpl: typeof fetch = fetch,
   apiUrl: string = API_URL,
 ): AiToolsApi {
-  const parseList = <T>(value: unknown, parseItem: (item: unknown) => T | null): T[] | null => {
-    if (!Array.isArray(value)) return null;
-    const parsed: T[] = [];
-    for (const item of value) {
-      const result = parseItem(item);
-      if (result === null) return null;
-      parsed.push(result);
-    }
-    return parsed;
-  };
-  const withToken = async (
+  const withTokenEffect = Effect.fnUntraced(function* (
     path: string,
     init: RequestInit,
     parse: (value: unknown) => unknown,
-  ): Promise<unknown> => {
-    const token = await getToken();
+  ): EffectType.fn.Return<
+    unknown,
+    ToolsUnauthorized | ToolsNetworkError | ToolsRequestError | ToolsInvalidResponse
+  > {
+    const token = yield* Effect.promise(() => getToken());
     if (token === undefined) {
-      throw new ToolsApiError(401, 'unauthorized', 'No session');
+      return yield* new ToolsUnauthorized();
     }
-    const body = await request(apiUrl, path, token, init, fetchImpl);
+    const body = yield* requestEffect(apiUrl, path, token, init, fetchImpl);
     const parsed = parse(body);
     if (parsed === null) {
-      throw new ToolsApiError(200, 'invalid_response', 'The server sent an unexpected response');
+      return yield* new ToolsInvalidResponse();
     }
     return parsed;
-  };
+  });
+
+  const withToken = (
+    path: string,
+    init: RequestInit,
+    parse: (value: unknown) => unknown,
+  ): Promise<unknown> =>
+    Effect.runPromise(
+      withTokenEffect(path, init, parse).pipe(
+        Effect.catchTags({
+          ToolsUnauthorized: () =>
+            Effect.fail(new ToolsApiError(401, 'unauthorized', 'No session')),
+          ToolsNetworkError: () =>
+            Effect.fail(new ToolsApiError(0, 'network_error', 'Could not reach the server')),
+          ToolsRequestError: (error) =>
+            Effect.fail(new ToolsApiError(error.status, error.code, error.message)),
+          ToolsInvalidResponse: () =>
+            Effect.fail(
+              new ToolsApiError(200, 'invalid_response', 'The server sent an unexpected response'),
+            ),
+        }),
+      ),
+    );
 
   return {
     async listAiTools(aiId) {
       const body = await withToken(
         `/api/ais/${encodeURIComponent(aiId)}/tools`,
         { method: 'GET' },
-        (value) => parseList(value, parseToolListItem),
+        parseToolList,
       );
       return body as ToolListItem[];
     },
@@ -503,7 +423,7 @@ export function createToolsApi(
       const body = await withToken(
         `/api/ais/${encodeURIComponent(aiId)}/routines`,
         { method: 'GET' },
-        (value) => parseList(value, parseRoutine),
+        parseRoutineList,
       );
       return body as Routine[];
     },
@@ -535,7 +455,7 @@ export function createToolsApi(
       const body = await withToken(
         `/api/tools/${encodeURIComponent(id)}/versions`,
         { method: 'GET' },
-        (value) => parseList(value, parseToolVersion),
+        parseToolVersionList,
       );
       return body as ToolVersion[];
     },
@@ -551,24 +471,12 @@ export function createToolsApi(
       const body = await withToken(
         `/api/tools/${encodeURIComponent(id)}/runs`,
         { method: 'GET' },
-        (value) => parseList(value, parseToolRun),
+        parseToolRunList,
       );
       return body as ToolRun[];
     },
     async deleteRoutine(id) {
-      const token = await getToken();
-      if (token === undefined) {
-        throw new ToolsApiError(401, 'unauthorized', 'No session');
-      }
-      await request(
-        apiUrl,
-        `/api/routines/${encodeURIComponent(id)}`,
-        token,
-        {
-          method: 'DELETE',
-        },
-        fetchImpl,
-      );
+      await withToken(`/api/routines/${encodeURIComponent(id)}`, { method: 'DELETE' }, parseDelete);
     },
     async revertTool(id, version) {
       const body = await withToken(
@@ -595,19 +503,7 @@ export function createToolsApi(
       return body as ToolRunResult;
     },
     async deleteTool(id) {
-      const token = await getToken();
-      if (token === undefined) {
-        throw new ToolsApiError(401, 'unauthorized', 'No session');
-      }
-      await request(
-        apiUrl,
-        `/api/tools/${encodeURIComponent(id)}`,
-        token,
-        {
-          method: 'DELETE',
-        },
-        fetchImpl,
-      );
+      await withToken(`/api/tools/${encodeURIComponent(id)}`, { method: 'DELETE' }, parseDelete);
     },
   };
 }

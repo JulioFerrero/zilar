@@ -457,7 +457,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0544](T-0544-effect-http-integrations.md) | Effect C (HTTP): integration settings on HttpApi | planned | auto | T-0536 | |
 | [T-0545](T-0545-effect-http-voice-transcription.md) | Effect C (HTTP): voice transcription on HttpApi | planned | auto | T-0536 | |
 | [T-0549](T-0549-agents-g8b-extract-group-ingest.md) | Agents G8b: extract the group ingest | planned | auto | T-0546 | |
-| [T-0552](T-0552-effect-mobile-api-batch-8.md) | Effect E batch 8: mobile tools API (last client) | planned | auto | T-0547 | |
 | [T-0553](T-0553-effect-http-approvals.md) | Effect C (HTTP): approvals on HttpApi | planned | auto | T-0539 | |
 | [T-0554](T-0554-effect-http-routines.md) | Effect C (HTTP): routines on HttpApi | planned | auto | T-0539 | |
 | [T-0555](T-0555-effect-http-ais.md) | Effect C (HTTP): AI management on HttpApi | planned | auto | T-0548 | |
@@ -585,3 +584,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0550](T-0550-effect-mobile-api-batch-6.md) | Effect E batch 6: mobile contacts, stickers API | 2026-10-08 |
 | [T-0551](T-0551-effect-mobile-api-batch-7.md) | Effect E batch 7: mobile topics, chat API | 2026-10-08 |
 | [T-0548](T-0548-effect-sql-ai-usage-search-archives.md) | Effect C1: AI usage and search archives on effect/sql | 2026-10-08 |
+| [T-0552](T-0552-effect-mobile-api-batch-8.md) | Effect E batch 8: mobile tools API (last client) | 2026-10-08 |
