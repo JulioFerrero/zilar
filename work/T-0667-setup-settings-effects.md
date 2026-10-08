@@ -1,7 +1,7 @@
 ---
 id: T-0667
 title: "effect/sql phase 1 (C4): add Effect versions of the setup/settings.ts helpers (needsSetup, getMailSettings, saveMailSettings, deleteMailSettings, takeSetupLock); drizzle versions unchanged; new tests"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0667-setup-settings-effects
 model: auto
@@ -58,4 +58,27 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- `apps/server/src/setup/settings.ts`: added imports of `Effect` and `SqlClient`/`SqlError` from `effect`/`effect/sql`, and appended five Effect functions after `takeSetupLock`: `needsSetupEffect()`, `getMailSettingsEffect(cipher)`, `saveMailSettingsEffect(cipher, settings)`, `deleteMailSettingsEffect()`, `takeSetupLockEffect()`. Each returns `Effect.Effect<…, SqlError.SqlError, SqlClient.SqlClient>` and uses the `SqlClient` from context. A comment above the block says they are for `setup/api.ts` and the drizzle versions go in phase 2. No drizzle function or caller was changed.
+- `apps/server/src/setup/settings.effect.test.ts` (new): 4 tests, as in the spec. They run through `sqlRuntimeFor(context.db)`, with `createTestContext` and `settingsCipherFor(context.config)`. No real mail provider or key.
+- `work/T-0667-setup-settings-effects.md`: status and this Report.
+
+### Deviations to note
+- `getMailSettingsEffect` selects only the two keys (`WHERE key IN (...)`), where the drizzle version reads every `instance_settings` row. The result is the same, since only those two keys are used.
+- The upsert uses `updated_at = now()` in SQL, like the voice-transcription model. The drizzle version sets a JS `Date`.
+- `saveMailSettingsEffect` runs its statements on the client in context and opens no transaction of its own, the same as the drizzle version, which runs inside the caller's `tx`.
+
+### Commands and real results
+- `pnpm install --frozen-lockfile`: exit 0.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/setup/settings.effect.test`: Test Files 1 passed, Tests 4 passed (4).
+- `pnpm gate` (log kept in the scratchpad, not in the repo): `gate: 3 changed file(s) against main`; `PASS install (frozen)`; `PASS format`; `PASS lint`; `PASS typecheck`; `PASS tests @zilar/server`; `scope: every changed file is inside the Allowed files`; `GATE PASS`. Changed files: `apps/server/src/setup/settings.ts`, `apps/server/src/setup/settings.effect.test.ts`, `work/T-0667-setup-settings-effects.md`.
+- The gate's tests step covers the nearest `@zilar/server` tests and passed. I did not run `src/setup/routes.test.ts` on its own. The gate summary does not list which tests it ran.
+
+### Problems / blocked
+- None.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Haiku 5.5, as a Claude Code subagent, in one round with no fix needed (about 2.3 min). The lead reviewed the diff directly.
+- **Result:** the five Effects match their drizzle twins (the same lock key, upserts with `updated_at = now()`, and deletes of both keys). Reading only the two keys in `getMailSettingsEffect` gives the same result, so I accepted it. The 4 tests make real assertions, and the gate passed.
+- **Note for phase 2:** inside `getMailSettingsEffect`, a `cipher.decrypt` throw is a defect. When `setup/api.ts` and `integrations/api.ts` move, check that the caller still sees the same error.

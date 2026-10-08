@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-0667](T-0667-setup-settings-effects.md) | effect/sql phase 1 (C4): setup settings helpers as Effects | in-progress | haiku-5.5 | | |
 | [T-0668](T-0668-telegram-token-effect-sql.md) | effect/sql (C4): Telegram token store | in-progress | haiku-5.5 | | |
 | [T-0669](T-0669-voice-transcript-store-effect-sql.md) | effect/sql (C4): voice transcript store | in-progress | haiku-5.5 | | |
 | [T-0670](T-0670-remove-group-ai-effect-sql.md) | effect/sql phase 2: removeGroupAi transaction, drop 3 drizzle helpers | in-progress | auto | T-0663..T-0666 | |
@@ -701,3 +700,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0664](T-0664-tools-deletes-effect.md) | effect/sql phase 1: tools deletes as Effects | 2026-10-08 |
 | [T-0665](T-0665-routines-delete-effect.md) | effect/sql phase 1: deleteRoutinesForAiInGroupEffect | 2026-10-08 |
 | [T-0666](T-0666-room-memory-delete-effect.md) | effect/sql phase 1: deleteRoomMemoryEffect | 2026-10-08 |
+| [T-0667](T-0667-setup-settings-effects.md) | effect/sql phase 1 (C4): setup settings helpers as Effects | 2026-10-08 |

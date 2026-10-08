@@ -5,6 +5,8 @@
 // (group roles are per group), so the first user to finish the setup
 // screen becomes the implicit first admin and their sign-up closes setup.
 
+import { Effect } from 'effect';
+import { SqlClient, SqlError } from 'effect/sql';
 import { sql } from 'drizzle-orm';
 import type { PgTransaction } from 'drizzle-orm/pg-core';
 import type { PostgresJsQueryResultHKT } from 'drizzle-orm/postgres-js';
@@ -95,4 +97,75 @@ export async function deleteMailSettings(tx: SetupTransaction): Promise<void> {
 
 export async function takeSetupLock(tx: SetupTransaction): Promise<void> {
   await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${SETUP_LOCK}))`);
+}
+
+// Effect versions of the helpers above, on the `effect/sql` client. They are
+// for `setup/api.ts` once its transactions move to `sql.withTransaction`; the
+// drizzle versions go then.
+
+interface InstanceSettingRow {
+  key: string;
+  value: string;
+}
+
+export function needsSetupEffect(): Effect.Effect<boolean, SqlError.SqlError, SqlClient.SqlClient> {
+  return Effect.gen(function* () {
+    const client = yield* SqlClient.SqlClient;
+    const rows = yield* client<{ id: string }>`SELECT id FROM "user" LIMIT 1`;
+    return rows.length === 0;
+  });
+}
+
+export function getMailSettingsEffect(
+  cipher: Pick<ReturnType<typeof createSettingsCipher>, 'decrypt'>,
+): Effect.Effect<MailSettings | null, SqlError.SqlError, SqlClient.SqlClient> {
+  return Effect.gen(function* () {
+    const client = yield* SqlClient.SqlClient;
+    const rows = yield* client<InstanceSettingRow>`SELECT key, value FROM instance_settings
+      WHERE key IN (${RESEND_API_KEY_SETTING}, ${MAIL_FROM_SETTING})`;
+    const byKey = new Map(rows.map((row) => [row.key, row.value]));
+    const encrypted = byKey.get(RESEND_API_KEY_SETTING);
+    const from = byKey.get(MAIL_FROM_SETTING);
+    if (encrypted === undefined || from === undefined) {
+      return null;
+    }
+    return { resendApiKey: cipher.decrypt(encrypted), from };
+  });
+}
+
+export function saveMailSettingsEffect(
+  cipher: Pick<ReturnType<typeof createSettingsCipher>, 'encrypt'>,
+  settings: MailSettings,
+): Effect.Effect<void, SqlError.SqlError, SqlClient.SqlClient> {
+  return Effect.gen(function* () {
+    const client = yield* SqlClient.SqlClient;
+    const entries = [
+      { key: RESEND_API_KEY_SETTING, value: cipher.encrypt(settings.resendApiKey) },
+      { key: MAIL_FROM_SETTING, value: settings.from },
+    ];
+    for (const entry of entries) {
+      yield* client`INSERT INTO instance_settings (key, value)
+        VALUES (${entry.key}, ${entry.value})
+        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`;
+    }
+  });
+}
+
+export function deleteMailSettingsEffect(): Effect.Effect<
+  void,
+  SqlError.SqlError,
+  SqlClient.SqlClient
+> {
+  return Effect.gen(function* () {
+    const client = yield* SqlClient.SqlClient;
+    yield* client`DELETE FROM instance_settings
+      WHERE key IN (${RESEND_API_KEY_SETTING}, ${MAIL_FROM_SETTING})`;
+  });
+}
+
+export function takeSetupLockEffect(): Effect.Effect<void, SqlError.SqlError, SqlClient.SqlClient> {
+  return Effect.gen(function* () {
+    const client = yield* SqlClient.SqlClient;
+    yield* client`SELECT pg_advisory_xact_lock(hashtext(${SETUP_LOCK}))`;
+  });
 }
