@@ -461,6 +461,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0594](T-0594-tool-args-decode-seam.md) | Tool args T-A: registry and gateway decode seam (zod or Effect) | planned | auto | T-0571 | |
 | [T-0595](T-0595-sandbox-schemas-effect.md) | Tool args T-F: sandbox schemas on Effect Schema | planned | auto | T-0571 | |
 | [T-0596](T-0596-dead-zod-service-schemas.md) | Effect Schema: drop dead zod schemas in the pins, roles and topics services | planned | auto | T-0571 | |
+| [T-0597](T-0597-demo-args-effect.md) | Tool args T-C: demo.echo args on Effect Schema | planned | auto | T-0594 | |
 | [T-0427](T-0427-mobile-forwarded-header.md) | Mobile: forwarded messages show 'Forwarded from X [in Y]' | 2026-10-06 |
 | [T-0428](T-0428-mobile-new-chat-menu-sheet.md) | Mobile: New chat menu on the kit ActionSheet with icons | 2026-10-06 |
 | [T-0429](T-0429-mobile-dismiss-banner.md) | Mobile: DismissBanner replaces 12 copied chat screen banners | 2026-10-06 |
