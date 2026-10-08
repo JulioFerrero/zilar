@@ -453,7 +453,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0414](T-0414-web-forward-store-action.md) | Web store: forwardMessages sends copies with a forward origin, optional comment | 2026-10-06 |
 | [T-0425](T-0425-mobile-profile-buttons-kit.md) | Mobile: profile and contact card buttons on the kit Button | 2026-10-06 |
 | [T-0426](T-0426-mobile-ai-sheet-buttons-kit.md) | Mobile: AI activity Refresh, tool sheet Show all/less and Close on the kit Button | 2026-10-06 |
-| [T-0555](T-0555-effect-http-ais.md) | Effect C (HTTP): AI management on HttpApi | planned | auto | T-0548 | |
 | [T-0557](T-0557-effect-http-connections.md) | Effect C (HTTP): provider-key connections on HttpApi | planned | auto | T-0548 | |
 | [T-0559](T-0559-effect-http-tools.md) | Effect C (HTTP): tools on HttpApi | planned | auto | T-0554 | |
 | [T-0560](T-0560-effect-http-media.md) | Effect C (HTTP): media gallery on HttpApi | planned | auto | T-0548 | |
@@ -595,3 +594,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0562](T-0562-agents-g9-extract-lifecycle.md) | Agents G9: extract start/stop/reconcile | 2026-10-08 |
 | [T-0558](T-0558-effect-http-search.md) | Effect C (HTTP): message search on HttpApi | 2026-10-08 |
 | [T-0563](T-0563-effect-http-socket-address.md) | Effect C (HTTP) adapter: socket address and shared client IP | 2026-10-08 |
+| [T-0555](T-0555-effect-http-ais.md) | Effect C (HTTP): AI management on HttpApi | 2026-10-08 |

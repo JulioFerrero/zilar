@@ -1,7 +1,7 @@
 ---
 id: T-0555
 title: "Effect C (HTTP): AI management routes (list, detail, create, patch, delete, stop, resume, machine) onto the HttpApi adapter, zod to Effect Schema; usage timeout and 503 gating kept; every PublicAi field encoded; tests unchanged"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0555-effect-http-ais
 model: auto
@@ -75,4 +75,104 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+Migrated the AI management routes from Hono (`ais/routes.ts`) to the Effect
+`HttpApi` adapter in a new `apps/server/src/ais/api.ts`, following the recipe
+in `docs/EFFECT_GUIDE.md` and the `groups/api.ts` / `roles/api.ts` examples.
+`app.ts` now mounts via `mountEffectRoutes(...)` at the same position.
+`routes.ts` is re-export-only (types + `USAGE_TIMEOUT_MS`, with
+`AisRoutesDependencies` aliased to the new `AisApiDependencies`); no other
+file imports it besides `app.ts`, which no longer does.
+
+### Files changed
+- `apps/server/src/ais/api.ts` (new): eight `HttpApi` endpoints
+  (`list`, `detail`, `create` 201 via `jsonUnsafe`, `patch`, `remove` 204 via
+  `HttpApiSchema.NoContent`, `stop`, `resume`, `assignMachine`), Effect Schema
+  bodies with `onExcessProperty: 'error'` strictness, `Session` + schema-error
+  middleware (400 `invalid_request`), same 503 gating, same audit calls, same
+  usage timeout + per-AI parallelism.
+- `apps/server/src/ais/routes.ts`: re-export-only.
+- `apps/server/src/app.ts`: mount with `mountEffectRoutes` at the same position.
+- `work/T-0555-effect-http-ais.md`: this report + status.
+
+### Field-by-field comparison (`PublicAi` in `service.ts:34-59` vs success schemas)
+List/detail use `AiView` (= every `PublicAi` field + `usage`); the five write
+routes use `PublicAiView` (= every `PublicAi` field, no `usage`), matching the
+old router, whose writes answered the undecorated service value:
+- `id`, `name`, `template` (literals `dev | marketing | fun | custom`),
+  `persona`, `model`, `jid`: present in both schemas. ✓
+- `status` (`active | disabled | stopped` literals): present in both. ✓
+- `providerConnectionId`: present in both. ✓
+- `limits` (`{ perDayUsd, perMonthUsd }` numbers): present in both. ✓
+- `machineId` (nullable): `Schema.NullOr(Schema.String)` in both. ✓
+- `canDelegate`, `acceptsDelegation` (booleans): present in both. ✓
+- `avatarUrl` (optional, never null): `Schema.optional(Schema.String)` in
+  both; omitted when the AI has no picture, same as `withAvatars` before. ✓
+- `createdAt`: `Schema.Date` in both, encoded as the same ISO string. ✓
+- `usage` (`{ todayUsd, windowUsd } | null`): only in `AiView` (list/detail),
+  absent from the write schemas exactly as the old writes omitted it. ✓
+No provider keys or virtual keys in any response: the schemas expose only the
+fields above (verified by the unchanged no-leak assertions in `routes.test.ts`).
+
+### Behaviour kept
+- Step order per route identical (session → 503 gate → decode → service →
+  audit-on-flip); stop/resume/machine need only the DB; audit written only on
+  a real flip, recorder errors swallowed.
+- `withUsage`: `usage: null` without LiteLLM, on failure, or after
+  `USAGE_TIMEOUT_MS` = 2_000 ms; list reads run in parallel.
+- Decode failures answer 400 `invalid_request` (message text is now Schema's
+  instead of zod's first-issue text; no test asserts the old texts — verified
+  by grep: tests assert only statuses/codes).
+- Invalid-JSON bodies: decoded by the Effect adapter (400); no test posts
+  malformed JSON to these routes (verified by grep).
+
+### Commands and real results
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/ais/routes.test.ts`: 49 passed.
+- Same with `src/ais/usage.test.ts src/ais/service.test.ts src/ais/litellm-model.test.ts`: 47 passed.
+- Same with `src/authz-sweep.test.ts`: 5 passed.
+- Same with `src/app.test.ts`: 9 passed.
+- `pnpm exec prettier --write` on `ais/api.ts` (format fix for the new file only).
+- `pnpm gate`: PASS install, PASS format, PASS lint, PASS typecheck,
+  PASS tests @zilar/server, scope: every changed file inside Allowed files,
+  GATE PASS.
+
+### Deviations / notes
+- Deps interface renamed `AisRoutesDependencies` → `AisApiDependencies`;
+  `logger` stays the narrow `AiLogger` (`warn`-only), adapted internally to
+  a pino `Logger` for the error envelope (`error` → `warn`, same
+  fields/message).
+- `service.ts` and `usage.ts` untouched. No test file touched.
+- Security checklist: secrets never in responses/logs (schemas + unchanged
+  leak tests); owner-scoped reads (same 404 for foreign/missing); audit
+  carries ids only (`ai.machine_assigned` detail holds only `machineId`); all
+  eight routes use exact paths under `Session`, covered by the 401 sweep
+  (green, unchanged).
+
+### Round 2 (fix round: PREREVIEW findings 1-2, nit 3 left as-is)
+- Finding 1 (should-fix, 503/decode step order): added an `AisConfigured`
+  endpoint middleware in `ais/api.ts` (precedent: `pins/api.ts`
+  `PinsWriteRateLimit`), applied to `create`, `patch` and `remove`, provided
+  via `configuredLayer({ litellm, cipher })`. The gate answers 503
+  `ais_unavailable` through `httpErrorResponse` before the adapter decodes
+  the payload, restoring the old `requireConfigured()` → `safeParse` order.
+  The in-handler `requireConfigured()` stays as an unreachable backstop.
+  Verified with a temporary (then deleted) test: unconfigured server +
+  malformed create body (`{}`) → 503 `ais_unavailable` (was 400 before the
+  fix); unconfigured + patch body missing the required model →
+  503 `ais_unavailable`. 2 passed; temp file deleted.
+- Finding 2 (should-fix, dead shim): deleted `apps/server/src/ais/routes.ts`
+  (`git rm`). Verified no server source or test imports it (only stale
+  comments in `apps/web/.../api.ts:1173` and `apps/mobile/.../ais-api.ts:10`,
+  outside Allowed files, left untouched).
+- Nit 3 (defect logs at warn): left as-is — the route `logger` shape is the
+  `AiLogger` (`warn`-only) owned by `ais/service.ts`, which this task must
+  not touch; changing it would widen the service's logger contract. Bodies
+  unchanged: 500s still answer `internal_error` through the envelope.
+- Tests: `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot ais authz-sweep app.test`: 6 files passed, 110 passed, 2 skipped (same as round 1).
+- `pnpm gate`: PASS install, PASS format, PASS lint, PASS typecheck, PASS
+  tests @zilar/server, scope: every changed file inside Allowed files,
+  GATE PASS.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-08) after one auto fix round, which made the 503 gate endpoint middleware before decode and deleted the dead routes.ts. AI management (8 routes) is served by Effect HttpApi at the same position, with the same order, usage timeout, audit-on-flip and 204. Lead check: AiView lists every PublicAi field plus usage (avatarUrl optional, never null), and AiLimitsView matches AiLimits. Nits accepted: generic decode texts are now Schema text, and AisRoutesDependencies was renamed AisApiDependencies (no other importer). Follow-up: stale comments mentioning ais/routes.ts in apps/web/src/lib/api.ts:1173 and apps/mobile/src/lib/ais-api.ts:10.

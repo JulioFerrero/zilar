@@ -5,7 +5,7 @@ import { requestId, type RequestIdVariables } from 'hono/request-id';
 import type { Logger } from 'pino';
 import { protocolVersion } from '@zilar/protocol';
 import { createLitellmAdminClientFromConfig, type LitellmAdminClient } from './ai/litellm-client';
-import { createAisRoutes } from './ais/routes';
+import { createAisApi } from './ais/api';
 import type { AiLogger } from './ais/service';
 import { createAiMemoryApi } from './agents/memory/api';
 import { createActionGateway, type ActionGateway } from './actions/gateway';
@@ -609,19 +609,17 @@ export function createApp({
     (config.LITELLM_MASTER_KEY === undefined
       ? undefined
       : createLitellmAdminClientFromConfig(config));
-  app.route(
-    '/api',
-    createAisRoutes({
-      auth,
-      db,
-      config,
-      adminClient,
-      logger: ais?.logger ?? logger,
-      audit: auditRecorder,
-      ...(aisCipher === undefined ? {} : { cipher: aisCipher }),
-      ...(aisLitellm === undefined ? {} : { litellm: aisLitellm }),
-    }),
-  );
+  const aisApi = createAisApi({
+    auth,
+    db,
+    config,
+    adminClient,
+    logger: ais?.logger ?? logger,
+    audit: auditRecorder,
+    ...(aisCipher === undefined ? {} : { cipher: aisCipher }),
+    ...(aisLitellm === undefined ? {} : { litellm: aisLitellm }),
+  });
+  mountEffectRoutes(app, aisApi.routes, aisApi.handler);
 
   app.get('/health', async (c) => {
     const up = await isDatabaseUp(db);
