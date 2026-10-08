@@ -29,7 +29,8 @@ Julio, 2026-10-08: "make so the lead watch is performant". With about ten active
 2. **Skip git work when nothing changed.** Cache `collectFiles` and the two per-task git results by the worktree's `HEAD` commit plus the `git status --porcelain` output. If running `git status` costs as much as the calls it saves, read `.git/HEAD` and the index mtime instead; say in the Report which you chose and why.
 3. **Raise `REFRESH_INTERVAL_MS` to 10 000.** The clock line keeps its own timer.
 4. **Measure** the number of child processes per refresh before and after, with about ten tasks in `~/.zilar-lead/state.json` (read-only; for example, count `spawnSync` calls with a test double in a unit test). Put both numbers in the Report.
-5. **Tests:** existing watch tests stay green; change only assertions that pinned the old interval or call counts, and list them. Add one test proving a session's messages are fetched once per refresh.
+5. **Honest speed.** `sessionSpeed` (`watch.ts:251-293`) shows `totalOut / totalDur` over the last 20 steps, so one step that waited an hour on a tool (a hung gate) made the watch show 5 tok/s while the model ran at 30-200 tok/s (lead-measured on T-0608, 2026-10-08). Show the **median** of the per-step tok/s values (the same values as the sparkline) instead.
+6. **Tests:** existing watch tests stay green; change only assertions that pinned the old interval, call counts or the old average, and list them. Add one test proving a session's messages are fetched once per refresh, and one proving a single very long step does not drag the shown speed down.
 
 ### Read first
 `AGENTS.md`, `packages/devtools/src/lead/watch.ts`, `packages/devtools/src/lead/collect-snapshot.ts`, `packages/devtools/src/lead/watch-app.tsx` (lines 690-735) and `packages/devtools/src/lead/client.ts` (lines 90-170 and 260-280).
