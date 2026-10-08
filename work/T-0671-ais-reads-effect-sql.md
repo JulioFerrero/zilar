@@ -1,7 +1,7 @@
 ---
 id: T-0671
 title: "effect/sql: move the ais/service.ts reads listAis, listActiveAisForGateway and findOwnedAi onto effect/sql (copy findGatewayAiEffect), fix the module header comment, and type decryptForGatewayUseEffect's error as SqlError | Error"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0671-ais-reads-effect-sql
 model: auto
@@ -55,4 +55,41 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- `apps/server/src/ais/service.ts`:
+  - Rewrote `listAis`, `listActiveAisForGateway` and `findOwnedAi` with `runSql` and one `sql<Row>` statement each, keeping the same columns, joins, filters and `created_at` ascending order. `listAis` selects the public columns and maps through `toPublicAi`; `findOwnedAi` selects `AiRecord` (public columns plus `localpart`, `litellm_key_id`, `litellm_model_id`) and returns the row or `null`; `listActiveAisForGateway` returns the `ActiveAiForGateway` columns.
+  - Removed the now-unused `publicAiColumns` and `aiColumns` drizzle constants and the unused `asc` import (`and`/`eq` are still used elsewhere in the module).
+  - Rewrote the module header comment: it now names the effect/sql parts (the four reads plus the three chat-driven persona/limit writes) and the still-drizzle writes (`createAi`, `stopAi`, `resumeAi`, `assignMachine`, `findUserName`, `compensateCreate`, `withAiEnsureLock`).
+- `apps/server/src/connections/service.ts`: `decryptForGatewayUseEffect` now returns `Effect.Effect<string, SqlError.SqlError | Error, SqlClient.SqlClient>`, and its `Effect.try` catch maps a non-`Error` throw to `new Error(String(error))`, keeping the original object when it already is an `Error`.
+
+### Files changed
+- `apps/server/src/ais/service.ts`
+- `apps/server/src/connections/service.ts`
+- `work/T-0671-ais-reads-effect-sql.md` (status/report only)
+
+### Commands and real results
+- `pnpm install`: Done, 3 deprecated subdependencies, peer warning in `apps/mobile` (@types/react-dom vs @types/react). No new packages needed.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/ais src/connections`: Test Files 7 passed | 2 skipped (9); Tests 127 passed | 3 skipped (130); duration 30.44s.
+- `pnpm gate`: first run `GATE FAIL` on typecheck (TS4104: `readonly ActiveAiForGateway[]` not assignable to mutable), fixed, second run:
+  ```
+  gate: 3 changed file(s) against main
+  PASS  install (frozen)  (2.5s)
+  PASS  format  (71.9s)
+  PASS  lint  (1.6s)
+  PASS  typecheck  (5.7s)
+  PASS  tests @zilar/server  (39.1s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Problems / deviations
+- One type error on the first gate run: `effect/sql` returns `ReadonlyArray`, and `listActiveAisForGateway` returns a mutable array. Fixed by spreading the rows (`return [...rows]`). `listAis` was already fine because `.map` returns a mutable array. No deviation from the spec.
+
+### Open questions
+- None.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved.
+- **Pre-review:** clean, with no nits; the packet head is 87096a5c.
+- **Result:** the three ais reads are on effect/sql with the same columns, joins and order. The header comment names what is left on drizzle. `decryptForGatewayUseEffect` is typed `SqlError | Error`. This also covers both T-0660 nits.

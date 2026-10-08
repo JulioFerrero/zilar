@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Effect } from 'effect';
 import { SqlClient, type SqlError } from 'effect/sql';
-import { and, asc, eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import type { KeyCipher } from '../connections/crypto';
 import {
   decryptForGatewayUse,
@@ -20,10 +20,13 @@ import { modelNameForAi } from '../ai/model-entry';
 import { isLlmProvider, litellmModelFor } from './litellm-model';
 import { defaultPersonaFor, type AiTemplate } from './templates';
 
-// The three chat-driven persona/limit writes below run on the `effect/sql`
-// client registered for this database (see `../effect/sql`); the rest of the
-// module still reads and writes through drizzle. The exported functions stay
-// `async` so routes and tests keep their shape during the transition.
+// The reads (`listAis`, `listActiveAisForGateway`, `findOwnedAi`,
+// `findGatewayAiEffect`) and the three chat-driven persona/limit writes run on
+// the `effect/sql` client registered for this database (see `../effect/sql`).
+// The remaining writes still use drizzle: `createAi`, `stopAi`, `resumeAi`,
+// `assignMachine`, `findUserName`, `compensateCreate` and `withAiEnsureLock`.
+// The exported functions stay `async` so routes and tests keep their shape
+// during the transition.
 function runSql<A, E>(
   db: ServerDatabase,
   effect: Effect.Effect<A, SqlError.SqlError | E, SqlClient.SqlClient>,
@@ -123,12 +126,31 @@ export function virtualKeyAlias(aiId: string): string {
 }
 
 export async function listAis(db: ServerDatabase, ownerId: string): Promise<PublicAi[]> {
-  const rows = await db
-    .select(publicAiColumns)
-    .from(ais)
-    .innerJoin(aiLimits, eq(aiLimits.aiId, ais.id))
-    .where(eq(ais.owner, ownerId))
-    .orderBy(asc(ais.createdAt));
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<PublicAiRow>`SELECT
+        ais.id,
+        ais.name,
+        ais.template,
+        ais.persona,
+        ais.model,
+        ais.jid,
+        ais.status,
+        ais.provider_connection_id,
+        ais.machine_id,
+        ais.created_at,
+        ai_limits.per_day_usd,
+        ai_limits.per_month_usd,
+        ais.can_delegate,
+        ais.accepts_delegation
+      FROM ais
+      INNER JOIN ai_limits ON ai_limits.ai_id = ais.id
+      WHERE ais.owner = ${ownerId}
+      ORDER BY ais.created_at ASC`;
+    }),
+  );
   return rows.map(toPublicAi);
 }
 
@@ -144,18 +166,23 @@ export interface ActiveAiForGateway {
 }
 
 export async function listActiveAisForGateway(db: ServerDatabase): Promise<ActiveAiForGateway[]> {
-  return db
-    .select({
-      id: ais.id,
-      jid: ais.jid,
-      localpart: ais.localpart,
-      owner: ais.owner,
-      name: ais.name,
-      persona: ais.persona,
-    })
-    .from(ais)
-    .where(eq(ais.status, 'active'))
-    .orderBy(asc(ais.createdAt));
+  return runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const rows = yield* sql<ActiveAiForGateway>`SELECT
+        ais.id,
+        ais.jid,
+        ais.localpart,
+        ais.owner,
+        ais.name,
+        ais.persona
+      FROM ais
+      WHERE ais.status = ${'active'}
+      ORDER BY ais.created_at ASC`;
+      return [...rows];
+    }),
+  );
 }
 
 // In-process notifier so the gateway learns about created, deleted,
@@ -197,14 +224,36 @@ export async function findOwnedAi(
   id: string,
   ownerId: string,
 ): Promise<AiRecord | null> {
-  const [row] = await db
-    .select(aiColumns)
-    .from(ais)
-    .innerJoin(aiLimits, eq(aiLimits.aiId, ais.id))
-    .leftJoin(llmVirtualKeys, eq(llmVirtualKeys.aiId, ais.id))
-    .where(and(eq(ais.id, id), eq(ais.owner, ownerId)))
-    .limit(1);
-  return row ?? null;
+  return runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const [row] = yield* sql<AiRecord>`SELECT
+        ais.id,
+        ais.name,
+        ais.template,
+        ais.persona,
+        ais.model,
+        ais.jid,
+        ais.status,
+        ais.provider_connection_id,
+        ais.machine_id,
+        ais.created_at,
+        ai_limits.per_day_usd,
+        ai_limits.per_month_usd,
+        ais.can_delegate,
+        ais.accepts_delegation,
+        ais.localpart,
+        llm_virtual_keys.litellm_key_id,
+        llm_virtual_keys.litellm_model_id
+      FROM ais
+      INNER JOIN ai_limits ON ai_limits.ai_id = ais.id
+      LEFT JOIN llm_virtual_keys ON llm_virtual_keys.ai_id = ais.id
+      WHERE ais.id = ${id} AND ais.owner = ${ownerId}
+      LIMIT 1`;
+      return row ?? null;
+    }),
+  );
 }
 
 // One AI by id, with its connection's provider, for the gateway-only paths
@@ -1189,30 +1238,6 @@ interface GatewayAiRecord extends AiRecord {
   provider: string;
   owner: string;
 }
-
-const publicAiColumns = {
-  id: ais.id,
-  name: ais.name,
-  template: ais.template,
-  persona: ais.persona,
-  model: ais.model,
-  jid: ais.jid,
-  status: ais.status,
-  providerConnectionId: ais.providerConnectionId,
-  machineId: ais.machineId,
-  createdAt: ais.createdAt,
-  perDayUsd: aiLimits.perDayUsd,
-  perMonthUsd: aiLimits.perMonthUsd,
-  canDelegate: ais.canDelegate,
-  acceptsDelegation: ais.acceptsDelegation,
-};
-
-const aiColumns = {
-  ...publicAiColumns,
-  localpart: ais.localpart,
-  litellmKeyId: llmVirtualKeys.litellmKeyId,
-  litellmModelId: llmVirtualKeys.litellmModelId,
-};
 
 type PublicAiRow = Omit<AiRecord, 'localpart' | 'litellmKeyId' | 'litellmModelId'>;
 

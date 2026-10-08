@@ -153,7 +153,7 @@ export async function countAisUsingConnection(
 export function decryptForGatewayUseEffect(
   cipher: KeyCipher,
   connectionId: string,
-): Effect.Effect<string, unknown, SqlClient.SqlClient> {
+): Effect.Effect<string, SqlError.SqlError | Error, SqlClient.SqlClient> {
   return Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     const [row] = yield* sql<{ encryptedKey: string }>`SELECT encrypted_key
@@ -163,7 +163,7 @@ export function decryptForGatewayUseEffect(
     }
     return yield* Effect.try({
       try: () => cipher.decrypt(row.encryptedKey),
-      catch: (error) => error,
+      catch: (error) => (error instanceof Error ? error : new Error(String(error))),
     });
   });
 }
