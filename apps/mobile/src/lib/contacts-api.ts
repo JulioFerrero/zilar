@@ -1,4 +1,8 @@
+import { Data, Effect, Exit, Schema, SchemaGetter, type Effect as EffectType } from 'effect';
+import { struct } from '@zilar/protocol';
+
 import { API_URL } from './auth';
+import { errorFieldsOf } from './api-error-body';
 
 /**
  * The contacts API (`/api/users/by-handle/:handle` and `/api/contact-requests`),
@@ -6,10 +10,11 @@ import { API_URL } from './auth';
  * contract lives in `apps/server/src/contact-requests/routes.ts` and
  * `apps/server/src/contact-requests/service.ts`.
  *
- * Mobile has no zod, so — like `ais-api.ts` and `approvals-api.ts` — the
- * boundary is validated with type guards. `ContactsApiError` keeps the
- * server's `code` and `status`, so screens can branch on the error without
- * parsing the message again (404 = unknown handle, 429 = rate limited).
+ * The boundary is validated with Effect Schema (T-0550, the T-0506 recipe):
+ * the request is an Effect pipeline, cut back to a `Promise` at the edge
+ * with `Effect.runPromise`. `ContactsApiError` keeps the server's `code` and
+ * `status`, so screens can branch on the error without parsing the message
+ * again (404 = unknown handle, 429 = rate limited).
  */
 
 export type ContactRelation =
@@ -100,163 +105,210 @@ export function normalizeHandleInput(raw: string): string {
   return raw.trim().replace(/^@/, '').toLowerCase();
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
+// A lenient field: a missing or non-string value decodes to `null` instead of
+// failing the row, exactly like the old type guard.
+const LenientNullStringSchema = Schema.Unknown.pipe(
+  Schema.withDecodingDefault(Effect.succeed(null)),
+  Schema.decodeTo(Schema.NullOr(Schema.String), {
+    decode: SchemaGetter.transform((value) => (typeof value === 'string' ? value : null)),
+    encode: SchemaGetter.transform((value) => value),
+  }),
+);
+
+// A lenient field: a missing or non-string `decidedAt` decodes to `undefined`
+// (the key is omitted), exactly like the old type guard.
+const LenientDecidedAtSchema = Schema.Unknown.pipe(
+  Schema.withDecodingDefault(Effect.succeed(undefined)),
+  Schema.decodeTo(Schema.UndefinedOr(Schema.String), {
+    decode: SchemaGetter.transform((value) => (typeof value === 'string' ? value : undefined)),
+    encode: SchemaGetter.transform((value) => value),
+  }),
+);
+
+// A lenient field: only an explicit `true` reads as true; anything else
+// (including a missing key) reads as absent or false, exactly like the old
+// `incoming === true` guard.
+const LenientIncomingSchema = Schema.Unknown.pipe(
+  Schema.withDecodingDefault(Effect.succeed(undefined)),
+  Schema.decodeTo(Schema.UndefinedOr(Schema.Boolean), {
+    decode: SchemaGetter.transform((value) => (value === undefined ? undefined : value === true)),
+    encode: SchemaGetter.transform((value) => value),
+  }),
+);
+
+const HandleProfileSchema = struct({
+  userId: Schema.String,
+  name: Schema.String,
+  handle: Schema.String,
+  image: LenientNullStringSchema,
+  relation: Schema.Literals([
+    'none',
+    'contact',
+    'request_sent',
+    'request_received',
+    'self',
+    'blocked',
+  ]),
+});
+
+const ContactRequestPersonSchema = struct({
+  userId: Schema.String,
+  name: Schema.String,
+  handle: LenientNullStringSchema,
+  image: LenientNullStringSchema,
+});
+
+const ContactRequestStatusSchema = Schema.Literals([
+  'pending',
+  'accepted',
+  'declined',
+  'cancelled',
+]);
+
+const ContactRequestViewSchema = struct({
+  id: Schema.String,
+  status: ContactRequestStatusSchema,
+  createdAt: Schema.String,
+  other: ContactRequestPersonSchema,
+});
+
+const ContactRequestRowSchema = struct({
+  id: Schema.String,
+  fromUserId: Schema.String,
+  toUserId: Schema.String,
+  status: ContactRequestStatusSchema,
+  createdAt: Schema.String,
+  decidedAt: LenientDecidedAtSchema,
+});
+
+const CreatedContactRequestSchema = struct({
+  request: ContactRequestRowSchema,
+  incoming: LenientIncomingSchema,
+});
+
+const DecidedRequestSchema = struct({
+  request: ContactRequestRowSchema,
+});
+
+const BlockResultSchema = struct({
+  blocked: Schema.Boolean,
+});
+
+const BlockedPersonSchema = struct({
+  userId: Schema.String,
+  name: Schema.String,
+  handle: LenientNullStringSchema,
+  image: LenientNullStringSchema,
+  jid: LenientNullStringSchema,
+});
+
+function toRequestRow(decoded: typeof ContactRequestRowSchema.Type): ContactRequestRow {
+  return {
+    id: decoded.id,
+    fromUserId: decoded.fromUserId,
+    toUserId: decoded.toUserId,
+    status: decoded.status,
+    createdAt: decoded.createdAt,
+    ...(decoded.decidedAt === undefined ? {} : { decidedAt: decoded.decidedAt }),
+  };
 }
 
-function isString(value: unknown): value is string {
-  return typeof value === 'string';
-}
-
-function isRelation(value: unknown): value is ContactRelation {
-  return (
-    value === 'none' ||
-    value === 'contact' ||
-    value === 'request_sent' ||
-    value === 'request_received' ||
-    value === 'self' ||
-    value === 'blocked'
-  );
-}
-
-function isRequestStatus(value: unknown): value is ContactRequestStatus {
-  return (
-    value === 'pending' || value === 'accepted' || value === 'declined' || value === 'cancelled'
-  );
+function toPerson(decoded: typeof ContactRequestPersonSchema.Type): ContactRequestPerson {
+  return {
+    userId: decoded.userId,
+    name: decoded.name,
+    handle: decoded.handle,
+    image: decoded.image,
+  };
 }
 
 function parseHandleProfile(value: unknown): HandleProfile | null {
-  if (!isRecord(value)) return null;
-  const userId = value['userId'];
-  const name = value['name'];
-  const handle = value['handle'];
-  const image = value['image'];
-  const relation = value['relation'];
-  if (!isString(userId) || !isString(name) || !isString(handle) || !isRelation(relation)) {
-    return null;
-  }
-  return { userId, name, handle, image: isString(image) ? image : null, relation };
-}
-
-function parseRequestPerson(value: unknown): ContactRequestPerson | null {
-  if (!isRecord(value)) return null;
-  const userId = value['userId'];
-  const name = value['name'];
-  const handle = value['handle'];
-  const image = value['image'];
-  if (!isString(userId) || !isString(name)) return null;
+  const decoded = Schema.decodeUnknownExit(HandleProfileSchema)(value);
+  if (!Exit.isSuccess(decoded)) return null;
   return {
-    userId,
-    name,
-    handle: isString(handle) ? handle : null,
-    image: isString(image) ? image : null,
+    userId: decoded.value.userId,
+    name: decoded.value.name,
+    handle: decoded.value.handle,
+    image: decoded.value.image,
+    relation: decoded.value.relation,
   };
 }
 
 function parseRequestView(value: unknown): ContactRequestView | null {
-  if (!isRecord(value)) return null;
-  const id = value['id'];
-  const status = value['status'];
-  const createdAt = value['createdAt'];
-  const other = parseRequestPerson(value['other']);
-  if (!isString(id) || !isRequestStatus(status) || !isString(createdAt) || other === null) {
-    return null;
-  }
-  return { id, status, createdAt, other };
-}
-
-function parseRequestList(value: unknown): ContactRequestList | null {
-  if (!isRecord(value)) return null;
-  const incoming = value['incoming'];
-  const outgoing = value['outgoing'];
-  if (!Array.isArray(incoming) || !Array.isArray(outgoing)) return null;
-  const parsedIncoming: ContactRequestView[] = [];
-  for (const item of incoming) {
-    const parsed = parseRequestView(item);
-    if (parsed === null) return null;
-    parsedIncoming.push(parsed);
-  }
-  const parsedOutgoing: ContactRequestView[] = [];
-  for (const item of outgoing) {
-    const parsed = parseRequestView(item);
-    if (parsed === null) return null;
-    parsedOutgoing.push(parsed);
-  }
-  return { incoming: parsedIncoming, outgoing: parsedOutgoing };
-}
-
-function parseRequestRow(value: unknown): ContactRequestRow | null {
-  if (!isRecord(value)) return null;
-  const id = value['id'];
-  const fromUserId = value['fromUserId'];
-  const toUserId = value['toUserId'];
-  const status = value['status'];
-  const createdAt = value['createdAt'];
-  const decidedAt = value['decidedAt'];
-  if (
-    !isString(id) ||
-    !isString(fromUserId) ||
-    !isString(toUserId) ||
-    !isRequestStatus(status) ||
-    !isString(createdAt)
-  ) {
-    return null;
-  }
+  const decoded = Schema.decodeUnknownExit(ContactRequestViewSchema)(value);
+  if (!Exit.isSuccess(decoded)) return null;
   return {
-    id,
-    fromUserId,
-    toUserId,
-    status,
-    createdAt,
-    ...(decidedAt === undefined ? {} : { decidedAt: isString(decidedAt) ? decidedAt : undefined }),
+    id: decoded.value.id,
+    status: decoded.value.status,
+    createdAt: decoded.value.createdAt,
+    other: toPerson(decoded.value.other),
   };
 }
 
+function parseRequestList(value: unknown): ContactRequestList | null {
+  const decoded = Schema.decodeUnknownExit(
+    struct({
+      incoming: Schema.mutable(Schema.Array(Schema.Unknown)),
+      outgoing: Schema.mutable(Schema.Array(Schema.Unknown)),
+    }),
+  )(value);
+  if (!Exit.isSuccess(decoded)) return null;
+  // One malformed row fails the whole list, like the old hand validator.
+  const incoming: ContactRequestView[] = [];
+  for (const item of decoded.value.incoming) {
+    const parsed = parseRequestView(item);
+    if (parsed === null) return null;
+    incoming.push(parsed);
+  }
+  const outgoing: ContactRequestView[] = [];
+  for (const item of decoded.value.outgoing) {
+    const parsed = parseRequestView(item);
+    if (parsed === null) return null;
+    outgoing.push(parsed);
+  }
+  return { incoming, outgoing };
+}
+
 function parseCreatedRequest(value: unknown): CreatedContactRequest | null {
-  if (!isRecord(value)) return null;
-  const request = parseRequestRow(value['request']);
-  if (request === null) return null;
-  const incoming = value['incoming'];
+  const decoded = Schema.decodeUnknownExit(CreatedContactRequestSchema)(value);
+  if (!Exit.isSuccess(decoded)) return null;
   return {
-    request,
-    ...(incoming === undefined ? {} : { incoming: incoming === true }),
+    request: toRequestRow(decoded.value.request),
+    ...(decoded.value.incoming === undefined ? {} : { incoming: decoded.value.incoming }),
   };
 }
 
 function parseDecidedRequest(value: unknown): { request: ContactRequestRow } | null {
-  if (!isRecord(value)) return null;
-  const request = parseRequestRow(value['request']);
-  return request === null ? null : { request };
+  const decoded = Schema.decodeUnknownExit(DecidedRequestSchema)(value);
+  if (!Exit.isSuccess(decoded)) return null;
+  return { request: toRequestRow(decoded.value.request) };
 }
 
 function parseBlockResult(value: unknown): { blocked: boolean } | null {
-  if (!isRecord(value) || typeof value['blocked'] !== 'boolean') return null;
-  return { blocked: value['blocked'] };
+  const decoded = Schema.decodeUnknownExit(BlockResultSchema)(value);
+  return Exit.isSuccess(decoded) ? { blocked: decoded.value.blocked } : null;
 }
 
 function parseBlockedPerson(value: unknown): BlockedPerson | null {
-  if (!isRecord(value)) return null;
-  const userId = value['userId'];
-  const name = value['name'];
-  if (!isString(userId) || !isString(name)) return null;
-  const handle = value['handle'];
-  const image = value['image'];
-  const jid = value['jid'];
+  const decoded = Schema.decodeUnknownExit(BlockedPersonSchema)(value);
+  if (!Exit.isSuccess(decoded)) return null;
   return {
-    userId,
-    name,
-    handle: isString(handle) ? handle : null,
-    image: isString(image) ? image : null,
-    jid: isString(jid) ? jid : null,
+    userId: decoded.value.userId,
+    name: decoded.value.name,
+    handle: decoded.value.handle,
+    image: decoded.value.image,
+    jid: decoded.value.jid,
   };
 }
 
 function parseBlockedList(value: unknown): BlockedPerson[] | null {
-  if (!isRecord(value)) return null;
-  const blocked = value['blocked'];
-  if (!Array.isArray(blocked)) return null;
+  const decoded = Schema.decodeUnknownExit(
+    struct({ blocked: Schema.mutable(Schema.Array(Schema.Unknown)) }),
+  )(value);
+  if (!Exit.isSuccess(decoded)) return null;
+  // One malformed row fails the whole list, like the old hand validator.
   const parsed: BlockedPerson[] = [];
-  for (const item of blocked) {
+  for (const item of decoded.value.blocked) {
     const person = parseBlockedPerson(item);
     if (person === null) return null;
     parsed.push(person);
@@ -264,38 +316,53 @@ function parseBlockedList(value: unknown): BlockedPerson[] | null {
   return parsed;
 }
 
-async function request(
+// The internal failures, one per case. They carry no field beyond what the old
+// `ContactsApiError` already surfaced; the `Promise` edge maps each back to
+// that same error, status, code and message.
+class ContactsNetworkError extends Data.TaggedError('ContactsNetworkError') {}
+class ContactsRequestError extends Data.TaggedError('ContactsRequestError')<{
+  readonly status: number;
+  readonly code: string;
+  readonly message: string;
+}> {}
+class ContactsUnauthorized extends Data.TaggedError('ContactsUnauthorized') {}
+class ContactsInvalidResponse extends Data.TaggedError('ContactsInvalidResponse') {}
+
+const requestEffect = Effect.fnUntraced(function* (
   apiUrl: string,
   path: string,
   token: string,
   init: RequestInit,
   fetchImpl: typeof fetch,
-): Promise<unknown> {
-  let response: Response;
-  try {
-    response = await fetchImpl(`${apiUrl}${path}`, {
-      ...init,
-      headers: {
-        accept: 'application/json',
-        authorization: `Bearer ${token}`,
-        ...init.headers,
-      },
-    });
-  } catch {
-    throw new ContactsApiError(0, 'network_error', 'Could not reach the server');
-  }
+): EffectType.fn.Return<unknown, ContactsNetworkError | ContactsRequestError> {
+  const response = yield* Effect.tryPromise({
+    try: (signal) =>
+      fetchImpl(`${apiUrl}${path}`, {
+        ...init,
+        signal,
+        headers: {
+          accept: 'application/json',
+          authorization: `Bearer ${token}`,
+          ...init.headers,
+        },
+      }),
+    catch: () => new ContactsNetworkError(),
+  });
 
-  const body: unknown = await response.json().catch(() => null);
+  const body: unknown = yield* Effect.promise(
+    () => response.json().catch(() => null) as Promise<unknown>,
+  );
+
   if (!response.ok) {
-    const error = isRecord(body) && isRecord(body['error']) ? body['error'] : null;
-    const code = isString(error?.['code']) ? error['code'] : 'request_failed';
-    const message = isString(error?.['message'])
-      ? error['message']
-      : `Request failed (${response.status})`;
-    throw new ContactsApiError(response.status, code, message);
+    const error = errorFieldsOf(body);
+    return yield* new ContactsRequestError({
+      status: response.status,
+      code: error.code ?? 'request_failed',
+      message: error.message ?? `Request failed (${response.status})`,
+    });
   }
   return body;
-}
+});
 
 /**
  * The domain part of a bare JID (`ana@zilar.test` -> `zilar.test`).
@@ -328,22 +395,51 @@ export function createContactsApi(
   fetchImpl: typeof fetch = fetch,
   apiUrl: string = API_URL,
 ): ContactsApi {
-  const withToken = async (
+  const withTokenEffect = Effect.fnUntraced(function* (
     path: string,
     init: RequestInit,
     parse: (value: unknown) => unknown,
-  ): Promise<unknown> => {
-    const token = await getToken();
+  ): EffectType.fn.Return<
+    unknown,
+    ContactsUnauthorized | ContactsNetworkError | ContactsRequestError | ContactsInvalidResponse
+  > {
+    const token = yield* Effect.promise(() => getToken());
     if (token === undefined) {
-      throw new ContactsApiError(401, 'unauthorized', 'No session');
+      return yield* new ContactsUnauthorized();
     }
-    const body = await request(apiUrl, path, token, init, fetchImpl);
+    const body = yield* requestEffect(apiUrl, path, token, init, fetchImpl);
     const parsed = parse(body);
     if (parsed === null) {
-      throw new ContactsApiError(200, 'invalid_response', 'The server sent an unexpected response');
+      return yield* new ContactsInvalidResponse();
     }
     return parsed;
-  };
+  });
+
+  const withToken = (
+    path: string,
+    init: RequestInit,
+    parse: (value: unknown) => unknown,
+  ): Promise<unknown> =>
+    Effect.runPromise(
+      withTokenEffect(path, init, parse).pipe(
+        Effect.catchTags({
+          ContactsUnauthorized: () =>
+            Effect.fail(new ContactsApiError(401, 'unauthorized', 'No session')),
+          ContactsNetworkError: () =>
+            Effect.fail(new ContactsApiError(0, 'network_error', 'Could not reach the server')),
+          ContactsRequestError: (error) =>
+            Effect.fail(new ContactsApiError(error.status, error.code, error.message)),
+          ContactsInvalidResponse: () =>
+            Effect.fail(
+              new ContactsApiError(
+                200,
+                'invalid_response',
+                'The server sent an unexpected response',
+              ),
+            ),
+        }),
+      ),
+    );
 
   return {
     async lookupByHandle(handle) {
