@@ -9,8 +9,9 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
   - T-0626: an audit of the Effect last mile, plus a check for `bigint` columns that effect/sql returns as strings;
   - T-0627: the routines service (`deleteRoutinesForAiInGroup` stays on drizzle).
 - **Migration map for Julio:** https://claude.ai/artifact/K1mWvaM7f9h3TmHx6rqWsL.
-  - Rebuild it with `node ~/.zilar-lead/effect-map/build.mjs`, which writes `effect-map.html` next to it.
-  - Republish that file to the same URL after merges.
+  - It is live (since 23:30): the page watches its database document `map/current`.
+  - After each launch or merge, run `node ~/.zilar-lead/effect-map/build.mjs`, then write `db-doc.json` with ArtifactData `set` (collection `map`, doc `current`, `if_version` = the last version).
+  - Open views redraw without a republish. Republish the page only when the layout changes.
 - **Runner pitfall:** queuing a spec adds no board row, and the merge refuses without one (now in `docs/LEAD_HANDOFF.md`).
 
 **2026-10-08 22:40, no restart needed (Julio: "please you take the lead"). 2 workers while Julio is at the PC.**
