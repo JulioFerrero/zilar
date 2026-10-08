@@ -7,7 +7,7 @@ import { protocolVersion } from '@zilar/protocol';
 import { createLitellmAdminClientFromConfig, type LitellmAdminClient } from './ai/litellm-client';
 import { createAisRoutes } from './ais/routes';
 import type { AiLogger } from './ais/service';
-import { createAiMemoryRoutes } from './agents/memory/routes';
+import { createAiMemoryApi } from './agents/memory/api';
 import { createActionGateway, type ActionGateway } from './actions/gateway';
 import type { AlwaysEligiblePredicate } from './approvals/service';
 import { createApprovalsRoutes } from './approvals/routes';
@@ -19,7 +19,7 @@ import { CurrentMailer, createMailer } from './auth/mailer';
 import { createSetupRoutes, type SetupRoutesDependencies } from './setup/routes';
 import { createIntegrationsRoutes, createGetBotToken } from './integrations/routes';
 import { settingsCipherFor } from './setup/settings';
-import { createChatsRoutes } from './chats/routes';
+import { createChatsApi } from './chats/api';
 import { createChatPrefsApi } from './chat-prefs/api';
 import { createChatFoldersApi } from './chat-folders/api';
 import type { ServerConfig } from './config';
@@ -60,7 +60,7 @@ import type { VoiceEngine } from './voice/engine';
 import { createVoiceRoutes } from './voice/routes';
 import { createVoiceTranscriptionRoutes } from './voice-transcription/routes';
 import type { EjabberdAdminClient } from './xmpp/admin-client';
-import { createXmppRoutes } from './xmpp/routes';
+import { createXmppApi } from './xmpp/api';
 
 // Test seam for the join rate windows (T-0115): the invite-links tests set
 // an injected clock and client IP through `setTestAppInviteLinks` so the
@@ -381,14 +381,16 @@ export function createApp({
   );
   const rolesApi = createRolesApi({ auth, db, config, adminClient, logger, audit: auditRecorder });
   mountEffectRoutes(app, rolesApi.routes, rolesApi.handler);
-  app.route('/api', createAiMemoryRoutes({ auth, db, config }));
+  const aiMemoryApi = createAiMemoryApi({ auth, db, config, logger });
+  mountEffectRoutes(app, aiMemoryApi.routes, aiMemoryApi.handler);
   const pinsApi = createPinsApi({ auth, db, config, audit: auditRecorder, logger });
   mountEffectRoutes(app, pinsApi.routes, pinsApi.handler);
   app.route(
     '/api',
     createTopicsRoutes({ auth, db, config, adminClient, logger, audit: auditRecorder }),
   );
-  app.route('/api', createChatsRoutes({ auth, db, config }));
+  const chatsApi = createChatsApi({ auth, db, config, logger });
+  mountEffectRoutes(app, chatsApi.routes, chatsApi.handler);
   // Chat prefs and folders (T-0113/T-0232) on the Effect adapter: session
   // required, one write budget each; the sweep asserts every route answers 401
   // unauthenticated.
@@ -552,7 +554,8 @@ export function createApp({
   };
   app.route('/api', createToolsRoutes(toolsDeps));
   app.route('/api', createRoutinesRoutes({ auth, db, audit: auditRecorder }));
-  app.route('/api', createXmppRoutes({ auth, db, adminClient, xmppConfig: config.xmpp, logger }));
+  const xmppApi = createXmppApi({ auth, db, adminClient, xmppConfig: config.xmpp, logger });
+  mountEffectRoutes(app, xmppApi.routes, xmppApi.handler);
   app.route(
     '/api',
     createVoiceRoutes({

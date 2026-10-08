@@ -1,7 +1,7 @@
 ---
 id: T-0533
 title: "Effect C (HTTP): xmpp token, chats list and AI memory routes onto the HttpApi adapter (T-0498 recipe), zod to Effect Schema; every route test unchanged"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0533-effect-http-xmpp-chats-memory
 model: auto
@@ -71,4 +71,47 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+Moved the three modules onto the Effect `HttpApi` adapter following the T-0498 recipe and `apps/server/src/handles/api.ts` / `apps/server/src/chat-prefs/api.ts`, with the same paths, methods, step order, status codes, bodies and logs.
+
+- **`apps/server/src/xmpp/api.ts` (new)** — `POST /api/xmpp/token`. Session middleware first, then the token budget (`TOKEN_RATE_LIMIT_MAX` = 120 / 10 min, 429 `rate_limited` `'Too many token requests'`) as an endpoint middleware so it runs before provisioning, then `ensureXmppAccount` (503 `xmpp_unavailable`), `syncRoster` and `issueXmppToken`. Both `logger.warn` calls keep their exact objects (`{ userId }` and `{ userId, pending }`) and the token is never logged. Exports `TOKEN_TTL_SECONDS`, `TOKEN_RATE_LIMIT_MAX`, `TOKEN_RATE_LIMIT_WINDOW_MS`, `XmppApiDependencies`, `XMPP_API_ROUTES`, `createXmppApi`.
+- **`apps/server/src/chats/api.ts` (new)** — `GET /api/chats`, same service calls, same order (list, then avatars, then per-group visible topics, then sort by title), same `ChatListEntry` shape.
+- **`apps/server/src/agents/memory/api.ts` (new)** — `GET /api/ai-memory`, `DELETE /api/ai-memory/facts/:id`, `POST /api/ai-memory/clear`; zod (`memoryQuerySchema`, `clearBodySchema`) replaced by Effect `Schema` (`MemoryQuery`, `ClearBody`), both strict via `HttpApi.QueryParseOptions` / `HttpApi.PayloadParseOptions` `{ onExcessProperty: 'error' }`. A schema-error middleware maps a decode failure to the old `400 invalid_request`. The write budget (429 `'Too many memory changes, try again later'`) is an endpoint middleware on the two writes, so it runs before the query/body decode like the old `requireWriteBudget` -> `safeParse` order. `resolveMemoryChat`, `ResolvedMemoryChat`, `toForbiddenChange`/`toMissingMemoryChat` and the module constants are kept.
+- **`app.ts`** — the three `app.route('/api', …)` lines became `create…Api(...)` plus `mountEffectRoutes(...)`; imports updated.
+- **Deleted** `apps/server/src/chats/routes.ts` and `apps/server/src/agents/memory/routes.ts` (no file outside the Allowed files imports them).
+- **Kept** `apps/server/src/xmpp/routes.ts` as a re-export-only file because `apps/server/src/xmpp/routes.test.ts` (a test, unchanged) imports `TOKEN_RATE_LIMIT_MAX` and `TOKEN_TTL_SECONDS` from `./routes`. It now re-exports those plus `TOKEN_RATE_LIMIT_WINDOW_MS` from `./api`.
+
+### Commands and real results
+- `pnpm install` (as instructed): `Done in 31.1s`; no lockfile change.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot xmpp chats agents/memory contacts groups topics authz-sweep app.test`: **20 test files passed, 271 tests passed** (93.2s). Includes the authz sweep, which prints `POST /api/xmpp/token -> 401` and the same 401 for the chats and ai-memory routes.
+- `pnpm gate` from the repo root:
+  ```
+  gate: 8 changed file(s) against main
+  PASS  install (frozen)  (1.6s)
+  PASS  format  (21.6s)
+  PASS  lint  (1.0s)
+  PASS  typecheck  (9.7s)
+  PASS  tests @zilar/server  (779.7s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Deviations / decisions worth a look
+- **`XmppLogger` and `XmppRoutesDependencies` are gone.** The Effect path needs the full pino `Logger` for `sessionLayer` and `withErrorEnvelope`, not the old `{ warn }` slice; nothing outside the old `routes.ts` imported those two types. `createXmppApi` takes `XmppApiDependencies` (`auth`, `db`, `adminClient`, `xmppConfig`, `logger: Logger`, optional `now`). Same pattern for the new `ChatsApiDependencies`/`AiMemoryApiDependencies`.
+- **Changed generic message:** an invalid memory query/body now reports the Effect `Schema` message (`error.cause.message || 'Invalid request'`) instead of the old zod `issues[0].message`. No test asserts that text (only the 400 status), and the fallback text is unchanged.
+- **No zod in these modules.** The three new `api.ts` files have no `zod` import (the memory file only mentions zod in a comment noting the schemas it replaces).
+- **Chats response schema is a pass-through:** `Schema.Array(Schema.Unknown)` inside `{ chats }`. The chat list is a large discriminated union already typed by `ChatListEntry`, and a named Effect `Struct` drops any key it does not list (verified: `Schema.encodeUnknownSync` on a Struct omits unknown keys), which would change the wire body. The pass-through keeps it byte-identical.
+- `resolveMemoryChat` stays exported from the new file even though nothing currently imports it (the spec asked to keep it if anything did; grep found no other importer, so this is to preserve the old module surface).
+
+### Security checklist
+- The XMPP token and the JWT secret are never logged; the two `warn` objects stay ids-only.
+- Every route answers 401 before any decode (session middleware first); the authz sweep is green.
+- Both write routes keep their per-user rate limit, now charged before decode exactly as before.
+- Memory 404s stay identical for an unknown chat, an unknown AI and one the caller may not see; forbidden changes stay 403.
+
+### Open questions / blocked
+None.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-08). The xmpp token, chats list and AI memory routes are served by Effect HttpApi through the adapter, with the same step order, statuses and id-only logs; the token is never logged. No zod is left in the modules. xmpp/routes.ts stays as a re-export for its test. Pre-review clean, 0 nits.
