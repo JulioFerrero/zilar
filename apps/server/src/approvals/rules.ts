@@ -1,7 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { and, eq, isNull } from 'drizzle-orm';
+import { Effect } from 'effect';
+import { SqlClient, SqlError } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
-import { approvalRules, groupMembers } from '../db/schema';
+import { approvalRules } from '../db/schema';
+import { sqlRuntimeFor } from '../effect/sql';
 
 // T-0099: standing approval rules. A rule grants a single AI the right to
 // run a single action in one chat (a group, or the personal chat with its
@@ -36,6 +39,16 @@ export interface PublicApprovalRule {
 
 type ApprovalRuleRow = typeof approvalRules.$inferSelect;
 
+// The top-level queries run on the `effect/sql` client registered for this
+// database (see `../effect/sql`). The exported functions stay `async` so
+// routes and tests keep their shape during the transition.
+function runSql<A>(
+  db: ServerDatabase,
+  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
+): Promise<A> {
+  return sqlRuntimeFor(db).runPromise(effect);
+}
+
 // The atomic idempotent write that turns an "approve_always" decision
 // into a standing rule. Three guarantees:
 //   - one rule per (aiId, topicIdOrNull, action) when active, enforced by
@@ -61,6 +74,10 @@ export interface CreateRuleResult {
   created: boolean;
 }
 
+// `findActiveRuleForUpdate` and `createRule` stay on drizzle for now: their
+// caller (`approvals/service.ts`) passes a drizzle transaction, so the read
+// and the insert must run on it. They move once that caller's transaction
+// moves.
 export async function findActiveRuleForUpdate(
   tx: ServerDatabase,
   input: { aiId: string; groupId: string | null; topicId: string | null; action: string },
@@ -141,7 +158,22 @@ export async function findActiveRule(
   db: ServerDatabase,
   input: { aiId: string; groupId: string | null; topicId: string | null; action: string },
 ): Promise<ApprovalRuleRow | null> {
-  return findActiveRuleForUpdate(db, input);
+  return runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      if (input.topicId === null) {
+        const rows = yield* sql<ApprovalRuleRow>`SELECT * FROM approval_rules
+          WHERE ai_id = ${input.aiId} AND topic_id IS NULL
+            AND action = ${input.action} AND revoked_at IS NULL LIMIT 1`;
+        return rows[0] ?? null;
+      }
+      const rows = yield* sql<ApprovalRuleRow>`SELECT * FROM approval_rules
+        WHERE ai_id = ${input.aiId} AND topic_id = ${input.topicId}
+          AND action = ${input.action} AND revoked_at IS NULL LIMIT 1`;
+      return rows[0] ?? null;
+    }),
+  );
 }
 
 // Lists the active rules for an AI. The AI's owner only — the routes
@@ -150,10 +182,14 @@ export async function listActiveRulesForAi(
   db: ServerDatabase,
   aiId: string,
 ): Promise<PublicApprovalRule[]> {
-  const rows = await db
-    .select()
-    .from(approvalRules)
-    .where(and(eq(approvalRules.aiId, aiId), isNull(approvalRules.revokedAt)));
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<ApprovalRuleRow>`SELECT * FROM approval_rules
+        WHERE ai_id = ${aiId} AND revoked_at IS NULL`;
+    }),
+  );
   return rows.map(toPublicRule);
 }
 
@@ -163,10 +199,15 @@ export async function listActiveRulesForTopic(
   db: ServerDatabase,
   topicId: string,
 ): Promise<ApprovalRuleRow[]> {
-  return db
-    .select()
-    .from(approvalRules)
-    .where(and(eq(approvalRules.topicId, topicId), isNull(approvalRules.revokedAt)));
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<ApprovalRuleRow>`SELECT * FROM approval_rules
+        WHERE topic_id = ${topicId} AND revoked_at IS NULL`;
+    }),
+  );
+  return [...rows];
 }
 
 // Soft-revoke one rule by id. Returns:
@@ -186,28 +227,29 @@ export async function revokeRule(
   db: ServerDatabase,
   input: RevokeRuleInput,
 ): Promise<{ row: ApprovalRuleRow } | null> {
-  const [row] = await db
-    .select()
-    .from(approvalRules)
-    .where(eq(approvalRules.id, input.ruleId))
-    .limit(1);
-  if (!row) {
-    return null;
-  }
-  if (row.revokedAt !== null) {
-    // Idempotent: an already-revoked row returns its data so the route
-    // can answer 204 without writing again or auditing twice.
-    return { row };
-  }
-  const [updated] = await db
-    .update(approvalRules)
-    .set({ revokedAt: input.now, revokedBy: input.actorId })
-    .where(and(eq(approvalRules.id, row.id), isNull(approvalRules.revokedAt)))
-    .returning();
-  if (!updated) {
-    return null;
-  }
-  return { row: updated };
+  return runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const [row] = yield* sql<ApprovalRuleRow>`SELECT * FROM approval_rules
+        WHERE id = ${input.ruleId} LIMIT 1`;
+      if (!row) {
+        return null;
+      }
+      if (row.revokedAt !== null) {
+        // Idempotent: an already-revoked row returns its data so the route
+        // can answer 204 without writing again or auditing twice.
+        return { row };
+      }
+      const [updated] = yield* sql<ApprovalRuleRow>`UPDATE approval_rules
+        SET revoked_at = ${input.now}, revoked_by = ${input.actorId}
+        WHERE id = ${row.id} AND revoked_at IS NULL RETURNING *`;
+      if (!updated) {
+        return null;
+      }
+      return { row: updated };
+    }),
+  );
 }
 
 // Bulk revoke helper used by the lifecycle tests and topic-AI removal.
@@ -217,19 +259,22 @@ export async function revokeActiveRulesForAiInTopic(
   tx: ServerDatabase,
   input: { aiId: string; topicId: string; actorId: string | null; now: Date },
 ): Promise<Array<{ id: string; action: string }>> {
-  const rows = await tx
-    .update(approvalRules)
-    .set({ revokedAt: input.now, revokedBy: input.actorId })
-    .where(
-      and(
-        eq(approvalRules.aiId, input.aiId),
-        eq(approvalRules.topicId, input.topicId),
-        isNull(approvalRules.revokedAt),
-      ),
-    )
-    .returning();
+  const rows = await runSql(
+    tx,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<ApprovalRuleRow>`UPDATE approval_rules
+        SET revoked_at = ${input.now}, revoked_by = ${input.actorId}
+        WHERE ai_id = ${input.aiId} AND topic_id = ${input.topicId}
+          AND revoked_at IS NULL RETURNING *`;
+    }),
+  );
   return rows.map((row) => ({ id: row.id, action: row.action }));
 }
+
+// `revokeActiveRulesForAiInGroup` stays on drizzle for now: its caller
+// (`groups/service.ts` `removeGroupAi`) passes a drizzle transaction, so the
+// revoke must run on it. It moves once that caller's transaction moves.
 
 // Bulk revoke helper used by `removeGroupAi`: revokes the AI's active rules
 // in every topic of the group. `now` is supplied so the caller's
@@ -259,11 +304,14 @@ export async function isGroupAdmin(
   groupId: string,
   userId: string,
 ): Promise<boolean> {
-  const [membership] = await db
-    .select({ role: groupMembers.role })
-    .from(groupMembers)
-    .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, userId)))
-    .limit(1);
+  const [membership] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ role: string }>`SELECT role FROM group_members
+        WHERE group_id = ${groupId} AND user_id = ${userId} LIMIT 1`;
+    }),
+  );
   return membership !== undefined && (membership.role === 'owner' || membership.role === 'admin');
 }
 

@@ -1,7 +1,7 @@
 ---
 id: T-0621
 title: "effect/sql: approvals/rules.ts top-level statements (findActiveRule, listActiveRulesForAi/ForTopic, revokeRule, revokeActiveRulesForAiInTopic, isGroupAdmin) off drizzle; createRule, findActiveRuleForUpdate and revokeActiveRulesForAiInGroup stay on drizzle because callers pass a drizzle transaction; same rows, same results; tests unchanged"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0621-effect-sql-approval-rules-reads
 model: auto
@@ -64,4 +64,86 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+
+Moved the top-level approval-rule statements in `apps/server/src/approvals/rules.ts`
+off drizzle onto `effect/sql`, following `docs/audit/effect-sql-migration.md` §(a)
+and the pins pilot (`apps/server/src/pins/service.ts`):
+
+- Added a private `runSql(db, effect)` helper that runs an effect through
+  `sqlRuntimeFor(db).runPromise(effect)`, exactly like pins.
+- Converted `findActiveRule`, `listActiveRulesForAi`, `listActiveRulesForTopic`,
+  `revokeRule`, `revokeActiveRulesForAiInTopic` and `isGroupAdmin` to the
+  `sql<ApprovalRuleRow>` tagged template. Same filters, same results:
+  `findActiveRule` has its own `topic_id IS NULL` / `topic_id = …` statements
+  (it no longer delegates to `findActiveRuleForUpdate`); `revokeRule` keeps its
+  read, idempotent already-revoked answer and guarded
+  `UPDATE … WHERE id = … AND revoked_at IS NULL RETURNING *`, and a missing row
+  still returns `null`; `revokeActiveRulesForAiInTopic` still returns
+  `{ id, action }[]`; `isGroupAdmin` still returns true only for `owner`/`admin`.
+- Kept `findActiveRuleForUpdate`, `createRule` and `revokeActiveRulesForAiInGroup`
+  on drizzle (their callers pass a drizzle transaction) and added a comment
+  above each group saying they stay on drizzle until their callers' transactions
+  move. `findActiveRuleForUpdate`, `createRule` and their callers are unchanged.
+- Kept every exported signature, including the `ServerDatabase` parameter, and
+  kept `ApprovalRuleRow` as a type-only use of `approvalRules.$inferSelect`.
+- Removed the now-unused `groupMembers` drizzle import (only `isGroupAdmin`
+  used it).
+- No test files were touched.
+
+### Files changed
+
+- `apps/server/src/approvals/rules.ts`
+- `work/T-0621-effect-sql-approval-rules-reads.md`
+
+### Commands run (real results)
+
+- `pnpm install` — done, 1173 packages, 12.4s. One pre-existing peer warning
+  (`apps/mobile` `@types/react-dom` vs `@types/react`), unrelated to this task.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/approvals/rules.test.ts`
+  — 1 file, 30 tests passed.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/approvals/rules src/actions/gateway src/topics`
+  — 5 files, 132 tests passed.
+- `pnpm gate` (first run) — `GATE FAIL`: `@zilar/server#typecheck` TS4104,
+  `listActiveRulesForTopic` returned the driver's `readonly` row array as a
+  mutable `ApprovalRuleRow[]`. Fixed by copying the rows (`return [...rows]`);
+  no behaviour change.
+- `pnpm gate` (second run) — exit 0, `GATE PASS`:
+
+```
+PASS  install (frozen)  (1.1s)
+PASS  format  (14.2s)
+PASS  lint  (0.4s)
+PASS  typecheck  (6.4s)
+PASS  tests @zilar/server  (7.3s)
+scope: every changed file is inside the Allowed files
+GATE PASS
+```
+
+### Deviations / notes
+
+- The Spec's "What to build" says "seven functions", but the move list names six
+  (`findActiveRule`, `listActiveRulesForAi`, `listActiveRulesForTopic`,
+  `revokeRule`, `revokeActiveRulesForAiInTopic`, `isGroupAdmin`). I converted all
+  six named functions; the three named drizzle-only functions are untouched.
+- I kept `revokeActiveRulesForAiInTopic`'s parameter name `tx` (its call site,
+  `topics/service.ts:919`, passes the top-level `deps.db`) to keep every
+  signature literally unchanged.
+- Security: no routes changed; `revokeRule` is still scoped by `id` and the
+  update is guarded by `revoked_at IS NULL`; `revokeActiveRulesForAiInTopic` is
+  scoped by `(ai_id, topic_id)`; `isGroupAdmin` accepts only `owner`/`admin`.
+
+### Open questions
+
+None.
+
 ## Review (written by Claude)
+
+**2026-10-08, lead:** approved.
+- **Pre-review:** clean, no findings. The packet head is e62f281b, the current HEAD.
+- **Lead check of the diff:**
+  - the seven functions use the same filters, including the `topic_id IS NULL` branch;
+  - `revokeRule` keeps the guarded UPDATE and its `null` answers;
+  - `isGroupAdmin` is true only for owner and admin;
+  - the three functions called inside drizzle transactions are untouched and carry comments;
+  - only `rules.ts` and this file changed.
