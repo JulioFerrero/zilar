@@ -28,6 +28,16 @@ export interface GateOptions {
   exists?: (file: string) => boolean;
 }
 
+// No gate step may run forever: a hung test once sat inside `pnpm gate` for
+// 50 minutes before anyone noticed (2026-10-08). Tests get the longer limit.
+export const TESTS_TIMEOUT_MS = 20 * 60 * 1000;
+export const STEP_TIMEOUT_MS = 10 * 60 * 1000;
+
+// A step's time limit, chosen from its label: `tests …` gets the longer one.
+export function stepTimeoutMs(label: string): number {
+  return label.startsWith('tests ') ? TESTS_TIMEOUT_MS : STEP_TIMEOUT_MS;
+}
+
 const TEST_FILE = /\.test\.tsx?$/;
 const SOURCE_FILE = /\.tsx?$/;
 

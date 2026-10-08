@@ -3,7 +3,10 @@ import {
   gateSteps,
   packagesTouched,
   selectTestFiles,
+  stepTimeoutMs,
   strayFiles,
+  STEP_TIMEOUT_MS,
+  TESTS_TIMEOUT_MS,
   type WorkspacePackage,
 } from './plan.js';
 import { allowedTokens, scopeReport, tokenMatcher } from './scope.js';
@@ -180,6 +183,21 @@ describe('gateSteps', () => {
 
   it('finds no package for files outside every package', () => {
     expect(packagesTouched(['docs/a.md', 'work/T-1.md'], workspace)).toEqual([]);
+  });
+});
+
+describe('stepTimeoutMs', () => {
+  it('gives test steps 20 minutes and every other step 10', () => {
+    expect(stepTimeoutMs('tests @zilar/mobile')).toBe(20 * 60 * 1000);
+    expect(stepTimeoutMs('tests @zilar/server')).toBe(TESTS_TIMEOUT_MS);
+    expect(stepTimeoutMs('install (frozen)')).toBe(10 * 60 * 1000);
+    expect(stepTimeoutMs('format')).toBe(STEP_TIMEOUT_MS);
+    expect(stepTimeoutMs('lint')).toBe(STEP_TIMEOUT_MS);
+    expect(stepTimeoutMs('typecheck')).toBe(STEP_TIMEOUT_MS);
+  });
+
+  it('only the `tests ` prefix gets the longer limit', () => {
+    expect(stepTimeoutMs('testsuite')).toBe(STEP_TIMEOUT_MS);
   });
 });
 

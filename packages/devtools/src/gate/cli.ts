@@ -9,13 +9,51 @@
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { gateSteps, isTestFile, strayFiles, type GateStep, type WorkspacePackage } from './plan.js';
+import {
+  gateSteps,
+  isTestFile,
+  stepTimeoutMs,
+  strayFiles,
+  type GateStep,
+  type WorkspacePackage,
+} from './plan.js';
 import { scopeReport } from './scope.js';
 
-function run(cwd: string, command: string, args: string[]): { ok: boolean; output: string } {
-  const result = spawnSync(command, args, { cwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+interface RunResult {
+  ok: boolean;
+  /** True when `timeoutMs` stopped the command; the caller reports `timed out`. */
+  timedOut: boolean;
+  output: string;
+}
+
+// `spawnSync` reports a timeout as an Error carrying an errno-style `code`,
+// which the base `Error` type doesn't declare.
+function hasErrorCode(error: Error | undefined, code: string): boolean {
+  return error !== undefined && 'code' in error && error.code === code;
+}
+
+function run(cwd: string, command: string, args: string[], timeoutMs?: number): RunResult {
+  const result = spawnSync(command, args, {
+    cwd,
+    encoding: 'utf8',
+    maxBuffer: 64 * 1024 * 1024,
+    ...(timeoutMs === undefined
+      ? {}
+      : { timeout: timeoutMs, killSignal: 'SIGKILL' as const, detached: true }),
+  });
+  const timedOut = timeoutMs !== undefined && hasErrorCode(result.error, 'ETIMEDOUT');
+  if (timedOut && result.pid !== undefined) {
+    // `detached` made the child a process-group leader. Killing the group, not
+    // just the direct child, keeps a timed-out Vitest from leaving grandchildren.
+    try {
+      process.kill(-result.pid, 'SIGKILL');
+    } catch {
+      // The group is already gone.
+    }
+  }
   return {
     ok: result.status === 0,
+    timedOut,
     output: `${result.stdout ?? ''}${result.stderr ?? ''}`,
   };
 }
@@ -97,9 +135,16 @@ function main(): void {
       console.log(`SKIP ${step.label} (${step.skipReason})`);
       continue;
     }
+    const timeoutMs = stepTimeoutMs(step.label);
     const started = Date.now();
-    const result = run(root, step.command, step.args);
+    const result = run(root, step.command, step.args, timeoutMs);
     const seconds = ((Date.now() - started) / 1000).toFixed(1);
+    if (result.timedOut) {
+      failed = true;
+      console.log(`FAIL  ${step.label}  (timed out after ${timeoutMs / 60_000} min)`);
+      console.log(tail(result.output, 40));
+      break;
+    }
     console.log(`${result.ok ? 'PASS' : 'FAIL'}  ${step.label}  (${seconds}s)`);
     if (!result.ok) {
       failed = true;

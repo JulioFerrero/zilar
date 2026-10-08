@@ -456,7 +456,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0608](T-0608-effect-sql-roles-service.md) | effect/sql: roles service, transactions included | planned | auto | T-0596 | |
 | [T-0617](T-0617-lead-watch-light.md) | lead watch: far fewer processes per refresh | planned | auto | T-0596 | |
 | [T-0618](T-0618-test-speed-audit.md) | Audit: a faster, lighter server test setup | planned | auto | T-0596 | |
-| [T-0619](T-0619-worker-no-daemons-gate-timeout.md) | Workers can't start daemons or detached runs; gate time limit per step | planned | auto | T-0616 | |
 | [T-0427](T-0427-mobile-forwarded-header.md) | Mobile: forwarded messages show 'Forwarded from X [in Y]' | 2026-10-06 |
 | [T-0428](T-0428-mobile-new-chat-menu-sheet.md) | Mobile: New chat menu on the kit ActionSheet with icons | 2026-10-06 |
 | [T-0429](T-0429-mobile-dismiss-banner.md) | Mobile: DismissBanner replaces 12 copied chat screen banners | 2026-10-06 |
@@ -648,3 +647,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0612](T-0612-registry-effect-only.md) | Tool args T-G: action registry on Effect Schema only | 2026-10-08 |
 | [T-0615](T-0615-effect-sql-tools-service.md) | effect/sql: tool service, transactions included | 2026-10-08 |
 | [T-0614](T-0614-effect-sql-json-keys.md) | effect/sql: keep jsonb keys as written | 2026-10-08 |
+| [T-0619](T-0619-worker-no-daemons-gate-timeout.md) | Workers cannot start daemons or detached runs; gate step time limits | 2026-10-08 |
