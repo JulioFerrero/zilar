@@ -41,7 +41,7 @@ import { HttpError } from './errors';
 import { createGroupsApi } from './groups/api';
 import { createInviteLinksRoutes, type TestInviteLinksOverrides } from './invite-links/routes';
 import { createPinsApi } from './pins/api';
-import { createPushRoutes } from './push/routes';
+import { createPushApi } from './push/api';
 import { createRolesApi } from './roles/api';
 import { createSearchRoutes, type SearchRoutesDependencies } from './search/routes';
 import { createMediaRoutes } from './media/routes';
@@ -407,17 +407,15 @@ export function createApp({
   // Push devices and settings (T-0119) mount always: with push off or
   // unconfigured every route answers 404/503 instead of disappearing, so
   // the web can show the matching state.
-  app.route(
-    '/api',
-    createPushRoutes({
-      auth,
-      db,
-      config,
-      push: push ?? loadPushConfig({}),
-      adminClient,
-      logger,
-    }),
-  );
+  const pushApi = createPushApi({
+    auth,
+    db,
+    config,
+    push: push ?? loadPushConfig({}),
+    adminClient,
+    logger,
+  });
+  mountEffectRoutes(app, pushApi.routes, pushApi.handler);
   // Message search (T-0117) mounts always: without an archive pool every
   // search answers 501 `search_unavailable` instead of 404ing, so the web
   // can hide the feature. Never used by the AI gateway.
