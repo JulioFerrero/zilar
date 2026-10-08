@@ -50,7 +50,7 @@ import { createMediaApi } from './media/api';
 import { createFilesRoutes } from './files/routes';
 import { createGifsRoutes } from './gifs/routes';
 import { createAvatarsApi } from './avatars/api';
-import { createBackgroundsRoutes } from './backgrounds/routes';
+import { createBackgroundsApi } from './backgrounds/api';
 import { createStickersRoutes } from './stickers/routes';
 import { createTopicsApi } from './topics/api';
 import { createMachinesApi } from './machines/api';
@@ -493,16 +493,15 @@ export function createApp({
   // Background images (T-0460): upload / list / serve / delete personal
   // wallpapers, owner-only. The storage dir comes from
   // `BACKGROUND_STORAGE_DIR`; tests override it with a temp dir.
-  app.route(
-    '/api',
-    createBackgroundsRoutes({
-      auth,
-      db,
-      storageDir: backgroundStorageDir ?? config.BACKGROUND_STORAGE_DIR,
-      ...(backgroundNow === undefined ? {} : { now: backgroundNow }),
-      ...(backgroundUploadLimiter === undefined ? {} : { uploadLimiter: backgroundUploadLimiter }),
-    }),
-  );
+  const backgroundsApi = createBackgroundsApi({
+    auth,
+    db,
+    storageDir: backgroundStorageDir ?? config.BACKGROUND_STORAGE_DIR,
+    logger,
+    ...(backgroundNow === undefined ? {} : { now: backgroundNow }),
+    ...(backgroundUploadLimiter === undefined ? {} : { uploadLimiter: backgroundUploadLimiter }),
+  });
+  mountEffectRoutes(app, backgroundsApi.routes, backgroundsApi.handler);
   // Integration settings (T-0162 + Email): owner-only; everyone else gets
   // the same 404 as an unknown route. Covered by the 401 sweep as
   // session-required routes (never allowlisted).

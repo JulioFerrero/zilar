@@ -1,7 +1,7 @@
 ---
 id: T-0577
 title: "Effect C (HTTP): background images (POST upload under a streaming cap, GET list, GET raw bytes, DELETE) onto HttpApi using guide item 12; same 429/413/404 order, texts, 201/204 and image headers; tests unchanged"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0577-effect-http-backgrounds
 model: auto
@@ -69,4 +69,35 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+- Created `apps/server/src/backgrounds/api.ts` with the four routes on Effect
+  `HttpApi` (`createBackgroundsApi`, `BACKGROUNDS_API_ROUTES`): POST upload
+  (201, limiter middleware -> declared-length 413 -> `readCapped` 413 ->
+  `uploadBackground`), GET list (`{ backgrounds }` with every `BackgroundView`
+  field), GET file (raw bytes + the exact six headers), DELETE (204/404).
+  Success schemas list every service field (upload: `id/url/width/height`;
+  list item: `id/url/width|null/height|null/createdAt`); the two binary
+  endpoints declare `Schema.Void` success and return raw responses, which
+  `HttpApiBuilder` passes through untouched.
+- Path decoding: the Effect router hands the handler the decoded param, same
+  as Hono's `c.req.param()` (matches the `chat-prefs/api.ts` finding). The
+  lookup decodes the param again and the etag keeps the param as received, so
+  the final id and etag match the old route for the test inputs (plain uuids).
+  No T-0576 avatar helper existed to copy (avatars still Hono).
+- `routes.ts` now keeps only `BackgroundsRoutesDependencies`; `app.ts` mounts
+  `createBackgroundsApi({...logger})` via `mountEffectRoutes` at the same
+  position.
+- Tests unchanged: `backgrounds` 13 passed; `authz-sweep app.test` 14 passed.
+- `pnpm gate`: PASS install (frozen) (2.1s), format (17.3s), lint (0.5s),
+  typecheck (7.6s), tests @zilar/server (326.9s); scope: every changed file is
+  inside the Allowed files; GATE PASS.
+
 ## Review (written by Claude)
+
+**2026-10-08, lead:** approved.
+- **Pre-review:** clean, 0 findings. The packet (08:52) is newer than HEAD 44b6d831.
+- **No test file changed.**
+- **Lead check:**
+  - the list item lists the 5 `BackgroundView` fields, and the upload view the 4 `BackgroundUploadResult` fields;
+  - the 201 answer is raw JSON, as `c.json` was;
+  - delete is an empty 204;
+  - the GET keeps the etag from the id as received, with the same image headers.
