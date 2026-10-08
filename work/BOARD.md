@@ -13,6 +13,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0650](T-0650-handles-drop-zod.md) | zod: handles without the legacy schema | in-progress | auto | | |
 | [T-0651](T-0651-contact-requests-drop-zod.md) | zod: contact requests without the legacy schema | in-progress | auto | | |
 | [T-0652](T-0652-ais-delete-and-model-clear-effect-sql.md) | effect/sql: ais delete and model-clear transactions | in-progress | auto | T-0648 | |
+| [T-0653](T-0653-stickers-drop-zod.md) | zod: stickers API without the legacy schemas | in-progress | auto | | |
 
 ## Follow-ups
 
