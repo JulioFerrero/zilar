@@ -2,6 +2,29 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-09 01:50, Julio asleep:**
+- **Merged since 01:22:**
+  - T-0669 to T-0681 (except T-0679 and T-0680, listed separately below);
+  - T-0672 (C1, the approval decision);
+  - T-0675 (C4 phase 2: the setup transactions; `SetupTransaction` is gone);
+  - T-0679 (the last drizzle deletes);
+  - T-0680 (topic members);
+  - T-0681 (createAi).
+- **Now with no drizzle:** `ais/service.ts`, `connections`, `tools/service.ts`, `routines/service.ts`, `agents/memory/store.ts`, `voice-transcription/*`, `setup/settings.ts`, `setup/api.ts`, `integrations/settings.ts` and `push/test-tables.ts`.
+- **Running:**
+  - T-0682 (groups reads, merging);
+  - T-0683 (setTopicRoles and the topic helpers, Haiku);
+  - T-0685 (A7, deleting `setup/routes.ts`, Haiku);
+  - T-0684 (the rest of `approvals/service.ts`, DeepSeek).
+- **Next:**
+  - groups slice 4 (the member writes);
+  - groups slice 5 (`createGroup`, `patchGroup`);
+  - topics slice 3b (`createTopic`, `patchTopic`, using `sql.update`);
+  - then group D (the migrator, test-support, better-auth; D2 needs a decision);
+  - A12 git (Julio's decision);
+  - B1 (the edge flip).
+- **Haiku 5.5:** 17 tasks so far, all correct. Two needed a lead decision on drizzle-mocking tests.
+
 **2026-10-09 01:22, 6 workers (3 DeepSeek and 2 Haiku running, 1 queued):**
 - **The other Claude session was killed** (pid 6161, an old bg session), on Julio's order: "we can not have two claude at the same time". This fork is the only lead.
 - **Merged since 01:10:**
