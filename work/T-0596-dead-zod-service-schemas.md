@@ -1,7 +1,7 @@
 ---
 id: T-0596
 title: "Effect Schema: drop the dead zod request schemas left in pins/roles/topics services (their api.ts already decode with Effect Schema) and turn the topic/pin enums into Schema.Literals; exported TS types keep their names and shapes; no behaviour change; tests unchanged"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0596-dead-zod-service-schemas
 model: auto
@@ -68,4 +68,62 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**What changed.** Removed the dead zod request schemas from the four files and kept every exported
+type's name and shape. Nothing parsed these schemas (`grep` finds no `safeParse`/`.parse(`), so no
+runtime validation moved — the Effect HTTP layers in the `api.ts` files still decode the bodies.
+
+- `apps/server/src/pins/service.ts`: `pinKindSchema` is now
+  `Schema.Literals(['text', 'image', 'file', 'voice', 'card'])` and `type PinKind = typeof
+  pinKindSchema.Type`. Deleted `createPinBodySchema` plus the `hasControlCharacters` helper and
+  control-char constants that only it used. `CreatePinBody` is now a plain `interface` with the same
+  inferred shape (`chat`, `messageId`, `senderName` required; `text?`, `kind?`). Dropped the `zod`
+  import; added `Schema` to the `effect` import.
+- `apps/server/src/roles/service.ts`: deleted `roleNameSchema`, `createRoleBodySchema`,
+  `renameRoleBodySchema`, `setRoleMembersBodySchema` and the `hasControlCharacters` helper only they
+  used. These had no exported TS types to preserve and nothing referenced them. Dropped the `zod`
+  import.
+- `apps/server/src/topics/service.ts`: deleted `nameSchema`, `glyphSchema`, `linkUrlSchema`,
+  `linkLabelSchema`, `ownerSchema`, `createTopicBodySchema`, `patchTopicBodySchema`,
+  `addTopicAiBodySchema`, `setTopicRolesBodySchema` and the helper only they used. Kept the exported
+  types `CreateTopicBody`, `PatchTopicBody`, `AddTopicAiBody`, `SetTopicRolesBody` as plain
+  interfaces with the same shape (the `owner` shape is inlined). The `./access` import now takes
+  `type TopicKind/TopicStatus/TopicVisibility` instead of the schema values. Dropped the `zod`
+  import.
+- `apps/server/src/topics/access.ts`: the three enums are now `Schema.Literals([...])` with the same
+  members and their types are `typeof X.Type`. Dropped the `zod` import; added `Schema` from
+  `effect`.
+
+**Type choice.** The four enums (`pinKindSchema`, `topicVisibilitySchema`, `topicKindSchema`,
+`topicStatusSchema`) keep an Effect schema (spec item 2); every body type is a plain TS interface,
+since there is no parse to drive from a schema. Optional fields carry explicit `| undefined` to match
+zod's inferred type under `exactOptionalPropertyTypes`.
+
+**Runtime parsing.** None of these schemas was parsed anywhere; the enum schemas were also only used
+to derive types. No server code outside these files imports them — the `api.ts` files declare their
+own local Effect schemas and only mention the old names in comments.
+
+**Files changed.** `apps/server/src/pins/service.ts`, `apps/server/src/roles/service.ts`,
+`apps/server/src/topics/service.ts`, `apps/server/src/topics/access.ts`, and this task file. All
+inside the Allowed files.
+
+**Commands.**
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot pins roles topics authz-sweep`:
+  5 test files passed, 70 tests passed.
+- `pnpm gate` (run 1): FAIL on `format` (`apps/server/src/topics/access.ts`). After wrapping the
+  `topicStatusSchema` literal the way Prettier wants, `pnpm gate` (run 2): `PASS install (frozen)`,
+  `PASS format`, `PASS lint`, `PASS typecheck`, `PASS tests @zilar/server`, `scope: every changed
+  file is inside the Allowed files`, `GATE PASS`.
+
+**Deviations.** None.
+
+**Open questions.** None.
+
 ## Review (written by Claude)
+
+**2026-10-08, lead:** approved.
+- **Pre-review:** clean. The packet (13:46) is newer than HEAD 864a2cd8.
+- **No test file changed.**
+- **Lead check:**
+  - none of the four files imports zod;
+  - about 200 lines of dead request schemas are removed;
+  - the topic and pin enums are now `Schema.Literals`, and the exported types keep their names.

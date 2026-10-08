@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { Effect } from 'effect';
+import { Effect, Schema } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
-import { z } from 'zod';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
 import { pinnedMessages } from '../db/schema';
@@ -21,8 +20,8 @@ export const PIN_SENDER_NAME_MAX = 80;
 export const PIN_TEXT_MAX = 300;
 export const PIN_MESSAGE_ID_MAX = 256;
 
-export const pinKindSchema = z.enum(['text', 'image', 'file', 'voice', 'card']);
-export type PinKind = z.infer<typeof pinKindSchema>;
+export const pinKindSchema = Schema.Literals(['text', 'image', 'file', 'voice', 'card']);
+export type PinKind = typeof pinKindSchema.Type;
 
 export type PinRow = typeof pinnedMessages.$inferSelect;
 
@@ -37,54 +36,16 @@ export interface PinView {
   pinnedAt: string;
 }
 
-const CONTROL_CHAR_MAX = 0x1f;
-const CONTROL_CHAR_DEL = 0x7f;
-// Message bodies may carry tab and newline (Shift+Enter); the snapshot keeps
-// the same rule and rejects every other control character.
-const SNAPSHOT_WHITESPACE = new Set(['\t', '\n']);
-
-function hasControlCharacters(value: string, allowWhitespace = false): boolean {
-  for (const char of value) {
-    const code = char.codePointAt(0) ?? 0;
-    if (code <= CONTROL_CHAR_MAX || code === CONTROL_CHAR_DEL) {
-      if (allowWhitespace && SNAPSHOT_WHITESPACE.has(char)) {
-        continue;
-      }
-      return true;
-    }
-  }
-  return false;
-}
-
 // The snapshot is display-only: the server trusts it for rendering, never
-// for authorization. Still validated hard at the boundary so a hostile
-// client cannot store control characters or oversized blobs.
-export const createPinBodySchema = z
-  .object({
-    chat: z.string().min(1).max(255),
-    messageId: z.string().min(1).max(PIN_MESSAGE_ID_MAX),
-    senderName: z
-      .string()
-      .trim()
-      .min(1, { message: 'senderName must not be empty' })
-      .max(PIN_SENDER_NAME_MAX, {
-        message: `senderName must be at most ${PIN_SENDER_NAME_MAX} characters`,
-      })
-      .refine((value) => !hasControlCharacters(value), {
-        message: 'senderName must not contain control characters',
-      }),
-    text: z
-      .string()
-      .max(PIN_TEXT_MAX, { message: `text must be at most ${PIN_TEXT_MAX} characters` })
-      .refine((value) => !hasControlCharacters(value, true), {
-        message: 'text must not contain control characters',
-      })
-      .optional(),
-    kind: pinKindSchema.optional(),
-  })
-  .strict();
-
-export type CreatePinBody = z.infer<typeof createPinBodySchema>;
+// for authorization. Requests are validated at the Effect HTTP boundary in
+// `api.ts`; this is the shape the service accepts.
+export interface CreatePinBody {
+  chat: string;
+  messageId: string;
+  senderName: string;
+  text?: string | undefined;
+  kind?: PinKind | undefined;
+}
 
 export interface PinsServiceDeps {
   db: ServerDatabase;

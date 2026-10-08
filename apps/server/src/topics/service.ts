@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto';
 import { and, eq, inArray, sql } from 'drizzle-orm';
-import { z } from 'zod';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
 import {
@@ -29,10 +28,10 @@ import {
   requireManagedTopic,
   requireVisibleTopic,
   toMissingTopic,
-  topicKindSchema,
-  topicStatusSchema,
-  topicVisibilitySchema,
+  type TopicKind,
   type TopicRow,
+  type TopicStatus,
+  type TopicVisibility,
 } from './access';
 import { emitTopicAi } from '../groups/events';
 import { revokeActiveRulesForAiInTopic } from '../approvals/rules';
@@ -45,105 +44,32 @@ export const TOPIC_NAME_MAX = 80;
 export const TOPIC_LINK_URL_MAX = 300;
 export const TOPIC_LINK_LABEL_MAX = 40;
 
-const CONTROL_CHAR_MAX = 0x1f;
-const CONTROL_CHAR_DEL = 0x7f;
-
-function hasControlCharacters(value: string): boolean {
-  for (const char of value) {
-    const code = char.codePointAt(0) ?? 0;
-    if (code <= CONTROL_CHAR_MAX || code === CONTROL_CHAR_DEL) {
-      return true;
-    }
-  }
-  return false;
+// The request bodies are validated at the Effect HTTP boundary in `api.ts`;
+// these are the shapes the service accepts.
+export interface CreateTopicBody {
+  name: string;
+  kind?: TopicKind | undefined;
+  visibility?: TopicVisibility | undefined;
+  memberIds?: string[] | undefined;
+  glyph?: string | undefined;
+  owner?: { kind: 'user' | 'ai'; id: string } | null | undefined;
+  linkUrl?: string | null | undefined;
+  linkLabel?: string | null | undefined;
 }
 
-const nameSchema = z
-  .string()
-  .trim()
-  .min(1, { message: 'name must not be empty' })
-  .max(TOPIC_NAME_MAX, { message: `name must be at most ${TOPIC_NAME_MAX} characters` })
-  .refine((value) => !hasControlCharacters(value), {
-    message: 'name must not contain control characters',
-  });
-
-const glyphSchema = z
-  .string()
-  .min(1, { message: 'glyph must not be empty' })
-  .max(8, { message: 'glyph must be at most 2 characters' })
-  .refine((value) => [...value].length >= 1 && [...value].length <= 2, {
-    message: 'glyph must be 1 or 2 characters',
-  })
-  .refine((value) => !hasControlCharacters(value), {
-    message: 'glyph must not contain control characters',
-  });
-
-const linkUrlSchema = z
-  .string()
-  .trim()
-  .min(1)
-  .max(TOPIC_LINK_URL_MAX)
-  .refine((value) => value.startsWith('https://'), {
-    message: 'linkUrl must be an https URL',
-  })
-  .refine(
-    (value) => {
-      try {
-        new URL(value);
-        return true;
-      } catch {
-        return false;
-      }
-    },
-    { message: 'linkUrl must be a valid URL' },
-  );
-
-const linkLabelSchema = z
-  .string()
-  .trim()
-  .min(1, { message: 'linkLabel must not be empty' })
-  .max(TOPIC_LINK_LABEL_MAX, {
-    message: `linkLabel must be at most ${TOPIC_LINK_LABEL_MAX} characters`,
-  });
-
-const ownerSchema = z
-  .object({
-    kind: z.enum(['user', 'ai']),
-    id: z.string().min(1),
-  })
-  .strict();
-
-export const createTopicBodySchema = z
-  .object({
-    name: nameSchema,
-    kind: topicKindSchema.optional(),
-    visibility: topicVisibilitySchema.optional(),
-    memberIds: z.array(z.string().min(1)).max(50).optional(),
-    glyph: glyphSchema.optional(),
-    owner: ownerSchema.nullable().optional(),
-    linkUrl: linkUrlSchema.nullish(),
-    linkLabel: linkLabelSchema.nullish(),
-  })
-  .strict();
-
-export const patchTopicBodySchema = z
-  .object({
-    name: nameSchema.optional(),
-    glyph: glyphSchema.optional(),
-    kind: topicKindSchema.optional(),
-    status: topicStatusSchema.optional(),
-    owner: ownerSchema.nullish(),
-    linkUrl: linkUrlSchema.nullish(),
-    linkLabel: linkLabelSchema.nullish(),
-    archived: z.literal(true).optional(),
-    visibility: topicVisibilitySchema.optional(),
-    memberIds: z.array(z.string().min(1)).max(50).optional(),
-    confirmExposeHistory: z.boolean().optional(),
-  })
-  .strict();
-
-export type CreateTopicBody = z.infer<typeof createTopicBodySchema>;
-export type PatchTopicBody = z.infer<typeof patchTopicBodySchema>;
+export interface PatchTopicBody {
+  name?: string | undefined;
+  glyph?: string | undefined;
+  kind?: TopicKind | undefined;
+  status?: TopicStatus | undefined;
+  owner?: { kind: 'user' | 'ai'; id: string } | null | undefined;
+  linkUrl?: string | null | undefined;
+  linkLabel?: string | null | undefined;
+  archived?: true | undefined;
+  visibility?: TopicVisibility | undefined;
+  memberIds?: string[] | undefined;
+  confirmExposeHistory?: boolean | undefined;
+}
 
 export interface TopicServiceDeps {
   db: ServerDatabase;
@@ -751,9 +677,9 @@ async function emitDroppedTopicAis(deps: TopicServiceDeps, topic: TopicRow): Pro
   }
 }
 
-export const addTopicAiBodySchema = z.object({ aiId: z.string().min(1) }).strict();
-
-export type AddTopicAiBody = z.infer<typeof addTopicAiBodySchema>;
+export interface AddTopicAiBody {
+  aiId: string;
+}
 
 // T-0116: attach roles to a topic and pick its approver role. The actor
 // must be a topic manager (creator or group owner/admin) who can see the
@@ -762,14 +688,10 @@ export type AddTopicAiBody = z.infer<typeof addTopicAiBodySchema>;
 // on a public one, like `memberIds`. The approver role may be null
 // ("Owner and admins only"). The room re-syncs so new holders join and
 // removed holders leave.
-export const setTopicRolesBodySchema = z
-  .object({
-    roleIds: z.array(z.string().min(1)).max(20),
-    approverRoleId: z.string().min(1).nullable(),
-  })
-  .strict();
-
-export type SetTopicRolesBody = z.infer<typeof setTopicRolesBodySchema>;
+export interface SetTopicRolesBody {
+  roleIds: string[];
+  approverRoleId: string | null;
+}
 
 export interface SetTopicRolesInput extends SetTopicRolesBody {
   topicId: string;

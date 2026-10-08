@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto';
 import { and, count, eq, inArray, sql } from 'drizzle-orm';
-import { z } from 'zod';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
 import {
@@ -18,36 +17,6 @@ import { syncTopicRoom } from '../topics/rooms';
 
 export const MAX_ROLES_PER_GROUP = 20;
 export const ROLE_NAME_MAX = 30;
-
-const CONTROL_CHAR_MAX = 0x1f;
-const CONTROL_CHAR_DEL = 0x7f;
-
-function hasControlCharacters(value: string): boolean {
-  for (const char of value) {
-    const code = char.codePointAt(0) ?? 0;
-    if (code <= CONTROL_CHAR_MAX || code === CONTROL_CHAR_DEL) {
-      return true;
-    }
-  }
-  return false;
-}
-
-export const roleNameSchema = z
-  .string()
-  .trim()
-  .min(1, { message: 'name must not be empty' })
-  .max(ROLE_NAME_MAX, { message: `name must be at most ${ROLE_NAME_MAX} characters` })
-  .refine((value) => !hasControlCharacters(value), {
-    message: 'name must not contain control characters',
-  });
-
-export const createRoleBodySchema = z.object({ name: roleNameSchema }).strict();
-
-export const renameRoleBodySchema = z.object({ name: roleNameSchema }).strict();
-
-export const setRoleMembersBodySchema = z
-  .object({ userIds: z.array(z.string().min(1)).max(50) })
-  .strict();
 
 export type GroupRoleRow = typeof groupRoles.$inferSelect;
 

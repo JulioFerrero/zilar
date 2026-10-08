@@ -1,5 +1,5 @@
 import { and, count, eq, inArray } from 'drizzle-orm';
-import { z } from 'zod';
+import { Schema } from 'effect';
 import type { ServerDatabase } from '../db/client';
 import {
   ais,
@@ -14,14 +14,20 @@ import {
 import { HttpError } from '../errors';
 import { holdsTopicRole, rolesOfTopic, topicRoleHolderIds } from '../roles/service';
 
-export const topicVisibilitySchema = z.enum(['public', 'private']);
-export type TopicVisibility = z.infer<typeof topicVisibilitySchema>;
+export const topicVisibilitySchema = Schema.Literals(['public', 'private']);
+export type TopicVisibility = typeof topicVisibilitySchema.Type;
 
-export const topicKindSchema = z.enum(['chat', 'task', 'bug', 'ui', 'routine']);
-export type TopicKind = z.infer<typeof topicKindSchema>;
+export const topicKindSchema = Schema.Literals(['chat', 'task', 'bug', 'ui', 'routine']);
+export type TopicKind = typeof topicKindSchema.Type;
 
-export const topicStatusSchema = z.enum(['open', 'in_progress', 'in_review', 'blocked', 'done']);
-export type TopicStatus = z.infer<typeof topicStatusSchema>;
+export const topicStatusSchema = Schema.Literals([
+  'open',
+  'in_progress',
+  'in_review',
+  'blocked',
+  'done',
+]);
+export type TopicStatus = typeof topicStatusSchema.Type;
 
 export type TopicRow = typeof topics.$inferSelect;
 
