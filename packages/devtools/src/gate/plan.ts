@@ -8,6 +8,9 @@
 import os from 'node:os';
 import path from 'node:path';
 
+// Turbo's persistent cache, shared by every worktree.
+export const turboCacheDir = path.join(os.homedir(), '.zilar-turbo-cache');
+
 export interface WorkspacePackage {
   name: string;
   dir: string;
@@ -130,7 +133,7 @@ export function gateSteps(
 ): GateStep[] {
   const full = options.full ?? false;
   const merge = options.merge ?? false;
-  const cacheDir = options.cacheDir ?? path.join(os.homedir(), '.zilar-turbo-cache');
+  const cacheDir = options.cacheDir ?? turboCacheDir;
   const selected = full
     ? []
     : selectTestFiles(changedFiles, options.testFiles ?? [], options.exists);

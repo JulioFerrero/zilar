@@ -8,17 +8,18 @@
 
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import {
   gateSteps,
   isTestFile,
   stepTimeoutMs,
   strayFiles,
+  turboCacheDir,
   type GateStep,
   type WorkspacePackage,
 } from './plan.js';
 import { scopeReport } from './scope.js';
+import { gateSlotsDir, release, tryAcquire } from './slots.js';
 
 interface RunResult {
   ok: boolean;
@@ -123,6 +124,26 @@ function tail(text: string, count: number): string {
   return lines(text).slice(-count).join('\n');
 }
 
+// A synchronous sleep keeps `main` single-threaded: the gate holds the console
+// and simply parks the process until a slot frees up.
+const SLOT_POLL_MS = 5000;
+
+function sleepSync(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function acquireSlot(names: string[]): string | undefined {
+  let slot = tryAcquire(gateSlotsDir, names);
+  if (slot === undefined) {
+    console.log('gate: waiting for a free gate slot');
+    while (slot === undefined) {
+      sleepSync(SLOT_POLL_MS);
+      slot = tryAcquire(gateSlotsDir, names);
+    }
+  }
+  return slot;
+}
+
 function main(): void {
   const args = process.argv.slice(2);
   const baseIndex = args.indexOf('--base');
@@ -135,54 +156,75 @@ function main(): void {
   const steps: GateStep[] = gateSteps(files, readWorkspace(root), base, {
     full,
     merge,
-    cacheDir: path.join(os.homedir(), '.zilar-turbo-cache'),
+    cacheDir: turboCacheDir,
     testFiles: tracked.filter(isTestFile),
     exists: (file) => fs.existsSync(path.join(root, file)),
+  });
+  const slot = acquireSlot(merge ? ['merge'] : ['w1', 'w2']);
+  const releaseSlot = (): void => {
+    if (slot !== undefined) {
+      release(gateSlotsDir, slot);
+    }
+  };
+  // A signal must free the slot too, or the next gate waits on a dead pid.
+  process.once('SIGINT', () => {
+    releaseSlot();
+    process.exit(130);
+  });
+  process.once('SIGTERM', () => {
+    releaseSlot();
+    process.exit(143);
   });
   let failed = false;
   console.log(
     `gate: ${files.length} changed file(s) against ${base}${full ? ' (full)' : ''}${merge ? ' (merge)' : ''}`,
   );
-  for (const step of steps) {
-    if (step.skipReason !== undefined) {
-      console.log(`SKIP ${step.label} (${step.skipReason})`);
-      continue;
-    }
-    const timeoutMs = stepTimeoutMs(step.label);
-    const started = Date.now();
-    const result = run(root, step.command, step.args, timeoutMs, step.env);
-    const seconds = ((Date.now() - started) / 1000).toFixed(1);
-    if (result.timedOut) {
-      failed = true;
-      console.log(`FAIL  ${step.label}  (timed out after ${timeoutMs / 60_000} min)`);
-      console.log(tail(result.output, 40));
-      break;
-    }
-    console.log(`${result.ok ? 'PASS' : 'FAIL'}  ${step.label}  (${seconds}s)`);
-    if (!result.ok) {
-      failed = true;
-      console.log(tail(result.output, 40));
-      break;
-    }
-  }
-  const stray = strayFiles(tracked);
-  if (stray.length > 0) {
-    failed = true;
-    console.log(`FAIL  stray merge leftovers are tracked: ${stray.join(', ')}`);
-  }
-  const taskText = taskTextFor(root);
-  if (taskText !== undefined) {
-    const scope = scopeReport(taskText, files);
-    if (scope.unchecked) {
-      console.log('scope: the task names no Allowed files, nothing to compare');
-    } else if (scope.outside.length === 0) {
-      console.log('scope: every changed file is inside the Allowed files');
-    } else {
-      console.log(`scope: ${scope.outside.length} file(s) outside the Allowed files:`);
-      for (const file of scope.outside) {
-        console.log(`  ${file}`);
+  try {
+    for (const step of steps) {
+      if (step.skipReason !== undefined) {
+        console.log(`SKIP ${step.label} (${step.skipReason})`);
+        continue;
+      }
+      const timeoutMs = stepTimeoutMs(step.label);
+      const started = Date.now();
+      const command = merge ? step.command : 'nice';
+      const commandArgs = merge ? step.args : ['-n', '10', step.command, ...step.args];
+      const result = run(root, command, commandArgs, timeoutMs, step.env);
+      const seconds = ((Date.now() - started) / 1000).toFixed(1);
+      if (result.timedOut) {
+        failed = true;
+        console.log(`FAIL  ${step.label}  (timed out after ${timeoutMs / 60_000} min)`);
+        console.log(tail(result.output, 40));
+        break;
+      }
+      console.log(`${result.ok ? 'PASS' : 'FAIL'}  ${step.label}  (${seconds}s)`);
+      if (!result.ok) {
+        failed = true;
+        console.log(tail(result.output, 40));
+        break;
       }
     }
+    const stray = strayFiles(tracked);
+    if (stray.length > 0) {
+      failed = true;
+      console.log(`FAIL  stray merge leftovers are tracked: ${stray.join(', ')}`);
+    }
+    const taskText = taskTextFor(root);
+    if (taskText !== undefined) {
+      const scope = scopeReport(taskText, files);
+      if (scope.unchecked) {
+        console.log('scope: the task names no Allowed files, nothing to compare');
+      } else if (scope.outside.length === 0) {
+        console.log('scope: every changed file is inside the Allowed files');
+      } else {
+        console.log(`scope: ${scope.outside.length} file(s) outside the Allowed files:`);
+        for (const file of scope.outside) {
+          console.log(`  ${file}`);
+        }
+      }
+    }
+  } finally {
+    releaseSlot();
   }
   console.log(failed ? 'GATE FAIL' : 'GATE PASS');
   process.exit(failed ? 1 : 0);
