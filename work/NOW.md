@@ -2,6 +2,26 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-08 02:00, Julio asleep, Effect night continues:**
+- **Merged since 01:05:**
+  - T-0519, T-0508 and T-0506 (the mobile pins pilot);
+  - T-0505 (web `api.ts` part 1), T-0518, T-0521 (the atom-react plan), T-0504 (server config);
+  - T-0523 (agents G6, the listener), T-0520 (chat-prefs and chat-folders HTTP), T-0524 (mobile API batch 1);
+  - T-0522 (contacts and directory on effect/sql);
+  - T-0526: **zustand is gone from web.** The stores run on an atom registry behind a zustand-compatible API. Bundle +16.7 kB gzip. The lead checked it in a browser in mock mode, side by side with main.
+- **Merge queue:** T-0507 (web `api.ts` part 2), T-0527 (mobile batch 2), T-0529 (agents G5a), T-0525 (pins, roles and audit HTTP).
+- **Running or launching:**
+  - T-0528: chat-prefs and chat-folders on effect/sql;
+  - T-0530: web `api.ts` part 3, after which zod leaves web;
+  - T-0531: atom-react M1, after which zustand leaves mobile;
+  - T-0532: mobile batch 3, after which zod leaves mobile;
+  - T-0533: xmpp, chats and AI memory HTTP;
+  - T-0534: agents G5b.
+- **Lead decisions:**
+  - atom-react W1 swaps the container (one atom per store) instead of moving a pilot slice; slice atoms come later;
+  - invite-links and backgrounds HTTP wait. The Effect adapter loses the socket IP that the join limiter needs, and backgrounds stream bytes. Each needs its own design.
+- **Runner incident:** the lead's runner script hit the 2-hour background limit at 01:39 and was restarted detached. One queued merge line was lost to a queue-file race and was re-added.
+
 **2026-10-08 01:05, Julio asleep, Effect night continues:**
 - **Merged since 23:45:**
   - T-0498: the HttpApi adapter;
