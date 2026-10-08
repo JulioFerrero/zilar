@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { PGlite } from '@electric-sql/pglite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { Hono } from 'hono';
 import { createApp } from '../app';
 import { mediaItems } from '../db/schema';
 import { localpartFor } from '../xmpp/provisioning';
@@ -14,8 +13,7 @@ import {
   type TestContext,
 } from '../test-support';
 import type { ArchivePool, ArchiveRow } from '../search/service';
-import { createFilesRoutes } from './routes';
-import { HttpError } from '../errors';
+import { createFilesApi } from './api';
 
 // PGlite shapes the fake the way the real `archive` table is shaped, copied
 // from media/routes.test.ts.
@@ -163,31 +161,30 @@ describe('GET /api/files', () => {
     await archiveClient.close();
   });
 
-  function filesApp(fetchImpl: typeof fetch, withoutArchive = false): Hono {
-    const inner = new Hono();
-    inner.onError((error, c) => {
-      if (error instanceof HttpError) {
-        return c.json({ error: { code: error.code, message: error.message } }, error.status);
-      }
-      throw error;
+  // The Effect handler matches the full `/api`-prefixed path, so build the
+  // request against it directly instead of mounting the old Hono wrapper.
+  function filesApp(
+    fetchImpl: typeof fetch,
+    withoutArchive = false,
+  ): { request(url: string, init?: RequestInit): Promise<Response> } {
+    const api = createFilesApi({
+      auth: context.auth,
+      db: context.db,
+      config: context.config,
+      logger: context.logger,
+      ...(withoutArchive ? {} : { archive }),
+      now: () => now,
+      fetchImpl,
     });
-    inner.route(
-      '/api',
-      createFilesRoutes({
-        auth: context.auth,
-        db: context.db,
-        config: context.config,
-        logger: context.logger,
-        ...(withoutArchive ? {} : { archive }),
-        now: () => now,
-        fetchImpl,
-      }),
-    );
-    return inner;
+    return {
+      request(url: string, init?: RequestInit): Promise<Response> {
+        return api.handler(new Request(url, init));
+      },
+    };
   }
 
   async function getFile(
-    target: { request: Hono['request'] },
+    target: { request(url: string, init?: RequestInit): Promise<Response> },
     cookie: string | undefined,
     params: string,
     extraHeaders: Record<string, string> = {},
