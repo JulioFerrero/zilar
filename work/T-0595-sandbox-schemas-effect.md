@@ -1,7 +1,7 @@
 ---
 id: T-0595
 title: "Tool args T-F: sandbox/types.ts (limits, tool output) and sandbox/run-tool.ts (worker result/event unions, output JSON) zod to Effect Schema; same accept/reject, same silent ignore of bad worker messages, same fixed invalid_output text; tests unchanged"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0595-sandbox-schemas-effect
 model: auto
@@ -50,7 +50,7 @@ Julio, 2026-10-07: Effect Schema replaces zod. The plan is `docs/audit/tool-args
 `AGENTS.md`, `docs/EFFECT_GUIDE.md` ("Effect 4 facts"), `docs/audit/tool-args-schema-plan.md` (§1.8, §1.9 and §4 T-F), `apps/server/src/sandbox/types.ts` and `apps/server/src/sandbox/run-tool.ts`.
 
 ### Allowed files
-`apps/server/src/sandbox/types.ts`, `apps/server/src/sandbox/run-tool.ts`, `work/T-0595-sandbox-schemas-effect.md`.
+`apps/server/src/sandbox/types.ts`, `apps/server/src/sandbox/run-tool.ts`, `apps/server/src/sandbox/limits.ts` and `apps/server/src/sandbox/tool-worker.ts` (both added by the lead on 2026-10-08 for the worker-safe limits split), `work/T-0595-sandbox-schemas-effect.md`.
 
 ### Checks
 ```bash
@@ -67,4 +67,98 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### Summary
+
+All five sandbox schemas are on Effect Schema and `sandbox/` has no `zod` left. Per the
+lead's decision on the BLOCKED round, I took option 1: the values the worker thread needs
+were split into a schema-free `sandbox/limits.ts`, so the worker no longer loads `types.ts`
+(and therefore no longer loads Effect on every spawn). `pnpm gate` ends `GATE PASS` and the
+sandbox/tools suite is green.
+
+### Why the split (resolution of the blocked round)
+
+`tool-worker.ts` imports `MAX_SOURCE_BYTES`, `resolveLimits`, `withFetchPrefix` and the
+`SandboxLimits` type from `types.ts`. Converting `types.ts` to Effect made every worker
+thread `require('effect')` under its `tsx/cjs` bootstrap (~0.7-2 s per spawn vs ~0.19 s for
+zod). That erased the ~600 ms margin in `run-tool.test.ts` > "times out a tool that awaits
+a fetch that never answers" (worker timer `fetchTimeoutMs + 1000` = 2000 ms vs parent
+`wallMs + 500` = 3500 ms), turning `fetch_denied` into `timeout`.
+
+The bisect that led to the fix (same machine/load, 3 runs each):
+
+| types.ts | run-tool.ts | result |
+| --- | --- | --- |
+| Effect (mine) | Effect (mine) | failed |
+| Effect (mine) | zod (original) | failed |
+| zod (original) | Effect (mine) | passed |
+| zod (original) | zod (original) | passed |
+
+`tool-worker.ts` now imports from `./limits`, which has no schema import, so the worker is
+back to a zod-sized startup. The `wallMs + 500` margin in `run-tool.ts` is unchanged, as
+the lead required.
+
+### What I did (one commit per item)
+
+1. **`apps/server/src/sandbox/limits.ts` (new).** `MAX_SOURCE_BYTES`, `DEFAULT_LIMITS`,
+   `HARD_MAX_LIMITS`, `SandboxLimits`, `resolveLimits`, `FETCH_DENIED_PREFIX`,
+   `withFetchPrefix`. It imports no schema library. `resolveLimits` keeps exact behaviour
+   with plain checks: every field must be `Number.isInteger` and `> 0`, except `maxFetches`
+   (`>= 0`); any failure falls back to `{ ...DEFAULT_LIMITS }`; then the same
+   `HARD_MAX_LIMITS` clamp and the `wallMs >= cpuMs` fix. It also drops unknown keys the way
+   the old `z.object` decode did (only the nine limit keys are copied).
+2. **`apps/server/src/sandbox/types.ts`.** Re-exports the names above from `./limits` so
+   every other importer is unchanged, and keeps the Effect `toolOutputSchema` +
+   `parseToolOutput` (and the rest of the file).
+3. **`apps/server/src/sandbox/tool-worker.ts`.** Imports `MAX_SOURCE_BYTES`, `resolveLimits`,
+   `withFetchPrefix` and `type SandboxLimits` from `./limits`. Nothing else changed.
+4. **`run-tool.ts`.** Unchanged in this round; the timing margin is untouched.
+
+The Effect conversion itself (types.ts `toolOutputSchema`/`parseToolOutput`; run-tool.ts
+`workerResultSchema`/`WorkerResultMessage`, `workerEventSchema`, `outputJsonSchema`,
+`onMessage`):
+- `toolOutputSchema` -> `Schema.Struct({ text: Schema.String, data:
+  Schema.optional(Schema.Unknown) })`.
+- `parseToolOutput` -> `Schema.decodeUnknownOption`; `null` on failure, `{ text }` when
+  `data === undefined`, otherwise `{ text, data }`.
+- `workerResultSchema` -> `Schema.Union` of the result and error structs
+  (`Schema.Literal`, `Schema.Literals([...7 kinds])`, `Schema.Finite` for `durationMs`,
+  non-negative int for `fetchCount`).
+- `WorkerResultMessage` -> `Schema.Schema.Type<typeof workerResultSchema>`.
+- `workerEventSchema` -> `Schema.Union([workerResultSchema, log, fetch])` with
+  `Schema.Record(Schema.String, Schema.String)` for `headers`.
+- `outputJsonSchema` -> `Schema.Struct({ text, data: optional(Unknown) })`.
+- `onMessage` -> `Schema.decodeUnknownOption`; a failed decode still silently returns.
+- The fixed text `'tool must return a string or { text, data }'` is byte-identical at all
+  four call sites. No `onExcessProperty` was added; no `any`.
+
+### Commands run (real results)
+
+- The previously failing timeout test, 3x in isolation (load ~32):
+  `run-tool.test.ts > runTool limits > times out a tool that awaits a fetch that never
+  answers` — **passed 3/3**, 2479 ms / 2145 ms / 2261 ms (each vs the 3500 ms parent limit).
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot sandbox tools`
+  (the task's check): `Test Files 15 passed (15)`, `Tests 319 passed (319)`, 128.90 s.
+- `pnpm gate` from the repo root:
+  - `PASS install (frozen) (4.8s)`, `PASS format (62.2s)`, `PASS lint (1.3s)`,
+    `PASS typecheck (23.3s)`, `PASS tests @zilar/server (22.3s)`,
+    `scope: every changed file is inside the Allowed files`, **`GATE PASS`**.
+
+### Notes
+
+- Changed files: `apps/server/src/sandbox/limits.ts` (new),
+  `apps/server/src/sandbox/types.ts`, `apps/server/src/sandbox/tool-worker.ts`, and this
+  task file; `run-tool.ts` was already converted in the first commit. All inside Allowed.
+- No secrets, routes, deletes, caps or audit paths are involved; the security checklist has
+  nothing new to enforce.
+- Tests are unchanged.
+
 ## Review (written by Claude)
+
+**2026-10-08, lead:** approved.
+- **Pre-review:** clean. The packet (13:43) is newer than HEAD 91030ba0.
+- **No test file changed.**
+- **Lead check:**
+  - the new `sandbox/limits.ts` imports nothing; it holds `resolveLimits`, a plain check with the same fallback and clamp;
+  - `tool-worker.ts` imports from `./limits`, so worker threads no longer load Effect;
+  - the timeout test that failed passed 3 times out of 3 (about 2.1 to 2.5 s against the 3.5 s limit);
+  - there is no zod left in `sandbox/`.

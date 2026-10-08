@@ -1,8 +1,7 @@
 import { Worker } from 'node:worker_threads';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
-import { Data, Duration, Effect } from 'effect';
-import { z } from 'zod';
+import { Data, Duration, Effect, Option, Schema } from 'effect';
 import {
   createDefaultFetcher,
   validateFetchRequest,
@@ -33,16 +32,20 @@ export interface RunToolParams {
   resolver?: DnsResolver;
 }
 
-const workerResultSchema = z.union([
-  z.object({
-    type: z.literal('result'),
-    outputJson: z.string(),
-    fetchCount: z.number().int().min(0),
-    durationMs: z.number(),
+const nonNegativeInt = Schema.Finite.pipe(
+  Schema.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0)),
+);
+
+const workerResultSchema = Schema.Union([
+  Schema.Struct({
+    type: Schema.Literal('result'),
+    outputJson: Schema.String,
+    fetchCount: nonNegativeInt,
+    durationMs: Schema.Finite,
   }),
-  z.object({
-    type: z.literal('error'),
-    kind: z.enum([
+  Schema.Struct({
+    type: Schema.Literal('error'),
+    kind: Schema.Literals([
       'timeout',
       'memory',
       'runtime',
@@ -51,30 +54,30 @@ const workerResultSchema = z.union([
       'fetch_denied',
       'output_too_large',
     ]),
-    message: z.string(),
-    fetchCount: z.number().int().min(0),
-    durationMs: z.number(),
+    message: Schema.String,
+    fetchCount: nonNegativeInt,
+    durationMs: Schema.Finite,
   }),
 ]);
 
-type WorkerResultMessage = z.infer<typeof workerResultSchema>;
+type WorkerResultMessage = Schema.Schema.Type<typeof workerResultSchema>;
 
-const workerEventSchema = z.union([
+const workerEventSchema = Schema.Union([
   workerResultSchema,
-  z.object({ type: z.literal('log'), text: z.string() }),
-  z.object({
-    type: z.literal('fetch'),
-    id: z.number().int().min(0),
-    url: z.string(),
-    method: z.string(),
-    headers: z.record(z.string(), z.string()),
-    bodyPresent: z.boolean(),
+  Schema.Struct({ type: Schema.Literal('log'), text: Schema.String }),
+  Schema.Struct({
+    type: Schema.Literal('fetch'),
+    id: nonNegativeInt,
+    url: Schema.String,
+    method: Schema.String,
+    headers: Schema.Record(Schema.String, Schema.String),
+    bodyPresent: Schema.Boolean,
   }),
 ]);
 
-const outputJsonSchema = z.object({
-  text: z.string(),
-  data: z.unknown().optional(),
+const outputJsonSchema = Schema.Struct({
+  text: Schema.String,
+  data: Schema.optional(Schema.Unknown),
 });
 
 // The worker failed to start (missing tsx hook, `worker_threads` refused). It
@@ -199,11 +202,11 @@ export async function runTool(params: RunToolParams): Promise<RunToolResult> {
       };
 
       const onMessage = (raw: unknown): void => {
-        const parsed = workerEventSchema.safeParse(raw);
-        if (!parsed.success) {
+        const parsed = Schema.decodeUnknownOption(workerEventSchema)(raw);
+        if (Option.isNone(parsed)) {
           return;
         }
-        const event = parsed.data;
+        const event = parsed.value;
         if (event.type === 'log') {
           pushLog(event.text);
           return;
@@ -301,8 +304,8 @@ export async function runTool(params: RunToolParams): Promise<RunToolResult> {
           });
           return;
         }
-        const shaped = outputJsonSchema.safeParse(parsedOutput);
-        if (!shaped.success) {
+        const shaped = Schema.decodeUnknownOption(outputJsonSchema)(parsedOutput);
+        if (Option.isNone(shaped)) {
           settle(
             fail(
               'invalid_output',
@@ -312,7 +315,7 @@ export async function runTool(params: RunToolParams): Promise<RunToolResult> {
           );
           return;
         }
-        const output = parseToolOutput(shaped.data, limits.maxOutputBytes);
+        const output = parseToolOutput(shaped.value, limits.maxOutputBytes);
         if (output === null) {
           settle(
             fail(

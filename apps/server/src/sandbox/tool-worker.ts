@@ -1,7 +1,7 @@
 import { parentPort, workerData } from 'node:worker_threads';
 import { getQuickJS, type QuickJSContext, type QuickJSHandle } from 'quickjs-emscripten';
 import type { FetchResponse } from './host-fetch';
-import { MAX_SOURCE_BYTES, resolveLimits, withFetchPrefix, type SandboxLimits } from './types';
+import { MAX_SOURCE_BYTES, resolveLimits, withFetchPrefix, type SandboxLimits } from './limits';
 
 // Runs inside the worker thread. It owns the QuickJS runtime for one tool
 // execution and talks to the parent only through small JSON messages: log
