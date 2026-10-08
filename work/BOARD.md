@@ -460,6 +460,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0560](T-0560-effect-http-media.md) | Effect C (HTTP): media gallery on HttpApi | planned | auto | T-0548 | |
 | [T-0561](T-0561-effect-http-auth-me-invites.md) | Effect C (HTTP): /me and invites on HttpApi | planned | auto | T-0548 | |
 | [T-0563](T-0563-effect-http-socket-address.md) | Effect C (HTTP) adapter: socket address and shared client IP | planned | auto | T-0556 | |
+| [T-0564](T-0564-effect-schema-server-leaf-batch-1.md) | Effect Schema: server leaf batch 1 (stream, tokens, model entry, push protocol) | planned | auto | T-0562 | |
 | [T-0427](T-0427-mobile-forwarded-header.md) | Mobile: forwarded messages show 'Forwarded from X [in Y]' | 2026-10-06 |
 | [T-0428](T-0428-mobile-new-chat-menu-sheet.md) | Mobile: New chat menu on the kit ActionSheet with icons | 2026-10-06 |
 | [T-0429](T-0429-mobile-dismiss-banner.md) | Mobile: DismissBanner replaces 12 copied chat screen banners | 2026-10-06 |
