@@ -1,7 +1,7 @@
 ---
 id: T-0562
 title: "Agents G9: move start/stop/reconcile and their state (started, timer, unsubscribes) out of createAgentGateway into agents/gateway/lifecycle.ts verbatim; isStarted becomes the factory's getter; zero behaviour change"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0562-agents-g9-extract-lifecycle
 model: auto
@@ -65,4 +65,68 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- Created `apps/server/src/agents/gateway/lifecycle.ts` with `createGatewayLifecycle(ctx)`.
+  It owns the moved state (`started`, `timer`, `unsubscribes`) and returns
+  `{ start, stop, reconcile, isStarted }`. Bodies of `reconcile`, `start` and
+  `stop` are verbatim moves, with two mechanical adaptations: the moved state
+  is read inside the factory, and `roomListener.clearAll()` became the
+  injected `clearAllListeners` callback (the only textual substitution).
+- In `createAgentGateway` (`apps/server/src/agents/gateway.ts`):
+  - removed the moved state and the three functions;
+  - removed the now-unused imports (`listActiveAisForGateway`, `onAiLifecycle`,
+    `ActiveAiForGateway`, `onGroupAi`, `onTopicAi`, `loadActiveAi`); kept
+    `type AiServiceDeps` (still used by `aiDeps()`);
+  - `createSessionLifecycle`'s `isStarted` is now the lazy arrow
+    `() => lifecycle.isStarted()`, and the lifecycle factory is created after
+    the session/turn factories it calls into;
+  - the returned object (`start`, `stop`, `reconcile`, `size`, `aiIds`,
+    `postToChat`) is unchanged via destructuring.
+- No test file touched.
+
+### Ordering choice
+Option 2 from the spec (lazy arrow, TDZ-safe): `createSessionLifecycle` is
+still created before the lifecycle factory, so its `isStarted` reads
+`lifecycle.isStarted()` lazily at event time (inside `connectAi`), after the
+`const lifecycle` is initialized. This kept the session-factory call site
+position unchanged and avoided reordering the DM/group-turn factories that
+also close over `connectAi`/`disconnectAi`.
+
+### Verbatim diffs (whitespace-insensitive, old = HEAD gateway.ts)
+- `reconcile` (old lines 253-291) vs new: `diff -w` identical.
+- `start` (old 331-440) + `stop` (old 442-465) vs new, after substituting
+  `roomListener.clearAll()` -> `clearAllListeners()` in the old text:
+  `diff -w` identical. The `stop` substitution is the only logic-text change,
+  and it is behavior-identical (same call, injected because `roomListener`
+  lives in gateway.ts).
+
+### Checks
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot
+  src/agents/gateway.test.ts`: 168 passed (includes the `lifecycle` describe
+  block and the four pinning tests named in the spec). The full `src/agents`
+  run timed out at the 120s tool cap, so I ran the pinning file with a 300s
+  timeout instead; no other agents test file exists besides `gateway.test.ts`
+  and unrelated suites (`context`, `rounds`, `stream`, `tools`, `reply`,
+  `integration`).
+- `pnpm gate` (repo root): GATE PASS. Summary lines:
+  `2 changed file(s) against main` / `PASS install (frozen) (2.8s)` /
+  `PASS format (41.3s)` / `PASS lint (1.6s)` / `PASS typecheck (34.8s)` /
+  `PASS tests @zilar/server (90.3s)` /
+  `scope: every changed file is inside the Allowed files` / `GATE PASS`.
+  (First gate run failed only on Prettier line-wrapping in the new
+  lifecycle.ts; fixed with `prettier --write` on that Allowed file, then
+  re-ran the gate clean. That prettier pass only reflowed lines/imports, and
+  the verbatim diffs above were re-verified afterwards.)
+
+### Security checklist
+No new routes, auth, secrets handling, deletes scoping, caps or audit rows:
+pure code move. Log lines moved verbatim (ids only). No `any`, no
+`@ts-ignore`.
+
+### Files changed
+- `apps/server/src/agents/gateway/lifecycle.ts` (new)
+- `apps/server/src/agents/gateway.ts` (-189/+25 net)
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-08). G9: reconcile, start and stop, and their state (started, timer, unsubscribes), moved into agents/gateway/lifecycle.ts. Lead diff per function (whitespace-insensitive) against main: reconcile and start are identical; stop differs only in roomListener.clearAll() becoming the injected clearAllListeners(). The gateway object keys are unchanged. Every gateway extraction step (G1-G9) is now done; next come the Effect conversions C1 and C2. Nit accepted: the focused check ran gateway.test.ts only, but the gate ran the full server suite (GATE PASS).

@@ -1,15 +1,9 @@
 import { createXmppCore, type ChatMessage } from '@zilar/xmpp-core';
 import { DEFAULT_LITELLM_BASE_URL, type LitellmAdminClient } from '../ai/litellm-client';
 import { modelNameForAi } from '../ai/model-entry';
-import {
-  listActiveAisForGateway,
-  onAiLifecycle,
-  type ActiveAiForGateway,
-  type AiServiceDeps,
-} from '../ais/service';
+import type { AiServiceDeps } from '../ais/service';
 import type { KeyCipher } from '../connections/crypto';
 import { sharedDraftHub } from '../drafts/hub';
-import { onGroupAi, onTopicAi } from '../groups/events';
 import { normBareJid } from './context';
 import {
   RECONCILE_INTERVAL_MS,
@@ -22,7 +16,6 @@ import {
   type RoomRound,
 } from './gateway/contracts';
 import { createBudgetGate } from './gateway/budget';
-import { loadActiveAi } from './gateway/db';
 import { createRoomListener } from './gateway/listener';
 import { createLiveSession } from './gateway/live';
 import { createSessionLifecycle } from './gateway/sessions';
@@ -30,6 +23,7 @@ import { createMemoryRunner } from './gateway/memory';
 import { createDmTurn } from './gateway/dm-turn';
 import { createGroupIngest } from './gateway/group-ingest';
 import { createGroupTurn } from './gateway/group-turn';
+import { createGatewayLifecycle } from './gateway/lifecycle';
 import { createToolExec } from './gateway/tool-exec';
 
 export type {
@@ -99,14 +93,12 @@ export function createAgentGateway(
     pumpRoom: (session, roomJid) => pumpRoom(session, roomJid),
   });
 
-  let started = false;
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  let unsubscribes: Array<() => void> = [];
-
   // T-0534 (plan §3, G5b): the session lifecycle lives in
   // `agents/gateway/sessions.ts`. The factory takes the shared maps and the
   // callbacks for the gateway code that stays here; the destructured names
-  // keep every call site below unchanged.
+  // keep every call site below unchanged. `isStarted` reads the lifecycle
+  // factory lazily: it is created below, and the arrow runs only at event
+  // time, so the later declaration is TDZ-safe.
   const { connectAi, disconnectAi, syncAiRooms } = createSessionLifecycle({
     sessions,
     superseded,
@@ -117,7 +109,7 @@ export function createAgentGateway(
     secretsFor,
     roomJidFor,
     nowMs,
-    isStarted: () => started,
+    isStarted: () => lifecycle.isStarted(),
     handleIncoming: (session, message) => handleIncoming(session, message),
     dropRoomListenerIfUnused: (roomJid) => roomListener.dropRoomListenerIfUnused(roomJid),
   });
@@ -250,45 +242,25 @@ export function createAgentGateway(
     nowMs,
   });
 
-  async function reconcile(): Promise<void> {
-    let active: ActiveAiForGateway[];
-    try {
-      active = await listActiveAisForGateway(deps.db);
-    } catch (error) {
-      logger.warn({ err: toRedactedError(error, secretsFor()) }, 'AI reconcile failed');
-      return;
-    }
-    const wanted = new Set(active.map((ai) => ai.id));
-    for (const ai of active) {
-      try {
-        const existing = sessions.get(ai.id);
-        if (existing === undefined) {
-          await connectAi(ai);
-        } else {
-          // Rooms drift without a reconnect: a missed group event, a failed
-          // join, or a stale nick is picked up here at the latest.
-          await syncAiRooms(existing, ai.name);
-        }
-      } catch (error) {
-        logger.warn(
-          { err: toRedactedError(error, secretsFor()), aiId: ai.id },
-          'AI reconcile connect failed',
-        );
-      }
-    }
-    for (const aiId of sessions.keys()) {
-      if (!wanted.has(aiId)) {
-        try {
-          await disconnectAi(aiId);
-        } catch (error) {
-          logger.warn(
-            { err: toRedactedError(error, secretsFor()), aiId },
-            'AI reconcile disconnect failed',
-          );
-        }
-      }
-    }
-  }
+  // T-0562 (plan §3, G9): the gateway lifecycle (start, stop, reconcile and
+  // their state) lives in `agents/gateway/lifecycle.ts`. It is created after
+  // the factories it calls into, and its `isStarted` is read lazily by the
+  // session lifecycle above. The destructured names keep the returned
+  // gateway object below unchanged.
+  const lifecycle = createGatewayLifecycle({
+    deps,
+    config,
+    logger,
+    reconcileIntervalMs,
+    secretsFor,
+    sessions,
+    superseded,
+    connectAi,
+    disconnectAi,
+    syncAiRooms,
+    clearAllListeners: () => roomListener.clearAll(),
+  });
+  const { start, stop, reconcile } = lifecycle;
 
   function handleIncoming(session: AiSession, message: ChatMessage): void {
     // An edit or a retraction of a message is never a new turn, in a DM or in a
@@ -327,142 +299,6 @@ export function createAgentGateway(
   // (T-0549: `sessionForAiJid`, `handleRoomIncoming` and `pumpRoom` now live
   // in `agents/gateway/group-ingest.ts`; the destructured names above keep
   // every call site unchanged.)
-
-  async function start(): Promise<void> {
-    if (started) {
-      return;
-    }
-    if (!config.enabled) {
-      logger.info({}, 'agent gateway is disabled');
-      return;
-    }
-    if (deps.litellm === undefined || deps.cipher === undefined) {
-      logger.warn({}, 'agent gateway needs LiteLLM and the key cipher; staying off');
-      return;
-    }
-    started = true;
-    superseded.clear();
-    await reconcile();
-    unsubscribes.push(
-      onAiLifecycle((event) => {
-        if (!started) {
-          return;
-        }
-        if (event.type === 'created' || event.type === 'resumed') {
-          // `loadActiveAi` is the same `WHERE status = 'active'` filter the
-          // periodic reconcile uses (T-0080): a `stopped` or `disabled` row
-          // never wakes the gateway back up, even on the notifier path.
-          void loadActiveAi(deps.db, event.aiId)
-            .then((record) => {
-              if (record !== null) {
-                return connectAi(record);
-              }
-            })
-            .catch((error: unknown) => {
-              logger.warn(
-                { err: toRedactedError(error, secretsFor()), aiId: event.aiId },
-                event.type === 'created'
-                  ? 'AI post-create connect failed'
-                  : 'AI post-resume connect failed',
-              );
-            });
-        } else {
-          // `stopped` and `deleted` both go through `disconnectAi`: the
-          // session is removed from the map, `session.stopped` is set so
-          // every send path skips, and queued turns are dropped with the
-          // session. For `stopped` the periodic safety net never reconnects
-          // (the row is no longer in `listActiveAisForGateway`); a delete
-          // tears the row down on its own.
-          void disconnectAi(event.aiId).catch((error: unknown) => {
-            logger.warn(
-              { err: toRedactedError(error, secretsFor()), aiId: event.aiId },
-              event.type === 'stopped'
-                ? 'AI post-stop disconnect failed'
-                : 'AI post-delete disconnect failed',
-            );
-          });
-        }
-      }),
-      onGroupAi((event) => {
-        if (!started) {
-          return;
-        }
-        // A join or leave for a live session syncs right away; anything
-        // missed (an AI with no session yet) is picked up by `reconcile`.
-        // Only ids travel on the event.
-        const session = sessions.get(event.aiId);
-        if (session === undefined) {
-          return;
-        }
-        void loadActiveAi(deps.db, event.aiId)
-          .then((record) => {
-            if (record !== null && sessions.get(event.aiId) === session) {
-              return syncAiRooms(session, record.name);
-            }
-          })
-          .catch((error: unknown) => {
-            logger.warn(
-              { err: toRedactedError(error, secretsFor()), aiId: event.aiId },
-              'AI room sync failed',
-            );
-          });
-      }),
-      // T-0109: the sibling event for per-topic AI membership. A newly added
-      // or removed membership shows up without waiting for the next full
-      // reconcile, through the same right-away sync as the group event.
-      onTopicAi((event) => {
-        if (!started) {
-          return;
-        }
-        const session = sessions.get(event.aiId);
-        if (session === undefined) {
-          return;
-        }
-        void loadActiveAi(deps.db, event.aiId)
-          .then((record) => {
-            if (record !== null && sessions.get(event.aiId) === session) {
-              return syncAiRooms(session, record.name);
-            }
-          })
-          .catch((error: unknown) => {
-            logger.warn(
-              { err: toRedactedError(error, secretsFor()), aiId: event.aiId },
-              'AI room sync failed',
-            );
-          });
-      }),
-    );
-    timer = setInterval(() => {
-      if (started) {
-        void reconcile();
-      }
-    }, reconcileIntervalMs);
-  }
-
-  async function stop(): Promise<void> {
-    started = false;
-    superseded.clear();
-    if (timer !== undefined) {
-      clearInterval(timer);
-      timer = undefined;
-    }
-    for (const unsub of unsubscribes) {
-      try {
-        unsub();
-      } catch {
-        // Unsubscribing is best-effort during shutdown.
-      }
-    }
-    unsubscribes = [];
-    for (const aiId of sessions.keys()) {
-      try {
-        await disconnectAi(aiId);
-      } catch {
-        // Shutdown disconnects everyone; one failure stops nothing else.
-      }
-    }
-    roomListener.clearAll();
-  }
 
   return {
     start,
