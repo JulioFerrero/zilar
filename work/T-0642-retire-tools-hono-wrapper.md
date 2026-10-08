@@ -1,7 +1,7 @@
 ---
 id: T-0642
 title: "Hono: retire the tools item-11 wrapper (tools/routes.ts); routes.test.ts calls createToolsApi(...).handler directly; app.ts types its deps from ToolsApiDependencies; delete the wrapper; same assertions"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0642-retire-tools-hono-wrapper
 model: auto
@@ -65,4 +65,43 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- **`apps/server/src/app.ts`**: merged `ToolsApiDependencies` into the existing `createToolsApi` import from `./tools/api` (line 60), dropped the `ToolsRoutesDependencies` import, and changed `toolsDeps` to `Omit<ToolsApiDependencies, 'logger'>`. Nothing else changed.
+- **`apps/server/src/tools/routes.test.ts`**: `buildRoutesHarness` no longer builds a Hono app; it now builds `createToolsApi({ auth, db, logger: pino({ level: 'silent' }), audit, ...toolRunner, ...now })` and returns `{ request(url, init) }` calling `api.handler(new Request(url, init))`. Removed the Hono `onError` mount, the `Hono`/`HttpError` imports, and the `createToolsRoutes` import; added `pino`, `createToolsApi` and `TOOL_RUN_RATE_LIMIT_MAX` imports. `let app` is now typed `ReturnType<typeof buildRoutesHarness>`. Every assertion is unchanged.
+- **`apps/server/src/tools/routes.ts`**: deleted. `git grep -n "tools/routes'" apps` returns nothing.
+
+### Files changed
+- `apps/server/src/app.ts`
+- `apps/server/src/tools/routes.test.ts`
+- `apps/server/src/tools/routes.ts` (deleted)
+- `work/T-0642-retire-tools-hono-wrapper.md`
+
+### Commands and real results
+- `pnpm install`: Done (peer-dependency warnings only, as before).
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/tools/routes`: 1 test file passed, 19 tests passed.
+- `pnpm gate`: summary lines:
+  ```
+  gate: 4 changed file(s) against main
+  PASS  install (frozen)  (2.1s)
+  PASS  format  (35.7s)
+  PASS  lint  (1.5s)
+  PASS  typecheck  (21.9s)
+  PASS  tests @zilar/server  (11.2s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Problems / deviations
+None. All assertions stayed and pass; no error-rendering mismatch appeared.
+
+### Open questions
+None.
+
 ## Review (written by Claude)
+
+**2026-10-08, lead:** approved.
+- **Pre-review:** clean. The packet head is 014d8114, the current HEAD.
+- **Lead check:**
+  - `app.ts` changes only the deps type;
+  - the wrapper is deleted;
+  - no `expect` line changed.

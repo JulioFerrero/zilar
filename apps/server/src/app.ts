@@ -57,8 +57,7 @@ import { createTopicsApi } from './topics/api';
 import { createMachinesApi } from './machines/api';
 import { createDbMachineRegistry, type DbMachineRegistry } from './machines/registry';
 import { serverVersion } from './version';
-import { createToolsApi } from './tools/api';
-import type { ToolsRoutesDependencies } from './tools/routes';
+import { createToolsApi, type ToolsApiDependencies } from './tools/api';
 import { createRoutinesApi } from './routines/api';
 import type { ToolRunner } from './tools/types';
 import type { VoiceEngine } from './voice/engine';
@@ -538,7 +537,7 @@ export function createApp({
     ...(alwaysEligible === undefined ? {} : { alwaysEligible }),
   });
   mountEffectRoutes(app, approvalsApi.routes, approvalsApi.handler);
-  const toolsDeps: ToolsRoutesDependencies = {
+  const toolsDeps: Omit<ToolsApiDependencies, 'logger'> = {
     auth,
     db,
     audit: auditRecorder,

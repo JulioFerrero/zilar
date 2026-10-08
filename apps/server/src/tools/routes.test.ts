@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { Hono } from 'hono';
+import { pino } from 'pino';
 import {
   aiLimits,
   ais,
@@ -13,7 +13,6 @@ import {
   topicMembers,
   topics,
 } from '../db/schema';
-import { HttpError } from '../errors';
 import { createAuditRecorder } from '../audit/service';
 import {
   bootstrapUser,
@@ -23,7 +22,7 @@ import {
   type TestApp,
   type TestContext,
 } from '../test-support';
-import { createToolsRoutes, TOOL_RUN_RATE_LIMIT_MAX } from './routes';
+import { createToolsApi, TOOL_RUN_RATE_LIMIT_MAX } from './api';
 import { saveToolVersion } from './service';
 import type { ToolRunResult, ToolRunner } from './types';
 
@@ -106,25 +105,20 @@ function buildRoutesHarness(
   context: TestContext,
   options: { toolRunner?: ToolRunner; now?: () => number } = {},
 ) {
-  const routes = new Hono();
-  routes.onError((error, c) => {
-    if (error instanceof HttpError) {
-      return c.json({ error: { code: error.code, message: error.message } }, error.status);
-    }
-    throw error;
-  });
   const audit = createAuditRecorder({ db: context.db, now: () => NOW });
-  routes.route(
-    '/api',
-    createToolsRoutes({
-      auth: context.auth,
-      db: context.db,
-      audit,
-      ...(options.toolRunner === undefined ? {} : { toolRunner: options.toolRunner }),
-      ...(options.now === undefined ? {} : { now: options.now }),
-    }),
-  );
-  return routes;
+  const api = createToolsApi({
+    auth: context.auth,
+    db: context.db,
+    logger: pino({ level: 'silent' }),
+    audit,
+    ...(options.toolRunner === undefined ? {} : { toolRunner: options.toolRunner }),
+    ...(options.now === undefined ? {} : { now: options.now }),
+  });
+  return {
+    request(url: string, init?: RequestInit): Promise<Response> {
+      return api.handler(new Request(url, init));
+    },
+  };
 }
 
 async function seedTool(
@@ -163,7 +157,7 @@ async function errorCodeOf(response: Response): Promise<string> {
 describe('tools routes (T-0103)', () => {
   let context: TestContext;
   let authApp: TestApp;
-  let app: Hono;
+  let app: ReturnType<typeof buildRoutesHarness>;
   let emailCounter = 0;
 
   beforeEach(async () => {
