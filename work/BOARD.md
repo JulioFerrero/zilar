@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-0626](T-0626-audit-effect-last-mile.md) | Audit: the Effect last mile, plus the bigint check | in-progress | auto | | |
 | [T-0639](T-0639-retire-connections-hono-wrapper.md) | Hono: retire the connections test wrapper | in-progress | auto | | |
 | [T-0640](T-0640-retire-routines-hono-wrapper.md) | Hono: retire the routines test wrapper | in-progress | auto | | |
 | [T-0641](T-0641-retire-approvals-hono-wrapper.md) | Hono: retire the approvals test wrapper | in-progress | auto | | |
@@ -670,3 +669,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0635](T-0635-effect-sql-memory-store.md) | AI memory store on effect/sql | 2026-10-08 |
 | [T-0636](T-0636-effect-sql-sticker-files.md) | sticker favorites, files and import on effect/sql | 2026-10-08 |
 | [T-0638](T-0638-retire-files-hono-wrapper.md) | retire the files Hono test wrapper | 2026-10-08 |
+| [T-0626](T-0626-audit-effect-last-mile.md) | audit: the Effect last mile and the bigint check | 2026-10-08 |
