@@ -1,4 +1,4 @@
-import { createXmppCore, type ChatMessage, type XmppCore } from '@zilar/xmpp-core';
+import { createXmppCore, type ChatMessage } from '@zilar/xmpp-core';
 import { eq, inArray } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { DEFAULT_LITELLM_BASE_URL, type LitellmAdminClient } from '../ai/litellm-client';
@@ -17,7 +17,6 @@ import { ais, groups, llmVirtualKeys, topics } from '../db/schema';
 import { sharedDraftHub } from '../drafts/hub';
 import { onGroupAi, onTopicAi } from '../groups/events';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
-import { issueXmppToken } from '../xmpp/token';
 import {
   bareJid,
   buildDmMessages,
@@ -55,7 +54,6 @@ import {
 import { createDelegation, finishDelegation, getDelegationForAi } from './delegation/service';
 import type { RequestOutcome } from '../actions/gateway';
 import {
-  GATEWAY_RESOURCE,
   GROUP_JOIN_SKEW_MS,
   GROUP_RATE_WINDOW_MS,
   GROUP_TURNS_PER_WINDOW,
@@ -63,12 +61,10 @@ import {
   RETRY_BASE_DELAY_MS,
   ROUND_MAX_AI_TURNS,
   ROUND_MAX_HOPS,
-  XMPP_TOKEN_TTL_SECONDS,
   denialReasonForModel,
   errorName,
   formatModelText,
   isAiSender,
-  retryDelayMs,
   toRedactedError,
   type AgentGateway,
   type AgentGatewayConfig,
@@ -79,9 +75,10 @@ import {
   type RoomRound,
 } from './gateway/contracts';
 import { createBudgetGate } from './gateway/budget';
-import { listAiRooms, loadActiveAi, loadOwnerName, loadRoomGateState } from './gateway/db';
+import { loadActiveAi, loadOwnerName, loadRoomGateState } from './gateway/db';
 import { createRoomListener } from './gateway/listener';
 import { createLiveSession } from './gateway/live';
+import { createSessionLifecycle } from './gateway/sessions';
 import { createMemoryRunner } from './gateway/memory';
 
 export type {
@@ -154,6 +151,25 @@ export function createAgentGateway(
   let started = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let unsubscribes: Array<() => void> = [];
+
+  // T-0534 (plan §3, G5b): the session lifecycle lives in
+  // `agents/gateway/sessions.ts`. The factory takes the shared maps and the
+  // callbacks for the gateway code that stays here; the destructured names
+  // keep every call site below unchanged.
+  const { connectAi, disconnectAi, syncAiRooms } = createSessionLifecycle({
+    sessions,
+    superseded,
+    deps,
+    createCore,
+    retryBaseMs,
+    logger,
+    secretsFor,
+    roomJidFor,
+    nowMs,
+    isStarted: () => started,
+    handleIncoming: (session, message) => handleIncoming(session, message),
+    dropRoomListenerIfUnused: (roomJid) => roomListener.dropRoomListenerIfUnused(roomJid),
+  });
 
   function nowMs(): number {
     return (deps.now ?? (() => new Date()))().getTime();
@@ -524,35 +540,6 @@ export function createAgentGateway(
     }
   }
 
-  function scheduleRetry(session: AiSession): void {
-    if (session.stopped || sessions.get(session.aiId) !== session) {
-      return;
-    }
-    session.retryAttempt += 1;
-    const delay = retryDelayMs(session.retryAttempt, retryBaseMs);
-    if (session.retryTimer !== undefined) {
-      clearTimeout(session.retryTimer);
-    }
-    session.retryTimer = setTimeout(() => {
-      session.retryTimer = undefined;
-      if (session.stopped || sessions.get(session.aiId) !== session) {
-        return;
-      }
-      void session.core
-        .connect()
-        .then(() => {
-          session.retryAttempt = 0;
-        })
-        .catch((error: unknown) => {
-          logger.warn(
-            { err: toRedactedError(error, secretsFor()), aiId: session.aiId },
-            'AI reconnect failed; retrying',
-          );
-          scheduleRetry(session);
-        });
-    }, delay);
-  }
-
   // T-0106: appends the fixed tool guide to the last user turn. The system
   // prompt builders take no options (their shape is frozen for provider
   // caching), so the guide rides as a separate user turn right before the
@@ -560,212 +547,6 @@ export function createAgentGateway(
   // registered; otherwise the messages pass through untouched.
   function withToolGuide(messages: ChatCompletionMessage[]): ChatCompletionMessage[] {
     return [...messages, { role: 'user', content: TOOL_GUIDE }];
-  }
-
-  async function connectAi(record: ActiveAiForGateway): Promise<void> {
-    if (!started || sessions.has(record.id) || superseded.has(record.id)) {
-      return;
-    }
-    const aiId = record.id;
-    const aiJid = record.jid;
-    let core: XmppCore;
-    try {
-      core = createCore({
-        service: deps.xmpp.wsPublicUrl,
-        domain: deps.xmpp.domain,
-        resource: GATEWAY_RESOURCE,
-        getToken: async () => {
-          const issued = await issueXmppToken(deps.xmpp, aiJid, XMPP_TOKEN_TTL_SECONDS);
-          return { jid: aiJid, token: issued.token };
-        },
-      });
-    } catch (error) {
-      logger.warn(
-        { err: toRedactedError(error, secretsFor()), aiId },
-        'AI client could not be created',
-      );
-      return;
-    }
-
-    const session: AiSession = {
-      aiId,
-      aiJid,
-      core,
-      busy: false,
-      pending: [],
-      stopped: false,
-      retryAttempt: 0,
-      retryTimer: undefined,
-      unsubs: [],
-      rooms: new Map(),
-      roomPending: new Map(),
-      roomBusy: new Set(),
-      roomTurns: new Map(),
-    };
-    sessions.set(aiId, session);
-    session.unsubs.push(
-      core.on('message', (message) => {
-        handleIncoming(session, message);
-      }),
-      core.on('replaced', () => {
-        handleReplaced(session);
-      }),
-      core.on('status', (status) => {
-        // Tokens never appear here: only the AI id is logged.
-        if (status === 'online') {
-          logger.info({ aiId }, 'AI is online');
-        } else if (status === 'offline') {
-          logger.warn({ aiId }, 'AI is offline');
-        }
-      }),
-    );
-
-    try {
-      await core.connect();
-      session.retryAttempt = 0;
-    } catch (error) {
-      // One AI failing to connect must never stop the others; the retry
-      // timer and the reconcile loop pick it up later.
-      logger.warn(
-        { err: toRedactedError(error, secretsFor()), aiId },
-        'AI failed to connect; retrying',
-      );
-      scheduleRetry(session);
-      return;
-    }
-    // The gateway may have stopped while the login was in flight: never keep
-    // a connection nobody owns any more.
-    if (!started || session.stopped || sessions.get(aiId) !== session) {
-      await disconnectAi(aiId).catch(() => undefined);
-      return;
-    }
-    // Rooms never break DMs: a room sync failure is logged inside and the
-    // session stays up for DMs either way.
-    await syncAiRooms(session, record.name);
-  }
-
-  async function disconnectAi(aiId: string): Promise<void> {
-    const session = sessions.get(aiId);
-    if (session === undefined) {
-      return;
-    }
-    sessions.delete(aiId);
-    for (const roomJid of session.rooms.keys()) {
-      roomListener.dropRoomListenerIfUnused(roomJid);
-    }
-    session.stopped = true;
-    if (session.retryTimer !== undefined) {
-      clearTimeout(session.retryTimer);
-      session.retryTimer = undefined;
-    }
-    for (const unsub of session.unsubs) {
-      try {
-        unsub();
-      } catch {
-        // Unsubscribing is best-effort during shutdown.
-      }
-    }
-    session.unsubs = [];
-    try {
-      await session.core.disconnect();
-    } catch (error) {
-      logger.warn({ err: toRedactedError(error, secretsFor()), aiId }, 'AI disconnect failed');
-    }
-    logger.info({ aiId }, 'AI is offline');
-  }
-
-  // Drifts the AI's room joins toward the database: joins every room the AI
-  // belongs to with the AI's name as nick, re-joins when the nick went stale,
-  // and leaves rooms the AI no longer belongs to. A join failure is logged
-  // (ids only) and retried by the next reconcile; it never throws and never
-  // breaks the AI's DMs.
-  async function syncAiRooms(session: AiSession, aiName: string): Promise<void> {
-    if (session.stopped || sessions.get(session.aiId) !== session) {
-      return;
-    }
-    let rooms: Array<{ groupId: string; topicId: string; roomLocalpart: string }>;
-    try {
-      rooms = await listAiRooms(deps.db, session.aiId);
-    } catch (error) {
-      logger.warn(
-        { err: toRedactedError(error, secretsFor()), aiId: session.aiId },
-        'AI rooms lookup failed',
-      );
-      return;
-    }
-    const wanted = new Set<string>();
-    for (const room of rooms) {
-      const roomJid = roomJidFor(room.roomLocalpart);
-      wanted.add(roomJid);
-      const known = session.rooms.get(roomJid);
-      if (known !== undefined && known.nick === aiName) {
-        continue;
-      }
-      if (known !== undefined) {
-        await leaveRoomQuietly(session, roomJid, known.groupId);
-      }
-      try {
-        await session.core.joinRoom(roomJid, aiName);
-      } catch (error) {
-        logger.warn(
-          { err: toRedactedError(error, secretsFor()), aiId: session.aiId, groupId: room.groupId },
-          'AI room join failed; reconcile will retry',
-        );
-        continue;
-      }
-      session.rooms.set(roomJid, {
-        groupId: room.groupId,
-        topicId: room.topicId,
-        joinedAtMs: nowMs(),
-        nick: aiName,
-      });
-      logger.info({ aiId: session.aiId, groupId: room.groupId }, 'AI joined the room');
-    }
-    for (const [roomJid, sub] of session.rooms) {
-      if (!wanted.has(roomJid)) {
-        await leaveRoomQuietly(session, roomJid, sub.groupId);
-      }
-    }
-  }
-
-  async function leaveRoomQuietly(
-    session: AiSession,
-    roomJid: string,
-    groupId: string,
-  ): Promise<void> {
-    session.rooms.delete(roomJid);
-    session.roomPending.delete(roomJid);
-    session.roomBusy.delete(roomJid);
-    // A re-added AI starts with a fresh rate budget.
-    session.roomTurns.delete(roomJid);
-    roomListener.dropRoomListenerIfUnused(roomJid);
-    try {
-      await session.core.leaveRoom(roomJid);
-    } catch (error) {
-      logger.warn(
-        { err: toRedactedError(error, secretsFor()), aiId: session.aiId, groupId },
-        'AI room leave failed',
-      );
-      return;
-    }
-    logger.info({ aiId: session.aiId, groupId }, 'AI left the room');
-  }
-
-  // Another gateway logged this AI in with the same resource and ejabberd
-  // replaced this session: the newest gateway wins, so this process stands
-  // down for the AI and never reconnects it until a restart. Pending
-  // messages are dropped and no new turns start; a turn already in flight
-  // may finish, but its final send fails quietly once torn down.
-  function handleReplaced(session: AiSession): void {
-    if (sessions.get(session.aiId) !== session) {
-      return;
-    }
-    superseded.add(session.aiId);
-    // The AI id only: never tokens, JIDs with tokens, or message bodies.
-    logger.warn({ aiId: session.aiId }, 'AI session replaced by another gateway; standing down');
-    session.pending.length = 0;
-    session.roomPending.clear();
-    void disconnectAi(session.aiId).catch(() => undefined);
   }
 
   async function reconcile(): Promise<void> {

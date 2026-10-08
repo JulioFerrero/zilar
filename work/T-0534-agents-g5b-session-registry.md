@@ -1,7 +1,7 @@
 ---
 id: T-0534
 title: "Agents G5b: move the session lifecycle (scheduleRetry, connectAi, disconnectAi, syncAiRooms, leaveRoomQuietly, handleReplaced) out of createAgentGateway into agents/gateway/sessions.ts; zero behaviour change"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0534-agents-g5b-session-registry
 model: auto
@@ -70,4 +70,82 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+
+Pure extraction, no logic change and no Effect, following the shape of
+`agents/gateway/live.ts` and `listener.ts`.
+
+- Created `apps/server/src/agents/gateway/sessions.ts`, exporting
+  `createSessionLifecycle(ctx)`. It holds the moved `scheduleRetry`,
+  `connectAi`, `disconnectAi`, `syncAiRooms`, `leaveRoomQuietly` and
+  `handleReplaced`, verbatim, and returns all six.
+- In `createAgentGateway` I create the lifecycle once (right after
+  `roomListener`/the `let` declarations) and destructure
+  `{ connectAi, disconnectAi, syncAiRooms }`, so every external call site in
+  `reconcile`, `start` and `stop` keeps the same text.
+- Moved `withToolGuide` nowhere: it stays in `gateway.ts` as the spec says.
+- Dropped the imports that only the moved code used: `type XmppCore` and
+  `issueXmppToken`, `XMPP_TOKEN_TTL_SECONDS` and `retryDelayMs` (contracts
+  import), `listAiRooms` (db import) and `GATEWAY_RESOURCE` (the value import;
+  it is still re-exported from `gateway.ts` by the separate re-export block).
+
+The context object carries exactly what the moved code closes over:
+`sessions`, `superseded`, `deps` (`Pick<AgentGatewayDeps, 'db' | 'xmpp'>`),
+`createCore`, `retryBaseMs`, `logger`, `secretsFor`, `roomJidFor`, `nowMs`,
+plus the callbacks `isStarted`, `handleIncoming` and
+`dropRoomListenerIfUnused`.
+
+### Files changed
+
+- `apps/server/src/agents/gateway/sessions.ts` (new)
+- `apps/server/src/agents/gateway.ts`
+- `work/T-0534-agents-g5b-session-registry.md` (status + this report)
+
+### Commands and real results
+
+- `pnpm install` — succeeded (reused packages, 0 added).
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/agents` —
+  `Test Files 16 passed | 1 skipped (17)`, `Tests 430 passed | 1 skipped (431)`,
+  285s.
+- `pnpm gate` (repo root) — ended with `GATE PASS`:
+  ```
+  gate: 3 changed file(s) against main
+  PASS  install (frozen)  (4.3s)
+  PASS  format  (60.3s)
+  PASS  lint  (1.9s)
+  PASS  typecheck  (27.4s)
+  PASS  tests @zilar/server  (121.1s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Deviations from the spec
+
+1. **`started` is read through a callback.** `connectAi` reads the gateway's
+   `started` flag in two places; the flag stays in `gateway.ts` (it is set by
+   `start`/`stop`). I pass `isStarted: () => started` and read `isStarted()`
+   there. This is the only source change inside a moved body; the checks run
+   at the same points and the same values, so behaviour is identical.
+2. **`handleRoomIncoming` is not in the context.** The spec's description says
+   `connectAi` wires events to `handleIncoming`, `handleRoomIncoming` and
+   `handleReplaced`, but the code only wires `core.on('message')` →
+   `handleIncoming`, `core.on('replaced')` → `handleReplaced` and
+   `core.on('status')`. `handleIncoming` dispatches `groupchat` stanzas to
+   `handleRoomIncoming`, which stays in `gateway.ts`. I passed only the
+   callbacks the moved code actually calls, to avoid an unused context field
+   (`handleIncoming` only).
+3. **I destructure only the three functions the gateway still calls.**
+   `scheduleRetry`, `leaveRoomQuietly` and `handleReplaced` are now called only
+   from inside `sessions.ts`; the factory still returns all six as the spec
+   asks, but destructuring the unused ones in `gateway.ts` would trip the
+   unused-variable lint rule.
+
+### Security / behaviour
+
+Pure move: no route, log line, error text or timing changed. No secrets,
+logging, permission or query changes. I did not touch any file outside the
+Allowed files.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-08). G5b is a pure extraction: scheduleRetry, connectAi, disconnectAi, syncAiRooms, leaveRoomQuietly and handleReplaced moved verbatim into agents/gateway/sessions.ts (createSessionLifecycle). The only deltas are isStarted() over the live flag and the injected dropRoomListenerIfUnused. Agents tests unchanged. Pre-review clean, 0 nits.
