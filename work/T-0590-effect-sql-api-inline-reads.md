@@ -1,7 +1,7 @@
 ---
 id: T-0590
 title: "effect/sql: the inline drizzle reads in agents/memory/api.ts (AI owner lookup), media/api.ts (media page query) and auth/api.ts (handle + session user) move to effect/sql; bigint and timestamp-without-tz handled exactly as drizzle did; tests unchanged"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0590-effect-sql-api-inline-reads
 model: auto
@@ -67,4 +67,71 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+Moved all five inline drizzle reads to effect/sql via a local
+`runSql(db, effect) = sqlRuntimeFor(db).runPromise(effect)` helper per file
+(the `apps/server/src/agents/gateway/db.ts` pattern). One way per file, no
+`drizzle-orm` or `db/schema` value import remains; `media/api.ts` keeps a
+type-only `mediaItems` import for `MediaItemRow` (same as other converted
+modules, e.g. `chat-prefs/service.ts`).
+
+- `agents/memory/api.ts`: AI owner lookup is now
+  `SELECT id, owner, jid FROM ais WHERE id = ${aiId} LIMIT 1`.
+- `media/api.ts`: gallery read is now `SELECT * FROM media_items WHERE
+  archive_owner = ... AND chat_jid = ... AND deleted = false AND kind IN
+  ${sql.in(kinds)} [AND at_micros < ${before}] ORDER BY at_micros DESC, id
+  ASC LIMIT ${limit + 1}`, run inside the existing `Effect.promise` (the
+  handler layer provides no `SqlClient`, so `yield*` directly would die).
+  `at_micros` (int8, returned as string by the pg driver) is converted with
+  `Number(...)` when mapping, so `next` and ordering are unchanged. `kinds`
+  is never empty (every tab maps to >= 1 kind) and a guard returns `[]`
+  instead of emitting `IN ()`. `waveform` (jsonb) and `created_at`
+  (timestamptz) keep their driver-decoded shapes.
+- `auth/api.ts`: handle lookup (`SELECT handle FROM handles ...`) and the
+  session-user lookup (`SELECT id, email, name, image, (created_at AT TIME
+  ZONE 'UTC') AS "createdAt" FROM "user" ...`, `"user"` quoted). The 401 on
+  no-row is unchanged. `sessionUserById` return type narrowed from
+  `createdAt: unknown` to `createdAt: Date`.
+
+### TZ proof (`/me` `createdAt`)
+Direct PGlite probe (stored `2026-03-15 12:00:00`, no tz): raw
+`SELECT created_at` returned `11:00Z` (default TZ) vs `16:00Z` under
+`TZ=America/New_York` (shifts with process zone); with
+`(created_at AT TIME ZONE 'UTC')` it returned `12:00Z` in both. And
+`src/auth/auth.test.ts` (36 tests, covers `GET /api/me` end to end) passes
+both normally and with `TZ=America/New_York`.
+
+### Checks (real results)
+- Combined per spec
+  (`pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot
+  agents/memory media auth authz-sweep`): 170/171 twice, then 171/171 on
+  base. Each single failure was a different CPU-starvation timeout under
+  parallel load (`tree.test.ts` 6000-iteration loop test timed out;
+  `routes.test.ts` `beforeEach` PGlite hook timed out), never an assertion,
+  and the same files pass singly with my changes. Every in-scope file run
+  singly: memory routes/api/store/cleanup/indexer/compactor/secrets/tree,
+  media routes/indexer, auth/auth/invites/mailer/mailer.effect/invite-cli,
+  authz-sweep — all green (171 tests total, 0 failed).
+- `TZ=America/New_York` run of `src/auth/auth.test.ts`: 36 passed.
+- `pnpm gate` (background, from repo root): GATE PASS, exit 0:
+  - `gate: 4 changed file(s) against main`
+  - `PASS install (frozen) (8.4s)`, `PASS format (126.3s)`,
+    `PASS lint (1.9s)`, `PASS typecheck (2.3s)`,
+    `PASS tests @zilar/server (1051.5s)`
+  - `scope: every changed file is inside the Allowed files`, `GATE PASS`
+- No test file was modified. Security checklist: reads only, no new routes,
+  no secrets touched, no permission/effect ordering changed.
+
+### Files changed
+`apps/server/src/agents/memory/api.ts`, `apps/server/src/media/api.ts`,
+`apps/server/src/auth/api.ts` (plus this task file).
+
 ## Review (written by Claude)
+
+**2026-10-08, lead:** approved.
+- **Pre-review:** clean. The packet (13:50) is newer than HEAD 56d5cc19.
+- **No test file changed.**
+- **Lead check:**
+  - `/me` reads `created_at AT TIME ZONE 'UTC'`. The Report proves the raw read shifts with the process time zone and the cast does not, and `auth.test.ts` passes under `TZ=America/New_York`;
+  - the media page converts `at_micros` (int8, returned as a string) back to a number;
+  - the memory owner lookup is on effect/sql.

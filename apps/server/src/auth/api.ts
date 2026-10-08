@@ -11,6 +11,7 @@
 // changes: every failure answers byte-identical codes and messages.
 
 import { Effect, Exit, Layer, Schema, SchemaIssue } from 'effect';
+import { SqlClient, SqlError } from 'effect/sql';
 import { HttpServer, HttpServerRequest, HttpRouter } from 'effect/http';
 import {
   HttpApi,
@@ -24,8 +25,7 @@ import { avatarIdsByOwner, avatarUrlFor } from '../avatars/service';
 import type { ServerConfig } from '../config';
 import { refreshRosterNicknames } from '../contacts/service';
 import type { ServerDatabase } from '../db/client';
-import { handles, user } from '../db/schema';
-import { eq } from 'drizzle-orm';
+import { sqlRuntimeFor } from '../effect/sql';
 import {
   CurrentUser,
   Session,
@@ -52,6 +52,25 @@ export interface AuthApiDependencies {
 
 const CONTROL_CHAR_MAX = 0x1f;
 const CONTROL_CHAR_DEL = 0x7f;
+
+function runSql<A>(
+  db: ServerDatabase,
+  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
+): Promise<A> {
+  return sqlRuntimeFor(db).runPromise(effect);
+}
+
+interface HandleLookupRow {
+  handle: string;
+}
+
+interface SessionUserLookupRow {
+  id: string;
+  email: string;
+  name: string;
+  image: string | null;
+  createdAt: Date;
+}
 
 function isControlCharacter(character: string): boolean {
   const code = character.codePointAt(0) ?? 0;
@@ -383,11 +402,13 @@ async function meView(
 }> {
   const sessionUser = await sessionUserById(deps, userId);
   const account = await findXmppAccount(deps.db, userId);
-  const [handleRow] = await deps.db
-    .select({ handle: handles.handle })
-    .from(handles)
-    .where(eq(handles.userId, userId))
-    .limit(1);
+  const [handleRow] = await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<HandleLookupRow>`SELECT handle FROM handles WHERE user_id = ${userId} LIMIT 1`;
+    }),
+  );
   // T-0165: a stored picture wins (`/api/avatars/<id>`), otherwise the
   // existing `user.image` value is kept (Better Auth's table untouched).
   const ownAvatar = await avatarIdsByOwner(deps.db, 'user', [userId]);
@@ -410,18 +431,18 @@ async function meView(
 async function sessionUserById(
   deps: AuthApiDependencies,
   userId: string,
-): Promise<{ id: string; email: string; name: string; image: string | null; createdAt: unknown }> {
-  const [sessionUser] = await deps.db
-    .select({
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      image: user.image,
-      createdAt: user.createdAt,
-    })
-    .from(user)
-    .where(eq(user.id, userId))
-    .limit(1);
+): Promise<{ id: string; email: string; name: string; image: string | null; createdAt: Date }> {
+  // `created_at` is a timestamp WITHOUT a time zone, which drizzle reads as
+  // UTC while the raw pg driver parses it in the process's local zone. The
+  // `AT TIME ZONE 'UTC'` cast returns the same instant as a timestamptz, so
+  // `/me` answers the same `createdAt` in any process time zone.
+  const [sessionUser] = await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<SessionUserLookupRow>`SELECT id, email, name, image, (created_at AT TIME ZONE 'UTC') AS "createdAt" FROM "user" WHERE id = ${userId} LIMIT 1`;
+    }),
+  );
   if (!sessionUser) {
     throw new HttpError(401, 'unauthorized', 'Authentication required');
   }

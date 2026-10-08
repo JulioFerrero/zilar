@@ -5,8 +5,8 @@
 // to everyone who can see it and changeable by the AI's owner and the topic
 // managers. Text is never logged.
 
-import { eq } from 'drizzle-orm';
 import { Effect, Layer, Schema } from 'effect';
+import { SqlClient, SqlError } from 'effect/sql';
 import { HttpServer, HttpServerRequest, HttpRouter } from 'effect/http';
 import {
   HttpApi,
@@ -19,7 +19,7 @@ import type { Logger } from 'pino';
 import type { Auth } from '../../auth/auth';
 import type { ServerConfig } from '../../config';
 import type { ServerDatabase } from '../../db/client';
-import { ais } from '../../db/schema';
+import { sqlRuntimeFor } from '../../effect/sql';
 import { HttpError } from '../../errors';
 import { createRateLimiter, type RateLimiter } from '../../rate-limit';
 import { resolvePinChat } from '../../pins/access';
@@ -56,6 +56,19 @@ export interface ResolvedMemoryChat {
   canChange: boolean;
 }
 
+function runSql<A>(
+  db: ServerDatabase,
+  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
+): Promise<A> {
+  return sqlRuntimeFor(db).runPromise(effect);
+}
+
+interface AiOwnerLookupRow {
+  id: string;
+  owner: string;
+  jid: string;
+}
+
 // The same 404 as for an unknown chat or an unknown AI, so neither can be
 // probed.
 function toMissingMemoryChat(): HttpError {
@@ -81,11 +94,13 @@ export async function resolveMemoryChat(
   chat: string,
   aiId: string,
 ): Promise<ResolvedMemoryChat> {
-  const [ai] = await db
-    .select({ id: ais.id, owner: ais.owner, jid: ais.jid })
-    .from(ais)
-    .where(eq(ais.id, aiId))
-    .limit(1);
+  const [ai] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<AiOwnerLookupRow>`SELECT id, owner, jid FROM ais WHERE id = ${aiId} LIMIT 1`;
+    }),
+  );
   if (!ai) {
     throw toMissingMemoryChat();
   }
