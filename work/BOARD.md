@@ -459,6 +459,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0612](T-0612-registry-effect-only.md) | Tool args T-G: action registry on Effect Schema only | planned | auto | T-0604 | |
 | [T-0613](T-0613-effect-sql-handles-visibility.md) | effect/sql: handle store and group visibility switch | planned | auto | T-0596 | |
 | [T-0614](T-0614-effect-sql-json-keys.md) | effect/sql: keep jsonb keys as written (bug: routine input keys renamed) | planned | auto | T-0607 | |
+| [T-0615](T-0615-effect-sql-tools-service.md) | effect/sql: tool service, transactions included | planned | auto | T-0604 | |
 | [T-0427](T-0427-mobile-forwarded-header.md) | Mobile: forwarded messages show 'Forwarded from X [in Y]' | 2026-10-06 |
 | [T-0428](T-0428-mobile-new-chat-menu-sheet.md) | Mobile: New chat menu on the kit ActionSheet with icons | 2026-10-06 |
 | [T-0429](T-0429-mobile-dismiss-banner.md) | Mobile: DismissBanner replaces 12 copied chat screen banners | 2026-10-06 |
