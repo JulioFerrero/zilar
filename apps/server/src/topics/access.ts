@@ -1,16 +1,15 @@
-import { and, count, eq, inArray } from 'drizzle-orm';
-import { Schema } from 'effect';
+// Topic visibility and access. Every query runs on the `effect/sql` client
+// registered for this database (see `../effect/sql`). The exported functions
+// stay `async` so routes and tests keep their shape during the transition.
+//
+// Rows keep their drizzle shapes: `transformResultNames` camelCases the
+// `topics` and `group_members` columns into `TopicRow` and the row types here.
+
+import { Effect, Schema } from 'effect';
+import { SqlClient, SqlError } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
-import {
-  ais,
-  groupMemberRoles,
-  groupMembers,
-  topicAis,
-  topicMembers,
-  topicRoleAccess,
-  topics,
-  user,
-} from '../db/schema';
+import type { groupMembers, topics } from '../db/schema';
+import { sqlRuntimeFor } from '../effect/sql';
 import { HttpError } from '../errors';
 import { holdsTopicRole, rolesOfTopic, topicRoleHolderIds } from '../roles/service';
 
@@ -30,6 +29,8 @@ export const topicStatusSchema = Schema.Literals([
 export type TopicStatus = typeof topicStatusSchema.Type;
 
 export type TopicRow = typeof topics.$inferSelect;
+
+type GroupMemberRow = typeof groupMembers.$inferSelect;
 
 export interface TopicOwnerView {
   kind: 'user' | 'ai';
@@ -84,8 +85,21 @@ export function toMissingTopic(): HttpError {
   return new HttpError(TOPIC_NOT_FOUND.status, TOPIC_NOT_FOUND.code, MISSING_TOPIC_MESSAGE);
 }
 
+function runSql<A>(
+  db: ServerDatabase,
+  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
+): Promise<A> {
+  return sqlRuntimeFor(db).runPromise(effect);
+}
+
 export async function getTopic(db: ServerDatabase, topicId: string): Promise<TopicRow | null> {
-  const [row] = await db.select().from(topics).where(eq(topics.id, topicId)).limit(1);
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<TopicRow>`SELECT * FROM topics WHERE id = ${topicId} LIMIT 1`;
+    }),
+  );
   return row ?? null;
 }
 
@@ -94,11 +108,15 @@ export async function getGroupMembership(
   groupId: string,
   userId: string,
 ): Promise<{ groupId: string; userId: string; role: 'owner' | 'admin' | 'member' } | null> {
-  const [row] = await db
-    .select()
-    .from(groupMembers)
-    .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, userId)))
-    .limit(1);
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<GroupMemberRow>`SELECT * FROM group_members
+        WHERE group_id = ${groupId} AND user_id = ${userId}
+        LIMIT 1`;
+    }),
+  );
   return row ?? null;
 }
 
@@ -107,11 +125,15 @@ async function isPrivateMember(
   topicId: string,
   userId: string,
 ): Promise<boolean> {
-  const [row] = await db
-    .select({ userId: topicMembers.userId })
-    .from(topicMembers)
-    .where(and(eq(topicMembers.topicId, topicId), eq(topicMembers.userId, userId)))
-    .limit(1);
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ userId: string }>`SELECT user_id FROM topic_members
+        WHERE topic_id = ${topicId} AND user_id = ${userId}
+        LIMIT 1`;
+    }),
+  );
   return row !== undefined;
 }
 
@@ -174,7 +196,13 @@ export async function visibleTopics(
   groupId: string,
   userId: string,
 ): Promise<TopicRow[]> {
-  const rows = await db.select().from(topics).where(eq(topics.groupId, groupId));
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<TopicRow>`SELECT * FROM topics WHERE group_id = ${groupId}`;
+    }),
+  );
   const active = rows.filter((row) => row.archivedAt === null);
   if (active.length === 0) {
     return [];
@@ -186,19 +214,25 @@ export async function visibleTopics(
   const privateIds = active.filter((row) => row.visibility === 'private').map((row) => row.id);
   let privateSeen = new Set<string>();
   if (privateIds.length > 0) {
-    const memberRows = await db
-      .select({ topicId: topicMembers.topicId })
-      .from(topicMembers)
-      .where(and(inArray(topicMembers.topicId, privateIds), eq(topicMembers.userId, userId)));
+    const memberRows = await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ topicId: string }>`SELECT topic_id FROM topic_members
+          WHERE topic_id IN ${sql.in(privateIds)} AND user_id = ${userId}`;
+      }),
+    );
     privateSeen = new Set(memberRows.map((row) => row.topicId));
     // T-0116: topics reached through a role, not a direct row.
-    const roleRows = await db
-      .select({ topicId: topicRoleAccess.topicId })
-      .from(topicRoleAccess)
-      .innerJoin(groupMemberRoles, eq(groupMemberRoles.roleId, topicRoleAccess.roleId))
-      .where(
-        and(inArray(topicRoleAccess.topicId, privateIds), eq(groupMemberRoles.userId, userId)),
-      );
+    const roleRows = await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ topicId: string }>`SELECT tra.topic_id FROM topic_role_access tra
+          INNER JOIN group_member_roles gmr ON gmr.role_id = tra.role_id
+          WHERE tra.topic_id IN ${sql.in(privateIds)} AND gmr.user_id = ${userId}`;
+      }),
+    );
     for (const row of roleRows) {
       privateSeen.add(row.topicId);
     }
@@ -267,19 +301,27 @@ export async function canCreateTopic(
 
 export async function countTopicMembers(db: ServerDatabase, topic: TopicRow): Promise<number> {
   if (topic.visibility !== 'private') {
-    const [row] = await db
-      .select({ total: count() })
-      .from(groupMembers)
-      .where(eq(groupMembers.groupId, topic.groupId));
-    return Number(row?.total ?? 0);
+    const [row] = await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ total: number }>`SELECT count(*)::int AS total FROM group_members
+          WHERE group_id = ${topic.groupId}`;
+      }),
+    );
+    return row?.total ?? 0;
   }
   // T-0116: `topic_members` plus the holders of its roles (still group
   // members). A holder who is also a direct member counts once.
   const [direct, holders] = await Promise.all([
-    db
-      .select({ userId: topicMembers.userId })
-      .from(topicMembers)
-      .where(eq(topicMembers.topicId, topic.id)),
+    runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ userId: string }>`SELECT user_id FROM topic_members
+          WHERE topic_id = ${topic.id}`;
+      }),
+    ),
     topicRoleHolderIds(db, topic.id, topic.groupId),
   ]);
   const ids = new Set(direct.map((row) => row.userId));
@@ -294,22 +336,31 @@ export async function resolveOwnerName(
   topic: TopicRow,
 ): Promise<TopicOwnerView | null> {
   if (topic.ownerUserId !== null) {
-    const [row] = await db
-      .select({ id: user.id, name: user.name })
-      .from(user)
-      .where(eq(user.id, topic.ownerUserId))
-      .limit(1);
+    const [row] = await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        // `user` is reserved, so it is quoted.
+        return yield* sql<{ id: string; name: string }>`SELECT id, name FROM "user"
+          WHERE id = ${topic.ownerUserId}
+          LIMIT 1`;
+      }),
+    );
     if (!row) {
       return null;
     }
     return { kind: 'user', id: row.id, name: row.name };
   }
   if (topic.ownerAiId !== null) {
-    const [row] = await db
-      .select({ id: ais.id, name: ais.name })
-      .from(ais)
-      .where(eq(ais.id, topic.ownerAiId))
-      .limit(1);
+    const [row] = await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ id: string; name: string }>`SELECT id, name FROM ais
+          WHERE id = ${topic.ownerAiId}
+          LIMIT 1`;
+      }),
+    );
     if (!row) {
       return null;
     }
@@ -369,11 +420,15 @@ export async function aiMayBeInTopic(
   if (topic.isGeneral || topic.archivedAt !== null || ai.status !== 'active') {
     return false;
   }
-  const [row] = await db
-    .select({ aiId: topicAis.aiId })
-    .from(topicAis)
-    .where(and(eq(topicAis.topicId, topic.id), eq(topicAis.aiId, ai.id)))
-    .limit(1);
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ aiId: string }>`SELECT ai_id FROM topic_ais
+        WHERE topic_id = ${topic.id} AND ai_id = ${ai.id}
+        LIMIT 1`;
+    }),
+  );
   if (!row) {
     return false;
   }
@@ -394,29 +449,46 @@ export async function allowedTopicAiIds(
   if (topic.isGeneral || topic.archivedAt !== null) {
     return new Set();
   }
-  const rows = await db
-    .select({ aiId: topicAis.aiId, owner: ais.owner, status: ais.status })
-    .from(topicAis)
-    .innerJoin(ais, eq(ais.id, topicAis.aiId))
-    .where(eq(topicAis.topicId, topic.id));
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{
+        aiId: string;
+        owner: string;
+        status: string;
+      }>`SELECT ta.ai_id, a.owner, a.status
+        FROM topic_ais ta
+        INNER JOIN ais a ON a.id = ta.ai_id
+        WHERE ta.topic_id = ${topic.id}`;
+    }),
+  );
   const active = rows.filter((row) => row.status === 'active');
   if (topic.visibility !== 'private') {
     return new Set(active.map((row) => row.aiId));
   }
-  const memberRows = await db
-    .select({ userId: topicMembers.userId })
-    .from(topicMembers)
-    .where(eq(topicMembers.topicId, topic.id));
+  const memberRows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ userId: string }>`SELECT user_id FROM topic_members
+        WHERE topic_id = ${topic.id}`;
+    }),
+  );
   const memberIds = new Set(memberRows.map((row) => row.userId));
   // T-0116: an owner who reaches the private topic only through a role
   // keeps their AI in the room, like the room sync does.
   for (const holder of await topicRoleHolderIds(db, topic.id, topic.groupId)) {
     memberIds.add(holder);
   }
-  const groupRows = await db
-    .select({ userId: groupMembers.userId })
-    .from(groupMembers)
-    .where(eq(groupMembers.groupId, topic.groupId));
+  const groupRows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ userId: string }>`SELECT user_id FROM group_members
+        WHERE group_id = ${topic.groupId}`;
+    }),
+  );
   const groupIds = new Set(groupRows.map((row) => row.userId));
   return new Set(
     active
@@ -428,12 +500,17 @@ export async function allowedTopicAiIds(
 // The AIs added to one topic, sorted by name. Rows exist only for
 // non-General topics; General membership is `group_ais`.
 export async function listTopicAis(db: ServerDatabase, topicId: string): Promise<TopicAiView[]> {
-  const rows = await db
-    .select({ id: ais.id, name: ais.name })
-    .from(topicAis)
-    .innerJoin(ais, eq(ais.id, topicAis.aiId))
-    .where(eq(topicAis.topicId, topicId));
-  return rows.sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ id: string; name: string }>`SELECT a.id, a.name
+        FROM topic_ais ta
+        INNER JOIN ais a ON a.id = ta.ai_id
+        WHERE ta.topic_id = ${topicId}`;
+    }),
+  );
+  return [...rows].sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
 }
 
 export async function toTopicViews(

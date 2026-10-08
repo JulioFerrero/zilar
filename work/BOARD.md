@@ -453,7 +453,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0414](T-0414-web-forward-store-action.md) | Web store: forwardMessages sends copies with a forward origin, optional comment | 2026-10-06 |
 | [T-0425](T-0425-mobile-profile-buttons-kit.md) | Mobile: profile and contact card buttons on the kit Button | 2026-10-06 |
 | [T-0426](T-0426-mobile-ai-sheet-buttons-kit.md) | Mobile: AI activity Refresh, tool sheet Show all/less and Close on the kit Button | 2026-10-06 |
-| [T-0605](T-0605-effect-sql-topic-access.md) | effect/sql: topic access reads | planned | auto | T-0596 | |
 | [T-0606](T-0606-effect-sql-avatars-backgrounds.md) | effect/sql: avatar and background services, transactions included | planned | auto | T-0590 | |
 | [T-0607](T-0607-effect-sql-push-store-machines.md) | effect/sql: push device store and machine service, transactions included | planned | auto | T-0593 | |
 | [T-0608](T-0608-effect-sql-roles-service.md) | effect/sql: roles service, transactions included | planned | auto | T-0596 | |
@@ -642,3 +641,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0602](T-0602-effect-http-stickers-binary.md) | Effect C (HTTP): stickers part B, upload and file | 2026-10-08 |
 | [T-0604](T-0604-tool-routine-schemas-effect.md) | Tool args T-E: tool and routine schemas on Effect Schema | 2026-10-08 |
 | [T-0599](T-0599-zod-small-trio.md) | Effect Schema: draft events, invite CLI and routine title | 2026-10-08 |
+| [T-0605](T-0605-effect-sql-topic-access.md) | effect/sql: topic access reads | 2026-10-08 |
