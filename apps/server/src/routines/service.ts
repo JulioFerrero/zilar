@@ -5,7 +5,7 @@
 // this task exposes no HTTP route that creates a routine.
 import { randomUUID } from 'node:crypto';
 import { and, count, eq, isNull } from 'drizzle-orm';
-import { z } from 'zod';
+import { Exit, Schema, SchemaIssue } from 'effect';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
 import { aiTools, aiToolVersions, routines } from '../db/schema';
@@ -67,15 +67,53 @@ const TITLE_CONTROL_CHARS = String.fromCharCode(
   127,
 );
 
-const titleSchema = z
-  .string()
-  .min(1, { message: 'title must not be empty' })
-  .max(MAX_ROUTINE_TITLE_CHARS, {
-    message: `title must be at most ${MAX_ROUTINE_TITLE_CHARS} characters`,
-  })
-  .refine((value) => !value.split('').some((char) => TITLE_CONTROL_CHARS.includes(char)), {
-    message: 'title must not contain control characters',
-  });
+// Replaces `z.string().min(1).max(80).refine(...)`: one `makeFilter` returns
+// each text in the old order (empty, too long, control characters). In Effect
+// 4.0.2 `{ message }` on the length checks does not reach the issue
+// annotations, but a filter's returned string does (T-0561 pitfall).
+const titleSchema = Schema.String.pipe(
+  Schema.check(
+    Schema.makeFilter((value: string) => {
+      if (value.length < 1) {
+        return 'title must not be empty';
+      }
+      if (value.length > MAX_ROUTINE_TITLE_CHARS) {
+        return `title must be at most ${MAX_ROUTINE_TITLE_CHARS} characters`;
+      }
+      if (value.split('').some((char) => TITLE_CONTROL_CHARS.includes(char))) {
+        return 'title must not contain control characters';
+      }
+      return undefined;
+    }),
+  ),
+);
+
+// The first decode failure's message, like the old `issues[0]?.message`: a
+// `makeFilter` text when the failing check set one, else the generic fallback.
+function firstIssueMessage(issue: SchemaIssue.Issue): string | undefined {
+  switch (issue._tag) {
+    case 'Composite':
+    case 'AnyOf': {
+      for (const child of issue.issues) {
+        const message = firstIssueMessage(child);
+        if (message !== undefined) {
+          return message;
+        }
+      }
+      return undefined;
+    }
+    case 'Pointer':
+    case 'Filter':
+    case 'Encoding':
+      return firstIssueMessage(issue.issue);
+    case 'InvalidValue': {
+      const message = issue.annotations?.message;
+      return typeof message === 'string' && message.length > 0 ? message : undefined;
+    }
+    default:
+      return undefined;
+  }
+}
 
 // Creates a routine after a human approved it (the T-0105 adapter calls
 // this). Validates the title, schedule and input; checks the tool belongs
@@ -98,12 +136,16 @@ export async function createRoutine(
       'groupId and topicId must both be set or both be null',
     );
   }
-  const title = titleSchema.safeParse(input.title);
-  if (!title.success) {
-    throw new RoutineServiceError(
-      'invalid_request',
-      title.error.issues[0]?.message ?? 'Invalid title',
-    );
+  const title = Schema.decodeUnknownExit(titleSchema)(input.title);
+  if (!Exit.isSuccess(title)) {
+    let message: string | undefined;
+    for (const reason of title.cause.reasons) {
+      if (reason._tag === 'Fail') {
+        message = firstIssueMessage(reason.error.issue);
+        break;
+      }
+    }
+    throw new RoutineServiceError('invalid_request', message ?? 'Invalid title');
   }
   const schedule = parseRoutineSchedule(input.schedule);
   if (!schedule.ok) {
@@ -177,7 +219,7 @@ export async function createRoutine(
       groupId: input.groupId,
       topicId: input.topicId,
       toolId: tool.id,
-      title: title.data,
+      title: title.value,
       schedule: schedule.value,
       input: input.input ?? null,
       approvedHosts: approved,

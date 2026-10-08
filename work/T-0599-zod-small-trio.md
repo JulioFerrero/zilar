@@ -1,7 +1,7 @@
 ---
 id: T-0599
 title: "Effect Schema: three small zod leftovers: drafts/events.ts (draft SSE event schemas), auth/invite-cli.ts (CLI options), routines/service.ts (title check with its three texts); same accept/reject and texts; hub.test parse calls switch to Effect"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0599-zod-small-trio
 model: auto
@@ -76,4 +76,67 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Converted the three zod leftovers to Effect Schema; no zod import remains in
+the three files.
+
+### Files changed
+- `apps/server/src/drafts/events.ts`: `DraftEventSchema`, `DraftEndEventSchema`
+  are `Schema.Struct`s (`Schema.Literal`, `Schema.isMinLength(1)`,
+  `Schema.isUUID()`, `Schema.Literals(['sent','failed'])`); `DraftHubEventSchema`
+  is `Schema.Union([...])`. Type names (`DraftEvent`, `DraftEndEvent`,
+  `DraftHubEvent`) and shapes are unchanged.
+- `apps/server/src/auth/invite-cli.ts`: `Schema.Struct` with
+  `Schema.String.pipe(Schema.decodeTo(Schema.Int, …), range checks)` and
+  `withDecodingDefaultKey` defaults. Coercion is `Number(value)` (not
+  `parseInt`), so `'2.5'` and `'abc'` still fail; parsed with
+  `Schema.decodeUnknownSync` (throws, like `.parse`).
+- `apps/server/src/routines/service.ts`: `titleSchema` is a `Schema.String`
+  with a single `Schema.makeFilter` that returns the three old texts in the old
+  order; the failure message is read from the first `InvalidValue` annotation
+  (`firstIssueMessage`), falling back to `'Invalid title'`.
+- `apps/server/src/drafts/hub.test.ts` (only lines 198-210, as allowed): the
+  three `safeParse(...).success` checks became
+  `Exit.isSuccess(Schema.decodeUnknownExit(X)(value))`, same expectations.
+
+### Title texts proof
+Ran a temporary `tsx` probe (file deleted afterwards) calling `createRoutine`
+with an invalid title; each produced the exact expected text:
+- `""` → `title must not be empty`
+- 81 chars → `title must be at most 80 characters`
+- `"a\u0001b"` → `title must not contain control characters`
+
+### Commands run
+- `pnpm install`: done.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot drafts auth/invite-cli routines agents/gateway`:
+  **9 test files passed (9), 255 tests passed (255)**.
+- `pnpm gate` (repo root), summary lines:
+  ```
+  gate: 5 changed file(s) against main
+  PASS  install (frozen)  (3.2s)
+  PASS  format  (72.2s)
+  PASS  lint  (2.2s)
+  PASS  typecheck  (28.7s)
+  PASS  tests @zilar/server  (705.3s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Deviations / notes
+- `DraftHubEventSchema` uses `Schema.Union` rather than a tagged
+  `Schema.toTaggedUnion`; decode behaviour and the emitted TypeScript union are
+  the same, and the union order keeps the `type` discriminator.
+- No new test files: the task constrained test changes to
+  `drafts/hub.test.ts:198-210`; the title texts were proven with a throwaway
+  probe instead.
+
 ## Review (written by Claude)
+
+**2026-10-08, lead:** approved.
+- **Pre-review:** clean, 3 nits. The packet (14:26) is newer than HEAD ef379c8c.
+- **Lead check:**
+  - the only test change is `hub.test.ts:196-233`, inside the allowed lines, with the same four expectations (two accepted, two rejected);
+  - the three title texts are kept, in the same order.
+- **Accepted differences:**
+  - `isUUID` also accepts the uppercase max-UUID;
+  - a non-string title falls back to `Invalid title`, which no typed caller can reach.
+- **Follow-up:** the walker is copied again, so it joins the shared-walker follow-up.
