@@ -29,6 +29,7 @@ Standing decisions: release v0.1.13 is live at https://chat.zilar.app (merges re
   - **Reference copy:** `~/.zilar-lead/runner/runner.sh`. Its `TMP=` line points at an old session's folder, so a new session sets that to its own scratch folder (holding `queue.txt`, `failed.txt`, `specs/` and `files/`) and starts it detached with `nohup zsh runner.sh >> runner.log 2>&1 &`.
   - **Queue order:** put launches ahead of merges.
   - **Monitor waits:** never `pgrep -f` a pattern that also appears in the Monitor's own command line, or the wait never ends.
+  - **Board rows:** the `spec` line does not add a board row, and `lead merge` refuses with "board has no Active row for T-XXXX". Add the task's row under **Active** in `work/BOARD.md` when you queue its spec (T-0620, 2026-10-08).
 - **While a merge runs, push nothing to main except `work/BOARD.md`.** `lead merge` compares the squash with the branch (excluding only the board). A docs or NOW commit pushed during the gate makes the merge stop with "squash result differs from <branch>; nothing pushed" (T-0602, 2026-10-08), and the squash commit is left unpushed on local main. To recover:
   1. confirm that `git log origin/main..main` shows only that squash;
   2. `git reset --hard origin/main` in the main checkout;
