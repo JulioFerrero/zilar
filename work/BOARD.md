@@ -13,6 +13,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0655](T-0655-gate-affected-typecheck.md) | gate: affected-only typecheck, shared Turbo cache | in-progress | auto | | |
 | [T-0657](T-0657-tsgo-spike.md) | Spike: tsgo vs tsc on server and protocol | in-progress | auto | | |
 | [T-0658](T-0658-autopilot-sweeper.md) | autopilot: sweep leftover test and typecheck processes | in-progress | auto | | |
+| [T-0656](T-0656-gate-slots-and-nice.md) | gate: 2 slots plus a merge slot, nice, Gradle stop, turbo globalDependencies | in-progress | auto | T-0655 | |
 
 ## Follow-ups
 
