@@ -13,6 +13,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0643](T-0643-retire-machines-hono-wrapper.md) | Hono: retire the machines test wrapper | in-progress | auto | | |
 | [T-0645](T-0645-retire-push-hono-wrapper.md) | Hono: retire the push test wrapper | in-progress | auto | | |
 | [T-0646](T-0646-delete-invite-links-routes.md) | Hono: delete invite-links/routes.ts | in-progress | auto | | |
+| [T-0647](T-0647-tools-api-adapters-effect-sql.md) | effect/sql: tools API and adapters reads | in-progress | auto | | |
 
 ## Follow-ups
 
