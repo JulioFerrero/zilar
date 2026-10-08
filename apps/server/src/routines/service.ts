@@ -7,6 +7,8 @@
 // Every query runs on the `effect/sql` client registered for this database
 // (see `../effect/sql`); `deleteRoutinesForAiInGroup` is the one exception,
 // because its caller (`groups/service.ts`) hands it a drizzle transaction.
+// The exported functions stay `async` so routes and tests keep their shape
+// during the transition.
 import { randomUUID } from 'node:crypto';
 import { and, eq, isNull } from 'drizzle-orm';
 import { Effect, Exit, Schema, SchemaIssue } from 'effect';
@@ -89,9 +91,6 @@ export interface PublicRoutine {
   scope: 'personal' | 'group';
 }
 
-// Every query runs on the `effect/sql` client registered for this database
-// (see `../effect/sql`). The exported functions stay `async` so routes and
-// tests keep their shape during the transition.
 function runSql<A, E>(
   db: ServerDatabase,
   effect: Effect.Effect<A, E, SqlClient.SqlClient>,

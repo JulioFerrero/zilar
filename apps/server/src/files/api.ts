@@ -1,8 +1,9 @@
 // Files module on the Effect `HttpApi` adapter (T-0580): the same method,
 // path, step order, statuses, texts, logs and headers as the Hono router
 // (`routes.ts`), mounted under Hono by `apps/server/src/effect/http.ts`.
-// Handlers keep calling `allowedArchives` / `resolveChatFilter` / `indexChat`
-// and the drizzle file-row read; the DB rewrite is a separate lane.
+// Handlers keep calling `allowedArchives` / `resolveChatFilter` / `indexChat`;
+// the file-row read runs on the `effect/sql` client, and the rest of the DB
+// rewrite is a separate lane.
 //
 // The query is decoded manually inside the handler (Effect Schema, same rules
 // as the old zod schema) instead of as an endpoint `query`, because the old

@@ -5,6 +5,7 @@ import { ARGS_HASH_PATTERN } from '@zilar/protocol';
 import type { AuditEntry, AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
 import { ais, pendingActions } from '../db/schema';
+import type { approvals, groupAis, topics } from '../db/schema';
 import { sqlRuntimeFor } from '../effect/sql';
 import { createApproval, verifyApproval } from '../approvals/service';
 import { allowedTopicAiIds } from '../topics/access';
@@ -600,10 +601,9 @@ async function runOnApprovalDecided(
     deps.db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      return yield* sql<{
-        status: string;
-        expiresAt: Date;
-      }>`SELECT status, expires_at FROM approvals
+      return yield* sql<
+        Pick<typeof approvals.$inferSelect, 'status' | 'expiresAt'>
+      >`SELECT status, expires_at FROM approvals
         WHERE id = ${approvalId} LIMIT 1`;
     }),
   );
@@ -650,7 +650,9 @@ async function runOnApprovalDecided(
       deps.db,
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
-        return yield* sql<{ status: string }>`SELECT status FROM approvals
+        return yield* sql<
+          Pick<typeof approvals.$inferSelect, 'status'>
+        >`SELECT status FROM approvals
           WHERE id = ${approvalId} LIMIT 1`;
       }),
     );
@@ -779,11 +781,9 @@ async function runRecoverStuck(deps: ActionGatewayDependencies, now: () => Date)
       deps.db,
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
-        return yield* sql<{
-          id: string;
-          expiresAt: Date;
-          status: string;
-        }>`SELECT id, expires_at, status FROM approvals
+        return yield* sql<
+          Pick<typeof approvals.$inferSelect, 'id' | 'expiresAt' | 'status'>
+        >`SELECT id, expires_at, status FROM approvals
           WHERE id = ${row.approvalId} LIMIT 1`;
       }),
     );
@@ -914,7 +914,7 @@ async function isAiInGroup(db: ServerDatabase, aiId: string, groupId: string): P
     db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      return yield* sql<{ aiId: string }>`SELECT ai_id FROM group_ais
+      return yield* sql<Pick<typeof groupAis.$inferSelect, 'aiId'>>`SELECT ai_id FROM group_ais
         WHERE group_id = ${groupId} AND ai_id = ${aiId} LIMIT 1`;
     }),
   );
@@ -939,13 +939,12 @@ async function isAiInTopic(
     db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      return yield* sql<{
-        id: string;
-        groupId: string;
-        visibility: 'public' | 'private';
-        isGeneral: boolean;
-        archivedAt: Date | null;
-      }>`SELECT id, group_id, visibility, is_general, archived_at FROM topics
+      return yield* sql<
+        Pick<
+          typeof topics.$inferSelect,
+          'id' | 'groupId' | 'visibility' | 'isGeneral' | 'archivedAt'
+        >
+      >`SELECT id, group_id, visibility, is_general, archived_at FROM topics
         WHERE id = ${topicId} LIMIT 1`;
     }),
   );
