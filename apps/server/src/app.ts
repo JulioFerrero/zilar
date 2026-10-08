@@ -12,7 +12,7 @@ import { createActionGateway, type ActionGateway } from './actions/gateway';
 import type { AlwaysEligiblePredicate } from './approvals/service';
 import { createApprovalsRoutes } from './approvals/routes';
 import { createAuditRecorder, type AuditRecorder } from './audit/service';
-import { createAuditRoutes } from './audit/routes';
+import { createAuditApi } from './audit/api';
 import type { Auth } from './auth/auth';
 import { createAuthRoutes } from './auth/routes';
 import { CurrentMailer, createMailer } from './auth/mailer';
@@ -39,9 +39,9 @@ import type { ServerDatabase } from './db/client';
 import { HttpError } from './errors';
 import { createGroupsRoutes } from './groups/routes';
 import { createInviteLinksRoutes, type TestInviteLinksOverrides } from './invite-links/routes';
-import { createPinsRoutes } from './pins/routes';
+import { createPinsApi } from './pins/api';
 import { createPushRoutes } from './push/routes';
-import { createRolesRoutes } from './roles/routes';
+import { createRolesApi } from './roles/api';
 import { createSearchRoutes, type SearchRoutesDependencies } from './search/routes';
 import { createMediaRoutes } from './media/routes';
 import { createFilesRoutes } from './files/routes';
@@ -374,12 +374,11 @@ export function createApp({
       ...(testInviteLinksOverrides === undefined ? {} : testInviteLinksOverrides),
     }),
   );
-  app.route(
-    '/api',
-    createRolesRoutes({ auth, db, config, adminClient, logger, audit: auditRecorder }),
-  );
+  const rolesApi = createRolesApi({ auth, db, config, adminClient, logger, audit: auditRecorder });
+  mountEffectRoutes(app, rolesApi.routes, rolesApi.handler);
   app.route('/api', createAiMemoryRoutes({ auth, db, config }));
-  app.route('/api', createPinsRoutes({ auth, db, config, audit: auditRecorder }));
+  const pinsApi = createPinsApi({ auth, db, config, audit: auditRecorder, logger });
+  mountEffectRoutes(app, pinsApi.routes, pinsApi.handler);
   app.route(
     '/api',
     createTopicsRoutes({ auth, db, config, adminClient, logger, audit: auditRecorder }),
@@ -513,7 +512,8 @@ export function createApp({
       ...integrations,
     }),
   );
-  app.route('/api', createAuditRoutes({ auth, db }));
+  const auditApi = createAuditApi({ auth, db, logger });
+  mountEffectRoutes(app, auditApi.routes, auditApi.handler);
   // GIFs (T-0122): search, trending and the media proxy. Mounted always: an
   // unconfigured provider answers 501 `gifs_unavailable` instead of 404ing,
   // so the web can hide the tab.
