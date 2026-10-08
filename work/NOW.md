@@ -2,6 +2,23 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-08 11:35, Julio back; Effect migration continues:**
+- **Merged since 08:55:**
+  - T-0576 (avatars HTTP), T-0577 (backgrounds HTTP) and T-0580 (file proxy HTTP, with a streamed body);
+  - T-0579 (review follow-ups);
+  - T-0583 (gateway reads on effect/sql);
+  - T-0584 (audit service off drizzle and zod);
+  - T-0585 (deleted the unmounted `/ai/virtual-keys` spike, as Julio decided).
+- **Running (8):**
+  - T-0571: the plan for the tool argument layer, in lead fix round 2. Finding 1 was wrong: there are four `argsSchema.safeParse` sites, not five;
+  - **Effect HTTP:** T-0578 (setup), T-0581 (drafts SSE pilot), T-0582 (stickers JSON) and T-0586 (GIFs);
+  - **effect/sql:** T-0587 (connections; the decrypt called inside a transaction stays on drizzle), T-0588 (routine scheduler and runner) and T-0589 (startup sticker count, plus the T-0584 nits).
+- **Left on Hono after these:**
+  - stickers part B (the upload and file GET);
+  - the better-auth handler;
+  - the `app.ts` shell;
+  - the git proxy (`git/proxy.ts`, unmounted, planned S8). **Its fate is Julio's call** (convert, leave or delete).
+
 **2026-10-08 08:55, Julio asleep, Effect night continues:**
 - **Merged since 07:15:**
   - **effect/sql:** T-0567 (gateway db helpers), T-0568 (delegation service), T-0574 (sign-up invites, XMPP provisioning and the invite CLI runtime);
