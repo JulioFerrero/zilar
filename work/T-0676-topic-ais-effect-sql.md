@@ -1,7 +1,7 @@
 ---
 id: T-0676
 title: "effect/sql: move the topic-AI functions in topics/service.ts (emitDroppedTopicAis, addTopicAi, removeTopicAi) onto effect/sql; removeTopicAi uses deleteToolsForAiInTopicEffect and deleteRoomMemoryEffect"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0676-topic-ais-effect-sql
 model: auto
@@ -54,4 +54,34 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**What I did**
+- `apps/server/src/topics/service.ts`:
+  - Added a private `runSql(db, effect)` (copied from `ais/service.ts`) above `emitDroppedTopicAis`.
+  - `emitDroppedTopicAis`, `addTopicAi` and `removeTopicAi` now run their statements as `sql` template queries on `effect/sql`. Filters, order, errors and texts are unchanged.
+  - The topic re-reads use `getTopic(deps.db, id)` with the same `if (!updated) throw toMissingTopic()`.
+  - `removeTopicAi` calls `deleteToolsForAiInTopicEffect` and `deleteRoomMemoryEffect` in the same position as the drizzle versions.
+  - Imports: added `Effect`, `SqlClient`/`SqlError`, `sqlRuntimeFor`. Swapped `deleteRoomMemory` and `deleteToolsForAiInTopic` for their Effect versions. Removed `groupAis` and `topicAis` from the drizzle schema import, because lint flagged them as unused after the rewrite. `ais` and `sql` stay (still used elsewhere in the file).
+- No other function was changed.
+- Checked: `grep` finds no drizzle `select`/`insert`/`delete` left in the three functions. The remaining `deps.db` uses there are the helpers the spec keeps (`aiMayBeInTopic`, `canManageTopic`, `revokeActiveRulesForAiInTopic`, `deleteRoutinesForAiInTopic`).
+
+**Commands and results**
+- `pnpm install`: exit 0.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/topics/topics.test`: 1 file passed, 32 tests passed, 0 failed. No test file was edited and none mocks drizzle.
+- First `pnpm gate`: GATE FAIL at lint (`groupAis`, `topicAis` unused). Fixed by removing those two imports.
+- Final `pnpm gate` (exit 0):
+  - `PASS install (frozen)`
+  - `PASS format`
+  - `PASS lint`
+  - `PASS typecheck`
+  - `PASS tests @zilar/server`
+  - `scope: every changed file is inside the Allowed files`
+  - `GATE PASS`
+  - The gate reported 2 changed files against main: `apps/server/src/topics/service.ts` and the task file.
+
+**Deviations, problems, open questions**
+- None against the spec. I did not run the whole server test suite, only the topics file and the gate's nearest tests.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Haiku 5.5, in one round (about 3.4 min). The lead reviewed the diff directly.
+- **Result:** the three functions have the same filters and order. The re-reads go through `getTopic`, and `removeTopicAi` now uses `deleteToolsForAiInTopicEffect` and `deleteRoomMemoryEffect`. The drizzle `deleteToolsForAiInTopic` and `deleteRoomMemory` now have no production caller, so they are deleted in the cleanup task. The topics tests (32) and the gate passed.
