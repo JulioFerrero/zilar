@@ -11,6 +11,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0660](T-0660-ais-ensure-change-model-effect-sql.md) | effect/sql: ais model transactions and the gateway decrypt (C3) | in-progress | auto | T-0652 | |
 | [T-0661](T-0661-typecheck-with-tsgo.md) | typecheck with tsgo in every package | in-progress | auto | T-0659 | |
+| [T-0662](T-0662-sweeper-survivors-and-dry-run.md) | sweeper: report SIGKILL survivors, dry run keeps the throttle | in-progress | haiku-5.5 | | Haiku 5.5 test worker (Claude Code subagent) |
 
 ## Follow-ups
 
