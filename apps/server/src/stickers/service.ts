@@ -3,12 +3,11 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync, readFileSync } from 'node:fs';
-import { and, asc, count, desc, eq, inArray, sql } from 'drizzle-orm';
 import { Effect, Option, Schema } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
-import { stickerFavorites, stickerPacks, stickers, userStickerPacks } from '../db/schema';
+import type { stickerPacks, stickers } from '../db/schema';
 import { sqlRuntimeFor } from '../effect/sql';
 import { HttpError } from '../errors';
 import { probeErrorCode, probeStickerBytes, STICKER_MAX_BYTES } from './image';
@@ -64,10 +63,9 @@ export interface StickersServiceDeps {
   audit?: AuditRecorder;
 }
 
-// The pack and panel functions run on the `effect/sql` client registered for
+// Every function in this module runs on the `effect/sql` client registered for
 // this database (see `../effect/sql`). The exported functions stay `async` so
-// routes and tests keep their shape. Favorites, uploads and the Telegram
-// import (part B) still use drizzle.
+// routes and tests keep their shape.
 function runSql<A>(
   deps: StickersServiceDeps,
   effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
@@ -718,11 +716,15 @@ export async function listFavorites(
   deps: StickersServiceDeps,
   userId: string,
 ): Promise<StickerView[]> {
-  const links = await deps.db
-    .select()
-    .from(stickerFavorites)
-    .where(eq(stickerFavorites.userId, userId))
-    .orderBy(asc(stickerFavorites.addedAt), asc(stickerFavorites.stickerId));
+  const links = await runSql(
+    deps,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ stickerId: string }>`SELECT sticker_id FROM sticker_favorites
+        WHERE user_id = ${userId}
+        ORDER BY added_at ASC, sticker_id ASC`;
+    }),
+  );
   if (links.length === 0) {
     return [];
   }
@@ -730,7 +732,13 @@ export async function listFavorites(
   // is restored in memory. The links are the caller's own rows, so the
   // result stays per-user scoped.
   const ids = links.map((link) => link.stickerId);
-  const rows = await deps.db.select().from(stickers).where(inArray(stickers.id, ids));
+  const rows = await runSql(
+    deps,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<StickerRow>`SELECT * FROM stickers WHERE id IN ${sql.in(ids)}`;
+    }),
+  );
   const byId = new Map(rows.map((row) => [row.id, row]));
   const views: StickerView[] = [];
   for (const link of links) {
@@ -747,40 +755,51 @@ export async function addFavorite(
   userId: string,
   stickerId: string,
 ): Promise<StickerView> {
-  const [row] = await deps.db.select().from(stickers).where(eq(stickers.id, stickerId)).limit(1);
+  const [row] = await runSql(
+    deps,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<StickerRow>`SELECT * FROM stickers WHERE id = ${stickerId} LIMIT 1`;
+    }),
+  );
   // An unknown id and an invisible one answer the same 404, so ids cannot
   // be probed; starring is idempotent, so no existence signal leaks either.
   if (!row) {
     throw new HttpError(404, 'not_found', 'Sticker not found');
   }
   try {
-    await deps.db.transaction(async (tx) => {
-      await tx.execute(
-        sql`SELECT pg_advisory_xact_lock(hashtext(${`sticker-favorites:${userId}`}))`,
-      );
-      // A re-star is idempotent even at the cap: check for the row before
-      // counting, so a lost response retried at 200 favorites still 200s.
-      const [existing] = await tx
-        .select({ stickerId: stickerFavorites.stickerId })
-        .from(stickerFavorites)
-        .where(and(eq(stickerFavorites.userId, userId), eq(stickerFavorites.stickerId, stickerId)))
-        .limit(1);
-      if (existing) {
-        return;
-      }
-      const [counter] = await tx
-        .select({ total: count() })
-        .from(stickerFavorites)
-        .where(eq(stickerFavorites.userId, userId));
-      if (Number(counter?.total ?? 0) >= STICKER_FAVORITES_MAX) {
-        throw new HttpError(
-          400,
-          'favorites_full',
-          `A user has at most ${STICKER_FAVORITES_MAX} favorites`,
+    await sqlRuntimeFor(deps.db).runPromise(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql.withTransaction(
+          Effect.gen(function* () {
+            yield* sql`SELECT pg_advisory_xact_lock(hashtext(${`sticker-favorites:${userId}`}))`;
+            // A re-star is idempotent even at the cap: check for the row before
+            // counting, so a lost response retried at 200 favorites still 200s.
+            const [existing] = yield* sql<{
+              stickerId: string;
+            }>`SELECT sticker_id FROM sticker_favorites
+              WHERE user_id = ${userId} AND sticker_id = ${stickerId} LIMIT 1`;
+            if (existing) {
+              return;
+            }
+            const [counter] = yield* sql<{ total: number }>`SELECT count(*)::int AS total
+              FROM sticker_favorites WHERE user_id = ${userId}`;
+            if (Number(counter?.total ?? 0) >= STICKER_FAVORITES_MAX) {
+              return yield* Effect.fail(
+                new HttpError(
+                  400,
+                  'favorites_full',
+                  `A user has at most ${STICKER_FAVORITES_MAX} favorites`,
+                ),
+              );
+            }
+            yield* sql`INSERT INTO sticker_favorites (user_id, sticker_id)
+              VALUES (${userId}, ${stickerId}) ON CONFLICT DO NOTHING`;
+          }),
         );
-      }
-      await tx.insert(stickerFavorites).values({ userId, stickerId }).onConflictDoNothing();
-    });
+      }),
+    );
   } catch (error) {
     if (error instanceof HttpError) {
       throw error;
@@ -797,9 +816,14 @@ export async function removeFavorite(
 ): Promise<void> {
   // Idempotent: unstarring an absent favorite is still `{ ok: true }`, so
   // the answer reveals nothing about what the caller has starred.
-  await deps.db
-    .delete(stickerFavorites)
-    .where(and(eq(stickerFavorites.userId, userId), eq(stickerFavorites.stickerId, stickerId)));
+  await runSql(
+    deps,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`DELETE FROM sticker_favorites
+        WHERE user_id = ${userId} AND sticker_id = ${stickerId}`;
+    }),
+  );
 }
 
 function extensionFor(mime: 'image/webp' | 'image/png'): string {
@@ -837,41 +861,36 @@ export async function uploadSticker(
   const id = randomUUID();
   const storageKey = `${id}.${extensionFor(info.mime)}`;
   try {
-    await deps.db.transaction(async (tx) => {
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${packId}))`);
-      const [counter] = await tx
-        .select({ total: count() })
-        .from(stickers)
-        .where(eq(stickers.packId, packId));
-      if (Number(counter?.total ?? 0) >= STICKERS_MAX_PER_PACK) {
-        throw new HttpError(
-          400,
-          'pack_full',
-          `A pack holds at most ${STICKERS_MAX_PER_PACK} stickers`,
+    await sqlRuntimeFor(deps.db).runPromise(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql.withTransaction(
+          Effect.gen(function* () {
+            yield* sql`SELECT pg_advisory_xact_lock(hashtext(${packId}))`;
+            const [counter] = yield* sql<{ total: number }>`SELECT count(*)::int AS total
+              FROM stickers WHERE pack_id = ${packId}`;
+            if (Number(counter?.total ?? 0) >= STICKERS_MAX_PER_PACK) {
+              return yield* Effect.fail(
+                new HttpError(
+                  400,
+                  'pack_full',
+                  `A pack holds at most ${STICKERS_MAX_PER_PACK} stickers`,
+                ),
+              );
+            }
+            const [top] = yield* sql<{ position: number }>`SELECT position FROM stickers
+              WHERE pack_id = ${packId}
+              ORDER BY position DESC LIMIT 1`;
+            yield* sql`INSERT INTO stickers
+                (id, pack_id, position, emoji, mime, width, height, bytes, storage_key)
+              VALUES (${id}, ${packId}, ${(top?.position ?? -1) + 1}, ${emojiParsed.value ?? null},
+                ${info.mime}, ${info.width}, ${info.height}, ${bytes.byteLength}, ${storageKey})`;
+            yield* sql`UPDATE sticker_packs SET updated_at = ${new Date().toISOString()}
+              WHERE id = ${packId}`;
+          }),
         );
-      }
-      const [top] = await tx
-        .select({ position: stickers.position })
-        .from(stickers)
-        .where(eq(stickers.packId, packId))
-        .orderBy(desc(stickers.position))
-        .limit(1);
-      await tx.insert(stickers).values({
-        id,
-        packId,
-        position: (top?.position ?? -1) + 1,
-        emoji: emojiParsed.value ?? null,
-        mime: info.mime,
-        width: info.width,
-        height: info.height,
-        bytes: bytes.byteLength,
-        storageKey,
-      });
-      await tx
-        .update(stickerPacks)
-        .set({ updatedAt: new Date() })
-        .where(eq(stickerPacks.id, packId));
-    });
+      }),
+    );
   } catch (error) {
     if (error instanceof HttpError) {
       throw error;
@@ -885,15 +904,24 @@ export async function uploadSticker(
   } catch (error) {
     // The file never landed: remove the orphan metadata row so the sticker
     // does not 404 forever, then fail like any other write error.
-    await deps.db
-      .delete(stickers)
-      .where(eq(stickers.id, id))
-      .catch(() => {});
+    await runSql(
+      deps,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`DELETE FROM stickers WHERE id = ${id}`;
+      }),
+    ).catch(() => {});
     throw error instanceof HttpError
       ? error
       : new HttpError(503, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
   }
-  const [row] = await deps.db.select().from(stickers).where(eq(stickers.id, id)).limit(1);
+  const [row] = await runSql(
+    deps,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<StickerRow>`SELECT * FROM stickers WHERE id = ${id} LIMIT 1`;
+    }),
+  );
   if (!row) {
     throw new HttpError(503, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
   }
@@ -907,24 +935,37 @@ export async function deleteSticker(
   userId: string,
 ): Promise<void> {
   await requireOwnedPack(deps, packId, userId);
-  const [row] = await deps.db
-    .select()
-    .from(stickers)
-    .where(and(eq(stickers.id, stickerId), eq(stickers.packId, packId)))
-    .limit(1);
+  const [row] = await runSql(
+    deps,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<StickerRow>`SELECT * FROM stickers
+        WHERE id = ${stickerId} AND pack_id = ${packId} LIMIT 1`;
+    }),
+  );
   // A sticker id outside this pack (or a missing one) is the same 404, so
   // ids cannot be probed across packs.
   if (!row) {
     throw new HttpError(404, 'not_found', 'Sticker not found');
   }
-  await deps.db.delete(stickers).where(eq(stickers.id, stickerId));
+  await runSql(
+    deps,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`DELETE FROM stickers WHERE id = ${stickerId}`;
+    }),
+  );
   const { rm } = await import('node:fs/promises');
   const storageDir = resolveStorageDir(deps.storageDir);
   await rm(join(storageDir, row.storageKey), { force: true }).catch(() => {});
-  await deps.db
-    .update(stickerPacks)
-    .set({ updatedAt: new Date() })
-    .where(eq(stickerPacks.id, packId));
+  await runSql(
+    deps,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`UPDATE sticker_packs SET updated_at = ${new Date().toISOString()}
+        WHERE id = ${packId}`;
+    }),
+  );
 }
 
 export interface StickerFile {
@@ -937,7 +978,13 @@ export async function readStickerFile(
   deps: StickersServiceDeps,
   stickerId: string,
 ): Promise<StickerFile | null> {
-  const [row] = await deps.db.select().from(stickers).where(eq(stickers.id, stickerId)).limit(1);
+  const [row] = await runSql(
+    deps,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<StickerRow>`SELECT * FROM stickers WHERE id = ${stickerId} LIMIT 1`;
+    }),
+  );
   if (!row) {
     return null;
   }
@@ -1025,49 +1072,44 @@ export async function importTelegramPack(
   // transaction, so two racing imports cannot both win.
   let packId: string | undefined;
   try {
-    await deps.db.transaction(async (tx) => {
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${'sticker-packs:' + userId}))`);
-      const [found] = await tx
-        .select({ id: stickerPacks.id })
-        .from(stickerPacks)
-        .where(and(eq(stickerPacks.ownerId, userId), eq(stickerPacks.importedFrom, importedFrom)))
-        .limit(1);
-      if (found) {
-        packId = found.id;
-        return;
-      }
-      const [counter] = await tx
-        .select({ total: count() })
-        .from(stickerPacks)
-        .where(eq(stickerPacks.ownerId, userId));
-      if (Number(counter?.total ?? 0) >= STICKER_PACKS_MAX_PER_USER) {
-        throw new HttpError(
-          400,
-          'pack_limit',
-          `A user has at most ${STICKER_PACKS_MAX_PER_USER} packs`,
+    await sqlRuntimeFor(deps.db).runPromise(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql.withTransaction(
+          Effect.gen(function* () {
+            yield* sql`SELECT pg_advisory_xact_lock(hashtext(${'sticker-packs:' + userId}))`;
+            const [found] = yield* sql<{ id: string }>`SELECT id FROM sticker_packs
+              WHERE owner_id = ${userId} AND imported_from = ${importedFrom} LIMIT 1`;
+            if (found) {
+              packId = found.id;
+              return;
+            }
+            const [counter] = yield* sql<{ total: number }>`SELECT count(*)::int AS total
+              FROM sticker_packs WHERE owner_id = ${userId}`;
+            if (Number(counter?.total ?? 0) >= STICKER_PACKS_MAX_PER_USER) {
+              return yield* Effect.fail(
+                new HttpError(
+                  400,
+                  'pack_limit',
+                  `A user has at most ${STICKER_PACKS_MAX_PER_USER} packs`,
+                ),
+              );
+            }
+            const id = randomUUID();
+            const stamped = new Date().toISOString();
+            yield* sql`INSERT INTO sticker_packs
+                (id, owner_id, title, visibility, imported_from, created_at, updated_at)
+              VALUES (${id}, ${userId}, ${title}, ${'private'}, ${importedFrom}, ${stamped}, ${stamped})`;
+            const [ownLinks] = yield* sql<{ total: number }>`SELECT count(*)::int AS total
+              FROM user_sticker_packs WHERE user_id = ${userId}`;
+            yield* sql`INSERT INTO user_sticker_packs (user_id, pack_id, position, added_at)
+              VALUES (${userId}, ${id}, ${Number(ownLinks?.total ?? 0)}, ${stamped})
+              ON CONFLICT DO NOTHING`;
+            packId = id;
+          }),
         );
-      }
-      const id = randomUUID();
-      const stamped = new Date();
-      await tx.insert(stickerPacks).values({
-        id,
-        ownerId: userId,
-        title,
-        visibility: 'private',
-        importedFrom,
-        createdAt: stamped,
-        updatedAt: stamped,
-      });
-      const [ownLinks] = await tx
-        .select({ total: count() })
-        .from(userStickerPacks)
-        .where(eq(userStickerPacks.userId, userId));
-      await tx
-        .insert(userStickerPacks)
-        .values({ userId, packId: id, position: Number(ownLinks?.total ?? 0), addedAt: stamped })
-        .onConflictDoNothing();
-      packId = id;
-    });
+      }),
+    );
   } catch (error) {
     if (error instanceof HttpError) {
       throw error;
@@ -1081,21 +1123,29 @@ export async function importTelegramPack(
 
   // Stickers already imported (by `source_id`), read before the downloads
   // start. A concurrent import may add a row we also store: the insert
-  // below uses `onConflictDoNothing` on the per-pack unique index, so one
+  // below uses `ON CONFLICT DO NOTHING` on the per-pack unique index, so one
   // of them wins and the loser counts as skipped.
-  const known = await deps.db
-    .select({ sourceId: stickers.sourceId })
-    .from(stickers)
-    .where(eq(stickers.packId, resolvedPackId));
+  const known = await runSql(
+    deps,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ sourceId: string | null }>`SELECT source_id FROM stickers
+        WHERE pack_id = ${resolvedPackId}`;
+    }),
+  );
   const knownIds = new Set(
     known.map((row) => row.sourceId).filter((id): id is string => id !== null),
   );
   // The whole pack size — local uploads included, not just Telegram rows —
   // so a full pack queues nothing instead of 400ing on the first store.
-  const [packCounter] = await deps.db
-    .select({ total: count() })
-    .from(stickers)
-    .where(eq(stickers.packId, resolvedPackId));
+  const [packCounter] = await runSql(
+    deps,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ total: number }>`SELECT count(*)::int AS total FROM stickers
+        WHERE pack_id = ${resolvedPackId}`;
+    }),
+  );
   const packSize = Number(packCounter?.total ?? 0);
 
   const candidates = set.stickers.slice(0, TELEGRAM_IMPORT_CONSIDER_MAX);
@@ -1163,19 +1213,25 @@ export async function importTelegramPack(
     }
   }
 
-  const [pack] = await deps.db
-    .select()
-    .from(stickerPacks)
-    .where(eq(stickerPacks.id, resolvedPackId))
-    .limit(1);
+  const [pack] = await runSql(
+    deps,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<StickerPackRow>`SELECT * FROM sticker_packs
+        WHERE id = ${resolvedPackId} LIMIT 1`;
+    }),
+  );
   if (!pack) {
     throw new HttpError(503, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
   }
-  const rows = await deps.db
-    .select()
-    .from(stickers)
-    .where(eq(stickers.packId, resolvedPackId))
-    .orderBy(asc(stickers.position));
+  const rows = await runSql(
+    deps,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<StickerRow>`SELECT * FROM stickers WHERE pack_id = ${resolvedPackId}
+        ORDER BY position ASC`;
+    }),
+  );
   if (deps.audit) {
     await deps.audit.record({
       actorUserId: userId,
@@ -1190,7 +1246,13 @@ export async function importTelegramPack(
       detail: { packId: resolvedPackId, imported, skippedAnimated, skippedInvalid },
     });
   }
-  return { pack: toPackView(deps, pack, rows), imported, skippedAnimated, skippedInvalid, partial };
+  return {
+    pack: toPackView(deps, pack, [...rows]),
+    imported,
+    skippedAnimated,
+    skippedInvalid,
+    partial,
+  };
 }
 
 function toImportHttpError(error: unknown): HttpError {
@@ -1249,47 +1311,38 @@ async function storeImportedSticker(
   const storageKey = `${id}.${extension}`;
   let inserted = false;
   try {
-    await deps.db.transaction(async (tx) => {
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${packId}))`);
-      const [counter] = await tx
-        .select({ total: count() })
-        .from(stickers)
-        .where(eq(stickers.packId, packId));
-      if (Number(counter?.total ?? 0) >= STICKERS_MAX_PER_PACK) {
-        throw new HttpError(
-          400,
-          'pack_full',
-          `A pack holds at most ${STICKERS_MAX_PER_PACK} stickers`,
+    await sqlRuntimeFor(deps.db).runPromise(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql.withTransaction(
+          Effect.gen(function* () {
+            yield* sql`SELECT pg_advisory_xact_lock(hashtext(${packId}))`;
+            const [counter] = yield* sql<{ total: number }>`SELECT count(*)::int AS total
+              FROM stickers WHERE pack_id = ${packId}`;
+            if (Number(counter?.total ?? 0) >= STICKERS_MAX_PER_PACK) {
+              return yield* Effect.fail(
+                new HttpError(
+                  400,
+                  'pack_full',
+                  `A pack holds at most ${STICKERS_MAX_PER_PACK} stickers`,
+                ),
+              );
+            }
+            const [top] = yield* sql<{ position: number }>`SELECT position FROM stickers
+              WHERE pack_id = ${packId}
+              ORDER BY position DESC LIMIT 1`;
+            const stored = yield* sql<{ id: string }>`INSERT INTO stickers
+                (id, pack_id, position, emoji, mime, width, height, bytes, storage_key, source_id)
+              VALUES (${id}, ${packId}, ${(top?.position ?? -1) + 1}, ${emoji}, ${info.mime},
+                ${info.width}, ${info.height}, ${bytes.byteLength}, ${storageKey}, ${item.sourceId})
+              ON CONFLICT DO NOTHING RETURNING id`;
+            inserted = stored.length > 0;
+            yield* sql`UPDATE sticker_packs SET updated_at = ${new Date().toISOString()}
+              WHERE id = ${packId}`;
+          }),
         );
-      }
-      const [top] = await tx
-        .select({ position: stickers.position })
-        .from(stickers)
-        .where(eq(stickers.packId, packId))
-        .orderBy(desc(stickers.position))
-        .limit(1);
-      const rows = await tx
-        .insert(stickers)
-        .values({
-          id,
-          packId,
-          position: (top?.position ?? -1) + 1,
-          emoji,
-          mime: info.mime,
-          width: info.width,
-          height: info.height,
-          bytes: bytes.byteLength,
-          storageKey,
-          sourceId: item.sourceId,
-        })
-        .onConflictDoNothing()
-        .returning();
-      inserted = rows.length > 0;
-      await tx
-        .update(stickerPacks)
-        .set({ updatedAt: new Date() })
-        .where(eq(stickerPacks.id, packId));
-    });
+      }),
+    );
   } catch (error) {
     // `pack_full` is a graceful outcome, not a request failure: the batch
     // loop stops queuing and the import answers with its summary.
@@ -1309,12 +1362,21 @@ async function storeImportedSticker(
     await mkdir(storageDir, { recursive: true });
     await writeFile(join(storageDir, storageKey), bytes);
   } catch {
-    await deps.db
-      .delete(stickers)
-      .where(eq(stickers.id, id))
-      .catch(() => {});
+    await runSql(
+      deps,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`DELETE FROM stickers WHERE id = ${id}`;
+      }),
+    ).catch(() => {});
     return 'skipped';
   }
-  const [row] = await deps.db.select().from(stickers).where(eq(stickers.id, id)).limit(1);
+  const [row] = await runSql(
+    deps,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<StickerRow>`SELECT * FROM stickers WHERE id = ${id} LIMIT 1`;
+    }),
+  );
   return row ? 'stored' : 'skipped';
 }

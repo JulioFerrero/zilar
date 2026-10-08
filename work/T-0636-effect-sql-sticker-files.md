@@ -1,7 +1,7 @@
 ---
 id: T-0636
 title: "effect/sql: stickers/service.ts part B, favorites, upload, delete sticker, read file and the Telegram import (find-or-create pack, known ids, per-sticker store), transactions with their advisory locks and caps; same errors, 503 mapping and pack_full outcome; the file then has no drizzle; tests unchanged"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0636-effect-sql-sticker-files
 model: auto
@@ -76,4 +76,56 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+Moved the part B functions of `apps/server/src/stickers/service.ts` from drizzle to `effect/sql`, reusing the module's `runSql`, `mapStickerError` and `sql.withTransaction` + `Effect.fail(HttpError)` pattern from part A (`createPack`).
+
+- Removed the value imports from `drizzle-orm` and `db/schema`; `stickerPacks`/`stickers` are now `import type` and the row types stay `typeof …$inferSelect`.
+- `listFavorites`: favorites ordered by `added_at, sticker_id`, early return when empty, then one `id IN (…)` read (`sql.in`), restored to link order.
+- `addFavorite`: 404 read, then one transaction with `pg_advisory_xact_lock(hashtext('sticker-favorites:' || userId))`, the exists check (idempotent even at the cap), the `STICKER_FAVORITES_MAX` (400 `favorites_full`) count and the `INSERT … ON CONFLICT DO NOTHING`; `HttpError` rethrown, anything else 503 `xmpp_unavailable`.
+- `removeFavorite`: scoped idempotent delete.
+- `uploadSticker`: checks unchanged; one transaction with the pack advisory lock, the `STICKERS_MAX_PER_PACK` (400 `pack_full`) count, the top `position`, the insert and the pack `updated_at`; then the file write (orphan row deleted on failure) and the read back.
+- `deleteSticker`: pack-scoped 404 read, delete, file removal, then pack `updated_at` (order kept).
+- `readStickerFile`: read by id; the path checks are unchanged.
+- `importTelegramPack`: one transaction with the `'sticker-packs:' || userId` lock, find-by-`(owner_id, imported_from)`, the 100-pack cap (400 `pack_limit`), the pack insert and the panel link `ON CONFLICT DO NOTHING`; then the known `source_id`s, the pack count, the final pack read and the stickers ordered by `position`.
+- `storeImportedSticker`: one transaction with the pack lock, the `pack_full` (400) count, the top position, the insert `ON CONFLICT DO NOTHING RETURNING id` (inserted only for a real insert) and the pack `updated_at`; the catch turns `code === 'pack_full'` into the `'pack_full'` outcome; then the file write (orphan delete on failure) and the read back.
+- Updated the stale module comment that said part B still used drizzle.
+
+### Files changed
+- `apps/server/src/stickers/service.ts`
+- `work/T-0636-effect-sql-sticker-files.md` (status/report)
+
+No test files were changed.
+
+### Commands and real results
+- `pnpm install` → Done in 18.8s (only an unrelated peer-dependency warning).
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/stickers` → **6 test files passed, 93 tests passed** (55.48s). This includes `favorites.test.ts`, `routes.test.ts`, `telegram-import.test.ts`, `telegram-import-routes.test.ts`, `telegram-import.effect.test.ts`, `image.test.ts`, all unchanged.
+- `pnpm gate` (first run) → FAIL format (`apps/server/src/stickers/service.ts`); fixed with `pnpm exec prettier --write apps/server/src/stickers/service.ts`.
+- `pnpm gate` (second run) → FAIL typecheck: `readonly` rows array passed to `toPackView` at `return { pack: toPackView(deps, pack, rows), … }`. Fixed with a spread, matching part A's `[...rows]` usage.
+- `pnpm gate` (final) →
+  ```
+  gate: 2 changed file(s) against main
+  PASS  install (frozen)  (1.3s)
+  PASS  format  (28.3s)
+  PASS  lint  (1.3s)
+  PASS  typecheck  (10.7s)
+  PASS  tests @zilar/server  (28.9s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Problems / deviations
+- No deviations from the spec. The two gate failures above were fixed inside scope.
+
+### Open questions
+- None.
+
 ## Review (written by Claude)
+
+**2026-10-08, lead:** approved.
+- **Pre-review:** clean, no findings. The packet head is c06f7f5e, the current HEAD.
+- **Lead check:**
+  - `stickers/service.ts` now has only type imports from `db/schema` and no drizzle at all;
+  - the favorites lock and cap are kept;
+  - a full pack still reaches the catch as `HttpError` `pack_full`, so the import ends with a summary;
+  - the insert keeps `ON CONFLICT DO NOTHING RETURNING id`;
+  - the path check in `readStickerFile` is kept.
