@@ -460,6 +460,8 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0544](T-0544-effect-http-integrations.md) | Effect C (HTTP): integration settings on HttpApi | planned | auto | T-0536 | |
 | [T-0545](T-0545-effect-http-voice-transcription.md) | Effect C (HTTP): voice transcription on HttpApi | planned | auto | T-0536 | |
 | [T-0546](T-0546-agents-g8a-extract-group-turn.md) | Agents G8a: extract the group turn | planned | auto | T-0540 | |
+| [T-0547](T-0547-effect-mobile-api-batch-5.md) | Effect E batch 5: mobile auth, machines, ais, invite-links API | planned | auto | T-0538 | |
+| [T-0548](T-0548-effect-sql-ai-usage-search-archives.md) | Effect C1: AI usage and search archives on effect/sql | planned | auto | T-0535 | |
 | [T-0427](T-0427-mobile-forwarded-header.md) | Mobile: forwarded messages show 'Forwarded from X [in Y]' | 2026-10-06 |
 | [T-0428](T-0428-mobile-new-chat-menu-sheet.md) | Mobile: New chat menu on the kit ActionSheet with icons | 2026-10-06 |
 | [T-0429](T-0429-mobile-dismiss-banner.md) | Mobile: DismissBanner replaces 12 copied chat screen banners | 2026-10-06 |
