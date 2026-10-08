@@ -53,7 +53,7 @@ import { createAvatarsRoutes } from './avatars/routes';
 import { createBackgroundsRoutes } from './backgrounds/routes';
 import { createStickersRoutes } from './stickers/routes';
 import { createTopicsApi } from './topics/api';
-import { createMachinesRoutes } from './machines/routes';
+import { createMachinesApi } from './machines/api';
 import { createDbMachineRegistry, type DbMachineRegistry } from './machines/registry';
 import { serverVersion } from './version';
 import { createToolsApi } from './tools/api';
@@ -351,17 +351,15 @@ export function createApp({
   // limited; the sweep asserts both answer 401 unauthenticated.
   const directoryApi = createDirectoryApi({ auth, db, logger });
   mountEffectRoutes(app, directoryApi.routes, directoryApi.handler);
-  app.route(
-    '/api',
-    createMachinesRoutes({
-      auth,
-      db,
-      logger,
-      audit: auditRecorder,
-      registry: machineRegistry ?? createDbMachineRegistry(db),
-      ...(isMachineOnline === undefined ? {} : { isMachineOnline }),
-    }),
-  );
+  const machinesApi = createMachinesApi({
+    auth,
+    db,
+    logger,
+    audit: auditRecorder,
+    registry: machineRegistry ?? createDbMachineRegistry(db),
+    ...(isMachineOnline === undefined ? {} : { isMachineOnline }),
+  });
+  mountEffectRoutes(app, machinesApi.routes, machinesApi.handler);
   const groupsApi = createGroupsApi({
     auth,
     db,

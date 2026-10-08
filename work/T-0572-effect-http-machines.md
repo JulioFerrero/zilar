@@ -1,7 +1,7 @@
 ---
 id: T-0572
 title: "Effect C (HTTP): machines + runner pairing routes onto HttpApi; the per-IP pair limiter reads socketAddressOf; the item-11 Hono wrapper stamps the test's getClientIp(c) into the socket-address header so tests stay unchanged; zod to Effect Schema; same order, texts and timing-safe pair branch"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0572-effect-http-machines
 model: auto
@@ -85,4 +85,153 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+
+- Created `apps/server/src/machines/api.ts`: the eight machines/runner-pair
+  routes on Effect `HttpApi`, with the same statuses, bodies, logs, audit
+  calls, texts and per-route step order as the old Hono router. Effect Schema
+  replaces zod (trims, bounds, strict `{ onExcessProperty: 'error' }`); the
+  per-IP pair limiter reads `socketAddressOf(request)`.
+- Rewrote `apps/server/src/machines/routes.ts` as the item-11 wrapper:
+  `createMachinesRoutes(deps): Hono` keeps the old signature, builds the
+  Effect API, registers `MACHINES_API_ROUTES` on a `new Hono()` (path minus
+  `/api`) and, per request, copies the raw headers, **deletes**
+  `SOCKET_ADDRESS_HEADER`, **sets** it to `(deps.getClientIp ?? socketAddress)(c)`
+  and forwards a new `Request` to `api.handler`. Removed zod and all route
+  bodies. `MachinesRoutesDependencies` (still with
+  `getClientIp?: (c: Context) => string`), `MachinesLogger` and the five rate
+  limit constants are kept (constants now live in `api.ts` and are re-exported
+  from `routes.ts`).
+- `apps/server/src/app.ts`: replaced `app.route('/api', createMachinesRoutes(...))`
+  at the same position with
+  `mountEffectRoutes(app, machinesApi.routes, machinesApi.handler)`, same deps,
+  no `getClientIp`.
+- `SOCKET_ADDRESS_HEADER` was already exported from `effect/http.ts:25`; no
+  change was needed there.
+
+### Files changed
+
+- `apps/server/src/machines/api.ts` (new)
+- `apps/server/src/machines/routes.ts` (rewritten)
+- `apps/server/src/app.ts` (mount + import)
+- `work/T-0572-effect-http-machines.md` (this Report + status)
+
+### Commands and real results
+
+- `pnpm install` — done, 20.3s (only pre-existing mobile peer warnings).
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot machines` —
+  **5 files passed, 62 tests passed**.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot authz-sweep app.test` —
+  **2 files passed, 14 tests passed**.
+- `pnpm gate` (first run) — GATE FAIL, `format` (Prettier) flagged
+  `apps/server/src/machines/api.ts`; scope was already clean.
+- `pnpm exec prettier --write apps/server/src/machines/api.ts routes.ts app.ts` —
+  only `api.ts` changed.
+- `pnpm gate` (second run) — **GATE PASS**:
+  ```
+  gate: 4 changed file(s) against main
+  PASS  install (frozen)  (3.6s)
+  PASS  format  (50.2s)
+  PASS  lint  (2.0s)
+  PASS  typecheck  (23.3s)
+  PASS  tests @zilar/server  (654.3s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+The listed tests are unchanged. All machines tests (`routes.test.ts`,
+`hub.test.ts`, service/registry/codes tests) plus the authz sweep and
+`app.test` pass byte-for-byte as before.
+
+### Item 8 — `PublicMachine` field by field
+
+`toPublicMachine` (`service.ts:88`) has 16 fields; `PublicMachineView` lists all
+16 in the same order:
+
+| service field | schema | old JSON | new JSON |
+|---|---|---|---|
+| id | `Schema.String` | string | same |
+| name | `Schema.String` | string | same |
+| status | `Schema.Literals([...])` | string | same |
+| os | `Schema.String` | string | same |
+| osVersion | `Schema.String` | string | same |
+| arch | `Schema.String` | string | same |
+| cpu | `Schema.String` | string | same |
+| cores | `Schema.Number` | number | same |
+| ramGb | `Schema.Number` | number | same |
+| diskFreeGb | `Schema.Number` | number | same |
+| drivers | `Schema.Array(Schema.String)` | string[] | same |
+| fingerprint | `Schema.String` | string | same |
+| online | `Schema.Boolean` | bool | same |
+| createdAt | `Schema.Date` | ISO string | same |
+| approvedAt | `Schema.NullOr(Schema.Date)` | ISO/string-or-null | same |
+| lastSeenAt | `Schema.NullOr(Schema.Date)` | ISO/string-or-null | same |
+
+Dates are `Date` in the service and encode to the same ISO strings
+`JSON.stringify` produced on the old `c.json()`. `approve`/`revoke`/`rename`
+call `toPublicMachine(row)` without `isMachineOnline`, so `online` stays
+`false`; `GET /machines` passes `isMachineOnline`.
+
+### Item 10 — message texts
+
+Every test-asserted text is byte-identical:
+
+- 400 `invalid_request` "Invalid JSON body" (PATCH malformed JSON)
+- 400 `invalid_request` "Invalid machine update" (PATCH bad shape)
+- 400 `invalid_code` "Invalid or expired pairing code"
+- 404 `not_found` "Machine not found"
+- 409 `invalid_transition` "Only pending machines can be approved" / "... denied" / "Machine is already revoked" / "Machine can no longer be deleted"
+- 409 `revoke_first` "Revoke the machine before deleting it"
+- 429 `rate_limited` "Too many pairing codes, try again later" / "Too many pairing attempts, try again in a minute"
+- 204 bodies (deny, delete), 201 `{ code, expiresAt }`, 201 `{ machineId, status: 'pending' }`
+
+No generic Schema text is reachable: there are no framework-decoded bodies
+(bodies are decoded in the handler to keep order/text) and the `:id` params are
+plain strings, so no schema-error middleware is needed.
+
+### Timing-safe pair branch
+
+The `Promise.all([consumePairingCode, verifyPairingSignature])` shape is kept
+verbatim inside a single `Effect.promise`, and the route branches once
+afterwards with the same disjunction, so the timing does not reveal which check
+failed. Malformed JSON is read via `catchCause` → `undefined` and decodes to
+`invalid_code`, never `invalid_request`, matching `readPairJson`.
+
+### Security checklist
+
+- No secret reaches logs/audit/errors: logs carry `machineId` only, audit
+  entries carry ids only (action + subjectId), pair failures never echo the
+  code/public key/signature.
+- Pair lookup/delete/update SQL is unchanged and scoped by `ownerUserId`.
+- The per-IP limiter trusts only the socket address; the wrapper strips any
+  client-forged `x-zilar-socket-address` before setting it.
+- Unknown machine and another user's machine both answer 404.
+- Every owner route is covered by the 401 sweep; pair has the global + per-IP
+  cap.
+
+### Deviations / notes
+
+- `MachinesLogger` is now a type alias of pino `Logger` (`export type
+  MachinesLogger = Logger`) instead of the previous `{ info }` interface: the
+  Effect error envelope needs `logger.error` for the 500 branch. Every caller
+  already passes a full pino logger (checked by grep: the name is used only in
+  `routes.ts`), so no call site changed. The export is kept as the spec asks.
+- The rate limit constants moved to `api.ts` and are re-exported from
+  `routes.ts` so the existing test imports (`PAIRING_CODE_RATE_LIMIT_WINDOW_MS`,
+  `PAIR_RATE_LIMIT_WINDOW_MS`) keep working.
+
+### Open questions
+
+None.
+
 ## Review (written by Claude)
+
+**2026-10-08, lead:** approved.
+- **Pre-review:** 0 must-fix. The packet (08:22) is newer than HEAD 928532ef.
+- **No test file changed.**
+- **Lead check:**
+  - the item-11 wrapper deletes any client copy of `SOCKET_ADDRESS_HEADER`, then stamps the test `getClientIp(c)` or the `getConnInfo` socket;
+  - production reads `socketAddressOf` behind `forwardRequest`, with no proxy trust, as before;
+  - the pair branch keeps the `Promise.all` shape;
+  - `PublicMachineView` lists the 16 `PublicMachine` fields with the same types.
+- **Accepted nit:** `MachinesLogger` is now the pino `Logger`, which matches the other api modules.
