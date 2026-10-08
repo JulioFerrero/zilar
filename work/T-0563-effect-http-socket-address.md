@@ -1,7 +1,7 @@
 ---
 id: T-0563
 title: "Effect C (HTTP) adapter: carry the socket address into Effect handlers (internal header set by forwardRequest, client copies stripped) and a shared clientIp helper (trusted proxy hops), so invite-links, machines and setup can move later; no route moves here"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0563-effect-http-socket-address
 model: auto
@@ -71,4 +71,31 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- `apps/server/src/effect/http.ts`: exported `SOCKET_ADDRESS_HEADER = 'x-zilar-socket-address'`; `forwardRequest` deletes any incoming value then sets it from `getConnInfo` with the same `'unknown'` fallback; added `socketAddressOf(request)` reading the header with `'unknown'` fallback.
+- `apps/server/src/http/client-ip.ts` (new): pure `trustedClientIp(header, hops)` moved verbatim and `clientIpFrom({ forwardedFor, socketAddress }, hops)` with the same rule as `clientIpFor`.
+- `apps/server/src/invite-links/routes.ts`: `trustedClientIp` and `clientIpFor` kept exported as thin wrappers over the shared module, so `setup/routes.ts` and the existing test work unchanged.
+- Tests: `apps/server/src/http/client-ip.test.ts` (same `trustedClientIp` cases plus `clientIpFrom` with hops 0/1 and missing header); one new forged-header test in `apps/server/src/effect/http.test.ts` via `mountEffectRoutes`.
+
+### Files changed
+- `apps/server/src/effect/http.ts`, `apps/server/src/effect/http.test.ts`, `apps/server/src/http/client-ip.ts`, `apps/server/src/http/client-ip.test.ts`, `apps/server/src/invite-links/routes.ts`, `work/T-0563-effect-http-socket-address.md`.
+
+### Commands and results
+- `pnpm install`: pass (34.2s).
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/http/client-ip.test.ts`: 4 passed.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/effect/http.test.ts`: 10 passed (9 existing + 1 new).
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot effect/http client-ip invite-links setup machines authz-sweep`: 11 files, 125 tests, all passed.
+- `pnpm gate` (first run): GATE FAIL on format only (2 test files needed prettier); fixed with `prettier --write` on those two files.
+- `pnpm gate` (final): PASS install, PASS format, PASS lint, PASS typecheck, PASS tests @zilar/server; `scope: every changed file is inside the Allowed files`; GATE PASS.
+
+### Problems / deviations
+- None from the spec. No route modules moved. No existing tests changed.
+
+### Security checklist
+- Forged `x-zilar-socket-address` is deleted before stamping; verified by the new test (handler never sees `203.0.113.99`).
+- `trustedClientIp`/`clientIpFrom` move is verbatim logic; default hops 0 ignores proxy headers.
+- No secrets logged; no new routes (authz sweep green); no deletes/updates touched.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-08). forwardRequest deletes any client copy of x-zilar-socket-address, then sets it from getConnInfo (same unknown fallback), and Effect handlers read it with socketAddressOf. The client-IP rule (Nth address from the right of x-forwarded-for when hops > 0, otherwise the socket address) moved verbatim to http/client-ip.ts; invite-links keeps trustedClientIp and clientIpFor as thin wrappers, so setup and the tests are unchanged. A new adapter test proves a forged header never reaches a handler. This unblocks moving invite-links, machines and setup. Pre-review clean.

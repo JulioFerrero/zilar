@@ -7,6 +7,7 @@ import { requireSession } from '../auth/session';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
+import { clientIpFrom, trustedClientIp as sharedTrustedClientIp } from '../http/client-ip';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
 import type { InviteLogger } from '../groups/service';
@@ -206,32 +207,19 @@ export function createInviteLinksRoutes(deps: InviteLinksRoutesDependencies): Ho
 // the left side. Only the join limiter uses this; everything else keeps
 // the socket address. Tests inject getClientIp instead.
 export function clientIpFor(trustedProxyHops: number): (c: Context) => string {
-  return (c: Context) => {
-    if (trustedProxyHops > 0) {
-      const forwarded = trustedClientIp(c.req.header('x-forwarded-for'), trustedProxyHops);
-      if (forwarded !== null) {
-        return forwarded;
-      }
-    }
-    return socketAddress(c);
-  };
+  return (c: Context) =>
+    clientIpFrom(
+      { forwardedFor: c.req.header('x-forwarded-for'), socketAddress: socketAddress(c) },
+      trustedProxyHops,
+    );
 }
 
 // The Nth address from the right of an `x-forwarded-for` header, or null
 // when the header is missing or has fewer than N addresses. Empty entries
-// never count as an address. Exported for tests.
+// never count as an address. Exported for tests; the rule lives in
+// `../http/client-ip`.
 export function trustedClientIp(header: string | undefined, hops: number): string | null {
-  if (header === undefined) {
-    return null;
-  }
-  const addresses = header
-    .split(',')
-    .map((entry) => entry.trim())
-    .filter((entry) => entry.length > 0);
-  if (addresses.length < hops || hops < 1) {
-    return null;
-  }
-  return addresses[addresses.length - hops] ?? null;
+  return sharedTrustedClientIp(header, hops);
 }
 
 // The socket address as the server sees it: the fallback when no proxy
