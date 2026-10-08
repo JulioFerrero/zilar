@@ -1,6 +1,6 @@
 // Push module on the Effect `HttpApi` adapter (T-0543): the same methods,
-// paths, statuses, bodies, texts and per-route step order as the Hono router
-// (`routes.ts`), mounted under Hono by `apps/server/src/effect/http.ts`.
+// paths, statuses, bodies, texts and per-route step order as the retired Hono
+// router, mounted under Hono by `apps/server/src/effect/http.ts`.
 // Handlers keep calling the drizzle store; the DB rewrite is a separate lane.
 //
 // The three bodies are decoded manually inside their handlers (Effect Schema,
@@ -27,7 +27,6 @@ import {
 } from 'effect/http-api';
 import { struct } from '@zilar/protocol';
 import type { Logger } from 'pino';
-import { Hono } from 'hono';
 import type { Auth } from '../auth/auth';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
@@ -625,20 +624,4 @@ export function createPushApi(deps: PushApiDependencies): EffectApiMount {
   );
 
   return { handler, routes: PUSH_API_ROUTES };
-}
-
-/**
- * The old Hono router, kept for the push route tests (which build a Hono app
- * around it with an injected sender): every route is served by the Effect
- * handler above, registered without the `/api` prefix so `app.route('/api',
- * …)` keeps working.
- */
-export function createPushRoutes(deps: PushRoutesDependencies): Hono {
-  const api = createPushApi(deps);
-  const routes = new Hono();
-  for (const route of PUSH_API_ROUTES) {
-    const local = route.path.replace(/^\/api/, '');
-    routes.on(route.method, local, (context) => api.handler(context.req.raw));
-  }
-  return routes;
 }

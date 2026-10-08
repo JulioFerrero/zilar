@@ -1,8 +1,6 @@
-import { Hono } from 'hono';
 import { sql } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '../app';
-import { HttpError } from '../errors';
 import {
   bootstrapUser,
   contactOf,
@@ -10,8 +8,8 @@ import {
   TEST_BASE_URL,
   type TestContext,
 } from '../test-support';
+import { createPushApi } from './api';
 import { loadPushConfig, type PushConfig } from './config';
-import { createPushRoutes } from './routes';
 import { createPushTestTables } from './test-tables';
 
 const PUSH_ENV = {
@@ -26,6 +24,16 @@ const PUSH_ENV = {
 
 function pushConfig(): PushConfig {
   return loadPushConfig({ ...PUSH_ENV });
+}
+
+// The push routes now run through the Effect handler directly: the tests pass a
+// full `/api/...` URL, exactly as the old Hono-mounted router did.
+function requestPush(
+  api: ReturnType<typeof createPushApi>,
+  url: string,
+  init?: RequestInit,
+): Promise<Response> {
+  return api.handler(new Request(url, init));
 }
 
 function deviceBody(endpoint: string, userAgent?: string) {
@@ -234,7 +242,7 @@ describe('push routes', () => {
 
   it('sends a test notification through the injected sender', async () => {
     const sent: Array<{ endpoint: string; payload: string }> = [];
-    const routes = createPushRoutes({
+    const api = createPushApi({
       auth: context.auth,
       db: context.db,
       config: context.config,
@@ -248,14 +256,6 @@ describe('push routes', () => {
         },
       },
     });
-    const app = new Hono();
-    app.route('/api', routes);
-    app.onError((error, c) => {
-      if (error instanceof HttpError) {
-        return c.json({ error: { code: error.code, message: error.message } }, error.status);
-      }
-      throw error;
-    });
     // Sessions live in the shared test database, so the routed app can serve
     // a user signed up through the full app.
     const full = createApp({
@@ -268,7 +268,7 @@ describe('push routes', () => {
     const ana = await bootstrapUser(context, full, 'ana-test@example.com');
     const headers = { cookie: ana.cookie, 'content-type': 'application/json' };
 
-    const registered = await app.request(`${TEST_BASE_URL}/api/push/subscriptions`, {
+    const registered = await requestPush(api, `${TEST_BASE_URL}/api/push/subscriptions`, {
       method: 'POST',
       headers,
       body: JSON.stringify(deviceBody('https://push.example.com/test-1')),
@@ -276,7 +276,7 @@ describe('push routes', () => {
     expect(registered.status).toBe(200);
     const { id } = (await registered.json()) as { id: string };
 
-    const test = await app.request(`${TEST_BASE_URL}/api/push/test`, {
+    const test = await requestPush(api, `${TEST_BASE_URL}/api/push/test`, {
       method: 'POST',
       headers,
       body: JSON.stringify({ subscriptionId: id }),
@@ -293,7 +293,7 @@ describe('push routes', () => {
     const [device] = await devicesForUser(context.db, ana.id);
     expect(device?.lastUsedAt).not.toBeNull();
 
-    const unknown = await app.request(`${TEST_BASE_URL}/api/push/test`, {
+    const unknown = await requestPush(api, `${TEST_BASE_URL}/api/push/test`, {
       method: 'POST',
       headers,
       body: JSON.stringify({ subscriptionId: 'missing' }),
@@ -303,7 +303,7 @@ describe('push routes', () => {
 
   it('deletes the row before answering 410 for an expired test endpoint (F4)', async () => {
     const goneError = Object.assign(new Error('gone'), { statusCode: 410 });
-    const routes = createPushRoutes({
+    const api = createPushApi({
       auth: context.auth,
       db: context.db,
       config: context.config,
@@ -315,14 +315,6 @@ describe('push routes', () => {
           throw goneError;
         },
       },
-    });
-    const app = new Hono();
-    app.route('/api', routes);
-    app.onError((error, c) => {
-      if (error instanceof HttpError) {
-        return c.json({ error: { code: error.code, message: error.message } }, error.status);
-      }
-      throw error;
     });
     const full = createApp({
       db: context.db,
@@ -336,7 +328,7 @@ describe('push routes', () => {
     const headers = { cookie: ana.cookie, 'content-type': 'application/json' };
     const bobHeaders = { cookie: bob.cookie, 'content-type': 'application/json' };
 
-    const registered = await app.request(`${TEST_BASE_URL}/api/push/subscriptions`, {
+    const registered = await requestPush(api, `${TEST_BASE_URL}/api/push/subscriptions`, {
       method: 'POST',
       headers,
       body: JSON.stringify(deviceBody('https://push.example.com/gone-1')),
@@ -345,14 +337,14 @@ describe('push routes', () => {
     const { id } = (await registered.json()) as { id: string };
 
     // Bob cannot burn Ana's device with a forged id: his 404 leaves it intact.
-    const forged = await app.request(`${TEST_BASE_URL}/api/push/test`, {
+    const forged = await requestPush(api, `${TEST_BASE_URL}/api/push/test`, {
       method: 'POST',
       headers: bobHeaders,
       body: JSON.stringify({ subscriptionId: id }),
     });
     expect(forged.status).toBe(404);
 
-    const test = await app.request(`${TEST_BASE_URL}/api/push/test`, {
+    const test = await requestPush(api, `${TEST_BASE_URL}/api/push/test`, {
       method: 'POST',
       headers,
       body: JSON.stringify({ subscriptionId: id }),
@@ -364,7 +356,7 @@ describe('push routes', () => {
   });
 
   it('stamps failed_at when the test send fails without expiring', async () => {
-    const routes = createPushRoutes({
+    const api = createPushApi({
       auth: context.auth,
       db: context.db,
       config: context.config,
@@ -377,14 +369,6 @@ describe('push routes', () => {
         },
       },
     });
-    const app = new Hono();
-    app.route('/api', routes);
-    app.onError((error, c) => {
-      if (error instanceof HttpError) {
-        return c.json({ error: { code: error.code, message: error.message } }, error.status);
-      }
-      throw error;
-    });
     const full = createApp({
       db: context.db,
       logger: context.logger,
@@ -395,7 +379,7 @@ describe('push routes', () => {
     const ana = await bootstrapUser(context, full, 'ana-failed@example.com');
     const headers = { cookie: ana.cookie, 'content-type': 'application/json' };
 
-    const registered = await app.request(`${TEST_BASE_URL}/api/push/subscriptions`, {
+    const registered = await requestPush(api, `${TEST_BASE_URL}/api/push/subscriptions`, {
       method: 'POST',
       headers,
       body: JSON.stringify(deviceBody('https://push.example.com/failed-1')),
@@ -403,7 +387,7 @@ describe('push routes', () => {
     expect(registered.status).toBe(200);
     const { id } = (await registered.json()) as { id: string };
 
-    const test = await app.request(`${TEST_BASE_URL}/api/push/test`, {
+    const test = await requestPush(api, `${TEST_BASE_URL}/api/push/test`, {
       method: 'POST',
       headers,
       body: JSON.stringify({ subscriptionId: id }),
