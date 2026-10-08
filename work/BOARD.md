@@ -453,7 +453,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0414](T-0414-web-forward-store-action.md) | Web store: forwardMessages sends copies with a forward origin, optional comment | 2026-10-06 |
 | [T-0425](T-0425-mobile-profile-buttons-kit.md) | Mobile: profile and contact card buttons on the kit Button | 2026-10-06 |
 | [T-0426](T-0426-mobile-ai-sheet-buttons-kit.md) | Mobile: AI activity Refresh, tool sheet Show all/less and Close on the kit Button | 2026-10-06 |
-| [T-0571](T-0571-audit-tool-args-schema.md) | Audit + plan: AI tool argument layer from zod to Effect Schema | planned | auto | T-0564 | |
 | [T-0581](T-0581-effect-http-drafts-sse.md) | Effect C (HTTP): AI draft stream (SSE) pilot | planned | auto | T-0573 | |
 | [T-0582](T-0582-effect-http-stickers-json.md) | Effect C (HTTP): stickers part A, the JSON routes | planned | auto | T-0577 | |
 | [T-0589](T-0589-effect-sql-startup-and-audit-nits.md) | effect/sql: startup sticker count, plus the audit issue-text nits | planned | auto | T-0584 | |
@@ -624,3 +623,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0587](T-0587-effect-sql-connections.md) | effect/sql: provider connection queries | 2026-10-08 |
 | [T-0588](T-0588-effect-sql-routine-runs.md) | effect/sql: routine scheduler claim and runner queries | 2026-10-08 |
 | [T-0593](T-0593-effect-sql-push-service-reads.md) | effect/sql: push service reads | 2026-10-08 |
+| [T-0571](T-0571-audit-tool-args-schema.md) | Audit: tool-args layer zod to Effect Schema plan | 2026-10-08 |
