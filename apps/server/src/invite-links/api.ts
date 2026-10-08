@@ -14,6 +14,10 @@ import {
   HttpApiMiddleware,
 } from 'effect/http-api';
 import type { Logger } from 'pino';
+import type { AuditRecorder } from '../audit/service';
+import type { Auth } from '../auth/auth';
+import type { ServerConfig } from '../config';
+import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
 import {
   CurrentUser,
@@ -29,7 +33,7 @@ import {
 } from '../effect/http';
 import { clientIpFrom } from '../http/client-ip';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
-import type { InviteLinksRoutesDependencies } from './routes';
+import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import {
   createInviteLink,
   INVITE_LINK_CREATE_MAX_EXPIRY_HOURS,
@@ -48,6 +52,34 @@ import {
   revokeInviteLink,
   toInvalidLink,
 } from './service';
+
+export interface InviteLinksApiDependencies {
+  auth: Auth;
+  db: ServerDatabase;
+  config: ServerConfig;
+  adminClient: EjabberdAdminClient;
+  logger: Logger;
+  audit?: AuditRecorder;
+  /** Injected in tests so the join windows can advance without waiting. */
+  now?: () => number;
+  /** Injected in tests; production uses the socket address. */
+  getClientIp?: (request: HttpServerRequest.HttpServerRequest) => string;
+  /** Injected in tests; production reads TRUSTED_PROXY_HOPS from config. */
+  trustedProxyHops?: number;
+  /** Overrides the join limiters (tests inject small budgets). */
+  joinLimiters?: { user: RateLimiter; ip: RateLimiter; preview?: RateLimiter };
+}
+
+// Test seam for the join rate windows, set on the app module by
+// `setTestAppInviteLinks` (see app.ts). Production never sets it.
+export interface TestInviteLinksOverrides {
+  now?: () => number;
+  getClientIp?: (request: HttpServerRequest.HttpServerRequest) => string;
+  /** Overrides TRUSTED_PROXY_HOPS in tests (the test config has no env seam). */
+  trustedProxyHops?: number;
+  /** Overrides the join limiters (tests inject small budgets). */
+  joinLimiters?: { user: RateLimiter; ip: RateLimiter; preview?: RateLimiter };
+}
 
 const TOKEN_PATTERN = /^[0-9a-f]{64}$/;
 
@@ -200,7 +232,7 @@ export const INVITE_LINKS_API_ROUTES: ReadonlyArray<EffectApiRoute> = [
   { method: 'POST', path: '/api/join/:token' },
 ];
 
-export function createInviteLinksApi(deps: InviteLinksRoutesDependencies): EffectApiMount {
+export function createInviteLinksApi(deps: InviteLinksApiDependencies): EffectApiMount {
   const logger = deps.logger;
   const webBaseUrl = deps.config.WEB_BASE_URL;
   const now = deps.now ?? Date.now;

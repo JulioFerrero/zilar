@@ -23,7 +23,7 @@ import {
   type TestContext,
 } from '../test-support';
 import { setTestAppInviteLinks } from '../app';
-import { trustedClientIp } from './routes';
+import { trustedClientIp } from '../http/client-ip';
 import { joinByInviteLink, type InviteLinkServiceDeps } from './service';
 
 interface CreatedLinkBody {
