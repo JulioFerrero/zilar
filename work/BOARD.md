@@ -9,6 +9,9 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
+| [T-0620](T-0620-gate-folder-tests.md) | Gate: run folder tests when no test shares the source name | review | auto | T-0616 | |
+| [T-0621](T-0621-effect-sql-approval-rules-reads.md) | effect/sql: approval rules statements | in-progress | auto | T-0596 | |
+| [T-0622](T-0622-effect-sql-owner-lookups.md) | effect/sql: owner and owner-email lookups | in-progress | auto | T-0596 | |
 
 ## Follow-ups
 
