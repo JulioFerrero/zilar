@@ -454,7 +454,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0425](T-0425-mobile-profile-buttons-kit.md) | Mobile: profile and contact card buttons on the kit Button | 2026-10-06 |
 | [T-0426](T-0426-mobile-ai-sheet-buttons-kit.md) | Mobile: AI activity Refresh, tool sheet Show all/less and Close on the kit Button | 2026-10-06 |
 | [T-0525](T-0525-effect-http-pins-roles-audit.md) | Effect C (HTTP): pins, roles, audit on HttpApi | planned | auto | T-0514 | |
-| [T-0527](T-0527-effect-mobile-api-batch-2.md) | Effect E batch 2: mobile roles, gifs, ai-memory, connections API | planned | auto | T-0506 | |
 | [T-0528](T-0528-effect-sql-chat-prefs-folders.md) | Effect C1: chat-prefs, chat-folders services on effect/sql | planned | auto | T-0510 | |
 | [T-0529](T-0529-agents-g5a-live-wrappers.md) | Agents G5a: extract the live-session wrappers and postToChat | running | auto | T-0523 | |
 | [T-0530](T-0530-effect-web-api-3.md) | Effect D3: web api.ts part 3, zod leaves web | running | auto | T-0507 | |
@@ -563,3 +562,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0522](T-0522-effect-sql-contacts-directory.md) | Effect C1: contacts, directory services on effect/sql | 2026-10-07 |
 | [T-0526](T-0526-atom-react-web-w1.md) | atom-react W1: web stores on an atom registry | 2026-10-07 |
 | [T-0507](T-0507-effect-web-api-2.md) | Effect D2: web api.ts on Effect Schema, part 2 | 2026-10-07 |
+| [T-0527](T-0527-effect-mobile-api-batch-2.md) | Effect E batch 2: mobile roles, gifs, ai-memory, connections API | 2026-10-08 |

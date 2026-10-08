@@ -4,10 +4,14 @@
  * role's holder set. The wire contract lives in
  * `apps/server/src/roles/{routes,service}`.
  *
- * Mobile has no zod, so — like `topics-api.ts` — the boundary is validated
- * with type guards. Malformed role rows return null and are dropped by the
+ * The boundary is validated with Effect Schema (T-0527, the T-0506 recipe):
+ * the request is an Effect pipeline, cut back to a `Promise` at the edge with
+ * `Effect.runPromise`. Malformed role rows return null and are dropped by the
  * callers, never rendered.
  */
+
+import { Data, Effect, Exit, Schema, type Effect as EffectType } from 'effect';
+import { struct } from '@zilar/protocol';
 
 export interface RoleHolder {
   userId: string;
@@ -42,71 +46,87 @@ export class RolesApiError extends Error {
   }
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
+const RoleHolderSchema = struct({
+  userId: Schema.String,
+  name: Schema.String,
+});
 
-function isString(value: unknown): value is string {
-  return typeof value === 'string';
-}
+// `Array` is made mutable to keep the `RoleHolder[]` type the API has always
+// returned.
+const CustomGroupRoleSchema = struct({
+  id: Schema.String,
+  name: Schema.String,
+  members: Schema.mutable(Schema.Array(RoleHolderSchema)),
+});
 
-function parseRoleHolder(value: unknown): RoleHolder | null {
-  if (!isRecord(value)) return null;
-  const userId = value['userId'];
-  const name = value['name'];
-  if (!isString(userId) || !isString(name)) return null;
-  return { userId, name };
-}
+const RolesListSchema = struct({
+  roles: Schema.mutable(Schema.Array(CustomGroupRoleSchema)),
+});
+
+// The server's error envelope. A missing or malformed envelope keeps the fixed
+// fallbacks used by `requestEffect`.
+const ErrorBodySchema = struct({
+  error: struct({
+    code: Schema.optional(Schema.String),
+    message: Schema.optional(Schema.String),
+  }),
+});
 
 /** A role row the viewer may see: malformed rows return null and are dropped. */
 export function parseCustomGroupRole(value: unknown): CustomGroupRole | null {
-  if (!isRecord(value)) return null;
-  const id = value['id'];
-  const name = value['name'];
-  const members = value['members'];
-  if (!isString(id) || !isString(name) || !Array.isArray(members)) return null;
-  const parsed: RoleHolder[] = [];
-  for (const entry of members) {
-    const holder = parseRoleHolder(entry);
-    if (holder === null) return null;
-    parsed.push(holder);
-  }
-  return { id, name, members: parsed };
+  const decoded = Schema.decodeUnknownExit(CustomGroupRoleSchema)(value);
+  return Exit.isSuccess(decoded) ? decoded.value : null;
 }
 
-async function request(
+// The internal failures, one per case. They carry no field beyond what the old
+// `RolesApiError` already surfaced; the `Promise` edge maps each back to that
+// same error, status, code and message.
+class RolesNetworkError extends Data.TaggedError('RolesNetworkError') {}
+class RolesRequestError extends Data.TaggedError('RolesRequestError')<{
+  readonly status: number;
+  readonly code: string;
+  readonly message: string;
+}> {}
+class RolesUnauthorized extends Data.TaggedError('RolesUnauthorized') {}
+class RolesInvalidResponse extends Data.TaggedError('RolesInvalidResponse') {}
+
+const requestEffect = Effect.fnUntraced(function* (
   apiUrl: string,
   path: string,
   token: string,
   init: RequestInit,
   fetchImpl: typeof fetch,
-): Promise<unknown> {
-  let response: Response;
-  try {
-    response = await fetchImpl(`${apiUrl}${path}`, {
-      ...init,
-      headers: {
-        accept: 'application/json',
-        authorization: `Bearer ${token}`,
-        ...init.headers,
-      },
-    });
-  } catch {
-    throw new RolesApiError(0, 'network_error', 'Could not reach the server');
-  }
+): EffectType.fn.Return<unknown, RolesNetworkError | RolesRequestError> {
+  const response = yield* Effect.tryPromise({
+    try: (signal) =>
+      fetchImpl(`${apiUrl}${path}`, {
+        ...init,
+        signal,
+        headers: {
+          accept: 'application/json',
+          authorization: `Bearer ${token}`,
+          ...init.headers,
+        },
+      }),
+    catch: () => new RolesNetworkError(),
+  });
 
   // DELETE answers 204 with no body: an empty payload parses as null.
-  const body: unknown = await response.json().catch(() => null);
+  const body: unknown = yield* Effect.promise(
+    () => response.json().catch(() => null) as Promise<unknown>,
+  );
+
   if (!response.ok) {
-    const error = isRecord(body) && isRecord(body['error']) ? body['error'] : null;
-    const code = isString(error?.['code']) ? error['code'] : 'request_failed';
-    const message = isString(error?.['message'])
-      ? error['message']
-      : `Request failed (${response.status})`;
-    throw new RolesApiError(response.status, code, message);
+    const decoded = Schema.decodeUnknownExit(ErrorBodySchema)(body);
+    const error = Exit.isSuccess(decoded) ? decoded.value.error : undefined;
+    return yield* new RolesRequestError({
+      status: response.status,
+      code: error?.code ?? 'request_failed',
+      message: error?.message ?? `Request failed (${response.status})`,
+    });
   }
   return body;
-}
+});
 
 /** The production `RolesApi`: bearer auth, `fetch`, and the build-time API URL. */
 export function createRolesApi(
@@ -114,32 +134,51 @@ export function createRolesApi(
   fetchImpl: typeof fetch = fetch,
   apiUrl: string,
 ): RolesApi {
-  const withToken = async (
+  const withTokenEffect = Effect.fnUntraced(function* (
     path: string,
     init: RequestInit,
     parse: (value: unknown) => unknown,
-  ): Promise<unknown> => {
-    const token = await getToken();
+  ): EffectType.fn.Return<
+    unknown,
+    RolesUnauthorized | RolesNetworkError | RolesRequestError | RolesInvalidResponse
+  > {
+    const token = yield* Effect.promise(() => getToken());
     if (token === undefined) {
-      throw new RolesApiError(401, 'unauthorized', 'No session');
+      return yield* new RolesUnauthorized();
     }
-    const body = await request(apiUrl, path, token, init, fetchImpl);
+    const body = yield* requestEffect(apiUrl, path, token, init, fetchImpl);
     const parsed = parse(body);
     if (parsed === null) {
-      throw new RolesApiError(200, 'invalid_response', 'The server sent an unexpected response');
+      return yield* new RolesInvalidResponse();
     }
     return parsed;
-  };
+  });
+
+  const withToken = (
+    path: string,
+    init: RequestInit,
+    parse: (value: unknown) => unknown,
+  ): Promise<unknown> =>
+    Effect.runPromise(
+      withTokenEffect(path, init, parse).pipe(
+        Effect.catchTags({
+          RolesUnauthorized: () =>
+            Effect.fail(new RolesApiError(401, 'unauthorized', 'No session')),
+          RolesNetworkError: () =>
+            Effect.fail(new RolesApiError(0, 'network_error', 'Could not reach the server')),
+          RolesRequestError: (error) =>
+            Effect.fail(new RolesApiError(error.status, error.code, error.message)),
+          RolesInvalidResponse: () =>
+            Effect.fail(
+              new RolesApiError(200, 'invalid_response', 'The server sent an unexpected response'),
+            ),
+        }),
+      ),
+    );
 
   const parseRoleList = (value: unknown): CustomGroupRole[] | null => {
-    if (!isRecord(value) || !Array.isArray(value['roles'])) return null;
-    const roles: CustomGroupRole[] = [];
-    for (const entry of value['roles']) {
-      const role = parseCustomGroupRole(entry);
-      if (role === null) return null;
-      roles.push(role);
-    }
-    return roles;
+    const decoded = Schema.decodeUnknownExit(RolesListSchema)(value);
+    return Exit.isSuccess(decoded) ? decoded.value.roles : null;
   };
 
   const json = (input: { name: string } | { userIds: string[] }): RequestInit => ({
