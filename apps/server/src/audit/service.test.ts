@@ -132,6 +132,12 @@ describe('audit service', () => {
       expect(row.id).toHaveLength(32);
     });
 
+    it('names a wrong type', async () => {
+      await expect(
+        recordAudit(context.db, { ...baseEntry(), actorUserId: 42 } as unknown as AuditEntry, now),
+      ).rejects.toThrow(/Invalid audit entry:.*Expected string/);
+    });
+
     it('rejects an action that is not dotted', async () => {
       await expect(
         recordAudit(context.db, baseEntry({ action: 'noDotHere' }), now),

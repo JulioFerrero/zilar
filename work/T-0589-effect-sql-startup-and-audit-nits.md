@@ -1,7 +1,7 @@
 ---
 id: T-0589
 title: "effect/sql: startup sticker count (warnOnEmptyStorageDir) off drizzle, with index.ts registering the sql runtime before the startup checks; plus the two T-0584 audit nits (stale comment name, wrong-type/missing-key issue text); tests unchanged"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0589-effect-sql-startup-and-audit-nits
 model: auto
@@ -63,4 +63,71 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- `startup.ts`: `warnOnEmptyStorageDir` now counts stickers through effect/sql
+  (`SELECT count(*)::int AS total FROM stickers` via a local `runSql`, same shape
+  as `agents/gateway/db.ts`). `db` param is `ServerDatabase`; no `drizzle-orm` or
+  `db/schema` import left.
+- `index.ts`: calls `registerSqlRuntime(db, config.DATABASE_URL)` right after
+  `ensureWritableDir(stickerDir, ...)` and before `warnOnEmptyStorageDir`, with a
+  one-line comment that `createApp` reuses it (register is idempotent).
+- `audit/service.ts`: fixed comment `entryIssueMessage` -> `firstIssueMessage`;
+  added `InvalidType` (via `SchemaIssue.defaultLeafHook`, e.g. `Expected string`)
+  and `MissingKey` (`Missing key`) branches to `firstIssueMessage`.
+- `audit/service.test.ts`: one new case, `names a wrong type`, asserting
+  `actorUserId: 42` throws `/Invalid audit entry:.*Expected string/`.
+
+### Deviation from the spec worth knowing
+The spec's model was that `firstIssueMessage` would see an `InvalidType` issue
+for the wrong-type case. In Effect 4.0.2 the union failure flattens to an `AnyOf`
+with **zero** child issues (verified with a throwaway debug test: `Composite[1] >
+Pointer > AnyOf[0]`), so the tree walk finds nothing. I kept the two new branches
+and added a fallback in `decodeEntry` to the schema message's first line
+(`Expected string | null`), which is what makes the new test pass. The
+`MissingKey` branch is reached normally (missing-key decodes as
+`Composite > Pointer > MissingKey`; the debug test showed its schema message
+first line is also `Missing key`). The `InvalidType` branch fires for direct
+non-union schemas.
+
+### Files changed
+`apps/server/src/startup.ts`, `apps/server/src/index.ts`,
+`apps/server/src/audit/service.ts`, `apps/server/src/audit/service.test.ts`
+(plus this task file).
+
+### Commands and real results
+- `pnpm install`: done, 20.8s.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/audit/service.test.ts`:
+  first run 20 passed, 1 failed (new test got `Invalid audit entry: unknown`);
+  after fallback fix: 21 passed.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/startup.test.ts`:
+  11 passed (unchanged).
+- `pnpm exec prettier --write apps/server/src/audit/service.test.ts` (repo's own
+  prettier; `npx` is blocked): reformatted the new test; other files unchanged.
+- `pnpm gate` (background, machine shared with other workers' gates):
+  ```
+  gate: 5 changed file(s) against main
+  PASS  install (frozen)  (9.3s)
+  PASS  format  (141.4s)
+  PASS  lint  (2.1s)
+  PASS  typecheck  (1.7s)
+  PASS  tests @zilar/server  (2698.0s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Security checklist
+- No secrets in logs/audit/errors; count query returns only a number.
+- No deletes/updates touched; no new routes; audit detail rule untouched.
+- The startup count read is a plain SELECT, no permission gating existed before.
+
+### Open questions
+None.
+
 ## Review (written by Claude)
+
+**2026-10-08, lead:** approved.
+- **Pre-review:** clean. The packet (13:07) is newer than HEAD f17699d2.
+- **Lead check:**
+  - `index.ts` registers the sql runtime before the startup checks, and `createApp` reuses it;
+  - the sticker count runs on effect/sql;
+  - the one allowed new audit test asserts the named wrong-type text (`Invalid audit entry: ... Expected string`).

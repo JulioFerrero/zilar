@@ -31,7 +31,7 @@ import { getMailSettings, settingsCipherFor } from './setup/settings';
 import { createKeyCipher } from './connections/crypto';
 import { createDb } from './db/client';
 import { runMigrations } from './db/migrate';
-import { disposeSqlRuntime } from './effect/sql';
+import { disposeSqlRuntime, registerSqlRuntime } from './effect/sql';
 import { createArchivePool } from './search/service';
 import { createPushCipher } from './push/crypto';
 import { loadPushConfigOrExit, pushConfigError, type PushConfig } from './push/config';
@@ -97,6 +97,9 @@ if (config.MAIL_TRANSPORT === undefined) {
 // the mismatch certain; that second line is logged below.
 const stickerDir = resolveStorageDir(config.STICKER_STORAGE_DIR);
 await ensureWritableDir(stickerDir, 'STICKER_STORAGE_DIR');
+// `createApp` below reuses this runtime; registering here keeps the startup
+// checks on the same `effect/sql` client.
+registerSqlRuntime(db, config.DATABASE_URL);
 await warnOnEmptyStorageDir({
   db,
   storageDir: stickerDir,

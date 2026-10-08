@@ -38,7 +38,7 @@ const nullableId = Schema.NullOr(
 // Effect's `Record` does not run checks on the key schema, so both the key
 // length bound (1 to 64 characters, like the old zod key schema) and the
 // serialised-size bound live in one filter on the whole record. A filter that
-// returns a string carries it (see `entryIssueMessage` below), unlike the
+// returns a string carries it (see `firstIssueMessage` below), unlike the
 // `{ message }` option on length checks in Effect 4.0.2.
 const detailSchema = Schema.NullOr(
   Schema.Record(Schema.String, Schema.Unknown).pipe(
@@ -101,6 +101,10 @@ function firstIssueMessage(issue: SchemaIssue.Issue): string | undefined {
     case 'Filter':
     case 'Encoding':
       return firstIssueMessage(issue.issue);
+    case 'InvalidType':
+      return SchemaIssue.defaultLeafHook(issue);
+    case 'MissingKey':
+      return 'Missing key';
     case 'InvalidValue': {
       const message = issue.annotations?.message;
       return typeof message === 'string' && message.length > 0 ? message : undefined;
@@ -124,7 +128,12 @@ function decodeEntry(entry: AuditEntry): AuditEntry {
       if (reason.error.message.includes(sizeText)) {
         throw new Error(`Invalid audit entry: ${sizeText}`);
       }
-      throw new Error(`Invalid audit entry: ${firstIssueMessage(reason.error.issue) ?? 'unknown'}`);
+      // A union failure (e.g. a wrong type for a nullable id) flattens to an
+      // `AnyOf` with no child issues, so the tree walk finds nothing: fall
+      // back to the schema message's first line (`Expected string | null`).
+      throw new Error(
+        `Invalid audit entry: ${firstIssueMessage(reason.error.issue) ?? reason.error.message.split('\n')[0] ?? 'unknown'}`,
+      );
     }
   }
   throw new Error('Invalid audit entry: unknown');
