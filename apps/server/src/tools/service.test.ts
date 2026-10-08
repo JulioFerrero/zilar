@@ -15,6 +15,7 @@ import {
   topics,
 } from '../db/schema';
 import { createAuditRecorder } from '../audit/service';
+import { sqlRuntimeFor } from '../effect/sql';
 import {
   bootstrapUser,
   createTestContext,
@@ -26,7 +27,9 @@ import {
   approveToolHosts,
   deleteTool,
   deleteToolsForAiInGroup,
+  deleteToolsForAiInGroupEffect,
   deleteToolsForAiInTopic,
+  deleteToolsForAiInTopicEffect,
   getTool,
   getVersion,
   listRuns,
@@ -860,6 +863,84 @@ describe('tools service (T-0103)', () => {
           topicId: otherTopicId,
           now: NOW,
         }),
+      );
+      expect(deleted).toEqual([otherTool.tool.id]);
+      expect(await getTool(context.db, otherTool.tool.id)).toBeNull();
+      expect(await getTool(context.db, generalTool.tool.id)).not.toBeNull();
+    });
+
+    it('deleteToolsForAiInGroupEffect soft-deletes that AI group tools only', async () => {
+      const { groupId, generalTopicId } = await seedGroup(context, ownerId, [], [aiId]);
+      const other = await seedGroup(context, ownerId, [], [aiId]);
+      const groupTool = await saveToolVersion(
+        context.db,
+        {
+          aiId,
+          groupId,
+          topicId: generalTopicId,
+          userId: ownerId,
+          ...baseInput({ name: 'effect-group-tool' }),
+        },
+        NOW,
+      );
+      const personalTool = await saveToolVersion(
+        context.db,
+        {
+          aiId,
+          groupId: null,
+          topicId: null,
+          userId: ownerId,
+          ...baseInput({ name: 'effect-personal-tool' }),
+        },
+        NOW,
+      );
+      const otherTool = await saveToolVersion(
+        context.db,
+        {
+          aiId,
+          groupId: other.groupId,
+          topicId: other.generalTopicId,
+          userId: ownerId,
+          ...baseInput({ name: 'effect-other-tool' }),
+        },
+        NOW,
+      );
+      const deleted = await sqlRuntimeFor(context.db).runPromise(
+        deleteToolsForAiInGroupEffect({ aiId, groupId, now: NOW }),
+      );
+      expect(deleted).toEqual([groupTool.tool.id]);
+      expect(await getTool(context.db, groupTool.tool.id)).toBeNull();
+      expect(await getTool(context.db, personalTool.tool.id)).not.toBeNull();
+      expect(await getTool(context.db, otherTool.tool.id)).not.toBeNull();
+    });
+
+    it('deleteToolsForAiInTopicEffect soft-deletes only that topic tools', async () => {
+      const { groupId, generalTopicId } = await seedGroup(context, ownerId, [], [aiId]);
+      const otherTopicId = await seedTopic(context, groupId, ownerId, 'Other Effect');
+      const generalTool = await saveToolVersion(
+        context.db,
+        {
+          aiId,
+          groupId,
+          topicId: generalTopicId,
+          userId: ownerId,
+          ...baseInput({ name: 'effect-general-tool' }),
+        },
+        NOW,
+      );
+      const otherTool = await saveToolVersion(
+        context.db,
+        {
+          aiId,
+          groupId,
+          topicId: otherTopicId,
+          userId: ownerId,
+          ...baseInput({ name: 'effect-topic-tool' }),
+        },
+        NOW,
+      );
+      const deleted = await sqlRuntimeFor(context.db).runPromise(
+        deleteToolsForAiInTopicEffect({ aiId, topicId: otherTopicId, now: NOW }),
       );
       expect(deleted).toEqual([otherTool.tool.id]);
       expect(await getTool(context.db, otherTool.tool.id)).toBeNull();

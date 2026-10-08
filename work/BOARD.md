@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-0664](T-0664-tools-deletes-effect.md) | effect/sql phase 1: tools deletes as Effects | in-progress | auto | | removeGroupAi chain |
 | [T-0665](T-0665-routines-delete-effect.md) | effect/sql phase 1: routines group delete as an Effect | in-progress | haiku-5.5 | | removeGroupAi chain |
 | [T-0666](T-0666-room-memory-delete-effect.md) | effect/sql phase 1: room-memory delete as an Effect | in-progress | haiku-5.5 | | removeGroupAi chain |
 
@@ -695,3 +694,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0662](T-0662-sweeper-survivors-and-dry-run.md) | sweeper reports SIGKILL survivors with LEAD: SWEEP FAILED; dry runs no longer arm the sweep throttle | 2026-10-08 |
 | [T-0660](T-0660-ais-ensure-change-model-effect-sql.md) | effect/sql: ais ensure/change model transactions, gateway lookups and connections decryptForGatewayUse (C3) | 2026-10-08 |
 | [T-0663](T-0663-rules-revoke-effect.md) | effect/sql phase 1: revokeActiveRulesForAiInGroupEffect | 2026-10-08 |
+| [T-0664](T-0664-tools-deletes-effect.md) | effect/sql phase 1: tools deletes as Effects | 2026-10-08 |

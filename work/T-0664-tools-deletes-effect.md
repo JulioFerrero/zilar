@@ -1,7 +1,7 @@
 ---
 id: T-0664
 title: "effect/sql phase 1: add deleteToolsForAiInGroupEffect and deleteToolsForAiInTopicEffect next to the drizzle versions in tools/service.ts; tests; drizzle versions unchanged"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0664-tools-deletes-effect
 model: auto
@@ -51,4 +51,39 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- Added `deleteToolsForAiInTopicEffect(input)` and `deleteToolsForAiInGroupEffect(input)` to `apps/server/src/tools/service.ts`, right after their drizzle counterparts. Each returns `Effect.Effect<string[], SqlError.SqlError, SqlClient.SqlClient>`, runs one `UPDATE ai_tools … RETURNING id` (setting `deleted_at`/`updated_at` to `input.now.toISOString()`, filtered by `ai_id` + `topic_id`/`group_id` + `deleted_at IS NULL`), and maps the rows to ids. Same input shapes as the drizzle functions (`aiId`, `topicId`/`groupId`, `now`), no `db` parameter since the `SqlClient` comes from the effect environment.
+- Updated the two comments above the drizzle functions to name the new Effect versions.
+- Left both drizzle functions unchanged.
+- Added `import { sqlRuntimeFor } from '../effect/sql';` and imported the two Effect functions in `apps/server/src/tools/service.test.ts`.
+- Added two tests inside the existing `describe('deleteToolsForAiInGroup')` block (after the existing drizzle tests), modelled on lines 782-867: each seeds a matching tool plus non-matching tools, runs the Effect via `sqlRuntimeFor(context.db).runPromise(...)`, asserts the returned id list is exactly the matching tool, and asserts only that tool reads back as soft-deleted (`getTool` null / not null).
+
+### Files changed
+- `apps/server/src/tools/service.ts`
+- `apps/server/src/tools/service.test.ts`
+- `work/T-0664-tools-deletes-effect.md` (status + this report)
+
+### Commands and real results
+- `pnpm install`: Done, no errors (peer-dep warning for `@types/react-dom` in `apps/mobile`, pre-existing).
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/tools/service.test`: `Test Files 1 passed (1)`, `Tests 48 passed (48)`.
+- `pnpm gate` (from repo root), summary:
+  ```
+  gate: 3 changed file(s) against main
+  PASS  install (frozen)  (1.6s)
+  PASS  format  (64.8s)
+  PASS  lint  (1.7s)
+  PASS  typecheck  (29.5s)
+  PASS  tests @zilar/server  (37.4s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Problems / deviations
+- None. Both drizzle functions are untouched; the new tests live in the same describe block as the existing deletes to keep the pairing obvious.
+
+### Open questions
+- None.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Pre-review clean, no nits; this is phase 1 of the removeGroupAi chain. The two tools deletes are Effects next to the unchanged drizzle versions, with tests.

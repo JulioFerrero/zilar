@@ -611,6 +611,8 @@ export async function deleteTool(
 // topic-AI removal with `deps.db`, but `service.test.ts` drives it inside
 // a drizzle transaction and passes the transaction, so it stays on
 // drizzle like `deleteToolsForAiInGroup`. Returns the deleted tool ids.
+// `deleteToolsForAiInTopicEffect` below is the same delete for callers
+// that already hold a `SqlClient`.
 export async function deleteToolsForAiInTopic(
   tx: ServerDatabase,
   input: { aiId: string; topicId: string; now: Date },
@@ -632,7 +634,8 @@ export async function deleteToolsForAiInTopic(
 // Soft-deletes every active tool of one AI in every topic of a group.
 // Called from `groups/service.ts` `removeGroupAi` in the same transaction
 // (the `tx` parameter is the caller's transaction). Returns the deleted
-// tool ids.
+// tool ids. `deleteToolsForAiInGroupEffect` below is the same delete for
+// callers that already hold a `SqlClient`.
 export async function deleteToolsForAiInGroup(
   tx: ServerDatabase,
   input: { aiId: string; groupId: string; now: Date },
@@ -649,6 +652,39 @@ export async function deleteToolsForAiInGroup(
     )
     .returning();
   return rows.map((row) => row.id);
+}
+
+// Effect versions of the two deletes above (T-0664). A caller that already
+// holds a `SqlClient` runs them directly; `removeGroupAi` will run them
+// inside `sql.withTransaction` in a later task. Returns the deleted ids.
+export function deleteToolsForAiInTopicEffect(input: {
+  aiId: string;
+  topicId: string;
+  now: Date;
+}): Effect.Effect<string[], SqlError.SqlError, SqlClient.SqlClient> {
+  return Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const rows = yield* sql<{ id: string }>`UPDATE ai_tools
+      SET deleted_at = ${input.now.toISOString()}, updated_at = ${input.now.toISOString()}
+      WHERE ai_id = ${input.aiId} AND topic_id = ${input.topicId} AND deleted_at IS NULL
+      RETURNING id`;
+    return rows.map((row) => row.id);
+  });
+}
+
+export function deleteToolsForAiInGroupEffect(input: {
+  aiId: string;
+  groupId: string;
+  now: Date;
+}): Effect.Effect<string[], SqlError.SqlError, SqlClient.SqlClient> {
+  return Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const rows = yield* sql<{ id: string }>`UPDATE ai_tools
+      SET deleted_at = ${input.now.toISOString()}, updated_at = ${input.now.toISOString()}
+      WHERE ai_id = ${input.aiId} AND group_id = ${input.groupId} AND deleted_at IS NULL
+      RETURNING id`;
+    return rows.map((row) => row.id);
+  });
 }
 
 export interface RunToolVersionDeps {
