@@ -1,7 +1,7 @@
 ---
 id: T-0548
 title: "Effect C1: ais/usage.ts (getAiUsage) and search/service.ts (allowedArchives' own queries) on effect/sql; same answers, numeric columns still read as numbers; signatures unchanged, tests unchanged"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0548-effect-sql-ai-usage-search-archives
 model: auto
@@ -63,4 +63,39 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Both conversions follow the `docs/EFFECT_GUIDE.md` "Moving a server service
+onto effect/sql" recipe (see `apps/server/src/contacts/service.ts`):
+`runSql(db, ...)` through `sqlRuntimeFor(db).runPromise(...)`, raw `sql<Row>`
+tagged-template queries, camelCased row interfaces via `transformResultNames`.
+No caller changes, no test changes. Signatures, WHERE scoping, `Number(...)`
+conversions, `usd()` rounding, and the `Promise.all` shape are unchanged.
+
+- `apps/server/src/ais/usage.ts`: `getAiUsage` runs on effect/sql. The
+  limits/key SELECT (inner join `ai_limits`, left join `llm_virtual_keys`,
+  `WHERE ais.id = aiId`), the `ai_daily_spend` baseline SELECT, the
+  `INSERT ... ON CONFLICT DO NOTHING`, and the baseline-reset UPDATE are raw
+  SQL. Rows typed as strings (`AiLimitRow`, `BaselineRow`) since
+  node-postgres/PGlite return `numeric` as string; `Number(...)` conversions
+  kept exactly. `drizzle-orm` import dropped. Log lines unchanged (aiId only).
+- `apps/server/src/search/service.ts`: `allowedArchives`' two own queries run
+  on effect/sql (contacts inner `user` + left `xmpp_accounts` scoped by
+  `contacts.user_id`; `ais` scoped by `owner`). `listGroupsForUser` and
+  `visibleTopics` calls stay on drizzle, `Promise.all` shape kept, empty-name
+  fallback (`UNNAMED_CONTACT_NAME`) kept. `drizzle-orm` import dropped (no
+  drizzle type import needed — helpers take `ServerDatabase`).
+
+Commands and real results:
+- `pnpm install`: done (27.4s).
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot ais search
+  files media push src/agents/gateway.test.ts`: 21 passed, 2 skipped (23
+  files); 414 passed, 3 skipped (417 tests).
+- `pnpm gate` (background, log `gate-T-0548.log`): PASS install (4.6s),
+  PASS format (71.0s), PASS lint (1.7s), PASS typecheck (1.3s),
+  PASS tests @zilar/server (1659.5s); "scope: every changed file is inside
+  the Allowed files"; GATE PASS, EXIT:0.
+
+Commits: `a73c8c95` (usage.ts), `7857281c` (search/service.ts).
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-08). getAiUsage and the two own queries in allowedArchives run on effect/sql with the same joins, scoping, Number() conversions of the numeric columns, and baseline writes (lead compared usd(windowUsd) on insert and update against main). listGroupsForUser and visibleTopics stay on drizzle. The worker stalled twice on the free Muse; it was switched in place to the contributor Muse and finished. Pre-review clean; GATE PASS.

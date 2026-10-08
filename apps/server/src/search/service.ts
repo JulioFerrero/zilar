@@ -1,8 +1,9 @@
-import { eq } from 'drizzle-orm';
+import { Effect } from 'effect';
+import { SqlClient, SqlError } from 'effect/sql';
 import postgres from 'postgres';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
-import { ais, contacts, user, xmppAccounts } from '../db/schema';
+import { sqlRuntimeFor } from '../effect/sql';
 import { UNNAMED_CONTACT_NAME } from '../contacts/service';
 import { localpartFor } from '../xmpp/provisioning';
 import { visibleTopics } from '../topics/access';
@@ -57,6 +58,24 @@ export interface SearchOwner {
   peerNames: Map<string, string>;
 }
 
+function runSql<A>(
+  db: ServerDatabase,
+  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
+): Promise<A> {
+  return sqlRuntimeFor(db).runPromise(effect);
+}
+
+interface ContactArchiveRow {
+  contactUserId: string;
+  name: string;
+  jid: string | null;
+}
+
+interface AiArchiveRow {
+  name: string;
+  jid: string;
+}
+
 // Every archive the caller may read, computed from our tables only. Rooms
 // come from `visibleTopics`, which includes the topics a role holder reaches
 // through a role (T-0116). DMs are always read under the caller's own `username` with a
@@ -72,17 +91,24 @@ export async function allowedArchives(
   const ownLocalpart = localpartFor(userId);
 
   const [contactRows, aiRows, groups] = await Promise.all([
-    db
-      .select({
-        contactUserId: contacts.contactUserId,
-        name: user.name,
-        jid: xmppAccounts.jid,
-      })
-      .from(contacts)
-      .innerJoin(user, eq(user.id, contacts.contactUserId))
-      .leftJoin(xmppAccounts, eq(xmppAccounts.userId, contacts.contactUserId))
-      .where(eq(contacts.userId, userId)),
-    db.select({ name: ais.name, jid: ais.jid }).from(ais).where(eq(ais.owner, userId)),
+    runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<ContactArchiveRow>`SELECT c.contact_user_id, u.name, x.jid
+          FROM contacts c
+          INNER JOIN "user" u ON u.id = c.contact_user_id
+          LEFT JOIN xmpp_accounts x ON x.user_id = c.contact_user_id
+          WHERE c.user_id = ${userId}`;
+      }),
+    ),
+    runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<AiArchiveRow>`SELECT name, jid FROM ais WHERE owner = ${userId}`;
+      }),
+    ),
     listGroupsForUser(db, userId),
   ]);
 
