@@ -1,9 +1,16 @@
-import { eq } from 'drizzle-orm';
+import { Effect } from 'effect';
+import { SqlClient, type SqlError } from 'effect/sql';
 import type { Payload } from '@zilar/protocol';
 import type { ServerDatabase } from '../db/client';
-import { ais, approvals, groups, topics } from '../db/schema';
+import type { approvals } from '../db/schema';
+import { sqlRuntimeFor } from '../effect/sql';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 import { approvalCardBody, buildApprovalCardPayload, type ActionAnnouncer } from './announce';
+
+// The approval row shape comes from the schema so the card builder keeps
+// receiving the camelCase row it expects; the read below returns it through
+// `transformResultNames`.
+type ApprovalRow = typeof approvals.$inferSelect;
 
 // The narrow slice of pino the production announcer needs. Real wiring
 // passes the server's logger; tests pass a captor.
@@ -34,6 +41,15 @@ export interface PostToChatInput {
   payload?: Payload;
 }
 
+// Every read runs on the `effect/sql` client registered for this database
+// (see `../effect/sql`). The exported surface stays the same.
+function runSql<A>(
+  db: ServerDatabase,
+  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
+): Promise<A> {
+  return sqlRuntimeFor(db).runPromise(effect);
+}
+
 // The production announcer (T-0092, topic wiring T-0110): turns a tier-2
 // request and its outcome into one chat message each, posted through the
 // AI's own live XMPP session. A card requested in a topic goes into that
@@ -53,40 +69,51 @@ export function createProductionAnnouncer(deps: ProductionAnnouncerDeps): Action
         return;
       }
       const { aiId, groupId, topicId, approvalId } = input;
-      const [row] = await deps.db
-        .select()
-        .from(approvals)
-        .where(eq(approvals.id, approvalId))
-        .limit(1);
+      const [row] = await runSql(
+        deps.db,
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<ApprovalRow>`SELECT * FROM approvals WHERE id = ${approvalId} LIMIT 1`;
+        }),
+      );
       if (row === undefined) {
         deps.logger.warn({ aiId, approvalId }, 'approval row missing for announcer; skipping card');
         return;
       }
-      const [aiRow] = await deps.db
-        .select({ jid: ais.jid, owner: ais.owner })
-        .from(ais)
-        .where(eq(ais.id, aiId))
-        .limit(1);
+      const [aiRow] = await runSql(
+        deps.db,
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ jid: string; owner: string }>`SELECT jid, owner FROM ais
+            WHERE id = ${aiId} LIMIT 1`;
+        }),
+      );
       if (aiRow === undefined) {
         return;
       }
       const ownerJid = jidFor(localpartFor(aiRow.owner), deps.domain);
       let roomJid: string | null = null;
       if (topicId !== undefined) {
-        const [topicRow] = await deps.db
-          .select({ roomLocalpart: topics.roomLocalpart })
-          .from(topics)
-          .where(eq(topics.id, topicId))
-          .limit(1);
+        const [topicRow] = await runSql(
+          deps.db,
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            return yield* sql<{ roomLocalpart: string }>`SELECT room_localpart FROM topics
+              WHERE id = ${topicId} LIMIT 1`;
+          }),
+        );
         if (topicRow !== undefined) {
           roomJid = jidFor(topicRow.roomLocalpart, deps.mucDomain);
         }
       } else if (groupId !== null) {
-        const [groupRow] = await deps.db
-          .select({ roomLocalpart: groups.roomLocalpart })
-          .from(groups)
-          .where(eq(groups.id, groupId))
-          .limit(1);
+        const [groupRow] = await runSql(
+          deps.db,
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            return yield* sql<{ roomLocalpart: string }>`SELECT room_localpart FROM groups
+              WHERE id = ${groupId} LIMIT 1`;
+          }),
+        );
         if (groupRow !== undefined) {
           roomJid = jidFor(groupRow.roomLocalpart, deps.mucDomain);
         }
