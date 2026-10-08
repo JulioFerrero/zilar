@@ -12,6 +12,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0626](T-0626-audit-effect-last-mile.md) | Audit: the Effect last mile, plus the bigint check | in-progress | auto | | |
 | [T-0627](T-0627-effect-sql-routines-service.md) | effect/sql: routines service | in-progress | auto | T-0596 | |
 | [T-0628](T-0628-effect-sql-topic-rooms.md) | effect/sql: topic room reads | in-progress | auto | T-0596 | |
+| [T-0629](T-0629-effect-sql-action-gateway.md) | effect/sql: action gateway statements | in-progress | auto | T-0596 | |
 
 ## Follow-ups
 
