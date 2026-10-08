@@ -1,10 +1,12 @@
 // Routines module on the Effect `HttpApi` adapter (T-0554): the same
 // methods, paths, statuses (204 on delete), bodies, audit calls and step
 // order as the old Hono router (`routes.ts`, now a thin wrapper below),
-// mounted under Hono by `apps/server/src/effect/http.ts`. Handlers keep
-// calling the drizzle service; the DB rewrite is a separate lane.
+// mounted under Hono by `apps/server/src/effect/http.ts`. The module's own
+// reads run on effect/sql; the calls it still makes to the service stay
+// drizzle for now (the DB rewrite is a separate lane).
 
 import { Effect, Layer, Schema } from 'effect';
+import { SqlClient } from 'effect/sql';
 import { HttpServer, HttpServerRequest, HttpServerResponse, HttpRouter } from 'effect/http';
 import {
   HttpApi,
@@ -13,12 +15,10 @@ import {
   HttpApiGroup,
   HttpApiMiddleware,
 } from 'effect/http-api';
-import { and, eq } from 'drizzle-orm';
 import type { Logger } from 'pino';
 import type { AuditRecorder } from '../audit/service';
 import type { Auth } from '../auth/auth';
 import type { ServerDatabase } from '../db/client';
-import { ais, groupMembers, routines, topics } from '../db/schema';
 import {
   CurrentUser,
   Session,
@@ -30,7 +30,7 @@ import {
   type EffectApiRoute,
 } from '../effect/http';
 import { HttpError } from '../errors';
-import { canSeeTopic } from '../topics/access';
+import { canSeeTopic, type TopicRow } from '../topics/access';
 import {
   deleteRoutine,
   getRoutine,
@@ -40,7 +40,9 @@ import {
   resumeRoutine,
   RoutineServiceError,
   type PublicRoutine,
+  type RoutineRow,
 } from './service';
+import { runSql } from './db';
 
 const RoutineStatus = Schema.Literals(['active', 'paused', 'needs_approval']);
 const RoutinePausedReason = Schema.NullOr(Schema.Literals(['user', 'failures', 'hosts_changed']));
@@ -182,9 +184,7 @@ export function createRoutinesApi(deps: RoutinesApiDependencies): EffectApiMount
                 continue;
               }
               const topicId = routine.topicId;
-              const [topic] = yield* Effect.promise(() =>
-                deps.db.select().from(topics).where(eq(topics.id, topicId)).limit(1),
-              );
+              const topic = yield* Effect.promise(() => findTopicById(deps.db, topicId));
               if (topic && (yield* Effect.promise(() => canSeeTopic(deps.db, topic, user.id)))) {
                 visible.push(routine);
               }
@@ -208,9 +208,7 @@ export function createRoutinesApi(deps: RoutinesApiDependencies): EffectApiMount
               throw new HttpError(404, 'not_found', 'Group not found');
             }
             // Only routines of topics the viewer can see.
-            const topicRows = yield* Effect.promise(() =>
-              deps.db.select().from(topics).where(eq(topics.groupId, groupId)),
-            );
+            const topicRows = yield* Effect.promise(() => listTopicsByGroup(deps.db, groupId));
             const result: PublicRoutine[] = [];
             for (const topic of topicRows) {
               if (topic.archivedAt !== null) {
@@ -398,7 +396,7 @@ async function routineAccessIncludingDeleted(
   routineId: string,
   userId: string,
 ): Promise<RoutineAccess | null> {
-  const [row] = await db.select().from(routines).where(eq(routines.id, routineId)).limit(1);
+  const row = await findRoutineById(db, routineId);
   if (!row) {
     return null;
   }
@@ -415,11 +413,7 @@ async function accessFor(
   routine: { id: string; aiId: string; groupId: string | null; topicId: string | null },
   userId: string,
 ): Promise<RoutineAccess | null> {
-  const [ai] = await db
-    .select({ owner: ais.owner })
-    .from(ais)
-    .where(eq(ais.id, routine.aiId))
-    .limit(1);
+  const ai = await findAiOwner(db, routine.aiId);
   if (!ai) {
     return null;
   }
@@ -427,7 +421,7 @@ async function accessFor(
     // Personal-chat routine: the AI owner only.
     return ai.owner === userId ? { routine, manager: true } : null;
   }
-  const [topic] = await db.select().from(topics).where(eq(topics.id, routine.topicId)).limit(1);
+  const topic = await findTopicById(db, routine.topicId);
   if (!topic || !(await canSeeTopic(db, topic, userId))) {
     return null;
   }
@@ -448,11 +442,7 @@ async function deletedAccessFor(
 ): Promise<RoutineAccess | null> {
   // A deleted row's topic may itself be gone; fall back to the group
   // membership alone so the manager check still resolves.
-  const [ai] = await db
-    .select({ owner: ais.owner })
-    .from(ais)
-    .where(eq(ais.id, routine.aiId))
-    .limit(1);
+  const ai = await findAiOwner(db, routine.aiId);
   if (!ai) {
     return null;
   }
@@ -463,7 +453,7 @@ async function deletedAccessFor(
     return null;
   }
   if (routine.topicId !== null) {
-    const [topic] = await db.select().from(topics).where(eq(topics.id, routine.topicId)).limit(1);
+    const topic = await findTopicById(db, routine.topicId);
     if (topic && !(await canSeeTopic(db, topic, userId))) {
       return null;
     }
@@ -475,21 +465,74 @@ async function deletedAccessFor(
   return { routine, manager: membership.role === 'owner' || membership.role === 'admin' };
 }
 
+// The module's own reads on `effect/sql`. `SELECT *` returns camelCased
+// columns (see `../effect/sql`), so the rows keep the drizzle `TopicRow` and
+// `RoutineRow` shapes the access helpers and wire mappers already expect.
+async function findTopicById(db: ServerDatabase, topicId: string): Promise<TopicRow | null> {
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<TopicRow>`SELECT * FROM topics WHERE id = ${topicId} LIMIT 1`;
+    }),
+  );
+  return row ?? null;
+}
+
+async function listTopicsByGroup(db: ServerDatabase, groupId: string): Promise<TopicRow[]> {
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<TopicRow>`SELECT * FROM topics WHERE group_id = ${groupId}`;
+    }),
+  );
+  return [...rows];
+}
+
+async function findRoutineById(db: ServerDatabase, routineId: string): Promise<RoutineRow | null> {
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<RoutineRow>`SELECT * FROM routines WHERE id = ${routineId} LIMIT 1`;
+    }),
+  );
+  return row ?? null;
+}
+
+async function findAiOwner(db: ServerDatabase, aiId: string): Promise<{ owner: string } | null> {
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ owner: string }>`SELECT owner FROM ais WHERE id = ${aiId} LIMIT 1`;
+    }),
+  );
+  return row ?? null;
+}
+
 async function findOwnedAiRow(db: ServerDatabase, aiId: string, ownerId: string) {
-  const [row] = await db
-    .select({ id: ais.id })
-    .from(ais)
-    .where(and(eq(ais.id, aiId), eq(ais.owner, ownerId)))
-    .limit(1);
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ id: string }>`SELECT id FROM ais
+        WHERE id = ${aiId} AND owner = ${ownerId} LIMIT 1`;
+    }),
+  );
   return row ?? null;
 }
 
 async function findMembership(db: ServerDatabase, groupId: string, userId: string) {
-  const [row] = await db
-    .select({ role: groupMembers.role })
-    .from(groupMembers)
-    .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, userId)))
-    .limit(1);
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ role: 'owner' | 'admin' | 'member' }>`SELECT role FROM group_members
+        WHERE group_id = ${groupId} AND user_id = ${userId} LIMIT 1`;
+    }),
+  );
   return row ?? null;
 }
 
