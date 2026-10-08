@@ -21,13 +21,16 @@
 // Every run audits `routine.run` with `detail { status, durationMs }`
 // only — never output text, source, or an error message. Pauses also
 // audit `routine.paused` with the reason.
-import { and, eq } from 'drizzle-orm';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
-import { ais, aiTools, aiToolVersions, groupAis, routines, topics } from '../db/schema';
+import type { routines } from '../db/schema';
+import type { TopicRow } from '../topics/access';
 import { allowedTopicAiIds } from '../topics/access';
 import { runToolVersion, ToolServiceError } from '../tools/service';
 import type { ToolRunner } from '../tools/types';
+import { runSql } from './db';
 
 export const MAX_POST_TEXT_CHARS = 4_000;
 export const MAX_CONSECUTIVE_FAILURES = 3;
@@ -39,6 +42,25 @@ export const HOSTS_CHANGED_NOTICE = (title: string): string =>
   `The routine "${title}" is paused: its tool now contacts new sites. Ask me to schedule it again to approve them.`;
 
 export type RoutineRow = typeof routines.$inferSelect;
+
+interface AiStatusRow {
+  status: string;
+}
+
+interface ToolRow {
+  deletedAt: Date | null;
+  currentVersion: number;
+}
+
+interface ToolVersionHostsRow {
+  hosts: string[];
+}
+
+interface GroupAiRow {
+  aiId: string;
+}
+
+type TopicRoomRow = Pick<TopicRow, 'id' | 'groupId' | 'visibility' | 'isGeneral' | 'archivedAt'>;
 
 export interface ExecuteRoutinePorts {
   /** Runs one tool version (`runToolVersion` in production). */
@@ -76,11 +98,13 @@ export async function executeRoutine(
   // Step 1: the AI must be active and (for a topic routine) still a member
   // of the topic's room. A personal routine needs no room row: the `post`
   // answering `false` is the guard there.
-  const [ai] = await db
-    .select({ status: ais.status })
-    .from(ais)
-    .where(eq(ais.id, row.aiId))
-    .limit(1);
+  const [ai] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<AiStatusRow>`SELECT status FROM ais WHERE id = ${row.aiId} LIMIT 1`;
+    }),
+  );
   if (!ai || ai.status !== 'active') {
     await markSkipped(db, options, row, at, startedAt);
     return;
@@ -91,11 +115,13 @@ export async function executeRoutine(
   }
 
   // Step 2: the tool must exist (not deleted).
-  const [tool] = await db
-    .select({ deletedAt: aiTools.deletedAt, currentVersion: aiTools.currentVersion })
-    .from(aiTools)
-    .where(eq(aiTools.id, row.toolId))
-    .limit(1);
+  const [tool] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<ToolRow>`SELECT deleted_at, current_version FROM ai_tools WHERE id = ${row.toolId} LIMIT 1`;
+    }),
+  );
   if (!tool || tool.deletedAt !== null) {
     await pauseForFailures(db, options, ports, row, at, startedAt, true);
     return;
@@ -160,20 +186,29 @@ export async function executeRoutine(
 // owner still sees the topic), so the tool never runs for an AI that may no
 // longer be there. An archived topic's room is gone, so the routine skips.
 async function isAiInTopicRoom(db: ServerDatabase, row: RoutineRow): Promise<boolean> {
-  const [topic] = await db
-    .select()
-    .from(topics)
-    .where(eq(topics.id, row.topicId as string))
-    .limit(1);
+  const [topic] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<TopicRoomRow>`SELECT id, group_id, visibility, is_general, archived_at
+        FROM topics
+        WHERE id = ${row.topicId as string}
+        LIMIT 1`;
+    }),
+  );
   if (!topic || topic.archivedAt !== null) {
     return false;
   }
   if (topic.isGeneral) {
-    const [match] = await db
-      .select({ aiId: groupAis.aiId })
-      .from(groupAis)
-      .where(and(eq(groupAis.groupId, row.groupId as string), eq(groupAis.aiId, row.aiId)))
-      .limit(1);
+    const [match] = await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<GroupAiRow>`SELECT ai_id FROM group_ais
+          WHERE group_id = ${row.groupId as string} AND ai_id = ${row.aiId}
+          LIMIT 1`;
+      }),
+    );
     return match !== undefined;
   }
   return (await allowedTopicAiIds(db, topic)).has(row.aiId);
@@ -184,11 +219,15 @@ async function readCurrentHosts(
   toolId: string,
   currentVersion: number,
 ): Promise<string[] | null> {
-  const [version] = await db
-    .select({ hosts: aiToolVersions.hosts })
-    .from(aiToolVersions)
-    .where(and(eq(aiToolVersions.toolId, toolId), eq(aiToolVersions.version, currentVersion)))
-    .limit(1);
+  const [version] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<ToolVersionHostsRow>`SELECT hosts FROM ai_tool_versions
+        WHERE tool_id = ${toolId} AND version = ${currentVersion}
+        LIMIT 1`;
+    }),
+  );
   return version ? [...version.hosts] : null;
 }
 
@@ -233,10 +272,15 @@ async function markSkipped(
   at: Date,
   startedAt: number,
 ): Promise<void> {
-  await db
-    .update(routines)
-    .set({ lastRunAt: at, lastStatus: 'skipped', updatedAt: at })
-    .where(eq(routines.id, row.id));
+  await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`UPDATE routines
+        SET last_run_at = ${at}, last_status = 'skipped', updated_at = ${at}
+        WHERE id = ${row.id}`;
+    }),
+  );
   await auditRun(options, row, 'skipped', startedAt);
 }
 
@@ -247,10 +291,15 @@ async function markOk(
   at: Date,
   startedAt: number,
 ): Promise<void> {
-  await db
-    .update(routines)
-    .set({ lastRunAt: at, lastStatus: 'ok', consecutiveFailures: 0, updatedAt: at })
-    .where(eq(routines.id, row.id));
+  await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`UPDATE routines
+        SET last_run_at = ${at}, last_status = 'ok', consecutive_failures = 0, updated_at = ${at}
+        WHERE id = ${row.id}`;
+    }),
+  );
   await auditRun(options, row, 'ok', startedAt);
 }
 
@@ -279,16 +328,21 @@ async function pauseForFailures(
 ): Promise<void> {
   const failures = deleted ? MAX_CONSECUTIVE_FAILURES : row.consecutiveFailures + 1;
   const pausing = failures >= MAX_CONSECUTIVE_FAILURES;
-  await db
-    .update(routines)
-    .set({
-      lastRunAt: at,
-      lastStatus: 'error',
-      consecutiveFailures: failures,
-      ...(pausing ? { status: 'paused', pausedReason: 'failures' } : {}),
-      updatedAt: at,
-    })
-    .where(eq(routines.id, row.id));
+  await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      if (pausing) {
+        yield* sql`UPDATE routines
+          SET last_run_at = ${at}, last_status = 'error', consecutive_failures = ${failures}, status = 'paused', paused_reason = 'failures', updated_at = ${at}
+          WHERE id = ${row.id}`;
+      } else {
+        yield* sql`UPDATE routines
+          SET last_run_at = ${at}, last_status = 'error', consecutive_failures = ${failures}, updated_at = ${at}
+          WHERE id = ${row.id}`;
+      }
+    }),
+  );
   await auditRun(options, row, 'error', startedAt);
   if (pausing) {
     await auditPaused(options, row, 'failures');
@@ -304,16 +358,15 @@ async function pauseForHostsChanged(
   at: Date,
   startedAt: number,
 ): Promise<void> {
-  await db
-    .update(routines)
-    .set({
-      status: 'needs_approval',
-      pausedReason: 'hosts_changed',
-      lastRunAt: at,
-      lastStatus: 'skipped',
-      updatedAt: at,
-    })
-    .where(eq(routines.id, row.id));
+  await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`UPDATE routines
+        SET status = 'needs_approval', paused_reason = 'hosts_changed', last_run_at = ${at}, last_status = 'skipped', updated_at = ${at}
+        WHERE id = ${row.id}`;
+    }),
+  );
   await auditRun(options, row, 'skipped', startedAt);
   await auditPaused(options, row, 'hosts_changed');
   await postNotice(ports, options, row, HOSTS_CHANGED_NOTICE(row.title));

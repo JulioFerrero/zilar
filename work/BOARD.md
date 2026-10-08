@@ -456,7 +456,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0571](T-0571-audit-tool-args-schema.md) | Audit + plan: AI tool argument layer from zod to Effect Schema | planned | auto | T-0564 | |
 | [T-0581](T-0581-effect-http-drafts-sse.md) | Effect C (HTTP): AI draft stream (SSE) pilot | planned | auto | T-0573 | |
 | [T-0582](T-0582-effect-http-stickers-json.md) | Effect C (HTTP): stickers part A, the JSON routes | planned | auto | T-0577 | |
-| [T-0588](T-0588-effect-sql-routine-runs.md) | effect/sql: routine scheduler claim and runner queries | planned | auto | T-0584 | |
 | [T-0589](T-0589-effect-sql-startup-and-audit-nits.md) | effect/sql: startup sticker count, plus the audit issue-text nits | planned | auto | T-0584 | |
 | [T-0590](T-0590-effect-sql-api-inline-reads.md) | effect/sql: inline reads in the memory, media and /me APIs | planned | auto | T-0584 | |
 | [T-0591](T-0591-effect-sql-approvals-api-reads.md) | effect/sql: approvals API reads | planned | auto | T-0584 | |
@@ -622,3 +621,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0578](T-0578-effect-http-setup.md) | Effect C (HTTP): first-run setup on HttpApi | 2026-10-08 |
 | [T-0586](T-0586-effect-http-gifs.md) | Effect C (HTTP): GIF search, trending and media proxy | 2026-10-08 |
 | [T-0587](T-0587-effect-sql-connections.md) | effect/sql: provider connection queries | 2026-10-08 |
+| [T-0588](T-0588-effect-sql-routine-runs.md) | effect/sql: routine scheduler claim and runner queries | 2026-10-08 |

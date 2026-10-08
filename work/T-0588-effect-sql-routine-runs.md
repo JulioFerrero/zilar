@@ -1,7 +1,7 @@
 ---
 id: T-0588
 title: "effect/sql: the routine scheduler claim (routines/scheduler.ts claimDue) and every query in routines/execute.ts move off drizzle; row types stay `typeof routines.$inferSelect` (type-only); same claims, skips, pauses and audit; tests unchanged"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0588-effect-sql-routine-runs
 model: auto
@@ -73,4 +73,58 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Moved the routine scheduler claim (`claimDue`) and every query in `execute.ts`
+to effect/sql, behind a local `runSql(db, effect)` helper in
+`apps/server/src/routines/db.ts` (same pattern as
+`apps/server/src/agents/gateway/db.ts`). Control flow, conditional claims,
+SET lists, logs and audit calls are unchanged.
+
+- `scheduler.ts`: due select, invalid-schedule parking update, conditional
+  claim update with `RETURNING *`, all as raw SQL through `runSql`.
+  `ClaimedRoutine` stays `typeof routines.$inferSelect` (type-only import);
+  rows come back camelCased with `Date` timestamps via `transformResultNames`.
+- `execute.ts`: AI status select, tool select, topic select (narrow
+  `Pick<TopicRow, 'id' | 'groupId' | 'visibility' | 'isGeneral' | 'archivedAt'>`
+  passed to `allowedTopicAiIds` unchanged), `group_ais` membership select,
+  `ai_tool_versions.hosts` select (copy of the array or `null`), and the five
+  `UPDATE routines WHERE id` writes (`markSkipped`, `markOk`,
+  `pauseForFailures` with `status`/`paused_reason` only when pausing,
+  `pauseForHostsChanged`) with identical SET lists. `RoutineRow` stays
+  `typeof routines.$inferSelect` (type-only import).
+- Neither file imports runtime values from `drizzle-orm` or `db/schema`
+  (verified: `grep drizzle|eq(|and(` on both files plus `db.ts` is empty).
+- No test files changed.
+
+Claim-race test relied on: `scheduler.test.ts` >
+`exactly-once claim` > `two concurrent ticks run a due routine once`
+(two ticks race on one due routine; `calls === 1`, one post).
+
+Checks (spec command + gate):
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot
+  src/routines/scheduler.test.ts`: 21 passed.
+- `src/routines/scheduler.effect.test.ts`: 2 passed.
+- `src/routines/wiring.test.ts + schedule.test.ts + service.test.ts`:
+  44 passed (3 files).
+- `src/tools/service.test.ts + adapters.test.ts + routes.test.ts`:
+  92 passed (3 files).
+- `pnpm gate`: PASS install / format / lint / typecheck / tests
+  @zilar/server; scope: every changed file inside Allowed files; GATE PASS.
+
+Security checklist: no secrets in logs (warn fields carry only `routineId`);
+all updates scoped by routine id; claims stay atomic conditional updates
+(`WHERE id AND next_run_at = $read`, claim only when a row changes); no new
+routes; audit detail unchanged (ids + status/duration only).
+
+Files changed: `apps/server/src/routines/scheduler.ts`,
+`apps/server/src/routines/execute.ts`, `apps/server/src/routines/db.ts`
+(new), `work/T-0588-effect-sql-routine-runs.md` (this report + status).
+
 ## Review (written by Claude)
+
+**2026-10-08, lead:** approved.
+- **Pre-review:** clean. The packet (11:51) is newer than HEAD 753f7f53.
+- **No test file changed.**
+- **Lead check:**
+  - the claim keeps its conditional `WHERE` on the `next_run_at` that was read; the race test "two concurrent ticks run a due routine once" passes on a real PGlite database;
+  - every SET list is the same;
+  - no runtime drizzle import is left.
