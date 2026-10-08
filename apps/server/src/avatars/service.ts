@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { and, eq, inArray, sql } from 'drizzle-orm';
-import { z } from 'zod';
+import { Schema } from 'effect';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
 import { ais, avatars, groupMembers, user, type AvatarOwnerKind } from '../db/schema';
@@ -21,8 +21,8 @@ export const AVATAR_MAX_SIDE = 512;
 export const AVATAR_UPLOAD_RATE_LIMIT_MAX = 10;
 export const AVATAR_UPLOAD_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
 
-export const avatarOwnerKindSchema = z.enum(['user', 'ai', 'group']);
-export type AvatarKind = z.infer<typeof avatarOwnerKindSchema>;
+export const avatarOwnerKindSchema = Schema.Literals(['user', 'ai', 'group']);
+export type AvatarKind = typeof avatarOwnerKindSchema.Type;
 
 export type AvatarRow = typeof avatars.$inferSelect;
 

@@ -49,7 +49,7 @@ import { createSearchApi, type SearchRoutesDependencies } from './search/api';
 import { createMediaApi } from './media/api';
 import { createFilesRoutes } from './files/routes';
 import { createGifsRoutes } from './gifs/routes';
-import { createAvatarsRoutes } from './avatars/routes';
+import { createAvatarsApi } from './avatars/api';
 import { createBackgroundsRoutes } from './backgrounds/routes';
 import { createStickersRoutes } from './stickers/routes';
 import { createTopicsApi } from './topics/api';
@@ -479,18 +479,17 @@ export function createApp({
   // Avatars (T-0165): upload / remove / serve profile pictures for
   // people, AIs, groups and channels. The storage dir comes from
   // `AVATAR_STORAGE_DIR`; tests override it with a temp dir.
-  app.route(
-    '/api',
-    createAvatarsRoutes({
-      auth,
-      db,
-      config,
-      storageDir: avatarStorageDir ?? config.AVATAR_STORAGE_DIR,
-      audit: auditRecorder,
-      ...(avatarNow === undefined ? {} : { now: avatarNow }),
-      ...(avatarUploadLimiter === undefined ? {} : { uploadLimiter: avatarUploadLimiter }),
-    }),
-  );
+  const avatarsApi = createAvatarsApi({
+    auth,
+    db,
+    config,
+    storageDir: avatarStorageDir ?? config.AVATAR_STORAGE_DIR,
+    audit: auditRecorder,
+    logger,
+    ...(avatarNow === undefined ? {} : { now: avatarNow }),
+    ...(avatarUploadLimiter === undefined ? {} : { uploadLimiter: avatarUploadLimiter }),
+  });
+  mountEffectRoutes(app, avatarsApi.routes, avatarsApi.handler);
   // Background images (T-0460): upload / list / serve / delete personal
   // wallpapers, owner-only. The storage dir comes from
   // `BACKGROUND_STORAGE_DIR`; tests override it with a temp dir.
