@@ -1,7 +1,7 @@
 ---
 id: T-0587
 title: "effect/sql: connections/service.ts list/create/findOwned/delete/countAisUsing move to effect/sql; decryptForGatewayUse stays on drizzle (called with a drizzle transaction from ais/service.ts); same results; tests unchanged"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0587-effect-sql-connections
 model: auto
@@ -65,4 +65,54 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Moved five of the six connection queries in `apps/server/src/connections/service.ts`
+to effect/sql with identical results; `decryptForGatewayUse` stays on drizzle with
+the one-line comment that it moves together with the `ais/service.ts` transactions.
+No test file touched.
+
+What changed (`apps/server/src/connections/service.ts` only):
+- Explicit exported `ConnectionRow` interface (8 camelCase columns: `id`, `owner`,
+  `provider`, `encryptedKey`, `label: string | null`, `status: 'active' | 'revoked'`,
+  `createdAt`/`updatedAt: Date`), replacing `typeof providerConnections.$inferSelect`.
+- Local `runSql(db, effect) = sqlRuntimeFor(db).runPromise(effect)`, as in
+  `agents/gateway/db.ts`. `SELECT *`/`RETURNING *` come back camelCased via
+  `transformResultNames`; `timestamptz` comes back as `Date`.
+- `listConnections`: `SELECT * ... WHERE owner ORDER BY created_at ASC`.
+- `createConnection`: `INSERT (id = randomUUID(), owner, provider, encrypted_key,
+  label) RETURNING *`; still throws `'Failed to create connection'` when no row.
+- `findOwnedConnection`: `SELECT * ... WHERE id AND owner LIMIT 1`, null when absent.
+- `deleteConnection`: `DELETE ... WHERE id AND owner RETURNING id`, boolean.
+- `countAisUsingConnection`: `SELECT count(*)::int AS total ...`, `Number(row?.total ?? 0)`.
+- `decryptForGatewayUse` unchanged on drizzle (keeps `drizzle-orm` + `providerConnections`
+  imports) plus the transaction comment.
+
+Callers checked: `connections/api.ts` reads `.id`, `.status`, `.provider`, `.encryptedKey`
+(all on the new interface); `ais/service.ts` reads the same plus passes a drizzle `txDb`
+to `decryptForGatewayUse` (unchanged signature). Runtimes are registered per top-level
+db by `createApp`/`createTestContext`, so no new registration.
+
+Checks:
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot connections ais`:
+  7 passed test files, 2 skipped; 127 passed tests, 3 skipped; 0 failed.
+- `pnpm gate`: PASS install (1.9s), PASS format (37.3s), PASS lint (1.9s),
+  PASS typecheck (20.4s), PASS tests @zilar/server (541.1s);
+  scope: every changed file is inside the Allowed files; GATE PASS.
+  (2 changed files against main: the service + this task file.)
+
+Security checklist: deletes stay owner-scoped (`WHERE id AND owner`); missing vs
+foreign ids both answer null/404; plaintext key still only in `decryptForGatewayUse`,
+never logged; no new routes, caps, or audit entries.
+
+No deviations, no open questions.
+
+status: review
+
 ## Review (written by Claude)
+
+**2026-10-08, lead:** approved.
+- **Pre-review:** clean, 1 nit. The packet (11:51) is newer than HEAD 74a8f0e7.
+- **No test file changed.**
+- **Lead check:**
+  - the five queries run on effect/sql; `SELECT *` gives camelCase keys through the registered `snakeToCamel` transform;
+  - the explicit `ConnectionRow` lists all 8 columns;
+  - the decrypt called inside a transaction stays on drizzle, with the comment.
