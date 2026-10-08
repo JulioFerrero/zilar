@@ -46,7 +46,7 @@ import { createPinsApi } from './pins/api';
 import { createPushApi } from './push/api';
 import { createRolesApi } from './roles/api';
 import { createSearchApi, type SearchRoutesDependencies } from './search/api';
-import { createMediaRoutes } from './media/routes';
+import { createMediaApi } from './media/api';
 import { createFilesRoutes } from './files/routes';
 import { createGifsRoutes } from './gifs/routes';
 import { createAvatarsRoutes } from './avatars/routes';
@@ -431,17 +431,15 @@ export function createApp({
   mountEffectRoutes(app, searchApi.routes, searchApi.handler);
   // Media gallery (T-0431) mounts the same way: without an archive pool every
   // request answers 501 `media_unavailable` instead of 404ing.
-  app.route(
-    '/api',
-    createMediaRoutes({
-      auth,
-      db,
-      config,
-      logger,
-      ...(archive === undefined ? {} : { archive }),
-      ...(searchNow === undefined ? {} : { now: searchNow }),
-    }),
-  );
+  const mediaApi = createMediaApi({
+    auth,
+    db,
+    config,
+    logger,
+    ...(archive === undefined ? {} : { archive }),
+    ...(searchNow === undefined ? {} : { now: searchNow }),
+  });
+  mountEffectRoutes(app, mediaApi.routes, mediaApi.handler);
   app.route(
     '/api',
     createFilesRoutes({
