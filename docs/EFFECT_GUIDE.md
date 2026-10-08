@@ -200,6 +200,7 @@ Hono stays the outer edge until every module has moved. Each module becomes an `
 8. **Output schemas strip unknown keys.** An endpoint's success schema is an encoder, so a field the service returns but the schema omits silently disappears for web and mobile, and TypeScript does not catch it. List every field of the service's return type, and compare the two side by side in the Report.
 9. **Step order:** when the old route checked the rate limiter before decoding the body, use an endpoint middleware for the limiter (see `pins/api.ts` and `groups/api.ts`).
 10. **Message texts:** a test-asserted text stays byte-identical. A generic decode message may become Schema's text; list the old and new texts in the Report.
+11. **Tests that mount the old Hono factory directly:** keep `createXRoutes(deps): Hono` exported as a thin wrapper. It builds the Effect API, registers each pair from an exported `X_API_ROUTES` list on a `new Hono()` (path minus `/api`), and forwards `context.req.raw` to `api.handler`. The tests stay unchanged; the wrapper goes away when those tests move to `createApp` (see `push/api.ts`, T-0543).
 
 ## Moving a server service onto effect/sql (T-0496, T-0510, T-0519)
 
