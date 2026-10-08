@@ -1,7 +1,7 @@
 ---
 id: T-0625
 title: "effect/sql: the file proxy row lookup (files/api.ts findFileRow) off drizzle; select only the columns the route reads (kind, mime, name); same 404s and headers; tests unchanged"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0625-effect-sql-files-lookup
 model: auto
@@ -57,4 +57,47 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Status: review. Branch `task/T-0625-effect-sql-files-lookup`.
+
+### What I did
+- Moved the single row lookup in `apps/server/src/files/api.ts` from drizzle to `effect/sql`:
+  `SELECT kind, mime, name FROM media_items WHERE archive_owner = ? AND chat_jid = ?
+  AND url = ? AND deleted = false AND kind <> 'link' LIMIT 1`, keeping the same five
+  conditions and `LIMIT 1`.
+- Replaced `FilesItemRow` (`typeof mediaItems.$inferSelect`) with the local shape
+  `{ kind: string; mime: string | null; name: string | null }`, matching
+  `schema.ts:1394-1420` nullability. Only `kind`, `mime` and `name` are selected, so
+  the `bigint` `at_micros` never comes back as a string.
+- Dropped the value imports from `drizzle-orm` (`and, eq, ne`) and `db/schema`
+  (`mediaItems`). The file now imports `SqlClient` from `effect/sql` and
+  `sqlRuntimeFor` from `../effect/sql`.
+- `findFileRow` keeps its signature (`db: ServerDatabase`, returns
+  `Promise<FilesItemRow | undefined>`) and runs the effect through
+  `sqlRuntimeFor(db).runPromise(...)`, so callers and the `Effect.catchDefect`
+  handling at lines 224/258 are unchanged. No test file was touched.
+
+### Files changed
+- `apps/server/src/files/api.ts`
+- `work/T-0625-effect-sql-files-lookup.md`
+
+### Commands and results
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/files` →
+  `Test Files 1 passed (1)`, `Tests 14 passed (14)`.
+- `pnpm gate` (repo root) → `gate: 2 changed file(s) against main`;
+  `PASS install (frozen)`, `PASS format`, `PASS lint`, `PASS typecheck`,
+  `PASS tests @zilar/server`; `scope: every changed file is inside the Allowed files`;
+  `GATE PASS`.
+
+### Deviations / notes
+- None. `apps/server/src/files/routes.test.ts` is unchanged and green (it seeds rows
+  through the drizzle handle, which the migration recipe §(a) step 7 allows).
+
 ## Review (written by Claude)
+
+**2026-10-08, lead:** approved.
+- **Pre-review:** clean, 1 nit. The packet head is ff768c00, the current HEAD.
+- **Lead check of the diff:**
+  - the same five conditions and `LIMIT 1`;
+  - only `kind`, `mime` and `name` are selected, so the `bigint` column is never read;
+  - no drizzle import is left.
+- **Nit, for the next cleanup task:** the stale header comment at `files/api.ts:5` still mentions the drizzle read.

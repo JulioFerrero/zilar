@@ -14,16 +14,15 @@
 // This is the first module that streams a response body: the upstream fetch
 // body flows through as a web `ReadableStream` via `HttpServerResponse.raw`
 // and is never read into memory.
-import { and, eq, ne } from 'drizzle-orm';
 import { Effect, Layer, Option, Schema } from 'effect';
 import { HttpServer, HttpServerRequest, HttpRouter, HttpServerResponse } from 'effect/http';
 import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
+import { SqlClient } from 'effect/sql';
 import type { Logger } from 'pino';
 import type { Auth } from '../auth/auth';
 import { isDmBlocked } from '../blocks/service';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
-import { mediaItems } from '../db/schema';
 import {
   CurrentUser,
   Session,
@@ -33,6 +32,7 @@ import {
   type EffectApiMount,
   type EffectApiRoute,
 } from '../effect/http';
+import { sqlRuntimeFor } from '../effect/sql';
 import { HttpError } from '../errors';
 import { createRateLimiter } from '../rate-limit';
 import { allowedArchives, resolveChatFilter, type ArchivePool } from '../search/service';
@@ -90,7 +90,11 @@ function errorName(error: unknown): string {
   return error instanceof Error ? error.constructor.name : typeof error;
 }
 
-type FilesItemRow = typeof mediaItems.$inferSelect;
+type FilesItemRow = {
+  kind: string;
+  mime: string | null;
+  name: string | null;
+};
 
 async function findFileRow(
   db: ServerDatabase,
@@ -98,19 +102,18 @@ async function findFileRow(
   chatJid: string,
   url: string,
 ): Promise<FilesItemRow | undefined> {
-  const [row] = await db
-    .select()
-    .from(mediaItems)
-    .where(
-      and(
-        eq(mediaItems.archiveOwner, archiveOwner),
-        eq(mediaItems.chatJid, chatJid),
-        eq(mediaItems.url, url),
-        eq(mediaItems.deleted, false),
-        ne(mediaItems.kind, 'link'),
-      ),
-    )
-    .limit(1);
+  const [row] = await sqlRuntimeFor(db).runPromise(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<FilesItemRow>`SELECT kind, mime, name FROM media_items
+        WHERE archive_owner = ${archiveOwner}
+          AND chat_jid = ${chatJid}
+          AND url = ${url}
+          AND deleted = false
+          AND kind <> 'link'
+        LIMIT 1`;
+    }),
+  );
   return row;
 }
 
