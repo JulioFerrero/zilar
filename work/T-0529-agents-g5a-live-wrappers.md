@@ -1,7 +1,7 @@
 ---
 id: T-0529
 title: "Agents G5a: move the live-session wrappers (sessionIsLive, liveSendMessage, liveProgressReporter, liveSendTyping, liveMarkDisplayed) and postToChat with its three lookups out of createAgentGateway into agents/gateway/live.ts; zero behaviour change"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0529-agents-g5a-live-wrappers
 model: auto
@@ -73,4 +73,50 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+Moved the live-session wrappers (`sessionIsLive`, `liveSendMessage`,
+`liveProgressReporter`, `liveSendTyping`, `liveMarkDisplayed`) and `postToChat`
+with its four private helpers (`loadOwnerId`, `loadRoomJid`,
+`loadTopicRoomJid`, `sendOptions`) out of `createAgentGateway` into the new
+`apps/server/src/agents/gateway/live.ts`, exported as the factory
+`createLiveSession(ctx)`. Bodies moved verbatim; no logic changes and no
+Effect.
+
+In `gateway.ts`:
+- created the factory once, just after `sessions`/`superseded` and before
+  `createRoomListener` and `createBudgetGate`, and destructured the six names
+  so every call site is unchanged text;
+- the `sessions` Map stays in `gateway.ts` and is passed by reference;
+- `withToolGuide` stayed where it was;
+- dropped the imports that only the moved code used: `SendMessageOptions` and
+  `ChatKind` (from `@zilar/xmpp-core`) and `Payload` (from
+  `@zilar/protocol`). `jidFor`/`localpartFor`, `ais`, `groups`, `topics` and
+  `eq` are still used by code that stays, so they remain.
+
+### Deviation from the spec
+The spec's "what they close over" list (`sessions`, `deps`, `logger`,
+`secretsFor`) omits `roomJidFor`, but `loadRoomJid` and `loadTopicRoomJid`
+call it. It also has a caller that stays in `gateway.ts` (the leave-room path),
+so it was not moved; I passed it into the context as `roomJidFor` to keep one
+definition. Everything else matches the spec. No behaviour change.
+
+### Files changed
+- `apps/server/src/agents/gateway/live.ts` (new)
+- `apps/server/src/agents/gateway.ts`
+- `work/T-0529-agents-g5a-live-wrappers.md`
+
+### Commands and results
+- `pnpm install`: exit 0 (peer-dependency warnings only).
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/agents`:
+  exit 0; Test Files 16 passed | 1 skipped (17); Tests 430 passed | 1 skipped
+  (431).
+- `pnpm gate`: `gate: 3 changed file(s) against main`; PASS install (frozen),
+  PASS format, PASS lint, PASS typecheck, PASS tests @zilar/server;
+  `scope: every changed file is inside the Allowed files`; `GATE PASS`.
+
+### Open questions
+None.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-08). G5a is a pure extraction: sessionIsLive, the live send/typing/displayed/progress wrappers and postToChat with its three lookups moved verbatim into agents/gateway/live.ts (createLiveSession), created before the listener and budget factories that take sessionIsLive. Agents tests unchanged. Pre-review clean, 0 nits.
