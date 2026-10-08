@@ -10,7 +10,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0648](T-0648-ais-update-persona-effect-sql.md) | effect/sql: ais update and persona transactions | in-progress | auto | | |
-| [T-0649](T-0649-stale-routes-comments.md) | Comments: repoint references to the deleted routes.ts files | in-progress | auto | | |
 | [T-0650](T-0650-handles-drop-zod.md) | zod: handles without the legacy schema | in-progress | auto | | |
 | [T-0651](T-0651-contact-requests-drop-zod.md) | zod: contact requests without the legacy schema | in-progress | auto | | |
 | [T-0652](T-0652-ais-delete-and-model-clear-effect-sql.md) | effect/sql: ais delete and model-clear transactions | in-progress | auto | T-0648 | |
@@ -681,3 +680,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0645](T-0645-retire-push-hono-wrapper.md) | retire the push Hono test wrapper | 2026-10-08 |
 | [T-0646](T-0646-delete-invite-links-routes.md) | delete invite-links/routes.ts | 2026-10-08 |
 | [T-0647](T-0647-tools-api-adapters-effect-sql.md) | tools API and adapters reads on effect/sql | 2026-10-08 |
+| [T-0649](T-0649-stale-routes-comments.md) | repoint comments that named the deleted routes.ts files | 2026-10-08 |

@@ -7,7 +7,7 @@ import { errorFieldsOf } from './api-error-body';
 /**
  * The machines (runners) API (`/api/machines`), the mobile twin of the web
  * client in `apps/web/src/lib/api.ts`. The wire contract lives in
- * `apps/server/src/machines/routes.ts` and `apps/server/src/machines/service.ts`.
+ * `apps/server/src/machines/api.ts` and `apps/server/src/machines/service.ts`.
  *
  * The boundary is validated with Effect Schema (T-0506 recipe): the request is
  * an Effect pipeline, cut back to a `Promise` at the edge with

@@ -143,9 +143,9 @@ export function createDraftsApi(deps: DraftsApiDependencies): EffectApiMount {
 
 let silentLogger: Logger | undefined;
 
-// The item-11 wrapper builds the API without a logger: only the shared
-// envelope could log (an unhandled failure), and the old route had no log
-// line of its own, so a silent one keeps the bytes identical.
+// A caller that builds the API without a logger (the tests) gets this silent
+// one: only the shared envelope could log (an unhandled failure), and the old
+// route had no log line of its own, so a silent one keeps the bytes identical.
 function defaultLogger(): Logger {
   silentLogger ??= pino({ level: 'silent' });
   return silentLogger;
