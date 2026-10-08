@@ -2,6 +2,19 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-09 01:10. Julio is asleep ("dont stop", up to 8 workers, "dont hold any launches"). ONE LEAD ONLY: the forked session (`claude --resume fcd95e40 --fork-session`, pid 44863) owns the loop tonight. Any other lead session must not review, merge, launch, queue runner lines, or edit BOARD or NOW.** At 01:05 both sessions wrote a T-0661 Review and both queued its merge; one merge ran.
+- **Merged since 00:45:** T-0656 (gate slots).
+- **Merging:** T-0661 (**TypeScript 7.0.2**, native `tsc`; mobile keeps the TS 6 API for Expo), then T-0662.
+- **Haiku 5.5 trial (Claude Code subagents, never OpenCode):**
+  - T-0662 (sweeper survivors and dry-run throttle) was good. It took 2 short rounds: one blocked on a real conflict in my spec, and one review fix. It is approved and queued for merge;
+  - now also running T-0665 and T-0666.
+  - With no OpenCode pre-review, the lead reviews Haiku diffs directly.
+- **Running on DeepSeek:** T-0663 and T-0664. These and the two Haiku tasks are phase 1 of the `removeGroupAi` chain: an Effect version of each helper sits next to its drizzle one. Phase 2 (one task) will move `groups/service.ts:1067` to `sql.withTransaction` and delete the drizzle versions.
+- **In review:** T-0660 (C3), waiting for its fix-round packet.
+- **Next:**
+  - C4 phase 1 (setup and integrations settings as Effects; the callers are `setup/api.ts:238,282`, `integrations/api.ts:336,367,445` and `voice-transcription/pipeline.ts:165`);
+  - then C1 (the `approvals/service.ts:331` decision and `createRule`/`findActiveRuleForUpdate`).
+
 **2026-10-09 00:45, 3 workers, all in review:**
 - **Merged since 23:55:**
   - the Hono test wrappers for connections, routines, audit, tools, machines, approvals and push (T-0639 to T-0645), and invite-links/routes.ts (T-0646);
