@@ -1,15 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import { and, count, eq, inArray, sql } from 'drizzle-orm';
+import { Effect } from 'effect';
+import { SqlClient, SqlError } from 'effect/sql';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
-import {
-  groupMemberRoles,
-  groupMembers,
-  groupRoles,
-  topicRoleAccess,
-  topics,
-  user,
-} from '../db/schema';
+import type { groupRoles, topics } from '../db/schema';
+import { sqlRuntimeFor } from '../effect/sql';
 import { HttpError } from '../errors';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import type { InviteLogger } from '../groups/service';
@@ -58,6 +53,16 @@ function toMissingRole(): HttpError {
   return new HttpError(ROLE_NOT_FOUND.status, ROLE_NOT_FOUND.code, ROLE_NOT_FOUND.message);
 }
 
+// Every query runs on the `effect/sql` client registered for this database
+// (see `../effect/sql`). The exported functions stay `async` so routes and
+// tests keep their shape during the transition.
+function runSql<A>(
+  db: ServerDatabase,
+  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
+): Promise<A> {
+  return sqlRuntimeFor(db).runPromise(effect);
+}
+
 // The group row plus the actor's membership. A non-member sees the same 404
 // as a missing group, so group ids cannot be probed.
 async function requireGroupMembership(
@@ -65,11 +70,15 @@ async function requireGroupMembership(
   groupId: string,
   actorId: string,
 ): Promise<{ groupId: string; userId: string; role: 'owner' | 'admin' | 'member' }> {
-  const [membership] = await db
-    .select()
-    .from(groupMembers)
-    .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, actorId)))
-    .limit(1);
+  const [membership] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ groupId: string; userId: string; role: 'owner' | 'admin' | 'member' }>`
+        SELECT group_id, user_id, role FROM group_members
+        WHERE group_id = ${groupId} AND user_id = ${actorId} LIMIT 1`;
+    }),
+  );
   if (!membership) {
     throw toMissingGroup();
   }
@@ -92,11 +101,14 @@ async function requireRoleInGroup(
   groupId: string,
   roleId: string,
 ): Promise<GroupRoleRow> {
-  const [role] = await db
-    .select()
-    .from(groupRoles)
-    .where(and(eq(groupRoles.id, roleId), eq(groupRoles.groupId, groupId)))
-    .limit(1);
+  const [role] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<GroupRoleRow>`SELECT * FROM group_roles
+        WHERE id = ${roleId} AND group_id = ${groupId} LIMIT 1`;
+    }),
+  );
   if (!role) {
     throw toMissingRole();
   }
@@ -111,16 +123,19 @@ async function holdersOfRole(
   db: ServerDatabase,
   role: GroupRoleRow,
 ): Promise<Array<{ userId: string; name: string }>> {
-  const rows = await db
-    .select({ userId: groupMemberRoles.userId, name: user.name })
-    .from(groupMemberRoles)
-    .innerJoin(user, eq(user.id, groupMemberRoles.userId))
-    .innerJoin(
-      groupMembers,
-      and(eq(groupMembers.groupId, role.groupId), eq(groupMembers.userId, groupMemberRoles.userId)),
-    )
-    .where(eq(groupMemberRoles.roleId, role.id));
-  return rows.sort((a, b) => a.name.localeCompare(b.name) || a.userId.localeCompare(b.userId));
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ userId: string; name: string }>`
+        SELECT gmr.user_id, u.name FROM group_member_roles gmr
+        INNER JOIN "user" u ON u.id = gmr.user_id
+        INNER JOIN group_members gm
+          ON gm.group_id = ${role.groupId} AND gm.user_id = gmr.user_id
+        WHERE gmr.role_id = ${role.id}`;
+    }),
+  );
+  return [...rows].sort((a, b) => a.name.localeCompare(b.name) || a.userId.localeCompare(b.userId));
 }
 
 export async function toRoleDetail(
@@ -136,10 +151,16 @@ export async function listRoles(
   actorId: string,
 ): Promise<GroupRoleDetail[]> {
   await requireGroupMembership(db, groupId, actorId);
-  const rows = await db.select().from(groupRoles).where(eq(groupRoles.groupId, groupId));
-  rows.sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<GroupRoleRow>`SELECT * FROM group_roles WHERE group_id = ${groupId}`;
+    }),
+  );
+  const sorted = [...rows].sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
   const details: GroupRoleDetail[] = [];
-  for (const row of rows) {
+  for (const row of sorted) {
     details.push(await toRoleDetail(db, row));
   }
   return details;
@@ -152,21 +173,27 @@ export async function roleHoldersByGroup(
   db: ServerDatabase,
   groupId: string,
 ): Promise<Map<string, GroupRoleView[]>> {
-  const roles = await db.select().from(groupRoles).where(eq(groupRoles.groupId, groupId));
+  const roles = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<GroupRoleRow>`SELECT * FROM group_roles WHERE group_id = ${groupId}`;
+    }),
+  );
   const byId = new Map(roles.map((role) => [role.id, { id: role.id, name: role.name }]));
   const result = new Map<string, GroupRoleView[]>();
   if (roles.length === 0) {
     return result;
   }
-  const rows = await db
-    .select({ roleId: groupMemberRoles.roleId, userId: groupMemberRoles.userId })
-    .from(groupMemberRoles)
-    .where(
-      inArray(
-        groupMemberRoles.roleId,
-        roles.map((role) => role.id),
-      ),
-    );
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ roleId: string; userId: string }>`SELECT role_id, user_id
+        FROM group_member_roles
+        WHERE role_id IN ${sql.in(roles.map((role) => role.id))}`;
+    }),
+  );
   for (const row of rows) {
     const view = byId.get(row.roleId);
     if (!view) {
@@ -189,15 +216,23 @@ async function holderUserIds(
   groupId: string,
   roleIds: string[],
 ): Promise<Set<string>> {
-  const memberRows = await db
-    .select({ userId: groupMembers.userId })
-    .from(groupMembers)
-    .where(eq(groupMembers.groupId, groupId));
+  const memberRows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ userId: string }>`SELECT user_id FROM group_members
+        WHERE group_id = ${groupId}`;
+    }),
+  );
   const memberIds = new Set(memberRows.map((row) => row.userId));
-  const rows = await db
-    .select({ userId: groupMemberRoles.userId })
-    .from(groupMemberRoles)
-    .where(inArray(groupMemberRoles.roleId, roleIds));
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ userId: string }>`SELECT user_id FROM group_member_roles
+        WHERE role_id IN ${sql.in(roleIds)}`;
+    }),
+  );
   return new Set(rows.map((row) => row.userId).filter((id) => memberIds.has(id)));
 }
 
@@ -212,11 +247,24 @@ async function syncTopicsWithRoles(
   if (roleIds.length === 0) {
     return;
   }
-  const topicRows = await deps.db.select().from(topics).where(eq(topics.groupId, groupId));
-  const accessRows = await deps.db
-    .select({ topicId: topicRoleAccess.topicId, roleId: topicRoleAccess.roleId })
-    .from(topicRoleAccess)
-    .where(inArray(topicRoleAccess.roleId, roleIds));
+  const topicRows = await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<
+        typeof topics.$inferSelect
+      >`SELECT * FROM topics WHERE group_id = ${groupId}`;
+    }),
+  );
+  const accessRows = await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ topicId: string; roleId: string }>`SELECT topic_id, role_id
+        FROM topic_role_access
+        WHERE role_id IN ${sql.in(roleIds)}`;
+    }),
+  );
   const wanted = new Set(accessRows.map((row) => row.topicId));
   for (const topic of topicRows) {
     if (topic.archivedAt !== null || !wanted.has(topic.id)) {
@@ -247,6 +295,9 @@ function mapRoleError(error: unknown): HttpError {
 }
 
 function isUniqueViolation(error: unknown): boolean {
+  if (error instanceof SqlError.SqlError) {
+    return error.reason._tag === 'UniqueViolation';
+  }
   return (
     typeof error === 'object' && error !== null && (error as { code?: unknown }).code === '23505'
   );
@@ -286,31 +337,51 @@ export async function createRole(
   // keep it race-safe), but the count check and the insert run in one
   // transaction under a per-group advisory lock: two concurrent creates
   // past the cap would otherwise both read under 20 and both insert.
-  const existing = await deps.db.select().from(groupRoles).where(eq(groupRoles.groupId, groupId));
+  const existing = await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<GroupRoleRow>`SELECT * FROM group_roles WHERE group_id = ${groupId}`;
+    }),
+  );
   if (existing.some((row) => row.name.toLowerCase() === name.toLowerCase())) {
     throw new HttpError(409, 'role_exists', 'A role with that name already exists');
   }
   const id = randomUUID();
   try {
-    await deps.db.transaction(async (tx) => {
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${groupId}))`);
-      const [counter] = await tx
-        .select({ total: count() })
-        .from(groupRoles)
-        .where(eq(groupRoles.groupId, groupId));
-      if (Number(counter?.total ?? 0) >= MAX_ROLES_PER_GROUP) {
-        throw new HttpError(
-          400,
-          'invalid_request',
-          `A group has at most ${MAX_ROLES_PER_GROUP} roles`,
+    await sqlRuntimeFor(deps.db).runPromise(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql.withTransaction(
+          Effect.gen(function* () {
+            yield* sql`SELECT pg_advisory_xact_lock(hashtext(${groupId}))`;
+            const [counter] = yield* sql<{ total: number }>`SELECT count(*)::int AS total
+              FROM group_roles WHERE group_id = ${groupId}`;
+            if (Number(counter?.total ?? 0) >= MAX_ROLES_PER_GROUP) {
+              return yield* Effect.fail(
+                new HttpError(
+                  400,
+                  'invalid_request',
+                  `A group has at most ${MAX_ROLES_PER_GROUP} roles`,
+                ),
+              );
+            }
+            yield* sql`INSERT INTO group_roles (id, group_id, name, created_by)
+              VALUES (${id}, ${groupId}, ${name}, ${actorId})`;
+          }),
         );
-      }
-      await tx.insert(groupRoles).values({ id, groupId, name, createdBy: actorId });
-    });
+      }),
+    );
   } catch (error) {
     throw mapRoleError(error);
   }
-  const [role] = await deps.db.select().from(groupRoles).where(eq(groupRoles.id, id)).limit(1);
+  const [role] = await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<GroupRoleRow>`SELECT * FROM group_roles WHERE id = ${id} LIMIT 1`;
+    }),
+  );
   if (!role) {
     throw new HttpError(503, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
   }
@@ -329,18 +400,36 @@ export async function renameRole(
 ): Promise<GroupRoleDetail> {
   await requireGroupManager(deps.db, groupId, actorId);
   const role = await requireRoleInGroup(deps.db, groupId, roleId);
-  const siblings = await deps.db.select().from(groupRoles).where(eq(groupRoles.groupId, groupId));
+  const siblings = await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<GroupRoleRow>`SELECT * FROM group_roles WHERE group_id = ${groupId}`;
+    }),
+  );
   if (siblings.some((row) => row.id !== role.id && row.name.toLowerCase() === name.toLowerCase())) {
     throw new HttpError(409, 'role_exists', 'A role with that name already exists');
   }
   // The unique index owns the race: a concurrent rename to the same name
   // lands in `mapRoleError` as a 409, like the pre-check.
   try {
-    await deps.db.update(groupRoles).set({ name }).where(eq(groupRoles.id, role.id));
+    await runSql(
+      deps.db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`UPDATE group_roles SET name = ${name} WHERE id = ${role.id}`;
+      }),
+    );
   } catch (error) {
     throw mapRoleError(error);
   }
-  const [updated] = await deps.db.select().from(groupRoles).where(eq(groupRoles.id, role.id));
+  const [updated] = await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<GroupRoleRow>`SELECT * FROM group_roles WHERE id = ${role.id}`;
+    }),
+  );
   if (!updated) {
     throw toMissingRole();
   }
@@ -363,14 +452,31 @@ export async function deleteRole(
   await requireRoleInGroup(deps.db, groupId, roleId);
   // Capture the affected topics before the cascade removes the rows: after
   // the delete there is nothing left to query.
-  const accessRows = await deps.db
-    .select({ topicId: topicRoleAccess.topicId })
-    .from(topicRoleAccess)
-    .where(eq(topicRoleAccess.roleId, roleId));
+  const accessRows = await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ topicId: string }>`SELECT topic_id FROM topic_role_access
+        WHERE role_id = ${roleId}`;
+    }),
+  );
   const topicIds = [...new Set(accessRows.map((row) => row.topicId))];
-  await deps.db.delete(groupRoles).where(eq(groupRoles.id, roleId));
+  await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`DELETE FROM group_roles WHERE id = ${roleId}`;
+    }),
+  );
   if (topicIds.length > 0) {
-    const topicRows = await deps.db.select().from(topics).where(inArray(topics.id, topicIds));
+    const topicRows = await runSql(
+      deps.db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<typeof topics.$inferSelect>`SELECT * FROM topics
+          WHERE id IN ${sql.in(topicIds)}`;
+      }),
+    );
     for (const topic of topicRows) {
       if (topic.archivedAt !== null) {
         continue;
@@ -419,10 +525,14 @@ export async function setRoleMembers(
   const role = await requireRoleInGroup(deps.db, groupId, roleId);
   const wanted = [...new Set(userIds)];
   if (wanted.length > 0) {
-    const rows = await deps.db
-      .select({ userId: groupMembers.userId })
-      .from(groupMembers)
-      .where(and(eq(groupMembers.groupId, groupId), inArray(groupMembers.userId, wanted)));
+    const rows = await runSql(
+      deps.db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ userId: string }>`SELECT user_id FROM group_members
+          WHERE group_id = ${groupId} AND user_id IN ${sql.in(wanted)}`;
+      }),
+    );
     const known = new Set(rows.map((row) => row.userId));
     if (wanted.some((id) => !known.has(id))) {
       throw new HttpError(400, 'invalid_request', 'Role holders must be group members');
@@ -436,34 +546,37 @@ export async function setRoleMembers(
   let added: string[] = [];
   let removed: string[] = [];
   try {
-    const diff = await deps.db.transaction(async (tx) => {
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${groupId}))`);
-      const rows = await tx
-        .select({ userId: groupMemberRoles.userId })
-        .from(groupMemberRoles)
-        .where(eq(groupMemberRoles.roleId, role.id));
-      const currentIds = new Set(rows.map((row) => row.userId));
-      const wantedIds = new Set(wanted);
-      const nextAdded = wanted.filter((id) => !currentIds.has(id));
-      const nextRemoved = [...currentIds].filter((id) => !wantedIds.has(id));
-      if (nextAdded.length > 0) {
-        await tx
-          .insert(groupMemberRoles)
-          .values(nextAdded.map((userId) => ({ roleId: role.id, userId, assignedBy: actorId })))
-          .onConflictDoNothing();
-      }
-      if (nextRemoved.length > 0) {
-        await tx
-          .delete(groupMemberRoles)
-          .where(
-            and(
-              eq(groupMemberRoles.roleId, role.id),
-              inArray(groupMemberRoles.userId, nextRemoved),
-            ),
-          );
-      }
-      return { added: nextAdded, removed: nextRemoved };
-    });
+    const diff = await runSql(
+      deps.db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql.withTransaction(
+          Effect.gen(function* () {
+            yield* sql`SELECT pg_advisory_xact_lock(hashtext(${groupId}))`;
+            const rows = yield* sql<{ userId: string }>`SELECT user_id FROM group_member_roles
+              WHERE role_id = ${role.id}`;
+            const currentIds = new Set(rows.map((row) => row.userId));
+            const wantedIds = new Set(wanted);
+            const nextAdded = wanted.filter((id) => !currentIds.has(id));
+            const nextRemoved = [...currentIds].filter((id) => !wantedIds.has(id));
+            if (nextAdded.length > 0) {
+              yield* sql`INSERT INTO group_member_roles ${sql.insert(
+                nextAdded.map((userId) => ({
+                  role_id: role.id,
+                  user_id: userId,
+                  assigned_by: actorId,
+                })),
+              )} ON CONFLICT DO NOTHING`;
+            }
+            if (nextRemoved.length > 0) {
+              yield* sql`DELETE FROM group_member_roles
+                WHERE role_id = ${role.id} AND user_id IN ${sql.in(nextRemoved)}`;
+            }
+            return { added: nextAdded, removed: nextRemoved };
+          }),
+        );
+      }),
+    );
     added = diff.added;
     removed = diff.removed;
   } catch (error) {
@@ -496,22 +609,37 @@ export async function dropMemberRoles(
   groupId: string,
   userId: string,
 ): Promise<string[]> {
-  const roles = await deps.db.select().from(groupRoles).where(eq(groupRoles.groupId, groupId));
+  const roles = await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<GroupRoleRow>`SELECT * FROM group_roles WHERE group_id = ${groupId}`;
+    }),
+  );
   if (roles.length === 0) {
     return [];
   }
   const ownIds = roles.map((role) => role.id);
-  const rows = await deps.db
-    .select({ roleId: groupMemberRoles.roleId })
-    .from(groupMemberRoles)
-    .where(and(eq(groupMemberRoles.userId, userId), inArray(groupMemberRoles.roleId, ownIds)));
+  const rows = await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ roleId: string }>`SELECT role_id FROM group_member_roles
+        WHERE user_id = ${userId} AND role_id IN ${sql.in(ownIds)}`;
+    }),
+  );
   if (rows.length === 0) {
     return [];
   }
   const own = rows.map((row) => row.roleId);
-  await deps.db
-    .delete(groupMemberRoles)
-    .where(and(eq(groupMemberRoles.userId, userId), inArray(groupMemberRoles.roleId, own)));
+  await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`DELETE FROM group_member_roles
+        WHERE user_id = ${userId} AND role_id IN ${sql.in(own)}`;
+    }),
+  );
   await syncTopicsWithRoles(deps, groupId, own);
   return own;
 }
@@ -524,10 +652,14 @@ export async function topicRoleHolderIds(
   topicId: string,
   groupId: string,
 ): Promise<Set<string>> {
-  const accessRows = await db
-    .select({ roleId: topicRoleAccess.roleId })
-    .from(topicRoleAccess)
-    .where(eq(topicRoleAccess.topicId, topicId));
+  const accessRows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ roleId: string }>`SELECT role_id FROM topic_role_access
+        WHERE topic_id = ${topicId}`;
+    }),
+  );
   if (accessRows.length === 0) {
     return new Set();
   }
@@ -545,26 +677,26 @@ export async function holdsTopicRole(
   topicId: string,
   userId: string,
 ): Promise<boolean> {
-  const accessRows = await db
-    .select({ roleId: topicRoleAccess.roleId })
-    .from(topicRoleAccess)
-    .where(eq(topicRoleAccess.topicId, topicId));
+  const accessRows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ roleId: string }>`SELECT role_id FROM topic_role_access
+        WHERE topic_id = ${topicId}`;
+    }),
+  );
   if (accessRows.length === 0) {
     return false;
   }
-  const [row] = await db
-    .select({ userId: groupMemberRoles.userId })
-    .from(groupMemberRoles)
-    .where(
-      and(
-        eq(groupMemberRoles.userId, userId),
-        inArray(
-          groupMemberRoles.roleId,
-          accessRows.map((access) => access.roleId),
-        ),
-      ),
-    )
-    .limit(1);
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ userId: string }>`SELECT user_id FROM group_member_roles
+        WHERE user_id = ${userId}
+          AND role_id IN ${sql.in(accessRows.map((access) => access.roleId))} LIMIT 1`;
+    }),
+  );
   return row !== undefined;
 }
 
@@ -579,30 +711,44 @@ export async function rolesOfTopic(
   roles: Array<GroupRoleView & { memberCount: number }>;
   approverRole: GroupRoleView | null;
 }> {
-  const accessRows = await db
-    .select({ roleId: topicRoleAccess.roleId })
-    .from(topicRoleAccess)
-    .where(eq(topicRoleAccess.topicId, topicId));
-  const roles = await db.select().from(groupRoles).where(eq(groupRoles.groupId, groupId));
+  const accessRows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ roleId: string }>`SELECT role_id FROM topic_role_access
+        WHERE topic_id = ${topicId}`;
+    }),
+  );
+  const roles = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<GroupRoleRow>`SELECT * FROM group_roles WHERE group_id = ${groupId}`;
+    }),
+  );
   const wanted = new Set(accessRows.map((row) => row.roleId));
   const attached = roles.filter((role) => wanted.has(role.id));
   attached.sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
   const counts = new Map<string, number>();
   if (attached.length > 0) {
-    const memberRows = await db
-      .select({ userId: groupMembers.userId })
-      .from(groupMembers)
-      .where(eq(groupMembers.groupId, groupId));
+    const memberRows = await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ userId: string }>`SELECT user_id FROM group_members
+          WHERE group_id = ${groupId}`;
+      }),
+    );
     const memberIds = new Set(memberRows.map((row) => row.userId));
-    const holderRows = await db
-      .select({ roleId: groupMemberRoles.roleId, userId: groupMemberRoles.userId })
-      .from(groupMemberRoles)
-      .where(
-        inArray(
-          groupMemberRoles.roleId,
-          attached.map((role) => role.id),
-        ),
-      );
+    const holderRows = await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ roleId: string; userId: string }>`SELECT role_id, user_id
+          FROM group_member_roles
+          WHERE role_id IN ${sql.in(attached.map((role) => role.id))}`;
+      }),
+    );
     for (const role of attached) {
       counts.set(
         role.id,
@@ -610,7 +756,14 @@ export async function rolesOfTopic(
       );
     }
   }
-  const [topic] = await db.select().from(topics).where(eq(topics.id, topicId)).limit(1);
+  const [topic] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ approverRoleId: string | null }>`SELECT approver_role_id FROM topics
+        WHERE id = ${topicId} LIMIT 1`;
+    }),
+  );
   const approver = roles.find((role) => role.id === topic?.approverRoleId) ?? null;
   return {
     roles: attached.map((role) => ({

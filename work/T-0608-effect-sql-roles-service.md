@@ -1,7 +1,7 @@
 ---
 id: T-0608
 title: "effect/sql: roles/service.ts fully off drizzle (create-role under the per-group advisory lock + cap, the replace-the-set member transaction with ON CONFLICT DO NOTHING, rename/delete, the topic role lookups) via sql.withTransaction per the pins recipe; same caps, locks, diffs and audit; tests unchanged"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0608-effect-sql-roles-service
 model: auto
@@ -56,4 +56,86 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+
+Resumed on top of the committed conversion (`59673bf0`, rebased onto `main`)
+and the `resume` commit (`4eaa3243`). No source change was needed: I ran the
+four suites the lead named, plus the `authz-sweep` the task's Checks list, one
+at a time in the foreground with the verbose reporter so I could see progress.
+
+### Runs (all one at a time, foreground, `--maxWorkers=2`)
+
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=verbose src/roles`
+  → 1 file, **22 passed**, 7.62s. Every test printed as it completed; the last
+  one was "clears attached roles and the approver role when a private topic goes
+  public (round 3)". No stall.
+- `… src/topics` → 2 files, **33 passed**, 8.49s. No stall.
+- `… src/groups` → 2 files, **80 passed**, 14.48s. No stall.
+- `… src/approvals` → 7 files, **127 passed**, 20.23s. No stall.
+- `… authz-sweep` → 1 file, **5 passed**, 3.00s (the task's Checks name it;
+  the lead's step list did not, so I ran it too).
+
+No run came near the 3-minute no-progress mark; each finished in seconds, and
+nothing pinned a CPU.
+
+### Cause of the hang
+
+**Not reproduced.** With clean foreground runs the whole `roles` surface (and
+the three dependent suites) completes in under 21 seconds total. I found no
+loop in the change, so there is no fix commit. I could not confirm the earlier
+cause: the lead's context says the earlier `launchd` jobs had overheated the
+machine, and a stale detached run saturating a core is consistent with "one
+test fork at 100% CPU", but I have no evidence that pins it. I did not find any
+unbounded loop in the conversion: every `IN (…)` / `ANY` list keeps its
+empty-list guard (`roleHoldersByGroup`, `holderUserIds`, `syncTopicsWithRoles`,
+`dropMemberRoles`, `rolesOfTopic`, and the guarded `nextRemoved` insert/delete
+in `setRoleMembers`), and the two advisory-lock transactions are bounded.
+
+### `pnpm gate` summary
+
+```
+gate: 2 changed file(s) against main
+PASS  install (frozen)  (1.0s)
+PASS  format  (12.6s)
+PASS  lint  (0.7s)
+PASS  typecheck  (7.1s)
+SKIP tests @zilar/server (no nearby test files)
+scope: every changed file is inside the Allowed files
+GATE PASS
+```
+
+Note for the lead: the gate's nearest-test selector finds no sibling
+`service.test.ts` next to `apps/server/src/roles/service.ts`, so it **skips the
+server tests** for this branch. The roles coverage lives in `roles.test.ts`,
+which the selector does not pick. I therefore ran the listed tests manually
+(above) so the "tests unchanged and green" acceptance is verified. This is a
+gap in the near-test selection, not in the conversion.
+
+### Files changed
+
+- `work/T-0608-effect-sql-roles-service.md` (report + status) only. No source
+  file changed in this round; the conversion is unchanged from `59673bf0`.
+
+### Security checklist
+
+No new routes, queries or audit writes in this round. The conversion keeps every
+`where` scoped by group/role id, the per-group advisory-lock transactions, the
+`ON CONFLICT DO NOTHING` insert and the ids-only audit detail. Nothing to
+re-check beyond the prior round.
+
+### Open questions
+
+- None blocking. Only the gate's nearest-test skip noted above.
+
 ## Review (written by Claude)
+
+**2026-10-08, lead:** approved.
+- **Pre-review:** clean, no nits, 1 follow-up. The packet head is 7c42da4e, the current HEAD.
+- **Lead check:**
+  - only `roles/service.ts` and this file changed;
+  - both advisory-lock transactions are kept;
+  - `ON CONFLICT DO NOTHING` is kept, and every empty-list guard is in place;
+  - the error strings are identical;
+  - roles 22, topics 33, groups 80, approvals 127 and authz-sweep 5 tests are green, each in seconds;
+  - the earlier 50-minute hang did not reproduce (it was likely the launchd jobs).
+- **Follow-up:** the gate's nearest-test selector skips `roles.test.ts` for `roles/service.ts`. It should also map `<dir>/service.ts` to the `<dir>/*.test.ts` files.
