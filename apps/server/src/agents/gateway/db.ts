@@ -276,6 +276,49 @@ export async function loadEncryptedVirtualKey(
   return row?.encryptedKey ?? null;
 }
 
+export async function loadGroupTitle(db: ServerDatabase, groupId: string): Promise<string | null> {
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ title: string }>`SELECT title FROM groups WHERE id = ${groupId} LIMIT 1`;
+    }),
+  );
+  return row?.title ?? null;
+}
+
+export async function loadTopicName(db: ServerDatabase, topicId: string): Promise<string | null> {
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ name: string }>`SELECT name FROM topics WHERE id = ${topicId} LIMIT 1`;
+    }),
+  );
+  return row?.name ?? null;
+}
+
+interface DelegationFlagRow {
+  id: string;
+  accepts: boolean;
+  canDelegate: boolean;
+}
+
+export async function loadDelegationFlags(
+  db: ServerDatabase,
+  aiIds: string[],
+): Promise<readonly DelegationFlagRow[]> {
+  return runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<DelegationFlagRow>`SELECT id, accepts_delegation AS accepts, can_delegate
+        FROM ais
+        WHERE id IN ${sql.in(aiIds)}`;
+    }),
+  );
+}
+
 interface RoomGateState {
   /** Bare JIDs of the current human members, lowercased. */
   memberJids: Set<string>;
