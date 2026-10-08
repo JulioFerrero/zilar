@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-0623](T-0623-effect-sql-voice-settings.md) | effect/sql: voice transcription settings | in-progress | auto | T-0596 | |
 | [T-0625](T-0625-effect-sql-files-lookup.md) | effect/sql: file proxy row lookup | in-progress | auto | T-0596 | |
 | [T-0626](T-0626-audit-effect-last-mile.md) | Audit: the Effect last mile, plus the bigint check | in-progress | auto | | |
 | [T-0627](T-0627-effect-sql-routines-service.md) | effect/sql: routines service | in-progress | auto | T-0596 | |
@@ -656,3 +655,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0621](T-0621-effect-sql-approval-rules-reads.md) | approval rules statements on effect/sql | 2026-10-08 |
 | [T-0622](T-0622-effect-sql-owner-lookups.md) | owner lookups on effect/sql | 2026-10-08 |
 | [T-0624](T-0624-effect-sql-production-announcer.md) | production announcer reads on effect/sql | 2026-10-08 |
+| [T-0623](T-0623-effect-sql-voice-settings.md) | voice transcription settings on effect/sql | 2026-10-08 |

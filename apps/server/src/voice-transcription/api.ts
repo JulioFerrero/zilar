@@ -56,7 +56,7 @@ import {
   VOICE_TRANSCRIPTION_DEFAULT_MODEL,
   type VoiceTranscriptionSettings,
 } from './settings';
-import { settingsCipherFor, type SetupTransaction } from '../setup/settings';
+import { settingsCipherFor } from '../setup/settings';
 
 // Replaces `transcriptBodySchema` (zod): a non-empty URL of at most 2048
 // characters. Strict (`PayloadParseOptions` below) so an excess key fails like
@@ -408,11 +408,7 @@ export function createVoiceTranscriptionApi(
             }
 
             const cipher = settingsCipherFor(deps.config);
-            yield* Effect.promise(() =>
-              deps.db.transaction(async (tx: SetupTransaction) => {
-                await saveVoiceTranscriptionSettings(tx, cipher, candidate);
-              }),
-            );
+            yield* Effect.promise(() => saveVoiceTranscriptionSettings(deps.db, cipher, candidate));
 
             void deps.audit?.record({
               actorUserId: user.id,
@@ -441,11 +437,7 @@ export function createVoiceTranscriptionApi(
             if (!(yield* Effect.promise(() => isOwner(deps.db, user.id)))) {
               throw new HttpError(404, 'not_found', 'Not found');
             }
-            yield* Effect.promise(() =>
-              deps.db.transaction(async (tx: SetupTransaction) => {
-                await deleteVoiceTranscriptionSettings(tx);
-              }),
-            );
+            yield* Effect.promise(() => deleteVoiceTranscriptionSettings(deps.db));
             void deps.audit?.record({
               actorUserId: user.id,
               aiId: null,
