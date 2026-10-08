@@ -1,7 +1,7 @@
 ---
 id: T-0674
 title: "effect/sql: run the push test-table DDL helper (push/test-tables.ts) on the effect/sql client instead of drizzle db.execute"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0674-push-test-tables-effect-sql
 model: auto
@@ -51,4 +51,22 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**What I did**
+- `apps/server/src/push/test-tables.ts`: removed the `drizzle-orm` import. `createPushTestTables(db)` now builds one `Effect.gen` that takes `SqlClient.SqlClient` and runs the same three DDL statements in order (`push_subscriptions`, `push_subscriptions_user_idx`, `push_settings`), with the same SQL text, all `IF NOT EXISTS`. It runs through `sqlRuntimeFor(db).runPromise(program)`. The signature is unchanged. The header comment is unchanged.
+- Callers are unchanged. Their `context.db` comes from `createTestContext` (`apps/server/src/test-support.ts:310`), which registers the runtime, so `sqlRuntimeFor` finds it.
+
+**Files changed**
+- `apps/server/src/push/test-tables.ts`
+- `work/T-0674-push-test-tables-effect-sql.md` (this Report and the status line)
+
+**Commands run**
+- `pnpm install`: done.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/push`: `Test Files 10 passed | 1 skipped (11)`, `Tests 69 passed | 1 skipped (70)`. The skipped file is `apps/server/src/push/live-gate.test.ts`, which I did not touch. The push tests are unchanged.
+- `pnpm gate`: `PASS install (frozen)`, `PASS format`, `PASS lint`, `PASS typecheck`, `PASS tests @zilar/server`, `scope: every changed file is inside the Allowed files`, `GATE PASS`. The gate reported 2 changed files against main, both allowed.
+
+**Problems / deviations / open questions**
+- None. No drizzle-mocking test was involved, so nothing was blocked.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Haiku 5.5, in one round (about 3.5 min). The lead reviewed the diff directly: the same three DDL statements in the same order, on the effect/sql runtime, with no drizzle import. The push tests pass unchanged, and the gate passed.

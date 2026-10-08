@@ -13,7 +13,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0671](T-0671-ais-reads-effect-sql.md) | effect/sql: ais reads (listAis, listActiveAisForGateway, findOwnedAi) | in-progress | auto | | |
 | [T-0672](T-0672-approvals-decision-effect-sql.md) | effect/sql (C1): approval decision transaction + createRule | in-progress | auto | | |
 | [T-0673](T-0673-voice-api-fast-path-effect-sql.md) | effect/sql: voice API fast-path read | in-progress | haiku-5.5 | | |
-| [T-0674](T-0674-push-test-tables-effect-sql.md) | effect/sql: push test-table helper | in-progress | haiku-5.5 | | |
 | [T-0675](T-0675-setup-transactions-effect-sql.md) | effect/sql phase 2 (C4): setup transactions, SetupTransaction gone | in-progress | auto | T-0667, T-0669 | |
 | [T-0676](T-0676-topic-ais-effect-sql.md) | effect/sql: topic AIs (add, remove, dropped) | in-progress | haiku-5.5 | | topics slice 1 of 3 |
 
@@ -705,3 +704,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0667](T-0667-setup-settings-effects.md) | effect/sql phase 1 (C4): setup settings helpers as Effects | 2026-10-08 |
 | [T-0668](T-0668-telegram-token-effect-sql.md) | effect/sql (C4): Telegram token store, no drizzle transactions | 2026-10-08 |
 | [T-0669](T-0669-voice-transcript-store-effect-sql.md) | effect/sql (C4): voice transcript store on sql.withTransaction | 2026-10-08 |
+| [T-0674](T-0674-push-test-tables-effect-sql.md) | effect/sql: push test-table helper | 2026-10-08 |

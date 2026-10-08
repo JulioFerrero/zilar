@@ -1,5 +1,7 @@
-import { sql } from 'drizzle-orm';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
+import { sqlRuntimeFor } from '../effect/sql';
 
 // Creates the push tables on a test database without a migration file: the
 // T-0119 migration lands later (schema ordering across parallel schema
@@ -7,7 +9,9 @@ import type { ServerDatabase } from '../db/client';
 // `db/schema.ts` (`push_subscriptions`, `push_settings`); the generated
 // migration replaces this helper's effect in production.
 export async function createPushTestTables(db: ServerDatabase): Promise<void> {
-  await db.execute(sql`
+  const program = Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    yield* sql`
     CREATE TABLE IF NOT EXISTS push_subscriptions (
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL REFERENCES "user" (id) ON DELETE CASCADE,
@@ -21,14 +25,16 @@ export async function createPushTestTables(db: ServerDatabase): Promise<void> {
       failed_at TIMESTAMPTZ,
       CONSTRAINT push_subscriptions_node_length_check
         CHECK (char_length(node) BETWEEN 1 AND 256)
-    )`);
-  await db.execute(sql`
+    )`;
+    yield* sql`
     CREATE INDEX IF NOT EXISTS push_subscriptions_user_idx
-      ON push_subscriptions (user_id)`);
-  await db.execute(sql`
+      ON push_subscriptions (user_id)`;
+    yield* sql`
     CREATE TABLE IF NOT EXISTS push_settings (
       user_id TEXT PRIMARY KEY REFERENCES "user" (id) ON DELETE CASCADE,
       show_previews BOOLEAN NOT NULL DEFAULT TRUE,
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )`);
+    )`;
+  });
+  await sqlRuntimeFor(db).runPromise(program);
 }
