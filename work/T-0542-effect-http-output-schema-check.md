@@ -1,7 +1,7 @@
 ---
 id: T-0542
 title: "Effect C (HTTP) check: every HttpApi success schema in the merged api.ts modules lists every field the service returns (no silently stripped fields); fix any gap and pin it with a test"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0542-effect-http-output-schema-check
 model: auto
@@ -59,4 +59,99 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### Summary
+
+I checked every `api.ts` module present in this branch: 11 modules, 42 endpoints. For each endpoint I compared the success schema against the TypeScript type of the value the handler returns (the service function's return type / the view mapper). **Every schema already lists every field, including the optional ones. No field is silently stripped, so no schema changed and no test was added.** The checked `groups/api.ts` (T-0536) is complete, as the task said.
+
+Two families of endpoints do not apply a response encoder at all, but their schemas still match the payload:
+- handlers returning `HttpServerResponse.jsonUnsafe(...)` (`audit`, `groups` create, `pins` create, `roles` create, `chat-folders` create, `contact-requests` create), and
+- `roles` delete (`HttpApiSchema.NoContent`, 204).
+
+For those the schema is the client-facing type; it lists the same fields the raw JSON carries (e.g. `audit`'s `at` is a `Date` in the service and declared `Schema.String` on the wire, serialised by `JSON.stringify`).
+
+### Per-endpoint table
+
+| Module | Method and path | Result |
+| --- | --- | --- |
+| handles | GET `/api/handles/check` | complete (`{ available, reason? }`) |
+| handles | PUT `/api/me/handle` | complete (`{ handle }`) |
+| contact-requests | POST `/api/contact-requests` | complete (`{ request: ContactRequest, incoming? }`, raw 200/201) |
+| contact-requests | GET `/api/contact-requests` | complete (`{ incoming, outgoing }`) |
+| contact-requests | POST `/api/contact-requests/:id/accept` | complete (`{ request: ContactRequest }`) |
+| contact-requests | POST `/api/contact-requests/:id/decline` | complete (`{ request: ContactRequest }`) |
+| contact-requests | DELETE `/api/contact-requests/:id` | complete (`{ request: ContactRequest }`) |
+| contact-requests | GET `/api/users/by-handle/:handle` | complete (`{ userId, name, handle, image, relation }`) |
+| blocks | PUT `/api/blocks/:userId` | complete (`{ blocked: boolean }`) |
+| blocks | DELETE `/api/blocks/:userId` | complete (`{ blocked: boolean }`) |
+| blocks | GET `/api/blocks` | complete (`{ blocked: BlockedUserView[] }`) |
+| contacts | GET `/api/contacts` | complete (`Contact[]`) |
+| directory | GET `/api/directory` | complete (`{ entries: DirectoryEntry[], next }`) |
+| directory | GET `/api/groups/by-handle/:handle` | complete (`DirectoryEntry`) |
+| chat-prefs | GET `/api/chat-prefs` | complete (`{ prefs: ChatPrefView[], defaultBackground }`) |
+| chat-prefs | PUT `/api/chat-prefs/:chatJid` | complete (`ChatPrefView \| { prefs: null }`) |
+| chat-prefs | GET `/api/chat-background` | complete (`{ defaultBackground }`) |
+| chat-prefs | PUT `/api/chat-background` | complete (`{ defaultBackground }`) |
+| chat-folders | GET `/api/chat-folders` | complete (`{ folders: ChatFolderView[] }`) |
+| chat-folders | POST `/api/chat-folders` | complete (`{ folder: ChatFolderView }`, raw 201) |
+| chat-folders | PUT `/api/chat-folders/order` | complete (`{ folders: ChatFolderView[] }`) |
+| chat-folders | PATCH `/api/chat-folders/:id` | complete (`{ folder: ChatFolderView }`) |
+| chat-folders | DELETE `/api/chat-folders/:id` | complete (`{ deleted: boolean }`) |
+| pins | GET `/api/pins` | complete (`{ pins: PinView[] }`) |
+| pins | POST `/api/pins` | complete (`PinView`, raw 201) |
+| pins | DELETE `/api/pins/:id` | complete (`PinView`) |
+| roles | GET `/api/groups/:id/roles` | complete (`{ roles: GroupRoleDetail[] }`) |
+| roles | POST `/api/groups/:id/roles` | complete (`GroupRoleDetail`, raw 201) |
+| roles | PATCH `/api/groups/:id/roles/:roleId` | complete (`GroupRoleDetail`) |
+| roles | DELETE `/api/groups/:id/roles/:roleId` | complete (204, `NoContent`) |
+| roles | PUT `/api/groups/:id/roles/:roleId/members` | complete (`GroupRoleDetail`) |
+| audit | GET `/api/audit` | complete (`{ entries: PublicAuditEntry[], next }`, raw) |
+| groups | POST `/api/groups` | complete (`GroupDetail`, raw 201) |
+| groups | GET `/api/groups/:id` | complete (`GroupDetail`) |
+| groups | GET `/api/groups/:id/members` | complete (`{ members: GroupMemberView[] }`) |
+| groups | PUT `/api/groups/:id/members/:userId/role` | complete (`GroupDetail`) |
+| groups | POST `/api/groups/:id/members` | complete (`GroupDetail`) |
+| groups | DELETE `/api/groups/:id/members/:userId` | complete (`GroupDetail`) |
+| groups | POST `/api/groups/:id/ais` | complete (`GroupDetail`) |
+| groups | DELETE `/api/groups/:id/ais/:aiId` | complete (`GroupDetail`) |
+| groups | PATCH `/api/groups/:id` | complete (`GroupDetail`) |
+| groups | POST `/api/groups/:id/join` | complete (`{ groupId, alreadyMember }`) |
+
+Field-by-field sources: `contacts/service.ts` `Contact`; `directory/service.ts` `DirectoryEntry`/`DirectoryPage`; `audit/service.ts` `PublicAuditEntry`/`ListAuditPage`; `handles/store.ts` `checkHandleAvailability`/`checkGroupHandleAvailability`/`claimHandle`; `blocks/service.ts` `BlockedUserView`; `pins/service.ts` `PinView`; `roles/service.ts` `GroupRoleDetail`; `chat-prefs/service.ts` `BackgroundFields`/`ChatPrefView`; `chat-folders/service.ts` `ChatFolderView`; `contact-requests/service.ts` `ContactRequestView`/`OtherUserProfile`/`ContactRequestRow` and `toJson`; `groups/service.ts` `GroupDetail`/`GroupMemberView`/`GroupAiView` and `groups/join.ts` `JoinPublicGroupResult`.
+
+### Intentional omissions (item 3)
+
+No success schema is missing a field of the value its handler returns, so there was nothing to leave out. Three internal values are read by a service but are not part of the returned response value (so they are not schema fields, not gaps):
+
+- `listMembersForViewer` also returns `isAdmin`; the `/api/groups/:id/members` handler answers only `{ members }`, like the deleted Hono route.
+- `DirectoryRow.createdAt` (used for the cursor) and `ContactListRow.image` (folded into `avatarUrl`) never reach the response.
+- `audit`'s `costCurrency`/`costAmount` columns are folded into the public `cost` object by `toPublicAuditEntry`.
+
+### Modules not checked
+
+`apps/server/src/xmpp/api.ts`, `apps/server/src/chats/api.ts` and `apps/server/src/agents/memory/api.ts` do not exist in this branch (`find apps/server/src -name api.ts` returns the 11 modules above); those modules still use Hono `routes.ts` here. T-0533 ("move xmpp token, chats and AI memory onto Effect HTTP", commit `2ba9808d`) is on another branch and is not in `main`, so its schemas were out of scope.
+
+### Commands run
+
+- `pnpm install` — done, no changes.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot handles contact-requests blocks contacts groups chat-prefs chat-folders pins roles audit xmpp chats agents/memory authz-sweep` — 27 test files passed, 364 tests passed (156s), including the 158-route 401 authz sweep. No test was changed.
+- `pnpm gate` — summary lines:
+
+```
+gate: 1 changed file(s) against main
+PASS  install (frozen)  (2.2s)
+PASS  format  (34.4s)
+PASS  lint  (1.2s)
+PASS  typecheck  (1.2s)
+scope: every changed file is inside the Allowed files
+GATE PASS
+```
+
+The one changed file is this task file.
+
+### Deviations / problems
+
+None. No gaps found; no `api.ts` or test file was edited, only this task file. If the reviewer knows of a field the schemas above are expected to carry that I did not account for, I am happy to re-check that specific field.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-08). Audit only: 42 endpoints across 11 api.ts modules checked against the handler return types, with no stripped field found and no code changed. Lead spot-check: chat-folders FolderView lists all nine ChatFolderView fields. The lead also checked groups (T-0536) and topics (T-0539) by hand. New modules follow EFFECT_GUIDE item 8.
