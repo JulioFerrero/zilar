@@ -453,7 +453,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0414](T-0414-web-forward-store-action.md) | Web store: forwardMessages sends copies with a forward origin, optional comment | 2026-10-06 |
 | [T-0425](T-0425-mobile-profile-buttons-kit.md) | Mobile: profile and contact card buttons on the kit Button | 2026-10-06 |
 | [T-0426](T-0426-mobile-ai-sheet-buttons-kit.md) | Mobile: AI activity Refresh, tool sheet Show all/less and Close on the kit Button | 2026-10-06 |
-| [T-0597](T-0597-demo-args-effect.md) | Tool args T-C: demo.echo args on Effect Schema | planned | auto | T-0594 | |
 | [T-0598](T-0598-web-tools-args-effect.md) | Tool args T-D: web tool args on Effect Schema | planned | auto | T-0594 | |
 | [T-0599](T-0599-zod-small-trio.md) | Effect Schema: draft events, invite CLI options, routine title check | planned | auto | T-0571 | |
 | [T-0600](T-0600-xmpp-admin-client-schema.md) | Effect Schema: ejabberd admin client | planned | auto | T-0571 | |
@@ -639,3 +638,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0595](T-0595-sandbox-schemas-effect.md) | Tool args T-F: sandbox schemas on Effect Schema | 2026-10-08 |
 | [T-0596](T-0596-dead-zod-service-schemas.md) | Effect Schema: drop dead zod schemas in the pins, roles and topics services | 2026-10-08 |
 | [T-0590](T-0590-effect-sql-api-inline-reads.md) | effect/sql: inline reads in the memory, media and /me APIs | 2026-10-08 |
+| [T-0597](T-0597-demo-args-effect.md) | Tool args T-C: demo.echo args on Effect Schema | 2026-10-08 |

@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { Schema } from 'effect';
 import type { ActionAdapter } from './registry';
 
 // A harmless demo adapter used to prove the action tool end-to-end in a
@@ -17,11 +17,14 @@ const DEMO_ECHO_TEXT_MAX = 200;
 // never confuses it for a real adapter.
 const DEMO_ECHO_DESCRIPTION = 'Repeats a short text back (demo, no side effects).';
 
-export const DemoEchoArgsSchema = z.object({
-  text: z.string().trim().min(DEMO_ECHO_TEXT_MIN).max(DEMO_ECHO_TEXT_MAX),
+export const DemoEchoArgsSchema = Schema.Struct({
+  text: Schema.Trim.check(
+    Schema.isMinLength(DEMO_ECHO_TEXT_MIN),
+    Schema.isMaxLength(DEMO_ECHO_TEXT_MAX),
+  ),
 });
 
-export type DemoEchoArgs = z.infer<typeof DemoEchoArgsSchema>;
+export type DemoEchoArgs = typeof DemoEchoArgsSchema.Type;
 
 // The summary the approval card shows: one short, fixed line per call.
 function describeDemoEcho(args: unknown): { summary: string } {
@@ -46,7 +49,7 @@ export function buildDemoEchoAdapter(): ActionAdapter<unknown> {
     name: DEMO_ECHO_ACTION,
     description: DEMO_ECHO_DESCRIPTION,
     tier: 2,
-    argsSchema: DemoEchoArgsSchema as unknown as z.ZodType<unknown>,
+    argsSchema: DemoEchoArgsSchema as unknown as Schema.Codec<unknown, unknown, never>,
     describe: describeDemoEcho as ActionAdapter<unknown>['describe'],
     allowAlways: true,
     execute: async (_ctx, args) => ({

@@ -1,7 +1,7 @@
 ---
 id: T-0597
 title: "Tool args T-C: demo.echo args (actions/demo.ts) zod to Effect Schema through the T-0594 seam; trimmed 1..200 text; extra keys now rejected (decided by the lead); demo.test parse calls switch to Effect; no zod left in demo.ts"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0597-demo-args-effect
 model: auto
@@ -59,4 +59,49 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- `apps/server/src/actions/demo.ts`
+  - Removed `import { z } from 'zod'`; added `import { Schema } from 'effect'`.
+  - `DemoEchoArgsSchema` is now `Schema.Struct({ text: Schema.Trim.check(Schema.isMinLength(DEMO_ECHO_TEXT_MIN), Schema.isMaxLength(DEMO_ECHO_TEXT_MAX)) })`. The existing `DEMO_ECHO_TEXT_MIN`/`DEMO_ECHO_TEXT_MAX` constants (1 and 200) are reused, so the rule is unchanged and trim runs before the length checks.
+  - `DemoEchoArgs` is now `typeof DemoEchoArgsSchema.Type`.
+  - The adapter's `argsSchema` cast flipped from `as unknown as z.ZodType<unknown>` to `as unknown as Schema.Codec<unknown, unknown, never>`.
+  - `grep` confirms no `zod`/`z.` remains in `demo.ts`.
+- `apps/server/src/actions/demo.test.ts`
+  - Added `import { Exit, Schema } from 'effect';` and `decodeActionArgs` to the `./registry` import.
+  - The four parse calls at the old lines 154-157 now use `Exit.isSuccess(Schema.decodeUnknownExit(DemoEchoArgsSchema)(x))`, with the same expected `false/false/false/true`.
+  - Added one assertion in the same `it`: `decodeActionArgs(DemoEchoArgsSchema, { text: 'hello', extra: 1 }).ok` is `false`, pinning the strict (reject-extra-keys) decision through the T-0594 seam.
+- No other tests changed.
+
+### Strict decision (from the lead, T-0594 review)
+Through the seam the Effect args schema is strict (`onExcessProperty: 'error'`), so `{ text, extra }` is now **rejected** (`invalid_args`) instead of stripped as the old non-strict zod schema did. This is accepted and is pinned by the new `decodeActionArgs` assertion. No other behavior changed: trim-then-1..200 is identical.
+
+### Files changed
+- `apps/server/src/actions/demo.ts`
+- `apps/server/src/actions/demo.test.ts`
+- `work/T-0597-demo-args-effect.md` (status + this Report)
+
+### Commands and real results
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot actions/demo.test.ts` → 1 test file passed, 7 tests passed.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot actions` (task Checks) → 9 test files passed, 130 tests passed (88.0s).
+- `pnpm gate` (repo root) → first run FAIL on `format` (prettier flagged `demo.test.ts`); fixed with `pnpm exec prettier --write apps/server/src/actions/demo.test.ts`, then re-run:
+  ```
+  gate: 3 changed file(s) against main
+  PASS  install (frozen)  (4.0s)
+  PASS  format  (46.7s)
+  PASS  lint  (1.3s)
+  PASS  typecheck  (17.7s)
+  PASS  tests @zilar/server  (13.3s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Problems / deviations
+- None. Only the four parse lines plus imports changed in the test, exactly as specified. The formatting failure on the first gate run was cosmetic and fixed by running prettier on the one changed file.
+
 ## Review (written by Claude)
+
+**2026-10-08, lead:** approved.
+- **Pre-review:** clean. The packet (13:51) is newer than HEAD ed25466d.
+- **Lead check:**
+  - only the four parse lines changed, plus one new assertion that pins the strict decision: `{ text, extra }` gives `ok: false` through `decodeActionArgs`;
+  - `demo.ts` has no zod.
