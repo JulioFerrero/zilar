@@ -1,7 +1,7 @@
 ---
 id: T-0540
 title: "Agents G7: move the DM turn (pumpSession, runSessionTurn) out of createAgentGateway into agents/gateway/dm-turn.ts; zero behaviour change"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0540-agents-g7-extract-dm-turn
 model: auto
@@ -67,4 +67,52 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+
+Pure extraction (plan §3, G7). Moved `pumpSession` and `runSessionTurn` verbatim out of `createAgentGateway` into the new `apps/server/src/agents/gateway/dm-turn.ts`, exporting `createDmTurn(ctx)`.
+
+- `createDmTurn` returns `{ pumpSession }`. `runSessionTurn` is only called by `pumpSession` (checked with grep), so it is not returned.
+- `ctx` carries exactly what the moved code closes over: `deps`, `logger`, `turnLogger`, `baseUrl`, `sessionIsLive`, the four `live*` wrappers, `budgetGate`, `loadMemoryContext`, `startCompaction`, `disconnectAi`, `secretsFor`, `aiDeps`, `executeToolCall`, `withToolGuide`, `draftHub`. Callback types use indexed access (`ReturnType<typeof createBudgetGate>`, `MemoryRunner[...]`, `ReturnType<typeof createLiveSession>[...]`) so no signatures are duplicated.
+- In `createAgentGateway` the factory is created once, after the live session, session lifecycle, budget gate and memory runner exist; `const { pumpSession } = createDmTurn({...})` keeps `handleIncoming`'s `void pumpSession(session)` call text unchanged.
+- Removed the moved block (comment + both functions) and the imports that only it used: `randomUUID` (node:crypto), `jidFor`/`localpartFor` (`../xmpp/provisioning`), `bareJid`, `buildDmMessages`, `runDmTurn`, `buildTools`, `loadOwnerName`, and the `PendingMessage` type. Kept `eq`, `inArray`, `ensureAiModel`, `llmVirtualKeys`, `DM_HISTORY_MESSAGE_LIMIT`, `mapFailureToReply`, `loadActiveAi`, `isAiSender`, `modelNameForAi` etc. because the group turn / `start` still use them.
+- No logic edits, no renames. Verified with a diff: the extracted block is byte-for-byte identical to the original.
+
+### Files changed
+
+- `apps/server/src/agents/gateway/dm-turn.ts` (new): `createDmTurn` + `DmTurnContext`.
+- `apps/server/src/agents/gateway.ts`: removed the two functions and their now-unused imports; added the factory import and creation.
+- `work/T-0540-agents-g7-extract-dm-turn.md`: status + this report.
+
+### Commands run and results
+
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/agents` → 16 passed, 1 skipped (17 files); 430 passed, 1 skipped (431 tests).
+- `diff` of the extracted block (from `git show HEAD:...gateway.ts`) against the block in `dm-turn.ts` → `IDENTICAL`.
+- `pnpm gate` (repo root):
+
+```
+gate: 3 changed file(s) against main
+PASS  install (frozen)  (1.4s)
+PASS  format  (17.4s)
+PASS  lint  (0.9s)
+PASS  typecheck  (8.7s)
+PASS  tests @zilar/server  (44.4s)
+scope: every changed file is inside the Allowed files
+GATE PASS
+```
+
+### Tests
+
+No test file was touched. `apps/server/src/agents/gateway.test.ts` and the rest of `src/agents` pass unchanged.
+
+### Deviations / notes
+
+- The spec suggested returning `{ pumpSession, runSessionTurn }` "or only `pumpSession` if nothing else calls `runSessionTurn`". Nothing else calls it, so only `pumpSession` is returned.
+- `draftHub` is passed as a whole value (kept the `draftHub.publishTurn(...)` call text verbatim) rather than as a `publishTurn` callback; `randomUUID` moved with the code.
+
+### Blocked / needs a decision
+
+None.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-08). G7: pumpSession and runSessionTurn moved into agents/gateway/dm-turn.ts (createDmTurn). Lead diff (whitespace-insensitive) of the old block against the new file: identical except the factory return. Agents tests unchanged (430 passed). Pre-review clean.
