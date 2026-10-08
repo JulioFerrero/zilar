@@ -465,6 +465,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0608](T-0608-effect-sql-roles-service.md) | effect/sql: roles service, transactions included | planned | auto | T-0596 | |
 | [T-0609](T-0609-effect-sql-invite-links-service.md) | effect/sql: invite-link service and the join transaction | planned | auto | T-0596 | |
 | [T-0610](T-0610-approvals-input-schema.md) | Effect Schema: approval input schema | planned | auto | T-0596 | |
+| [T-0611](T-0611-effect-sql-group-join.md) | effect/sql: public group join transaction | planned | auto | T-0596 | |
 | [T-0427](T-0427-mobile-forwarded-header.md) | Mobile: forwarded messages show 'Forwarded from X [in Y]' | 2026-10-06 |
 | [T-0428](T-0428-mobile-new-chat-menu-sheet.md) | Mobile: New chat menu on the kit ActionSheet with icons | 2026-10-06 |
 | [T-0429](T-0429-mobile-dismiss-banner.md) | Mobile: DismissBanner replaces 12 copied chat screen banners | 2026-10-06 |
