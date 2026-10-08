@@ -4,11 +4,16 @@
 // hand out, `acceptsDelegation` to receive). The `delegate` and `task_status`
 // tools and the gateway wiring are a later task, so nothing here touches the
 // gateway: these are pure DB helpers with the caps applied at the boundary.
+//
+// T-0568: every query runs on the `effect/sql` client registered for this
+// database (see `../../effect/sql`). The exported functions stay `async` so
+// callers and tests keep their shape.
 
 import { randomUUID } from 'node:crypto';
-import { and, eq, inArray, or } from 'drizzle-orm';
+import { Effect } from 'effect';
+import { SqlClient, SqlError } from 'effect/sql';
 import type { ServerDatabase } from '../../db/client';
-import { aiDelegations, ais, groupAis, topicAis, topics } from '../../db/schema';
+import { sqlRuntimeFor } from '../../effect/sql';
 
 // Caps from the plan §4.4: over-long text is cut, never rejected, and extra
 // list items are dropped. The empty objective is the one hard rejection.
@@ -78,6 +83,13 @@ export interface FinishDelegationInput {
   artifacts?: string[];
 }
 
+function runSql<A>(
+  db: ServerDatabase,
+  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
+): Promise<A> {
+  return sqlRuntimeFor(db).runPromise(effect);
+}
+
 // Trim, drop empty items and keep the first ten, each cut to the item cap.
 function capList(items: string[] | undefined): string[] {
   if (items === undefined) return [];
@@ -94,6 +106,15 @@ function capOptional(text: string | undefined, max: number): string | null {
   return trimmed.length === 0 ? null : trimmed.slice(0, max);
 }
 
+interface TopicRow {
+  isGeneral: boolean;
+  groupId: string;
+}
+
+interface AiIdRow {
+  aiId: string;
+}
+
 // Both AIs must be members of the room. For a non-General topic that is
 // `topicAis`, otherwise the group's `groupAis`; a missing topic is a miss, and
 // a topic that belongs to another group is a miss too (the group id the caller
@@ -101,25 +122,44 @@ function capOptional(text: string | undefined, max: number): string | null {
 async function bothInRoom(db: ServerDatabase, input: CheckDelegationInput): Promise<boolean> {
   const { fromAiId, toAiId, groupId, topicId } = input;
   if (topicId !== undefined) {
-    const [topic] = await db
-      .select({ isGeneral: topics.isGeneral, groupId: topics.groupId })
-      .from(topics)
-      .where(eq(topics.id, topicId))
-      .limit(1);
+    const resolvedTopicId = topicId;
+    const [topic] = await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<TopicRow>`SELECT is_general, group_id FROM topics
+          WHERE id = ${resolvedTopicId} LIMIT 1`;
+      }),
+    );
     if (!topic || topic.groupId !== groupId) return false;
     if (!topic.isGeneral) {
-      const rows = await db
-        .select({ aiId: topicAis.aiId })
-        .from(topicAis)
-        .where(and(eq(topicAis.topicId, topicId), inArray(topicAis.aiId, [fromAiId, toAiId])));
+      const rows = await runSql(
+        db,
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<AiIdRow>`SELECT ai_id FROM topic_ais
+            WHERE topic_id = ${resolvedTopicId} AND ai_id IN ${sql.in([fromAiId, toAiId])}`;
+        }),
+      );
       return rows.length === 2;
     }
   }
-  const rows = await db
-    .select({ aiId: groupAis.aiId })
-    .from(groupAis)
-    .where(and(eq(groupAis.groupId, groupId), inArray(groupAis.aiId, [fromAiId, toAiId])));
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<AiIdRow>`SELECT ai_id FROM group_ais
+        WHERE group_id = ${groupId} AND ai_id IN ${sql.in([fromAiId, toAiId])}`;
+    }),
+  );
   return rows.length === 2;
+}
+
+interface AiCheckRow {
+  id: string;
+  canDelegate: boolean;
+  acceptsDelegation: boolean;
+  status: string;
 }
 
 // The plan §4.1 permission: two different AIs, the source may delegate, the
@@ -132,15 +172,14 @@ export async function checkDelegation(
   const { fromAiId, toAiId } = input;
   if (fromAiId === toAiId) return { ok: false, reason: 'same_ai' };
 
-  const rows = await db
-    .select({
-      id: ais.id,
-      canDelegate: ais.canDelegate,
-      acceptsDelegation: ais.acceptsDelegation,
-      status: ais.status,
-    })
-    .from(ais)
-    .where(inArray(ais.id, [fromAiId, toAiId]));
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<AiCheckRow>`SELECT id, can_delegate, accepts_delegation, status FROM ais
+        WHERE id IN ${sql.in([fromAiId, toAiId])}`;
+    }),
+  );
   const source = rows.find((row) => row.id === fromAiId);
   const target = rows.find((row) => row.id === toAiId);
   if (!source || !target) return { ok: false, reason: 'inactive' };
@@ -168,23 +207,41 @@ export async function createDelegation(
   const budget =
     input.budget !== undefined && input.budget.max >= 0
       ? { budgetCurrency: input.budget.currency, budgetMax: input.budget.max.toFixed(2) }
-      : {};
-  await db.insert(aiDelegations).values({
-    id,
-    fromAiId: input.fromAiId,
-    toAiId: input.toAiId,
-    groupId: input.groupId,
-    topicId: input.topicId ?? null,
-    objective,
-    contextSummary: capOptional(input.contextSummary, CONTEXT_SUMMARY_MAX),
-    acceptance: capList(input.acceptance),
-    constraints: capList(input.constraints),
-    artifacts: capList(input.artifacts),
-    returnFormat: capOptional(input.returnFormat, RETURN_FORMAT_MAX),
-    replyTo: input.replyTo ?? null,
-    ...budget,
-  });
+      : { budgetCurrency: null, budgetMax: null };
+  await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO ai_delegations (
+          id, from_ai_id, to_ai_id, group_id, topic_id, objective, context_summary,
+          acceptance, constraints, artifacts, budget_currency, budget_max,
+          return_format, reply_to, status
+        ) VALUES (
+          ${id}, ${input.fromAiId}, ${input.toAiId}, ${input.groupId},
+          ${input.topicId ?? null}, ${objective},
+          ${capOptional(input.contextSummary, CONTEXT_SUMMARY_MAX)},
+          ${JSON.stringify(capList(input.acceptance))}::jsonb,
+          ${JSON.stringify(capList(input.constraints))}::jsonb,
+          ${JSON.stringify(capList(input.artifacts))}::jsonb,
+          ${budget.budgetCurrency}, ${budget.budgetMax},
+          ${capOptional(input.returnFormat, RETURN_FORMAT_MAX)}, ${input.replyTo ?? null}, 'working'
+        )`;
+    }),
+  );
   return { ok: true, delegation: { id, toAiId: input.toAiId, objective, status: 'working' } };
+}
+
+// `updated_at` is a `timestamptz`; the driver returns it as a `Date`, as the
+// other converted services rely on (`pins/service.ts`, `contact-requests`).
+interface DelegationRow {
+  id: string;
+  fromAiId: string;
+  toAiId: string;
+  status: DelegationStatus;
+  objective: string;
+  resultSummary: string | null;
+  artifacts: string[];
+  updatedAt: Date;
 }
 
 // Read one delegation for one AI. A third AI sees null, the same as a missing
@@ -194,25 +251,17 @@ export async function getDelegationForAi(
   id: string,
   aiId: string,
 ): Promise<DelegationView | null> {
-  const [row] = await db
-    .select({
-      id: aiDelegations.id,
-      fromAiId: aiDelegations.fromAiId,
-      toAiId: aiDelegations.toAiId,
-      status: aiDelegations.status,
-      objective: aiDelegations.objective,
-      resultSummary: aiDelegations.resultSummary,
-      artifacts: aiDelegations.artifacts,
-      updatedAt: aiDelegations.updatedAt,
-    })
-    .from(aiDelegations)
-    .where(
-      and(
-        eq(aiDelegations.id, id),
-        or(eq(aiDelegations.fromAiId, aiId), eq(aiDelegations.toAiId, aiId)),
-      ),
-    )
-    .limit(1);
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<DelegationRow>`SELECT id, from_ai_id, to_ai_id, status, objective,
+          result_summary, artifacts, updated_at
+        FROM ai_delegations
+        WHERE id = ${id} AND (from_ai_id = ${aiId} OR to_ai_id = ${aiId})
+        LIMIT 1`;
+    }),
+  );
   return row ?? null;
 }
 
@@ -222,29 +271,22 @@ export async function finishDelegation(
   db: ServerDatabase,
   input: FinishDelegationInput,
 ): Promise<boolean> {
-  const values: {
-    status: FinishStatus;
-    resultSummary: string | null;
-    updatedAt: Date;
-    artifacts?: string[];
-  } = {
-    status: input.status,
-    resultSummary: capOptional(input.resultSummary, RESULT_SUMMARY_MAX),
-    updatedAt: new Date(),
-  };
-  if (input.artifacts !== undefined) values.artifacts = capList(input.artifacts);
-
-  const updated = await db
-    .update(aiDelegations)
-    .set(values)
-    .where(
-      and(
-        eq(aiDelegations.id, input.id),
-        eq(aiDelegations.toAiId, input.aiId),
-        eq(aiDelegations.status, 'working'),
-      ),
-    )
-    .returning();
+  const resultSummary = capOptional(input.resultSummary, RESULT_SUMMARY_MAX);
+  const updatedAt = new Date().toISOString();
+  const updated = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const artifacts =
+        input.artifacts === undefined
+          ? sql``
+          : sql`, artifacts = ${JSON.stringify(capList(input.artifacts))}::jsonb`;
+      return yield* sql<{ id: string }>`UPDATE ai_delegations
+        SET status = ${input.status}, result_summary = ${resultSummary}, updated_at = ${updatedAt}${artifacts}
+        WHERE id = ${input.id} AND to_ai_id = ${input.aiId} AND status = 'working'
+        RETURNING id`;
+    }),
+  );
   return updated.length > 0;
 }
 
@@ -254,16 +296,16 @@ export async function cancelDelegation(
   db: ServerDatabase,
   input: { id: string; aiId: string },
 ): Promise<boolean> {
-  const updated = await db
-    .update(aiDelegations)
-    .set({ status: 'canceled', updatedAt: new Date() })
-    .where(
-      and(
-        eq(aiDelegations.id, input.id),
-        eq(aiDelegations.fromAiId, input.aiId),
-        eq(aiDelegations.status, 'working'),
-      ),
-    )
-    .returning();
+  const updatedAt = new Date().toISOString();
+  const updated = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ id: string }>`UPDATE ai_delegations
+        SET status = 'canceled', updated_at = ${updatedAt}
+        WHERE id = ${input.id} AND from_ai_id = ${input.aiId} AND status = 'working'
+        RETURNING id`;
+    }),
+  );
   return updated.length > 0;
 }
