@@ -53,7 +53,6 @@ import { createGifsApi } from './gifs/api';
 import { createAvatarsApi } from './avatars/api';
 import { createBackgroundsApi } from './backgrounds/api';
 import { createStickersApi } from './stickers/api';
-import { createStickersRoutes } from './stickers/routes';
 import { createTopicsApi } from './topics/api';
 import { createMachinesApi } from './machines/api';
 import { createDbMachineRegistry, type DbMachineRegistry } from './machines/registry';
@@ -460,8 +459,8 @@ export function createApp({
     cipher: settingsCipherFor(config),
     logger,
   });
-  // The Effect api serves the 12 JSON routes and the reduced Hono factory
-  // serves the multipart upload and the file GET; Effect first.
+  // The Effect api serves all 14 sticker routes, binary upload and file GET
+  // included (T-0582 part A, T-0602 part B).
   const stickersDeps = {
     auth,
     db,
@@ -477,7 +476,6 @@ export function createApp({
   };
   const stickersApi = createStickersApi(stickersDeps);
   mountEffectRoutes(app, stickersApi.routes, stickersApi.handler);
-  app.route('/api', createStickersRoutes(stickersDeps));
   // Avatars (T-0165): upload / remove / serve profile pictures for
   // people, AIs, groups and channels. The storage dir comes from
   // `AVATAR_STORAGE_DIR`; tests override it with a temp dir.

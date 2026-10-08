@@ -1,23 +1,34 @@
-// Stickers module on the Effect `HttpApi` adapter (T-0582, part A): the
-// same methods, paths, order, statuses, texts and bodies as the Hono JSON
-// routes in `routes.ts`. Handlers keep calling the drizzle service; the DB
+// Stickers module on the Effect `HttpApi` adapter (T-0582 part A, T-0602 part
+// B): the same methods, paths, order, statuses, texts, bodies and headers as
+// the deleted Hono routers. Handlers keep calling the drizzle service; the DB
 // rewrite is a separate lane.
 //
-// Only the 12 JSON routes move here. The multipart upload
-// (`POST /sticker-packs/:id/stickers`) and the file GET
-// (`GET /stickers/:stickerId/file`) stay on Hono in `routes.ts` (part B).
+// All 14 routes live here. The 12 JSON routes came first (part A); part B adds
+// the multipart/raw upload (`POST /sticker-packs/:id/stickers`) and the file
+// GET (`GET /stickers/:stickerId/file`).
 //
 // Step order per route (unchanged):
 // - Telegram import: session -> token (501) -> body decode -> pack-input
 //   parse (400 link text) -> limiter (429) -> import. The answer carries
 //   `partial` only when true.
+// - Upload: session -> upload limiter (429) -> content-type branch. Multipart
+//   checks the declared length (413), parses the form, requires one `file`
+//   (400) and validates the `emoji` (400). Raw bytes checks the declared
+//   length, streams through `readCapped` (413), then decodes `x-emoji` (400).
+// - File GET: session -> decode id -> read file. A bad escape, an unknown id
+//   and a missing file all answer 404 `not_found`.
 // - DELETE /sticker-favorites decodes the body from the query string.
 // - Every other JSON route: session -> body/query decode -> service call.
 // Decode failures answer 400 `invalid_request` with the first message,
 // mirroring the old `issues[0]?.message` texts (see the legacy schemas).
 // `decodePathId` keeps the old final id (404 on a bad escape).
+//
+// The binary routes declare no payload schema, so nothing is buffered before
+// the handler. The upload reads multipart via the web `Request`'s `formData()`
+// and raw bytes via the request stream; the file GET answers a raw
+// `HttpServerResponse.uint8Array`, which `HttpApiBuilder` returns untouched.
 
-import { Effect, Layer, Option, Schema } from 'effect';
+import { Effect, Layer, Option, Schema, Stream } from 'effect';
 import { HttpServer, HttpServerRequest, HttpServerResponse, HttpRouter } from 'effect/http';
 import {
   HttpApi,
@@ -41,7 +52,13 @@ import {
 import { HttpError } from '../errors';
 import { createRateLimiter } from '../rate-limit';
 import type { StickersRoutesDependencies } from './routes';
-import { TELEGRAM_IMPORT_RATE_LIMIT_MAX, TELEGRAM_IMPORT_RATE_LIMIT_WINDOW_MS } from './routes';
+import {
+  STICKER_UPLOAD_RATE_LIMIT_MAX,
+  STICKER_UPLOAD_RATE_LIMIT_WINDOW_MS,
+  TELEGRAM_IMPORT_RATE_LIMIT_MAX,
+  TELEGRAM_IMPORT_RATE_LIMIT_WINDOW_MS,
+} from './routes';
+import { STICKER_MAX_BYTES } from './image';
 import {
   addFavorite,
   addPanelPack,
@@ -53,6 +70,7 @@ import {
   listFavorites,
   listPanelPacks,
   patchPack,
+  readStickerFile,
   removeFavorite,
   removePanelPack,
   reorderPanelPacks,
@@ -60,6 +78,7 @@ import {
   STICKERS_MAX_PER_PACK,
   STICKER_PACK_TITLE_MAX,
   STICKER_PACK_TITLE_MIN,
+  uploadSticker,
   type StickersServiceDeps,
   type TelegramImportDeps,
 } from './service';
@@ -312,6 +331,7 @@ const FavoritesList = Schema.Struct({ favorites: Schema.Array(StickerViewSchema)
 
 const PackIdParams = Schema.Struct({ id: Schema.String });
 const StickerParams = Schema.Struct({ id: Schema.String, stickerId: Schema.String });
+const StickerFileParams = Schema.Struct({ stickerId: Schema.String });
 const PanelPackParams = Schema.Struct({ packId: Schema.String });
 
 const StickersGroup = HttpApiGroup.make('stickers')
@@ -364,6 +384,16 @@ const StickersGroup = HttpApiGroup.make('stickers')
     HttpApiEndpoint.delete('removeFavorite', '/sticker-favorites', {
       success: OkResult,
     }),
+    // Binary routes (T-0602). The upload declares no payload schema, so the
+    // multipart/raw body is read in the handler; the file GET answers raw
+    // bytes with custom headers.
+    HttpApiEndpoint.post('uploadSticker', '/sticker-packs/:id/stickers', {
+      params: PackIdParams,
+      success: StickerViewSchema,
+    }),
+    HttpApiEndpoint.get('serveFile', '/stickers/:stickerId/file', {
+      params: StickerFileParams,
+    }),
   )
   .middleware(Session)
   .middleware(StickersSchemaErrors)
@@ -386,6 +416,8 @@ export const STICKERS_API_ROUTES: ReadonlyArray<EffectApiRoute> = [
   { method: 'GET', path: '/api/sticker-favorites' },
   { method: 'PUT', path: '/api/sticker-favorites' },
   { method: 'DELETE', path: '/api/sticker-favorites' },
+  { method: 'POST', path: '/api/sticker-packs/:id/stickers' },
+  { method: 'GET', path: '/api/stickers/:stickerId/file' },
 ];
 
 // A malformed percent escape is an unknown id (404), not a server error.
@@ -415,6 +447,15 @@ export function createStickersApi(deps: StickersApiDependencies): EffectApiMount
     createRateLimiter({
       max: TELEGRAM_IMPORT_RATE_LIMIT_MAX,
       windowMs: TELEGRAM_IMPORT_RATE_LIMIT_WINDOW_MS,
+      now,
+    });
+  // One limiter per api instance, built once (never per request), like the
+  // old Hono factory and the avatars api.
+  const uploadLimiter =
+    deps.uploadLimiter ??
+    createRateLimiter({
+      max: STICKER_UPLOAD_RATE_LIMIT_MAX,
+      windowMs: STICKER_UPLOAD_RATE_LIMIT_WINDOW_MS,
       now,
     });
 
@@ -669,6 +710,138 @@ export function createStickersApi(deps: StickersApiDependencies): EffectApiMount
           logger,
           requestId,
         );
+      })
+      // The multipart/raw upload (part B, T-0602). Step order matches the old
+      // Hono route: session -> limiter -> content-type branch -> upload. The
+      // multipart branch checks the declared length before parsing the form,
+      // so an over-cap body is rejected without buffering it; the raw branch
+      // streams through `readCapped`, which stops as soon as the cap is
+      // passed. The 201 body carries every `StickerView` field.
+      .handle('uploadSticker', (request) => {
+        const requestId = requestIdOf(request.request);
+        return withErrorEnvelope(
+          Effect.gen(function* () {
+            const user = yield* CurrentUser;
+            if (!uploadLimiter.allow(user.id)) {
+              throw new HttpError(429, 'rate_limited', 'Too many sticker uploads, try again later');
+            }
+            const contentType = request.request.headers['content-type'] ?? '';
+            let bytes: Uint8Array;
+            let emoji: string | undefined;
+            if (contentType.includes('multipart/form-data')) {
+              const declared = Number(request.request.headers['content-length'] ?? '');
+              if (Number.isFinite(declared) && declared > STICKER_MAX_BYTES + 64 * 1024) {
+                throw new HttpError(413, 'sticker_too_large', 'The sticker is larger than 512 KiB');
+              }
+              const webRequest = yield* HttpServerRequest.toWeb(request.request).pipe(Effect.orDie);
+              const form = yield* Effect.promise(() => webRequest.formData().catch(() => null));
+              if (!form) {
+                throw new HttpError(400, 'invalid_request', 'The upload must carry one file');
+              }
+              const file = form.get('file');
+              if (!(file instanceof File)) {
+                throw new HttpError(400, 'invalid_request', 'The upload must carry one file');
+              }
+              const buffer = new Uint8Array(
+                yield* Effect.promise(() => file.arrayBuffer().catch(() => new ArrayBuffer(0))),
+              );
+              if (buffer.byteLength > STICKER_MAX_BYTES) {
+                throw new HttpError(413, 'sticker_too_large', 'The sticker is larger than 512 KiB');
+              }
+              bytes = buffer;
+              const rawEmoji = form.get('emoji');
+              if (typeof rawEmoji === 'string' && rawEmoji !== '') {
+                emoji = rawEmoji;
+              }
+              // Byte-identical to the old zod `z.string().max(8)` message.
+              if (emoji !== undefined && emoji.length > 8) {
+                throw new HttpError(
+                  400,
+                  'invalid_request',
+                  'Too big: expected string to have <=8 characters',
+                );
+              }
+            } else {
+              // Raw bytes: the client POSTs the file with an optional
+              // `x-emoji` header.
+              const declared = Number(request.request.headers['content-length'] ?? '');
+              if (Number.isFinite(declared) && declared > STICKER_MAX_BYTES) {
+                throw new HttpError(413, 'sticker_too_large', 'The sticker is larger than 512 KiB');
+              }
+              const capped = yield* readCapped(request.request.stream, STICKER_MAX_BYTES).pipe(
+                Effect.orDie,
+              );
+              if (capped === undefined) {
+                throw new HttpError(413, 'sticker_too_large', 'The sticker is larger than 512 KiB');
+              }
+              bytes = capped;
+              const rawEmoji = request.request.headers['x-emoji'];
+              if (rawEmoji !== undefined && rawEmoji !== '') {
+                // Header values are latin1 ByteStrings, so the client
+                // percent-encodes the emoji; decode at most the first 64
+                // characters, then let the service validate the length.
+                let decodedEmoji = rawEmoji;
+                if (decodedEmoji.includes('%')) {
+                  try {
+                    decodedEmoji = decodeURIComponent(decodedEmoji.slice(0, 64));
+                  } catch {
+                    throw new HttpError(400, 'invalid_request', 'The emoji header is not valid');
+                  }
+                }
+                emoji = decodedEmoji;
+              }
+            }
+            const packId = yield* Effect.sync(() => decodePathId(request.params.id));
+            const sticker = yield* Effect.promise(() =>
+              uploadSticker(
+                serviceDeps(),
+                packId,
+                user.id,
+                bytes,
+                emoji === undefined ? {} : { emoji },
+              ),
+            );
+            return HttpServerResponse.jsonUnsafe(sticker, { status: 201 });
+          }),
+          logger,
+          requestId,
+        );
+      })
+      // Streams the stored file. The id is a random unguessable uuid and a
+      // signed-in session is required, but the URL is a capability for
+      // signed-in users. An unknown id and a malformed escape answer the same
+      // 404; the strict headers match the old Hono route byte for byte.
+      .handle('serveFile', (request) => {
+        const requestId = requestIdOf(request.request);
+        return withErrorEnvelope(
+          Effect.gen(function* () {
+            yield* CurrentUser;
+            const stickerId = yield* Effect.sync(() => {
+              try {
+                return decodeURIComponent(request.params.stickerId);
+              } catch {
+                throw new HttpError(404, 'not_found', 'Sticker not found');
+              }
+            });
+            const file = yield* Effect.promise(() => readStickerFile(serviceDeps(), stickerId));
+            if (!file) {
+              throw new HttpError(404, 'not_found', 'Sticker not found');
+            }
+            return HttpServerResponse.uint8Array(file.bytes, {
+              status: 200,
+              headers: {
+                'content-type': file.mime,
+                'content-length': String(file.size),
+                'x-content-type-options': 'nosniff',
+                'content-disposition': 'inline',
+                'cache-control': 'public, max-age=31536000, immutable',
+                'content-security-policy': "default-src 'none'; sandbox",
+              },
+            });
+          }),
+          logger,
+          requestId,
+        );
       }),
   );
 
@@ -686,6 +859,43 @@ export function createStickersApi(deps: StickersApiDependencies): EffectApiMount
   );
 
   return { handler, routes: STICKERS_API_ROUTES };
+}
+
+// Reads the body stream chunk by chunk and stops as soon as the cap is passed,
+// so a large upload never has to fit in memory. `undefined` means the cap was
+// exceeded; the over-cap chunk itself is not collected.
+function readCapped<E, R>(
+  stream: Stream.Stream<Uint8Array, E, R>,
+  cap: number,
+): Effect.Effect<Uint8Array | undefined, E, R> {
+  return Effect.gen(function* () {
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    let exceeded = false;
+    yield* Stream.runForEachWhile(stream, (chunk) =>
+      Effect.sync(() => {
+        total += chunk.byteLength;
+        if (total > cap) {
+          exceeded = true;
+          return false;
+        }
+        chunks.push(chunk);
+        return true;
+      }),
+    );
+
+    if (exceeded) {
+      return undefined;
+    }
+
+    const merged = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) {
+      merged.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return merged;
+  });
 }
 
 // Referenced for parity documentation (the discover route decodes manually).

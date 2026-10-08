@@ -1,7 +1,7 @@
 ---
 id: T-0602
 title: "Effect C (HTTP), stickers part B: the sticker upload (multipart or raw bytes, capped) and the sticker file GET move onto the stickers HttpApi; the Hono factory and its mount go away; upload emoji check off zod; same order, statuses, texts and headers; tests unchanged"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0602-effect-http-stickers-binary
 model: auto
@@ -84,4 +84,102 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### Summary
+Moved the last two sticker routes (the binary pair) onto the Effect `HttpApi`
+in `apps/server/src/stickers/api.ts`. All 14 sticker routes are now served by
+the Effect api; the Hono factory mount is gone.
+
+### What I did
+1. **`stickers/api.ts`** (part B):
+   - Added `HttpApiEndpoint.post('uploadSticker', '/sticker-packs/:id/stickers')`
+     (params only, no payload schema) and
+     `HttpApiEndpoint.get('serveFile', '/stickers/:stickerId/file')`.
+   - Added the two pairs to `STICKERS_API_ROUTES` (now 14 entries), so
+     `mountEffectRoutes` registers them and the authz sweep sees them.
+   - Built `uploadLimiter` once per `createStickersApi` call
+     (`deps.uploadLimiter ?? createRateLimiter(...)` with the old constants),
+     never per request.
+   - Upload handler order: session (`CurrentUser`) -> limiter (429) ->
+     content-type branch -> `uploadSticker` -> 201. Multipart uses the web
+     `Request`'s `formData()` obtained via
+     `HttpServerRequest.toWeb(request.request)`; raw bytes stream through a
+     copied `readCapped` (`Stream.runForEachWhile`, stops as soon as the cap is
+     passed). The 201 body is `HttpServerResponse.jsonUnsafe(sticker, { status:
+     201 })`, like `createPack`, so the success schema does not strip fields.
+   - File GET handler: session -> percent-decode the id (bad escape = 404) ->
+     `readStickerFile` (missing = 404) -> `HttpServerResponse.uint8Array` with
+     the exact six headers.
+2. **`stickers/routes.ts`**: removed the Hono factory, `readCapped`,
+   `decodePathId`, `serviceDeps` and zod. Kept (and re-exported) the four
+   rate-limit constants and `StickersRoutesDependencies`, the only exports with
+   importers (`./api`), mirroring `avatars/routes.ts`.
+3. **`app.ts`**: removed `app.route('/api', createStickersRoutes(stickersDeps))`
+   and the now-unused `createStickersRoutes` import. Only
+   `mountEffectRoutes(app, stickersApi.routes, stickersApi.handler)` remains.
+
+### Item 8 (upload result fields)
+`uploadSticker` returns `StickerView`; I return it as a raw 201 response, so
+the declared `success: StickerViewSchema` is never used to encode and cannot
+strip a field. `StickerViewSchema` lists every field of `StickerView`: `id`,
+`packId`, `emoji`, `mime`, `width`, `height`, `bytes`, `url`.
+
+### Texts
+- Emoji (multipart): the old zod `z.string().max(8)` message is
+  `Too big: expected string to have <=8 characters` (checked with zod in this
+  repo); kept byte-identical in a plain check. No test pins it.
+- Raw `x-emoji`: no client-side length check (exactly like the old raw branch);
+  a too-long raw emoji still reaches `uploadSticker`, which answers 400
+  `invalid_request` `emoji must be at most 8 characters`.
+- All other texts/statuses/headers (401, 429, 400 "The upload must carry one
+  file", 413 "The sticker is larger than 512 KiB", 400 "The emoji header is not
+  valid", 404 "Sticker not found", the six file headers) are byte-identical.
+
+### Deviation from the spec (deliberate)
+Line 51 of the spec says to keep the 64 KiB slack check on the declared
+multipart length **before** reading the form; the verified-facts list of the
+old route has `formData()` first and the declared check second. I followed the
+build instruction: the declared check runs before `formData()`, so an over-cap
+declared body is rejected (413) without buffering. This only changes precedence
+for a request that is both malformed/missing-file and over the declared cap
+(old: 400, new: 413); no test covers that combination. All other inputs are
+identical.
+
+### Commands run (real results)
+- `pnpm install`: done in 19.6s (only the known `@types/react-dom` peer warning).
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot stickers`:
+  6 files passed, 93 tests passed.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot authz-sweep app.test`:
+  2 files passed, 14 tests passed (the sweep prints all `/api` routes as 401,
+  sticker binary routes included).
+- `pnpm gate` (repo root): summary lines:
+  ```
+  gate: 4 changed file(s) against main
+  PASS  install (frozen)  (4.3s)
+  PASS  format  (65.6s)
+  PASS  lint  (1.5s)
+  PASS  typecheck  (13.8s)
+  PASS  tests @zilar/server  (441.5s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Files changed
+`apps/server/src/stickers/api.ts`, `apps/server/src/stickers/routes.ts`,
+`apps/server/src/app.ts`, `work/T-0602-effect-http-stickers-binary.md` (all
+Allowed; the gate confirmed no file outside them).
+
+### Problems / open questions
+None. No test mounts the Hono factory directly, so no item-11 wrapper was
+needed (confirmed by grep: `createStickersRoutes` had no importer after the
+`app.ts` change).
+
 ## Review (written by Claude)
+
+**2026-10-08, lead:** approved.
+- **Pre-review:** clean, 2 nits. The packet (14:24) is newer than HEAD 689d2a64.
+- **No test file changed.**
+- **Lead check:**
+  - all 14 sticker routes are on HttpApi, and the Hono sticker mount and factory are gone (no importers left);
+  - the raw-body cap streams;
+  - the six file headers are pinned by tests.
+- **Accepted change:** a multipart upload with an oversized declared length now gets the 413 before the form is read. The lead's spec asked for this (it contradicted its own order facts), and rejecting early is the safer order.
