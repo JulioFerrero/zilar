@@ -2,6 +2,30 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-09 01:22, 6 workers (3 DeepSeek and 2 Haiku running, 1 queued):**
+- **The other Claude session was killed** (pid 6161, an old bg session), on Julio's order: "we can not have two claude at the same time". This fork is the only lead.
+- **Merged since 01:10:**
+  - T-0660 (C3);
+  - T-0661 (TypeScript 7.0.2);
+  - T-0662 (sweeper);
+  - T-0663 to T-0666 (phase 1 of removeGroupAi);
+  - T-0667 (setup settings Effects);
+  - T-0668 (Telegram token store).
+  - T-0669 (voice transcript store) is merging.
+- **Haiku 5.5 verdict: good.** 6 tasks, all correct. It stops honestly when a test mocks drizzle. It now takes the small single-folder tasks; the lead reviews its diffs directly.
+- **Running:**
+  - T-0670: removeGroupAi on `sql.withTransaction`, and the 3 drizzle helpers deleted;
+  - T-0671: the ais reads;
+  - T-0672: C1, the approval decision and `createRule`;
+  - T-0673 and T-0674 (Haiku): the voice fast-path read and the push test tables.
+- **Queued:** T-0675 (C4 phase 2: the setup transactions; `SetupTransaction` goes away).
+- **Next:**
+  - `ais` stop, resume and assign (after T-0671);
+  - topics/service.ts;
+  - the rest of groups/service.ts (5 transactions);
+  - the tools and routines leftovers;
+  - the memory store's `deleteRoomMemory` (topics caller).
+
 **2026-10-09 01:10. Julio is asleep ("dont stop", up to 8 workers, "dont hold any launches"). ONE LEAD ONLY: the forked session (`claude --resume fcd95e40 --fork-session`, pid 44863) owns the loop tonight. Any other lead session must not review, merge, launch, queue runner lines, or edit BOARD or NOW.** At 01:05 both sessions wrote a T-0661 Review and both queued its merge; one merge ran.
 - **Merged since 00:45:** T-0656 (gate slots).
 - **Merging:** T-0661 (**TypeScript 7.0.2**, native `tsc`; mobile keeps the TS 6 API for Expo), then T-0662.
