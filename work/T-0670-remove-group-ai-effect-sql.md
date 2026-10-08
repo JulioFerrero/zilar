@@ -1,7 +1,7 @@
 ---
 id: T-0670
 title: "effect/sql phase 2 (C1/C2/C5): move the removeGroupAi transaction in groups/service.ts onto sql.withTransaction using the phase-1 Effects, then delete the drizzle revokeActiveRulesForAiInGroup, deleteToolsForAiInGroup and deleteRoutinesForAiInGroup"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0670-remove-group-ai-effect-sql
 model: auto
@@ -71,4 +71,59 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**Status:** done.
+
+**What I did**
+
+1. `apps/server/src/groups/service.ts`
+   - Added `Effect`, `SqlClient`/`SqlError` and `sqlRuntimeFor` imports, plus a private `runSql(db, effect)` (same shape as `ais/service.ts`).
+   - Replaced the `db.transaction(...)` in `removeGroupAi` (was lines 1067-1117) with `runSql(db, Effect.gen(... sql.withTransaction(Effect.gen(...))))`, keeping the 8 steps in the same order:
+     1. `adminClient.setAffiliation` through `Effect.tryPromise({ try, catch: (error) => error })`;
+     2. `DELETE FROM group_ais` raw SQL;
+     3. `SELECT id, room_localpart FROM topics WHERE group_id` raw SQL;
+     4. `DELETE FROM topic_ais WHERE topic_id IN ${sql.in(topicIds)} AND ai_id` raw SQL (only when there are topic ids);
+     5-7. the phase-1 Effects `revokeActiveRulesForAiInGroupEffect`, `deleteToolsForAiInGroupEffect`, `deleteRoutinesForAiInGroupEffect` with `now: new Date()`;
+     8. `deleteRoomMemoryEffect(input.aiId, [...new Set([...])])`.
+   - Kept the surrounding `try/catch` with `mapXmppError` and everything after the commit unchanged. Swapped the four drizzle helper imports for the Effect versions.
+2. Deleted the three drizzle helpers and updated the comments: `revokeActiveRulesForAiInGroup` (`approvals/rules.ts`), `deleteToolsForAiInGroup` (`tools/service.ts`), `deleteRoutinesForAiInGroup` (`routines/service.ts`). In `routines/service.ts` the now-unused `import { and, eq, isNull } from 'drizzle-orm'` was removed. `deleteToolsForAiInTopic` (still called by `topics/service.ts` and driven in a drizzle txn by its test) and `deleteRoomMemory` (still called by `topics/service.ts` and `agents/memory/cleanup.test.ts`) were left untouched, and the stale "stays on drizzle" wording that named `deleteToolsForAiInGroup` was rewritten to name the surviving helper.
+3. Deleted the two drizzle-only tests named in the spec and their imports: `rules.test.ts` ("kills the AI rules for the group…", now only the Effect test remains) and `tools/service.test.ts` (the first `it` in `describe('deleteToolsForAiInGroup')`; the Effect and topic tests stay). `apps/server/src/agents/memory/store.ts` was **not** touched (it is not in the Allowed files, and `deleteRoomMemory` stays).
+
+**Files changed** (7, all inside Allowed files)
+- `apps/server/src/groups/service.ts`
+- `apps/server/src/approvals/rules.ts`
+- `apps/server/src/approvals/rules.test.ts`
+- `apps/server/src/tools/service.ts`
+- `apps/server/src/tools/service.test.ts`
+- `apps/server/src/routines/service.ts`
+- `work/T-0670-remove-group-ai-effect-sql.md` (status/report only)
+
+**Commands and real results**
+- `pnpm install`: done, 1176 packages, only pre-existing peer-dep/deprecated warnings.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/groups/groups.test src/approvals/rules.test src/tools/service.test src/routines/service.test`: 4 test files passed, 153 tests passed (65.41s).
+- `pnpm gate` (repo root):
+  - `PASS install (frozen) (1.9s)`
+  - `PASS format (32.7s)`
+  - `PASS lint (2.0s)`
+  - `PASS typecheck (4.5s)`
+  - `PASS tests @zilar/server (91.6s)`
+  - `scope: every changed file is inside the Allowed files`
+  - `GATE PASS`
+
+**Acceptance**
+- `removeGroupAi` no longer has a `db.transaction` (now `runSql` + `sql.withTransaction`).
+- The three drizzle helpers are gone (grep finds no remaining references; only the `describe('deleteToolsForAiInGroup')` test-group name in `service.test.ts` remains).
+- `groups/groups.test.ts` passes unchanged.
+- `pnpm gate` ends with `GATE PASS` and lists no file outside the Allowed files.
+
+**Deviations / notes**
+- The spec's item 3 mentions updating "the comments above the Effect versions"; `store.ts` was left as-is because it is outside the Allowed files, and its `deleteRoomMemory` function was kept per the spec.
+- The removal keeps the original per-call `new Date()` timestamps (steps 5-7), exactly as the pre-existing drizzle code did, so the transaction/audit timestamps behave as before.
+
+**Blocked / needs a decision:** none.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved.
+- **Pre-review:** clean; the packet head is 761e199d, the current HEAD.
+- **Result:** `removeGroupAi` runs one `sql.withTransaction` with the same 8 steps in order. The XMPP failure still rolls back and maps to 503. The three drizzle helpers are gone, with no references left.
+- **Nit for a later tools task:** the `describe('deleteToolsForAiInGroup')` name in `tools/service.test.ts` is now stale.

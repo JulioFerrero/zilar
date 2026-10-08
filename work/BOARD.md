@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-0670](T-0670-remove-group-ai-effect-sql.md) | effect/sql phase 2: removeGroupAi transaction, drop 3 drizzle helpers | in-progress | auto | T-0663..T-0666 | |
 | [T-0671](T-0671-ais-reads-effect-sql.md) | effect/sql: ais reads (listAis, listActiveAisForGateway, findOwnedAi) | in-progress | auto | | |
 | [T-0672](T-0672-approvals-decision-effect-sql.md) | effect/sql (C1): approval decision transaction + createRule | in-progress | auto | | |
 | [T-0673](T-0673-voice-api-fast-path-effect-sql.md) | effect/sql: voice API fast-path read | in-progress | haiku-5.5 | | |
@@ -706,3 +705,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0668](T-0668-telegram-token-effect-sql.md) | effect/sql (C4): Telegram token store, no drizzle transactions | 2026-10-08 |
 | [T-0669](T-0669-voice-transcript-store-effect-sql.md) | effect/sql (C4): voice transcript store on sql.withTransaction | 2026-10-08 |
 | [T-0674](T-0674-push-test-tables-effect-sql.md) | effect/sql: push test-table helper | 2026-10-08 |
+| [T-0670](T-0670-remove-group-ai-effect-sql.md) | effect/sql phase 2: removeGroupAi on sql.withTransaction, 3 drizzle helpers deleted | 2026-10-08 |

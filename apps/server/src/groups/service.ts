@@ -1,4 +1,6 @@
 import { randomBytes, randomUUID } from 'node:crypto';
+import { Effect } from 'effect';
+import { SqlClient, type SqlError } from 'effect/sql';
 import { and, count, eq, inArray } from 'drizzle-orm';
 import { findOwnedAi } from '../ais/service';
 import { avatarIdsByOwner, avatarUrlFor } from '../avatars/service';
@@ -17,6 +19,7 @@ import {
   topics,
   user,
 } from '../db/schema';
+import { sqlRuntimeFor } from '../effect/sql';
 import { HttpError } from '../errors';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
@@ -24,14 +27,24 @@ import { emitGroupAi, emitTopicAi } from './events';
 import { aiMayBeInTopic } from '../topics/access';
 import { recordAudit, type AuditRecorder } from '../audit/service';
 import { dropMemberRoles, roleHoldersByGroup, topicRoleHolderIds } from '../roles/service';
-import { revokeActiveRulesForAiInGroup } from '../approvals/rules';
-import { deleteRoutinesForAiInGroup } from '../routines/service';
-import { deleteRoomMemory } from '../agents/memory/store';
-import { deleteToolsForAiInGroup } from '../tools/service';
+import { revokeActiveRulesForAiInGroupEffect } from '../approvals/rules';
+import { deleteRoutinesForAiInGroupEffect } from '../routines/service';
+import { deleteRoomMemoryEffect } from '../agents/memory/store';
+import { deleteToolsForAiInGroupEffect } from '../tools/service';
 import { syncTopicRoom } from '../topics/rooms';
 import { isUniqueViolation } from '../handles/store';
 import { classifyHandle, normalizeHandle } from '../handles/rules';
 import { handleForGroup, type GroupVisibility } from './visibility';
+
+// The `removeGroupAi` transaction below runs on the `effect/sql` client
+// registered for this database (see `../effect/sql`), through the phase-1
+// Effects of the rules, tools, routines and memory helpers.
+function runSql<A, E>(
+  db: ServerDatabase,
+  effect: Effect.Effect<A, SqlError.SqlError | E, SqlClient.SqlClient>,
+): Promise<A> {
+  return sqlRuntimeFor(db).runPromise(effect);
+}
 
 export const MAX_GROUP_MEMBERS = 50;
 export const ROOM_LOCALPART_LENGTH = 16;
@@ -1064,57 +1077,64 @@ export async function removeGroupAi(
   }
 
   try {
-    await db.transaction(async (tx) => {
-      await adminClient.setAffiliation(group.roomLocalpart, ai.jid, 'none');
-      await tx
-        .delete(groupAis)
-        .where(and(eq(groupAis.groupId, input.groupId), eq(groupAis.aiId, input.aiId)));
-      // T-0109: removing the AI from the group removes it from every topic
-      // of that group. The rows are deleted in the same transaction as the
-      // rules/tools cleanup below; every non-General topic room is re-synced
-      // after the commit (the gateway leaves through the same event).
-      const topicRows = await tx
-        .select({ id: topics.id, roomLocalpart: topics.roomLocalpart })
-        .from(topics)
-        .where(eq(topics.groupId, input.groupId));
-      const topicIds = topicRows.map((row) => row.id);
-      if (topicIds.length > 0) {
-        await tx
-          .delete(topicAis)
-          .where(and(inArray(topicAis.topicId, topicIds), eq(topicAis.aiId, input.aiId)));
-      }
-      // T-0099: an "always" rule tied to this (AI, group) pair must
-      // die with the membership. Personal rules and other-group rules
-      // are unaffected. `now` is the same timestamp the admin client
-      // saw for the affiliation change so audit rows line up.
-      await revokeActiveRulesForAiInGroup(tx as unknown as ServerDatabase, {
-        aiId: input.aiId,
-        groupId: input.groupId,
-        actorId: input.actorId,
-        now: new Date(),
-      });
-      // T-0103: the AI's tools made in this group die with the
-      // membership, like the rules above. Personal-chat tools and
-      // other-group tools are unaffected.
-      await deleteToolsForAiInGroup(tx as unknown as ServerDatabase, {
-        aiId: input.aiId,
-        groupId: input.groupId,
-        now: new Date(),
-      });
-      // T-0104: the AI's routines in this group die with the membership
-      // too, next to the tools above.
-      await deleteRoutinesForAiInGroup(tx as unknown as ServerDatabase, {
-        aiId: input.aiId,
-        groupId: input.groupId,
-        now: new Date(),
-      });
-      // T-0442: the AI's memory of the group room and every topic room dies
-      // with the membership, in the same transaction (plan §3.5). Its DM
-      // memory and rows of other AIs are unaffected.
-      await deleteRoomMemory(tx as unknown as ServerDatabase, input.aiId, [
-        ...new Set([group.roomLocalpart, ...topicRows.map((row) => row.roomLocalpart)]),
-      ]);
-    });
+    await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql.withTransaction(
+          Effect.gen(function* () {
+            yield* Effect.tryPromise({
+              try: () => adminClient.setAffiliation(group.roomLocalpart, ai.jid, 'none'),
+              catch: (error) => error,
+            });
+            yield* sql`DELETE FROM group_ais
+              WHERE group_id = ${input.groupId} AND ai_id = ${input.aiId}`;
+            // T-0109: removing the AI from the group removes it from every topic
+            // of that group. The rows are deleted in the same transaction as the
+            // rules/tools cleanup below; every non-General topic room is re-synced
+            // after the commit (the gateway leaves through the same event).
+            const topicRows = yield* sql<{ id: string; roomLocalpart: string }>`SELECT id,
+              room_localpart FROM topics WHERE group_id = ${input.groupId}`;
+            const topicIds = topicRows.map((row) => row.id);
+            if (topicIds.length > 0) {
+              yield* sql`DELETE FROM topic_ais
+                WHERE topic_id IN ${sql.in(topicIds)} AND ai_id = ${input.aiId}`;
+            }
+            // T-0099: an "always" rule tied to this (AI, group) pair must
+            // die with the membership. Personal rules and other-group rules
+            // are unaffected. `now` is the same timestamp the admin client
+            // saw for the affiliation change so audit rows line up.
+            yield* revokeActiveRulesForAiInGroupEffect({
+              aiId: input.aiId,
+              groupId: input.groupId,
+              actorId: input.actorId,
+              now: new Date(),
+            });
+            // T-0103: the AI's tools made in this group die with the
+            // membership, like the rules above. Personal-chat tools and
+            // other-group tools are unaffected.
+            yield* deleteToolsForAiInGroupEffect({
+              aiId: input.aiId,
+              groupId: input.groupId,
+              now: new Date(),
+            });
+            // T-0104: the AI's routines in this group die with the membership
+            // too, next to the tools above.
+            yield* deleteRoutinesForAiInGroupEffect({
+              aiId: input.aiId,
+              groupId: input.groupId,
+              now: new Date(),
+            });
+            // T-0442: the AI's memory of the group room and every topic room dies
+            // with the membership, in the same transaction (plan §3.5). Its DM
+            // memory and rows of other AIs are unaffected.
+            yield* deleteRoomMemoryEffect(input.aiId, [
+              ...new Set([group.roomLocalpart, ...topicRows.map((row) => row.roomLocalpart)]),
+            ]);
+          }),
+        );
+      }),
+    );
   } catch (error) {
     throw mapXmppError(error);
   }

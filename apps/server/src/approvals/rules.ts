@@ -272,35 +272,9 @@ export async function revokeActiveRulesForAiInTopic(
   return rows.map((row) => ({ id: row.id, action: row.action }));
 }
 
-// `revokeActiveRulesForAiInGroup` stays on drizzle for now: its caller
-// (`groups/service.ts` `removeGroupAi`) passes a drizzle transaction, so the
-// revoke must run on it. `revokeActiveRulesForAiInGroupEffect` below is the
-// same revoke as an Effect, for `removeGroupAi` once its transaction moves.
-
-// Bulk revoke helper used by `removeGroupAi`: revokes the AI's active rules
-// in every topic of the group. `now` is supplied so the caller's
-// transaction and the revocation share a timestamp.
-export async function revokeActiveRulesForAiInGroup(
-  tx: ServerDatabase,
-  input: { aiId: string; groupId: string; actorId: string | null; now: Date },
-): Promise<Array<{ id: string; action: string }>> {
-  const rows = await tx
-    .update(approvalRules)
-    .set({ revokedAt: input.now, revokedBy: input.actorId })
-    .where(
-      and(
-        eq(approvalRules.aiId, input.aiId),
-        eq(approvalRules.groupId, input.groupId),
-        isNull(approvalRules.revokedAt),
-      ),
-    )
-    .returning();
-  return rows.map((row) => ({ id: row.id, action: row.action }));
-}
-
-// The same bulk revoke as an Effect, for `removeGroupAi` once its transaction
-// moves to `sql.withTransaction`. It updates `approval_rules` directly, so the
-// caller supplies `now` to share the timestamp with the rest of its work.
+// Bulk revoke helper used by `removeGroupAi`: revokes the AI's active rules in
+// every topic of the group. It updates `approval_rules` directly, so the caller
+// supplies `now` to share the timestamp with the rest of its work.
 export function revokeActiveRulesForAiInGroupEffect(input: {
   aiId: string;
   groupId: string;

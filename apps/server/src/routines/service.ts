@@ -5,12 +5,9 @@
 // this task exposes no HTTP route that creates a routine.
 //
 // Every query runs on the `effect/sql` client registered for this database
-// (see `../effect/sql`); `deleteRoutinesForAiInGroup` is the one exception,
-// because its caller (`groups/service.ts`) hands it a drizzle transaction.
-// The exported functions stay `async` so routes and tests keep their shape
-// during the transition.
+// (see `../effect/sql`). The exported functions stay `async` so routes and
+// tests keep their shape during the transition.
 import { randomUUID } from 'node:crypto';
-import { and, eq, isNull } from 'drizzle-orm';
 import { Effect, Exit, Schema, SchemaIssue } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import type { AuditRecorder } from '../audit/service';
@@ -549,28 +546,8 @@ export async function deleteRoutinesForAiInTopic(
 }
 
 // Soft-deletes every active routine of one AI in every topic of a group.
-// Stays on drizzle: `groups/service.ts` `removeGroupAi` calls it inside a
-// drizzle transaction and hands that transaction in. The effect/sql version
-// below (`deleteRoutinesForAiInGroupEffect`) replaces it when that transaction
-// moves to effect/sql. Returns the deleted ids.
-export async function deleteRoutinesForAiInGroup(
-  tx: ServerDatabase,
-  input: { aiId: string; groupId: string; now: Date },
-): Promise<string[]> {
-  const rows = await tx
-    .update(routines)
-    .set({ deletedAt: input.now, updatedAt: input.now })
-    .where(
-      and(
-        eq(routines.aiId, input.aiId),
-        eq(routines.groupId, input.groupId),
-        isNull(routines.deletedAt),
-      ),
-    )
-    .returning();
-  return rows.map((row) => row.id);
-}
-
+// Called from `removeGroupAi` inside its `sql.withTransaction`. Returns the
+// deleted ids.
 export function deleteRoutinesForAiInGroupEffect(input: {
   aiId: string;
   groupId: string;

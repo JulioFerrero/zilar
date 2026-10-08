@@ -24,7 +24,6 @@ import {
   findActiveRule,
   listActiveRulesForAi,
   listActiveRulesForTopic,
-  revokeActiveRulesForAiInGroup,
   revokeActiveRulesForAiInGroupEffect,
   revokeActiveRulesForAiInTopic,
   revokeRule,
@@ -704,47 +703,6 @@ describe('approval rules service (T-0099)', () => {
   });
 
   describe('lifecycle: removeGroupAi revokes group rules', () => {
-    it('kills the AI rules for the group but leaves personal rules alone', async () => {
-      const ownerId = await seedUser(context);
-      const { aiId } = await seedAi(context, ownerId);
-      const { groupId, generalTopicId } = await seedGroup(
-        context,
-        ownerId,
-        [{ userId: ownerId, role: 'owner' }],
-        [aiId],
-      );
-      const personal = await createRule(
-        context.db,
-        { aiId, groupId: null, topicId: null, action: 'demo.echo', createdBy: ownerId },
-        now,
-      );
-      const group = await createRule(
-        context.db,
-        { aiId, groupId, topicId: generalTopicId, action: 'demo.echo', createdBy: ownerId },
-        now,
-      );
-      // Run the same revoke helper removeGroupAi uses.
-      const revoked = await revokeActiveRulesForAiInGroup(context.db, {
-        aiId,
-        groupId,
-        actorId: ownerId,
-        now,
-      });
-      expect(revoked).toHaveLength(1);
-      expect(revoked[0]?.id).toBe(group.rule.id);
-
-      const [personalRow] = await context.db
-        .select()
-        .from(approvalRules)
-        .where(eq(approvalRules.id, personal.rule.id));
-      expect(personalRow?.revokedAt).toBeNull();
-      const [groupRow] = await context.db
-        .select()
-        .from(approvalRules)
-        .where(eq(approvalRules.id, group.rule.id));
-      expect(groupRow?.revokedAt).not.toBeNull();
-    });
-
     it('revokes the group rule through the Effect helper and leaves personal rules alone', async () => {
       const ownerId = await seedUser(context);
       const { aiId } = await seedAi(context, ownerId);
