@@ -8,7 +8,7 @@ import { API_URL } from './auth';
  * The profile API (`/api/handles/check`, `PUT /api/me/handle`,
  * `PUT/DELETE /api/avatars/user/<id>`), the mobile twin of the web client
  * in `apps/web/src/lib/api.ts`. The wire contract lives in
- * `apps/server/src/handles/routes.ts` and `apps/server/src/avatars/`.
+ * `apps/server/src/handles/api.ts` and `apps/server/src/avatars/`.
  *
  * The boundary is validated with Effect Schema (T-0541, the T-0506 recipe):
  * the request is an Effect pipeline, cut back to a `Promise` at the edge

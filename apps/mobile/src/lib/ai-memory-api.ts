@@ -8,7 +8,7 @@ import { API_URL } from './auth';
  * The AI memory API (`GET /api/ai-memory`, `DELETE /api/ai-memory/facts/:id`
  * and `POST /api/ai-memory/clear`), the mobile twin of the web client in
  * `apps/web/src/lib/api.ts`. The wire contract lives in
- * `apps/server/src/agents/memory/routes.ts`.
+ * `apps/server/src/agents/memory/api.ts`.
  *
  * The boundary is validated with Effect Schema (T-0527, the T-0506 recipe):
  * the request is an Effect pipeline, cut back to a `Promise` at the edge with

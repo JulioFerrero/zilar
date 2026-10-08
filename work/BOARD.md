@@ -456,7 +456,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0561](T-0561-effect-http-auth-me-invites.md) | Effect C (HTTP): /me and invites on HttpApi | planned | auto | T-0548 | |
 | [T-0571](T-0571-audit-tool-args-schema.md) | Audit + plan: AI tool argument layer from zod to Effect Schema | planned | auto | T-0564 | |
 | [T-0576](T-0576-effect-http-avatars.md) | Effect C (HTTP): avatars on HttpApi | planned | auto | T-0573 | |
-| [T-0575](T-0575-stale-server-path-comments.md) | Comments: repoint client comments at live server api files | planned | auto | T-0560 | |
 | [T-0577](T-0577-effect-http-backgrounds.md) | Effect C (HTTP): background images on HttpApi | planned | auto | T-0573 | |
 | [T-0578](T-0578-effect-http-setup.md) | Effect C (HTTP): first-run setup on HttpApi | planned | auto | T-0572 | |
 | [T-0427](T-0427-mobile-forwarded-header.md) | Mobile: forwarded messages show 'Forwarded from X [in Y]' | 2026-10-06 |
@@ -607,3 +606,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0560](T-0560-effect-http-media.md) | Effect C (HTTP): media gallery on HttpApi | 2026-10-08 |
 | [T-0574](T-0574-effect-sql-invites-provisioning.md) | effect/sql: sign-up invites and XMPP provisioning | 2026-10-08 |
 | [T-0572](T-0572-effect-http-machines.md) | Effect C (HTTP): machines and runner pairing on HttpApi | 2026-10-08 |
+| [T-0575](T-0575-stale-server-path-comments.md) | Comments: client comments point at live server api files | 2026-10-08 |

@@ -7,7 +7,7 @@ import { errorFieldsOf } from './api-error-body';
 /**
  * The contacts API (`/api/users/by-handle/:handle` and `/api/contact-requests`),
  * the mobile twin of the web client in `apps/web/src/lib/api.ts`. The wire
- * contract lives in `apps/server/src/contact-requests/routes.ts` and
+ * contract lives in `apps/server/src/contact-requests/api.ts` and
  * `apps/server/src/contact-requests/service.ts`.
  *
  * The boundary is validated with Effect Schema (T-0550, the T-0506 recipe):

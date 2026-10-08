@@ -13,7 +13,7 @@ import { API_URL } from './auth';
 /**
  * The mobile twin of the web chat-folders client (`apps/web/src/lib/api.ts`,
  * T-0237): list, create, edit, reorder and delete the caller's folders. The
- * wire contract lives in `apps/server/src/chat-folders/routes.ts` (T-0232).
+ * wire contract lives in `apps/server/src/chat-folders/api.ts` (T-0232).
  *
  * The boundary is validated with Effect Schema (T-0541, the T-0506 recipe):
  * the request is an Effect pipeline, cut back to a `Promise` at the edge
