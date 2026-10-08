@@ -1,46 +1,86 @@
-import { and, eq, inArray } from 'drizzle-orm';
+import { Effect } from 'effect';
+import { SqlClient, SqlError } from 'effect/sql';
 import type { ActiveAiForGateway } from '../../ais/service';
 import type { ServerDatabase } from '../../db/client';
-import {
-  ais,
-  groupAis,
-  groupMembers,
-  groups,
-  topicAis,
-  topicMembers,
-  topics,
-  user,
-} from '../../db/schema';
+import { sqlRuntimeFor } from '../../effect/sql';
 import type { GroupRole } from '../../groups/service';
 import { allowedTopicAiIds } from '../../topics/access';
 import { jidFor, localpartFor } from '../../xmpp/provisioning';
 import { normBareJid } from '../context';
 
+function runSql<A>(
+  db: ServerDatabase,
+  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
+): Promise<A> {
+  return sqlRuntimeFor(db).runPromise(effect);
+}
+
+interface OwnerNameRow {
+  name: string;
+}
+
+interface GroupRoomRow {
+  groupId: string;
+  roomLocalpart: string;
+}
+
+interface TopicRowForRooms {
+  id: string;
+  groupId: string;
+  roomLocalpart: string;
+  visibility: 'public' | 'private';
+  isGeneral: boolean;
+  archivedAt: Date | null;
+}
+
+interface TopicAiRow {
+  topicId: string;
+}
+
+interface GroupIdRow {
+  id: string;
+}
+
+interface GateTopicRow {
+  id: string;
+  isGeneral: boolean;
+  visibility: 'public' | 'private';
+}
+
+interface TopicMemberRow {
+  userId: string;
+}
+
+interface GroupMemberRow {
+  userId: string;
+  role: GroupRole;
+}
+
 export async function loadActiveAi(
   db: ServerDatabase,
   aiId: string,
 ): Promise<ActiveAiForGateway | null> {
-  const [row] = await db
-    .select({
-      id: ais.id,
-      jid: ais.jid,
-      localpart: ais.localpart,
-      owner: ais.owner,
-      name: ais.name,
-      persona: ais.persona,
-    })
-    .from(ais)
-    .where(and(eq(ais.id, aiId), eq(ais.status, 'active')))
-    .limit(1);
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<ActiveAiForGateway>`SELECT id, jid, localpart, owner, name, persona
+        FROM ais
+        WHERE id = ${aiId} AND status = 'active'
+        LIMIT 1`;
+    }),
+  );
   return row ?? null;
 }
 
 export async function loadOwnerName(db: ServerDatabase, ownerId: string): Promise<string> {
-  const [row] = await db
-    .select({ name: user.name })
-    .from(user)
-    .where(eq(user.id, ownerId))
-    .limit(1);
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<OwnerNameRow>`SELECT name FROM "user" WHERE id = ${ownerId} LIMIT 1`;
+    }),
+  );
   const name = row?.name?.trim() ?? '';
   return name === '' ? 'owner' : name;
 }
@@ -53,30 +93,36 @@ export async function listAiRooms(
   db: ServerDatabase,
   aiId: string,
 ): Promise<Array<{ groupId: string; topicId: string; roomLocalpart: string }>> {
-  const groupRows = await db
-    .select({ groupId: groupAis.groupId, roomLocalpart: groups.roomLocalpart })
-    .from(groupAis)
-    .innerJoin(groups, eq(groups.id, groupAis.groupId))
-    .where(eq(groupAis.aiId, aiId));
+  const groupRows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<GroupRoomRow>`SELECT ga.group_id, g.room_localpart
+        FROM group_ais ga
+        INNER JOIN groups g ON g.id = ga.group_id
+        WHERE ga.ai_id = ${aiId}`;
+    }),
+  );
   if (groupRows.length === 0) {
     return [];
   }
   const groupIds = groupRows.map((row) => row.groupId);
-  const topicRows = await db
-    .select({
-      id: topics.id,
-      groupId: topics.groupId,
-      roomLocalpart: topics.roomLocalpart,
-      visibility: topics.visibility,
-      isGeneral: topics.isGeneral,
-      archivedAt: topics.archivedAt,
-    })
-    .from(topics)
-    .where(inArray(topics.groupId, groupIds));
-  const topicAiRows = await db
-    .select({ topicId: topicAis.topicId })
-    .from(topicAis)
-    .where(eq(topicAis.aiId, aiId));
+  const topicRows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<TopicRowForRooms>`SELECT id, group_id, room_localpart, visibility, is_general, archived_at
+        FROM topics
+        WHERE group_id IN ${sql.in(groupIds)}`;
+    }),
+  );
+  const topicAiRows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<TopicAiRow>`SELECT topic_id FROM topic_ais WHERE ai_id = ${aiId}`;
+    }),
+  );
   const inTopic = new Set(topicAiRows.map((row) => row.topicId));
   // The owner's visibility is a live derived rule (see `allowedTopicAiIds`):
   // a private topic counts only while the AI's owner is a topic member. The
@@ -102,7 +148,7 @@ export async function listAiRooms(
   // General rooms ride on the `group_ais` rows themselves (one General topic
   // per group, always public, never archived).
   const generals = new Map(
-    topicRows.filter((row) => row.isGeneral).map((row) => [row.groupId, row]),
+    topicRows.filter((row) => row.isGeneral).map((row) => [row.groupId, row] as const),
   );
   for (const group of groupRows) {
     const general = generals.get(group.groupId);
@@ -147,23 +193,44 @@ export async function loadRoomGateState(
   domain: string,
   topicId: string,
 ): Promise<RoomGateState | null> {
-  const [group] = await db.select({ id: groups.id }).from(groups).where(eq(groups.id, groupId));
+  const [group] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<GroupIdRow>`SELECT id FROM groups WHERE id = ${groupId} LIMIT 1`;
+    }),
+  );
   if (!group) {
     return null;
   }
-  const [topic] = await db.select().from(topics).where(eq(topics.id, topicId)).limit(1);
+  const [topic] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<GateTopicRow>`SELECT id, is_general, visibility
+        FROM topics
+        WHERE id = ${topicId}
+        LIMIT 1`;
+    }),
+  );
   let memberIds: Set<string> | null = null;
   if (topic && !topic.isGeneral && topic.visibility === 'private') {
-    const rows = await db
-      .select({ userId: topicMembers.userId })
-      .from(topicMembers)
-      .where(eq(topicMembers.topicId, topic.id));
+    const rows = await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<TopicMemberRow>`SELECT user_id FROM topic_members WHERE topic_id = ${topic.id}`;
+      }),
+    );
     memberIds = new Set(rows.map((row) => row.userId));
   }
-  const members = await db
-    .select({ userId: groupMembers.userId, role: groupMembers.role })
-    .from(groupMembers)
-    .where(eq(groupMembers.groupId, groupId));
+  const members = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<GroupMemberRow>`SELECT user_id, role FROM group_members WHERE group_id = ${groupId}`;
+    }),
+  );
   const memberRolesByJid = new Map<string, GroupRole>();
   const memberJids = new Set<string>();
   for (const row of members) {

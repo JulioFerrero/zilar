@@ -1,7 +1,7 @@
 ---
 id: T-0567
 title: "effect/sql: agents/gateway/db.ts (loadActiveAi, loadOwnerName, listAiRooms, loadRoomGateState) drops drizzle for effect/sql through sqlRuntimeFor; same signatures, same results and order; tests unchanged"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0567-effect-sql-gateway-db
 model: auto
@@ -85,4 +85,46 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+Rewrote all four exported helpers in `apps/server/src/agents/gateway/db.ts` on `effect/sql`, per the recipe in `docs/EFFECT_GUIDE.md` and the worked example `apps/server/src/ais/usage.ts`:
+
+- Added a local `runSql<A>(db, effect)` over `sqlRuntimeFor(db).runPromise(effect)`.
+- `loadActiveAi`: `` sql<ActiveAiForGateway>`SELECT id, jid, localpart, owner, name, persona FROM ais WHERE id = ${aiId} AND status = 'active' LIMIT 1` ``, returns `row ?? null`.
+- `loadOwnerName`: `` sql<OwnerNameRow>`SELECT name FROM "user" WHERE id = ${ownerId} LIMIT 1` `` plus the same trim / `'owner'` fallback. `"user"` is quoted as a Postgres reserved word.
+- `listAiRooms`: group rows (`group_ais` joined to `groups`), early `[]`, topic rows with `WHERE group_id IN ${sql.in(groupIds)}`, `topic_ais` rows, then `allowedTopicAiIds(db, topic)` unchanged for each non-General non-archived topic the AI is in, and the same output order (topic rooms in `topicRows` order, then one General per group row with the `{ topicId: '', roomLocalpart: group.roomLocalpart }` fallback).
+- `loadRoomGateState`: group existence, topic narrowed to `id, is_general, visibility`, `topic_members` for a private non-General topic, `group_members` (`user_id, role`), same sets/maps and same bare-JID/role building.
+- Added an explicit row interface per query; `role` is typed `GroupRole`, `archivedAt` is `Date | null` (only checked against `null`).
+- Removed all `drizzle-orm` and `../../db/schema` imports. Remaining imports are type-only (`ActiveAiForGateway`, `ServerDatabase`, `GroupRole`) plus `allowedTopicAiIds`, `jidFor`/`localpartFor`, `normBareJid`. Callers and tests untouched.
+
+Only the Allowed files changed: `apps/server/src/agents/gateway/db.ts` and this task file.
+
+### Commands run (real results)
+- `pnpm install` — `Done in 39.2s`, exit 0.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot agents/gateway agents/integration agents/reply actions/gateway actions/flow` — `Test Files 5 passed | 1 skipped (6)`, `Tests 283 passed | 1 skipped (284)`, exit 0.
+- `pnpm gate` (from repo root), summary lines:
+  ```
+  gate: 2 changed file(s) against main
+  PASS  install (frozen)  (6.5s)
+  PASS  format  (120.4s)
+  PASS  lint  (2.2s)
+  PASS  typecheck  (55.6s)
+  PASS  tests @zilar/server  (227.1s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Deviations / notes
+- `loadRoomGateState`'s group lookup gained `LIMIT 1` (was un-limited in the drizzle version); `groups.id` is the primary key so the result is identical.
+- `generals` map uses `[row.groupId, row] as const` for the tuple type; values and order are unchanged.
+- Nothing reached BLOCKED: `createTestContext` registers the runtime, so no "No effect/sql runtime registered" error occurred.
+
+### Open questions
+None.
+
 ## Review (written by Claude)
+
+**2026-10-08, lead:** approved.
+- **Pre-review:** clean, 0 findings, at HEAD 73eaedec.
+- **Only `gateway/db.ts` changed;** no test file changed.
+- **Lead check:** the lead read every SQL statement against the drizzle version on main. The same tables, filters, `LIMIT 1` and order hold; `"user"` is quoted; and the topic read in the gate is narrowed to the 3 columns it uses.
+- **Tests:** 283 passed, and the gate passed at the worker.
