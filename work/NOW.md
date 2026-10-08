@@ -2,6 +2,30 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-09 00:45, 3 workers, all in review:**
+- **Merged since 23:55:**
+  - the Hono test wrappers for connections, routines, audit, tools, machines, approvals and push (T-0639 to T-0645), and invite-links/routes.ts (T-0646);
+  - effect/sql for the tools reads (T-0647), the ais update and persona transactions (T-0648) and the ais delete and model-clear transactions (T-0652);
+  - the stale comment fixes (T-0649);
+  - **zod is gone from the server:** T-0650, T-0651, T-0653 and T-0654, then the dependency itself (T-0659);
+  - the gate typechecks only affected packages with a shared Turbo cache (T-0655): 0.9s warm, 1 package instead of 12;
+  - the tsgo spike (T-0657);
+  - the autopilot sweeper for leftover test and typecheck processes (T-0658). The autopilot was restarted at 00:36 to load it.
+- **In review:**
+  - T-0656: gate slots (2 + merge), nice, Gradle stop, turbo `globalDependencies`;
+  - T-0660: C3, the last ais transactions plus `connections` decryptForGatewayUse;
+  - T-0661: **TypeScript 7.0.2** everywhere (Julio: "use tsgo"; 7.0 is stable and its `tsc` is native). apps/mobile keeps TS 6 for Expo via `@typescript/typescript6`, with `@typescript/native` = 7.0.2.
+- **Julio's decisions (2026-10-09):**
+  - no auto-merge lane;
+  - load-aware scheduling only after measuring T-0655/56;
+  - OrbStack: Julio installs it himself (`brew install --cask orbstack`, then migrate the volumes);
+  - wants to test **Claude Haiku 5.5** as a worker through a Claude Code subagent, not OpenCode, because the subscription must not be used in OpenCode. It needs a session restart to see the model.
+- **Next:**
+  - after T-0656, measure the load at 4 workers;
+  - the C chains (C1 approvals and rules, C2 tools deletes, C4 setup settings, C5 routines and memory deletes);
+  - A7 setup/routes.ts (after C4);
+  - A12 git (Julio's decision).
+
 **2026-10-08 23:55, 5 workers, on small files, smallest first (Julio: "for small files, spawn more workers"):**
 - **Merged since 23:00:**
   - the effect/sql conversions: T-0625, T-0627 to T-0631, T-0633 to T-0636 (stickers fully off drizzle);
