@@ -1,6 +1,12 @@
-import { and, eq } from 'drizzle-orm';
+// The durable machine lookup, on `effect/sql` (see `../effect/sql`). The
+// runtime for `db` is resolved at call time from `sqlRuntimeFor`, never when
+// the registry is built: `index.ts` creates the registry before `createApp`
+// registers the runtime.
+
+import { Effect } from 'effect';
+import { SqlClient, SqlError } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
-import { machines } from '../db/schema';
+import { sqlRuntimeFor } from '../effect/sql';
 
 export type RevokeListener = (machineId: string) => void;
 export type ApproveListener = (machineId: string, publicKey: string) => void;
@@ -22,24 +28,41 @@ export interface DbMachineRegistry {
   notifyApproved(machineId: string, publicKey: string): void;
 }
 
+function runSql<A>(
+  db: ServerDatabase,
+  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
+): Promise<A> {
+  return sqlRuntimeFor(db).runPromise(effect);
+}
+
 export function createDbMachineRegistry(db: ServerDatabase): DbMachineRegistry {
   const revokeListeners = new Set<RevokeListener>();
   const approveListeners = new Set<ApproveListener>();
 
   return {
     async getApprovedPublicKey(machineId: string): Promise<string | null> {
-      const [row] = await db
-        .select({ publicKey: machines.publicKey })
-        .from(machines)
-        .where(and(eq(machines.id, machineId), eq(machines.status, 'approved')))
-        .limit(1);
+      const [row] = await runSql(
+        db,
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ publicKey: string }>`SELECT public_key FROM machines
+            WHERE id = ${machineId} AND status = 'approved' LIMIT 1`;
+        }),
+      );
       return row?.publicKey ?? null;
     },
 
     // The hub writes this when a machine connects. A missing id is a no-op:
     // the row may have been deleted between the lookup and the write.
     async touchLastSeen(machineId: string, at: Date): Promise<void> {
-      await db.update(machines).set({ lastSeenAt: at }).where(eq(machines.id, machineId));
+      await runSql(
+        db,
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`UPDATE machines SET last_seen_at = ${at.toISOString()}
+            WHERE id = ${machineId}`;
+        }),
+      );
     },
 
     onRevoke(listener: RevokeListener): () => void {
