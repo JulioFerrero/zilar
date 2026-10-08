@@ -50,6 +50,23 @@ describe('handles', () => {
     expect(((await me.json()) as { handle: string | null }).handle).toBe('Ada');
   });
 
+  it('refuses a claim body with an extra key', async () => {
+    const alice = await bootstrapUser(context, app, 'alice@example.com');
+
+    const response = await app.request(`${TEST_BASE_URL}/api/me/handle`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json', ...authHeaders(alice.cookie) },
+      body: JSON.stringify({ handle: 'ok', extra: 1 }),
+    });
+
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { error: { code: string; message: string } };
+    expect(body.error.code).toBe('invalid_request');
+    expect(body.error.message).toBe(
+      'handle must be a string of 1 to 64 characters, with no other keys',
+    );
+  });
+
   it('maps invalid/reserved/taken through the check endpoint with reasons', async () => {
     const alice = await bootstrapUser(context, app, 'alice@example.com');
     const bob = await bootstrapUser(context, app, 'bob@example.com');

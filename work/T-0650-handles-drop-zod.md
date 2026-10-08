@@ -1,7 +1,7 @@
 ---
 id: T-0650
 title: "zod: drop the legacy claim-body schema in handles/api.ts (E1); an invalid claim body answers the same 400 invalid_request with one fixed message; add one test for it"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0650-handles-drop-zod
 model: auto
@@ -61,4 +61,34 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**Status:** done, ready for review.
+
+**What I did**
+- `apps/server/src/handles/api.ts`: deleted the `zod` import, `legacyClaimBodySchema`, `legacyClaimBodyMessage` and `parseJsonOrNull`. The non-query branch of `schemaErrorLayer` now answers `new HttpError(400, 'invalid_request', 'handle must be a string of 1 to 64 characters, with no other keys')` and no longer reads the request body. Updated the check-query, claim-body and schema-error comments to describe the Effect Schema path; no `zod` reference remains in the module. The check-query behaviour (200 `{ available: false, reason: 'invalid' }`) is unchanged.
+- `apps/server/src/handles/handles.test.ts`: added one test, `refuses a claim body with an extra key`. `PUT /api/me/handle` with `{"handle":"ok","extra":1}` answers 400 with code `invalid_request` and exactly `handle must be a string of 1 to 64 characters, with no other keys`, in the existing claim-test style.
+
+**Files changed**
+- `apps/server/src/handles/api.ts`
+- `apps/server/src/handles/handles.test.ts`
+- `work/T-0650-handles-drop-zod.md` (status + this report)
+
+**Commands ran (real results)**
+- `pnpm install` — done in 10.9s, no dependency changes.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/handles` — Test Files 2 passed (2); Tests 17 passed (17).
+- `git grep -n -i "zod" apps/server/src/handles` — no matches (exit 1).
+- `pnpm gate` — `gate: 3 changed file(s) against main`; PASS install (frozen) 1.1s, PASS format 18.4s, PASS lint 1.4s, PASS typecheck 10.6s, PASS tests @zilar/server 8.9s; `scope: every changed file is inside the Allowed files`; `GATE PASS`.
+
+**Deviations / notes**
+- The old zod message text is gone; the new text is the fixed sentence the lead approved on 2026-10-09. No test asserted the old text.
+- The comment above `checkRateLimitLayer` (not in the spec's listed comment ranges) still says the budget runs "like the old route's `checkLimiter.allow` -> `safeParse` order". I left it because the spec said to change only the listed comments and to change nothing else, and `safeParse` does not match the `zod` grep. Flagging it in case the lead wants it reworded too.
+
+**Open questions:** none.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved.
+- **Pre-review:** clean. The packet head is cba5637d, the current HEAD.
+- **Lead check:**
+  - there is no zod import in `handles/`;
+  - the fixed 400 message is covered by the new test.
+- **Nit:** the comment at `api.ts:96` stays, because it describes the old route order accurately.
