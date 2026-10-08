@@ -332,11 +332,7 @@ export function createIntegrationsApi(deps: IntegrationsRoutesDependencies): Eff
               }),
             );
             const cipher = settingsCipherFor(deps.config);
-            yield* Effect.promise(() =>
-              deps.db.transaction(async (tx) => {
-                await saveStoredTelegramToken(tx, cipher, botToken);
-              }),
-            );
+            yield* Effect.promise(() => saveStoredTelegramToken(deps.db, cipher, botToken));
             void deps.audit?.record({
               actorUserId: user.id,
               aiId: null,
@@ -363,11 +359,7 @@ export function createIntegrationsApi(deps: IntegrationsRoutesDependencies): Eff
           Effect.gen(function* () {
             const user = yield* CurrentUser;
             yield* Effect.promise(() => requireOwner(user.id));
-            yield* Effect.promise(() =>
-              deps.db.transaction(async (tx) => {
-                await deleteStoredTelegramToken(tx);
-              }),
-            );
+            yield* Effect.promise(() => deleteStoredTelegramToken(deps.db));
             void deps.audit?.record({
               actorUserId: user.id,
               aiId: null,

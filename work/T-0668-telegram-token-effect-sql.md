@@ -1,7 +1,7 @@
 ---
 id: T-0668
 title: "effect/sql (C4): move the Telegram bot token store in integrations/settings.ts onto effect/sql (take db, not a tx) and drop the two one-statement drizzle transactions around it in integrations/api.ts"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0668-telegram-token-effect-sql
 model: auto
@@ -57,4 +57,37 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- `apps/server/src/integrations/settings.ts`: rewritten on effect/sql with a private `runSql` (same shape as `voice-transcription/settings.ts`). Drizzle imports and the `SetupTransaction` import are gone.
+  - `getStoredTelegramToken(db, cipher)` runs `SELECT value FROM instance_settings WHERE key = …` and decrypts the first row, or returns null.
+  - `saveStoredTelegramToken(db, cipher, token)` runs one `INSERT … ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`.
+  - `deleteStoredTelegramToken(db)` runs one `DELETE … WHERE key = …`.
+  - Added a small `StoredValueRow` interface for the select result (Prettier wrapped the inline generic badly).
+- `apps/server/src/integrations/api.ts`: the two one-statement transactions are replaced by `yield* Effect.promise(() => saveStoredTelegramToken(deps.db, cipher, botToken))` and `yield* Effect.promise(() => deleteStoredTelegramToken(deps.db))`. Nothing else in that file changed. The mail call near line 445 is untouched.
+- `work/T-0668-telegram-token-effect-sql.md`: status set to in-progress while working, then review; this Report.
+
+### Commands and results
+- `pnpm install`: exit 0.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/integrations/routes.test`: 22 passed, 0 failed (run after the code change, before the formatting fix; rerun after formatting: 22 passed).
+- `pnpm exec prettier --check` on the two source files: "All matched files use Prettier code style!"
+- `pnpm gate` (run twice; the first run failed on Prettier formatting and on a stray scratch log file, both fixed, log moved out of the worktree):
+  - PASS install (frozen)
+  - PASS format
+  - PASS lint
+  - PASS typecheck
+  - PASS tests @zilar/server
+  - scope: every changed file is inside the Allowed files
+  - GATE PASS
+
+### Problems / deviations
+- None against the spec. `updated_at` is now set by SQL `now()` instead of a JS `new Date()` (the spec asks for this, and it matches the voice model).
+- `routes.ts` still re-exports `SetupTransaction` from `../setup/settings` (line 233). That is outside Allowed files, so I left it alone. The type still exists and nothing imports it through `integrations/settings.ts`.
+
+### Blocked / needs a decision
+- None.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Haiku 5.5, as a Claude Code subagent, in one round (about 2.8 min). The lead reviewed the diff directly.
+- **Result:** the token store is on effect/sql, with a single-key read, the same upsert as voice settings, and a single-key delete. The two one-statement transactions are gone, and the integrations tests pass unchanged.
+- **Gate:** the first run failed on format and a stray scratch file, both fixed by the worker; the final gate passed.
