@@ -1,6 +1,4 @@
 import type { ChatMessage } from '@zilar/xmpp-core';
-import { eq } from 'drizzle-orm';
-import { groups, topics } from '../../db/schema';
 import { normBareJid } from '../context';
 import { completeChat } from '../reply';
 import {
@@ -9,6 +7,7 @@ import {
   scoreRoom,
   type ListenerWindowMessage,
 } from '../listener/score';
+import { loadGroupListenerSettings, loadTopicIsGeneral } from './db';
 import {
   LISTENER_EVERY_N_DEFAULT,
   LISTENER_QUIET_MS_DEFAULT,
@@ -135,24 +134,13 @@ export function createRoomListener(ctx: RoomListenerContext) {
       text: entry.text,
     }));
     try {
-      const [group] = await deps.db
-        .select({
-          listenerEnabled: groups.listenerEnabled,
-          listenerEagerness: groups.listenerEagerness,
-        })
-        .from(groups)
-        .where(eq(groups.id, state.groupId))
-        .limit(1);
-      if (group === undefined || !group.listenerEnabled) {
+      const group = await loadGroupListenerSettings(deps.db, state.groupId);
+      if (group === null || !group.listenerEnabled) {
         return;
       }
-      const [topic] = await deps.db
-        .select({ isGeneral: topics.isGeneral })
-        .from(topics)
-        .where(eq(topics.id, state.topicId))
-        .limit(1);
+      const isGeneralRow = await loadTopicIsGeneral(deps.db, state.topicId);
       // General rooms score the group's AIs; every other topic its own.
-      const isGeneral = state.topicId === '' || topic?.isGeneral === true;
+      const isGeneral = state.topicId === '' || isGeneralRow === true;
       const roster = await loadRoster(
         deps.db,
         isGeneral ? { groupId: state.groupId } : { groupId: state.groupId, topicId: state.topicId },

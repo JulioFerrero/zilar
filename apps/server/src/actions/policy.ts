@@ -1,4 +1,4 @@
-import type { ActionAdapter } from './registry';
+import { decodeActionArgs, type ActionAdapter } from './registry';
 
 // The stable reason codes the gateway answers. They are the wire enum the
 // audit log and any future client of `request` see; the strings are the
@@ -30,7 +30,7 @@ export interface PolicyInput {
 // trips. Unknown action → deny `unknown_action`. Then: AI must exist and
 // be `active` → otherwise `ai_not_active`. Then, when a group was named,
 // the AI must belong to that group → otherwise `ai_not_in_group`. Then the
-// args must parse against the adapter's zod schema → otherwise
+// args must parse against the adapter's args schema → otherwise
 // `invalid_args`. Finally the tier decides: 0/1 → allow, 2 → require
 // approval. Nothing the AI writes can lower a tier, because the tier comes
 // from the registered adapter, not from the request.
@@ -44,8 +44,8 @@ export function policy(input: PolicyInput): PolicyVerdict {
   if (input.aiInGroup === false) {
     return { kind: 'deny', reason: 'ai_not_in_group' };
   }
-  const parsed = input.adapter.argsSchema.safeParse(input.rawArgs);
-  if (!parsed.success) {
+  const parsed = decodeActionArgs(input.adapter.argsSchema, input.rawArgs);
+  if (!parsed.ok) {
     return { kind: 'deny', reason: 'invalid_args' };
   }
   if (input.adapter.tier <= 1) {

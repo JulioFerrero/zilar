@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { z } from 'zod';
+import { Schema } from 'effect';
 import {
   aiLimits,
   ais,
@@ -805,7 +805,7 @@ describe('approval rules service (T-0099)', () => {
         name: 'demo.echo',
         description: 'demo',
         tier: 2,
-        argsSchema: z.object({ text: z.string() }),
+        argsSchema: Schema.Struct({ text: Schema.String }),
         describe: () => ({ summary: 'demo' }),
         execute: async () => ({ summary: 'ok' }),
         ...overrides,
@@ -844,7 +844,9 @@ describe('approval rules service (T-0099)', () => {
       name: 'demo.echo',
       description: 'Repeats a short text back (demo, no side effects).',
       tier: 2,
-      argsSchema: z.object({ text: z.string().trim().min(1).max(200) }),
+      argsSchema: Schema.Struct({
+        text: Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(200)),
+      }),
       describe: (args) => ({
         summary: `Echo a message: "${(args as { text: string }).text}"`,
       }),

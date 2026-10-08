@@ -1,15 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import { and, count, desc, eq, isNull, sql } from 'drizzle-orm';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
-import {
-  chatBackgroundDefaults,
-  chatBackgrounds,
-  chatPrefs,
-  groupMembers,
-  groups,
-} from '../db/schema';
+import type { chatBackgrounds } from '../db/schema';
+import { sqlRuntimeFor } from '../effect/sql';
 import { HttpError } from '../errors';
 import { probeStickerBytes, type StickerImageInfo } from '../stickers/image';
 import { resolveStorageDir } from '../stickers/service';
@@ -42,6 +38,16 @@ export interface BackgroundView {
   width: number | null;
   height: number | null;
   createdAt: string;
+}
+
+// Every query runs on the `effect/sql` client registered for this database
+// (see `../effect/sql`). The exported functions stay `async` so routes and
+// tests keep their shape during the transition.
+function runSql<A, E>(
+  db: ServerDatabase,
+  effect: Effect.Effect<A, E, SqlClient.SqlClient>,
+): Promise<A> {
+  return sqlRuntimeFor(db).runPromise(effect);
 }
 
 function extensionFor(mime: 'image/webp' | 'image/png'): string {
@@ -148,28 +154,33 @@ export async function uploadBackground(
   const storageDir = resolveStorageDir(deps.storageDir);
   let wroteFile = false;
   try {
-    await deps.db.transaction(async (tx) => {
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${'background:' + userId}))`);
-      const [total] = await tx
-        .select({ total: count() })
-        .from(chatBackgrounds)
-        .where(eq(chatBackgrounds.userId, userId));
-      if (Number(total?.total ?? 0) >= BACKGROUND_MAX_PER_USER) {
-        throw new HttpError(409, 'too_many_backgrounds', 'Too many background images');
-      }
-      await mkdir(storageDir, { recursive: true });
-      await writeFile(join(storageDir, storageKey), bytes);
-      wroteFile = true;
-      await tx.insert(chatBackgrounds).values({
-        id,
-        userId,
-        mime: info.mime,
-        width: info.width,
-        height: info.height,
-        bytes: bytes.byteLength,
-        storageKey,
-      });
-    });
+    await runSql(
+      deps.db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql.withTransaction(
+          Effect.gen(function* () {
+            yield* sql`SELECT pg_advisory_xact_lock(hashtext(${'background:' + userId}))`;
+            const [total] = yield* sql<{ total: number }>`SELECT count(*)::int AS total
+              FROM chat_backgrounds WHERE user_id = ${userId}`;
+            if (Number(total?.total ?? 0) >= BACKGROUND_MAX_PER_USER) {
+              return yield* Effect.fail(
+                new HttpError(409, 'too_many_backgrounds', 'Too many background images'),
+              );
+            }
+            yield* Effect.promise(() => mkdir(storageDir, { recursive: true }));
+            yield* Effect.promise(() => writeFile(join(storageDir, storageKey), bytes));
+            wroteFile = true;
+            yield* sql`INSERT INTO chat_backgrounds
+                (id, user_id, mime, width, height, bytes, storage_key)
+              VALUES (
+                ${id}, ${userId}, ${info.mime}, ${info.width}, ${info.height},
+                ${bytes.byteLength}, ${storageKey}
+              )`;
+          }),
+        );
+      }),
+    );
   } catch (error) {
     if (wroteFile) {
       await rm(join(storageDir, storageKey), { force: true }).catch(() => {});
@@ -196,11 +207,15 @@ export async function listBackgrounds(
   db: ServerDatabase,
   userId: string,
 ): Promise<BackgroundView[]> {
-  const rows = await db
-    .select()
-    .from(chatBackgrounds)
-    .where(eq(chatBackgrounds.userId, userId))
-    .orderBy(desc(chatBackgrounds.createdAt), desc(chatBackgrounds.id));
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<BackgroundRow>`SELECT * FROM chat_backgrounds
+        WHERE user_id = ${userId}
+        ORDER BY created_at DESC, id DESC`;
+    }),
+  );
   return rows.map(toBackgroundView);
 }
 
@@ -220,21 +235,30 @@ export async function readBackgroundFile(
   backgroundId: string,
   userId: string,
 ): Promise<BackgroundFile | null> {
-  const [row] = await deps.db
-    .select()
-    .from(chatBackgrounds)
-    .where(eq(chatBackgrounds.id, backgroundId))
-    .limit(1);
+  const [row] = await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<BackgroundRow>`SELECT * FROM chat_backgrounds
+        WHERE id = ${backgroundId} LIMIT 1`;
+    }),
+  );
   if (!row) {
     return null;
   }
   if (row.userId !== userId) {
-    const [membership] = await deps.db
-      .select({ groupId: groupMembers.groupId })
-      .from(groups)
-      .innerJoin(groupMembers, eq(groupMembers.groupId, groups.id))
-      .where(and(eq(groups.backgroundImageId, backgroundId), eq(groupMembers.userId, userId)))
-      .limit(1);
+    const [membership] = await runSql(
+      deps.db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ groupId: string }>`SELECT group_members.group_id
+          FROM groups
+          INNER JOIN group_members ON group_members.group_id = groups.id
+          WHERE groups.background_image_id = ${backgroundId}
+            AND group_members.user_id = ${userId}
+          LIMIT 1`;
+      }),
+    );
     if (!membership) {
       return null;
     }
@@ -264,63 +288,50 @@ export async function deleteBackground(
   userId: string,
 ): Promise<boolean> {
   let storageKey: string | null = null;
-  await deps.db.transaction(async (tx) => {
-    const [row] = await tx
-      .select({ storageKey: chatBackgrounds.storageKey })
-      .from(chatBackgrounds)
-      .where(and(eq(chatBackgrounds.id, backgroundId), eq(chatBackgrounds.userId, userId)))
-      .limit(1);
-    if (!row) {
-      return;
-    }
-    storageKey = row.storageKey;
-    await tx
-      .update(chatPrefs)
-      .set({ backgroundImageId: null, backgroundDim: null })
-      .where(and(eq(chatPrefs.userId, userId), eq(chatPrefs.backgroundImageId, backgroundId)));
-    await tx
-      .update(chatBackgroundDefaults)
-      .set({ backgroundImageId: null, backgroundDim: null })
-      .where(
-        and(
-          eq(chatBackgroundDefaults.userId, userId),
-          eq(chatBackgroundDefaults.backgroundImageId, backgroundId),
-        ),
+  await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql.withTransaction(
+        Effect.gen(function* () {
+          const [row] = yield* sql<{ storageKey: string }>`SELECT storage_key
+            FROM chat_backgrounds
+            WHERE id = ${backgroundId} AND user_id = ${userId} LIMIT 1`;
+          if (row === undefined) {
+            return;
+          }
+          storageKey = row.storageKey;
+          yield* sql`UPDATE chat_prefs
+            SET background_image_id = NULL, background_dim = NULL
+            WHERE user_id = ${userId} AND background_image_id = ${backgroundId}`;
+          yield* sql`UPDATE chat_background_defaults
+            SET background_image_id = NULL, background_dim = NULL
+            WHERE user_id = ${userId} AND background_image_id = ${backgroundId}`;
+          // T-0463: a group that used this image loses it too, so members stop being
+          // served a deleted image. Not scoped to the caller: the image may only be
+          // referenced by a group they administer, and the FK would null it anyway.
+          yield* sql`UPDATE groups
+            SET background_image_id = NULL, background_dim = NULL
+            WHERE background_image_id = ${backgroundId}`;
+          yield* sql`DELETE FROM chat_prefs
+            WHERE user_id = ${userId}
+              AND muted_until IS NULL
+              AND archived = false
+              AND pinned_at IS NULL
+              AND background_preset IS NULL
+              AND background_image_id IS NULL
+              AND background_dim IS NULL`;
+          yield* sql`DELETE FROM chat_background_defaults
+            WHERE user_id = ${userId}
+              AND background_preset IS NULL
+              AND background_image_id IS NULL
+              AND background_dim IS NULL`;
+          yield* sql`DELETE FROM chat_backgrounds
+            WHERE id = ${backgroundId} AND user_id = ${userId}`;
+        }),
       );
-    // T-0463: a group that used this image loses it too, so members stop being
-    // served a deleted image. Not scoped to the caller: the image may only be
-    // referenced by a group they administer, and the FK would null it anyway.
-    await tx
-      .update(groups)
-      .set({ backgroundImageId: null, backgroundDim: null })
-      .where(eq(groups.backgroundImageId, backgroundId));
-    await tx
-      .delete(chatPrefs)
-      .where(
-        and(
-          eq(chatPrefs.userId, userId),
-          isNull(chatPrefs.mutedUntil),
-          eq(chatPrefs.archived, false),
-          isNull(chatPrefs.pinnedAt),
-          isNull(chatPrefs.backgroundPreset),
-          isNull(chatPrefs.backgroundImageId),
-          isNull(chatPrefs.backgroundDim),
-        ),
-      );
-    await tx
-      .delete(chatBackgroundDefaults)
-      .where(
-        and(
-          eq(chatBackgroundDefaults.userId, userId),
-          isNull(chatBackgroundDefaults.backgroundPreset),
-          isNull(chatBackgroundDefaults.backgroundImageId),
-          isNull(chatBackgroundDefaults.backgroundDim),
-        ),
-      );
-    await tx
-      .delete(chatBackgrounds)
-      .where(and(eq(chatBackgrounds.id, backgroundId), eq(chatBackgrounds.userId, userId)));
-  });
+    }),
+  );
   if (storageKey === null) {
     return false;
   }

@@ -385,13 +385,13 @@ const CASES: { name: string; action: string; command: string | string[]; verdict
     name: 'self-terminating burner',
     action: 'shell',
     command: 'timeout 600 yes > /dev/null &',
-    verdict: 'escalate',
+    verdict: 'reject',
   },
   {
     name: 'perl burner',
     action: 'shell',
     command: 'perl -e \'alarm 600; exec "yes"\' > /dev/null &',
-    verdict: 'escalate',
+    verdict: 'reject',
   },
   { name: 'plain echo', action: 'shell', command: 'echo hello', verdict: 'allow' },
   {
@@ -1009,5 +1009,44 @@ describe('npx for tools the repo already has', () => {
       ctx,
     );
     expect(expo.verdict).not.toBe('reject');
+  });
+});
+
+describe('no daemons, background jobs or detached runs', () => {
+  const ctx: PolicyContext = { worktree: '/w/zilar-T-0001', task: 'T-0001' };
+  const message =
+    'Workers may not start daemons, background jobs or detached runs (launchd, nohup, &, tmux…): they outlive your session and cannot be stopped. Run every command in the foreground; for tests use pnpm --filter <package> test --maxWorkers=2 <path>, then pnpm gate once.';
+
+  it.each([
+    'launchctl list',
+    'nohup pnpm gate > gate.log',
+    'setsid sleep 60',
+    'disown',
+    'crontab -l',
+    'at now',
+    'osascript -e "display notification hi"',
+    'screen -dmS job',
+    'tmux new-session -d',
+    'sleep 60 &',
+  ])('rejects %s', (command) => {
+    const result = classifyPermission({ id: 'p', action: 'shell', commands: [command] }, ctx);
+    expect(result.verdict).toBe('reject');
+    expect(result.message).toBe(message);
+  });
+
+  it('does not reject a normal command joined with &&', () => {
+    const result = classifyPermission(
+      { id: 'p', action: 'shell', commands: ['cat a.log && head -5'] },
+      ctx,
+    );
+    expect(result.verdict).not.toBe('reject');
+  });
+
+  it('does not reject a word that merely contains a daemon name', () => {
+    const result = classifyPermission(
+      { id: 'p', action: 'shell', commands: ['cat screenshot.log'] },
+      ctx,
+    );
+    expect(result.verdict).not.toBe('reject');
   });
 });

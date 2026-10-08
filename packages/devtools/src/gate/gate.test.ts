@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { gateSteps, packagesTouched, strayFiles, type WorkspacePackage } from './plan.js';
+import {
+  gateSteps,
+  packagesTouched,
+  selectTestFiles,
+  stepTimeoutMs,
+  strayFiles,
+  STEP_TIMEOUT_MS,
+  TESTS_TIMEOUT_MS,
+  type WorkspacePackage,
+} from './plan.js';
 import { allowedTokens, scopeReport, tokenMatcher } from './scope.js';
 
 const workspace: WorkspacePackage[] = [
@@ -59,9 +68,66 @@ describe('scopeReport', () => {
   });
 });
 
+describe('selectTestFiles', () => {
+  const testFiles = [
+    'packages/a/src/service.test.ts',
+    'packages/a/src/service.effect.test.ts',
+    'packages/a/src/other.test.ts',
+    'packages/a/src/nested/deep.test.ts',
+    'packages/b/src/thing.test.ts',
+  ];
+
+  it('keeps a changed test file', () => {
+    expect(selectTestFiles(['packages/a/src/other.test.ts'], testFiles)).toEqual([
+      'packages/a/src/other.test.ts',
+    ]);
+  });
+
+  it('drops a changed test file the branch deleted', () => {
+    const onDisk = new Set(testFiles);
+    expect(
+      selectTestFiles(['packages/a/src/deleted.test.ts'], testFiles, (file) => onDisk.has(file)),
+    ).toEqual([]);
+  });
+
+  it('selects the two sibling tests of a source file', () => {
+    expect(selectTestFiles(['packages/a/src/service.ts'], testFiles)).toEqual([
+      'packages/a/src/service.effect.test.ts',
+      'packages/a/src/service.test.ts',
+    ]);
+  });
+
+  it('falls back to the tests directly in the source file folder', () => {
+    expect(selectTestFiles(['packages/a/src/lonely.ts'], testFiles)).toEqual([
+      'packages/a/src/other.test.ts',
+      'packages/a/src/service.effect.test.ts',
+      'packages/a/src/service.test.ts',
+    ]);
+  });
+
+  it('still selects nothing for a source file in a folder with no tests', () => {
+    expect(selectTestFiles(['packages/a/src/empty/x.ts'], testFiles)).toEqual([]);
+  });
+
+  it('does not pick tests from a subfolder for the folder fallback', () => {
+    expect(selectTestFiles(['packages/a/src/lonely.ts'], testFiles)).not.toContain(
+      'packages/a/src/nested/deep.test.ts',
+    );
+  });
+
+  it('ignores a non-code file', () => {
+    expect(selectTestFiles(['packages/a/readme.md'], testFiles)).toEqual([]);
+  });
+});
+
 describe('gateSteps', () => {
-  it('always runs install, format, lint and typecheck, then only the touched packages', () => {
-    const steps = gateSteps(['apps/mobile/src/a.ts', 'packages/docs/readme.md'], workspace, 'main');
+  it('runs install, format, lint and typecheck, then only the nearest tests', () => {
+    const steps = gateSteps(
+      ['apps/mobile/src/a.ts', 'apps/mobile/src/a.test.ts'],
+      workspace,
+      'main',
+      { testFiles: ['apps/mobile/src/a.test.ts'] },
+    );
     expect(steps.map((step) => step.label)).toEqual([
       'install (frozen)',
       'format',
@@ -74,6 +140,56 @@ describe('gateSteps', () => {
       '@zilar/mobile',
       'test',
       '--maxWorkers=2',
+      'src/a.test.ts',
+    ]);
+  });
+
+  it('skips a touched package with no nearby test files', () => {
+    const steps = gateSteps(['apps/mobile/src/a.ts', 'packages/docs/readme.md'], workspace, 'main');
+    expect(steps.at(-1)).toMatchObject({
+      label: 'tests @zilar/mobile',
+      skipReason: 'no nearby test files',
+    });
+  });
+
+  it('skips a touched package whose only changed test file was deleted', () => {
+    const steps = gateSteps(['apps/mobile/src/a.test.ts'], workspace, 'main', {
+      testFiles: [],
+      exists: () => false,
+    });
+    expect(steps.at(-1)).toMatchObject({
+      label: 'tests @zilar/mobile',
+      skipReason: 'no nearby test files',
+    });
+  });
+
+  it('selects the nearest tests of two packages', () => {
+    const steps = gateSteps(
+      ['apps/mobile/src/a.ts', 'apps/server/src/b.ts', 'apps/server/src/b.test.ts'],
+      workspace,
+      'main',
+      { testFiles: ['apps/server/src/b.test.ts'] },
+    );
+    expect(steps.slice(4).map((step) => step.label)).toEqual([
+      'tests @zilar/mobile',
+      'tests @zilar/server',
+    ]);
+    expect(steps.at(-1)?.args).toEqual([
+      '--filter',
+      '@zilar/server',
+      'test',
+      '--maxWorkers=2',
+      'src/b.test.ts',
+    ]);
+  });
+
+  it('keeps the --changed step for the full run', () => {
+    const steps = gateSteps(['apps/mobile/src/a.ts'], workspace, 'main', { full: true });
+    expect(steps.at(-1)?.args).toEqual([
+      '--filter',
+      '@zilar/mobile',
+      'test',
+      '--maxWorkers=2',
       '--changed',
       'main',
     ]);
@@ -81,6 +197,21 @@ describe('gateSteps', () => {
 
   it('finds no package for files outside every package', () => {
     expect(packagesTouched(['docs/a.md', 'work/T-1.md'], workspace)).toEqual([]);
+  });
+});
+
+describe('stepTimeoutMs', () => {
+  it('gives test steps 20 minutes and every other step 10', () => {
+    expect(stepTimeoutMs('tests @zilar/mobile')).toBe(20 * 60 * 1000);
+    expect(stepTimeoutMs('tests @zilar/server')).toBe(TESTS_TIMEOUT_MS);
+    expect(stepTimeoutMs('install (frozen)')).toBe(10 * 60 * 1000);
+    expect(stepTimeoutMs('format')).toBe(STEP_TIMEOUT_MS);
+    expect(stepTimeoutMs('lint')).toBe(STEP_TIMEOUT_MS);
+    expect(stepTimeoutMs('typecheck')).toBe(STEP_TIMEOUT_MS);
+  });
+
+  it('only the `tests ` prefix gets the longer limit', () => {
+    expect(stepTimeoutMs('testsuite')).toBe(STEP_TIMEOUT_MS);
   });
 });
 

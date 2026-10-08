@@ -1,7 +1,8 @@
 import { access, constants, mkdir, readdir, stat } from 'node:fs/promises';
-import { count } from 'drizzle-orm';
+import { Effect } from 'effect';
+import { SqlClient, SqlError } from 'effect/sql';
 import type { ServerDatabase } from './db/client';
-import { stickers } from './db/schema';
+import { sqlRuntimeFor } from './effect/sql';
 
 // Startup helpers shared by `index.ts` (T-0120).
 
@@ -78,11 +79,17 @@ export async function ensureWritableDir(
  * (production) or a recorder (tests).
  */
 export async function warnOnEmptyStorageDir(input: {
-  db: Pick<ServerDatabase, 'select'>;
+  db: ServerDatabase;
   storageDir: string;
   warn: (message: string) => void;
 }): Promise<void> {
-  const [counter] = await input.db.select({ total: count() }).from(stickers);
+  const [counter] = await runSql(
+    input.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ total: number }>`SELECT count(*)::int AS total FROM stickers`;
+    }),
+  );
   if (Number(counter?.total ?? 0) === 0) {
     return;
   }
@@ -150,6 +157,16 @@ export async function warnOnContainerLayerStorage(input: {
 async function deviceOf(dir: string): Promise<number> {
   const info = await stat(dir);
   return info.dev;
+}
+
+// Every query runs on the `effect/sql` client registered for this database
+// (see `./effect/sql`). The exported functions stay `async` so callers and
+// tests keep their shape during the transition.
+function runSql<A>(
+  db: ServerDatabase,
+  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
+): Promise<A> {
+  return sqlRuntimeFor(db).runPromise(effect);
 }
 
 /**

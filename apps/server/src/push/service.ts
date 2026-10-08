@@ -1,11 +1,12 @@
 import { Data, Duration, Effect, type Effect as EffectType } from 'effect';
-import { and, eq } from 'drizzle-orm';
+import { SqlClient, SqlError } from 'effect/sql';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
-import { chatPrefs, groups, topics } from '../db/schema';
+import type { groups } from '../db/schema';
+import { sqlRuntimeFor } from '../effect/sql';
 import { allowedArchives, type ArchivePool, type SearchOwner } from '../search/service';
 import { stanzaFrom } from '../search/routes';
-import { canSeeTopic } from '../topics/access';
+import { canSeeTopic, type TopicRow } from '../topics/access';
 import { localpartFor } from '../xmpp/provisioning';
 import type { PushCipher } from './crypto';
 import { buildPushPayload, type PushPayload, type ResolvedPushMessage } from './payload';
@@ -85,6 +86,17 @@ function dropped(device: PushDeviceRow, reason: DroppedReason): PushOutcome {
 // typed catch instead (see `newestMessageForUserEffect`).
 const awaitDb = <A>(promise: () => Promise<A>): EffectType.Effect<A, never, never> =>
   Effect.promise(promise);
+
+// Runs one `effect/sql` query on the runtime registered for this database
+// (see `../effect/sql`). The exported functions stay `async`: a DB failure
+// rejects the returned promise with the `SqlError`, which the caller maps the
+// same way the drizzle rejects were mapped before.
+function runSql<A>(
+  db: ServerDatabase,
+  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
+): Promise<A> {
+  return sqlRuntimeFor(db).runPromise(effect);
+}
 
 // How many of the newest archived rows to scan for an acceptable message,
 // and how often to re-read before giving up (the publish IQ can win the race
@@ -406,7 +418,14 @@ async function resolveRoomCandidate(
 ): Promise<CandidateVerdict> {
   const roomJid = row.owner.toLowerCase();
   const localpart = row.owner.split('@')[0] ?? '';
-  const [topic] = await deps.db.select().from(topics).where(eq(topics.roomLocalpart, localpart));
+  const [topic] = await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<TopicRow>`SELECT * FROM topics
+        WHERE room_localpart = ${localpart} LIMIT 1`;
+    }),
+  );
   if (topic === undefined) {
     return { status: 'skip' };
   }
@@ -416,7 +435,14 @@ async function resolveRoomCandidate(
   if (!(await canSeeTopic(deps.db, topic, userId))) {
     return { status: 'hidden' };
   }
-  const [group] = await deps.db.select().from(groups).where(eq(groups.id, topic.groupId));
+  const [group] = await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<typeof groups.$inferSelect>`SELECT * FROM groups
+        WHERE id = ${topic.groupId} LIMIT 1`;
+    }),
+  );
   if (group === undefined) {
     return { status: 'skip' };
   }
@@ -487,20 +513,26 @@ async function isMuted(
   generalJid: string | undefined,
   now: Date,
 ): Promise<boolean> {
-  const [own] = await deps.db
-    .select({ mutedUntil: chatPrefs.mutedUntil })
-    .from(chatPrefs)
-    .where(and(eq(chatPrefs.userId, userId), eq(chatPrefs.chatJid, chatJid)))
-    .limit(1);
+  const [own] = await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ mutedUntil: Date | null }>`SELECT muted_until FROM chat_prefs
+        WHERE user_id = ${userId} AND chat_jid = ${chatJid} LIMIT 1`;
+    }),
+  );
   if (own !== undefined) {
     return own.mutedUntil !== null && own.mutedUntil.getTime() > now.getTime();
   }
   if (generalJid !== undefined && chatJid !== generalJid) {
-    const [general] = await deps.db
-      .select({ mutedUntil: chatPrefs.mutedUntil })
-      .from(chatPrefs)
-      .where(and(eq(chatPrefs.userId, userId), eq(chatPrefs.chatJid, generalJid)))
-      .limit(1);
+    const [general] = await runSql(
+      deps.db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ mutedUntil: Date | null }>`SELECT muted_until FROM chat_prefs
+          WHERE user_id = ${userId} AND chat_jid = ${generalJid} LIMIT 1`;
+      }),
+    );
     return (
       general !== undefined &&
       general.mutedUntil !== null &&

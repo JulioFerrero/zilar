@@ -234,6 +234,15 @@ describe('listener scoring core', () => {
       expect(parseListenerOutput('{"scores": "no"}', ['a'])).toBeNull();
     });
 
+    it('rejects an output with an extra top-level key', () => {
+      expect(
+        parseListenerOutput(
+          '{"scores": {"a": 0.5}, "reason": "r", "message_ids": [], "extra": 1}',
+          ['a'],
+        ),
+      ).toBeNull();
+    });
+
     it('cuts the reason and caps message_ids', () => {
       const ids = Array.from({ length: 25 }, (_, index) => `id-${index}-${'z'.repeat(100)}`);
       const parsed = parseListenerOutput(

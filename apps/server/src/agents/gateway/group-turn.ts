@@ -1,9 +1,7 @@
 import type { ChatMessage } from '@zilar/xmpp-core';
-import { eq, inArray } from 'drizzle-orm';
 import { modelNameForAi } from '../../ai/model-entry';
 import { ensureAiModel, type AiServiceDeps } from '../../ais/service';
 import type { KeyCipher } from '../../connections/crypto';
-import { ais, groups, llmVirtualKeys, topics } from '../../db/schema';
 import {
   buildGroupMessages,
   displayNameOf,
@@ -27,7 +25,14 @@ import {
   type RoomPendingMessage,
   type RoomRound,
 } from './contracts';
-import { loadActiveAi, loadRoomGateState } from './db';
+import {
+  loadActiveAi,
+  loadDelegationFlags,
+  loadEncryptedVirtualKey,
+  loadGroupTitle,
+  loadRoomGateState,
+  loadTopicName,
+} from './db';
 import type { createBudgetGate } from './budget';
 import type { createLiveSession } from './live';
 import type { MemoryRunner } from './memory';
@@ -268,23 +273,13 @@ export function createGroupTurn(ctx: GroupTurnContext) {
     let groupName: string | undefined;
     let topicName: string | undefined;
     try {
-      const [groupRow] = await deps.db
-        .select({ title: groups.title })
-        .from(groups)
-        .where(eq(groups.id, room.groupId))
-        .limit(1);
-      groupName = groupRow?.title;
+      groupName = (await loadGroupTitle(deps.db, room.groupId)) ?? undefined;
     } catch {
       // Best effort: the turn still runs with the generic prompt.
     }
     if (room.topicId !== '') {
       try {
-        const [topicRow] = await deps.db
-          .select({ name: topics.name })
-          .from(topics)
-          .where(eq(topics.id, room.topicId))
-          .limit(1);
-        topicName = topicRow?.name;
+        topicName = (await loadTopicName(deps.db, room.topicId)) ?? undefined;
       } catch {
         // Best effort: the turn still runs with the generic prompt.
       }
@@ -292,16 +287,12 @@ export function createGroupTurn(ctx: GroupTurnContext) {
     let virtualKey: string | undefined;
     try {
       await ensureAiModel(aiDeps(), session.aiId);
-      const [keyRow] = await deps.db
-        .select({ encryptedKey: llmVirtualKeys.encryptedKey })
-        .from(llmVirtualKeys)
-        .where(eq(llmVirtualKeys.aiId, session.aiId))
-        .limit(1);
-      if (!keyRow) {
+      const encryptedKey = await loadEncryptedVirtualKey(deps.db, session.aiId);
+      if (encryptedKey === null) {
         throw new Error(`AI ${session.aiId} has no virtual key`);
       }
       // Decrypted in memory only; never stored, logged or returned.
-      virtualKey = (deps.cipher as KeyCipher).decrypt(keyRow.encryptedKey);
+      virtualKey = (deps.cipher as KeyCipher).decrypt(encryptedKey);
 
       let history: ChatMessage[] = [];
       try {
@@ -357,12 +348,10 @@ export function createGroupTurn(ctx: GroupTurnContext) {
       let canDelegate = false;
       if (otherSessions.length > 0) {
         try {
-          const rows = await deps.db
-            .select({ id: ais.id, accepts: ais.acceptsDelegation, canDelegate: ais.canDelegate })
-            .from(ais)
-            .where(
-              inArray(ais.id, [session.aiId, ...otherSessions.map((candidate) => candidate.aiId)]),
-            );
+          const rows = await loadDelegationFlags(deps.db, [
+            session.aiId,
+            ...otherSessions.map((candidate) => candidate.aiId),
+          ]);
           canDelegate = rows.find((row) => row.id === session.aiId)?.canDelegate ?? false;
           const accepting = new Set(rows.filter((row) => row.accepts).map((row) => row.id));
           handoffTargets = otherSessions.flatMap((candidate) => {

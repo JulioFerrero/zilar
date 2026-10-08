@@ -2,6 +2,152 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-08 23:00, 4 workers (Julio: "lets go up to 4 workers maybe?"):**
+- **Merged since 22:40:** T-0620 (the gate falls back to a folder's tests), T-0621 (approval rules), T-0622 (owner lookups), T-0623 (voice settings), T-0624 (announcer reads).
+- **Running:**
+  - T-0625: the file proxy lookup;
+  - T-0626: an audit of the Effect last mile, plus a check for `bigint` columns that effect/sql returns as strings;
+  - T-0627: the routines service (`deleteRoutinesForAiInGroup` stays on drizzle).
+- **Migration map for Julio:** https://claude.ai/artifact/K1mWvaM7f9h3TmHx6rqWsL.
+  - It is live (since 23:30): the page watches its database document `map/current`.
+  - After each launch or merge, run `node ~/.zilar-lead/effect-map/build.mjs`, then write `db-doc.json` with ArtifactData `set` (collection `map`, doc `current`, `if_version` = the last version).
+  - Open views redraw without a republish. Republish the page only when the layout changes.
+- **Runner pitfall:** queuing a spec adds no board row, and the merge refuses without one (now in `docs/LEAD_HANDOFF.md`).
+
+**2026-10-08 22:40, no restart needed (Julio: "please you take the lead"). 2 workers while Julio is at the PC.**
+- **Merged:**
+  - T-0619: workers cannot start daemons or detached runs, and the gate has step time limits;
+  - T-0617: the light `lead watch`. Restart its window to load it;
+  - T-0608: roles on effect/sql. The 50-min hang did not reproduce; the suites run in seconds.
+- **Running:**
+  - T-0620: the gate runs the tests in a source file's folder when no test has the same name. The light gate skipped `roles.test.ts` for `roles/service.ts`, so T-0608's gate ran no server tests;
+  - T-0621: approval-rules statements on effect/sql. The three functions used inside drizzle transactions stay on drizzle.
+- **Next:**
+  - T-0618 (test-speed audit) alone, after these two;
+  - then `pnpm gate --full` on main once;
+  - more drizzle modules (groups, ais, stickers, topics, memory store, voice).
+- **New on the waiting-for-callers list:** `approvals/rules.ts` `createRule`, `findActiveRuleForUpdate` and `revokeActiveRulesForAiInGroup`.
+
+**2026-10-08 22:20, the cause of the overheating:** the T-0608 worker had registered macOS launchd jobs (`zilar.gate0608test` and `zilar.gate.T0608`), so its test runs relaunched within 50 ms of every kill, with parent PID 1. The lead removed them with `launchctl remove`; T-0619 now blocks it.
+
+**2026-10-08 21:45, ready for the PC restart:**
+- **Merged since 21:05:** T-0613, T-0616 (light gate: merges now take about 1 min), T-0612 (T-G; the tool-arguments plan is complete), T-0615 (tool service), T-0614 (jsonb keys fix).
+- **Open: T-0608 (roles on effect/sql).** The conversion is committed in its worktree (f834e8d9). Its first gate hung for 50 min with one vitest fork at 100% CPU; the cause is not yet known. The worker ignored the rebase instruction and re-ran the old full gate. After the restart:
+  1. `git rebase main` in `../zilar-T-0608`;
+  2. run `src/roles`, `src/topics`, `src/groups` and `src/approvals` one at a time with `timeout 300`;
+  3. find the hang.
+- **Next after the restart:**
+  - T-0617 (lighter `lead watch`, plus a median tok/s);
+  - T-0618 (test-speed audit; run it alone);
+  - then `pnpm gate --full` on main once.
+- **New follow-ups:**
+  - the gate needs a per-step time limit (a hung test ate an hour);
+  - `AGENTS.md:30,69` still says the gate runs every touched package's tests;
+  - `tools/service.ts` `deleteToolsForAiInTopic` stays on drizzle (a test drives it inside a raw drizzle transaction);
+  - Spotlight indexes the `zilar-T-*` worktrees (Julio may exclude `~/personal-projects`).
+
+**2026-10-08 21:05, finishing before Julio restarts the PC** ("try to finish the task, i will restart the pc when the current tasks finish"):
+- **Merged this evening:** T-0599, T-0602 to T-0607 (including T-0604, T-G's prerequisite), T-0609, T-0610, T-0611; T-0613 is merging.
+- **Finishing (nothing new launches):** T-0608 (roles), T-0612 (T-G, Effect-only action registry), T-0614 (**bug:** effect/sql renamed keys inside jsonb, for example routine tool input `max_items` became `maxItems`; not live, since auto-deploy is off), T-0615 (tool service), T-0616 (light gate).
+- **After the restart:** T-0617 (lighter `lead watch`) and T-0618 (test-speed audit, run it alone). Then batch a `pnpm gate --full` on main.
+- **Rules from today:**
+  - 2 workers while Julio is at the PC, 4 while he is away;
+  - workers run only the nearest tests, and a full run is batched when nothing else tests;
+  - paused tasks get `status: blocked`.
+- **Tooling:**
+  - opencode upgraded from 2.0.12 to 2.0.25;
+  - the Expo dev server (port 8091) and Julio's iati `next dev` servers are stopped.
+
+**Open follow-ups (small; bundle them into one cleanup task when there is a slot):**
+- **Stale comments:**
+  - `apps/web/src/lib/api.ts:1116` (it points at `media/routes.ts`, now `media/api.ts`);
+  - `apps/server/src/voice-transcription/provider.ts:5` ("zod");
+  - `push/config.ts:85-86` (a "missing" literal that does not exist);
+  - `avatars/routes.ts:3` (says re-exported, it is not);
+  - `audit/service.ts:42` (`entryIssueMessage`);
+  - `web-tools/adapters.test.ts:218`, `ai/litellm-client.ts:310`, `routines/schedule.ts:2` and `approvals/service.ts:80` (they still say zod);
+  - `actions/registry.ts:105` (the call shape).
+- **Dead code:**
+  - `stickers/api.ts:692` (`void DiscoverQuery`), and `api.ts:98` hardcodes 60 instead of `STICKER_PACK_TITLE_MAX`;
+  - `invite-links/routes.ts` `clientIpFor` is unused;
+  - the `drafts/routes.ts` wrapper skips `forwardRequest`, and `DRAFTS_API_ROUTES` repeats `/api`.
+- **Fragile checks:**
+  - `approvals/service.ts:90` detects the refine by a substring (read the issue tree instead);
+  - `push/api.ts` `isUniqueViolation` should check `SqlError.reason._tag` (it works today through `cause.code`).
+- **Duplication:** the first-issue message walker is copied in `auth/api.ts`, `xmpp/admin-client.ts`, `xmpp/config.ts`, `audit/service.ts`, `routines/service.ts:93` and `setup/api.ts:128`. Each has its own special cases, so merging them needs care.
+- **Test gap:** `agents/listener/score.test.ts` has no excess-key case for `parseListenerOutput`.
+- **Still on drizzle, waiting for their callers:** `connections/service.ts` `decryptForGatewayUse` (it gets an `ais/service.ts` transaction) and `tools/service.ts` `deleteToolsForAiInGroup` (it gets a `groups/service.ts` transaction).
+
+**PAUSED 2026-10-08 ~16:10 (Julio: "the pc is about to explote and im in call, can you stop all?"):**
+- **The lead stopped:**
+  - the autopilot;
+  - `lead watch`;
+  - opencode (all workers);
+  - the merge runner;
+  - the merge gate in progress.
+- **The cap after the resume is 3-4 workers.**
+- **Stopped mid-work, worktrees kept:**
+  - T-0606, T-0608, T-0610, T-0611, T-0613;
+  - T-0607 and T-0609, each in a lead-approved test-only fix round.
+- **Merged since 14:40:** T-0603, T-0601, T-0602, and probably T-0604 (check `git log`).
+- **Approved, not merged:**
+  - T-0599: its gate was SIGKILLed under memory pressure; no test failed. Retry it;
+  - T-0605.
+- **Not launched:** T-0612 (T-G).
+- **To resume:** follow the CLAUDE.md first actions (start the autopilot), then resume at most 4 workers with `lead reply`.
+
+**2026-10-08 14:40, Effect migration continues:**
+- **Merged since 11:35:**
+  - **Effect HTTP:** T-0578 (setup), T-0581 (drafts SSE), T-0582 (stickers JSON), T-0586 (GIFs);
+  - **effect/sql:** T-0587, T-0588, T-0589, T-0590, T-0591, T-0592, T-0593 (connections, routines, the startup count, and the inline reads in memory, media, /me, approvals, routines and push);
+  - **tool arguments plan:** T-0571 (the plan), T-0594 (T-A, the decode seam), T-0595 (T-F, sandbox), T-0597 (T-C, demo), T-0598 (T-D, web tools);
+  - T-0596: dead zod schemas dropped from pins, roles and topics.
+- **Approved, in the merge queue:**
+  - T-0600: ejabberd admin client;
+  - T-0603: T-B, the model tool arguments. The reasons keep zod's wording and never echo a value;
+  - T-0601: LiteLLM admin client;
+  - T-0602: stickers part B. **Every sticker route is now on Effect HTTP**;
+  - T-0599: draft events, the invite CLI and the routine title;
+  - T-0604: T-E, the tool and routine schemas. All 32 error texts in its files were checked byte for byte.
+- **Running (effect/sql, transactions included):** T-0605 (topic access), T-0606 (avatars and backgrounds), T-0607 (push devices and machines), T-0608 (roles), T-0609 (invite-link join), T-0611 (public group join). **Effect Schema:** T-0610 (approval input).
+- **Next:** T-0612 (T-G: the action registry takes Effect schemas only), after T-0604 merges.
+- **Left on zod after the queue:** the legacy blocks in stickers, contact-requests and handles (exact 400 texts), plus `db/schema.ts`.
+- **Follow-ups noted:** five stale "zod" comments; six near-copies of the first-issue message walker. Each copy has its own special cases, so merging them waits.
+
+**2026-10-08 11:35, Julio back; Effect migration continues:**
+- **Merged since 08:55:**
+  - T-0576 (avatars HTTP), T-0577 (backgrounds HTTP) and T-0580 (file proxy HTTP, with a streamed body);
+  - T-0579 (review follow-ups);
+  - T-0583 (gateway reads on effect/sql);
+  - T-0584 (audit service off drizzle and zod);
+  - T-0585 (deleted the unmounted `/ai/virtual-keys` spike, as Julio decided).
+- **Running (8):**
+  - T-0571: the plan for the tool argument layer, in lead fix round 2. Finding 1 was wrong: there are four `argsSchema.safeParse` sites, not five;
+  - **Effect HTTP:** T-0578 (setup), T-0581 (drafts SSE pilot), T-0582 (stickers JSON) and T-0586 (GIFs);
+  - **effect/sql:** T-0587 (connections; the decrypt called inside a transaction stays on drizzle), T-0588 (routine scheduler and runner) and T-0589 (startup sticker count, plus the T-0584 nits).
+- **Left on Hono after these:**
+  - stickers part B (the upload and file GET);
+  - the better-auth handler;
+  - the `app.ts` shell;
+  - the git proxy (`git/proxy.ts`, unmounted, planned S8). **Its fate is Julio's call** (convert, leave or delete).
+
+**2026-10-08 08:55, Julio asleep, Effect night continues:**
+- **Merged since 07:15:**
+  - **effect/sql:** T-0567 (gateway db helpers), T-0568 (delegation service), T-0574 (sign-up invites, XMPP provisioning and the invite CLI runtime);
+  - **Effect Schema:** T-0564, T-0565, T-0569 and T-0570 (server leaf parsers, gifs, push config, provider ids, templates);
+  - **Effect HTTP:** T-0566 (invite links, client IP), T-0572 (machines and runner pairing), T-0560 (media gallery), T-0573 (voice, the binary pilot, guide item 12) and T-0561 (/me and account invites);
+  - **comments:** T-0575 (client comments now point at the live server `api.ts` files).
+- **Guide (`docs/EFFECT_GUIDE.md`):** Effect 4.0.2 drops `{ message }` on length checks; `Schema.Finite` for `z.number()`; item 13 on the client IP; every database needs a registered sql runtime, and never inside a module; jsonb.
+- **Approved, merge queued:** T-0576 (avatars HTTP).
+- **Running:**
+  - T-0571: the plan for the AI tool argument layer, the biggest zod block left;
+  - T-0577: background images HTTP;
+  - T-0578: first-run setup HTTP;
+  - T-0579: review follow-ups;
+  - T-0580: the file proxy HTTP, with a streamed body.
+- **Left on Hono after these:** drafts (SSE), stickers (multipart), gifs (media proxy), the git proxy, and the better-auth handler.
+- **For Julio:** `apps/server/src/ai/routes.ts` (`POST /ai/virtual-keys`, a spike) is mounted only by its test, never in `app.ts`. Delete it or keep it?
+
 **2026-10-08 07:15, Julio asleep, Effect night continues:**
 - **Merged since 05:20:**
   - T-0556 and T-0562: agents G4 (the tool executor) and G9 (start, stop and reconcile). **Every gateway extraction G1-G9 is done**;

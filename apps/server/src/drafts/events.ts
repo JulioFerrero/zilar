@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { Schema } from 'effect';
 
 // The draft-stream contract (T-0041, consumed by the web app in T-0043 without
 // changes). Drafts carry the AI's cumulative reply text while the model
@@ -11,27 +11,24 @@ import { z } from 'zod';
 //   connects mid-turn renders the next one.
 // - Tool-call arguments are never in a draft. They could carry a persona,
 //   which must never leave the server except in the owner's own DM.
-export const DraftEventSchema = z.object({
-  type: z.literal('draft'),
-  chatJid: z.string().min(1),
-  turnId: z.string().uuid(),
-  text: z.string(),
+export const DraftEventSchema = Schema.Struct({
+  type: Schema.Literal('draft'),
+  chatJid: Schema.String.pipe(Schema.check(Schema.isMinLength(1))),
+  turnId: Schema.String.pipe(Schema.check(Schema.isUUID())),
+  text: Schema.String,
 });
 
-export const DraftEndEventSchema = z.object({
-  type: z.literal('end'),
-  chatJid: z.string().min(1),
-  turnId: z.string().uuid(),
-  outcome: z.enum(['sent', 'failed']),
+export const DraftEndEventSchema = Schema.Struct({
+  type: Schema.Literal('end'),
+  chatJid: Schema.String.pipe(Schema.check(Schema.isMinLength(1))),
+  turnId: Schema.String.pipe(Schema.check(Schema.isUUID())),
+  outcome: Schema.Literals(['sent', 'failed']),
 });
 
 // `sent` is published after the final XMPP message is sent (notices
 // included); `failed` after the failure text is sent.
-export const DraftHubEventSchema = z.discriminatedUnion('type', [
-  DraftEventSchema,
-  DraftEndEventSchema,
-]);
+export const DraftHubEventSchema = Schema.Union([DraftEventSchema, DraftEndEventSchema]);
 
-export type DraftEvent = z.infer<typeof DraftEventSchema>;
-export type DraftEndEvent = z.infer<typeof DraftEndEventSchema>;
-export type DraftHubEvent = z.infer<typeof DraftHubEventSchema>;
+export type DraftEvent = typeof DraftEventSchema.Type;
+export type DraftEndEvent = typeof DraftEndEventSchema.Type;
+export type DraftHubEvent = typeof DraftHubEventSchema.Type;

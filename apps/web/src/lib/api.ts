@@ -848,7 +848,7 @@ export function joinByLink(token: string): Promise<JoinResult> {
 
 // --- Chat preferences (T-0113) -------------------------------------------------
 // Per-user mute/archive/pin rows, synced across devices. The wire contract
-// lives in apps/server/src/chat-prefs/routes.ts and service.ts. Muting a
+// lives in apps/server/src/chat-prefs/api.ts and service.ts. Muting a
 // group covers its topics (the pref sits on the General room JID and the
 // client applies it to every topic unless the topic has its own row).
 
@@ -934,7 +934,7 @@ export async function putChatPref(
 }
 
 // --- Chat folders (T-0237) ---------------------------------------------------
-// Folders come from the server (`apps/server/src/chat-folders/routes.ts`);
+// Folders come from the server (`apps/server/src/chat-folders/api.ts`);
 // the client only lists and syncs them here (create/rename/delete/reorder
 // UI is T-0238). The wire shape mirrors `ChatFolder` in chat-core.
 
@@ -1060,7 +1060,7 @@ export async function unpinMessage(id: string): Promise<void> {
 }
 
 // --- AI memory (T-0443) ------------------------------------------------------
-// The wire contract lives in apps/server/src/agents/memory/routes.ts. `chat`
+// The wire contract lives in apps/server/src/agents/memory/api.ts. `chat`
 // is the DM peer's bare JID (the AI's JID in a DM); `aiId` is the AI's id. The
 // server answers the pinned facts and the cover lines; `canChange` is false
 // for a room member who may only view.
@@ -1113,7 +1113,7 @@ export async function clearAiMemory(chat: string, aiId: string): Promise<void> {
 }
 
 // --- Media gallery (T-0434) --------------------------------------------------
-// The wire contract lives in apps/server/src/media/routes.ts. `chat` is a room
+// The wire contract lives in apps/server/src/media/api.ts. `chat` is a room
 // bare JID for groups/topics, or a DM peer's bare JID. `type` maps to a panel
 // tab; `before` is the `next` cursor of the previous page (microseconds as a
 // string). Items arrive newest first.
@@ -1170,7 +1170,7 @@ export function listChatMedia(input: ListChatMediaInput): Promise<MediaPage> {
 }
 
 // --- AIs (T-0032) --------------------------------------------------------
-// The wire contract lives in apps/server/src/ais/routes.ts and service.ts.
+// The wire contract lives in apps/server/src/ais/api.ts and service.ts.
 // `ApiError` already carries the server's `code` and `status`, so callers can
 // branch without parsing the message again.
 

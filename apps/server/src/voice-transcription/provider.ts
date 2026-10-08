@@ -2,7 +2,8 @@
 // T-0492). One function posts audio to
 // `POST {baseUrl}/audio/transcriptions` (multipart `file` + `model`,
 // optional bearer key) and answers the transcript text plus the detected
-// language. The provider's response shape is validated with zod; the error
+// language. The provider's response shape is validated with Effect Schema
+// (`transcriptionResponseSchema`); the error
 // body is never forwarded — the caller maps each failure kind to a fixed
 // answer (`rejected` vs `unreachable`, never the provider's body).
 //

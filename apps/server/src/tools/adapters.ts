@@ -11,8 +11,9 @@
 // `created_by` for tools and routines is the AI's owner: the gateway does
 // not carry the human who asked yet, so the owner is the only stable
 // attribution available.
+import { Schema } from 'effect';
+import { struct } from '@zilar/protocol';
 import { eq } from 'drizzle-orm';
-import { z } from 'zod';
 import type { ActionAdapter, ActionContext } from '../actions/registry';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
@@ -243,16 +244,17 @@ function serialisedSize(value: unknown): number | null {
 // Shared `input` field for `tool.run` (16 KiB) and `routine.schedule`
 // (2 KiB, the routines service limit): oversize input fails the adapter's
 // schema, so the gateway denies `invalid_args` before `execute` runs.
-function inputField(maxBytes: number): z.ZodType<unknown> {
-  return z.unknown().refine(
-    (value) => {
+function inputField(maxBytes: number): Schema.Codec<unknown, unknown, never> {
+  return Schema.Unknown.check(
+    Schema.makeFilter((value: unknown) => {
       if (value === undefined) {
-        return true;
+        return undefined;
       }
       const size = serialisedSize(value);
-      return size !== null && size <= maxBytes;
-    },
-    { message: `input must serialise to at most ${maxBytes} bytes` },
+      return size !== null && size <= maxBytes
+        ? undefined
+        : `input must serialise to at most ${maxBytes} bytes`;
+    }),
   );
 }
 
@@ -299,29 +301,23 @@ async function findRoutineByTitle(
   return { status: 'found', id: match.id, title: match.title, routineStatus: match.status };
 }
 
-const toolListArgsSchema = z.object({}).strict();
+const toolListArgsSchema = struct({});
 
-const toolReadArgsSchema = z
-  .object({
-    name: toolNameSchema,
-    version: z.number().int().min(1).optional(),
-  })
-  .strict();
+const toolReadArgsSchema = struct({
+  name: toolNameSchema,
+  version: Schema.optional(Schema.Int.check(Schema.isGreaterThan(0))),
+});
 
-const toolSaveArgsSchema = toolVersionInputSchema.strict();
+const toolSaveArgsSchema = toolVersionInputSchema;
 
-const toolRunArgsSchema = z
-  .object({
-    name: toolNameSchema,
-    input: inputField(MAX_TOOL_INPUT_BYTES).optional(),
-  })
-  .strict();
+const toolRunArgsSchema = struct({
+  name: toolNameSchema,
+  input: Schema.optional(inputField(MAX_TOOL_INPUT_BYTES)),
+});
 
-const toolApproveHostsArgsSchema = z
-  .object({
-    name: toolNameSchema,
-  })
-  .strict();
+const toolApproveHostsArgsSchema = struct({
+  name: toolNameSchema,
+});
 
 const toolRevokeHostsArgsSchema = toolApproveHostsArgsSchema;
 
@@ -334,42 +330,38 @@ export interface ApproveHostsBoundArgs {
   hosts: string[];
 }
 
-const toolRevertArgsSchema = z
-  .object({
-    name: toolNameSchema,
-    toVersion: z.number().int().min(1),
-  })
-  .strict();
+const toolRevertArgsSchema = struct({
+  name: toolNameSchema,
+  toVersion: Schema.Int.check(Schema.isGreaterThan(0)),
+});
 
-const routineTitleSchema = z
-  .string()
-  .min(1, { message: 'title must not be empty' })
-  .max(MAX_ROUTINE_TITLE_CHARS, {
-    message: `title must be at most ${MAX_ROUTINE_TITLE_CHARS} characters`,
-  });
+const routineTitleSchema = Schema.String.check(
+  Schema.makeFilter((value: string) => (value.length >= 1 ? undefined : 'title must not be empty')),
+  Schema.makeFilter((value: string) =>
+    value.length <= MAX_ROUTINE_TITLE_CHARS
+      ? undefined
+      : `title must be at most ${MAX_ROUTINE_TITLE_CHARS} characters`,
+  ),
+);
 
-const routineScheduleArgsSchema = z
-  .object({
-    tool: toolNameSchema,
-    title: routineTitleSchema,
-    schedule: routineScheduleSchema,
-    hosts: toolHostsSchema,
-    input: inputField(MAX_ROUTINE_INPUT_BYTES).optional(),
-  })
-  .strict();
+const routineScheduleArgsSchema = struct({
+  tool: toolNameSchema,
+  title: routineTitleSchema,
+  schedule: routineScheduleSchema,
+  hosts: toolHostsSchema,
+  input: Schema.optional(inputField(MAX_ROUTINE_INPUT_BYTES)),
+});
 
-const routineTitleArgsSchema = z
-  .object({
-    title: routineTitleSchema,
-  })
-  .strict();
+const routineTitleArgsSchema = struct({
+  title: routineTitleSchema,
+});
 
 function toolListAdapter(state: AdapterState): ActionAdapter<unknown> {
   return {
     name: 'tool.list',
     description: 'List the tools and routines in this topic, with versions, hosts and schedules.',
     tier: 0,
-    argsSchema: toolListArgsSchema as unknown as z.ZodType<unknown>,
+    argsSchema: toolListArgsSchema as unknown as Schema.Codec<unknown, unknown, never>,
     describe: () => ({ summary: 'List the tools and routines in this topic' }),
     execute: async (ctx, _args) => {
       const actionCtx = ctx as ActionContext;
@@ -401,7 +393,7 @@ function toolReadAdapter(state: AdapterState): ActionAdapter<unknown> {
     name: 'tool.read',
     description: "Read one tool's source and hosts in this topic, optionally at an older version.",
     tier: 0,
-    argsSchema: toolReadArgsSchema as unknown as z.ZodType<unknown>,
+    argsSchema: toolReadArgsSchema as unknown as Schema.Codec<unknown, unknown, never>,
     describe: (args) => {
       const parsed = args as { name: string; version?: number };
       return {
@@ -445,7 +437,7 @@ function toolSaveAdapter(state: AdapterState): ActionAdapter<unknown> {
     name: 'tool.save',
     description: 'Save a new version of a tool in this topic and test-run it in the sandbox.',
     tier: 1,
-    argsSchema: toolSaveArgsSchema as unknown as z.ZodType<unknown>,
+    argsSchema: toolSaveArgsSchema as unknown as Schema.Codec<unknown, unknown, never>,
     describe: (args) => {
       const parsed = args as { name: string };
       return { summary: `Save the tool "${parsed.name}"` };
@@ -541,7 +533,7 @@ function toolRunAdapter(state: AdapterState): ActionAdapter<unknown> {
     name: 'tool.run',
     description: "Run this topic's tool now and post its output into the topic.",
     tier: 1,
-    argsSchema: toolRunArgsSchema as unknown as z.ZodType<unknown>,
+    argsSchema: toolRunArgsSchema as unknown as Schema.Codec<unknown, unknown, never>,
     describe: (args) => {
       const parsed = args as { name: string };
       return { summary: `Run the tool "${parsed.name}"` };
@@ -612,7 +604,7 @@ function toolRevertAdapter(state: AdapterState): ActionAdapter<unknown> {
     name: 'tool.revert',
     description: 'Revert a tool in this topic to an older version (appends a new version).',
     tier: 1,
-    argsSchema: toolRevertArgsSchema as unknown as z.ZodType<unknown>,
+    argsSchema: toolRevertArgsSchema as unknown as Schema.Codec<unknown, unknown, never>,
     describe: (args) => {
       const parsed = args as { name: string; toVersion: number };
       return { summary: `Revert the tool "${parsed.name}" to v${parsed.toVersion}` };
@@ -664,7 +656,7 @@ function toolApproveHostsAdapter(state: AdapterState): ActionAdapter<unknown> {
     name: 'tool.approve_hosts',
     description: 'Allow a tool in this topic to contact its declared hosts (needs approval).',
     tier: 2,
-    argsSchema: toolApproveHostsArgsSchema as unknown as z.ZodType<unknown>,
+    argsSchema: toolApproveHostsArgsSchema as unknown as Schema.Codec<unknown, unknown, never>,
     prepareArgs: async (ctx, args) => {
       const actionCtx = ctx as ActionContext;
       const parsed = args as { name: string };
@@ -732,7 +724,7 @@ function toolRevokeHostsAdapter(state: AdapterState): ActionAdapter<unknown> {
     name: 'tool.revoke_hosts',
     description: "Revoke a tool's approved hosts in this topic (it keeps running offline).",
     tier: 1,
-    argsSchema: toolRevokeHostsArgsSchema as unknown as z.ZodType<unknown>,
+    argsSchema: toolRevokeHostsArgsSchema as unknown as Schema.Codec<unknown, unknown, never>,
     describe: (args) => {
       const parsed = args as { name: string };
       return { summary: `Revoke the approved hosts of the tool "${parsed.name}"` };
@@ -772,7 +764,7 @@ function routineScheduleAdapter(state: AdapterState): ActionAdapter<unknown> {
     description:
       'Schedule a routine in this topic that runs a tool and posts the result here (needs approval).',
     tier: 2,
-    argsSchema: routineScheduleArgsSchema as unknown as z.ZodType<unknown>,
+    argsSchema: routineScheduleArgsSchema as unknown as Schema.Codec<unknown, unknown, never>,
     describe: (args) => {
       const parsed = args as {
         tool: string;
@@ -852,7 +844,7 @@ function routinePauseAdapter(state: AdapterState): ActionAdapter<unknown> {
     name: 'routine.pause',
     description: 'Pause a routine in this topic so it stops running.',
     tier: 1,
-    argsSchema: routineTitleArgsSchema as unknown as z.ZodType<unknown>,
+    argsSchema: routineTitleArgsSchema as unknown as Schema.Codec<unknown, unknown, never>,
     describe: (args) => {
       const parsed = args as { title: string };
       return { summary: `Pause the routine "${parsed.title}"` };
@@ -895,7 +887,7 @@ function routineDeleteAdapter(state: AdapterState): ActionAdapter<unknown> {
     name: 'routine.delete',
     description: 'Delete a routine in this topic.',
     tier: 1,
-    argsSchema: routineTitleArgsSchema as unknown as z.ZodType<unknown>,
+    argsSchema: routineTitleArgsSchema as unknown as Schema.Codec<unknown, unknown, never>,
     describe: (args) => {
       const parsed = args as { title: string };
       return { summary: `Delete the routine "${parsed.title}"` };

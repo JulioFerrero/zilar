@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { generateRunnerKeypair, RunnerClient, type RunnerKeypair } from '@zilar/runner-tunnel';
 import { user } from '../auth/auth-schema';
 import type { ServerDatabase } from '../db/client';
@@ -15,6 +15,26 @@ import {
   type HubRegistrySource,
   type RunnerHub,
 } from './hub';
+
+// T-0607 (lead-approved, test-only): the refresh-loop recovery test below needs
+// the first `listApprovedMachineKeys` call to reject and later calls to hit the
+// real database. A partial module mock scoped to this file does that; the flag
+// is off for every other test, so they still reach the real function.
+const serviceMocks = vi.hoisted(() => ({ failNextKeyRead: false }));
+
+vi.mock('./service', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./service')>();
+  return {
+    ...actual,
+    listApprovedMachineKeys: async (db: ServerDatabase) => {
+      if (serviceMocks.failNextKeyRead) {
+        serviceMocks.failNextKeyRead = false;
+        throw new Error('database read failed');
+      }
+      return actual.listApprovedMachineKeys(db);
+    },
+  };
+});
 
 function noopRegistry(): HubRegistrySource {
   return { onRevoke: () => () => undefined, onApprove: () => () => undefined };
@@ -156,19 +176,10 @@ describe('hub background loops as Effect fibers', () => {
 
     // The first database read throws, the second succeeds, so the key only
     // appears if the loop caught the unexpected throw and resumed.
-    let failFirstQuery = true;
-    const flakyDb = {
-      select: (fields: unknown) => {
-        if (failFirstQuery) {
-          failFirstQuery = false;
-          throw new Error('database read failed');
-        }
-        return (context.db as unknown as { select: (f: unknown) => unknown }).select(fields);
-      },
-    } as unknown as ServerDatabase;
+    serviceMocks.failNextKeyRead = true;
 
     const cache = createHubKeyRegistry({
-      db: flakyDb,
+      db: context.db,
       registry: noopRegistry(),
       logger,
       refreshMs: 30,

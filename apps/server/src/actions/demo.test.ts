@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
+import { Exit, Schema } from 'effect';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   aiLimits,
@@ -17,7 +18,7 @@ import { createTestContext, type TestContext } from '../test-support';
 import { decideApproval } from '../approvals/service';
 import { type AuditEntry, type AuditRecorder, createAuditRecorder } from '../audit/service';
 import { createActionGateway, type ActionGateway, type ActionGatewayLogger } from './gateway';
-import { buildRegistry, type ActionAdapter } from './registry';
+import { buildRegistry, decodeActionArgs, type ActionAdapter } from './registry';
 import { DEMO_ECHO_ACTION, buildDemoEchoAdapter, DemoEchoArgsSchema } from './demo';
 
 interface CapturingRecorder extends AuditRecorder {
@@ -151,10 +152,17 @@ describe('demo.echo adapter', () => {
   });
 
   it('rejects args outside the 1..200 char bound', () => {
-    expect(DemoEchoArgsSchema.safeParse({ text: '' }).success).toBe(false);
-    expect(DemoEchoArgsSchema.safeParse({ text: '   ' }).success).toBe(false);
-    expect(DemoEchoArgsSchema.safeParse({ text: 'x'.repeat(201) }).success).toBe(false);
-    expect(DemoEchoArgsSchema.safeParse({ text: 'hello' }).success).toBe(true);
+    expect(Exit.isSuccess(Schema.decodeUnknownExit(DemoEchoArgsSchema)({ text: '' }))).toBe(false);
+    expect(Exit.isSuccess(Schema.decodeUnknownExit(DemoEchoArgsSchema)({ text: '   ' }))).toBe(
+      false,
+    );
+    expect(
+      Exit.isSuccess(Schema.decodeUnknownExit(DemoEchoArgsSchema)({ text: 'x'.repeat(201) })),
+    ).toBe(false);
+    expect(Exit.isSuccess(Schema.decodeUnknownExit(DemoEchoArgsSchema)({ text: 'hello' }))).toBe(
+      true,
+    );
+    expect(decodeActionArgs(DemoEchoArgsSchema, { text: 'hello', extra: 1 }).ok).toBe(false);
   });
 
   it('posts a card on request and runs the adapter exactly once after approval', async () => {

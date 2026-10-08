@@ -7,11 +7,11 @@
 // There is no per-install env override: transcription is off by default and
 // only a stored, owner-verified endpoint turns it on.
 
-import { eq } from 'drizzle-orm';
+import { Effect } from 'effect';
+import { SqlClient, SqlError } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
-import { instanceSettings } from '../db/schema';
+import { sqlRuntimeFor } from '../effect/sql';
 import type { createSettingsCipher } from '../setup/crypto';
-import type { SetupTransaction } from '../setup/settings';
 
 export const VOICE_TRANSCRIPTION_BASE_URL_SETTING = 'voice_transcription.base_url';
 export const VOICE_TRANSCRIPTION_API_KEY_SETTING = 'voice_transcription.api_key';
@@ -28,11 +28,32 @@ export interface VoiceTranscriptionSettings {
 type Decrypter = Pick<ReturnType<typeof createSettingsCipher>, 'decrypt'>;
 type Encrypter = Pick<ReturnType<typeof createSettingsCipher>, 'encrypt'>;
 
+interface InstanceSettingRow {
+  key: string;
+  value: string;
+}
+
+// Reads and writes run on the `effect/sql` client registered for this database
+// (see `../effect/sql`); the exported functions stay `async` so routes and
+// tests keep their shape.
+function runSql<A>(
+  db: ServerDatabase,
+  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
+): Promise<A> {
+  return sqlRuntimeFor(db).runPromise(effect);
+}
+
 export async function getVoiceTranscriptionSettings(
   db: ServerDatabase,
   cipher: Decrypter,
 ): Promise<VoiceTranscriptionSettings | null> {
-  const rows = await db.select().from(instanceSettings);
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<InstanceSettingRow>`SELECT key, value FROM instance_settings`;
+    }),
+  );
   const byKey = new Map(rows.map((row) => [row.key, row.value]));
   const baseUrl = byKey.get(VOICE_TRANSCRIPTION_BASE_URL_SETTING);
   const encryptedKey = byKey.get(VOICE_TRANSCRIPTION_API_KEY_SETTING);
@@ -47,7 +68,7 @@ export async function getVoiceTranscriptionSettings(
 }
 
 export async function saveVoiceTranscriptionSettings(
-  tx: SetupTransaction,
+  db: ServerDatabase,
   cipher: Encrypter,
   settings: VoiceTranscriptionSettings,
 ): Promise<void> {
@@ -55,37 +76,47 @@ export async function saveVoiceTranscriptionSettings(
     { key: VOICE_TRANSCRIPTION_BASE_URL_SETTING, value: settings.baseUrl },
     { key: VOICE_TRANSCRIPTION_MODEL_SETTING, value: settings.model },
   ];
-  for (const entry of entries) {
-    await tx
-      .insert(instanceSettings)
-      .values(entry)
-      .onConflictDoUpdate({
-        target: instanceSettings.key,
-        set: { value: entry.value, updatedAt: new Date() },
-      });
-  }
-  if (settings.apiKey === null) {
-    await tx
-      .delete(instanceSettings)
-      .where(eq(instanceSettings.key, VOICE_TRANSCRIPTION_API_KEY_SETTING));
-  } else {
-    const value = cipher.encrypt(settings.apiKey);
-    await tx
-      .insert(instanceSettings)
-      .values({ key: VOICE_TRANSCRIPTION_API_KEY_SETTING, value })
-      .onConflictDoUpdate({
-        target: instanceSettings.key,
-        set: { value, updatedAt: new Date() },
-      });
-  }
+  const encryptedKey = settings.apiKey === null ? null : cipher.encrypt(settings.apiKey);
+  await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql.withTransaction(
+        Effect.gen(function* () {
+          for (const entry of entries) {
+            yield* sql`INSERT INTO instance_settings (key, value)
+              VALUES (${entry.key}, ${entry.value})
+              ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`;
+          }
+          if (encryptedKey === null) {
+            yield* sql`DELETE FROM instance_settings WHERE key = ${VOICE_TRANSCRIPTION_API_KEY_SETTING}`;
+          } else {
+            yield* sql`INSERT INTO instance_settings (key, value)
+              VALUES (${VOICE_TRANSCRIPTION_API_KEY_SETTING}, ${encryptedKey})
+              ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`;
+          }
+        }),
+      );
+    }),
+  );
 }
 
-export async function deleteVoiceTranscriptionSettings(tx: SetupTransaction): Promise<void> {
-  for (const key of [
-    VOICE_TRANSCRIPTION_BASE_URL_SETTING,
-    VOICE_TRANSCRIPTION_API_KEY_SETTING,
-    VOICE_TRANSCRIPTION_MODEL_SETTING,
-  ]) {
-    await tx.delete(instanceSettings).where(eq(instanceSettings.key, key));
-  }
+export async function deleteVoiceTranscriptionSettings(db: ServerDatabase): Promise<void> {
+  await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql.withTransaction(
+        Effect.gen(function* () {
+          for (const key of [
+            VOICE_TRANSCRIPTION_BASE_URL_SETTING,
+            VOICE_TRANSCRIPTION_API_KEY_SETTING,
+            VOICE_TRANSCRIPTION_MODEL_SETTING,
+          ]) {
+            yield* sql`DELETE FROM instance_settings WHERE key = ${key}`;
+          }
+        }),
+      );
+    }),
+  );
 }

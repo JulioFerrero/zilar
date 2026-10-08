@@ -3,10 +3,11 @@
 // own archive. Text edits (corrections, retractions) rewrite the mirror and
 // drop every summary that covers the message, which is rebuilt without it.
 
-import { and, eq, gt, lte, sql } from 'drizzle-orm';
 import { decodePayload } from '@zilar/protocol';
+import { Effect } from 'effect';
+import { SqlClient, SqlError } from 'effect/sql';
 import type { ServerDatabase } from '../../db/client';
-import { aiMemoryMessages, aiMemoryNodes, aiMemoryState } from '../../db/schema';
+import { sqlRuntimeFor } from '../../effect/sql';
 import { correctionTarget, retractTarget, stanzaFrom } from '../../search/routes';
 import { extractMediaItems, type ExtractedMediaItem } from '../../media/indexer';
 import type { ArchivePool, ArchiveRow } from '../../search/service';
@@ -153,46 +154,42 @@ function buildIndexQuery(input: {
   };
 }
 
-type MemoryTransaction = Parameters<Parameters<ServerDatabase['transaction']>[0]>[0];
+// Every statement in the indexer runs on the `effect/sql` client registered for
+// the chat's database (see `../../effect/sql`); `indexMemory` itself stays
+// `async` so its caller and tests keep their shape.
+function runSql<A>(
+  db: ServerDatabase,
+  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
+): Promise<A> {
+  return sqlRuntimeFor(db).runPromise(effect);
+}
 
-async function targetSeq(
-  tx: MemoryTransaction,
+function targetSeq(
   aiId: string,
   chatKey: string,
   messageId: string,
-): Promise<number | null> {
-  const rows = await tx
-    .select({ seq: aiMemoryMessages.seq })
-    .from(aiMemoryMessages)
-    .where(
-      and(
-        eq(aiMemoryMessages.aiId, aiId),
-        eq(aiMemoryMessages.chatKey, chatKey),
-        eq(aiMemoryMessages.messageId, messageId),
-      ),
-    )
-    .limit(1);
-  return rows[0]?.seq ?? null;
+): Effect.Effect<number | null, SqlError.SqlError, SqlClient.SqlClient> {
+  return Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const rows = yield* sql<{ seq: number }>`SELECT seq FROM ai_memory_messages
+      WHERE ai_id = ${aiId} AND chat_key = ${chatKey} AND message_id = ${messageId}
+      LIMIT 1`;
+    return rows[0]?.seq ?? null;
+  });
 }
 
 // A node covers a message when `lo <= seq < hi`. Dropping them makes the tree a
 // cache that is rebuilt without the edited or retracted message.
-async function dropCoveringNodes(
-  tx: MemoryTransaction,
+function dropCoveringNodes(
   aiId: string,
   chatKey: string,
   seq: number,
-): Promise<void> {
-  await tx
-    .delete(aiMemoryNodes)
-    .where(
-      and(
-        eq(aiMemoryNodes.aiId, aiId),
-        eq(aiMemoryNodes.chatKey, chatKey),
-        lte(aiMemoryNodes.lo, seq),
-        gt(aiMemoryNodes.hi, seq),
-      ),
-    );
+): Effect.Effect<void, SqlError.SqlError, SqlClient.SqlClient> {
+  return Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    yield* sql`DELETE FROM ai_memory_nodes
+      WHERE ai_id = ${aiId} AND chat_key = ${chatKey} AND lo <= ${seq} AND hi > ${seq}`;
+  });
 }
 
 export async function indexMemory(input: IndexMemoryInput): Promise<IndexMemoryResult> {
@@ -200,128 +197,109 @@ export async function indexMemory(input: IndexMemoryInput): Promise<IndexMemoryR
   const cutoffMicros = BigInt(now.getTime() - MEMORY_WINDOW_MS) * 1000n;
   const lockKey = `${aiId}|${chatKey}`;
 
-  let read = 0;
-  let inserted = 0;
-  let done = true;
+  return runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      // The advisory lock serializes the two passes of one chat, and the cursor
+      // is read inside the same transaction so two passes never interleave.
+      return yield* sql.withTransaction(
+        Effect.gen(function* () {
+          yield* sql`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
 
-  // The advisory lock serializes the two passes of one chat, and the cursor is
-  // read inside the same transaction so two passes never interleave.
-  await db.transaction(async (tx) => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`);
+          // `indexed_through_micros` is a bigint: the client reads it back as a
+          // string, so it is wrapped in `BigInt(...)` before the comparison.
+          const state = yield* sql<{
+            indexedThroughMicros: string | number;
+          }>`SELECT indexed_through_micros
+            FROM ai_memory_state
+            WHERE ai_id = ${aiId} AND chat_key = ${chatKey} LIMIT 1`;
+          const stored = state[0]?.indexedThroughMicros;
+          const storedMicros = stored === undefined ? cutoffMicros : BigInt(stored);
+          // Never read older than the 12-month window, even if the cursor is stale.
+          const cursorMicros = storedMicros > cutoffMicros ? storedMicros : cutoffMicros;
 
-    const state = await tx
-      .select({ indexedThroughMicros: aiMemoryState.indexedThroughMicros })
-      .from(aiMemoryState)
-      .where(and(eq(aiMemoryState.aiId, aiId), eq(aiMemoryState.chatKey, chatKey)))
-      .limit(1);
-    const stored = state[0]?.indexedThroughMicros;
-    const storedMicros = stored === undefined ? cutoffMicros : BigInt(stored);
-    // Never read older than the 12-month window, even if the cursor is stale.
-    const cursorMicros = storedMicros > cutoffMicros ? storedMicros : cutoffMicros;
+          const built = buildIndexQuery({
+            archiveOwner,
+            scope,
+            cursorMicros,
+            limit: MEMORY_INDEX_MAX_ROWS,
+          });
+          const rows = yield* Effect.promise(() => archive.query(built.text, built.values));
+          const read = rows.length;
+          const done = rows.length < MEMORY_INDEX_MAX_ROWS;
 
-    const built = buildIndexQuery({
-      archiveOwner,
-      scope,
-      cursorMicros,
-      limit: MEMORY_INDEX_MAX_ROWS,
-    });
-    const rows = await archive.query(built.text, built.values);
-    read = rows.length;
-    done = rows.length < MEMORY_INDEX_MAX_ROWS;
+          const maxSeqRows = yield* sql<{ seq: number | null }>`SELECT max(seq) AS seq
+            FROM ai_memory_messages WHERE ai_id = ${aiId} AND chat_key = ${chatKey}`;
+          let nextSeq = Number(maxSeqRows[0]?.seq ?? -1) + 1;
 
-    const maxSeqRows = await tx
-      .select({ seq: sql<number | null>`max(${aiMemoryMessages.seq})` })
-      .from(aiMemoryMessages)
-      .where(and(eq(aiMemoryMessages.aiId, aiId), eq(aiMemoryMessages.chatKey, chatKey)));
-    let nextSeq = Number(maxSeqRows[0]?.seq ?? -1) + 1;
+          let inserted = 0;
+          let lastMicros: bigint | null = null;
 
-    let lastMicros: bigint | null = null;
+          for (const row of rows) {
+            lastMicros = BigInt(row.timestamp);
 
-    for (const row of rows) {
-      lastMicros = BigInt(row.timestamp);
+            // A correction replaces the target's text. The correction row itself
+            // is never stored, and no seq is consumed.
+            const corrected = correctionTarget(row.xml);
+            if (corrected !== null) {
+              const seq = yield* targetSeq(aiId, chatKey, corrected);
+              if (seq !== null) {
+                yield* sql`UPDATE ai_memory_messages
+                  SET text = ${cutText((row.body ?? '').trim())}
+                  WHERE ai_id = ${aiId} AND chat_key = ${chatKey} AND message_id = ${corrected}`;
+                yield* dropCoveringNodes(aiId, chatKey, seq);
+              }
+              continue;
+            }
 
-      // A correction replaces the target's text. The correction row itself is
-      // never stored, and no seq is consumed.
-      const corrected = correctionTarget(row.xml);
-      if (corrected !== null) {
-        const seq = await targetSeq(tx, aiId, chatKey, corrected);
-        if (seq !== null) {
-          await tx
-            .update(aiMemoryMessages)
-            .set({ text: cutText((row.body ?? '').trim()) })
-            .where(
-              and(
-                eq(aiMemoryMessages.aiId, aiId),
-                eq(aiMemoryMessages.chatKey, chatKey),
-                eq(aiMemoryMessages.messageId, corrected),
-              ),
-            );
-          await dropCoveringNodes(tx, aiId, chatKey, seq);
-        }
-        continue;
-      }
+            // A retraction deletes the target's text and drops its covering nodes.
+            const retracted = retractTarget(row.xml);
+            if (retracted !== null) {
+              const seq = yield* targetSeq(aiId, chatKey, retracted);
+              if (seq !== null) {
+                yield* sql`UPDATE ai_memory_messages
+                  SET deleted = true, text = ''
+                  WHERE ai_id = ${aiId} AND chat_key = ${chatKey} AND message_id = ${retracted}`;
+                yield* dropCoveringNodes(aiId, chatKey, seq);
+              }
+              continue;
+            }
 
-      // A retraction deletes the target's text and drops its covering nodes.
-      const retracted = retractTarget(row.xml);
-      if (retracted !== null) {
-        const seq = await targetSeq(tx, aiId, chatKey, retracted);
-        if (seq !== null) {
-          await tx
-            .update(aiMemoryMessages)
-            .set({ deleted: true, text: '' })
-            .where(
-              and(
-                eq(aiMemoryMessages.aiId, aiId),
-                eq(aiMemoryMessages.chatKey, chatKey),
-                eq(aiMemoryMessages.messageId, retracted),
-              ),
-            );
-          await dropCoveringNodes(tx, aiId, chatKey, seq);
-        }
-        continue;
-      }
+            const text = memoryText(row);
+            if (text === '') {
+              continue;
+            }
 
-      const text = memoryText(row);
-      if (text === '') {
-        continue;
-      }
+            const atMicros = BigInt(row.timestamp);
+            // The unique key is the dedup: a re-read (a forced-back cursor)
+            // inserts nothing and consumes no seq, so seqs stay dense.
+            const result = yield* sql<{ seq: number }>`INSERT INTO ai_memory_messages
+              (ai_id, chat_key, seq, message_id, at, sender, text, deleted)
+              VALUES (
+                ${aiId}, ${chatKey}, ${nextSeq}, ${row.originId},
+                ${new Date(Number(atMicros / 1000n))}, ${senderFor(input, row)}, ${text}, false
+              )
+              ON CONFLICT (ai_id, chat_key, message_id) DO NOTHING
+              RETURNING seq`;
+            if (result.length > 0) {
+              nextSeq += 1;
+              inserted += 1;
+            }
+          }
 
-      const atMicros = BigInt(row.timestamp);
-      const result = await tx
-        .insert(aiMemoryMessages)
-        .values({
-          aiId,
-          chatKey,
-          seq: nextSeq,
-          messageId: row.originId,
-          at: new Date(Number(atMicros / 1000n)),
-          sender: senderFor(input, row),
-          text,
-          deleted: false,
-        })
-        // The unique key is the dedup: a re-read (a forced-back cursor) inserts
-        // nothing and consumes no seq, so seqs stay dense.
-        .onConflictDoNothing({
-          target: [aiMemoryMessages.aiId, aiMemoryMessages.chatKey, aiMemoryMessages.messageId],
-        })
-        .returning();
-      if (result.length > 0) {
-        nextSeq += 1;
-        inserted += 1;
-      }
-    }
+          if (lastMicros !== null) {
+            const through = Number(lastMicros);
+            yield* sql`INSERT INTO ai_memory_state (ai_id, chat_key, indexed_through_micros, updated_at)
+              VALUES (${aiId}, ${chatKey}, ${through}, ${now})
+              ON CONFLICT (ai_id, chat_key) DO UPDATE SET
+                indexed_through_micros = EXCLUDED.indexed_through_micros,
+                updated_at = EXCLUDED.updated_at`;
+          }
 
-    if (lastMicros !== null) {
-      const through = Number(lastMicros);
-      await tx
-        .insert(aiMemoryState)
-        .values({ aiId, chatKey, indexedThroughMicros: through, updatedAt: now })
-        .onConflictDoUpdate({
-          target: [aiMemoryState.aiId, aiMemoryState.chatKey],
-          set: { indexedThroughMicros: through, updatedAt: now },
-        });
-    }
-  });
-
-  return { read, inserted, done };
+          return { read, inserted, done };
+        }),
+      );
+    }),
+  );
 }

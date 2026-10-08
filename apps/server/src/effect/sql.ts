@@ -42,6 +42,10 @@ export function isPgliteDatabase(db: ServerDatabase): db is PgliteServerDatabase
   return typeof db.$client !== 'function';
 }
 
+// `transformResultNames` camelCases column names to match the drizzle row
+// types, but a jsonb value is data: its keys must read back exactly as they
+// were written, so `transformJson: false` stops the driver renaming them too.
+//
 // Production: one pool of `SQL_POOL_MAX` from `DATABASE_URL`, matching the
 // postgres-js pool `createDb` used to open.
 export const SqlLive: Layer.Layer<SqlClient.SqlClient, Config.ConfigError | SqlError.SqlError> =
@@ -50,6 +54,7 @@ export const SqlLive: Layer.Layer<SqlClient.SqlClient, Config.ConfigError | SqlE
       url: Config.Redacted('DATABASE_URL'),
       maxConnections: Config.succeed(SQL_POOL_MAX),
       transformResultNames: Config.succeed(snakeToCamel),
+      transformJson: Config.succeed(false),
     }),
   );
 
@@ -67,12 +72,14 @@ export function sqlLayerFor(
     return PgliteClient.layer({
       liveClient: db.$client as PGlite,
       transformResultNames: snakeToCamel,
+      transformJson: false,
     });
   }
   return PgClient.layer({
     url: Redacted.make(databaseUrl),
     maxConnections: SQL_POOL_MAX,
     transformResultNames: snakeToCamel,
+    transformJson: false,
   });
 }
 
@@ -134,7 +141,11 @@ export const SqlTest: Layer.Layer<SqlClient.SqlClient, SqlError.SqlError> = Laye
       Effect.promise(() => freshMigratedPglite()),
       (pglite) => Effect.promise(() => pglite.close()),
     );
-    return PgliteClient.layer({ liveClient: client, transformResultNames: snakeToCamel });
+    return PgliteClient.layer({
+      liveClient: client,
+      transformResultNames: snakeToCamel,
+      transformJson: false,
+    });
   }),
 );
 

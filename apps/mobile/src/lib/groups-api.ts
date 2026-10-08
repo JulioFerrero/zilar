@@ -9,7 +9,7 @@ import type { GroupMember, TokenProvider } from './chat-api';
  * The channel management calls (T-0144), the mobile twin of the web channel
  * client (`apps/web/src/lib/api.ts`, "Channels"): create a channel, leave
  * one, read the members slice and flip a member's role. The wire contract
- * lives in `apps/server/src/groups/routes.ts` (T-0124).
+ * lives in `apps/server/src/groups/api.ts` (T-0124).
  *
  * The boundary is validated with Effect Schema (T-0532, the T-0506 recipe):
  * the request is an Effect pipeline, cut back to a `Promise` at the edge with

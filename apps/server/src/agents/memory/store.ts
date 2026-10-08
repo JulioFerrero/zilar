@@ -3,11 +3,19 @@
 // function is scoped to one (AI, chat) pair and never logs text. The pure tree
 // logic lives in `./tree.ts`; this file only reads and writes the mirror, the
 // summary nodes and the facts.
+//
+// Every query runs on the `effect/sql` client registered for this database
+// (see `../../effect/sql`). The exported functions stay `async` so routes and
+// tests keep their shape during the transition. `deleteRoomMemory` stays on
+// drizzle until its callers' transactions move.
 
 import { randomUUID } from 'node:crypto';
-import { and, asc, desc, eq, gte, inArray, lt, sql } from 'drizzle-orm';
+import { Effect } from 'effect';
+import { SqlClient, SqlError, type Statement } from 'effect/sql';
+import { and, eq, sql } from 'drizzle-orm';
 import type { ServerDatabase } from '../../db/client';
 import { aiMemoryFacts, aiMemoryMessages, aiMemoryNodes, aiMemoryState } from '../../db/schema';
+import { sqlRuntimeFor } from '../../effect/sql';
 import {
   type Block,
   MEMORY_LINE_MAX,
@@ -45,6 +53,15 @@ interface MemoryRow {
   deleted: boolean;
 }
 
+// A query runs through the runtime registered for this database, exactly like
+// the other converted modules; the exported functions stay `async`.
+function runSql<A>(
+  db: ServerDatabase,
+  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
+): Promise<A> {
+  return sqlRuntimeFor(db).runPromise(effect);
+}
+
 function blockKey(block: Block): string {
   return `${block.lo}-${block.hi}`;
 }
@@ -65,34 +82,29 @@ function formatRow(row: Pick<MemoryRow, 'seq' | 'at' | 'sender' | 'text'>): stri
   return `#${row.seq} ${formatDate(row.at)} ${row.sender}: ${row.text}`;
 }
 
-// All messages routed through this module carry `deleted`; this keeps the
-// selection shape in one place.
-const memoryColumns = {
-  seq: aiMemoryMessages.seq,
-  at: aiMemoryMessages.at,
-  sender: aiMemoryMessages.sender,
-  text: aiMemoryMessages.text,
-  deleted: aiMemoryMessages.deleted,
-};
-
-function chatFilter(aiId: string, chatKey: string) {
-  return and(eq(aiMemoryMessages.aiId, aiId), eq(aiMemoryMessages.chatKey, chatKey));
-}
-
 async function readFloor(db: ServerDatabase, aiId: string, chatKey: string): Promise<number> {
-  const [state] = await db
-    .select({ floorSeq: aiMemoryState.floorSeq })
-    .from(aiMemoryState)
-    .where(and(eq(aiMemoryState.aiId, aiId), eq(aiMemoryState.chatKey, chatKey)))
-    .limit(1);
+  const [state] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ floorSeq: number }>`SELECT floor_seq FROM ai_memory_state
+        WHERE ai_id = ${aiId} AND chat_key = ${chatKey} LIMIT 1`;
+    }),
+  );
   return state?.floorSeq ?? 0;
 }
 
 async function readTotal(db: ServerDatabase, aiId: string, chatKey: string): Promise<number> {
-  const [row] = await db
-    .select({ maxSeq: sql<number | null>`max(${aiMemoryMessages.seq})` })
-    .from(aiMemoryMessages)
-    .where(chatFilter(aiId, chatKey));
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{
+        maxSeq: number | null;
+      }>`SELECT max(seq) AS max_seq FROM ai_memory_messages
+        WHERE ai_id = ${aiId} AND chat_key = ${chatKey}`;
+    }),
+  );
   const maxSeq = row?.maxSeq;
   return maxSeq === null || maxSeq === undefined ? 0 : Number(maxSeq) + 1;
 }
@@ -146,18 +158,17 @@ async function loadRows(
   chatKey: string,
   block: Block,
 ): Promise<MemoryRow[]> {
-  return db
-    .select(memoryColumns)
-    .from(aiMemoryMessages)
-    .where(
-      and(
-        eq(aiMemoryMessages.aiId, aiId),
-        eq(aiMemoryMessages.chatKey, chatKey),
-        gte(aiMemoryMessages.seq, block.lo),
-        lt(aiMemoryMessages.seq, block.hi),
-      ),
-    )
-    .orderBy(asc(aiMemoryMessages.seq));
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<MemoryRow>`SELECT seq, at, sender, text, deleted FROM ai_memory_messages
+        WHERE ai_id = ${aiId} AND chat_key = ${chatKey}
+          AND seq >= ${block.lo} AND seq < ${block.hi}
+        ORDER BY seq`;
+    }),
+  );
+  return [...rows];
 }
 
 async function loadSingle(
@@ -166,17 +177,14 @@ async function loadSingle(
   chatKey: string,
   seq: number,
 ): Promise<MemoryRow | undefined> {
-  const [row] = await db
-    .select(memoryColumns)
-    .from(aiMemoryMessages)
-    .where(
-      and(
-        eq(aiMemoryMessages.aiId, aiId),
-        eq(aiMemoryMessages.chatKey, chatKey),
-        eq(aiMemoryMessages.seq, seq),
-      ),
-    )
-    .limit(1);
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<MemoryRow>`SELECT seq, at, sender, text, deleted FROM ai_memory_messages
+        WHERE ai_id = ${aiId} AND chat_key = ${chatKey} AND seq = ${seq} LIMIT 1`;
+    }),
+  );
   return row;
 }
 
@@ -185,10 +193,14 @@ async function loadNodeMap(
   aiId: string,
   chatKey: string,
 ): Promise<Map<string, string>> {
-  const rows = await db
-    .select({ lo: aiMemoryNodes.lo, hi: aiMemoryNodes.hi, summary: aiMemoryNodes.summary })
-    .from(aiMemoryNodes)
-    .where(and(eq(aiMemoryNodes.aiId, aiId), eq(aiMemoryNodes.chatKey, chatKey)));
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ lo: number; hi: number; summary: string }>`SELECT lo, hi, summary
+        FROM ai_memory_nodes WHERE ai_id = ${aiId} AND chat_key = ${chatKey}`;
+    }),
+  );
   return new Map(rows.map((row) => [blockKey({ lo: row.lo, hi: row.hi }), row.summary]));
 }
 
@@ -274,35 +286,35 @@ export async function recallMemory(
   if (words.length === 0) return [];
 
   const floor = await readFloor(db, aiId, chatKey);
-  const where = and(
-    eq(aiMemoryMessages.aiId, aiId),
-    eq(aiMemoryMessages.chatKey, chatKey),
-    eq(aiMemoryMessages.deleted, false),
-    gte(aiMemoryMessages.seq, floor),
-    ...words.map(
-      (word) => sql`${aiMemoryMessages.text} ILIKE ${`%${escapeLike(word)}%`} ESCAPE '\\'`,
-    ),
+  return runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const conditions: Array<Statement.Fragment> = [
+        sql`ai_id = ${aiId}`,
+        sql`chat_key = ${chatKey}`,
+        sql`deleted = false`,
+        sql`seq >= ${floor}`,
+        ...words.map((word) => sql`text ILIKE ${`%${escapeLike(word)}%`} ESCAPE '\\'`),
+      ];
+      const where = sql.and(conditions);
+
+      const [countRow] = yield* sql<{ count: number }>`SELECT count(*)::int AS count
+        FROM ai_memory_messages WHERE ${where}`;
+      const count = Number(countRow?.count ?? 0);
+      if (count === 0) return [];
+
+      const rows = yield* sql<MemoryRow>`SELECT seq, at, sender, text, deleted
+        FROM ai_memory_messages WHERE ${where}
+        ORDER BY seq DESC LIMIT ${MEMORY_RECALL_MAX}`;
+
+      const lines = [...rows].reverse().map(formatRow);
+      if (count > MEMORY_RECALL_MAX) {
+        lines.push(`Newest ${MEMORY_RECALL_MAX} of ${count} matches.`);
+      }
+      return lines;
+    }),
   );
-
-  const [countRow] = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(aiMemoryMessages)
-    .where(where);
-  const count = Number(countRow?.count ?? 0);
-  if (count === 0) return [];
-
-  const rows = await db
-    .select(memoryColumns)
-    .from(aiMemoryMessages)
-    .where(where)
-    .orderBy(desc(aiMemoryMessages.seq))
-    .limit(MEMORY_RECALL_MAX);
-
-  const lines = rows.reverse().map(formatRow);
-  if (count > MEMORY_RECALL_MAX) {
-    lines.push(`Newest ${MEMORY_RECALL_MAX} of ${count} matches.`);
-  }
-  return lines;
 }
 
 // Open one summary block into its two halves, each a node summary or its raw
@@ -341,11 +353,16 @@ export async function listFacts(
   aiId: string,
   chatKey: string,
 ): Promise<MemoryFact[]> {
-  return db
-    .select({ id: aiMemoryFacts.id, text: aiMemoryFacts.text })
-    .from(aiMemoryFacts)
-    .where(and(eq(aiMemoryFacts.aiId, aiId), eq(aiMemoryFacts.chatKey, chatKey)))
-    .orderBy(asc(aiMemoryFacts.createdAt), asc(aiMemoryFacts.id));
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<MemoryFact>`SELECT id, text FROM ai_memory_facts
+        WHERE ai_id = ${aiId} AND chat_key = ${chatKey}
+        ORDER BY created_at, id`;
+    }),
+  );
+  return [...rows];
 }
 
 export type AddFactResult = 'saved' | 'duplicate' | 'invalid';
@@ -370,45 +387,35 @@ export async function addFact(
     return 'invalid';
   }
 
-  return db.transaction(async (tx) => {
-    await tx.execute(
-      sql`SELECT pg_advisory_xact_lock(hashtext(${`ai-memory-facts:${aiId}:${chatKey}`}))`,
-    );
-    const existing = await tx
-      .select({ id: aiMemoryFacts.id })
-      .from(aiMemoryFacts)
-      .where(
-        and(
-          eq(aiMemoryFacts.aiId, aiId),
-          eq(aiMemoryFacts.chatKey, chatKey),
-          sql`lower(${aiMemoryFacts.text}) = lower(${value})`,
-        ),
-      )
-      .limit(1);
-    if (existing.length > 0) return 'duplicate';
+  return runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql.withTransaction(
+        Effect.gen(function* () {
+          yield* sql`SELECT pg_advisory_xact_lock(hashtext(${`ai-memory-facts:${aiId}:${chatKey}`}))`;
+          const existing = yield* sql<{ id: string }>`SELECT id FROM ai_memory_facts
+            WHERE ai_id = ${aiId} AND chat_key = ${chatKey}
+              AND lower(text) = lower(${value}) LIMIT 1`;
+          if (existing.length > 0) return 'duplicate' as const;
 
-    await tx.insert(aiMemoryFacts).values({ id: randomUUID(), aiId, chatKey, text: value });
+          yield* sql`INSERT INTO ai_memory_facts (id, ai_id, chat_key, text)
+            VALUES (${randomUUID()}, ${aiId}, ${chatKey}, ${value})`;
 
-    const rows = await tx
-      .select({ id: aiMemoryFacts.id })
-      .from(aiMemoryFacts)
-      .where(and(eq(aiMemoryFacts.aiId, aiId), eq(aiMemoryFacts.chatKey, chatKey)))
-      .orderBy(asc(aiMemoryFacts.createdAt), asc(aiMemoryFacts.id));
-    const excess = rows.length - MEMORY_FACTS_MAX;
-    if (excess > 0) {
-      await tx.delete(aiMemoryFacts).where(
-        and(
-          eq(aiMemoryFacts.aiId, aiId),
-          eq(aiMemoryFacts.chatKey, chatKey),
-          inArray(
-            aiMemoryFacts.id,
-            rows.slice(0, excess).map((row) => row.id),
-          ),
-        ),
+          const rows = yield* sql<{ id: string }>`SELECT id FROM ai_memory_facts
+            WHERE ai_id = ${aiId} AND chat_key = ${chatKey}
+            ORDER BY created_at, id`;
+          const excess = rows.length - MEMORY_FACTS_MAX;
+          if (excess > 0) {
+            const oldest = rows.slice(0, excess).map((row) => row.id);
+            yield* sql`DELETE FROM ai_memory_facts
+              WHERE ai_id = ${aiId} AND chat_key = ${chatKey} AND id IN ${sql.in(oldest)}`;
+          }
+          return 'saved' as const;
+        }),
       );
-    }
-    return 'saved';
-  });
+    }),
+  );
 }
 
 // Delete one fact, scoped to its AI and chat. Returns whether a row was
@@ -419,16 +426,15 @@ export async function deleteFact(
   chatKey: string,
   factId: string,
 ): Promise<boolean> {
-  const removed = await db
-    .delete(aiMemoryFacts)
-    .where(
-      and(
-        eq(aiMemoryFacts.aiId, aiId),
-        eq(aiMemoryFacts.chatKey, chatKey),
-        eq(aiMemoryFacts.id, factId),
-      ),
-    )
-    .returning();
+  const removed = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ id: string }>`DELETE FROM ai_memory_facts
+        WHERE ai_id = ${aiId} AND chat_key = ${chatKey} AND id = ${factId}
+        RETURNING id`;
+    }),
+  );
   return removed.length > 0;
 }
 
@@ -489,16 +495,15 @@ export async function putNode(
 ): Promise<void> {
   const cut = summary.slice(0, MEMORY_LINE_MAX);
   const value = /[\uD800-\uDBFF]$/.test(cut) ? cut.slice(0, -1) : cut;
-  await db
-    .insert(aiMemoryNodes)
-    .values({
-      aiId,
-      chatKey,
-      lo: block.lo,
-      hi: block.hi,
-      summary: value,
-    })
-    .onConflictDoNothing();
+  await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO ai_memory_nodes (ai_id, chat_key, lo, hi, summary)
+        VALUES (${aiId}, ${chatKey}, ${block.lo}, ${block.hi}, ${value})
+        ON CONFLICT DO NOTHING`;
+    }),
+  );
 }
 
 // The pure compaction prompt: the fixed instruction followed by the input
@@ -519,6 +524,9 @@ export function buildCompactionPrompt(blockId: string, inputLines: string[]): st
 // its domain is spelled. Rows of other AIs and other chats (DMs, other rooms)
 // stay. The caller passes a room list only, and the delete is scoped to the
 // one AI.
+//
+// This one stays on drizzle: `groups/service.ts` calls it inside its own
+// drizzle transaction (`removeGroupAi`). It moves when that transaction does.
 export async function deleteRoomMemory(
   db: ServerDatabase,
   aiId: string,
@@ -574,26 +582,27 @@ export async function clearMemory(
   aiId: string,
   chatKey: string,
 ): Promise<void> {
-  await db.transaction(async (tx) => {
-    const [row] = await tx
-      .select({ maxSeq: sql<number | null>`max(${aiMemoryMessages.seq})` })
-      .from(aiMemoryMessages)
-      .where(and(eq(aiMemoryMessages.aiId, aiId), eq(aiMemoryMessages.chatKey, chatKey)));
-    const maxSeq = row?.maxSeq;
-    const total = maxSeq === null || maxSeq === undefined ? 0 : Number(maxSeq) + 1;
+  await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql.withTransaction(
+        Effect.gen(function* () {
+          const [row] = yield* sql<{ maxSeq: number | null }>`SELECT max(seq) AS max_seq
+            FROM ai_memory_messages WHERE ai_id = ${aiId} AND chat_key = ${chatKey}`;
+          const maxSeq = row?.maxSeq;
+          const total = maxSeq === null || maxSeq === undefined ? 0 : Number(maxSeq) + 1;
 
-    await tx
-      .delete(aiMemoryNodes)
-      .where(and(eq(aiMemoryNodes.aiId, aiId), eq(aiMemoryNodes.chatKey, chatKey)));
-    await tx
-      .delete(aiMemoryFacts)
-      .where(and(eq(aiMemoryFacts.aiId, aiId), eq(aiMemoryFacts.chatKey, chatKey)));
-    await tx
-      .insert(aiMemoryState)
-      .values({ aiId, chatKey, floorSeq: total })
-      .onConflictDoUpdate({
-        target: [aiMemoryState.aiId, aiMemoryState.chatKey],
-        set: { floorSeq: total, updatedAt: new Date() },
-      });
-  });
+          yield* sql`DELETE FROM ai_memory_nodes
+            WHERE ai_id = ${aiId} AND chat_key = ${chatKey}`;
+          yield* sql`DELETE FROM ai_memory_facts
+            WHERE ai_id = ${aiId} AND chat_key = ${chatKey}`;
+          yield* sql`INSERT INTO ai_memory_state (ai_id, chat_key, floor_seq)
+            VALUES (${aiId}, ${chatKey}, ${total})
+            ON CONFLICT (ai_id, chat_key)
+            DO UPDATE SET floor_seq = ${total}, updated_at = ${new Date().toISOString()}`;
+        }),
+      );
+    }),
+  );
 }

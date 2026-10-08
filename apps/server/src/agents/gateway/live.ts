@@ -1,8 +1,7 @@
 import type { ChatKind, SendMessageOptions } from '@zilar/xmpp-core';
 import type { Payload } from '@zilar/protocol';
-import { eq } from 'drizzle-orm';
-import { ais, groups, topics } from '../../db/schema';
 import { jidFor, localpartFor } from '../../xmpp/provisioning';
+import { loadAiOwnerId, loadGroupRoomLocalpart, loadTopicRoomRow } from './db';
 import {
   toRedactedError,
   type AgentGatewayDeps,
@@ -137,38 +136,25 @@ export function createLiveSession(ctx: LiveSessionContext) {
   // the same way the rest of the platform derives it (via `localpartFor` and
   // `jidFor`), so a DM announcement lands where the gateway already talks.
   async function loadOwnerId(aiId: string): Promise<string | null> {
-    const [row] = await deps.db
-      .select({ owner: ais.owner })
-      .from(ais)
-      .where(eq(ais.id, aiId))
-      .limit(1);
-    return row?.owner ?? null;
+    return loadAiOwnerId(deps.db, aiId);
   }
 
   // Looks up the room JID (bare) for one group. Returns `null` when the
   // group does not exist; the caller answers `false` for that case too.
   async function loadRoomJid(groupId: string): Promise<string | null> {
-    const [row] = await deps.db
-      .select({ roomLocalpart: groups.roomLocalpart })
-      .from(groups)
-      .where(eq(groups.id, groupId))
-      .limit(1);
-    if (row === undefined) {
+    const roomLocalpart = await loadGroupRoomLocalpart(deps.db, groupId);
+    if (roomLocalpart === null) {
       return null;
     }
-    return roomJidFor(row.roomLocalpart);
+    return roomJidFor(roomLocalpart);
   }
 
   // Looks up the room JID (bare) for one topic. Returns `null` when the
   // topic does not exist or is archived; the caller answers `false` for
   // those cases too.
   async function loadTopicRoomJid(topicId: string): Promise<string | null> {
-    const [row] = await deps.db
-      .select({ roomLocalpart: topics.roomLocalpart, archivedAt: topics.archivedAt })
-      .from(topics)
-      .where(eq(topics.id, topicId))
-      .limit(1);
-    if (row === undefined || row.archivedAt !== null) {
+    const row = await loadTopicRoomRow(deps.db, topicId);
+    if (row === null || row.archivedAt !== null) {
       return null;
     }
     return roomJidFor(row.roomLocalpart);

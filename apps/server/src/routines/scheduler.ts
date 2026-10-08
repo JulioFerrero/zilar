@@ -3,10 +3,11 @@
 // `execute.ts`. Tests call `tick()` directly with a fake clock and fake
 // `runTool`/`post` ports; production wires the real ones in `index.ts`.
 import { Cause, Effect, Schedule, type Fiber } from 'effect';
-import { and, asc, eq, isNull, lte } from 'drizzle-orm';
+import { SqlClient } from 'effect/sql';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
-import { routines } from '../db/schema';
+import type { routines } from '../db/schema';
+import { runSql } from './db';
 import { type ExecuteRoutinePorts, executeRoutine } from './execute';
 import { nextRunAfter, parseRoutineSchedule } from './schedule';
 
@@ -126,18 +127,17 @@ async function claimDue(
   maxPerTick: number,
   logger: RoutineLogger,
 ): Promise<ClaimedRoutine[]> {
-  const due = await db
-    .select()
-    .from(routines)
-    .where(
-      and(
-        eq(routines.status, 'active'),
-        isNull(routines.deletedAt),
-        lte(routines.nextRunAt, nowDate),
-      ),
-    )
-    .orderBy(asc(routines.nextRunAt))
-    .limit(maxPerTick);
+  const due = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<ClaimedRoutine>`SELECT *
+        FROM routines
+        WHERE status = 'active' AND deleted_at IS NULL AND next_run_at <= ${nowDate}
+        ORDER BY next_run_at ASC
+        LIMIT ${maxPerTick}`;
+    }),
+  );
   const claimed: ClaimedRoutine[] = [];
   for (const row of due) {
     const parsed = parseRoutineSchedule(row.schedule);
@@ -146,25 +146,28 @@ async function claimDue(
       // would otherwise spin every tick: log the id and park it one hour
       // out as a dead-letter spot. No audit: the row carries no output.
       logger.warn({ routineId: row.id }, 'routine has an invalid schedule; parking it');
-      await db
-        .update(routines)
-        .set({ nextRunAt: new Date(nowDate.getTime() + 3_600_000), updatedAt: nowDate })
-        .where(and(eq(routines.id, row.id), eq(routines.nextRunAt, row.nextRunAt)));
+      await runSql(
+        db,
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`UPDATE routines
+            SET next_run_at = ${new Date(nowDate.getTime() + 3_600_000)}, updated_at = ${nowDate}
+            WHERE id = ${row.id} AND next_run_at = ${row.nextRunAt}`;
+        }),
+      );
       continue;
     }
     const advanced = nextRunAfter(parsed.value, nowDate);
-    const updated = await db
-      .update(routines)
-      .set({ nextRunAt: advanced, updatedAt: nowDate })
-      .where(
-        and(
-          eq(routines.id, row.id),
-          eq(routines.status, 'active'),
-          isNull(routines.deletedAt),
-          eq(routines.nextRunAt, row.nextRunAt),
-        ),
-      )
-      .returning();
+    const updated = await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<ClaimedRoutine>`UPDATE routines
+          SET next_run_at = ${advanced}, updated_at = ${nowDate}
+          WHERE id = ${row.id} AND status = 'active' AND deleted_at IS NULL AND next_run_at = ${row.nextRunAt}
+          RETURNING *`;
+      }),
+    );
     if (updated.length > 0) {
       claimed.push({ ...row, nextRunAt: advanced });
     }

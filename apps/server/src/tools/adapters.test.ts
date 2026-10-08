@@ -3,9 +3,8 @@
 // Postgres. No network, no real sandbox.
 import { randomBytes, randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { z } from 'zod';
 import type { ActionAdapter, ActionContext } from '../actions/registry';
-import { buildAlwaysEligible, buildRegistry } from '../actions/registry';
+import { buildAlwaysEligible, buildRegistry, decodeActionArgs } from '../actions/registry';
 import { createAuditRecorder } from '../audit/service';
 import {
   aiLimits,
@@ -242,11 +241,11 @@ describe('tool adapters (T-0105)', () => {
     args: unknown,
   ): Promise<{ summary: string; modelText?: string }> {
     const adapter = byName(adapters, name);
-    const parsed = (adapter.argsSchema as z.ZodType<unknown>).safeParse(args);
-    if (!parsed.success) {
+    const decoded = decodeActionArgs(adapter.argsSchema, args);
+    if (!decoded.ok) {
       return { summary: 'invalid_args' };
     }
-    return adapter.execute(ctx, parsed.data);
+    return adapter.execute(ctx, decoded.value);
   }
 
   it('registers eight adapters with the right tiers and short descriptions', () => {
@@ -367,11 +366,11 @@ describe('tool adapters (T-0105)', () => {
     const { adapters } = adaptersFor();
     const adapter = byName(adapters, 'tool.run');
     const big = 'x'.repeat(MAX_TOOL_INPUT_BYTES);
-    const parsed = (adapter.argsSchema as z.ZodType<unknown>).safeParse({
+    const decoded = decodeActionArgs(adapter.argsSchema, {
       name: 'morning-prices',
       input: big,
     });
-    expect(parsed.success).toBe(false);
+    expect(decoded.ok).toBe(false);
   });
 
   it('a tool of another chat or AI is invisible', async () => {
@@ -521,7 +520,7 @@ describe('tool adapters (T-0105)', () => {
       hosts: ['other.example.com'],
       input: null,
     };
-    expect(() => (scheduleAdapter.argsSchema as z.ZodType<unknown>).parse(args)).not.toThrow();
+    expect(decodeActionArgs(scheduleAdapter.argsSchema, args).ok).toBe(true);
     // The hosts differ from the tool's current version: describe still
     // builds the card, but execute must throw (the gateway's generic
     // `failed`), never create a routine.
@@ -621,11 +620,11 @@ describe('tool adapters (T-0105)', () => {
     const adapter = byName(adapters, 'tool.approve_hosts');
     // A hostile `hosts` field in the raw args is ignored: prepareArgs
     // binds the current version's hosts from the DB.
-    const parsed = (adapter.argsSchema as z.ZodType<unknown>).safeParse({
+    const decoded = decodeActionArgs(adapter.argsSchema, {
       name: 'morning-prices',
       hosts: ['evil.example.com'],
     });
-    expect(parsed.success).toBe(false);
+    expect(decoded.ok).toBe(false);
     const bound = (await adapter.prepareArgs?.(ctxFor(), { name: 'morning-prices' })) as
       ApproveHostsBoundArgs | undefined;
     expect(bound).toEqual({ name: 'morning-prices', hosts: HOSTS });
@@ -759,14 +758,14 @@ describe('tool adapters (T-0105)', () => {
     name: string,
   ): Promise<{ summary: string }> {
     const adapter = byName(adapters, 'tool.approve_hosts');
-    const parsed = (adapter.argsSchema as z.ZodType<unknown>).safeParse({ name });
-    if (!parsed.success) {
+    const decoded = decodeActionArgs(adapter.argsSchema, { name });
+    if (!decoded.ok) {
       throw new Error('approve_hosts args did not parse');
     }
-    const bound = (await adapter.prepareArgs?.(ctx, parsed.data)) as
+    const bound = (await adapter.prepareArgs?.(ctx, decoded.value)) as
       ApproveHostsBoundArgs | undefined;
-    const card = adapter.describe(bound ?? parsed.data);
+    const card = adapter.describe(bound ?? decoded.value);
     expect(card.summary).toContain(name);
-    return adapter.execute({ ...ctx, requestId: randomUUID() }, bound ?? parsed.data);
+    return adapter.execute({ ...ctx, requestId: randomUUID() }, bound ?? decoded.value);
   }
 });

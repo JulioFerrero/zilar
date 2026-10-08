@@ -7,14 +7,15 @@
 // Integrations. Every route needs a session, and anyone who is not the owner
 // gets the same 404 as an unknown route, so existence is never leaked.
 
-import { asc, eq } from 'drizzle-orm';
+import { Effect } from 'effect';
+import { SqlClient, SqlError } from 'effect/sql';
 import type { Logger } from 'pino';
 import type { AuditRecorder } from '../audit/service';
 import type { Auth } from '../auth/auth';
 import type { CurrentMailer, Mailer } from '../auth/mailer';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
-import { user } from '../db/schema';
+import { sqlRuntimeFor } from '../effect/sql';
 import { HttpError } from '../errors';
 import type { RateLimiter } from '../rate-limit';
 import { getMailSettings, settingsCipherFor, type SetupTransaction } from '../setup/settings';
@@ -71,14 +72,28 @@ export function notFound(): HttpError {
   return new HttpError(404, 'not_found', 'Not found');
 }
 
+// Every owner lookup runs on the `effect/sql` client registered for this
+// database (see `../effect/sql`); the exported functions stay `async` so the
+// routes and tests keep their shape during the transition.
+function runSql<A>(
+  db: ServerDatabase,
+  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
+): Promise<A> {
+  return sqlRuntimeFor(db).runPromise(effect);
+}
+
 // The server owner is the user with the earliest `createdAt`: there is no
 // global admin role, so the first account to exist owns the integrations.
+// `"user"` is a reserved word, so it stays quoted.
 export async function isOwner(db: ServerDatabase, userId: string): Promise<boolean> {
-  const [first] = await db
-    .select({ id: user.id })
-    .from(user)
-    .orderBy(asc(user.createdAt), asc(user.id))
-    .limit(1);
+  const [first] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ id: string }>`SELECT id FROM "user"
+        ORDER BY created_at ASC, id ASC LIMIT 1`;
+    }),
+  );
   return first !== undefined && first.id === userId;
 }
 
@@ -185,11 +200,13 @@ async function readStoredMailQuietly(
 }
 
 export async function ownerEmailFor(db: ServerDatabase, userId: string): Promise<string> {
-  const [row] = await db
-    .select({ email: user.email })
-    .from(user)
-    .where(eq(user.id, userId))
-    .limit(1);
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ email: string }>`SELECT email FROM "user" WHERE id = ${userId} LIMIT 1`;
+    }),
+  );
   if (row === undefined) {
     throw notFound();
   }

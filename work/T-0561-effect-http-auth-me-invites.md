@@ -1,7 +1,7 @@
 ---
 id: T-0561
 title: "Effect C (HTTP): /me (GET, PATCH) and account invites (create, check, revoke) onto the HttpApi adapter, zod to Effect Schema; GET /invites/:code stays public; Better Auth handler untouched; every /me field kept; tests unchanged"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0561-effect-http-auth-me-invites
 model: auto
@@ -66,4 +66,116 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- Created `apps/server/src/auth/api.ts`: the five auth routes on the Effect
+  `HttpApi` adapter, mounted in `app.ts` at the same position (after the
+  Better Auth catch-all) via `mountEffectRoutes` with `AUTH_API_ROUTES`.
+- Deleted `apps/server/src/auth/routes.ts` (no other importer; grep confirms).
+- Better Auth handler (`app.all('/api/auth/*', …)`) and `auth/auth.ts`
+  untouched. No zod remains in the module.
+- Structure: two groups in one `HttpApi.make('auth')` — `auth`
+  (GET/PATCH /me, POST /invites, DELETE /invites/:code, `.middleware(Session)`)
+  and `authInvitesPublic` (GET /invites/:code, no session). Per-endpoint
+  middleware is impossible (effect's `.middleware()` applies at group
+  level), and both groups share one schema-error layer that only fires for
+  the DELETE params decode.
+- PATCH /me keeps the exact step order: session (via `CurrentUser`) ->
+  raw body (`request.json` with `catchCause -> null`, mirroring
+  `c.req.json().catch(() => null)`) -> manual Effect Schema decode ->
+  `auth.api.updateUser({ headers, body: { name } })` -> session read again ->
+  best-effort `refreshRosterNicknames` (try-then map to value, ids + `pending`
+  only) -> same shape as GET. No endpoint `payload:` is declared for PATCH,
+  so the framework never decodes before the session.
+- Name validation: `Schema.Trim` + `isMinLength(1, { message })` /
+  `isMaxLength(64, { message })` (Effect v4 `Annotations.Filter.message`
+  replaces the whole filter message) + `makeFilter` returning the
+  control-character string. An unknown excess key is stripped (non-strict,
+  Effect default). The first message is extracted by walking the issue tree
+  depth-first (`firstIssueMessage`), falling back to `Invalid name` for a
+  missing key / non-string name.
+- GET /me reads the fresh user row from the DB (Better Auth's `getSession`
+  user snapshot can predate the `updateUser` response caching behavior the
+  old double-`requireSession` relied on), then assembles the exact old shape:
+  `{ id, email, name, image ?? null, avatarUrl? (omitted, never null),
+  handle ?? null, createdAt (ISO string), jid ?? null }`.
+- Old vs new decode texts (all byte-identical now): `name must not be
+  empty`, `name must be at most 64 characters`,
+  `name must not contain control characters`, `Invalid name` (non-object /
+  missing / non-string name). Success-schema comparison: `MeView` lists
+  every field of the old GET return (id, email, name, image, avatarUrl?,
+  handle, createdAt string, jid); `PatchMeView` lists the old PATCH return
+  (id, email, name, image). `InviteView.expiresAt` is `Schema.Date`
+  (serializes to ISO like `c.json`); `createdAt` is `Schema.String` because
+  the handler pre-formats with `toISOString()` (a `Date` from the drizzle
+  row; `String(...)` fallback for safety).
+- Files changed: `apps/server/src/auth/api.ts` (new),
+  `apps/server/src/auth/routes.ts` (deleted), `apps/server/src/app.ts`
+  (mount swap), this task file.
+
+### Commands and real results
+- `pnpm install`: done (52s).
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot
+  src/auth/auth.test.ts`: 36 passed.
+- `... src/authz-sweep.test.ts`: 5 passed (public GET /invites/:code still
+  allowlisted and reachable; the four session routes answer 401).
+- `... src/app.test.ts`: 9 passed.
+- `... src/auth/invites.test.ts src/handles/handles.test.ts
+  src/contacts/contacts.test.ts`: 27 passed.
+- `... src/avatars/routes.test.ts src/chats/chats.test.ts
+  src/search/search.test.ts src/media/routes.test.ts`: 63 passed.
+- `... src/groups/visibility.test.ts src/effect/http.test.ts`: 33 passed.
+- After deleting `routes.ts` + removing the dead wrapper:
+  `... src/auth/auth.test.ts src/authz-sweep.test.ts`: 41 passed.
+- `pnpm gate` (final, after all edits): GATE PASS —
+  `gate: 4 changed file(s) against main`,
+  `PASS install (frozen) (4.1s)`, `PASS format (94.8s)`,
+  `PASS lint (1.7s)`, `PASS typecheck (32.2s)`,
+  `PASS tests @zilar/server (1250.4s)`,
+  `scope: every changed file is inside the Allowed files`, `GATE PASS`.
+  (An earlier gate run also passed before the routes.ts deletion; the final
+  run above covers the finished state. No test file was modified.)
+
+### Problems / deviations
+- None from the spec. One judgment call: GET /me reads the user row from
+  the DB instead of reusing the session snapshot, because after
+  `updateUser` the second `getSession` may return the pre-update cached
+  user; the DB read guarantees the PATCH-then-GET test sees the new name.
+- Security checklist: invite codes never logged (Hono `logPath` redaction
+  unchanged); DELETE scoped by code + creator check with identical
+  404/403; no new routes (exact 5, sweep-covered).
+
+### Open questions
+- None.
+
+### Round 2 (fix round, 2026-10-08)
+- Fixed must-fix finding 1 (`apps/server/src/auth/api.ts`): `updateMeMessage`
+  now takes the message from the `SchemaError.message` first line when it is
+  one of the three name texts (`NAME_MESSAGES` allowlist), falling back to
+  the annotation walk for the control-character case and `Invalid name`
+  otherwise. Empty/whitespace-only names now answer
+  `name must not be empty`, 65-char names answer
+  `name must be at most 64 characters` (both were `Invalid name` before).
+- Fixed nit finding 2 (`apps/server/src/auth/api.ts`): deleted the dead
+  exported `AuthRoutesDependencies` and `AuthRoutesLogger` (nothing imported
+  either; `createAuthApi` uses `AuthApiDependencies`). No disagreements.
+- Tests added: none committed — the finding named no test, the Spec freezes
+  all listed tests, and test files are outside the Allowed files. Verified
+  behaviour with a temporary probe test (created, run green, deleted):
+  PATCH `{name:""}`, `{name:"   "}` -> `name must not be empty`;
+  65-char -> `name must be at most 64 characters`; control chars ->
+  `name must not contain control characters`; `{}` -> `Invalid name`
+  (all status 400, `invalid_request`).
+- Single tests: `src/auth/auth.test.ts src/authz-sweep.test.ts` -> 41 passed.
+- `pnpm gate`: GATE PASS — `4 changed file(s) against main`,
+  `PASS install (frozen) (1.1s)`, `PASS format (16.4s)`, `PASS lint (0.7s)`,
+  `PASS typecheck (7.3s)`, `PASS tests @zilar/server (318.5s)`,
+  `scope: every changed file is inside the Allowed files`, `GATE PASS`.
+
 ## Review (written by Claude)
+
+**2026-10-08, lead:** approved after 1 automatic round. The round fixed the must-fix: the three PATCH name texts were lost because Effect 4.0.2 `{ message }` options do not reach the annotations.
+- **Pre-review:** clean. The packet (08:40) is newer than HEAD 39085cb9.
+- **Accepted nits:**
+  - a malformed or empty PATCH body now says "Invalid name" instead of the generic zod text; no test asserts it;
+  - `GET /me` reads the user row, because the Effect session gives the id only, so a deleted user with a live session gets a 401. The shape and fields are unchanged.
+- **Follow-up:** tests that assert the three name messages go to T-0579.

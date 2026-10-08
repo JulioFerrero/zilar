@@ -10,8 +10,8 @@
 // query still spends budget). 501 `media_unavailable` comes first, then the
 // 429 limiter, then the 400 decode, then the 404 chat resolution — exactly
 // like the old `requireSession` -> 501 -> limiter -> `safeParse` sequence.
-import { and, asc, desc, eq, inArray, lt } from 'drizzle-orm';
 import { Effect, Layer, Option, Schema } from 'effect';
+import { SqlClient, SqlError } from 'effect/sql';
 import { HttpServer, HttpServerRequest, HttpRouter } from 'effect/http';
 import {
   HttpApi,
@@ -25,7 +25,8 @@ import type { Auth } from '../auth/auth';
 import { isDmBlocked } from '../blocks/service';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
-import { mediaItems } from '../db/schema';
+import type { mediaItems } from '../db/schema';
+import { sqlRuntimeFor } from '../effect/sql';
 import {
   CurrentUser,
   Session,
@@ -157,6 +158,18 @@ export interface MediaItem {
 }
 
 type MediaItemRow = typeof mediaItems.$inferSelect;
+
+function runSql<A>(
+  db: ServerDatabase,
+  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
+): Promise<A> {
+  return sqlRuntimeFor(db).runPromise(effect);
+}
+
+// The effect/sql gallery read returns the same columns in the same camelCase
+// shape as the drizzle row above. `at_micros` is int8, which the pg driver
+// hands back as a string, so it is `string | number` here and converted to a
+// number when mapping (the values fit in a double).
 
 // The part of a JID before `/`, lowercased: the comparison key for sender
 // direction, mirroring search's `bareJid`.
@@ -331,21 +344,30 @@ export function createMediaApi(deps: MediaApiDependencies): EffectApiMount {
           }
 
           const rows = yield* Effect.promise(() =>
-            deps.db
-              .select()
-              .from(mediaItems)
-              .where(
-                and(
-                  eq(mediaItems.archiveOwner, archiveOwner),
-                  eq(mediaItems.chatJid, chatJid),
-                  eq(mediaItems.deleted, false),
-                  inArray(mediaItems.kind, kinds),
-                  before === undefined ? undefined : lt(mediaItems.atMicros, before),
-                ),
-              )
-              .orderBy(desc(mediaItems.atMicros), asc(mediaItems.id))
-              // One extra row answers "is there another page?" without a count.
-              .limit(limit + 1),
+            runSql(
+              deps.db,
+              Effect.gen(function* () {
+                const sql = yield* SqlClient.SqlClient;
+                // `kinds` is never empty here (every tab maps to at least one
+                // kind), but an empty `IN ()` would be a syntax error, so the
+                // guard returns no rows instead of running one.
+                if (kinds.length === 0) {
+                  return [] as MediaItemRow[];
+                }
+                const beforeCondition =
+                  before === undefined ? sql`` : sql`AND at_micros < ${before}`;
+                const raw = yield* sql<Record<string, unknown>>`SELECT * FROM media_items
+                  WHERE archive_owner = ${archiveOwner} AND chat_jid = ${chatJid} AND deleted = false AND kind IN ${sql.in(kinds)} ${beforeCondition}
+                  ORDER BY at_micros DESC, id ASC
+                  LIMIT ${limit + 1}`;
+                // One extra row answers "is there another page?" without a
+                // count.
+                return raw.map((row) => ({
+                  ...(row as unknown as MediaItemRow),
+                  atMicros: Number((row as { atMicros: string | number }).atMicros),
+                }));
+              }),
+            ),
           );
 
           const hasMore = rows.length > limit;

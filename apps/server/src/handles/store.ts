@@ -1,12 +1,16 @@
 // Handle store (T-0163): claiming and reading `@username` rows. The primary
 // key on `handle_lower` is the only uniqueness rule: concurrent claims race
 // on it and the loser maps to 409 `handle_taken`, never check-then-insert.
+//
+// Every query runs on the `effect/sql` client registered for this database
+// (see `../effect/sql`); the exported functions stay `async` so routes and
+// tests keep their shape during the transition.
 
-import { eq, inArray, lte, sql } from 'drizzle-orm';
+import { Effect } from 'effect';
+import { SqlClient, SqlError } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
-import { handles, retiredHandles, user } from '../db/schema';
+import { sqlRuntimeFor } from '../effect/sql';
 import { HttpError } from '../errors';
-import type { SetupTransaction } from '../setup/settings';
 import { classifyHandle, normalizeHandle } from './rules';
 
 export const HANDLE_CHANGE_INTERVAL_DAYS = 14;
@@ -19,21 +23,47 @@ export interface HandleRow {
   groupId: string | null;
 }
 
+// The full `handles` row the claim path reads to decide.
+interface HandleRecord extends HandleRow {
+  createdAt: Date;
+  changedAt: Date;
+}
+
+interface RetiredHandleRecord {
+  handleLower: string;
+  formerUserId: string | null;
+  formerGroupId: string | null;
+  reservedUntil: Date;
+}
+
+function runSql<A, E>(
+  db: ServerDatabase,
+  effect: Effect.Effect<A, E, SqlClient.SqlClient>,
+): Promise<A> {
+  return sqlRuntimeFor(db).runPromise(effect);
+}
+
 export async function findHandle(db: ServerDatabase, handle: string): Promise<HandleRow | null> {
-  const [row] = await db
-    .select()
-    .from(handles)
-    .where(eq(handles.handleLower, normalizeHandle(handle)))
-    .limit(1);
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<HandleRow>`SELECT * FROM handles
+        WHERE handle_lower = ${normalizeHandle(handle)} LIMIT 1`;
+    }),
+  );
   return row ?? null;
 }
 
 export async function handleForUser(db: ServerDatabase, userId: string): Promise<string | null> {
-  const [row] = await db
-    .select({ handle: handles.handle })
-    .from(handles)
-    .where(eq(handles.userId, userId))
-    .limit(1);
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ handle: string }>`SELECT handle FROM handles
+        WHERE user_id = ${userId} LIMIT 1`;
+    }),
+  );
   return row?.handle ?? null;
 }
 
@@ -44,10 +74,17 @@ export async function handleUserIdFor(
   if (userIds.length === 0) {
     return new Map();
   }
-  const rows = await db
-    .select({ userId: handles.userId, handle: handles.handle })
-    .from(handles)
-    .where(inArray(handles.userId, [...new Set(userIds)]));
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{
+        userId: string | null;
+        handle: string;
+      }>`SELECT user_id, handle FROM handles
+        WHERE user_id IN ${sql.in([...new Set(userIds)])}`;
+    }),
+  );
   const byUser = new Map<string, string>();
   for (const row of rows) {
     if (row.userId !== null) {
@@ -72,22 +109,29 @@ export async function checkHandleAvailability(
     return { available: false, reason: rule };
   }
   const lower = normalizeHandle(handle);
-  const [live] = await db.select().from(handles).where(eq(handles.handleLower, lower)).limit(1);
-  if (live) {
-    return { available: false, reason: 'taken' };
-  }
-  const [retired] = await db
-    .select()
-    .from(retiredHandles)
-    .where(eq(retiredHandles.handleLower, lower))
-    .limit(1);
-  if (retired && retired.reservedUntil.getTime() > now.getTime()) {
-    if (retired.formerUserId === userId) {
+  return runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const [live] = yield* sql<{ handleLower: string }>`SELECT handle_lower FROM handles
+        WHERE handle_lower = ${lower} LIMIT 1`;
+      if (live) {
+        return { available: false, reason: 'taken' as const };
+      }
+      const [retired] = yield* sql<{
+        formerUserId: string | null;
+        reservedUntil: Date;
+      }>`SELECT former_user_id, reserved_until FROM retired_handles
+        WHERE handle_lower = ${lower} LIMIT 1`;
+      if (retired && retired.reservedUntil.getTime() > now.getTime()) {
+        if (retired.formerUserId === userId) {
+          return { available: true };
+        }
+        return { available: false, reason: 'taken' as const };
+      }
       return { available: true };
-    }
-    return { available: false, reason: 'taken' };
-  }
-  return { available: true };
+    }),
+  );
 }
 
 // Whether a handle is free for a public group or channel to take: same
@@ -108,25 +152,32 @@ export async function checkGroupHandleAvailability(
     return { available: false, reason: rule };
   }
   const lower = normalizeHandle(handle);
-  const [live] = await db.select().from(handles).where(eq(handles.handleLower, lower)).limit(1);
-  if (live) {
-    if (groupId !== null && live.groupId === groupId) {
+  return runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const [live] = yield* sql<{ groupId: string | null }>`SELECT group_id FROM handles
+        WHERE handle_lower = ${lower} LIMIT 1`;
+      if (live) {
+        if (groupId !== null && live.groupId === groupId) {
+          return { available: true };
+        }
+        return { available: false, reason: 'taken' as const };
+      }
+      const [retired] = yield* sql<{
+        formerGroupId: string | null;
+        reservedUntil: Date;
+      }>`SELECT former_group_id, reserved_until FROM retired_handles
+        WHERE handle_lower = ${lower} LIMIT 1`;
+      if (retired && retired.reservedUntil.getTime() > now.getTime()) {
+        if (groupId !== null && retired.formerGroupId === groupId) {
+          return { available: true };
+        }
+        return { available: false, reason: 'taken' as const };
+      }
       return { available: true };
-    }
-    return { available: false, reason: 'taken' };
-  }
-  const [retired] = await db
-    .select()
-    .from(retiredHandles)
-    .where(eq(retiredHandles.handleLower, lower))
-    .limit(1);
-  if (retired && retired.reservedUntil.getTime() > now.getTime()) {
-    if (groupId !== null && retired.formerGroupId === groupId) {
-      return { available: true };
-    }
-    return { available: false, reason: 'taken' };
-  }
-  return { available: true };
+    }),
+  );
 }
 
 // Claims `handle` for `userId`: the first claim is always allowed, later
@@ -157,112 +208,118 @@ export async function claimHandle(
     throw new HttpError(409, 'handle_reserved', 'That username is reserved');
   }
 
-  return db.transaction(async (tx) => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${'handle-user:' + userId}))`);
+  return runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql.withTransaction(
+        Effect.gen(function* () {
+          yield* sql`SELECT pg_advisory_xact_lock(hashtext(${'handle-user:' + userId}))`;
 
-    const [existing] = await tx.select().from(handles).where(eq(handles.userId, userId)).limit(1);
-    const lower = normalizeHandle(trimmed);
-    if (existing && existing.handleLower === lower) {
-      if (existing.handle !== trimmed) {
-        // A casing-only change: allowed only after the interval, updates the
-        // stored casing in place, retires nothing.
-        const nextChangeAt = new Date(
-          existing.changedAt.getTime() + HANDLE_CHANGE_INTERVAL_DAYS * 24 * 60 * 60 * 1000,
-        );
-        if (now.getTime() < nextChangeAt.getTime()) {
-          throw new HttpError(409, 'handle_change_too_soon', 'You can change your username again', {
-            nextChangeAt: nextChangeAt.toISOString(),
-          });
-        }
-        const [updated] = await tx
-          .update(handles)
-          .set({ handle: trimmed, changedAt: now })
-          .where(eq(handles.handleLower, existing.handleLower))
-          .returning();
-        if (!updated) {
-          throw new Error('handle casing update returned no row');
-        }
-        return { handle: updated.handle };
-      }
-      return { handle: existing.handle };
-    }
-    if (existing) {
-      const nextChangeAt = new Date(
-        existing.changedAt.getTime() + HANDLE_CHANGE_INTERVAL_DAYS * 24 * 60 * 60 * 1000,
+          const [existing] = yield* sql<HandleRecord>`SELECT * FROM handles
+            WHERE user_id = ${userId} LIMIT 1`;
+          const lower = normalizeHandle(trimmed);
+          if (existing && existing.handleLower === lower) {
+            if (existing.handle !== trimmed) {
+              // A casing-only change: allowed only after the interval, updates the
+              // stored casing in place, retires nothing.
+              const nextChangeAt = new Date(
+                existing.changedAt.getTime() + HANDLE_CHANGE_INTERVAL_DAYS * 24 * 60 * 60 * 1000,
+              );
+              if (now.getTime() < nextChangeAt.getTime()) {
+                return yield* Effect.fail(
+                  new HttpError(
+                    409,
+                    'handle_change_too_soon',
+                    'You can change your username again',
+                    { nextChangeAt: nextChangeAt.toISOString() },
+                  ),
+                );
+              }
+              const [updated] = yield* sql<HandleRecord>`UPDATE handles
+                SET handle = ${trimmed}, changed_at = ${now}
+                WHERE handle_lower = ${existing.handleLower}
+                RETURNING *`;
+              if (!updated) {
+                return yield* Effect.fail(new Error('handle casing update returned no row'));
+              }
+              return { handle: updated.handle };
+            }
+            return { handle: existing.handle };
+          }
+          if (existing) {
+            const nextChangeAt = new Date(
+              existing.changedAt.getTime() + HANDLE_CHANGE_INTERVAL_DAYS * 24 * 60 * 60 * 1000,
+            );
+            if (now.getTime() < nextChangeAt.getTime()) {
+              return yield* Effect.fail(
+                new HttpError(409, 'handle_change_too_soon', 'You can change your username again', {
+                  nextChangeAt: nextChangeAt.toISOString(),
+                }),
+              );
+            }
+          }
+
+          const [retired] = yield* sql<RetiredHandleRecord>`SELECT * FROM retired_handles
+            WHERE handle_lower = ${lower} LIMIT 1`;
+          if (retired) {
+            const reserved = retired.reservedUntil.getTime() > now.getTime();
+            if (reserved && retired.formerUserId !== userId) {
+              return yield* Effect.fail(
+                new HttpError(409, 'handle_taken', 'That username is taken'),
+              );
+            }
+            yield* sql`DELETE FROM retired_handles WHERE handle_lower = ${lower}`;
+          }
+
+          if (existing) {
+            yield* sql`DELETE FROM handles WHERE handle_lower = ${existing.handleLower}`;
+            // The reservation belongs to whoever just gave the handle up: upsert
+            // so a racing retire (older owner) cannot survive a newer one. In
+            // practice the older reservation cannot exist here — the winner holds
+            // the live row, so only the winner reaches this path — but the upsert
+            // makes that invariant hold even if two txs interleave.
+            const reservedUntil = new Date(
+              now.getTime() + HANDLE_RESERVATION_DAYS * 24 * 60 * 60 * 1000,
+            );
+            yield* sql`INSERT INTO retired_handles
+                (handle_lower, former_user_id, former_group_id, reserved_until)
+              VALUES (${existing.handleLower}, ${userId}, ${null}, ${reservedUntil})
+              ON CONFLICT (handle_lower) DO UPDATE SET
+                former_user_id = EXCLUDED.former_user_id,
+                former_group_id = EXCLUDED.former_group_id,
+                reserved_until = EXCLUDED.reserved_until`;
+          }
+
+          const [row] = yield* sql<HandleRecord>`INSERT INTO handles
+              (handle_lower, handle, user_id, group_id, created_at, changed_at)
+            VALUES (${lower}, ${trimmed}, ${userId}, ${null}, ${now}, ${now})
+            RETURNING *`.pipe(
+            Effect.catchIf(
+              (error) => isUniqueViolation(error),
+              () => Effect.fail(new HttpError(409, 'handle_taken', 'That username is taken')),
+            ),
+          );
+          if (!row) {
+            return yield* Effect.fail(new Error('handle insert returned no row'));
+          }
+          return { handle: row.handle };
+        }),
       );
-      if (now.getTime() < nextChangeAt.getTime()) {
-        throw new HttpError(409, 'handle_change_too_soon', 'You can change your username again', {
-          nextChangeAt: nextChangeAt.toISOString(),
-        });
-      }
-    }
-
-    const [retired] = await tx
-      .select()
-      .from(retiredHandles)
-      .where(eq(retiredHandles.handleLower, lower))
-      .limit(1);
-    if (retired) {
-      const reserved = retired.reservedUntil.getTime() > now.getTime();
-      if (reserved && retired.formerUserId !== userId) {
-        throw new HttpError(409, 'handle_taken', 'That username is taken');
-      }
-      await tx.delete(retiredHandles).where(eq(retiredHandles.handleLower, lower));
-    }
-
-    if (existing) {
-      await tx.delete(handles).where(eq(handles.handleLower, existing.handleLower));
-      // The reservation belongs to whoever just gave the handle up: upsert
-      // so a racing retire (older owner) cannot survive a newer one. In
-      // practice the older reservation cannot exist here — the winner holds
-      // the live row, so only the winner reaches this path — but the upsert
-      // makes that invariant hold even if two txs interleave.
-      await tx
-        .insert(retiredHandles)
-        .values({
-          handleLower: existing.handleLower,
-          formerUserId: userId,
-          formerGroupId: null,
-          reservedUntil: new Date(now.getTime() + HANDLE_RESERVATION_DAYS * 24 * 60 * 60 * 1000),
-        })
-        .onConflictDoUpdate({
-          target: retiredHandles.handleLower,
-          set: {
-            formerUserId: userId,
-            formerGroupId: null,
-            reservedUntil: new Date(now.getTime() + HANDLE_RESERVATION_DAYS * 24 * 60 * 60 * 1000),
-          },
-        });
-    }
-
-    try {
-      const [row] = await tx
-        .insert(handles)
-        .values({
-          handleLower: lower,
-          handle: trimmed,
-          userId,
-          groupId: null,
-          createdAt: now,
-          changedAt: now,
-        })
-        .returning();
-      if (!row) {
-        throw new Error('handle insert returned no row');
-      }
-      return { handle: row.handle };
-    } catch (error) {
-      if (isUniqueViolation(error)) {
-        throw new HttpError(409, 'handle_taken', 'That username is taken');
-      }
-      throw error;
-    }
-  });
+    }),
+  );
 }
 
-// Drizzle wraps driver failures, so the unique code (23505 on Postgres and
-// PGlite) lives on a nested `cause`. Walk the chain.
+// Whether `error` is a unique-constraint violation: either the structured
+// `effect/sql` `UniqueViolation` reason or a driver error carrying the
+// Postgres `23505` code. Drizzle wraps driver failures, so the code lives on
+// a nested `cause` (`groups/service.ts` still calls this from its drizzle
+// transaction). Walk the chain; the message check is a last-resort fallback
+// for the wrapped shape only, never matched instead of a code.
 export function isUniqueViolation(error: unknown): boolean {
+  if (error instanceof SqlError.SqlError) {
+    return error.reason._tag === 'UniqueViolation';
+  }
   let current: unknown = error;
   for (let depth = 0; depth < 5; depth += 1) {
     if (typeof current !== 'object' || current === null) {
@@ -293,7 +350,13 @@ export async function reapExpiredRetiredHandles(
   now: Date = new Date(),
 ): Promise<void> {
   try {
-    await db.delete(retiredHandles).where(lte(retiredHandles.reservedUntil, now));
+    await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`DELETE FROM retired_handles WHERE reserved_until <= ${now}`;
+      }),
+    );
   } catch {
     // Best effort only.
   }
@@ -303,23 +366,15 @@ export async function displayNameFor(
   db: ServerDatabase,
   userId: string,
 ): Promise<{ name: string; image: string | null }> {
-  const [row] = await db
-    .select({ name: user.name, image: user.image })
-    .from(user)
-    .where(eq(user.id, userId))
-    .limit(1);
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ name: string; image: string | null }>`SELECT name, image FROM "user"
+        WHERE id = ${userId} LIMIT 1`;
+    }),
+  );
   return { name: row?.name ?? '', image: row?.image ?? null };
-}
-
-export type Queryable = ServerDatabase | SetupTransaction;
-
-export async function queryHandleForUser(db: Queryable, userId: string): Promise<string | null> {
-  const [row] = await db
-    .select({ handle: handles.handle })
-    .from(handles)
-    .where(eq(handles.userId, userId))
-    .limit(1);
-  return row?.handle ?? null;
 }
 
 export function isHandleChangeTooSoon(error: unknown): error is HttpError {

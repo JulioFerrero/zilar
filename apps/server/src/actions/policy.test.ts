@@ -1,12 +1,17 @@
-import { z } from 'zod';
+import { Schema } from 'effect';
 import { describe, expect, it } from 'vitest';
 import type { ActionAdapter } from './registry';
 import { policy } from './policy';
 
-const echoSchema = z.object({ value: z.string() });
-const strictSchema = z.object({ required: z.number().int().nonnegative() });
+const echoSchema = Schema.Struct({ value: Schema.String });
+const strictSchema = Schema.Struct({
+  required: Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0)),
+});
 
-function adapter(tier: 0 | 1 | 2, schema: z.ZodTypeAny = echoSchema): ActionAdapter<unknown> {
+function adapter(
+  tier: 0 | 1 | 2,
+  schema: Schema.Codec<unknown, unknown, never> = echoSchema,
+): ActionAdapter<unknown> {
   return {
     name: 'demo.echo',
     description: 'Echo adapter.',

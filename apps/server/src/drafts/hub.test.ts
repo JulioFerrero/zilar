@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
+import { Exit, Schema } from 'effect';
 import { DraftEventSchema, DraftEndEventSchema, DraftHubEventSchema } from './events';
 import type { DraftHubEvent } from './events';
 import { createDraftHub, DRAFT_MAX_CHARS, DRAFT_THROTTLE_MS } from './hub';
@@ -195,19 +196,39 @@ describe('draft event contract', () => {
   it('accepts the draft and end shapes T-0043 builds against', () => {
     const turnId = randomUUID();
     expect(
-      DraftHubEventSchema.safeParse({ type: 'draft', chatJid: CHAT_JID, turnId, text: 'hi' })
-        .success,
+      Exit.isSuccess(
+        Schema.decodeUnknownExit(DraftHubEventSchema)({
+          type: 'draft',
+          chatJid: CHAT_JID,
+          turnId,
+          text: 'hi',
+        }),
+      ),
     ).toBe(true);
     expect(
-      DraftHubEventSchema.safeParse({ type: 'end', chatJid: CHAT_JID, turnId, outcome: 'sent' })
-        .success,
+      Exit.isSuccess(
+        Schema.decodeUnknownExit(DraftHubEventSchema)({
+          type: 'end',
+          chatJid: CHAT_JID,
+          turnId,
+          outcome: 'sent',
+        }),
+      ),
     ).toBe(true);
-    expect(DraftEventSchema.safeParse({ type: 'draft', chatJid: CHAT_JID, turnId }).success).toBe(
-      false,
-    );
     expect(
-      DraftEndEventSchema.safeParse({ type: 'end', chatJid: CHAT_JID, turnId, outcome: 'maybe' })
-        .success,
+      Exit.isSuccess(
+        Schema.decodeUnknownExit(DraftEventSchema)({ type: 'draft', chatJid: CHAT_JID, turnId }),
+      ),
+    ).toBe(false);
+    expect(
+      Exit.isSuccess(
+        Schema.decodeUnknownExit(DraftEndEventSchema)({
+          type: 'end',
+          chatJid: CHAT_JID,
+          turnId,
+          outcome: 'maybe',
+        }),
+      ),
     ).toBe(false);
   });
 });

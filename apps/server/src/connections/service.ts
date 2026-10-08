@@ -1,11 +1,23 @@
-import { and, asc, count, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
+import { Effect } from 'effect';
+import { SqlClient, SqlError } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
-import { ais, providerConnections } from '../db/schema';
+import { providerConnections } from '../db/schema';
+import { sqlRuntimeFor } from '../effect/sql';
 import type { KeyCipher } from './crypto';
 import type { ProviderId } from './providers';
 
-type ConnectionRow = typeof providerConnections.$inferSelect;
+export interface ConnectionRow {
+  id: string;
+  owner: string;
+  provider: string;
+  encryptedKey: string;
+  label: string | null;
+  status: 'active' | 'revoked';
+  createdAt: Date;
+  updatedAt: Date;
+}
 
 export interface PublicConnection {
   id: string;
@@ -20,6 +32,16 @@ export interface CreateConnectionInput {
   provider: ProviderId;
   encryptedKey: string;
   label: string | null;
+}
+
+// Every query except `decryptForGatewayUse` runs on the `effect/sql` client
+// registered for this database (see `../effect/sql`). The exported functions
+// stay `async` so routes and tests keep their shape during the transition.
+function runSql<A>(
+  db: ServerDatabase,
+  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
+): Promise<A> {
+  return sqlRuntimeFor(db).runPromise(effect);
 }
 
 // `provider` is a validated ProviderId on every write, so the cast is safe. The
@@ -39,11 +61,15 @@ export async function listConnections(
   db: ServerDatabase,
   owner: string,
 ): Promise<PublicConnection[]> {
-  const rows = await db
-    .select()
-    .from(providerConnections)
-    .where(eq(providerConnections.owner, owner))
-    .orderBy(asc(providerConnections.createdAt));
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<ConnectionRow>`SELECT * FROM provider_connections
+        WHERE owner = ${owner}
+        ORDER BY created_at ASC`;
+    }),
+  );
   return rows.map(toPublicConnection);
 }
 
@@ -51,16 +77,16 @@ export async function createConnection(
   db: ServerDatabase,
   input: CreateConnectionInput,
 ): Promise<PublicConnection> {
-  const [row] = await db
-    .insert(providerConnections)
-    .values({
-      id: randomUUID(),
-      owner: input.owner,
-      provider: input.provider,
-      encryptedKey: input.encryptedKey,
-      label: input.label,
-    })
-    .returning();
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<ConnectionRow>`INSERT INTO provider_connections
+        (id, owner, provider, encrypted_key, label)
+        VALUES (${randomUUID()}, ${input.owner}, ${input.provider}, ${input.encryptedKey}, ${input.label})
+        RETURNING *`;
+    }),
+  );
   if (!row) {
     throw new Error('Failed to create connection');
   }
@@ -74,11 +100,15 @@ export async function findOwnedConnection(
   id: string,
   owner: string,
 ): Promise<ConnectionRow | null> {
-  const [row] = await db
-    .select()
-    .from(providerConnections)
-    .where(and(eq(providerConnections.id, id), eq(providerConnections.owner, owner)))
-    .limit(1);
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<ConnectionRow>`SELECT * FROM provider_connections
+        WHERE id = ${id} AND owner = ${owner}
+        LIMIT 1`;
+    }),
+  );
   return row ?? null;
 }
 
@@ -87,10 +117,15 @@ export async function deleteConnection(
   id: string,
   owner: string,
 ): Promise<boolean> {
-  const [row] = await db
-    .delete(providerConnections)
-    .where(and(eq(providerConnections.id, id), eq(providerConnections.owner, owner)))
-    .returning();
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ id: string }>`DELETE FROM provider_connections
+        WHERE id = ${id} AND owner = ${owner}
+        RETURNING id`;
+    }),
+  );
   return row !== undefined;
 }
 
@@ -102,13 +137,22 @@ export async function countAisUsingConnection(
   db: ServerDatabase,
   connectionId: string,
 ): Promise<number> {
-  const [row] = await db
-    .select({ total: count() })
-    .from(ais)
-    .where(eq(ais.providerConnectionId, connectionId));
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ total: number }>`SELECT count(*)::int AS total FROM ais
+        WHERE provider_connection_id = ${connectionId}`;
+    }),
+  );
   return Number(row?.total ?? 0);
 }
 
+// This query stays on drizzle: it moves together with the `ais/service.ts`
+// transactions, which call it with a drizzle transaction inside an advisory
+// lock (an effect/sql runtime is registered per top-level db, not per drizzle
+// transaction).
+//
 // The seam for the LLM gateway: decrypts a stored key in memory for the one
 // request that needs it. This is the only place outside `crypto` that the
 // plaintext exists, and it never crosses a route or a response. M2 wires this

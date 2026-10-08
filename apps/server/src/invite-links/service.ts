@@ -1,14 +1,16 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { randomUUID } from 'node:crypto';
-import { and, count, eq, isNull, sql } from 'drizzle-orm';
+import { Effect } from 'effect';
+import { SqlClient, SqlError } from 'effect/sql';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
-import { groupAis, groupInviteLinks, groupMembers, groups } from '../db/schema';
+import type { groupInviteLinks, groups } from '../db/schema';
+import { sqlRuntimeFor } from '../effect/sql';
 import { HttpError } from '../errors';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 import { syncTopicRoom } from '../topics/rooms';
-import { topics } from '../db/schema';
+import type { TopicRow } from '../topics/access';
 import { MAX_GROUP_MEMBERS, type InviteLogger } from '../groups/service';
 
 export const INVITE_LINK_TOKEN_BYTES = 32;
@@ -29,6 +31,8 @@ export const JOIN_PREVIEW_RATE_LIMIT_MAX_PER_USER = 120;
 export const JOIN_PREVIEW_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
 
 export type GroupInviteLinkRow = typeof groupInviteLinks.$inferSelect;
+
+type GroupRow = typeof groups.$inferSelect;
 
 export interface InviteLinkView {
   id: string;
@@ -118,6 +122,13 @@ export interface InviteLinkServiceDeps {
   audit?: AuditRecorder;
   /** Override the clock in tests. Defaults to the wall clock. */
   now?: () => Date;
+  /**
+   * Test-only seam: awaited right before the join transaction, after the
+   * pre-transaction checks. A test parks the first join here so a second one
+   * commits first and the in-tx re-check drives the loser path. Production
+   * never sets it.
+   */
+  beforeJoinTransaction?: () => Promise<void>;
 }
 
 export interface CreateInviteLinkInput {
@@ -135,6 +146,16 @@ export interface CreatedInviteLink {
   url: string;
 }
 
+// Every query runs on the `effect/sql` client registered for this database
+// (see `../effect/sql`). The exported functions stay `async` so routes and
+// tests keep their shape during the transition.
+function runSql<A, E>(
+  db: ServerDatabase,
+  effect: Effect.Effect<A, E, SqlClient.SqlClient>,
+): Promise<A> {
+  return sqlRuntimeFor(db).runPromise(effect);
+}
+
 function serviceNow(deps: InviteLinkServiceDeps): Date {
   return deps.now ? deps.now() : new Date();
 }
@@ -144,13 +165,22 @@ async function requireGroupManager(
   groupId: string,
   actorId: string,
 ): Promise<{ id: string; title: string }> {
-  const [group] = await db.select().from(groups).where(eq(groups.id, groupId)).limit(1);
+  const [group] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<GroupRow>`SELECT * FROM groups WHERE id = ${groupId} LIMIT 1`;
+    }),
+  );
   const [membership] = group
-    ? await db
-        .select({ role: groupMembers.role })
-        .from(groupMembers)
-        .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, actorId)))
-        .limit(1)
+    ? await runSql(
+        db,
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ role: string }>`SELECT role FROM group_members
+            WHERE group_id = ${groupId} AND user_id = ${actorId} LIMIT 1`;
+        }),
+      )
     : [];
   // A non-member sees the same 404 as a missing group, so group ids cannot
   // be probed.
@@ -182,32 +212,43 @@ export async function createInviteLink(
 ): Promise<CreatedInviteLink> {
   await requireGroupManager(deps.db, input.groupId, input.actorId);
 
-  const active = await deps.db
-    .select({ total: count() })
-    .from(groupInviteLinks)
-    .where(and(eq(groupInviteLinks.groupId, input.groupId), isNull(groupInviteLinks.revokedAt)));
-  if (Number(active[0]?.total ?? 0) >= MAX_ACTIVE_INVITE_LINKS) {
+  const [active] = await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ total: number }>`SELECT count(*)::int AS total FROM group_invite_links
+        WHERE group_id = ${input.groupId} AND revoked_at IS NULL`;
+    }),
+  );
+  if (Number(active?.total ?? 0) >= MAX_ACTIVE_INVITE_LINKS) {
     throw new HttpError(409, 'too_many_links', 'This group already has 10 active invite links');
   }
 
   const now = serviceNow(deps);
   const token = generateInviteToken();
-  const [row] = await deps.db
-    .insert(groupInviteLinks)
-    .values({
-      id: randomUUID(),
-      groupId: input.groupId,
-      tokenHash: hashInviteToken(token),
-      tokenHint: tokenHintFor(token),
-      label: input.label ?? null,
-      createdBy: input.actorId,
-      expiresAt:
-        input.expiresInHours === undefined
-          ? null
-          : new Date(now.getTime() + input.expiresInHours * 60 * 60 * 1000),
-      maxUses: input.maxUses ?? null,
-    })
-    .returning();
+  const expiresAt =
+    input.expiresInHours === undefined
+      ? null
+      : new Date(now.getTime() + input.expiresInHours * 60 * 60 * 1000);
+  const [row] = await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<GroupInviteLinkRow>`INSERT INTO group_invite_links
+          (id, group_id, token_hash, token_hint, label, created_by, expires_at, max_uses)
+        VALUES (
+          ${randomUUID()},
+          ${input.groupId},
+          ${hashInviteToken(token)},
+          ${tokenHintFor(token)},
+          ${input.label ?? null},
+          ${input.actorId},
+          ${expiresAt === null ? null : expiresAt.toISOString()},
+          ${input.maxUses ?? null}
+        )
+        RETURNING *`;
+    }),
+  );
   if (!row) {
     throw new Error('invite link disappeared right after creation');
   }
@@ -236,10 +277,14 @@ export async function listInviteLinks(
   actorId: string,
 ): Promise<InviteLinkView[]> {
   await requireGroupManager(deps.db, groupId, actorId);
-  const rows = await deps.db
-    .select()
-    .from(groupInviteLinks)
-    .where(eq(groupInviteLinks.groupId, groupId));
+  const rows = await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<GroupInviteLinkRow>`SELECT * FROM group_invite_links
+        WHERE group_id = ${groupId}`;
+    }),
+  );
   return rows
     .map(toInviteLinkView)
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
@@ -253,17 +298,15 @@ export async function revokeInviteLink(
 ): Promise<void> {
   await requireGroupManager(deps.db, groupId, actorId);
   const now = serviceNow(deps);
-  const [row] = await deps.db
-    .update(groupInviteLinks)
-    .set({ revokedAt: now })
-    .where(
-      and(
-        eq(groupInviteLinks.id, linkId),
-        eq(groupInviteLinks.groupId, groupId),
-        isNull(groupInviteLinks.revokedAt),
-      ),
-    )
-    .returning();
+  const [row] = await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<GroupInviteLinkRow>`UPDATE group_invite_links SET revoked_at = ${now.toISOString()}
+        WHERE id = ${linkId} AND group_id = ${groupId} AND revoked_at IS NULL
+        RETURNING *`;
+    }),
+  );
   // Idempotent: revoking twice (or revoking a missing id) still answers 204.
   // The audit entry fires only on the first revoke, when the row changed.
   if (!row) {
@@ -287,11 +330,14 @@ export async function revokeInviteLink(
 
 async function findLinkRow(db: ServerDatabase, token: string): Promise<GroupInviteLinkRow | null> {
   const hash = hashInviteToken(token);
-  const [row] = await db
-    .select()
-    .from(groupInviteLinks)
-    .where(eq(groupInviteLinks.tokenHash, hash))
-    .limit(1);
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<GroupInviteLinkRow>`SELECT * FROM group_invite_links
+        WHERE token_hash = ${hash} LIMIT 1`;
+    }),
+  );
   // The lookup is by hash, so a wrong-shaped token simply misses. The
   // constant-time comparison keeps a slow local oracle from helping a
   // guesser confirm prefixes.
@@ -302,10 +348,14 @@ async function findLinkRow(db: ServerDatabase, token: string): Promise<GroupInvi
 }
 
 async function countGroupMembers(db: ServerDatabase, groupId: string): Promise<number> {
-  const [row] = await db
-    .select({ total: count() })
-    .from(groupMembers)
-    .where(eq(groupMembers.groupId, groupId));
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ total: number }>`SELECT count(*)::int AS total FROM group_members
+        WHERE group_id = ${groupId}`;
+    }),
+  );
   return Number(row?.total ?? 0);
 }
 
@@ -314,11 +364,14 @@ async function isGroupMember(
   groupId: string,
   userId: string,
 ): Promise<boolean> {
-  const [row] = await db
-    .select({ userId: groupMembers.userId })
-    .from(groupMembers)
-    .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, userId)))
-    .limit(1);
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ userId: string }>`SELECT user_id FROM group_members
+        WHERE group_id = ${groupId} AND user_id = ${userId} LIMIT 1`;
+    }),
+  );
   return row !== undefined;
 }
 
@@ -337,11 +390,14 @@ export async function previewInviteLink(
   if (!row || !linkIsUsable(row, serviceNow(deps))) {
     throw toInvalidLink();
   }
-  const [group] = await deps.db
-    .select({ title: groups.title, kind: groups.kind })
-    .from(groups)
-    .where(eq(groups.id, row.groupId))
-    .limit(1);
+  const [group] = await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ title: string; kind: 'group' | 'channel' }>`SELECT title, kind FROM groups
+        WHERE id = ${row.groupId} LIMIT 1`;
+    }),
+  );
   if (!group) {
     throw toInvalidLink();
   }
@@ -396,7 +452,13 @@ export async function joinByInviteLink(
   if (!link || !linkIsUsable(link, now)) {
     throw toInvalidLink();
   }
-  const [group] = await deps.db.select().from(groups).where(eq(groups.id, link.groupId)).limit(1);
+  const [group] = await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<GroupRow>`SELECT * FROM groups WHERE id = ${link.groupId} LIMIT 1`;
+    }),
+  );
   if (!group) {
     throw toInvalidLink();
   }
@@ -404,45 +466,60 @@ export async function joinByInviteLink(
     return { groupId: link.groupId, alreadyMember: true };
   }
   await assertGroupHasRoom(deps.db, link.groupId);
+  if (deps.beforeJoinTransaction !== undefined) {
+    await deps.beforeJoinTransaction();
+  }
 
-  const joined = await deps.db.transaction(async (tx) => {
-    // `tx` runs the claim and the insert atomically; the cast matches the
-    // codebase precedent (`createRule(tx as unknown as ServerDatabase …)`).
-    const txDb = tx as unknown as ServerDatabase;
-    const [existing] = await tx
-      .select({ userId: groupMembers.userId })
-      .from(groupMembers)
-      .where(and(eq(groupMembers.groupId, link.groupId), eq(groupMembers.userId, userId)))
-      .limit(1);
-    if (existing) {
-      return false;
-    }
-    const claimed = await claimLinkUse(txDb, link.id, now);
-    if (!claimed) {
-      throw toInvalidLink();
-    }
-    try {
-      await deps.adminClient.setAffiliation(
-        group.roomLocalpart,
-        jidFor(localpartFor(userId), deps.domain),
-        'member',
+  // The claim and the insert run atomically on the transaction connection.
+  // A typed failure (the loser's 404) and a failing room call both abort the
+  // transaction, so the claim rolls back: a failed join consumes nothing.
+  const joined = await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql.withTransaction(
+        Effect.gen(function* () {
+          const [existing] = yield* sql<{ userId: string }>`SELECT user_id FROM group_members
+            WHERE group_id = ${link.groupId} AND user_id = ${userId} LIMIT 1`;
+          if (existing !== undefined) {
+            return false;
+          }
+          const claimed = yield* claimLinkUse(sql, link.id, now);
+          if (!claimed) {
+            return yield* Effect.fail(toInvalidLink());
+          }
+          // A room failure must reach the caller unchanged: an `HttpError`
+          // from the client keeps its status and code, anything else becomes
+          // the fixed 503. Either way the transaction rolls the claim back.
+          yield* Effect.tryPromise({
+            try: () =>
+              deps.adminClient.setAffiliation(
+                group.roomLocalpart,
+                jidFor(localpartFor(userId), deps.domain),
+                'member',
+              ),
+            catch: (error) =>
+              error instanceof HttpError
+                ? error
+                : new HttpError(
+                    503,
+                    'xmpp_unavailable',
+                    'The chat service is temporarily unavailable',
+                  ),
+          });
+          const inserted = yield* sql<{ userId: string }>`INSERT INTO group_members
+              (group_id, user_id, role)
+            VALUES (${link.groupId}, ${userId}, 'member')
+            ON CONFLICT (group_id, user_id) DO NOTHING
+            RETURNING user_id`;
+          // No row inserted: another writer won the race and committed first.
+          // No membership was created, so the claim above rolls back with the
+          // transaction and nothing is consumed.
+          return inserted.length > 0;
+        }),
       );
-    } catch (error) {
-      if (error instanceof HttpError) {
-        throw error;
-      }
-      throw new HttpError(503, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
-    }
-    const inserted = await txDb
-      .insert(groupMembers)
-      .values({ groupId: link.groupId, userId, role: 'member' })
-      .onConflictDoNothing({ target: [groupMembers.groupId, groupMembers.userId] })
-      .returning();
-    // No row inserted: another writer won the race and committed first. No
-    // membership was created, so the claim above rolls back with the
-    // transaction and nothing is consumed.
-    return inserted.length > 0;
-  });
+    }),
+  );
   if (!joined) {
     return { groupId: link.groupId, alreadyMember: true };
   }
@@ -482,15 +559,23 @@ export async function joinByInviteLink(
 // checks the cap before its transaction without a serializing lock. Accepted.
 // T-0164: shared with the public-group join below.
 export async function assertGroupHasRoom(db: ServerDatabase, groupId: string): Promise<void> {
-  const [row] = await db
-    .select({ total: count() })
-    .from(groupMembers)
-    .where(eq(groupMembers.groupId, groupId));
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ total: number }>`SELECT count(*)::int AS total FROM group_members
+        WHERE group_id = ${groupId}`;
+    }),
+  );
   const memberTotal = Number(row?.total ?? 0);
-  const [aiRow] = await db
-    .select({ total: count() })
-    .from(groupAis)
-    .where(eq(groupAis.groupId, groupId));
+  const [aiRow] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ total: number }>`SELECT count(*)::int AS total FROM group_ais
+        WHERE group_id = ${groupId}`;
+    }),
+  );
   if (memberTotal + Number(aiRow?.total ?? 0) + 1 > MAX_GROUP_MEMBERS) {
     throw new HttpError(409, 'group_full', 'This group is full');
   }
@@ -498,21 +583,23 @@ export async function assertGroupHasRoom(db: ServerDatabase, groupId: string): P
 
 // Atomically consumes one use: the update only lands while the link is
 // usable, so racing joins serialize on the row and at most `max_uses` of
-// them win. Returns true when this caller won a use.
-async function claimLinkUse(db: ServerDatabase, linkId: string, now: Date): Promise<boolean> {
-  const rows = await db
-    .update(groupInviteLinks)
-    .set({ uses: sql`${groupInviteLinks.uses} + 1` })
-    .where(
-      and(
-        eq(groupInviteLinks.id, linkId),
-        isNull(groupInviteLinks.revokedAt),
-        sql`(${groupInviteLinks.expiresAt} IS NULL OR ${groupInviteLinks.expiresAt} > ${now})`,
-        sql`(${groupInviteLinks.maxUses} IS NULL OR ${groupInviteLinks.uses} < ${groupInviteLinks.maxUses})`,
-      ),
-    )
-    .returning();
-  return rows.length > 0;
+// them win. Returns true when this caller won a use. Runs on the caller's
+// transaction connection.
+function claimLinkUse(
+  sql: SqlClient.SqlClient,
+  linkId: string,
+  now: Date,
+): Effect.Effect<boolean, SqlError.SqlError> {
+  return Effect.gen(function* () {
+    const rows = yield* sql<{ id: string }>`UPDATE group_invite_links
+      SET uses = uses + 1
+      WHERE id = ${linkId}
+        AND revoked_at IS NULL
+        AND (expires_at IS NULL OR expires_at > ${now.toISOString()})
+        AND (max_uses IS NULL OR uses < max_uses)
+      RETURNING id`;
+    return rows.length > 0;
+  });
 }
 
 // The post-commit half of a link join: every public topic room gains the
@@ -527,7 +614,13 @@ export async function syncPublicTopicsByLink(
   deps: InviteLinkServiceDeps,
   groupId: string,
 ): Promise<void> {
-  const topicRows = await deps.db.select().from(topics).where(eq(topics.groupId, groupId));
+  const topicRows = await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<TopicRow>`SELECT * FROM topics WHERE group_id = ${groupId}`;
+    }),
+  );
   for (const topic of topicRows) {
     if (topic.archivedAt !== null) {
       continue;

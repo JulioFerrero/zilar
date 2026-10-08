@@ -1,7 +1,7 @@
 ---
 id: T-0576
 title: "Effect C (HTTP): avatars (PUT upload under a streaming cap, DELETE, GET raw bytes) onto HttpApi using guide item 12; avatar kind schema zod to Effect Schema; same 404/429/413 order, texts and response headers; tests unchanged"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0576-effect-http-avatars
 model: auto
@@ -76,4 +76,73 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- Created `apps/server/src/avatars/api.ts` with the three routes on Effect
+  `HttpApi` (`createAvatarsApi(deps)`, `AVATARS_API_ROUTES`): PUT upload /
+  DELETE / GET serve with the same order (PUT: session -> kind 404 ->
+  ownerId decode 404 -> `checkAvatarWritePermission` -> limiter 429 ->
+  declared-length 413 -> `readCapped` 413 -> JSON), statuses, texts, JSON
+  bodies (`{ url }`, `{ ok: true }`) and the exact GET headers. The limiter
+  runs inside the handler after the permission check; the streaming cap uses
+  `Stream.runForEachWhile` over `request.request.stream` like `voice/api.ts`.
+- `routes.ts`: removed the Hono factory and the old `readCapped`; keeps the
+  `AvatarsRoutesDependencies` interface (re-exported so `app.ts` keeps its
+  type import).
+- `service.ts`: only change is `avatarOwnerKindSchema` to
+  `Schema.Literals(['user','ai','group'])` with
+  `AvatarKind = typeof avatarOwnerKindSchema.Type`; no zod import remains in
+  the avatars module (grep confirms).
+- `app.ts`: `mountEffectRoutes(app, avatarsApi.routes, avatarsApi.handler)`
+  at the same position (with `logger` passed through).
+- Output schema check (guide item 8): `uploadAvatar` returns
+  `AvatarUploadResult = { url: string }`; `AvatarUploadView` is exactly
+  `{ url: String }`. DELETE returned `{ ok: true }`; `AvatarRemoveView` is
+  exactly `{ ok: Literal(true) }`. No field dropped. No generic decode text
+  changed (kind/id failures are handler-side 404s, no schema-error layer).
+- Path decoding finding: Hono's `c.req.param()` hands out decoded values and
+  the old code decoded again. The Effect router (find-my-way in
+  `effect@4.0.2/src/http/FindMyWay/internal/router.ts:350,390,981`) decodes
+  path segments with `safeDecodeURIComponent` before handing params out, so
+  `request.params` is likewise already decoded. Keeping `decodePathId` /
+  the GET `decodeURIComponent` gives the same final id (idempotent on normal
+  ids, 404 on bad escapes) — confirmed by the unchanged tests passing,
+  including the `encodeURIComponent(ownerId)` calls at
+  `routes.test.ts:166,178` and the full round-trips.
+
+### Files changed
+- `apps/server/src/avatars/api.ts` (new)
+- `apps/server/src/avatars/routes.ts` (Hono factory + readCapped removed)
+- `apps/server/src/avatars/service.ts` (kind schema zod -> Effect Schema)
+- `apps/server/src/app.ts` (mount via `mountEffectRoutes`)
+
+### Commands and real results
+- `pnpm install`: ok (13.3s).
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot avatars`:
+  1 file, 18 passed.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot authz-sweep`:
+  1 file, 5 passed.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot app.test`:
+  1 file, 9 passed.
+- `pnpm gate`: PASS install (1.5s), PASS format (19.1s), PASS lint (1.0s),
+  PASS typecheck (9.4s), PASS tests @zilar/server (336.8s),
+  "scope: every changed file is inside the Allowed files", GATE PASS.
+
+### Security checklist
+- No secrets/tokens in logs, audit detail, errors or URLs; `logPath`
+  redaction for `/api/avatars/` untouched.
+- Permission check (`checkAvatarWritePermission`) runs before any effect and
+  before the limiter on PUT/DELETE; GET keeps session + same-404 behavior.
+- Limits enforced per request (limiter + 256 KiB streaming cap); no
+  check-then-insert changes.
+- 401 sweep covers all three routes (authz-sweep green); writes rate-limited.
+
+### Deviations / open questions
+- None. All listed tests unchanged and green.
+
 ## Review (written by Claude)
+
+**2026-10-08, lead:** approved.
+- **Pre-review:** clean. The packet (08:44) is newer than HEAD 07966e3c.
+- **No test file changed.**
+- **Lead check:** the upload answer matches `AvatarUploadResult` (`url`), and delete answers `{ ok: true }`. The worker showed that the Effect router decodes path params like Hono does (`FindMyWay` `safeDecodeURIComponent`), so the second decode keeps the same ids.
+- **Accepted nit:** the header comment in `routes.ts:3` says the type is re-exported for `app.ts`; it is logged for a cleanup.

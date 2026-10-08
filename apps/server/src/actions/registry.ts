@@ -1,4 +1,23 @@
-import type { z } from 'zod';
+import { Exit, Schema } from 'effect';
+
+// The args schema an adapter carries: an Effect schema that decodes
+// service-free (plan T-G removed the zod member).
+export type ArgsSchema<Args> = Schema.Codec<Args, unknown, never>;
+
+// The one decode seam for adapter args. Callers only need success or failure
+// and the decoded value: the deny reason is the fixed `invalid_args`, so no
+// message is produced here (the plan's issue walker belongs to T-B). The
+// decode is strict (`onExcessProperty: 'error'`) to match the old zod
+// schemas' `.strict()`.
+export function decodeActionArgs<Args>(
+  schema: ArgsSchema<Args>,
+  raw: unknown,
+): { ok: true; value: Args } | { ok: false } {
+  const exit = Schema.decodeUnknownExit(schema, {
+    onExcessProperty: 'error',
+  })(raw);
+  return Exit.isSuccess(exit) ? { ok: true, value: exit.value } : { ok: false };
+}
 
 // The context the adapter receives at execution time. `aiId`, `groupId`
 // and `topicId` come from the gateway (never from the request), so an
@@ -74,8 +93,8 @@ export interface ActionCost {
   amount: number;
 }
 
-// One adapter. `argsSchema` is a zod schema; the gateway calls
-// `safeParse(input.args)` and uses the parsed value as the
+// One adapter. `argsSchema` is an Effect schema. The gateway calls
+// `decodeActionArgs(input.args)` and uses the parsed value as the
 // canonical-JSON/args-hash input. `describe` builds the card text
 // (`summary` is the bolded line, `details` the body, both bounded).
 // `description` is one short line the model sees in the `request_action`
@@ -92,7 +111,7 @@ export interface ActionAdapter<Args> {
   name: string;
   description: string;
   tier: 0 | 1 | 2;
-  argsSchema: z.ZodType<Args>;
+  argsSchema: ArgsSchema<Args>;
   describe: (args: Args) => { summary: string; details?: string };
   estimateCost?: (args: Args) => ActionCost;
   /**

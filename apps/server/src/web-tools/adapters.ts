@@ -9,8 +9,8 @@
 // request goes), everything that fetches a caller-chosen URL or sends
 // free text to a third party is tier 1 (`web.fetch`, `web.feed`,
 // `web.search`).
-import { z } from 'zod';
-import type { ActionAdapter, ActionContext } from '../actions/registry';
+import { Schema } from 'effect';
+import type { ActionAdapter, ActionContext, ArgsSchema } from '../actions/registry';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
 import { serverVersion } from '../version';
 import { parseFeed } from './feed';
@@ -164,19 +164,25 @@ function guardedOptions(
 // `web.fetch`: read one caller-chosen page. Tier 1: the URL is a
 // data-exfiltration channel, so the topic's "always allow here" rules
 // and the kill switch apply.
-const webFetchArgsSchema = z
-  .object({
-    url: z.string().min(1).max(MAX_FETCH_URL_CHARS),
-    maxChars: z.number().int().min(1).max(MAX_FETCH_CHARS).optional(),
-  })
-  .strict();
+const webFetchArgsSchema = Schema.Struct({
+  url: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(MAX_FETCH_URL_CHARS)),
+  maxChars: Schema.optional(
+    Schema.Number.pipe(
+      Schema.check(
+        Schema.isInt(),
+        Schema.isGreaterThanOrEqualTo(1),
+        Schema.isLessThanOrEqualTo(MAX_FETCH_CHARS),
+      ),
+    ),
+  ),
+});
 
 function webFetchAdapter(state: WebToolsState): ActionAdapter<unknown> {
   return {
     name: 'web.fetch',
     description: 'Fetch one public https page and read it as plain text.',
     tier: 1,
-    argsSchema: webFetchArgsSchema as unknown as z.ZodType<unknown>,
+    argsSchema: webFetchArgsSchema as unknown as ArgsSchema<unknown>,
     describe: (args) => {
       const parsed = args as { url: string };
       return { summary: `Fetch ${hostOf(parsed.url)}` };
@@ -220,36 +226,37 @@ function webFetchAdapter(state: WebToolsState): ActionAdapter<unknown> {
 // `web.wikipedia`: search + page extract on a fixed host. Tier 0: the
 // caller picks only the query and the language, never the host. `lang`
 // is letters-only so it cannot smuggle a different host in.
-const webWikipediaArgsSchema = z
-  .object({
-    query: z.string().trim().min(1).max(200),
-    lang: z
-      .string()
-      .regex(/^[a-zA-Z]{2,3}$/, { message: 'lang must be 2-3 letters' })
-      .optional(),
-  })
-  .strict();
+const webWikipediaArgsSchema = Schema.Struct({
+  query: Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(200)),
+  lang: Schema.optional(
+    Schema.String.check(
+      Schema.makeFilter((value) =>
+        /^[a-zA-Z]{2,3}$/.test(value) ? undefined : 'lang must be 2-3 letters',
+      ),
+    ),
+  ),
+});
 
 export function wikipediaHost(lang: string): string {
   return `${lang.toLowerCase()}.wikipedia.org`;
 }
 
-const wikipediaSearchSchema = z.object({
-  query: z.object({
-    search: z.array(z.object({ title: z.string(), pageid: z.number().int() })),
+const wikipediaSearchSchema = Schema.Struct({
+  query: Schema.Struct({
+    search: Schema.Array(Schema.Struct({ title: Schema.String, pageid: Schema.Int })),
   }),
 });
 
-const wikipediaExtractSchema = z.object({
-  query: z.object({
-    pages: z.record(
-      z.string(),
-      z.object({
-        pageid: z.number().int().optional(),
-        title: z.string(),
-        extract: z.string().optional(),
-        fullurl: z.string().optional(),
-        missing: z.unknown().optional(),
+const wikipediaExtractSchema = Schema.Struct({
+  query: Schema.Struct({
+    pages: Schema.Record(
+      Schema.String,
+      Schema.Struct({
+        pageid: Schema.optional(Schema.Int),
+        title: Schema.String,
+        extract: Schema.optional(Schema.String),
+        fullurl: Schema.optional(Schema.String),
+        missing: Schema.optional(Schema.Unknown),
       }),
     ),
   }),
@@ -262,9 +269,9 @@ export interface WikipediaArticle {
 }
 
 export function parseWikipediaSearch(body: string): { title: string } | null {
-  let parsed: z.infer<typeof wikipediaSearchSchema>;
+  let parsed: typeof wikipediaSearchSchema.Type;
   try {
-    parsed = wikipediaSearchSchema.parse(JSON.parse(body));
+    parsed = Schema.decodeUnknownSync(wikipediaSearchSchema)(JSON.parse(body));
   } catch {
     return null;
   }
@@ -276,9 +283,9 @@ export function parseWikipediaSearch(body: string): { title: string } | null {
 }
 
 export function parseWikipediaExtract(body: string): WikipediaArticle | null {
-  let parsed: z.infer<typeof wikipediaExtractSchema>;
+  let parsed: typeof wikipediaExtractSchema.Type;
   try {
-    parsed = wikipediaExtractSchema.parse(JSON.parse(body));
+    parsed = Schema.decodeUnknownSync(wikipediaExtractSchema)(JSON.parse(body));
   } catch {
     return null;
   }
@@ -310,7 +317,7 @@ function webWikipediaAdapter(state: WebToolsState): ActionAdapter<unknown> {
     name: 'web.wikipedia',
     description: 'Read a short Wikipedia summary of a topic (keyless, fixed host).',
     tier: 0,
-    argsSchema: webWikipediaArgsSchema as unknown as z.ZodType<unknown>,
+    argsSchema: webWikipediaArgsSchema as unknown as ArgsSchema<unknown>,
     describe: (args) => {
       const parsed = args as { query: string };
       return { summary: `Look up "${parsed.query}" on Wikipedia` };
@@ -372,18 +379,19 @@ function webWikipediaAdapter(state: WebToolsState): ActionAdapter<unknown> {
 // `web.price`: latest price per symbol, keyless. Tier 0: both hosts are
 // fixed. Upper-cased crypto symbols go to CoinGecko; everything else
 // goes to Stooq as-is (so `^spx`, `xauusd`, `aapl.us` keep working).
-const webPriceArgsSchema = z
-  .object({
-    symbols: z.array(z.string().regex(PRICE_SYMBOL_PATTERN)).min(1).max(MAX_PRICE_SYMBOLS),
-  })
-  .strict();
+const webPriceArgsSchema = Schema.Struct({
+  symbols: Schema.Array(Schema.String.check(Schema.isPattern(PRICE_SYMBOL_PATTERN))).check(
+    Schema.isMinLength(1),
+    Schema.isMaxLength(MAX_PRICE_SYMBOLS),
+  ),
+});
 
 function webPriceAdapter(state: WebToolsState): ActionAdapter<unknown> {
   return {
     name: 'web.price',
     description: 'Latest price for crypto, stocks, indexes and gold (keyless).',
     tier: 0,
-    argsSchema: webPriceArgsSchema as unknown as z.ZodType<unknown>,
+    argsSchema: webPriceArgsSchema as unknown as ArgsSchema<unknown>,
     describe: (args) => {
       const parsed = args as { symbols: string[] };
       return { summary: `Look up prices for ${parsed.symbols.join(', ')}` };
@@ -461,12 +469,18 @@ function webPriceAdapter(state: WebToolsState): ActionAdapter<unknown> {
 
 // `web.feed`: read one caller-chosen RSS/Atom feed. Tier 1: the URL is
 // a data-exfiltration channel, like `web.fetch`.
-const webFeedArgsSchema = z
-  .object({
-    url: z.string().min(1).max(MAX_FETCH_URL_CHARS),
-    limit: z.number().int().min(1).max(MAX_FEED_LIMIT).optional(),
-  })
-  .strict();
+const webFeedArgsSchema = Schema.Struct({
+  url: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(MAX_FETCH_URL_CHARS)),
+  limit: Schema.optional(
+    Schema.Number.pipe(
+      Schema.check(
+        Schema.isInt(),
+        Schema.isGreaterThanOrEqualTo(1),
+        Schema.isLessThanOrEqualTo(MAX_FEED_LIMIT),
+      ),
+    ),
+  ),
+});
 
 export function formatFeedItems(
   items: { title: string; link: string; date: string; snippet: string }[],
@@ -487,7 +501,7 @@ function webFeedAdapter(state: WebToolsState): ActionAdapter<unknown> {
     name: 'web.feed',
     description: 'Read the newest items of one public RSS or Atom feed.',
     tier: 1,
-    argsSchema: webFeedArgsSchema as unknown as z.ZodType<unknown>,
+    argsSchema: webFeedArgsSchema as unknown as ArgsSchema<unknown>,
     describe: (args) => {
       const parsed = args as { url: string };
       return { summary: `Read the feed at ${hostOf(parsed.url)}` };
@@ -529,11 +543,9 @@ function webFeedAdapter(state: WebToolsState): ActionAdapter<unknown> {
 // the query leaves the server, so the description warns the model not
 // to put private or sensitive text in it. Any failure or 0 results is
 // "search unavailable right now" with a hint at the reliable tools.
-const webSearchArgsSchema = z
-  .object({
-    query: z.string().trim().min(1).max(MAX_SEARCH_QUERY_CHARS),
-  })
-  .strict();
+const webSearchArgsSchema = Schema.Struct({
+  query: Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(MAX_SEARCH_QUERY_CHARS)),
+});
 
 function webSearchAdapter(state: WebToolsState): ActionAdapter<unknown> {
   return {
@@ -541,7 +553,7 @@ function webSearchAdapter(state: WebToolsState): ActionAdapter<unknown> {
     description:
       'Best-effort web search (unreliable); never put private or sensitive text in the query.',
     tier: 1,
-    argsSchema: webSearchArgsSchema as unknown as z.ZodType<unknown>,
+    argsSchema: webSearchArgsSchema as unknown as ArgsSchema<unknown>,
     describe: (args) => {
       const parsed = args as { query: string };
       return { summary: `Search the web for "${parsed.query}"` };

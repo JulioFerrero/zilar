@@ -27,7 +27,7 @@ The full design is in `docs/PROJECT_PLAN.md`. Read the sections your task links 
 2. Set `status: in-progress` in the task's front matter.
 3. Do the work. **Only edit the files and folders listed under "Allowed files".**
    - If you need to touch anything else, stop, explain why in the Report under "Blocked / needs a decision", and set `status: blocked`.
-4. Run every command under "Checks". All must pass. Then run `pnpm gate` from the repo root: it runs install, format, lint, typecheck and the tests of every package you touched, and lists files you changed outside your Allowed files. It must end with `GATE PASS` and no files outside scope. Paste its summary lines in the Report. The lead's merge runs the same gate again, so a red gate costs you a round.
+4. Run every command under "Checks". All must pass. Then run `pnpm gate` from the repo root: it runs install, format, lint, typecheck and the nearest tests of every package you touched, and lists files you changed outside your Allowed files. It must end with `GATE PASS` and no files outside scope. Paste its summary lines in the Report. The lead's merge runs the same gate again, so a red gate costs you a round.
    - If one fails and you can't fix it within the task's scope, say so honestly in the Report.
 5. Fill in the **Report** section: what you did, the files you changed, the commands you ran with their real results, problems, deviations from the spec, and open questions.
 6. Set `status: review`.
@@ -60,13 +60,14 @@ The full design is in `docs/PROJECT_PLAN.md`. Read the sections your task links 
 - Never read, print, log or commit secrets: API keys, tokens, passwords, `.env` files. Use placeholders like `CHANGE_ME` in examples.
 - Never disable checks, tests, lint rules or git hooks to make things pass. Never use `--no-verify`.
 - Never run destructive commands outside your worktree, such as `rm -rf` on paths outside the repo, or `git push --force`.
+- Never start daemons, background jobs or detached runs (`launchctl`, `nohup`, `setsid`, `disown`, `crontab`, `at`, `osascript`, `screen`, `tmux`, a trailing `&`): they outlive your session and cannot be stopped. Every command runs in the foreground.
 - Never change `AGENTS.md`, `docs/PROJECT_PLAN.md`, `work/BOARD.md`, or any other task's file.
 - Don't guess on architecture or security decisions. Ask in the Report instead.
 
 ## Running tests (the machine is shared)
 
 - While you work, run only the tests for the files you touched, with the quiet reporter: `pnpm --filter <package> test --maxWorkers=2 --reporter=dot <path>`. Never a bare `turbo test`, never `vitest run` without a filter and the worker cap, never `--force`.
-- At the end run `pnpm gate` once from the repo root. It runs install, format, lint, typecheck and the tests of the packages you touched; do not run those one by one before it. Paste its summary lines in the Report and say which single tests you ran.
+- At the end run `pnpm gate` once from the repo root. It runs install, format, lint, typecheck and the nearest tests of the packages you touched; do not run those one by one before it. Paste its summary lines in the Report and say which single tests you ran.
 - Keep your session small: every command output stays in your context for the rest of the task. Read only the files and line ranges you need, never print a whole log, and when a command fails look at the failing part only.
 - Wait for a run to finish before starting another.
 

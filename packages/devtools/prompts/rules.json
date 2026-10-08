@@ -27,5 +27,14 @@
   { "action": "shell", "resource": "npm publish*", "effect": "deny" },
   { "action": "shell", "resource": "pnpm publish*", "effect": "deny" },
   { "action": "shell", "resource": "opencode*", "effect": "deny" },
-  { "action": "shell", "resource": "security *", "effect": "deny" }
+  { "action": "shell", "resource": "security *", "effect": "deny" },
+  { "action": "shell", "resource": "launchctl *", "effect": "deny" },
+  { "action": "shell", "resource": "nohup *", "effect": "deny" },
+  { "action": "shell", "resource": "setsid *", "effect": "deny" },
+  { "action": "shell", "resource": "disown*", "effect": "deny" },
+  { "action": "shell", "resource": "crontab *", "effect": "deny" },
+  { "action": "shell", "resource": "at *", "effect": "deny" },
+  { "action": "shell", "resource": "osascript *", "effect": "deny" },
+  { "action": "shell", "resource": "screen *", "effect": "deny" },
+  { "action": "shell", "resource": "tmux *", "effect": "deny" }
 ]

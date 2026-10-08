@@ -14,9 +14,10 @@ import { createApprovalsApi } from './approvals/api';
 import { createAuditRecorder, type AuditRecorder } from './audit/service';
 import { createAuditApi } from './audit/api';
 import type { Auth } from './auth/auth';
-import { createAuthRoutes } from './auth/routes';
+import { createAuthApi } from './auth/api';
 import { CurrentMailer, createMailer } from './auth/mailer';
-import { createSetupRoutes, type SetupRoutesDependencies } from './setup/routes';
+import { createSetupApi } from './setup/api';
+import { type SetupRoutesDependencies } from './setup/routes';
 import { createGetBotToken } from './integrations/routes';
 import { createIntegrationsApi } from './integrations/api';
 import { settingsCipherFor } from './setup/settings';
@@ -25,7 +26,7 @@ import { createChatPrefsApi } from './chat-prefs/api';
 import { createChatFoldersApi } from './chat-folders/api';
 import type { ServerConfig } from './config';
 import { loadPushConfig, type PushConfig } from './push/config';
-import { createDraftsRoutes } from './drafts/routes';
+import { createDraftsApi } from './drafts/api';
 import { createKeyCipher, type KeyCipher } from './connections/crypto';
 import type { ProviderProbe } from './connections/probe';
 import { createConnectionsApi } from './connections/api';
@@ -47,13 +48,13 @@ import { createPushApi } from './push/api';
 import { createRolesApi } from './roles/api';
 import { createSearchApi, type SearchRoutesDependencies } from './search/api';
 import { createMediaApi } from './media/api';
-import { createFilesRoutes } from './files/routes';
-import { createGifsRoutes } from './gifs/routes';
-import { createAvatarsRoutes } from './avatars/routes';
-import { createBackgroundsRoutes } from './backgrounds/routes';
-import { createStickersRoutes } from './stickers/routes';
+import { createFilesApi } from './files/api';
+import { createGifsApi } from './gifs/api';
+import { createAvatarsApi } from './avatars/api';
+import { createBackgroundsApi } from './backgrounds/api';
+import { createStickersApi } from './stickers/api';
 import { createTopicsApi } from './topics/api';
-import { createMachinesRoutes } from './machines/routes';
+import { createMachinesApi } from './machines/api';
 import { createDbMachineRegistry, type DbMachineRegistry } from './machines/registry';
 import { serverVersion } from './version';
 import { createToolsApi } from './tools/api';
@@ -309,24 +310,23 @@ export function createApp({
   });
 
   app.all('/api/auth/*', (c) => auth.handler(c.req.raw));
-  app.route('/api', createAuthRoutes({ auth, db, config, adminClient, logger }));
+  const authApi = createAuthApi({ auth, db, config, adminClient, logger });
+  mountEffectRoutes(app, authApi.routes, authApi.handler);
   // First-run setup (T-0161): public while no user exists, same 404 as an
   // unknown route once setup is done. Allowlisted in the authz sweep.
   // Without an explicit mailer the routes build one from the config, like
   // `index.ts` does for production.
   const currentMailer = mailer ?? new CurrentMailer(createMailer(config, logger));
-  app.route(
-    '/api',
-    createSetupRoutes({
-      auth,
-      db,
-      config,
-      mailer: currentMailer,
-      logger,
-      audit: auditRecorder,
-      ...setup,
-    }),
-  );
+  const setupApi = createSetupApi({
+    auth,
+    db,
+    config,
+    mailer: currentMailer,
+    logger,
+    audit: auditRecorder,
+    ...setup,
+  });
+  mountEffectRoutes(app, setupApi.routes, setupApi.handler);
   const contactsApi = createContactsApi({ auth, db, config, logger });
   mountEffectRoutes(app, contactsApi.routes, contactsApi.handler);
   // @usernames and contact requests (T-0163): session-required, rate
@@ -351,17 +351,15 @@ export function createApp({
   // limited; the sweep asserts both answer 401 unauthenticated.
   const directoryApi = createDirectoryApi({ auth, db, logger });
   mountEffectRoutes(app, directoryApi.routes, directoryApi.handler);
-  app.route(
-    '/api',
-    createMachinesRoutes({
-      auth,
-      db,
-      logger,
-      audit: auditRecorder,
-      registry: machineRegistry ?? createDbMachineRegistry(db),
-      ...(isMachineOnline === undefined ? {} : { isMachineOnline }),
-    }),
-  );
+  const machinesApi = createMachinesApi({
+    auth,
+    db,
+    logger,
+    audit: auditRecorder,
+    registry: machineRegistry ?? createDbMachineRegistry(db),
+    ...(isMachineOnline === undefined ? {} : { isMachineOnline }),
+  });
+  mountEffectRoutes(app, machinesApi.routes, machinesApi.handler);
   const groupsApi = createGroupsApi({
     auth,
     db,
@@ -440,18 +438,17 @@ export function createApp({
     ...(searchNow === undefined ? {} : { now: searchNow }),
   });
   mountEffectRoutes(app, mediaApi.routes, mediaApi.handler);
-  app.route(
-    '/api',
-    createFilesRoutes({
-      auth,
-      db,
-      config,
-      logger,
-      ...(archive === undefined ? {} : { archive }),
-      ...(searchNow === undefined ? {} : { now: searchNow }),
-    }),
-  );
-  app.route('/api', createDraftsRoutes({ auth }));
+  const filesApi = createFilesApi({
+    auth,
+    db,
+    config,
+    logger,
+    ...(archive === undefined ? {} : { archive }),
+    ...(searchNow === undefined ? {} : { now: searchNow }),
+  });
+  mountEffectRoutes(app, filesApi.routes, filesApi.handler);
+  const draftsApi = createDraftsApi({ auth, logger });
+  mountEffectRoutes(app, draftsApi.routes, draftsApi.handler);
   // Stickers (T-0120): packs, uploads and file serving. The storage dir
   // comes from `STICKER_STORAGE_DIR`; tests override it with a temp dir.
   // The bot token resolves per request: env wins, else the stored
@@ -462,49 +459,49 @@ export function createApp({
     cipher: settingsCipherFor(config),
     logger,
   });
-  app.route(
-    '/api',
-    createStickersRoutes({
-      auth,
-      db,
-      config,
-      storageDir: stickerStorageDir ?? config.STICKER_STORAGE_DIR,
-      audit: auditRecorder,
-      getBotToken,
-      ...(stickerNow === undefined ? {} : { now: stickerNow }),
-      ...(uploadLimiter === undefined ? {} : { uploadLimiter }),
-      ...(telegramClient === undefined ? {} : { telegramClient }),
-      ...(telegramImportNow === undefined ? {} : { now: telegramImportNow }),
-    }),
-  );
+  // The Effect api serves all 14 sticker routes, binary upload and file GET
+  // included (T-0582 part A, T-0602 part B).
+  const stickersDeps = {
+    auth,
+    db,
+    config,
+    storageDir: stickerStorageDir ?? config.STICKER_STORAGE_DIR,
+    audit: auditRecorder,
+    logger,
+    getBotToken,
+    ...(stickerNow === undefined ? {} : { now: stickerNow }),
+    ...(uploadLimiter === undefined ? {} : { uploadLimiter }),
+    ...(telegramClient === undefined ? {} : { telegramClient }),
+    ...(telegramImportNow === undefined ? {} : { now: telegramImportNow }),
+  };
+  const stickersApi = createStickersApi(stickersDeps);
+  mountEffectRoutes(app, stickersApi.routes, stickersApi.handler);
   // Avatars (T-0165): upload / remove / serve profile pictures for
   // people, AIs, groups and channels. The storage dir comes from
   // `AVATAR_STORAGE_DIR`; tests override it with a temp dir.
-  app.route(
-    '/api',
-    createAvatarsRoutes({
-      auth,
-      db,
-      config,
-      storageDir: avatarStorageDir ?? config.AVATAR_STORAGE_DIR,
-      audit: auditRecorder,
-      ...(avatarNow === undefined ? {} : { now: avatarNow }),
-      ...(avatarUploadLimiter === undefined ? {} : { uploadLimiter: avatarUploadLimiter }),
-    }),
-  );
+  const avatarsApi = createAvatarsApi({
+    auth,
+    db,
+    config,
+    storageDir: avatarStorageDir ?? config.AVATAR_STORAGE_DIR,
+    audit: auditRecorder,
+    logger,
+    ...(avatarNow === undefined ? {} : { now: avatarNow }),
+    ...(avatarUploadLimiter === undefined ? {} : { uploadLimiter: avatarUploadLimiter }),
+  });
+  mountEffectRoutes(app, avatarsApi.routes, avatarsApi.handler);
   // Background images (T-0460): upload / list / serve / delete personal
   // wallpapers, owner-only. The storage dir comes from
   // `BACKGROUND_STORAGE_DIR`; tests override it with a temp dir.
-  app.route(
-    '/api',
-    createBackgroundsRoutes({
-      auth,
-      db,
-      storageDir: backgroundStorageDir ?? config.BACKGROUND_STORAGE_DIR,
-      ...(backgroundNow === undefined ? {} : { now: backgroundNow }),
-      ...(backgroundUploadLimiter === undefined ? {} : { uploadLimiter: backgroundUploadLimiter }),
-    }),
-  );
+  const backgroundsApi = createBackgroundsApi({
+    auth,
+    db,
+    storageDir: backgroundStorageDir ?? config.BACKGROUND_STORAGE_DIR,
+    logger,
+    ...(backgroundNow === undefined ? {} : { now: backgroundNow }),
+    ...(backgroundUploadLimiter === undefined ? {} : { uploadLimiter: backgroundUploadLimiter }),
+  });
+  mountEffectRoutes(app, backgroundsApi.routes, backgroundsApi.handler);
   // Integration settings (T-0162 + Email): owner-only; everyone else gets
   // the same 404 as an unknown route. Covered by the 401 sweep as
   // session-required routes (never allowlisted).
@@ -523,17 +520,15 @@ export function createApp({
   // GIFs (T-0122): search, trending and the media proxy. Mounted always: an
   // unconfigured provider answers 501 `gifs_unavailable` instead of 404ing,
   // so the web can hide the tab.
-  app.route(
-    '/api',
-    createGifsRoutes({
-      auth,
-      config,
-      logger,
-      ...(gifProvider === undefined ? {} : { provider: gifProvider }),
-      ...(gifMediaFetcher === undefined ? {} : { mediaFetcher: gifMediaFetcher }),
-      ...(gifNow === undefined ? {} : { now: gifNow }),
-    }),
-  );
+  const gifsApi = createGifsApi({
+    auth,
+    config,
+    logger,
+    ...(gifProvider === undefined ? {} : { provider: gifProvider }),
+    ...(gifMediaFetcher === undefined ? {} : { mediaFetcher: gifMediaFetcher }),
+    ...(gifNow === undefined ? {} : { now: gifNow }),
+  });
+  mountEffectRoutes(app, gifsApi.routes, gifsApi.handler);
   const approvalsApi = createApprovalsApi({
     auth,
     db,

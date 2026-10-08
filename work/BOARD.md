@@ -9,6 +9,9 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
+| [T-0626](T-0626-audit-effect-last-mile.md) | Audit: the Effect last mile, plus the bigint check | in-progress | auto | | |
+| [T-0638](T-0638-retire-files-hono-wrapper.md) | Hono: retire the files test wrapper | in-progress | auto | | |
+| [T-0639](T-0639-retire-connections-hono-wrapper.md) | Hono: retire the connections test wrapper | in-progress | auto | | |
 
 ## Follow-ups
 
@@ -453,11 +456,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0414](T-0414-web-forward-store-action.md) | Web store: forwardMessages sends copies with a forward origin, optional comment | 2026-10-06 |
 | [T-0425](T-0425-mobile-profile-buttons-kit.md) | Mobile: profile and contact card buttons on the kit Button | 2026-10-06 |
 | [T-0426](T-0426-mobile-ai-sheet-buttons-kit.md) | Mobile: AI activity Refresh, tool sheet Show all/less and Close on the kit Button | 2026-10-06 |
-| [T-0561](T-0561-effect-http-auth-me-invites.md) | Effect C (HTTP): /me and invites on HttpApi | planned | auto | T-0548 | |
-| [T-0571](T-0571-audit-tool-args-schema.md) | Audit + plan: AI tool argument layer from zod to Effect Schema | planned | auto | T-0564 | |
-| [T-0574](T-0574-effect-sql-invites-provisioning.md) | effect/sql: sign-up invites and XMPP provisioning | planned | auto | T-0568 | |
-| [T-0572](T-0572-effect-http-machines.md) | Effect C (HTTP): machines and runner pairing on HttpApi | planned | auto | T-0566 | |
-| [T-0576](T-0576-effect-http-avatars.md) | Effect C (HTTP): avatars on HttpApi | planned | auto | T-0573 | |
+| [T-0618](T-0618-test-speed-audit.md) | Audit: a faster, lighter server test setup | planned | auto | T-0596 | |
 | [T-0427](T-0427-mobile-forwarded-header.md) | Mobile: forwarded messages show 'Forwarded from X [in Y]' | 2026-10-06 |
 | [T-0428](T-0428-mobile-new-chat-menu-sheet.md) | Mobile: New chat menu on the kit ActionSheet with icons | 2026-10-06 |
 | [T-0429](T-0429-mobile-dismiss-banner.md) | Mobile: DismissBanner replaces 12 copied chat screen banners | 2026-10-06 |
@@ -604,3 +603,68 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0570](T-0570-effect-schema-server-batch-3.md) | Effect Schema: push config, subscriptions, AI templates, provider ids | 2026-10-08 |
 | [T-0573](T-0573-effect-http-voice.md) | Effect C (HTTP): voice conversion, the binary pilot | 2026-10-08 |
 | [T-0560](T-0560-effect-http-media.md) | Effect C (HTTP): media gallery on HttpApi | 2026-10-08 |
+| [T-0574](T-0574-effect-sql-invites-provisioning.md) | effect/sql: sign-up invites and XMPP provisioning | 2026-10-08 |
+| [T-0572](T-0572-effect-http-machines.md) | Effect C (HTTP): machines and runner pairing on HttpApi | 2026-10-08 |
+| [T-0575](T-0575-stale-server-path-comments.md) | Comments: client comments point at live server api files | 2026-10-08 |
+| [T-0561](T-0561-effect-http-auth-me-invites.md) | Effect C (HTTP): /me and account invites on HttpApi | 2026-10-08 |
+| [T-0576](T-0576-effect-http-avatars.md) | Effect C (HTTP): avatars on HttpApi | 2026-10-08 |
+| [T-0579](T-0579-server-review-followups.md) | Review follow-ups: comments and two pinning tests | 2026-10-08 |
+| [T-0583](T-0583-effect-sql-gateway-inline-queries.md) | effect/sql: the last inline gateway reads and loadRoster | 2026-10-08 |
+| [T-0577](T-0577-effect-http-backgrounds.md) | Effect C (HTTP): background images on HttpApi | 2026-10-08 |
+| [T-0580](T-0580-effect-http-files.md) | Effect C (HTTP): file proxy with a streamed body | 2026-10-08 |
+| [T-0584](T-0584-effect-audit-service.md) | Effect: audit service on effect/sql and Effect Schema | 2026-10-08 |
+| [T-0585](T-0585-delete-ai-virtual-keys-spike.md) | Delete the unmounted /ai/virtual-keys spike | 2026-10-08 |
+| [T-0578](T-0578-effect-http-setup.md) | Effect C (HTTP): first-run setup on HttpApi | 2026-10-08 |
+| [T-0586](T-0586-effect-http-gifs.md) | Effect C (HTTP): GIF search, trending and media proxy | 2026-10-08 |
+| [T-0587](T-0587-effect-sql-connections.md) | effect/sql: provider connection queries | 2026-10-08 |
+| [T-0588](T-0588-effect-sql-routine-runs.md) | effect/sql: routine scheduler claim and runner queries | 2026-10-08 |
+| [T-0593](T-0593-effect-sql-push-service-reads.md) | effect/sql: push service reads | 2026-10-08 |
+| [T-0571](T-0571-audit-tool-args-schema.md) | Audit: tool-args layer zod to Effect Schema plan | 2026-10-08 |
+| [T-0589](T-0589-effect-sql-startup-and-audit-nits.md) | effect/sql: startup sticker count, plus the audit issue-text nits | 2026-10-08 |
+| [T-0582](T-0582-effect-http-stickers-json.md) | Effect C (HTTP): stickers part A, the JSON routes | 2026-10-08 |
+| [T-0594](T-0594-tool-args-decode-seam.md) | Tool args T-A: registry and gateway decode seam | 2026-10-08 |
+| [T-0591](T-0591-effect-sql-approvals-api-reads.md) | effect/sql: approvals API reads | 2026-10-08 |
+| [T-0592](T-0592-effect-sql-routines-api-reads.md) | effect/sql: routines API reads | 2026-10-08 |
+| [T-0581](T-0581-effect-http-drafts-sse.md) | Effect C (HTTP): AI draft stream (SSE) pilot | 2026-10-08 |
+| [T-0595](T-0595-sandbox-schemas-effect.md) | Tool args T-F: sandbox schemas on Effect Schema | 2026-10-08 |
+| [T-0596](T-0596-dead-zod-service-schemas.md) | Effect Schema: drop dead zod schemas in the pins, roles and topics services | 2026-10-08 |
+| [T-0590](T-0590-effect-sql-api-inline-reads.md) | effect/sql: inline reads in the memory, media and /me APIs | 2026-10-08 |
+| [T-0597](T-0597-demo-args-effect.md) | Tool args T-C: demo.echo args on Effect Schema | 2026-10-08 |
+| [T-0598](T-0598-web-tools-args-effect.md) | Tool args T-D: web tool args on Effect Schema | 2026-10-08 |
+| [T-0600](T-0600-xmpp-admin-client-schema.md) | Effect Schema: ejabberd admin client | 2026-10-08 |
+| [T-0603](T-0603-agent-tool-args-effect.md) | Tool args T-B: model tool arguments on Effect Schema | 2026-10-08 |
+| [T-0601](T-0601-litellm-client-schema.md) | Effect Schema: LiteLLM admin client | 2026-10-08 |
+| [T-0602](T-0602-effect-http-stickers-binary.md) | Effect C (HTTP): stickers part B, upload and file | 2026-10-08 |
+| [T-0604](T-0604-tool-routine-schemas-effect.md) | Tool args T-E: tool and routine schemas on Effect Schema | 2026-10-08 |
+| [T-0599](T-0599-zod-small-trio.md) | Effect Schema: draft events, invite CLI and routine title | 2026-10-08 |
+| [T-0605](T-0605-effect-sql-topic-access.md) | effect/sql: topic access reads | 2026-10-08 |
+| [T-0609](T-0609-effect-sql-invite-links-service.md) | effect/sql: invite-link service and the join transaction | 2026-10-08 |
+| [T-0606](T-0606-effect-sql-avatars-backgrounds.md) | effect/sql: avatar and background services | 2026-10-08 |
+| [T-0610](T-0610-approvals-input-schema.md) | Effect Schema: approval input schema | 2026-10-08 |
+| [T-0607](T-0607-effect-sql-push-store-machines.md) | effect/sql: push device store and machine service | 2026-10-08 |
+| [T-0611](T-0611-effect-sql-group-join.md) | effect/sql: public group join transaction | 2026-10-08 |
+| [T-0613](T-0613-effect-sql-handles-visibility.md) | effect/sql: handle store and group visibility switch | 2026-10-08 |
+| [T-0616](T-0616-gate-light-tests.md) | Gate: run only the nearest tests; --full for the batched full run | 2026-10-08 |
+| [T-0612](T-0612-registry-effect-only.md) | Tool args T-G: action registry on Effect Schema only | 2026-10-08 |
+| [T-0615](T-0615-effect-sql-tools-service.md) | effect/sql: tool service, transactions included | 2026-10-08 |
+| [T-0614](T-0614-effect-sql-json-keys.md) | effect/sql: keep jsonb keys as written | 2026-10-08 |
+| [T-0619](T-0619-worker-no-daemons-gate-timeout.md) | Workers cannot start daemons or detached runs; gate step time limits | 2026-10-08 |
+| [T-0617](T-0617-lead-watch-light.md) | lead watch: far fewer processes per refresh, honest tok/s | 2026-10-08 |
+| [T-0608](T-0608-effect-sql-roles-service.md) | roles service on effect/sql | 2026-10-08 |
+| [T-0620](T-0620-gate-folder-tests.md) | gate: run folder tests when no test shares the source name | 2026-10-08 |
+| [T-0621](T-0621-effect-sql-approval-rules-reads.md) | approval rules statements on effect/sql | 2026-10-08 |
+| [T-0622](T-0622-effect-sql-owner-lookups.md) | owner lookups on effect/sql | 2026-10-08 |
+| [T-0624](T-0624-effect-sql-production-announcer.md) | production announcer reads on effect/sql | 2026-10-08 |
+| [T-0623](T-0623-effect-sql-voice-settings.md) | voice transcription settings on effect/sql | 2026-10-08 |
+| [T-0625](T-0625-effect-sql-files-lookup.md) | file proxy lookup on effect/sql | 2026-10-08 |
+| [T-0627](T-0627-effect-sql-routines-service.md) | routines service on effect/sql | 2026-10-08 |
+| [T-0628](T-0628-effect-sql-topic-rooms.md) | topic room reads on effect/sql | 2026-10-08 |
+| [T-0629](T-0629-effect-sql-action-gateway.md) | action gateway statements on effect/sql | 2026-10-08 |
+| [T-0630](T-0630-effect-sql-group-turn.md) | group turn reads on effect/sql | 2026-10-08 |
+| [T-0632](T-0632-effect-sql-review-nits.md) | review nits: comments and row types | 2026-10-08 |
+| [T-0631](T-0631-effect-sql-media-indexer.md) | media indexer on effect/sql | 2026-10-08 |
+| [T-0633](T-0633-effect-sql-sticker-packs.md) | sticker packs and panel on effect/sql | 2026-10-08 |
+| [T-0634](T-0634-effect-sql-memory-indexer.md) | AI memory indexer on effect/sql | 2026-10-08 |
+| [T-0637](T-0637-retire-drafts-hono-wrapper.md) | retire the drafts Hono test wrapper | 2026-10-08 |
+| [T-0635](T-0635-effect-sql-memory-store.md) | AI memory store on effect/sql | 2026-10-08 |
+| [T-0636](T-0636-effect-sql-sticker-files.md) | sticker favorites, files and import on effect/sql | 2026-10-08 |

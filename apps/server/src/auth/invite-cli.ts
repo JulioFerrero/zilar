@@ -1,13 +1,32 @@
-import { z } from 'zod';
+import { Effect, Schema, SchemaGetter } from 'effect';
 import { pathToFileURL } from 'node:url';
 import { loadServerConfigOrExit } from '../config';
 import { createDb } from '../db/client';
 import { runMigrations } from '../db/migrate';
+import { disposeSqlRuntime, registerSqlRuntime } from '../effect/sql';
 import { createInvite, DEFAULT_INVITE_MAX_USES, DEFAULT_INVITE_TTL_DAYS } from './invites';
 
-const inviteCliOptionsSchema = z.object({
-  uses: z.coerce.number().int().min(1).max(1000).default(DEFAULT_INVITE_MAX_USES),
-  days: z.coerce.number().int().min(1).max(365).default(DEFAULT_INVITE_TTL_DAYS),
+// Replaces `z.coerce.number().int()`: `Number(value)` (so `'2.5'` fails the
+// integer check and `'abc'` fails as `NaN`), then the bounds. The decoded
+// default is the encoded string of the same constant.
+const toInt = SchemaGetter.transform((value: string) => Number(value));
+const toText = SchemaGetter.transform((value: number) => String(value));
+
+function withDefault<S extends Schema.Constraint>(schema: S, fallback: S['Encoded']) {
+  return Schema.withDecodingDefaultKey<S>(Effect.succeed(fallback))(schema);
+}
+
+function coercedInt(min: number, max: number) {
+  return Schema.String.pipe(
+    Schema.decodeTo(Schema.Int, { decode: toInt, encode: toText }),
+    Schema.check(Schema.isGreaterThanOrEqualTo(min)),
+    Schema.check(Schema.isLessThanOrEqualTo(max)),
+  );
+}
+
+const inviteCliOptionsSchema = Schema.Struct({
+  uses: withDefault(coercedInt(1, 1000), String(DEFAULT_INVITE_MAX_USES)),
+  days: withDefault(coercedInt(1, 365), String(DEFAULT_INVITE_TTL_DAYS)),
 });
 
 export interface InviteCliOptions {
@@ -44,7 +63,7 @@ export function parseInviteCliArgs(argv: string[]): InviteCliOptions {
     throw new Error(`Unknown argument: ${argument ?? ''}`);
   }
 
-  return inviteCliOptionsSchema.parse(raw);
+  return Schema.decodeUnknownSync(inviteCliOptionsSchema)(raw);
 }
 
 async function main(): Promise<void> {
@@ -54,6 +73,9 @@ async function main(): Promise<void> {
 
   try {
     await runMigrations(db);
+    // `createInvite` runs on `effect/sql`; this process never builds an app, so
+    // it registers (and below disposes) the runtime for its own database.
+    registerSqlRuntime(db, config.DATABASE_URL);
     const invite = await createInvite(db, {
       createdBy: null,
       maxUses: options.uses,
@@ -65,6 +87,9 @@ async function main(): Promise<void> {
     console.log(`Expires at: ${invite.expiresAt.toISOString()}`);
     console.log(`Maximum uses: ${invite.maxUses}`);
   } finally {
+    // Dispose the `effect/sql` pool before closing the drizzle client it shares
+    // the database with.
+    await disposeSqlRuntime(db);
     await close();
   }
 }

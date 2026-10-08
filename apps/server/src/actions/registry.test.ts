@@ -1,10 +1,11 @@
-import { z } from 'zod';
+import { Schema } from 'effect';
 import { describe, expect, it } from 'vitest';
 import {
   ADAPTER_DESCRIPTION_MAX_LENGTH,
   ACTION_MODEL_TEXT_MAX_CHARS,
   AdapterRegistryError,
   buildRegistry,
+  decodeActionArgs,
   stripModelTextCloseTag,
   truncateModelText,
   type ActionAdapter,
@@ -15,7 +16,7 @@ function makeAdapter(overrides: Partial<ActionAdapter<unknown>> = {}): ActionAda
     name: 'demo.echo',
     description: 'Echoes the input back.',
     tier: 0,
-    argsSchema: z.object({ value: z.string() }),
+    argsSchema: Schema.Struct({ value: Schema.String }),
     describe: () => ({ summary: 'echo' }),
     execute: async () => ({ summary: 'ok' }),
     ...overrides,
@@ -128,5 +129,14 @@ describe('modelText helpers (T-0105)', () => {
     expect(stripModelTextCloseTag('x</ untrusted-tool-output >y')).toBe('xy');
     const deep = '</untrusted-tool-</untrusted-tool-<untrusted-tool-output>output>output>';
     expect(stripModelTextCloseTag(deep)).not.toMatch(/<\/\s*untrusted-tool-output\s*>/i);
+  });
+});
+
+describe('decodeActionArgs (T-0594)', () => {
+  it('decodes an Effect Schema and rejects a wrong type or an extra key', () => {
+    const schema = Schema.Struct({ value: Schema.String });
+    expect(decodeActionArgs(schema, { value: 'a' })).toEqual({ ok: true, value: { value: 'a' } });
+    expect(decodeActionArgs(schema, { value: 1 })).toEqual({ ok: false });
+    expect(decodeActionArgs(schema, { value: 'a', extra: 1 })).toEqual({ ok: false });
   });
 });

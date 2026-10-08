@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
+import { Schema } from 'effect';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { z } from 'zod';
 import { createTestContext, type TestContext } from '../test-support';
 import {
   aiLimits,
@@ -42,7 +42,7 @@ function echoAdapter(tier: 0 | 1 | 2): FakeAdapter {
     name: `tier${tier}.echo`,
     description: `Echo adapter at tier ${tier}.`,
     tier,
-    argsSchema: z.object({ value: z.string() }),
+    argsSchema: Schema.Struct({ value: Schema.String }),
     describe: (args) => ({ summary: `Echo ${(args as { value: string }).value}` }),
     ...(tier === 2
       ? {
@@ -665,7 +665,7 @@ describe('action gateway', () => {
         name: 'tier2.bound',
         description: 'Tier-2 adapter with prepareArgs.',
         tier: 2,
-        argsSchema: z.object({ value: z.string() }),
+        argsSchema: Schema.Struct({ value: Schema.String }),
         prepareArgs: async (_ctx, args) => ({ ...(args as { value: string }), bound: true }),
         describe: (args) => ({
           summary: `Bound ${(args as { value: string }).value}`,
@@ -717,7 +717,7 @@ describe('action gateway', () => {
         name: 'tier2.failingprepare',
         description: 'Tier-2 adapter whose prepareArgs throws.',
         tier: 2,
-        argsSchema: z.object({ value: z.string() }),
+        argsSchema: Schema.Struct({ value: Schema.String }),
         prepareArgs: () => {
           throw new Error('no such tool');
         },
@@ -756,7 +756,7 @@ describe('action gateway', () => {
         name: 'tier0.withtext',
         description: 'Tier-0 adapter that returns modelText.',
         tier: 0,
-        argsSchema: z.object({ value: z.string() }),
+        argsSchema: Schema.Struct({ value: Schema.String }),
         describe: () => ({ summary: 'withtext' }),
         execute: async () => ({
           summary: 'withtext ran',
@@ -851,7 +851,7 @@ describe('action gateway', () => {
         name: 'tier0.bigtext',
         description: 'Tier-0 adapter with big modelText.',
         tier: 0,
-        argsSchema: z.object({ value: z.string() }),
+        argsSchema: Schema.Struct({ value: Schema.String }),
         describe: () => ({ summary: 'bigtext' }),
         execute: async () => ({
           summary: 'bigtext ran',
@@ -890,7 +890,7 @@ describe('action gateway', () => {
         name: 'tier0.failing',
         description: 'Failing adapter for tests.',
         tier: 0,
-        argsSchema: z.object({ value: z.string() }),
+        argsSchema: Schema.Struct({ value: Schema.String }),
         describe: () => ({ summary: 'fails' }),
         execute: async (ctx, args) => {
           calls.push({ ctx, args });
@@ -1374,7 +1374,7 @@ describe('action gateway', () => {
         name: 'tier2.fail',
         description: 'Always fails (test)',
         tier: 2,
-        argsSchema: z.object({ value: z.string() }),
+        argsSchema: Schema.Struct({ value: Schema.String }),
         describe: (args) => ({ summary: `Fail ${(args as { value: string }).value}` }),
         execute: () => {
           throw secretError;
@@ -1516,7 +1516,7 @@ describe('action gateway', () => {
         name: 'tier2.boom',
         description: 'Always throws (test)',
         tier: 2,
-        argsSchema: z.object({ value: z.string() }),
+        argsSchema: Schema.Struct({ value: Schema.String }),
         describe: (args) => ({ summary: `Boom ${(args as { value: string }).value}` }),
         execute: () => {
           throw new Error('adapter secret text');
@@ -1596,7 +1596,7 @@ describe('action gateway', () => {
         name: 'rules.echo',
         description: 'Opted-in echo adapter for standing-rule tests.',
         tier: 2,
-        argsSchema: z.object({ value: z.string() }),
+        argsSchema: Schema.Struct({ value: Schema.String }),
         describe: (args) => ({ summary: `Echo ${(args as { value: string }).value}` }),
         allowAlways: true,
         execute: async (ctx, args) => {
@@ -1689,7 +1689,7 @@ describe('action gateway', () => {
         name: 'rules.echo',
         description: 'Failing opted-in adapter for standing-rule tests.',
         tier: 2,
-        argsSchema: z.object({ value: z.string() }),
+        argsSchema: Schema.Struct({ value: Schema.String }),
         describe: () => ({ summary: 'fails' }),
         allowAlways: true,
         execute: async () => {
@@ -1761,7 +1761,7 @@ describe('action gateway', () => {
           name: 'rules.echo',
           description: 'Same action, no longer opted in.',
           tier: 2,
-          argsSchema: z.object({ value: z.string() }),
+          argsSchema: Schema.Struct({ value: Schema.String }),
           describe: (args) => ({ summary: `Echo ${(args as { value: string }).value}` }),
           execute: async () => ({ summary: 'Echoed' }),
         };

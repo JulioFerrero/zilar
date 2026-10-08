@@ -7,7 +7,7 @@ import { API_URL } from './auth';
 /**
  * The mobile twin of the web chat-prefs client
  * (`apps/web/src/lib/api.ts`): list and set the caller's per-user prefs.
- * The wire contract lives in `apps/server/src/chat-prefs/routes.ts` and
+ * The wire contract lives in `apps/server/src/chat-prefs/api.ts` and
  * `service.ts` (T-0113).
  *
  * The boundary is validated with Effect Schema (T-0506 recipe): the request is

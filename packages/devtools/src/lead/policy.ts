@@ -476,6 +476,19 @@ const REJECT_RULES: Rule[] = [
     verdict: 'reject',
     message: 'Never touch ~/.ssh. If you need a GitHub operation, ask in your Report.',
   },
+  {
+    // Anything a worker starts in the background or detaches outlives its
+    // session and cannot be stopped (found 2026-10-08: a worker ran its gate
+    // and tests as launchd jobs that relaunched on every kill for 45 min). A
+    // trailing `&` is a background run the same way `nohup …` is.
+    test: (segment) =>
+      /(^|\s)(launchctl|nohup|setsid|disown|crontab|at|osascript|screen|tmux)(\s|$)/.test(
+        segment,
+      ) || /(^|[^&])&\s*$/.test(segment),
+    verdict: 'reject',
+    message:
+      'Workers may not start daemons, background jobs or detached runs (launchd, nohup, &, tmux…): they outlive your session and cannot be stopped. Run every command in the foreground; for tests use pnpm --filter <package> test --maxWorkers=2 <path>, then pnpm gate once.',
+  },
 ];
 
 const ALLOW_PATTERNS: RegExp[] = [

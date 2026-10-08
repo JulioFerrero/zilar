@@ -9,7 +9,7 @@ import type { TokenProvider } from './chat-api';
  * The public directory API (directory search, lookup by handle, public
  * join, the visibility PATCH on one group and the handle check), the mobile
  * `apps/web/src/lib/api.ts` (T-0164). The wire contract lives in
- * `apps/server/src/directory/routes.ts` (public groups and channels only,
+ * `apps/server/src/directory/api.ts` (public groups and channels only,
  * never users or private groups; 20 per page with a cursor; reads are rate
  * limited 30 per 10 minutes) and the visibility route in
  * `apps/server/src/groups/`.
