@@ -1,7 +1,7 @@
 ---
 id: T-0549
 title: "Agents G8b: move the group ingest side (sessionForAiJid, handleRoomIncoming, pumpRoom) out of createAgentGateway into agents/gateway/group-ingest.ts verbatim; zero behaviour change"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0549-agents-g8b-extract-group-ingest
 model: auto
@@ -57,4 +57,69 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Pure extraction, zero behaviour change. `sessionForAiJid`, `handleRoomIncoming`
+and `pumpRoom` moved verbatim from `createAgentGateway` into the new
+`apps/server/src/agents/gateway/group-ingest.ts` (`createGroupIngest(ctx)`),
+modelled on G7 (`dm-turn.ts`) and G8a (`group-turn.ts`).
+
+What I did:
+- Created `apps/server/src/agents/gateway/group-ingest.ts` exporting
+  `createGroupIngest(ctx)`. `ctx` carries `deps`, `logger`, the shared
+  `sessions` / `roomRounds` maps, `noteListenerMessage` (taken from the
+  `roomListener` instance), `secretsFor`, and `runGroupSessionTurn`.
+- In `gateway.ts`: create the ingest factory once (before `createGroupTurn`),
+  destructure `{ sessionForAiJid, handleRoomIncoming, pumpRoom }`, and removed
+  the three moved functions. `createGroupTurn` now receives
+  `sessionForAiJid: (bare) => sessionForAiJid(bare)`; the ingest factory
+  receives `runGroupSessionTurn: (s, r, b) => runGroupSessionTurn(s, r, b)`.
+  Both callbacks read lazily (same pattern as G5b `isStarted` and the
+  listener's `pumpRoom` arrow), resolving the circular order constraint:
+  ingest needs the turn runner, the turn needs the JID lookup.
+- Dropped `GROUP_JOIN_SKEW_MS` and `isAiSender` from the `contracts` import in
+  `gateway.ts` (now used only by the moved code; `ROUND_MAX_HOPS` stays, still
+  used by the delegation branch). The `contracts` re-export block is untouched.
+- All call sites keep the same text: room-listener wiring (line 122),
+  delegation `pumpRoom` (line 422), `handleIncoming` -> `handleRoomIncoming`
+  (line 620).
+
+Whitespace-insensitive diff (`diff -w` old block from HEAD vs new file body):
+only two differences, both wrapper-level:
+1. `roomListener.noteListenerMessage(...)` -> `noteListenerMessage(...)`
+   (listener passed as `ctx` callback, per spec).
+2. The added factory wrapper `return { sessionForAiJid, handleRoomIncoming,
+   pumpRoom };` (+ `normBareJid` import source corrected to `../context`,
+   where it lives — first test run caught it imported from `./contracts`).
+No logic edits, no renames.
+
+Files changed (3, all in Allowed files):
+- `apps/server/src/agents/gateway/group-ingest.ts` (new)
+- `apps/server/src/agents/gateway.ts` (factory wiring, removed moved
+  functions, dropped 2 now-unused imports)
+- `work/T-0549-agents-g8b-extract-group-ingest.md` (this report)
+
+Commands and real results:
+- `pnpm install`: ok (36.8s).
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot
+  src/agents/gateway.test.ts`: first run 68 failed with
+  `TypeError: normBareJid is not a function` (wrong import source in the new
+  file); after the one-line import fix: 168 passed.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot
+  src/agents/listener src/agents/gateway`: 2 files, 181 passed. (The earlier
+  full `src/agents` run had 15 files passed and only `gateway.test.ts`
+  failing on the import bug, so the whole agents suite is green with the fix;
+  no test file was modified.)
+- `pnpm gate`: first full run failed only on `format` (new file needed
+  prettier); fixed with `prettier --write` on that one file (no logic touched;
+  `gateway.ts` already passed the check). Final `pnpm gate`:
+  `gate: 3 changed file(s) against main` / PASS install / PASS format /
+  PASS lint / PASS typecheck / PASS tests @zilar/server / `scope: every
+  changed file is inside the Allowed files` / GATE PASS.
+
+Security checklist: no secrets touched; no new routes; no deletes/updates;
+verbatim move so all caps, scoping and permission checks are unchanged.
+
+No deviations from the spec, no open questions.
+
 ## Review (written by Claude)
+
+Approved (lead, 2026-10-08). G8b: sessionForAiJid, handleRoomIncoming and pumpRoom moved into agents/gateway/group-ingest.ts (createGroupIngest). Lead diff (whitespace-insensitive) against main: identical except roomListener.noteListenerMessage becoming the injected noteListenerMessage, plus the factory return. Lazy arrows make the order between the two factories safe. Nits accepted: an unbound closure reference (safe; listener.ts uses closures) and the factory order. Pre-review clean.

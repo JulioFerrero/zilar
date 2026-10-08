@@ -32,14 +32,12 @@ import {
 import { createDelegation, getDelegationForAi } from './delegation/service';
 import type { RequestOutcome } from '../actions/gateway';
 import {
-  GROUP_JOIN_SKEW_MS,
   RECONCILE_INTERVAL_MS,
   RETRY_BASE_DELAY_MS,
   ROUND_MAX_HOPS,
   denialReasonForModel,
   errorName,
   formatModelText,
-  isAiSender,
   toRedactedError,
   type AgentGateway,
   type AgentGatewayConfig,
@@ -54,6 +52,7 @@ import { createLiveSession } from './gateway/live';
 import { createSessionLifecycle } from './gateway/sessions';
 import { createMemoryRunner } from './gateway/memory';
 import { createDmTurn } from './gateway/dm-turn';
+import { createGroupIngest } from './gateway/group-ingest';
 import { createGroupTurn, type RequestActionContext } from './gateway/group-turn';
 
 export type {
@@ -213,6 +212,22 @@ export function createAgentGateway(
     draftHub,
   });
 
+  // T-0549 (plan §3, G8b): the group ingest side lives in
+  // `agents/gateway/group-ingest.ts`. This is a pure move: the factory takes
+  // the shared session maps, the room listener and the group turn runner, and
+  // the destructured names keep every call site below unchanged. The
+  // `runGroupSessionTurn` callback reads lazily: the group turn factory is
+  // created just below.
+  const { sessionForAiJid, handleRoomIncoming, pumpRoom } = createGroupIngest({
+    deps,
+    logger,
+    sessions,
+    roomRounds,
+    noteListenerMessage: roomListener.noteListenerMessage,
+    secretsFor,
+    runGroupSessionTurn: (session, roomJid, batch) => runGroupSessionTurn(session, roomJid, batch),
+  });
+
   // T-0546 (plan §3, G8a): the group/topic turn lives in
   // `agents/gateway/group-turn.ts`. This is a pure move: the factory takes
   // the shared session maps, the live session, the budget gate, the memory
@@ -225,7 +240,7 @@ export function createAgentGateway(
     baseUrl,
     sessions,
     roomRounds,
-    sessionForAiJid,
+    sessionForAiJid: (bare) => sessionForAiJid(bare),
     liveSendMessage,
     liveSendTyping,
     liveProgressReporter,
@@ -625,143 +640,9 @@ export function createAgentGateway(
     });
   }
 
-  // T-0481: the live session for an `ai-*` sender's bare JID, if this gateway
-  // runs it. `sessions` is keyed by the gateway's own AI id, so match the JID.
-  function sessionForAiJid(bare: string): AiSession | undefined {
-    for (const candidate of sessions.values()) {
-      if (normBareJid(candidate.aiJid) === bare) {
-        return candidate;
-      }
-    }
-    return undefined;
-  }
-
-  // M2 rule 1 (§9.4): a person @mentions AIs, and only those AIs reply. Every
-  // check that needs no database runs here; the sender's membership and the
-  // rate limit are checked fresh at turn time.
-  function handleRoomIncoming(session: AiSession, message: ChatMessage): void {
-    // An edit or a retraction in a room is never a mention: it starts no turn.
-    if (message.correction !== undefined || message.retraction !== undefined) {
-      return;
-    }
-    if (message.outgoing) {
-      return;
-    }
-    const body = message.body?.trim() ?? '';
-    if (body === '') {
-      return;
-    }
-    const roomJid = normBareJid(message.chatJid);
-    const room = session.rooms.get(roomJid);
-    if (room === undefined) {
-      // Not a room this AI joined: strangers' rooms are never answered.
-      return;
-    }
-    // History replayed on join carries its original stamp, far older than the
-    // join. Live messages carry ~now.
-    if (message.timestamp.getTime() < room.joinedAtMs - GROUP_JOIN_SKEW_MS) {
-      return;
-    }
-    // T-0479: every human room message opens a fresh round, mention or not.
-    // Every AI session receives the same stanza, so an id we already opened on
-    // leaves the running count alone.
-    if (!isAiSender(normBareJid(message.fromJid))) {
-      const round = roomRounds.get(roomJid);
-      if (round === undefined || round.humanMessageId !== message.id) {
-        roomRounds.set(roomJid, {
-          humanMessageId: message.id,
-          aiTurns: 0,
-          hops: 0,
-          handoffIds: new Set(),
-        });
-      }
-    }
-    const aiBare = normBareJid(session.aiJid);
-    const mentioned = (message.mentions ?? []).some(
-      (mention) => normBareJid(mention.jid) === aiBare,
-    );
-    // T-0475: the listener sees every human room message, mention or not,
-    // before the mention early-return below. AI senders never feed it.
-    if (deps.listener !== undefined && !isAiSender(normBareJid(message.fromJid))) {
-      roomListener.noteListenerMessage(roomJid, room, message, body);
-    }
-    if (!mentioned) {
-      // No mention, nobody replies (M2 rule 3).
-      return;
-    }
-    const fromBare = normBareJid(message.fromJid);
-    let handoff = false;
-    if (isAiSender(fromBare)) {
-      // T-0481: an AI mentioning another AI hands the question over, inside
-      // the round's hop budget. The sender must be another live session
-      // joined to this room — never a JID or nick taken from the message.
-      const senderSession = sessionForAiJid(fromBare);
-      if (senderSession === undefined || !senderSession.rooms.has(roomJid)) {
-        return;
-      }
-      const round = roomRounds.get(roomJid);
-      if (round === undefined) {
-        return;
-      }
-      if (!round.handoffIds.has(message.id)) {
-        if (round.hops >= ROUND_MAX_HOPS) {
-          logger.info(
-            { roomJid, fromAiId: senderSession.aiId, toAiId: session.aiId },
-            'AI handoff budget spent',
-          );
-          return;
-        }
-        round.handoffIds.add(message.id);
-        round.hops += 1;
-      }
-      handoff = true;
-    }
-    const queued = session.roomPending.get(roomJid) ?? [];
-    queued.push({
-      id: message.id,
-      body,
-      fromJid: message.fromJid,
-      fromResolved: message.fromResolved,
-      ...(message.fromNick === undefined ? {} : { fromNick: message.fromNick }),
-      timestamp: message.timestamp,
-      ...(handoff ? { handoff: true as const } : {}),
-    });
-    session.roomPending.set(roomJid, queued);
-    void pumpRoom(session, roomJid).catch((error: unknown) => {
-      logger.warn(
-        { err: toRedactedError(error, secretsFor()), aiId: session.aiId },
-        'AI group pump failed',
-      );
-    });
-  }
-
-  // One turn at a time per (AI, room). Messages arriving during a turn are
-  // coalesced: when the turn ends, one more turn runs if new mentions came in.
-  async function pumpRoom(session: AiSession, roomJid: string): Promise<void> {
-    if (session.roomBusy.has(roomJid)) {
-      return;
-    }
-    session.roomBusy.add(roomJid);
-    try {
-      while (!session.stopped) {
-        const queued = session.roomPending.get(roomJid) ?? [];
-        if (queued.length === 0) {
-          break;
-        }
-        // T-0482: a delegated task is always its own turn. If it coalesced
-        // with a mention or another delegation, only the last item would be
-        // the trigger and the other delegation rows would stay `working`
-        // forever. Mentions still coalesce with mentions.
-        const nextDelegation = queued.findIndex((item) => item.delegationId !== undefined);
-        const take = nextDelegation === -1 ? queued.length : Math.max(1, nextDelegation);
-        const batch = queued.slice(0, take);
-        session.roomPending.set(roomJid, queued.slice(take));
-        await runGroupSessionTurn(session, roomJid, batch);
-      }
-    } finally {
-      session.roomBusy.delete(roomJid);
-    }
-  }
+  // (T-0549: `sessionForAiJid`, `handleRoomIncoming` and `pumpRoom` now live
+  // in `agents/gateway/group-ingest.ts`; the destructured names above keep
+  // every call site unchanged.)
 
   async function start(): Promise<void> {
     if (started) {
