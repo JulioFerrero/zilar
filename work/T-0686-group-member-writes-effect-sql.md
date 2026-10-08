@@ -1,7 +1,7 @@
 ---
 id: T-0686
 title: "effect/sql: move the group member writes in groups/service.ts (addGroupMembers, removeGroupMember, changeMemberRole transactions; assertChannelKeepsAnAdmin, syncChannelVoice reads) onto effect/sql (groups slice 4)"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0686-group-member-writes-effect-sql
 model: auto
@@ -58,4 +58,40 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**What changed** (`apps/server/src/groups/service.ts` only)
+- `addGroupMembers`: existing-member and group-AI reads run through `runSql`; the transaction is `sql.withTransaction`, with one `Effect.tryPromise` `setAffiliation(..., 'member')` per new user in order, then `INSERT INTO group_members ${sql.insert(...)}` with `role: 'member'`. Still only when `toAdd` is non-empty.
+- `removeGroupMember`: transaction is `sql.withTransaction`: `setAffiliation(..., 'none')` via `Effect.tryPromise`, `DELETE FROM group_members`, `SELECT id FROM topics`, and `DELETE FROM topic_members ... IN ${sql.in(...)}` when there are topic ids. Same order.
+- `changeMemberRole`: the single `UPDATE group_members SET role` runs inside `sql.withTransaction`, inside `runSql`, under the same `try/catch` with `mapXmppError`.
+- `assertChannelKeepsAnAdmin` and `syncChannelVoice`: reads through `runSql` (`SELECT user_id, role`, and `SELECT * FROM groups ... LIMIT 1` typed as `GroupRow`).
+- Removed the imports that became unused: `and`, `inArray`, `groupAis`, `topicMembers`. `createGroup` and `patchGroup` are untouched.
+- Column and table names checked against `apps/server/src/db/schema.ts` (`groups`, `group_members`, `group_ais`, `topics`, `topic_members`).
+
+**Verified**
+- `grep` for `db.` / `tx.` in lines 550-1000 of `groups/service.ts`: no matches.
+- `pnpm install`: done.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/groups/groups.test.ts src/roles/roles.test.ts`: 2 files, 78 tests passed.
+- Same command with `src/groups/visibility.test.ts src/topics/topics.test.ts`: 2 files, 56 tests passed.
+- The test files were not edited and do not mock drizzle.
+- First `pnpm gate`: FAIL on `format` only (`apps/server/src/groups/service.ts`). Fixed with `pnpm exec prettier --write apps/server/src/groups/service.ts`. The diff hunks stay inside the changed functions and imports.
+- Final `pnpm gate` (log in the scratchpad, not in the worktree):
+  ```
+  gate: 2 changed file(s) against main
+  PASS  install (frozen)  (1.2s)
+  PASS  format  (15.6s)
+  PASS  lint  (0.8s)
+  PASS  typecheck  (3.7s)
+  PASS  tests @zilar/server  (14.9s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+**Deviations and notes**
+- The spec's line numbers had drifted: `runSql` is at line 37 (not 42). The five function starts (552, 621, 760, 871, 930) matched.
+- `changeMemberRole` wraps its single UPDATE in `sql.withTransaction` (kept the transaction boundary, as the spec says "transaction").
+- The `group_members` insert has no `ON CONFLICT` clause, as before. The `toAdd` filter already excludes existing members.
+- Blocked: none.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Haiku 5.5, in one round (about 4.1 min). The lead reviewed the diff directly.
+- **Result:** the three transactions are on `sql.withTransaction`, with the XMPP calls through `Effect.tryPromise` in the same positions. The member insert uses `sql.insert`, and the topic_members cleanup still runs behind the empty guard. The channel reads are unchanged in meaning. The gate passed after a prettier fix.

@@ -1,19 +1,11 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { Effect } from 'effect';
 import { SqlClient, type SqlError } from 'effect/sql';
-import { and, eq, inArray } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { findOwnedAi } from '../ais/service';
 import { avatarIdsByOwner, avatarUrlFor } from '../avatars/service';
 import type { ServerDatabase } from '../db/client';
-import {
-  groupAis,
-  groupMembers,
-  groups,
-  handles,
-  retiredHandles,
-  topicMembers,
-  topics,
-} from '../db/schema';
+import { groupMembers, groups, handles, retiredHandles, topics } from '../db/schema';
 import { sqlRuntimeFor } from '../effect/sql';
 import { HttpError } from '../errors';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
@@ -566,19 +558,27 @@ export async function addGroupMembers(
   const targets = [...new Set(input.userIds)].filter((id) => id !== input.actorId);
   await assertContacts(db, input.actorId, targets);
 
-  const existing = await db
-    .select({ userId: groupMembers.userId })
-    .from(groupMembers)
-    .where(eq(groupMembers.groupId, input.groupId));
+  const existing = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ userId: string }>`SELECT user_id FROM group_members
+        WHERE group_id = ${input.groupId}`;
+    }),
+  );
   const existingIds = new Set(existing.map((row) => row.userId));
   const toAdd = targets.filter((id) => !existingIds.has(id));
 
   if (toAdd.length > 0) {
     // People and AIs share the same cap.
-    const aiRows = await db
-      .select({ aiId: groupAis.aiId })
-      .from(groupAis)
-      .where(eq(groupAis.groupId, input.groupId));
+    const aiRows = await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ aiId: string }>`SELECT ai_id FROM group_ais
+          WHERE group_id = ${input.groupId}`;
+      }),
+    );
     if (existingIds.size + aiRows.length + toAdd.length > MAX_GROUP_MEMBERS) {
       throw new HttpError(
         400,
@@ -587,20 +587,34 @@ export async function addGroupMembers(
       );
     }
     try {
-      await db.transaction(async (tx) => {
-        for (const userId of toAdd) {
-          await adminClient.setAffiliation(
-            group.roomLocalpart,
-            jidFor(localpartFor(userId), input.domain),
-            'member',
+      await runSql(
+        db,
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql.withTransaction(
+            Effect.gen(function* () {
+              for (const userId of toAdd) {
+                yield* Effect.tryPromise({
+                  try: () =>
+                    adminClient.setAffiliation(
+                      group.roomLocalpart,
+                      jidFor(localpartFor(userId), input.domain),
+                      'member',
+                    ),
+                  catch: (error) => error,
+                });
+              }
+              yield* sql`INSERT INTO group_members ${sql.insert(
+                toAdd.map((userId) => ({
+                  group_id: input.groupId,
+                  user_id: userId,
+                  role: 'member',
+                })),
+              )}`;
+            }),
           );
-        }
-        await tx
-          .insert(groupMembers)
-          .values(
-            toAdd.map((userId) => ({ groupId: input.groupId, userId, role: 'member' as const })),
-          );
-      });
+        }),
+      );
     } catch (error) {
       throw mapXmppError(error);
     }
@@ -650,35 +664,36 @@ export async function removeGroupMember(
   }
 
   try {
-    await db.transaction(async (tx) => {
-      await adminClient.setAffiliation(
-        group.roomLocalpart,
-        jidFor(localpartFor(input.targetUserId), input.domain),
-        'none',
-      );
-      await tx
-        .delete(groupMembers)
-        .where(
-          and(eq(groupMembers.groupId, input.groupId), eq(groupMembers.userId, input.targetUserId)),
+    await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql.withTransaction(
+          Effect.gen(function* () {
+            yield* Effect.tryPromise({
+              try: () =>
+                adminClient.setAffiliation(
+                  group.roomLocalpart,
+                  jidFor(localpartFor(input.targetUserId), input.domain),
+                  'none',
+                ),
+              catch: (error) => error,
+            });
+            yield* sql`DELETE FROM group_members
+              WHERE group_id = ${input.groupId} AND user_id = ${input.targetUserId}`;
+            // T-0108: a removed person loses their private-topic rows too. The
+            // topic room sync below then drops them from every topic room.
+            const topicRows = yield* sql<{ id: string }>`SELECT id FROM topics
+              WHERE group_id = ${input.groupId}`;
+            const privateIds = topicRows.map((row) => row.id);
+            if (privateIds.length > 0) {
+              yield* sql`DELETE FROM topic_members
+                WHERE topic_id IN ${sql.in(privateIds)} AND user_id = ${input.targetUserId}`;
+            }
+          }),
         );
-      // T-0108: a removed person loses their private-topic rows too. The
-      // topic room sync below then drops them from every topic room.
-      const topicRows = await tx
-        .select({ id: topics.id })
-        .from(topics)
-        .where(eq(topics.groupId, input.groupId));
-      const privateIds = topicRows.map((row) => row.id);
-      if (privateIds.length > 0) {
-        await tx
-          .delete(topicMembers)
-          .where(
-            and(
-              inArray(topicMembers.topicId, privateIds),
-              eq(topicMembers.userId, input.targetUserId),
-            ),
-          );
-      }
-    });
+      }),
+    );
   } catch (error) {
     throw mapXmppError(error);
   }
@@ -797,14 +812,16 @@ export async function changeMemberRole(
     await assertChannelKeepsAnAdmin(db, input.groupId, input.targetUserId);
   }
   try {
-    await db.transaction(async (tx) => {
-      await tx
-        .update(groupMembers)
-        .set({ role: input.role })
-        .where(
-          and(eq(groupMembers.groupId, input.groupId), eq(groupMembers.userId, input.targetUserId)),
+    await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql.withTransaction(
+          sql`UPDATE group_members SET role = ${input.role}
+            WHERE group_id = ${input.groupId} AND user_id = ${input.targetUserId}`,
         );
-    });
+      }),
+    );
   } catch (error) {
     throw mapXmppError(error);
   }
@@ -873,10 +890,14 @@ async function assertChannelKeepsAnAdmin(
   groupId: string,
   losingUserId: string,
 ): Promise<void> {
-  const rows = await db
-    .select({ userId: groupMembers.userId, role: groupMembers.role })
-    .from(groupMembers)
-    .where(eq(groupMembers.groupId, groupId));
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ userId: string; role: GroupRole }>`SELECT user_id, role
+        FROM group_members WHERE group_id = ${groupId}`;
+    }),
+  );
   const adminsLeft = rows.some((row) => row.userId !== losingUserId && row.role === 'admin');
   if (!adminsLeft) {
     throw new HttpError(
@@ -934,14 +955,24 @@ export async function syncChannelVoice(
   domain: string,
   logger: InviteLogger,
 ): Promise<void> {
-  const [group] = await db.select().from(groups).where(eq(groups.id, groupId)).limit(1);
+  const [group] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<GroupRow>`SELECT * FROM groups WHERE id = ${groupId} LIMIT 1`;
+    }),
+  );
   if (!group || group.kind !== 'channel') {
     return;
   }
-  const rows = await db
-    .select({ userId: groupMembers.userId, role: groupMembers.role })
-    .from(groupMembers)
-    .where(eq(groupMembers.groupId, groupId));
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ userId: string; role: GroupRole }>`SELECT user_id, role
+        FROM group_members WHERE group_id = ${groupId}`;
+    }),
+  );
   for (const row of rows) {
     const wanted: 'owner' | 'admin' | 'member' =
       row.role === 'owner' ? 'owner' : row.role === 'admin' ? 'admin' : 'member';
