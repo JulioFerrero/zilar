@@ -197,6 +197,9 @@ Hono stays the outer edge until every module has moved. Each module becomes an `
 5. **Layer:** `HttpApiBuilder.group(...)`, then `HttpApiBuilder.layer(api)` with the group, `sessionLayer` and the schema-error layer provided, then `HttpRouter.toWebHandler(layer.pipe(Layer.provide(HttpServer.layerServices)), { disableLogger: true })`. **Keep the router logger off:** it logs full URLs, which would bypass Hono's redacted path logging.
 6. **Mount:** export `{ handler, routes }` with the exact `{ method, path }` pairs, then replace the module's `app.route('/api', …)` line with `mountEffectRoutes(app, routes, handler)`. **Use exact routes, not a wildcard,** so the authz sweep test still sees every route.
 7. **Proof:** the module's existing Hono-level test passes unchanged. If it cannot, stop and report BLOCKED.
+8. **Output schemas strip unknown keys.** An endpoint's success schema is an encoder, so a field the service returns but the schema omits silently disappears for web and mobile, and TypeScript does not catch it. List every field of the service's return type, and compare the two side by side in the Report.
+9. **Step order:** when the old route checked the rate limiter before decoding the body, use an endpoint middleware for the limiter (see `pins/api.ts` and `groups/api.ts`).
+10. **Message texts:** a test-asserted text stays byte-identical. A generic decode message may become Schema's text; list the old and new texts in the Report.
 
 ## Moving a server service onto effect/sql (T-0496, T-0510, T-0519)
 
