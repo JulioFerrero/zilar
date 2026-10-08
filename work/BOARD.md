@@ -460,6 +460,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0566](T-0566-effect-http-invite-links.md) | Effect C (HTTP): group invite links on HttpApi | planned | auto | T-0563 | |
 | [T-0567](T-0567-effect-sql-gateway-db.md) | effect/sql: agents gateway db helpers | planned | auto | T-0562 | |
 | [T-0568](T-0568-effect-sql-delegation.md) | effect/sql: AI delegation service | planned | auto | T-0556 | |
+| [T-0569](T-0569-effect-schema-server-leaf-batch-2.md) | Effect Schema: server leaf batch 2 (git token, prices, transcription, listener) | planned | auto | T-0563 | |
 | [T-0427](T-0427-mobile-forwarded-header.md) | Mobile: forwarded messages show 'Forwarded from X [in Y]' | 2026-10-06 |
 | [T-0428](T-0428-mobile-new-chat-menu-sheet.md) | Mobile: New chat menu on the kit ActionSheet with icons | 2026-10-06 |
 | [T-0429](T-0429-mobile-dismiss-banner.md) | Mobile: DismissBanner replaces 12 copied chat screen banners | 2026-10-06 |
