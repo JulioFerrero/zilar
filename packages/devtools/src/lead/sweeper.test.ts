@@ -4,6 +4,7 @@ import {
   parsePsElapsed,
   runSweep,
   sweepCandidates,
+  sweepFailedLine,
   sweepLine,
   worktreeForCommand,
   type SweepDeps,
@@ -166,7 +167,7 @@ describe('runSweep', () => {
       { ps: () => PS_OUTPUT, stop },
     );
     expect(stop).not.toHaveBeenCalled();
-    expect(outcome).toEqual({ candidates: [], stopped: [] });
+    expect(outcome).toEqual({ candidates: [], stopped: [], survivors: [] });
   });
 
   it('does not count survivors as stopped', async () => {
@@ -179,6 +180,26 @@ describe('runSweep', () => {
     const outcome = await runSweep(runOptions, { ps: () => PS_OUTPUT, stop });
     expect(outcome.stopped).toEqual([]);
   });
+
+  it('puts a survivor in survivors and not in stopped', async () => {
+    const stop = async (candidates: CandidateProcess[]): Promise<StoppedProcess[]> =>
+      candidates.map((candidate) => ({
+        pid: candidate.pid,
+        command: 'vitest',
+        survived: candidate.pid === 321,
+      }));
+    const outcome = await runSweep(runOptions, { ps: () => PS_OUTPUT, stop });
+    expect(outcome.survivors).toEqual([
+      { pid: 321, task: 'T-0099', basename: 'vitest', elapsedMs: 1_800_000 },
+    ]);
+    expect(outcome.stopped).toEqual([]);
+  });
+
+  it('returns no survivors in dry-run', async () => {
+    const stop = vi.fn(async (): Promise<StoppedProcess[]> => []);
+    const outcome = await runSweep({ ...runOptions, dryRun: true }, deps(stop));
+    expect(outcome.survivors).toEqual([]);
+  });
 });
 
 describe('sweepLine', () => {
@@ -189,5 +210,16 @@ describe('sweepLine', () => {
         { pid: 2, task: 'T-0100', basename: 'tsc', elapsedMs: 90_000 },
       ]),
     ).toBe('LEAD: SWEPT 2 process(es): T-0099:vitest:30m, T-0100:tsc:2m');
+  });
+});
+
+describe('sweepFailedLine', () => {
+  it('formats task, basename and minutes for survivors', () => {
+    expect(
+      sweepFailedLine([
+        { pid: 1, task: 'T-0099', basename: 'vitest', elapsedMs: 30 * 60_000 },
+        { pid: 2, task: 'T-0100', basename: 'tsc', elapsedMs: 90_000 },
+      ]),
+    ).toBe('LEAD: SWEEP FAILED 2 process(es) survived SIGKILL: T-0099:vitest:30m, T-0100:tsc:2m');
   });
 });

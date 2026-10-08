@@ -1,7 +1,7 @@
 ---
 id: T-0662
 title: "autopilot sweeper: report processes that survive SIGKILL with one LEAD: SWEEP FAILED line, and stop a dry run from arming the 5-min sweep throttle"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0662-sweeper-survivors-and-dry-run
 model: auto
@@ -67,4 +67,42 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### Status: review
+
+The spec contradicted itself on the empty sweep (item 1 says it returns `survivors: []`; the acceptance says existing tests stay unchanged). Lead decided: return `survivors: []` and update the one existing assertion to add the new field.
+
+### Problems / deviations
+
+- Lead decision: the existing test `does not stop anything when nothing qualifies` (`packages/devtools/src/lead/sweeper.test.ts`) changed from `toEqual({ candidates: [], stopped: [] })` to `toEqual({ candidates: [], stopped: [], survivors: [] })`. That is the only existing test changed, and only to add the new field.
+
+### What changed
+
+- `packages/devtools/src/lead/sweeper.ts`:
+  - `SweepOutcome` gets `survivors: SweptProcess[]`.
+  - `runSweep` puts entries with `survived: true` into `survivors` (built with `toSwept`) instead of dropping them. Dry run and the empty sweep return `survivors: []`.
+  - New `export function sweepFailedLine(entries)`, which returns `LEAD: SWEEP FAILED <n> process(es) survived SIGKILL: <task>:<basename>:<m>m, …`.
+  - `sweepLine` and `sweepFailedLine` share a private `entryList` helper.
+- `packages/devtools/src/lead/autopilot.ts`:
+  - `maybeSweep` checks the throttle only when `!dryRun`, and sets `lastSweepAt = now` only after the dry-run return, so a dry run never arms it.
+  - When `outcome.survivors.length > 0`, it prints and appends `sweepFailedLine(...)`, the same way as the SWEPT line.
+  - Imports `sweepFailedLine`.
+- `packages/devtools/src/lead/sweeper.test.ts`:
+  - Added: survivor goes to `survivors` and not `stopped`; `sweepFailedLine` exact format; dry run returns empty `survivors`.
+  - Added `sweepFailedLine` to the import list.
+  - Changed only the existing empty-sweep assertion, to add `survivors: []` (see Problems / deviations).
+
+### Commands run
+
+- `pnpm install`: exit 0.
+- `pnpm --filter @zilar/devtools test --maxWorkers=2 --reporter=dot src/lead/sweeper src/lead/autopilot`: before the lead's decision, 42 passed, 1 failed (the empty-sweep assertion). After the change to add `survivors: []`, the final `pnpm gate` run below covers these tests.
+- `pnpm gate` (final run, log in the scratchpad): exit 0.
+  - `scope: every changed file is inside the Allowed files`
+  - `GATE PASS`
+- Round 2 (lead review): the throttle is now armed right after the throttle check, before the sweep runs (`if (!dryRun) { lastSweepAt = now; }`), so a throw from `runSweep` still arms it. The `lastSweepAt = now` after the dry-run return was removed. The sweepLine comment is back above `sweepLine`, and `entryList` has its own one-line comment. Commits 13f3a6be and 6f05bb9f. Re-run: `pnpm --filter @zilar/devtools test --maxWorkers=2 --reporter=dot src/lead/sweeper src/lead/autopilot`: 2 files, 43 tests passed. `pnpm gate`: `scope: every changed file is inside the Allowed files`, `GATE PASS`.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. This task was the Haiku 5.5 trial, run as a Claude Code subagent with no OpenCode pre-review; the lead reviewed the diff directly.
+- **What it does:** survivors of SIGKILL go to `survivors` and get one `LEAD: SWEEP FAILED` line. A dry run neither reads nor arms the throttle, and a real sweep arms it before it runs, so a `ps` failure cannot cause a retry on every tick.
+- **How the work went:** round 1 stopped on a real conflict in my spec (an empty sweep returns `survivors: []`, yet the existing test had to stay unchanged). The lead decided to update that one assertion. Round 2 fixed where the throttle is armed and where a comment sat.
+- **Tests and gate:** 43 tests passed, and the gate passed.

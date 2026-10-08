@@ -25,6 +25,7 @@ import { leadProcessIds } from './processes.js';
 import {
   defaultSweepDeps,
   runSweep,
+  sweepFailedLine,
   sweepLine,
   SWEEP_INTERVAL_MS,
   SWEEP_MAX_AGE_MS,
@@ -259,10 +260,12 @@ async function maybeSweep(
   if (sweeper === undefined) {
     return;
   }
-  if (lastSweepAt !== undefined && now - lastSweepAt < SWEEP_INTERVAL_MS) {
+  if (!dryRun && lastSweepAt !== undefined && now - lastSweepAt < SWEEP_INTERVAL_MS) {
     return;
   }
-  lastSweepAt = now;
+  if (!dryRun) {
+    lastSweepAt = now;
+  }
   const worktreeRoots: string[] = [];
   const blockedWorktrees: string[] = [];
   const taskByWorktree = new Map<string, string>();
@@ -296,6 +299,11 @@ async function maybeSweep(
   }
   if (outcome.stopped.length > 0) {
     const line = sweepLine(outcome.stopped);
+    console.log(line);
+    appendLog(deps.statePath, line);
+  }
+  if (outcome.survivors.length > 0) {
+    const line = sweepFailedLine(outcome.survivors);
     console.log(line);
     appendLog(deps.statePath, line);
   }

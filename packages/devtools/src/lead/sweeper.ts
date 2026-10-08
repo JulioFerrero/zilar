@@ -138,6 +138,8 @@ export interface SweepOutcome {
   candidates: SweptProcess[];
   /** The rows we actually stopped (empty in dry-run and on survivors). */
   stopped: SweptProcess[];
+  /** The rows that survived SIGKILL: still running, reported with SWEEP FAILED. */
+  survivors: SweptProcess[];
 }
 
 // Seams so tests never touch the real OS: `ps` returns the raw process list,
@@ -193,30 +195,43 @@ export async function runSweep(
   const picked = sweepCandidates(parsePsElapsed(deps.ps()), options);
   const candidates = picked.map((row) => toSwept(row, options));
   if (options.dryRun || picked.length === 0) {
-    return { candidates, stopped: [] };
+    return { candidates, stopped: [], survivors: [] };
   }
   const stopped = await deps.stop(picked);
   const byPid = new Map(picked.map((row) => [row.pid, row]));
   const swept: SweptProcess[] = [];
+  const survivors: SweptProcess[] = [];
   for (const entry of stopped) {
-    // `survived` means SIGKILL did not end it: we report those elsewhere, but
-    // they were not stopped, so they never count in the SWEPT line.
-    if (entry.survived) {
+    const row = byPid.get(entry.pid);
+    if (row === undefined) {
       continue;
     }
-    const row = byPid.get(entry.pid);
-    if (row !== undefined) {
+    // `survived` means SIGKILL did not end it: they were not stopped, so they
+    // never count in the SWEPT line, and they go to the SWEEP FAILED line.
+    if (entry.survived) {
+      survivors.push(toSwept(row, options, entry.command));
+    } else {
       swept.push(toSwept(row, options, entry.command));
     }
   }
-  return { candidates, stopped: swept };
+  return { candidates, stopped: swept, survivors };
+}
+
+// The `task:basename:minutes` list shared by both sweep lines.
+function entryList(entries: SweptProcess[]): string {
+  return entries
+    .map((entry) => `${entry.task}:${entry.basename}:${Math.round(entry.elapsedMs / 60_000)}m`)
+    .join(', ');
 }
 
 // One line per sweep that stopped something: the task, the executable and how
 // long it had been running. Basenames only: command lines can carry secrets.
 export function sweepLine(entries: SweptProcess[]): string {
-  const parts = entries.map(
-    (entry) => `${entry.task}:${entry.basename}:${Math.round(entry.elapsedMs / 60_000)}m`,
-  );
-  return `LEAD: SWEPT ${entries.length} process(es): ${parts.join(', ')}`;
+  return `LEAD: SWEPT ${entries.length} process(es): ${entryList(entries)}`;
+}
+
+// One line per sweep whose processes survived SIGKILL. Same entry format as
+// sweepLine, so the lead can read the task and executable at a glance.
+export function sweepFailedLine(entries: SweptProcess[]): string {
+  return `LEAD: SWEEP FAILED ${entries.length} process(es) survived SIGKILL: ${entryList(entries)}`;
 }
