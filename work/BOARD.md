@@ -457,6 +457,11 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0527](T-0527-effect-mobile-api-batch-2.md) | Effect E batch 2: mobile roles, gifs, ai-memory, connections API | planned | auto | T-0506 | |
 | [T-0528](T-0528-effect-sql-chat-prefs-folders.md) | Effect C1: chat-prefs, chat-folders services on effect/sql | planned | auto | T-0510 | |
 | [T-0529](T-0529-agents-g5a-live-wrappers.md) | Agents G5a: extract the live-session wrappers and postToChat | running | auto | T-0523 | |
+| [T-0530](T-0530-effect-web-api-3.md) | Effect D3: web api.ts part 3, zod leaves web | running | auto | T-0507 | |
+| [T-0531](T-0531-atom-react-mobile-m1.md) | atom-react M1: mobile stores on an atom registry | running | auto | T-0526 | |
+| [T-0532](T-0532-effect-mobile-api-batch-3.md) | Effect E batch 3: mobile media, groups, integrations, transcripts; zod leaves mobile | planned | auto | T-0527 | |
+| [T-0533](T-0533-effect-http-xmpp-chats-memory.md) | Effect C (HTTP): xmpp token, chats, AI memory on HttpApi | planned | auto | T-0520 | |
+| [T-0534](T-0534-agents-g5b-session-registry.md) | Agents G5b: extract the session lifecycle | planned | auto | T-0529 | |
 | [T-0427](T-0427-mobile-forwarded-header.md) | Mobile: forwarded messages show 'Forwarded from X [in Y]' | 2026-10-06 |
 | [T-0428](T-0428-mobile-new-chat-menu-sheet.md) | Mobile: New chat menu on the kit ActionSheet with icons | 2026-10-06 |
 | [T-0429](T-0429-mobile-dismiss-banner.md) | Mobile: DismissBanner replaces 12 copied chat screen banners | 2026-10-06 |
