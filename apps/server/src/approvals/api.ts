@@ -14,12 +14,12 @@ import {
   HttpApiMiddleware,
   HttpApiSchema,
 } from 'effect/http-api';
-import { and, eq, inArray } from 'drizzle-orm';
+import { SqlClient, SqlError } from 'effect/sql';
 import type { Logger } from 'pino';
 import type { Auth } from '../auth/auth';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
-import { ais, approvalRules, groupMembers, topics } from '../db/schema';
+import type { approvalRules } from '../db/schema';
 import { HttpError } from '../errors';
 import type { EffectApiMount, EffectApiRoute } from '../effect/http';
 import {
@@ -30,7 +30,8 @@ import {
   sessionLayer,
   withErrorEnvelope,
 } from '../effect/http';
-import { canSeeTopic } from '../topics/access';
+import { sqlRuntimeFor } from '../effect/sql';
+import { canSeeTopic, type TopicRow } from '../topics/access';
 import {
   ApprovalServiceError,
   type AlwaysEligiblePredicate,
@@ -48,6 +49,16 @@ import {
   toPublicRule,
   type PublicApprovalRule,
 } from './rules';
+
+// Reads run on the `effect/sql` client registered for this database (see
+// `../effect/sql`); `transformResultNames` camelCases the columns so the rows
+// keep the drizzle shapes the access helpers already take.
+function runSql<A>(
+  db: ServerDatabase,
+  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
+): Promise<A> {
+  return sqlRuntimeFor(db).runPromise(effect);
+}
 
 // The minimum slice of pino the route needs to log a hook failure. The
 // server wires its own logger; tests can pass a captor.
@@ -417,16 +428,10 @@ export function createApprovalsApi(deps: ApprovalsApiDependencies): EffectApiMou
           Effect.gen(function* () {
             const user = yield* CurrentUser;
             const aiId = request.params.id;
-            const [aiRow] = yield* Effect.promise(() =>
-              deps.db
-                .select({ id: ais.id, owner: ais.owner })
-                .from(ais)
-                .where(eq(ais.id, aiId))
-                .limit(1),
-            );
+            const aiRow = yield* Effect.promise(() => loadAiOwnerRow(deps.db, aiId));
             // A stranger and a non-owner get the same 404 as a missing AI, so
             // existence is never leaked.
-            if (!aiRow || aiRow.owner !== user.id) {
+            if (aiRow === null || aiRow.owner !== user.id) {
               throw new HttpError(404, 'not_found', 'AI not found');
             }
             const rules = yield* Effect.promise(() => listActiveRulesForAi(deps.db, aiId));
@@ -438,14 +443,13 @@ export function createApprovalsApi(deps: ApprovalsApiDependencies): EffectApiMou
                 visible.push({ ...rule, topicName: null });
                 continue;
               }
-              const [topic] = yield* Effect.promise(() =>
-                deps.db
-                  .select()
-                  .from(topics)
-                  .where(eq(topics.id, rule.topicId as string))
-                  .limit(1),
+              const topic = yield* Effect.promise(() =>
+                loadTopicRow(deps.db, rule.topicId as string),
               );
-              if (topic && (yield* Effect.promise(() => canSeeTopic(deps.db, topic, user.id)))) {
+              if (
+                topic !== null &&
+                (yield* Effect.promise(() => canSeeTopic(deps.db, topic, user.id)))
+              ) {
                 visible.push({ ...rule, topicName: topic.name });
               }
             }
@@ -465,9 +469,7 @@ export function createApprovalsApi(deps: ApprovalsApiDependencies): EffectApiMou
             if (!allowed) {
               throw new HttpError(404, 'not_found', 'Group not found');
             }
-            const topicRows = yield* Effect.promise(() =>
-              deps.db.select().from(topics).where(eq(topics.groupId, groupId)),
-            );
+            const topicRows = yield* Effect.promise(() => loadTopicsForGroup(deps.db, groupId));
             const rules: PublicApprovalRule[] = [];
             for (const topic of topicRows) {
               if (topic.archivedAt !== null) {
@@ -497,12 +499,10 @@ export function createApprovalsApi(deps: ApprovalsApiDependencies): EffectApiMou
           Effect.gen(function* () {
             const user = yield* CurrentUser;
             const ruleId = request.params.id;
-            const [existing] = yield* Effect.promise(() =>
-              deps.db.select().from(approvalRules).where(eq(approvalRules.id, ruleId)).limit(1),
-            );
+            const existing = yield* Effect.promise(() => loadApprovalRule(deps.db, ruleId));
             // Same 404 shape for missing id and unauthorized: existence is never
             // leaked.
-            if (!existing) {
+            if (existing === null) {
               throw new HttpError(404, 'not_found', 'Approval rule not found');
             }
             const allowed = yield* Effect.promise(() =>
@@ -562,6 +562,69 @@ export function createApprovalsApi(deps: ApprovalsApiDependencies): EffectApiMou
   return { handler, routes: APPROVALS_API_ROUTES };
 }
 
+// One topic by id: the full row `canSeeTopic` needs (it reads visibility,
+// group and archive state). `null` for a missing id, so callers keep the
+// same visibility answers and 404s.
+async function loadTopicRow(db: ServerDatabase, topicId: string): Promise<TopicRow | null> {
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<TopicRow>`SELECT * FROM topics WHERE id = ${topicId} LIMIT 1`;
+    }),
+  );
+  return row ?? null;
+}
+
+// Every topic of one group, full rows for the same reason.
+async function loadTopicsForGroup(
+  db: ServerDatabase,
+  groupId: string,
+): Promise<ReadonlyArray<TopicRow>> {
+  return runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<TopicRow>`SELECT * FROM topics WHERE group_id = ${groupId}`;
+    }),
+  );
+}
+
+// The AI ownership row: `id` distinguishes a missing AI from an unauthorized
+// caller (both answer 404), `owner` is the ownership check.
+interface AiOwnerRow {
+  id: string;
+  owner: string;
+}
+
+async function loadAiOwnerRow(db: ServerDatabase, aiId: string): Promise<AiOwnerRow | null> {
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<AiOwnerRow>`SELECT id, owner FROM ais WHERE id = ${aiId} LIMIT 1`;
+    }),
+  );
+  return row ?? null;
+}
+
+// One rule by id, full row so `canManageRuleFor` sees its topic/group/AI ids.
+async function loadApprovalRule(
+  db: ServerDatabase,
+  ruleId: string,
+): Promise<typeof approvalRules.$inferSelect | null> {
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<
+        typeof approvalRules.$inferSelect
+      >`SELECT * FROM approval_rules WHERE id = ${ruleId} LIMIT 1`;
+    }),
+  );
+  return row ?? null;
+}
+
 // Looks up the AI ownership directly and adds the group-admin check via
 // the rules module. Kept in this file because it composes the two
 // checks the route needs in one place. T-0110: both the AI owner and a
@@ -572,16 +635,12 @@ async function canManageRuleFor(
   userId: string,
 ): Promise<boolean> {
   if (rule.topicId !== null) {
-    const [topic] = await db.select().from(topics).where(eq(topics.id, rule.topicId)).limit(1);
+    const topic = await loadTopicRow(db, rule.topicId);
     if (!topic || !(await canSeeTopic(db, topic, userId))) {
       return false;
     }
   }
-  const [aiRow] = await db
-    .select({ owner: ais.owner })
-    .from(ais)
-    .where(eq(ais.id, rule.aiId))
-    .limit(1);
+  const aiRow = await loadAiOwnerRow(db, rule.aiId);
   if (aiRow && aiRow.owner === userId) {
     return true;
   }
@@ -618,7 +677,7 @@ async function visibleTopicNames(
   const ids = [...new Set(rows.map((row) => row.topicId).filter((id) => id !== null))];
   const names = new Map<string, string>();
   for (const id of ids) {
-    const [topic] = await db.select().from(topics).where(eq(topics.id, id)).limit(1);
+    const topic = await loadTopicRow(db, id);
     if (topic && (await canSeeTopic(db, topic, userId))) {
       names.set(id, topic.name);
     }
@@ -646,9 +705,13 @@ function approverNamesForRow(names: Map<string, string[]>, topicId: string | nul
 // The group ids where the user is an owner/admin. One query for the
 // whole list response — never one query per row.
 async function managedGroupIdsForUser(db: ServerDatabase, userId: string): Promise<Set<string>> {
-  const rows = await db
-    .select({ groupId: groupMembers.groupId })
-    .from(groupMembers)
-    .where(and(eq(groupMembers.userId, userId), inArray(groupMembers.role, ['owner', 'admin'])));
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ groupId: string }>`SELECT group_id FROM group_members
+        WHERE user_id = ${userId} AND role IN ('owner', 'admin')`;
+    }),
+  );
   return new Set(rows.map((row) => row.groupId));
 }
