@@ -3,9 +3,9 @@
 // timeout and size cap, call the provider with a timeout, single-flight per
 // URL hash, cache re-check and insert, the fixed error mapping.
 //
-// The Hono route handlers, drizzle queries and zod validation stay as they
-// are. Everything here runs through `Effect.runPromise` at the edge, so
-// callers see plain `Promise`s and the existing tests do not change.
+// The Hono route handlers and zod validation stay as they are. Everything
+// here runs through `Effect.runPromise` at the edge, so callers see plain
+// `Promise`s and the existing tests do not change.
 //
 // Errors are typed (`Data.TaggedError`): `AudioUnavailable` (fetch leg
 // failed), `VoiceTooLarge`, `NotAudio`, `TranscriptionFailed` (provider
@@ -14,11 +14,10 @@
 // leaves this module.
 
 import { Cause, Data, Duration, Effect, type Effect as EffectType } from 'effect';
-import { eq, sql } from 'drizzle-orm';
+import { SqlClient, SqlError } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
-import { voiceTranscripts } from '../db/schema';
+import { sqlRuntimeFor } from '../effect/sql';
 import { HttpError } from '../errors';
-import type { SetupTransaction } from '../setup/settings';
 import { transcribeAudio, TranscriptionProviderError, type TranscriptionFetch } from './provider';
 import type { VoiceTranscriptionSettings } from './settings';
 
@@ -148,46 +147,46 @@ const transcribeEffect = Effect.fnUntraced(function* (
   return result;
 });
 
-// `awaitDb` runs a drizzle promise the same way `await` does: the
-// rejection reaches the caller identical and unwrapped (not an Effect
-// `Cause` wrapper). `Effect.promise` lifts without a typed-error mapper,
-// so defects reject the boundary promise with the original error — a DB
-// failure rejects exactly like the old `await` did.
-const awaitDb = <A>(promise: () => Promise<A>): EffectType.Effect<A, never, never> =>
-  Effect.promise(promise);
+// `awaitSql` runs an effect/sql program on the database's registered runtime.
+// A SQL failure rejects the runtime promise with the original error, and
+// `Effect.promise` turns that rejection into a defect, so a DB failure rejects
+// the boundary promise unwrapped, exactly as the old drizzle `await` did.
+const awaitSql = <A>(
+  db: ServerDatabase,
+  effect: EffectType.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
+): EffectType.Effect<A, never, never> => Effect.promise(() => sqlRuntimeFor(db).runPromise(effect));
 
 const storeTranscriptEffect = Effect.fnUntraced(function* (
   db: ServerDatabase,
   urlHash: string,
   result: { text: string; language: string | null },
 ): EffectType.fn.Return<string, never> {
-  yield* awaitDb(() =>
-    db.transaction(async (tx: SetupTransaction) => {
-      await tx.execute(
-        sql`SELECT pg_advisory_xact_lock(hashtext(${'voice-transcript:' + urlHash}))`,
+  yield* awaitSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql.withTransaction(
+        Effect.gen(function* () {
+          yield* sql`SELECT pg_advisory_xact_lock(hashtext(${'voice-transcript:' + urlHash}))`;
+          const cached = yield* sql<{ text: string }>`SELECT text FROM voice_transcripts
+            WHERE url_hash = ${urlHash} LIMIT 1`;
+          if (cached.length > 0) return;
+          yield* sql`INSERT INTO voice_transcripts (url_hash, text, language)
+            VALUES (${urlHash}, ${result.text}, ${result.language})
+            ON CONFLICT (url_hash) DO NOTHING`;
+        }),
       );
-      const [cached] = await tx
-        .select({ text: voiceTranscripts.text })
-        .from(voiceTranscripts)
-        .where(eq(voiceTranscripts.urlHash, urlHash))
-        .limit(1);
-      if (cached !== undefined) {
-        return;
-      }
-      await tx
-        .insert(voiceTranscripts)
-        .values({ urlHash, text: result.text, language: result.language })
-        .onConflictDoNothing({ target: voiceTranscripts.urlHash });
     }),
   );
-  const [stored] = yield* awaitDb(() =>
-    db
-      .select({ text: voiceTranscripts.text })
-      .from(voiceTranscripts)
-      .where(eq(voiceTranscripts.urlHash, urlHash))
-      .limit(1),
+  const stored = yield* awaitSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ text: string }>`SELECT text FROM voice_transcripts
+        WHERE url_hash = ${urlHash} LIMIT 1`;
+    }),
   );
-  return stored?.text ?? result.text;
+  return stored[0]?.text ?? result.text;
 });
 
 const fetchAndTranscribeEffect = Effect.fnUntraced(function* (
