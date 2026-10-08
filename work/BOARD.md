@@ -10,6 +10,8 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0623](T-0623-effect-sql-voice-settings.md) | effect/sql: voice transcription settings | in-progress | auto | T-0596 | |
+| [T-0625](T-0625-effect-sql-files-lookup.md) | effect/sql: file proxy row lookup | in-progress | auto | T-0596 | |
+| [T-0626](T-0626-audit-effect-last-mile.md) | Audit: the Effect last mile, plus the bigint check | in-progress | auto | | |
 
 ## Follow-ups
 
