@@ -16,8 +16,7 @@ import { createAuditApi } from './audit/api';
 import type { Auth } from './auth/auth';
 import { createAuthApi } from './auth/api';
 import { CurrentMailer, createMailer } from './auth/mailer';
-import { createSetupApi } from './setup/api';
-import { type SetupRoutesDependencies } from './setup/routes';
+import { createSetupApi, type SetupApiDependencies } from './setup/api';
 import { createGetBotToken } from './integrations/routes';
 import { createIntegrationsApi } from './integrations/api';
 import { settingsCipherFor } from './setup/settings';
@@ -85,10 +84,7 @@ export interface AppDependencies {
   /** T-0161: overrides the setup routes (tests inject a fake sender). */
   setup?:
     | Partial<
-        Pick<
-          SetupRoutesDependencies,
-          'limiter' | 'getClientIp' | 'trustedProxyHops' | 'sendTestCode'
-        >
+        Pick<SetupApiDependencies, 'limiter' | 'getClientIp' | 'trustedProxyHops' | 'sendTestCode'>
       >
     | undefined;
   /** Overrides the ffmpeg engine; tests inject a fake. */

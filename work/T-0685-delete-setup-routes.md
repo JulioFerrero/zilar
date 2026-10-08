@@ -1,7 +1,7 @@
 ---
 id: T-0685
 title: "A7: retire the setup Hono wrapper: move SetupRoutesDependencies to setup/api.ts as SetupApiDependencies, assert the route shape on SETUP_API_ROUTES, delete setup/routes.ts"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0685-delete-setup-routes
 model: auto
@@ -63,4 +63,41 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**What changed (5 files, all in Allowed files)**
+- `apps/server/src/setup/api.ts`: `SetupRoutesDependencies` moved here unchanged as `SetupApiDependencies` (same fields and comments). Added the type imports it needs (`Logger` from pino, `AuditRecorder`, `ServerConfig`, `ServerDatabase`, `CurrentMailer`, `RateLimiter`), merged into existing imports where present. Dropped the `./routes` import. Renamed its 3 uses. Removed the header comment sentence that pointed at `routes.ts`.
+- `apps/server/src/app.ts`: `SetupApiDependencies` imported from `./setup/api` (merged into the existing import); the `Pick` in the `setup?` override now uses it. Prettier reflowed that `Pick` onto one line.
+- `apps/server/src/setup/routes.test.ts`: Hono import removed; imports `SETUP_API_ROUTES`, `SETUP_RATE_LIMIT_MAX`, `SetupApiDependencies` from `./api`. The route-shape test now maps `SETUP_API_ROUTES` with the same three expectations (contains `GET|/api/setup/status`, contains `POST|/api/setup`, length 2). `failingSend`, `recordingSend` and `appFor` only had their type name changed.
+- `apps/server/src/setup/routes.ts`: deleted (`git rm`).
+
+**Deviation from the spec:** the spec said "every other test stays unchanged". The three helper signatures above had to change because of the type rename. No test body changed.
+
+**Commands run**
+- `pnpm install`: exit 0.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/setup src/app.test`: 4 files passed, 36 tests passed.
+- `git grep -n "setup/routes'\|setup/routes\"\|from './routes'" -- apps/server/src/setup apps/server/src/app.ts`: no output.
+- `pnpm gate`, first run: FAIL at format only. Prettier flagged `apps/server/src/app.ts` (the `Pick` reflow). Fixed with `pnpm exec prettier --write apps/server/src/app.ts`.
+- `pnpm gate`, second run: GATE PASS.
+
+**Gate summary lines**
+```
+gate: 5 changed file(s) against main
+PASS  install (frozen)  (1.1s)
+PASS  format  (13.4s)
+PASS  lint  (1.2s)
+PASS  typecheck  (3.3s)
+PASS  tests @zilar/server  (7.0s)
+scope: every changed file is inside the Allowed files
+GATE PASS
+```
+
+**Stale references outside Allowed files (not edited):**
+- `docs/audit/effect-last-mile.md:85, 116` still list `setup/routes.ts`.
+- `docs/EFFECT_GUIDE.md:226` says "In `setup/routes.test.ts` the patch is still in place". The `db.transaction` patch is no longer in that file (grep finds nothing), so the sentence is out of date.
+
+**Blocked / needs a decision:** none.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Haiku 5.5, in one round (about 2.8 min). The lead reviewed the diff directly.
+- **Result:** `setup/routes.ts` is deleted, and the deps interface now lives in `api.ts` as `SetupApiDependencies`. The route-shape test asserts on `SETUP_API_ROUTES`. Renaming the type in the three test helpers follows from the spec. No file imports `setup/routes` any more, and the gate passed.
+- **Docs:** the lead updates the mentions in `docs/audit/effect-last-mile.md` and `docs/EFFECT_GUIDE.md`.

@@ -4,14 +4,13 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { count, eq } from 'drizzle-orm';
-import { Hono } from 'hono';
 import { createAuditRecorder } from '../audit/service';
 import { CurrentMailer, type Mailer } from '../auth/mailer';
 import { createApp } from '../app';
 import { auditLog, instanceSettings, invites, user } from '../db/schema';
 import { sqlRuntimeFor, type SqlRuntime } from '../effect/sql';
 import { createTestContext, TEST_BASE_URL, type TestContext } from '../test-support';
-import { createSetupRoutes, SETUP_RATE_LIMIT_MAX, type SetupRoutesDependencies } from './routes';
+import { SETUP_API_ROUTES, SETUP_RATE_LIMIT_MAX, type SetupApiDependencies } from './api';
 import {
   getMailSettings,
   MAIL_FROM_SETTING,
@@ -37,13 +36,13 @@ let sentThrough: Mailer | null;
 let sentTo: Array<{ email: string; code: string }>;
 let swapped: Mailer | null;
 
-function failingSend(): SetupRoutesDependencies['sendTestCode'] {
+function failingSend(): SetupApiDependencies['sendTestCode'] {
   return async () => {
     throw new Error('535 rejected: bad key');
   };
 }
 
-function recordingSend(): SetupRoutesDependencies['sendTestCode'] {
+function recordingSend(): SetupApiDependencies['sendTestCode'] {
   return async ({ mailer, email }) => {
     sentThrough = mailer;
     // Drive the same OTP path production uses, without a provider: mint
@@ -57,7 +56,7 @@ function recordingSend(): SetupRoutesDependencies['sendTestCode'] {
   };
 }
 
-function appFor(overrides: Partial<SetupRoutesDependencies> = {}) {
+function appFor(overrides: Partial<SetupApiDependencies> = {}) {
   return createApp({
     db: context.db,
     logger: context.logger,
@@ -348,17 +347,7 @@ describe('POST /api/setup', () => {
 
 describe('setup route shape', () => {
   it('registers exactly GET /api/setup/status and POST /api/setup', () => {
-    const routes = new Hono();
-    const sub = createSetupRoutes({
-      auth: context.auth,
-      db: context.db,
-      config: context.config,
-      mailer: liveMailer,
-      logger: context.logger,
-      getClientIp: () => '127.0.0.1',
-    });
-    routes.route('/api', sub);
-    const paths = routes.routes.map((route) => `${route.method}|${route.path}`);
+    const paths = SETUP_API_ROUTES.map((route) => `${route.method}|${route.path}`);
     expect(paths).toContain('GET|/api/setup/status');
     expect(paths).toContain('POST|/api/setup');
     expect(paths).toHaveLength(2);

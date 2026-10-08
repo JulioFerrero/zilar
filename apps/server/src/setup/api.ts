@@ -1,7 +1,6 @@
 // First-run setup on the Effect `HttpApi` adapter (T-0578): the same
 // methods, paths, statuses, bodies, step order and texts as the Hono router
-// it replaces. `routes.ts` keeps the `createSetupRoutes` wrapper for the
-// route-shape test; `app.ts` mounts this API at the same position.
+// it replaces. `app.ts` mounts this API at the same position.
 //
 // Both transactions run on `effect/sql` (`sql.withTransaction` inside a
 // `runSql` on the registered runtime), through the effects in
@@ -17,6 +16,8 @@ import { Effect, Layer, Result, Schema, SchemaGetter, SchemaIssue } from 'effect
 import { HttpServer, HttpServerRequest, HttpRouter } from 'effect/http';
 import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
 import { SqlClient, SqlError } from 'effect/sql';
+import type { Logger } from 'pino';
+import type { AuditRecorder } from '../audit/service';
 import type { Auth } from '../auth/auth';
 import { INVITE_HEADER } from '../auth/auth';
 import {
@@ -24,7 +25,9 @@ import {
   DEFAULT_INVITE_TTL_DAYS,
   generateInviteCode,
 } from '../auth/invites';
-import { createResendMailer, type Mailer } from '../auth/mailer';
+import { createResendMailer, type CurrentMailer, type Mailer } from '../auth/mailer';
+import type { ServerConfig } from '../config';
+import type { ServerDatabase } from '../db/client';
 import { sqlRuntimeFor } from '../effect/sql';
 import {
   requestIdOf,
@@ -35,8 +38,7 @@ import {
 } from '../effect/http';
 import { HttpError } from '../errors';
 import { clientIpFrom } from '../http/client-ip';
-import { createRateLimiter } from '../rate-limit';
-import type { SetupRoutesDependencies } from './routes';
+import { createRateLimiter, type RateLimiter } from '../rate-limit';
 import {
   deleteMailSettingsEffect,
   getMailSettings,
@@ -50,11 +52,36 @@ import {
 export const SETUP_RATE_LIMIT_MAX = 5;
 export const SETUP_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
 
+export interface SetupApiDependencies {
+  auth: Auth;
+  db: ServerDatabase;
+  config: ServerConfig;
+  /** The live mailer, swapped to the stored Resend transport on success. */
+  mailer: CurrentMailer;
+  logger: Logger;
+  audit?: AuditRecorder;
+  /** Overrides the per-IP setup limiter (tests inject a small budget). */
+  limiter?: RateLimiter | undefined;
+  /** Injected in tests; production trusts proxy hops like the join limiter. */
+  getClientIp?: ((request: HttpServerRequest.HttpServerRequest) => string) | undefined;
+  /** Injected in tests; production trusts TRUSTED_PROXY_HOPS like the join limiter. */
+  trustedProxyHops?: number | undefined;
+  /** Sends the test code through the new mailer; tests inject a fake. */
+  sendTestCode?:
+    | ((input: { auth: Auth; mailer: Mailer; email: string; inviteCode: string }) => Promise<void>)
+    | undefined;
+  /**
+   * Swaps the live mailer after the test send succeeds; tests inject a
+   * capture. Defaults to swapping the shared `mailer` above.
+   */
+  swapMailer?: ((mailer: Mailer) => void) | undefined;
+}
+
 // Every setup query runs on the `effect/sql` client registered for this
 // database (see `../effect/sql`). A rejection here is a defect for the caller,
 // exactly like the drizzle `db.transaction` rejection it replaces.
 function runSql<A, E>(
-  db: SetupRoutesDependencies['db'],
+  db: SetupApiDependencies['db'],
   effect: Effect.Effect<A, E, SqlClient.SqlClient>,
 ): Promise<A> {
   return sqlRuntimeFor(db).runPromise(effect);
@@ -177,7 +204,7 @@ function notFound(): HttpError {
   return new HttpError(404, 'not_found', 'Not found');
 }
 
-export function createSetupApi(deps: SetupRoutesDependencies): EffectApiMount {
+export function createSetupApi(deps: SetupApiDependencies): EffectApiMount {
   const logger = deps.logger;
   const limiter =
     deps.limiter ??
@@ -382,7 +409,7 @@ export function createSetupApi(deps: SetupRoutesDependencies): EffectApiMount {
 // setup screen. Otherwise mail is configured exactly when the setup
 // screen's stored settings exist (read here without the key, so the
 // secret is never decrypted just to answer the status).
-async function mailConfigured(deps: SetupRoutesDependencies): Promise<boolean> {
+async function mailConfigured(deps: SetupApiDependencies): Promise<boolean> {
   if (deps.config.MAIL_TRANSPORT !== undefined) {
     return true;
   }
