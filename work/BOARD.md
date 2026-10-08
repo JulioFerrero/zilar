@@ -12,6 +12,8 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0648](T-0648-ais-update-persona-effect-sql.md) | effect/sql: ais update and persona transactions | in-progress | auto | | |
 | [T-0649](T-0649-stale-routes-comments.md) | Comments: repoint references to the deleted routes.ts files | in-progress | auto | | |
 | [T-0650](T-0650-handles-drop-zod.md) | zod: handles without the legacy schema | in-progress | auto | | |
+| [T-0651](T-0651-contact-requests-drop-zod.md) | zod: contact requests without the legacy schema | in-progress | auto | | |
+| [T-0652](T-0652-ais-delete-and-model-clear-effect-sql.md) | effect/sql: ais delete and model-clear transactions | in-progress | auto | T-0648 | |
 
 ## Follow-ups
 
