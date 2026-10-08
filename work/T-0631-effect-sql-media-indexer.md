@@ -15,7 +15,7 @@ estimate: 0.5 day
 ## Spec (written by Claude, do not edit)
 
 ### Why
-Julio, 2026-10-07: `effect/sql` replaces drizzle everywhere. This is F5 in `docs/audit/effect-last-mile.md` §2 (T-0626); read its §3 on bigint too. The recipe is `docs/audit/effect-sql-migration.md` §(a), with the pins example in `apps/server/src/pins/service.ts` (lines 150-230, a private `runSql` and `sql.withTransaction`).
+Julio, 2026-10-07: `effect/sql` replaces drizzle everywhere. This is F5 in the T-0626 last-mile audit, which is not merged yet. Its bigint rule: any effect/sql read of a `bigint` column comes back as a string, so wrap it in `BigInt(...)` or `Number(...)` before any math, comparison or JSON. The recipe is `docs/audit/effect-sql-migration.md` §(a), with the pins example in `apps/server/src/pins/service.ts` (lines 150-230, a private `runSql` and `sql.withTransaction`).
 
 ### Verified facts (do not re-derive; read lines 215-411)
 - **`apps/server/src/media/indexer.ts`:**
@@ -38,7 +38,7 @@ Julio, 2026-10-07: `effect/sql` replaces drizzle everywhere. This is F5 in `docs
 2. **Tests:** every listed test passes **unchanged**.
 
 ### Read first
-`AGENTS.md`, `docs/EFFECT_GUIDE.md` (the effect/sql section), `docs/audit/effect-last-mile.md` §3, `apps/server/src/pins/service.ts` (lines 150-230), `apps/server/src/media/indexer.ts`.
+`AGENTS.md`, `docs/EFFECT_GUIDE.md` (the effect/sql section), `apps/server/src/pins/service.ts` (lines 150-230), `apps/server/src/media/indexer.ts`.
 
 ### Allowed files
 `apps/server/src/media/indexer.ts`, `work/T-0631-effect-sql-media-indexer.md`.
