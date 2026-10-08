@@ -3,6 +3,30 @@
 Status: audit (T-0626), 2026-10-08. Written from the code; every claim cites
 `file:line`. No code was changed by this task.
 
+**Progress (lead, 2026-10-09 ~01:55): the line numbers below are from 10-08 and are now stale.**
+
+| Done | Items | Tasks |
+|---|---|---|
+| Done | C1 | T-0663, T-0670, T-0672 |
+| Done | C2 | T-0664, T-0670, T-0679 |
+| Done | C3 | T-0660 |
+| Done | C3b | T-0648 and T-0652, plus T-0671, T-0677 and T-0681; `ais/service.ts` has no drizzle |
+| Done | C4 | T-0667 to T-0669 and T-0675 |
+| Done | C5 | T-0665, T-0666, T-0670 |
+| Done | F6 | T-0674 |
+| Done | A1 to A11 | A7 = T-0685 |
+| Done | E1 to E4 | |
+
+**In progress:**
+- groups, in slices T-0678, T-0682 and T-0686, with `createGroup` and `patchGroup` left;
+- topics, in slices T-0676, T-0680 and T-0683, with `createTopic` and `patchTopic` left;
+- approvals/service (T-0684).
+
+**Left:**
+- D1 to D3, which run after every module is converted (D2 needs the better-auth adapter decision);
+- A12 git (Julio's call);
+- B1, the edge flip.
+
 This document is the plan the lead cuts small tasks from. It lists every
 non-test file that still imports a legacy library, groups them by what blocks
 each one, gives an ordered list of small tasks, and checks the one class of
