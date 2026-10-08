@@ -1,4 +1,5 @@
-import { z } from 'zod';
+import { Schema } from 'effect';
+import { isUrl } from '@zilar/protocol';
 
 // Bring-your-own-key: a user's provider key is registered as its own model
 // group, one per AI, so it never shares a group with the platform's models.
@@ -15,20 +16,26 @@ import { z } from 'zod';
 // With `general_settings.store_model_in_db: true` the same object is POSTed to
 // LiteLLM's `/model/new`, so a key can be added without an edit and reload.
 
-const ModelNameSchema = z
-  .string()
-  .regex(
-    /^[a-z0-9][a-z0-9._-]{0,63}$/,
-    'must be 1-64 characters of lowercase letters, digits, ".", "_" or "-"',
-  );
+const ModelNameSchema = Schema.String.pipe(
+  Schema.check(Schema.isPattern(/^[a-z0-9][a-z0-9._-]{0,63}$/)),
+);
 
-const ProviderModelSchema = z
-  .string()
-  .regex(/^[a-z0-9][a-z0-9_-]*\/\S+$/i, 'must look like "provider/model"');
+const ProviderModelSchema = Schema.String.pipe(
+  Schema.check(Schema.isPattern(/^[a-z0-9][a-z0-9_-]*\/\S+$/i)),
+);
 
-const ApiKeySchema = z.string().min(1).max(4096);
+const ApiKeySchema = Schema.String.pipe(
+  Schema.check(Schema.isMinLength(1), Schema.isMaxLength(4096)),
+);
 
-const ApiBaseSchema = z.url();
+const ApiBaseSchema = Schema.String.pipe(
+  Schema.check(Schema.makeFilter((value) => (isUrl(value) ? undefined : 'must be a URL'))),
+);
+
+const decodeModelName = Schema.decodeUnknownSync(ModelNameSchema);
+const decodeProviderModel = Schema.decodeUnknownSync(ProviderModelSchema);
+const decodeApiKey = Schema.decodeUnknownSync(ApiKeySchema);
+const decodeApiBase = Schema.decodeUnknownSync(ApiBaseSchema);
 
 export interface UserProviderKeyInput {
   /** Model group the AI calls. Unique per AI so keys stay separate. */
@@ -55,14 +62,14 @@ export interface LiteLlmModelEntry {
 // the returned entry.
 export function buildUserModelEntry(input: UserProviderKeyInput): LiteLlmModelEntry {
   const entry: LiteLlmModelEntry = {
-    model_name: ModelNameSchema.parse(input.modelName),
+    model_name: decodeModelName(input.modelName),
     litellm_params: {
-      model: ProviderModelSchema.parse(input.providerModel),
-      api_key: ApiKeySchema.parse(input.apiKey),
+      model: decodeProviderModel(input.providerModel),
+      api_key: decodeApiKey(input.apiKey),
     },
   };
   if (input.apiBase !== undefined) {
-    entry.litellm_params.api_base = ApiBaseSchema.parse(input.apiBase);
+    entry.litellm_params.api_base = decodeApiBase(input.apiBase);
   }
   return entry;
 }
@@ -70,5 +77,5 @@ export function buildUserModelEntry(input: UserProviderKeyInput): LiteLlmModelEn
 // The model group name for an AI. Keeps every AI's provider key in its own
 // group, so revoking or rotating one key cannot touch another AI's traffic.
 export function modelNameForAi(aiId: string): string {
-  return ModelNameSchema.parse(`ai-${aiId}`);
+  return decodeModelName(`ai-${aiId}`);
 }

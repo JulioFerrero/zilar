@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { Schema } from 'effect';
 import { SignJWT } from 'jose';
 import { JidSchema, decodeOrThrow } from '@zilar/protocol';
 import type { XmppConfig } from './config';
@@ -8,7 +8,14 @@ import type { XmppConfig } from './config';
 // from the JWK file written by infra/ejabberd/jwt-entrypoint.sh.
 export const MAX_TOKEN_TTL_SECONDS = 600;
 
-const TtlSecondsSchema = z.number().int().positive().max(MAX_TOKEN_TTL_SECONDS);
+const TtlSecondsSchema = Schema.Number.pipe(
+  Schema.check(
+    Schema.isInt(),
+    Schema.isGreaterThan(0),
+    Schema.isLessThanOrEqualTo(MAX_TOKEN_TTL_SECONDS),
+  ),
+);
+const decodeTtlSeconds = Schema.decodeUnknownSync(TtlSecondsSchema);
 
 export type XmppToken = {
   token: string;
@@ -26,7 +33,7 @@ export async function issueXmppToken(
     throw new Error(`JID "${jid}" is not on the XMPP domain "${config.domain}"`);
   }
 
-  const ttl = TtlSecondsSchema.parse(ttlSeconds);
+  const ttl = decodeTtlSeconds(ttlSeconds);
   const nowSeconds = Math.floor(Date.now() / 1000);
   const expSeconds = nowSeconds + ttl;
 

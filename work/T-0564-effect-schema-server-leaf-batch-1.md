@@ -1,7 +1,7 @@
 ---
 id: T-0564
 title: "Effect Schema, server leaf batch 1: agents/stream.ts, xmpp/token.ts, gifs/token.ts, ai/model-entry.ts and push/protocol.ts drop zod for Effect Schema; same accept/reject sets, same thrown-or-null behaviour, exports unchanged; tests unchanged"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0564-effect-schema-server-leaf-batch-1
 model: auto
@@ -61,4 +61,96 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+Replaced zod with Effect Schema in the five leaf modules, keeping accept/reject
+sets, throw-vs-null behaviour, exports and exported types identical. No test
+file was touched.
+- `apps/server/src/agents/stream.ts`: `StreamDeltaSchema` is now a
+  `Schema.Struct` tree (`optional`/`NullOr` mirroring `optional`/`nullable`).
+  The `safeParse` became `Schema.decodeUnknownExit` + `Exit.isSuccess`; a
+  shape failure still throws `ChatStreamInterruptedError('a data line had an
+  unexpected shape')`. Effect `Struct` ignores unknown keys by default, so the
+  old non-strict behaviour is kept.
+- `apps/server/src/xmpp/token.ts`: `TtlSecondsSchema` is now
+  `Schema.Number` with `isInt`, `isGreaterThan(0)`,
+  `isLessThanOrEqualTo(MAX_TOKEN_TTL_SECONDS)`; `.parse` became a
+  `Schema.decodeUnknownSync` call that still throws on a bad TTL.
+- `apps/server/src/gifs/token.ts`: `tokenPayloadSchema` is now built with
+  `struct` from `@zilar/protocol` (same min/max/int/positive checks);
+  `safeParse` became `decodeUnknownExit` + `Exit.isSuccess`, still returning
+  `undefined` for an invalid token.
+- `apps/server/src/ai/model-entry.ts`: the two regex rules became
+  `Schema.isPattern` checks; `ApiKeySchema` keeps the 1..4096 length check;
+  `ApiBaseSchema` is a `String` with an `isUrl` filter from
+  `@zilar/protocol`. All `.parse` calls became `decodeUnknownSync` decoders
+  that still throw.
+- `apps/server/src/push/protocol.ts`: `NodeSchema` keeps min 1 / max 256 /
+  the URL-safe pattern, decoded with `decodeUnknownSync` in `parseNode`
+  (still throws). `PushNotificationSchema` is now an Effect Schema built with
+  `struct` (same fields, same optionals); `type PushNotification` is
+  `typeof PushNotificationSchema.Type` and structurally identical. Grep
+  confirmed nothing else in `apps/server/src` imports
+  `PushNotificationSchema`.
+
+### Files changed
+`apps/server/src/agents/stream.ts`, `apps/server/src/xmpp/token.ts`,
+`apps/server/src/gifs/token.ts`, `apps/server/src/ai/model-entry.ts`,
+`apps/server/src/push/protocol.ts` (committed as `0503b4de`).
+
+### Commands and real results
+- `pnpm install`: done, 29.4s.
+- Scoped tests, one file per run (the multi-arg filter
+  `... test <a> <b> ...` made vitest treat later args as test-name filters, so
+  9 files reported "no tests"; each file passes when run alone):
+  - `src/agents/stream.test.ts`: 9 passed
+  - `src/agents/reply.test.ts`: 45 passed
+  - `src/xmpp/token.test.ts`: 6 passed (after the `isPositive` fix below)
+  - `src/ai/model-entry.test.ts`: 5 passed
+  - `src/push/notification.test.ts`: 5 passed
+  - `src/push/routes.test.ts`: 9 passed; `service.test.ts`: 20 passed;
+    `store.test.ts`: 7 passed; `crypto.test.ts`: 5 passed;
+    `component.test.ts`: 3 passed; `live-gate.test.ts`: 1 skipped;
+    `config.test.ts`: 6 passed; `rooms.test.ts`: 5 passed;
+    `payload.test.ts`: 8 passed
+  - `src/gifs/gifs.test.ts`: 9 passed; `src/gifs/routes.test.ts`: 16 passed
+  - `src/push/service.effect.test.ts`: 1 passed;
+    `src/gifs/giphy.effect.test.ts`: 2 passed
+- `pnpm gate` (background, log `gate-T-0564.log`):
+  `gate: 6 changed file(s) against main` /
+  `PASS install (frozen) (4.2s)` / `PASS format (115.0s)` /
+  `PASS lint (3.0s)` / `PASS typecheck (2.4s)` /
+  `PASS tests @zilar/server (1696.8s)` /
+  `scope: every changed file is inside the Allowed files` / `GATE PASS` /
+  `EXIT:0`
+
+### Problems
+- `Schema.isPositive` does not exist in Effect 4 (first run: 8 files failed to
+  collect with `TypeError: Schema.isPositive is not a function`). Used
+  `Schema.isGreaterThan(0)` instead in `xmpp/token.ts` and `gifs/token.ts`.
+- `pnpm gate` needed one prettier pass (two files reformatted by hand, no
+  `--write`): collapsed `ModelNameSchema`'s check and expanded `ApiKeySchema`
+  and `TtlSecondsSchema` to match prettier's width rules. `prettier --check`
+  on the five files passes.
+- Gate's test phase took ~28 min (machine load ~30 with parallel workers);
+  ran it in the background and polled the log.
+
+### Deviations
+None. Exports, types, error behaviour and all tests unchanged.
+
+### Security checklist
+- No secrets, tokens or keys in logs or errors; token verify still uses
+  timing-safe compare and returns `undefined` on any failure.
+- No deletes/updates, no new routes, no audit changes; `parseNode` still
+  throws before any effect.
+
 ## Review (written by Claude)
+
+**2026-10-08, lead:** approved.
+- **Pre-review:** clean, 0 findings, at HEAD f4af1918.
+- **No test file changed.**
+- **Lead check:** the lead read the whole source diff.
+  - The rules are the same.
+  - Struct parsing ignores extra keys, as zod did.
+  - The numbers come from `JSON.parse`, so the `NaN` difference cannot occur.
+  - The custom zod messages that were dropped are never shown to a user: `parseNode` only checks a node the server generated itself (`push/api.ts:359`), and `buildUserModelEntry` has no caller outside tests.
+- **Gate:** passed at the worker.
