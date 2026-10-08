@@ -1,7 +1,9 @@
-import { and, count, eq, gt, isNull, or } from 'drizzle-orm';
 import { createHash, createPublicKey, randomUUID, verify } from 'node:crypto';
+import { Effect } from 'effect';
+import { SqlClient, SqlError } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
-import { ais, machinePairingCodes, machines } from '../db/schema';
+import type { machinePairingCodes, machines } from '../db/schema';
+import { snakeToCamel, sqlRuntimeFor } from '../effect/sql';
 import {
   generatePairingCode,
   hashPairingCode,
@@ -16,6 +18,16 @@ export const MAX_PENDING_MACHINES_PER_USER = 5;
 
 export type MachineRow = typeof machines.$inferSelect;
 export type MachineStatus = 'pending' | 'approved' | 'revoked';
+
+// Every query runs on the `effect/sql` client registered for this database
+// (see `../effect/sql`). The exported functions stay `async` so routes and
+// tests keep their shape during the transition.
+function runSql<A, E>(
+  db: ServerDatabase,
+  effect: Effect.Effect<A, E, SqlClient.SqlClient>,
+): Promise<A> {
+  return sqlRuntimeFor(db).runPromise(effect);
+}
 
 // The owner-facing shape. The public key is never returned: `fingerprint`
 // (the first 16 hex chars of sha256(public key bytes)) lets the owner compare
@@ -94,14 +106,14 @@ export function toPublicMachine(
     id: row.id,
     name: row.name,
     status: row.status,
-    os: asString(capabilities['os']),
-    osVersion: asString(capabilities['os_version']),
-    arch: asString(capabilities['arch']),
-    cpu: asString(capabilities['cpu']),
-    cores: asNumber(capabilities['cores']),
-    ramGb: asNumber(capabilities['ram_gb']),
-    diskFreeGb: asNumber(capabilities['disk_free_gb']),
-    drivers: asStringArray(capabilities['drivers']),
+    os: asString(capability(capabilities, 'os')),
+    osVersion: asString(capability(capabilities, 'os_version')),
+    arch: asString(capability(capabilities, 'arch')),
+    cpu: asString(capability(capabilities, 'cpu')),
+    cores: asNumber(capability(capabilities, 'cores')),
+    ramGb: asNumber(capability(capabilities, 'ram_gb')),
+    diskFreeGb: asNumber(capability(capabilities, 'disk_free_gb')),
+    drivers: asStringArray(capability(capabilities, 'drivers')),
     fingerprint: fingerprintOfPublicKey(row.publicKey),
     online: isOnline?.(row.id) ?? false,
     createdAt: row.createdAt,
@@ -115,16 +127,15 @@ export async function countActivePairingCodes(
   ownerUserId: string,
   now: Date,
 ): Promise<number> {
-  const [row] = await db
-    .select({ total: count() })
-    .from(machinePairingCodes)
-    .where(
-      and(
-        eq(machinePairingCodes.ownerUserId, ownerUserId),
-        isNull(machinePairingCodes.usedAt),
-        gt(machinePairingCodes.expiresAt, now),
-      ),
-    );
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ total: number }>`SELECT count(*)::int AS total
+        FROM machine_pairing_codes
+        WHERE owner_user_id = ${ownerUserId} AND used_at IS NULL AND expires_at > ${now}`;
+    }),
+  );
   return Number(row?.total ?? 0);
 }
 
@@ -149,11 +160,17 @@ export async function createPairingCode(
     if (normalized === null) {
       throw new Error('Generated an invalid pairing code');
     }
-    const [row] = await db
-      .insert(machinePairingCodes)
-      .values({ id: randomUUID(), ownerUserId, codeHash: hashPairingCode(normalized), expiresAt })
-      .onConflictDoNothing()
-      .returning();
+    const [row] = await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<typeof machinePairingCodes.$inferSelect>`INSERT INTO machine_pairing_codes
+            (id, owner_user_id, code_hash, expires_at)
+          VALUES (${randomUUID()}, ${ownerUserId}, ${hashPairingCode(normalized)}, ${expiresAt})
+          ON CONFLICT DO NOTHING
+          RETURNING *`;
+      }),
+    );
     if (row) {
       return { code, expiresAt };
     }
@@ -169,25 +186,28 @@ export async function consumePairingCode(
   codeHash: string,
   now: Date,
 ): Promise<typeof machinePairingCodes.$inferSelect | null> {
-  const [row] = await db
-    .update(machinePairingCodes)
-    .set({ usedAt: now })
-    .where(
-      and(
-        eq(machinePairingCodes.codeHash, codeHash),
-        isNull(machinePairingCodes.usedAt),
-        gt(machinePairingCodes.expiresAt, now),
-      ),
-    )
-    .returning();
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<typeof machinePairingCodes.$inferSelect>`UPDATE machine_pairing_codes
+        SET used_at = ${now}
+        WHERE code_hash = ${codeHash} AND used_at IS NULL AND expires_at > ${now}
+        RETURNING *`;
+    }),
+  );
   return row ?? null;
 }
 
 export async function countMachines(db: ServerDatabase, ownerUserId: string): Promise<number> {
-  const [row] = await db
-    .select({ total: count() })
-    .from(machines)
-    .where(eq(machines.ownerUserId, ownerUserId));
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ total: number }>`SELECT count(*)::int AS total
+        FROM machines WHERE owner_user_id = ${ownerUserId}`;
+    }),
+  );
   return Number(row?.total ?? 0);
 }
 
@@ -195,10 +215,14 @@ export async function countPendingMachines(
   db: ServerDatabase,
   ownerUserId: string,
 ): Promise<number> {
-  const [row] = await db
-    .select({ total: count() })
-    .from(machines)
-    .where(and(eq(machines.ownerUserId, ownerUserId), eq(machines.status, 'pending')));
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ total: number }>`SELECT count(*)::int AS total
+        FROM machines WHERE owner_user_id = ${ownerUserId} AND status = 'pending'`;
+    }),
+  );
   return Number(row?.total ?? 0);
 }
 
@@ -233,17 +257,23 @@ export async function insertPendingMachine(
     );
   }
   try {
-    const [row] = await db
-      .insert(machines)
-      .values({
-        id: randomUUID(),
-        ownerUserId: input.ownerUserId,
-        name: input.name,
-        publicKey: input.publicKey,
-        capabilities: input.capabilities,
-        status: 'pending',
-      })
-      .returning();
+    const [row] = await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<MachineRow>`INSERT INTO machines
+            (id, owner_user_id, name, public_key, capabilities, status)
+          VALUES (
+            ${randomUUID()},
+            ${input.ownerUserId},
+            ${input.name},
+            ${input.publicKey},
+            ${JSON.stringify(input.capabilities)}::jsonb,
+            'pending'
+          )
+          RETURNING *`;
+      }),
+    );
     if (!row) {
       throw new Error('Failed to create machine');
     }
@@ -260,11 +290,16 @@ export async function insertPendingMachine(
 }
 
 export async function listMachines(db: ServerDatabase, ownerUserId: string): Promise<MachineRow[]> {
-  return db
-    .select()
-    .from(machines)
-    .where(eq(machines.ownerUserId, ownerUserId))
-    .orderBy(machines.createdAt);
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<MachineRow>`SELECT * FROM machines
+        WHERE owner_user_id = ${ownerUserId}
+        ORDER BY created_at`;
+    }),
+  );
+  return [...rows];
 }
 
 // The full set of approved (machine id, public key) pairs. Used by the hub
@@ -272,10 +307,15 @@ export async function listMachines(db: ServerDatabase, ownerUserId: string): Pro
 export async function listApprovedMachineKeys(
   db: ServerDatabase,
 ): Promise<Array<{ id: string; publicKey: string }>> {
-  return db
-    .select({ id: machines.id, publicKey: machines.publicKey })
-    .from(machines)
-    .where(eq(machines.status, 'approved'));
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ id: string; publicKey: string }>`SELECT id, public_key FROM machines
+        WHERE status = 'approved'`;
+    }),
+  );
+  return [...rows];
 }
 
 // Looks up one machine owned by `ownerUserId`. Returns null for a missing id
@@ -285,11 +325,14 @@ export async function findOwnedMachine(
   id: string,
   ownerUserId: string,
 ): Promise<MachineRow | null> {
-  const [row] = await db
-    .select()
-    .from(machines)
-    .where(and(eq(machines.id, id), eq(machines.ownerUserId, ownerUserId)))
-    .limit(1);
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<MachineRow>`SELECT * FROM machines
+        WHERE id = ${id} AND owner_user_id = ${ownerUserId} LIMIT 1`;
+    }),
+  );
   return row ?? null;
 }
 
@@ -299,17 +342,16 @@ export async function approveMachine(
   ownerUserId: string,
   now: Date,
 ): Promise<MachineRow | null> {
-  const [row] = await db
-    .update(machines)
-    .set({ status: 'approved', approvedAt: now })
-    .where(
-      and(
-        eq(machines.id, id),
-        eq(machines.ownerUserId, ownerUserId),
-        eq(machines.status, 'pending'),
-      ),
-    )
-    .returning();
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<MachineRow>`UPDATE machines
+        SET status = 'approved', approved_at = ${now}
+        WHERE id = ${id} AND owner_user_id = ${ownerUserId} AND status = 'pending'
+        RETURNING *`;
+    }),
+  );
   return row ?? null;
 }
 
@@ -318,16 +360,15 @@ export async function denyMachine(
   id: string,
   ownerUserId: string,
 ): Promise<boolean> {
-  const [row] = await db
-    .delete(machines)
-    .where(
-      and(
-        eq(machines.id, id),
-        eq(machines.ownerUserId, ownerUserId),
-        eq(machines.status, 'pending'),
-      ),
-    )
-    .returning();
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<MachineRow>`DELETE FROM machines
+        WHERE id = ${id} AND owner_user_id = ${ownerUserId} AND status = 'pending'
+        RETURNING *`;
+    }),
+  );
   return row !== undefined;
 }
 
@@ -343,23 +384,26 @@ export async function revokeMachine(
   ownerUserId: string,
   now: Date,
 ): Promise<MachineRow | null> {
-  return db.transaction(async (tx) => {
-    const [row] = await tx
-      .update(machines)
-      .set({ status: 'revoked', revokedAt: now })
-      .where(
-        and(
-          eq(machines.id, id),
-          eq(machines.ownerUserId, ownerUserId),
-          or(eq(machines.status, 'approved'), eq(machines.status, 'pending')),
-        ),
-      )
-      .returning();
-    if (row !== undefined) {
-      await tx.update(ais).set({ machineId: null, updatedAt: now }).where(eq(ais.machineId, id));
-    }
-    return row ?? null;
-  });
+  return runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql.withTransaction(
+        Effect.gen(function* () {
+          const [row] = yield* sql<MachineRow>`UPDATE machines
+            SET status = 'revoked', revoked_at = ${now}
+            WHERE id = ${id} AND owner_user_id = ${ownerUserId}
+              AND (status = 'approved' OR status = 'pending')
+            RETURNING *`;
+          if (row !== undefined) {
+            yield* sql`UPDATE ais SET machine_id = NULL, updated_at = ${now}
+              WHERE machine_id = ${id}`;
+          }
+          return row ?? null;
+        }),
+      );
+    }),
+  );
 }
 
 export async function renameMachine(
@@ -368,11 +412,16 @@ export async function renameMachine(
   ownerUserId: string,
   name: string,
 ): Promise<MachineRow | null> {
-  const [row] = await db
-    .update(machines)
-    .set({ name })
-    .where(and(eq(machines.id, id), eq(machines.ownerUserId, ownerUserId)))
-    .returning();
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<MachineRow>`UPDATE machines
+        SET name = ${name}
+        WHERE id = ${id} AND owner_user_id = ${ownerUserId}
+        RETURNING *`;
+    }),
+  );
   return row ?? null;
 }
 
@@ -383,17 +432,25 @@ export async function deleteMachine(
   id: string,
   ownerUserId: string,
 ): Promise<boolean> {
-  const [row] = await db
-    .delete(machines)
-    .where(
-      and(
-        eq(machines.id, id),
-        eq(machines.ownerUserId, ownerUserId),
-        or(eq(machines.status, 'pending'), eq(machines.status, 'revoked')),
-      ),
-    )
-    .returning();
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<MachineRow>`DELETE FROM machines
+        WHERE id = ${id} AND owner_user_id = ${ownerUserId}
+          AND (status = 'pending' OR status = 'revoked')
+        RETURNING *`;
+    }),
+  );
   return row !== undefined;
+}
+
+// `effect/sql` applies the same camelCase transform to nested jsonb keys as it
+// does to column names, so a stored capability key like `os_version` arrives as
+// `osVersion`. Read the transformed key, falling back to the stored snake_case
+// key for a row that did not go through the driver.
+function capability(capabilities: Record<string, unknown>, key: string): unknown {
+  return capabilities[snakeToCamel(key)] ?? capabilities[key];
 }
 
 function asString(value: unknown): string {
@@ -411,22 +468,21 @@ function asStringArray(value: unknown): string[] {
   return value.filter((entry): entry is string => typeof entry === 'string');
 }
 
-// Drizzle wraps driver failures in DrizzleQueryError, so the unique code
-// (23505 on Postgres and PGlite) lives on a nested `cause`. Walk the chain.
+// `effect/sql` wraps driver failures in `SqlError` and exposes the structured
+// `UniqueViolation` reason; accept that or a plain `{ code: '23505' }` error
+// (Drizzle-wrapped driver errors and the recovery tests' doubles). Matched by
+// code/constraint, never by message text.
 function isUniqueViolation(error: unknown): boolean {
+  if (error instanceof SqlError.SqlError) {
+    return error.reason._tag === 'UniqueViolation';
+  }
   let current: unknown = error;
   for (let depth = 0; depth < 5; depth += 1) {
     if (typeof current !== 'object' || current === null) {
       return false;
     }
-    const record = current as { code?: unknown; message?: unknown; cause?: unknown };
+    const record = current as { code?: unknown; cause?: unknown };
     if (record.code === '23505') {
-      return true;
-    }
-    if (
-      typeof record.message === 'string' &&
-      (/duplicate key/i.test(record.message) || /UNIQUE constraint/i.test(record.message))
-    ) {
       return true;
     }
     if (!('cause' in record)) {

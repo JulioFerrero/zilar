@@ -1,7 +1,7 @@
 ---
 id: T-0607
 title: "effect/sql: push/store.ts (device save under the per-user advisory lock + cap, reads, removes, previews upsert) and machines/service.ts (pairing codes, pending/approved machines, the revoke transaction that clears ais.machine_id) fully off drizzle via sql.withTransaction per the pins recipe; same caps, locks, ON CONFLICT behaviour; tests unchanged"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0607-effect-sql-push-store-machines
 model: auto
@@ -64,7 +64,7 @@ Julio, 2026-10-07: `effect/sql` replaces drizzle everywhere. The recipe is `docs
 `AGENTS.md`, `docs/EFFECT_GUIDE.md` (the effect/sql section), `docs/audit/effect-sql-migration.md` §(a), `apps/server/src/pins/service.ts` (lines 150-230), `apps/server/src/push/store.ts` and `apps/server/src/machines/service.ts`.
 
 ### Allowed files
-`apps/server/src/push/store.ts`, `apps/server/src/machines/service.ts`, `work/T-0607-effect-sql-push-store-machines.md`.
+`apps/server/src/push/store.ts`, `apps/server/src/machines/service.ts`, `apps/server/src/machines/hub.effect.test.ts` (lead-approved, test-only, for the one-shot failure injection in "survives an unexpected throw from the refresh loop"), `work/T-0607-effect-sql-push-store-machines.md`.
 
 ### Checks
 ```bash
@@ -81,4 +81,110 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+
+- **`apps/server/src/push/store.ts`** — fully on `effect/sql` with a private
+  `runSql<A, E>(db, effect)` over `sqlRuntimeFor(db).runPromise`; no value import
+  from `drizzle-orm` or `db/schema` (only type imports of `pushSettings` /
+  `pushSubscriptions` for the row types). `saveDevice` keeps its single
+  transaction, the `pg_advisory_xact_lock(hashtext(userId))`, the in-transaction
+  `count(*)::int` cap check, the stale-row read/delete and the insert, and the
+  post-commit best-effort `disablePushPair` loop. The plain reads/writes
+  (`devicesForUser`, `userIdsWithDevices`, `removeDevice`, `deviceByNode`,
+  `removeDeviceByNode`, `markDeviceUsed`, `markDeviceFailed`) and the
+  `push_settings` upsert (`ON CONFLICT (user_id) DO UPDATE SET …`) are raw SQL.
+  `openDevice` and `toPushDeviceView` are unchanged.
+- **`apps/server/src/machines/service.ts`** — fully on `effect/sql`.
+  `createPairingCode` keeps `ON CONFLICT DO NOTHING RETURNING *` and detects a
+  conflict by an empty result; `consumePairingCode` keeps its conditional
+  `UPDATE … WHERE code_hash = $1 AND used_at IS NULL AND expires_at > $2`.
+  `insertPendingMachine` keeps the cap checks and maps a unique violation to
+  `key_in_use` via `SqlError`'s `UniqueViolation` reason (with the raw
+  `code === '23505'` fallback, no message matching). `revokeMachine` keeps its
+  transaction: update the machine, then `UPDATE ais SET machine_id = NULL,
+  updated_at = $now WHERE machine_id = $id`. Counts use `count(*)::int AS total`;
+  `Buffer`/ed25519 helpers are untouched. No value import from `drizzle-orm` or
+  `db/schema`.
+
+### Deviation: nested jsonb keys are camelCased by the driver
+
+`machines.capabilities` is a jsonb object with snake_case keys (`os_version`,
+`ram_gb`, `disk_free_gb`). The `effect/sql` client's `transformResultNames`
+also transforms nested jsonb keys (`Statement.defaultTransforms(..., nested)`),
+so they arrive as `osVersion`, `ramGb`, `diskFreeGb`; `toPublicMachine` read
+`''`/`0` for them and `machines/routes.test.ts` failed on the list assertion.
+I added a small local `capability(capabilities, key)` helper that reads
+`snakeToCamel(key)` and falls back to the stored snake_case key, so the API
+output is byte-identical and a hand-built row still works. The architecturally
+cleaner fix is `transformJson: false` on the `SqlLive` / `sqlLayerFor` clients
+in `apps/server/src/effect/sql.ts`, which is outside this task's Allowed files.
+
+### Test-only change (lead-approved, option 1)
+
+`apps/server/src/machines/hub.effect.test.ts` previously injected the first
+refresh failure with a hand-built `db` that only implemented `select`. Once
+`listApprovedMachineKeys` moved to `effect/sql` that stand-in had no registered
+runtime, so the refresh loop could never recover and the test timed out. Per the
+lead's decision I replaced only that injection: a file-scoped partial
+`vi.mock('./service', …)` overrides `listApprovedMachineKeys` with a one-shot
+flag (`vi.hoisted`), and the test now passes `context.db`. The logger that
+throws once, the `waitFor` on `effect-key-survives` and the
+`expect(messages).toContain('runner hub key refresh loop failed')` assertion are
+unchanged, and every other test in the file still reaches the real function
+(the flag is off). This is the only test change in the packet.
+
+### Files changed
+- `apps/server/src/push/store.ts`
+- `apps/server/src/machines/service.ts`
+- `apps/server/src/machines/hub.effect.test.ts` (test-only, lead-approved)
+- `work/T-0607-effect-sql-push-store-machines.md`
+
+### Commands run (real results)
+
+- `pnpm install` — exit 0 (only the pre-existing peer-dependency warning).
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/push/store.test.ts`
+  — 1 file passed, **7 passed**.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/machines/routes.test.ts`
+  — first run **1 failed | 25 passed** (nested jsonb keys, see the deviation
+  above); after the `capability` helper, **1 file passed, 26 passed**.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/machines/hub.effect.test.ts`
+  — **3 passed** after the test-only injection change.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot push machines ais authz-sweep`
+  — **20 passed | 2 skipped** (22 files); **232 passed | 3 skipped** (235 tests),
+  exit 0.
+- `pnpm gate` — final run:
+  ```
+  gate: 4 changed file(s) against main
+  PASS  install (frozen)  (1.4s)
+  PASS  format  (27.8s)
+  PASS  lint  (0.9s)
+  PASS  typecheck  (0.9s)
+  PASS  tests @zilar/server  (535.6s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+  Earlier gate attempts under the shared machine's heavy load (load average
+  35–45, ~13 parallel gates) were SIGTERMed during the tests step before any
+  test output; the final run at load ~17 completed and passed.
+
+Earlier fixes found by the gate while the work landed: an unused `SqlError`
+import in `push/store.ts` (lint) and three `TS4104` readonly-array assignments
+in `machines/service.ts` and `push/store.ts` (typecheck), all fixed by spreading
+the driver's `readonly` rows into a mutable array.
+
+### Open question
+
+None.
+
 ## Review (written by Claude)
+
+**2026-10-08, lead:** approved.
+- **Pre-review:** clean, 2 follow-ups. The packet (18:31) is newer than HEAD 0972ba85.
+- **Lead check:**
+  - the only test change is the lead-allowed failure injection in `hub.effect.test.ts`, with the same expectations;
+  - the `saveDevice` lock and cap stay in one transaction;
+  - the revoke transaction clears `ais.machine_id`;
+  - the gate passes.
+- **Follow-ups:**
+  1. `transformResultNames` also camelCases jsonb keys, so a `jsonb` read on effect/sql changes nested key names. Here a local `capability()` helper hides it. Every converted jsonb read needs checking, and `transformJson: false` must be set in `effect/sql.ts` (next task);
+  2. `push/api.ts` `isUniqueViolation` should check `SqlError.reason._tag` (it works today through the `cause.code` walk).
