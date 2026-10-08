@@ -14,6 +14,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0669](T-0669-voice-transcript-store-effect-sql.md) | effect/sql (C4): voice transcript store | in-progress | haiku-5.5 | | |
 | [T-0670](T-0670-remove-group-ai-effect-sql.md) | effect/sql phase 2: removeGroupAi transaction, drop 3 drizzle helpers | in-progress | auto | T-0663..T-0666 | |
 | [T-0671](T-0671-ais-reads-effect-sql.md) | effect/sql: ais reads (listAis, listActiveAisForGateway, findOwnedAi) | in-progress | auto | | |
+| [T-0672](T-0672-approvals-decision-effect-sql.md) | effect/sql (C1): approval decision transaction + createRule | in-progress | auto | | |
 
 ## Follow-ups
 
