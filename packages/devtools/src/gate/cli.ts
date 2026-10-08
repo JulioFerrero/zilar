@@ -1,13 +1,15 @@
 // `pnpm gate` runs the checks a task must pass before it can go to review (and
 // that `lead merge` runs again after the rebase): install, format, lint,
-// typecheck, the tests of every package the branch touched, and a scope report
-// of files changed outside the task's "Allowed files". It prints one summary
-// line per step and ends with `GATE PASS` or `GATE FAIL`.
+// typecheck, the nearest tests of every package the branch touched, and a scope
+// report of files changed outside the task's "Allowed files". By default only
+// the changed test files and the tests next to each changed source file run;
+// `--full` lets Vitest pull in every test that imports the changes instead. It
+// prints one summary line per step and ends with `GATE PASS` or `GATE FAIL`.
 
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { gateSteps, strayFiles, type GateStep, type WorkspacePackage } from './plan.js';
+import { gateSteps, isTestFile, strayFiles, type GateStep, type WorkspacePackage } from './plan.js';
 import { scopeReport } from './scope.js';
 
 function run(cwd: string, command: string, args: string[]): { ok: boolean; output: string } {
@@ -79,12 +81,22 @@ function main(): void {
   const args = process.argv.slice(2);
   const baseIndex = args.indexOf('--base');
   const base = baseIndex >= 0 ? (args[baseIndex + 1] ?? 'main') : 'main';
+  const full = args.includes('--full');
   const root = run(process.cwd(), 'git', ['rev-parse', '--show-toplevel']).output.trim();
   const files = changedFiles(root, base);
-  const steps: GateStep[] = gateSteps(files, readWorkspace(root), base);
+  const tracked = lines(run(root, 'git', ['ls-files']).output);
+  const steps: GateStep[] = gateSteps(files, readWorkspace(root), base, {
+    full,
+    testFiles: tracked.filter(isTestFile),
+    exists: (file) => fs.existsSync(path.join(root, file)),
+  });
   let failed = false;
-  console.log(`gate: ${files.length} changed file(s) against ${base}`);
+  console.log(`gate: ${files.length} changed file(s) against ${base}${full ? ' (full)' : ''}`);
   for (const step of steps) {
+    if (step.skipReason !== undefined) {
+      console.log(`SKIP ${step.label} (${step.skipReason})`);
+      continue;
+    }
     const started = Date.now();
     const result = run(root, step.command, step.args);
     const seconds = ((Date.now() - started) / 1000).toFixed(1);
@@ -95,7 +107,7 @@ function main(): void {
       break;
     }
   }
-  const stray = strayFiles(lines(run(root, 'git', ['ls-files']).output));
+  const stray = strayFiles(tracked);
   if (stray.length > 0) {
     failed = true;
     console.log(`FAIL  stray merge leftovers are tracked: ${stray.join(', ')}`);

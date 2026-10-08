@@ -1,7 +1,7 @@
 ---
 id: T-0616
 title: "Gate: run only the tests a branch adds or touches plus the tests next to its changed source files, not the package's whole --changed set; `--full` keeps today's behaviour for the lead's batched full run; same PASS/FAIL summary"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0616-gate-light-tests
 model: auto
@@ -67,4 +67,58 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- Added `selectTestFiles` and `isTestFile` to `packages/devtools/src/gate/plan.ts`: the nearest tests are the changed test files plus, for every changed `dir/name.ts(x)`, the test files in `dir` whose name starts with `name.`.
+- `gateSteps` now takes `GateOptions { full?, testFiles? }`. By default each touched package that has tests runs `pnpm --filter <pkg> test --maxWorkers=2 <nearest test paths relative to the package>`; if nothing was selected it emits a step with `skipReason: 'no nearby test files'`, which the CLI prints as `SKIP tests <pkg> (no nearby test files)` and counts as passing. With `full: true` it keeps the old `--changed <base>` step.
+- `packages/devtools/src/gate/cli.ts` parses `--full`, lists tracked test files once with `git ls-files` (reusing that listing for the stray-file check), passes them to `gateSteps`, and prints SKIP steps. The header appends ` (full)` for a full run.
+- Tests: added `selectTestFiles` coverage (changed test file; source with two siblings; source with none; non-code file) and rewrote the `gateSteps` block (nearest tests, SKIP, two packages, and `--full` keeping `--changed`).
+- Docs: extended the gate bullet in `docs/LEAD_HANDOFF.md` with the default-nearest-tests / `pnpm gate --full` sentence.
+
+### Files changed
+- `packages/devtools/src/gate/plan.ts`
+- `packages/devtools/src/gate/cli.ts`
+- `packages/devtools/src/gate/gate.test.ts`
+- `docs/LEAD_HANDOFF.md`
+- `work/T-0616-gate-light-tests.md` (this report + status)
+
+### Existing assertion changed
+The old `gateSteps` test "always runs install, format, lint and typecheck, then only the touched packages" pinned the default args to `['--changed','main']`. The default now selects the nearest tests, so that assertion moved to a new test "keeps the --changed step for the full run" (passing `{ full: true }`), and a new default test checks the nearest-test args instead. No other existing assertion changed.
+
+### Commands and results
+- `pnpm --filter @zilar/devtools test --maxWorkers=2 --reporter=dot src/gate` → 1 test file passed, 15 tests passed.
+- `pnpm gate` (required) → GATE PASS:
+  ```
+  gate: 5 changed file(s) against main
+  PASS  install (frozen)  (4.2s)
+  PASS  format  (85.3s)
+  PASS  lint  (2.5s)
+  PASS  typecheck  (11.4s)
+  PASS  tests @zilar/devtools  (2.0s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+  Light mode ran only `src/gate/gate.test.ts` (2.0s), not the whole devtools suite.
+- `pnpm gate --full` → GATE PASS: header `gate: 5 changed file(s) against main (full)`, `PASS tests @zilar/devtools (4.3s)`. The flag is forwarded through `pnpm` and the `--changed main` step still runs.
+
+### AGENTS.md
+Left untouched. The task lists `AGENTS.md` but conditions the change on "the `AGENTS.md` gate section ... if that section exists". No section is headed or dedicated to the gate (the mentions are inside "Your workflow" and "Running tests (the machine is shared)"), and `AGENTS.md`'s own safety rules say "Never change `AGENTS.md`". So I did not edit it; the same sentence went into `docs/LEAD_HANDOFF.md`.
+
+### Deviations / open questions
+- None. No dependencies added.
+
+### Round 2 (fix round)
+- **Finding 1 (must-fix) fixed.** `selectTestFiles` now takes an `exists` predicate and drops a changed test file that is no longer on disk; `gateSteps` forwards `options.exists`, and `cli.ts` passes `(file) => fs.existsSync(path.join(root, file))`. A branch that deletes `service.test.ts` no longer hands the missing path to Vitest (which exits 1 on "No test files found"); the package now prints `SKIP tests <pkg> (no nearby test files)`. The predicate defaults to `() => true`, so the existing pure-function callers are unchanged.
+- **Finding 2 (nit) not touched.** It is not in a line this round changed; the instructions say to leave nits alone otherwise.
+- **Tests added.** `selectTestFiles` "drops a changed test file the branch deleted"; `gateSteps` "skips a touched package whose only changed test file was deleted" (17 tests, was 15).
+- **Commands.** `pnpm --filter @zilar/devtools test --maxWorkers=2 --reporter=dot src/gate` → 1 file, 17 passed. `pnpm gate` → `GATE PASS`: install (frozen) 1.3s, format 19.1s, lint 0.8s, typecheck 3.0s, tests @zilar/devtools 1.0s (only `src/gate/gate.test.ts`), scope clean.
+
 ## Review (written by Claude)
+
+**2026-10-08, lead:** approved.
+- **Pre-review:** clean after 1 automatic round. The packet (21:16) is newer than HEAD d1b9b7a2.
+- **Lead check:**
+  - `selectTestFiles` picks the changed test files plus same-folder `name.*` tests, and guards against deleted tests;
+  - SKIP passes, and `--full` keeps `--changed`;
+  - the unit tests cover the rules;
+  - the gate passes.
+- **Follow-up:** `AGENTS.md` (lines 30 and 69) still says the gate runs "the tests of every package you touched". It was not updated; fix it in the next docs pass.
