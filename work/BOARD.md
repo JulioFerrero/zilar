@@ -12,6 +12,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0672](T-0672-approvals-decision-effect-sql.md) | effect/sql (C1): approval decision transaction + createRule | in-progress | auto | | |
 | [T-0675](T-0675-setup-transactions-effect-sql.md) | effect/sql phase 2 (C4): setup transactions, SetupTransaction gone | in-progress | auto | T-0667, T-0669 | |
 | [T-0682](T-0682-group-reads-effect-sql.md) | effect/sql: groups read helpers | in-progress | haiku-5.5 | T-0678 | groups slice 3 |
+| [T-0683](T-0683-topic-roles-and-helpers-effect-sql.md) | effect/sql: setTopicRoles + topic helpers | in-progress | haiku-5.5 | T-0680 | topics slice 3a |
 
 ## Follow-ups
 
