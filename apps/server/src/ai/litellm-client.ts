@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { Effect, Exit, Schema } from 'effect';
 import type { ServerConfig } from '../config';
 
 // The address the dev stack publishes LiteLLM on. Kept here rather than in the
@@ -115,79 +115,102 @@ export interface LitellmAdminClient {
   listModels(): Promise<ModelListing[]>;
 }
 
-const KeySchema = z.string().min(1).max(4096);
-const ModelsSchema = z.array(z.string().min(1).max(256)).min(1);
-const BudgetSchema = z.number().finite().nonnegative();
-const SpendSchema = z.number().finite();
-const LimitSchema = z.number().int().positive();
-const DurationSchema = z.string().min(1).max(64);
-const AliasSchema = z.string().min(1).max(256);
+const nonEmptyString = Schema.String.pipe(Schema.check(Schema.isMinLength(1)));
+
+const KeySchema = Schema.String.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(4096)));
+const ModelsSchema = Schema.mutable(
+  Schema.Array(Schema.String.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(256)))),
+).check(Schema.isMinLength(1));
+const BudgetSchema = Schema.Finite.pipe(Schema.check(Schema.isGreaterThanOrEqualTo(0)));
+const SpendSchema = Schema.Finite;
+const LimitSchema = Schema.Int.pipe(Schema.check(Schema.isGreaterThan(0)));
+const DurationSchema = Schema.String.pipe(
+  Schema.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
+);
+const AliasSchema = Schema.String.pipe(
+  Schema.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+);
 
 // A model group name and the provider-qualified model, matching the rules in
 // ai/model-entry.ts. The name is derived from an AI id, never user text.
-const ModelNameSchema = z
-  .string()
-  .regex(
-    /^[a-z0-9][a-z0-9._-]{0,63}$/,
-    'must be 1-64 characters of lowercase letters, digits, ".", "_" or "-"',
-  );
-const ProviderModelSchema = z
-  .string()
-  .regex(/^[a-z0-9][a-z0-9_-]*\/\S+$/i, 'must look like "provider/model"');
-const ApiKeySchema = z.string().min(1).max(4096);
-const ModelIdSchema = z.string().min(1).max(512);
+const ModelNameSchema = Schema.String.pipe(
+  Schema.check(
+    Schema.makeFilter((value) =>
+      /^[a-z0-9][a-z0-9._-]{0,63}$/.test(value)
+        ? undefined
+        : 'must be 1-64 characters of lowercase letters, digits, ".", "_" or "-"',
+    ),
+  ),
+);
+const ProviderModelSchema = Schema.String.pipe(
+  Schema.check(
+    Schema.makeFilter((value) =>
+      /^[a-z0-9][a-z0-9_-]*\/\S+$/i.test(value) ? undefined : 'must look like "provider/model"',
+    ),
+  ),
+);
+const ApiKeySchema = Schema.String.pipe(
+  Schema.check(Schema.isMinLength(1), Schema.isMaxLength(4096)),
+);
+const ModelIdSchema = Schema.String.pipe(
+  Schema.check(Schema.isMinLength(1), Schema.isMaxLength(512)),
+);
 
-const GeneratedKeySchema = z
-  .object({
-    key: KeySchema,
-    token_id: z.string().min(1).nullish(),
-    token: z.string().min(1).nullish(),
-    key_alias: z.string().nullish(),
-    max_budget: z.number().nullish(),
-    spend: z.number().optional(),
-    models: z.array(z.string()).optional(),
-  })
-  .refine((value) => (value.token_id ?? value.token) !== undefined, {
-    error: 'response has neither token_id nor token',
-  });
+const GeneratedKeySchema = Schema.Struct({
+  key: KeySchema,
+  token_id: Schema.optional(Schema.NullOr(nonEmptyString)),
+  token: Schema.optional(Schema.NullOr(nonEmptyString)),
+  key_alias: Schema.optional(Schema.NullOr(Schema.String)),
+  max_budget: Schema.optional(Schema.NullOr(Schema.Finite)),
+  spend: Schema.optional(Schema.Finite),
+  models: Schema.optional(Schema.mutable(Schema.Array(Schema.String))),
+}).pipe(
+  Schema.check(
+    Schema.makeFilter((value) =>
+      (value.token_id ?? value.token) !== undefined
+        ? undefined
+        : 'response has neither token_id nor token',
+    ),
+  ),
+);
 
-const KeyInfoSchema = z.object({
-  key_alias: z.string().nullish(),
-  spend: z.number().default(0),
-  max_budget: z.number().nullish(),
-  tpm_limit: z.number().nullish(),
-  rpm_limit: z.number().nullish(),
-  blocked: z.boolean().nullish(),
-  models: z.array(z.string()).optional(),
+const KeyInfoSchema = Schema.Struct({
+  key_alias: Schema.optional(Schema.NullOr(Schema.String)),
+  spend: Schema.Finite.pipe(Schema.withDecodingDefault(Effect.succeed(0))),
+  max_budget: Schema.optional(Schema.NullOr(Schema.Finite)),
+  tpm_limit: Schema.optional(Schema.NullOr(Schema.Finite)),
+  rpm_limit: Schema.optional(Schema.NullOr(Schema.Finite)),
+  blocked: Schema.optional(Schema.NullOr(Schema.Boolean)),
+  models: Schema.optional(Schema.mutable(Schema.Array(Schema.String))),
 });
 
-const KeyInfoResponseSchema = z.object({
+const KeyInfoResponseSchema = Schema.Struct({
   info: KeyInfoSchema,
 });
 
-const UpdateResponseSchema = z.object({
-  key_alias: z.string().nullish(),
-  spend: z.number().default(0),
-  max_budget: z.number().nullish(),
-  tpm_limit: z.number().nullish(),
-  rpm_limit: z.number().nullish(),
-  blocked: z.boolean().nullish(),
-  models: z.array(z.string()).optional(),
+const UpdateResponseSchema = Schema.Struct({
+  key_alias: Schema.optional(Schema.NullOr(Schema.String)),
+  spend: Schema.Finite.pipe(Schema.withDecodingDefault(Effect.succeed(0))),
+  max_budget: Schema.optional(Schema.NullOr(Schema.Finite)),
+  tpm_limit: Schema.optional(Schema.NullOr(Schema.Finite)),
+  rpm_limit: Schema.optional(Schema.NullOr(Schema.Finite)),
+  blocked: Schema.optional(Schema.NullOr(Schema.Boolean)),
+  models: Schema.optional(Schema.mutable(Schema.Array(Schema.String))),
 });
 
-const DeleteResponseSchema = z.object({
-  deleted_keys: z.array(z.string()).optional(),
+const DeleteResponseSchema = Schema.Struct({
+  deleted_keys: Schema.optional(Schema.mutable(Schema.Array(Schema.String))),
 });
 
 // `/model/new` returns the created row: at minimum `model_id`. Older shapes
 // nest the id under `model_info.id`, so both are accepted.
-const NewModelResponseSchema = z.object({
-  model_id: z.string().min(1).optional(),
-  model_info: z.object({ id: z.string().min(1).optional() }).optional(),
+const NewModelResponseSchema = Schema.Struct({
+  model_id: Schema.optional(nonEmptyString),
+  model_info: Schema.optional(Schema.Struct({ id: Schema.optional(nonEmptyString) })),
 });
 
-const DeleteModelResponseSchema = z.object({
-  message: z.string().optional(),
+const DeleteModelResponseSchema = Schema.Struct({
+  message: Schema.optional(Schema.String),
 });
 
 // `GET /model/info` answers `{ data: [...] }`, one entry per registered model.
@@ -195,16 +218,18 @@ const DeleteModelResponseSchema = z.object({
 // others (verified live: `/model/info` entries carry no top-level `model_id`),
 // so both are accepted. Entries with neither an id nor a name are skipped
 // rather than failing the whole listing.
-const ModelListResponseSchema = z.object({
-  data: z
-    .array(
-      z.object({
-        model_id: z.string().min(1).optional(),
-        model_name: z.string().min(1).optional(),
-        model_info: z.object({ id: z.string().min(1).optional() }).optional(),
-      }),
-    )
-    .optional(),
+const ModelListResponseSchema = Schema.Struct({
+  data: Schema.optional(
+    Schema.mutable(
+      Schema.Array(
+        Schema.Struct({
+          model_id: Schema.optional(nonEmptyString),
+          model_name: Schema.optional(nonEmptyString),
+          model_info: Schema.optional(Schema.Struct({ id: Schema.optional(nonEmptyString) })),
+        }),
+      ),
+    ),
+  ),
 });
 
 // LiteLLM answers a delete for a model that is already gone with a 400 whose
@@ -270,12 +295,25 @@ function isErrorBody(body: unknown): boolean {
 
 // Response bodies are a network boundary, so a shape mismatch is an error.
 // The message is fixed: it never echoes the (possibly sensitive) body back.
-function parseResponse<T>(operation: string, schema: z.ZodType<T>, value: unknown): T {
-  const result = schema.safeParse(value);
-  if (!result.success) {
+function parseResponse<S extends Schema.ConstraintDecoder<unknown>>(
+  operation: string,
+  schema: S,
+  value: unknown,
+): S['Type'] {
+  const result = Schema.decodeUnknownExit(schema)(value);
+  if (Exit.isFailure(result)) {
     throw new LitellmApiError(operation, 200, 'unexpected response shape');
   }
-  return result.data;
+  return result.value;
+}
+
+// Inputs are validated before any request; a bad input throws, like the zod
+// `.parse` calls this replaces.
+function parseInput<S extends Schema.ConstraintDecoder<unknown>>(
+  schema: S,
+  value: unknown,
+): S['Type'] {
+  return Schema.decodeUnknownSync(schema)(value);
 }
 
 function keyId(value: {
@@ -289,7 +327,7 @@ function keyId(value: {
   return id;
 }
 
-function toVirtualKey(value: z.infer<typeof GeneratedKeySchema>): VirtualKey {
+function toVirtualKey(value: typeof GeneratedKeySchema.Type): VirtualKey {
   return {
     id: keyId(value),
     key: value.key,
@@ -300,7 +338,7 @@ function toVirtualKey(value: z.infer<typeof GeneratedKeySchema>): VirtualKey {
   };
 }
 
-function toKeyInfo(value: z.infer<typeof UpdateResponseSchema>): VirtualKeyInfo {
+function toKeyInfo(value: typeof UpdateResponseSchema.Type): VirtualKeyInfo {
   return {
     keyAlias: value.key_alias ?? null,
     maxBudget: value.max_budget ?? null,
@@ -372,21 +410,21 @@ export function createLitellmAdminClient(
 
   return {
     async generateKey(input: GenerateVirtualKeyInput): Promise<VirtualKey> {
-      const body: Record<string, unknown> = { models: ModelsSchema.parse(input.models) };
+      const body: Record<string, unknown> = { models: parseInput(ModelsSchema, input.models) };
       if (input.maxBudget !== undefined) {
-        body['max_budget'] = BudgetSchema.parse(input.maxBudget);
+        body['max_budget'] = parseInput(BudgetSchema, input.maxBudget);
       }
       if (input.budgetDuration !== undefined) {
-        body['budget_duration'] = DurationSchema.parse(input.budgetDuration);
+        body['budget_duration'] = parseInput(DurationSchema, input.budgetDuration);
       }
       if (input.tpmLimit !== undefined) {
-        body['tpm_limit'] = LimitSchema.parse(input.tpmLimit);
+        body['tpm_limit'] = parseInput(LimitSchema, input.tpmLimit);
       }
       if (input.rpmLimit !== undefined) {
-        body['rpm_limit'] = LimitSchema.parse(input.rpmLimit);
+        body['rpm_limit'] = parseInput(LimitSchema, input.rpmLimit);
       }
       if (input.keyAlias !== undefined) {
-        body['key_alias'] = AliasSchema.parse(input.keyAlias);
+        body['key_alias'] = parseInput(AliasSchema, input.keyAlias);
       }
       if (input.metadata !== undefined) {
         body['metadata'] = input.metadata;
@@ -401,7 +439,7 @@ export function createLitellmAdminClient(
     },
 
     async getKeyInfo(key: string): Promise<VirtualKeyInfo> {
-      const parsedKey = KeySchema.parse(key);
+      const parsedKey = parseInput(KeySchema, key);
       const parsed = parseResponse(
         'key/info',
         KeyInfoResponseSchema,
@@ -424,25 +462,25 @@ export function createLitellmAdminClient(
     },
 
     async updateKey(input: UpdateVirtualKeyInput): Promise<VirtualKeyInfo> {
-      const key = KeySchema.parse(input.key);
+      const key = parseInput(KeySchema, input.key);
       const body: Record<string, unknown> = { key };
       if (input.models !== undefined) {
-        body['models'] = ModelsSchema.parse(input.models);
+        body['models'] = parseInput(ModelsSchema, input.models);
       }
       if (input.maxBudget !== undefined) {
-        body['max_budget'] = BudgetSchema.parse(input.maxBudget);
+        body['max_budget'] = parseInput(BudgetSchema, input.maxBudget);
       }
       if (input.tpmLimit !== undefined) {
-        body['tpm_limit'] = LimitSchema.parse(input.tpmLimit);
+        body['tpm_limit'] = parseInput(LimitSchema, input.tpmLimit);
       }
       if (input.rpmLimit !== undefined) {
-        body['rpm_limit'] = LimitSchema.parse(input.rpmLimit);
+        body['rpm_limit'] = parseInput(LimitSchema, input.rpmLimit);
       }
       if (input.blocked !== undefined) {
         body['blocked'] = input.blocked;
       }
       if (input.spend !== undefined) {
-        body['spend'] = SpendSchema.parse(input.spend);
+        body['spend'] = parseInput(SpendSchema, input.spend);
       }
 
       const parsed = parseResponse(
@@ -454,7 +492,7 @@ export function createLitellmAdminClient(
     },
 
     async revokeKey(key: string): Promise<void> {
-      const parsedKey = KeySchema.parse(key);
+      const parsedKey = parseInput(KeySchema, key);
       try {
         const parsed = parseResponse(
           'key/delete',
@@ -475,10 +513,10 @@ export function createLitellmAdminClient(
 
     async addModel(input: AddModelInput): Promise<string> {
       const body: Record<string, unknown> = {
-        model_name: ModelNameSchema.parse(input.modelName),
+        model_name: parseInput(ModelNameSchema, input.modelName),
         litellm_params: {
-          model: ProviderModelSchema.parse(input.litellmModel),
-          api_key: ApiKeySchema.parse(input.apiKey),
+          model: parseInput(ProviderModelSchema, input.litellmModel),
+          api_key: parseInput(ApiKeySchema, input.apiKey),
         },
       };
       if (input.metadata !== undefined) {
@@ -500,7 +538,7 @@ export function createLitellmAdminClient(
     },
 
     async deleteModel(modelId: string): Promise<void> {
-      const id = ModelIdSchema.parse(modelId);
+      const id = parseInput(ModelIdSchema, modelId);
       try {
         parseResponse(
           'model/delete',

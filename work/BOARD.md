@@ -454,7 +454,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0425](T-0425-mobile-profile-buttons-kit.md) | Mobile: profile and contact card buttons on the kit Button | 2026-10-06 |
 | [T-0426](T-0426-mobile-ai-sheet-buttons-kit.md) | Mobile: AI activity Refresh, tool sheet Show all/less and Close on the kit Button | 2026-10-06 |
 | [T-0599](T-0599-zod-small-trio.md) | Effect Schema: draft events, invite CLI options, routine title check | planned | auto | T-0571 | |
-| [T-0601](T-0601-litellm-client-schema.md) | Effect Schema: LiteLLM admin client | planned | auto | T-0571 | |
 | [T-0602](T-0602-effect-http-stickers-binary.md) | Effect C (HTTP): stickers part B, upload and file | planned | auto | T-0582 | |
 | [T-0604](T-0604-tool-routine-schemas-effect.md) | Tool args T-E: tool and routine schemas on Effect Schema | planned | auto | T-0594 | |
 | [T-0605](T-0605-effect-sql-topic-access.md) | effect/sql: topic access reads | planned | auto | T-0596 | |
@@ -642,3 +641,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0598](T-0598-web-tools-args-effect.md) | Tool args T-D: web tool args on Effect Schema | 2026-10-08 |
 | [T-0600](T-0600-xmpp-admin-client-schema.md) | Effect Schema: ejabberd admin client | 2026-10-08 |
 | [T-0603](T-0603-agent-tool-args-effect.md) | Tool args T-B: model tool arguments on Effect Schema | 2026-10-08 |
+| [T-0601](T-0601-litellm-client-schema.md) | Effect Schema: LiteLLM admin client | 2026-10-08 |

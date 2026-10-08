@@ -1,7 +1,7 @@
 ---
 id: T-0601
 title: "Effect Schema: ai/litellm-client.ts zod to Effect Schema (input checks that throw before any request, LiteLLM response shapes behind parseResponse); same throws, same 'unexpected response shape' error that never echoes the body, same defaults (spend 0) and nullish fields; tests unchanged"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0601-litellm-client-schema
 model: auto
@@ -91,4 +91,46 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Converted `apps/server/src/ai/litellm-client.ts` from zod to Effect Schema. No zod import remains.
+
+**What changed**
+- Import is now `import { Effect, Exit, Schema } from 'effect';`.
+- Input schemas: `KeySchema`, `ModelsSchema`, `BudgetSchema`, `SpendSchema`, `LimitSchema`, `DurationSchema`, `AliasSchema`, `ModelNameSchema`, `ProviderModelSchema`, `ApiKeySchema`, `ModelIdSchema`. Numbers use `Schema.Finite` (`BudgetSchema` adds `isGreaterThanOrEqualTo(0)`, `LimitSchema` uses `Schema.Int` + `isGreaterThan(0)`). `ModelNameSchema` / `ProviderModelSchema` use `Schema.makeFilter` so the zod messages stay byte-identical (the `{ message }` option on the built-in string checks is not carried in 4.0.2).
+- Response schemas: the same structs, `.nullish()` → `Schema.optional(Schema.NullOr(...))`, `z.number()` → `Schema.Finite`, arrays → `Schema.mutable(Schema.Array(...))`. `spend: z.number().default(0)` → `Schema.Finite.pipe(Schema.withDecodingDefault(Effect.succeed(0)))`, so a missing `spend` decodes to `0`. `GeneratedKeySchema` keeps its refine via `Schema.makeFilter` (`token_id ?? token` must be defined), and keeps Effect's default non-strict behaviour (extra keys ignored).
+- `parseResponse` now decodes with `Schema.decodeUnknownExit` and throws the same fixed `new LitellmApiError(operation, 200, 'unexpected response shape')`; the message still never echoes the body.
+- The throwing `.parse` sites became a `parseInput(schema, value)` helper over `Schema.decodeUnknownSync`, so bad inputs still throw before any request.
+- `toVirtualKey` / `toKeyInfo` param types are now `typeof <Schema>.Type`. Exported types and function signatures are unchanged.
+
+**Files changed**
+- `apps/server/src/ai/litellm-client.ts`
+- `work/T-0601-litellm-client-schema.md`
+
+**Commands and results**
+- `pnpm install` — done, 0 errors (one pre-existing peer warning in `apps/mobile`, unrelated).
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot ai/litellm-client.test.ts` — 1 file passed, 28 tests passed.
+- `pnpm gate` (from repo root) — summary:
+  ```
+  gate: 2 changed file(s) against main
+  PASS  install (frozen)  (7.8s)
+  PASS  format  (67.4s)
+  PASS  lint  (1.5s)
+  PASS  typecheck  (19.6s)
+  PASS  tests @zilar/server  (741.1s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+**Notes / deviations**
+- No test file was changed; all listed test suites are covered by the gate's `@zilar/server` run.
+- No new dependencies. No `any` / `@ts-ignore`.
+
 ## Review (written by Claude)
+
+**2026-10-08, lead:** approved.
+- **Pre-review:** clean, 1 nit. The packet (14:20) is newer than HEAD 968f9799.
+- **No test file changed.**
+- **Lead check:**
+  - there is no zod import;
+  - `parseResponse` keeps the fixed `unexpected response shape` error, with no echo of the body;
+  - `spend` defaults to 0 through `withDecodingDefault`, and the nullish fields are `optional(NullOr)`.
+- **Follow-up (nit):** a comment at line 310 still mentions zod.
