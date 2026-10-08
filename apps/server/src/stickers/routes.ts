@@ -7,35 +7,8 @@ import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
 import { createRateLimiter } from '../rate-limit';
-import {
-  addFavorite,
-  addPanelPack,
-  createPack,
-  createPackBodySchema,
-  deletePack,
-  deleteSticker,
-  discoverPacks,
-  favoriteBodySchema,
-  importTelegramPack,
-  listFavorites,
-  listPanelPacks,
-  patchPack,
-  patchPackBodySchema,
-  readStickerFile,
-  removeFavorite,
-  removePanelPack,
-  reorderPanelBodySchema,
-  reorderPanelPacks,
-  uploadSticker,
-  type StickersServiceDeps,
-  type TelegramImportDeps,
-} from './service';
+import { readStickerFile, uploadSticker, type StickersServiceDeps } from './service';
 import { STICKER_MAX_BYTES } from './image';
-import {
-  createTelegramClient,
-  parseTelegramPackInput,
-  TelegramImportError,
-} from './telegram-import';
 
 export const STICKER_UPLOAD_RATE_LIMIT_MAX = 60;
 export const STICKER_UPLOAD_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
@@ -81,13 +54,6 @@ function serviceDeps(deps: StickersRoutesDependencies): StickersServiceDeps {
   };
 }
 
-function importDeps(deps: StickersRoutesDependencies): TelegramImportDeps {
-  return {
-    ...serviceDeps(deps),
-    ...(deps.now === undefined ? {} : { now: deps.now }),
-  };
-}
-
 // Reads the body chunk by chunk and stops as soon as the cap is passed, so a
 // large upload never has to fit in memory.
 async function readCapped(
@@ -124,26 +90,16 @@ async function readCapped(
   return merged;
 }
 
-const discoverQuerySchema = z.object({
-  q: z.string().max(60).optional(),
-  cursor: z.string().max(128).optional(),
-});
-
 const uploadFormSchema = z.object({ emoji: z.string().max(8).optional() }).strict();
 
-const telegramImportBodySchema = z.object({ input: z.string().min(1).max(512) }).strict();
-
+// This module keeps the two binary routes only (part B moves them later):
+// `POST /sticker-packs/:id/stickers` (multipart/raw upload) and
+// `GET /stickers/:stickerId/file`. The 12 JSON routes live in `./api`.
+// The Hono factory below serves the binary pair under `/api`; `app.ts`
+// mounts the Effect api and this factory side by side.
 export function createStickersRoutes(deps: StickersRoutesDependencies): Hono {
   const routes = new Hono();
   const now = deps.now ?? Date.now;
-  // The default resolver keeps the legacy env-only read for callers that do
-  // not wire the integrations module (unit tests of these routes).
-  const getBotToken =
-    deps.getBotToken ??
-    (async (): Promise<string | null> => {
-      const token = deps.config.TELEGRAM_BOT_TOKEN;
-      return token === undefined || token === '' ? null : token;
-    });
   const uploadLimiter =
     deps.uploadLimiter ??
     createRateLimiter({
@@ -151,112 +107,6 @@ export function createStickersRoutes(deps: StickersRoutesDependencies): Hono {
       windowMs: STICKER_UPLOAD_RATE_LIMIT_WINDOW_MS,
       now,
     });
-  const telegramImportLimiter =
-    deps.importLimiter ??
-    createRateLimiter({
-      max: TELEGRAM_IMPORT_RATE_LIMIT_MAX,
-      windowMs: TELEGRAM_IMPORT_RATE_LIMIT_WINDOW_MS,
-      now,
-    });
-
-  routes.get('/sticker-packs', async (c) => {
-    const { user } = await requireSession(deps.auth, c.req.raw.headers);
-    return c.json({ packs: await listPanelPacks(serviceDeps(deps), user.id) });
-  });
-
-  routes.post('/sticker-packs', async (c) => {
-    const { user } = await requireSession(deps.auth, c.req.raw.headers);
-    const body = await c.req.json().catch(() => null);
-    const parsed = createPackBodySchema.safeParse(body);
-    if (!parsed.success) {
-      throw new HttpError(
-        400,
-        'invalid_request',
-        parsed.error.issues[0]?.message ?? 'Invalid request',
-      );
-    }
-    return c.json(await createPack(serviceDeps(deps), user.id, parsed.data), 201);
-  });
-
-  routes.get('/sticker-packs/discover', async (c) => {
-    await requireSession(deps.auth, c.req.raw.headers);
-    const parsed = discoverQuerySchema.safeParse(c.req.query());
-    if (!parsed.success) {
-      throw new HttpError(
-        400,
-        'invalid_request',
-        parsed.error.issues[0]?.message ?? 'Invalid request',
-      );
-    }
-    const page = await discoverPacks(serviceDeps(deps), parsed.data.q, parsed.data.cursor);
-    return c.json(page);
-  });
-
-  // Telegram import (T-0123, stored token T-0162): fetch a public pack's
-  // static stickers into a private Zilar pack. Without a token (neither
-  // `TELEGRAM_BOT_TOKEN` env nor a stored integrations value) the feature
-  // is off (501 `import_unavailable`). 3 imports per hour per user; the
-  // import runs to completion within the request budget (30 s) and reports
-  // `partial: true` when the budget ran out (re-run fills the gaps).
-  routes.post('/sticker-packs/import/telegram', async (c) => {
-    const { user } = await requireSession(deps.auth, c.req.raw.headers);
-    const token = await getBotToken();
-    if (token === null) {
-      throw new HttpError(501, 'import_unavailable', 'Telegram import is not configured');
-    }
-    const body = await c.req.json().catch(() => null);
-    const parsed = telegramImportBodySchema.safeParse(body);
-    if (!parsed.success) {
-      throw new HttpError(
-        400,
-        'invalid_request',
-        parsed.error.issues[0]?.message ?? 'Invalid request',
-      );
-    }
-    // The budget is consumed only by a well-formed request for a real pack
-    // name: garbage input fails here, before the 3/hour limiter runs.
-    try {
-      parseTelegramPackInput(parsed.data.input);
-    } catch (error) {
-      if (error instanceof TelegramImportError) {
-        throw new HttpError(400, 'invalid_request', 'That sticker pack link is not valid');
-      }
-      throw error;
-    }
-    if (!telegramImportLimiter.allow(user.id)) {
-      throw new HttpError(429, 'rate_limited', 'Too many Telegram imports, try again later');
-    }
-    const client = deps.telegramClient ?? createTelegramClient(token);
-    const result = await importTelegramPack(importDeps(deps), user.id, parsed.data.input, client);
-    return c.json({
-      pack: result.pack,
-      imported: result.imported,
-      skippedAnimated: result.skippedAnimated,
-      skippedInvalid: result.skippedInvalid,
-      ...(result.partial ? { partial: true as const } : {}),
-    });
-  });
-
-  routes.patch('/sticker-packs/:id', async (c) => {
-    const { user } = await requireSession(deps.auth, c.req.raw.headers);
-    const body = await c.req.json().catch(() => null);
-    const parsed = patchPackBodySchema.safeParse(body);
-    if (!parsed.success) {
-      throw new HttpError(
-        400,
-        'invalid_request',
-        parsed.error.issues[0]?.message ?? 'Invalid request',
-      );
-    }
-    return c.json(
-      await patchPack(serviceDeps(deps), decodePathId(c.req.param('id')), user.id, parsed.data),
-    );
-  });
-
-  routes.delete('/sticker-packs/:id', async (c) => {
-    const { user } = await requireSession(deps.auth, c.req.raw.headers);
-    return c.json(await deletePack(serviceDeps(deps), decodePathId(c.req.param('id')), user.id));
-  });
 
   routes.post('/sticker-packs/:id/stickers', async (c) => {
     const { user } = await requireSession(deps.auth, c.req.raw.headers);
@@ -330,85 +180,6 @@ export function createStickersRoutes(deps: StickersRoutesDependencies): Hono {
       emoji === undefined ? {} : { emoji },
     );
     return c.json(sticker, 201);
-  });
-
-  routes.delete('/sticker-packs/:id/stickers/:stickerId', async (c) => {
-    const { user } = await requireSession(deps.auth, c.req.raw.headers);
-    await deleteSticker(
-      serviceDeps(deps),
-      decodePathId(c.req.param('id')),
-      decodePathId(c.req.param('stickerId')),
-      user.id,
-    );
-    return c.json({ ok: true });
-  });
-
-  // Atomic panel reorder (T-0121): one transaction holding the caller's
-  // panel lock, so a mid-sequence failure or a concurrent add/remove can
-  // never leave a half-rewritten order behind. Registered before `:packId`
-  // so the literal path cannot be swallowed by the param route.
-  routes.put('/sticker-panel', async (c) => {
-    const { user } = await requireSession(deps.auth, c.req.raw.headers);
-    const body = await c.req.json().catch(() => null);
-    const parsed = reorderPanelBodySchema.safeParse(body);
-    if (!parsed.success) {
-      throw new HttpError(
-        400,
-        'invalid_request',
-        parsed.error.issues[0]?.message ?? 'Invalid request',
-      );
-    }
-    await reorderPanelPacks(serviceDeps(deps), user.id, parsed.data);
-    return c.json({ ok: true });
-  });
-
-  routes.put('/sticker-panel/:packId', async (c) => {
-    const { user } = await requireSession(deps.auth, c.req.raw.headers);
-    await addPanelPack(serviceDeps(deps), decodePathId(c.req.param('packId')), user.id);
-    return c.json({ ok: true });
-  });
-
-  routes.delete('/sticker-panel/:packId', async (c) => {
-    const { user } = await requireSession(deps.auth, c.req.raw.headers);
-    await removePanelPack(serviceDeps(deps), decodePathId(c.req.param('packId')), user.id);
-    return c.json({ ok: true });
-  });
-
-  // Favorites (T-0121): the caller's starred stickers, at most 200. The
-  // delete takes the id as a query param so the path stays exactly
-  // `/api/sticker-favorites` (no suffix to probe). No audit: like the panel
-  // links, these carry ids only.
-  routes.get('/sticker-favorites', async (c) => {
-    const { user } = await requireSession(deps.auth, c.req.raw.headers);
-    return c.json({ favorites: await listFavorites(serviceDeps(deps), user.id) });
-  });
-
-  routes.put('/sticker-favorites', async (c) => {
-    const { user } = await requireSession(deps.auth, c.req.raw.headers);
-    const body = await c.req.json().catch(() => null);
-    const parsed = favoriteBodySchema.safeParse(body);
-    if (!parsed.success) {
-      throw new HttpError(
-        400,
-        'invalid_request',
-        parsed.error.issues[0]?.message ?? 'Invalid request',
-      );
-    }
-    return c.json(await addFavorite(serviceDeps(deps), user.id, parsed.data.sticker_id));
-  });
-
-  routes.delete('/sticker-favorites', async (c) => {
-    const { user } = await requireSession(deps.auth, c.req.raw.headers);
-    const parsed = favoriteBodySchema.safeParse(c.req.query());
-    if (!parsed.success) {
-      throw new HttpError(
-        400,
-        'invalid_request',
-        parsed.error.issues[0]?.message ?? 'Invalid request',
-      );
-    }
-    await removeFavorite(serviceDeps(deps), user.id, parsed.data.sticker_id);
-    return c.json({ ok: true });
   });
 
   routes.get('/stickers/:stickerId/file', async (c) => {

@@ -4,7 +4,7 @@ import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync, readFileSync } from 'node:fs';
 import { and, asc, count, desc, eq, inArray, sql } from 'drizzle-orm';
-import { z } from 'zod';
+import { Option, Schema } from 'effect';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
 import { stickerFavorites, stickerPacks, stickers, userStickerPacks } from '../db/schema';
@@ -24,8 +24,8 @@ export const STICKER_PACK_TITLE_MAX = 60;
 export const STICKER_EMOJI_MAX = 8;
 export const DISCOVER_PAGE_SIZE = 30;
 
-export const stickerVisibilitySchema = z.enum(['private', 'server']);
-export type StickerVisibility = z.infer<typeof stickerVisibilitySchema>;
+export const stickerVisibilitySchema = Schema.Literals(['private', 'server']);
+export type StickerVisibility = typeof stickerVisibilitySchema.Type;
 
 export type StickerRow = typeof stickers.$inferSelect;
 export type StickerPackRow = typeof stickerPacks.$inferSelect;
@@ -115,29 +115,75 @@ export function serverPackageRoot(from: string = fileURLToPath(import.meta.url))
 
 export const SERVER_PACKAGE_ROOT: string = serverPackageRoot();
 
-const createPackBodySchema = z
-  .object({
-    title: z.string().trim().min(STICKER_PACK_TITLE_MIN).max(STICKER_PACK_TITLE_MAX),
-    visibility: stickerVisibilitySchema.optional(),
-  })
-  .strict();
+// The pack title, trimmed before the length checks, exactly like the old
+// `.trim().min()/.max()`. The messages cannot use `{ message }` on the
+// length checks (Effect 4.0.2 drops it), so the filters return the texts.
+const packTitleSchema = Schema.Trim.pipe(
+  Schema.check(
+    Schema.makeFilter((value: string) =>
+      value.length >= STICKER_PACK_TITLE_MIN
+        ? undefined
+        : `Too small: expected string to have >=${STICKER_PACK_TITLE_MIN} characters`,
+    ),
+    Schema.makeFilter((value: string) =>
+      value.length <= STICKER_PACK_TITLE_MAX
+        ? undefined
+        : `Too big: expected string to have <=${STICKER_PACK_TITLE_MAX} characters`,
+    ),
+  ),
+);
 
-export type CreatePackBody = z.infer<typeof createPackBodySchema>;
+const packOrderSchema = Schema.Array(
+  Schema.String.pipe(
+    Schema.check(
+      Schema.makeFilter((value: string) =>
+        value.length >= 1 ? undefined : 'Too small: expected string to have >=1 characters',
+      ),
+      Schema.makeFilter((value: string) =>
+        value.length <= 128 ? undefined : 'Too big: expected string to have <=128 characters',
+      ),
+    ),
+  ),
+).pipe(
+  Schema.check(
+    Schema.makeFilter((value: ReadonlyArray<string>) =>
+      value.length <= STICKERS_MAX_PER_PACK
+        ? undefined
+        : `Too big: expected array to have <=${STICKERS_MAX_PER_PACK} items`,
+    ),
+  ),
+);
+
+const createPackBodySchema = Schema.Struct({
+  title: packTitleSchema,
+  visibility: Schema.optional(stickerVisibilitySchema),
+});
+
+export type CreatePackBody = typeof createPackBodySchema.Type;
 export { createPackBodySchema };
 
-const patchPackBodySchema = z
-  .object({
-    title: z.string().trim().min(STICKER_PACK_TITLE_MIN).max(STICKER_PACK_TITLE_MAX).optional(),
-    visibility: stickerVisibilitySchema.optional(),
-    order: z.array(z.string().min(1).max(128)).max(STICKERS_MAX_PER_PACK).optional(),
-  })
-  .strict()
-  .refine((value) => Object.keys(value).length > 0, { message: 'Nothing to update' });
+const patchPackBodySchema = Schema.Struct({
+  title: Schema.optional(packTitleSchema),
+  visibility: Schema.optional(stickerVisibilitySchema),
+  order: Schema.optional(packOrderSchema),
+}).pipe(
+  Schema.check(
+    Schema.makeFilter((value) => (Object.keys(value).length > 0 ? undefined : 'Nothing to update')),
+  ),
+);
 
-export type PatchPackBody = z.infer<typeof patchPackBodySchema>;
+export type PatchPackBody = typeof patchPackBodySchema.Type;
 export { patchPackBodySchema };
 
-const emojiSchema = z.string().max(STICKER_EMOJI_MAX).optional();
+const emojiSchema = Schema.optional(
+  Schema.String.pipe(
+    Schema.check(
+      Schema.makeFilter((value: string) =>
+        value.length <= STICKER_EMOJI_MAX ? undefined : 'emoji must be at most 8 characters',
+      ),
+    ),
+  ),
+);
 
 export type UploadStickerBody = { emoji?: string | undefined };
 
@@ -520,11 +566,30 @@ export async function removePanelPack(
     .where(and(eq(userStickerPacks.userId, userId), eq(userStickerPacks.packId, packId)));
 }
 
-const reorderPanelBodySchema = z
-  .object({ order: z.array(z.string().min(1).max(128)).max(STICKER_PANEL_MAX) })
-  .strict();
+const reorderPanelBodySchema = Schema.Struct({
+  order: Schema.Array(
+    Schema.String.pipe(
+      Schema.check(
+        Schema.makeFilter((value: string) =>
+          value.length >= 1 ? undefined : 'Too small: expected string to have >=1 characters',
+        ),
+        Schema.makeFilter((value: string) =>
+          value.length <= 128 ? undefined : 'Too big: expected string to have <=128 characters',
+        ),
+      ),
+    ),
+  ).pipe(
+    Schema.check(
+      Schema.makeFilter((value: ReadonlyArray<string>) =>
+        value.length <= STICKER_PANEL_MAX
+          ? undefined
+          : `Too big: expected array to have <=${STICKER_PANEL_MAX} items`,
+      ),
+    ),
+  ),
+});
 
-export type ReorderPanelBody = z.infer<typeof reorderPanelBodySchema>;
+export type ReorderPanelBody = typeof reorderPanelBodySchema.Type;
 export { reorderPanelBodySchema };
 
 /**
@@ -583,9 +648,11 @@ export async function reorderPanelPacks(
 
 export const STICKER_FAVORITES_MAX = 200;
 
-const favoriteBodySchema = z.object({ sticker_id: z.uuid() }).strict();
+const favoriteBodySchema = Schema.Struct({
+  sticker_id: Schema.String.pipe(Schema.check(Schema.isUUID())),
+});
 
-export type FavoriteBody = z.infer<typeof favoriteBodySchema>;
+export type FavoriteBody = typeof favoriteBodySchema.Type;
 export { favoriteBodySchema };
 
 export async function listFavorites(
@@ -704,8 +771,8 @@ export async function uploadSticker(
     throw new HttpError(400, probeErrorCode(probed.error), 'The file is not a supported sticker');
   }
   const info: StickerImageInfo = probed.info;
-  const emojiParsed = emojiSchema.safeParse(body.emoji);
-  if (!emojiParsed.success) {
+  const emojiParsed = Schema.decodeUnknownOption(emojiSchema)(body.emoji);
+  if (Option.isNone(emojiParsed)) {
     throw new HttpError(400, 'invalid_request', 'emoji must be at most 8 characters');
   }
   const id = randomUUID();
@@ -734,7 +801,7 @@ export async function uploadSticker(
         id,
         packId,
         position: (top?.position ?? -1) + 1,
-        emoji: emojiParsed.data ?? null,
+        emoji: emojiParsed.value ?? null,
         mime: info.mime,
         width: info.width,
         height: info.height,
@@ -1116,11 +1183,8 @@ async function storeImportedSticker(
     return 'skipped';
   }
   const info: StickerImageInfo = probed.info;
-  const emojiParsed = z
-    .string()
-    .max(STICKER_EMOJI_MAX)
-    .optional()
-    .safeParse(item.emoji ?? undefined);
+  const emojiParsed = Schema.decodeUnknownOption(emojiSchema)(item.emoji ?? undefined);
+  const emoji = Option.isNone(emojiParsed) ? null : (emojiParsed.value ?? null);
   const id = randomUUID();
   const extension = info.mime === 'image/webp' ? 'webp' : 'png';
   const storageKey = `${id}.${extension}`;
@@ -1151,7 +1215,7 @@ async function storeImportedSticker(
           id,
           packId,
           position: (top?.position ?? -1) + 1,
-          emoji: emojiParsed.success ? (emojiParsed.data ?? null) : null,
+          emoji,
           mime: info.mime,
           width: info.width,
           height: info.height,

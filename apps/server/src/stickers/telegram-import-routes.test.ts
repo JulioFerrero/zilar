@@ -541,6 +541,48 @@ describe('telegram sticker import', () => {
     expect((await importRequest(app, owner, { input: 'FunCats' })).status).toBe(429);
   });
 
+  it('does not burn the hourly budget on 501s without the token', async () => {
+    // The token resolver reads the config per request, so assigning the
+    // token later simulates the admin configuring it mid-hour.
+    const config = { ...context.config };
+    const client = fakeClient(stickerSet([]));
+    const app = createApp({
+      db: context.db,
+      logger: context.logger,
+      config,
+      auth: context.auth,
+      adminClient: context.adminClient,
+      stickerStorageDir: storageDir,
+      telegramClient: client,
+    });
+    for (let index = 0; index < 3; index += 1) {
+      expect((await importRequest(app, owner, { input: 'FunCats' })).status).toBe(501);
+    }
+    config.TELEGRAM_BOT_TOKEN = 'test-bot-token';
+    expect((await importRequest(app, owner, { input: 'FunCats' })).status).toBe(200);
+  });
+
+  it('answers 501 import_unavailable before the body decode without the token', async () => {
+    // Spec order is session -> token (501) -> body (400): a malformed body
+    // must not shadow the missing-token 501.
+    const client = fakeClient(stickerSet([]));
+    const app = createApp({
+      db: context.db,
+      logger: context.logger,
+      config: context.config,
+      auth: context.auth,
+      adminClient: context.adminClient,
+      stickerStorageDir: storageDir,
+      telegramClient: client,
+    });
+    for (const bad of [{}, { input: 7 }, { input: '' }]) {
+      const response = await importRequest(app, owner, bad);
+      expect(response.status).toBe(501);
+      const body = (await response.json()) as { error: { code: string } };
+      expect(body.error.code).toBe('import_unavailable');
+    }
+  });
+
   it('skips an oversized Telegram file and imports the good ones', async () => {
     const client = fakeClient(
       stickerSet([
