@@ -223,6 +223,7 @@ The recipe is `docs/audit/effect-sql-migration.md` §(a). The examples are `apps
 - **Rows:** `SELECT *` and `RETURNING *` come back camelCased through `transformResultNames` (`apps/server/src/effect/sql.ts`). `timestamptz` columns come back as `Date`.
 - **Every database needs a registered runtime:** `createApp` and `createTestContext` register one. A test or CLI that builds its own `db` calls `registerSqlRuntime(db, url)` itself and `disposeSqlRuntime(db)` on teardown (`auth/invites.test.ts`, `auth/invite-cli.ts`, T-0574). **Never register inside a domain module.**
 - **jsonb:** write `${JSON.stringify(value)}::jsonb`; the driver parses jsonb back on read (T-0568).
+- **Tests that fake drizzle stop working:** effect/sql never calls `db.transaction` or `db.select`, so a test that patches `db.transaction` to park a join or that passes a fake `{ select }` db to inject a failure fails after the move (T-0607, T-0609). Before writing a spec, grep the module's tests for `db.transaction =`, `realTransaction` and fake `{ select` objects. If you find one, allow that test file and say how to replace the injection: a test-only deps hook (`beforeJoinTransaction`, `onInsert`), a `vi.mock` that fails once, or a failing `SqlClient` layer. The assertions stay. In `setup/routes.test.ts` the patch is still in place.
 
 ## Moving a mobile API client onto Effect (T-0506)
 
