@@ -2,6 +2,28 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-08 05:20, Julio asleep, Effect night continues:**
+- **Merged since 03:50:**
+  - T-0539 (topics HTTP);
+  - T-0550, T-0551 and T-0552: mobile API batches 6-8. **Every mobile API client is now on Effect Schema**;
+  - T-0548 (AI usage and search archives on effect/sql);
+  - T-0544, T-0543, T-0554, T-0545 and T-0553: integration settings, push, routines, voice transcription and approvals HTTP;
+  - T-0549: agents G8b, the group ingest.
+- **Approved, merge queued:** T-0556 (agents G4, the tool executor).
+- **Running:**
+  - T-0555: AI management HTTP, in an auto fix round with 2 should-fix items;
+  - T-0557: provider-key connections HTTP;
+  - T-0558: message search HTTP;
+  - T-0559: tools HTTP;
+  - T-0560: media gallery HTTP;
+  - T-0561: /me and account invites HTTP.
+- **Next:** T-0562, agents G9 (start, stop and reconcile), after G4 merges.
+- **Model note:** during DeepSeek peak (01-04 UTC) the free Muse often stopped or hit its rate limit, and most workers fell back to the paid contributor Muse. T-0548 was switched by hand after two stalls.
+- **Recipe additions in `docs/EFFECT_GUIDE.md`:**
+  - item 8: output schemas strip unlisted keys, so check them field by field;
+  - item 11: a thin Hono wrapper for tests that mount the old factory.
+- **Hono modules left after this wave:** avatars, files, voice, drafts (SSE), the `ai` virtual keys, stickers, gifs (streams), backgrounds (bytes), invite-links (needs the socket IP), machines (the IP again) and setup (the IP again).
+
 **2026-10-08 03:50, Julio asleep, Effect night continues:**
 - **Merged since 03:00:**
   - T-0536 (groups HTTP), T-0532 (zod leaves mobile), T-0535 (machine registry on effect/sql), T-0537 (screenshot scripts) and T-0533 (xmpp, chats and AI memory HTTP);
