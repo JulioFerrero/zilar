@@ -225,7 +225,7 @@ function todayUtc(): string {
 // The checks every merge must pass, run in the rebased worktree. The output
 // tail is kept so the lead sees the failing step without rerunning it.
 function runGate(worktree: string): { ok: boolean; output: string } {
-  const result = spawnSync('pnpm', ['gate'], {
+  const result = spawnSync('pnpm', ['gate', '--merge'], {
     cwd: worktree,
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,

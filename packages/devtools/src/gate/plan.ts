@@ -5,6 +5,9 @@
 // changed source file, the tests sitting in the same folder. `--full` keeps the
 // older behaviour of letting Vitest pull in every test that imports the change.
 
+import os from 'node:os';
+import path from 'node:path';
+
 export interface WorkspacePackage {
   name: string;
   dir: string;
@@ -15,6 +18,8 @@ export interface GateStep {
   label: string;
   command: string;
   args: string[];
+  /** Extra environment variables for this step, merged over `process.env`. */
+  env?: Record<string, string>;
   /** Set when there is nothing to run: the gate prints it and still passes. */
   skipReason?: string;
 }
@@ -22,6 +27,10 @@ export interface GateStep {
 export interface GateOptions {
   /** Run each touched package's whole `--changed` set instead of the nearest tests. */
   full?: boolean;
+  /** A merge gate must not reuse Turbo's cache: its typecheck runs with `--force`. */
+  merge?: boolean;
+  /** Turbo's persistent cache, shared by every worktree; defaults to `~/.zilar-turbo-cache`. */
+  cacheDir?: string;
   /** Every test file in the repo, relative to the root; the near-test search space. */
   testFiles?: string[];
   /** Whether a selected path is still on disk; a deleted test must not be run. */
@@ -120,6 +129,8 @@ export function gateSteps(
   options: GateOptions = {},
 ): GateStep[] {
   const full = options.full ?? false;
+  const merge = options.merge ?? false;
+  const cacheDir = options.cacheDir ?? path.join(os.homedir(), '.zilar-turbo-cache');
   const selected = full
     ? []
     : selectTestFiles(changedFiles, options.testFiles ?? [], options.exists);
@@ -127,7 +138,21 @@ export function gateSteps(
     { label: 'install (frozen)', command: 'pnpm', args: ['install', '--frozen-lockfile'] },
     { label: 'format', command: 'pnpm', args: ['format:check'] },
     { label: 'lint', command: 'pnpm', args: ['lint'] },
-    { label: 'typecheck', command: 'pnpm', args: ['typecheck'] },
+    {
+      label: 'typecheck',
+      command: 'pnpm',
+      args: [
+        'exec',
+        'turbo',
+        'run',
+        'typecheck',
+        '--affected',
+        '--concurrency=2',
+        `--cache-dir=${cacheDir}`,
+        ...(merge ? ['--force'] : []),
+      ],
+      env: { TURBO_SCM_BASE: base },
+    },
   ];
   for (const pkg of packagesTouched(changedFiles, workspace)) {
     if (!pkg.hasTests) {

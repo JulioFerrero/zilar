@@ -144,6 +144,31 @@ describe('gateSteps', () => {
     ]);
   });
 
+  it('typechecks only the affected packages with one shared cache', () => {
+    const typecheck = gateSteps(['apps/mobile/src/a.ts'], workspace, 'main', {
+      testFiles: ['apps/mobile/src/a.test.ts'],
+      cacheDir: '/tmp/zilar-turbo-cache',
+    }).find((step) => step.label === 'typecheck');
+    expect(typecheck?.args).toEqual([
+      'exec',
+      'turbo',
+      'run',
+      'typecheck',
+      '--affected',
+      '--concurrency=2',
+      '--cache-dir=/tmp/zilar-turbo-cache',
+    ]);
+    expect(typecheck?.env).toEqual({ TURBO_SCM_BASE: 'main' });
+  });
+
+  it('forces a merge gate past Turbo cache', () => {
+    const typecheck = gateSteps(['apps/mobile/src/a.ts'], workspace, 'main', {
+      merge: true,
+      cacheDir: '/tmp/zilar-turbo-cache',
+    }).find((step) => step.label === 'typecheck');
+    expect(typecheck?.args.at(-1)).toBe('--force');
+  });
+
   it('skips a touched package with no nearby test files', () => {
     const steps = gateSteps(['apps/mobile/src/a.ts', 'packages/docs/readme.md'], workspace, 'main');
     expect(steps.at(-1)).toMatchObject({

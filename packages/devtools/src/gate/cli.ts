@@ -8,6 +8,7 @@
 
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import {
   gateSteps,
@@ -32,11 +33,18 @@ function hasErrorCode(error: Error | undefined, code: string): boolean {
   return error !== undefined && 'code' in error && error.code === code;
 }
 
-function run(cwd: string, command: string, args: string[], timeoutMs?: number): RunResult {
+function run(
+  cwd: string,
+  command: string,
+  args: string[],
+  timeoutMs?: number,
+  env?: Record<string, string>,
+): RunResult {
   const result = spawnSync(command, args, {
     cwd,
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,
+    env: { ...process.env, ...env },
     ...(timeoutMs === undefined
       ? {}
       : { timeout: timeoutMs, killSignal: 'SIGKILL' as const, detached: true }),
@@ -120,16 +128,21 @@ function main(): void {
   const baseIndex = args.indexOf('--base');
   const base = baseIndex >= 0 ? (args[baseIndex + 1] ?? 'main') : 'main';
   const full = args.includes('--full');
+  const merge = args.includes('--merge');
   const root = run(process.cwd(), 'git', ['rev-parse', '--show-toplevel']).output.trim();
   const files = changedFiles(root, base);
   const tracked = lines(run(root, 'git', ['ls-files']).output);
   const steps: GateStep[] = gateSteps(files, readWorkspace(root), base, {
     full,
+    merge,
+    cacheDir: path.join(os.homedir(), '.zilar-turbo-cache'),
     testFiles: tracked.filter(isTestFile),
     exists: (file) => fs.existsSync(path.join(root, file)),
   });
   let failed = false;
-  console.log(`gate: ${files.length} changed file(s) against ${base}${full ? ' (full)' : ''}`);
+  console.log(
+    `gate: ${files.length} changed file(s) against ${base}${full ? ' (full)' : ''}${merge ? ' (merge)' : ''}`,
+  );
   for (const step of steps) {
     if (step.skipReason !== undefined) {
       console.log(`SKIP ${step.label} (${step.skipReason})`);
@@ -137,7 +150,7 @@ function main(): void {
     }
     const timeoutMs = stepTimeoutMs(step.label);
     const started = Date.now();
-    const result = run(root, step.command, step.args, timeoutMs);
+    const result = run(root, step.command, step.args, timeoutMs, step.env);
     const seconds = ((Date.now() - started) / 1000).toFixed(1);
     if (result.timedOut) {
       failed = true;
