@@ -453,7 +453,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0414](T-0414-web-forward-store-action.md) | Web store: forwardMessages sends copies with a forward origin, optional comment | 2026-10-06 |
 | [T-0425](T-0425-mobile-profile-buttons-kit.md) | Mobile: profile and contact card buttons on the kit Button | 2026-10-06 |
 | [T-0426](T-0426-mobile-ai-sheet-buttons-kit.md) | Mobile: AI activity Refresh, tool sheet Show all/less and Close on the kit Button | 2026-10-06 |
-| [T-0528](T-0528-effect-sql-chat-prefs-folders.md) | Effect C1: chat-prefs, chat-folders services on effect/sql | planned | auto | T-0510 | |
 | [T-0532](T-0532-effect-mobile-api-batch-3.md) | Effect E batch 3: mobile media, groups, integrations, transcripts; zod leaves mobile | planned | auto | T-0527 | |
 | [T-0533](T-0533-effect-http-xmpp-chats-memory.md) | Effect C (HTTP): xmpp token, chats, AI memory on HttpApi | planned | auto | T-0520 | |
 | [T-0535](T-0535-effect-sql-connections-machines-registry.md) | Effect C1: connections service, machine registry on effect/sql | running | auto | T-0510 | |
@@ -566,3 +565,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0530](T-0530-effect-web-api-3.md) | Effect D3: web api.ts part 3, zod leaves web | 2026-10-08 |
 | [T-0531](T-0531-atom-react-mobile-m1.md) | atom-react M1: mobile stores on an atom registry | 2026-10-08 |
 | [T-0534](T-0534-agents-g5b-session-registry.md) | Agents G5b: extract the session lifecycle | 2026-10-08 |
+| [T-0528](T-0528-effect-sql-chat-prefs-folders.md) | Effect C1: chat-prefs, chat-folders services on effect/sql | 2026-10-08 |

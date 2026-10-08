@@ -1,7 +1,7 @@
 ---
 id: T-0528
 title: "Effect C1: chat-prefs/service.ts and chat-folders/service.ts on effect/sql (same caps, same per-user advisory lock, same seeding race backstop, same answers); signatures unchanged, every test unchanged"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0528-effect-sql-chat-prefs-folders
 model: auto
@@ -71,4 +71,70 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+
+Both services now run every query on the `effect/sql` client registered for the
+database, following the recipe in `docs/audit/effect-sql-migration.md` §(a) and
+the `blocks/service.ts` shape. Exported signatures, return values, step order,
+caps, errors and conflict handling are unchanged; the routes and `api.ts` were
+not touched.
+
+- `apps/server/src/chat-prefs/service.ts`: `requireChatAccess` (and its
+  `canSeeRoomJid`/`canDm` helpers), `listChatPrefs`, `putChatPref`, the shared
+  `resolveBackgroundFields`, `getChatBackgroundDefault` and
+  `putChatBackgroundDefault` are on tagged-template SQL. `putChatPref` keeps
+  the same seven steps and still runs with **no transaction**. The upsert uses
+  `ON CONFLICT (user_id, chat_jid) DO UPDATE ... RETURNING *`; the background
+  default uses `ON CONFLICT (user_id) DO UPDATE ... RETURNING` the three
+  columns. `ChatPrefRow` stays a type-only import from `../db/schema`, and
+  `ChatPrefView`/`toChatPrefView` are unchanged. `canSeeTopic` (drizzle) is
+  still called through `topics/access` with a `SELECT *` topic row.
+- `apps/server/src/chat-folders/service.ts`: all five exported functions run in
+  `sql.withTransaction`, each starting with the same raw
+  `SELECT pg_advisory_xact_lock(hashtext('chat-folders:' + userId))`.
+  `ensureSeeded` re-reads inside the transaction and keeps the
+  `chat_folder_seeds` `ON CONFLICT DO NOTHING` race backstop. `FolderTransaction`
+  is gone. The 409 `folder_limit`, 404 `not_found` and 400 `invalid_request`
+  failures are raised as `Effect.fail(HttpError)` inside the transaction, so the
+  transaction rolls back and the rejection reaches the route unchanged.
+- Both files have **no `drizzle-orm` import**. `chat-prefs` imports only types
+  from `../db/schema`; `chat-folders` likewise.
+
+### Deviations / notes
+
+- **Array columns:** `@effect/sql-pg` throws
+  `Cannot infer the type of an empty array` when a JS `[]` is bound (checked in
+  `PgConnection.inferParameter`), and the `@effect/sql-pg` typed-parameter
+  objects are not understood by the PGlite driver used in tests. So
+  `include_types`/`include_chats`/`exclude_chats` are written through
+  `ARRAY[...]::text[]` (`ARRAY[]::text[]` for an empty list) with only scalar
+  string placeholders. Same stored values, works on both drivers.
+- `sortByPosition` now receives `[...rows]` copies because `effect/sql` returns
+  read-only arrays; the sort itself is unchanged.
+
+### Commands run and results
+
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot chat-prefs/chat-prefs.test.ts chat-folders/chat-folders.test.ts`
+  → 2 files passed, 27 tests passed.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot pins groups`
+  → 3 files passed, 90 tests passed.
+- `pnpm gate` (repo root) — summary lines:
+
+```
+gate: 3 changed file(s) against main
+PASS  install (frozen)  (2.0s)
+PASS  format  (24.5s)
+PASS  lint  (0.7s)
+PASS  typecheck  (10.8s)
+PASS  tests @zilar/server  (368.9s)
+scope: every changed file is inside the Allowed files
+GATE PASS
+```
+
+The only changed files are the two services and this task file, all inside the
+Allowed files. No caller, route, test or `api.ts` change was needed.
+
 ## Review (written by Claude)
+
+
+Approved (lead, 2026-10-08). chat-prefs and chat-folders services run on effect/sql with the same caps, the same per-user advisory lock in all five folder functions, the same seeding backstop, and putChatPref with no transaction. Arrays are encoded as ARRAY[...]::text[] and round-trip in the tests. No drizzle-orm import left. Pre-review clean; nit (a redundant spread before sortByPosition) accepted.
