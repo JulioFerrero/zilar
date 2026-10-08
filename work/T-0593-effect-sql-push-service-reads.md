@@ -1,7 +1,7 @@
 ---
 id: T-0593
 title: "effect/sql: the four drizzle reads in push/service.ts (room topic by localpart, its group, own and General mute rows) move to effect/sql; rows keep their drizzle shapes; same skip/visibility/mute decisions; tests unchanged"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0593-effect-sql-push-service-reads
 model: auto
@@ -58,4 +58,86 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+
+Moved the four `drizzle` reads in `apps/server/src/push/service.ts` onto
+`effect/sql`, with the same skip / visibility / mute decisions:
+
+1. **`resolveRoomCandidate` topic read** (was `deps.db.select().from(topics).where(eq(topics.roomLocalpart, localpart))`):
+   ``sql<TopicRow>`SELECT * FROM topics WHERE room_localpart = ${localpart} LIMIT 1` ``.
+   The row is typed `TopicRow` (type-only import from `../topics/access`) and
+   passed unchanged to `canSeeTopic(deps.db, topic, userId)`.
+2. **`resolveRoomCandidate` group read** (was `eq(groups.id, topic.groupId)`):
+   ``sql<typeof groups.$inferSelect>`SELECT * FROM groups WHERE id = ${topic.groupId} LIMIT 1` ``.
+   `groups` is now a type-only import from `../db/schema`; `group.roomLocalpart`
+   and `group.title` are used as before.
+3. **`isMuted` own-pref read**: ``sql<{ mutedUntil: Date | null }>`SELECT muted_until FROM chat_prefs WHERE user_id = ${userId} AND chat_jid = ${chatJid} LIMIT 1` ``.
+4. **`isMuted` General-pref read**: the same query with `generalJid`.
+
+Added a local helper next to the existing `awaitDb`:
+
+```ts
+function runSql<A>(
+  db: ServerDatabase,
+  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
+): Promise<A> {
+  return sqlRuntimeFor(db).runPromise(effect);
+}
+```
+
+**`LIMIT` choice:** I added `LIMIT 1` to all four queries. `topics.room_localpart`
+is unique, so this is identical to the old `LIMIT`-free "first row" behavior,
+and it matches the other converted services (`blocks/service.ts`,
+`contact-requests/service.ts`).
+
+**Row shapes:** `effect/sql` camelCases via `transformResultNames: snakeToCamel`,
+so `SELECT *` yields the exact drizzle `TopicRow` / `typeof groups.$inferSelect`
+shapes. `muted_until` is `timestamptz` and comes back as `Date | null`, so the
+`.getTime()` comparisons are unchanged. I checked the `groups` table: it has no
+`bigint` or `numeric` column (all `text`/`boolean`/`integer`/`timestamp`).
+
+**Imports:** the value import `{ and, eq } from 'drizzle-orm'` and
+`{ chatPrefs, groups, topics } from '../db/schema'` are gone. `push/service.ts`
+now has no value import from `drizzle-orm` or `db/schema`; `groups` is
+type-only and `TopicRow` comes from `../topics/access`. `canSeeTopic` and the
+`./store` reads are untouched and still run on drizzle — both clients sit on
+the same database.
+
+### Files changed
+- `apps/server/src/push/service.ts`
+- `work/T-0593-effect-sql-push-service-reads.md`
+
+No test file was touched: all tests are unchanged.
+
+### Commands run
+
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot push` →
+  10 passed, 1 skipped test files; 69 passed, 1 skipped tests (199.79s).
+- `pnpm gate` →
+  ```
+  gate: 2 changed file(s) against main
+  PASS  install (frozen)  (12.1s)
+  PASS  format  (145.4s)
+  PASS  lint  (3.2s)
+  PASS  typecheck  (89.5s)
+  PASS  tests @zilar/server  (86.9s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Problems / deviations
+
+None. No `LIMIT`-free variant kept; see above for the `LIMIT 1` decision.
+
+### Open questions
+
+None.
+
 ## Review (written by Claude)
+
+**2026-10-08, lead:** approved.
+- **Pre-review:** clean. The packet (12:21) is newer than HEAD 4e87dae4.
+- **No test file changed.**
+- **Lead check:**
+  - the four reads (topic by localpart, group, own mute, General mute) run on effect/sql, typed as `TopicRow` and the groups row;
+  - only a type import of `db/schema` is left.

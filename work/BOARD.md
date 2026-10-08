@@ -460,7 +460,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0590](T-0590-effect-sql-api-inline-reads.md) | effect/sql: inline reads in the memory, media and /me APIs | planned | auto | T-0584 | |
 | [T-0591](T-0591-effect-sql-approvals-api-reads.md) | effect/sql: approvals API reads | planned | auto | T-0584 | |
 | [T-0592](T-0592-effect-sql-routines-api-reads.md) | effect/sql: routines API reads | planned | auto | T-0588 | |
-| [T-0593](T-0593-effect-sql-push-service-reads.md) | effect/sql: push service reads | planned | auto | T-0584 | |
 | [T-0427](T-0427-mobile-forwarded-header.md) | Mobile: forwarded messages show 'Forwarded from X [in Y]' | 2026-10-06 |
 | [T-0428](T-0428-mobile-new-chat-menu-sheet.md) | Mobile: New chat menu on the kit ActionSheet with icons | 2026-10-06 |
 | [T-0429](T-0429-mobile-dismiss-banner.md) | Mobile: DismissBanner replaces 12 copied chat screen banners | 2026-10-06 |
@@ -622,3 +621,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0586](T-0586-effect-http-gifs.md) | Effect C (HTTP): GIF search, trending and media proxy | 2026-10-08 |
 | [T-0587](T-0587-effect-sql-connections.md) | effect/sql: provider connection queries | 2026-10-08 |
 | [T-0588](T-0588-effect-sql-routine-runs.md) | effect/sql: routine scheduler claim and runner queries | 2026-10-08 |
+| [T-0593](T-0593-effect-sql-push-service-reads.md) | effect/sql: push service reads | 2026-10-08 |
