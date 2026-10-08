@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-0651](T-0651-contact-requests-drop-zod.md) | zod: contact requests without the legacy schema | in-progress | auto | | |
 | [T-0652](T-0652-ais-delete-and-model-clear-effect-sql.md) | effect/sql: ais delete and model-clear transactions | in-progress | auto | T-0648 | |
 | [T-0653](T-0653-stickers-drop-zod.md) | zod: stickers API without the legacy schemas | in-progress | auto | | |
 | [T-0654](T-0654-db-schema-drop-zod.md) | zod: db/schema.ts enums become plain unions | in-progress | auto | | |
@@ -684,3 +683,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0649](T-0649-stale-routes-comments.md) | repoint comments that named the deleted routes.ts files | 2026-10-08 |
 | [T-0648](T-0648-ais-update-persona-effect-sql.md) | ais update and persona transactions on effect/sql | 2026-10-08 |
 | [T-0650](T-0650-handles-drop-zod.md) | handles without the legacy zod schema | 2026-10-08 |
+| [T-0651](T-0651-contact-requests-drop-zod.md) | contact requests without the legacy zod schema | 2026-10-08 |

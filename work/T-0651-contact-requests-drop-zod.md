@@ -1,7 +1,7 @@
 ---
 id: T-0651
 title: "zod: drop the legacy create-body schema in contact-requests/api.ts (E2); an invalid create body answers the same 400 invalid_request with one fixed message; add one test for it"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0651-contact-requests-drop-zod
 model: auto
@@ -61,4 +61,54 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+
+1. **`apps/server/src/contact-requests/api.ts`**
+   - Removed `import { z } from 'zod';` (line 17).
+   - Deleted `legacyCreateBodySchema` and `legacyCreateBodyMessage` (old lines 113-124) and `parseJsonOrNull` (old lines 126-134).
+   - Rewrote `schemaErrorLayer` so it no longer reads the body; it now answers `new HttpError(400, 'invalid_request', 'handle must be a string of 1 to 64 characters, with no other keys')`.
+   - Updated the three comments that described the zod path (the `CreateContactRequestBody` comment and the `ContactRequestsSchemaErrors` comment) so they describe the Effect Schema path and no longer mention zod. The legacy-schema comment was deleted with its code.
+   - No other imports changed: `Effect`, `HttpServerRequest` and the rest are still used elsewhere in the file.
+2. **`apps/server/src/contact-requests/contact-requests.test.ts`** — added one test after the existing self/existing-contact test:
+   `answers an invalid create body with 400 invalid_request and a fixed message`.
+   It POSTs `{"handle":"ok","extra":1}` with a valid session and asserts status 400, `error.code === 'invalid_request'`, and `error.message === 'handle must be a string of 1 to 64 characters, with no other keys'`.
+3. **`work/T-0651-contact-requests-drop-zod.md`** — status and this Report only.
+
+Nothing else was changed.
+
+### Checks
+
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/contact-requests` → 1 file passed, **16 passed** (16) — includes the new test.
+- `git grep -n "zod" apps/server/src/contact-requests` → no matches (exit 1).
+- `pnpm gate` (from repo root):
+  ```
+  gate: 3 changed file(s) against main
+  PASS  install (frozen)  (2.2s)
+  PASS  format  (28.7s)
+  PASS  lint  (1.2s)
+  PASS  typecheck  (13.2s)
+  PASS  tests @zilar/server  (9.0s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Deviations from the spec
+
+None.
+
+### Problems / open questions
+
+None. The error text for an invalid create body changed as the lead decided (status and code unchanged); no existing test asserted the text.
+
+### Security checklist
+
+Not affected by this change: it only replaces an error message and removes dead validation code; no route, permission, rate-limit, delete/update scope, logging or audit behaviour changed. The create route keeps its rate limit and session middleware.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved.
+- **Pre-review:** clean. The packet head is 2faafd05, the current HEAD.
+- **Lead check:**
+  - there is no zod import in `contact-requests/`;
+  - one new test covers the fixed 400 message;
+  - no existing assertion was removed.

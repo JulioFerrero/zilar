@@ -125,6 +125,23 @@ describe('contact requests', () => {
     expect((await context.db.select().from(contactRequests)).length).toBe(1);
   });
 
+  it('answers an invalid create body with 400 invalid_request and a fixed message', async () => {
+    const alice = await withHandle('alice@example.com', 'alice_w');
+
+    const invalid = await app.request(`${TEST_BASE_URL}/api/contact-requests`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...authHeaders(alice.cookie) },
+      body: JSON.stringify({ handle: 'ok', extra: 1 }),
+    });
+
+    expect(invalid.status).toBe(400);
+    const invalidBody = (await invalid.json()) as { error: { code: string; message: string } };
+    expect(invalidBody.error.code).toBe('invalid_request');
+    expect(invalidBody.error.message).toBe(
+      'handle must be a string of 1 to 64 characters, with no other keys',
+    );
+  });
+
   it('creates exactly one pending row for simultaneous opposite-direction requests', async () => {
     const alice = await withHandle('alice@example.com', 'alice_w');
     const bob = await withHandle('bob@example.com', 'bob_b');
