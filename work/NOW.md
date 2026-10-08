@@ -2,6 +2,17 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-08 23:00, 4 workers (Julio: "lets go up to 4 workers maybe?"):**
+- **Merged since 22:40:** T-0620 (the gate falls back to a folder's tests), T-0621 (approval rules), T-0622 (owner lookups), T-0623 (voice settings), T-0624 (announcer reads).
+- **Running:**
+  - T-0625: the file proxy lookup;
+  - T-0626: an audit of the Effect last mile, plus a check for `bigint` columns that effect/sql returns as strings;
+  - T-0627: the routines service (`deleteRoutinesForAiInGroup` stays on drizzle).
+- **Migration map for Julio:** https://claude.ai/artifact/K1mWvaM7f9h3TmHx6rqWsL.
+  - Rebuild it with `node ~/.zilar-lead/effect-map/build.mjs`, which writes `effect-map.html` next to it.
+  - Republish that file to the same URL after merges.
+- **Runner pitfall:** queuing a spec adds no board row, and the merge refuses without one (now in `docs/LEAD_HANDOFF.md`).
+
 **2026-10-08 22:40, no restart needed (Julio: "please you take the lead"). 2 workers while Julio is at the PC.**
 - **Merged:**
   - T-0619: workers cannot start daemons or detached runs, and the gate has step time limits;
