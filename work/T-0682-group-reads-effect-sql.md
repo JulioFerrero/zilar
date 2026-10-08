@@ -1,7 +1,7 @@
 ---
 id: T-0682
 title: "effect/sql: move the read helpers in groups/service.ts (getGroupDetail, getMembership, requireGroup, listGroupsForUser, listGroupMembers, listGroupAis, listMembersForViewer, assertContacts, resolveGroupBackground, removeGroupAi's pre-reads) onto effect/sql (groups slice 3)"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0682-group-reads-effect-sql
 model: auto
@@ -63,4 +63,48 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**What I did**
+- Moved every listed read in `apps/server/src/groups/service.ts` onto `runSql` (the `effect/sql` client), with the same columns, joins, filters, JS post-processing, errors and texts:
+  - `resolveGroupBackground`: `chat_backgrounds` id check.
+  - `getGroupDetail`: `SELECT * FROM groups`.
+  - `getMembership`: `SELECT * FROM group_members`.
+  - `listMembersForViewer`: `SELECT * FROM groups`.
+  - `removeGroupAi` pre-reads: the AI (`id, jid, owner`) and the `group_ais` membership, both before the transaction.
+  - `listGroupsForUser`: four statements (memberships, groups `IN`, `count(*)::int ... GROUP BY`, handles `IN`). Empty-list guard kept.
+  - `listGroupMembers`: `group_members` join `"user"` and left join `handles`.
+  - `listGroupAis`: `group_ais` join `ais` (`owner AS owner_id`).
+  - `requireGroup`: `SELECT * FROM groups`.
+  - `assertContacts`: `contacts` `IN`, with `contact_user_id AS id` so the existing `row.id` code is unchanged.
+- Added two row types next to `GroupRole`: `GroupRow = typeof groups.$inferSelect` and `GroupMemberRow = typeof groupMembers.$inferSelect`.
+- Removed the imports the moved reads no longer used: `count` from drizzle, and `ais`, `chatBackgrounds`, `contacts`, `user` from the schema.
+- No write path changed. `createGroup`, `patchGroup`, `addGroupMembers`, `removeGroupMember`, `changeMemberRole`, `assertChannelKeepsAnAdmin` and `syncChannelVoice` still use drizzle, as the spec says.
+- Column names were checked against `apps/server/src/db/schema.ts` (`room_localpart`, `background_preset`, `background_image_id`, `background_dim`, `group_id`, `user_id`, `role`, `ai_id`, `jid`, `owner`, `contact_user_id`, `chat_backgrounds.user_id`, `"user".name`, `handles.handle`/`group_id`/`user_id`).
+- Files changed: `apps/server/src/groups/service.ts` and this task file (status and Report only).
+
+**Tests** (run one file at a time with `--maxWorkers=2 --reporter=dot`)
+- `src/groups/groups.test.ts`: 56 passed, 0 failed.
+- `src/groups/visibility.test.ts` and `src/chats/chats.test.ts`: 32 passed, 0 failed. The spec's single command `src/groups src/chats` was not run as one call; I ran the same files separately.
+- `src/topics/topics.test.ts` (named in the spec's Tests line): 32 passed, 0 failed.
+- None of these tests call `vi.mock`, so no test needed a change and none was edited.
+
+**`pnpm gate`** (log kept outside the worktree; summary lines):
+```
+gate: 2 changed file(s) against main
+PASS  install (frozen)  (1.3s)
+PASS  format  (14.9s)
+PASS  lint  (0.9s)
+PASS  typecheck  (3.5s)
+PASS  tests @zilar/server  (25.1s)
+scope: every changed file is inside the Allowed files
+GATE PASS
+```
+
+**Problems / deviations**: none against the spec.
+
+**Blocked / needs a decision**: none.
+
+**Open questions**: none. One thing I did not assert directly: that `createdAt` is still a `Date` through `SELECT *` on the effect/sql client. The groups tests pass, but I did not add a check for the type.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Haiku 5.5, in one round (about 3.7 min). The lead reviewed the SQL directly: the same columns, joins (inner `"user"`, left `handles`), filters and `IN` lists behind the existing empty guards, with `count(*)::int`. The JS post-processing is unchanged, and `SELECT *` gives the drizzle row types. The groups and chats tests and the gate passed.

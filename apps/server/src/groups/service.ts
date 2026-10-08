@@ -1,14 +1,11 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { Effect } from 'effect';
 import { SqlClient, type SqlError } from 'effect/sql';
-import { and, count, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { findOwnedAi } from '../ais/service';
 import { avatarIdsByOwner, avatarUrlFor } from '../avatars/service';
 import type { ServerDatabase } from '../db/client';
 import {
-  ais,
-  chatBackgrounds,
-  contacts,
   groupAis,
   groupMembers,
   groups,
@@ -16,7 +13,6 @@ import {
   retiredHandles,
   topicMembers,
   topics,
-  user,
 } from '../db/schema';
 import { sqlRuntimeFor } from '../effect/sql';
 import { HttpError } from '../errors';
@@ -52,6 +48,9 @@ const ROOM_ALPHABET = 'abcdefghijklmnopqrstuvwxyz234567';
 const ROOM_ROLES = { owner: 0, admin: 1, member: 2 } as const;
 
 export type GroupRole = 'owner' | 'admin' | 'member';
+
+type GroupRow = typeof groups.$inferSelect;
+type GroupMemberRow = typeof groupMembers.$inferSelect;
 
 // Minimal slice of pino's Logger the invite sending needs.
 export interface InviteLogger {
@@ -238,11 +237,14 @@ async function resolveGroupBackground(
     throw new HttpError(400, 'invalid_request', 'Dim needs an image');
   }
   if (backgroundImageId !== null) {
-    const [image] = await db
-      .select({ id: chatBackgrounds.id })
-      .from(chatBackgrounds)
-      .where(and(eq(chatBackgrounds.id, backgroundImageId), eq(chatBackgrounds.userId, actorId)))
-      .limit(1);
+    const [image] = await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ id: string }>`SELECT id FROM chat_backgrounds
+          WHERE id = ${backgroundImageId} AND user_id = ${actorId} LIMIT 1`;
+      }),
+    );
     if (image === undefined) {
       throw new HttpError(400, 'invalid_request', 'Unknown background image');
     }
@@ -476,7 +478,13 @@ export async function getGroupDetail(
   groupId: string,
   listenerAvailable = false,
 ): Promise<GroupDetail | null> {
-  const [group] = await db.select().from(groups).where(eq(groups.id, groupId)).limit(1);
+  const [group] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<GroupRow>`SELECT * FROM groups WHERE id = ${groupId} LIMIT 1`;
+    }),
+  );
   if (!group) {
     return null;
   }
@@ -530,11 +538,14 @@ export async function getMembership(
   groupId: string,
   userId: string,
 ): Promise<{ groupId: string; userId: string; role: GroupRole } | null> {
-  const [row] = await db
-    .select()
-    .from(groupMembers)
-    .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, userId)))
-    .limit(1);
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<GroupMemberRow>`SELECT * FROM group_members
+        WHERE group_id = ${groupId} AND user_id = ${userId} LIMIT 1`;
+    }),
+  );
   return row ?? null;
 }
 
@@ -892,7 +903,13 @@ export async function listMembersForViewer(
   if (!viewer) {
     throw new HttpError(404, 'not_found', 'Group not found');
   }
-  const [group] = await db.select().from(groups).where(eq(groups.id, groupId)).limit(1);
+  const [group] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<GroupRow>`SELECT * FROM groups WHERE id = ${groupId} LIMIT 1`;
+    }),
+  );
   if (!group) {
     throw new HttpError(404, 'not_found', 'Group not found');
   }
@@ -1069,11 +1086,14 @@ export async function removeGroupAi(
   const group = await requireGroup(db, input.groupId);
   // Authorize before looking at the group's AIs, so someone who may not
   // remove the AI can't learn whether it is in the group (404 vs 403).
-  const [ai] = await db
-    .select({ id: ais.id, jid: ais.jid, owner: ais.owner })
-    .from(ais)
-    .where(eq(ais.id, input.aiId))
-    .limit(1);
+  const [ai] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ id: string; jid: string; owner: string }>`SELECT id, jid, owner
+        FROM ais WHERE id = ${input.aiId} LIMIT 1`;
+    }),
+  );
   const actor = await getMembership(db, input.groupId, input.actorId);
   const isAiOwner = ai !== undefined && ai.owner === input.actorId;
   const isGroupManager = actor !== null && actor.role !== 'member';
@@ -1085,11 +1105,14 @@ export async function removeGroupAi(
     );
   }
 
-  const [membership] = await db
-    .select({ aiId: groupAis.aiId })
-    .from(groupAis)
-    .where(and(eq(groupAis.groupId, input.groupId), eq(groupAis.aiId, input.aiId)))
-    .limit(1);
+  const [membership] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ aiId: string }>`SELECT ai_id FROM group_ais
+        WHERE group_id = ${input.groupId} AND ai_id = ${input.aiId} LIMIT 1`;
+    }),
+  );
   if (!membership || !ai) {
     throw new HttpError(404, 'not_found', 'That AI is not in this group');
   }
@@ -1171,40 +1194,59 @@ export async function removeGroupAi(
 
 // Groups the user belongs to, with the data the chat list needs.
 export async function listGroupsForUser(db: ServerDatabase, userId: string): Promise<ChatGroup[]> {
-  const memberships = await db
-    .select({ groupId: groupMembers.groupId, role: groupMembers.role })
-    .from(groupMembers)
-    .where(eq(groupMembers.userId, userId));
+  const memberships = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ groupId: string; role: GroupRole }>`SELECT group_id, role
+        FROM group_members WHERE user_id = ${userId}`;
+    }),
+  );
   if (memberships.length === 0) {
     return [];
   }
 
   const groupIds = memberships.map((row) => row.groupId);
-  const groupRows = await db
-    .select({
-      id: groups.id,
-      roomLocalpart: groups.roomLocalpart,
-      title: groups.title,
-      kind: groups.kind,
-      description: groups.description,
-      visibility: groups.visibility,
-      backgroundPreset: groups.backgroundPreset,
-      backgroundImageId: groups.backgroundImageId,
-      backgroundDim: groups.backgroundDim,
-    })
-    .from(groups)
-    .where(inArray(groups.id, groupIds));
-  const counts = await db
-    .select({ groupId: groupMembers.groupId, total: count() })
-    .from(groupMembers)
-    .where(inArray(groupMembers.groupId, groupIds))
-    .groupBy(groupMembers.groupId);
+  const groupRows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<
+        Pick<
+          GroupRow,
+          | 'id'
+          | 'roomLocalpart'
+          | 'title'
+          | 'kind'
+          | 'description'
+          | 'visibility'
+          | 'backgroundPreset'
+          | 'backgroundImageId'
+          | 'backgroundDim'
+        >
+      >`SELECT id, room_localpart, title, kind, description, visibility,
+        background_preset, background_image_id, background_dim
+        FROM groups WHERE id IN ${sql.in(groupIds)}`;
+    }),
+  );
+  const counts = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ groupId: string; total: number }>`SELECT group_id, count(*)::int AS total
+        FROM group_members WHERE group_id IN ${sql.in(groupIds)} GROUP BY group_id`;
+    }),
+  );
   // T-0164: the `@handle` of every public group on the list, in the same
   // query shape as the member handles elsewhere.
-  const handleRows = await db
-    .select({ groupId: handles.groupId, handle: handles.handle })
-    .from(handles)
-    .where(inArray(handles.groupId, groupIds));
+  const handleRows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ groupId: string | null; handle: string }>`SELECT group_id, handle
+        FROM handles WHERE group_id IN ${sql.in(groupIds)}`;
+    }),
+  );
 
   const groupsById = new Map(groupRows.map((row) => [row.id, row]));
   const countsById = new Map(counts.map((row) => [row.groupId, Number(row.total)]));
@@ -1242,17 +1284,22 @@ export async function listGroupsForUser(db: ServerDatabase, userId: string): Pro
 }
 
 async function listGroupMembers(db: ServerDatabase, groupId: string): Promise<GroupMemberView[]> {
-  const rows = await db
-    .select({
-      userId: groupMembers.userId,
-      role: groupMembers.role,
-      name: user.name,
-      handle: handles.handle,
-    })
-    .from(groupMembers)
-    .innerJoin(user, eq(user.id, groupMembers.userId))
-    .leftJoin(handles, eq(handles.userId, groupMembers.userId))
-    .where(eq(groupMembers.groupId, groupId));
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{
+        userId: string;
+        role: GroupRole;
+        name: string;
+        handle: string | null;
+      }>`SELECT group_members.user_id, group_members.role, "user".name, handles.handle
+        FROM group_members
+        INNER JOIN "user" ON "user".id = group_members.user_id
+        LEFT JOIN handles ON handles.user_id = group_members.user_id
+        WHERE group_members.group_id = ${groupId}`;
+    }),
+  );
 
   // T-0116: fold each member's custom roles into the same row. Role
   // membership is not secret: every group member sees the same list.
@@ -1283,11 +1330,16 @@ async function listGroupMembers(db: ServerDatabase, groupId: string): Promise<Gr
 }
 
 async function listGroupAis(db: ServerDatabase, groupId: string): Promise<GroupAiView[]> {
-  const rows = await db
-    .select({ aiId: groupAis.aiId, jid: ais.jid, name: ais.name, ownerId: ais.owner })
-    .from(groupAis)
-    .innerJoin(ais, eq(ais.id, groupAis.aiId))
-    .where(eq(groupAis.groupId, groupId));
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ aiId: string; jid: string; name: string; ownerId: string }>`SELECT
+        group_ais.ai_id, ais.jid, ais.name, ais.owner AS owner_id
+        FROM group_ais INNER JOIN ais ON ais.id = group_ais.ai_id
+        WHERE group_ais.group_id = ${groupId}`;
+    }),
+  );
 
   return rows
     .map((row) => ({ aiId: row.aiId, jid: row.jid, name: row.name, ownerId: row.ownerId }))
@@ -1295,7 +1347,13 @@ async function listGroupAis(db: ServerDatabase, groupId: string): Promise<GroupA
 }
 
 async function requireGroup(db: ServerDatabase, groupId: string) {
-  const [group] = await db.select().from(groups).where(eq(groups.id, groupId)).limit(1);
+  const [group] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<GroupRow>`SELECT * FROM groups WHERE id = ${groupId} LIMIT 1`;
+    }),
+  );
   if (!group) {
     throw new HttpError(404, 'not_found', 'Group not found');
   }
@@ -1312,10 +1370,14 @@ async function assertContacts(
   if (memberIds.length === 0) {
     return;
   }
-  const rows = await db
-    .select({ id: contacts.contactUserId })
-    .from(contacts)
-    .where(and(eq(contacts.userId, ownerId), inArray(contacts.contactUserId, memberIds)));
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ id: string }>`SELECT contact_user_id AS id FROM contacts
+        WHERE user_id = ${ownerId} AND contact_user_id IN ${sql.in(memberIds)}`;
+    }),
+  );
   const known = new Set(rows.map((row) => row.id));
   if (memberIds.some((id) => !known.has(id))) {
     throw new HttpError(403, 'forbidden', 'All members must be your contacts');
