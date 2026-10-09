@@ -11,7 +11,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0752](T-0752-effect-map-pages.md) | self-updating Effect map: generator in devtools + GitHub Pages workflow | in-progress | haiku-5.5 | | Pages enable needs Julio |
 | [T-0753](T-0753-effect-100-plan.md) | AUDIT: plan to a 100% Effect codebase (definition, inventory, tasks) | in-progress | sonnet-5.5 | | |
-| [T-0754](T-0754-ci-faster.md) | CI faster: skip docs-only pushes, parallel jobs, turbo cache | in-progress | haiku-5.5 | T-0755 | merge after T-0755 |
 | [T-0756](T-0756-gate-faster.md) | gate faster: format changed files only, merge skips re-gate of an identical tree | in-progress | haiku-5.5 | | |
 
 ## Follow-ups
@@ -785,3 +784,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0749](T-0749-row-types-off-drizzle.md) | row types off drizzle (db/rows.ts) | 2026-10-09 |
 | [T-0751](T-0751-drizzle-out.md) | drizzle out of the server | 2026-10-09 |
 | [T-0755](T-0755-images-faster.md) | images faster: amd64 on main, gha cache, docs-safe tip | 2026-10-09 |
+| [T-0754](T-0754-ci-faster.md) | CI faster: docs-only skip, parallel jobs, turbo cache | 2026-10-09 |

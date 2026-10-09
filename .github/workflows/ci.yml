@@ -1,8 +1,15 @@
+# Faster CI (T-0754). Measured on 2026-10-09: 21 of the last 30 CI runs on main were
+# cancelled, because every push restarted CI, including the lead's work/ board and
+# status commits that change no code; green runs took 15 minutes on average (11 to 17).
+# So a push that only touches work/**, docs/** or *.md does not start CI at all, and
+# the checks run as four parallel jobs (static, typecheck, test, build), each with the
+# local Turborepo cache restored, so a code push to main verifies in about 5 minutes.
 name: CI
 
 on:
   push:
     branches: [main]
+    paths-ignore: ['work/**', 'docs/**', '**/*.md']
   pull_request:
 
 # A newer push to main makes older runs stale, so cancel them and verify the tip sooner.
@@ -14,11 +21,11 @@ permissions:
   contents: read
 
 jobs:
-  checks:
-    name: Format, lint, typecheck, test, build
+  static:
+    name: Format and lint
     runs-on: ubuntu-latest
-    # a hung test must fail the run, not hold a runner for GitHub's six-hour default
-    timeout-minutes: 30
+    # a hung check must fail the run, not hold a runner for GitHub's six-hour default
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
 
@@ -32,6 +39,82 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm format:check
       - run: pnpm lint
+
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Turborepo 2 keeps its local cache in .turbo/cache (no remote cache, no secrets).
+      - uses: actions/cache@v6
+        with:
+          path: .turbo/cache
+          key: turbo-${{ runner.os }}-${{ github.job }}-${{ github.sha }}
+          restore-keys: |
+            turbo-${{ runner.os }}-${{ github.job }}-
+
       - run: pnpm typecheck
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    # a hung test must fail the run, not hold a runner for GitHub's six-hour default
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Turborepo 2 keeps its local cache in .turbo/cache (no remote cache, no secrets).
+      - uses: actions/cache@v6
+        with:
+          path: .turbo/cache
+          key: turbo-${{ runner.os }}-${{ github.job }}-${{ github.sha }}
+          restore-keys: |
+            turbo-${{ runner.os }}-${{ github.job }}-
+
       - run: pnpm test
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Turborepo 2 keeps its local cache in .turbo/cache (no remote cache, no secrets).
+      - uses: actions/cache@v6
+        with:
+          path: .turbo/cache
+          key: turbo-${{ runner.os }}-${{ github.job }}-${{ github.sha }}
+          restore-keys: |
+            turbo-${{ runner.os }}-${{ github.job }}-
+
       - run: pnpm build
