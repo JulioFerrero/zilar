@@ -2,6 +2,28 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-09 17:55 UTC: batch waves, 37 tasks through in about 2 hours; coverage near 90% once the queue drains**
+- **The new system** (Julio asked for speed): waves of up to 20 Claude subagents. Each worker runs only its own tests. The lead then runs one combined check (`lead batch check`, T-0799) and sends every fix back at once; one Sonnet worker takes each same-file chain. The rules are in `docs/EFFECT_BRIEF.md` and the `batch-waves` memory.
+- **Wave 1 (12 tasks), merged:** T-0792 (S2), T-0799 (`lead batch`), T-0800 (mobile toolkit), T-0801 (xmpp-core X3-X7), T-0802 (R4), T-0803 (R5), T-0804 (S10), T-0805 (server sweep), T-0806 (H2+H3), T-0807 (WU5), T-0808 (WU9), T-0809 (WU18). T-0837 (gateway S3+S4) is merged too.
+- **Wave 2 (mobile MU1-MU25, T-0810 to T-0834):**
+  - **Combined check:** all 25 pass together (typecheck and the full mobile suite). The server and web failures in it were load flakes that pass on main.
+  - **Phone smoke** of the combined branch on the emulator: 17 screens PASS, 8 skipped for route parameters. The screenshots look right.
+  - **Status:** 21 are merged. T-0810, T-0814, T-0819 and T-0824 had lint errors that the combined check did not run (fixed by T-0840); they are fixed and queued.
+- **Chains, reviewed and queued:** T-0835 (web store; full web suite 1943 green) and T-0836 (mobile store; full mobile suite 2254 green).
+- **Running:**
+  - T-0838 (S12+S13, the server entry, Sonnet; with a local start/stop rehearsal);
+  - T-0839 (the last mobile needs-effect file);
+  - T-0841 (the mobile people-search card shows the old relation after Accept, Decline or Cancel; found by T-0833).
+
+  T-0840 (`lead batch check` runs lint) is reviewed and queued.
+- **Left in the plan after these:** X8 (delete the xmpp Promise facade; the stores and gateway still use it through `lift`), Z1 (a hard gate on needs-effect = 0; Julio decides the gate policy) and Z2 (docs).
+- **Deploy:** live is still `73fae1bf`. Before any deploy, Julio checks these live:
+  - messaging, connect, reconnect and history (xmpp-core and both stores);
+  - sending during a reconnect, and sign out and back in;
+  - a DM and a group AI reply (gateway);
+  - web sign-in (S10);
+  - the server start and stop (T-0838).
+
 **2026-10-09 17:50 UTC: coverage 55.3%, the full web suite green on main**
 - **Merged since 15:05:**
   - web: T-0772 (WU2), T-0773 (WU22), T-0775 (WU7), T-0776 (WU8), T-0778 (WU11 + WU12), T-0779 (WU13), T-0781 (WU15), T-0782 (WU16), T-0783 (WU10), T-0784 (WU19), T-0785 (WU17), T-0786 (WU20);

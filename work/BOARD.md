@@ -8,6 +8,10 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
+| [T-0838](T-0838-server-entry.md) | S12 + S13: server entry index.ts on Effect | in-progress | sonnet-5.5 | T-0837 | chain; Julio checks deploy start and stop |
+| [T-0839](T-0839-mobile-search-list.md) | MU22 follow-up: mobile message-search-list on Effect | in-progress | haiku-5.5 | T-0831 | |
+| [T-0840](T-0840-batch-lint.md) | lead batch check runs lint | review | haiku-5.5 | T-0799 | |
+| [T-0841](T-0841-people-search-stale-card.md) | Mobile fix: people-search card stale after a request action | in-progress | haiku-5.5 | T-0833 | found by T-0833 |
 | [T-0810](T-0810-mobile-mu1.md) | MU1: mobile auth on Effect | in-progress | sonnet-5.5 | | wave 2 |
 | [T-0814](T-0814-mobile-mu5.md) | MU5: mobile whistle module on Effect | in-progress | haiku-5.5 | | wave 2 |
 | [T-0819](T-0819-mobile-mu10.md) | MU10: mobile settings A on Effect | in-progress | haiku-5.5 | | wave 2 |
