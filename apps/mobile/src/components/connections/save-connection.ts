@@ -1,4 +1,6 @@
+import { Effect } from 'effect';
 import type { ConnectionsApi, ProviderConnection } from '../../lib/connections-api';
+import { runMobile } from '../../lib/effect/runtime';
 import { describeConnectionsError } from './errors';
 
 export interface ConnectionSaveOutcome {
@@ -16,23 +18,29 @@ export interface ConnectionSaveOutcome {
  * back). On failure the caller keeps the typed key for retry and shows the
  * fixed sentence; the key never lands in error text.
  */
-export async function saveConnection(
+export function saveConnection(
   api: ConnectionsApi,
   input: { provider: string; key: string; label: string },
 ): Promise<ConnectionSaveOutcome> {
-  try {
-    const connection = await api.createConnection({
-      provider: input.provider,
-      key: input.key,
-      ...(input.label === '' ? {} : { label: input.label }),
-    });
-    return { connection, error: '' };
-  } catch (cause: unknown) {
-    return {
-      connection: null,
-      error: describeConnectionsError(cause, 'Could not save the connection.').message,
-    };
-  }
+  return runMobile(
+    Effect.tryPromise({
+      try: () =>
+        api.createConnection({
+          provider: input.provider,
+          key: input.key,
+          ...(input.label === '' ? {} : { label: input.label }),
+        }),
+      catch: (cause: unknown) => cause,
+    }).pipe(
+      Effect.match({
+        onSuccess: (connection): ConnectionSaveOutcome => ({ connection, error: '' }),
+        onFailure: (cause): ConnectionSaveOutcome => ({
+          connection: null,
+          error: describeConnectionsError(cause, 'Could not save the connection.').message,
+        }),
+      }),
+    ),
+  );
 }
 
 /**

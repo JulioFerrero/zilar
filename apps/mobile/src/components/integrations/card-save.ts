@@ -1,4 +1,6 @@
+import { Effect } from 'effect';
 import type { IntegrationsApi, IntegrationsStatus } from '../../lib/integrations-api';
+import { runMobile } from '../../lib/effect/runtime';
 import { describeIntegrationsError } from './errors';
 
 export interface CardSaveOutcome {
@@ -20,23 +22,17 @@ export interface CardSaveOutcome {
  * comes back). The saved flag flips only after the status reload proves the
  * save stuck; a failed reload clears it so the success line never lies.
  */
-export async function saveEmailCard(
+export function saveEmailCard(
   api: IntegrationsApi,
   input: { from: string; key: string },
 ): Promise<CardSaveOutcome> {
   const from = input.from.trim();
   const key = input.key.trim();
-  try {
-    await api.saveEmailSettings(key === '' ? { from } : { from, resendApiKey: key });
-    return await reloadAfterSave(api, 'Could not save. Try again.', '');
-  } catch (cause: unknown) {
-    return {
-      status: null,
-      saved: false,
-      error: describeIntegrationsError(cause, 'Could not save. Try again.'),
-      secretAfterSave: input.key,
-    };
-  }
+  return runMobile(
+    saveThenReload(api, input.key, () =>
+      api.saveEmailSettings(key === '' ? { from } : { from, resendApiKey: key }),
+    ),
+  );
 }
 
 /**
@@ -44,49 +40,35 @@ export async function saveEmailCard(
  * API key is write-only, and `saved` needs the reload. An empty model means
  * the server default `whisper-1`, mirroring web.
  */
-export async function saveVoiceCard(
+export function saveVoiceCard(
   api: IntegrationsApi,
   input: { baseUrl: string; model: string; key: string },
 ): Promise<CardSaveOutcome> {
   const baseUrl = input.baseUrl.trim();
   const key = input.key.trim();
   const model = input.model.trim() === '' ? 'whisper-1' : input.model.trim();
-  try {
-    await api.saveVoiceTranscriptionSettings({
-      baseUrl,
-      ...(key === '' ? {} : { apiKey: key }),
-      model,
-    });
-    return await reloadAfterSave(api, 'Could not save. Try again.', '');
-  } catch (cause: unknown) {
-    return {
-      status: null,
-      saved: false,
-      error: describeIntegrationsError(cause, 'Could not save. Try again.'),
-      secretAfterSave: input.key,
-    };
-  }
+  return runMobile(
+    saveThenReload(api, input.key, () =>
+      api.saveVoiceTranscriptionSettings({
+        baseUrl,
+        ...(key === '' ? {} : { apiKey: key }),
+        model,
+      }),
+    ),
+  );
 }
 
 /**
  * The Telegram bot card save. Same contract: the token is write-only, and
  * `saved` needs the reload.
  */
-export async function saveTelegramCard(
+export function saveTelegramCard(
   api: IntegrationsApi,
   input: { token: string },
 ): Promise<CardSaveOutcome> {
-  try {
-    await api.saveTelegramBotToken(input.token.trim());
-    return await reloadAfterSave(api, 'Could not save. Try again.', '');
-  } catch (cause: unknown) {
-    return {
-      status: null,
-      saved: false,
-      error: describeIntegrationsError(cause, 'Could not save. Try again.'),
-      secretAfterSave: input.token,
-    };
-  }
+  return runMobile(
+    saveThenReload(api, input.token, () => api.saveTelegramBotToken(input.token.trim())),
+  );
 }
 
 export interface CardRemoveOutcome {
@@ -103,41 +85,70 @@ export interface CardRemoveOutcome {
  * as the saves: the dialog closes only after the status reload proves the
  * remove stuck, and a failed Remove keeps the dialog open with the error.
  */
-export async function removeIntegrationCard(
+export function removeIntegrationCard(
   api: IntegrationsApi,
   kind: 'telegram' | 'voice',
 ): Promise<CardRemoveOutcome> {
-  try {
-    if (kind === 'telegram') {
-      await api.removeTelegramBotToken();
-    } else {
-      await api.removeVoiceTranscriptionSettings();
-    }
-    const status = await api.getIntegrationsStatus();
-    return { status, removed: true, error: '' };
-  } catch (cause: unknown) {
-    return {
-      status: null,
-      removed: false,
-      error: describeIntegrationsError(cause, 'Could not remove it. Try again.'),
-    };
-  }
+  return runMobile(
+    Effect.tryPromise({
+      try: () =>
+        kind === 'telegram' ? api.removeTelegramBotToken() : api.removeVoiceTranscriptionSettings(),
+      catch: (cause: unknown) => cause,
+    }).pipe(
+      Effect.flatMap(() => statusEffect(api)),
+      Effect.match({
+        onSuccess: (status): CardRemoveOutcome => ({ status, removed: true, error: '' }),
+        onFailure: (cause): CardRemoveOutcome => ({
+          status: null,
+          removed: false,
+          error: describeIntegrationsError(cause, 'Could not remove it. Try again.'),
+        }),
+      }),
+    ),
+  );
 }
 
-async function reloadAfterSave(
+/** Runs one save; on success reloads the status, on failure keeps the typed secret for retry. */
+function saveThenReload(
+  api: IntegrationsApi,
+  typedSecret: string,
+  save: () => Promise<unknown>,
+): Effect.Effect<CardSaveOutcome> {
+  return Effect.tryPromise({ try: save, catch: (cause: unknown) => cause }).pipe(
+    Effect.matchEffect({
+      onFailure: (cause) =>
+        Effect.succeed<CardSaveOutcome>({
+          status: null,
+          saved: false,
+          error: describeIntegrationsError(cause, 'Could not save. Try again.'),
+          secretAfterSave: typedSecret,
+        }),
+      onSuccess: () => reloadAfterSave(api, 'Could not save. Try again.', ''),
+    }),
+  );
+}
+
+function statusEffect(api: IntegrationsApi): Effect.Effect<IntegrationsStatus, unknown> {
+  return Effect.tryPromise({
+    try: () => api.getIntegrationsStatus(),
+    catch: (cause: unknown) => cause,
+  });
+}
+
+function reloadAfterSave(
   api: IntegrationsApi,
   fallback: string,
   secretAfterSave: string,
-): Promise<CardSaveOutcome> {
-  try {
-    const status = await api.getIntegrationsStatus();
-    return { status, saved: true, error: '', secretAfterSave };
-  } catch (cause: unknown) {
-    return {
-      status: null,
-      saved: false,
-      error: describeIntegrationsError(cause, fallback),
-      secretAfterSave,
-    };
-  }
+): Effect.Effect<CardSaveOutcome> {
+  return statusEffect(api).pipe(
+    Effect.match({
+      onSuccess: (status): CardSaveOutcome => ({ status, saved: true, error: '', secretAfterSave }),
+      onFailure: (cause): CardSaveOutcome => ({
+        status: null,
+        saved: false,
+        error: describeIntegrationsError(cause, fallback),
+        secretAfterSave,
+      }),
+    }),
+  );
 }

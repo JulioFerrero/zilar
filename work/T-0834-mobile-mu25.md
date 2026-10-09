@@ -1,7 +1,7 @@
 ---
 id: T-0834
 title: "MU25: mobile small components: avatar-native, card-save, save-connection, machine-change, approvals/rows on Effect"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0834-mobile-mu25
 model: auto
@@ -57,4 +57,20 @@ Run `pnpm exec prettier --write` on your changed files before committing. Do not
 
 ## Report (written by the worker when done)
 
+- **effect:map kinds (after):** `approvals/rows.ts` effect; `connections/save-connection.ts` effect; `integrations/card-save.ts` effect; `machines/machine-change.ts` effect; `settings/avatar-native.ts` effect (its only signal left is H9, the `expo-file-system` native import, which stays).
+- **Tests:** the five test files, 42 passed before and 42 passed after (no test edited, none added). Nearest test of `rows.ts` is `components/approvals/approvals.test.ts` (`decideScreenRow`), not `rows.test.tsx`: 25 passed after.
+- **Typecheck:** `pnpm --filter @zilar/mobile typecheck` clean (`tsc --noEmit`, no output). `pnpm exec oxlint` on the five files: exit 0, no findings (lead's note).
+- **Approach:** each exported function keeps its Promise signature and runs its Effect through `runMobile` (`apps/mobile/src/lib/effect/runtime.ts`). Native and API calls use `Effect.tryPromise` with the rejection kept as the error, so the same error object reaches the caller. `pickPicture` and the avatar upload are `Effect.fnUntraced` generators with the early returns kept.
+- **Behaviour differences:**
+  - `avatar-native.ts`: `JSON.parse` (in `parseAvatarUploadBody` and `toAvatarUploadError`) is now `Schema.fromJsonString` decoded with `Schema.decodeUnknownOption`, then `Option.getOrNull`. Same result for valid JSON, invalid JSON gives null as before. The two sync exports stay sync.
+  - `card-save.ts` `saveEmailCard` and `saveVoiceCard`: the `trim()` calls stay in the sync function body, outside the Effect, as before the change only inside the async body. A non-string input (a type error) now throws synchronously instead of rejecting. Nothing else changes.
+  - `approvals/rows.ts` `decideScreenRow`: `applyDecision` folds all its failures into its outcome, so it wraps with `Effect.promise` (a rejection would surface unchanged).
+  - none otherwise: same texts, same order of calls, same fallbacks.
+- **Unsure:** the `trim()` placement above is the only edge I did not make identical; I judged it a type-level case. I did not run the whole suite or `pnpm gate`, as the wave rules say.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved (wave 2). Worker: Haiku 5.5. The lead reviewed the Report.
+- **Combined check:** all 25 wave 2 branches together pass lint, typecheck and the full mobile suite (`lead batch check`, report 20261009T172300Z). The remaining failures were server and web tests that pass on main, caused by load.
+- **This task:** Small components converted; sync exports stay sync.
+- **Phone:** the wave branch is smoked on the emulator after the merge.

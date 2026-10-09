@@ -5,7 +5,9 @@ import {
   type ApprovalsApi,
   type PublicApproval,
 } from '@/lib/approvals-api';
+import { Effect } from 'effect';
 import { applyDecision } from '@/lib/approval-state';
+import { runMobile } from '@/lib/effect/runtime';
 
 export type RowBusy = null | 'approve_once' | 'approve_always' | 'deny';
 
@@ -129,22 +131,28 @@ export function confirmationForDecision(decision: ApprovalDecision): string {
  * 403, …) reports a fixed plain message — never the server's raw text —
  * so the screen can show it inline and let the person retry.
  */
-export async function decideScreenRow(
+export function decideScreenRow(
   api: ApprovalsApi,
   approvalId: string,
   decision: ApprovalDecision,
 ): Promise<DecideOutcome> {
-  const outcome = await applyDecision(api, approvalId, decision);
-  if (outcome.kind === 'ready') {
-    return { kind: 'decided', approval: outcome.approval };
-  }
-  if (outcome.kind === 'reloaded') {
-    if (outcome.approval !== null && outcome.approval.status === 'pending') {
-      return { kind: 'stale', approval: outcome.approval };
-    }
-    return { kind: 'gone', message: 'That request was already decided or expired.' };
-  }
-  return { kind: 'error', message: 'Could not send the decision. Try again.' };
+  // applyDecision folds every failure into its outcome, so it never rejects.
+  return runMobile(
+    Effect.promise(() => applyDecision(api, approvalId, decision)).pipe(
+      Effect.map((outcome): DecideOutcome => {
+        if (outcome.kind === 'ready') {
+          return { kind: 'decided', approval: outcome.approval };
+        }
+        if (outcome.kind === 'reloaded') {
+          if (outcome.approval !== null && outcome.approval.status === 'pending') {
+            return { kind: 'stale', approval: outcome.approval };
+          }
+          return { kind: 'gone', message: 'That request was already decided or expired.' };
+        }
+        return { kind: 'error', message: 'Could not send the decision. Try again.' };
+      }),
+    ),
+  );
 }
 
 export function revokeFailedMessage(error: unknown): string {
