@@ -9,9 +9,10 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-0689](T-0689-plan-edge-flip.md) | plan (no code): B1 edge flip, Hono edge → Effect HTTP | in-progress | auto | | |
 | [T-0690](T-0690-better-auth-sql-adapter.md) | D2 step 1: better-auth adapter over effect/sql (built + tested, not switched) | in-progress | auto | | |
 | [T-0691](T-0691-plan-drizzle-removal.md) | plan (no code): last drizzle removal (tests, test-support, migrator, deletes) | in-progress | auto | | |
+| [T-0693](T-0693-health-check-effect-sql.md) | effect/sql: /health probe; app.ts drops drizzle | in-progress | haiku-5.5 | | |
+| [T-0694](T-0694-split-effect-http-core.md) | B1.1: split effect/http.ts into http-core (no Hono) + the bridge | in-progress | auto | T-0689 | |
 
 ## Follow-ups
 
@@ -721,3 +722,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0688](T-0688-create-patch-group-effect-sql.md) | effect/sql: createGroup and patchGroup; groups/service.ts drops drizzle | 2026-10-09 |
 | [T-0684](T-0684-approvals-service-effect-sql.md) | effect/sql: rest of approvals/service.ts and the gateway approval transaction; approvals drops drizzle | 2026-10-09 |
 | [T-0692](T-0692-retired-handle-create-test.md) | test: public create on another group retired handle; ais row type | 2026-10-09 |
+| [T-0689](T-0689-plan-edge-flip.md) | plan: B1 edge flip, Hono edge to Effect HTTP | 2026-10-09 |
