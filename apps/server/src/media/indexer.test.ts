@@ -1,8 +1,8 @@
 import { PGlite } from '@electric-sql/pglite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { eq } from 'drizzle-orm';
-import { mediaItems, mediaIndexState } from '../db/schema';
-import { createTestContext, type TestContext } from '../test-support';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
+import { createTestContext, testSql, type TestContext } from '../test-support';
 import type { ArchivePool, ArchiveRow } from '../search/service';
 import { extractLinks, extractMediaItems, indexChat } from './indexer';
 
@@ -285,8 +285,26 @@ describe('indexChat', () => {
     });
   }
 
+  interface MediaRow {
+    messageId: string;
+    kind: string;
+    senderJid: string;
+    ref: string;
+    linkUrl: string | null;
+    linkHost: string | null;
+    deleted: boolean;
+    atMicros: number;
+  }
+
+  // at_micros is a bigint: the cast reads it back as a number, as the drizzle
+  // `mode: 'number'` column did.
   async function rowsForChat() {
-    return context.db.select().from(mediaItems).where(eq(mediaItems.chatJid, PEER));
+    return testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<MediaRow>`SELECT message_id, kind, sender_jid, ref, link_url, link_host, deleted, at_micros::float8 FROM media_items WHERE chat_jid = ${PEER}`;
+      }),
+    );
   }
 
   it('inserts the extracted items and is idempotent on a second run', async () => {
@@ -325,10 +343,14 @@ describe('indexChat', () => {
     expect(image?.senderJid).toBe(`${PEER}/r1`);
     expect(image?.ref).toBe('https://files.example/a.png');
 
-    const state = await context.db
-      .select()
-      .from(mediaIndexState)
-      .where(eq(mediaIndexState.chatJid, PEER));
+    const state = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{
+          indexedThroughMicros: number;
+        }>`SELECT indexed_through_micros::float8 FROM media_index_state WHERE chat_jid = ${PEER}`;
+      }),
+    );
     expect(state[0]?.indexedThroughMicros).toBe(at('2026-05-02T00:00:00Z'));
 
     const second = await run();
@@ -355,10 +377,12 @@ describe('indexChat', () => {
 
     // Force the cursor back to the window start so the same archive row is read
     // again: the unique key, not the cursor, must dedup it.
-    await context.db
-      .update(mediaIndexState)
-      .set({ indexedThroughMicros: 0 })
-      .where(eq(mediaIndexState.chatJid, PEER));
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`UPDATE media_index_state SET indexed_through_micros = 0 WHERE chat_jid = ${PEER}`;
+      }),
+    );
 
     expect(await run()).toEqual({ read: 1, inserted: 0, done: true });
     expect(await rowsForChat()).toHaveLength(1);
@@ -421,13 +445,24 @@ describe('indexChat', () => {
     });
     expect(result).toEqual({ read: 1, inserted: 1, done: true });
 
-    const roomRows = await context.db.select().from(mediaItems).where(eq(mediaItems.chatJid, room));
+    const roomRows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{
+          messageId: string;
+        }>`SELECT message_id FROM media_items WHERE chat_jid = ${room}`;
+      }),
+    );
     expect(roomRows.map((row) => row.messageId)).toEqual(['room-img']);
 
-    const otherRows = await context.db
-      .select()
-      .from(mediaItems)
-      .where(eq(mediaItems.chatJid, otherRoom));
+    const otherRows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{
+          messageId: string;
+        }>`SELECT message_id FROM media_items WHERE chat_jid = ${otherRoom}`;
+      }),
+    );
     expect(otherRows).toHaveLength(0);
   });
 

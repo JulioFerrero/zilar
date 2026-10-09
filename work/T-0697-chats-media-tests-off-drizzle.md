@@ -1,7 +1,7 @@
 ---
 id: T-0697
 title: "tests off drizzle (chats + media): replace every drizzle query in chats/chats.test.ts, media/indexer.test.ts, media/routes.test.ts with testSql(context) + effect/sql; drop the drizzle-orm and db/schema imports"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0697-chats-media-tests-off-drizzle
 model: auto
@@ -52,4 +52,39 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What changed
+- `apps/server/src/chats/chats.test.ts`: drizzle imports removed. `addAi` inserts into `provider_connections`, `ais` and `ai_limits` through `testSql(context)` with `sql.insert` (snake_case keys). The group-row read selects `room_localpart` into `roomLocalpart`. The background set becomes `UPDATE groups SET background_preset = 'navy' WHERE id = ...`.
+- `apps/server/src/media/indexer.test.ts`: drizzle imports removed. `rowsForChat()` selects the 8 columns the assertions read (`message_id, kind, sender_jid, ref, link_url, link_host, deleted, at_micros::float8`). The cursor read and reset use `media_index_state`. Two room reads select `message_id` only. `db: context.db` in the two `indexChat` calls is unchanged.
+- `apps/server/src/media/routes.test.ts`: drizzle imports removed. The group-row read is the same as in chats.
+- `work/T-0697-chats-media-tests-off-drizzle.md`: status and this Report.
+- Assertions, rows and values are unchanged. Column names were checked against `apps/server/src/db/schema.ts` (`provider_connections`, `ais`, `ai_limits`, `groups`, `media_items`, `media_index_state`). Every NOT NULL column without a SQL default is provided.
+
+### Test counts
+- Before (`pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot` on the 3 files): 3 files, 33 passed.
+- After the drizzle removal (before Prettier): 3 files, 33 passed.
+- After Prettier, the gate's `tests @zilar/server` step passed. The gate does not print a count.
+
+### Commands and real results
+- `pnpm install`: done, 31.5s.
+- Acceptance grep `git grep -n "drizzle-orm\|db/schema" -- <3 files>`: no output (exit 1).
+- First `pnpm gate`: FAIL at `format` only. Prettier flagged the 3 test files (long template-literal lines). Fixed with `pnpm exec prettier --write` on those 3 files only.
+- Final `pnpm gate`: exit 0.
+  - `PASS install (frozen)`
+  - `PASS format`
+  - `PASS lint`
+  - `PASS typecheck`
+  - `PASS tests @zilar/server`
+  - `scope: every changed file is inside the Allowed files`
+  - `GATE PASS`
+
+### Deviations and notes
+- `at_micros` and `indexed_through_micros` are bigint with `mode: 'number'`. Production uses `@effect/sql-pg`, which returns int8 as a string, and there is no custom parser (`apps/server/src/effect/sql.ts`). So the reads use `::float8` to match what drizzle returned. The values are microsecond timestamps, well inside 2^53, so no precision is lost.
+- The spec says `schema.ts` has `$defaultFn` / `$onUpdate`. `grep` finds neither in the current file, so no raw insert needed a JS-side value.
+- Scratch files: none left in the worktree. The gate log went to the scratchpad.
+
+### Blocked / needs a decision
+- None.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Haiku 5.5, in one round (about 11 min). The lead reviewed the diff directly. The chats seeds use `sql.insert` with snake_case keys. The media reads cast the bigint micros to `::float8`, which is exact below 2^53 and keeps the JS numbers drizzle gave. There are 33 tests before and after, and the gate passed.

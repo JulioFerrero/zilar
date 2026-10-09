@@ -1,12 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { eq } from 'drizzle-orm';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
 import { randomUUID } from 'node:crypto';
-import { aiLimits, ais, groups, providerConnections } from '../db/schema';
 import {
   bootstrapUser,
   contactOf,
   createTestContext,
   testApp,
+  testSql,
   TEST_BASE_URL,
   TEST_XMPP_DOMAIN,
   TEST_XMPP_MUC_DOMAIN,
@@ -69,29 +70,39 @@ describe('GET /api/chats', () => {
     overrides: { name?: string; status?: 'active' | 'disabled' } = {},
   ): Promise<{ id: string; jid: string }> {
     const connectionId = randomUUID();
-    await context.db.insert(providerConnections).values({
-      id: connectionId,
-      owner: ownerId,
-      provider: 'openai',
-      encryptedKey: 'not-a-real-key',
-      label: null,
-    });
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO provider_connections ${sql.insert({
+          id: connectionId,
+          owner: ownerId,
+          provider: 'openai',
+          encrypted_key: 'not-a-real-key',
+          label: null,
+        })}`;
+      }),
+    );
 
     const id = randomUUID();
     const jid = `ai-${id}@${TEST_XMPP_DOMAIN}`;
-    await context.db.insert(ais).values({
-      id,
-      owner: ownerId,
-      name: overrides.name ?? 'Helper AI',
-      template: 'dev',
-      persona: 'A persona',
-      providerConnectionId: connectionId,
-      model: 'gpt-4o-mini',
-      localpart: `ai-${id}`,
-      jid,
-      status: overrides.status ?? 'active',
-    });
-    await context.db.insert(aiLimits).values({ aiId: id, perDayUsd: '1.00', perMonthUsd: '20.00' });
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO ais ${sql.insert({
+          id,
+          owner: ownerId,
+          name: overrides.name ?? 'Helper AI',
+          template: 'dev',
+          persona: 'A persona',
+          provider_connection_id: connectionId,
+          model: 'gpt-4o-mini',
+          localpart: `ai-${id}`,
+          jid,
+          status: overrides.status ?? 'active',
+        })}`;
+        yield* sql`INSERT INTO ai_limits ${sql.insert({ ai_id: id, per_day_usd: '1.00', per_month_usd: '20.00' })}`;
+      }),
+    );
     return { id, jid };
   }
 
@@ -99,7 +110,14 @@ describe('GET /api/chats', () => {
     const alice = await bootstrapUser(context, app, 'alice@example.com');
     const bob = await contactOf(context, app, alice.id, 'bob@example.com');
     const group = await createGroup(alice.cookie, 'Trip', [bob.id]);
-    const [groupRow] = await context.db.select().from(groups).where(eq(groups.id, group.id));
+    const [groupRow] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{
+          roomLocalpart: string;
+        }>`SELECT room_localpart FROM groups WHERE id = ${group.id}`;
+      }),
+    );
 
     const aliceResponse = await chatsFor(alice.cookie);
     expect(aliceResponse.status).toBe(200);
@@ -154,10 +172,12 @@ describe('GET /api/chats', () => {
     const plain = await createGroup(alice.cookie, 'Plain', [bob.id]);
 
     // T-0465: set the group background directly, as the PATCH route does.
-    await context.db
-      .update(groups)
-      .set({ backgroundPreset: 'navy' })
-      .where(eq(groups.id, painted.id));
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`UPDATE groups SET background_preset = 'navy' WHERE id = ${painted.id}`;
+      }),
+    );
 
     const response = await chatsFor(alice.cookie);
     expect(response.status).toBe(200);

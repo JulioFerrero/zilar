@@ -1,7 +1,7 @@
 import { PGlite } from '@electric-sql/pglite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { eq } from 'drizzle-orm';
-import { groups } from '../db/schema';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
 import { createApp } from '../app';
 import { localpartFor } from '../xmpp/provisioning';
 import {
@@ -9,6 +9,7 @@ import {
   contactOf,
   createTestContext,
   testApp,
+  testSql,
   TEST_BASE_URL,
   TEST_XMPP_DOMAIN,
   TEST_XMPP_MUC_DOMAIN,
@@ -498,7 +499,14 @@ describe('GET /api/media', () => {
     const ownJid = dmJid(alice.id);
     const peer = dmJid(bob.id);
     const group = await createGroup(alice.cookie, 'Team', [bob.id]);
-    const [groupRow] = await context.db.select().from(groups).where(eq(groups.id, group.id));
+    const [groupRow] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{
+          roomLocalpart: string;
+        }>`SELECT room_localpart FROM groups WHERE id = ${group.id}`;
+      }),
+    );
     const generalJid = `${groupRow?.roomLocalpart}@${TEST_XMPP_MUC_DOMAIN}`;
 
     await seedArchive(archiveClient, [
