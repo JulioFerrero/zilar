@@ -11,7 +11,12 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
   - the lead smoke-tested the server locally (health GET and HEAD, 401, CORS preflight, SIGTERM).
 - **Production:** unchanged. The images pipeline was broken since yesterday (web image, fixed in T-0734) and is green now, but auto-deploy has no Coolify secrets, so nothing deployed.
 - **Decisions waiting for you:**
-  1. **D2:** switch login (`auth.ts`) to the new effect/sql adapter (T-0690). It needs a check of the timestamp parsing on production `pg`.
+  1. **D2:** switch login (`auth.ts`) to the new effect/sql adapter (T-0690). The timestamp question is now answered, in T-0737 (merged 07:50):
+     - real pg reads `timestamp` as UTC, so the adapter's PGlite fix now runs on PGlite only;
+     - pg writes bind with `PgTypes.timestamp`;
+     - a gated real-pg test passes against the local dev Postgres under both `Europe/Madrid` and UTC.
+
+     One item is left for the switch task: `Date` values in `WHERE` clauses, which are safe while Postgres runs in UTC.
   2. **D3:** switch the migrator on the live DB (the adoption seed).
   3. **DEL:** delete `db/schema.ts` and the drizzle dependencies, after D2, S1 and D3.
   4. **A12:** delete `git/*` or mount it.
