@@ -1,3 +1,4 @@
+import { Effect } from 'effect';
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
@@ -6,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
+import { useAction } from '@/lib/effect/use-action';
 import type { GroupInviteLink } from '@/lib/invite-links-api';
 
 export type InviteLinkState = 'active' | 'expired' | 'exhausted' | 'revoked';
@@ -130,6 +132,23 @@ export function InviteLinksSheet({
   const [copied, setCopied] = useState(false);
   const [formError, setFormError] = useState('');
 
+  // The bridge calls are not API calls, so a rejection stays a plain failure
+  // state here (nothing renders it, as before the Effect version).
+  const [, copyUrl] = useAction(
+    (url: string) =>
+      Effect.tryPromise({ try: () => share.copyText(url), catch: (cause) => cause }).pipe(
+        Effect.tap(() => Effect.sync(() => setCopied(true))),
+      ),
+    { mode: 'replace' },
+  );
+  const [, shareUrl] = useAction(
+    (url: string) =>
+      Effect.tryPromise({ try: () => share.shareText(url), catch: (cause) => cause }).pipe(
+        Effect.ignore,
+      ),
+    { mode: 'replace' },
+  );
+
   const submit = (): void => {
     const result = validateInviteLinkForm({ label, expiry, maxUses });
     if ('error' in result) {
@@ -144,14 +163,14 @@ export function InviteLinksSheet({
     if (createdUrl === undefined) {
       return;
     }
-    void share.copyText(createdUrl).then(() => setCopied(true));
+    copyUrl(createdUrl);
   };
 
   const shareLink = (): void => {
     if (createdUrl === undefined) {
       return;
     }
-    void share.shareText(createdUrl).catch(() => {});
+    shareUrl(createdUrl);
   };
 
   const shownError = formError !== '' ? formError : error;

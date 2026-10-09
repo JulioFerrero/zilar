@@ -1,3 +1,4 @@
+import { Effect, Fiber } from 'effect';
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
@@ -141,36 +142,38 @@ export function useHandleCheck(
     if (visibility !== 'public' || trimmed === '') {
       return;
     }
-    let active = true;
-    const value = trimmed;
-    const pending = setTimeout(() => {
-      if (!active) {
-        return;
-      }
-      setChecking(true);
-      void checkRef.current(value).then(
-        (next) => {
-          if (active) {
-            setResult(next);
-            setChecking(false);
-          }
-        },
-        (error: unknown) => {
-          if (!active) {
-            return;
-          }
-          if (error instanceof DirectoryApiError && error.code === 'rate_limited') {
-            setResult({ available: false, reason: 'rate_limited' });
-          } else {
-            setResult(null);
-          }
-          setChecking(false);
-        },
-      );
-    }, 300);
+    // The debounce and the check run in one fiber; the cleanup interrupts it,
+    // so a late answer after a change or unmount is never applied.
+    const pending = Effect.runFork(
+      Effect.sleep(300).pipe(
+        Effect.andThen(Effect.sync(() => setChecking(true))),
+        Effect.andThen(
+          Effect.tryPromise({
+            try: () => checkRef.current(trimmed),
+            catch: (error) => error,
+          }).pipe(
+            Effect.matchEffect({
+              onFailure: (error) =>
+                Effect.sync(() => {
+                  if (error instanceof DirectoryApiError && error.code === 'rate_limited') {
+                    setResult({ available: false, reason: 'rate_limited' });
+                  } else {
+                    setResult(null);
+                  }
+                  setChecking(false);
+                }),
+              onSuccess: (next) =>
+                Effect.sync(() => {
+                  setResult(next);
+                  setChecking(false);
+                }),
+            }),
+          ),
+        ),
+      ),
+    );
     return () => {
-      active = false;
-      clearTimeout(pending);
+      Effect.runFork(Fiber.interrupt(pending));
     };
   }, [visibility, trimmed]);
 

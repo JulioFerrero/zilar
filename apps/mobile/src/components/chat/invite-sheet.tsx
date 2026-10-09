@@ -1,12 +1,17 @@
+import { Effect } from 'effect';
+import { AsyncResult } from 'effect/reactivity';
 import { useColorScheme } from 'nativewind';
 import { Check, Copy, Share2 } from 'lucide-react-native';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { asColorScheme } from '@/lib/color-scheme';
 import { ACCENT_FOREGROUND } from '@/lib/colors';
+import { fromApi } from '@/lib/effect/api-effect';
+import { useAction } from '@/lib/effect/use-action';
+import { useQuery } from '@/lib/effect/use-query';
 import type { InvitesApi } from '@/lib/invites-api';
 
 /**
@@ -30,37 +35,37 @@ export function InviteSheet({
   shareText: (text: string) => Promise<void>;
   onClose: () => void;
 }) {
-  const [url, setUrl] = useState<string | undefined>(undefined);
-  const [failed, setFailed] = useState(false);
   const [copied, setCopied] = useState(false);
   const [attempt, setAttempt] = useState(0);
 
-  useEffect(() => {
-    let active = true;
-    api.createInvite().then(
-      (invite) => {
-        // A result that arrives after close (or after Try again started a
-        // newer request) is ignored, never rendered.
-        if (active) {
-          setUrl(invite.url);
-        }
-      },
-      () => {
-        if (active) {
-          setFailed(true);
-        }
-      },
-    );
-    return () => {
-      active = false;
-    };
-  }, [api, attempt]);
+  // A new attempt (Try again) or a new `api` starts a new request; the old
+  // one is interrupted, so a result that arrives after close or after a newer
+  // request is never rendered.
+  const [invite] = useQuery(() => fromApi(() => api.createInvite()), [api, attempt]);
+  const url = AsyncResult.isSuccess(invite) ? invite.value.url : undefined;
+  // A retry shows the loading line at once, so a failure only counts while
+  // no request is running.
+  const failed = AsyncResult.isFailure(invite) && !AsyncResult.isWaiting(invite);
+
+  const [, copyUrl] = useAction(
+    (text: string) =>
+      Effect.tryPromise({ try: () => copyText(text), catch: (cause) => cause }).pipe(
+        Effect.tap(() => Effect.sync(() => setCopied(true))),
+      ),
+    { mode: 'replace' },
+  );
+  const [, shareUrl] = useAction(
+    (text: string) =>
+      Effect.tryPromise({ try: () => shareText(text), catch: (cause) => cause }).pipe(
+        Effect.ignore,
+      ),
+    { mode: 'replace' },
+  );
 
   const retry = (): void => {
     if (!failed) {
       return;
     }
-    setFailed(false);
     setAttempt((count) => count + 1);
   };
 
@@ -68,14 +73,14 @@ export function InviteSheet({
     if (url === undefined) {
       return;
     }
-    void copyText(url).then(() => setCopied(true));
+    copyUrl(url);
   };
 
   const share = (): void => {
     if (url === undefined) {
       return;
     }
-    void shareText(url).catch(() => {});
+    shareUrl(url);
   };
 
   return (
