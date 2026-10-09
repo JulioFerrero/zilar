@@ -1,12 +1,61 @@
+import { Effect } from 'effect';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { StateMessage } from '@/components/ui/state-message';
 import type { SearchItem } from '@/lib/api';
+import { fromApi } from '@/lib/effect/api-effect';
+import { useAction } from '@/lib/effect/use-action';
 import { useMessageSearch } from '@/lib/useMessageSearch';
 import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { scrollToMessage } from '@/lib/scrollToMessage';
 import { Avatar } from './Avatar';
 import { MessageSearchResult } from './MessageSearchResult';
+
+// Opens a hit at its message: the chat route, then a scroll once the history
+// page holding the message is loaded. Each caller gets its own action, so two
+// hits can open at the same time.
+function useOpenHit(onNotFound: (chatJid: string) => void): (item: SearchItem) => void {
+  const storeApi = useChatStoreApi();
+  const navigate = useNavigate();
+  const [, open] = useAction((item: SearchItem) =>
+    fromApi(() => storeApi.getState().openAtMessage(item.chatJid, item.messageId)).pipe(
+      Effect.tap(() =>
+        Effect.sync(() => {
+          navigate(`/c/${encodeURIComponent(item.chatJid)}`);
+          scrollToMessage(item.messageId);
+        }),
+      ),
+      Effect.tapError(() => Effect.sync(() => onNotFound(item.chatJid))),
+    ),
+  );
+  return open;
+}
+
+// One hit row with its own open action, so two rows can open at once.
+function SearchHit({
+  item,
+  chatTitle,
+  onStart,
+  onNotFound,
+}: {
+  item: SearchItem;
+  chatTitle: string;
+  onStart: () => void;
+  onNotFound: (chatJid: string) => void;
+}) {
+  const open = useOpenHit(onNotFound);
+  return (
+    <MessageSearchResult
+      item={item}
+      chatTitle={chatTitle}
+      selected={false}
+      onOpen={() => {
+        onStart();
+        open(item);
+      }}
+    />
+  );
+}
 
 // The Messages section of the chat list: hits grouped by chat, newest group
 // first. Enter opens the top hit; a click opens that hit at its message.
@@ -20,29 +69,26 @@ export function MessageSearchResults({
   onNotFound: (chatJid: string) => void;
 }) {
   const store = useChatStore();
-  const storeApi = useChatStoreApi();
-  const navigate = useNavigate();
   const search = useMessageSearch(query, chatFilter);
-  const [jumpError, setJumpError] = useState<string | null>(null);
+  const [notFound, setNotFound] = useState(false);
 
-  const openHit = useCallback(
-    (item: SearchItem): void => {
-      setJumpError(null);
-      void storeApi
-        .getState()
-        .openAtMessage(item.chatJid, item.messageId)
-        .then(
-          () => {
-            navigate(`/c/${encodeURIComponent(item.chatJid)}`);
-            scrollToMessage(item.messageId);
-          },
-          () => {
-            setJumpError(item.chatJid);
-            onNotFound(item.chatJid);
-          },
-        );
+  const onHitStart = useCallback((): void => {
+    setNotFound(false);
+  }, []);
+  const onHitNotFound = useCallback(
+    (chatJid: string): void => {
+      setNotFound(true);
+      onNotFound(chatJid);
     },
-    [storeApi, navigate, onNotFound],
+    [onNotFound],
+  );
+  const openTop = useOpenHit(onHitNotFound);
+  const openTopHit = useCallback(
+    (top: SearchItem): void => {
+      setNotFound(false);
+      openTop(top);
+    },
+    [openTop],
   );
 
   // The search input lives in `SearchBar`, outside this subtree, so Enter
@@ -62,12 +108,12 @@ export function MessageSearchResults({
     const onSearchEnter = (): void => {
       const top = topHitRef.current;
       if (top !== undefined) {
-        openHit(top);
+        openTopHit(top);
       }
     };
     window.addEventListener('zilar:search-enter', onSearchEnter);
     return () => window.removeEventListener('zilar:search-enter', onSearchEnter);
-  }, [openHit]);
+  }, [openTopHit]);
 
   if (search.status === 'idle' || search.status === 'unavailable') {
     return null;
@@ -111,7 +157,7 @@ export function MessageSearchResults({
   const openTopFromList = (): void => {
     const top = topHitRef.current;
     if (top !== undefined) {
-      openHit(top);
+      openTopHit(top);
     }
   };
 
@@ -135,17 +181,17 @@ export function MessageSearchResults({
             </span>
           </div>
           {group.items.map((item) => (
-            <MessageSearchResult
+            <SearchHit
               key={`${item.chatJid}:${item.messageId}`}
               item={item}
               chatTitle={group.title}
-              selected={false}
-              onOpen={() => openHit(item)}
+              onStart={onHitStart}
+              onNotFound={onHitNotFound}
             />
           ))}
         </div>
       ))}
-      {jumpError !== null && (
+      {notFound && (
         <p role="alert" className="px-[10px] pb-2 text-[13px] text-muted-foreground">
           Message not found
         </p>

@@ -1,3 +1,4 @@
+import { Effect } from 'effect';
 import { Pin, X } from 'lucide-react';
 import { useState } from 'react';
 import { LinkText } from './LinkText';
@@ -5,6 +6,9 @@ import { Button } from './ui/button';
 import { ListRow } from './ui/list-row';
 import { Sheet } from './ui/sheet';
 import type { Pin as PinRow } from '@/lib/api';
+import { fromApi } from '@/lib/effect/api-effect';
+import { isWaiting, useAction } from '@/lib/effect/use-action';
+import { scrollToMessage } from '@/lib/scrollToMessage';
 import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
 
 const KIND_LABEL: Record<PinRow['kind'], string> = {
@@ -15,6 +19,16 @@ const KIND_LABEL: Record<PinRow['kind'], string> = {
   card: 'Card',
 };
 
+interface PinsPanelActions {
+  /** Closes the panel once a jump has landed on the message. */
+  readonly onOpened: () => void;
+  readonly onJumpStart: () => void;
+  readonly onJumpFailed: () => void;
+  readonly onUnpinStart: (pin: PinRow) => void;
+  readonly onUnpinFailed: () => void;
+  readonly onUnpinSettled: (pinId: string) => void;
+}
+
 /**
  * The pins panel (T-0114): every pin of a chat, newest first, with jump and
  * (for managers) unpin. Opened from the banner's List button, the header
@@ -23,45 +37,30 @@ const KIND_LABEL: Record<PinRow['kind'], string> = {
  */
 export function PinsPanel({ chatId, onClose }: { chatId: string; onClose: () => void }) {
   const store = useChatStore();
-  const storeApi = useChatStoreApi();
-  const [jumpError, setJumpError] = useState('');
-  const [unpinError, setUnpinError] = useState('');
-  const [unpinningId, setUnpinningId] = useState<string | undefined>(undefined);
+  const [jumpFailed, setJumpFailed] = useState(false);
+  const [unpinFailed, setUnpinFailed] = useState(false);
+  // The store drops a pin as soon as its unpin starts. Its row stays mounted
+  // (rendering nothing) until the unpin settles, so the row's action still
+  // reports a failure after the pin has left the list.
+  const [unpinning, setUnpinning] = useState<ReadonlyArray<PinRow>>([]);
 
   const chat = store.chats.find((entry) => entry.id === chatId);
   const pins = store.pins(chatId);
   const managers = store.canPin(chatId);
+  const settling = unpinning.filter((pin) => !pins.some((entry) => entry.id === pin.id));
 
-  const jump = (pin: PinRow): void => {
-    setJumpError('');
-    storeApi
-      .getState()
-      .openAtMessage(chatId, pin.messageId)
-      .then(() => {
-        onClose();
-        window.requestAnimationFrame(() => {
-          document
-            .querySelector(`[data-message-id="${CSS.escape(pin.messageId)}"]`)
-            ?.scrollIntoView({ block: 'center' });
-        });
-      })
-      .catch(() => {
-        setJumpError('Message not found');
-      });
-  };
-
-  const unpin = (pin: PinRow): void => {
-    setUnpinningId(pin.id);
-    setUnpinError('');
-    storeApi
-      .getState()
-      .unpinMessage(chatId, pin.id)
-      .catch(() => {
-        setUnpinError('Could not unpin. Try again.');
-      })
-      .finally(() => {
-        setUnpinningId(undefined);
-      });
+  const actions: PinsPanelActions = {
+    onOpened: onClose,
+    onJumpStart: () => setJumpFailed(false),
+    onJumpFailed: () => setJumpFailed(true),
+    onUnpinStart: (pin) => {
+      setUnpinFailed(false);
+      setUnpinning((list) => [...list.filter((entry) => entry.id !== pin.id), pin]);
+    },
+    onUnpinFailed: () => setUnpinFailed(true),
+    onUnpinSettled: (pinId) => {
+      setUnpinning((list) => list.filter((entry) => entry.id !== pinId));
+    },
   };
 
   return (
@@ -94,58 +93,129 @@ export function PinsPanel({ chatId, onClose }: { chatId: string; onClose: () => 
             Pin an important message from its menu to keep it at the top.
           </p>
         )}
-        {pins.map((pin) => {
-          const loaded = store.messages(chatId).find((item) => item.id === pin.messageId);
-          const deleted = loaded?.deleted === true;
-          const snapshot = deleted ? 'Message deleted' : pin.text;
-          return (
-            <div
-              key={pin.id}
-              className="flex items-center gap-2 rounded-xl px-2 py-1.5 hover:bg-list-hover"
-            >
-              <button
-                type="button"
-                onClick={() => jump(pin)}
-                aria-label={`Jump to pinned message from ${pin.senderName}`}
-                className="min-w-0 flex-1 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
-              >
-                <div className="truncate text-[14px] font-semibold">{pin.senderName}</div>
-                <div className="line-clamp-2 text-[13px] text-muted-foreground">
-                  {snapshot !== '' ? (
-                    <LinkText text={snapshot} />
-                  ) : (
-                    <span className="italic">{KIND_LABEL[pin.kind]}</span>
-                  )}
-                </div>
-              </button>
-              {managers && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  aria-label={`Unpin message from ${pin.senderName}`}
-                  className="shrink-0"
-                  disabled={unpinningId === pin.id}
-                  onClick={() => unpin(pin)}
-                >
-                  {unpinningId === pin.id ? 'Unpinning…' : 'Unpin'}
-                </Button>
-              )}
-            </div>
-          );
-        })}
-        {jumpError !== '' && (
+        {pins.map((pin) => (
+          <PinRowItem
+            key={pin.id}
+            chatId={chatId}
+            pin={pin}
+            listed
+            managers={managers}
+            actions={actions}
+          />
+        ))}
+        {settling.map((pin) => (
+          <PinRowItem
+            key={pin.id}
+            chatId={chatId}
+            pin={pin}
+            listed={false}
+            managers={managers}
+            actions={actions}
+          />
+        ))}
+        {jumpFailed && (
           <p role="alert" className="px-2 text-[13px] text-danger">
-            {jumpError}
+            Message not found
           </p>
         )}
-        {unpinError !== '' && (
+        {unpinFailed && (
           <p role="alert" className="px-2 text-[13px] text-danger">
-            {unpinError}
+            Could not unpin. Try again.
           </p>
         )}
       </div>
     </Sheet>
+  );
+}
+
+/**
+ * One pin with its own jump and unpin actions, so two rows can run at once;
+ * a second click on the same row waits for the first. A row whose pin is no
+ * longer listed renders nothing, but stays mounted until its unpin settles.
+ */
+function PinRowItem({
+  chatId,
+  pin,
+  listed,
+  managers,
+  actions,
+}: {
+  chatId: string;
+  pin: PinRow;
+  listed: boolean;
+  managers: boolean;
+  actions: PinsPanelActions;
+}) {
+  const store = useChatStore();
+  const storeApi = useChatStoreApi();
+  const [, jumpTo] = useAction((target: PinRow) =>
+    fromApi(() => storeApi.getState().openAtMessage(chatId, target.messageId)).pipe(
+      Effect.tap(() =>
+        Effect.sync(() => {
+          actions.onOpened();
+          window.requestAnimationFrame(() => {
+            scrollToMessage(target.messageId);
+          });
+        }),
+      ),
+      Effect.tapError(() => Effect.sync(actions.onJumpFailed)),
+    ),
+  );
+  const [unpinState, unpin] = useAction((target: PinRow) =>
+    fromApi(() => storeApi.getState().unpinMessage(chatId, target.id)).pipe(
+      Effect.tapError(() => Effect.sync(actions.onUnpinFailed)),
+      Effect.ensuring(Effect.sync(() => actions.onUnpinSettled(target.id))),
+    ),
+  );
+  if (!listed) {
+    return null;
+  }
+  const loaded = store.messages(chatId).find((item) => item.id === pin.messageId);
+  const deleted = loaded?.deleted === true;
+  const snapshot = deleted ? 'Message deleted' : pin.text;
+  const unpinBusy = isWaiting(unpinState);
+  const startJump = (): void => {
+    actions.onJumpStart();
+    jumpTo(pin);
+  };
+  const startUnpin = (): void => {
+    if (unpinBusy) {
+      return;
+    }
+    actions.onUnpinStart(pin);
+    unpin(pin);
+  };
+  return (
+    <div className="flex items-center gap-2 rounded-xl px-2 py-1.5 hover:bg-list-hover">
+      <button
+        type="button"
+        onClick={startJump}
+        aria-label={`Jump to pinned message from ${pin.senderName}`}
+        className="min-w-0 flex-1 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+      >
+        <div className="truncate text-[14px] font-semibold">{pin.senderName}</div>
+        <div className="line-clamp-2 text-[13px] text-muted-foreground">
+          {snapshot !== '' ? (
+            <LinkText text={snapshot} />
+          ) : (
+            <span className="italic">{KIND_LABEL[pin.kind]}</span>
+          )}
+        </div>
+      </button>
+      {managers && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          aria-label={`Unpin message from ${pin.senderName}`}
+          className="shrink-0"
+          disabled={unpinBusy}
+          onClick={startUnpin}
+        >
+          {unpinBusy ? 'Unpinning…' : 'Unpin'}
+        </Button>
+      )}
+    </div>
   );
 }
 
