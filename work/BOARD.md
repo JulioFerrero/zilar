@@ -11,7 +11,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0775](T-0775-web-settings-pages.md) | WU7: AI, connections, integrations pages on Effect | in-progress | haiku-5.5 | | effect-100-plan Phase 3 |
 | [T-0776](T-0776-web-machines.md) | WU8: machines pages on Effect | in-progress | haiku-5.5 | | effect-100-plan Phase 3 |
-| [T-0777](T-0777-xmpp-requests-deferred.md) | X2b: xmpp-core requests on Deferred | in-progress | sonnet-5.5 | | live check before deploy |
 | [T-0778](T-0778-web-ai-panel.md) | WU11 + WU12: web AI components on Effect | in-progress | haiku-5.5 | | effect-100-plan Phase 3 |
 | [T-0779](T-0779-web-tools-sections.md) | WU13: web tools sections on Effect | in-progress | haiku-5.5 | | effect-100-plan Phase 3 |
 
@@ -808,3 +807,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0771](T-0771-sandbox-host-fetch.md) | S5a: sandbox host fetch on Effect | 2026-10-09 |
 | [T-0773](T-0773-web-dialogs.md) | WU22: web dialogs on Effect | 2026-10-09 |
 | [T-0772](T-0772-web-lib-helpers.md) | WU2: web lib helpers on Effect | 2026-10-09 |
+| [T-0777](T-0777-xmpp-requests-deferred.md) | X2b: xmpp-core requests on Deferred | 2026-10-09 |

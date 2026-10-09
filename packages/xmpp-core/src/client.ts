@@ -5,6 +5,7 @@ import {
   type XmppElement,
   type XmppStatus,
 } from '@xmpp/client';
+import { Deferred, Duration, Effect } from 'effect';
 import {
   ConnectionFailed,
   ConnectTimeout,
@@ -140,24 +141,21 @@ type EventPayload = {
 type EventName = keyof EventPayload;
 type StoredListener = (payload: never) => void;
 
+// A request waits on a Deferred that the stanza handlers complete
+// synchronously (`Deferred.doneUnsafe`), so a reply that arrives before the
+// request starts awaiting is kept. The request removes its entry when it ends.
 type PendingJoin = {
-  resolve: () => void;
-  reject: (error: Error) => void;
-  cancel: Cancel;
+  deferred: Deferred.Deferred<void, XmppCoreError>;
 };
 
 type PendingQuery = {
   iqId: string;
   messages: ChatMessage[];
-  resolve: (page: HistoryPage) => void;
-  reject: (error: Error) => void;
-  cancel: Cancel;
+  deferred: Deferred.Deferred<HistoryPage, XmppCoreError>;
 };
 
 type PendingIq = {
-  resolve: (stanza: XmppElement) => void;
-  reject: (error: Error) => void;
-  cancel: Cancel;
+  deferred: Deferred.Deferred<XmppElement, XmppCoreError>;
 };
 
 let idSequence = 0;
@@ -496,8 +494,7 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
   function rejectPendingIqs(makeError: () => XmppCoreError): void {
     for (const [id, pending] of pendingIqs) {
       pendingIqs.delete(id);
-      pending.cancel();
-      pending.reject(makeError());
+      Deferred.doneUnsafe(pending.deferred, Effect.fail(makeError()));
     }
   }
 
@@ -760,12 +757,13 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
         const type = stanza.attrs['type'];
         if (type === 'error') {
           pendingJoins.delete(from);
-          pending.cancel();
-          pending.reject(new JoinRejected({ condition: stanzaErrorCondition(stanza) }));
+          Deferred.doneUnsafe(
+            pending.deferred,
+            Effect.fail(new JoinRejected({ condition: stanzaErrorCondition(stanza) })),
+          );
         } else if (type === undefined) {
           pendingJoins.delete(from);
-          pending.cancel();
-          pending.resolve();
+          Deferred.doneUnsafe(pending.deferred, Effect.void);
         }
       }
     }
@@ -800,11 +798,13 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
       const pending = pendingIqs.get(id);
       if (pending !== undefined) {
         pendingIqs.delete(id);
-        pending.cancel();
         if (stanza.attrs['type'] === 'error') {
-          pending.reject(new IqFailed({ condition: stanzaErrorCondition(stanza) }));
+          Deferred.doneUnsafe(
+            pending.deferred,
+            Effect.fail(new IqFailed({ condition: stanzaErrorCondition(stanza) })),
+          );
         } else {
-          pending.resolve(stanza);
+          Deferred.doneUnsafe(pending.deferred, Effect.succeed(stanza));
         }
         return;
       }
@@ -836,12 +836,17 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
     for (const [queryId, pending] of pendingQueries) {
       if (pending.iqId !== id) continue;
       pendingQueries.delete(queryId);
-      pending.cancel();
       if (stanza.attrs['type'] === 'error') {
-        pending.reject(new HistoryFailed({ condition: stanzaErrorCondition(stanza) }));
+        Deferred.doneUnsafe(
+          pending.deferred,
+          Effect.fail(new HistoryFailed({ condition: stanzaErrorCondition(stanza) })),
+        );
         return;
       }
-      pending.resolve(toHistoryPage(pending.messages, parseMamFin(stanza)));
+      Deferred.doneUnsafe(
+        pending.deferred,
+        Effect.succeed(toHistoryPage(pending.messages, parseMamFin(stanza))),
+      );
       return;
     }
   }
@@ -920,25 +925,71 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
     meJid = undefined;
   }
 
-  async function joinRoom(roomJid: string, nick: string): Promise<void> {
-    const current = requireOnline();
+  // One request on a Deferred. The caller has already put its map entry in
+  // place, so the reply handlers can find it. The send starts at once on a
+  // child fiber, so the stanza goes out before the caller's first await: a
+  // failed send fails the Deferred (a no-op once a reply or an earlier
+  // failure completed it), and a send that never settles cannot hold the
+  // request back from its reply or its timeout. Then the request awaits the
+  // Deferred, which keeps a reply that arrived early, under the timeout.
+  // `release` drops the map entry on every exit, including interruption.
+  function request<A>(args: {
+    deferred: Deferred.Deferred<A, XmppCoreError>;
+    send: Effect.Effect<void, XmppCoreError>;
+    timeoutMs: number;
+    onTimeout: () => XmppCoreError;
+    release: () => void;
+  }): Effect.Effect<A, XmppCoreError> {
+    const { deferred } = args;
+    return Effect.gen(function* () {
+      yield* args.send.pipe(
+        Effect.tapError((error) => Deferred.fail(deferred, error)),
+        Effect.ignore,
+        Effect.forkChild({ startImmediately: true }),
+      );
+      return yield* Deferred.await(deferred).pipe(
+        Effect.timeoutOrElse({
+          duration: Duration.millis(args.timeoutMs),
+          orElse: () => Effect.fail(args.onTimeout()),
+        }),
+      );
+    }).pipe(Effect.ensuring(Effect.sync(args.release)));
+  }
+
+  function requireOnlineEffect(): Effect.Effect<XmppClient, NotOnline> {
+    return Effect.suspend(() => {
+      if (xmpp === undefined || currentStatus !== 'online') return Effect.fail(new NotOnline());
+      return Effect.succeed(xmpp);
+    });
+  }
+
+  const joinRoomEffect = Effect.fnUntraced(function* (
+    roomJid: string,
+    nick: string,
+  ): Effect.fn.Return<void, XmppCoreError> {
+    const current = yield* requireOnlineEffect();
     joinedRooms.set(roomJid, nick);
     const key = `${roomJid}/${nick}`;
 
-    await new Promise<void>((resolve, reject) => {
-      const cancel = schedule(JOIN_TIMEOUT_MS, () => {
-        pendingJoins.delete(key);
-        reject(new JoinTimeout({ roomJid }));
-      });
-      pendingJoins.set(key, { resolve, reject, cancel });
-      current.send(buildJoinPresence(roomJid, nick)).catch((error: unknown) => {
-        const pending = pendingJoins.get(key);
-        if (pending === undefined) return;
-        pendingJoins.delete(key);
-        pending.cancel();
-        reject(new JoinSendFailed({ roomJid, cause: errorMessage(error) }));
-      });
+    const deferred = Deferred.makeUnsafe<void, XmppCoreError>();
+    const entry: PendingJoin = { deferred };
+    pendingJoins.set(key, entry);
+    return yield* request({
+      deferred,
+      send: Effect.tryPromise({
+        try: () => current.send(buildJoinPresence(roomJid, nick)),
+        catch: (error) => new JoinSendFailed({ roomJid, cause: errorMessage(error) }),
+      }),
+      timeoutMs: JOIN_TIMEOUT_MS,
+      onTimeout: () => new JoinTimeout({ roomJid }),
+      release: () => {
+        if (pendingJoins.get(key) === entry) pendingJoins.delete(key);
+      },
     });
+  });
+
+  function joinRoom(roomJid: string, nick: string): Promise<void> {
+    return Effect.runPromise(joinRoomEffect(roomJid, nick));
   }
 
   async function leaveRoom(roomJid: string): Promise<void> {
@@ -1023,14 +1074,14 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
     });
   }
 
-  async function loadHistory(
+  const loadHistoryEffect = Effect.fnUntraced(function* (
     chatJid: string,
     kind: ChatKind,
-    opts: LoadHistoryOptions = {},
-  ): Promise<HistoryPage> {
-    const current = requireOnline();
+    opts: LoadHistoryOptions,
+  ): Effect.fn.Return<HistoryPage, XmppCoreError> {
+    const current = yield* requireOnlineEffect();
     if (meJid === undefined) {
-      throw new NoIdentity();
+      return yield* new NoIdentity();
     }
 
     const queryId = generateId();
@@ -1046,97 +1097,109 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
       before: opts.before,
     });
 
-    return new Promise<HistoryPage>((resolve, reject) => {
-      const cancel = schedule(HISTORY_TIMEOUT_MS, () => {
-        pendingQueries.delete(queryId);
-        reject(new HistoryTimeout({ chatJid }));
-      });
-      pendingQueries.set(queryId, { iqId, messages: [], resolve, reject, cancel });
-
-      current.send(query).catch((error: unknown) => {
-        const pending = pendingQueries.get(queryId);
-        if (pending === undefined) return;
-        pendingQueries.delete(queryId);
-        pending.cancel();
-        reject(new HistorySendFailed({ chatJid, cause: errorMessage(error) }));
-      });
+    const deferred = Deferred.makeUnsafe<HistoryPage, XmppCoreError>();
+    const entry: PendingQuery = { iqId, messages: [], deferred };
+    pendingQueries.set(queryId, entry);
+    return yield* request({
+      deferred,
+      send: Effect.tryPromise({
+        try: () => current.send(query),
+        catch: (error) => new HistorySendFailed({ chatJid, cause: errorMessage(error) }),
+      }),
+      timeoutMs: HISTORY_TIMEOUT_MS,
+      onTimeout: () => new HistoryTimeout({ chatJid }),
+      release: () => {
+        if (pendingQueries.get(queryId) === entry) pendingQueries.delete(queryId);
+      },
     });
+  });
+
+  function loadHistory(
+    chatJid: string,
+    kind: ChatKind,
+    opts: LoadHistoryOptions = {},
+  ): Promise<HistoryPage> {
+    return Effect.runPromise(loadHistoryEffect(chatJid, kind, opts));
   }
 
-  async function requestUploadSlot(request: UploadRequest): Promise<UploadSlot> {
-    const current = requireOnline();
+  const requestUploadSlotEffect = Effect.fnUntraced(function* (
+    uploadRequest: UploadRequest,
+  ): Effect.fn.Return<UploadSlot, XmppCoreError> {
+    const current = yield* requireOnlineEffect();
     const id = generateId();
     const service = `upload.${options.domain}`;
     const stanza = buildUploadSlotRequest({
       id,
       service,
-      filename: request.filename,
-      size: request.size,
-      contentType: request.contentType,
+      filename: uploadRequest.filename,
+      size: uploadRequest.size,
+      contentType: uploadRequest.contentType,
     });
 
-    return new Promise<UploadSlot>((resolve, reject) => {
-      const cancel = schedule(UPLOAD_TIMEOUT_MS, () => {
-        pendingIqs.delete(id);
-        reject(new UploadSlotTimeout());
-      });
-      pendingIqs.set(id, {
-        resolve: (reply) => {
-          const slot = parseUploadSlot(reply);
-          if (slot === undefined) {
-            reject(new UploadSlotInvalid());
-            return;
-          }
-          resolve(slot);
-        },
-        reject,
-        cancel,
-      });
-
-      current.send(stanza).catch((error: unknown) => {
-        const pending = pendingIqs.get(id);
-        if (pending === undefined) return;
-        pendingIqs.delete(id);
-        pending.cancel();
-        reject(new UploadSlotFailed({ cause: errorMessage(error) }));
-      });
+    const deferred = Deferred.makeUnsafe<XmppElement, XmppCoreError>();
+    const entry: PendingIq = { deferred };
+    pendingIqs.set(id, entry);
+    const reply = yield* request({
+      deferred,
+      send: Effect.tryPromise({
+        try: () => current.send(stanza),
+        catch: (error) => new UploadSlotFailed({ cause: errorMessage(error) }),
+      }),
+      timeoutMs: UPLOAD_TIMEOUT_MS,
+      onTimeout: () => new UploadSlotTimeout(),
+      release: () => {
+        if (pendingIqs.get(id) === entry) pendingIqs.delete(id);
+      },
     });
+    const slot = parseUploadSlot(reply);
+    if (slot === undefined) {
+      return yield* new UploadSlotInvalid();
+    }
+    return slot;
+  });
+
+  function requestUploadSlot(uploadRequest: UploadRequest): Promise<UploadSlot> {
+    return Effect.runPromise(requestUploadSlotEffect(uploadRequest));
   }
 
   // XEP-0357: enables or disables push for this session's push pair. The
   // request goes over the user's own session (ejabberd requires it) and
   // resolves when the server answers `result`, or rejects on `error`/timeout.
-  async function setPushEnabled(options: {
+  const setPushEnabledEffect = Effect.fnUntraced(function* (pushOptions: {
+    pushJid: string;
+    node: string;
+    enable: boolean;
+  }): Effect.fn.Return<void, XmppCoreError> {
+    const current = yield* requireOnlineEffect();
+    const id = generateId();
+    const stanza =
+      pushOptions.enable === true
+        ? buildPushEnable({ id, pushJid: pushOptions.pushJid, node: pushOptions.node })
+        : buildPushDisable({ id, pushJid: pushOptions.pushJid, node: pushOptions.node });
+
+    const deferred = Deferred.makeUnsafe<XmppElement, XmppCoreError>();
+    const entry: PendingIq = { deferred };
+    pendingIqs.set(id, entry);
+    yield* request({
+      deferred,
+      send: Effect.tryPromise({
+        try: () => current.send(stanza),
+        catch: (error) => new PushToggleFailed({ cause: errorMessage(error) }),
+      }),
+      timeoutMs: PUSH_TIMEOUT_MS,
+      onTimeout: () => new PushToggleTimeout(),
+      release: () => {
+        if (pendingIqs.get(id) === entry) pendingIqs.delete(id);
+      },
+    });
+  });
+
+  function setPushEnabled(pushOptions: {
     pushJid: string;
     node: string;
     enable: boolean;
   }): Promise<void> {
-    const current = requireOnline();
-    const id = generateId();
-    const stanza =
-      options.enable === true
-        ? buildPushEnable({ id, pushJid: options.pushJid, node: options.node })
-        : buildPushDisable({ id, pushJid: options.pushJid, node: options.node });
-
-    return new Promise<void>((resolve, reject) => {
-      const cancel = schedule(PUSH_TIMEOUT_MS, () => {
-        pendingIqs.delete(id);
-        reject(new PushToggleTimeout());
-      });
-      pendingIqs.set(id, {
-        resolve: () => resolve(),
-        reject,
-        cancel,
-      });
-
-      current.send(stanza).catch((error: unknown) => {
-        const pending = pendingIqs.get(id);
-        if (pending === undefined) return;
-        pendingIqs.delete(id);
-        pending.cancel();
-        reject(new PushToggleFailed({ cause: errorMessage(error) }));
-      });
-    });
+    return Effect.runPromise(setPushEnabledEffect(pushOptions));
   }
 
   return {
