@@ -1,7 +1,7 @@
 ---
 id: T-0795
 title: "WU4: web auth on Effect — auth/AuthProvider.tsx, components/auth/AuthFlow.tsx, routes/LoginPage.tsx, routes/NamePage.tsx; LoginPage gets tests first; sign-in behaviour identical"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0795-web-auth
 model: auto
@@ -67,4 +67,39 @@ Run `pnpm effect:map` and list each file's kind, then run the whole web suite on
 
 ## Report (written by the worker when done)
 
+**What I did**
+- Commit 1 `T-0795: tests before`: `apps/web/src/routes/LoginPage.test.tsx`, 23 tests written against the unconverted code and green there. They cover the sign-in form and hint, the setup detour (link, text, status failure keeps the form), email validation, send success (trimmed email, code step, hint, "Resend in 30s"), send failures (fixed sentences, 429), the verify order (send, verify, `auth.refetch`, `getSession`, redirect), `from` and nameless redirects (`/welcome/name` with `{ next }` state or none), Wrong code / expired / too many attempts / fallback sentence, digits cleared, the busy state while verifying, "Use a different email", the resend timer (30 to 29 to 26 to "Resend code", with fake timers), resend (second send, digits cleared, timer restarts), a failed resend, and no console error after unmount.
+- Commit 2 `T-0795: WU4: web auth on Effect`: the four files on Effect.
+  - `AuthProvider.tsx`: the `GET /me` handle fetch is `useQuery(..., [userId])` over `fromApi(getMe)` (failure ignored with `Effect.ignore`, unmount or a new id interrupts it); `refetch` is `runWeb(fromApi(getMe) -> orElseSucceed(null) -> set handle/avatar -> Effect.promise(refetch))`, still a `() => Promise<void>`. Mock provider `refetch` is `() => runWeb(Effect.void)`. Context shape unchanged.
+  - `AuthFlow.tsx`: `requestCode` and `verify` are two `useAction`s with `Effect.gen` pipelines in the same step order; the resend timer is `useQuery(() => Effect.sleep(1000) then decrement, [secondsLeft])`, so each value of `secondsLeft` restarts a one-second wait exactly like the old effect (a new 30 restarts it too) and unmount interrupts it. `busy` stays a `useState` that the actions set and clear at the same points as before. All texts, constants (30s, 1000 ms), props and JSX are unchanged.
+  - `LoginPage.tsx`: `useQuery(() => fromApi(getSetupStatus), [])`; the setup screen shows only on success with `needsSetup`; loading and failure keep the sign-in form.
+  - `NamePage.tsx`: `useAction` over `fromApi(updateMe)`, then `auth.refetch()` and the redirect, any failure shows the same sentence.
+
+**Files changed:** `apps/web/src/auth/AuthProvider.tsx`, `apps/web/src/components/auth/AuthFlow.tsx`, `apps/web/src/routes/LoginPage.tsx`, `apps/web/src/routes/LoginPage.test.tsx`, `apps/web/src/routes/NamePage.tsx`, `work/T-0795-web-auth.md`. No existing test was edited.
+
+**Commands and results**
+- `pnpm --filter @zilar/web test --reporter=dot src/routes/LoginPage` before conversion: 23 passed. With the old tests (`src/auth src/components/auth src/routes/NamePage`): 41 passed (5 files).
+- Same five files after conversion: 41 passed (23 new LoginPage + 18 old, all unchanged).
+- Whole web suite after conversion (`--maxWorkers=4`): Test Files 173 passed (173), Tests 1868 passed (1868).
+- `pnpm effect:map` kinds: AuthProvider.tsx effect, AuthFlow.tsx effect, LoginPage.tsx effect, NamePage.tsx effect (no signals on any of the four).
+- `pnpm gate`: install PASS, format PASS, lint PASS, typecheck PASS, effect PASS, tests @zilar/web PASS, "scope: every changed file is inside the Allowed files", GATE PASS.
+
+**Behaviour differences**
+- AuthFlow: while the post-verify steps (`auth.refetch`, `getSession`) run, the buttons are enabled as before (`busy` is false), but a second `verify` or `requestCode` started in that window is now dropped by `useAction`'s ignore mode. Before, it would have sent a second request. No visible change otherwise.
+- AuthFlow: a rejected (not `{ error }`) `sendSignInCode` or `verifySignInCode` still leaves `busy` true, exactly as the old code did; it now ends as a defect in the action state instead of an unhandled rejection in the console. I kept the stuck state on purpose (identical behaviour); say if you want it fixed in a separate task.
+- NamePage: after a successful save the button stays disabled (`isWaiting || isSuccess`), as `busy` stayed true before. A retry hides the previous failure sentence until it fails again, as `setError(undefined)` did. Non-ApiError failures already showed a fixed sentence, so no text change.
+- Otherwise none.
+
+**Notes**
+- NamePage has no failure test (`NamePage.test.tsx` is not in the Allowed files, and its `@/lib/api` mock has no `ApiError`, which `fromApi` reads when a call rejects); I checked that path by reading the code only. The AuthProvider `refetch` path has no test either; I checked that `Effect.runPromise` rejects with the original value (same object) when `Effect.promise` rejects, so a failing session refetch still rejects with its own error.
+- The first commit was amended once before the conversion to add `mailConfigured: true` to the two `getSetupStatus` mocks (typecheck caught it), so the pre-conversion tests are green on the old code with the final test file.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Sonnet 5.5. The lead reviewed the Report.
+- **Tests first:** 23 LoginPage tests were committed against the old code.
+- **The files:** all four are Effect files.
+- **Unchanged:** the context shape, the Promise signatures, the OTP order, the 30 s and 1 s timers and all texts.
+- **One change:** a second verify or resend while one is in flight is dropped.
+- **Results:** the whole web suite (1868) passes; the gate passed.
+- **Live check:** Julio signs in on live before the next deploy (plan flag "login risk").

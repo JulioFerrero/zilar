@@ -1,46 +1,65 @@
 import { useState } from 'react';
+import { Data, Effect } from 'effect';
+import { AsyncResult } from 'effect/reactivity';
 import { useLocation, useNavigate } from 'react-router';
 import { useAuth } from '@/auth/AuthProvider';
 import { Button } from '@/components/ui/button';
 import { TextInput } from '@/components/ui/text-input';
 import { updateMe } from '@/lib/api';
+import { fromApi } from '@/lib/effect/api-effect';
+import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+
+/** Saving failed after the API call: the session refresh or the redirect. */
+class NameSaveFailed extends Data.TaggedError('NameSaveFailed') {}
 
 export function NamePage() {
   const navigate = useNavigate();
   const location = useLocation();
   const auth = useAuth();
   const [name, setName] = useState(auth.user?.name ?? '');
-  const [error, setError] = useState<string | undefined>(undefined);
-  const [busy, setBusy] = useState(false);
+  // The "Enter your name" check; the save error comes from the action.
+  const [emptyName, setEmptyName] = useState(false);
+  const [saveState, save] = useAction((trimmed: string) =>
+    fromApi(() => updateMe(trimmed)).pipe(
+      Effect.andThen(
+        Effect.tryPromise({ try: () => auth.refetch(), catch: () => new NameSaveFailed() }),
+      ),
+      Effect.andThen(
+        Effect.try({
+          try: () => {
+            // Callers (e.g. the join-by-link page) pass `next` to come back
+            // after the name step; the default chains into the handle step.
+            const next = (location.state as { next?: string } | null)?.next;
+            navigate(next === undefined ? '/welcome/handle' : next, { replace: true });
+          },
+          catch: () => new NameSaveFailed(),
+        }),
+      ),
+    ),
+  );
+  // A saved name keeps the button off while the redirect happens, as before;
+  // a retry hides the old failure until it fails again.
+  const busy = isWaiting(saveState) || AsyncResult.isSuccess(saveState);
+  const error = emptyName
+    ? 'Enter your name'
+    : !isWaiting(saveState) && failureOf(saveState) !== undefined
+      ? 'Could not save your name. Try again.'
+      : undefined;
 
-  const submit = async (event: React.FormEvent): Promise<void> => {
+  const submit = (event: React.FormEvent): void => {
     event.preventDefault();
     const trimmed = name.trim();
     if (trimmed.length === 0) {
-      setError('Enter your name');
+      setEmptyName(true);
       return;
     }
-    setBusy(true);
-    setError(undefined);
-    try {
-      await updateMe(trimmed);
-      await auth.refetch();
-      // Callers (e.g. the join-by-link page) pass `next` to come back
-      // after the name step; the default chains into the handle step.
-      const next = (location.state as { next?: string } | null)?.next;
-      navigate(next === undefined ? '/welcome/handle' : next, { replace: true });
-    } catch {
-      setBusy(false);
-      setError('Could not save your name. Try again.');
-    }
+    setEmptyName(false);
+    save(trimmed);
   };
 
   return (
     <div className="chat-background flex min-h-dvh items-center justify-center p-4">
-      <form
-        onSubmit={(event) => void submit(event)}
-        className="w-full max-w-sm rounded-2xl bg-background p-6 shadow-xl"
-      >
+      <form onSubmit={submit} className="w-full max-w-sm rounded-2xl bg-background p-6 shadow-xl">
         <h1 className="text-center text-[24px] leading-8 font-semibold">
           What should we call you?
         </h1>

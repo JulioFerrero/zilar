@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react';
+import { AsyncResult } from 'effect/reactivity';
 import { Link } from 'react-router';
 import { AuthFlow } from '@/components/auth/AuthFlow';
 import { Button } from '@/components/ui/button';
 import { getSetupStatus } from '@/lib/api';
+import { fromApi } from '@/lib/effect/api-effect';
+import { useQuery } from '@/lib/effect/use-query';
 
 /**
  * Sign-in, with a detour while the server still needs its first-run
@@ -10,25 +12,9 @@ import { getSetupStatus } from '@/lib/api';
  * show a "Finish setting up this server" link to `/setup` instead.
  */
 export function LoginPage() {
-  const [needsSetup, setNeedsSetup] = useState(false);
-
-  useEffect(() => {
-    let active = true;
-    getSetupStatus()
-      .then((status) => {
-        if (active) {
-          setNeedsSetup(status.needsSetup);
-        }
-      })
-      .catch(() => {
-        if (active) {
-          setNeedsSetup(false);
-        }
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
+  // While the status loads, and if it fails, the sign-in form shows.
+  const [setupState] = useQuery(() => fromApi(() => getSetupStatus()), []);
+  const needsSetup = AsyncResult.isSuccess(setupState) && setupState.value.needsSetup;
 
   if (needsSetup) {
     return (
