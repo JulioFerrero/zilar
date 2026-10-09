@@ -1,7 +1,7 @@
 ---
 id: T-0750
 title: "images.yml: timeout-minutes on the jobs, so a stalled multi-arch build fails instead of holding the publish-main concurrency group for hours (run 37911863834 hung 3h18m in 'Build and push zilar-server (green main)' and blocked every later deploy)"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0750-images-build-timeout
 model: auto
@@ -49,4 +49,28 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**What I did.** Added `timeout-minutes` to the three jobs in `.github/workflows/images.yml`, each with a one-line comment above it naming incident T-0750: `tip` 5 (line 31), `build` 30 (line 55), `deploy` 20 (line 237). Nothing else in the file changed.
+
+**Files changed.** `.github/workflows/images.yml` (+6 lines), `work/T-0750-images-build-timeout.md` (status and this Report).
+
+**Commands run.**
+- `pnpm install`: done, no errors.
+- `pnpm exec prettier --write .github/workflows/images.yml`: unchanged.
+- `pnpm gate`: GATE PASS. Summary lines:
+  - `gate: 2 changed file(s) against main`
+  - `PASS  install (frozen)  (1.2s)`
+  - `PASS  format  (17.1s)`
+  - `PASS  lint  (1.4s)`
+  - `PASS  typecheck  (1.1s)`
+  - `scope: every changed file is inside the Allowed files`
+- Single tests: none. The change touches no package code, so the gate ran no nearest tests.
+
+**Not verified.** I did not run the workflow on GitHub, and I did not parse the YAML separately. The gate's lint step passed, but I cannot say it checks workflow syntax.
+
+**Deviations.** None from the spec.
+
+**Open questions.** None.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Haiku 5.5, in one round (about 1 min). It adds job-level `timeout-minutes` (tip 5, build 30, deploy 20), each with a comment, and the gate passed. GitHub validates the syntax on the next images run, and the lead checks that run.

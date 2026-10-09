@@ -27,6 +27,8 @@ jobs:
   tip:
     name: Check main tip
     runs-on: ubuntu-latest
+    # Incident T-0750: a stalled job held the publish-main group for 3h18m.
+    timeout-minutes: 5
     if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
     outputs:
       latest: ${{ steps.compare.outputs.latest }}
@@ -49,6 +51,8 @@ jobs:
   build:
     name: Build production images
     runs-on: ubuntu-latest
+    # Incident T-0750: a stalled build held the publish-main group for 3h18m.
+    timeout-minutes: 30
     needs: [tip]
     # workflow_run fires for failed CI runs too; only a green main push builds.
     # Requiring event == 'push' rejects fork PRs whose head branch is named main.
@@ -229,6 +233,8 @@ jobs:
   deploy:
     name: Deploy to Coolify
     runs-on: ubuntu-latest
+    # Incident T-0750: a stalled job held the publish-main group for 3h18m.
+    timeout-minutes: 20
     needs: [tip, build]
     # event == 'push' keeps a fork PR that happens to use a branch named main
     # from building and deploying attacker code (see PREREVIEW finding 1).
