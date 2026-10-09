@@ -1,3 +1,4 @@
+// effect-plain: in-memory mock store for demos and tests
 import type { MentionMember, MessageStatus, UiMessage } from '@zilar/chat-core';
 import { defaultFolders, sortFolders, splitLinks } from '@zilar/chat-core';
 import { StickerSchema, isValid } from '@zilar/protocol';

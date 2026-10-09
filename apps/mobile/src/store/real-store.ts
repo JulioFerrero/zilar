@@ -14,32 +14,25 @@ import type {
 import {
   applyEdit,
   applyReaction,
-  canDeleteMessage,
-  canEditMessage,
   editsFor,
   emptyEdits,
   emptyReactions,
   mergeEdits,
   mergeTargets,
-  mentionsForTrimmedText,
-  rebaseMentions,
   resolveEdits,
-  sortFolders,
   summarize,
 } from '@zilar/chat-core';
+import { Effect } from 'effect';
 import {
-  createXmppCore,
   type ChatMessage,
   type Occupant,
   type PresenceEvent,
   type XmppCore,
-  type XmppCoreOptions,
 } from '@zilar/xmpp-core';
 import {
   AttachmentSchema,
   ForwardOriginSchema,
   PayloadSchema,
-  StickerSchema,
   VoiceMetaSchema,
   isValid,
   type Attachment,
@@ -49,91 +42,39 @@ import {
 } from '@zilar/protocol';
 import { createAtomStore, type StoreApi } from './atomStore';
 
+import type { ChatEntry, GroupDetail, Me } from '../lib/chat-api';
+import type { ChatPref } from '../lib/chat-prefs-api';
+import { type ApproverRole, type Topic, type TopicRole } from '../lib/topics-api';
+import type { CustomGroupRole } from '../lib/roles-api';
+import { summariesForTopicsEntry } from '../lib/topics';
+import { makeEvents } from './effects/events';
+import { makeGroups } from './effects/groups';
+import { makeHistory } from './effects/history';
+import { makeLifecycle } from './effects/lifecycle';
+import { makePins } from './effects/pins';
+import { makeSend } from './effects/send';
+import { makePolling, FINISHED_TURNS_MAX, withoutDraft } from './effects/polling';
+import { Ports, PortsLive, type RealStoreDeps } from './effects/ports';
+import { makeLife, makeRunners, type StoreCtx, type StoreState } from './effects/runtime';
 import {
-  createChatApi,
-  type ChatApi,
-  type ChatEntry,
-  type Contact,
-  type GroupDetail,
-  type Me,
-} from '../lib/chat-api';
-import type { ChatPref, ChatPrefsApi, PutChatPrefInput } from '../lib/chat-prefs-api';
-import { applyChatPrefs, optimisticPrefRow } from '../lib/chat-prefs';
-import type { ChatFoldersApi } from '../lib/chat-folders-api';
-import {
-  createPinsApi,
-  pinKindFor,
-  pinSnapshotText,
-  type Pin,
-  type PinsApi,
-} from '../lib/pins-api';
-import { createMediaApi, type MediaApi, type MediaItem, type MediaPage } from '../lib/media-api';
-import { API_URL } from '../lib/auth';
-import { createInviteLinksApi, type InviteLinksApi } from '../lib/invite-links-api';
-import {
-  createTopicsApi,
-  type ApproverRole,
-  type CreateTopicInput,
-  type PatchTopicInput,
-  type SetTopicRolesInput,
-  type Topic,
-  type TopicRole,
-  type TopicsApi,
-} from '../lib/topics-api';
-import { createRolesApi, type CustomGroupRole, type RolesApi } from '../lib/roles-api';
-import { createGroupsApi, type ChannelMemberRole, type GroupsApi } from '../lib/groups-api';
-import { summariesForTopicsEntry, TOPIC_GONE_NOTICE } from '../lib/topics';
-import {
-  DRAFT_STREAM_PATH,
-  subscribeToDrafts,
-  type DraftEndEvent,
-  type DraftHubEvent,
-  type OpenDraftStream,
-} from '../lib/drafts';
-import { getSessionToken } from '../lib/session-token';
-import {
-  attachmentDataFor,
   isTrustedMediaUrl,
-  MAX_ATTACHMENT_BYTES,
   sanitizeIncomingAttachment,
   trustedMediaHosts,
   type MediaTokenShape,
 } from '../lib/attachments';
-import type { AttachmentUploader, PickedFile } from '../lib/attachment-ports';
-import type { ConvertedVoice, RecordedVoice, VoicePort } from '../lib/voice';
-import {
-  createVoicePort,
-  validateRecording,
-  VoiceError,
-  voiceSendRefusalMessage,
-} from '../lib/voice';
-import { voiceFailureReasonFor, type VoiceFailureReason } from '../lib/voice-native';
+import type { PickedFile } from '../lib/attachment-ports';
+import type { RecordedVoice } from '../lib/voice';
+import type { VoiceFailureReason } from '../lib/voice-native';
 import { CURRENT_USER_ID, mobileUploadOf, type MobileMessage } from '../lib/types';
-import type { ChatStoreState, ConnectionStatus, DraftState } from './types';
+import type { ChatStoreState } from './types';
 
-const PREVIEW_HISTORY_MAX = 1;
-const PAGE_HISTORY_MAX = 50;
-const TYPING_CLEAR_MS = 5000;
-const CHAT_REFRESH_DEBOUNCE_MS = 500;
-
-// A search jump loads at most this many history pages back looking for the
-// hit before giving up with "Message not found" (web uses the same cap).
-export const MESSAGE_JUMP_MAX_PAGES = 20;
-// Upper bound for one stalled history wait inside `openAtMessage`: after
-// this the jump gives up with "Message not found" instead of hanging.
-export const MESSAGE_JUMP_WAIT_MS = 10_000;
-
-// A finished draft is kept until its final XMPP message arrives. If that never
-// happens (XMPP down), it is dropped after this long so it cannot stick.
-export const DRAFT_END_FALLBACK_MS = 5_000;
-
-// A draft that sees no further event for this long is stale (e.g. the server
-// restarted mid-turn); the idle timer drops it rather than leaving it forever.
-export const DRAFT_IDLE_MS = 60_000;
-
-// Finished turn ids are remembered only to ignore a late `draft`. The set is
-// capped so it cannot grow for the life of the app session.
-const FINISHED_TURNS_MAX = 50;
+export { MESSAGE_JUMP_MAX_PAGES, MESSAGE_JUMP_WAIT_MS } from './effects/history';
+export {
+  DRAFT_END_FALLBACK_MS,
+  DRAFT_IDLE_MS,
+  PINS_REFRESH_INTERVAL_MS,
+  TOPIC_REFRESH_INTERVAL_MS,
+} from './effects/polling';
 
 // Records which final message took over a draft's turn, capped like the
 // finished-turn set. Insertion order is the cap order.
@@ -152,83 +93,7 @@ function rememberFinishedDraftMessage(
   return next;
 }
 
-/** The slice of React Native's `AppState` the store listens to. */
-export interface AppStateLike {
-  current(): string;
-  subscribe(handler: (state: string) => void): () => void;
-}
-
-export interface RealStoreDeps {
-  api?: ChatApi;
-  topicsApi?: TopicsApi;
-  /** The group invite-links API (T-0136); tests inject a fake. */
-  inviteLinksApi?: InviteLinksApi;
-  rolesApi?: RolesApi;
-  /** The channel management API (T-0144); tests inject a fake. */
-  groupsApi?: GroupsApi;
-  chatPrefsApi?: ChatPrefsApi;
-  /** The chat-folders API (T-0248); tests inject a fake. */
-  chatFoldersApi?: ChatFoldersApi;
-  pinsApi?: PinsApi;
-  /** The chat media gallery API (T-0436); tests inject a fake. */
-  mediaApi?: MediaApi;
-  ownedAis?: { id: string; name: string }[];
-  createXmpp?: (options: XmppCoreOptions) => XmppCore;
-  /** Uploads picked bytes to a XEP-0363 slot (T-0150); tests inject a fake. */
-  uploader?: AttachmentUploader;
-  /**
-   * Resolves the real byte size of a local file (T-0157): the store re-stats
-   * an unknown-size pick right before the slot request, since the slot API
-   * needs an exact count. Tests inject a fake; the app injects the
-   * `expo-file-system` stat.
-   */
-  statSize?: (uri: string) => Promise<number | undefined>;
-  /** Converts + uploads voice recordings (T-0154); tests inject a fake. */
-  voice?: VoicePort;
-  now?: () => Date;
-  appState?: AppStateLike;
-  /** The AI draft SSE stream; tests inject a fake. */
-  openDrafts?: OpenDraftStream;
-}
-
-/** Refetch `/api/chats` every 60 s while the app is active (T-0112). */
-export const TOPIC_REFRESH_INTERVAL_MS = 60_000;
-
-/** Refetch pins while a chat is open, same cadence as the topic poll. */
-export const PINS_REFRESH_INTERVAL_MS = 60_000;
-
-function topicsApi2(deps: RealStoreDeps): TopicsApi {
-  if (deps.topicsApi !== undefined) {
-    return deps.topicsApi;
-  }
-  return createTopicsApi(getSessionToken, fetch, API_URL);
-}
-
-function pinsApi2(deps: RealStoreDeps): PinsApi {
-  if (deps.pinsApi !== undefined) {
-    return deps.pinsApi;
-  }
-  return createPinsApi(getSessionToken, fetch, API_URL);
-}
-
-function mediaApi2(deps: RealStoreDeps): MediaApi {
-  if (deps.mediaApi !== undefined) {
-    return deps.mediaApi;
-  }
-  return createMediaApi(getSessionToken, fetch, API_URL);
-}
-
-/**
- * Resolves a server-relative media URL (`/api/media/<id>`) against the API
- * origin, like the attachments store does (AGENTS pitfall: server URLs may
- * be relative on native). An absolute URL is left untouched.
- */
-function resolveMediaUrl(url: string, apiUrl: string): string {
-  if (!url.startsWith('/') || url.startsWith('//')) {
-    return url;
-  }
-  return `${apiUrl.replace(/\/+$/, '')}${url}`;
-}
+export type { AppStateLike, RealStoreDeps } from './effects/ports';
 
 function coreKind(chat: ChatSummary): 'chat' | 'groupchat' {
   return chat.kind === 'group' ? 'groupchat' : 'chat';
@@ -337,13 +202,6 @@ export function summariesFor(entry: ChatEntry): ChatSummary[] {
   return rows;
 }
 
-// The default `AppState` seam: always foreground and never changes. The app
-// injects React Native's real `AppState` so a real device reconnects on resume.
-const alwaysActive: AppStateLike = {
-  current: () => 'active',
-  subscribe: () => () => {},
-};
-
 /** The subset of a message needed to resolve a sender name. */
 interface SenderInput {
   chatJid: string;
@@ -359,37 +217,12 @@ interface SenderInput {
  */
 // One shared empty list: a selector must return the same reference while
 // nothing changed, or React re-renders forever ("Maximum update depth").
-const EMPTY_PINS: Pin[] = [];
 const EMPTY_MESSAGES: UiMessage[] = [];
 
 export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStoreState> {
-  const api = deps.api ?? createChatApi(getSessionToken);
-  const now = deps.now ?? ((): Date => new Date());
-  const appState = deps.appState ?? alwaysActive;
-  const createXmpp = deps.createXmpp ?? ((options: XmppCoreOptions) => createXmppCore(options));
-  const openDrafts =
-    deps.openDrafts ??
-    ((onEvent) =>
-      subscribeToDrafts(onEvent, {
-        url: `${API_URL}${DRAFT_STREAM_PATH}`,
-        getToken: getSessionToken,
-        appState,
-      }));
-
-  const topics = topicsApi2(deps);
-  const inviteLinks = deps.inviteLinksApi ?? createInviteLinksApi(getSessionToken, fetch, API_URL);
-
-  function rolesApi2(deps: RealStoreDeps): RolesApi {
-    if (deps.rolesApi !== undefined) {
-      return deps.rolesApi;
-    }
-    return createRolesApi(getSessionToken, fetch, API_URL);
-  }
-
-  const rolesApi = rolesApi2(deps);
-  const pinsApi = pinsApi2(deps);
-  const mediaApi = mediaApi2(deps);
-  const groupsApi = deps.groupsApi ?? createGroupsApi(getSessionToken, fetch, API_URL);
+  // Every outside dependency comes from the `Ports` layer (injected or live).
+  const ports = Effect.runSync(Ports.use(Effect.succeed).pipe(Effect.provide(PortsLive(deps))));
+  const { now, appState } = ports;
   // The trusted media hosts (T-0150): the service host, the XMPP domain and
   // `upload.<domain>`, from the latest XMPP token. Incoming image (and
   // GIF-video) attachments auto-load only from these hosts; anything else is
@@ -397,70 +230,16 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
   let mediaToken: MediaTokenShape | undefined;
   let mediaTrustedHosts: ReadonlySet<string> = new Set();
 
-  // The gallery never auto-loads an image or gif from a host outside the
-  // trusted set: the row keeps its metadata but loses `url`, so the sheet
-  // renders it as a file row (T-0436, mirroring the attachments rule above).
-  function sanitizeMediaItem(item: MediaItem): MediaItem {
-    if (item.url === undefined) {
-      return item;
-    }
-    const resolved = resolveMediaUrl(item.url, API_URL);
-    if (
-      (item.kind === 'image' || item.kind === 'gif') &&
-      !isTrustedMediaUrl(resolved, mediaTrustedHosts)
-    ) {
-      const copy: MediaItem = { ...item };
-      delete copy.url;
-      return copy;
-    }
-    return { ...item, url: resolved };
-  }
-
   // The local bytes of an outgoing attachment, kept for a Retry after a
   // failed upload (like web's `pendingAttachments`).
   const pendingUploads = new Map<string, PickedFile>();
   // A finished voice recording per optimistic message, kept for a Retry after
   // a failed convert/upload/send (like web's `pendingVoices`, T-0154).
   const pendingVoices = new Map<string, RecordedVoice>();
-  // The voice pipeline (T-0154): conversion through `POST /api/voice` when
-  // the recording is not already M4A, then the XEP-0363 upload. The app
-  // wires the real port through the uploader seam; tests inject a fake.
-  function voicePortFor(): VoicePort {
-    if (deps.voice !== undefined) {
-      return deps.voice;
-    }
-    const uploader = deps.uploader;
-    if (uploader === undefined) {
-      return {
-        convert: async () => {
-          throw new VoiceError('network_error', 'Could not reach the server');
-        },
-        upload: async () => {
-          throw new VoiceError('network_error', 'Could not reach the server');
-        },
-      };
-    }
-    return createVoicePort({ apiUrl: API_URL, getToken: getSessionToken, uploader });
-  }
 
   return createAtomStore<ChatStoreState>((set, get) => {
     let core: XmppCore | undefined;
-    let unsubscribers: Array<() => void> = [];
-    let removeAppState: (() => void) | undefined;
-    let typingTimers: Record<string, ReturnType<typeof setTimeout>> = {};
-    // Closes the draft stream once opened; undefined means it is not open.
-    let closeDraftStream: (() => void) | undefined;
-    // Idle/fallback removal of a draft, keyed by chat id.
-    const draftTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
-    // Turn ids whose draft is done, so a late `draft` is ignored.
-    const finishedTurns = new Set<string>();
-    const finishedTurnOrder: string[] = [];
-    let sequence = 0;
     let lastRead: Record<string, string> = {};
-    let generation = 0;
-    let started = false;
-    let firstToken: { jid: string; token: string } | undefined;
-    let refreshTimer: ReturnType<typeof setTimeout> | undefined;
     const cursors: Record<string, string | undefined> = {};
     const pendingOutgoing = new Map<string, string[]>();
     const messageAliases = new Map<string, string>();
@@ -494,46 +273,9 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
     // that never touch prefs inject nothing and read empty rows.
     let chatPrefRows: ChatPref[] = [];
 
-    /** The prefs rows: server truth when injected, empty otherwise. */
-    async function loadPrefRows(): Promise<ChatPref[]> {
-      const api = deps.chatPrefsApi;
-      if (api === undefined) {
-        return [];
-      }
-      return api.listChatPrefs().catch((): ChatPref[] => chatPrefRows);
-    }
-    // The user's chat folders (T-0248), sorted by position. Loaded with the
-    // chats at boot and after every background/foreground refresh; the API
-    // client is injected by the app (`RealStoreDeps.chatFoldersApi`). A failed
-    // load keeps the last list, and a missing client keeps `[]`.
-    async function loadFolders(): Promise<void> {
-      const api = deps.chatFoldersApi;
-      if (api === undefined) {
-        return;
-      }
-      try {
-        get().setFolders(await api.listChatFolders());
-      } catch {
-        // Keep the last list; a retry happens on the next refresh.
-      }
-    }
-    /** The injected folders client; writes have no local fallback. */
-    function foldersApi(): ChatFoldersApi {
-      const api = deps.chatFoldersApi;
-      if (api === undefined) {
-        throw new Error('Chat folders are not available.');
-      }
-      return api;
-    }
-    // Pins by chat id (T-0135), newest first. Loaded when a chat opens and
-    // refreshed on focus and every 60 s while it is open.
-    const pinsByChat = new Map<string, Pin[]>();
-    let pinsPollTimer: ReturnType<typeof setInterval> | undefined;
-    let removePinsPollListener: (() => void) | undefined;
-    // The 60 s active-app poll for new/removed topics (T-0112), plus its
-    // AppState listener. Both stop when the store stops (or restarts).
-    let topicsPollTimer: ReturnType<typeof setInterval> | undefined;
-    let removeTopicsPollListener: (() => void) | undefined;
+    // The user's chat folders (T-0248), sorted by position, are loaded with
+    // the chats (`effects/history.ts`) and written in `effects/events.ts`; a
+    // missing client keeps `[]`.
     // chatId -> (lowercased userId -> display name)
     const groupMembers = new Map<string, Map<string, string>>();
     const loadingGroupMembers = new Set<string>();
@@ -546,6 +288,72 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
     // True once the group rooms are joined; a MAM query for a group before that
     // fails, so a pending group history waits for it (T-0067).
     let groupsJoined = false;
+
+    // The state the effect modules share. The members that code in this
+    // closure still reads by their old names are bridged to those names.
+    const life = makeLife();
+    const s: StoreState = {
+      get core() {
+        return core;
+      },
+      set core(value) {
+        core = value;
+      },
+      started: false,
+      firstToken: undefined,
+      boot: undefined,
+      cursors,
+      loadingHistory,
+      loadingOlder,
+      groupIds,
+      pendingOutgoing,
+      pendingUploads,
+      pendingVoices,
+      groupDetails,
+      loadingGroupDetails,
+      groupRolesById,
+      loadingGroupRoles,
+      topicRolesById,
+      loadingTopicRoles,
+      groupMembers,
+      loadingGroupMembers,
+      get groupsJoined() {
+        return groupsJoined;
+      },
+      set groupsJoined(value) {
+        groupsJoined = value;
+      },
+      get pendingOpenChatId() {
+        return pendingOpenChatId;
+      },
+      set pendingOpenChatId(value) {
+        pendingOpenChatId = value;
+      },
+      get mediaToken() {
+        return mediaToken;
+      },
+      set mediaToken(value) {
+        mediaToken = value;
+      },
+      get mediaTrustedHosts() {
+        return mediaTrustedHosts;
+      },
+      set mediaTrustedHosts(value) {
+        mediaTrustedHosts = value;
+      },
+      get lastRead() {
+        return lastRead;
+      },
+      set lastRead(value) {
+        lastRead = value;
+      },
+      get chatPrefRows() {
+        return chatPrefRows;
+      },
+      set chatPrefRows(value) {
+        chatPrefRows = value;
+      },
+    };
 
     function isVisible(): boolean {
       return appState.current() === 'active';
@@ -1326,98 +1134,6 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       }));
     }
 
-    // The upload steps of an attachment, re-runnable from a Retry: ask the
-    // chat's XMPP session for a XEP-0363 slot, PUT the bytes with the slot's
-    // headers, then send the payload message exactly as web does. The kept
-    // bytes stay until the stanza send succeeds, so a Retry after a failed
-    // send still has them; they are dropped only then (and on cancel). A
-    // 'cancelled' error is swallowed only when this very message was
-    // cancelled by the user (the bubble is already gone); any other abort
-    // marks the message failed so Retry appears.
-    function runAttachmentUpload(
-      chat: ChatSummary,
-      localId: string,
-      file: PickedFile,
-      caption: string,
-      replyTo: ReplyRef | undefined,
-    ): void {
-      const current = core;
-      if (current === undefined) {
-        markAttachmentFailed(chat.id, localId);
-        return;
-      }
-      const uploader = deps.uploader;
-      if (uploader === undefined) {
-        // No uploader injected (tests inject a fake; the app injects the
-        // expo-file-system one): fail loudly instead of hanging a bubble in
-        // "sending" forever.
-        markAttachmentFailed(chat.id, localId);
-        return;
-      }
-      const messageAlive = (): boolean =>
-        listFor(get(), chat.id).some((item) => sameMessage(item.id, localId));
-      void (async () => {
-        try {
-          const contentType = file.mimeType === '' ? 'application/octet-stream' : file.mimeType;
-          // Unknown size: the slot API needs an exact byte count, so stat
-          // once more right before the request; a still-unknown size fails
-          // the send like any other upload failure (Retry stays available).
-          const statSize = deps.statSize;
-          const size = file.size ?? (statSize === undefined ? undefined : await statSize(file.uri));
-          if (size === undefined) {
-            markAttachmentFailed(chat.id, localId);
-            return;
-          }
-          const slot = await current.requestUploadSlot({
-            filename: attachmentDataFor(file, '').name,
-            size,
-            contentType,
-          });
-          // A cancel during the slot round-trip removes the bubble: stop
-          // here and send nothing.
-          if (!messageAlive()) {
-            return;
-          }
-          await uploader.upload(
-            file,
-            { putUrl: slot.putUrl, headers: slot.headers },
-            (fraction) => setUploadProgress(chat.id, localId, fraction),
-            localId,
-          );
-          if (!messageAlive()) {
-            return;
-          }
-          const data = attachmentDataFor(file, slot.getUrl);
-          updateMessageAttachment(chat.id, localId, data);
-          clearUploadProgress(chat.id, localId);
-          const sent = await current.sendMessage(chat.id, coreKind(chat), caption, {
-            payload: { v: 0, type: 'attachment', data },
-            ...(replyTo === undefined ? {} : { replyTo: { id: replyTo.id } }),
-          });
-          if (!messageAlive()) {
-            return;
-          }
-          pendingUploads.delete(localId);
-          linkMessageIds(localId, sent.id);
-          linkLocalToServer(localId, sent.id);
-          rememberOriginId(localId, sent.id);
-          updateMessageStatus(chat.id, localId, 'sent');
-        } catch (error) {
-          clearUploadProgress(chat.id, localId);
-          // Keep the local bytes so the bubble can offer a Retry. A cancel
-          // removes the bubble first (see `cancelAttachment`); a 'cancelled'
-          // error for a message that is already gone is that cancel landing,
-          // so it stays silent. Any other abort means the upload itself
-          // failed and Retry must appear.
-          if (error instanceof Error && error.message === 'cancelled' && !messageAlive()) {
-            return;
-          }
-          if (messageAlive()) {
-            markAttachmentFailed(chat.id, localId);
-          }
-        }
-      })();
-    }
     // A failed voice send (T-0154, review round 1): the bubble keeps its
     // local recording and shows a Retry with the plain reason, never a
     // silent "sending". The reason rides the message in a subset of the
@@ -1486,109 +1202,6 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
             : state.chats,
         };
       });
-    }
-
-    // The voice pipeline (T-0154), re-runnable from a Retry: convert (skipped
-    // for m4a), PUT the bytes through the XEP-0363 slot, then send the `voice`
-    // payload message exactly as web does. The recording stays in
-    // `pendingVoices` until the stanza send succeeds, so a Retry after a
-    // failed send re-runs the same pipeline from the kept file. A
-    // 'cancelled' error is swallowed only when this very message was
-    // cancelled by the user (the bubble is already gone); any other failure
-    // marks the message failed so Retry appears.
-    function runVoiceSend(
-      chat: ChatSummary,
-      localId: string,
-      recording: RecordedVoice,
-      waveform: number[],
-      replyTo: ReplyRef | undefined,
-    ): void {
-      const current = core;
-      if (current === undefined) {
-        markVoiceFailed(chat.id, localId, 'network');
-        return;
-      }
-      const messageAlive = (): boolean =>
-        listFor(get(), chat.id).some((item) => sameMessage(item.id, localId));
-      void (async () => {
-        try {
-          const converted: ConvertedVoice = await voicePortFor().convert(recording);
-          if (!messageAlive()) {
-            return;
-          }
-          const url = await voicePortFor().upload(
-            current,
-            converted,
-            (fraction) => setUploadProgress(chat.id, localId, fraction),
-            localId,
-          );
-          if (!messageAlive()) {
-            return;
-          }
-          const voice = {
-            duration_ms: converted.durationMs,
-            mime: 'audio/mp4',
-            waveform,
-            url,
-          };
-          updateMessageVoice(chat.id, localId, voice);
-          clearUploadProgress(chat.id, localId);
-          const sent = await current.sendMessage(chat.id, coreKind(chat), '', {
-            payload: { v: 0, type: 'voice', data: voice },
-            ...(replyTo === undefined ? {} : { replyTo: { id: replyTo.id } }),
-          });
-          if (!messageAlive()) {
-            return;
-          }
-          pendingVoices.delete(localId);
-          pendingVoices.delete(aliasRoot(localId));
-          linkMessageIds(localId, sent.id);
-          linkLocalToServer(localId, sent.id);
-          rememberOriginId(localId, sent.id);
-          updateMessageStatus(chat.id, localId, 'sent');
-        } catch (error) {
-          clearUploadProgress(chat.id, localId);
-          if (error instanceof Error && error.message === 'cancelled' && !messageAlive()) {
-            return;
-          }
-          if (messageAlive()) {
-            markVoiceFailed(
-              chat.id,
-              localId,
-              voiceFailureReasonFor(error, get().status !== 'online'),
-            );
-          }
-        }
-      })();
-    }
-    // The send step of a sticker, re-runnable from a Retry: the payload is
-    // already on the optimistic message, so only the stanza is (re)sent.
-    function runStickerSend(
-      chat: ChatSummary,
-      localId: string,
-      payload: Extract<Payload, { type: 'sticker' }>,
-      body: string,
-      replyTo: ReplyRef | undefined,
-    ): void {
-      const current = core;
-      if (current === undefined) {
-        markStickerFailed(chat.id, localId);
-        return;
-      }
-      current
-        .sendMessage(chat.id, coreKind(chat), body, {
-          payload,
-          ...(replyTo === undefined ? {} : { replyTo: { id: replyTo.id } }),
-        })
-        .then((sent) => {
-          linkMessageIds(localId, sent.id);
-          linkLocalToServer(localId, sent.id);
-          rememberOriginId(localId, sent.id);
-          updateMessageStatus(chat.id, localId, 'sent');
-        })
-        .catch(() => {
-          markStickerFailed(chat.id, localId);
-        });
     }
 
     // The room identity a forward may carry (T-0432): only a public group or
@@ -1660,36 +1273,6 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         return { voice: payload.data };
       }
       return { card: payload };
-    }
-
-    // One forwarded copy's send, in the `runStickerSend` shape: mobile has no
-    // send-timeout machinery, so a rejected send marks only this copy failed.
-    function runForwardSend(
-      target: ChatSummary,
-      localId: string,
-      body: string,
-      payload: Payload | undefined,
-      origin: ForwardOrigin,
-    ): void {
-      const current = core;
-      if (current === undefined) {
-        markStickerFailed(target.id, localId);
-        return;
-      }
-      current
-        .sendMessage(target.id, coreKind(target), body, {
-          ...(payload === undefined ? {} : { payload }),
-          forward: origin,
-        })
-        .then((sent) => {
-          linkMessageIds(localId, sent.id);
-          linkLocalToServer(localId, sent.id);
-          rememberOriginId(localId, sent.id);
-          updateMessageStatus(target.id, localId, 'sent');
-        })
-        .catch(() => {
-          markStickerFailed(target.id, localId);
-        });
     }
 
     function myJid(): string | undefined {
@@ -1799,269 +1382,12 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       }
     }
 
-    // One topic row refreshed from the server (create/patch/member/AI):
-    // re-reads `/api/chats`, merges the row, and preserves its local state.
-    async function applyTopicRow(topic: Topic): Promise<void> {
-      const entries = await api.getChats();
-      rememberGroupIds(entries);
-      const rows = entries.flatMap((entry) => summariesFor(entry));
-      const match = rows.find((row) => row.topic?.id === topic.id);
-      set((state) => {
-        if (match === undefined) {
-          return state;
-        }
-        const before = state.chats.find((chat) => chat.id === match.id);
-        const prefed = applyChatPrefs([match], chatPrefRows, now().getTime())[0] ?? match;
-        const merged: ChatSummary =
-          before === undefined
-            ? prefed
-            : {
-                ...prefed,
-                ...(before.lastMessage === undefined ? {} : { lastMessage: before.lastMessage }),
-                unread: before.unread,
-                ...(before.online === undefined ? {} : { online: before.online }),
-                ...(before.onlineCount === undefined ? {} : { onlineCount: before.onlineCount }),
-              };
-        return {
-          chats: state.chats.some((chat) => chat.id === merged.id)
-            ? state.chats.map((chat) => (chat.id === merged.id ? merged : chat))
-            : sortByRecency([...state.chats, merged]),
-        };
-      });
-    }
-
-    // The topic id + group id of the topic that owns `chatId`. Rejects for a
-    // chat that is not a topic yet (e.g. a legacy group row).
-    async function topicIdFor(chatId: string): Promise<{ topicId: string; groupId: string }> {
-      const chat = get().chats.find((entry) => entry.id === chatId);
-      const topicId = chat?.topic?.id;
-      const groupId = chat?.groupId ?? groupIds.get(chatId);
-      if (topicId === undefined || groupId === undefined) {
-        throw new Error('This topic is not available yet.');
-      }
-      return { topicId, groupId };
-    }
-
-    // Pins (T-0135): load on open, focus + 60 s poll while open. A failure
-    // surfaces as `pinsError` for an explicit load, stays silent on the
-    // background tick (the next tick retries). Only the latest opened chat
-    // polls: opening another chat, or stopping its poll, ends this one.
-    // Each publish bumps the chat's revision once, so `pins(chatId)`
-    // selectors re-fire exactly once per publish.
-    let pinsRevision = 0;
-    const pinsRevisionByChat = new Map<string, number>();
-
-    // Publishes one chat's pins and bumps its revision, so selectors for
-    // that chat re-fire exactly once per publish.
-    function publishPins(chatId: string, pins: Pin[]): void {
-      pinsByChat.set(chatId, pins);
-      pinsRevision += 1;
-      pinsRevisionByChat.set(chatId, pinsRevision);
-      set((state) => ({
-        pinsError: state.pinsError?.chatId === chatId ? undefined : state.pinsError,
-      }));
-    }
-
-    // Publishes an optimistic pins change (pin/unpin/rollback) for one
-    // chat: same single bump, so the revision always matches the map.
-    function publishOptimisticPins(chatId: string, pins: Pin[]): void {
-      pinsByChat.set(chatId, pins);
-      pinsRevision += 1;
-      pinsRevisionByChat.set(chatId, pinsRevision);
-      set((state) => ({ pinsError: state.pinsError }));
-    }
-
-    async function loadPins(chatId: string, loud: boolean): Promise<void> {
-      try {
-        publishPins(chatId, await pinsApi.listPins(chatId));
-      } catch {
-        if (loud) {
-          set({ pinsError: { chatId, message: 'Could not load pins. Try again.' } });
-        }
-      }
-    }
-
-    function startPinsPolling(chatId: string, gen: number): void {
-      stopPinsPolling();
-      const tick = (): void => {
-        if (gen !== generation || get().activeChatId !== chatId) {
-          return;
-        }
-        if (!isVisible()) {
-          return;
-        }
-        void loadPins(chatId, false);
-      };
-      pinsPollTimer = setInterval(tick, PINS_REFRESH_INTERVAL_MS);
-      removePinsPollListener = appState.subscribe((state) => {
-        if (state === 'active' && gen === generation && get().activeChatId === chatId) {
-          void loadPins(chatId, false);
-        }
-      });
-    }
-
-    // Ends the pins poll of the open chat: leaving the chat, opening
-    // another one, or stopping the store. Ends a no-op when nothing polls.
-    function stopPinsPolling(): void {
-      if (pinsPollTimer !== undefined) {
-        clearInterval(pinsPollTimer);
-        pinsPollTimer = undefined;
-      }
-      if (removePinsPollListener !== undefined) {
-        removePinsPollListener();
-        removePinsPollListener = undefined;
-      }
-    }
-
-    // Whether the viewer may pin in a chat: either side of a DM; for topics
-    // a group owner/admin whose detail has loaded (roles ride `getGroup`).
-    // The topic-creator edge is server-enforced only, like on web.
-    function canPinIn(chatId: string): boolean {
-      const state = get();
-      const chat = state.chats.find((entry) => entry.id === chatId);
-      if (chat === undefined) {
-        return false;
-      }
-      if (chat.kind === 'dm') {
-        return true;
-      }
-      if (chat.topic === undefined || chat.groupId === undefined) {
-        return false;
-      }
-      const detail = groupDetails.get(chat.groupId);
-      const meId = state.me?.id ?? state.currentUserId;
-      const role = detail?.members.find((member) => member.userId === meId)?.role;
-      return role === 'owner' || role === 'admin';
-    }
-
-    // The periodic + foreground refresh: refetches `/api/chats` while active
-    // so a topic created, made private, or where I was removed appears or
-    // disappears without a reload. Failures are silent; the next tick retries.
-    function startTopicsPolling(gen: number): void {
-      if (topicsPollTimer !== undefined) {
-        clearInterval(topicsPollTimer);
-        topicsPollTimer = undefined;
-      }
-      if (removeTopicsPollListener !== undefined) {
-        removeTopicsPollListener();
-        removeTopicsPollListener = undefined;
-      }
-      const tick = (): void => {
-        if (gen !== generation) {
-          return;
-        }
-        if (!isVisible()) {
-          return;
-        }
-        void refreshChats();
-      };
-      topicsPollTimer = setInterval(tick, TOPIC_REFRESH_INTERVAL_MS);
-      removeTopicsPollListener = appState.subscribe((state) => {
-        if (state === 'active' && gen === generation) {
-          void refreshChats();
-        }
-      });
-    }
-
-    function stopTopicsPolling(): void {
-      if (topicsPollTimer !== undefined) {
-        clearInterval(topicsPollTimer);
-        topicsPollTimer = undefined;
-      }
-      if (removeTopicsPollListener !== undefined) {
-        removeTopicsPollListener();
-        removeTopicsPollListener = undefined;
-      }
-      stopPinsPolling();
-    }
-
-    // Loads the group detail (people + roles + AIs) of a group once, so the
-    // topics screen, the owner picker and the role checks can read it. The
-    // detail is published through `set()` so `groupDetail` selectors re-fire.
-    // Waiters (e.g. `ensureGroupMembers`) subscribe through
-    // `groupDetailSettled` so one in-flight GET serves them all.
-    const groupDetailWaiters = new Map<string, Set<() => void>>();
-
-    // Resolves once the in-flight detail load for a group settles (success
-    // or failure), so waiters share the single GET instead of fetching.
-    function groupDetailSettled(groupId: string): Promise<void> {
-      return new Promise<void>((resolve) => {
-        let set = groupDetailWaiters.get(groupId);
-        if (set === undefined) {
-          set = new Set();
-          groupDetailWaiters.set(groupId, set);
-        }
-        set.add(resolve);
-      });
-    }
-
-    function notifyGroupDetailSettled(groupId: string): void {
-      const set = groupDetailWaiters.get(groupId);
-      if (set === undefined) {
-        return;
-      }
-      groupDetailWaiters.delete(groupId);
-      for (const resolve of set) {
-        resolve();
-      }
-    }
-
-    async function ensureGroupDetail(groupId: string, force = false): Promise<void> {
-      if (groupId === '') {
-        return;
-      }
-      if (loadingGroupDetails.has(groupId)) {
-        return;
-      }
-      if (!force && groupDetails.has(groupId)) {
-        return;
-      }
-      loadingGroupDetails.add(groupId);
-      try {
-        const detail = await api.getGroup(groupId);
-        groupDetails.set(groupId, detail);
-        // Publishing a monotonically increasing revision notifies every
-        // `groupDetail(groupId)` subscriber, including screens mounted before
-        // the fetch resolved.
-        set((state) => ({ groupDetailsRevision: state.groupDetailsRevision + 1 }));
-      } catch {
-        // The sheet falls back to an empty member list and hides creation.
-      } finally {
-        loadingGroupDetails.delete(groupId);
-        notifyGroupDetailSettled(groupId);
-      }
-    }
-
     // The group id behind one chat row: topic rows carry it directly
     // (T-0139: the live row first, so a deep-linked topic works before any
     // entry flowed through `rememberGroupIds`), legacy group rows resolve it
     // through the remembered `/api/chats` entries.
     function groupIdForChat(chatId: string): string | undefined {
       return get().chats.find((entry) => entry.id === chatId)?.groupId ?? groupIds.get(chatId);
-    }
-
-    // Loads the custom roles (T-0137) of a group once, so the group screen
-    // and the topic access sheet can read them. Published through `set()`
-    // (the `groupDetailsRevision` bump) so `groupRoles` selectors re-fire.
-    // Rejects on failure so the screen can show Retry.
-    async function ensureGroupRoles(groupId: string, force = false): Promise<void> {
-      if (groupId === '') {
-        return;
-      }
-      if (loadingGroupRoles.has(groupId)) {
-        return;
-      }
-      if (!force && groupRolesById.has(groupId)) {
-        return;
-      }
-      loadingGroupRoles.add(groupId);
-      try {
-        const roles = await rolesApi.listGroupRoles(groupId);
-        groupRolesById.set(groupId, roles);
-        set((state) => ({ groupDetailsRevision: state.groupDetailsRevision + 1 }));
-      } finally {
-        loadingGroupRoles.delete(groupId);
-      }
     }
 
     // Remembers the roles of one full topic response (create/patch/roles),
@@ -2072,36 +1398,8 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       set((state) => ({ groupDetailsRevision: state.groupDetailsRevision + 1 }));
     }
 
-    // Loads the attached roles + approver role of the topic that owns
-    // `chatId` once, so the topic info sheet can read them. Rejects on
-    // failure so the sheet can show Retry.
-    async function ensureTopicRoles(chatId: string, force = false): Promise<void> {
-      const chat = get().chats.find((entry) => entry.id === chatId);
-      const topicId = chat?.topic?.id;
-      if (topicId === undefined) {
-        return;
-      }
-      if (loadingTopicRoles.has(topicId)) {
-        return;
-      }
-      if (!force && topicRolesById.has(topicId)) {
-        return;
-      }
-      loadingTopicRoles.add(topicId);
-      try {
-        const topic = await topics.getTopic(topicId);
-        rememberTopicRoles(topic);
-      } finally {
-        loadingTopicRoles.delete(topicId);
-      }
-    }
-
-    // Loads the member names of a group once per chat, so a typing indicator
-    // or a message from a member who is not a contact can still show a name.
-    // T-0147: resolves through the shared group detail only — never its own
-    // `api.getGroup`. When no detail is cached or in flight, this starts the
-    // shared detail load itself (which fills the detail cache), so concurrent
-    // rows collapse into one GET however they arrive.
+    // Remembers the member names of a group for one chat row (the loader is
+    // `ensureGroupMembers` in `effects/groups.ts`).
     function rememberMembers(chatId: string, detail: GroupDetail): void {
       const members = new Map<string, string>();
       for (const member of detail.members) {
@@ -2146,44 +1444,6 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         members.push({ jid: ai.jid, name: ai.name });
       }
       return members;
-    }
-
-    async function ensureGroupMembers(chatId: string): Promise<void> {
-      if (groupMembers.has(chatId) || loadingGroupMembers.has(chatId)) {
-        return;
-      }
-      const groupId = groupIdForChat(chatId);
-      if (groupId === undefined) {
-        return;
-      }
-      const cached = groupDetails.get(groupId);
-      if (cached !== undefined) {
-        rememberMembers(chatId, cached);
-        return;
-      }
-      loadingGroupMembers.add(chatId);
-      try {
-        // Starts the shared detail load when nothing is in flight (a no-op
-        // when someone else already started it), then waits for it: one GET
-        // serves every topic row of the group, and the fallback fills the
-        // detail cache instead of a side map.
-        await ensureGroupDetail(groupId);
-        let settled = groupDetails.get(groupId);
-        if (settled === undefined && loadingGroupDetails.has(groupId)) {
-          try {
-            await groupDetailSettled(groupId);
-          } catch {
-            return;
-          }
-          settled = groupDetails.get(groupId);
-        }
-        if (settled === undefined) {
-          return;
-        }
-        rememberMembers(chatId, settled);
-      } finally {
-        loadingGroupMembers.delete(chatId);
-      }
     }
 
     function toUiMessage(message: ChatMessage, meId: string): UiMessage {
@@ -2297,104 +1557,6 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       });
     }
 
-    function markTurnFinished(turnId: string): void {
-      if (finishedTurns.has(turnId)) {
-        return;
-      }
-      finishedTurns.add(turnId);
-      finishedTurnOrder.push(turnId);
-      while (finishedTurnOrder.length > FINISHED_TURNS_MAX) {
-        const oldest = finishedTurnOrder.shift();
-        if (oldest !== undefined) {
-          finishedTurns.delete(oldest);
-        }
-      }
-    }
-
-    function withoutDraft(
-      drafts: Record<string, DraftState>,
-      chatId: string,
-    ): Record<string, DraftState> {
-      if (drafts[chatId] === undefined) {
-        return drafts;
-      }
-      const next = { ...drafts };
-      delete next[chatId];
-      return next;
-    }
-
-    function clearDraftTimeout(chatId: string): void {
-      const timer = draftTimeouts.get(chatId);
-      if (timer !== undefined) {
-        clearTimeout(timer);
-        draftTimeouts.delete(chatId);
-      }
-    }
-
-    function clearDraftState(): void {
-      for (const timer of draftTimeouts.values()) {
-        clearTimeout(timer);
-      }
-      draftTimeouts.clear();
-      finishedTurns.clear();
-      finishedTurnOrder.length = 0;
-    }
-
-    // (Re)arms the one removal timer of a chat, replacing any previous one. It
-    // removes the draft only when the same turn is still shown, so a newer
-    // turn's draft is never dropped by an older turn's timer.
-    function armDraftRemoval(chatJid: string, turnId: string, delay: number): void {
-      clearDraftTimeout(chatJid);
-      const timer = setTimeout(() => {
-        draftTimeouts.delete(chatJid);
-        // Not marked finished here: an idle turn (e.g. a slow tool call) may
-        // resume, and its next draft must show again. `end` marks it itself.
-        set((state) => {
-          const current = state.drafts[chatJid];
-          if (current === undefined || current.turnId !== turnId) {
-            return state;
-          }
-          return { drafts: withoutDraft(state.drafts, chatJid) };
-        });
-      }, delay);
-      draftTimeouts.set(chatJid, timer);
-    }
-
-    // A draft disappears only once its final message is there, so the two never
-    // leave a gap. Each `draft` re-arms an idle timer (a dead turn, e.g. the
-    // server restarted mid-turn, would otherwise leave the bubble forever);
-    // `end` replaces it with the short fallback; the final XMPP message (a
-    // separate channel) removes the draft in the same update that adds it.
-    function handleDraftEvent(event: DraftHubEvent): void {
-      if (event.type === 'end') {
-        handleDraftEnd(event);
-        return;
-      }
-      if (finishedTurns.has(event.turnId)) {
-        return;
-      }
-      set((state) => ({
-        drafts: { ...state.drafts, [event.chatJid]: { turnId: event.turnId, text: event.text } },
-      }));
-      armDraftRemoval(event.chatJid, event.turnId, DRAFT_IDLE_MS);
-    }
-
-    function handleDraftEnd(event: DraftEndEvent): void {
-      markTurnFinished(event.turnId);
-      const shown = get().drafts[event.chatJid];
-      if (shown === undefined || shown.turnId !== event.turnId) {
-        return;
-      }
-      armDraftRemoval(event.chatJid, event.turnId, DRAFT_END_FALLBACK_MS);
-    }
-
-    function startDraftStream(gen: number): void {
-      if (gen !== generation || closeDraftStream !== undefined) {
-        return;
-      }
-      closeDraftStream = openDrafts(handleDraftEvent);
-    }
-
     function handleMessage(message: ChatMessage): void {
       // A correction or a retraction is never a chat message: it edits another
       // one, so it is ingested and returns before any rendering.
@@ -2487,8 +1649,8 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       const fromAi = message.fromJid === chatId && !isOwnSender(message.fromJid);
       const draft = get().drafts[chatId];
       if (draft !== undefined && fromAi) {
-        markTurnFinished(draft.turnId);
-        clearDraftTimeout(chatId);
+        polling.markTurnFinished(draft.turnId);
+        polling.clearDraftTimeout(chatId);
       }
       set((state) => ({
         messagesByChat: {
@@ -2525,48 +1687,6 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           recordRead(chatId, ui.id);
           core.markDisplayed(chatId, coreKind(chat), ui.id);
         }
-      }
-    }
-
-    function handleTyping(event: {
-      chatJid: string;
-      fromJid: string;
-      state: string;
-      outgoing: boolean;
-    }): void {
-      // A MUC reflects my own chat states back to me. When the sender cannot be
-      // resolved to a real JID, xmpp-core marks the reflection `outgoing` and
-      // keeps the full room JID, so the JID check alone is not enough.
-      if (event.outgoing || isOwnSender(event.fromJid)) {
-        return;
-      }
-      const chatId = event.chatJid;
-      void ensureGroupMembers(chatId);
-      const name = senderNameFor({
-        chatJid: chatId,
-        fromJid: event.fromJid,
-        outgoing: false,
-      });
-      const existing = typingTimers[chatId];
-      if (existing !== undefined) {
-        clearTimeout(existing);
-      }
-      if (event.state === 'composing') {
-        set((state) => ({ typing: { ...state.typing, [chatId]: { names: [name] } } }));
-        typingTimers[chatId] = setTimeout(() => {
-          set((state) => {
-            const next = { ...state.typing };
-            delete next[chatId];
-            return { typing: next };
-          });
-          delete typingTimers[chatId];
-        }, TYPING_CLEAR_MS);
-      } else {
-        set((state) => {
-          const next = { ...state.typing };
-          delete next[chatId];
-          return { typing: next };
-        });
       }
     }
 
@@ -2613,24 +1733,6 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       }));
     }
 
-    function subscribe(current: XmppCore): void {
-      unsubscribers = [
-        current.on('status', (status: ConnectionStatus) => {
-          set({ status });
-          if (status === 'online') {
-            flushPending();
-          }
-        }),
-        current.on('message', handleMessage),
-        current.on('typing', handleTyping),
-        current.on('displayed', handleDisplayed),
-        current.on('occupants', handleOccupants),
-        current.on('presence', handlePresence),
-        current.on('invited', handleInvited),
-        current.on('roster', handleRoster),
-      ];
-    }
-
     function nick(me: Me): string {
       const name = me.name.trim();
       if (name.length > 0) {
@@ -2639,549 +1741,136 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       return me.jid?.split('@')[0] ?? 'me';
     }
 
-    async function joinGroups(current: XmppCore, me: Me): Promise<void> {
-      for (const chat of get().chats) {
-        if (chat.kind !== 'group') {
-          continue;
-        }
-        // The detail first: it fills the cache, so the member-name fallback
-        // behind every topic row shares the same GET (T-0147 ordering).
-        const groupId = groupIdForChat(chat.id);
-        if (groupId !== undefined) {
-          void ensureGroupDetail(groupId);
-        }
-        void ensureGroupMembers(chat.id);
-        try {
-          await current.joinRoom(chat.id, nick(me));
-        } catch {
-          // A room can be joined later when the user opens it.
-        }
-      }
-    }
-
     // A group invitation or a roster push means the chat list changed on the
     // server. Refetch it, join any new group rooms and load their preview.
     function handleInvited(): void {
-      scheduleChatsRefresh();
+      events.scheduleChatsRefresh();
     }
 
     function handleRoster(): void {
-      scheduleChatsRefresh();
+      events.scheduleChatsRefresh();
     }
 
-    function scheduleChatsRefresh(): void {
-      if (refreshTimer !== undefined) {
-        clearTimeout(refreshTimer);
-      }
-      refreshTimer = setTimeout(() => {
-        refreshTimer = undefined;
-        void refreshChats();
-      }, CHAT_REFRESH_DEBOUNCE_MS);
-    }
-
-    // Merges a fresh chat list, preserving the local last message, unread
-    // count, mute flag and presence of the chats already shown. Topic entries
-    // (T-0112) expand to one row per visible topic; rows that disappeared
-    // (made private, archived, or I was removed) vanish here, and the open
-    // topic moves to the topics screen with a short, name-free notice.
-    // Chat prefs (T-0135) are applied after the merge so server rows pin,
-    // mute and archive the summaries; a pref whose chat is gone is ignored.
-    // Returns the previous chats so the caller can tell which rows are new.
-    function mergeChatEntries(entries: ChatEntry[]): Map<string, ChatSummary> {
-      const previous = get().chats;
-      const known = new Map(previous.map((chat) => [chat.id, chat]));
-      const rows = entries.flatMap((entry) => summariesFor(entry));
-      const wanted = new Set(rows.map((row) => row.id));
-      const fresh = rows.filter((row) => !known.has(row.id));
-      const kept = rows
-        .filter((row) => known.has(row.id))
-        .map((row) => {
-          const existing = known.get(row.id);
-          if (existing === undefined) {
-            return row;
-          }
-          return {
-            ...row,
-            ...(existing.lastMessage === undefined ? {} : { lastMessage: existing.lastMessage }),
-            unread: existing.unread,
-            ...(existing.online === undefined ? {} : { online: existing.online }),
-            ...(existing.onlineCount === undefined ? {} : { onlineCount: existing.onlineCount }),
-          };
-        });
-      // New chats appear at the top; the rest keep their recency order.
-      const merged = applyChatPrefs(
-        [...fresh, ...sortByRecency(kept)],
-        chatPrefRows,
-        now().getTime(),
-      );
-      set({ chats: merged });
-      rememberGroupIds(entries);
-      // A topic that disappeared while open navigates back to its group's
-      // topics screen with a short notice that never names the topic.
-      const openId = get().activeChatId;
-      if (openId !== null && !wanted.has(openId)) {
-        const was = previous.find((chat) => chat.id === openId);
-        if (was?.topic !== undefined && was.groupId !== undefined) {
-          set({
-            activeChatId: null,
-            topicNotice: { groupId: was.groupId, message: TOPIC_GONE_NOTICE },
-          });
-        } else {
-          set({ activeChatId: null });
-        }
-      }
-      return known;
-    }
-
-    // Joins the rooms of the new groups and loads their preview, best-effort.
-    // Topic rows (T-0112) each join their own room, like group rows today.
-    async function adoptChatEntries(
-      entries: ChatEntry[],
-      known: Map<string, ChatSummary>,
-    ): Promise<void> {
-      const current = core;
-      const me = get().me;
-      if (current === undefined || me === undefined) {
-        return;
-      }
-      // Dedupe the roster path per group id (T-0147): every topic row of one
-      // group joins its own room, but the member names come from one shared
-      // detail GET per group, not one per row.
-      const detailStarted = new Set<string>();
-      const freshRows = entries
-        .flatMap((entry) => summariesFor(entry))
-        .filter((row) => !known.has(row.id) && row.kind === 'group');
-      for (const row of freshRows) {
-        await current.joinRoom(row.id, nick(me)).catch(() => {});
-        const groupId = row.groupId ?? groupIds.get(row.id);
-        if (groupId !== undefined && !detailStarted.has(groupId)) {
-          detailStarted.add(groupId);
-          void ensureGroupDetail(groupId);
-        }
-        void ensureGroupMembers(row.id);
-      }
-      for (const row of entries.flatMap((entry) => summariesFor(entry))) {
-        if (known.has(row.id)) {
-          continue;
-        }
-        const chat = get().chats.find((item) => item.id === row.id);
-        if (chat !== undefined) {
-          await loadPreview(current, chat);
-        }
-      }
-    }
-
-    async function refreshChats(): Promise<void> {
-      const gen = generation;
-      let entries: ChatEntry[];
-      let prefs: ChatPref[];
-      try {
-        [entries, prefs] = await Promise.all([api.getChats(), loadPrefRows(), loadFolders()]);
-      } catch {
-        // A background refresh failure stays silent; the manual reload reports it.
-        return;
-      }
-      if (gen !== generation) {
-        return;
-      }
-
-      chatPrefRows = prefs;
-      const known = mergeChatEntries(entries);
-      flushPending();
-      await adoptChatEntries(entries, known);
-    }
-
-    // Pull-to-refresh and the list's Retry key. Unlike a background refresh it
-    // reports a failure in `chatsLoad`, and it only re-runs boot when the first
-    // boot never got as far as a core (e.g. the first `/api/chats` failed).
-    async function reloadChatsList(): Promise<void> {
-      const gen = generation;
-      let entries: ChatEntry[];
-      let prefs: ChatPref[];
-      try {
-        [entries, prefs] = await Promise.all([api.getChats(), loadPrefRows(), loadFolders()]);
-      } catch {
-        if (gen === generation) {
-          set({ chatsLoad: 'error' });
-        }
-        return;
-      }
-      if (gen !== generation) {
-        return;
-      }
-      chatPrefRows = prefs;
-      const known = mergeChatEntries(entries);
-      set({ chatsLoad: 'loaded' });
-      flushPending();
-      await adoptChatEntries(entries, known);
-    }
-
-    async function loadPreview(current: XmppCore, chat: ChatSummary): Promise<void> {
-      try {
-        const page = await current.loadHistory(chat.id, coreKind(chat), {
-          max: PREVIEW_HISTORY_MAX,
-        });
-        // Edits and reactions update derived state and never render as a
-        // bubble or preview row.
-        ingestHistoryReactions(page.messages);
-        ingestHistoryEdits(page.messages);
-        const last = page.messages
-          .filter((message) => !isReactionOnly(message) && !isEditStanza(message))
-          .at(-1);
-        if (last === undefined) {
-          return;
-        }
-        const ui = toUiMessage(last, get().currentUserId);
-        resolvePendingEdits(chat.id);
-        const preview = previewFor(withEdits(ui, chat.id));
-        set((state) => ({
-          chats: state.chats.map((entry) =>
-            entry.id === chat.id && entry.lastMessage === undefined
-              ? { ...entry, lastMessage: preview }
-              : entry,
-          ),
-        }));
-        if (lastRead[chat.id] === undefined) {
-          lastRead[chat.id] = ui.id;
-        }
-        cursors[chat.id] = page.first;
-        set((state) => ({
-          historyComplete: { ...state.historyComplete, [chat.id]: page.complete },
-        }));
-      } catch {
-        // Preview is best-effort; the chat still works when opened.
-      }
-    }
-
-    // A history load is safe only once the core is online (it is assigned
-    // before `connect()` resolves, so presence alone is not enough: a MAM query
-    // sent while still connecting fails) and, for a group, once its room joined.
-    function canLoadHistory(chat: ChatSummary): boolean {
-      return (
-        core !== undefined && get().status === 'online' && (chat.kind !== 'group' || groupsJoined)
-      );
-    }
-
-    // Runs the pending open once the core is online and the chat is known.
-    // Called after every point where either can become ready: the first chat
-    // merge, a background refresh, a manual reload and (re)connect.
-    function flushPending(): void {
-      const pending = pendingOpenChatId;
-      if (pending === undefined) {
-        return;
-      }
-      const chat = get().chats.find((entry) => entry.id === pending);
-      if (chat === undefined || !canLoadHistory(chat)) {
-        return;
-      }
-      pendingOpenChatId = undefined;
-      void openHistory(pending);
-    }
-
-    async function openHistory(chatId: string): Promise<void> {
-      const chat = get().chats.find((entry) => entry.id === chatId);
-      const current = core;
-      if (current === undefined || chat === undefined || !canLoadHistory(chat)) {
-        // The chat screen mounted before the data was there. Remember it and
-        // load once the core and the chat are both ready; never query MAM while
-        // the core is still connecting.
-        pendingOpenChatId = chatId;
-        setHistoryLoad(chatId, 'loading');
-        return;
-      }
-      if (loadingHistory.has(chatId)) {
-        // A load for this chat is already in flight; it covers this open.
-        if (pendingOpenChatId === chatId) {
-          pendingOpenChatId = undefined;
-        }
-        return;
-      }
-      if (pendingOpenChatId === chatId) {
-        pendingOpenChatId = undefined;
-      }
-      loadingHistory.add(chatId);
-      setHistoryLoad(chatId, 'loading');
-      try {
-        const page = await current.loadHistory(chatId, coreKind(chat), { max: PAGE_HISTORY_MAX });
-        // Edits and reactions update derived state and never render as a
-        // bubble or preview row.
-        ingestHistoryReactions(page.messages);
-        ingestHistoryEdits(page.messages);
-        const loaded = page.messages
-          .filter((message) => !isReactionOnly(message) && !isEditStanza(message))
-          .map((message) => toUiMessage(message, get().currentUserId));
-        resolvePendingEdits(chatId);
-        const withEditsApplied = loaded.map((message) => withEdits(message, chatId));
-        const newest = withEditsApplied.at(-1);
-        set((state) => {
-          const live = listFor(state, chatId).filter(
-            (message) => !withEditsApplied.some((item) => sameMessage(item.id, message.id)),
-          );
-          return {
-            messagesByChat: {
-              ...state.messagesByChat,
-              [chatId]: sortMessages([...withEditsApplied, ...live]),
-            },
-            historyComplete: { ...state.historyComplete, [chatId]: page.complete },
-            chats:
-              newest === undefined
-                ? state.chats
-                : state.chats.map((entry) =>
-                    entry.id === chatId ? { ...entry, lastMessage: previewFor(newest) } : entry,
-                  ),
-          };
-        });
-        cursors[chatId] = page.first;
-        refreshEdits(chatId);
-        const last = withEditsApplied.at(-1);
-        if (last !== undefined) {
-          recordRead(chatId, last.id);
-          current.markDisplayed(chatId, coreKind(chat), last.id);
-        }
-        setHistoryLoad(chatId, 'loaded');
-      } catch {
-        // Keep whatever live messages we have; the view offers a retry.
-        setHistoryLoad(chatId, 'error');
-      } finally {
-        loadingHistory.delete(chatId);
-      }
-      flushPending();
-    }
-
-    // One backwards history page, shared by `loadOlder` and `openAtMessage`.
-    async function loadOlderPage(chatId: string, cursor: string): Promise<void> {
-      const chat = get().chats.find((entry) => entry.id === chatId);
-      const current = core;
-      if (chat === undefined || current === undefined || loadingOlder.has(chatId)) {
-        return;
-      }
-      loadingOlder.add(chatId);
-      try {
-        const page = await current.loadHistory(chatId, coreKind(chat), {
-          before: cursor,
-          max: PAGE_HISTORY_MAX,
-        });
-        // Edits and reactions update derived state and never render as a
-        // bubble or preview row.
-        ingestHistoryReactions(page.messages);
-        ingestHistoryEdits(page.messages);
-        const older = page.messages
-          .filter((message) => !isReactionOnly(message) && !isEditStanza(message))
-          .map((message) => toUiMessage(message, get().currentUserId));
-        resolvePendingEdits(chatId);
-        const withEditsApplied = older.map((message) => withEdits(message, chatId));
-        set((state) => ({
-          messagesByChat: {
-            ...state.messagesByChat,
-            [chatId]: sortMessages([...withEditsApplied, ...listFor(state, chatId)]),
-          },
-          historyComplete: { ...state.historyComplete, [chatId]: page.complete },
-        }));
-        cursors[chatId] = page.first;
-        refreshEdits(chatId);
-      } catch {
-        // A failed page load leaves the cursor for a later retry.
-      } finally {
-        loadingOlder.delete(chatId);
-      }
-    }
-
-    function loadOlder(chatId: string): void {
-      const cursor = cursors[chatId];
-      if (cursor === undefined) {
-        return;
-      }
-      void loadOlderPage(chatId, cursor);
-    }
-
-    // Resolves true once the in-flight first-page load for a chat settles,
-    // so a search jump never pages past a page that is still arriving.
-    function waitForHistory(chatId: string): Promise<boolean> {
-      return new Promise<boolean>((resolve) => {
-        if (!loadingHistory.has(chatId)) {
-          resolve(true);
-          return;
-        }
-        const timer = setInterval(() => {
-          if (!loadingHistory.has(chatId)) {
-            clearInterval(timer);
-            clearTimeout(timeout);
-            resolve(true);
-          }
-        }, 25);
-        const timeout = setTimeout(() => {
-          clearInterval(timer);
-          resolve(false);
-        }, MESSAGE_JUMP_WAIT_MS);
-      });
-    }
-
-    async function boot(gen: number): Promise<void> {
-      let me: Me;
-      let entries: ChatEntry[];
-      let contacts: Contact[];
-      let prefs: ChatPref[];
-      try {
-        [me, entries, contacts, prefs] = await Promise.all([
-          api.getMe(),
-          api.getChats(),
-          api.getContacts(),
-          // Prefs ride the boot like the web store; a failure reads as no
-          // rows (older server, offline) rather than failing the boot.
-          loadPrefRows().catch((): ChatPref[] => []),
-          // Folders ride the boot too, but never fail it (T-0248).
-          loadFolders(),
-        ]);
-      } catch {
-        if (gen === generation) {
-          set({ status: 'offline', chatsLoad: 'error' });
-        }
-        return;
-      }
-      if (gen !== generation) {
-        return;
-      }
-
-      lastRead = {};
-      rememberGroupIds(entries);
-      chatPrefRows = prefs;
-      set({
-        me,
-        currentUserId: me.id,
-        chats: applyChatPrefs(
-          entries.flatMap((entry) => summariesFor(entry)),
-          prefs,
-          now().getTime(),
-        ),
-        contacts,
-        chatsLoad: 'loaded',
-        ownedAis: deps.ownedAis ?? get().ownedAis,
-      });
-      startDraftStream(gen);
-      flushPending();
-
-      let token: { jid: string; token: string; service: string; domain: string };
-      try {
-        token = await api.getXmppToken();
-      } catch {
-        if (gen === generation) {
-          set({ status: 'offline' });
-        }
-        return;
-      }
-      if (gen !== generation) {
-        return;
-      }
-      firstToken = { jid: token.jid, token: token.token };
-      // The trusted media hosts follow the XMPP token (web does the same):
-      // the upload service answers on these hosts in dev and production.
-      mediaToken = { service: token.service, domain: token.domain };
-      mediaTrustedHosts = trustedMediaHosts(mediaToken);
-      set({ mediaTrustedHosts });
-
-      const options: XmppCoreOptions = {
-        service: token.service,
-        domain: token.domain,
-        getToken: async () => {
-          if (firstToken !== undefined) {
-            const fresh = firstToken;
-            firstToken = undefined;
-            return fresh;
-          }
-          const fresh = await api.getXmppToken();
-          mediaToken = { service: fresh.service, domain: fresh.domain };
-          mediaTrustedHosts = trustedMediaHosts(mediaToken);
-          set({ mediaTrustedHosts });
-          return { jid: fresh.jid, token: fresh.token };
+    // The effect modules, built once the closure's helpers exist. `fx` bridges
+    // the concerns that still live in this closure as Promise functions.
+    const ctx: StoreCtx = {
+      ports,
+      get,
+      set,
+      s,
+      life,
+      h: {
+        sortByRecency,
+        summariesFor,
+        rememberGroupIds,
+        nick,
+        flushPending: () => history.flushPending(),
+        isVisible,
+        coreKind,
+        isReactionOnly,
+        isEditStanza,
+        sortMessages,
+        ingestHistoryReactions,
+        ingestHistoryEdits,
+        toUiMessage,
+        resolvePendingEdits,
+        withEdits,
+        previewFor,
+        refreshEdits,
+        recordRead,
+        sameMessage,
+        listFor,
+        setHistoryLoad,
+        clearSupersededMarker,
+        groupIdForChat,
+        isOwnSender,
+        senderNameFor,
+        wireTargetFor,
+        correctionTargetFor,
+        retractionTargetFor,
+        applyReactionUpdate,
+        restoreMessage,
+        restoreEdits,
+        rememberTopicRoles,
+        rememberMembers,
+        myJid,
+        aliasRoot,
+        rememberAuthor,
+        rememberOriginId,
+        linkMessageIds,
+        linkLocalToServer,
+        updateMessageStatus,
+        signatureFor,
+        stickerSignatureFor,
+        setChatMessage,
+        markStickerFailed,
+        markAttachmentFailed,
+        markVoiceFailed,
+        clearFailure,
+        clearAttachmentFailure,
+        updateMessageAttachment,
+        updateMessageVoice,
+        setUploadProgress,
+        clearUploadProgress,
+        forwardOriginFor,
+        forwardedPayloadFor,
+        forwardedUiFieldsFor,
+        startDraftStream: () => polling.startDraftStream(),
+        startTopicsPolling: () => polling.startTopicsPolling(),
+        teardown,
+        handleMessage,
+        handleTyping: (event) => events.handleTyping(event),
+        handleDisplayed,
+        handleOccupants,
+        handlePresence,
+        handleInvited,
+        handleRoster,
+      },
+      fx: {
+        get loadPrefRows() {
+          return history.loadPrefRows;
         },
-      };
+        get loadFolders() {
+          return history.loadFolders;
+        },
+        get refreshChats() {
+          return history.refreshChats;
+        },
+        loadPreview: (current, chat) => history.loadPreview(current, chat),
+        loadPins: (chatId, loud) => pins.loadPins(chatId, loud),
+        joinGroups: (current, me) => groups.joinGroups(current, me),
+        ensureGroupDetail: (groupId, force) => groups.ensureGroupDetail(groupId, force),
+        ensureGroupMembers: (chatId) => groups.ensureGroupMembers(chatId),
+        startPinsPolling: (chatId) => polling.startPinsPolling(chatId),
+        restartBoot: () => lifecycle.restartBoot(),
+      },
+      ...makeRunners(ports, life),
+    };
+    const lifecycle = makeLifecycle(ctx);
+    const polling = makePolling(ctx);
+    const history = makeHistory(ctx);
+    const send = makeSend(ctx);
+    const groups = makeGroups(ctx);
+    const events = makeEvents(ctx);
+    const pins = makePins(ctx);
 
-      const current = createXmpp(options);
-      core = current;
-      subscribe(current);
-      try {
-        await current.connect();
-      } catch {
-        if (gen === generation) {
-          set({ status: 'offline' });
-        }
-        return;
-      }
-      if (gen !== generation) {
-        void current.disconnect().catch(() => {});
-        return;
-      }
-      set({ status: 'online' });
-      flushPending();
-      await joinGroups(current, me);
-      if (gen !== generation) {
-        return;
-      }
-      groupsJoined = true;
-      flushPending();
-      await Promise.all(get().chats.map((chat) => loadPreview(current, chat)));
-      if (gen === generation) {
-        set((state) => ({ chats: sortByRecency(state.chats) }));
-      }
-    }
-
-    // A real device suspends the socket in the background, so on resume we must
-    // not assume it is alive: reconnect whenever the status is not `online`.
-    // A boot already in flight for the same generation (slow network, quick
-    // background/foreground) is awaited instead of starting a second one:
-    // two boots would create two cores and double every XMPP subscription.
-    // A boot for an older generation belongs to a stopped or reloaded store:
-    // it bails at its `gen !== generation` checks and creates no core, so a
-    // newer generation starts a fresh boot instead of waiting on the stale
-    // one (the stale one still ends by itself).
-    let bootPromise: { gen: number; promise: Promise<void> } | undefined;
-    async function runBoot(gen: number): Promise<void> {
-      if (bootPromise === undefined || bootPromise.gen !== gen) {
-        const fresh = boot(gen).finally(() => {
-          if (bootPromise?.promise === fresh) {
-            bootPromise = undefined;
-          }
-        });
-        bootPromise = { gen, promise: fresh };
-      }
-      await bootPromise.promise;
-    }
-    async function reconnect(): Promise<void> {
-      if (!started) {
-        return;
-      }
-      if (bootPromise !== undefined) {
-        const gen = generation;
-        await bootPromise.promise;
-        // The awaited boot belonged to an older generation, or it failed
-        // before creating a core (offline token fetch): try again for this
-        // generation instead of silently dropping the resume.
-        if (core === undefined && started && gen === generation) {
-          await runBoot(gen);
-        }
-        return;
-      }
-      const current = core;
-      if (current === undefined) {
-        await runBoot(generation);
-        return;
-      }
-      if (get().status === 'online') {
-        return;
-      }
-      try {
-        await current.connect();
-        set({ status: 'online' });
-        flushPending();
-        const me = get().me;
-        if (me !== undefined) {
-          await joinGroups(current, me);
-          groupsJoined = true;
-        }
-        flushPending();
-      } catch {
-        set({ status: 'offline' });
-      }
+    // What `stop()` clears besides the scopes: timers, caches, per-session maps.
+    function teardown(): void {
+      events.clearTimers();
+      polling.clearDraftState();
+      groupDetails.clear();
+      loadingGroupDetails.clear();
+      groupRolesById.clear();
+      loadingGroupRoles.clear();
+      topicRolesById.clear();
+      loadingTopicRoles.clear();
+      set({ drafts: {}, finishedDraftMessages: {}, edits: {}, reactions: {} });
+      loadingHistory.clear();
+      messageAliases.clear();
+      messageAuthors.clear();
+      messageOriginIds.clear();
+      messageServerIds.clear();
+      pendingUploads.clear();
     }
 
     return {
@@ -3212,1145 +1901,28 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       groupMembers: (chatId) => mentionMembersFor(chatId),
       groupIdForChat: (chatId) => groupIdForChat(chatId),
       jumpTarget: undefined,
-      openChat: (chatId) => {
-        set((state) => {
-          const chat = state.chats.find((entry) => entry.id === chatId);
-          const noticeGroup = state.topicNotice?.groupId;
-          const keepNotice =
-            noticeGroup !== undefined &&
-            chat?.groupId !== undefined &&
-            chat.groupId === noticeGroup;
-          return {
-            activeChatId: chatId,
-            topicNotice: keepNotice ? state.topicNotice : undefined,
-          };
-        });
-        recordRead(chatId, lastRead[chatId]);
-        // The detail first: it fills the cache, so the member-name fallback
-        // shares the same GET on a cold open (T-0147 ordering).
-        {
-          const groupId = groupIdForChat(chatId);
-          if (groupId !== undefined) {
-            void ensureGroupDetail(groupId);
-          }
-        }
-        void ensureGroupMembers(chatId);
-        // Pins load when the chat opens and refresh on focus + 60 s while
-        // it is open, like the web store (no realtime channel yet).
-        void loadPins(chatId, true);
-        startPinsPolling(chatId, generation);
-        if (pendingOpenChatId !== undefined && pendingOpenChatId !== chatId) {
-          clearSupersededMarker(pendingOpenChatId);
-        }
-        pendingOpenChatId = chatId;
-        void openHistory(chatId);
-      },
-      reloadChats: () => {
-        set({ chatsLoad: 'loading' });
-        // A first boot that never reached a core (e.g. `/api/chats` failed) is
-        // retried whole; a running session just refetches the list.
-        if (core === undefined) {
-          generation += 1;
-          void runBoot(generation);
-          return;
-        }
-        void reloadChatsList();
-      },
-      retryHistory: (chatId) => {
-        void openHistory(chatId);
-      },
-      loadOlder,
-      openAtMessage: async (chatId, messageId) => {
-        get().openChat(chatId);
-        const chat = get().chats.find((entry) => entry.id === chatId);
-        const current = core;
-        if (chat === undefined || current === undefined || !canLoadHistory(chat)) {
-          const found = listFor(get(), chatId).find((item) => sameMessage(item.id, messageId));
-          if (found === undefined) {
-            throw new Error('message_not_found');
-          }
-          set({ jumpTarget: { chatId, messageId } });
-          return found;
-        }
-        // Wait for the opening page when it is still in flight, then page
-        // backwards until the message is loaded or history runs out. A
-        // stalled wait (false) breaks out to "Message not found".
-        for (let pages = 0; pages < MESSAGE_JUMP_MAX_PAGES; pages += 1) {
-          const loaded = listFor(get(), chatId).find((item) => sameMessage(item.id, messageId));
-          if (loaded !== undefined) {
-            set({ jumpTarget: { chatId, messageId } });
-            return loaded;
-          }
-          if (get().historyComplete[chatId] === true) {
-            break;
-          }
-          if (loadingHistory.has(chatId)) {
-            if (!(await waitForHistory(chatId))) {
-              break;
-            }
-            continue;
-          }
-          const cursor = cursors[chatId];
-          if (cursor === undefined) {
-            if (!(await waitForHistory(chatId))) {
-              break;
-            }
-            continue;
-          }
-          await loadOlderPage(chatId, cursor);
-        }
-        const found = listFor(get(), chatId).find((item) => sameMessage(item.id, messageId));
-        if (found === undefined) {
-          throw new Error('message_not_found');
-        }
-        set({ jumpTarget: { chatId, messageId } });
-        return found;
-      },
+      openChat: (chatId) => history.openChat(chatId),
+      reloadChats: () => history.reloadChats(),
+      retryHistory: (chatId) => history.retryHistory(chatId),
+      loadOlder: (chatId) => history.loadOlder(chatId),
+      openAtMessage: (chatId, messageId) => history.openAtMessage(chatId, messageId),
       clearJumpTarget: () => set({ jumpTarget: undefined }),
-      sendTyping: (chatId) => {
-        const chat = get().chats.find((entry) => entry.id === chatId);
-        if (core !== undefined && chat !== undefined) {
-          core.sendTyping(chatId, coreKind(chat), 'composing');
-        }
-      },
-      sendText: (chatId, text, options) => {
-        const trimmed = text.trim();
-        const chat = get().chats.find((entry) => entry.id === chatId);
-        if (trimmed.length === 0 || chat === undefined) {
-          return;
-        }
-        const mentions = mentionsForTrimmedText(text, trimmed, options?.mentions ?? []);
-        sequence += 1;
-        const localId = `local-${sequence}`;
-        const replyTo = options?.replyTo;
-        const message: UiMessage = {
-          id: localId,
-          chatId,
-          senderId: get().currentUserId,
-          senderName: 'You',
-          text: trimmed,
-          createdAt: now(),
-          status: 'sending',
-          ...(mentions.length === 0 ? {} : { mentions }),
-          ...(replyTo === undefined ? {} : { replyTo }),
-        };
-        const signature = signatureFor(chatId, trimmed, replyTo);
-        const queue = pendingOutgoing.get(signature) ?? [];
-        queue.push(localId);
-        pendingOutgoing.set(signature, queue);
-        setChatMessage(chatId, message, true);
-        const mine = myJid();
-        if (mine !== undefined) {
-          rememberAuthor(localId, { jid: mine, resolved: true });
-        }
-
-        if (core === undefined) {
-          return;
-        }
-        core
-          .sendMessage(
-            chatId,
-            coreKind(chat),
-            trimmed,
-            mentions.length === 0 && replyTo === undefined
-              ? undefined
-              : {
-                  ...(replyTo === undefined ? {} : { replyTo: { id: replyTo.id } }),
-                  ...(mentions.length === 0
-                    ? {}
-                    : {
-                        mentions: mentions.map((mention) => ({
-                          jid: mention.jid,
-                          begin: mention.begin,
-                          end: mention.end,
-                        })),
-                      }),
-                },
-          )
-          .then((sent) => {
-            linkMessageIds(localId, sent.id);
-            linkLocalToServer(localId, sent.id);
-            rememberOriginId(localId, sent.id);
-            updateMessageStatus(chatId, localId, 'sent');
-          })
-          .catch(() => {
-            // The message stays marked as sending; a reconnect can resend later.
-          });
-      },
-      sendSticker: (chatId, sticker, options) => {
-        const chat = get().chats.find((entry) => entry.id === chatId);
-        if (chat === undefined) {
-          return;
-        }
-        // The choice may come from tampered storage recents or drifted pack
-        // rows: validate before the optimistic insert, because `encodePayload`
-        // throws synchronously on an invalid payload and would otherwise leave
-        // a stuck `sending` bubble with no retry.
-        const data = {
-          pack_id: sticker.packId,
-          sticker_id: sticker.stickerId,
-          url: sticker.url,
-          ...(sticker.emoji === undefined ? {} : { emoji: sticker.emoji }),
-          width: sticker.width,
-          height: sticker.height,
-          mime: sticker.mime,
-        };
-        if (!isValid(StickerSchema)(data)) {
-          set({ actionError: { chatId, message: 'That sticker could not be sent.' } });
-          return;
-        }
-        sequence += 1;
-        const localId = `local-${sequence}`;
-        const replyTo = options?.replyTo;
-        const body = sticker.emoji ?? '';
-        const payload = { v: 0, type: 'sticker', data } as const;
-        const message: UiMessage = {
-          id: localId,
-          chatId,
-          senderId: get().currentUserId,
-          senderName: 'You',
-          text: body,
-          createdAt: now(),
-          status: 'sending',
-          card: payload,
-          ...(replyTo === undefined ? {} : { replyTo }),
-        };
-        const signature = stickerSignatureFor(chatId, body, sticker.stickerId, replyTo);
-        const queue = pendingOutgoing.get(signature) ?? [];
-        queue.push(localId);
-        pendingOutgoing.set(signature, queue);
-        set((state) => ({
-          // A later validated send clears this chat's stale error banner.
-          actionError: state.actionError?.chatId === chatId ? undefined : state.actionError,
-        }));
-        setChatMessage(chatId, message, true);
-        const mine = myJid();
-        if (mine !== undefined) {
-          rememberAuthor(localId, { jid: mine, resolved: true });
-        }
-        runStickerSend(chat, localId, payload, body, replyTo);
-      },
-      forwardMessages: (targets, messages, options) => {
-        const comment = options?.comment?.trim();
-        const visited = new Set<string>();
-        for (const targetId of targets) {
-          if (visited.has(targetId)) {
-            continue;
-          }
-          visited.add(targetId);
-          const target = get().chats.find((entry) => entry.id === targetId);
-          if (target === undefined) {
-            continue;
-          }
-          let queued = false;
-          for (const message of messages) {
-            if (
-              message.deleted === true ||
-              message.failed === true ||
-              message.status === 'failed' ||
-              message.status === 'sending'
-            ) {
-              continue;
-            }
-            const origin = forwardOriginFor(message);
-            if (origin === undefined) {
-              continue;
-            }
-            const payload = forwardedPayloadFor(message);
-            const body = message.text ?? '';
-            if (body.length === 0 && payload === undefined) {
-              continue;
-            }
-            sequence += 1;
-            const localId = `local-${sequence}`;
-            const copy: UiMessage = {
-              id: localId,
-              chatId: targetId,
-              senderId: get().currentUserId,
-              senderName: 'You',
-              createdAt: now(),
-              status: 'sending',
-              forward: origin,
-              ...(body.length === 0 ? {} : { text: body }),
-              ...(payload === undefined ? {} : forwardedUiFieldsFor(payload)),
-            };
-            // Key the echo queue exactly as the matching normal send does, so
-            // the server echo links to this bubble instead of duplicating it.
-            const signature =
-              payload !== undefined && payload.type === 'sticker'
-                ? stickerSignatureFor(targetId, body, payload.data.sticker_id, undefined)
-                : signatureFor(targetId, body, undefined);
-            const queue = pendingOutgoing.get(signature) ?? [];
-            queue.push(localId);
-            pendingOutgoing.set(signature, queue);
-            setChatMessage(targetId, copy, true);
-            const mine = myJid();
-            if (mine !== undefined) {
-              rememberAuthor(localId, { jid: mine, resolved: true });
-            }
-            queued = true;
-            runForwardSend(target, localId, body, payload, origin);
-          }
-          // The comment is a separate normal text message, only when this
-          // target received at least one copy.
-          if (queued && comment !== undefined && comment.length > 0) {
-            get().sendText(targetId, comment);
-          }
-        }
-      },
-      retrySticker: (chatId, messageId) => {
-        const chat = get().chats.find((entry) => entry.id === chatId);
-        if (chat === undefined) {
-          return;
-        }
-        const message = listFor(get(), chatId).find((item) => sameMessage(item.id, messageId));
-        const payload =
-          message?.card !== undefined && message.card.type === 'sticker' ? message.card : undefined;
-        if (message === undefined || payload === undefined) {
-          return;
-        }
-        if (!isValid(StickerSchema)(payload.data)) {
-          markStickerFailed(chatId, messageId);
-          return;
-        }
-        set((state) => ({
-          // A later validated send clears this chat's stale error banner.
-          actionError: state.actionError?.chatId === chatId ? undefined : state.actionError,
-          messagesByChat: {
-            ...state.messagesByChat,
-            [chatId]: listFor(state, chatId).map((item) =>
-              sameMessage(item.id, messageId) ? clearFailure(item) : item,
-            ),
-          },
-        }));
-        // Enqueue the id under the sticker signature so the server echo
-        // reconciles with this bubble instead of duplicating it (a retry
-        // without the enqueue keeps the local row AND appends the echo).
-        const signature = stickerSignatureFor(
-          chatId,
-          message.text ?? '',
-          payload.data.sticker_id,
-          message.replyTo,
-        );
-        const queue = pendingOutgoing.get(signature) ?? [];
-        queue.push(messageId);
-        pendingOutgoing.set(signature, queue);
-        runStickerSend(chat, messageId, payload, message.text ?? '', message.replyTo);
-      },
-      sendAttachment: (chatId, file, options) => {
-        const chat = get().chats.find((entry) => entry.id === chatId);
-        if (chat === undefined) {
-          return;
-        }
-        // An empty or oversized file is refused inline, before any request,
-        // exactly like web's composer. The cap follows the server upload
-        // limit (50 MiB); a refused slot still fails on Retry with the same
-        // message. Only a REAL zero says "That file is empty": an unknown
-        // size (undefined) is never refused as empty — the upload decides.
-        if (file.size !== undefined && file.size === 0) {
-          set({ actionError: { chatId, message: 'That file is empty.' } });
-          return;
-        }
-        if (file.size !== undefined && file.size > MAX_ATTACHMENT_BYTES) {
-          set({ actionError: { chatId, message: 'That file is larger than 50 MB.' } });
-          return;
-        }
-        sequence += 1;
-        const localId = `local-${sequence}`;
-        const replyTo = options?.replyTo;
-        const caption = options?.caption?.trim() ?? '';
-        const kind = attachmentDataFor(file, '').kind;
-        const localUrl = kind === 'image' ? file.uri : '';
-        const message: UiMessage = {
-          id: localId,
-          chatId,
-          senderId: get().currentUserId,
-          senderName: 'You',
-          createdAt: now(),
-          status: 'sending',
-          attachment: attachmentDataFor(file, localUrl),
-          ...(caption.length === 0 ? {} : { text: caption }),
-          ...(replyTo === undefined ? {} : { replyTo }),
-        };
-        // The local preview URI rides alongside (never on the wire): the
-        // bubble shows the local bytes while the upload runs.
-        (message as Partial<MobileMessage>).localUri = file.uri;
-        const signature = signatureFor(chatId, caption, replyTo);
-        const queue = pendingOutgoing.get(signature) ?? [];
-        queue.push(localId);
-        pendingOutgoing.set(signature, queue);
-        set((state) => ({
-          // A later validated send clears this chat's stale error banner.
-          actionError: state.actionError?.chatId === chatId ? undefined : state.actionError,
-        }));
-        setChatMessage(chatId, message, true);
-        pendingUploads.set(localId, file);
-        const mine = myJid();
-        if (mine !== undefined) {
-          rememberAuthor(localId, { jid: mine, resolved: true });
-        }
-        runAttachmentUpload(chat, localId, file, caption, replyTo);
-      },
-      retryAttachment: (chatId, messageId) => {
-        const root = aliasRoot(messageId);
-        const file = pendingUploads.get(root) ?? pendingUploads.get(messageId);
-        const chat = get().chats.find((entry) => entry.id === chatId);
-        if (file === undefined || chat === undefined) {
-          return;
-        }
-        const message = listFor(get(), chatId).find((item) => sameMessage(item.id, messageId));
-        if (message === undefined) {
-          return;
-        }
-        clearAttachmentFailure(chatId, messageId);
-        // The retry re-keys the local preview (a retried message keeps the
-        // local URI) and re-runs the upload from the kept bytes.
-        set((state) => ({
-          messagesByChat: {
-            ...state.messagesByChat,
-            [chatId]: listFor(state, chatId).map((item) =>
-              sameMessage(item.id, messageId) ? { ...item, localUri: file.uri } : item,
-            ),
-          },
-        }));
-        runAttachmentUpload(chat, messageId, file, message.text ?? '', message.replyTo);
-      },
-      cancelAttachment: (chatId, messageId) => {
-        // Cancelling aborts only this message's in-flight PUT and removes
-        // the optimistic bubble, like web's composer cancel. The bytes are
-        // dropped, so a later Retry is a no-op. Other messages' uploads keep
-        // running: the uploader keys controllers per message id.
-        deps.uploader?.cancel(aliasRoot(messageId));
-        deps.uploader?.cancel(messageId);
-        pendingUploads.delete(aliasRoot(messageId));
-        pendingUploads.delete(messageId);
-        set((state) => ({
-          messagesByChat: {
-            ...state.messagesByChat,
-            [chatId]: listFor(state, chatId).filter((item) => !sameMessage(item.id, messageId)),
-          },
-        }));
-      },
-      sendVoice: (chatId, recording, options) => {
-        const chat = get().chats.find((entry) => entry.id === chatId);
-        if (chat === undefined) {
-          return;
-        }
-        // The send boundary (finding 1, review round 2): refuse an
-        // over-limit recording here too, before any optimistic bubble, slot
-        // request or PUT — the composer is not the only caller. The banner
-        // names the actual refusal (finding 4, round 3), never a guess.
-        try {
-          validateRecording(recording);
-        } catch (error) {
-          set({ actionError: { chatId, message: voiceSendRefusalMessage(error) } });
-          return;
-        }
-        const durationMs = Math.max(1, Math.round(recording.durationMs));
-        const waveform = recording.waveform.length > 0 ? recording.waveform : [12];
-        sequence += 1;
-        const localId = `local-${sequence}`;
-        const replyTo = options?.replyTo;
-        const kept: RecordedVoice = {
-          uri: recording.uri,
-          mimeType: recording.mimeType,
-          size: recording.size,
-          durationMs,
-        };
-        const message: UiMessage = {
-          id: localId,
-          chatId,
-          senderId: get().currentUserId,
-          senderName: 'You',
-          createdAt: now(),
-          status: 'sending',
-          voice: {
-            duration_ms: durationMs,
-            mime: 'audio/mp4',
-            waveform,
-            ...(recording.uri === '' ? {} : { url: recording.uri }),
-          },
-          ...(replyTo === undefined ? {} : { replyTo }),
-        };
-        // The local file URI rides alongside (never on the wire): the bubble
-        // plays the local bytes while the upload runs.
-        (message as Partial<MobileMessage>).localUri = recording.uri;
-        const signature = signatureFor(chatId, '', replyTo);
-        const queue = pendingOutgoing.get(signature) ?? [];
-        queue.push(localId);
-        pendingOutgoing.set(signature, queue);
-        set((state) => ({
-          // A later validated send clears this chat's stale error banner.
-          actionError: state.actionError?.chatId === chatId ? undefined : state.actionError,
-        }));
-        setChatMessage(chatId, message, true);
-        pendingVoices.set(localId, kept);
-        const mine = myJid();
-        if (mine !== undefined) {
-          rememberAuthor(localId, { jid: mine, resolved: true });
-        }
-        runVoiceSend(chat, localId, kept, waveform, replyTo);
-      },
-      retryVoice: (chatId, messageId) => {
-        const root = aliasRoot(messageId);
-        const kept = pendingVoices.get(root) ?? pendingVoices.get(messageId);
-        const chat = get().chats.find((entry) => entry.id === chatId);
-        if (kept === undefined || chat === undefined) {
-          return;
-        }
-        const message = listFor(get(), chatId).find((item) => sameMessage(item.id, messageId));
-        if (message === undefined || message.voice === undefined || message.failed !== true) {
-          return;
-        }
-        clearAttachmentFailure(chatId, messageId);
-        // The retry re-keys the local preview and re-runs the pipeline from
-        // the kept recording.
-        set((state) => ({
-          messagesByChat: {
-            ...state.messagesByChat,
-            [chatId]: listFor(state, chatId).map((item) =>
-              sameMessage(item.id, messageId) ? { ...item, localUri: kept.uri } : item,
-            ),
-          },
-        }));
-        runVoiceSend(chat, messageId, kept, message.voice.waveform, message.replyTo);
-      },
-      cancelVoice: (chatId, messageId) => {
-        // Cancelling aborts only this message's in-flight PUT and removes
-        // the optimistic bubble. The recording is dropped, so a later Retry
-        // is a no-op. The uploader keys controllers per message id.
-        deps.uploader?.cancel(aliasRoot(messageId));
-        deps.uploader?.cancel(messageId);
-        pendingVoices.delete(aliasRoot(messageId));
-        pendingVoices.delete(messageId);
-        set((state) => ({
-          messagesByChat: {
-            ...state.messagesByChat,
-            [chatId]: listFor(state, chatId).filter((item) => !sameMessage(item.id, messageId)),
-          },
-        }));
-      },
-      react: (chatId, messageId, emoji) => {
-        const chat = get().chats.find((entry) => entry.id === chatId);
-        const mine = myJid();
-        if (chat === undefined || mine === undefined) {
-          return;
-        }
-        // The local key is alias-resolved; the wire target must be the server
-        // id everyone else knows. An unacked message has none yet, so reacting
-        // would send a target nobody could match: do nothing until it has one.
-        const targetId = aliasRoot(messageId);
-        const wireTarget = wireTargetFor(messageId);
-        const currentCore = core;
-        if (wireTarget === undefined || currentCore === undefined) {
-          return;
-        }
-        const current = get().reactions[chatId]?.targets[targetId]?.[mine]?.emojis ?? [];
-        const next = current.includes(emoji)
-          ? current.filter((entry) => entry !== emoji)
-          : [...current, emoji];
-        const apply = (emojis: string[]): void => {
-          applyReactionUpdate(chatId, targetId, mine, emojis, now().getTime());
-        };
-        apply(next);
-        currentCore.sendReactions(chatId, coreKind(chat), wireTarget, next).catch(() => {
-          // The send failed: undo the optimistic toggle.
-          apply(current);
-        });
-      },
-      startEdit: (chatId, messageId) => {
-        set({ editTarget: { chatId, messageId }, actionError: undefined });
-      },
-      cancelEdit: () => {
-        set({ editTarget: undefined });
-      },
-      editMessage: (chatId, messageId, text) => {
-        const trimmed = text.trim();
-        const chat = get().chats.find((entry) => entry.id === chatId);
-        const mine = myJid();
-        if (chat === undefined || mine === undefined || trimmed.length === 0) {
-          return;
-        }
-        const message = listFor(get(), chatId).find((item) => sameMessage(item.id, messageId));
-        if (message === undefined || !canEditMessage(message, get().currentUserId, now())) {
-          return;
-        }
-        // The UI already blocks a no-op edit; the store does too, so no stanza
-        // is ever sent for an unchanged text.
-        if (message.text === trimmed) {
-          return;
-        }
-        // XEP-0308 names the original by its sender-generated id.
-        const wireTarget = correctionTargetFor(messageId);
-        const currentCore = core;
-        if (wireTarget === undefined || currentCore === undefined) {
-          return;
-        }
-        const targetId = aliasRoot(messageId);
-        const author: EditAuthor = { jid: mine, resolved: true };
-        const priorMentions = rebaseMentions(message.text ?? '', text, message.mentions ?? []);
-        const mentions = mentionsForTrimmedText(text, trimmed, priorMentions);
-        const update: EditUpdate = {
-          kind: 'correction',
-          targetId,
-          author,
-          text: trimmed,
-          order: now().getTime(),
-        };
-        if (mentions.length > 0) {
-          update.mentions = mentions;
-        }
-        const previous = get().edits[chatId];
-        set({ actionError: undefined });
-        set((state) => ({
-          edits: {
-            ...state.edits,
-            [chatId]: applyEdit(state.edits[chatId] ?? emptyEdits(), update, author),
-          },
-        }));
-        refreshEdits(chatId);
-        currentCore
-          .sendCorrection(
-            chatId,
-            coreKind(chat),
-            wireTarget,
-            trimmed,
-            mentions.length === 0
-              ? undefined
-              : {
-                  mentions: mentions.map((mention) => ({
-                    jid: mention.jid,
-                    begin: mention.begin,
-                    end: mention.end,
-                  })),
-                },
-          )
-          .catch(() => {
-            restoreMessage(chatId, message);
-            restoreEdits(chatId, previous);
-            set({
-              actionError: { chatId, message: 'Could not save the edit. Try again.' },
-            });
-          });
-      },
-      deleteForEveryone: (chatId, messageId) => {
-        const chat = get().chats.find((entry) => entry.id === chatId);
-        const mine = myJid();
-        if (chat === undefined || mine === undefined) {
-          return;
-        }
-        const message = listFor(get(), chatId).find((item) => sameMessage(item.id, messageId));
-        if (message === undefined || !canDeleteMessage(message, get().currentUserId)) {
-          return;
-        }
-        const wireTarget = retractionTargetFor(chat, messageId);
-        const currentCore = core;
-        if (wireTarget === undefined || currentCore === undefined) {
-          return;
-        }
-        const targetId = aliasRoot(messageId);
-        const author: EditAuthor = { jid: mine, resolved: true };
-        const update: EditUpdate = {
-          kind: 'retraction',
-          targetId,
-          author,
-          order: now().getTime(),
-        };
-        const previous = get().edits[chatId];
-        set({ actionError: undefined });
-        set((state) => ({
-          edits: {
-            ...state.edits,
-            [chatId]: applyEdit(state.edits[chatId] ?? emptyEdits(), update, author),
-          },
-        }));
-        refreshEdits(chatId);
-        currentCore.sendRetraction(chatId, coreKind(chat), wireTarget).catch(() => {
-          restoreMessage(chatId, message);
-          restoreEdits(chatId, previous);
-          set({
-            actionError: { chatId, message: 'Could not delete the message. Try again.' },
-          });
-        });
-      },
-      dismissActionError: () => {
-        set({ actionError: undefined });
-      },
+      ...send,
+      ...events.actions,
       topicNotice: undefined,
       dismissTopicNotice: () => set({ topicNotice: undefined }),
       groupDetailsRevision: 0,
-      groupDetail: (groupId) => {
-        // Reading the revision subscribes the selector to detail loads.
-        void get().groupDetailsRevision;
-        return groupDetails.get(groupId);
-      },
-      refreshGroupDetail: (groupId) => {
-        void ensureGroupDetail(groupId, true);
-      },
-      ensureGroupDetail: (groupId) => {
-        void ensureGroupDetail(groupId);
-      },
-      ownedAis: deps.ownedAis ?? [],
-      setChatPref: async (chatId, input) => {
-        const api = deps.chatPrefsApi;
-        if (api === undefined) {
-          throw new Error('Chat preferences are not available.');
-        }
-        const nowMs = now().getTime();
-        // Optimistic: merge the intended row into a copy of the full saved
-        // rows first, like the web store; the saved truth below replaces
-        // it. Merging into the full rows (not a single-row list) keeps
-        // every other chat's prefs, and seeding from the chat's own saved
-        // row keeps its kept fields on a partial write: a single row built
-        // from the input alone would strip both until the PUT returns.
-        const optimisticRows = [
-          ...chatPrefRows.filter((row) => row.chatJid.toLowerCase() !== chatId.toLowerCase()),
-          optimisticPrefRow(chatId, chatPrefRows, input as PutChatPrefInput, new Date(nowMs)),
-        ];
-        set((state) => ({ chats: applyChatPrefs(state.chats, optimisticRows, nowMs) }));
-        try {
-          const saved = await api.putChatPref(chatId, input as PutChatPrefInput);
-          chatPrefRows =
-            saved === null
-              ? chatPrefRows.filter((row) => row.chatJid.toLowerCase() !== chatId.toLowerCase())
-              : [
-                  ...chatPrefRows.filter(
-                    (row) => row.chatJid.toLowerCase() !== chatId.toLowerCase(),
-                  ),
-                  saved,
-                ];
-          const refreshed = now().getTime();
-          set((state) => ({ chats: applyChatPrefs(state.chats, chatPrefRows, refreshed) }));
-        } catch (error) {
-          // A failure re-merges the saved rows instead of restoring the
-          // pre-write snapshot: anything that landed mid-flight (a new
-          // message, an unread bump, a background refresh) survives, and
-          // only the failed pref change is dropped.
-          set((state) => ({ chats: applyChatPrefs(state.chats, chatPrefRows, now().getTime()) }));
-          throw error;
-        }
-      },
-      pins: (chatId) => {
-        // Reading the revision subscribes the selector to pin publishes
-        // for this chat, like `groupDetail` does with its own revision.
-        void (pinsRevisionByChat.get(chatId) ?? 0);
-        return pinsByChat.get(chatId) ?? EMPTY_PINS;
-      },
+      ...groups.actions,
+      ownedAis: ports.ownedAis ?? [],
+      ...pins.actions,
       pinsError: undefined,
-      refreshPins: async (chatId) => {
-        await loadPins(chatId, true);
-      },
-      pinFor: (chatId, messageId) =>
-        pinsByChat.get(chatId)?.find((pin) => pin.messageId === messageId),
-      canPin: (chatId) => canPinIn(chatId),
-      pinMessage: async (chatId, messageId) => {
-        if (!canPinIn(chatId)) {
-          throw new Error('You cannot pin here.');
-        }
-        const message = listFor(get(), chatId).find((item) => sameMessage(item.id, messageId));
-        if (message === undefined) {
-          throw new Error('Message not found');
-        }
-        const shape = {
-          text: message.text,
-          image: message.image,
-          voice: message.voice,
-          card: message.card,
-          attachment: message.attachment,
-        };
-        const snapshot = {
-          chat: chatId,
-          messageId: message.id,
-          senderName: message.senderName,
-          text: pinSnapshotText({ ...shape, deleted: message.deleted }),
-          kind: pinKindFor(shape),
-        };
-        const before = pinsByChat.get(chatId) ?? [];
-        const optimistic: Pin = {
-          ...snapshot,
-          id: `pin-local-${now().getTime()}`,
-          pinnedBy: get().me?.id ?? get().currentUserId,
-          pinnedAt: new Date(now().getTime()).toISOString(),
-        };
-        publishOptimisticPins(chatId, [optimistic, ...before]);
-        try {
-          const saved = await pinsApi.pinMessage(snapshot);
-          const current = pinsByChat.get(chatId) ?? [];
-          publishOptimisticPins(
-            chatId,
-            current.some((pin) => pin.id === saved.id)
-              ? current.map((pin) => (pin.id === optimistic.id ? saved : pin))
-              : [saved, ...current.filter((pin) => pin.id !== optimistic.id)],
-          );
-        } catch (error) {
-          publishOptimisticPins(chatId, before);
-          throw error;
-        }
-      },
-      unpinMessage: async (chatId, pinId) => {
-        const before = pinsByChat.get(chatId) ?? [];
-        publishOptimisticPins(
-          chatId,
-          before.filter((pin) => pin.id !== pinId),
-        );
-        try {
-          const echoed = await pinsApi.unpinMessage(pinId);
-          const current = pinsByChat.get(chatId) ?? [];
-          publishOptimisticPins(
-            chatId,
-            current.filter((pin) => pin.id !== echoed.id),
-          );
-        } catch (error) {
-          publishOptimisticPins(chatId, before);
-          set({ pinsError: { chatId, message: 'Could not unpin. Try again.' } });
-          throw error;
-        }
-      },
-      dismissPinsError: () => {
-        set({ pinsError: undefined });
-      },
       stopPinsPoll: () => {
-        stopPinsPolling();
-      },
-      loadChatMedia: async (chatId, tab, before) => {
-        const page: MediaPage = await mediaApi.listChatMedia({
-          chat: chatId,
-          type: tab,
-          ...(before === undefined ? {} : { before }),
-        });
-        return {
-          items: page.items.map((item) => sanitizeMediaItem(item)),
-          next: page.next,
-        };
-      },
-      createTopic: async (chatId, input) => {
-        const chat = get().chats.find((entry) => entry.id === chatId);
-        const groupId = chat?.groupId ?? groupIds.get(chatId);
-        if (groupId === undefined) {
-          throw new Error('This group is not available yet.');
-        }
-        const topic = await topics.createTopic(groupId, input as CreateTopicInput);
-        rememberTopicRoles(topic);
-        // The topic exists on the server now: a failed follow-up re-read
-        // must not report "Could not create" (the sheet would invite a
-        // retry that makes a duplicate). Refresh best-effort and fall back
-        // to the created topic's own chat JID.
-        await applyTopicRow(topic).catch(() => {});
-        const row = get().chats.find((entry) => entry.topic?.id === topic.id);
-        const rowId = row?.id ?? topic.chatJid;
-        const me = get().me;
-        if (core !== undefined && me !== undefined) {
-          await core.joinRoom(rowId, nick(me)).catch(() => {});
-        }
-        return rowId;
-      },
-      patchTopic: async (chatId, input) => {
-        const { topicId } = await topicIdFor(chatId);
-        const topic = await topics.patchTopic(topicId, input as PatchTopicInput);
-        // The patch response is the server truth: a private-to-public flip
-        // cleared the roles there, so the cache is replaced, not merged.
-        rememberTopicRoles(topic);
-        await applyTopicRow(topic);
-      },
-      archiveTopic: async (chatId) => {
-        const { topicId } = await topicIdFor(chatId);
-        const topic = await topics.archiveTopic(topicId);
-        await applyTopicRow(topic).catch(() => {});
-        await refreshChats().catch(() => {});
-      },
-      addTopicAi: async (chatId, aiId) => {
-        const { topicId } = await topicIdFor(chatId);
-        const topic = await topics.addTopicAi(topicId, aiId);
-        await applyTopicRow(topic);
-      },
-      removeTopicAi: async (chatId, aiId) => {
-        const { topicId } = await topicIdFor(chatId);
-        const topic = await topics.removeTopicAi(topicId, aiId);
-        await applyTopicRow(topic);
-      },
-      addTopicMember: async (chatId, userId) => {
-        const { topicId } = await topicIdFor(chatId);
-        const topic = await topics.addTopicMember(topicId, userId);
-        await applyTopicRow(topic);
-      },
-      removeTopicMember: async (chatId, userId) => {
-        const { topicId } = await topicIdFor(chatId);
-        try {
-          const topic = await topics.removeTopicMember(topicId, userId);
-          await applyTopicRow(topic);
-        } catch (error) {
-          // Removing the last member archives the topic (server 404): it is
-          // gone from the visible list either way, so refresh like the
-          // removed-while-open flow.
-          await refreshChats().catch(() => {});
-          throw error;
-        }
-      },
-      leaveTopic: async (chatId) => {
-        const me = get().me;
-        if (me === undefined) {
-          throw new Error('This topic is not available yet.');
-        }
-        await get().removeTopicMember(chatId, me.id);
-      },
-      listTopicMembers: async (chatId) => {
-        const { topicId } = await topicIdFor(chatId);
-        return topics.listTopicMembers(topicId);
-      },
-      listTopicAis: async (chatId) => {
-        const { topicId } = await topicIdFor(chatId);
-        return topics.listTopicAis(topicId);
-      },
-      listInviteLinks: async (groupId) => inviteLinks.listGroupInviteLinks(groupId),
-      createInviteLink: async (groupId, input) => inviteLinks.createGroupInviteLink(groupId, input),
-      revokeInviteLink: async (groupId, linkId) =>
-        inviteLinks.revokeGroupInviteLink(groupId, linkId),
-      previewJoinLink: async (token) => inviteLinks.previewJoinLink(token),
-      joinByLink: async (token) => {
-        const result = await inviteLinks.joinByLink(token);
-        await refreshChats().catch(() => {});
-        return result;
-      },
-      // T-0144: channels share the chat-list flow with groups (the detail
-      // carries `kind`, the feed row paints the channel). Create refreshes
-      // the list and returns the new group id from the POST answer.
-      createChannel: async (input) => {
-        const trimmed = input.title.trim();
-        if (trimmed === '') {
-          throw new Error('Enter a channel name.');
-        }
-        if (input.description !== undefined && input.description.length > 300) {
-          throw new Error('The description must be at most 300 characters.');
-        }
-        const created = await groupsApi.createChannel({
-          title: trimmed,
-          ...(input.description === undefined || input.description.trim() === ''
-            ? {}
-            : { description: input.description.trim() }),
-          // T-0228: the public handle rides along trimmed; private creates
-          // send neither field.
-          ...(input.visibility === 'public' && input.handle !== undefined
-            ? { visibility: 'public' as const, handle: input.handle.trim() }
-            : {}),
-        });
-        await refreshChats().catch(() => {});
-        return created.id;
-      },
-      // T-0214: creating a group mirrors the channel flow (trim the
-      // title, refresh the list, return the new group id from the POST
-      // answer). No `kind` goes over the wire: missing means group.
-      // T-0228: a public group carries the handle in the same step.
-      createGroup: async (input) => {
-        const trimmed = input.title.trim();
-        if (trimmed === '') {
-          throw new Error('Enter a group name.');
-        }
-        const created = await groupsApi.createGroup({
-          title: trimmed,
-          memberIds: input.memberIds,
-          ...(input.visibility === 'public' && input.handle !== undefined
-            ? { visibility: 'public' as const, handle: input.handle.trim() }
-            : {}),
-        });
-        await refreshChats().catch(() => {});
-        return created.id;
-      },
-      // T-0144: leaving a channel removes the caller through the member
-      // route, then refreshes the list (the row disappears); the caller
-      // navigates away.
-      leaveChannel: async (chatId) => {
-        const groupId = groupIdForChat(chatId);
-        const me = get().me;
-        if (groupId === undefined || me?.id === undefined) {
-          throw new Error('This channel is not available yet.');
-        }
-        await groupsApi.removeGroupMember(groupId, me.id);
-        await refreshChats().catch(() => {});
-      },
-      // T-0144: the members slice for the channel screen — the full audience
-      // for managers, the owner/admins slice for subscribers (never the
-      // audience), 404 for strangers. The server enforces the rule; the
-      // client renders whatever it answers.
-      listChannelMembers: async (groupId) => groupsApi.listGroupMembers(groupId),
-      // T-0144: promote/demote through the role route (owner only, channels
-      // only). The detail refreshes first so the channel screen updates at
-      // once, then the chat list — the acting device's rows (myRole, counts)
-      // match server truth and the composer bar flips. Demoting the last
-      // admin rejects with 409 `channel_needs_admin`.
-      changeChannelRole: async (chatId, userId, role: ChannelMemberRole) => {
-        const groupId = groupIdForChat(chatId);
-        if (groupId === undefined) {
-          throw new Error('This channel is not available yet.');
-        }
-        await groupsApi.changeGroupMemberRole(groupId, userId, role);
-        await ensureGroupDetail(groupId, true).catch(() => {});
-        set((state) => ({ groupDetailsRevision: state.groupDetailsRevision + 1 }));
-        await refreshChats().catch(() => {});
-      },
-      groupRoles: (groupId) => {
-        // Reading the revision subscribes the selector to roles loads, like
-        // `groupDetail`.
-        void get().groupDetailsRevision;
-        return groupRolesById.get(groupId);
-      },
-      refreshGroupRoles: (groupId) => {
-        return ensureGroupRoles(groupId, true);
-      },
-      createGroupRole: async (groupId, name) => {
-        const role = await rolesApi.createGroupRole(groupId, name);
-        groupRolesById.set(groupId, [...(groupRolesById.get(groupId) ?? []), role]);
-        set((state) => ({ groupDetailsRevision: state.groupDetailsRevision + 1 }));
-        return role;
-      },
-      renameGroupRole: async (groupId, roleId, name) => {
-        const role = await rolesApi.renameGroupRole(groupId, roleId, name);
-        groupRolesById.set(
-          groupId,
-          (groupRolesById.get(groupId) ?? []).map((entry) => (entry.id === roleId ? role : entry)),
-        );
-        set((state) => ({ groupDetailsRevision: state.groupDetailsRevision + 1 }));
-        return role;
-      },
-      deleteGroupRole: async (groupId, roleId) => {
-        await rolesApi.deleteGroupRole(groupId, roleId);
-        groupRolesById.set(
-          groupId,
-          (groupRolesById.get(groupId) ?? []).filter((entry) => entry.id !== roleId),
-        );
-        set((state) => ({ groupDetailsRevision: state.groupDetailsRevision + 1 }));
-      },
-      setGroupRoleMembers: async (groupId, roleId, userIds) => {
-        const role = await rolesApi.setGroupRoleMembers(groupId, roleId, userIds);
-        const known = groupRolesById.get(groupId);
-        groupRolesById.set(
-          groupId,
-          known === undefined
-            ? [role]
-            : known.some((entry) => entry.id === roleId)
-              ? known.map((entry) => (entry.id === roleId ? role : entry))
-              : [...known, role],
-        );
-        set((state) => ({ groupDetailsRevision: state.groupDetailsRevision + 1 }));
-        return role;
-      },
-      setTopicRoles: async (chatId, input) => {
-        const { topicId } = await topicIdFor(chatId);
-        const topic = await topics.setTopicRoles(topicId, input as SetTopicRolesInput);
-        // The refreshed row carries the server truth: going public cleared
-        // the roles there, so no stale roles stay in the store.
-        rememberTopicRoles(topic);
-        await applyTopicRow(topic);
-      },
-      topicRoles: (chatId) => {
-        // Reading the revision subscribes the selector to topic-roles loads,
-        // like `groupDetail`.
-        void get().groupDetailsRevision;
-        const topicId = get().chats.find((entry) => entry.id === chatId)?.topic?.id;
-        if (topicId === undefined) {
-          return undefined;
-        }
-        return topicRolesById.get(topicId);
-      },
-      refreshTopicRoles: (chatId) => {
-        return ensureTopicRoles(chatId, true);
+        polling.stopPinsPolling();
       },
       setSearch: (value) => set({ search: value }),
       setActiveFolder: (folder) => set({ activeFolder: folder }),
-      setFolders: (folders) => {
-        const sorted = sortFolders(folders);
-        set((state) => ({
-          folders: sorted,
-          foldersLoaded: true,
-          activeFolder:
-            state.activeFolder === 'all' ||
-            sorted.some((folder) => folder.id === state.activeFolder)
-              ? state.activeFolder
-              : 'all',
-        }));
-      },
-      createFolder: async (input) => {
-        const folder = await foldersApi().createChatFolder(input);
-        get().setFolders([...get().folders, folder]);
-        return folder;
-      },
-      updateFolder: async (id, input) => {
-        const folder = await foldersApi().patchChatFolder(id, input);
-        get().setFolders(get().folders.map((item) => (item.id === id ? folder : item)));
-        return folder;
-      },
-      deleteFolder: async (id) => {
-        await foldersApi().deleteChatFolder(id);
-        get().setFolders(get().folders.filter((item) => item.id !== id));
-      },
-      reorderFolders: async (ids) => {
-        const folders = await foldersApi().reorderChatFolders(ids);
-        get().setFolders(folders);
-      },
-      start: () => {
-        if (started) {
-          return;
-        }
-        started = true;
-        generation += 1;
-        if (get().chats.length === 0) {
-          set({ chatsLoad: 'loading' });
-        }
-        removeAppState = appState.subscribe((state) => {
-          if (state !== 'active') {
-            return;
-          }
-          void reconnect();
-        });
-        startTopicsPolling(generation);
-        void runBoot(generation);
-      },
-      stop: () => {
-        started = false;
-        generation += 1;
-        if (removeAppState !== undefined) {
-          removeAppState();
-          removeAppState = undefined;
-        }
-        for (const unsubscribe of unsubscribers) {
-          unsubscribe();
-        }
-        unsubscribers = [];
-        for (const timer of Object.values(typingTimers)) {
-          clearTimeout(timer);
-        }
-        typingTimers = {};
-        if (refreshTimer !== undefined) {
-          clearTimeout(refreshTimer);
-          refreshTimer = undefined;
-        }
-        closeDraftStream?.();
-        closeDraftStream = undefined;
-        stopTopicsPolling();
-        clearDraftState();
-        groupDetails.clear();
-        loadingGroupDetails.clear();
-        groupRolesById.clear();
-        loadingGroupRoles.clear();
-        topicRolesById.clear();
-        loadingTopicRoles.clear();
-        set({ drafts: {}, finishedDraftMessages: {}, edits: {}, reactions: {} });
-        pendingOpenChatId = undefined;
-        loadingHistory.clear();
-        groupsJoined = false;
-        messageAliases.clear();
-        messageAuthors.clear();
-        messageOriginIds.clear();
-        messageServerIds.clear();
-        mediaToken = undefined;
-        mediaTrustedHosts = new Set();
-        pendingUploads.clear();
-        const current = core;
-        core = undefined;
-        if (current !== undefined) {
-          void current.disconnect().catch(() => {});
-        }
-        set({ status: 'offline', mediaTrustedHosts: undefined });
-      },
+      start: lifecycle.start,
+      stop: lifecycle.stop,
     };
   });
 }

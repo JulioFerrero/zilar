@@ -1,7 +1,7 @@
 ---
 id: T-0836
 title: "MS1-MS10: the mobile chat store on Effect — one Scope for the store lifetime (incl. AppState resume), concerns as Effect modules under store/effects/, XmppCoreEffect, same StoreApi"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0836-mobile-store
 model: auto
@@ -61,4 +61,26 @@ pnpm --filter @zilar/mobile typecheck
 
 ## Report (written by the worker when done)
 
+**Steps:** all 9 done, one commit each (1e9af065 ports, 4c6b3db7 lifecycle, c4ee58c0 polling, da4d441a history, c1290fcf send, a5004384 groups, afde98b2 events, 1ba8baa9 pins, plus the step 9 sweep commit).
+
+**Tests:** `src/store` 315 passed, 1 skipped (the skip was there before), 3 of 3 runs. Existing store tests are unchanged; 12 new tests live in `effects/*.test.ts` (ports 4, runtime, history 2, send 3, groups 3, events 4, pins 2). Mobile typecheck clean, `oxlint apps/mobile/src/store` clean, prettier run on every commit.
+
+**effect:map:** `real-store.ts` is `effect` (no signals). `effects/events.ts`, `history.ts`, `pins.ts`, `polling.ts` are `effect` with no signals. `groups.ts` (`Deferred.await`), `lifecycle.ts` (`Fiber.await`), `ports.ts` (`Promise.reject` in the voice fallback) are `effect` with a false H1 signal; `runtime.ts` and `send.ts` are `effect` with W4 on `Effect.catch`. `chat-store.ts` is `exempt` (marker added).
+
+**Layout:** `ports.ts` (Ports service, Live and Test layers), `runtime.ts` (two Scopes: the session closed by `stop()` and the generation restarted by start/stop/reload; `lift`, `recover`, `failAfter`, `orElse`, the shared `StoreCtx`), and the modules `lifecycle`, `polling`, `history`, `send`, `groups`, `events`, `pins`. The generation counter, the unsubscriber lists and the typing/refresh timer records are gone. `real-store.ts` keeps the pure helpers (edits, reactions, message mapping) and the returned `StoreApi` object.
+
+**Behaviour differences:** none intended in values, text, retry/timeout numbers or the order of state updates. Known small ones, all from running as fibers of the session scope:
+- Fire-and-forget work that the old code let run after `stop()` is now interrupted by `stop()`: the failure rollback of a reaction/edit/delete send, `ensureGroupDetail`/`ensureGroupMembers` started by typing events, and the debounced chat-list refresh. Nothing visible while the store runs.
+- A `sendReactions`/`sendCorrection`/`sendRetraction` that throws synchronously (instead of rejecting) now takes the rollback path instead of throwing out of the action.
+
+**Kept on purpose:** the Promise `XmppCore` stays (wrapped with `lift`); `XmppCoreEffect` streams would deliver one tick late and the tests inject Promise fakes. The closure variables the pure helpers still read (`core`, `chatPrefRows`, the maps) are bridged to the shared state `s` with getters and setters.
+
+**Unsure:** nothing blocking. The lead may want a look at the phone smoke test, since the typing line, draft timers and the 500 ms refresh debounce now run on fibers (all covered by tests with fake timers).
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Sonnet 5.5 (chain). The lead reviewed the Report.
+- **Shape:** 9 commits, one per step. `real-store.ts` went from about 4350 to 1929 lines, and its concerns moved to `store/effects/`. The store API is unchanged and the Promise `XmppCore` stays behind `lift`.
+- **Lead check, rebased on main:** oxlint is clean, the mobile typecheck passes, and the full mobile suite gives 2254 passed and 2 skipped. No files overlap the wave 2 branches.
+- **Behaviour:** `stop()` now also interrupts reaction, edit and delete rollbacks, typing-triggered group loads and the chat-list refresh debounce. These are background jobs that should not outlive the session, so this is accepted.
+- **Before the next mobile release:** Julio checks connect, resume after background, and sending on the phone. A phone smoke of main also runs after the wave merges.
