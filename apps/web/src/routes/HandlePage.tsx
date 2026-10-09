@@ -1,11 +1,55 @@
-import { useEffect, useState } from 'react';
+import { Data, Effect } from 'effect';
+import { AsyncResult } from 'effect/reactivity';
+import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import { useAuth } from '@/auth/AuthProvider';
 import { Button } from '@/components/ui/button';
 import { TextInput } from '@/components/ui/text-input';
 import { ApiError } from '@/lib/api';
+import { fromApi } from '@/lib/effect/api-effect';
+import { type ApiFailure, toApiFailure } from '@/lib/effect/errors';
+import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { useQuery } from '@/lib/effect/use-query';
 import { checkHandle, claimHandle, suggestHandleFor } from '@/lib/handles';
 import { dismissHandleGate } from '@/lib/handleGate';
+
+type AvailabilityCheck =
+  { state: 'idle' } | { state: 'done'; available: boolean; reason?: string | undefined };
+
+const IDLE_CHECK: AvailabilityCheck = { state: 'idle' };
+
+// The debounce is the 300 ms sleep: useQuery interrupts it when the input
+// changes. A rate limit shows its own text; any other failure shows nothing.
+const checkAvailability = (handle: string): Effect.Effect<AvailabilityCheck> =>
+  handle === ''
+    ? Effect.succeed(IDLE_CHECK)
+    : Effect.sleep(300).pipe(
+        Effect.andThen(fromApi(() => checkHandle(handle))),
+        Effect.map((result): AvailabilityCheck => ({
+          state: 'done',
+          available: result.available,
+          reason: result.reason,
+        })),
+        Effect.catchTag('ApiFailure', (failure) =>
+          Effect.succeed(
+            failure.code === 'rate_limited'
+              ? ({ state: 'done', available: false, reason: 'rate_limited' } as const)
+              : IDLE_CHECK,
+          ),
+        ),
+      );
+
+class UsernameMissing extends Data.TaggedError('UsernameMissing') {}
+class SaveFailed extends Data.TaggedError('SaveFailed') {}
+
+type ClaimFailure = UsernameMissing | SaveFailed | ApiFailure;
+
+// An ApiError keeps its code and message; anything else thrown is a SaveFailed.
+const liftCall = <A,>(call: () => Promise<A>): Effect.Effect<A, ApiFailure | SaveFailed> =>
+  Effect.tryPromise({
+    try: call,
+    catch: (cause) => (cause instanceof ApiError ? toApiFailure(cause) : new SaveFailed()),
+  });
 
 /** Onboarding step after the name step: pick a unique `@username`. */
 export function HandlePage() {
@@ -25,69 +69,35 @@ export function HandlePage() {
       setHandle(suggestion);
     }
   }
-  const [check, setCheck] = useState<
-    | { state: 'idle' }
-    | { state: 'checking' }
-    | { state: 'done'; available: boolean; reason?: string | undefined }
-  >({ state: 'idle' });
-  const [error, setError] = useState<string | undefined>(undefined);
-  const [busy, setBusy] = useState(false);
-
   const trimmed = handle.trim();
 
-  // Debounced live availability for the typed handle. The effect only
-  // schedules the check (the lint rule flags synchronous setState inside
-  // effects); the timeout callback applies the result once.
-  useEffect(() => {
-    if (trimmed === '') {
-      return;
-    }
-    let active = true;
-    const pending = setTimeout(() => {
-      // The pending state paints immediately; the settled state lands in
-      // the promise below, never synchronously in this effect.
-      void checkHandle(trimmed).then(
-        (result) => {
-          if (active) {
-            setCheck({ state: 'done', available: result.available, reason: result.reason });
-          }
-        },
-        (checkError: unknown) => {
-          if (!active) {
-            return;
-          }
-          if (checkError instanceof ApiError && checkError.code === 'rate_limited') {
-            setCheck({ state: 'done', available: false, reason: 'rate_limited' });
-            return;
-          }
-          setCheck({ state: 'idle' });
-        },
-      );
-    }, 300);
-    return () => {
-      active = false;
-      clearTimeout(pending);
-    };
-  }, [trimmed]);
+  // Debounced live availability for the typed handle: the 300 ms sleep is the
+  // debounce, and useQuery interrupts it when the input changes.
+  const [checkResult] = useQuery(() => checkAvailability(trimmed), [trimmed]);
+  const check: AvailabilityCheck = AsyncResult.isSuccess(checkResult)
+    ? checkResult.value
+    : IDLE_CHECK;
 
   const next = (location.state as { next?: string } | null)?.next;
 
-  const submit = async (event: React.FormEvent): Promise<void> => {
+  // A second submit while the call waits is dropped (mode 'ignore'). After a
+  // success the button stays disabled while the page navigates away.
+  const [claimState, runClaim] = useAction<void, void, ClaimFailure>(
+    (): Effect.Effect<void, ClaimFailure> =>
+      trimmed === ''
+        ? Effect.fail(new UsernameMissing())
+        : liftCall(() => claimHandle(trimmed)).pipe(
+            Effect.andThen(liftCall(() => auth.refetch())),
+            Effect.andThen(Effect.sync(() => navigate(next ?? '/', { replace: true }))),
+          ),
+  );
+  const busy = isWaiting(claimState) || AsyncResult.isSuccess(claimState);
+  const claimFailure = isWaiting(claimState) ? undefined : failureOf(claimState);
+  const error = claimFailure === undefined ? undefined : friendlyError(claimFailure);
+
+  const submit = (event: React.FormEvent): void => {
     event.preventDefault();
-    if (trimmed === '') {
-      setError('Choose a username');
-      return;
-    }
-    setBusy(true);
-    setError(undefined);
-    try {
-      await claimHandle(trimmed);
-      await auth.refetch();
-      navigate(next ?? '/', { replace: true });
-    } catch (submitError) {
-      setBusy(false);
-      setError(friendlyError(submitError));
-    }
+    runClaim();
   };
 
   const skip = (): void => {
@@ -103,10 +113,7 @@ export function HandlePage() {
 
   return (
     <div className="chat-background flex min-h-dvh items-center justify-center p-4">
-      <form
-        onSubmit={(event) => void submit(event)}
-        className="w-full max-w-sm rounded-2xl bg-background p-6 shadow-xl"
-      >
+      <form onSubmit={submit} className="w-full max-w-sm rounded-2xl bg-background p-6 shadow-xl">
         <h1 className="text-center text-[24px] leading-8 font-semibold">Pick your username</h1>
         <p className="mt-1 text-center text-[15px] text-muted-foreground">
           Friends add you with it, like @ada. You can change it later.
@@ -171,22 +178,26 @@ function reasonText(reason: string | undefined): string {
   }
 }
 
-function friendlyError(error: unknown): string {
-  if (error instanceof ApiError) {
-    switch (error.code) {
-      case 'handle_invalid':
-        return 'Use 3–32 characters: letters, numbers and _, starting with a letter.';
-      case 'handle_reserved':
-        return 'That username is reserved. Try another.';
-      case 'handle_taken':
-        return 'That username was just taken. Try another.';
-      case 'handle_change_too_soon':
-        return error.message;
-      case 'rate_limited':
-        return 'Too many tries — wait a little and try again.';
-      default:
-        return error.message;
-    }
+function friendlyError(error: ClaimFailure): string {
+  switch (error._tag) {
+    case 'UsernameMissing':
+      return 'Choose a username';
+    case 'SaveFailed':
+      return 'Could not save your username. Try again.';
+    case 'ApiFailure':
+      switch (error.code) {
+        case 'handle_invalid':
+          return 'Use 3–32 characters: letters, numbers and _, starting with a letter.';
+        case 'handle_reserved':
+          return 'That username is reserved. Try another.';
+        case 'handle_taken':
+          return 'That username was just taken. Try another.';
+        case 'handle_change_too_soon':
+          return error.message;
+        case 'rate_limited':
+          return 'Too many tries — wait a little and try again.';
+        default:
+          return error.message;
+      }
   }
-  return 'Could not save your username. Try again.';
 }

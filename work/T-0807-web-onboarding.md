@@ -1,7 +1,7 @@
 ---
 id: T-0807
 title: "WU5: web onboarding routes on Effect — HandlePage, InvitePage (tests first), SetupPage, JoinPage"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0807-web-onboarding
 model: auto
@@ -54,4 +54,19 @@ Run the tests 3 times when the code has timers or concurrency. Run `pnpm exec pr
 
 ## Report (written by the worker when done)
 
+- **Commits:** `T-0807: tests before` (new `InvitePage.test.tsx`, 5 tests, green on the old code), then the conversion commit.
+- **effect:map:** HandlePage `effect`, InvitePage `effect`, SetupPage `effect`, JoinPage `effect` (JoinPage still lists signal H1 for the default prop `openGroupChat = () => Promise.resolve(undefined)`, which must stay a Promise-returning default; the kind is `effect`).
+- **Tests:** the four route test files: 20 passed before, 25 passed after (5 new in InvitePage.test.tsx). Run 3 times, 25/25 each time. Existing tests unchanged. `pnpm --filter @zilar/web typecheck`: clean.
+- **Behaviour differences:**
+  - HandlePage: the availability line is blank (idle) while a new check is pending or after the input is emptied. Before, the last result stayed on screen, showing e.g. "@newtext is available" for the old answer. Same as NewGroupDialog.
+  - HandlePage: Continue stays disabled after a successful claim (as before), now derived from the action state.
+  - JoinPage: the "already a member" Open button drops a second click while the first open runs (mode `ignore`); before, each click navigated.
+  - JoinPage: a "full"/"invalid" result from the join call is derived from the last join failure instead of set state; it holds until the next join call, same as before for the user.
+  - SetupPage: Retry re-runs the same query with `refresh()`; the page shows "Checking server setup…" while it runs, as before.
+  - Everything else (texts, order of side effects, delay of 300 ms, error mapping) is the same.
+- **Unsure:** the retry path in SetupPage (statusFailed to checking to result) has no existing test; I rely on `useAtomRefresh` marking the result waiting at once. The first-run setup and invite join are the flows the plan says Julio checks live.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead (wave 1):** approved. The lead reviewed the Report. The wave 1 combined check (all 12 branches on one tree, by hand) passed the whole-repo typecheck and every package suite: web 1916, server 2279, mobile 2222, xmpp-core 245, runner 63, runner-tunnel 71, devtools 796 after the T-0799 fix, chat-core 174, protocol 174.
+- Worker: Sonnet 5.5. InvitePage tests (5) were committed first; the four routes are Effect files. Accepted: a stale availability line clears while re-checking, and a double Open is dropped. Julio checks setup and the invite join live.

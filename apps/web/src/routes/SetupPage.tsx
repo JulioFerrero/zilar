@@ -1,15 +1,43 @@
-import { useEffect, useState } from 'react';
+import { Data, Effect } from 'effect';
+import { AsyncResult } from 'effect/reactivity';
+import { useState } from 'react';
 import { Navigate } from 'react-router';
 import { AuthFlow } from '@/components/auth/AuthFlow';
 import { Button } from '@/components/ui/button';
 import { TextInput } from '@/components/ui/text-input';
-import { ApiError, getSetupStatus, postSetup } from '@/lib/api';
+import { getSetupStatus, postSetup, type SetupResult } from '@/lib/api';
+import { fromApi } from '@/lib/effect/api-effect';
+import type { ApiFailure } from '@/lib/effect/errors';
+import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { useQuery } from '@/lib/effect/use-query';
 
 function isEmailValid(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 }
 
 const DEFAULT_FROM = 'Zilar <onboarding@resend.dev>';
+
+class KeyMissing extends Data.TaggedError('KeyMissing') {}
+class FromMissing extends Data.TaggedError('FromMissing') {}
+
+type SetupFailure = KeyMissing | FromMissing | ApiFailure;
+
+function setupErrorText(failure: SetupFailure): string {
+  switch (failure._tag) {
+    case 'KeyMissing':
+      return 'Enter your Resend API key';
+    case 'FromMissing':
+      return 'Enter the sender address';
+    case 'ApiFailure':
+      if (failure.code === 'mail_send_failed') {
+        return 'The test email could not be sent. Check the Resend key and the sender address.';
+      }
+      if (failure.code === 'rate_limited') {
+        return 'Too many attempts, try again later';
+      }
+      return 'Something went wrong. Try again.';
+  }
+}
 
 /**
  * First-run setup (T-0161) in three steps. Step 1 asks for the admin
@@ -22,33 +50,51 @@ const DEFAULT_FROM = 'Zilar <onboarding@resend.dev>';
  * The admin only types the 6-digit code from their inbox.
  */
 export function SetupPage() {
-  const [status, setStatus] = useState<'checking' | 'ready' | 'done' | 'statusFailed'>('checking');
   const [step, setStep] = useState<1 | 2>(1);
   const [adminEmail, setAdminEmail] = useState('');
   const [resendApiKey, setResendApiKey] = useState('');
   const [from, setFrom] = useState(DEFAULT_FROM);
-  const [inviteCode, setInviteCode] = useState<string | undefined>(undefined);
-  const [error, setError] = useState<string | undefined>(undefined);
-  const [busy, setBusy] = useState(false);
-  const [checkNonce, setCheckNonce] = useState(0);
+  const [emailError, setEmailError] = useState<string | undefined>(undefined);
 
-  useEffect(() => {
-    let active = true;
-    getSetupStatus()
-      .then((result) => {
-        if (active) {
-          setStatus(result.needsSetup ? 'ready' : 'done');
-        }
-      })
-      .catch(() => {
-        if (active) {
-          setStatus('statusFailed');
-        }
-      });
-    return () => {
-      active = false;
-    };
-  }, [checkNonce]);
+  // Retry runs the same query again; while it runs the page shows 'checking'.
+  const [setupStatus, retryStatus] = useQuery(
+    () => fromApi(() => getSetupStatus()).pipe(Effect.map((result) => result.needsSetup)),
+    [],
+  );
+  const status: 'checking' | 'ready' | 'done' | 'statusFailed' =
+    isWaiting(setupStatus) || AsyncResult.isInitial(setupStatus)
+      ? 'checking'
+      : AsyncResult.isSuccess(setupStatus)
+        ? setupStatus.value
+          ? 'ready'
+          : 'done'
+        : 'statusFailed';
+
+  // The server's answer to the setup request. A second submit while it waits
+  // is dropped (mode 'ignore').
+  const [setupState, runSetup, setupControls] = useAction<void, SetupResult, SetupFailure>(
+    (): Effect.Effect<SetupResult, SetupFailure> => {
+      if (resendApiKey.trim() === '') {
+        return Effect.fail(new KeyMissing());
+      }
+      if (from.trim() === '') {
+        return Effect.fail(new FromMissing());
+      }
+      return fromApi(() =>
+        postSetup({
+          resendApiKey: resendApiKey.trim(),
+          from: from.trim(),
+          adminEmail: adminEmail.trim(),
+        }),
+      );
+    },
+  );
+  const busy = isWaiting(setupState);
+  const setupFailure = busy ? undefined : failureOf(setupState);
+  const error =
+    emailError ?? (setupFailure === undefined ? undefined : setupErrorText(setupFailure));
+  // The invite code stays in memory only (never in storage, URL or logs).
+  const inviteCode = AsyncResult.isSuccess(setupState) ? setupState.value.inviteCode : undefined;
 
   if (status === 'checking') {
     return (
@@ -69,8 +115,7 @@ export function SetupPage() {
           <Button
             type="button"
             onClick={() => {
-              setStatus('checking');
-              setCheckNonce((value) => value + 1);
+              retryStatus();
             }}
             size="lg"
             className="mt-5"
@@ -102,48 +147,16 @@ export function SetupPage() {
   const submitEmail = (event: React.FormEvent): void => {
     event.preventDefault();
     if (!isEmailValid(adminEmail)) {
-      setError('Enter a valid admin email address');
+      setEmailError('Enter a valid admin email address');
       return;
     }
-    setError(undefined);
+    setEmailError(undefined);
     setStep(2);
   };
 
   const submitSetup = (event: React.FormEvent): void => {
     event.preventDefault();
-    if (resendApiKey.trim() === '') {
-      setError('Enter your Resend API key');
-      return;
-    }
-    if (from.trim() === '') {
-      setError('Enter the sender address');
-      return;
-    }
-    setBusy(true);
-    setError(undefined);
-    postSetup({
-      resendApiKey: resendApiKey.trim(),
-      from: from.trim(),
-      adminEmail: adminEmail.trim(),
-    })
-      .then((result) => {
-        setBusy(false);
-        setInviteCode(result.inviteCode);
-      })
-      .catch((requestError: unknown) => {
-        setBusy(false);
-        if (requestError instanceof ApiError && requestError.code === 'mail_send_failed') {
-          setError(
-            'The test email could not be sent. Check the Resend key and the sender address.',
-          );
-          return;
-        }
-        if (requestError instanceof ApiError && requestError.code === 'rate_limited') {
-          setError('Too many attempts, try again later');
-          return;
-        }
-        setError('Something went wrong. Try again.');
-      });
+    runSetup();
   };
 
   return (
@@ -213,7 +226,7 @@ export function SetupPage() {
                 disabled={busy}
                 onClick={() => {
                   setStep(1);
-                  setError(undefined);
+                  setupControls.reset();
                 }}
               >
                 Back
