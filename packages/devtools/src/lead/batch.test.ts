@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   BatchError,
   ownerOf,
+  parseLintErrors,
   parseTypecheckErrors,
   parseVitestFailures,
   runBatchCheck,
@@ -87,6 +88,7 @@ interface World {
 interface Script {
   typecheck?: CommandResult;
   install?: CommandResult;
+  lint?: CommandResult;
   /** Vitest JSON report text (or undefined: no file) and exit status per package name. */
   tests?: Record<string, { status: number; json?: string }>;
 }
@@ -141,6 +143,9 @@ function world(tasks: Task[], script: Script = {}): World {
       }
       if (joined.includes('turbo run typecheck')) {
         return script.typecheck ?? { status: 0, output: '' };
+      }
+      if (joined.includes('oxlint')) {
+        return script.lint ?? { status: 0, output: '' };
       }
       const pkg = args[1] ?? '';
       const test = script.tests?.[pkg];
@@ -344,6 +349,40 @@ describe('runBatchCheck', () => {
     expect(result.lines).toContain('T-0002 FAIL typecheck 1, tests 0, out of scope 0');
   });
 
+  it('gives a lint error to the task that owns the file and fails that task', async () => {
+    const w = world([TASK_A, TASK_B], {
+      lint: {
+        status: 1,
+        output: [
+          `${WAVE}/apps/web/src/chat.tsx:4:9: Variable 'x' is declared but never used. [Error/eslint(no-unused-vars)]`,
+          '',
+          'Found 1 problem',
+        ].join('\n'),
+      },
+    });
+    const result = await runBatchCheck(w.deps, ['T-0001', 'T-0002']);
+    expect(result.ok).toBe(false);
+    const fix = w.files.get(`${result.waveDir}/T-0001.fix.md`) ?? '';
+    expect(fix).toContain('1. Lint error eslint(no-unused-vars) in apps/web/src/chat.tsx');
+    expect(fix).toContain("4:9 Variable 'x' is declared but never used.");
+    expect(w.files.has(`${result.waveDir}/T-0002.fix.md`)).toBe(false);
+    expect(result.lines).toContain('T-0001 FAIL typecheck 0, tests 0, lint 1, out of scope 0');
+    expect(result.lines).toContain('T-0002 ok');
+    const report = w.files.get(result.reportPath) ?? '';
+    expect(report).toContain('| T-0001 | merged | - | 0 | 0 | 1 |');
+    expect(report).toContain('| T-0002 | merged | - | 0 | 0 | 0 |');
+  });
+
+  it('reports a failing lint run with no readable error as an unowned check failure', async () => {
+    const w = world([TASK_A], { lint: { status: 2, output: 'oxlint: failed to read config' } });
+    const result = await runBatchCheck(w.deps, ['T-0001']);
+    expect(result.ok).toBe(false);
+    expect(result.lines).toContain('unowned: 1 failure(s), see the report');
+    const report = w.files.get(result.reportPath) ?? '';
+    expect(report).toContain('Check failed: lint (no error could be read)');
+    expect(report).toContain('oxlint: failed to read config');
+  });
+
   it('lists a failure no task owns in the unowned section and fails the wave', async () => {
     const w = world([TASK_A, TASK_B], {
       tests: {
@@ -453,6 +492,33 @@ describe('ownership and parsing', () => {
       message: 'import failed',
     });
     expect(parseVitestFailures('not json', WAVE)).toBeUndefined();
+  });
+
+  it('reads unix lint errors, skips warnings and keeps paths repo-relative', () => {
+    const errors = parseLintErrors(
+      [
+        `${WAVE}/apps/mobile/src/auth/AuthFlow.tsx:60:47: Parameter '_' is declared but never used. [Error/eslint(no-unused-vars)]`,
+        'apps/web/src/chat.tsx:3:1: Prefer a different form. [Warning/eslint(prefer-thing)]',
+        './packages/x/src/y.ts:8:2: Do not use `new Array(x)`. [Error/unicorn(no-new-array)]',
+        '',
+        'Found 3 problems',
+      ].join('\n'),
+      WAVE,
+    );
+    expect(errors).toEqual([
+      {
+        kind: 'lint',
+        file: 'apps/mobile/src/auth/AuthFlow.tsx',
+        name: 'eslint(no-unused-vars)',
+        message: "60:47 Parameter '_' is declared but never used.",
+      },
+      {
+        kind: 'lint',
+        file: 'packages/x/src/y.ts',
+        name: 'unicorn(no-new-array)',
+        message: '8:2 Do not use `new Array(x)`.',
+      },
+    ]);
   });
 
   it('keeps the package own flags from its test script', () => {

@@ -1,5 +1,5 @@
 // `lead batch check` combines the branches of a wave of tasks on one worktree,
-// runs install, typecheck and every package's tests without stopping at the
+// runs install, typecheck, lint and every package's tests without stopping at the
 // first failure, and writes one fix file per task that owns a failure.
 // `lead batch merge` then merges a checked wave task by task without a gate.
 // Every side effect (git, commands, files, clock) goes through `BatchDeps`, so
@@ -62,7 +62,7 @@ export interface BatchDeps {
 }
 
 export interface Failure {
-  kind: 'typecheck' | 'test' | 'tool';
+  kind: 'typecheck' | 'lint' | 'test' | 'tool';
   /** Repo-relative file, when the failure names one. */
   file?: string;
   /** The test's full name, the TS error code or the failing step. */
@@ -250,6 +250,27 @@ function relativeTo(worktree: string, file: string): string {
   return relative.split(path.sep).join('/');
 }
 
+// oxlint --format=unix: `path:line:col: message [Error/plugin(rule)]`
+const LINT_LINE = /^(.+?):(\d+):(\d+): (.*) \[(Error|Warning)\/([^\]]+)\]$/;
+
+/** Lint errors from `oxlint --format=unix`; warnings are ignored. */
+export function parseLintErrors(output: string, worktree: string): Failure[] {
+  const failures: Failure[] = [];
+  for (const raw of stripAnsi(output).split('\n')) {
+    const match = LINT_LINE.exec(raw);
+    if (match === null || match[5] !== 'Error') {
+      continue;
+    }
+    failures.push({
+      kind: 'lint',
+      file: path.posix.normalize(relativeTo(worktree, match[1] as string)),
+      name: match[6] as string,
+      message: `${match[2] as string}:${match[3] as string} ${match[4] as string}`,
+    });
+  }
+  return failures;
+}
+
 /** Failed tests from a Vitest JSON report. Returns undefined when the text is not one. */
 export function parseVitestFailures(text: string, worktree: string): Failure[] | undefined {
   let parsed: unknown;
@@ -415,6 +436,18 @@ async function runChecks(deps: BatchDeps, wave: string, waveDir: string): Promis
     tool('typecheck (no TS error could be read)', typecheck);
   }
 
+  const lint = await deps.runCommand(
+    wave,
+    'pnpm',
+    ['exec', 'oxlint', '--format=unix', '.'],
+    STEP_TIMEOUT_MS,
+  );
+  const lintErrors = parseLintErrors(lint.output, wave);
+  failures.push(...lintErrors);
+  if (lint.status !== 0 && lintErrors.length === 0) {
+    tool('lint (no error could be read)', lint);
+  }
+
   await runPool(
     packages.filter((pkg) => pkg.testArgs !== undefined),
     2,
@@ -463,19 +496,23 @@ function summaryLine(outcome: TaskOutcome): string {
   }
   const typecheck = outcome.failures.filter((failure) => failure.kind === 'typecheck').length;
   const tests = outcome.failures.filter((failure) => failure.kind === 'test').length;
-  if (typecheck + tests + outcome.outside.length === 0) {
+  const lint = outcome.failures.filter((failure) => failure.kind === 'lint').length;
+  if (typecheck + tests + lint + outcome.outside.length === 0) {
     return `${outcome.task} ok`;
   }
-  return `${outcome.task} FAIL typecheck ${typecheck}, tests ${tests}, out of scope ${outcome.outside.length}`;
+  const lintPart = lint === 0 ? '' : `, lint ${lint}`;
+  return `${outcome.task} FAIL typecheck ${typecheck}, tests ${tests}${lintPart}, out of scope ${outcome.outside.length}`;
 }
 
 function failureItem(failure: Failure): string {
   const head =
     failure.kind === 'typecheck'
       ? `Typecheck error ${failure.name}`
-      : failure.kind === 'test'
-        ? `Failing test in ${failure.file ?? '(unknown file)'}: ${failure.name}`
-        : `Check failed: ${failure.name}${failure.file === undefined ? '' : ` (${failure.file})`}`;
+      : failure.kind === 'lint'
+        ? `Lint error ${failure.name} in ${failure.file ?? '(unknown file)'}`
+        : failure.kind === 'test'
+          ? `Failing test in ${failure.file ?? '(unknown file)'}: ${failure.name}`
+          : `Check failed: ${failure.name}${failure.file === undefined ? '' : ` (${failure.file})`}`;
   return `${head}\n\n\`\`\`\n${failure.message}\n\`\`\``;
 }
 
@@ -517,7 +554,8 @@ function reportText(
     const outside = outcome.outside.length === 0 ? '-' : outcome.outside.join(', ');
     const typecheck = outcome.failures.filter((failure) => failure.kind === 'typecheck').length;
     const tests = outcome.failures.filter((failure) => failure.kind === 'test').length;
-    return `| ${outcome.task} | ${merge} | ${outside} | ${typecheck} | ${tests} |`;
+    const lint = outcome.failures.filter((failure) => failure.kind === 'lint').length;
+    return `| ${outcome.task} | ${merge} | ${outside} | ${typecheck} | ${tests} | ${lint} |`;
   });
   const unownedItems =
     unowned.length === 0
@@ -526,8 +564,8 @@ function reportText(
   return [
     `# Wave ${stampText}: ${ok ? 'OK' : 'NOT OK'}`,
     '',
-    '| Task | Merge | Out of scope | Typecheck errors | Failed tests |',
-    '|---|---|---|---|---|',
+    '| Task | Merge | Out of scope | Typecheck errors | Failed tests | Lint errors |',
+    '|---|---|---|---|---|---|',
     ...rows,
     '',
     '## unowned',

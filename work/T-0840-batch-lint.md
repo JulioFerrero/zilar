@@ -1,7 +1,7 @@
 ---
 id: T-0840
 title: "lead batch check runs lint: oxlint (unix format) on the wave tree, each error owned by the task that changed the file, counted in the summary line"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0840-batch-lint
 model: auto
@@ -60,4 +60,46 @@ pnpm exec oxlint packages/devtools/src/lead/batch.ts packages/devtools/src/lead/
 
 ## Report (written by the worker when done)
 
+### What was done
+- `packages/devtools/src/lead/batch.ts`: `Failure.kind` gains `'lint'`. New exported `parseLintErrors(output, worktree)` reads `oxlint --format=unix` lines, keeps `[Error/...]` lines only, and returns repo-relative files (absolute paths under the worktree and `./` prefixes are normalized). `runChecks` runs `pnpm exec oxlint --format=unix .` after the typecheck and before the tests, with `STEP_TIMEOUT_MS`. A non-zero exit with no readable error adds a `tool` failure `lint (no error could be read)`. Lint failures are owned with `ownerOf` like the others, and a task with only lint errors is not `ok`.
+- `failureItem` writes lint items as `Lint error <rule> in <file>`, with the message `<line>:<col> <text>` in the block.
+- `packages/devtools/src/lead/batch.test.ts`: fake `runCommand` returns `script.lint` for oxlint calls (new `lint?` field in `Script`). Three new tests: `parseLintErrors` (one error, one warning, a `./` path), a lint error owned by T-0001 (its summary is not ok, T-0002 stays ok), and a non-zero lint with no readable error (unowned tool failure).
+- `work/T-0840-batch-lint.md`: this Report and `status: review`.
+
+### Real oxlint output (oxlint 1.85.0, `--format=unix`)
+Ran on a scratch file outside the worktree (`/private/tmp/.../scratchpad/lintsample/sample.ts`). The repo itself is lint-clean, so no error line exists in the repo to show. Real lines:
+```
+/private/tmp/.../sample.ts:2:9: Variable 'unused' is declared but never used. Unused variables should start with a '_'. [Error/eslint(no-unused-vars)]
+/private/tmp/.../sample.ts:5:14: Do not use `new Array(singleArgument)`. [Error/unicorn(no-new-array)]
+
+2 problems
+```
+The spec's example `error eslint(no-unused-vars): ...` is not this format; the parser follows the real one. Exit status is 1 with errors, 0 without.
+
+### Test counts
+- `batch.test.ts` before: 22 passed. After: 25 passed (3 new). The new 3 failed before the implementation (`parseLintErrors is not a function`, and the two wave tests got `ok: true`).
+- Three runs after the change: 25 passed each time (one run plus two repeats).
+- Existing 22 tests unchanged in their assertions.
+
+### Commands and results
+- `pnpm install --frozen-lockfile`: done, in the worktree.
+- `pnpm exec prettier --write` on the two `.ts` files: unchanged.
+- `pnpm exec oxlint packages/devtools/src/lead/batch.ts packages/devtools/src/lead/batch.test.ts`: exit 0, no output.
+- `pnpm --filter @zilar/devtools typecheck`: exit 0, 0 `error TS` lines.
+- The spec's `vitest run --reporter=dot src/lead/batch.test.ts`: 25 passed (see above).
+- No `pnpm gate` (wave mode).
+
+### Deviations from the spec (kept existing output)
+- Summary line: `, lint N` is added only when N > 0, between tests and out of scope, so the existing summary lines (`T-0001 FAIL typecheck 0, tests 1, out of scope 0`, `T-0002 ok`) are exactly as before. With lint errors: `T-0001 FAIL typecheck 0, tests 0, lint 1, out of scope 0`, as the spec example shows. Always adding `lint 0` would have broken the two existing exact-line assertions.
+- Report table: a trailing `Lint errors` column was added. Existing rows are still substrings of the new rows, so the existing row assertions pass.
+
+### Unsure
+- The rule name is the bracket text as oxlint prints it, `eslint(no-unused-vars)`, not the bare `no-unused-vars`. Say if the bare name is wanted.
+- The lint step covers the whole wave tree (`.`), like the root `lint` script. A lint error in a file no task touched goes to unowned and fails the wave, as the other unowned checks do.
+- The unix line path for files under a relative argument (`.`) was not seen in the repo (no errors there). The parser handles absolute paths and relative ones; the relative case is covered only by the unit test on a `./` path.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Haiku 5.5. The lead read the diff.
+- **The change:** after the typecheck, `oxlint --format=unix .` runs; `parseLintErrors` keeps errors only, and each is owned by the task that changed the file. The summary adds `, lint N` only when N > 0, so the existing lines are unchanged, and the report table gains a Lint errors column.
+- **Results:** batch tests went from 22 to 25, 3 of 3 runs; typecheck and oxlint are clean.
