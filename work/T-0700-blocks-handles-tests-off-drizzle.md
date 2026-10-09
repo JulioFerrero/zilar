@@ -1,7 +1,7 @@
 ---
 id: T-0700
 title: "tests off drizzle (blocks + handles): replace every drizzle query in blocks/blocks.test.ts, handles/handles.test.ts with testSql(context) + effect/sql; drop the drizzle-orm and db/schema imports"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0700-blocks-handles-tests-off-drizzle
 model: auto
@@ -51,4 +51,68 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+Replaced every drizzle query in `apps/server/src/blocks/blocks.test.ts` and
+`apps/server/src/handles/handles.test.ts` with `testSql(context)` + `effect/sql`,
+and dropped the `drizzle-orm` and `../db/schema` imports (including the dynamic
+`import('../db/schema')` in blocks.test.ts:166). Rows, values, order and every
+assertion are unchanged; the same 27 tests pass.
+
+Conversion notes:
+- Reads select only the columns a test reads, with small local row types
+  (`UserBlockRow`, `ContactRequestRow`, `RetiredHandleRow`) and inline
+  `sql<{...}>` types. SQL names snake_case columns; results arrive camelCased.
+- Repeated seed/read shapes became two small local helpers in each suite:
+  `storedBlocks`/`storedRequests` (blocks) and `backdateHandleChange`/
+  `storedRetiredHandles` (handles). Each helper is a single `testSql(context)`
+  query; the helper return types are `readonly` because `sql<>` returns a
+  `readonly` array (typecheck caught the first mutable annotation).
+- Inserts into `"user"` give only `id, name, email`; the SQL defaults fill
+  `email_verified`, `created_at`, `updated_at` (checked in
+  `drizzle/0001_nifty_nomad.sql`). User-block rows pass the explicit
+  `created_at` `Date` (same value as before).
+- `handles` `changed_at` backdates pass a `Date` bound as a parameter, matching
+  `handles/store.ts`. `retired_handles` reads select `former_user_id`.
+- Lines passing `context.db` to module functions (`claimHandle(context.db, …)`,
+  `checkHandleAvailability(context.db, …)`, `db: context.db`, `blockUser(...)`)
+  are untouched, as the spec says.
+
+### Files changed
+- `apps/server/src/blocks/blocks.test.ts`
+- `apps/server/src/handles/handles.test.ts`
+- `work/T-0700-blocks-handles-tests-off-drizzle.md` (status only)
+
+### Commands and real results
+- `pnpm install`: done, 1176 packages.
+- Baseline before edits:
+  `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/blocks/blocks.test.ts src/handles/handles.test.ts`
+  → Test Files 2 passed (2), Tests 27 passed (27).
+- `git grep -n "drizzle-orm\|db/schema" -- apps/server/src/blocks/blocks.test.ts apps/server/src/handles/handles.test.ts`
+  → no output (exit 1). Acceptance met.
+- After edits:
+  `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/blocks/blocks.test.ts src/handles/handles.test.ts`
+  → Test Files 2 passed (2), Tests 27 passed (27).
+- `pnpm gate` (final) summary lines:
+  ```
+  PASS  install (frozen)  (1.1s)
+  PASS  format  (15.5s)
+  PASS  lint  (0.5s)
+  PASS  typecheck  (2.8s)
+  PASS  tests @zilar/server  (7.7s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+  An earlier gate run failed `format` on `handles.test.ts`; I fixed it with
+  `pnpm exec prettier --write apps/server/src/handles/handles.test.ts`, then a
+  second run failed `typecheck` on the readonly array annotations above, which I
+  fixed; the final run above is green.
+
+### Counts
+- Tests before: 27 passed. Tests after: 27 passed.
+
+### Problems / deviations / open questions
+None. No behaviour, values or assertions changed.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. The pre-review was clean (packet head 4b8e2b6f). There are 27 tests before and after, and neither file imports drizzle.
