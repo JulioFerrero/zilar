@@ -6,6 +6,7 @@ import {
   type FolderChatType,
   type FolderIcon,
 } from '@zilar/chat-core';
+import { Effect } from 'effect';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useColorScheme } from 'nativewind';
 import { useState } from 'react';
@@ -29,6 +30,7 @@ import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
 import { iconKey } from '@/lib/depth';
 import { cn } from '@/lib/utils';
 import { useChatStore } from '@/store/chat-store-provider';
+import { isWaiting, useAction } from '@/lib/effect/use-action';
 
 const TYPE_ORDER: FolderChatType[] = ['dm', 'group', 'channel', 'ai'];
 
@@ -106,11 +108,44 @@ function FolderForm({ id, folder }: { id: string; folder: ChatFolder | undefined
   const [includeTypes, setIncludeTypes] = useState<FolderChatType[]>(folder?.includeTypes ?? []);
   const [excludeMuted, setExcludeMuted] = useState(folder?.excludeMuted ?? false);
   const [excludeRead, setExcludeRead] = useState(folder?.excludeRead ?? false);
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const isNew = folder === undefined;
+  const [saveState, runSave] = useAction<void, void, never>(() => {
+    const input = folderInput({ name, icon, includeTypes, excludeMuted, excludeRead });
+    return Effect.sync(() => setError('')).pipe(
+      Effect.andThen(
+        Effect.tryPromise({
+          try: () => (isNew ? createFolder(input) : updateFolder(id, input)),
+          catch: (saveError: unknown) => folderSaveError(saveError),
+        }),
+      ),
+      Effect.tap(() => Effect.sync(() => router.back())),
+      Effect.catch((message: string) => Effect.sync(() => setError(message))),
+      Effect.asVoid,
+    );
+  });
+  const [removeState, runRemove] = useAction<void, void, never>(() =>
+    Effect.sync(() => setError('')).pipe(
+      Effect.andThen(
+        Effect.tryPromise({
+          try: () => deleteFolder(id),
+          catch: () => 'Could not delete the folder. Try again.',
+        }),
+      ),
+      Effect.tap(() => Effect.sync(() => router.back())),
+      Effect.catch((message: string) =>
+        Effect.sync(() => {
+          setConfirmingDelete(false);
+          setError(message);
+        }),
+      ),
+      Effect.asVoid,
+    ),
+  );
+  // Save and Delete run one at a time; while either runs the form is busy.
+  const busy = isWaiting(saveState) || isWaiting(removeState);
   const canSave = isFolderNameValid(name) && !busy;
 
   const toggleType = (type: FolderChatType): void => {
@@ -123,29 +158,14 @@ function FolderForm({ id, folder }: { id: string; folder: ChatFolder | undefined
     if (!canSave) {
       return;
     }
-    const input = folderInput({ name, icon, includeTypes, excludeMuted, excludeRead });
-    setBusy(true);
-    setError('');
-    const request = isNew ? createFolder(input) : updateFolder(id, input);
-    request
-      .then(() => router.back())
-      .catch((saveError: unknown) => setError(folderSaveError(saveError)))
-      .finally(() => setBusy(false));
+    runSave();
   };
 
   const remove = (): void => {
     if (isNew || busy) {
       return;
     }
-    setBusy(true);
-    setError('');
-    deleteFolder(id)
-      .then(() => router.back())
-      .catch(() => {
-        setConfirmingDelete(false);
-        setError('Could not delete the folder. Try again.');
-      })
-      .finally(() => setBusy(false));
+    runRemove();
   };
 
   return (

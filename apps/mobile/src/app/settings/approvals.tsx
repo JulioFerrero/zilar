@@ -1,3 +1,4 @@
+import { Effect } from 'effect';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { ShieldCheck } from 'lucide-react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -14,6 +15,8 @@ import { createAisApi } from '@/lib/ais-api';
 import type { ApprovalDecision, ApprovalRule, PublicApproval } from '@/lib/approvals-api';
 import { asColorScheme } from '@/lib/color-scheme';
 import { ACCENT, MUTED_FOREGROUND } from '@/lib/colors';
+import { fromApi } from '@/lib/effect/api-effect';
+import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { getSessionToken } from '@/lib/session-token';
 
 import { AlwaysAllowedRow, RevokeConfirmDialog } from '@/components/approvals/always-allowed-row';
@@ -27,6 +30,7 @@ import {
   orderedRows,
   revokeFailedOutcome,
   rowsForList,
+  type DecideOutcome,
   type OwnedScreenRule,
   type RowsById,
   type RowBusy,
@@ -38,6 +42,7 @@ type LoadStatus = 'loading' | 'ready' | 'error';
 export type OwnedRule = OwnedScreenRule;
 
 const NOTICE_TIMEOUT_MS = 4000;
+const CLOCK_TICK_MS = 60_000;
 
 export default function ApprovalsScreen() {
   return (
@@ -59,7 +64,6 @@ function ApprovalsBody() {
   // decision must not bring their rows back.
   const decidedIds = useRef(new Set<string>());
   const [notice, setNotice] = useState('');
-  const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [now, setNow] = useState<Date>(() => new Date());
 
   const [aiNames, setAiNames] = useState<Record<string, string>>({});
@@ -67,123 +71,143 @@ function ApprovalsBody() {
   const [rulesStatus, setRulesStatus] = useState<LoadStatus>('loading');
   const [rulesError, setRulesError] = useState('');
   const [confirmRule, setConfirmRule] = useState<OwnedRule | null>(null);
-  const [revokingRule, setRevokingRule] = useState(false);
   const [revokeError, setRevokeError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
-  const revokingRef = useRef(false);
   // Per-id in-flight guard: a second tap while the first POST is running
   // does nothing (the disabled button alone cannot stop a tap that lands
   // before React re-renders).
   const decidingIds = useRef(new Set<string>());
 
   // The confirmation line after a decision ("Approved once", …) shows for a
-  // few seconds where the row was, then clears itself.
-  const showNotice = useCallback((message: string) => {
-    setNotice(message);
-    if (noticeTimer.current !== null) {
-      clearTimeout(noticeTimer.current);
-    }
-    noticeTimer.current = setTimeout(() => {
-      setNotice('');
-      noticeTimer.current = null;
-    }, NOTICE_TIMEOUT_MS);
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      if (noticeTimer.current !== null) {
-        clearTimeout(noticeTimer.current);
-      }
-    };
-  }, []);
-
-  const load = useCallback(
-    async (showLoading: boolean) => {
-      if (showLoading) {
-        setStatus('loading');
-      }
-      try {
-        const list = await api.listApprovals();
-        const visible = list.filter((approval) => !decidedIds.current.has(approval.id));
-        setRows((previous) => rowsForList(visible, previous, decidingIds.current));
-        setStatus('ready');
-        setErrorMessage('');
-      } catch (error) {
-        setStatus('error');
-        setErrorMessage(error instanceof Error ? error.message : 'Could not load approvals.');
-      } finally {
-        setRefreshing(false);
-      }
-    },
-    [api],
+  // few seconds where the row was, then clears itself. A newer line replaces
+  // the timer; unmounting interrupts it.
+  const [, showNotice] = useAction(
+    (message: string) =>
+      Effect.sync(() => setNotice(message)).pipe(
+        Effect.andThen(Effect.sleep(NOTICE_TIMEOUT_MS)),
+        Effect.andThen(Effect.sync(() => setNotice(''))),
+      ),
+    { mode: 'replace' },
   );
 
-  const loadRules = useCallback(
-    async (pending: PublicApproval[]) => {
-      setRulesStatus('loading');
-      try {
+  const [, runLoad] = useAction(
+    (showLoading: boolean) =>
+      Effect.sync(() => {
+        if (showLoading) {
+          setStatus('loading');
+        }
+      }).pipe(
+        Effect.andThen(
+          Effect.tryPromise({
+            try: () => api.listApprovals(),
+            catch: (cause: unknown) =>
+              cause instanceof Error ? cause : new Error('Could not load approvals.'),
+          }),
+        ),
+        Effect.tap((list) =>
+          Effect.sync(() => {
+            const visible = list.filter((approval) => !decidedIds.current.has(approval.id));
+            setRows((previous) => rowsForList(visible, previous, decidingIds.current));
+            setStatus('ready');
+            setErrorMessage('');
+          }),
+        ),
+        Effect.catch((error: Error) =>
+          Effect.sync(() => {
+            setStatus('error');
+            setErrorMessage(error.message);
+          }),
+        ),
+        Effect.ensuring(Effect.sync(() => setRefreshing(false))),
+      ),
+    { mode: 'replace' },
+  );
+
+  // One AI-list fetch for display names; a failure leaves the names empty.
+  const aiList = Effect.tryPromise({
+    try: () => createAisApi(getSessionToken).listAis(),
+    catch: () => undefined,
+  }).pipe(
+    Effect.catch(() => Effect.succeed(undefined)),
+    Effect.map((list) => list ?? []),
+  );
+
+  const [, runRules] = useAction(
+    (pending: PublicApproval[]) =>
+      Effect.sync(() => setRulesStatus('loading')).pipe(
         // One AI-list fetch for display names, then one rules fetch per AI the
         // person owns, whether or not it has a pending request (a standing
         // rule must stay revocable). Group rules are out of scope: T-0184.
-        const ais = await createAisApi(getSessionToken)
-          .listAis()
-          .catch(() => []);
-        const names: Record<string, string> = {};
-        for (const ai of ais) {
-          names[ai.id] = ai.name;
-        }
-        setAiNames(names);
-        const aiIds = [
-          ...new Set([...ais.map((ai) => ai.id), ...pending.map((approval) => approval.aiId)]),
-        ];
-        // One AI's rules failure must not blank the others: each AI is
-        // handled on its own (`mergeRulesFanOut` skips failures), and only
-        // when every AI fails does the section show the error state.
-        const settled = await Promise.allSettled(
-          aiIds.map(async (aiId) => ({
-            aiId,
-            rules: await api.listAiApprovalRules(aiId),
-          })),
-        );
-        const merged = mergeRulesFanOut(settled);
-        if (merged === null) {
-          const firstFailure = settled.find((result) => result.status === 'rejected');
-          const reason =
-            firstFailure !== undefined && firstFailure.status === 'rejected'
-              ? firstFailure.reason
-              : undefined;
-          throw reason instanceof Error ? reason : new Error('Could not load the rules.');
-        }
-        setOwnedRules(merged);
-        setRulesStatus('ready');
-        setRulesError('');
-      } catch {
-        setRulesStatus('error');
-        setRulesError('Could not load the rules.');
-      }
-    },
-    [api],
+        Effect.andThen(aiList),
+        Effect.flatMap((ais) => {
+          const names: Record<string, string> = {};
+          for (const ai of ais) {
+            names[ai.id] = ai.name;
+          }
+          setAiNames(names);
+          const aiIds = [
+            ...new Set([...ais.map((ai) => ai.id), ...pending.map((approval) => approval.aiId)]),
+          ];
+          // One AI's rules failure must not blank the others: each AI is
+          // handled on its own (`mergeRulesFanOut` skips failures), and only
+          // when every AI fails does the section show the error state.
+          return Effect.forEach(
+            aiIds,
+            (aiId) =>
+              fromApi(() => api.listAiApprovalRules(aiId)).pipe(
+                Effect.map((rules) => ({ status: 'fulfilled' as const, value: { aiId, rules } })),
+                Effect.catch((reason) => Effect.succeed({ status: 'rejected' as const, reason })),
+              ),
+            { concurrency: 'unbounded' },
+          );
+        }),
+        Effect.tap((settled) =>
+          Effect.sync(() => {
+            const merged = mergeRulesFanOut(settled);
+            if (merged === null) {
+              setRulesStatus('error');
+              setRulesError('Could not load the rules.');
+              return;
+            }
+            setOwnedRules(merged);
+            setRulesStatus('ready');
+            setRulesError('');
+          }),
+        ),
+        Effect.catch(() =>
+          Effect.sync(() => {
+            setRulesStatus('error');
+            setRulesError('Could not load the rules.');
+          }),
+        ),
+      ),
+    { mode: 'replace' },
   );
 
   // The first load.
   useEffect(() => {
-    void load(true);
-  }, [load]);
+    runLoad(true);
+  }, [runLoad]);
 
   // Refresh when the screen regains focus so coming back from a chat picks
   // up anything decided elsewhere.
   useFocusEffect(
     useCallback(() => {
-      void load(false);
-    }, [load]),
+      runLoad(false);
+    }, [runLoad]),
   );
 
   // Tick `now` every minute so the "expires in" countdown updates without a
-  // full reload.
+  // full reload. Unmounting interrupts the tick.
+  const [, startClock, clockControls] = useAction<void, void, never>(() =>
+    Effect.forever(
+      Effect.sleep(CLOCK_TICK_MS).pipe(Effect.andThen(Effect.sync(() => setNow(new Date())))),
+    ),
+  );
   useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 60_000);
-    return () => clearInterval(timer);
-  }, []);
+    startClock();
+    return () => clockControls.interrupt();
+  }, [startClock, clockControls]);
 
   // The rules ride the pending rows' AI ids; reload them once pending loaded.
   const pendingList = useMemo(() => orderedRows(rows), [rows]);
@@ -193,18 +217,70 @@ function ApprovalsBody() {
   );
   useEffect(() => {
     if (status === 'ready') {
-      void loadRules(pendingList.map((row) => row.approval));
+      runRules(pendingList.map((row) => row.approval));
     }
     // Runs when the pending AI set (or its readiness) changes, not on every
     // row render: `pendingList` is rebuilt per render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingAiKey, status]);
 
-  const decide = useCallback(
-    (id: string, decision: ApprovalDecision) => {
-      if (!claimDecision(decidingIds.current, id)) {
-        return;
-      }
+  const applyDecisionOutcome = (
+    id: string,
+    decision: ApprovalDecision,
+    outcome: DecideOutcome,
+  ): void => {
+    if (outcome.kind === 'decided') {
+      decidedIds.current.add(id);
+      setRows((previous) => {
+        const next = { ...previous };
+        delete next[id];
+        return next;
+      });
+      showNotice(confirmationForDecision(decision));
+    } else if (outcome.kind === 'gone') {
+      // Decided or expired elsewhere: drop the row and explain, instead
+      // of failing silently.
+      decidedIds.current.add(id);
+      setRows((previous) => {
+        const next = { ...previous };
+        delete next[id];
+        return next;
+      });
+      showNotice(outcome.message);
+    } else if (outcome.kind === 'stale') {
+      // The 409 race reloaded a row that is still pending: the decision
+      // did not land, so the row stays in the list with the refreshed
+      // server state and no error.
+      setRows((previous) => {
+        const current = previous[id];
+        if (current === undefined) {
+          return previous;
+        }
+        return {
+          ...previous,
+          [id]: { approval: outcome.approval, busy: null, error: '' },
+        };
+      });
+    } else {
+      // Offline, 500, 403, …: clear `busy` and show the fixed inline
+      // message so the buttons work again and the person can retry.
+      setRows((previous) => {
+        const current = previous[id];
+        if (current === undefined) {
+          return previous;
+        }
+        return { ...previous, [id]: { ...current, busy: null, error: outcome.message } };
+      });
+    }
+  };
+
+  // One decision for one row. The row's own action keeps a second tap from
+  // starting it again; the claim keeps the id busy until the POST settles.
+  const decide = (id: string, decision: ApprovalDecision): Effect.Effect<void> => {
+    if (!claimDecision(decidingIds.current, id)) {
+      return Effect.void;
+    }
+    return Effect.sync(() => {
       setRows((previous) => {
         const current = previous[id];
         if (current === undefined) {
@@ -213,96 +289,52 @@ function ApprovalsBody() {
         }
         return { ...previous, [id]: { ...current, busy: decision, error: '' } };
       });
-      void decideScreenRow(api, id, decision).then((outcome) => {
-        try {
-          if (outcome.kind === 'decided') {
-            decidedIds.current.add(id);
-            setRows((previous) => {
-              const next = { ...previous };
-              delete next[id];
-              return next;
-            });
-            showNotice(confirmationForDecision(decision));
-          } else if (outcome.kind === 'gone') {
-            // Decided or expired elsewhere: drop the row and explain, instead
-            // of failing silently.
-            decidedIds.current.add(id);
-            setRows((previous) => {
-              const next = { ...previous };
-              delete next[id];
-              return next;
-            });
-            showNotice(outcome.message);
-          } else if (outcome.kind === 'stale') {
-            // The 409 race reloaded a row that is still pending: the decision
-            // did not land, so the row stays in the list with the refreshed
-            // server state and no error.
-            setRows((previous) => {
-              const current = previous[id];
-              if (current === undefined) {
-                return previous;
-              }
-              return {
-                ...previous,
-                [id]: { approval: outcome.approval, busy: null, error: '' },
-              };
-            });
-          } else {
-            // Offline, 500, 403, …: clear `busy` and show the fixed inline
-            // message so the buttons work again and the person can retry.
-            setRows((previous) => {
-              const current = previous[id];
-              if (current === undefined) {
-                return previous;
-              }
-              return { ...previous, [id]: { ...current, busy: null, error: outcome.message } };
-            });
-          }
-        } finally {
-          decidingIds.current.delete(id);
-        }
-      });
-    },
-    [api, showNotice],
-  );
+    }).pipe(
+      Effect.andThen(Effect.promise(() => decideScreenRow(api, id, decision))),
+      Effect.tap((outcome) => Effect.sync(() => applyDecisionOutcome(id, decision, outcome))),
+      Effect.ensuring(Effect.sync(() => decidingIds.current.delete(id))),
+    );
+  };
 
   const askRevoke = useCallback((owned: OwnedRule) => {
     setRevokeError('');
     setConfirmRule(owned);
   }, []);
 
-  // A ref like the AI list's `deletingRef`: it stops a second tap that lands
-  // before the disabled state has propagated through React.
-  const confirmRevoke = useCallback(() => {
-    if (confirmRule === null || revokingRef.current) {
-      return;
-    }
-    revokingRef.current = true;
-    setRevokingRule(true);
-    setRevokeError('');
-    const id = confirmRule.rule.id;
-    void api
-      .revokeApprovalRule(id)
-      .then(() => {
-        setOwnedRules((previous) => previous.filter((owned) => owned.rule.id !== id));
-        setConfirmRule(null);
-      })
-      .catch((error: unknown) => {
-        const outcome = revokeFailedOutcome(error);
-        if (outcome.dropped) {
-          // Already gone (revoked elsewhere): drop the row quietly, like a
-          // successful revoke.
+  // A second confirm while one revoke runs is dropped by the action itself.
+  const [revokeState, runRevoke] = useAction((id: string) =>
+    Effect.tryPromise({
+      try: () => api.revokeApprovalRule(id),
+      catch: (error: unknown) => revokeFailedOutcome(error),
+    }).pipe(
+      Effect.tap(() =>
+        Effect.sync(() => {
           setOwnedRules((previous) => previous.filter((owned) => owned.rule.id !== id));
           setConfirmRule(null);
-        } else {
-          setRevokeError(outcome.message);
-        }
-      })
-      .finally(() => {
-        revokingRef.current = false;
-        setRevokingRule(false);
-      });
-  }, [api, confirmRule]);
+        }),
+      ),
+      Effect.catch((outcome: { dropped: boolean; message: string }) =>
+        Effect.sync(() => {
+          if (outcome.dropped) {
+            // Already gone (revoked elsewhere): drop the row quietly, like a
+            // successful revoke.
+            setOwnedRules((previous) => previous.filter((owned) => owned.rule.id !== id));
+            setConfirmRule(null);
+          } else {
+            setRevokeError(outcome.message);
+          }
+        }),
+      ),
+    ),
+  );
+
+  const confirmRevoke = (): void => {
+    if (confirmRule === null || isWaiting(revokeState)) {
+      return;
+    }
+    setRevokeError('');
+    runRevoke(confirmRule.rule.id);
+  };
 
   const nameFor = useCallback((aiId: string) => aiNames[aiId] ?? aiId, [aiNames]);
 
@@ -326,7 +358,7 @@ function ApprovalsBody() {
         <StateMessage
           kind="error"
           title={errorMessage}
-          action={{ label: 'Retry', onPress: () => void load(true) }}
+          action={{ label: 'Retry', onPress: () => runLoad(true) }}
         />
       ) : null}
 
@@ -339,7 +371,7 @@ function ApprovalsBody() {
               tintColor={MUTED_FOREGROUND[scheme]}
               onRefresh={() => {
                 setRefreshing(true);
-                void load(false);
+                runLoad(false);
               }}
             />
           }
@@ -349,7 +381,7 @@ function ApprovalsBody() {
             now={now}
             nameFor={nameFor}
             onDecide={decide}
-            onRefresh={() => void load(false)}
+            onRefresh={() => runLoad(false)}
           />
 
           <RulesSection
@@ -358,14 +390,14 @@ function ApprovalsBody() {
             error={rulesError}
             nameFor={nameFor}
             onAsk={askRevoke}
-            onRetry={() => void loadRules(pendingList.map((row) => row.approval))}
+            onRetry={() => runRules(pendingList.map((row) => row.approval))}
           />
         </ScrollView>
       ) : null}
 
       <RevokeConfirmDialog
         rule={confirmRule?.rule ?? null}
-        busy={revokingRule}
+        busy={isWaiting(revokeState)}
         error={revokeError}
         onCancel={() => setConfirmRule(null)}
         onConfirm={confirmRevoke}
@@ -384,7 +416,7 @@ function PendingTab({
   rows: { approval: PublicApproval; busy: RowBusy; error: string }[];
   now: Date;
   nameFor: (aiId: string) => string;
-  onDecide: (id: string, decision: ApprovalDecision) => void;
+  onDecide: (id: string, decision: ApprovalDecision) => Effect.Effect<void>;
   onRefresh: () => void;
 }) {
   const scheme = asColorScheme(useColorScheme().colorScheme);
@@ -404,17 +436,42 @@ function PendingTab({
   return (
     <View className="gap-2">
       {rows.map((row) => (
-        <PendingApprovalRow
+        <DecidingRow
           key={row.approval.id}
-          approval={row.approval}
+          row={row}
           aiName={nameFor(row.approval.aiId)}
           now={now}
-          busy={row.busy}
-          actionError={row.error}
           onDecide={onDecide}
         />
       ))}
     </View>
+  );
+}
+
+/** One pending row with its own decision action, so a tap on one row never waits on another. */
+function DecidingRow({
+  row,
+  aiName,
+  now,
+  onDecide,
+}: {
+  row: { approval: PublicApproval; busy: RowBusy; error: string };
+  aiName: string;
+  now: Date;
+  onDecide: (id: string, decision: ApprovalDecision) => Effect.Effect<void>;
+}) {
+  const [, decideRun] = useAction((input: { id: string; decision: ApprovalDecision }) =>
+    onDecide(input.id, input.decision),
+  );
+  return (
+    <PendingApprovalRow
+      approval={row.approval}
+      aiName={aiName}
+      now={now}
+      busy={row.busy}
+      actionError={row.error}
+      onDecide={(id, decision) => decideRun({ id, decision })}
+    />
   );
 }
 

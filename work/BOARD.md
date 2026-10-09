@@ -12,7 +12,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0839](T-0839-mobile-search-list.md) | MU22 follow-up: mobile message-search-list on Effect | in-progress | haiku-5.5 | T-0831 | |
 | [T-0840](T-0840-batch-lint.md) | lead batch check runs lint | review | haiku-5.5 | T-0799 | |
 | [T-0841](T-0841-people-search-stale-card.md) | Mobile fix: people-search card stale after a request action | in-progress | haiku-5.5 | T-0833 | found by T-0833 |
-| [T-0819](T-0819-mobile-mu10.md) | MU10: mobile settings A on Effect | in-progress | haiku-5.5 | | wave 2 |
 | [T-0835](T-0835-web-store.md) | WS1-WS11: web chat store on Effect | in-progress | sonnet-5.5 | T-0801 | chain; Julio checks connect, history, sending live |
 | [T-0836](T-0836-mobile-store.md) | MS1-MS10: mobile chat store on Effect | in-progress | sonnet-5.5 | T-0801 | chain; Julio checks connect, resume, sending live |
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
@@ -870,3 +869,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0814](T-0814-mobile-mu5.md) | MU5: mobile on Effect | 2026-10-09 |
 | [T-0810](T-0810-mobile-mu1.md) | MU1: mobile on Effect | 2026-10-09 |
 | [T-0824](T-0824-mobile-mu15.md) | MU15: mobile on Effect | 2026-10-09 |
+| [T-0819](T-0819-mobile-mu10.md) | MU10: mobile on Effect | 2026-10-09 |

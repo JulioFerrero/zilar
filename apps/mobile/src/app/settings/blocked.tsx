@@ -1,6 +1,7 @@
+import { Effect } from 'effect';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Ban, ChevronLeft } from 'lucide-react-native';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useColorScheme } from 'nativewind';
@@ -17,6 +18,7 @@ import type { BlockedPerson } from '@/lib/contacts-api';
 import { useContactsApi } from '@/components/contacts/use-contacts-api';
 import { blockedLoadFailure, performUnblock } from '@/components/contacts/blocks';
 import { Avatar } from '@/components/chat/avatar';
+import { isWaiting, useAction } from '@/lib/effect/use-action';
 
 type PageStatus = 'loading' | 'ready' | 'error';
 
@@ -42,25 +44,35 @@ function BlockedList() {
   const [people, setPeople] = useState<BlockedPerson[]>([]);
   const [status, setStatus] = useState<PageStatus>('loading');
   const [error, setError] = useState('');
-  const [busyId, setBusyId] = useState<string | undefined>(undefined);
-  // Guards against a double tap landing before React re-renders the disabled
-  // button, so one Unblock can never DELETE twice.
-  const busyRef = useRef(false);
 
-  const reload = useCallback(() => {
-    setStatus('loading');
-    setError('');
-    void api
-      .listBlockedUsers()
-      .then((blocked) => {
-        setPeople(blocked);
-        setStatus('ready');
-      })
-      .catch((loadError: unknown) => {
-        setError(blockedLoadFailure(loadError));
-        setStatus('error');
-      });
-  }, [api]);
+  // A new load replaces one still running (the focus refresh and Retry).
+  const [, reload] = useAction<void, void, never>(
+    () =>
+      Effect.sync(() => {
+        setStatus('loading');
+        setError('');
+      }).pipe(
+        Effect.andThen(
+          Effect.tryPromise({
+            try: () => api.listBlockedUsers(),
+            catch: (loadError: unknown) => blockedLoadFailure(loadError),
+          }),
+        ),
+        Effect.tap((blocked) =>
+          Effect.sync(() => {
+            setPeople(blocked);
+            setStatus('ready');
+          }),
+        ),
+        Effect.catch((message: string) =>
+          Effect.sync(() => {
+            setError(message);
+            setStatus('error');
+          }),
+        ),
+      ),
+    { mode: 'replace' },
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -68,26 +80,26 @@ function BlockedList() {
     }, [reload]),
   );
 
-  const unblock = (userId: string): void => {
-    if (busyRef.current) {
-      return;
-    }
-    busyRef.current = true;
-    setBusyId(userId);
-    setError('');
-    void performUnblock(api, userId, () => {
-      setPeople((rows) => rows.filter((row) => row.userId !== userId));
-    })
-      .then((failure) => {
-        if (failure !== null) {
-          setError(failure);
-        }
-      })
-      .finally(() => {
-        busyRef.current = false;
-        setBusyId(undefined);
-      });
-  };
+  // One Unblock: the row drops on success, a failure keeps it and shows the
+  // fixed sentence. The row's own action stops a double tap.
+  const unblock = (userId: string): Effect.Effect<void> =>
+    Effect.sync(() => setError('')).pipe(
+      Effect.andThen(
+        Effect.promise(() =>
+          performUnblock(api, userId, () => {
+            setPeople((rows) => rows.filter((row) => row.userId !== userId));
+          }),
+        ),
+      ),
+      Effect.tap((failure) =>
+        Effect.sync(() => {
+          if (failure !== null) {
+            setError(failure);
+          }
+        }),
+      ),
+      Effect.asVoid,
+    );
 
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top']}>
@@ -123,7 +135,7 @@ function BlockedList() {
               action={{
                 label: 'Retry',
                 accessibilityLabel: 'Retry loading blocked people',
-                onPress: reload,
+                onPress: () => reload(),
               }}
             />
           ) : null}
@@ -141,12 +153,7 @@ function BlockedList() {
             <View accessibilityRole="none" accessibilityLabel="Blocked people" className="gap-2">
               <Card>
                 {people.map((person) => (
-                  <BlockedRow
-                    key={person.userId}
-                    person={person}
-                    busy={busyId === person.userId}
-                    onUnblock={() => unblock(person.userId)}
-                  />
+                  <BlockedRow key={person.userId} person={person} onUnblock={unblock} />
                 ))}
               </Card>
             </View>
@@ -170,13 +177,12 @@ function BlockedList() {
 
 function BlockedRow({
   person,
-  busy,
   onUnblock,
 }: {
   person: BlockedPerson;
-  busy: boolean;
-  onUnblock: () => void;
+  onUnblock: (userId: string) => Effect.Effect<void>;
 }) {
+  const [state, unblock] = useAction<void, void, never>(() => onUnblock(person.userId));
   return (
     <View className="flex-row items-center gap-3 px-3 py-2.5">
       <Avatar id={person.userId} name={person.name} size={44} />
@@ -192,10 +198,10 @@ function BlockedRow({
         variant="outline"
         size="sm"
         accessibilityLabel={`Unblock ${person.name}`}
-        disabled={busy}
-        onPress={onUnblock}
+        disabled={isWaiting(state)}
+        onPress={() => unblock()}
       >
-        <Text>{busy ? 'Unblocking…' : 'Unblock'}</Text>
+        <Text>{isWaiting(state) ? 'Unblocking…' : 'Unblock'}</Text>
       </Button>
     </View>
   );

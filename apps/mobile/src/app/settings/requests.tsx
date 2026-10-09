@@ -1,6 +1,7 @@
+import { Effect } from 'effect';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Ban, ChevronLeft, UserPlus } from 'lucide-react-native';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useColorScheme } from 'nativewind';
@@ -23,6 +24,7 @@ import {
   type RequestAction,
 } from '@/components/contacts/requests';
 import { Avatar } from '@/components/chat/avatar';
+import { isWaiting, useAction } from '@/lib/effect/use-action';
 
 type PageStatus = 'loading' | 'ready' | 'error';
 
@@ -50,26 +52,36 @@ function RequestsList() {
   const [outgoing, setOutgoing] = useState<ContactRequestView[]>([]);
   const [status, setStatus] = useState<PageStatus>('loading');
   const [error, setError] = useState('');
-  const [busyId, setBusyId] = useState<string | undefined>(undefined);
-  // Guards against a double tap landing before React re-renders the disabled
-  // button, so one Accept can never POST twice.
-  const busyRef = useRef(false);
 
-  const reload = useCallback(() => {
-    setStatus('loading');
-    setError('');
-    void api
-      .listContactRequests()
-      .then((list) => {
-        setIncoming(list.incoming);
-        setOutgoing(list.outgoing);
-        setStatus('ready');
-      })
-      .catch((loadError: unknown) => {
-        setError(requestsLoadFailure(loadError));
-        setStatus('error');
-      });
-  }, [api]);
+  // A new load replaces one still running (the focus refresh and Retry).
+  const [, reload] = useAction<void, void, never>(
+    () =>
+      Effect.sync(() => {
+        setStatus('loading');
+        setError('');
+      }).pipe(
+        Effect.andThen(
+          Effect.tryPromise({
+            try: () => api.listContactRequests(),
+            catch: (loadError: unknown) => requestsLoadFailure(loadError),
+          }),
+        ),
+        Effect.tap((list) =>
+          Effect.sync(() => {
+            setIncoming(list.incoming);
+            setOutgoing(list.outgoing);
+            setStatus('ready');
+          }),
+        ),
+        Effect.catch((message: string) =>
+          Effect.sync(() => {
+            setError(message);
+            setStatus('error');
+          }),
+        ),
+      ),
+    { mode: 'replace' },
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -82,24 +94,20 @@ function RequestsList() {
     setOutgoing((rows) => rows.filter((row) => row.id !== id));
   };
 
-  const act = (id: string, action: RequestAction): void => {
-    if (busyRef.current) {
-      return;
-    }
-    busyRef.current = true;
-    setBusyId(id);
-    setError('');
-    void performRequestAction(api, id, action, remove)
-      .then((failure) => {
-        if (failure !== null) {
-          setError(failure);
-        }
-      })
-      .finally(() => {
-        busyRef.current = false;
-        setBusyId(undefined);
-      });
-  };
+  // One Accept, Decline or Cancel: the row drops on success, a failure keeps it
+  // and shows the fixed sentence. The row's own action stops a double tap.
+  const act = (id: string, action: RequestAction): Effect.Effect<void> =>
+    Effect.sync(() => setError('')).pipe(
+      Effect.andThen(Effect.promise(() => performRequestAction(api, id, action, remove))),
+      Effect.tap((failure) =>
+        Effect.sync(() => {
+          if (failure !== null) {
+            setError(failure);
+          }
+        }),
+      ),
+      Effect.asVoid,
+    );
 
   const pending = incoming.length + outgoing.length;
 
@@ -139,7 +147,7 @@ function RequestsList() {
               action={{
                 label: 'Retry',
                 accessibilityLabel: 'Retry loading requests',
-                onPress: reload,
+                onPress: () => reload(),
               }}
             />
           ) : null}
@@ -158,13 +166,7 @@ function RequestsList() {
               <SectionLabel>Incoming</SectionLabel>
               <Card>
                 {incoming.map((request) => (
-                  <RequestRow
-                    key={request.id}
-                    request={request}
-                    busy={busyId === request.id}
-                    onAccept={() => act(request.id, 'accept')}
-                    onDecline={() => act(request.id, 'decline')}
-                  />
+                  <RequestRow key={request.id} request={request} onAct={act} />
                 ))}
               </Card>
             </View>
@@ -179,13 +181,7 @@ function RequestsList() {
               <SectionLabel>Sent</SectionLabel>
               <Card>
                 {outgoing.map((request) => (
-                  <RequestRow
-                    key={request.id}
-                    request={request}
-                    busy={busyId === request.id}
-                    outgoing
-                    onCancel={() => act(request.id, 'cancel')}
-                  />
+                  <RequestRow key={request.id} request={request} outgoing onAct={act} />
                 ))}
               </Card>
             </View>
@@ -224,19 +220,15 @@ function RequestsList() {
 
 function RequestRow({
   request,
-  busy,
   outgoing = false,
-  onAccept,
-  onDecline,
-  onCancel,
+  onAct,
 }: {
   request: ContactRequestView;
-  busy: boolean;
   outgoing?: boolean;
-  onAccept?: () => void;
-  onDecline?: () => void;
-  onCancel?: () => void;
+  onAct: (id: string, action: RequestAction) => Effect.Effect<void>;
 }) {
+  const [state, run] = useAction((action: RequestAction) => onAct(request.id, action));
+  const busy = isWaiting(state);
   return (
     <View className="flex-row items-center gap-3 px-3 py-2.5">
       <Avatar id={request.other.userId} name={request.other.name} size={44} />
@@ -255,7 +247,7 @@ function RequestRow({
         <Button
           accessibilityLabel={`Cancel the request to ${request.other.name}`}
           disabled={busy}
-          onPress={onCancel}
+          onPress={() => run('cancel')}
           variant="outline"
           size="sm"
         >
@@ -266,7 +258,7 @@ function RequestRow({
           <Button
             accessibilityLabel={`Accept ${request.other.name}`}
             disabled={busy}
-            onPress={onAccept}
+            onPress={() => run('accept')}
             variant="default"
             size="sm"
           >
@@ -275,7 +267,7 @@ function RequestRow({
           <Button
             accessibilityLabel={`Decline ${request.other.name}`}
             disabled={busy}
-            onPress={onDecline}
+            onPress={() => run('decline')}
             variant="outline"
             size="sm"
           >
