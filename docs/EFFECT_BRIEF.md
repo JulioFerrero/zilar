@@ -42,7 +42,7 @@ This page is the short version for conversion workers. Read it, your task file a
 ## Effect 4 traps
 
 - `Effect.async` does not exist; use `Effect.callback`. Its `resume` takes an Effect.
-- `Effect.catch` does not typecheck here; use `catchTag`, `catchTags` or `catchCause`. `catchAllCause` does not exist.
+- `Effect.catch` typechecks in 4.0.2 (T-0792 used it), as do `catchTag`, `catchTags`, `catchCause` and `catchDefect`. `catchAllCause` does not exist. To log a loop's failure without logging normal interruption, use `catchDefect`.
 - `Effect.timeout` adds `TimeoutError`; prefer `timeoutOrElse`.
 - `Schema.Number` accepts `NaN`; use `Schema.Finite`. Use `Schema.optional`, not `optionalKey` (`exactOptionalPropertyTypes`).
 - `Effect.fnUntraced(function* (...) {...})` with an `Effect.fn.Return<A, E>` annotation is the shape for reusable functions.
