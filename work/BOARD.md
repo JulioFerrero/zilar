@@ -16,6 +16,18 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0796](T-0796-sandbox-tool-worker.md) | S5b: sandbox tool worker on Effect | in-progress | sonnet-5.5 | | effect-100-plan Phase 2 |
 | [T-0797](T-0797-push-sender-component.md) | S6: push component and sender on Effect | in-progress | haiku-5.5 | | effect-100-plan Phase 2; Julio checks a push live before deploy |
 | [T-0798](T-0798-runner-tunnel-mux.md) | H1: runner-tunnel mux on Effect | in-progress | sonnet-5.5 | | effect-100-plan Phase 2; Julio checks an AI desk live before deploy |
+| [T-0792](T-0792-gateway-s2.md) | S2: AI gateway part 2 on Effect | in-progress | sonnet-5.5 | | wave 1 |
+| [T-0799](T-0799-lead-batch.md) | lead batch: one combined check per wave | in-progress | sonnet-5.5 | | wave 1 |
+| [T-0800](T-0800-mobile-effect-toolkit.md) | F3 + F4: mobile Effect toolkit | in-progress | sonnet-5.5 | | wave 1 |
+| [T-0801](T-0801-xmpp-core-effect.md) | X3-X7: xmpp-core Effect core | in-progress | sonnet-5.5 | | wave 1; Julio checks messaging live before deploy |
+| [T-0802](T-0802-mobile-r4-parse-markers.md) | R4: mobile parses and markers | in-progress | haiku-5.5 | | wave 1 |
+| [T-0803](T-0803-mobile-r5-mock-gate.md) | R5: mobile mock env in one place | in-progress | haiku-5.5 | | wave 1 |
+| [T-0804](T-0804-server-auth-db.md) | S10: server auth and db client on Effect | in-progress | sonnet-5.5 | | wave 1; Julio signs in live before deploy |
+| [T-0805](T-0805-small-sweep.md) | Small sweep: spike delete, markers, group events | in-progress | haiku-5.5 | | wave 1 |
+| [T-0806](T-0806-runner-chain.md) | H2 + H3: runner-tunnel and apps/runner on Effect | in-progress | sonnet-5.5 | | wave 1 |
+| [T-0807](T-0807-web-onboarding.md) | WU5: web onboarding routes on Effect | in-progress | sonnet-5.5 | | wave 1 |
+| [T-0808](T-0808-web-notifications.md) | WU9: NotificationsPage and GroupHandleRoute on Effect | in-progress | haiku-5.5 | | wave 1 |
+| [T-0809](T-0809-web-composer.md) | WU18: Composer on Effect | in-progress | sonnet-5.5 | | wave 1; Julio checks sending live before deploy |
 
 ## Follow-ups
 
