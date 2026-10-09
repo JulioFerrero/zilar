@@ -26,7 +26,7 @@ import {
   withErrorEnvelope,
   type EffectApiMount,
   type EffectApiRoute,
-} from '../effect/http';
+} from '../effect/http-core';
 import {
   MAX_AUDIT_LIST_LIMIT,
   listAuditForAi,

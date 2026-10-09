@@ -35,7 +35,7 @@ import {
   withErrorEnvelope,
   type EffectApiMount,
   type EffectApiRoute,
-} from '../effect/http';
+} from '../effect/http-core';
 import { HttpError } from '../errors';
 import { clientIpFrom } from '../http/client-ip';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';

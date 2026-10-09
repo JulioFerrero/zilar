@@ -26,7 +26,7 @@ import {
   withErrorEnvelope,
   type EffectApiMount,
   type EffectApiRoute,
-} from '../effect/http';
+} from '../effect/http-core';
 import { NotAudioError, createFfmpegEngine } from './engine';
 import { VOICE_MAX_BYTES, VOICE_MAX_DURATION_MS, type VoiceRoutesDependencies } from './routes';
 

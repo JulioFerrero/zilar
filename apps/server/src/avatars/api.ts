@@ -28,7 +28,7 @@ import {
   withErrorEnvelope,
   type EffectApiMount,
   type EffectApiRoute,
-} from '../effect/http';
+} from '../effect/http-core';
 import { createRateLimiter } from '../rate-limit';
 import type { AvatarsRoutesDependencies } from './routes';
 import {

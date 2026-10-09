@@ -28,7 +28,7 @@ import {
   withErrorEnvelope,
   type EffectApiMount,
   type EffectApiRoute,
-} from '../effect/http';
+} from '../effect/http-core';
 import { createRateLimiter } from '../rate-limit';
 import { hashPairingCode, normalizePairingCode } from './codes';
 import { createDbMachineRegistry, type DbMachineRegistry } from './registry';

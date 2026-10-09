@@ -28,7 +28,7 @@ import {
   withErrorEnvelope,
   type EffectApiMount,
   type EffectApiRoute,
-} from '../effect/http';
+} from '../effect/http-core';
 import type { EjabberdAdminClient } from './admin-client';
 import type { XmppConfig } from './config';
 import { ensureXmppAccount } from './provisioning';

@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-0694](T-0694-split-effect-http-core.md) | B1.1: split effect/http.ts into http-core (no Hono) + the bridge | in-progress | auto | T-0689 | |
 | [T-0704](T-0704-contacts-tests-off-drizzle.md) | tests off drizzle: contacts + contact-requests | in-progress | auto | T-0695 | |
 | [T-0705](T-0705-backgrounds-delegation-tests-off-drizzle.md) | tests off drizzle: backgrounds + agents/delegation | in-progress | haiku-5.5 | T-0695 | |
 | [T-0707](T-0707-invite-links-tests-off-drizzle.md) | tests off drizzle: invite-links | in-progress | auto | T-0695 | |
@@ -742,3 +741,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0700](T-0700-blocks-handles-tests-off-drizzle.md) | tests off drizzle: blocks and handles | 2026-10-09 |
 | [T-0703](T-0703-chat-prefs-tests-off-drizzle.md) | tests off drizzle: chat-prefs | 2026-10-09 |
 | [T-0706](T-0706-audit-tests-off-drizzle.md) | tests off drizzle: audit | 2026-10-09 |
+| [T-0694](T-0694-split-effect-http-core.md) | B1.1: effect/http split into http-core and the Hono bridge | 2026-10-09 |

@@ -33,7 +33,7 @@ import {
   withErrorEnvelope,
   type EffectApiMount,
   type EffectApiRoute,
-} from '../effect/http';
+} from '../effect/http-core';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import {
   assignMachine,

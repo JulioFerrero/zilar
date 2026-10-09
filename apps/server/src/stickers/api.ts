@@ -46,7 +46,7 @@ import {
   withErrorEnvelope,
   type EffectApiMount,
   type EffectApiRoute,
-} from '../effect/http';
+} from '../effect/http-core';
 import { HttpError } from '../errors';
 import { createRateLimiter } from '../rate-limit';
 import type { StickersRoutesDependencies } from './routes';

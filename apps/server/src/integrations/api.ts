@@ -30,7 +30,7 @@ import {
   withErrorEnvelope,
   type EffectApiMount,
   type EffectApiRoute,
-} from '../effect/http';
+} from '../effect/http-core';
 import { sqlRuntimeFor } from '../effect/sql';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
 import { getMailSettings, saveMailSettingsEffect, settingsCipherFor } from '../setup/settings';

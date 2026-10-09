@@ -29,7 +29,7 @@ import {
   withErrorEnvelope,
   type EffectApiMount,
   type EffectApiRoute,
-} from '../effect/http';
+} from '../effect/http-core';
 import { HttpError } from '../errors';
 import { canSeeTopic, type TopicRow } from '../topics/access';
 import {

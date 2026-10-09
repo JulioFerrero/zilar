@@ -29,7 +29,7 @@ import {
   withErrorEnvelope,
   type EffectApiMount,
   type EffectApiRoute,
-} from '../effect/http';
+} from '../effect/http-core';
 import {
   CHAT_BACKGROUND_PRESET_IDS,
   getChatBackgroundDefault,

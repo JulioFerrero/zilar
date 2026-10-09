@@ -27,7 +27,7 @@ import {
   withErrorEnvelope,
   type EffectApiMount,
   type EffectApiRoute,
-} from '../effect/http';
+} from '../effect/http-core';
 import { blockUser, listBlockedUsers, unblockUser } from './service';
 
 export const BLOCK_WRITE_RATE_LIMIT_MAX = 30;

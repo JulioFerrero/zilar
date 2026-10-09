@@ -23,7 +23,7 @@ import {
   withErrorEnvelope,
   type EffectApiMount,
   type EffectApiRoute,
-} from '../effect/http';
+} from '../effect/http-core';
 import type { DraftHubEvent } from './events';
 import { sharedDraftHub, type DraftHub } from './hub';
 
