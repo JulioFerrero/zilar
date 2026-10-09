@@ -1,8 +1,9 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { eq } from 'drizzle-orm';
-import { aiLimits, ais, approvals, auditLog, providerConnections, user } from '../db/schema';
-import { createTestContext, type TestContext } from '../test-support';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
+import type { AuditEntry } from '../audit/service';
+import { createTestContext, testSql, type TestContext } from '../test-support';
 import { createApproval } from './service';
 import { startApprovalsSweeper, type SweeperLogger } from './sweeper';
 
@@ -19,33 +20,48 @@ function captureLogger(): SweeperLogger {
 
 async function seedUser(context: TestContext): Promise<string> {
   const id = randomUUID();
-  await context.db.insert(user).values({ id, name: 'User', email: `${id}@example.com` });
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO "user" ${sql.insert({ id, name: 'User', email: `${id}@example.com` })}`;
+    }),
+  );
   return id;
 }
 
 async function seedAi(context: TestContext, ownerId: string): Promise<string> {
   const connectionId = randomUUID();
-  await context.db.insert(providerConnections).values({
-    id: connectionId,
-    owner: ownerId,
-    provider: 'openai',
-    encryptedKey: 'sealed-placeholder',
-    label: null,
-  });
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO provider_connections ${sql.insert({
+        id: connectionId,
+        owner: ownerId,
+        provider: 'openai',
+        encrypted_key: 'sealed-placeholder',
+        label: null,
+      })}`;
+    }),
+  );
   const aiId = randomUUID();
-  await context.db.insert(ais).values({
-    id: aiId,
-    owner: ownerId,
-    name: 'Helper',
-    template: 'dev',
-    persona: 'A persona',
-    providerConnectionId: connectionId,
-    model: 'gpt-4o-mini',
-    localpart: `ai-${aiId}`,
-    jid: `ai-${aiId}@zilar.localhost`,
-    status: 'active',
-  });
-  await context.db.insert(aiLimits).values({ aiId, perDayUsd: '1.00', perMonthUsd: '20.00' });
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO ais ${sql.insert({
+        id: aiId,
+        owner: ownerId,
+        name: 'Helper',
+        template: 'dev',
+        persona: 'A persona',
+        provider_connection_id: connectionId,
+        model: 'gpt-4o-mini',
+        localpart: `ai-${aiId}`,
+        jid: `ai-${aiId}@zilar.localhost`,
+        status: 'active',
+      })}`;
+      yield* sql`INSERT INTO ai_limits ${sql.insert({ ai_id: aiId, per_day_usd: '1.00', per_month_usd: '20.00' })}`;
+    }),
+  );
   return aiId;
 }
 
@@ -66,11 +82,42 @@ async function seedPastDueApproval(
     },
     now,
   );
-  await context.db
-    .update(approvals)
-    .set({ expiresAt: new Date(now.getTime() - 1) })
-    .where(eq(approvals.id, row.id));
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`UPDATE approvals SET expires_at = ${new Date(now.getTime() - 1)} WHERE id = ${row.id}`;
+    }),
+  );
   return { id: row.id };
+}
+
+async function recordAuditRow(context: TestContext, entry: AuditEntry, now: Date): Promise<void> {
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const detail =
+        entry.detail === null ? sql`NULL` : sql`${JSON.stringify(entry.detail)}::jsonb`;
+      yield* sql`INSERT INTO audit_log (
+          id, at, actor_user_id, ai_id, group_id, action, subject_id, args_hash,
+          cost_currency, cost_amount, result, detail
+        ) VALUES (
+          ${randomUUID()}, ${now}, ${entry.actorUserId}, ${entry.aiId}, ${entry.groupId},
+          ${entry.action}, ${entry.subjectId}, ${entry.argsHash},
+          ${entry.costCurrency}, ${entry.costAmount === null ? null : entry.costAmount.toFixed(2)},
+          ${entry.result}, ${detail}
+        )`;
+    }),
+  );
+}
+
+async function auditRowCount(context: TestContext): Promise<number> {
+  const [row] = await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ total: number }>`SELECT count(*)::int AS total FROM audit_log`;
+    }),
+  );
+  return row?.total ?? 0;
 }
 
 interface Deferred {
@@ -116,20 +163,7 @@ describe('approvals sweeper effect loop', () => {
         async record(entry) {
           started += 1;
           await parking.promise;
-          await context.db.insert(auditLog).values({
-            id: randomUUID(),
-            at: now,
-            actorUserId: entry.actorUserId,
-            aiId: entry.aiId,
-            groupId: entry.groupId,
-            action: entry.action,
-            subjectId: entry.subjectId,
-            argsHash: entry.argsHash,
-            costCurrency: entry.costCurrency,
-            costAmount: entry.costAmount === null ? null : entry.costAmount.toFixed(2),
-            result: entry.result,
-            detail: entry.detail,
-          });
+          await recordAuditRow(context, entry, now);
         },
       },
       logger: captureLogger(),
@@ -146,11 +180,11 @@ describe('approvals sweeper effect loop', () => {
     parking.release();
     await vi.advanceTimersByTimeAsync(0);
 
-    expect(await context.db.select().from(auditLog)).toHaveLength(1);
+    expect(await auditRowCount(context)).toBe(1);
 
     // No further ticks after the interrupt.
     await vi.advanceTimersByTimeAsync(10_000);
     expect(started).toBe(1);
-    expect(await context.db.select().from(auditLog)).toHaveLength(1);
+    expect(await auditRowCount(context)).toBe(1);
   });
 });

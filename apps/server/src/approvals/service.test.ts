@@ -1,19 +1,8 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { and, eq } from 'drizzle-orm';
-import {
-  aiLimits,
-  ais,
-  approvalRules,
-  approvals,
-  groupAis,
-  groupMembers,
-  groups,
-  providerConnections,
-  topics,
-  user,
-} from '../db/schema';
-import { createTestContext, type TestContext } from '../test-support';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
+import { createTestContext, testSql, type TestContext } from '../test-support';
 import {
   ApprovalServiceError,
   canDecide,
@@ -52,11 +41,16 @@ async function seedUser(
   overrides: { name?: string; email?: string } = {},
 ): Promise<string> {
   const id = randomUUID();
-  await context.db.insert(user).values({
-    id,
-    name: overrides.name ?? 'User',
-    email: overrides.email ?? `${id}@example.com`,
-  });
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO "user" ${sql.insert({
+        id,
+        name: overrides.name ?? 'User',
+        email: overrides.email ?? `${id}@example.com`,
+      })}`;
+    }),
+  );
   return id;
 }
 
@@ -66,29 +60,39 @@ async function seedAi(
   overrides: { name?: string } = {},
 ): Promise<{ aiId: string; jid: string }> {
   const connectionId = randomUUID();
-  await context.db.insert(providerConnections).values({
-    id: connectionId,
-    owner: ownerId,
-    provider: 'openai',
-    encryptedKey: 'sealed-placeholder',
-    label: null,
-  });
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO provider_connections ${sql.insert({
+        id: connectionId,
+        owner: ownerId,
+        provider: 'openai',
+        encrypted_key: 'sealed-placeholder',
+        label: null,
+      })}`;
+    }),
+  );
   const aiId = randomUUID();
   const localpart = `ai-${aiId}`;
   const jid = `${localpart}@zilar.localhost`;
-  await context.db.insert(ais).values({
-    id: aiId,
-    owner: ownerId,
-    name: overrides.name ?? 'Helper AI',
-    template: 'dev',
-    persona: 'A persona',
-    providerConnectionId: connectionId,
-    model: 'gpt-4o-mini',
-    localpart,
-    jid,
-    status: 'active',
-  });
-  await context.db.insert(aiLimits).values({ aiId, perDayUsd: '1.00', perMonthUsd: '20.00' });
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO ais ${sql.insert({
+        id: aiId,
+        owner: ownerId,
+        name: overrides.name ?? 'Helper AI',
+        template: 'dev',
+        persona: 'A persona',
+        provider_connection_id: connectionId,
+        model: 'gpt-4o-mini',
+        localpart,
+        jid,
+        status: 'active',
+      })}`;
+      yield* sql`INSERT INTO ai_limits ${sql.insert({ ai_id: aiId, per_day_usd: '1.00', per_month_usd: '20.00' })}`;
+    }),
+  );
   return { aiId, jid };
 }
 
@@ -99,36 +103,127 @@ async function seedGroup(
   aiIds: string[],
 ): Promise<{ groupId: string; generalTopicId: string }> {
   const groupId = randomUUID();
-  await context.db.insert(groups).values({
-    id: groupId,
-    roomLocalpart: `g${randomBytes(15).toString('hex').slice(0, 15)}`,
-    title: 'Trip',
-    createdBy: ownerId,
-  });
-  await context.db.insert(groupMembers).values(
-    members.map((entry) => ({
-      groupId,
-      userId: entry.userId,
-      role: entry.role,
-    })),
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO groups ${sql.insert({
+        id: groupId,
+        room_localpart: `g${randomBytes(15).toString('hex').slice(0, 15)}`,
+        title: 'Trip',
+        created_by: ownerId,
+      })}`;
+      yield* sql`INSERT INTO group_members ${sql.insert(
+        members.map((entry) => ({
+          group_id: groupId,
+          user_id: entry.userId,
+          role: entry.role,
+        })),
+      )}`;
+      for (const aiId of aiIds) {
+        yield* sql`INSERT INTO group_ais ${sql.insert({ group_id: groupId, ai_id: aiId, added_by: ownerId })}`;
+      }
+    }),
   );
-  for (const aiId of aiIds) {
-    await context.db.insert(groupAis).values({ groupId, aiId, addedBy: ownerId });
-  }
   const generalTopicId = randomUUID();
-  await context.db.insert(topics).values({
-    id: generalTopicId,
-    groupId,
-    name: 'General',
-    glyph: 'G',
-    roomLocalpart: `g${randomBytes(15).toString('hex').slice(0, 15)}`,
-    visibility: 'public',
-    kind: 'chat',
-    status: 'open',
-    isGeneral: true,
-    createdBy: ownerId,
-  });
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO topics ${sql.insert({
+        id: generalTopicId,
+        group_id: groupId,
+        name: 'General',
+        glyph: 'G',
+        room_localpart: `g${randomBytes(15).toString('hex').slice(0, 15)}`,
+        visibility: 'public',
+        kind: 'chat',
+        status: 'open',
+        is_general: true,
+        created_by: ownerId,
+      })}`;
+    }),
+  );
   return { groupId, generalTopicId };
+}
+
+interface ApprovalStatusRow {
+  status: string;
+}
+
+async function approvalStatus(context: TestContext, id: string): Promise<string | undefined> {
+  const [row] = await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<ApprovalStatusRow>`SELECT status FROM approvals WHERE id = ${id}`;
+    }),
+  );
+  return row?.status;
+}
+
+type StoredApprovalStatus = 'pending' | 'approved_once' | 'approved_always' | 'denied' | 'consumed';
+
+interface StoredApprovalRow {
+  id: string;
+  aiId: string;
+  groupId: string | null;
+  topicId: string | null;
+  action: string;
+  summary: string;
+  details: string | null;
+  argsHash: string;
+  worstCaseCurrency: string | null;
+  worstCaseAmount: string | null;
+  requestedBy: string;
+  status: StoredApprovalStatus;
+  decidedBy: string | null;
+  decidedAt: Date | string | null;
+  note: string | null;
+  expiresAt: Date | string;
+  createdAt: Date | string;
+}
+
+async function storedApproval(
+  context: TestContext,
+  id: string,
+): Promise<StoredApprovalRow | undefined> {
+  const [row] = await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<StoredApprovalRow>`SELECT id, ai_id, group_id, topic_id, action, summary, details, args_hash, worst_case_currency, worst_case_amount, requested_by, status, decided_by, decided_at, note, expires_at, created_at FROM approvals WHERE id = ${id}`;
+    }),
+  );
+  return row;
+}
+
+function asPublicRow(row: StoredApprovalRow): Parameters<typeof toPublicApproval>[0] {
+  return {
+    id: row.id,
+    aiId: row.aiId,
+    groupId: row.groupId,
+    topicId: row.topicId,
+    action: row.action,
+    summary: row.summary,
+    details: row.details,
+    argsHash: row.argsHash,
+    worstCaseCurrency: row.worstCaseCurrency,
+    worstCaseAmount: row.worstCaseAmount,
+    requestedBy: row.requestedBy,
+    status: row.status,
+    decidedBy: row.decidedBy,
+    decidedAt: row.decidedAt === null ? null : new Date(row.decidedAt),
+    note: row.note,
+    expiresAt: new Date(row.expiresAt),
+    createdAt: new Date(row.createdAt),
+  };
+}
+
+async function approvalRuleCount(context: TestContext): Promise<number> {
+  const [row] = await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ total: number }>`SELECT count(*)::int AS total FROM approval_rules`;
+    }),
+  );
+  return row?.total ?? 0;
 }
 
 function approvalInput(args: {
@@ -549,11 +644,7 @@ describe('approvals service', () => {
       expect(loserError).toBeInstanceOf(ApprovalServiceError);
       expect(loserError.errorCode).toBe('not_pending');
 
-      const [stored] = await context.db
-        .select({ status: approvals.status })
-        .from(approvals)
-        .where(eq(approvals.id, row.id));
-      expect(stored?.status).not.toBe('pending');
+      expect(await approvalStatus(context, row.id)).not.toBe('pending');
     });
   });
 
@@ -677,11 +768,7 @@ describe('approvals service', () => {
       expect(second.ok).toBe(false);
 
       // The row moved to `consumed`.
-      const [stored] = await context.db
-        .select({ status: approvals.status })
-        .from(approvals)
-        .where(eq(approvals.id, row.id));
-      expect(stored?.status).toBe('consumed');
+      expect(await approvalStatus(context, row.id)).toBe('consumed');
     });
 
     it('does not consume when the hash is wrong', async () => {
@@ -698,11 +785,7 @@ describe('approvals service', () => {
         now,
       );
       await verifyApproval(context.db, { approvalId: row.id, argsHash: argsHash('wrong') }, now);
-      const [stored] = await context.db
-        .select({ status: approvals.status })
-        .from(approvals)
-        .where(eq(approvals.id, row.id));
-      expect(stored?.status).toBe('approved_once');
+      expect(await approvalStatus(context, row.id)).toBe('approved_once');
     });
 
     it('fails after expiry', async () => {
@@ -855,11 +938,7 @@ describe('approvals service', () => {
       const later = futureExpiresAt(now, 120_000);
       const entry = await getDecidableApproval(context.db, row.id, ownerId, later);
       expect(entry?.status).toBe('expired');
-      const [stored] = await context.db
-        .select({ status: approvals.status })
-        .from(approvals)
-        .where(eq(approvals.id, row.id));
-      expect(stored?.status).toBe('pending');
+      expect(await approvalStatus(context, row.id)).toBe('pending');
     });
 
     it('returns null when a stranger asks for a single id', async () => {
@@ -941,16 +1020,16 @@ describe('approvals service', () => {
       expect(swept[0]?.aiId).toBe(aiId);
       expect(swept[0]?.groupId).toBeNull();
 
-      const [stored] = await context.db.select().from(approvals).where(eq(approvals.id, row.id));
+      const stored = await storedApproval(context, row.id);
       expect(stored?.status).toBe('denied');
       expect(stored?.note).toBe('expired');
-      expect(stored?.decidedAt?.getTime()).toBe(later.getTime());
+      expect(
+        stored?.decidedAt === null || stored?.decidedAt === undefined
+          ? stored?.decidedAt
+          : new Date(stored.decidedAt).getTime(),
+      ).toBe(later.getTime());
 
-      const [stillFresh] = await context.db
-        .select({ status: approvals.status })
-        .from(approvals)
-        .where(eq(approvals.id, fresh.id));
-      expect(stillFresh?.status).toBe('pending');
+      expect(await approvalStatus(context, fresh.id)).toBe('pending');
     });
 
     it('reads a swept request as expired, but a human denial with the same note stays denied', async () => {
@@ -977,16 +1056,10 @@ describe('approvals service', () => {
       );
       await expireStale(context.db, futureExpiresAt(now, 120_000));
 
-      const [sweptRow] = await context.db
-        .select()
-        .from(approvals)
-        .where(eq(approvals.id, swept.id));
-      const [deniedRow] = await context.db
-        .select()
-        .from(approvals)
-        .where(eq(approvals.id, denied.id));
-      expect(toPublicApproval(sweptRow!, now).status).toBe('expired');
-      expect(toPublicApproval(deniedRow!, now).status).toBe('denied');
+      const sweptStored = await storedApproval(context, swept.id);
+      const deniedStored = await storedApproval(context, denied.id);
+      expect(toPublicApproval(asPublicRow(sweptStored!), now).status).toBe('expired');
+      expect(toPublicApproval(asPublicRow(deniedStored!), now).status).toBe('denied');
     });
 
     it('returns every swept row when several are past due', async () => {
@@ -1036,7 +1109,7 @@ describe('approvals service', () => {
       const swept = await expireStale(context.db, later);
       expect(swept).toEqual([]);
 
-      const [stored] = await context.db.select().from(approvals).where(eq(approvals.id, row.id));
+      const stored = await storedApproval(context, row.id);
       expect(stored?.status).toBe('approved_once');
       expect(stored?.note).toBeNull();
     });
@@ -1083,7 +1156,7 @@ describe('approvals service', () => {
       expect(await canDecide(context.db, row, strangerId)).toBe(false);
     });
 
-    it('uses and clauses correctly inside an existing test', async () => {
+    it('agrees with the decide route on an already-decided row', async () => {
       // Sanity check that the canDecide helper and the decide route agree:
       // an AI owner with a row that is already decided cannot be re-decided.
       const ownerId = await seedUser(context);
@@ -1102,9 +1175,9 @@ describe('approvals service', () => {
         decideApproval(context.db, { approvalId: row.id, userId: ownerId, decision: 'deny' }, now),
       ).rejects.toMatchObject({ errorCode: 'not_pending' });
 
-      // Silence the lint: confirm we used `and` at least once so the import
-      // doesn't get flagged.
-      expect(and(eq(approvals.aiId, aiId), eq(approvals.status, 'pending'))).toBeDefined();
+      // The stored row left `pending` behind, so the helper and the route
+      // tell the same story.
+      expect(await approvalStatus(context, row.id)).toBe('approved_once');
     });
   });
 
@@ -1157,11 +1230,10 @@ describe('approvals service', () => {
         ),
       ).rejects.toMatchObject({ errorCode: 'always_requires_admin' });
 
-      const [row] = await context.db.select().from(approvals).where(eq(approvals.id, approvalId));
+      const row = await storedApproval(context, approvalId);
       expect(row?.status).toBe('pending');
       expect(row?.decidedBy).toBeNull();
-      const rules = await context.db.select().from(approvalRules);
-      expect(rules).toHaveLength(0);
+      expect(await approvalRuleCount(context)).toBe(0);
 
       // The same person can still approve once afterwards.
       const once = await decideApproval(

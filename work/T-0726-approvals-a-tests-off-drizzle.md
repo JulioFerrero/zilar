@@ -1,7 +1,7 @@
 ---
 id: T-0726
 title: "tests off drizzle (approvals (sweeper.effect, sweeper, service)): replace every drizzle query in approvals/sweeper.effect.test.ts, approvals/sweeper.test.ts, approvals/service.test.ts with testSql(context) + effect/sql; drop the drizzle-orm and db/schema imports"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0726-approvals-a-tests-off-drizzle
 model: auto
@@ -53,4 +53,25 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Did it. All three approvals test files now seed and assert through `testSql(context)` + effect/sql; no `drizzle-orm` or `db/schema` imports remain.
+
+What changed:
+- `apps/server/src/approvals/sweeper.effect.test.ts`: `seedUser`/`seedAi` use `INSERT INTO "user" / provider_connections / ais / ai_limits` with `sql.insert({...snake_case...})`; expiry rollback is `UPDATE approvals SET expires_at = ...`; the audit recorder writes via a `recordAuditRow` helper (explicit column list, `detail` as `NULL`/`...::jsonb` fragment like `audit/service.ts:199-200`, `cost_amount` via the same `toFixed(2)` expression); length assertions use `SELECT count(*)::int AS total`.
+- `apps/server/src/approvals/sweeper.test.ts`: same helpers, plus `listAuditRows` (`SELECT action, actor_user_id, ai_id, group_id, subject_id, args_hash, result, detail`) and `approvalStatus` (`SELECT status, note ... WHERE id`). All six `audit.record` overrides route through `recordAuditRow`.
+- `apps/server/src/approvals/service.test.ts`: `seedUser`/`seedAi`/`seedGroup` converted (multi-row `group_members` via `sql.insert([...])`, one effect per seed function, same values); reads via `approvalStatus` (`SELECT status`), `storedApproval` (full column list for `toPublicApproval` + `decidedAt` checks, with a local `StoredApprovalRow` type and `asPublicRow` date normalizer since the driver may return ISO strings), and `approvalRuleCount` (`count(*)::int`). The `canDecide` sanity test that only existed to use the `and` import was rewritten to assert the stored row left `pending` (`approved_once`) instead — same agreement check, no drizzle.
+- Lines passing `context.db` to module functions (`createApproval`, `decideApproval`, etc.) untouched. Omitted insert columns all have SQL defaults (`email_verified`, `created_at/updated_at`, `status` where not set explicitly — `ais.status` is passed explicitly as `'active'`); `"user"` is quoted everywhere.
+- No `vi.mock`/failure-injection tests existed in these files (spec item 5 not applicable).
+
+Commands (real results):
+- `pnpm install`: done (19.4s).
+- `git grep -n "drizzle-orm\|db/schema" -- <three files>`: prints nothing (exit 1, no matches).
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/approvals/sweeper.effect.test.ts src/approvals/sweeper.test.ts src/approvals/service.test.ts`: 3 files, 53 passed (after `prettier --write` + readonly-array fix; re-ran, still 53 passed).
+- Test counts before/after: before = 53 (`it('` count on HEAD: 1 + 6 + 46), after = 53 passed. Same tests, same assertions (one test renamed, none added/removed).
+- `pnpm gate`: GATE PASS — `PASS install, format, lint, typecheck, tests @zilar/server`, `scope: every changed file is inside the Allowed files`.
+- Fixes along the way: `prettier --write` on the three test files (gate format FAIL), and `listAuditRows` return type `Promise<readonly AuditRow[]>` (effect/sql returns readonly arrays; gate typecheck FAIL).
+
+Security checklist: no secrets touched; test-only changes, no routes/permissions/caps/audit-shape changes; no production code touched.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. The pre-review was clean (packet head 84bf6e17). Its one nit is accepted: a vacuous `expect(and(...)).toBeDefined()`, kept only to use an import, became a real status check, and the worker disclosed it.
