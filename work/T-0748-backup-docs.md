@@ -1,7 +1,7 @@
 ---
 id: T-0748
 title: "docs: the Coolify backup docs describe Coolify database backups that do not work on this stack; rewrite deploy/coolify/scheduled-backup.md and fix docs/RELEASING.md (§5 bullet, §9 Backups) to the real setup — a pg_dump scheduled task + 4 S3 volume backups — and add the manual restore runbook"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0748-backup-docs
 model: auto
@@ -70,4 +70,35 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**Done.** Docs only. Files changed:
+- `deploy/coolify/scheduled-backup.md`: rewritten in plain Markdown. Sections: what runs nightly, why not Coolify database backups, setup on a new install (S3 storage, dump task with the exact command, `backup_set` table for the four volumes with the "replaces the whole schedule" note), how to check, restore runbook (steps a to e, archive layout marked "check on first real restore"), and the drill.
+- `docs/RELEASING.md`: §5 bullet (line 41) and §9 "Backups" (lines 134-136) now describe the Coolify setup. The old `./zilar backup` advice for Coolify is gone.
+- `work/T-0748-backup-docs.md`: Report and status only.
+
+**Fix round 1 (lead review):**
+- "What runs nightly": only the volume backups copy to S3; the dump task only writes the dump files on the server. Reworded.
+- Container names: added the `<postgres-container>` placeholder (`postgres-<service-uuid>`) with the `docker ps` lookup. Every `docker cp` and `docker exec` in the restore runbook uses it. Server and ejabberd are stopped in Coolify or by `docker stop` on the `server-<service-uuid>` and `ejabberd-<service-uuid>` containers.
+- The drill is replaced by the two one-off Coolify tasks (A and B) with the exact commands from the lead. I checked that both commands match the lead's text byte for byte. I did not run them; the lead ran them on 2026-10-09 (result `60 0|1|30` for both lines).
+
+**Commands run (from the worktree):**
+- `pnpm install`: done, no errors.
+- `pnpm exec prettier --write` on the two docs: ok. `pnpm exec prettier --check` on the task file: ok.
+- Check that the dump command in the doc is byte-identical to the spec: ok. Length 251 characters (limit 255).
+- Scan of the two docs for UUIDs, B2/Backblaze names and key-like strings: none.
+- `pnpm gate`: GATE PASS. Summary lines: `gate: 3 changed file(s) against main`, PASS install (frozen), PASS format, PASS lint, PASS typecheck, `scope: every changed file is inside the Allowed files`, GATE PASS.
+- Single tests: none. The change is docs only.
+
+**Not run:** the drill, the restore steps and the `aws s3 ls` check. They are written from the spec and the S3 plan, not run against the live stack.
+
+**Deviations / open points:**
+- `docs/RELEASING.md` line 9 (§1) and line 46 (§6) still mention `./deploy/zilar backup` as an option. They are outside §5 and §9, so I left them as the spec asked.
+- The restore runbook restores the dumps into the running `postgres` container (`docker cp` + `pg_restore`), not by restoring the `postgres-data` volume. The archive layout is unverified, as the spec says.
+- The container name `postgres` comes from the spec. The doc says to check `docker ps` if an install differs.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved after one fix round. Worker: Haiku 5.5.
+- **`deploy/coolify/scheduled-backup.md`** now describes the real setup: the dump task plus four S3 volume backups. It explains why Coolify database backups do not apply, and has the setup steps, the check, a manual restore runbook using `<postgres-container>` (Coolify names it `postgres-<uuid>`), and the drill as the two one-off scheduled tasks the lead actually ran (result `60 0|1|30`).
+- **`docs/RELEASING.md`** §5 and §9 are fixed.
+- **Scan:** no real hosts, buckets, uuids or keys in the changed text. The `chat.zilar.app` mention at `RELEASING.md:111` predates this task.
+- **Unverified:** the archive layout is marked "check on first real restore". The gate passed.

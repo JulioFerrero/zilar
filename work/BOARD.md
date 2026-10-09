@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-0748](T-0748-backup-docs.md) | docs: real Coolify backup setup + manual restore runbook | in-progress | haiku-5.5 | T-0747 | |
 
 ## Follow-ups
 
@@ -776,3 +775,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0745](T-0745-approvals-audit-fail-test.md) | main CI green: approvals audit-failure test independent of query order | 2026-10-09 |
 | [T-0746](T-0746-startup-label-voice-clock.md) | startup log names the right dir; voice timeout test on TestClock | 2026-10-09 |
 | [T-0747](T-0747-s3-storage-audit.md) | AUDIT: S3 storage plan | 2026-10-09 |
+| [T-0748](T-0748-backup-docs.md) | docs: real Coolify backup setup and restore runbook | 2026-10-09 |
