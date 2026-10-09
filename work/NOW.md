@@ -2,6 +2,18 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-09 06:35, Julio asleep:**
+- **Merged:**
+  - T-0733 (B1.6): the server starts through `serveEdgeOnNode` (`effect/node-serve.ts`) on `NodeHttpServer`, and `@hono/node-server` is gone;
+  - T-0734: the production web image now copies `packages/ui-tokens`.
+- **Smoke test on main by the lead** (local infra, port 3188):
+  - `GET` and `HEAD /health` give 200 with `db: ok`, and HEAD has no body;
+  - `/api/me` gives the 401 envelope with a request id;
+  - the CORS preflight gives 204 with Hono's method list;
+  - SIGTERM logs "shutting down" and exits in 2 s with no error.
+- **Found tonight:** every "Production images" run on main had failed since at least 2026-10-08 11:54 UTC, on the web image (`@zilar/ui-tokens` was missing from the Docker build). The deploy job never ran. The repo has no Actions secrets, so auto-deploy is off anyway; production has not changed tonight.
+- **Hono now:** only `git/*` (A12, Julio's call; not mounted). **Drizzle now:** the D-group files, which wait for Julio.
+
 **2026-10-09 05:50, Julio asleep:**
 - **Merged since 03:24:**
   - every test folder is off drizzle (T-0718 to T-0729); only `db/migrate.test.ts` and `effect/sql.test.ts` remain, and they belong to D3;
