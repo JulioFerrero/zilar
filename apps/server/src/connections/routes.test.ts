@@ -1,10 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
 import { createApp } from '../app';
-import { ais, providerConnections } from '../db/schema';
 import {
   bootstrapUser,
   createTestContext,
+  testSql,
   TEST_BASE_URL,
   TEST_XMPP_DOMAIN,
   type TestContext,
@@ -128,7 +130,12 @@ describe('connections routes', () => {
     expect(Object.hasOwn(body, 'key')).toBe(false);
     expect(JSON.stringify(body)).not.toContain(KEY);
 
-    const rows = await context.db.select().from(providerConnections);
+    const rows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ encryptedKey: string }>`SELECT encrypted_key FROM provider_connections`;
+      }),
+    );
     expect(rows).toHaveLength(1);
     expect(rows[0]!.encryptedKey).not.toContain(KEY);
     expect(createKeyCipher(MASTER_KEY).decrypt(rows[0]!.encryptedKey)).toBe(KEY);
@@ -167,7 +174,13 @@ describe('connections routes', () => {
     });
 
     expect(response.status).toBe(400);
-    expect(await context.db.select().from(providerConnections)).toHaveLength(0);
+    const stored = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ id: string }>`SELECT id FROM provider_connections`;
+      }),
+    );
+    expect(stored).toHaveLength(0);
   });
 
   it('tests a key by decrypting in memory and passing the plaintext to the probe', async () => {
@@ -320,18 +333,23 @@ describe('connections routes', () => {
     const id = ((await created.json()) as { id: string }).id;
 
     const aiId = randomUUID();
-    await context.db.insert(ais).values({
-      id: aiId,
-      owner: user.id,
-      name: 'Dev-1',
-      template: 'dev',
-      persona: 'Concise.',
-      providerConnectionId: id,
-      model: 'gpt-4o-mini',
-      localpart: `ai-${aiId}`,
-      jid: `ai-${aiId}@${TEST_XMPP_DOMAIN}`,
-      status: 'active',
-    });
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO ais ${sql.insert({
+          id: aiId,
+          owner: user.id,
+          name: 'Dev-1',
+          template: 'dev',
+          persona: 'Concise.',
+          provider_connection_id: id,
+          model: 'gpt-4o-mini',
+          localpart: `ai-${aiId}`,
+          jid: `ai-${aiId}@${TEST_XMPP_DOMAIN}`,
+          status: 'active',
+        })}`;
+      }),
+    );
 
     const remove = await app.request(`${TEST_BASE_URL}/api/connections/${id}`, {
       method: 'DELETE',
@@ -361,7 +379,12 @@ describe('connections routes', () => {
     });
 
     expect(response.status).toBe(201);
-    const rows = await context.db.select().from(providerConnections);
+    const rows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ encryptedKey: string }>`SELECT encrypted_key FROM provider_connections`;
+      }),
+    );
     expect(rows).toHaveLength(1);
     expect(createKeyCipher(MASTER_KEY).decrypt(rows[0]!.encryptedKey)).toBe('fake-key');
   });

@@ -1,7 +1,7 @@
 ---
 id: T-0709
 title: "tests off drizzle (avatars + chat-folders + connections + files): replace every drizzle query in avatars/routes.test.ts, chat-folders/chat-folders.test.ts, connections/routes.test.ts, files/routes.test.ts with testSql(context) + effect/sql; drop the drizzle-orm and db/schema imports"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0709-small-folders-tests-off-drizzle
 model: auto
@@ -53,4 +53,71 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+
+Replaced every drizzle query in the four test files with `testSql(context)(...)` +
+`effect/sql`, and dropped the `drizzle-orm` / `../db/schema` imports (there were no
+dynamic `import('../db/schema')` calls). `db: context.db` passes to modules were left
+untouched.
+
+- `apps/server/src/avatars/routes.test.ts`: added `Effect`/`SqlClient` imports and
+  `testSql`. `addAi` now seeds `provider_connections`, `ais` and `ai_limits` with one
+  `testSql` effect using `sql.insert` (snake_case keys; omitted the nullable `label`
+  that drizzle set to `null`, so it is still `null`). Added a local `storedAvatars()`
+  helper (`SELECT id, storage_key FROM avatars`) used by the six "nothing stored /
+  exactly one row" assertions and by the replace/race tests that read `id` and
+  `storageKey`.
+- `apps/server/src/chat-folders/chat-folders.test.ts`: three reads converted —
+  `SELECT user_id FROM chat_folder_seeds` (length 1), `SELECT id FROM chat_folders`
+  (length 2), `SELECT user_id FROM chat_folders` (per-user filter).
+- `apps/server/src/connections/routes.test.ts`: two `SELECT encrypted_key FROM
+  provider_connections` reads (the encrypted-at-rest assertions) and one `SELECT id
+  FROM provider_connections` emptiness read; the in-use-AI seed now inserts into `ais`
+  via `sql.insert`.
+- `apps/server/src/files/routes.test.ts`: added a local `seedMediaItem(own, peer,
+  messageId, name)` helper inserting into `media_items` via `sql.insert` (same values,
+  `at_micros` bound as the number `at(...)` already returned), replacing the three
+  duplicated drizzle inserts; the pre-index emptiness check reads `SELECT id FROM
+  media_items`.
+
+Result columns come back camelCased, so the row types use `storageKey`, `encryptedKey`,
+`userId`, etc., while the SQL names the snake_case columns. No assertion meaning was
+changed; `it` counts are unchanged in every file.
+
+### Files changed
+
+- `apps/server/src/avatars/routes.test.ts`
+- `apps/server/src/chat-folders/chat-folders.test.ts`
+- `apps/server/src/connections/routes.test.ts`
+- `apps/server/src/files/routes.test.ts`
+- `work/T-0709-small-folders-tests-off-drizzle.md`
+
+### Commands and results
+
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/avatars/routes.test.ts src/chat-folders/chat-folders.test.ts src/connections/routes.test.ts src/files/routes.test.ts`
+  → Test Files 4 passed (4); Tests 58 passed (58).
+- Test counts before vs after (counted `it(` in the four files at HEAD and checked
+  against the run): before 18+10+16+14 = 58; after 58 passed. Same count.
+- `git grep -n "drizzle-orm\|db/schema" -- <the four files>` → no matches (exit 1).
+- `pnpm gate` (repo root):
+  - `PASS install (frozen) (3.0s)`
+  - `PASS format (36.8s)`
+  - `PASS lint (1.1s)`
+  - `PASS typecheck (4.7s)`
+  - `PASS tests @zilar/server (44.2s)`
+  - `scope: every changed file is inside the Allowed files`
+  - `GATE PASS`
+- First gate run failed typecheck with TS4104 (`sql<Row>` returns a readonly array):
+  fixed by typing `storedAvatars()` as `ReadonlyArray<...>`; the re-run passed.
+
+### Deviations / notes
+
+- In `avatars` I dropped the explicit `label: null` from the `provider_connections`
+  insert (the column is nullable with no SQL default, so the stored value is still
+  `null`), and relied on the SQL defaults for `status`/`created_at`/`updated_at`, as
+  the task's column note allows.
+- No open questions; nothing blocked.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. The pre-review was clean (packet head e02741c7). The avatars, chat-folders, connections and files tests are on `testSql`.
