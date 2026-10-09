@@ -1,13 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { jwtVerify } from 'jose';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
 import { createApp } from '../app';
 import { createInvite } from '../auth/invites';
 import { INVITE_HEADER } from '../auth/auth';
-import { xmppAccounts } from '../db/schema';
 import {
   FakeAdminClient,
   TEST_XMPP_DOMAIN,
   createTestContext,
+  testSql,
   type TestContext,
 } from '../test-support';
 import { localpartFor } from './provisioning';
@@ -18,6 +20,17 @@ const BASE_URL = 'http://localhost:3000';
 type TestApp = ReturnType<typeof createApp>;
 
 let clientIp = '10.1.0.1';
+
+async function xmppAccountRows(
+  context: TestContext,
+): Promise<ReadonlyArray<{ provisioned: boolean }>> {
+  return testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ provisioned: boolean }>`SELECT provisioned FROM xmpp_accounts`;
+    }),
+  );
+}
 
 function appFor(context: TestContext): TestApp {
   return createApp({
@@ -144,7 +157,7 @@ describe('POST /api/xmpp/token', () => {
       const app = appFor(failing);
       const { cookie, id } = await signIn(failing, app, 'lazy@example.com');
 
-      const rows = await failing.db.select().from(xmppAccounts);
+      const rows = await xmppAccountRows(failing);
       expect(rows).toHaveLength(1);
       expect(rows[0]?.provisioned).toBe(false);
       expect(failing.adminClient.registered).toEqual([]);
@@ -160,7 +173,7 @@ describe('POST /api/xmpp/token', () => {
       expect(body.jid).toBe(`${localpartFor(id)}@${TEST_XMPP_DOMAIN}`);
       expect(failing.adminClient.registered).toEqual([localpartFor(id)]);
 
-      const after = await failing.db.select().from(xmppAccounts);
+      const after = await xmppAccountRows(failing);
       expect(after[0]?.provisioned).toBe(true);
     } finally {
       await failing.close();

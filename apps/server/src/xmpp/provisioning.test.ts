@@ -1,16 +1,29 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { user, xmppAccounts } from '../db/schema';
-import { FakeAdminClient, createTestContext, type TestContext } from '../test-support';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
+import { FakeAdminClient, createTestContext, testSql, type TestContext } from '../test-support';
 import { ensureXmppAccount, findXmppAccount, jidFor, localpartFor } from './provisioning';
 
 // ensureXmppAccount never creates users itself: it only maps an existing one.
 async function createUser(context: TestContext, id: string): Promise<void> {
-  await context.db.insert(user).values({
-    id,
-    name: '',
-    email: `${id.replace(/[^a-zA-Z0-9]/g, '_')}@example.com`,
-    emailVerified: true,
-  });
+  const email = `${id.replace(/[^a-zA-Z0-9]/g, '_')}@example.com`;
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO "user" (id, name, email, email_verified) VALUES (${id}, '', ${email}, true)`;
+    }),
+  );
+}
+
+async function xmppAccountUserIds(
+  context: TestContext,
+): Promise<ReadonlyArray<{ userId: string }>> {
+  return testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ userId: string }>`SELECT user_id FROM xmpp_accounts`;
+    }),
+  );
 }
 
 describe('localpartFor', () => {
@@ -79,7 +92,7 @@ describe('ensureXmppAccount', () => {
 
     const row = await findXmppAccount(context.db, 'user-one');
     expect(row).toMatchObject({ localpart: 'user-one', provisioned: true });
-    expect(await context.db.select().from(xmppAccounts)).toHaveLength(1);
+    expect(await xmppAccountUserIds(context)).toHaveLength(1);
   });
 
   it('is idempotent and safe under concurrency', async () => {
@@ -93,7 +106,7 @@ describe('ensureXmppAccount', () => {
     for (const result of results) {
       expect(result).toEqual({ jid: 'user-race@zilar.localhost', provisioned: true });
     }
-    expect(await context.db.select().from(xmppAccounts)).toHaveLength(1);
+    expect(await xmppAccountUserIds(context)).toHaveLength(1);
   });
 
   it('maps a hostile user id to a valid JID', async () => {
