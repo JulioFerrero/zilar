@@ -1,5 +1,6 @@
 import { formatTime, type UiMessage } from '@zilar/chat-core';
 import type { Sticker } from '@zilar/protocol';
+import { Effect, Fiber } from 'effect';
 import { useEffect, useState } from 'react';
 import { Image, Pressable, View } from 'react-native';
 
@@ -39,14 +40,19 @@ export function StickerMessage({ sticker, message, outgoing, onLongPress }: Stic
     if (!trusted) {
       return;
     }
-    let cancelled = false;
-    void getSessionToken().then((value) => {
-      if (!cancelled) {
-        setToken(value);
-      }
-    });
+    // The token read is a fiber: cleanup interrupts it, so a late answer for
+    // an old URL never sets the token.
+    const read = Effect.runFork(
+      Effect.promise(() => getSessionToken()).pipe(
+        Effect.andThen((value) =>
+          Effect.sync(() => {
+            setToken(value);
+          }),
+        ),
+      ),
+    );
     return () => {
-      cancelled = true;
+      Effect.runSync(Fiber.interrupt(read));
     };
   }, [trusted]);
 

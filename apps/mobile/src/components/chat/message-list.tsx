@@ -5,6 +5,7 @@ import {
   type MessageItem,
   type UiMessage,
 } from '@zilar/chat-core';
+import { Effect, Fiber } from 'effect';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, View } from 'react-native';
 
@@ -71,6 +72,12 @@ type MessageListProps = {
       }
     | undefined;
 };
+
+// A timer as an Effect fiber: `run` happens after `ms`. Cancelling the timer
+// interrupts its fiber (`Effect.runSync(Fiber.interrupt(timer))`), as
+// clearTimeout did.
+const runLater = (ms: number, run: () => void): Fiber.Fiber<void> =>
+  Effect.runFork(Effect.sleep(ms).pipe(Effect.andThen(Effect.sync(run))));
 
 /**
  * Message list grouped by sender and day. Opening a chat with unread messages
@@ -199,8 +206,8 @@ export function MessageList({
       }
     };
     scroll();
-    const timers = [80, 200, 400, 700].map((ms) => setTimeout(scroll, ms));
-    return () => timers.forEach((timer) => clearTimeout(timer));
+    const timers = [80, 200, 400, 700].map((ms) => runLater(ms, scroll));
+    return () => timers.forEach((timer) => Effect.runSync(Fiber.interrupt(timer)));
   }, [chat.id, dividerIndex, jumpTarget]);
 
   useEffect(() => {
@@ -248,11 +255,11 @@ export function MessageList({
     if (index === -1) {
       return;
     }
-    const timer = setTimeout(() => {
+    const timer = runLater(100, () => {
       listRef.current?.scrollToIndex({ index, viewPosition: 0.5, animated: true });
       onJumped?.();
-    }, 100);
-    return () => clearTimeout(timer);
+    });
+    return () => Effect.runSync(Fiber.interrupt(timer));
   }, [jumpToMessageId, entries, onJumped]);
 
   // Loading, error and empty are three different states: the empty text and
@@ -285,14 +292,12 @@ export function MessageList({
           offset: info.averageItemLength * info.index,
           animated: false,
         });
-        setTimeout(
-          () =>
-            listRef.current?.scrollToIndex({
-              index: info.index,
-              viewPosition: 0.5,
-              animated: false,
-            }),
-          50,
+        runLater(50, () =>
+          listRef.current?.scrollToIndex({
+            index: info.index,
+            viewPosition: 0.5,
+            animated: false,
+          }),
         );
       }}
       contentContainerStyle={{ paddingVertical: 8 }}
