@@ -1,7 +1,7 @@
 ---
 id: T-0799
 title: "lead batch: `lead batch check <T-...>` combines task branches on one wave worktree, runs install + typecheck + every package's tests without stopping at the first failure, maps each failure to its owning task and writes one fix file per task; `lead batch merge <T-...>` merges a checked wave without re-gating"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0799-lead-batch
 model: auto
@@ -87,4 +87,21 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+- `lead batch check <T-A> <T-B> ...` (`packages/devtools/src/lead/batch.ts`, `runBatchCheck`):
+  - recreates `../zilar-wave` on branch `wave` from `main` (remove --force, prune, `branch -D wave`, `worktree add -b wave`);
+  - merges each task's branch (read from `../zilar-<T>/work/<file>`) with `merge --no-ff --no-edit`; on a conflict it records the conflicted files, runs `merge --abort` and goes on with the next task;
+  - per merged task: `git diff --name-only main...<branch>` for ownership, and `scopeReport` for out-of-scope files;
+  - runs `pnpm install --frozen-lockfile`, `pnpm exec turbo run typecheck --continue --concurrency=2` and, per package with a `test` script, `pnpm --filter <pkg> exec vitest run --reporter=json --outputFile=<wave dir>/<pkg>.json <flags from the package's test script>` (2 packages at a time). It never stops at the first failure; a failed install or a missing report is recorded as a `tool` failure;
+  - maps failures to owners (file in a task's diff; a test file next to a diff file with the same base name; otherwise unowned);
+  - writes `~/.zilar-lead/wave/<UTC stamp>/report.md` (one row per task, then `## unowned`), one `<T>.fix.md` per task with a conflict, out-of-scope file or failure (numbered list, ready to paste), and `~/.zilar-lead/wave/last.json` (tasks, per-task branch and head sha, wave sha, treeKey, ok);
+  - prints the report path and one line per task; exit 1 unless all merged, all checks passed and nothing is out of scope.
+- `lead batch merge <T-A> <T-B> ...` (`runBatchMerge`): refuses with no `last.json`, a not-ok wave, a different task set (order is free) or a moved branch head; reads all board titles first (a missing row stops it before any merge); calls `mergeTask` per task in the given order with no `gate`; then `git diff --quiet <wave sha> HEAD -- . ':(exclude)work'` and prints `wave merged: main matches the checked tree` or a warning with the differing paths (never reverts).
+- HELP lists both subcommands; `cli.ts` dispatches `batch`.
+- Tests: `batch.test.ts` has 22 tests on fake git, fake commands and an in-memory file system (no real git or pnpm). `pnpm --filter @zilar/devtools test --reporter=dot src/lead/batch src/lead/merge`: 3 runs, each 2 files, 39 passed (merge.test.ts unchanged). Devtools `pnpm typecheck`: clean.
+- `pnpm gate`: install, format, lint, typecheck, effect PASS; tests @zilar/devtools PASS (34.1s); "scope: every changed file is inside the Allowed files"; GATE PASS.
+- Unsure: the first four gate runs failed only on timeouts (5000ms) of different real-git tests in the unchanged `merge.test.ts` while the machine load average was 25 to 38; the fifth run passed. Those tests passed in my 3 isolated runs. Also: if two tasks touch the same file, a failure there goes to the first task in the given order. The real runners (spawn, package reading, `realBatchDeps`) are not covered by tests; I did not run `lead batch` against real worktrees.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead (wave 1):** approved. The lead reviewed the Report. The wave 1 combined check (all 12 branches on one tree, by hand) passed the whole-repo typecheck and every package suite: web 1916, server 2279, mobile 2222, xmpp-core 245, runner 63, runner-tunnel 71, devtools 796 after the T-0799 fix, chat-core 174, protocol 174.
+- Worker: Sonnet 5.5. `lead batch check` and `lead batch merge`, 22 tests with fakes. Fix round 1: a legacy name in a test path, caught by the combined check. The first real run is wave 2.

@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-0799](T-0799-lead-batch.md) | lead batch: one combined check per wave | in-progress | sonnet-5.5 | | wave 1 |
 | [T-0808](T-0808-web-notifications.md) | WU9: NotificationsPage and GroupHandleRoute on Effect | in-progress | haiku-5.5 | | wave 1 |
 
 ## Follow-ups
@@ -838,3 +837,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0807](T-0807-web-onboarding.md) | WU5: web onboarding routes on Effect | 2026-10-09 |
 | [T-0809](T-0809-web-composer.md) | WU18: Composer on Effect | 2026-10-09 |
 | [T-0792](T-0792-gateway-s2.md) | S2: AI gateway part 2 on Effect | 2026-10-09 |
+| [T-0799](T-0799-lead-batch.md) | lead batch: one combined check per wave | 2026-10-09 |
