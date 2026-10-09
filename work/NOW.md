@@ -2,6 +2,22 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-09 17:50 UTC: coverage 55.3%, the full web suite green on main**
+- **Merged since 15:05:**
+  - web: T-0772 (WU2), T-0773 (WU22), T-0775 (WU7), T-0776 (WU8), T-0778 (WU11 + WU12), T-0779 (WU13), T-0781 (WU15), T-0782 (WU16), T-0783 (WU10), T-0784 (WU19), T-0785 (WU17), T-0786 (WU20);
+  - xmpp-core: T-0777 (X2b Deferred requests; the integration tests pass 4 of 4 on local ejabberd), T-0780 (request path tests).
+- **Main was red, now fixed:** an AiPanel test broke at T-0767, and the nearest-tests gate missed it. T-0778 fixed it. The full web suite passed on main at `82db347b` (1813 tests), and workers now run it before they finish.
+- **New pattern rules from reviews** (in every web spec): keep per-row actions; keep dialogs where they are (they are not portalled); store-action `Error` messages keep their text.
+- **Running:**
+  - web: T-0787 (WU23), T-0788 (WU24), T-0789 (WU25), T-0790 (WU26), T-0793 (WU21);
+  - server: T-0791 (S1, gateway part 1; Sonnet).
+- **Written, waiting:** T-0792 (S2, gateway part 2), which goes after T-0791.
+- **Follow-ups:**
+  - why `useQuery` fetched twice in AlwaysAllowedList (remount or StrictMode);
+  - why a stale `Effect.sleep` in replace mode was not interrupted under fake timers (T-0784);
+  - xmpp `disconnect()` does not fail pending joins or history queries (T-0780).
+- **Deploy:** live is still `73fae1bf`. The xmpp-core changes (X1, X2a, X2b) wait for Julio's live messaging and reconnect check before the next deploy.
+
 **2026-10-09 15:05 UTC: 17 Effect-plan tasks merged today; coverage at 48% and climbing**
 - **Merged since 14:50:**
   - server: T-0764 (S8), T-0770 (R2 markers), T-0771 (S5a sandbox host fetch);
