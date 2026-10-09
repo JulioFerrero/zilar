@@ -1,7 +1,7 @@
 ---
 id: T-0722
 title: "tests off drizzle (actions/flow.e2e): replace every drizzle query in actions/flow.e2e.test.ts with testSql(context) + effect/sql; drop the drizzle-orm and db/schema imports"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0722-actions-flow-tests-off-drizzle
 model: auto
@@ -51,4 +51,48 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Replaced every drizzle query in `apps/server/src/actions/flow.e2e.test.ts`
+with `testSql(context)(Effect.gen(...))` + `SqlClient`, following the
+`pins.test.ts` pattern. Removed the `drizzle-orm` (`eq`) import and both
+`../db/schema` imports. Added small local row types (`PendingActionRow`,
+`AuditLeakRow`, `ApprovalCardRow`, `ApprovalTopicRow`, `AiOwnerRow`,
+`ToolApprovalRow`); selects fetch only the columns each test reads.
+Seeds use snake_case columns and plain SQL (`INSERT INTO
+provider_connections/ais/ai_limits/groups/group_members/group_ais/topics/topic_ais`,
+`UPDATE approvals SET expires_at`, `UPDATE pending_actions SET args_hash`,
+`UPDATE ais SET status`). `context.db` is now passed only to module
+functions (`createActionGateway`, `createApp`, `saveToolVersion`,
+`approveToolHosts`, `listRoutinesForAi`, `getTool`). No test patched
+`context.db.transaction`, so spec item 5 did not apply. No assertion meaning
+changed (timestamps bound as `Date`, numerics seeded as `'1.00'`/`'20.00'`
+strings, no jsonb columns touched). Prettier reformatted the file after the
+first gate run (format FAIL -> fixed with `prettier --write` on this file
+only).
+
+Files changed: `apps/server/src/actions/flow.e2e.test.ts`,
+`work/T-0722-actions-flow-tests-off-drizzle.md`.
+
+Commands (real results):
+- `pnpm install`: done in 25.8s.
+- Baseline before change: `pnpm --filter @zilar/server test
+  --maxWorkers=2 --reporter=dot src/actions/flow.e2e.test.ts` -> 1 file,
+  20 passed.
+- After change, same command -> 1 file, 20 passed.
+- `git grep -n "drizzle-orm\|db/schema" --
+  apps/server/src/actions/flow.e2e.test.ts` prints nothing (exit 1, no
+  matches).
+- `pnpm gate` summary:
+  - gate: 2 changed file(s) against main
+  - PASS install (frozen) (1.8s)
+  - PASS format (30.4s)
+  - PASS lint (1.7s)
+  - PASS typecheck (6.3s)
+  - PASS tests @zilar/server (22.0s)
+  - scope: every changed file is inside the Allowed files
+  - GATE PASS
+
+No deviations, no open questions.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. The pre-review was clean (packet head 9d813d13). `actions/flow.e2e.test.ts` is on `testSql`.

@@ -1,29 +1,18 @@
 import { randomUUID } from 'node:crypto';
-import { eq } from 'drizzle-orm';
-import { Schema } from 'effect';
+import { Effect, Schema } from 'effect';
+import { SqlClient } from 'effect/sql';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '../app';
 import { createAuditRecorder, type AuditEntry, type AuditRecorder } from '../audit/service';
 import {
-  aiLimits,
-  ais,
-  approvals,
-  auditLog,
-  groupAis,
-  groupMembers,
-  groups,
-  pendingActions,
-  providerConnections,
-} from '../db/schema';
-import {
   bootstrapUser,
   createTestContext,
+  testSql,
   TEST_BASE_URL,
   type SignedInUser,
   type TestApp,
   type TestContext,
 } from '../test-support';
-import { topics, topicAis } from '../db/schema';
 import {
   type ActionAdapter,
   type ActionRegistry,
@@ -50,6 +39,35 @@ interface FakeAdapter {
   name: string;
   adapter: ActionAdapter<unknown>;
   calls: AdapterCall[];
+}
+
+interface PendingActionRow {
+  status: string;
+  resultSummary: string | null;
+}
+
+interface AuditLeakRow {
+  action: string;
+  detail: unknown;
+}
+
+interface ApprovalCardRow {
+  summary: string;
+  details: string | null;
+  topicId: string | null;
+}
+
+interface ApprovalTopicRow {
+  topicId: string | null;
+}
+
+interface AiOwnerRow {
+  owner: string;
+}
+
+interface ToolApprovalRow {
+  detail: unknown;
+  subjectId: string | null;
 }
 
 function tier0Adapter(): FakeAdapter {
@@ -147,29 +165,22 @@ async function seedAi(
   overrides: { status?: 'active' | 'disabled' | 'stopped' } = {},
 ): Promise<{ aiId: string }> {
   const connectionId = randomUUID();
-  await context.db.insert(providerConnections).values({
-    id: connectionId,
-    owner: ownerId,
-    provider: 'openai',
-    encryptedKey: 'sealed-placeholder',
-    label: null,
-  });
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO provider_connections (id, owner, provider, encrypted_key, label) VALUES (${connectionId}, ${ownerId}, 'openai', 'sealed-placeholder', NULL)`;
+    }),
+  );
   const aiId = randomUUID();
   const localpart = `ai-${aiId}`;
   const jid = `${localpart}@zilar.localhost`;
-  await context.db.insert(ais).values({
-    id: aiId,
-    owner: ownerId,
-    name: 'Helper',
-    template: 'dev',
-    persona: 'A persona',
-    providerConnectionId: connectionId,
-    model: 'gpt-4o-mini',
-    localpart,
-    jid,
-    status: overrides.status ?? 'active',
-  });
-  await context.db.insert(aiLimits).values({ aiId, perDayUsd: '1.00', perMonthUsd: '20.00' });
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO ais (id, owner, name, template, persona, provider_connection_id, model, localpart, jid, status) VALUES (${aiId}, ${ownerId}, 'Helper', 'dev', 'A persona', ${connectionId}, 'gpt-4o-mini', ${localpart}, ${jid}, ${overrides.status ?? 'active'})`;
+      yield* sql`INSERT INTO ai_limits (ai_id, per_day_usd, per_month_usd) VALUES (${aiId}, '1.00', '20.00')`;
+    }),
+  );
   return { aiId };
 }
 
@@ -235,26 +246,28 @@ async function waitForPendingStatus(
   approvalId: string,
   status: 'executed' | 'failed' | 'cancelled' | 'waiting',
   options: { timeoutMs?: number; intervalMs?: number } = {},
-): Promise<typeof pendingActions.$inferSelect> {
+): Promise<PendingActionRow> {
   const timeoutMs = options.timeoutMs ?? 2000;
   const intervalMs = options.intervalMs ?? 20;
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
-    const [row] = await harness.context.db
-      .select()
-      .from(pendingActions)
-      .where(eq(pendingActions.approvalId, approvalId))
-      .limit(1);
+    const [row] = await testSql(harness.context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<PendingActionRow>`SELECT status, result_summary FROM pending_actions WHERE approval_id = ${approvalId} LIMIT 1`;
+      }),
+    );
     if (row && row.status === status) {
       return row;
     }
     await new Promise<void>((resolve) => setTimeout(resolve, intervalMs));
   }
-  const [finalRow] = await harness.context.db
-    .select()
-    .from(pendingActions)
-    .where(eq(pendingActions.approvalId, approvalId))
-    .limit(1);
+  const [finalRow] = await testSql(harness.context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<PendingActionRow>`SELECT status, result_summary FROM pending_actions WHERE approval_id = ${approvalId} LIMIT 1`;
+    }),
+  );
   throw new Error(
     `pending action did not reach status "${status}" within ${timeoutMs}ms (last status: ${finalRow?.status ?? 'missing'})`,
   );
@@ -341,7 +354,12 @@ describe('action flow e2e through real HTTP routes (T-0096)', () => {
     const executed = auditByAction.get('action.executed');
     expect(executed?.result).toBe('ok');
 
-    const auditRows = await harness.context.db.select().from(auditLog);
+    const auditRows = await testSql(harness.context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<AuditLeakRow>`SELECT action, detail FROM audit_log`;
+      }),
+    );
     const allAudit = JSON.stringify({ rows: auditRows, entries: harness.audit.entries });
     expect(allAudit).not.toContain('spicy');
     expect(allAudit).not.toContain('value');
@@ -389,10 +407,12 @@ describe('action flow e2e through real HTTP routes (T-0096)', () => {
     const body = (await strangerResponse.json()) as { error: { code: string } };
     expect(body.error.code).toBe('not_found');
 
-    const [pendingAfterStranger] = await harness.context.db
-      .select()
-      .from(pendingActions)
-      .where(eq(pendingActions.approvalId, approvalId));
+    const [pendingAfterStranger] = await testSql(harness.context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<PendingActionRow>`SELECT status, result_summary FROM pending_actions WHERE approval_id = ${approvalId} LIMIT 1`;
+      }),
+    );
     expect(pendingAfterStranger?.status).toBe('waiting');
     expect(harness.tier2.calls).toHaveLength(0);
 
@@ -456,10 +476,12 @@ describe('action flow e2e through real HTTP routes (T-0096)', () => {
     const { owner, aiId } = await signInOwner(harness, `expiry-${testCounter}`);
     const approvalId = await requestTier2(harness, aiId);
 
-    await harness.context.db
-      .update(approvals)
-      .set({ expiresAt: new Date(Date.now() - 1) })
-      .where(eq(approvals.id, approvalId));
+    await testSql(harness.context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`UPDATE approvals SET expires_at = ${new Date(Date.now() - 1)} WHERE id = ${approvalId}`;
+      }),
+    );
 
     const response = await decide(harness, owner.cookie, approvalId, 'approve_once');
     expect(response.status).toBe(409);
@@ -469,10 +491,12 @@ describe('action flow e2e through real HTTP routes (T-0096)', () => {
     await new Promise<void>((resolve) => setTimeout(resolve, 50));
     expect(harness.tier2.calls).toHaveLength(0);
 
-    const [row] = await harness.context.db
-      .select()
-      .from(pendingActions)
-      .where(eq(pendingActions.approvalId, approvalId));
+    const [row] = await testSql(harness.context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<PendingActionRow>`SELECT status, result_summary FROM pending_actions WHERE approval_id = ${approvalId} LIMIT 1`;
+      }),
+    );
     expect(row?.status).toBe('waiting');
   });
 
@@ -491,9 +515,19 @@ describe('action flow e2e through real HTTP routes (T-0096)', () => {
     expect(harness.tier0.calls).toHaveLength(1);
     expect(harness.tier0.calls[0]?.args).toEqual({ value: 'fast' });
 
-    const pendingRows = await harness.context.db.select().from(pendingActions);
+    const pendingRows = await testSql(harness.context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ id: string }>`SELECT id FROM pending_actions`;
+      }),
+    );
     expect(pendingRows).toHaveLength(0);
-    const approvalRows = await harness.context.db.select().from(approvals);
+    const approvalRows = await testSql(harness.context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ id: string }>`SELECT id FROM approvals`;
+      }),
+    );
     expect(approvalRows).toHaveLength(0);
 
     expect(harness.announcerCalls.approvalRequested).toEqual([]);
@@ -521,9 +555,19 @@ describe('action flow e2e through real HTTP routes (T-0096)', () => {
     });
     expect(invalid).toEqual({ status: 'denied', reason: 'invalid_args' });
 
-    const pendingRows = await harness.context.db.select().from(pendingActions);
+    const pendingRows = await testSql(harness.context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ id: string }>`SELECT id FROM pending_actions`;
+      }),
+    );
     expect(pendingRows).toHaveLength(0);
-    const approvalRows = await harness.context.db.select().from(approvals);
+    const approvalRows = await testSql(harness.context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ id: string }>`SELECT id FROM approvals`;
+      }),
+    );
     expect(approvalRows).toHaveLength(0);
     expect(harness.tier2.calls).toHaveLength(0);
   });
@@ -534,10 +578,12 @@ describe('action flow e2e through real HTTP routes (T-0096)', () => {
     const { owner, aiId } = await signInOwner(harness, `tamper-${testCounter}`);
     const approvalId = await requestTier2(harness, aiId);
 
-    await harness.context.db
-      .update(pendingActions)
-      .set({ argsHash: 'a'.repeat(64) })
-      .where(eq(pendingActions.approvalId, approvalId));
+    await testSql(harness.context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`UPDATE pending_actions SET args_hash = ${'a'.repeat(64)} WHERE approval_id = ${approvalId}`;
+      }),
+    );
 
     const response = await decide(harness, owner.cookie, approvalId, 'approve_once');
     expect(response.status).toBe(200);
@@ -571,7 +617,12 @@ describe('action flow e2e through real HTTP routes (T-0096)', () => {
     const row = await waitForPendingStatus(harness, approvalId, 'failed');
     expect(row.status).toBe('failed');
 
-    const auditRows = await harness.context.db.select().from(auditLog);
+    const auditRows = await testSql(harness.context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<AuditLeakRow>`SELECT action, detail FROM audit_log`;
+      }),
+    );
     const allAudit = JSON.stringify({ rows: auditRows, entries: harness.audit.entries });
     expect(allAudit).not.toContain('SECRET-DO-NOT-LEAK');
 
@@ -656,32 +707,20 @@ describe('action flow e2e through real HTTP routes (T-0096)', () => {
     );
     const { aiId } = await seedAi(harness.context, owner.id);
     const groupId = randomUUID();
-    await harness.context.db.insert(groups).values({
-      id: groupId,
-      roomLocalpart: `g${randomUUID().replace(/-/g, '').slice(0, 15)}`,
-      title: 'Always group',
-      createdBy: admin.id,
-    });
-    await harness.context.db.insert(groupMembers).values([
-      { groupId, userId: owner.id, role: 'member' },
-      { groupId, userId: admin.id, role: 'admin' },
-    ]);
-    await harness.context.db.insert(groupAis).values({ groupId, aiId, addedBy: admin.id });
+    const groupRoom = `g${randomUUID().replace(/-/g, '').slice(0, 15)}`;
+    const generalRoom = `g${randomUUID().replace(/-/g, '').slice(0, 15)}`;
     // T-0110: group scope is always a topic; the old group scope lives on
     // the General topic.
     const generalTopicId = randomUUID();
-    await harness.context.db.insert(topics).values({
-      id: generalTopicId,
-      groupId,
-      name: 'General',
-      glyph: 'G',
-      roomLocalpart: `g${randomUUID().replace(/-/g, '').slice(0, 15)}`,
-      visibility: 'public',
-      kind: 'chat',
-      status: 'open',
-      isGeneral: true,
-      createdBy: admin.id,
-    });
+    await testSql(harness.context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO groups (id, room_localpart, title, created_by) VALUES (${groupId}, ${groupRoom}, 'Always group', ${admin.id})`;
+        yield* sql`INSERT INTO group_members (group_id, user_id, role) VALUES (${groupId}, ${owner.id}, 'member'), (${groupId}, ${admin.id}, 'admin')`;
+        yield* sql`INSERT INTO group_ais (group_id, ai_id, added_by) VALUES (${groupId}, ${aiId}, ${admin.id})`;
+        yield* sql`INSERT INTO topics (id, group_id, name, glyph, room_localpart, visibility, kind, status, is_general, created_by) VALUES (${generalTopicId}, ${groupId}, 'General', 'G', ${generalRoom}, 'public', 'chat', 'open', true, ${admin.id})`;
+      }),
+    );
 
     async function requestInGroup(value: string): Promise<string> {
       const outcome = await harness.gateway.request({
@@ -742,7 +781,14 @@ describe('action flow e2e through real HTTP routes (T-0096)', () => {
     expect(rules).toHaveLength(1);
     expect(rules[0]?.groupId).toBe(groupId);
 
-    const approvalCountBefore = (await harness.context.db.select().from(approvals)).length;
+    const approvalCountBefore = (
+      await testSql(harness.context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ id: string }>`SELECT id FROM approvals`;
+        }),
+      )
+    ).length;
     const auto = await harness.gateway.request({
       aiId,
       groupId,
@@ -752,7 +798,14 @@ describe('action flow e2e through real HTTP routes (T-0096)', () => {
       requestedBy: 'ai-bot@zilar.localhost',
     });
     expect(auto).toEqual({ status: 'executed', summary: 'always-ran:third' });
-    const approvalCountAfter = (await harness.context.db.select().from(approvals)).length;
+    const approvalCountAfter = (
+      await testSql(harness.context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ id: string }>`SELECT id FROM approvals`;
+        }),
+      )
+    ).length;
     expect(approvalCountAfter).toBe(approvalCountBefore);
   });
 
@@ -823,48 +876,23 @@ describe('action flow e2e through real HTTP routes (T-0096)', () => {
     );
     const { aiId } = await seedAi(harness.context, owner.id);
     const groupId = randomUUID();
-    await harness.context.db.insert(groups).values({
-      id: groupId,
-      roomLocalpart: `g${randomUUID().replace(/-/g, '').slice(0, 15)}`,
-      title: 'Topic group',
-      createdBy: admin.id,
-    });
-    await harness.context.db.insert(groupMembers).values([
-      { groupId, userId: owner.id, role: 'member' },
-      { groupId, userId: admin.id, role: 'admin' },
-    ]);
-    await harness.context.db.insert(groupAis).values({ groupId, aiId, addedBy: admin.id });
+    const topicGroupRoom = `g${randomUUID().replace(/-/g, '').slice(0, 15)}`;
     const topicA = randomUUID();
     const topicB = randomUUID();
-    await harness.context.db.insert(topics).values([
-      {
-        id: topicA,
-        groupId,
-        name: 'General',
-        glyph: 'G',
-        roomLocalpart: `g${randomUUID().replace(/-/g, '').slice(0, 15)}`,
-        visibility: 'public',
-        kind: 'chat',
-        status: 'open',
-        isGeneral: true,
-        createdBy: admin.id,
-      },
-      {
-        id: topicB,
-        groupId,
-        name: 'Build',
-        glyph: 'B',
-        roomLocalpart: `g${randomUUID().replace(/-/g, '').slice(0, 15)}`,
-        visibility: 'public',
-        kind: 'chat',
-        status: 'open',
-        isGeneral: false,
-        createdBy: admin.id,
-      },
-    ]);
+    const topicARoom = `g${randomUUID().replace(/-/g, '').slice(0, 15)}`;
+    const topicBRoom = `g${randomUUID().replace(/-/g, '').slice(0, 15)}`;
+    await testSql(harness.context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO groups (id, room_localpart, title, created_by) VALUES (${groupId}, ${topicGroupRoom}, 'Topic group', ${admin.id})`;
+        yield* sql`INSERT INTO group_members (group_id, user_id, role) VALUES (${groupId}, ${owner.id}, 'member'), (${groupId}, ${admin.id}, 'admin')`;
+        yield* sql`INSERT INTO group_ais (group_id, ai_id, added_by) VALUES (${groupId}, ${aiId}, ${admin.id})`;
+        yield* sql`INSERT INTO topics (id, group_id, name, glyph, room_localpart, visibility, kind, status, is_general, created_by) VALUES (${topicA}, ${groupId}, 'General', 'G', ${topicARoom}, 'public', 'chat', 'open', true, ${admin.id}), (${topicB}, ${groupId}, 'Build', 'B', ${topicBRoom}, 'public', 'chat', 'open', false, ${admin.id})`;
+        yield* sql`INSERT INTO topic_ais (topic_id, ai_id, added_by) VALUES (${topicB}, ${aiId}, ${admin.id})`;
+      }),
+    );
     // The AI works in both topics (General via `group_ais`, Build via a
     // `topic_ais` row); the rule created below still fires in A only.
-    await harness.context.db.insert(topicAis).values({ topicId: topicB, aiId, addedBy: admin.id });
 
     // The request in topic A is pending; the card carries topic A.
     // (`flow.always` is the always-eligible action, so the member-owner
@@ -883,10 +911,12 @@ describe('action flow e2e through real HTTP routes (T-0096)', () => {
     expect(harness.announcerCalls.approvalRequested).toEqual([
       { aiId, groupId, topicId: topicA, approvalId: outcome.approvalId },
     ]);
-    const [approval] = await harness.context.db
-      .select()
-      .from(approvals)
-      .where(eq(approvals.id, outcome.approvalId));
+    const [approval] = await testSql(harness.context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<ApprovalTopicRow>`SELECT topic_id FROM approvals WHERE id = ${outcome.approvalId} LIMIT 1`;
+      }),
+    );
     expect(approval?.topicId).toBe(topicA);
 
     // The plain-member AI owner still cannot always-allow in the topic
@@ -979,27 +1009,18 @@ describe('tool and routine adapters e2e through the gateway HTTP flow (T-0105)',
     );
     const { aiId } = await seedAi(context, owner.id);
     const groupId = randomUUID();
-    await context.db.insert(groups).values({
-      id: groupId,
-      roomLocalpart: `g${randomUUID().replace(/-/g, '').slice(0, 15)}`,
-      title: 'Tools group',
-      createdBy: owner.id,
-    });
-    await context.db.insert(groupMembers).values([{ groupId, userId: owner.id, role: 'member' }]);
-    await context.db.insert(groupAis).values({ groupId, aiId, addedBy: owner.id });
+    const toolsGroupRoom = `g${randomUUID().replace(/-/g, '').slice(0, 15)}`;
     const generalTopicId = randomUUID();
-    await context.db.insert(topics).values({
-      id: generalTopicId,
-      groupId,
-      name: 'General',
-      glyph: 'G',
-      roomLocalpart: `g${randomUUID().replace(/-/g, '').slice(0, 15)}`,
-      visibility: 'public',
-      kind: 'chat',
-      status: 'open',
-      isGeneral: true,
-      createdBy: owner.id,
-    });
+    const toolsGeneralRoom = `g${randomUUID().replace(/-/g, '').slice(0, 15)}`;
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO groups (id, room_localpart, title, created_by) VALUES (${groupId}, ${toolsGroupRoom}, 'Tools group', ${owner.id})`;
+        yield* sql`INSERT INTO group_members (group_id, user_id, role) VALUES (${groupId}, ${owner.id}, 'member')`;
+        yield* sql`INSERT INTO group_ais (group_id, ai_id, added_by) VALUES (${groupId}, ${aiId}, ${owner.id})`;
+        yield* sql`INSERT INTO topics (id, group_id, name, glyph, room_localpart, visibility, kind, status, is_general, created_by) VALUES (${generalTopicId}, ${groupId}, 'General', 'G', ${toolsGeneralRoom}, 'public', 'chat', 'open', true, ${owner.id})`;
+      }),
+    );
 
     const posts: Array<{
       aiId: string;
@@ -1130,10 +1151,12 @@ describe('tool and routine adapters e2e through the gateway HTTP flow (T-0105)',
     if (outcome.status !== 'pending_approval') {
       throw new Error(`expected pending_approval, got ${outcome.status}`);
     }
-    const [approval] = await harness.context.db
-      .select()
-      .from(approvals)
-      .where(eq(approvals.id, outcome.approvalId));
+    const [approval] = await testSql(harness.context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<ApprovalCardRow>`SELECT summary, details, topic_id FROM approvals WHERE id = ${outcome.approvalId} LIMIT 1`;
+      }),
+    );
     expect(approval?.summary).toBe('Schedule "Morning prices": daily at 09:00 Europe/Madrid');
     expect(approval?.details).toContain('api.example.com');
     expect(approval?.topicId).toBe(generalTopicId);
@@ -1153,7 +1176,12 @@ describe('tool and routine adapters e2e through the gateway HTTP flow (T-0105)',
     // hosts legitimately appear in the approval card details — the human
     // must see which sites the routine will contact — so only source and
     // output are asserted absent here.)
-    const auditRows = await harness.context.db.select().from(auditLog);
+    const auditRows = await testSql(harness.context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<AuditLeakRow>`SELECT action, detail FROM audit_log`;
+      }),
+    );
     const withoutCardDetails = JSON.stringify({
       rows: auditRows,
       entries: harness.audit.entries,
@@ -1243,11 +1271,12 @@ describe('tool and routine adapters e2e through the gateway HTTP flow (T-0105)',
   // ask, admin can — is T-0098 behaviour covered in `agents/gateway.test.ts`.)
   it('a plain group member cannot decide the schedule card but an admin can', async () => {
     const { aiId, groupId, generalTopicId } = await buildToolsHarness();
-    const ownerRow = await harness.context.db
-      .select({ owner: ais.owner })
-      .from(ais)
-      .where(eq(ais.id, aiId))
-      .limit(1);
+    const ownerRow = await testSql(harness.context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<AiOwnerRow>`SELECT owner FROM ais WHERE id = ${aiId} LIMIT 1`;
+      }),
+    );
     const ownerId = ownerRow[0]?.owner as string;
     const member = await bootstrapUser(
       harness.context,
@@ -1259,10 +1288,12 @@ describe('tool and routine adapters e2e through the gateway HTTP flow (T-0105)',
       harness.app,
       `group-admin-${testCounter}@example.com`,
     );
-    await harness.context.db.insert(groupMembers).values([
-      { groupId, userId: member.id, role: 'member' },
-      { groupId, userId: admin.id, role: 'admin' },
-    ]);
+    await testSql(harness.context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO group_members (group_id, user_id, role) VALUES (${groupId}, ${member.id}, 'member'), (${groupId}, ${admin.id}, 'admin')`;
+      }),
+    );
     await saveTool(aiId, groupId, generalTopicId, ownerId);
 
     const outcome = await harness.gateway.request({
@@ -1325,10 +1356,12 @@ describe('tool and routine adapters e2e through the gateway HTTP flow (T-0105)',
     if (outcome.status !== 'pending_approval') {
       throw new Error(`expected pending_approval, got ${outcome.status}`);
     }
-    const [approval] = await harness.context.db
-      .select()
-      .from(approvals)
-      .where(eq(approvals.id, outcome.approvalId));
+    const [approval] = await testSql(harness.context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<ApprovalCardRow>`SELECT summary, details, topic_id FROM approvals WHERE id = ${outcome.approvalId} LIMIT 1`;
+      }),
+    );
     expect(approval?.summary).toBe('Allow the tool "prices" to contact: api.example.com');
     expect(approval?.details).toContain('api.example.com');
     expect(approval?.topicId).toBe(generalTopicId);
@@ -1337,11 +1370,12 @@ describe('tool and routine adapters e2e through the gateway HTTP flow (T-0105)',
     expect(response.status).toBe(200);
     await waitForPendingStatus(harness, outcome.approvalId, 'executed');
 
-    const [approvedRow] = await harness.context.db
-      .select()
-      .from(auditLog)
-      .where(eq(auditLog.action, 'tool.hosts_approved'))
-      .limit(1);
+    const [approvedRow] = await testSql(harness.context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<ToolApprovalRow>`SELECT detail, subject_id FROM audit_log WHERE action = 'tool.hosts_approved' LIMIT 1`;
+      }),
+    );
     expect(approvedRow?.detail).toEqual({ name: 'prices', version: 1, hosts: ['api.example.com'] });
     const detail = await getTool(harness.context.db, approvedRow?.subjectId as string);
     expect(detail?.approvedHosts).toEqual(['api.example.com']);
@@ -1384,10 +1418,14 @@ describe('tool and routine adapters e2e through the gateway HTTP flow (T-0105)',
     const response = await decide(harness, owner.cookie, outcome.approvalId, 'approve_once');
     expect(response.status).toBe(200);
     await waitForPendingStatus(harness, outcome.approvalId, 'failed');
-    const approvedRows = await harness.context.db
-      .select()
-      .from(auditLog)
-      .where(eq(auditLog.action, 'tool.hosts_approved'));
+    const approvedRows = await testSql(harness.context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{
+          id: string;
+        }>`SELECT id FROM audit_log WHERE action = 'tool.hosts_approved'`;
+      }),
+    );
     expect(approvedRows).toHaveLength(0);
   });
 
@@ -1444,7 +1482,12 @@ describe('tool and routine adapters e2e through the gateway HTTP flow (T-0105)',
       },
       now: () => new Date(),
     });
-    await harness.context.db.update(ais).set({ status: 'stopped' }).where(eq(ais.id, built.aiId));
+    await testSql(harness.context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`UPDATE ais SET status = 'stopped' WHERE id = ${built.aiId}`;
+      }),
+    );
     const outcome = await gateway.request({
       aiId: built.aiId,
       groupId: built.groupId,
