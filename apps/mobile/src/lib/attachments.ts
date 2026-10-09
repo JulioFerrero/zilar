@@ -9,6 +9,7 @@
  * shape below, and the trusted-media set is the same three hosts.
  */
 
+import { parseUrl } from '@zilar/chat-core';
 import type { Attachment } from '@zilar/protocol';
 
 /** Hard cap on an attachment: the ejabberd `mod_http_upload` `max_size`. */
@@ -96,12 +97,11 @@ export function formatFileSize(bytes: number): string {
 
 /** The URL to follow only when it is http(s); anything else is not. */
 export function safeHttpUrl(url: string): string | undefined {
-  try {
-    const parsed = new URL(url);
-    return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? url : undefined;
-  } catch {
+  const parsed = parseUrl(url);
+  if (parsed === undefined) {
     return undefined;
   }
+  return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? url : undefined;
 }
 
 /**
@@ -121,14 +121,11 @@ export interface MediaTokenShape {
  */
 export function trustedMediaHosts(token: MediaTokenShape): ReadonlySet<string> {
   const hosts = new Set<string>();
-  try {
-    const serviceHost = new URL(token.service).hostname.toLowerCase();
-    if (serviceHost !== '') {
-      hosts.add(serviceHost);
-    }
-  } catch {
-    // A malformed service URL just means we trust nothing from it; the domain
-    // below still covers the production case.
+  // A malformed service URL just means we trust nothing from it; the domain
+  // below still covers the production case.
+  const serviceHost = parseUrl(token.service)?.hostname.toLowerCase() ?? '';
+  if (serviceHost !== '') {
+    hosts.add(serviceHost);
   }
   const domain = token.domain.trim().toLowerCase();
   if (domain !== '') {
@@ -145,15 +142,14 @@ export function trustedMediaHosts(token: MediaTokenShape): ReadonlySet<string> {
  * untrusted.
  */
 export function isTrustedMediaUrl(url: string, trustedHosts: ReadonlySet<string>): boolean {
-  try {
-    const parsed = new URL(url);
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-      return false;
-    }
-    return trustedHosts.has(parsed.hostname.toLowerCase());
-  } catch {
+  const parsed = parseUrl(url);
+  if (parsed === undefined) {
     return false;
   }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    return false;
+  }
+  return trustedHosts.has(parsed.hostname.toLowerCase());
 }
 
 /**

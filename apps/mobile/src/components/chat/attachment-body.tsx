@@ -1,5 +1,5 @@
 import type { UiMessage } from '@zilar/chat-core';
-import { formatTime } from '@zilar/chat-core';
+import { formatTime, parseUrl } from '@zilar/chat-core';
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
@@ -130,28 +130,26 @@ export function AttachmentBody({
  * never open: the handler treats them as unopenable.
  */
 function isFileTrusted(url: string, hosts: ReadonlySet<string>): boolean {
-  try {
-    const parsed = new URL(url);
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-      return false;
-    }
-    return hosts.has(parsed.hostname.toLowerCase());
-  } catch {
+  const parsed = parseUrl(url);
+  if (parsed === undefined) {
     return false;
   }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    return false;
+  }
+  return hosts.has(parsed.hostname.toLowerCase());
 }
 
 /** The viewer URL: only a trusted http(s) URL, never user-supplied schemes. */
 function viewableUrl(url: string, hosts: ReadonlySet<string>): string | undefined {
-  try {
-    const parsed = new URL(url);
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-      return undefined;
-    }
-    return hosts.has(parsed.hostname.toLowerCase()) ? url : undefined;
-  } catch {
+  const parsed = parseUrl(url);
+  if (parsed === undefined) {
     return undefined;
   }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    return undefined;
+  }
+  return hosts.has(parsed.hostname.toLowerCase()) ? url : undefined;
 }
 
 function CancelOrRetry({

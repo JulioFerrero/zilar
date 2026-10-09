@@ -6,6 +6,8 @@
  * suggestion builder (the same rules as web's `suggestHandleFor`).
  */
 
+import { parseUrl } from '@zilar/chat-core';
+
 import { ProfileApiError } from '../../lib/profile-api';
 
 export type HandleCheckReason = 'invalid' | 'reserved' | 'taken';
@@ -212,19 +214,14 @@ export function avatarImageSource(
   if (url.startsWith('file://') || url.startsWith('data:')) {
     return { uri: url };
   }
-  let origin: string;
-  try {
-    origin = new URL(apiUrl).origin;
-  } catch {
+  const api = parseUrl(apiUrl);
+  if (api === undefined) {
     return { uri: url };
   }
+  const origin = api.origin;
   const absolute = url.startsWith('/') ? `${origin}${url}` : url;
-  let sameOrigin = false;
-  try {
-    sameOrigin = new URL(absolute).origin === origin;
-  } catch {
-    sameOrigin = false;
-  }
+  const absoluteUrl = parseUrl(absolute);
+  const sameOrigin = absoluteUrl !== undefined && absoluteUrl.origin === origin;
   if (!sameOrigin || token === undefined) {
     return { uri: absolute };
   }

@@ -1,3 +1,4 @@
+// effect-plain: hidden dev-only Whistle spike screen (T-0177), unlinked; its async is local UI state, not product flow
 /**
  * Hidden Whistle spike screen (T-0177): reachable only by the `zilar://dev/whistle`
  * URL, linked from nowhere. It exists in release builds too (Julio tests a

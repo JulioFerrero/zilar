@@ -1,4 +1,9 @@
+import { Option, Schema } from 'effect';
+
 import { ToolsApiError } from '@/lib/tools-api';
+
+/** Decodes the run input text as JSON; a failed decode is `None`, never a throw. */
+const RunInputJson = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Unknown));
 
 /** The biggest run input the client sends, in bytes of UTF-8 (like web). */
 export const MAX_RUN_INPUT_BYTES = 4 * 1024;
@@ -42,16 +47,14 @@ export function parseRunInput(text: string): RunInputParse {
   if (trimmed === '') {
     return { ok: true };
   }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(trimmed) as unknown;
-  } catch {
+  const parsed = RunInputJson(trimmed);
+  if (Option.isNone(parsed)) {
     return { ok: false, message: RUN_INPUT_INVALID_MESSAGE };
   }
   if (new TextEncoder().encode(trimmed).length > MAX_RUN_INPUT_BYTES) {
     return { ok: false, message: RUN_INPUT_TOO_BIG_MESSAGE };
   }
-  return { ok: true, input: parsed };
+  return { ok: true, input: parsed.value };
 }
 
 /**

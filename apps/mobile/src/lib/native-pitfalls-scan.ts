@@ -1,3 +1,4 @@
+// effect-plain: dev-time scan tool that walks source files with node:fs; never runs in the app
 import { readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 

@@ -9,6 +9,8 @@
  * modules — see `apps/mobile` test notes in T-0112).
  */
 
+import { parseUrl } from '@zilar/chat-core';
+
 /** One GIF search result the panel may show. */
 export interface GifItem {
   id: string;
@@ -114,17 +116,13 @@ export function isLoadableGifPreviewUrl(url: string, apiUrl: string): boolean {
   if (url.startsWith(path)) {
     return true;
   }
-  let origin: string;
-  try {
-    origin = new URL(apiUrl).origin;
-  } catch {
+  const api = parseUrl(apiUrl);
+  if (api === undefined) {
     return false;
   }
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
+  const parsed = parseUrl(url);
+  if (parsed === undefined) {
     return false;
   }
-  return parsed.origin === origin && parsed.pathname.startsWith(path);
+  return parsed.origin === api.origin && parsed.pathname.startsWith(path);
 }

@@ -1,7 +1,7 @@
 ---
 id: T-0802
 title: "R4: mobile pure parses through chat-core helpers, tool-actions JSON.parse to Schema, and markers for the native probe, the dev whistle screen and the pitfalls scan tool"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0802-mobile-r4-parse-markers
 model: auto
@@ -55,4 +55,24 @@ Run the tests 3 times when the code has timers or concurrency. Run `pnpm exec pr
 
 ## Report (written by the worker when done)
 
+- `effect:map` kinds after the change:
+  - `apps/mobile/modules/zilar-whistle/src/ZilarWhistleModule.ts`: exempt (marker: native module probe, null not error)
+  - `apps/mobile/src/app/dev/whistle.tsx`: exempt (marker: hidden dev-only spike screen)
+  - `apps/mobile/src/lib/native-pitfalls-scan.ts`: exempt (marker: dev-time scan tool)
+  - `apps/mobile/src/components/ais/tool-actions.ts`: effect
+  - `attachment-body.tsx`, `profile-logic.ts`, `lib/attachments.ts`, `lib/gifs.ts`, `lib/markdown.ts`, `lib/topics.ts`: plain (no signal left, see unsure)
+- Sites:
+  - `tool-actions.ts`: `JSON.parse` in try/catch became `Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Unknown))` on the trimmed text (a `const RunInputJson` at module level); `None` gives the same invalid-JSON line, `Some(value)` gives `input` as before.
+  - `new URL` try/catch became `parseUrl` from `@zilar/chat-core` in every such site of the six files, not only the first hit: attachments.ts (3: `safeHttpUrl`, `trustedMediaHosts`, `isTrustedMediaUrl`), attachment-body.tsx (2: `isFileTrusted`, `viewableUrl`), profile-logic.ts (2: `avatarImageSource`), gifs.ts (2), markdown.ts (1: `safeMarkdownUrl`), topics.ts (2: `httpsTopicUrl`, `topicLinkText`).
+  - No `decodeURIComponent` in these files, so `safeDecode` is not used.
+  - Mobile already depends on `@zilar/chat-core`: `package.json` and `pnpm-lock.yaml` unchanged.
+- Tests (run once; the touched code has no timers): `pnpm --filter @zilar/mobile exec vitest run --reporter=dot src/lib/attachments src/lib/gifs src/lib/markdown src/lib/topics src/components/ais src/components/chat/attachment-body src/components/settings`: 27 files, 342 tests passed, 0 failed. Before-count not measured. No test file changed.
+- `pnpm --filter @zilar/mobile typecheck`: exit 0.
+- `pnpm effect:map`: exit 0; markers 11 of 25 (8 before, 3 added), not over budget.
+- Behaviour differences: none. Each `parseUrl` returns `undefined` exactly where the old `catch` returned its fallback, and the checks run in the same order. `safeHttpUrl`, `isTrustedMediaUrl`, `viewableUrl` and `isFileTrusted` keep their return values for every input; `topicLinkText` keeps `''` for a URL with an empty hostname (`??` only falls back on null or undefined).
+- Unsure: the Acceptance asks that the six parse-only files be `effect`. After the change they have no signal, so the map shows them `plain`, which the plan (section 1.2 and the R3 row) allows for pure helpers. I did not add an unused `effect` import to make them `effect`. If you want that, say so and I will add it in a fix round.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead (wave 1):** approved. The lead reviewed the Report. The wave 1 combined check (all 12 branches on one tree, by hand) passed the whole-repo typecheck and every package suite: web 1916, server 2279, mobile 2222, xmpp-core 245, runner 63, runner-tunnel 71, devtools 796 after the T-0799 fix, chat-core 174, protocol 174.
+- Worker: Haiku 5.5. The parses go through `parseUrl`, `tool-actions` uses a Schema JSON decode, and 3 markers are added (11 of 25); the parse-only files are plain, which is accepted.

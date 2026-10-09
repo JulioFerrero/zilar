@@ -1,3 +1,4 @@
+// effect-plain: native module probe; a missing native side is null, not an error, and the handle is sync
 import { Platform } from 'react-native';
 
 import { requireOptionalNativeModule } from 'expo-modules-core';

@@ -11,6 +11,8 @@
  * `http:`, `https:` and `mailto:`; anything else stays a text node.
  */
 
+import { parseUrl } from '@zilar/chat-core';
+
 const MAX_LENGTH = 20_000;
 
 export type InlineNode =
@@ -64,12 +66,11 @@ const ALLOWED_PROTOCOLS = new Set(['http:', 'https:', 'mailto:']);
  * `undefined`, so the label stays plain text.
  */
 export function safeMarkdownUrl(url: string): string | undefined {
-  try {
-    const parsed = new URL(url);
-    return ALLOWED_PROTOCOLS.has(parsed.protocol) ? url : undefined;
-  } catch {
+  const parsed = parseUrl(url);
+  if (parsed === undefined) {
     return undefined;
   }
+  return ALLOWED_PROTOCOLS.has(parsed.protocol) ? url : undefined;
 }
 
 const ALWAYS_STRIP = new Set(['.', ',', ';', ':', '!', '?', '…', '»', '"', "'"]);
