@@ -1,12 +1,9 @@
 import { PGlite } from '@electric-sql/pglite';
-import { drizzle } from 'drizzle-orm/pglite';
 import type { Effect } from 'effect';
 import type { SqlClient, SqlError } from 'effect/sql';
 import type { Logger } from 'pino';
 import { createApp } from './app';
 import { loadServerConfig, type ServerConfig } from './config';
-import type { PgliteServerDatabase } from './db/client';
-import * as schema from './db/schema';
 import { disposeSqlRuntime, migratePglite, registerSqlRuntime, sqlRuntimeFor } from './effect/sql';
 import { createAuth, INVITE_HEADER, type Auth } from './auth/auth';
 import { createInvite } from './auth/invites';
@@ -242,7 +239,7 @@ export class FakeAdminClient implements EjabberdAdminClient {
 
 export interface TestContext {
   client: PGlite;
-  db: PgliteServerDatabase;
+  db: PGlite;
   config: ServerConfig;
   logger: Logger;
   auth: Auth;
@@ -311,11 +308,10 @@ export function testSql(context: Pick<TestContext, 'db'>) {
 
 export async function createTestContext(options: TestContextOptions = {}): Promise<TestContext> {
   const client = await freshDatabase();
-  const db = drizzle(client, { schema });
   // Register the effect/sql runtime for this PGlite handle up front, so a
   // service unit test that never builds an app still has one. The URL is
   // unused for a PGlite handle. `createApp` registering it again is a no-op.
-  registerSqlRuntime(db, '');
+  registerSqlRuntime(client, '');
 
   const config = loadServerConfig({
     NODE_ENV: options.nodeEnv ?? 'test',
@@ -334,11 +330,11 @@ export async function createTestContext(options: TestContextOptions = {}): Promi
 
   const mailer = options.mailer ?? new TestMailer();
   const adminClient = options.adminClient ?? new FakeAdminClient();
-  const auth = createAuth({ db, config, mailer, adminClient, logger });
+  const auth = createAuth({ db: client, config, mailer, adminClient, logger });
 
   return {
     client,
-    db,
+    db: client,
     config,
     logger,
     auth,
@@ -349,7 +345,7 @@ export async function createTestContext(options: TestContextOptions = {}): Promi
     close: async () => {
       // Dispose the effect/sql runtime before the client it wraps, so no
       // query runs on a closing PGlite handle.
-      await disposeSqlRuntime(db);
+      await disposeSqlRuntime(client);
       await client.close();
     },
   };

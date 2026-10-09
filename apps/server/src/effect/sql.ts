@@ -2,11 +2,11 @@
 // SQL client (`@effect/sql-pg` in production, `@effect/sql-pglite` in tests
 // and for the migration adoption check) and runs the pins pilot through it.
 //
-// Convention while drizzle is still around:
+// Conventions:
 // - run a query with the `sql` tagged template: `` yield* sql<Row>`SELECT ...` ``;
 //   the statement is an Effect, so `yield*` executes it and returns rows.
 // - result columns are camelCased by `transformResultNames`, matching the
-//   drizzle row types the rest of the module already passes around.
+//   row types in `db/rows.ts`.
 // - run a transaction with `sql.withTransaction(effect)`; every statement in
 //   the effect uses the transaction connection.
 // - advisory locks stay raw SQL inside the transaction:
@@ -22,33 +22,31 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Config, Effect, Layer, ManagedRuntime, Redacted } from 'effect';
 import { Migrator, SqlClient, SqlError } from 'effect/sql';
-import type { PgliteServerDatabase, ServerDatabase } from '../db/client';
+import type { ServerDatabase } from '../db/client';
 
 export const SQL_POOL_MAX = 10;
 export const SQL_MIGRATIONS_TABLE = 'effect_sql_migrations';
 
-// The committed migrations: `apps/server/drizzle`, the same folder drizzle used.
+// The committed migrations: `apps/server/drizzle`.
 export const migrationsFolder = fileURLToPath(new URL('../../drizzle', import.meta.url));
 
 export type SqlRuntime = ManagedRuntime.ManagedRuntime<SqlClient.SqlClient, SqlError.SqlError>;
 
-// The columns the server stores are snake_case; the drizzle row types other
-// modules still use are camelCase. The client transforms result names once so
-// the two halves of the transition agree on the row shape.
+// The columns the server stores are snake_case; the row types in `db/rows.ts`
+// are camelCase. The client transforms result names once so both agree.
 export function snakeToCamel(name: string): string {
   return name.replace(/_([a-z0-9])/g, (_, char: string) => char.toUpperCase());
 }
 
-export function isPgliteDatabase(db: ServerDatabase): db is PgliteServerDatabase {
-  return typeof db.$client !== 'function';
+export function isPgliteDatabase(db: ServerDatabase): db is PGlite {
+  return db instanceof PGlite;
 }
 
-// `transformResultNames` camelCases column names to match the drizzle row
-// types, but a jsonb value is data: its keys must read back exactly as they
-// were written, so `transformJson: false` stops the driver renaming them too.
+// `transformResultNames` camelCases column names to match the row types in
+// `db/rows.ts`, but a jsonb value is data: its keys must read back exactly as
+// they were written, so `transformJson: false` stops the driver renaming them too.
 //
-// Production: one pool of `SQL_POOL_MAX` from `DATABASE_URL`, matching the
-// postgres-js pool `createDb` used to open.
+// Production: one pool of `SQL_POOL_MAX` from `DATABASE_URL`.
 export const SqlLive: Layer.Layer<SqlClient.SqlClient, Config.ConfigError | SqlError.SqlError> =
   PgClient.layerConfig(
     Config.all({
@@ -59,19 +57,16 @@ export const SqlLive: Layer.Layer<SqlClient.SqlClient, Config.ConfigError | SqlE
     }),
   );
 
-// Transition wiring: the pins module gets a `SqlClient` on the same database
-// the app already has. Tests hand it a drizzle-wrapped PGlite, production a
-// `DATABASE_URL`; either way the module reads through this layer and no route
-// or test has to learn about `effect/sql`.
+// The layer behind a database key. Tests hand over their raw PGlite, production
+// a `DATABASE_URL`; either way modules read through this layer and no route or
+// test has to learn about `effect/sql`.
 export function sqlLayerFor(
   db: ServerDatabase,
   databaseUrl: string,
 ): Layer.Layer<SqlClient.SqlClient, SqlError.SqlError> {
   if (isPgliteDatabase(db)) {
-    // `db/client.ts` widens `$client` to `unknown`; for a PGlite handle it is
-    // the live `PGlite` instance created by `test-support.ts`.
     return PgliteClient.layer({
-      liveClient: db.$client as PGlite,
+      liveClient: db,
       transformResultNames: snakeToCamel,
       transformJson: false,
     });
@@ -152,8 +147,8 @@ export const SqlTest: Layer.Layer<SqlClient.SqlClient, SqlError.SqlError> = Laye
 
 // Loads `apps/server/drizzle/*.sql` as `effect/sql` migrations. The core
 // loader only imports `.ts`/`.js` modules, so this reads the committed SQL
-// files and runs every statement between drizzle's `--> statement-breakpoint`
-// markers. Used to test adoption on a PGlite that drizzle already migrated.
+// files and runs every statement between the `--> statement-breakpoint`
+// markers.
 export function sqlFileLoader(directory: string): Migrator.Loader {
   return Effect.tryPromise({
     try: async () => {
@@ -271,8 +266,8 @@ export function migrateSql(
   });
 }
 
-// Runs `migrateSql` on a raw PGlite handle, without drizzle. The caller owns
-// the handle and closes it.
+// Runs `migrateSql` on a raw PGlite handle. The caller owns the handle and
+// closes it.
 export function migratePglite(
   pglite: PGlite,
 ): Promise<ReadonlyArray<readonly [id: number, name: string]>> {

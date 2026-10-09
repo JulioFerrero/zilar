@@ -6,8 +6,8 @@ import { sqlRuntimeFor } from '../effect/sql';
 // Creates the push tables on a test database without a migration file: the
 // T-0119 migration lands later (schema ordering across parallel schema
 // tasks), but the push tests still need the tables. The DDL mirrors
-// `db/schema.ts` (`push_subscriptions`, `push_settings`); the generated
-// migration replaces this helper's effect in production.
+// the `push_subscriptions` and `push_settings` migration SQL in `apps/server/drizzle/`;
+// the migration replaces this helper's effect in production.
 export async function createPushTestTables(db: ServerDatabase): Promise<void> {
   const program = Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;

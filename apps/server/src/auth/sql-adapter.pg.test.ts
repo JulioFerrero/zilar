@@ -1,12 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { ServerConfig } from '../config';
 import { loadServerConfig } from '../config';
 import { createDb, type DbClient, type ServerDatabase } from '../db/client';
-import * as schema from '../db/schema';
 import { disposeSqlRuntime, registerSqlRuntime, sqlRuntimeFor } from '../effect/sql';
 import {
   FakeAdminClient,
@@ -21,9 +19,8 @@ import { effectSqlAdapter } from './sql-adapter';
 
 /**
  * The gated check for the effect/sql auth adapter on real Postgres. It writes
- * and reads `verification` rows through the adapter and through `drizzleAdapter`
- * (the adapter `auth.ts` used before T-0738), under a Madrid process time zone,
- * and checks that every read returns the same instant. It also runs a full
+ * and reads `verification` rows back through the adapter, under a Madrid process
+ * time zone, and checks that every read returns the same instant. It also runs a full
  * email-OTP sign-up and sign-in through `createAuth` on real Postgres. It deletes
  * only the rows it created.
  *
@@ -81,10 +78,6 @@ describe.skipIf(!ENABLED)('effectSqlAdapter on real Postgres', () => {
 
   function effectAdapter() {
     return effectSqlAdapter(db())({});
-  }
-
-  function drizzleAuth() {
-    return drizzleAdapter(db(), { provider: 'pg', schema })({});
   }
 
   // Identifiers are random per run and recorded before the insert, so a failed
@@ -233,34 +226,6 @@ describe.skipIf(!ENABLED)('effectSqlAdapter on real Postgres', () => {
     });
     expect(found?.expiresAt.toISOString()).toBe(EXPIRES_AT.toISOString());
     expect(await storedWallClock(created.id)).toBe(EXPIRES_AT_WALL_CLOCK);
-  });
-
-  it('reads a verification row written by drizzleAdapter at the same instant', async () => {
-    const identifier = newIdentifier();
-    await drizzleAuth().create({
-      model: 'verification',
-      data: { identifier, value: 'code', expiresAt: EXPIRES_AT },
-    });
-
-    const found = await effectAdapter().findOne<{ expiresAt: Date }>({
-      model: 'verification',
-      where: [{ field: 'identifier', value: identifier }],
-    });
-    expect(found?.expiresAt.toISOString()).toBe(EXPIRES_AT.toISOString());
-  });
-
-  it('reads a verification row written by the adapter through drizzleAdapter at the same instant', async () => {
-    const identifier = newIdentifier();
-    await effectAdapter().create({
-      model: 'verification',
-      data: { identifier, value: 'code', expiresAt: EXPIRES_AT },
-    });
-
-    const found = await drizzleAuth().findOne<{ expiresAt: Date }>({
-      model: 'verification',
-      where: [{ field: 'identifier', value: identifier }],
-    });
-    expect(found?.expiresAt.toISOString()).toBe(EXPIRES_AT.toISOString());
   });
 
   it('signs up and back in with an email OTP through createAuth, with the session expiry at now plus the lifetime', async () => {

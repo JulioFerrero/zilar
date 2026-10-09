@@ -1,15 +1,11 @@
 import { PGlite } from '@electric-sql/pglite';
 import { PgliteClient } from '@effect/sql-pglite';
-import { drizzle } from 'drizzle-orm/pglite';
-import { migrate as migrateDrizzle } from 'drizzle-orm/pglite/migrator';
 import { Effect, ManagedRuntime } from 'effect';
 import { SqlClient } from 'effect/sql';
-import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { ServerDatabase } from '../db/client';
-import * as schema from '../db/schema';
 import {
   SQL_MIGRATIONS_TABLE,
   SqlTest,
@@ -64,20 +60,28 @@ async function newTempDir(): Promise<string> {
   return dir;
 }
 
-// A temp folder holding the first `count` committed migrations and a drizzle
-// journal trimmed to match, so drizzle can migrate a database up to that point.
+// A temp folder holding the first `count` committed migration files, in order.
 async function committedMigrationsUpTo(count: number): Promise<string> {
   const folder = await newTempDir();
-  const journal = JSON.parse(
-    await readFile(join(migrationsFolder, 'meta', '_journal.json'), 'utf8'),
-  ) as { version: string; dialect: string; entries: Array<{ tag: string }> };
-  const entries = journal.entries.slice(0, count);
-  await mkdir(join(folder, 'meta'));
-  await writeFile(join(folder, 'meta', '_journal.json'), JSON.stringify({ ...journal, entries }));
-  for (const { tag } of entries) {
-    await copyFile(join(migrationsFolder, `${tag}.sql`), join(folder, `${tag}.sql`));
+  const files = (await readdir(migrationsFolder)).filter((name) => name.endsWith('.sql')).sort();
+  for (const name of files.slice(0, count)) {
+    await copyFile(join(migrationsFolder, name), join(folder, name));
   }
   return folder;
+}
+
+// Makes `pglite` look like a database drizzle migrated up to `count` committed
+// migrations: the first `count` files run through `migrateSql`, then the effect
+// journal is dropped and drizzle's journal table gets one row per file.
+async function drizzleMigrated(pglite: PGlite, count: number): Promise<void> {
+  await migrateWithSql(pglite, await committedMigrationsUpTo(count));
+  await pglite.exec(`DROP TABLE ${SQL_MIGRATIONS_TABLE}`);
+  await pglite.exec('CREATE SCHEMA drizzle');
+  await pglite.exec(
+    'CREATE TABLE drizzle.__drizzle_migrations (id serial primary key, hash text not null, created_at bigint)',
+  );
+  await pglite.exec(`INSERT INTO drizzle.__drizzle_migrations (hash, created_at)
+    SELECT 'hash-' || n, n FROM generate_series(1, ${count}) AS n`);
 }
 
 describe('effect/sql', () => {
@@ -95,8 +99,7 @@ describe('effect/sql', () => {
 
   it('keeps jsonb keys as written and only camelCases column names', async () => {
     const pglite = await freshMigratedPglite();
-    const db = drizzle(pglite, { schema }) as unknown as ServerDatabase;
-    const runtime = registerSqlRuntime(db, '');
+    const runtime = registerSqlRuntime(pglite, '');
     try {
       const stored = { max_items: 2, nested_key: { inner_key: 1 } };
       const rows = await runtime.runPromise(
@@ -115,7 +118,7 @@ describe('effect/sql', () => {
       // The column name is camelCased, the jsonb keys are untouched.
       expect(rows[0]?.payloadColumn).toEqual(stored);
     } finally {
-      await disposeSqlRuntime(db);
+      await disposeSqlRuntime(pglite);
       await pglite.close();
     }
   });
@@ -139,7 +142,7 @@ describe('effect/sql', () => {
   it('adopts a database drizzle already migrated without re-running the history', async () => {
     const pglite = new PGlite();
     try {
-      await migrateDrizzle(drizzle(pglite), { migrationsFolder });
+      await drizzleMigrated(pglite, 46);
       expect(await countRows(pglite, 'drizzle.__drizzle_migrations')).toBe(46);
 
       const applied = await migrateWithSql(pglite);
@@ -155,10 +158,9 @@ describe('effect/sql', () => {
   });
 
   it('applies only the committed migrations drizzle had not applied', async () => {
-    const folder = await committedMigrationsUpTo(41);
     const pglite = new PGlite();
     try {
-      await migrateDrizzle(drizzle(pglite), { migrationsFolder: folder });
+      await drizzleMigrated(pglite, 41);
       expect(await countRows(pglite, 'drizzle.__drizzle_migrations')).toBe(41);
 
       const applied = await migrateWithSql(pglite);
@@ -212,10 +214,9 @@ describe('effect/sql', () => {
   });
 
   it('applies nothing on a second run and journals exactly one adoption row', async () => {
-    const folder = await committedMigrationsUpTo(41);
     const pglite = new PGlite();
     try {
-      await migrateDrizzle(drizzle(pglite), { migrationsFolder: folder });
+      await drizzleMigrated(pglite, 41);
       expect(await migrateWithSql(pglite)).toHaveLength(5);
 
       expect(await migrateWithSql(pglite)).toEqual([]);

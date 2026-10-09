@@ -534,8 +534,8 @@ async function shutdown(signal: NodeJS.Signals): Promise<void> {
   if (routineScheduler !== null) {
     routineScheduler.stop();
   }
-  // The `effect/sql` pool is separate from the drizzle client: dispose it
-  // before closing the client it may share a PGlite connection with.
+  // The `effect/sql` runtime owns the database pool: dispose it. `close` is
+  // the no-op from `createDb`, kept so the shutdown path reads the same.
   await disposeSqlRuntime(db);
   await close();
   process.exit(0);

@@ -1,6 +1,6 @@
 // Hand-written row types for the tables the server reads and writes. Each
-// shape mirrors `db/schema.ts` exactly; `db/rows.test.ts` proves every one
-// equals drizzle's `$inferSelect` (and `ApprovalInsert` its `$inferInsert`).
+// shape follows the migration SQL in `apps/server/drizzle/`, and a schema change
+// must update both the migration and this file.
 
 // Row of the `invites` table.
 export interface InviteRow {
@@ -284,7 +284,7 @@ export interface ApprovalRow {
   createdAt: Date;
 }
 
-// Insert shape of the `approvals` table (drizzle's `$inferInsert`).
+// Insert shape of the `approvals` table.
 export interface ApprovalInsert {
   id: string;
   aiId: string;
