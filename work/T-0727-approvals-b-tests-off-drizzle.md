@@ -1,7 +1,7 @@
 ---
 id: T-0727
 title: "tests off drizzle (approvals (routes, rules.routes, rules)): replace every drizzle query in approvals/routes.test.ts, approvals/rules.routes.test.ts, approvals/rules.test.ts with testSql(context) + effect/sql; drop the drizzle-orm and db/schema imports"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0727-approvals-b-tests-off-drizzle
 model: auto
@@ -53,4 +53,49 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+All three approvals test files are off drizzle: every seed/assertion query now
+uses `testSql(context)` + `effect/sql` with snake_case columns and small local
+row types; `drizzle-orm` / `../db/schema` imports are gone; `context.db` passed
+to module functions is untouched.
+
+- `routes.test.ts` (I did this file): `seedAi` (provider_connections/ais/
+  ai_limits), `seedPrivateTopic` (groups/group_members/group_ais/topics/
+  topic_members), decided_by read, 4× audit_log reads, group_members +
+  `"user"` name updates + group_roles/group_member_roles inserts + topics
+  approver_role_id updates (×2 tests), group_members DELETE, topic_members
+  DELETE, Logos second-topic seed. The "audit recorder fails" test now injects
+  at the effect/sql seam: partial `vi.mock('../effect/sql')` wrapping
+  `sqlRuntimeFor`, counting calls and rejecting the 4th `runPromise` (SELECT
+  approvals, SELECT ais owner, decision transaction, then the audit INSERT).
+  Same assertion (200 + zero audit rows). `"user"` quoted; numeric/date reads
+  needed no adaptation (no numerics read; timestamps still Dates).
+- `rules.routes.test.ts` (helper subagent): seedAi/seedGroup raw inserts,
+  revoked_at / audit_log / approvals-status / approval_rules reads, approvals
+  expires_at UPDATE, topics+topic_members seeds, topic_members DELETE. 23/23.
+- `rules.test.ts` (helper subagent): seedUser (`"user"`), seedAi, seedGroup,
+  seedTopic, topic_ais inserts; approval_rules/audit_log/approvals reads,
+  count(*)::int, ais status UPDATE, ais/group_ais DELETEs. 30/30. I ran
+  `prettier --write` on this file to fix the gate format check (whitespace
+  only), re-ran its tests: 30/30 still green.
+
+Commands (real results):
+- Baseline before changes: 3 files, 73 passed.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot
+  src/approvals/routes.test.ts src/approvals/rules.routes.test.ts
+  src/approvals/rules.test.ts`: 3 passed, 73 passed (20 + 23 + 30) — same
+  count as before.
+- `pnpm gate`: GATE PASS (install PASS, format PASS, lint PASS, typecheck
+  PASS, tests @zilar/server PASS); "scope: every changed file is inside the
+  Allowed files".
+- Acceptance grep `git grep -n "drizzle-orm\|db/schema" -- <three files>`:
+  prints nothing.
+
+Security checklist: no secrets touched; deletes/updates all scoped by
+group_id/topic_id/id; no new routes; audit assertions unchanged (ids only).
+No deviations: no assertion meaning changed; no new dependencies.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. The pre-review was clean (packet head 0d9b38bd), and all 73 tests pass.
+- **Nit, accepted:** the audit-failure test breaks the 4th `sqlRuntimeFor` call. The trace is right, and any drift fails loudly.
+- **Follow-up:** that test should assert the call count, as `setup/routes.test.ts:275` does.

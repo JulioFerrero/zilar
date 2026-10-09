@@ -1,30 +1,15 @@
 import { randomBytes, randomUUID } from 'node:crypto';
-import { PGlite } from '@electric-sql/pglite';
-import { drizzle } from 'drizzle-orm/pglite';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { and, eq } from 'drizzle-orm';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
 import pino from 'pino';
 import { createAuditRecorder, type AuditRecorder } from '../audit/service';
-import {
-  aiLimits,
-  ais,
-  approvals,
-  auditLog,
-  groupAis,
-  groupMemberRoles,
-  groupMembers,
-  groupRoles,
-  groups,
-  providerConnections,
-  topicMembers,
-  topics,
-  user,
-} from '../db/schema';
-import * as schema from '../db/schema';
+import { sqlRuntimeFor } from '../effect/sql';
 import {
   bootstrapUser,
   createTestContext,
   testApp,
+  testSql,
   TEST_BASE_URL,
   type TestApp,
   type TestContext,
@@ -35,6 +20,29 @@ import {
   type ApprovalsRouteLogger,
 } from './api';
 import { createApproval } from './service';
+
+// Only `sqlRuntimeFor` is wrapped; every other export is the real module. A
+// test can break the runtime for the next call; unqueued calls pass through
+// (the T-0669 pattern).
+vi.mock('../effect/sql', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../effect/sql')>();
+  return { ...actual, sqlRuntimeFor: vi.fn(actual.sqlRuntimeFor) };
+});
+
+interface DecidedByRow {
+  decidedBy: string | null;
+}
+
+interface AuditReadRow {
+  id: string;
+  action: string;
+  subjectId: string | null;
+  actorUserId: string | null;
+  aiId: string | null;
+  argsHash: string | null;
+  result: string;
+  detail: unknown;
+}
 
 function argsHash(seed: number): string {
   const buf = randomBytes(32);
@@ -49,29 +57,27 @@ async function seedAi(
   overrides: { name?: string } = {},
 ): Promise<{ aiId: string; jid: string }> {
   const connectionId = randomUUID();
-  await context.db.insert(providerConnections).values({
-    id: connectionId,
-    owner: ownerId,
-    provider: 'openai',
-    encryptedKey: 'sealed-placeholder',
-    label: null,
-  });
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO provider_connections (id, owner, provider, encrypted_key, label) VALUES (${connectionId}, ${ownerId}, 'openai', 'sealed-placeholder', NULL)`;
+    }),
+  );
   const aiId = randomUUID();
   const localpart = `ai-${aiId}`;
   const jid = `${localpart}@zilar.localhost`;
-  await context.db.insert(ais).values({
-    id: aiId,
-    owner: ownerId,
-    name: overrides.name ?? 'Helper AI',
-    template: 'dev',
-    persona: 'A persona',
-    providerConnectionId: connectionId,
-    model: 'gpt-4o-mini',
-    localpart,
-    jid,
-    status: 'active',
-  });
-  await context.db.insert(aiLimits).values({ aiId, perDayUsd: '1.00', perMonthUsd: '20.00' });
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO ais (id, owner, name, template, persona, provider_connection_id, model, localpart, jid, status) VALUES (${aiId}, ${ownerId}, ${overrides.name ?? 'Helper AI'}, 'dev', 'A persona', ${connectionId}, 'gpt-4o-mini', ${localpart}, ${jid}, 'active')`;
+    }),
+  );
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO ai_limits (ai_id, per_day_usd, per_month_usd) VALUES (${aiId}, '1.00', '20.00')`;
+    }),
+  );
   return { aiId, jid };
 }
 
@@ -498,10 +504,12 @@ describe('approvals routes', () => {
 
     // The DB row has decidedBy (the spec requires it for the audit); the
     // public API never returns it.
-    const [row] = await context.db
-      .select({ decidedBy: approvals.decidedBy })
-      .from(approvals)
-      .where(eq(approvals.id, created.id));
+    const [row] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<DecidedByRow>`SELECT decided_by FROM approvals WHERE id = ${created.id}`;
+      }),
+    );
     expect(row?.decidedBy).toBe(owner.id);
 
     const response = await app.request(`${TEST_BASE_URL}/api/approvals/${created.id}`, {
@@ -538,7 +546,12 @@ describe('approvals routes', () => {
     );
     expect(decided.status).toBe(200);
 
-    const rows = await context.db.select().from(auditLog);
+    const rows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<AuditReadRow>`SELECT id, action, subject_id, actor_user_id, ai_id, args_hash, result, detail FROM audit_log`;
+      }),
+    );
     expect(rows).toHaveLength(1);
     const row = rows[0]!;
     expect(row.action).toBe('approval.decided');
@@ -562,7 +575,12 @@ describe('approvals routes', () => {
       }),
     );
     expect(second.status).toBe(409);
-    const after = await context.db.select().from(auditLog);
+    const after = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<AuditReadRow>`SELECT id, action, subject_id, actor_user_id, ai_id, args_hash, result, detail FROM audit_log`;
+      }),
+    );
     expect(after).toHaveLength(1);
   });
 
@@ -583,14 +601,25 @@ describe('approvals routes', () => {
     );
 
     // A recorder whose internal `recordAudit` throws — the recorder must
-    // catch and the route must still answer 200. We inject a broken `db` by
-    // closing a fresh PGlite, then build a recorder on it: `recordAudit`
-    // will reject, the recorder swallows, the route keeps going.
-    const brokenClient = new PGlite();
-    const brokenDb = drizzle(brokenClient, { schema });
-    await brokenClient.close();
+    // catch and the route must still answer 200. The modules run on
+    // effect/sql now, so the failure is injected at that seam: every
+    // `runPromise` is counted and only the audit write's call rejects. The
+    // approve_once decision path makes three runtime calls before the
+    // recorder's (SELECT approvals, SELECT ais owner, the decision
+    // transaction), so the fourth call is the audit INSERT. The recorder
+    // swallows, the route keeps going.
+    const passthrough = vi.mocked(sqlRuntimeFor).getMockImplementation();
+    let calls = 0;
+    vi.mocked(sqlRuntimeFor).mockImplementation((db) => {
+      calls += 1;
+      if (calls === 4) {
+        return { runPromise: () => Promise.reject(new Error('database is down')) } as never;
+      }
+      return passthrough!(db);
+    });
+
     const recorder = createAuditRecorder({
-      db: brokenDb,
+      db: context.db,
       logger: { error: () => undefined },
     });
 
@@ -601,17 +630,26 @@ describe('approvals routes', () => {
       audit: recorder,
       now: () => clockNow,
     });
-    const response = await localApp.request(
-      `${TEST_BASE_URL}/api/approvals/${created.id}/decision`,
-      {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', cookie: owner.cookie },
-        body: JSON.stringify({ decision: 'approve_once' }),
-      },
-    );
-    expect(response.status).toBe(200);
-    const auditRows = await context.db.select().from(auditLog);
-    expect(auditRows).toHaveLength(0);
+    try {
+      const response = await localApp.request(
+        `${TEST_BASE_URL}/api/approvals/${created.id}/decision`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', cookie: owner.cookie },
+          body: JSON.stringify({ decision: 'approve_once' }),
+        },
+      );
+      expect(response.status).toBe(200);
+      const auditRows = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<AuditReadRow>`SELECT id, action, subject_id, actor_user_id, ai_id, args_hash, result, detail FROM audit_log`;
+        }),
+      );
+      expect(auditRows).toHaveLength(0);
+    } finally {
+      vi.mocked(sqlRuntimeFor).mockImplementation(passthrough!);
+    }
   });
 
   it('fires onDecided after a successful decision and not after a 409', async () => {
@@ -722,34 +760,40 @@ describe('approvals routes', () => {
       const admin = await bootstrapUser(context, authApp, `pt-admin${testCounter}@example.com`);
       const { aiId } = await seedAi(context, owner.id);
       const groupId = randomUUID();
-      await context.db.insert(groups).values({
-        id: groupId,
-        roomLocalpart: `g${randomBytes(15).toString('hex').slice(0, 15)}`,
-        title: 'Crew',
-        createdBy: owner.id,
-      });
-      await context.db.insert(groupMembers).values([
-        { groupId, userId: owner.id, role: 'owner' },
-        { groupId, userId: admin.id, role: 'admin' },
-      ]);
-      await context.db.insert(groupAis).values({ groupId, aiId, addedBy: owner.id });
+      const groupRoom = `g${randomBytes(15).toString('hex').slice(0, 15)}`;
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO groups (id, room_localpart, title, created_by) VALUES (${groupId}, ${groupRoom}, 'Crew', ${owner.id})`;
+        }),
+      );
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO group_members (group_id, user_id, role) VALUES (${groupId}, ${owner.id}, 'owner'), (${groupId}, ${admin.id}, 'admin')`;
+        }),
+      );
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO group_ais (group_id, ai_id, added_by) VALUES (${groupId}, ${aiId}, ${owner.id})`;
+        }),
+      );
       const topicId = randomUUID();
-      await context.db.insert(topics).values({
-        id: topicId,
-        groupId,
-        name: 'Hiring',
-        glyph: 'H',
-        roomLocalpart: `g${randomBytes(15).toString('hex').slice(0, 15)}`,
-        visibility: 'private',
-        kind: 'chat',
-        status: 'open',
-        isGeneral: false,
-        createdBy: owner.id,
-      });
+      const topicRoom = `g${randomBytes(15).toString('hex').slice(0, 15)}`;
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO topics (id, group_id, name, glyph, room_localpart, visibility, kind, status, is_general, created_by) VALUES (${topicId}, ${groupId}, 'Hiring', 'H', ${topicRoom}, 'private', 'chat', 'open', false, ${owner.id})`;
+        }),
+      );
       // The AI owner sees the private topic; the group admin does not.
-      await context.db
-        .insert(topicMembers)
-        .values({ topicId, userId: owner.id, addedBy: owner.id });
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO topic_members (topic_id, user_id, added_by) VALUES (${topicId}, ${owner.id}, ${owner.id})`;
+        }),
+      );
       const created = await createApproval(
         context.db,
         {
@@ -839,28 +883,23 @@ describe('approvals routes', () => {
     it('the list carries the topic approver names so the card needs no extra read', async () => {
       const seeded = await seedPrivateTopic();
       const designer = await bootstrapUser(context, authApp, `designer${testCounter}@example.com`);
-      await context.db.insert(groupMembers).values({
-        groupId: seeded.groupId,
-        userId: designer.id,
-        role: 'member',
-      });
-      await context.db.update(user).set({ name: 'Zoe Designer' }).where(eq(user.id, designer.id));
-      await context.db.update(user).set({ name: 'Amy Owner' }).where(eq(user.id, seeded.ownerId));
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO group_members (group_id, user_id, role) VALUES (${seeded.groupId}, ${designer.id}, 'member')`;
+          yield* sql`UPDATE "user" SET name = 'Zoe Designer' WHERE id = ${designer.id}`;
+          yield* sql`UPDATE "user" SET name = 'Amy Owner' WHERE id = ${seeded.ownerId}`;
+        }),
+      );
       const roleId = randomUUID();
-      await context.db.insert(groupRoles).values({
-        id: roleId,
-        groupId: seeded.groupId,
-        name: 'Designers',
-        createdBy: seeded.ownerId,
-      });
-      await context.db.insert(groupMemberRoles).values([
-        { roleId, userId: seeded.ownerId, assignedBy: seeded.ownerId },
-        { roleId, userId: designer.id, assignedBy: seeded.ownerId },
-      ]);
-      await context.db
-        .update(topics)
-        .set({ approverRoleId: roleId })
-        .where(eq(topics.id, seeded.topicId));
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO group_roles (id, group_id, name, created_by) VALUES (${roleId}, ${seeded.groupId}, 'Designers', ${seeded.ownerId})`;
+          yield* sql`INSERT INTO group_member_roles (role_id, user_id, assigned_by) VALUES (${roleId}, ${seeded.ownerId}, ${seeded.ownerId}), (${roleId}, ${designer.id}, ${seeded.ownerId})`;
+          yield* sql`UPDATE topics SET approver_role_id = ${roleId} WHERE id = ${seeded.topicId}`;
+        }),
+      );
 
       const list = await app.request(`${TEST_BASE_URL}/api/approvals`, {
         headers: { cookie: seeded.ownerCookie },
@@ -881,9 +920,12 @@ describe('approvals routes', () => {
       ]);
 
       // A departed holder is never named, even if their role row survived.
-      await context.db
-        .delete(groupMembers)
-        .where(and(eq(groupMembers.groupId, seeded.groupId), eq(groupMembers.userId, designer.id)));
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`DELETE FROM group_members WHERE group_id = ${seeded.groupId} AND user_id = ${designer.id}`;
+        }),
+      );
       const relisted = await app.request(`${TEST_BASE_URL}/api/approvals`, {
         headers: { cookie: seeded.ownerCookie },
       });
@@ -908,44 +950,34 @@ describe('approvals routes', () => {
 
     it('fans approver names out to every topic sharing the role', async () => {
       const seeded = await seedPrivateTopic();
-      await context.db.update(user).set({ name: 'Amy Owner' }).where(eq(user.id, seeded.ownerId));
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`UPDATE "user" SET name = 'Amy Owner' WHERE id = ${seeded.ownerId}`;
+        }),
+      );
       const roleId = randomUUID();
-      await context.db.insert(groupRoles).values({
-        id: roleId,
-        groupId: seeded.groupId,
-        name: 'Designers',
-        createdBy: seeded.ownerId,
-      });
-      await context.db
-        .insert(groupMemberRoles)
-        .values({ roleId, userId: seeded.ownerId, assignedBy: seeded.ownerId });
-      await context.db
-        .update(topics)
-        .set({ approverRoleId: roleId })
-        .where(eq(topics.id, seeded.topicId));
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO group_roles (id, group_id, name, created_by) VALUES (${roleId}, ${seeded.groupId}, 'Designers', ${seeded.ownerId})`;
+          yield* sql`INSERT INTO group_member_roles (role_id, user_id, assigned_by) VALUES (${roleId}, ${seeded.ownerId}, ${seeded.ownerId})`;
+          yield* sql`UPDATE topics SET approver_role_id = ${roleId} WHERE id = ${seeded.topicId}`;
+        }),
+      );
       // A second private topic approved by the SAME role, with its own
       // approval. Nothing forbids sharing the role, so both cards must
       // carry the names.
       const secondTopicId = randomUUID();
-      await context.db.insert(topics).values({
-        id: secondTopicId,
-        groupId: seeded.groupId,
-        name: 'Logos',
-        glyph: 'L',
-        roomLocalpart: `t${randomUUID().replaceAll('-', '').slice(0, 15)}`,
-        visibility: 'private',
-        kind: 'chat',
-        status: 'open',
-        isGeneral: false,
-        createdBy: seeded.ownerId,
-      });
-      await context.db
-        .insert(topicMembers)
-        .values({ topicId: secondTopicId, userId: seeded.ownerId, addedBy: seeded.ownerId });
-      await context.db
-        .update(topics)
-        .set({ approverRoleId: roleId })
-        .where(eq(topics.id, secondTopicId));
+      const secondRoom = `t${randomUUID().replaceAll('-', '').slice(0, 15)}`;
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO topics (id, group_id, name, glyph, room_localpart, visibility, kind, status, is_general, created_by) VALUES (${secondTopicId}, ${seeded.groupId}, 'Logos', 'L', ${secondRoom}, 'private', 'chat', 'open', false, ${seeded.ownerId})`;
+          yield* sql`INSERT INTO topic_members (topic_id, user_id, added_by) VALUES (${secondTopicId}, ${seeded.ownerId}, ${seeded.ownerId})`;
+          yield* sql`UPDATE topics SET approver_role_id = ${roleId} WHERE id = ${secondTopicId}`;
+        }),
+      );
       const secondApproval = await createApproval(
         context.db,
         {
@@ -974,7 +1006,12 @@ describe('approvals routes', () => {
 
     it('the AI owner removed from the topic loses decision rights', async () => {
       const seeded = await seedPrivateTopic();
-      await context.db.delete(topicMembers).where(eq(topicMembers.topicId, seeded.topicId));
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`DELETE FROM topic_members WHERE topic_id = ${seeded.topicId}`;
+        }),
+      );
       const single = await app.request(`${TEST_BASE_URL}/api/approvals/${seeded.approvalId}`, {
         headers: { cookie: seeded.ownerCookie },
       });
@@ -1001,7 +1038,12 @@ describe('approvals routes', () => {
         }),
       );
       expect(decide.status).toBe(200);
-      const rows = await context.db.select().from(auditLog);
+      const rows = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<AuditReadRow>`SELECT id, action, subject_id, actor_user_id, ai_id, args_hash, result, detail FROM audit_log`;
+        }),
+      );
       const decided = rows.find((row) => row.action === 'approval.decided');
       expect(decided).toBeDefined();
       expect(JSON.stringify(decided)).not.toContain('Hiring');

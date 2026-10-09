@@ -1,25 +1,14 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { eq } from 'drizzle-orm';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
 import pino from 'pino';
-import {
-  aiLimits,
-  ais,
-  approvalRules,
-  approvals,
-  auditLog,
-  groupAis,
-  groupMembers,
-  groups,
-  providerConnections,
-  topicMembers,
-  topics,
-} from '../db/schema';
 import { createAuditRecorder } from '../audit/service';
 import {
   bootstrapUser,
   createTestContext,
   testApp,
+  testSql,
   TEST_BASE_URL,
   type TestApp,
   type TestContext,
@@ -32,6 +21,26 @@ import {
 import { createApproval } from './service';
 import { createRule } from './rules';
 
+interface RevokedRow {
+  revokedAt: Date | null;
+}
+
+interface AuditReadRow {
+  action: string;
+  subjectId: string | null;
+  actorUserId: string | null;
+  aiId: string | null;
+  detail: unknown;
+}
+
+interface ApprovalStatusRow {
+  status: string;
+}
+
+interface RuleGroupRow {
+  groupId: string | null;
+}
+
 function argsHash(seed: number): string {
   const buf = randomBytes(32);
   buf[0] = seed & 0xff;
@@ -41,29 +50,17 @@ function argsHash(seed: number): string {
 
 async function seedAi(context: TestContext, ownerId: string): Promise<{ aiId: string }> {
   const connectionId = randomUUID();
-  await context.db.insert(providerConnections).values({
-    id: connectionId,
-    owner: ownerId,
-    provider: 'openai',
-    encryptedKey: 'sealed-placeholder',
-    label: null,
-  });
   const aiId = randomUUID();
   const localpart = `ai-${aiId}`;
   const jid = `${localpart}@zilar.localhost`;
-  await context.db.insert(ais).values({
-    id: aiId,
-    owner: ownerId,
-    name: 'Helper AI',
-    template: 'dev',
-    persona: 'A persona',
-    providerConnectionId: connectionId,
-    model: 'gpt-4o-mini',
-    localpart,
-    jid,
-    status: 'active',
-  });
-  await context.db.insert(aiLimits).values({ aiId, perDayUsd: '1.00', perMonthUsd: '20.00' });
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO provider_connections (id, owner, provider, encrypted_key, label) VALUES (${connectionId}, ${ownerId}, ${'openai'}, ${'sealed-placeholder'}, ${null})`;
+      yield* sql`INSERT INTO ais (id, owner, name, template, persona, provider_connection_id, model, localpart, jid, status) VALUES (${aiId}, ${ownerId}, ${'Helper AI'}, ${'dev'}, ${'A persona'}, ${connectionId}, ${'gpt-4o-mini'}, ${localpart}, ${jid}, ${'active'})`;
+      yield* sql`INSERT INTO ai_limits (ai_id, per_day_usd, per_month_usd) VALUES (${aiId}, ${'1.00'}, ${'20.00'})`;
+    }),
+  );
   return { aiId };
 }
 
@@ -74,35 +71,22 @@ async function seedGroup(
   aiIds: string[],
 ): Promise<{ groupId: string; generalTopicId: string }> {
   const groupId = randomUUID();
-  await context.db.insert(groups).values({
-    id: groupId,
-    roomLocalpart: `g${randomBytes(15).toString('hex').slice(0, 15)}`,
-    title: 'Trip',
-    createdBy: ownerId,
-  });
-  await context.db.insert(groupMembers).values(
-    members.map((entry) => ({
-      groupId,
-      userId: entry.userId,
-      role: entry.role,
-    })),
-  );
-  for (const aiId of aiIds) {
-    await context.db.insert(groupAis).values({ groupId, aiId, addedBy: ownerId });
-  }
+  const roomLocalpart = `g${randomBytes(15).toString('hex').slice(0, 15)}`;
   const generalTopicId = randomUUID();
-  await context.db.insert(topics).values({
-    id: generalTopicId,
-    groupId,
-    name: 'General',
-    glyph: 'G',
-    roomLocalpart: `g${randomBytes(15).toString('hex').slice(0, 15)}`,
-    visibility: 'public',
-    kind: 'chat',
-    status: 'open',
-    isGeneral: true,
-    createdBy: ownerId,
-  });
+  const generalRoomLocalpart = `g${randomBytes(15).toString('hex').slice(0, 15)}`;
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO groups (id, room_localpart, title, created_by) VALUES (${groupId}, ${roomLocalpart}, ${'Trip'}, ${ownerId})`;
+      for (const entry of members) {
+        yield* sql`INSERT INTO group_members (group_id, user_id, role) VALUES (${groupId}, ${entry.userId}, ${entry.role})`;
+      }
+      for (const aiId of aiIds) {
+        yield* sql`INSERT INTO group_ais (group_id, ai_id, added_by) VALUES (${groupId}, ${aiId}, ${ownerId})`;
+      }
+      yield* sql`INSERT INTO topics (id, group_id, name, glyph, room_localpart, visibility, kind, status, is_general, created_by) VALUES (${generalTopicId}, ${groupId}, ${'General'}, ${'G'}, ${generalRoomLocalpart}, ${'public'}, ${'chat'}, ${'open'}, ${true}, ${ownerId})`;
+    }),
+  );
   return { groupId, generalTopicId };
 }
 
@@ -365,10 +349,12 @@ describe('approval rules routes (T-0099)', () => {
         headers: { cookie: owner.cookie },
       });
       expect(response.status).toBe(204);
-      const rows = await context.db
-        .select({ revokedAt: approvalRules.revokedAt })
-        .from(approvalRules)
-        .where(eq(approvalRules.id, rule.id));
+      const rows = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<RevokedRow>`SELECT revoked_at FROM approval_rules WHERE id = ${rule.id}`;
+        }),
+      );
       expect(rows[0]?.revokedAt).not.toBeNull();
     });
 
@@ -445,7 +431,12 @@ describe('approval rules routes (T-0099)', () => {
       });
       expect(response.status).toBe(204);
 
-      const rows = await context.db.select().from(auditLog);
+      const rows = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<AuditReadRow>`SELECT action, subject_id, actor_user_id, ai_id, detail FROM audit_log`;
+        }),
+      );
       const revoke = rows.find((row) => row.action === 'approval_rule.revoked');
       expect(revoke).toBeDefined();
       expect(revoke?.subjectId).toBe(rule.id);
@@ -517,7 +508,12 @@ describe('approval rules routes (T-0099)', () => {
       expect(body.status).toBe('approved_always');
       expect(body.alwaysEligible).toBe(true);
 
-      const auditRows = await context.db.select().from(auditLog);
+      const auditRows = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<AuditReadRow>`SELECT action, subject_id, actor_user_id, ai_id, detail FROM audit_log`;
+        }),
+      );
       const created1 = auditRows.find((row) => row.action === 'approval_rule.created');
       expect(created1).toBeDefined();
     });
@@ -651,11 +647,26 @@ describe('approval rules routes (T-0099)', () => {
       expect(refused.status).toBe(403);
       expect((await errorOf(refused)).code).toBe('always_requires_admin');
 
-      const [row] = await context.db.select().from(approvals).where(eq(approvals.id, approvalId));
+      const [row] = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<ApprovalStatusRow>`SELECT status FROM approvals WHERE id = ${approvalId}`;
+        }),
+      );
       expect(row?.status).toBe('pending');
-      const rules = await context.db.select().from(approvalRules);
+      const rules = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<RuleGroupRow>`SELECT group_id FROM approval_rules`;
+        }),
+      );
       expect(rules).toHaveLength(0);
-      const auditRows = await context.db.select().from(auditLog);
+      const auditRows = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<AuditReadRow>`SELECT action, subject_id, actor_user_id, ai_id, detail FROM audit_log`;
+        }),
+      );
       expect(auditRows.find((entry) => entry.action === 'approval_rule.created')).toBeUndefined();
 
       // The same person can still approve once afterwards.
@@ -702,7 +713,12 @@ describe('approval rules routes (T-0099)', () => {
         decision: 'approve_always',
       });
       expect(always.status).toBe(200);
-      const rules = await context.db.select().from(approvalRules);
+      const rules = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<RuleGroupRow>`SELECT group_id FROM approval_rules`;
+        }),
+      );
       expect(rules).toHaveLength(1);
       expect(rules[0]?.groupId).toBe(seeded.groupId);
     });
@@ -852,10 +868,12 @@ describe('approval rules routes (T-0099)', () => {
         topicId: generalTopicId,
         seed: 66,
       });
-      await context.db
-        .update(approvals)
-        .set({ expiresAt: new Date(now.getTime() - 1) })
-        .where(eq(approvals.id, expiredId));
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`UPDATE approvals SET expires_at = ${new Date(now.getTime() - 1)} WHERE id = ${expiredId}`;
+        }),
+      );
       const expired = await decideRequest(eligibleApp, {
         cookie: aiOwner.cookie,
         approvalId: expiredId,
@@ -888,21 +906,14 @@ describe('approval rules routes (T-0099)', () => {
         [aiId],
       );
       const topicId = randomUUID();
-      await context.db.insert(topics).values({
-        id: topicId,
-        groupId,
-        name: 'Hiring',
-        glyph: 'H',
-        roomLocalpart: `g${randomBytes(15).toString('hex').slice(0, 15)}`,
-        visibility: 'private',
-        kind: 'chat',
-        status: 'open',
-        isGeneral: false,
-        createdBy: owner.id,
-      });
-      await context.db
-        .insert(topicMembers)
-        .values({ topicId, userId: owner.id, addedBy: owner.id });
+      const hiringRoomLocalpart = `g${randomBytes(15).toString('hex').slice(0, 15)}`;
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO topics (id, group_id, name, glyph, room_localpart, visibility, kind, status, is_general, created_by) VALUES (${topicId}, ${groupId}, ${'Hiring'}, ${'H'}, ${hiringRoomLocalpart}, ${'private'}, ${'chat'}, ${'open'}, ${false}, ${owner.id})`;
+          yield* sql`INSERT INTO topic_members (topic_id, user_id, added_by) VALUES (${topicId}, ${owner.id}, ${owner.id})`;
+        }),
+      );
       const { rule } = await createRule(
         context.db,
         { aiId, groupId, topicId, action: 'demo.echo', createdBy: owner.id },
@@ -965,7 +976,12 @@ describe('approval rules routes (T-0099)', () => {
       expect(await before.json()).toHaveLength(1);
       // The owner leaves the private topic: the rule disappears from the
       // AI route and revoke answers 404, until they are added back.
-      await context.db.delete(topicMembers).where(eq(topicMembers.topicId, seeded.topicId));
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`DELETE FROM topic_members WHERE topic_id = ${seeded.topicId}`;
+        }),
+      );
       const after = await app.request(`${TEST_BASE_URL}/api/ais/${seeded.aiId}/approval-rules`, {
         headers: { cookie: seeded.ownerCookie },
       });
