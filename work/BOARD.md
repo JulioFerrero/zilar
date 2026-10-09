@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-0713](T-0713-machines-tests-off-drizzle.md) | tests off drizzle: machines | in-progress | auto | T-0695 | |
 | [T-0717](T-0717-app-mount-list.md) | B1.3a: one ordered module mount list in app.ts | in-progress | haiku-5.5 | T-0694 | |
 | [T-0718](T-0718-routines-tests-off-drizzle.md) | tests off drizzle: routines | in-progress | auto | T-0695 | |
 | [T-0719](T-0719-groups-tests-off-drizzle.md) | tests off drizzle: groups | in-progress | auto | T-0695 | |
@@ -758,3 +757,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0714](T-0714-topics-tests-off-drizzle.md) | tests off drizzle: topics | 2026-10-09 |
 | [T-0716](T-0716-setup-tests-off-drizzle.md) | tests off drizzle: setup | 2026-10-09 |
 | [T-0712](T-0712-agents-memory-tests-off-drizzle.md) | tests off drizzle: agents/memory | 2026-10-09 |
+| [T-0713](T-0713-machines-tests-off-drizzle.md) | tests off drizzle: machines | 2026-10-09 |

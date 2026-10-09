@@ -1,6 +1,7 @@
-import { eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
 import {
   CLOSE_AUTH,
   CLOSE_REVOKED,
@@ -9,8 +10,13 @@ import {
   type RunnerKeypair,
 } from '@zilar/runner-tunnel';
 import { createApp } from '../app';
-import { bootstrapUser, createTestContext, TEST_BASE_URL, type TestContext } from '../test-support';
-import { machines } from '../db/schema';
+import {
+  bootstrapUser,
+  createTestContext,
+  testSql,
+  TEST_BASE_URL,
+  type TestContext,
+} from '../test-support';
 import { createMachinesApi } from './api';
 import {
   assertRunnerHubConfig,
@@ -23,7 +29,6 @@ import {
   type RunnerHub,
 } from './hub';
 import { createDbMachineRegistry } from './registry';
-import type { ServerDatabase } from '../db/client';
 
 interface RunnerKey extends RunnerKeypair {}
 
@@ -62,19 +67,18 @@ function noopRegistry(): HubRegistrySource {
 }
 
 async function insertMachine(
-  db: ServerDatabase,
+  source: Pick<TestContext, 'db'>,
   owner: string,
   overrides: { status?: 'pending' | 'approved' | 'revoked'; publicKey?: string } = {},
 ): Promise<string> {
   const id = randomUUID();
-  await db.insert(machines).values({
-    id,
-    ownerUserId: owner,
-    name: 'julio-mbp',
-    publicKey: overrides.publicKey ?? `public-key-for-${id}`,
-    capabilities: { os: 'macos' },
-    status: overrides.status ?? 'approved',
-  });
+  await testSql(source)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO machines (id, owner_user_id, name, public_key, capabilities, status)
+        VALUES (${id}, ${owner}, ${'julio-mbp'}, ${overrides.publicKey ?? `public-key-for-${id}`}, ${JSON.stringify({ os: 'macos' })}::jsonb, ${overrides.status ?? 'approved'})`;
+    }),
+  );
   return id;
 }
 
@@ -115,15 +119,15 @@ describe('createHubKeyRegistry', () => {
       adminClient: context.adminClient,
     });
     const user = await bootstrapUser(context, app, 'cache@example.com');
-    const approved = await insertMachine(context.db, user.id, {
+    const approved = await insertMachine(context, user.id, {
       status: 'approved',
       publicKey: 'approved-key',
     });
-    const pending = await insertMachine(context.db, user.id, {
+    const pending = await insertMachine(context, user.id, {
       status: 'pending',
       publicKey: 'pending-key',
     });
-    const revoked = await insertMachine(context.db, user.id, {
+    const revoked = await insertMachine(context, user.id, {
       status: 'revoked',
       publicKey: 'revoked-key',
     });
@@ -187,7 +191,7 @@ describe('createHubKeyRegistry', () => {
     expect(cache.getPublicKey('ghost')).toBeNull();
 
     // An approval made elsewhere is visible after a refresh.
-    const approved = await insertMachine(context.db, user.id, {
+    const approved = await insertMachine(context, user.id, {
       status: 'approved',
       publicKey: 'fresh-key',
     });
@@ -200,10 +204,12 @@ describe('createHubKeyRegistry', () => {
     cache.onRevoke((id) => {
       dropped.push(id);
     });
-    await context.db
-      .update(machines)
-      .set({ status: 'revoked', revokedAt: new Date() })
-      .where(eq(machines.id, approved));
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`UPDATE machines SET status = 'revoked', revoked_at = ${new Date()} WHERE id = ${approved}`;
+      }),
+    );
     await cache.refresh();
     expect(cache.getPublicKey(approved)).toBeNull();
     expect(dropped).toEqual([approved]);
@@ -222,7 +228,7 @@ describe('createHubKeyRegistry', () => {
     const user = await bootstrapUser(context, app, 'race@example.com');
     const registry = createDbMachineRegistry(context.db);
     const cache = createHubKeyRegistry({ db: context.db, registry, logger: makeLogger() });
-    const id = await insertMachine(context.db, user.id, {
+    const id = await insertMachine(context, user.id, {
       status: 'approved',
       publicKey: 'raced-key',
     });
@@ -250,7 +256,7 @@ describe('createHubKeyRegistry', () => {
         adminClient: own.adminClient,
       });
       const user = await bootstrapUser(own, app, 'broken@example.com');
-      const id = await insertMachine(own.db, user.id, {
+      const id = await insertMachine(own, user.id, {
         status: 'approved',
         publicKey: 'still-here',
       });
@@ -442,7 +448,7 @@ describe('startRunnerHub', () => {
 
   it('authenticates an approved machine, writes last_seen_at, and reports isOnline', async () => {
     const key = makeKey();
-    const id = await insertMachine(context.db, user.id, {
+    const id = await insertMachine(context, user.id, {
       status: 'approved',
       publicKey: key.publicKey,
     });
@@ -462,7 +468,14 @@ describe('startRunnerHub', () => {
     expect(runner.connected()).toBe(true);
     await waitFor(
       async () => {
-        const [row] = await context.db.select().from(machines).where(eq(machines.id, id));
+        const [row] = await testSql(context)(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            return yield* sql<{
+              lastSeenAt: Date | null;
+            }>`SELECT last_seen_at FROM machines WHERE id = ${id}`;
+          }),
+        );
         return row?.lastSeenAt !== null;
       },
       5_000,
@@ -472,7 +485,7 @@ describe('startRunnerHub', () => {
 
   it('rejects a pending machine, even with the right key', async () => {
     const key = makeKey();
-    const id = await insertMachine(context.db, user.id, {
+    const id = await insertMachine(context, user.id, {
       status: 'pending',
       publicKey: key.publicKey,
     });
@@ -495,7 +508,7 @@ describe('startRunnerHub', () => {
   it('rejects a runner signing with the wrong key', async () => {
     const rightKey = makeKey();
     const wrongKey = makeKey();
-    const id = await insertMachine(context.db, user.id, {
+    const id = await insertMachine(context, user.id, {
       status: 'approved',
       publicKey: rightKey.publicKey,
     });
@@ -515,7 +528,7 @@ describe('startRunnerHub', () => {
 
   it('revoking through the route closes the live connection with CLOSE_REVOKED and prevents reconnect', async () => {
     const key = makeKey();
-    const id = await insertMachine(context.db, user.id, {
+    const id = await insertMachine(context, user.id, {
       status: 'approved',
       publicKey: key.publicKey,
     });
@@ -559,7 +572,7 @@ describe('startRunnerHub', () => {
 
   it('approving a pending machine through the route lets it connect without waiting for the refresh', async () => {
     const key = makeKey();
-    const id = await insertMachine(context.db, user.id, {
+    const id = await insertMachine(context, user.id, {
       status: 'pending',
       publicKey: key.publicKey,
     });
@@ -586,11 +599,11 @@ describe('startRunnerHub', () => {
   it('keeps two machines independent (one revoked does not drop the other)', async () => {
     const keyA = makeKey();
     const keyB = makeKey();
-    const idA = await insertMachine(context.db, user.id, {
+    const idA = await insertMachine(context, user.id, {
       status: 'approved',
       publicKey: keyA.publicKey,
     });
-    const idB = await insertMachine(context.db, user.id, {
+    const idB = await insertMachine(context, user.id, {
       status: 'approved',
       publicKey: keyB.publicKey,
     });
@@ -663,10 +676,10 @@ describe('machines routes with the hub', () => {
   });
 
   it('reports online=true only for ids the hub says are online', async () => {
-    const idA = await insertMachine(context.db, user.id, { status: 'approved', publicKey: 'a' });
-    const idB = await insertMachine(context.db, user.id, { status: 'approved', publicKey: 'b' });
-    const pending = await insertMachine(context.db, user.id, { status: 'pending', publicKey: 'p' });
-    const revoked = await insertMachine(context.db, user.id, { status: 'revoked', publicKey: 'r' });
+    const idA = await insertMachine(context, user.id, { status: 'approved', publicKey: 'a' });
+    const idB = await insertMachine(context, user.id, { status: 'approved', publicKey: 'b' });
+    const pending = await insertMachine(context, user.id, { status: 'pending', publicKey: 'p' });
+    const revoked = await insertMachine(context, user.id, { status: 'revoked', publicKey: 'r' });
     const realOnline = new Set([idA]);
     const isMachineOnline = (id: string): boolean => realOnline.has(id);
 
@@ -690,7 +703,7 @@ describe('machines routes with the hub', () => {
   });
 
   it('reports online=false for every machine when the hub is off (no isMachineOnline injected)', async () => {
-    const id = await insertMachine(context.db, user.id, { status: 'approved', publicKey: 'a' });
+    const id = await insertMachine(context, user.id, { status: 'approved', publicKey: 'a' });
     const response = await appInstance.request(`${TEST_BASE_URL}/api/machines`, {
       headers: { cookie: user.cookie },
     });
