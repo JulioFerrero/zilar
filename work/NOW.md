@@ -2,6 +2,15 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-09 12:58 UTC: D3 LIVE on `f98f4c31` (`IMAGE_TAG=sha-f98f4c3122a1`)**
+- **The migrator is on effect/sql.** Live logged "migrations: adopted 46 drizzle migrations" and is listening. The journal check gives `drizzle.__drizzle_migrations` 46 rows, untouched, and `effect_sql_migrations` 1 row at id 46.
+- **Checks:** health ok on the new commit, web 200, `/api/me` 401, and real traffic already arriving (`/api/xmpp/token` 200).
+- **The backup before the deploy:** a dump task run at 12:27, then the `postgres-data` backup to B2.
+- **The local rehearsal on real Postgres before merging** is described in the T-0741 Review.
+- **The deploy was delayed** because images run 37911863834 hung for 3h18m in the multi-arch server build and held `publish-main`. The lead force-cancelled it; the fix is T-0750 (timeouts).
+- **Julio is OK with everything** (10-09): migrations become hand-written SQL once drizzle-kit is gone.
+- **Next:** T-0750 (timeouts) and T-0749 (row types off drizzle), then S1 (test-support) and DEL (delete schema, client and the drizzle dependencies).
+
 **2026-10-09 10:30 UTC, off-host backups to Backblaze B2 (Coolify S3 storage `zilar-s3`, uuid `jvzs3n2dntdpr7klevjaaeac`):**
 - **Coolify database backups do not apply to this stack.** Coolify lists the `postgres` component as an application (`databases: []`), probably because of the custom `zilar-postgres` image. `deploy/coolify/scheduled-backup.md` is wrong on this point; that is a docs task.
 - **The dumps:** the Coolify scheduled task `pg-dump-nightly` (uuid `q22gm2wng2osueqajwts8nj5`, 03:30, container `postgres`) writes `globals.sql`, `zilar.dump` and `ejabberd.dump` (`pg_dump -Fc`) to `/var/lib/postgresql/dumps` on the `postgres-data` volume. Each file goes to a temp name and is then renamed, and the mode is 600. A test run succeeded: zilar 152 KB, ejabberd 50 KB.

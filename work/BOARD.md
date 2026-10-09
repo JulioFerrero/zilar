@@ -9,6 +9,8 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
+| [T-0750](T-0750-images-build-timeout.md) | images.yml: timeout-minutes so a stalled build cannot block deploys | in-progress | haiku-5.5 | | |
+| [T-0749](T-0749-row-types-off-drizzle.md) | row types off drizzle: db/rows.ts + equality test; 27 importers switched | in-progress | haiku-5.5 | T-0741 | |
 
 ## Follow-ups
 
