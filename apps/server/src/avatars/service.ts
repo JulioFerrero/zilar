@@ -5,7 +5,7 @@ import { Effect, Schema } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
-import type { avatars, AvatarOwnerKind } from '../db/schema';
+import type { AvatarOwnerKind, AvatarRow } from '../db/rows';
 import { sqlRuntimeFor } from '../effect/sql';
 import { HttpError } from '../errors';
 import { probeStickerBytes, type StickerImageInfo } from '../stickers/image';
@@ -25,7 +25,7 @@ export const AVATAR_UPLOAD_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
 export const avatarOwnerKindSchema = Schema.Literals(['user', 'ai', 'group']);
 export type AvatarKind = typeof avatarOwnerKindSchema.Type;
 
-export type AvatarRow = typeof avatars.$inferSelect;
+export type { AvatarRow };
 
 // Every query runs on the `effect/sql` client registered for this database
 // (see `../effect/sql`). The exported functions stay `async` so routes and

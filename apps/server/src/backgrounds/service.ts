@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
-import type { chatBackgrounds } from '../db/schema';
+import type { ChatBackgroundRow } from '../db/rows';
 import { sqlRuntimeFor } from '../effect/sql';
 import { HttpError } from '../errors';
 import { probeStickerBytes, type StickerImageInfo } from '../stickers/image';
@@ -30,7 +30,7 @@ const BACKGROUND_PROBE_LIMITS = {
   maxDecodedBytes: BACKGROUND_MAX_SIDE * BACKGROUND_MAX_SIDE * 4,
 };
 
-export type BackgroundRow = typeof chatBackgrounds.$inferSelect;
+export type BackgroundRow = ChatBackgroundRow;
 
 export interface BackgroundView {
   id: string;

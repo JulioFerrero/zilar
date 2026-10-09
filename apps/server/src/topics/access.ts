@@ -8,7 +8,7 @@
 import { Effect, Schema } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
-import type { groupMembers, topics } from '../db/schema';
+import type { GroupMemberRow, TopicRow } from '../db/rows';
 import { sqlRuntimeFor } from '../effect/sql';
 import { HttpError } from '../errors';
 import { holdsTopicRole, rolesOfTopic, topicRoleHolderIds } from '../roles/service';
@@ -28,9 +28,7 @@ export const topicStatusSchema = Schema.Literals([
 ]);
 export type TopicStatus = typeof topicStatusSchema.Type;
 
-export type TopicRow = typeof topics.$inferSelect;
-
-type GroupMemberRow = typeof groupMembers.$inferSelect;
+export type { TopicRow };
 
 export interface TopicOwnerView {
   kind: 'user' | 'ai';

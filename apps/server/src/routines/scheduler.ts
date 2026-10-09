@@ -6,7 +6,7 @@ import { Cause, Effect, Schedule, type Fiber } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
-import type { routines } from '../db/schema';
+import type { RoutineRow } from '../db/rows';
 import { runSql } from './db';
 import { type ExecuteRoutinePorts, executeRoutine } from './execute';
 import { nextRunAfter, parseRoutineSchedule } from './schedule';
@@ -109,7 +109,7 @@ export function createRoutineScheduler(
   };
 }
 
-export type ClaimedRoutine = typeof routines.$inferSelect;
+export type ClaimedRoutine = RoutineRow;
 
 // Selects due rows (active, not deleted, `next_run_at <= now`, oldest
 // first, at most `maxPerTick`) and claims each with a conditional update:

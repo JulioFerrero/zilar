@@ -4,7 +4,7 @@ import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
-import type { groupInviteLinks, groups } from '../db/schema';
+import type { GroupInviteLinkRow, GroupRow } from '../db/rows';
 import { sqlRuntimeFor } from '../effect/sql';
 import { HttpError } from '../errors';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
@@ -30,9 +30,7 @@ export const JOIN_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
 export const JOIN_PREVIEW_RATE_LIMIT_MAX_PER_USER = 120;
 export const JOIN_PREVIEW_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
 
-export type GroupInviteLinkRow = typeof groupInviteLinks.$inferSelect;
-
-type GroupRow = typeof groups.$inferSelect;
+export type { GroupInviteLinkRow };
 
 export interface InviteLinkView {
   id: string;

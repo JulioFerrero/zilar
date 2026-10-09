@@ -3,7 +3,7 @@ import { Effect, Schema } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
-import { pinnedMessages } from '../db/schema';
+import type { PinnedMessageRow } from '../db/rows';
 import { sqlRuntimeFor } from '../effect/sql';
 import { HttpError } from '../errors';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
@@ -23,7 +23,7 @@ export const PIN_MESSAGE_ID_MAX = 256;
 export const pinKindSchema = Schema.Literals(['text', 'image', 'file', 'voice', 'card']);
 export type PinKind = typeof pinKindSchema.Type;
 
-export type PinRow = typeof pinnedMessages.$inferSelect;
+export type PinRow = PinnedMessageRow;
 
 export interface PinView {
   id: string;

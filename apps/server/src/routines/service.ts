@@ -12,7 +12,7 @@ import { Effect, Exit, Schema, SchemaIssue } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
-import { routines } from '../db/schema';
+import type { RoutineRow } from '../db/rows';
 import { sqlRuntimeFor } from '../effect/sql';
 import { nextRunAfter, parseRoutineSchedule, type RoutineSchedule } from './schedule';
 
@@ -34,7 +34,7 @@ export type RoutineStatus = 'active' | 'paused' | 'needs_approval';
 export type RoutinePausedReason = 'user' | 'failures' | 'hosts_changed';
 export type RoutineLastStatus = 'ok' | 'error' | 'skipped';
 
-export type RoutineRow = typeof routines.$inferSelect;
+export type { RoutineRow };
 
 // The tool columns `createRoutine` checks before inserting a routine; the
 // effect/sql row comes back camelCased like the drizzle row it replaced.

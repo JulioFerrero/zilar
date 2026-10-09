@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto';
 import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
-import type { xmppAccounts } from '../db/schema';
+import type { XmppAccountRow } from '../db/rows';
 import { sqlRuntimeFor } from '../effect/sql';
 import type { EjabberdAdminClient } from './admin-client';
 
@@ -20,8 +20,6 @@ export type XmppAccountStatus = {
   jid: string;
   provisioned: boolean;
 };
-
-type XmppAccountRow = typeof xmppAccounts.$inferSelect;
 
 function runSql<A>(
   db: ServerDatabase,
@@ -101,7 +99,7 @@ export async function ensureXmppAccount(
 export async function findXmppAccount(
   db: ServerDatabase,
   userId: string,
-): Promise<typeof xmppAccounts.$inferSelect | null> {
+): Promise<XmppAccountRow | null> {
   const [row] = await runSql(
     db,
     Effect.gen(function* () {

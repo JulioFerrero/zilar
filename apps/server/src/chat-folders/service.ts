@@ -7,7 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
-import type { chatFolders } from '../db/schema';
+import type { ChatFolderRow } from '../db/rows';
 import { sqlRuntimeFor } from '../effect/sql';
 import { HttpError } from '../errors';
 
@@ -51,7 +51,7 @@ export const FOLDER_NAME_MAX = 24;
 export const FOLDERS_MAX = 20;
 export const FOLDER_CHATS_MAX = 100;
 
-export type ChatFolderRow = typeof chatFolders.$inferSelect;
+export type { ChatFolderRow };
 
 export interface ChatFolderView {
   id: string;

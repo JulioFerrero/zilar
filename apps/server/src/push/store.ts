@@ -1,13 +1,13 @@
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
-import type { pushSettings, pushSubscriptions } from '../db/schema';
+import type { PushSettingRow, PushSubscriptionRow } from '../db/rows';
 import { sqlRuntimeFor } from '../effect/sql';
 import { HttpError } from '../errors';
 import type { PushCipher } from './crypto';
 import type { WebPushSubscription } from './subscriptions';
 
-export type PushDeviceRow = typeof pushSubscriptions.$inferSelect;
+export type PushDeviceRow = PushSubscriptionRow;
 
 // Every query runs on the `effect/sql` client registered for this database
 // (see `../effect/sql`). The exported functions stay `async` so routes and
@@ -250,7 +250,7 @@ export async function showPreviewsForUser(db: ServerDatabase, userId: string): P
     db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      return yield* sql<typeof pushSettings.$inferSelect>`SELECT * FROM push_settings
+      return yield* sql<PushSettingRow>`SELECT * FROM push_settings
         WHERE user_id = ${userId} LIMIT 1`;
     }),
   );
@@ -267,7 +267,7 @@ export async function setShowPreviewsForUser(
     db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      return yield* sql<typeof pushSettings.$inferSelect>`INSERT INTO push_settings
+      return yield* sql<PushSettingRow>`INSERT INTO push_settings
           (user_id, show_previews, updated_at)
         VALUES (${userId}, ${showPreviews}, ${now})
         ON CONFLICT (user_id) DO UPDATE SET

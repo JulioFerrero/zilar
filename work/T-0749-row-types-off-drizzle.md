@@ -1,7 +1,7 @@
 ---
 id: T-0749
 title: "row types off drizzle: new db/rows.ts with hand-written interfaces for the 28 tables the server types against (+ AvatarOwnerKind, ApprovalInsert), a type-level test proving each equals drizzle's $inferSelect, and the 27 non-test importers of db/schema switched to db/rows"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0749-row-types-off-drizzle
 model: auto
@@ -50,4 +50,35 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- New `apps/server/src/db/rows.ts`: 29 exported interfaces (the 28 tables plus `ApprovalInsert`, which mirrors `approvals.$inferInsert`) and the `AvatarOwnerKind` type. Each has a one-line comment naming its table. No import from `db/schema`. Naming follows the singular of the Pascal table name, so `ais` gives `AisRow`, `aiTools` gives `AiToolRow`, `aiToolRuns` gives `AiToolRunRow`.
+- New `apps/server/src/db/rows.test.ts`: one `expectTypeOf(...).toEqualTypeOf(...)` per interface against `typeof <table>.$inferSelect`, `ApprovalInsert` against `approvals.$inferInsert`, and `AvatarOwnerKind` against the schema's type. This is the only new file that imports `./schema`.
+- Switched the 27 non-test importers to `../db/rows`, changing types and imports only. Where a module already exported a name (`PinRow`, `AvatarRow`, `TopicRow` in `topics/access.ts`, ...), it either re-exports the new type (`export type { X }`) or aliases it (`export type PinRow = PinnedMessageRow`), so exports keep their names.
+- First typecheck found one mismatch in `ApprovalInsert`: with `exactOptionalPropertyTypes`, drizzle writes optional insert fields as `?: T | undefined`. I changed the interface to match. The assertion is unchanged.
+
+### Commands and results
+- `pnpm install`: done (18.7s).
+- `pnpm --filter @zilar/server exec tsc --noEmit -p .`: first run exit 1 (one error at `rows.test.ts:99`, the `ApprovalInsert` assertion, fixed as above); after the fix exit 0.
+- Scratch probe of drizzle's insert type (`src/db/zz-scratch-probe.ts`): created, read, deleted. Not committed.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/db/rows.test`: 1 file passed, 3 tests passed (run before and after prettier).
+- `pnpm exec prettier --write` on the 28 changed files: only formatting changed.
+- `pnpm gate` (log kept outside the worktree): `gate: 29 changed file(s) against main`; `PASS install (frozen)`, `PASS format`, `PASS lint`, `PASS typecheck`, `PASS tests @zilar/server` (117.5s); `scope: every changed file is inside the Allowed files`; `GATE PASS`.
+- `git grep -n "db/schema" -- apps/server/src ':!*.test.ts'` returns:
+  - `apps/server/src/auth/cli-config.ts:4` (expected, goes with DEL)
+  - `apps/server/src/test-support.ts:9`: `import * as schema from './db/schema'`. Not in Allowed and not a test file, so I left it.
+  - `apps/server/src/media/indexer.ts:232` and `apps/server/src/push/test-tables.ts:9`: comments only, both outside Allowed, untouched.
+  - `db/client.ts` does not appear, because it has no `db/schema` text.
+
+### Deviations and open points
+- Acceptance says only `db/client.ts` and `auth/cli-config.ts` remain. Actual: `auth/cli-config.ts` plus `test-support.ts` (see above). `test-support.ts` needs a decision: either add it to a later task or allow it in this one.
+- Two comments in `actions/announce.ts` and `actions/production-announcer.ts` that described the schema were removed or reworded, since they no longer applied.
+- Files that imported table objects as values (for example `groups/service.ts`, `routines/service.ts`, `pins/service.ts`, `tools/service.ts`, `approvals/rules.ts`) now use `import type`. tsc confirms none of them used a table object at runtime.
+- The equality proof is the typecheck (vitest's `expectTypeOf` is compile-time only, so the runtime test just runs the no-op assertions).
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Haiku 5.5, in one round (about 6.8 min). The lead reviewed the diff directly.
+- **`db/rows.ts`:** 29 interfaces (28 rows plus `ApprovalInsert`) and `AvatarOwnerKind`.
+- **`rows.test.ts`:** 30 exact `toEqualTypeOf` assertions against `$inferSelect` and `$inferInsert`, none weakened. The json columns are `unknown`, which is what drizzle infers too.
+- **The 27 importers** changed only in types and imports; the other diff lines are prettier reflowing generic arguments. The gate passed, including typecheck.
+- **Still importing the schema:** `test-support.ts:9`, which S1 takes, and `auth/cli-config.ts`, which DEL deletes.

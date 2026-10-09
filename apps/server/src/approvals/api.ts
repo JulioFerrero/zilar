@@ -18,7 +18,7 @@ import type { Logger } from 'pino';
 import type { Auth } from '../auth/auth';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
-import type { approvalRules } from '../db/schema';
+import type { ApprovalRuleRow } from '../db/rows';
 import { HttpError } from '../errors';
 import type { EffectApiMount, EffectApiRoute } from '../effect/http-core';
 import {
@@ -611,14 +611,12 @@ async function loadAiOwnerRow(db: ServerDatabase, aiId: string): Promise<AiOwner
 async function loadApprovalRule(
   db: ServerDatabase,
   ruleId: string,
-): Promise<typeof approvalRules.$inferSelect | null> {
+): Promise<ApprovalRuleRow | null> {
   const [row] = await runSql(
     db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      return yield* sql<
-        typeof approvalRules.$inferSelect
-      >`SELECT * FROM approval_rules WHERE id = ${ruleId} LIMIT 1`;
+      return yield* sql<ApprovalRuleRow>`SELECT * FROM approval_rules WHERE id = ${ruleId} LIMIT 1`;
     }),
   );
   return row ?? null;
@@ -630,7 +628,7 @@ async function loadApprovalRule(
 // group admin may revoke, but only for topics they can see.
 async function canManageRuleFor(
   db: ServerDatabase,
-  rule: typeof approvalRules.$inferSelect,
+  rule: ApprovalRuleRow,
   userId: string,
 ): Promise<boolean> {
   if (rule.topicId !== null) {

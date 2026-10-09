@@ -25,7 +25,7 @@ import type { Auth } from '../auth/auth';
 import { isDmBlocked } from '../blocks/service';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
-import type { mediaItems } from '../db/schema';
+import type { MediaItemRow } from '../db/rows';
 import { sqlRuntimeFor } from '../effect/sql';
 import {
   CurrentUser,
@@ -156,8 +156,6 @@ export interface MediaItem {
   linkUrl?: string;
   linkHost?: string;
 }
-
-type MediaItemRow = typeof mediaItems.$inferSelect;
 
 function runSql<A>(
   db: ServerDatabase,

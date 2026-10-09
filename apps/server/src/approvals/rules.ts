@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
-import { approvalRules } from '../db/schema';
+import type { ApprovalRuleRow } from '../db/rows';
 import { sqlRuntimeFor } from '../effect/sql';
 
 // T-0099: standing approval rules. A rule grants a single AI the right to
@@ -35,8 +35,6 @@ export interface PublicApprovalRule {
   createdAt: Date;
   createdBy: string;
 }
-
-type ApprovalRuleRow = typeof approvalRules.$inferSelect;
 
 // The top-level queries run on the `effect/sql` client registered for this
 // database (see `../effect/sql`). The exported functions stay `async` so

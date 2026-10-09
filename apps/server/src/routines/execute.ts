@@ -25,7 +25,7 @@ import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
-import type { routines } from '../db/schema';
+import type { RoutineRow } from '../db/rows';
 import type { TopicRow } from '../topics/access';
 import { allowedTopicAiIds } from '../topics/access';
 import { runToolVersion, ToolServiceError } from '../tools/service';
@@ -41,7 +41,7 @@ export const FAILURE_PAUSE_NOTICE = (title: string): string =>
 export const HOSTS_CHANGED_NOTICE = (title: string): string =>
   `The routine "${title}" is paused: its tool now contacts new sites. Ask me to schedule it again to approve them.`;
 
-export type RoutineRow = typeof routines.$inferSelect;
+export type { RoutineRow };
 
 interface AiStatusRow {
   status: string;

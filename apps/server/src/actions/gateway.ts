@@ -4,8 +4,7 @@ import { SqlClient, SqlError } from 'effect/sql';
 import { ARGS_HASH_PATTERN } from '@zilar/protocol';
 import type { AuditEntry, AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
-import { ais, pendingActions } from '../db/schema';
-import type { approvals, groupAis, topics } from '../db/schema';
+import type { AisRow, ApprovalRow, GroupAiRow, PendingActionRow, TopicRow } from '../db/rows';
 import { sqlRuntimeFor } from '../effect/sql';
 import { createApprovalEffect, verifyApproval } from '../approvals/service';
 import { allowedTopicAiIds } from '../topics/access';
@@ -116,8 +115,7 @@ export type DeniedReason = PolicyDenialReason;
 
 // Internal row shapes. Extracted so the implementation does not lean on the
 // schema inference for places where we hand-pick columns.
-type AiStatusRow = Pick<typeof ais.$inferSelect, 'id' | 'status'>;
-type PendingActionRow = typeof pendingActions.$inferSelect;
+type AiStatusRow = Pick<AisRow, 'id' | 'status'>;
 
 // Every statement below runs on the `effect/sql` client registered for this
 // database (see `../effect/sql`), matching the pins pilot. The exported
@@ -608,7 +606,7 @@ async function runOnApprovalDecided(
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       return yield* sql<
-        Pick<typeof approvals.$inferSelect, 'status' | 'expiresAt'>
+        Pick<ApprovalRow, 'status' | 'expiresAt'>
       >`SELECT status, expires_at FROM approvals
         WHERE id = ${approvalId} LIMIT 1`;
     }),
@@ -656,9 +654,7 @@ async function runOnApprovalDecided(
       deps.db,
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
-        return yield* sql<
-          Pick<typeof approvals.$inferSelect, 'status'>
-        >`SELECT status FROM approvals
+        return yield* sql<Pick<ApprovalRow, 'status'>>`SELECT status FROM approvals
           WHERE id = ${approvalId} LIMIT 1`;
       }),
     );
@@ -788,7 +784,7 @@ async function runRecoverStuck(deps: ActionGatewayDependencies, now: () => Date)
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
         return yield* sql<
-          Pick<typeof approvals.$inferSelect, 'id' | 'expiresAt' | 'status'>
+          Pick<ApprovalRow, 'id' | 'expiresAt' | 'status'>
         >`SELECT id, expires_at, status FROM approvals
           WHERE id = ${row.approvalId} LIMIT 1`;
       }),
@@ -920,7 +916,7 @@ async function isAiInGroup(db: ServerDatabase, aiId: string, groupId: string): P
     db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      return yield* sql<Pick<typeof groupAis.$inferSelect, 'aiId'>>`SELECT ai_id FROM group_ais
+      return yield* sql<Pick<GroupAiRow, 'aiId'>>`SELECT ai_id FROM group_ais
         WHERE group_id = ${groupId} AND ai_id = ${aiId} LIMIT 1`;
     }),
   );
@@ -946,10 +942,7 @@ async function isAiInTopic(
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       return yield* sql<
-        Pick<
-          typeof topics.$inferSelect,
-          'id' | 'groupId' | 'visibility' | 'isGeneral' | 'archivedAt'
-        >
+        Pick<TopicRow, 'id' | 'groupId' | 'visibility' | 'isGeneral' | 'archivedAt'>
       >`SELECT id, group_id, visibility, is_general, archived_at FROM topics
         WHERE id = ${topicId} LIMIT 1`;
     }),
