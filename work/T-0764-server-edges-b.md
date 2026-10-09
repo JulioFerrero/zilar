@@ -43,7 +43,7 @@ This is Phase 2 of `docs/audit/effect-100-plan.md` (task S8), accepted by Julio 
 4. **Tests:** every existing search, drafts and gateway draft test passes unchanged. Add one hub test proving that `end` interrupts a pending flush (the delayed draft never publishes after `end`).
 
 ### Read first
-`AGENTS.md`, `docs/EFFECT_GUIDE.md`, `apps/server/src/search/routes.ts`, `search/api.ts`, `effect/http-core.ts` (lines 100-140), `drafts/hub.ts` and the tests of both modules.
+`AGENTS.md`, `docs/EFFECT_GUIDE.md`, `apps/server/src/search/routes.ts`, `apps/server/src/search/api.ts`, `apps/server/src/effect/http-core.ts` (lines 100-140), `apps/server/src/drafts/hub.ts` and the tests of both modules.
 
 ### Allowed files
 `apps/server/src/search/routes.ts`, `apps/server/src/search/api.ts`, `apps/server/src/drafts/hub.ts`, `apps/server/src/drafts/hub.test.ts`, `work/T-0764-server-edges-b.md`.
