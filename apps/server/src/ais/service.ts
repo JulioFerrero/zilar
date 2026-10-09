@@ -847,7 +847,7 @@ export async function assignMachine(
       deps.db,
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
-        return yield* sql<{ owner_user_id: string; status: string }>`SELECT owner_user_id, status
+        return yield* sql<{ status: string }>`SELECT status
           FROM machines
           WHERE id = ${machineId} AND owner_user_id = ${input.ownerId}
           LIMIT 1`;

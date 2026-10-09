@@ -1,7 +1,7 @@
 ---
 id: T-0692
 title: "test gap from T-0688: creating a public group with a handle another group retired (still reserved) answers 409 handle_taken and writes nothing; plus the ais machine-row type nit from T-0677"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0692-retired-handle-create-test
 model: auto
@@ -50,4 +50,26 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+1. `apps/server/src/groups/visibility.test.ts`: added the test "refuses a public create on a handle another group retired and still reserves" (placed after the going-private test). Group A goes public with `kept_pub`, then private (retires the handle). A stranger creates a public group with `kept_pub` and gets 409 `handle_taken`. Then it checks that no `groups` row with title "Retired create" exists and every `handles` row for `kept_pub` points to group A. Added `handles` to the schema import.
+2. `apps/server/src/ais/service.ts` (`assignMachine`, around line 850): row type is now `sql<{ status: string }>` and the select is `SELECT status`. The `WHERE` clause is unchanged.
+3. No other files changed. `apps/server/src/groups/service.ts` was flipped temporarily and reverted; `git diff` on it is empty.
+
+### Commands and results
+- `pnpm install`: exit 0, "Done in 15.7s".
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/groups/visibility.test src/ais/service.test`: 2 files passed, 51 tests passed.
+- Acceptance check: I changed `if (reserved && retired.formerGroupId !== groupId)` to `if (false && reserved && ...)` in `apps/server/src/groups/service.ts`, then ran `... src/groups/visibility.test -t "retired and still reserves"`. Result: 1 failed (`AssertionError: expected 201 to be 409`). I reverted the flip; `git diff -- apps/server/src/groups/service.ts` is empty.
+- `pnpm gate` (log kept in the scratchpad, not in the worktree), exit 0. Summary lines:
+  - `gate: 3 changed file(s) against main`
+  - `scope: every changed file is inside the Allowed files`
+  - `GATE PASS`
+
+### Problems, deviations, open questions
+- None. The spec's Checks list the two test files, and I ran them as written.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Haiku 5.5, in one round (about 2.3 min). The lead reviewed the diff directly.
+- **New test:** after a group retires its handle, a stranger who creates a public group with that handle gets 409 `handle_taken`, and no group with that title is written. The worker showed the test fails (201) when the check is disabled.
+- **ais nit:** the `assignMachine` row type now selects only `status`.
+- **Note:** the test reads rows through drizzle, as its file does. The T-0691 plan converts the tests.

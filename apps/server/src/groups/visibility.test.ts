@@ -5,7 +5,15 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
-import { aiLimits, ais, groupAis, groupMembers, groups, providerConnections } from '../db/schema';
+import {
+  aiLimits,
+  ais,
+  groupAis,
+  groupMembers,
+  groups,
+  handles,
+  providerConnections,
+} from '../db/schema';
 import { aiLocalpart } from '../ais/service';
 import { joinPublicGroup } from './join';
 import { PUBLIC_GROUP_MAX_MEMBERS } from '../directory/service';
@@ -350,6 +358,37 @@ describe('public groups and channels', () => {
     });
     expect(reused.status).toBe(200);
     expect(((await reused.json()) as VisibilityBody).handle).toBe('trip_pub');
+  });
+
+  it('refuses a public create on a handle another group retired and still reserves', async () => {
+    const { ownerCookie, groupId } = await ownedGroup();
+    expect(
+      (await patchGroupRequest(ownerCookie, groupId, { visibility: 'public', handle: 'kept_pub' }))
+        .status,
+    ).toBe(200);
+    expect((await patchGroupRequest(ownerCookie, groupId, { visibility: 'private' })).status).toBe(
+      200,
+    );
+
+    const stranger = await bootstrapUser(context, app, 'stranger@example.com');
+    const refused = await createGroupRequest(stranger.cookie, {
+      title: 'Retired create',
+      memberIds: [],
+      visibility: 'public',
+      handle: 'kept_pub',
+    });
+    expect(refused.status).toBe(409);
+    expect(((await refused.json()) as { error: { code: string } }).error.code).toBe('handle_taken');
+
+    // Nothing was written: no group with that title, and no handle row for a new group.
+    expect(
+      await context.db.select().from(groups).where(eq(groups.title, 'Retired create')),
+    ).toEqual([]);
+    const claims = await context.db
+      .select()
+      .from(handles)
+      .where(eq(handles.handleLower, 'kept_pub'));
+    expect(claims.every((claim) => claim.groupId === groupId)).toBe(true);
   });
 
   it('refuses a handle change within 14 days with nextChangeAt', async () => {
