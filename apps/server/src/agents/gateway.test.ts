@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { eq, and } from 'drizzle-orm';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
 import type {
   ChatKind,
   ChatMessage,
@@ -23,27 +24,10 @@ import type { ActionGateway, RequestOutcome } from '../actions/gateway';
 import type { ArchivePool } from '../search/service';
 import type { GatewayLogger } from './gateway';
 import {
-  aiDailySpend,
-  aiDelegations,
-  aiLimits,
-  aiMemoryFacts,
-  aiMemoryMessages,
-  aiMemoryNodes,
-  ais,
-  groupAis,
-  groupMembers,
-  groups,
-  llmVirtualKeys,
-  providerConnections,
-  topicAis,
-  topicMembers,
-  topics,
-  user,
-} from '../db/schema';
-import {
   createTestContext,
   TEST_XMPP_DOMAIN,
   TEST_XMPP_MUC_DOMAIN,
+  testSql,
   type TestContext,
 } from '../test-support';
 import { emitGroupAi, emitTopicAi } from '../groups/events';
@@ -354,41 +338,62 @@ async function seedAi(
   overrides: { modelId?: string | null; name?: string } = {},
 ): Promise<SeededAi> {
   const ownerId = randomUUID();
-  await context.db
-    .insert(user)
-    .values({ id: ownerId, name: 'Owner', email: `${ownerId}@example.com` });
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO "user" ${sql.insert({
+        id: ownerId,
+        name: 'Owner',
+        email: `${ownerId}@example.com`,
+      })}`;
+    }),
+  );
   const connectionId = randomUUID();
-  await context.db.insert(providerConnections).values({
-    id: connectionId,
-    owner: ownerId,
-    provider: 'openai',
-    encryptedKey: createKeyCipher(MASTER_KEY).encrypt(PROVIDER_KEY),
-    label: null,
-  });
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO provider_connections ${sql.insert({
+        id: connectionId,
+        owner: ownerId,
+        provider: 'openai',
+        encrypted_key: createKeyCipher(MASTER_KEY).encrypt(PROVIDER_KEY),
+        label: null,
+      })}`;
+    }),
+  );
   const aiId = randomUUID();
   const localpart = aiLocalpart(aiId);
   const aiJid = `${localpart}@${TEST_XMPP_DOMAIN}`;
-  await context.db.insert(ais).values({
-    id: aiId,
-    owner: ownerId,
-    name: overrides.name ?? 'Gateway AI',
-    template: 'dev',
-    persona: 'A helpful persona.',
-    providerConnectionId: connectionId,
-    model: 'gpt-4o-mini',
-    localpart,
-    jid: aiJid,
-    status: 'active',
-  });
-  await context.db.insert(aiLimits).values({ aiId, perDayUsd: '1.00', perMonthUsd: '20.00' });
-  await context.db.insert(llmVirtualKeys).values({
-    aiId,
-    litellmKeyId: 'tok-1',
-    litellmModelId: overrides.modelId === undefined ? 'model-1' : overrides.modelId,
-    encryptedKey: createKeyCipher(MASTER_KEY).encrypt(VIRTUAL_KEY),
-    budgetUsd: '20.00',
-    budgetDuration: '30d',
-  });
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO ais ${sql.insert({
+        id: aiId,
+        owner: ownerId,
+        name: overrides.name ?? 'Gateway AI',
+        template: 'dev',
+        persona: 'A helpful persona.',
+        provider_connection_id: connectionId,
+        model: 'gpt-4o-mini',
+        localpart,
+        jid: aiJid,
+        status: 'active',
+      })}`;
+      yield* sql`INSERT INTO ai_limits ${sql.insert({
+        ai_id: aiId,
+        per_day_usd: '1.00',
+        per_month_usd: '20.00',
+      })}`;
+      yield* sql`INSERT INTO llm_virtual_keys ${sql.insert({
+        ai_id: aiId,
+        litellm_key_id: 'tok-1',
+        litellm_model_id: overrides.modelId === undefined ? 'model-1' : overrides.modelId,
+        encrypted_key: createKeyCipher(MASTER_KEY).encrypt(VIRTUAL_KEY),
+        budget_usd: '20.00',
+        budget_duration: '30d',
+      })}`;
+    }),
+  );
   return { aiId, ownerId, ownerJid: `${localpartFor(ownerId)}@${TEST_XMPP_DOMAIN}`, aiJid };
 }
 
@@ -605,17 +610,24 @@ describe('agent gateway', () => {
       expect(started.size()).toBe(0);
 
       const ownerId = randomUUID();
-      await context.db
-        .insert(user)
-        .values({ id: ownerId, name: 'Creator', email: `${ownerId}@example.com` });
       const connectionId = randomUUID();
-      await context.db.insert(providerConnections).values({
-        id: connectionId,
-        owner: ownerId,
-        provider: 'openai',
-        encryptedKey: createKeyCipher(MASTER_KEY).encrypt(PROVIDER_KEY),
-        label: null,
-      });
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO "user" ${sql.insert({
+            id: ownerId,
+            name: 'Creator',
+            email: `${ownerId}@example.com`,
+          })}`;
+          yield* sql`INSERT INTO provider_connections ${sql.insert({
+            id: connectionId,
+            owner: ownerId,
+            provider: 'openai',
+            encrypted_key: createKeyCipher(MASTER_KEY).encrypt(PROVIDER_KEY),
+            label: null,
+          })}`;
+        }),
+      );
       const created = await createAi(
         {
           db: context.db,
@@ -702,7 +714,12 @@ describe('agent gateway', () => {
       await started.start();
       expect(started.size()).toBe(1);
 
-      await context.db.update(ais).set({ status: 'disabled' }).where(eq(ais.id, seeded.aiId));
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`UPDATE ais SET status = 'disabled' WHERE id = ${seeded.aiId}`;
+        }),
+      );
       await started.reconcile();
       expect(started.size()).toBe(0);
       const core = await coreFor(cores, seeded.aiJid);
@@ -873,12 +890,17 @@ describe('agent gateway', () => {
 
     it('reads pinned facts into a second system message', async () => {
       const seeded = await seedAi(context);
-      await context.db.insert(aiMemoryFacts).values({
-        id: randomUUID(),
-        aiId: seeded.aiId,
-        chatKey: `dm:${seeded.ownerJid}`,
-        text: 'remember the deploy is Friday',
-      });
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO ai_memory_facts ${sql.insert({
+            id: randomUUID(),
+            ai_id: seeded.aiId,
+            chat_key: `dm:${seeded.ownerJid}`,
+            text: 'remember the deploy is Friday',
+          })}`;
+        }),
+      );
       const cores: FakeCore[] = [];
       const { fetchImpl, calls } = completionFetch();
       const { gateway: started } = harness(cores, fetchImpl, new FakeLitellm());
@@ -1560,17 +1582,24 @@ describe('agent gateway', () => {
       });
       try {
         const ownerId = randomUUID();
-        await context.db
-          .insert(user)
-          .values({ id: ownerId, name: 'Emitter', email: `${ownerId}@example.com` });
         const connectionId = randomUUID();
-        await context.db.insert(providerConnections).values({
-          id: connectionId,
-          owner: ownerId,
-          provider: 'openai',
-          encryptedKey: createKeyCipher(MASTER_KEY).encrypt(PROVIDER_KEY),
-          label: null,
-        });
+        await testSql(context)(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            yield* sql`INSERT INTO "user" ${sql.insert({
+              id: ownerId,
+              name: 'Emitter',
+              email: `${ownerId}@example.com`,
+            })}`;
+            yield* sql`INSERT INTO provider_connections ${sql.insert({
+              id: connectionId,
+              owner: ownerId,
+              provider: 'openai',
+              encrypted_key: createKeyCipher(MASTER_KEY).encrypt(PROVIDER_KEY),
+              label: null,
+            })}`;
+          }),
+        );
         const litellm = new FakeLitellm();
         const serviceDeps: AiServiceDeps = {
           db: context.db,
@@ -1664,11 +1693,13 @@ describe('agent gateway', () => {
     async function readPersonas(
       aiId: string,
     ): Promise<{ persona: string; previousPersona: string | null }> {
-      const [row] = await context.db
-        .select({ persona: ais.persona, previousPersona: ais.previousPersona })
-        .from(ais)
-        .where(eq(ais.id, aiId))
-        .limit(1);
+      const [row] = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ persona: string; previousPersona: string | null }>`SELECT persona,
+            previous_persona FROM ais WHERE id = ${aiId} LIMIT 1`;
+        }),
+      );
       if (!row) {
         throw new Error(`AI ${aiId} not found`);
       }
@@ -1730,10 +1761,13 @@ describe('agent gateway', () => {
 
     it('reverts the persona and toggles on a second undo', async () => {
       const seeded = await seedAi(context);
-      await context.db
-        .update(ais)
-        .set({ persona: NEW_PERSONA, previousPersona: OLD_PERSONA })
-        .where(eq(ais.id, seeded.aiId));
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`UPDATE ais SET persona = ${NEW_PERSONA},
+            previous_persona = ${OLD_PERSONA} WHERE id = ${seeded.aiId}`;
+        }),
+      );
       const cores: FakeCore[] = [];
       const { fetchImpl, calls } = scriptedFetch([
         toolCallResponse([{ id: 'call-1', name: 'revert_persona', args: {} }]),
@@ -1834,7 +1868,12 @@ describe('agent gateway', () => {
     it('executes nothing for unknown tools and leaks no persona text', async () => {
       const secretPersona = `utterly unique persona phrase ${randomUUID()}`;
       const seeded = await seedAi(context);
-      await context.db.update(ais).set({ persona: secretPersona }).where(eq(ais.id, seeded.aiId));
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`UPDATE ais SET persona = ${secretPersona} WHERE id = ${seeded.aiId}`;
+        }),
+      );
       const cores: FakeCore[] = [];
       const { fetchImpl, calls } = scriptedFetch([
         toolCallResponse([
@@ -1939,10 +1978,13 @@ describe('agent gateway', () => {
     }
 
     async function factsFor(aiId: string, chatKey: string): Promise<string[]> {
-      const rows = await context.db
-        .select({ text: aiMemoryFacts.text })
-        .from(aiMemoryFacts)
-        .where(and(eq(aiMemoryFacts.aiId, aiId), eq(aiMemoryFacts.chatKey, chatKey)));
+      const rows = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ text: string }>`SELECT text FROM ai_memory_facts
+            WHERE ai_id = ${aiId} AND chat_key = ${chatKey}`;
+        }),
+      );
       return rows.map((row) => row.text);
     }
 
@@ -1971,12 +2013,17 @@ describe('agent gateway', () => {
       const seeded = await seedAi(context);
       const cores: FakeCore[] = [];
       const fact = 'The launch is on Friday.';
-      await context.db.insert(aiMemoryFacts).values({
-        id: randomUUID(),
-        aiId: seeded.aiId,
-        chatKey: `dm:${seeded.ownerJid}`,
-        text: fact,
-      });
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO ai_memory_facts ${sql.insert({
+            id: randomUUID(),
+            ai_id: seeded.aiId,
+            chat_key: `dm:${seeded.ownerJid}`,
+            text: fact,
+          })}`;
+        }),
+      );
       const { fetchImpl, calls } = scriptedFetch([
         toolCallResponse([{ id: 'call-1', name: 'remember', args: { text: fact } }]),
         completionResponse('noted'),
@@ -2049,35 +2096,41 @@ describe('agent gateway', () => {
     it('recalls seeded lines from this chat only', async () => {
       const seeded = await seedAi(context);
       const chatKey = `dm:${seeded.ownerJid}`;
-      await context.db.insert(aiMemoryMessages).values([
+      const values = [
         {
-          aiId: seeded.aiId,
-          chatKey,
+          ai_id: seeded.aiId,
+          chat_key: chatKey,
           seq: 1,
-          messageId: 'mine-1',
+          message_id: 'mine-1',
           at: new Date('2026-10-05T00:00:00Z'),
           sender: 'Owner',
           text: 'the launch is friday',
         },
         {
-          aiId: seeded.aiId,
-          chatKey,
+          ai_id: seeded.aiId,
+          chat_key: chatKey,
           seq: 2,
-          messageId: 'mine-2',
+          message_id: 'mine-2',
           at: new Date('2026-10-05T00:00:01Z'),
           sender: 'Gateway AI',
           text: 'noted, the launch is friday',
         },
         {
-          aiId: seeded.aiId,
-          chatKey: 'dm:someone-else',
+          ai_id: seeded.aiId,
+          chat_key: 'dm:someone-else',
           seq: 1,
-          messageId: 'theirs-1',
+          message_id: 'theirs-1',
           at: new Date('2026-10-05T00:00:02Z'),
           sender: 'Someone',
           text: 'the launch is in another chat',
         },
-      ]);
+      ];
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO ai_memory_messages ${sql.insert(values)}`;
+        }),
+      );
       const cores: FakeCore[] = [];
       const { fetchImpl, calls } = scriptedFetch([
         toolCallResponse([{ id: 'call-1', name: 'recall', args: { query: 'launch' } }]),
@@ -2133,17 +2186,21 @@ describe('agent gateway', () => {
 
   describe('memory compaction (T-0446)', () => {
     async function seedMirror(aiId: string, chatKey: string, count: number): Promise<void> {
-      await context.db.insert(aiMemoryMessages).values(
-        Array.from({ length: count }, (_, seq) => ({
-          aiId,
-          chatKey,
-          seq,
-          messageId: `${chatKey}-m${seq}`,
-          at: new Date(Date.UTC(2026, 0, 1) + seq * 86_400_000),
-          sender: 'Bob',
-          text: `mirror-${seq}`,
-          deleted: false,
-        })),
+      const values = Array.from({ length: count }, (_, seq) => ({
+        ai_id: aiId,
+        chat_key: chatKey,
+        seq,
+        message_id: `${chatKey}-m${seq}`,
+        at: new Date(Date.UTC(2026, 0, 1) + seq * 86_400_000),
+        sender: 'Bob',
+        text: `mirror-${seq}`,
+        deleted: false,
+      }));
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO ai_memory_messages ${sql.insert(values)}`;
+        }),
       );
     }
 
@@ -2179,10 +2236,14 @@ describe('agent gateway', () => {
       expect(sentWhenCompacting).toBeGreaterThanOrEqual(1);
       expect(core.sent[0]).toEqual({ to: seeded.ownerJid, kind: 'chat', text: 'AI says hi' });
 
-      const nodes = await context.db
-        .select({ lo: aiMemoryNodes.lo, hi: aiMemoryNodes.hi, summary: aiMemoryNodes.summary })
-        .from(aiMemoryNodes)
-        .where(and(eq(aiMemoryNodes.aiId, seeded.aiId), eq(aiMemoryNodes.chatKey, chatKey)));
+      const nodes = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ lo: number; hi: number; summary: string }>`SELECT lo, hi,
+            summary FROM ai_memory_nodes
+            WHERE ai_id = ${seeded.aiId} AND chat_key = ${chatKey}`;
+        }),
+      );
       expect(nodes).toEqual([{ lo: 0, hi: 16, summary: 'AI says hi' }]);
 
       const logged = logger.calls
@@ -2220,10 +2281,13 @@ describe('agent gateway', () => {
       await tick(500);
 
       expect(calls).toBe(1);
-      const nodes = await context.db
-        .select({ lo: aiMemoryNodes.lo })
-        .from(aiMemoryNodes)
-        .where(and(eq(aiMemoryNodes.aiId, seeded.aiId), eq(aiMemoryNodes.chatKey, chatKey)));
+      const nodes = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ lo: number }>`SELECT lo FROM ai_memory_nodes
+            WHERE ai_id = ${seeded.aiId} AND chat_key = ${chatKey}`;
+        }),
+      );
       expect(nodes).toEqual([]);
     });
   });
@@ -2838,7 +2902,12 @@ describe('agent gateway', () => {
     it('publishes end failed only after the failure DM is sent', async () => {
       const seeded = await seedAi(context);
       // No virtual key row: the turn fails before any model work.
-      await context.db.delete(llmVirtualKeys).where(eq(llmVirtualKeys.aiId, seeded.aiId));
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`DELETE FROM llm_virtual_keys WHERE ai_id = ${seeded.aiId}`;
+        }),
+      );
       const cores: FakeCore[] = [];
       const hub = createDraftHub();
       const order: string[] = [];
@@ -2872,7 +2941,16 @@ describe('agent gateway', () => {
 
     async function seedMember(name: string): Promise<{ userId: string; jid: string }> {
       const userId = randomUUID();
-      await context.db.insert(user).values({ id: userId, name, email: `${userId}@example.com` });
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO "user" ${sql.insert({
+            id: userId,
+            name,
+            email: `${userId}@example.com`,
+          })}`;
+        }),
+      );
       return { userId, jid: `${localpartFor(userId)}@${TEST_XMPP_DOMAIN}` };
     }
 
@@ -2883,32 +2961,43 @@ describe('agent gateway', () => {
     }): Promise<{ groupId: string; roomJid: string }> {
       const groupId = randomUUID();
       const roomLocalpart = `gtest${randomUUID().replace(/-/g, '').slice(0, 10)}`;
-      await context.db
-        .insert(groups)
-        .values({ id: groupId, roomLocalpart, title: 'Room', createdBy: input.ownerId });
-      await context.db.insert(groupMembers).values([
-        { groupId, userId: input.ownerId, role: 'owner' },
+      const members = [
+        { group_id: groupId, user_id: input.ownerId, role: 'owner' },
         ...(input.memberIds ?? []).map((userId) => ({
-          groupId,
-          userId,
-          role: 'member' as const,
+          group_id: groupId,
+          user_id: userId,
+          role: 'member',
         })),
-      ]);
-      await context.db
-        .insert(groupAis)
-        .values({ groupId, aiId: input.aiId, addedBy: input.ownerId });
-      await context.db.insert(topics).values({
-        id: randomUUID(),
-        groupId,
-        name: 'General',
-        glyph: 'G',
-        roomLocalpart,
-        visibility: 'public',
-        kind: 'chat',
-        status: 'open',
-        isGeneral: true,
-        createdBy: input.ownerId,
-      });
+      ];
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO groups ${sql.insert({
+            id: groupId,
+            room_localpart: roomLocalpart,
+            title: 'Room',
+            created_by: input.ownerId,
+          })}`;
+          yield* sql`INSERT INTO group_members ${sql.insert(members)}`;
+          yield* sql`INSERT INTO group_ais ${sql.insert({
+            group_id: groupId,
+            ai_id: input.aiId,
+            added_by: input.ownerId,
+          })}`;
+          yield* sql`INSERT INTO topics ${sql.insert({
+            id: randomUUID(),
+            group_id: groupId,
+            name: 'General',
+            glyph: 'G',
+            room_localpart: roomLocalpart,
+            visibility: 'public',
+            kind: 'chat',
+            status: 'open',
+            is_general: true,
+            created_by: input.ownerId,
+          })}`;
+        }),
+      );
       return { groupId, roomJid: `${roomLocalpart}@${TEST_XMPP_MUC_DOMAIN}` };
     }
 
@@ -2986,12 +3075,17 @@ describe('agent gateway', () => {
 
     it('reads a room fact into a second system message', async () => {
       const { seeded, member, roomJid, core, calls } = await roomSetup();
-      await context.db.insert(aiMemoryFacts).values({
-        id: randomUUID(),
-        aiId: seeded.aiId,
-        chatKey: `room:${roomJid}`,
-        text: 'the room rule is be brief',
-      });
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO ai_memory_facts ${sql.insert({
+            id: randomUUID(),
+            ai_id: seeded.aiId,
+            chat_key: `room:${roomJid}`,
+            text: 'the room rule is be brief',
+          })}`;
+        }),
+      );
 
       core.receive(mention(seeded, member, roomJid, 'm-1'));
       await waitFor(() => calls.length === 1);
@@ -3040,12 +3134,13 @@ describe('agent gateway', () => {
       await waitFor(() => core.sent.length === 1);
 
       expect(core.sent[0]?.text).toBe(`@Ana noted\n\nRemembered: ${fact}`);
-      const facts = await context.db
-        .select({ text: aiMemoryFacts.text })
-        .from(aiMemoryFacts)
-        .where(
-          and(eq(aiMemoryFacts.aiId, seeded.aiId), eq(aiMemoryFacts.chatKey, `room:${roomJid}`)),
-        );
+      const facts = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ text: string }>`SELECT text FROM ai_memory_facts
+            WHERE ai_id = ${seeded.aiId} AND chat_key = ${`room:${roomJid}`}`;
+        }),
+      );
       expect(facts.map((row) => row.text)).toEqual([fact]);
     });
 
@@ -3063,9 +3158,12 @@ describe('agent gateway', () => {
       await waitFor(() => core.joined.length === 1);
       expect(core.joined).toEqual([{ roomJid, nick: 'Gateway AI' }]);
 
-      await context.db
-        .delete(groupAis)
-        .where(and(eq(groupAis.groupId, groupId), eq(groupAis.aiId, seeded.aiId)));
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`DELETE FROM group_ais WHERE group_id = ${groupId} AND ai_id = ${seeded.aiId}`;
+        }),
+      );
       emitGroupAi({ type: 'ai-removed', groupId, aiId: seeded.aiId });
       await waitFor(() => core.left.length === 1);
       expect(core.left).toEqual([roomJid]);
@@ -3087,14 +3185,24 @@ describe('agent gateway', () => {
       expect(core.joined).toHaveLength(1);
 
       // The AI leaves for real, then the re-add join fails once.
-      await context.db
-        .delete(groupAis)
-        .where(and(eq(groupAis.groupId, groupId), eq(groupAis.aiId, seeded.aiId)));
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`DELETE FROM group_ais WHERE group_id = ${groupId} AND ai_id = ${seeded.aiId}`;
+        }),
+      );
       emitGroupAi({ type: 'ai-removed', groupId, aiId: seeded.aiId });
       await waitFor(() => core.left.length === 1);
-      await context.db
-        .insert(groupAis)
-        .values({ groupId, aiId: seeded.aiId, addedBy: seeded.ownerId });
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO group_ais ${sql.insert({
+            group_id: groupId,
+            ai_id: seeded.aiId,
+            added_by: seeded.ownerId,
+          })}`;
+        }),
+      );
       core.failJoin = true;
       emitGroupAi({ type: 'ai-added', groupId, aiId: seeded.aiId });
       await waitFor(() =>
@@ -3291,14 +3399,24 @@ describe('agent gateway', () => {
       }
       expect(calls).toHaveLength(6);
 
-      await context.db
-        .delete(groupAis)
-        .where(and(eq(groupAis.groupId, groupId), eq(groupAis.aiId, seeded.aiId)));
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`DELETE FROM group_ais WHERE group_id = ${groupId} AND ai_id = ${seeded.aiId}`;
+        }),
+      );
       emitGroupAi({ type: 'ai-removed', groupId, aiId: seeded.aiId });
       await waitFor(() => core.left.length === 1);
-      await context.db
-        .insert(groupAis)
-        .values({ groupId, aiId: seeded.aiId, addedBy: seeded.ownerId });
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO group_ais ${sql.insert({
+            group_id: groupId,
+            ai_id: seeded.aiId,
+            added_by: seeded.ownerId,
+          })}`;
+        }),
+      );
       emitGroupAi({ type: 'ai-added', groupId, aiId: seeded.aiId });
       await waitFor(() => core.joined.length === 2);
 
@@ -3560,9 +3678,18 @@ describe('agent gateway', () => {
         }> = [];
         for (const m of input.members) {
           const userId = randomUUID();
-          await context.db
-            .insert(user)
-            .values({ id: userId, name: m.name, email: `${userId}@example.com` });
+          const memberName = m.name;
+          const memberEmail = `${userId}@example.com`;
+          await testSql(context)(
+            Effect.gen(function* () {
+              const sql = yield* SqlClient.SqlClient;
+              yield* sql`INSERT INTO "user" ${sql.insert({
+                id: userId,
+                name: memberName,
+                email: memberEmail,
+              })}`;
+            }),
+          );
           members.push({
             userId,
             jid: `${localpartFor(userId)}@${TEST_XMPP_DOMAIN}`,
@@ -3575,28 +3702,42 @@ describe('agent gateway', () => {
         // The group's creator is the first owner (a test convenience; the
         // gateway never reads this column on a turn).
         const creator = members.find((m) => m.role === 'owner') ?? members[0]!;
-        await context.db
-          .insert(groups)
-          .values({ id: groupId, roomLocalpart, title: 'Room', createdBy: creator.userId });
-        await context.db
-          .insert(groupMembers)
-          .values(members.map((m) => ({ groupId, userId: m.userId, role: m.role })));
-        await context.db
-          .insert(groupAis)
-          .values({ groupId, aiId: seeded.aiId, addedBy: creator.userId });
+        const creatorId = creator.userId;
+        const memberRows = members.map((m) => ({
+          group_id: groupId,
+          user_id: m.userId,
+          role: m.role,
+        }));
         const generalTopicId = randomUUID();
-        await context.db.insert(topics).values({
-          id: generalTopicId,
-          groupId,
-          name: 'General',
-          glyph: 'G',
-          roomLocalpart,
-          visibility: 'public',
-          kind: 'chat',
-          status: 'open',
-          isGeneral: true,
-          createdBy: creator.userId,
-        });
+        await testSql(context)(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            yield* sql`INSERT INTO groups ${sql.insert({
+              id: groupId,
+              room_localpart: roomLocalpart,
+              title: 'Room',
+              created_by: creatorId,
+            })}`;
+            yield* sql`INSERT INTO group_members ${sql.insert(memberRows)}`;
+            yield* sql`INSERT INTO group_ais ${sql.insert({
+              group_id: groupId,
+              ai_id: seeded.aiId,
+              added_by: creatorId,
+            })}`;
+            yield* sql`INSERT INTO topics ${sql.insert({
+              id: generalTopicId,
+              group_id: groupId,
+              name: 'General',
+              glyph: 'G',
+              room_localpart: roomLocalpart,
+              visibility: 'public',
+              kind: 'chat',
+              status: 'open',
+              is_general: true,
+              created_by: creatorId,
+            })}`;
+          }),
+        );
         const roomJid = `${roomLocalpart}@${TEST_XMPP_MUC_DOMAIN}`;
         const cores: FakeCore[] = [];
         const { fetchImpl, calls } = input.fetch();
@@ -3743,10 +3884,13 @@ describe('agent gateway', () => {
           actions: fake.gateway,
         });
         const { seeded, members, roomJid, core } = setup_;
-        const [before] = await context.db
-          .select({ persona: ais.persona })
-          .from(ais)
-          .where(eq(ais.id, seeded.aiId));
+        const [before] = await testSql(context)(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            return yield* sql<{ persona: string }>`SELECT persona FROM ais
+              WHERE id = ${seeded.aiId}`;
+          }),
+        );
         core.receive(memberMention(seeded, members[0]!, roomJid, 'm-1'));
         await waitFor(() => calls.length === 2);
         const second = JSON.parse(String(calls[1]!.init.body)) as {
@@ -3754,10 +3898,13 @@ describe('agent gateway', () => {
         };
         const toolMessage = second.messages.find((message) => message.role === 'tool');
         expect(toolMessage?.content).toBe('invalid: unknown tool');
-        const [after] = await context.db
-          .select({ persona: ais.persona })
-          .from(ais)
-          .where(eq(ais.id, seeded.aiId));
+        const [after] = await testSql(context)(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            return yield* sql<{ persona: string }>`SELECT persona FROM ais
+              WHERE id = ${seeded.aiId}`;
+          }),
+        );
         expect(after?.persona).toBe(before?.persona);
         expect(fake.requests).toHaveLength(0);
       });
@@ -3939,9 +4086,13 @@ describe('agent gateway', () => {
         // Remove Carol between setup and the mention so the gate lookup
         // done at turn start never sees her — the membership filter drops
         // her and no turn runs.
-        await context.db
-          .delete(groupMembers)
-          .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, carol.userId)));
+        await testSql(context)(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            yield* sql`DELETE FROM group_members
+              WHERE group_id = ${groupId} AND user_id = ${carol.userId}`;
+          }),
+        );
         core.receive(memberMention(seeded, carol, roomJid, 'm-1'));
         await tick(200);
         expect(calls).toHaveLength(0);
@@ -3953,29 +4104,48 @@ describe('agent gateway', () => {
         const fake = fakeActions({ status: 'pending_approval', approvalId: 'appr-7' });
         const seeded = await seedAi(context);
         const adminId = randomUUID();
-        await context.db
-          .insert(user)
-          .values({ id: adminId, name: 'Bea', email: `${adminId}@example.com` });
         const adminJid = `${localpartFor(adminId)}@${TEST_XMPP_DOMAIN}`;
         const groupId = randomUUID();
         const roomLocalpart = `g98rev${randomUUID().replace(/-/g, '').slice(0, 7)}`;
-        await context.db
-          .insert(groups)
-          .values({ id: groupId, roomLocalpart, title: 'Room', createdBy: adminId });
-        await context.db.insert(groupMembers).values({ groupId, userId: adminId, role: 'admin' });
-        await context.db.insert(groupAis).values({ groupId, aiId: seeded.aiId, addedBy: adminId });
-        await context.db.insert(topics).values({
-          id: randomUUID(),
-          groupId,
-          name: 'General',
-          glyph: 'G',
-          roomLocalpart,
-          visibility: 'public',
-          kind: 'chat',
-          status: 'open',
-          isGeneral: true,
-          createdBy: adminId,
-        });
+        const generalTopicId = randomUUID();
+        await testSql(context)(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            yield* sql`INSERT INTO "user" ${sql.insert({
+              id: adminId,
+              name: 'Bea',
+              email: `${adminId}@example.com`,
+            })}`;
+            yield* sql`INSERT INTO groups ${sql.insert({
+              id: groupId,
+              room_localpart: roomLocalpart,
+              title: 'Room',
+              created_by: adminId,
+            })}`;
+            yield* sql`INSERT INTO group_members ${sql.insert({
+              group_id: groupId,
+              user_id: adminId,
+              role: 'admin',
+            })}`;
+            yield* sql`INSERT INTO group_ais ${sql.insert({
+              group_id: groupId,
+              ai_id: seeded.aiId,
+              added_by: adminId,
+            })}`;
+            yield* sql`INSERT INTO topics ${sql.insert({
+              id: generalTopicId,
+              group_id: groupId,
+              name: 'General',
+              glyph: 'G',
+              room_localpart: roomLocalpart,
+              visibility: 'public',
+              kind: 'chat',
+              status: 'open',
+              is_general: true,
+              created_by: adminId,
+            })}`;
+          }),
+        );
         const roomJid = `${roomLocalpart}@${TEST_XMPP_MUC_DOMAIN}`;
 
         // A fetch that parks the first LLM call until `release()` runs, so
@@ -4029,10 +4199,13 @@ describe('agent gateway', () => {
         );
         // First call parks; demote while it's parked.
         await waitFor(() => calls.length === 1);
-        await context.db
-          .update(groupMembers)
-          .set({ role: 'member' })
-          .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, adminId)));
+        await testSql(context)(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            yield* sql`UPDATE group_members SET role = 'member'
+              WHERE group_id = ${groupId} AND user_id = ${adminId}`;
+          }),
+        );
         // Now release the first call: the executor parses the tool call,
         // re-checks the role, sees the demotion, and answers
         // `denied: not allowed` without invoking the action gateway.
@@ -4083,29 +4256,48 @@ describe('agent gateway', () => {
         const fake = fakeActions({ status: 'executed', summary: 'Echoed: hi' });
         const seeded = await seedAi(context);
         const adminId = randomUUID();
-        await context.db
-          .insert(user)
-          .values({ id: adminId, name: 'Bea', email: `${adminId}@example.com` });
         const adminJid = `${localpartFor(adminId)}@${TEST_XMPP_DOMAIN}`;
         const groupId = randomUUID();
         const roomLocalpart = `g98stop${randomUUID().replace(/-/g, '').slice(0, 7)}`;
-        await context.db
-          .insert(groups)
-          .values({ id: groupId, roomLocalpart, title: 'Room', createdBy: adminId });
-        await context.db.insert(groupMembers).values({ groupId, userId: adminId, role: 'admin' });
-        await context.db.insert(groupAis).values({ groupId, aiId: seeded.aiId, addedBy: adminId });
-        await context.db.insert(topics).values({
-          id: randomUUID(),
-          groupId,
-          name: 'General',
-          glyph: 'G',
-          roomLocalpart,
-          visibility: 'public',
-          kind: 'chat',
-          status: 'open',
-          isGeneral: true,
-          createdBy: adminId,
-        });
+        const generalTopicId = randomUUID();
+        await testSql(context)(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            yield* sql`INSERT INTO "user" ${sql.insert({
+              id: adminId,
+              name: 'Bea',
+              email: `${adminId}@example.com`,
+            })}`;
+            yield* sql`INSERT INTO groups ${sql.insert({
+              id: groupId,
+              room_localpart: roomLocalpart,
+              title: 'Room',
+              created_by: adminId,
+            })}`;
+            yield* sql`INSERT INTO group_members ${sql.insert({
+              group_id: groupId,
+              user_id: adminId,
+              role: 'admin',
+            })}`;
+            yield* sql`INSERT INTO group_ais ${sql.insert({
+              group_id: groupId,
+              ai_id: seeded.aiId,
+              added_by: adminId,
+            })}`;
+            yield* sql`INSERT INTO topics ${sql.insert({
+              id: generalTopicId,
+              group_id: groupId,
+              name: 'General',
+              glyph: 'G',
+              room_localpart: roomLocalpart,
+              visibility: 'public',
+              kind: 'chat',
+              status: 'open',
+              is_general: true,
+              created_by: adminId,
+            })}`;
+          }),
+        );
         const roomJid = `${roomLocalpart}@${TEST_XMPP_MUC_DOMAIN}`;
         // Park the first LLM call so we can stop the AI mid-turn.
         const calls: Call[] = [];
@@ -4346,10 +4538,13 @@ describe('agent gateway', () => {
 
       release();
       await tick(200);
-      const [row] = await context.db
-        .select({ persona: ais.persona })
-        .from(ais)
-        .where(eq(ais.id, first.aiId));
+      const [row] = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ persona: string }>`SELECT persona FROM ais
+            WHERE id = ${first.aiId}`;
+        }),
+      );
       expect(row?.persona).toBe('A helpful persona.');
     });
 
@@ -4473,7 +4668,18 @@ describe('agent gateway', () => {
   describe('postToChat (T-0092)', () => {
     async function seedMemberLocal(name: string): Promise<{ userId: string; jid: string }> {
       const userId = randomUUID();
-      await context.db.insert(user).values({ id: userId, name, email: `${userId}@example.com` });
+      const memberName = name;
+      const memberEmail = `${userId}@example.com`;
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO "user" ${sql.insert({
+            id: userId,
+            name: memberName,
+            email: memberEmail,
+          })}`;
+        }),
+      );
       return { userId, jid: `${localpartFor(userId)}@${TEST_XMPP_DOMAIN}` };
     }
 
@@ -4484,32 +4690,44 @@ describe('agent gateway', () => {
     }): Promise<{ groupId: string; roomJid: string }> {
       const groupId = randomUUID();
       const roomLocalpart = `gpost${randomUUID().replace(/-/g, '').slice(0, 9)}`;
-      await context.db
-        .insert(groups)
-        .values({ id: groupId, roomLocalpart, title: 'Room', createdBy: input.ownerId });
-      await context.db.insert(groupMembers).values([
-        { groupId, userId: input.ownerId, role: 'owner' },
+      const localTopicId = randomUUID();
+      const members = [
+        { group_id: groupId, user_id: input.ownerId, role: 'owner' },
         ...(input.memberIds ?? []).map((userId) => ({
-          groupId,
-          userId,
-          role: 'member' as const,
+          group_id: groupId,
+          user_id: userId,
+          role: 'member',
         })),
-      ]);
-      await context.db
-        .insert(groupAis)
-        .values({ groupId, aiId: input.aiId, addedBy: input.ownerId });
-      await context.db.insert(topics).values({
-        id: randomUUID(),
-        groupId,
-        name: 'General',
-        glyph: 'G',
-        roomLocalpart,
-        visibility: 'public',
-        kind: 'chat',
-        status: 'open',
-        isGeneral: true,
-        createdBy: input.ownerId,
-      });
+      ];
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO groups ${sql.insert({
+            id: groupId,
+            room_localpart: roomLocalpart,
+            title: 'Room',
+            created_by: input.ownerId,
+          })}`;
+          yield* sql`INSERT INTO group_members ${sql.insert(members)}`;
+          yield* sql`INSERT INTO group_ais ${sql.insert({
+            group_id: groupId,
+            ai_id: input.aiId,
+            added_by: input.ownerId,
+          })}`;
+          yield* sql`INSERT INTO topics ${sql.insert({
+            id: localTopicId,
+            group_id: groupId,
+            name: 'General',
+            glyph: 'G',
+            room_localpart: roomLocalpart,
+            visibility: 'public',
+            kind: 'chat',
+            status: 'open',
+            is_general: true,
+            created_by: input.ownerId,
+          })}`;
+        }),
+      );
       return { groupId, roomJid: `${roomLocalpart}@${TEST_XMPP_MUC_DOMAIN}` };
     }
 
@@ -4921,16 +5139,32 @@ describe('agent gateway', () => {
       const seeded = await seedAi(context, { name: 'Topic AI' });
       const member = await (async () => {
         const userId = randomUUID();
-        await context.db
-          .insert(user)
-          .values({ id: userId, name: 'Ana', email: `${userId}@example.com` });
+        const memberEmail = `${userId}@example.com`;
+        await testSql(context)(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            yield* sql`INSERT INTO "user" ${sql.insert({
+              id: userId,
+              name: 'Ana',
+              email: memberEmail,
+            })}`;
+          }),
+        );
         return { userId, jid: `${localpartFor(userId)}@${TEST_XMPP_DOMAIN}` };
       })();
       const outsider = await (async () => {
         const userId = randomUUID();
-        await context.db
-          .insert(user)
-          .values({ id: userId, name: 'Out', email: `${userId}@example.com` });
+        const outsiderEmail = `${userId}@example.com`;
+        await testSql(context)(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            yield* sql`INSERT INTO "user" ${sql.insert({
+              id: userId,
+              name: 'Out',
+              email: outsiderEmail,
+            })}`;
+          }),
+        );
         return { userId, jid: `${localpartFor(userId)}@${TEST_XMPP_DOMAIN}` };
       })();
       const groupId = randomUUID();
@@ -4938,56 +5172,77 @@ describe('agent gateway', () => {
       const topicLocalpart = `ttopic${randomUUID().replace(/-/g, '').slice(0, 10)}`;
       const visibility = input.visibility ?? 'public';
       const topicName = 'Backend';
-      await context.db.insert(groups).values({
-        id: groupId,
-        roomLocalpart: generalLocalpart,
-        title: 'Team',
-        createdBy: seeded.ownerId,
-      });
-      await context.db.insert(groupMembers).values([
-        { groupId, userId: seeded.ownerId, role: 'owner' },
-        { groupId, userId: member.userId, role: 'member' },
-        { groupId, userId: outsider.userId, role: 'member' },
-      ]);
-      await context.db
-        .insert(groupAis)
-        .values({ groupId, aiId: seeded.aiId, addedBy: seeded.ownerId });
       const generalId = randomUUID();
-      await context.db.insert(topics).values({
-        id: generalId,
-        groupId,
-        name: 'General',
-        glyph: 'G',
-        roomLocalpart: generalLocalpart,
-        visibility: 'public',
-        kind: 'chat',
-        status: 'open',
-        isGeneral: true,
-        createdBy: seeded.ownerId,
-      });
       const topicId = randomUUID();
-      await context.db.insert(topics).values({
-        id: topicId,
-        groupId,
-        name: topicName,
-        glyph: 'B',
-        roomLocalpart: topicLocalpart,
-        visibility,
-        kind: 'chat',
-        status: 'open',
-        isGeneral: false,
-        createdBy: seeded.ownerId,
-      });
+      const groupMembersRows = [
+        { group_id: groupId, user_id: seeded.ownerId, role: 'owner' },
+        { group_id: groupId, user_id: member.userId, role: 'member' },
+        { group_id: groupId, user_id: outsider.userId, role: 'member' },
+      ];
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO groups ${sql.insert({
+            id: groupId,
+            room_localpart: generalLocalpart,
+            title: 'Team',
+            created_by: seeded.ownerId,
+          })}`;
+          yield* sql`INSERT INTO group_members ${sql.insert(groupMembersRows)}`;
+          yield* sql`INSERT INTO group_ais ${sql.insert({
+            group_id: groupId,
+            ai_id: seeded.aiId,
+            added_by: seeded.ownerId,
+          })}`;
+          yield* sql`INSERT INTO topics ${sql.insert({
+            id: generalId,
+            group_id: groupId,
+            name: 'General',
+            glyph: 'G',
+            room_localpart: generalLocalpart,
+            visibility: 'public',
+            kind: 'chat',
+            status: 'open',
+            is_general: true,
+            created_by: seeded.ownerId,
+          })}`;
+          yield* sql`INSERT INTO topics ${sql.insert({
+            id: topicId,
+            group_id: groupId,
+            name: topicName,
+            glyph: 'B',
+            room_localpart: topicLocalpart,
+            visibility,
+            kind: 'chat',
+            status: 'open',
+            is_general: false,
+            created_by: seeded.ownerId,
+          })}`;
+        }),
+      );
       if (visibility === 'private') {
-        await context.db.insert(topicMembers).values([
-          { topicId, userId: seeded.ownerId, addedBy: seeded.ownerId },
-          { topicId, userId: member.userId, addedBy: seeded.ownerId },
-        ]);
+        const privateRows = [
+          { topic_id: topicId, user_id: seeded.ownerId, added_by: seeded.ownerId },
+          { topic_id: topicId, user_id: member.userId, added_by: seeded.ownerId },
+        ];
+        await testSql(context)(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            yield* sql`INSERT INTO topic_members ${sql.insert(privateRows)}`;
+          }),
+        );
       }
       if (input.withMember !== false) {
-        await context.db
-          .insert(topicAis)
-          .values({ topicId, aiId: seeded.aiId, addedBy: seeded.ownerId });
+        await testSql(context)(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            yield* sql`INSERT INTO topic_ais ${sql.insert({
+              topic_id: topicId,
+              ai_id: seeded.aiId,
+              added_by: seeded.ownerId,
+            })}`;
+          }),
+        );
       }
       const generalJid = `${generalLocalpart}@${TEST_XMPP_MUC_DOMAIN}`;
       const topicJid = `${topicLocalpart}@${TEST_XMPP_MUC_DOMAIN}`;
@@ -5091,9 +5346,13 @@ describe('agent gateway', () => {
 
       // The owner is removed from the topic: the gateway leaves on the
       // emitted event, and a later mention never reaches the model.
-      await context.db
-        .delete(topicMembers)
-        .where(and(eq(topicMembers.topicId, topicId), eq(topicMembers.userId, seeded.ownerId)));
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`DELETE FROM topic_members
+            WHERE topic_id = ${topicId} AND user_id = ${seeded.ownerId}`;
+        }),
+      );
       emitTopicAi({ type: 'ai-removed', topicId, aiId: seeded.aiId });
       await waitFor(() => core.left.includes(topicJid));
 
@@ -5113,76 +5372,99 @@ describe('agent gateway', () => {
       const { seeded, topicId, topicJid, core } = await seedTopicSetup({ withMember: false });
       expect(core.joined.map((join) => join.roomJid)).not.toContain(topicJid);
 
-      await context.db
-        .insert(topicAis)
-        .values({ topicId, aiId: seeded.aiId, addedBy: seeded.ownerId });
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO topic_ais ${sql.insert({
+            topic_id: topicId,
+            ai_id: seeded.aiId,
+            added_by: seeded.ownerId,
+          })}`;
+        }),
+      );
       emitTopicAi({ type: 'ai-added', topicId, aiId: seeded.aiId });
       await waitFor(() => core.joined.some((join) => join.roomJid === topicJid));
 
-      await context.db
-        .delete(topicAis)
-        .where(and(eq(topicAis.topicId, topicId), eq(topicAis.aiId, seeded.aiId)));
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`DELETE FROM topic_ais WHERE topic_id = ${topicId} AND ai_id = ${seeded.aiId}`;
+        }),
+      );
       emitTopicAi({ type: 'ai-removed', topicId, aiId: seeded.aiId });
       await waitFor(() => core.left.includes(topicJid));
     });
 
     it('rejects a group admin who is not a member of a private topic, accepts one who is', async () => {
       const adminId = randomUUID();
-      await context.db
-        .insert(user)
-        .values({ id: adminId, name: 'Bea', email: `${adminId}@example.com` });
       const adminJid = `${localpartFor(adminId)}@${TEST_XMPP_DOMAIN}`;
       const seeded = await seedAi(context, { name: 'Topic AI' });
       const groupId = randomUUID();
       const generalLocalpart = `gadm${randomUUID().replace(/-/g, '').slice(0, 11)}`;
       const topicLocalpart = `tadm${randomUUID().replace(/-/g, '').slice(0, 11)}`;
-      await context.db.insert(groups).values({
-        id: groupId,
-        roomLocalpart: generalLocalpart,
-        title: 'Team',
-        createdBy: adminId,
-      });
-      await context.db.insert(groupMembers).values([
-        { groupId, userId: adminId, role: 'admin' },
-        { groupId, userId: seeded.ownerId, role: 'owner' },
-      ]);
-      await context.db
-        .insert(groupAis)
-        .values({ groupId, aiId: seeded.aiId, addedBy: seeded.ownerId });
-      await context.db.insert(topics).values({
-        id: randomUUID(),
-        groupId,
-        name: 'General',
-        glyph: 'G',
-        roomLocalpart: generalLocalpart,
-        visibility: 'public',
-        kind: 'chat',
-        status: 'open',
-        isGeneral: true,
-        createdBy: adminId,
-      });
+      const generalTopicId = randomUUID();
       const topicId = randomUUID();
-      await context.db.insert(topics).values({
-        id: topicId,
-        groupId,
-        name: 'Hiring',
-        glyph: 'H',
-        roomLocalpart: topicLocalpart,
-        visibility: 'private',
-        kind: 'chat',
-        status: 'open',
-        isGeneral: false,
-        createdBy: adminId,
-      });
-      await context.db.insert(topicMembers).values([
-        { topicId, userId: adminId, addedBy: adminId },
+      const topicMembersRows = [
+        { topic_id: topicId, user_id: adminId, added_by: adminId },
         // The AI counts in a private room only while its owner is a topic
         // member too (derived rule): add the owner so the turn below runs.
-        { topicId, userId: seeded.ownerId, addedBy: adminId },
-      ]);
-      await context.db
-        .insert(topicAis)
-        .values({ topicId, aiId: seeded.aiId, addedBy: seeded.ownerId });
+        { topic_id: topicId, user_id: seeded.ownerId, added_by: adminId },
+      ];
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO "user" ${sql.insert({
+            id: adminId,
+            name: 'Bea',
+            email: `${adminId}@example.com`,
+          })}`;
+          yield* sql`INSERT INTO groups ${sql.insert({
+            id: groupId,
+            room_localpart: generalLocalpart,
+            title: 'Team',
+            created_by: adminId,
+          })}`;
+          yield* sql`INSERT INTO group_members ${sql.insert([
+            { group_id: groupId, user_id: adminId, role: 'admin' },
+            { group_id: groupId, user_id: seeded.ownerId, role: 'owner' },
+          ])}`;
+          yield* sql`INSERT INTO group_ais ${sql.insert({
+            group_id: groupId,
+            ai_id: seeded.aiId,
+            added_by: seeded.ownerId,
+          })}`;
+          yield* sql`INSERT INTO topics ${sql.insert({
+            id: generalTopicId,
+            group_id: groupId,
+            name: 'General',
+            glyph: 'G',
+            room_localpart: generalLocalpart,
+            visibility: 'public',
+            kind: 'chat',
+            status: 'open',
+            is_general: true,
+            created_by: adminId,
+          })}`;
+          yield* sql`INSERT INTO topics ${sql.insert({
+            id: topicId,
+            group_id: groupId,
+            name: 'Hiring',
+            glyph: 'H',
+            room_localpart: topicLocalpart,
+            visibility: 'private',
+            kind: 'chat',
+            status: 'open',
+            is_general: false,
+            created_by: adminId,
+          })}`;
+          yield* sql`INSERT INTO topic_members ${sql.insert(topicMembersRows)}`;
+          yield* sql`INSERT INTO topic_ais ${sql.insert({
+            topic_id: topicId,
+            ai_id: seeded.aiId,
+            added_by: seeded.ownerId,
+          })}`;
+        }),
+      );
       const topicJid = `${topicLocalpart}@${TEST_XMPP_MUC_DOMAIN}`;
 
       const scripted: Call[] = [];
@@ -5251,9 +5533,12 @@ describe('agent gateway', () => {
 
       // Remove the admin from the private topic: the gate no longer sees
       // them, so the mention starts no turn.
-      await context.db
-        .delete(topicMembers)
-        .where(and(eq(topicMembers.topicId, topicId), eq(topicMembers.userId, adminId)));
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`DELETE FROM topic_members WHERE topic_id = ${topicId} AND user_id = ${adminId}`;
+        }),
+      );
       const callsBefore = scripted.length;
       core.receive({
         id: 'm-2',
@@ -5289,9 +5574,12 @@ describe('agent gateway', () => {
 
       // An AI that was never added to the topic answers false and sends
       // nothing: remove the row first (the gateway leaves on reconcile).
-      await context.db
-        .delete(topicAis)
-        .where(and(eq(topicAis.topicId, topicId), eq(topicAis.aiId, seeded.aiId)));
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`DELETE FROM topic_ais WHERE topic_id = ${topicId} AND ai_id = ${seeded.aiId}`;
+        }),
+      );
       await started!.reconcile();
       await waitFor(() => core.left.includes(topicJid));
       const sentBefore = core.sent.length;
@@ -5332,69 +5620,80 @@ describe('agent gateway', () => {
     it('no other topic name appears in any prompt', async () => {
       const seeded = await seedAi(context, { name: 'Topic AI' });
       const memberId = randomUUID();
-      await context.db
-        .insert(user)
-        .values({ id: memberId, name: 'Ana', email: `${memberId}@example.com` });
       const memberJid = `${localpartFor(memberId)}@${TEST_XMPP_DOMAIN}`;
       const groupId = randomUUID();
       const generalLocalpart = `gsec${randomUUID().replace(/-/g, '').slice(0, 11)}`;
       const firstLocalpart = `tsec${randomUUID().replace(/-/g, '').slice(0, 11)}`;
       const secondLocalpart = `usec${randomUUID().replace(/-/g, '').slice(0, 11)}`;
-      await context.db.insert(groups).values({
-        id: groupId,
-        roomLocalpart: generalLocalpart,
-        title: 'Team',
-        createdBy: seeded.ownerId,
-      });
-      await context.db.insert(groupMembers).values([
-        { groupId, userId: seeded.ownerId, role: 'owner' },
-        { groupId, userId: memberId, role: 'member' },
-      ]);
-      await context.db
-        .insert(groupAis)
-        .values({ groupId, aiId: seeded.aiId, addedBy: seeded.ownerId });
-      await context.db.insert(topics).values({
-        id: randomUUID(),
-        groupId,
-        name: 'General',
-        glyph: 'G',
-        roomLocalpart: generalLocalpart,
-        visibility: 'public',
-        kind: 'chat',
-        status: 'open',
-        isGeneral: true,
-        createdBy: seeded.ownerId,
-      });
+      const generalTopicId = randomUUID();
       const firstId = randomUUID();
-      await context.db.insert(topics).values({
-        id: firstId,
-        groupId,
-        name: 'Backend Secrets',
-        glyph: 'B',
-        roomLocalpart: firstLocalpart,
-        visibility: 'public',
-        kind: 'chat',
-        status: 'open',
-        isGeneral: false,
-        createdBy: seeded.ownerId,
-      });
       const secondId = randomUUID();
-      await context.db.insert(topics).values({
-        id: secondId,
-        groupId,
-        name: 'Hiring Secrets',
-        glyph: 'H',
-        roomLocalpart: secondLocalpart,
-        visibility: 'public',
-        kind: 'chat',
-        status: 'open',
-        isGeneral: false,
-        createdBy: seeded.ownerId,
-      });
-      await context.db.insert(topicAis).values([
-        { topicId: firstId, aiId: seeded.aiId, addedBy: seeded.ownerId },
-        { topicId: secondId, aiId: seeded.aiId, addedBy: seeded.ownerId },
-      ]);
+      const topicAisRows = [
+        { topic_id: firstId, ai_id: seeded.aiId, added_by: seeded.ownerId },
+        { topic_id: secondId, ai_id: seeded.aiId, added_by: seeded.ownerId },
+      ];
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO "user" ${sql.insert({
+            id: memberId,
+            name: 'Ana',
+            email: `${memberId}@example.com`,
+          })}`;
+          yield* sql`INSERT INTO groups ${sql.insert({
+            id: groupId,
+            room_localpart: generalLocalpart,
+            title: 'Team',
+            created_by: seeded.ownerId,
+          })}`;
+          yield* sql`INSERT INTO group_members ${sql.insert([
+            { group_id: groupId, user_id: seeded.ownerId, role: 'owner' },
+            { group_id: groupId, user_id: memberId, role: 'member' },
+          ])}`;
+          yield* sql`INSERT INTO group_ais ${sql.insert({
+            group_id: groupId,
+            ai_id: seeded.aiId,
+            added_by: seeded.ownerId,
+          })}`;
+          yield* sql`INSERT INTO topics ${sql.insert({
+            id: generalTopicId,
+            group_id: groupId,
+            name: 'General',
+            glyph: 'G',
+            room_localpart: generalLocalpart,
+            visibility: 'public',
+            kind: 'chat',
+            status: 'open',
+            is_general: true,
+            created_by: seeded.ownerId,
+          })}`;
+          yield* sql`INSERT INTO topics ${sql.insert({
+            id: firstId,
+            group_id: groupId,
+            name: 'Backend Secrets',
+            glyph: 'B',
+            room_localpart: firstLocalpart,
+            visibility: 'public',
+            kind: 'chat',
+            status: 'open',
+            is_general: false,
+            created_by: seeded.ownerId,
+          })}`;
+          yield* sql`INSERT INTO topics ${sql.insert({
+            id: secondId,
+            group_id: groupId,
+            name: 'Hiring Secrets',
+            glyph: 'H',
+            room_localpart: secondLocalpart,
+            visibility: 'public',
+            kind: 'chat',
+            status: 'open',
+            is_general: false,
+            created_by: seeded.ownerId,
+          })}`;
+          yield* sql`INSERT INTO topic_ais ${sql.insert(topicAisRows)}`;
+        }),
+      );
       const firstJid = `${firstLocalpart}@${TEST_XMPP_MUC_DOMAIN}`;
       const cores: FakeCore[] = [];
       const { fetchImpl, calls } = completionFetch('ok');
@@ -5432,7 +5731,18 @@ describe('agent gateway', () => {
 
     async function seedMember(name: string): Promise<{ userId: string; jid: string }> {
       const userId = randomUUID();
-      await context.db.insert(user).values({ id: userId, name, email: `${userId}@example.com` });
+      const memberName = name;
+      const memberEmail = `${userId}@example.com`;
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO "user" ${sql.insert({
+            id: userId,
+            name: memberName,
+            email: memberEmail,
+          })}`;
+        }),
+      );
       return { userId, jid: `${localpartFor(userId)}@${TEST_XMPP_DOMAIN}` };
     }
 
@@ -5444,39 +5754,57 @@ describe('agent gateway', () => {
     }): Promise<{ groupId: string; roomJid: string }> {
       const groupId = randomUUID();
       const roomLocalpart = `ltest${randomUUID().replace(/-/g, '').slice(0, 10)}`;
-      await context.db.insert(groups).values({
-        id: groupId,
-        roomLocalpart,
-        title: 'Room',
-        createdBy: input.ownerId,
-        ...(input.listenerEnabled === undefined ? {} : { listenerEnabled: input.listenerEnabled }),
-        ...(input.eagerness === undefined ? {} : { listenerEagerness: input.eagerness }),
-      });
-      await context.db.insert(groupMembers).values([
-        { groupId, userId: input.ownerId, role: 'owner' },
+      const generalTopicId = randomUUID();
+      const members = [
+        { group_id: groupId, user_id: input.ownerId, role: 'owner' },
         ...(input.memberIds ?? []).map((userId) => ({
-          groupId,
-          userId,
-          role: 'member' as const,
+          group_id: groupId,
+          user_id: userId,
+          role: 'member',
         })),
-      ]);
-      await context.db.insert(topics).values({
-        id: randomUUID(),
-        groupId,
-        name: 'General',
-        glyph: 'G',
-        roomLocalpart,
-        visibility: 'public',
-        kind: 'chat',
-        status: 'open',
-        isGeneral: true,
-        createdBy: input.ownerId,
-      });
+      ];
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO groups ${sql.insert({
+            id: groupId,
+            room_localpart: roomLocalpart,
+            title: 'Room',
+            created_by: input.ownerId,
+            ...(input.listenerEnabled === undefined
+              ? {}
+              : { listener_enabled: input.listenerEnabled }),
+            ...(input.eagerness === undefined ? {} : { listener_eagerness: input.eagerness }),
+          })}`;
+          yield* sql`INSERT INTO group_members ${sql.insert(members)}`;
+          yield* sql`INSERT INTO topics ${sql.insert({
+            id: generalTopicId,
+            group_id: groupId,
+            name: 'General',
+            glyph: 'G',
+            room_localpart: roomLocalpart,
+            visibility: 'public',
+            kind: 'chat',
+            status: 'open',
+            is_general: true,
+            created_by: input.ownerId,
+          })}`;
+        }),
+      );
       return { groupId, roomJid: `${roomLocalpart}@${TEST_XMPP_MUC_DOMAIN}` };
     }
 
     async function addAiToGroup(groupId: string, ownerId: string, aiId: string): Promise<void> {
-      await context.db.insert(groupAis).values({ groupId, aiId, addedBy: ownerId });
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO group_ais ${sql.insert({
+            group_id: groupId,
+            ai_id: aiId,
+            added_by: ownerId,
+          })}`;
+        }),
+      );
     }
 
     function roomMessage(
@@ -5882,7 +6210,12 @@ describe('agent gateway', () => {
       }
 
       async function setAccepts(ai: SeededAi, accepts: boolean): Promise<void> {
-        await context.db.update(ais).set({ acceptsDelegation: accepts }).where(eq(ais.id, ai.aiId));
+        await testSql(context)(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            yield* sql`UPDATE ais SET accepts_delegation = ${accepts} WHERE id = ${ai.aiId}`;
+          }),
+        );
       }
 
       async function receiveOn(
@@ -6159,7 +6492,22 @@ describe('agent gateway', () => {
         ai: SeededAi,
         flags: { canDelegate?: boolean; acceptsDelegation?: boolean },
       ): Promise<void> {
-        await context.db.update(ais).set(flags).where(eq(ais.id, ai.aiId));
+        const changes: { can_delegate?: boolean; accepts_delegation?: boolean } = {};
+        if (flags.canDelegate !== undefined) changes.can_delegate = flags.canDelegate;
+        if (flags.acceptsDelegation !== undefined)
+          changes.accepts_delegation = flags.acceptsDelegation;
+        await testSql(context)(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            if (changes.can_delegate !== undefined) {
+              yield* sql`UPDATE ais SET can_delegate = ${changes.can_delegate} WHERE id = ${ai.aiId}`;
+            }
+            if (changes.accepts_delegation !== undefined) {
+              yield* sql`UPDATE ais SET accepts_delegation = ${changes.accepts_delegation}
+                WHERE id = ${ai.aiId}`;
+            }
+          }),
+        );
       }
 
       interface ScriptedCall {
@@ -6240,8 +6588,23 @@ describe('agent gateway', () => {
           .map((message) => message.content);
       }
 
-      function delegationRows() {
-        return context.db.select().from(aiDelegations);
+      interface DelegationRow {
+        id: string;
+        fromAiId: string;
+        toAiId: string;
+        status: string;
+        objective: string;
+        resultSummary: string | null;
+      }
+
+      function delegationRows(): Promise<readonly DelegationRow[]> {
+        return testSql(context)(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            return yield* sql<DelegationRow>`SELECT id, from_ai_id, to_ai_id, status,
+              objective, result_summary FROM ai_delegations`;
+          }),
+        );
       }
 
       it('delegates to an accepting AI, wakes it, and stores the completed reply', async () => {
@@ -6455,13 +6818,18 @@ describe('agent gateway', () => {
             }),
         });
         const [worker, other] = extras as [SeededAi, SeededAi];
-        await context.db.insert(aiDelegations).values({
-          id: taskId,
-          fromAiId: seeded.aiId,
-          toAiId: worker.aiId,
-          groupId,
-          objective: 'a stored task',
-        });
+        await testSql(context)(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            yield* sql`INSERT INTO ai_delegations ${sql.insert({
+              id: taskId,
+              from_ai_id: seeded.aiId,
+              to_ai_id: worker.aiId,
+              group_id: groupId,
+              objective: 'a stored task',
+            })}`;
+          }),
+        );
         await setFlags(other, { canDelegate: true });
         await setFlags(worker, { acceptsDelegation: true });
 
@@ -6496,15 +6864,20 @@ describe('agent gateway', () => {
             }),
         });
         const worker = extras[0]!;
-        await context.db.insert(aiDelegations).values({
-          id: taskId,
-          fromAiId: seeded.aiId,
-          toAiId: worker.aiId,
-          groupId,
-          objective: 'a stored task',
-          status: 'completed',
-          resultSummary: 'the report is ready',
-        });
+        await testSql(context)(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            yield* sql`INSERT INTO ai_delegations ${sql.insert({
+              id: taskId,
+              from_ai_id: seeded.aiId,
+              to_ai_id: worker.aiId,
+              group_id: groupId,
+              objective: 'a stored task',
+              status: 'completed',
+              result_summary: 'the report is ready',
+            })}`;
+          }),
+        );
         await setFlags(seeded, { canDelegate: true });
         await setFlags(worker, { acceptsDelegation: true });
 
@@ -6543,15 +6916,20 @@ describe('agent gateway', () => {
         const worker = extras[0]!;
         // The row is real and involves this AI, so the only reason to refuse
         // is the missing group context.
-        await context.db.insert(aiDelegations).values({
-          id: taskId,
-          fromAiId: seeded.aiId,
-          toAiId: worker.aiId,
-          groupId,
-          objective: 'a stored task',
-          status: 'completed',
-          resultSummary: 'the report is ready',
-        });
+        await testSql(context)(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            yield* sql`INSERT INTO ai_delegations ${sql.insert({
+              id: taskId,
+              from_ai_id: seeded.aiId,
+              to_ai_id: worker.aiId,
+              group_id: groupId,
+              objective: 'a stored task',
+              status: 'completed',
+              result_summary: 'the report is ready',
+            })}`;
+          }),
+        );
         await setFlags(seeded, { canDelegate: true });
         await setFlags(worker, { acceptsDelegation: true });
 
@@ -6610,9 +6988,12 @@ describe('agent gateway', () => {
 
         // The worker leaves the room, so the boss has no delegation targets:
         // the tool is not offered, but an improvised call still reads the row.
-        await context.db
-          .delete(groupAis)
-          .where(and(eq(groupAis.groupId, groupId), eq(groupAis.aiId, worker.aiId)));
+        await testSql(context)(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            yield* sql`DELETE FROM group_ais WHERE group_id = ${groupId} AND ai_id = ${worker.aiId}`;
+          }),
+        );
         emitGroupAi({ type: 'ai-removed', groupId, aiId: worker.aiId });
         await waitFor(() => workerCore.left.length === 1);
 
@@ -6652,15 +7033,20 @@ describe('agent gateway', () => {
             }),
         });
         const worker = extras[0]!;
-        await context.db.insert(aiDelegations).values({
-          id: taskId,
-          fromAiId: seeded.aiId,
-          toAiId: worker.aiId,
-          groupId,
-          objective: 'a stored task',
-          status: 'completed',
-          resultSummary: 'the report is ready',
-        });
+        await testSql(context)(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            yield* sql`INSERT INTO ai_delegations ${sql.insert({
+              id: taskId,
+              from_ai_id: seeded.aiId,
+              to_ai_id: worker.aiId,
+              group_id: groupId,
+              objective: 'a stored task',
+              status: 'completed',
+              result_summary: 'the report is ready',
+            })}`;
+          }),
+        );
         await setFlags(worker, { acceptsDelegation: true });
 
         const workerCore = await coreFor(cores, worker.aiJid);
@@ -6696,15 +7082,20 @@ describe('agent gateway', () => {
             }),
         });
         const [worker, other] = extras as [SeededAi, SeededAi];
-        await context.db.insert(aiDelegations).values({
-          id: taskId,
-          fromAiId: seeded.aiId,
-          toAiId: worker.aiId,
-          groupId,
-          objective: 'a stored task',
-          status: 'completed',
-          resultSummary: 'the report is ready',
-        });
+        await testSql(context)(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            yield* sql`INSERT INTO ai_delegations ${sql.insert({
+              id: taskId,
+              from_ai_id: seeded.aiId,
+              to_ai_id: worker.aiId,
+              group_id: groupId,
+              objective: 'a stored task',
+              status: 'completed',
+              result_summary: 'the report is ready',
+            })}`;
+          }),
+        );
 
         const otherCore = await coreFor(cores, other.aiJid);
         otherCore.receive(
@@ -6749,11 +7140,16 @@ describe('agent gateway', () => {
         // The worker already spent today's cap, but its baseline still reads
         // as zero, so the delta crosses the limit. The boss has no baseline
         // yet, so it records the current spend and runs.
-        await context.db.insert(aiDailySpend).values({
-          aiId: worker.aiId,
-          day: NOW.toISOString().slice(0, 10),
-          baselineUsd: '0.00',
-        });
+        await testSql(context)(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            yield* sql`INSERT INTO ai_daily_spend ${sql.insert({
+              ai_id: worker.aiId,
+              day: NOW.toISOString().slice(0, 10),
+              baseline_usd: '0.00',
+            })}`;
+          }),
+        );
         litellm.spendByKey.set('tok-1', 2);
 
         const bossCore = await coreFor(cores, seeded.aiJid);

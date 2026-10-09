@@ -10,7 +10,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0727](T-0727-approvals-b-tests-off-drizzle.md) | tests off drizzle: approvals (routes, rules) | todo | auto | T-0695 | |
-| [T-0728](T-0728-agents-gateway-tests-off-drizzle.md) | tests off drizzle: agents/gateway | todo | auto | T-0695 | |
 
 ## Follow-ups
 
@@ -758,3 +757,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0723](T-0723-actions-gateway-tests-off-drizzle.md) | tests off drizzle: actions/gateway | 2026-10-09 |
 | [T-0724](T-0724-ais-small-tests-off-drizzle.md) | tests off drizzle: ais (integration, usage, service) | 2026-10-09 |
 | [T-0726](T-0726-approvals-a-tests-off-drizzle.md) | tests off drizzle: approvals (sweepers, service) | 2026-10-09 |
+| [T-0728](T-0728-agents-gateway-tests-off-drizzle.md) | tests off drizzle: agents/gateway | 2026-10-09 |

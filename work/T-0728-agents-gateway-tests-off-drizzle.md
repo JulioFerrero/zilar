@@ -1,7 +1,7 @@
 ---
 id: T-0728
 title: "tests off drizzle (agents/gateway): replace every drizzle query in agents/gateway.test.ts with testSql(context) + effect/sql; drop the drizzle-orm and db/schema imports"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0728-agents-gateway-tests-off-drizzle
 model: auto
@@ -51,4 +51,43 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Replaced all 103 drizzle query sites in `apps/server/src/agents/gateway.test.ts`
+with `testSql(context)` + effect/sql, and removed the `drizzle-orm` and
+`../db/schema` imports. Seed inserts now use `sql.insert(...)` with snake_case
+keys (inserts that previously relied on drizzle JS-side `$defaultFn`/`$onUpdate`
+columns keep working because those tables' columns all have SQL defaults or are
+nullable); reads select only the columns each test uses with small local row
+types (e.g. `DelegationRow`, `{ persona: string }`, `{ text: string }`,
+`{ lo: number; hi: number; summary: string }`); updates/deletes became raw
+`UPDATE`/`DELETE` with bound parameters. The `setFlags` helper (dynamic
+`flags` object) now issues one `UPDATE` per key actually present. The
+`listenerEnabled`/`eagerness` spreads in `seedGroup` are preserved as
+snake_case key spreads inside `sql.insert`. Lines passing `db: context.db` to
+module functions are untouched. No test patches `context.db.transaction`, so
+spec item 5 needed no mock migration.
+
+Files changed:
+- `apps/server/src/agents/gateway.test.ts` (only test file)
+- `work/T-0728-agents-gateway-tests-off-drizzle.md` (status + this report)
+
+Commands and real results:
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot
+  src/agents/gateway.test.ts` before: 168 passed (159 `it` blocks, some run
+  parametrized sub-cases); after: 168 passed, 0 failed.
+- `git grep -n "drizzle-orm\|db/schema" -- apps/server/src/agents/gateway.test.ts`:
+  prints nothing (exit 1, no matches).
+- `pnpm gate`: GATE PASS — PASS install (frozen), PASS format, PASS lint,
+  PASS typecheck, PASS tests @zilar/server (37.2s); scope: every changed file
+  is inside the Allowed files.
+
+Deviations/problems: none in behavior; all assertions kept as-is. One
+typecheck fix during the gate: `delegationRows()` return type is
+`Promise<readonly DelegationRow[]>` because effect/sql rows are readonly.
+
+Security checklist: no secrets touched; deletes/updates keep the same scoping
+(group+user / topic+user / ai id predicates) as the drizzle versions; no new
+routes, caps, or audit entries.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. The pre-review was clean (packet head 96bac95a). There are 168 tests before and after. The lead checked all 17 updates and deletes: each keeps its `WHERE` from the drizzle original. The lead also rejected one request to run generated `/tmp` scripts; the final diff touches only the Allowed files.
