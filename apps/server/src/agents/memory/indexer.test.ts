@@ -1,18 +1,26 @@
 import { PGlite } from '@electric-sql/pglite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
-import { and, eq } from 'drizzle-orm';
-import {
-  aiMemoryMessages,
-  aiMemoryNodes,
-  aiMemoryState,
-  ais,
-  providerConnections,
-  user,
-} from '../../db/schema';
-import { createTestContext, type TestContext } from '../../test-support';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
+import { createTestContext, testSql, type TestContext } from '../../test-support';
 import type { ArchivePool, ArchiveRow } from '../../search/service';
 import { indexMemory } from './indexer';
+
+interface MemoryMessageRow {
+  seq: number;
+  messageId: string;
+  sender: string;
+  text: string;
+  at: Date;
+  deleted: boolean;
+}
+
+interface MemoryNodeRow {
+  lo: number;
+  hi: number;
+  summary: string;
+}
 
 // PGlite shapes the fake the way the real `archive` table is shaped (see
 // docs/SEARCH_NOTES.md), copied from media/indexer.test.ts: username/timestamp/
@@ -224,30 +232,37 @@ describe('indexMemory', () => {
     archive = pgliteArchivePool(archiveClient);
 
     const ownerId = randomUUID();
-    await context.db
-      .insert(user)
-      .values({ id: ownerId, name: 'Alice', email: `${ownerId}@example.com` });
     const connectionId = randomUUID();
-    await context.db.insert(providerConnections).values({
-      id: connectionId,
-      owner: ownerId,
-      provider: 'openai',
-      encryptedKey: 'sealed-placeholder',
-      label: null,
-    });
     aiId = randomUUID();
-    await context.db.insert(ais).values({
-      id: aiId,
-      owner: ownerId,
-      name: 'Helper',
-      template: 'dev',
-      persona: 'A persona',
-      providerConnectionId: connectionId,
-      model: 'gpt-4o-mini',
-      localpart: AI_LOCALPART,
-      jid: AI_BARE,
-      status: 'active',
-    });
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO "user" ${sql.insert({
+          id: ownerId,
+          name: 'Alice',
+          email: `${ownerId}@example.com`,
+        })}`;
+        yield* sql`INSERT INTO provider_connections ${sql.insert({
+          id: connectionId,
+          owner: ownerId,
+          provider: 'openai',
+          encrypted_key: 'sealed-placeholder',
+          label: null,
+        })}`;
+        yield* sql`INSERT INTO ais ${sql.insert({
+          id: aiId,
+          owner: ownerId,
+          name: 'Helper',
+          template: 'dev',
+          persona: 'A persona',
+          provider_connection_id: connectionId,
+          model: 'gpt-4o-mini',
+          localpart: AI_LOCALPART,
+          jid: AI_BARE,
+          status: 'active',
+        })}`;
+      }),
+    );
   });
 
   afterEach(async () => {
@@ -282,19 +297,25 @@ describe('indexMemory', () => {
     });
   }
 
-  async function rowsFor(chatKey: string) {
-    return context.db
-      .select()
-      .from(aiMemoryMessages)
-      .where(and(eq(aiMemoryMessages.aiId, aiId), eq(aiMemoryMessages.chatKey, chatKey)))
-      .orderBy(aiMemoryMessages.seq);
+  async function rowsFor(chatKey: string): Promise<readonly MemoryMessageRow[]> {
+    return testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<MemoryMessageRow>`SELECT seq, message_id, sender, text, at, deleted
+          FROM ai_memory_messages WHERE ai_id = ${aiId} AND chat_key = ${chatKey}
+          ORDER BY seq`;
+      }),
+    );
   }
 
-  async function nodesFor(chatKey: string) {
-    return context.db
-      .select()
-      .from(aiMemoryNodes)
-      .where(and(eq(aiMemoryNodes.aiId, aiId), eq(aiMemoryNodes.chatKey, chatKey)));
+  async function nodesFor(chatKey: string): Promise<readonly MemoryNodeRow[]> {
+    return testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<MemoryNodeRow>`SELECT lo, hi, summary
+          FROM ai_memory_nodes WHERE ai_id = ${aiId} AND chat_key = ${chatKey}`;
+      }),
+    );
   }
 
   it('mirrors a DM in order, with dense seqs and AI/owner senders', async () => {
@@ -315,11 +336,16 @@ describe('indexMemory', () => {
     expect(stored[0]?.at.toISOString()).toBe('2026-05-01T00:00:00.000Z');
     expect(stored.every((row) => !row.deleted)).toBe(true);
 
-    const state = await context.db
-      .select()
-      .from(aiMemoryState)
-      .where(and(eq(aiMemoryState.aiId, aiId), eq(aiMemoryState.chatKey, DM_CHAT_KEY)));
-    expect(state[0]?.indexedThroughMicros).toBe(at('2026-05-03T00:00:00Z'));
+    const [state] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{
+          indexedThroughMicros: number;
+        }>`SELECT indexed_through_micros::float8 AS indexed_through_micros
+          FROM ai_memory_state WHERE ai_id = ${aiId} AND chat_key = ${DM_CHAT_KEY}`;
+      }),
+    );
+    expect(state?.indexedThroughMicros).toBe(at('2026-05-03T00:00:00Z'));
   });
 
   it('defaults the DM sender to Owner when no name is given', async () => {
@@ -361,10 +387,13 @@ describe('indexMemory', () => {
     expect(await runDM()).toEqual({ read: 0, inserted: 0, done: true });
 
     // The unique key, not the cursor, dedups a forced-back read.
-    await context.db
-      .update(aiMemoryState)
-      .set({ indexedThroughMicros: 0 })
-      .where(and(eq(aiMemoryState.aiId, aiId), eq(aiMemoryState.chatKey, DM_CHAT_KEY)));
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`UPDATE ai_memory_state SET indexed_through_micros = 0
+          WHERE ai_id = ${aiId} AND chat_key = ${DM_CHAT_KEY}`;
+      }),
+    );
     expect(await runDM()).toEqual({ read: 1, inserted: 0, done: true });
     expect(await rowsFor(DM_CHAT_KEY)).toHaveLength(1);
   });
@@ -451,10 +480,15 @@ describe('indexMemory', () => {
         correctionMessage('o-1', 'new text', `${OWNER_BARE}/phone`),
       ),
     ]);
-    await context.db.insert(aiMemoryNodes).values([
-      { aiId, chatKey: DM_CHAT_KEY, lo: 0, hi: 16, summary: 'covers' },
-      { aiId, chatKey: DM_CHAT_KEY, lo: 16, hi: 32, summary: 'stays' },
-    ]);
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO ai_memory_nodes ${sql.insert([
+          { ai_id: aiId, chat_key: DM_CHAT_KEY, lo: 0, hi: 16, summary: 'covers' },
+          { ai_id: aiId, chat_key: DM_CHAT_KEY, lo: 16, hi: 32, summary: 'stays' },
+        ])}`;
+      }),
+    );
 
     const result = await runDM();
     expect(result).toEqual({ read: 3, inserted: 2, done: true });
@@ -474,9 +508,18 @@ describe('indexMemory', () => {
       dmSeed('o-1', '2026-05-01T00:00:00Z', 'secret', textMessage('secret', `${OWNER_BARE}/phone`)),
       dmSeed('r-1', '2026-05-02T00:00:00Z', '', retractMessage('o-1')),
     ]);
-    await context.db
-      .insert(aiMemoryNodes)
-      .values({ aiId, chatKey: DM_CHAT_KEY, lo: 0, hi: 16, summary: 'gone' });
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO ai_memory_nodes ${sql.insert({
+          ai_id: aiId,
+          chat_key: DM_CHAT_KEY,
+          lo: 0,
+          hi: 16,
+          summary: 'gone',
+        })}`;
+      }),
+    );
 
     const result = await runDM();
     expect(result).toEqual({ read: 2, inserted: 1, done: true });

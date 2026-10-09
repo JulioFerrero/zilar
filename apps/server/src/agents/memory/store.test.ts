@@ -1,15 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { and, eq } from 'drizzle-orm';
-import {
-  aiMemoryMessages,
-  aiMemoryNodes,
-  aiMemoryState,
-  ais,
-  providerConnections,
-  user,
-} from '../../db/schema';
-import { createTestContext, TEST_XMPP_DOMAIN, type TestContext } from '../../test-support';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
+import { createTestContext, testSql, TEST_XMPP_DOMAIN, type TestContext } from '../../test-support';
 import {
   MEMORY_FACTS_MAX,
   MEMORY_RECALL_MAX,
@@ -41,30 +34,37 @@ function lineFor(seq: number): string {
 
 async function seedAi(context: TestContext): Promise<string> {
   const ownerId = randomUUID();
-  await context.db
-    .insert(user)
-    .values({ id: ownerId, name: 'Owner', email: `${ownerId}@example.com` });
   const connectionId = randomUUID();
-  await context.db.insert(providerConnections).values({
-    id: connectionId,
-    owner: ownerId,
-    provider: 'openai',
-    encryptedKey: 'CHANGE_ME',
-    label: null,
-  });
   const aiId = randomUUID();
-  await context.db.insert(ais).values({
-    id: aiId,
-    owner: ownerId,
-    name: 'Memory AI',
-    template: 'dev',
-    persona: 'A persona',
-    providerConnectionId: connectionId,
-    model: 'gpt-4o-mini',
-    localpart: `ai-${aiId}`,
-    jid: `ai-${aiId}@${TEST_XMPP_DOMAIN}`,
-    status: 'active',
-  });
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO "user" ${sql.insert({
+        id: ownerId,
+        name: 'Owner',
+        email: `${ownerId}@example.com`,
+      })}`;
+      yield* sql`INSERT INTO provider_connections ${sql.insert({
+        id: connectionId,
+        owner: ownerId,
+        provider: 'openai',
+        encrypted_key: 'CHANGE_ME',
+        label: null,
+      })}`;
+      yield* sql`INSERT INTO ais ${sql.insert({
+        id: aiId,
+        owner: ownerId,
+        name: 'Memory AI',
+        template: 'dev',
+        persona: 'A persona',
+        provider_connection_id: connectionId,
+        model: 'gpt-4o-mini',
+        localpart: `ai-${aiId}`,
+        jid: `ai-${aiId}@${TEST_XMPP_DOMAIN}`,
+        status: 'active',
+      })}`;
+    }),
+  );
   return aiId;
 }
 
@@ -75,16 +75,21 @@ async function seedRows(
   count: number,
 ): Promise<void> {
   const values = Array.from({ length: count }, (_, seq) => ({
-    aiId,
-    chatKey,
+    ai_id: aiId,
+    chat_key: chatKey,
     seq,
-    messageId: `${chatKey}-m${seq}`,
+    message_id: `${chatKey}-m${seq}`,
     at: day(seq),
     sender: 'Bob',
     text: `m${seq}`,
     deleted: false,
   }));
-  await context.db.insert(aiMemoryMessages).values(values);
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO ai_memory_messages ${sql.insert(values)}`;
+    }),
+  );
 }
 
 async function seedTextRows(
@@ -93,17 +98,21 @@ async function seedTextRows(
   chatKey: string,
   texts: string[],
 ): Promise<void> {
-  await context.db.insert(aiMemoryMessages).values(
-    texts.map((text, seq) => ({
-      aiId,
-      chatKey,
-      seq,
-      messageId: `${chatKey}-t${seq}`,
-      at: day(seq),
-      sender: 'Bob',
-      text,
-      deleted: false,
-    })),
+  const values = texts.map((text, seq) => ({
+    ai_id: aiId,
+    chat_key: chatKey,
+    seq,
+    message_id: `${chatKey}-t${seq}`,
+    at: day(seq),
+    sender: 'Bob',
+    text,
+    deleted: false,
+  }));
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO ai_memory_messages ${sql.insert(values)}`;
+    }),
   );
 }
 
@@ -113,21 +122,25 @@ async function setFloor(
   chatKey: string,
   floor: number,
 ): Promise<void> {
-  await context.db
-    .insert(aiMemoryState)
-    .values({ aiId, chatKey, floorSeq: floor })
-    .onConflictDoUpdate({
-      target: [aiMemoryState.aiId, aiMemoryState.chatKey],
-      set: { floorSeq: floor },
-    });
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO ai_memory_state (ai_id, chat_key, floor_seq)
+        VALUES (${aiId}, ${chatKey}, ${floor})
+        ON CONFLICT (ai_id, chat_key) DO UPDATE SET floor_seq = EXCLUDED.floor_seq`;
+    }),
+  );
 }
 
 async function countNodes(context: TestContext, aiId: string, chatKey: string): Promise<number> {
-  const rows = await context.db
-    .select({ lo: aiMemoryNodes.lo })
-    .from(aiMemoryNodes)
-    .where(and(eq(aiMemoryNodes.aiId, aiId), eq(aiMemoryNodes.chatKey, chatKey)));
-  return rows.length;
+  const [row] = await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ total: number }>`SELECT count(*)::int AS total
+        FROM ai_memory_nodes WHERE ai_id = ${aiId} AND chat_key = ${chatKey}`;
+    }),
+  );
+  return row?.total ?? 0;
 }
 
 describe('memory store', () => {
@@ -180,13 +193,18 @@ describe('memory store', () => {
       const nodes = blocks
         .filter((block) => block.hi - block.lo >= 16)
         .map((block) => ({
-          aiId,
-          chatKey,
+          ai_id: aiId,
+          chat_key: chatKey,
           lo: block.lo,
           hi: block.hi,
           summary: `S${block.lo}-${block.hi}`,
         }));
-      await context.db.insert(aiMemoryNodes).values(nodes);
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO ai_memory_nodes ${sql.insert(nodes)}`;
+        }),
+      );
 
       const full = blocks.map((block) =>
         block.hi - block.lo === 1
@@ -269,16 +287,13 @@ describe('memory store', () => {
       const aiId = await seedAi(context);
       const chatKey = 'dm:a';
       await seedTextRows(context, aiId, chatKey, ['keep me', 'delete me', 'floor me']);
-      await context.db
-        .update(aiMemoryMessages)
-        .set({ deleted: true })
-        .where(
-          and(
-            eq(aiMemoryMessages.aiId, aiId),
-            eq(aiMemoryMessages.chatKey, chatKey),
-            eq(aiMemoryMessages.seq, 1),
-          ),
-        );
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`UPDATE ai_memory_messages SET deleted = true
+            WHERE ai_id = ${aiId} AND chat_key = ${chatKey} AND seq = 1`;
+        }),
+      );
       await setFloor(context, aiId, chatKey, 1);
       expect(await recallMemory(context.db, aiId, chatKey, 'me')).toEqual([
         lineFor(2).replace('m2', 'floor me'),
@@ -394,10 +409,13 @@ describe('memory store', () => {
       const chatKey = 'dm:a';
       await putNode(context.db, aiId, chatKey, { lo: 0, hi: 16 }, 'first');
       await putNode(context.db, aiId, chatKey, { lo: 0, hi: 16 }, 'second');
-      const rows = await context.db
-        .select({ summary: aiMemoryNodes.summary })
-        .from(aiMemoryNodes)
-        .where(and(eq(aiMemoryNodes.aiId, aiId), eq(aiMemoryNodes.chatKey, chatKey)));
+      const rows = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ summary: string }>`SELECT summary FROM ai_memory_nodes
+            WHERE ai_id = ${aiId} AND chat_key = ${chatKey}`;
+        }),
+      );
       expect(rows).toEqual([{ summary: 'first' }]);
     });
 
@@ -406,26 +424,26 @@ describe('memory store', () => {
       const chatKey = 'dm:a';
 
       await putNode(context.db, aiId, chatKey, { lo: 0, hi: 16 }, 'x'.repeat(300));
-      const [stored] = await context.db
-        .select({ summary: aiMemoryNodes.summary })
-        .from(aiMemoryNodes)
-        .where(and(eq(aiMemoryNodes.aiId, aiId), eq(aiMemoryNodes.chatKey, chatKey)));
+      const [stored] = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ summary: string }>`SELECT summary FROM ai_memory_nodes
+            WHERE ai_id = ${aiId} AND chat_key = ${chatKey}`;
+        }),
+      );
       expect(stored?.summary).toBe('x'.repeat(280));
 
       // An astral character straddling the cut: slice(0, 280) leaves its high
       // half, which must not survive on its own.
       const cutSummary = `${'a'.repeat(279)}\u{1F600}tail`;
       await putNode(context.db, aiId, chatKey, { lo: 16, hi: 32 }, cutSummary);
-      const rows = await context.db
-        .select({ summary: aiMemoryNodes.summary })
-        .from(aiMemoryNodes)
-        .where(
-          and(
-            eq(aiMemoryNodes.aiId, aiId),
-            eq(aiMemoryNodes.chatKey, chatKey),
-            eq(aiMemoryNodes.lo, 16),
-          ),
-        );
+      const rows = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ summary: string }>`SELECT summary FROM ai_memory_nodes
+            WHERE ai_id = ${aiId} AND chat_key = ${chatKey} AND lo = 16`;
+        }),
+      );
       expect(rows[0]?.summary).toBe('a'.repeat(279));
       expect(rows[0]?.summary ?? '').not.toMatch(/[\uD800-\uDBFF]$/);
     });
@@ -470,15 +488,21 @@ describe('memory store', () => {
 
       expect(await countNodes(context, aiId, chatKey)).toBe(0);
       expect(await listFacts(context.db, aiId, chatKey)).toEqual([]);
-      const [state] = await context.db
-        .select({ floorSeq: aiMemoryState.floorSeq })
-        .from(aiMemoryState)
-        .where(and(eq(aiMemoryState.aiId, aiId), eq(aiMemoryState.chatKey, chatKey)));
+      const [state] = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ floorSeq: number }>`SELECT floor_seq FROM ai_memory_state
+            WHERE ai_id = ${aiId} AND chat_key = ${chatKey}`;
+        }),
+      );
       expect(state?.floorSeq).toBe(82);
-      const messages = await context.db
-        .select({ seq: aiMemoryMessages.seq })
-        .from(aiMemoryMessages)
-        .where(and(eq(aiMemoryMessages.aiId, aiId), eq(aiMemoryMessages.chatKey, chatKey)));
+      const messages = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ seq: number }>`SELECT seq FROM ai_memory_messages
+            WHERE ai_id = ${aiId} AND chat_key = ${chatKey}`;
+        }),
+      );
       expect(messages).toHaveLength(82);
       expect(await renderMemoryBlock(context.db, aiId, chatKey)).toEqual([]);
     });

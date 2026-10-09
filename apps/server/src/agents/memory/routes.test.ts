@@ -1,19 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { eq } from 'drizzle-orm';
-import {
-  aiMemoryFacts,
-  aiMemoryMessages,
-  aiMemoryState,
-  ais,
-  providerConnections,
-} from '../../db/schema';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
 import {
   bootstrapUser,
   contactOf,
   createTestContext,
   expectedJid,
   testApp,
+  testSql,
   TEST_BASE_URL,
   TEST_XMPP_DOMAIN,
   type TestApp,
@@ -67,49 +62,68 @@ describe('ai-memory routes', () => {
 
   async function makeAi(ownerId: string): Promise<AiRef> {
     const connectionId = randomUUID();
-    await context.db.insert(providerConnections).values({
-      id: connectionId,
-      owner: ownerId,
-      provider: 'openai',
-      encryptedKey: 'not-a-real-key',
-      label: null,
-    });
     const id = randomUUID();
     const localpart = `ai-${id}`;
     const jid = `${localpart}@${TEST_XMPP_DOMAIN}`;
-    await context.db.insert(ais).values({
-      id,
-      owner: ownerId,
-      name: 'Helper',
-      template: 'dev',
-      persona: 'A persona',
-      providerConnectionId: connectionId,
-      model: 'gpt-4o-mini',
-      localpart,
-      jid,
-      status: 'active',
-    });
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO provider_connections ${sql.insert({
+          id: connectionId,
+          owner: ownerId,
+          provider: 'openai',
+          encrypted_key: 'not-a-real-key',
+          label: null,
+        })}`;
+        yield* sql`INSERT INTO ais ${sql.insert({
+          id,
+          owner: ownerId,
+          name: 'Helper',
+          template: 'dev',
+          persona: 'A persona',
+          provider_connection_id: connectionId,
+          model: 'gpt-4o-mini',
+          localpart,
+          jid,
+          status: 'active',
+        })}`;
+      }),
+    );
     return { id, jid };
   }
 
   async function seedFact(aiId: string, chatKey: string, text: string): Promise<string> {
     const id = randomUUID();
-    await context.db.insert(aiMemoryFacts).values({ id, aiId, chatKey, text });
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO ai_memory_facts ${sql.insert({
+          id,
+          ai_id: aiId,
+          chat_key: chatKey,
+          text,
+        })}`;
+      }),
+    );
     return id;
   }
 
   async function seedMessages(aiId: string, chatKey: string, count: number): Promise<void> {
     const at = new Date('2026-01-01T00:00:00.000Z');
-    await context.db.insert(aiMemoryMessages).values(
-      Array.from({ length: count }, (_, seq) => ({
-        aiId,
-        chatKey,
-        seq,
-        messageId: `m-${seq}`,
-        at,
-        sender: 'Owner',
-        text: `message ${seq}`,
-      })),
+    const values = Array.from({ length: count }, (_, seq) => ({
+      ai_id: aiId,
+      chat_key: chatKey,
+      seq,
+      message_id: `m-${seq}`,
+      at,
+      sender: 'Owner',
+      text: `message ${seq}`,
+    }));
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO ai_memory_messages ${sql.insert(values)}`;
+      }),
     );
   }
 
@@ -176,12 +190,20 @@ describe('ai-memory routes', () => {
     expect(cleared.status).toBe(200);
     expect(await cleared.json()).toEqual({ ok: true });
 
-    const [state] = await context.db
-      .select({ floorSeq: aiMemoryState.floorSeq })
-      .from(aiMemoryState)
-      .where(eq(aiMemoryState.aiId, ai.id));
+    const [state] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ floorSeq: number }>`SELECT floor_seq FROM ai_memory_state
+          WHERE ai_id = ${ai.id}`;
+      }),
+    );
     expect(state?.floorSeq).toBe(3);
-    const facts = await context.db.select().from(aiMemoryFacts).where(eq(aiMemoryFacts.id, keptId));
+    const facts = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ id: string }>`SELECT id FROM ai_memory_facts WHERE id = ${keptId}`;
+      }),
+    );
     expect(facts).toHaveLength(0);
   });
 
@@ -197,7 +219,12 @@ describe('ai-memory routes', () => {
     expect((await clearMemoryRequest(other.cookie, ai.jid, ai.id)).status).toBe(404);
     // Nothing was deleted by the failed attempts.
     expect(
-      await context.db.select().from(aiMemoryFacts).where(eq(aiMemoryFacts.id, factId)),
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ id: string }>`SELECT id FROM ai_memory_facts WHERE id = ${factId}`;
+        }),
+      ),
     ).toHaveLength(1);
   });
 
@@ -275,7 +302,12 @@ describe('ai-memory routes', () => {
     const otherFact = await seedFact(otherAi.id, chatKey, 'another AI fact');
     expect((await deleteFactRequest(owner.cookie, ai.jid, ai.id, otherFact)).status).toBe(404);
     expect(
-      await context.db.select().from(aiMemoryFacts).where(eq(aiMemoryFacts.id, otherFact)),
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ id: string }>`SELECT id FROM ai_memory_facts WHERE id = ${otherFact}`;
+        }),
+      ),
     ).toHaveLength(1);
   });
 

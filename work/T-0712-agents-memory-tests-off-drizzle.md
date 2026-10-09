@@ -1,7 +1,7 @@
 ---
 id: T-0712
 title: "tests off drizzle (agents/memory): replace every drizzle query in agents/memory/cleanup.test.ts, agents/memory/compactor.test.ts, agents/memory/indexer.test.ts, agents/memory/routes.test.ts, agents/memory/store.test.ts with testSql(context) + effect/sql; drop the drizzle-orm and db/schema imports"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0712-agents-memory-tests-off-drizzle
 model: auto
@@ -54,4 +54,57 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+Replaced every drizzle query in the five `agents/memory` test files with `testSql(context)` + `effect/sql`, keeping the same rows, values, order and assertions. Removed the `drizzle-orm` and `../../db/schema` imports from all five. The lines that pass `context.db` to a module function (`compactMemory({ db: context.db, … })`, `claimHandle`-style calls, `sqlRuntimeFor(context.db).runPromise(…)` in cleanup.test.ts) were left unchanged.
+
+Conventions followed (per the spec and `pins/pins.test.ts` / `chats/chats.test.ts`):
+- SQL names snake_case columns; results come back camelCased via `transformResultNames`.
+- Seeding uses `sql\`INSERT INTO <table> ${sql.insert({…})}\`` with snake_case keys (bulk rows use `sql.insert([…])`); `"user"` is quoted; `ai_limits` money values are passed as strings.
+- Timestamps are passed as `Date` objects (`at`, `created_at`), matching the production `indexer.ts` insert; `now`/`DEFAULT` columns are omitted.
+- Counts use `count(*)::int AS total`.
+- `indexed_through_micros` (bigint column) is read as `indexed_through_micros::float8 AS indexed_through_micros` so the assertion sees a number, mirroring `media/indexer.test.ts`.
+- The `ai_memory_messages.at` column reads back as a JS `Date` from PGlite (verified directly against `@electric-sql/pglite`), so `stored[0]?.at.toISOString()` was kept as-is.
+- `rowsFor`/`nodesFor` in `indexer.test.ts` return `readonly` row arrays because `sql<T>` yields `ReadonlyArray<T>`.
+- Local row interfaces (`MemoryMessageRow`, `MemoryNodeRow`) were added in `indexer.test.ts`; other files select single columns inline.
+
+### Files changed
+- `apps/server/src/agents/memory/cleanup.test.ts`
+- `apps/server/src/agents/memory/compactor.test.ts`
+- `apps/server/src/agents/memory/indexer.test.ts`
+- `apps/server/src/agents/memory/routes.test.ts`
+- `apps/server/src/agents/memory/store.test.ts`
+- `work/T-0712-agents-memory-tests-off-drizzle.md` (status + this Report)
+
+### Commands and real results
+- `pnpm install` → `Done in 11.9s using pnpm v10.32.1` (warnings about an unrelated mobile peer dep).
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot <the five files>` → `Test Files 5 passed (5)`, `Tests 50 passed (50)`, 44.05s.
+- `git grep -n "drizzle-orm\|db/schema" -- <the five files>` → no output (exit 1). Acceptance met.
+- `pnpm gate` (final run) summary:
+  ```
+  gate: 6 changed file(s) against main
+  PASS  install (frozen)  (1.0s)
+  PASS  format  (22.7s)
+  PASS  lint  (0.5s)
+  PASS  typecheck  (2.9s)
+  PASS  tests @zilar/server  (48.2s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Tests: before / after
+Unchanged, no tests added or removed. Counts from `git show HEAD:<file> | grep -c "  it("`:
+- cleanup: 4 before / 4 after
+- compactor: 5 before / 5 after
+- indexer: 10 before / 10 after
+- routes: 7 before / 7 after
+- store: 24 before / 24 after
+- Total: 50 before / 50 after.
+
+### Deviations / notes
+- Two gate iterations were needed: the first failed `format` on `indexer.test.ts`; I ran `prettier --write` on that one file. The second failed `typecheck` with `TS4104` (readonly array), fixed by typing `rowsFor`/`nodesFor` as `Promise<readonly …[]>`. The third gate run passed.
+- No changes to assertion meaning: the only value-type adaptations are the `::float8` cast on `indexed_through_micros` and passing ISO/`Date` timestamp values, both preserving the checked values.
+- No open questions.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. The pre-review was clean (packet head 21c26a80). All five agents/memory test files are on `testSql`.
