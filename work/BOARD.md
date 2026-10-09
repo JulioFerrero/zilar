@@ -9,6 +9,9 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
+| [T-0757](T-0757-watch-claude-tasks.md) | lead watch shows Claude-subagent tasks from the board | in-progress | haiku-5.5 | | Julio asked 10-09 |
+| [T-0758](T-0758-effect-map-rule.md) | R1: the Effect map measures the 100% rule | in-progress | haiku-5.5 | | effect-100-plan Phase 0 |
+| [T-0759](T-0759-web-effect-runtime.md) | F1: web Effect runtime, ApiFailure, fromApi | in-progress | haiku-5.5 | | effect-100-plan Phase 1 |
 
 ## Follow-ups
 

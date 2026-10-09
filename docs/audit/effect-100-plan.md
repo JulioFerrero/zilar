@@ -486,6 +486,11 @@ Coverage is Effect lines / (Effect lines + failing lines). The jump in Phase 2 i
 
 ## 6. Decisions for Julio
 
+**Decided on 2026-10-09:**
+- **Recommendations accepted:** D1 to D6, D8 and D9, as written in the table below.
+- **D7 goes the other way:** `packages/devtools/**` is **exempt**, so tasks H4 to H12 are dropped. The R1 exempt list adds `packages/devtools/**`.
+- **Still in scope:** `scripts/` (H13) and `apps/runner` with `packages/runner-tunnel` (H1 to H3).
+
 | # | Question | My recommendation | If different |
 | --- | --- | --- | --- |
 | D1 | Is "100%" the Tier A rule (no failing file), with Promise edges (Tier B, 130 files) only tracked? | Yes. Tier B is how the server was converted on purpose (`docs/EFFECT_GUIDE.md:12-32`). | Appendix B (Phase 6) becomes mandatory: about 27 more tasks, 12 to 14 days (unverified). |
