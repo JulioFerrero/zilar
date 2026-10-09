@@ -2,6 +2,15 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-09 15:05 UTC: 17 Effect-plan tasks merged today; coverage at 48% and climbing**
+- **Merged since 14:50:**
+  - server: T-0764 (S8), T-0770 (R2 markers), T-0771 (S5a sandbox host fetch);
+  - web: T-0765 (R3 URL helper), T-0766 (WU1 hooks), T-0767 (WU6 + WU14 pages);
+  - tooling: T-0768 (R6 ratchet: the gate now fails on a new or regressed needs-effect file), T-0774 (CI on main no longer cancels a running check);
+  - xmpp-core: T-0769 (X2a timers as fibers). The lead ran the integration tests on local ejabberd after X2a: 4 of 4 pass, including stream management.
+- **Running:** T-0772 (WU2), T-0773 (WU22), T-0775 (WU7), T-0776 (WU8), T-0777 (X2b xmpp Deferreds).
+- **Deploy:** main has not been deployed since 13:55 (`73fae1bf`). Before the next deploy, the xmpp-core changes (X1, X2a, X2b) need Julio's live messaging and reconnect check, or the lead deploys only after he OKs it.
+
 **2026-10-09 14:50 UTC: the 100% Effect plan is running (`docs/audit/effect-100-plan.md`, T-0753)**
 - **Julio's decisions:** he accepted D1-D6, D8 and D9; D7 makes `packages/devtools` exempt, so H4-H12 are dropped.
 - **Measure:** coverage 47.2%, as Effect lines / (Effect + needs-effect lines), from `pnpm effect:map` on `a7abe70f`. The Pages map shows the same rule (T-0758).
