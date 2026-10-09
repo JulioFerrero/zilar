@@ -91,7 +91,8 @@ export function createRoutineScheduler(
   return {
     start(): void {
       // First run after one interval, not at boot, so startup is never
-      // blocked. `index.ts` starts the scheduler after `serve()` resolves.
+      // blocked. `index.ts` starts the scheduler after the edge server is
+      // listening (`serveEdgeOnNode` in `index.ts`).
       if (closed || fiber !== null) {
         return;
       }

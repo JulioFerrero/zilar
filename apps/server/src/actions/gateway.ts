@@ -196,9 +196,10 @@ export function startRecoveryStuckTimer({
   }
 
   // First run after one interval, not at boot. `index.ts` starts the
-  // recovery loop after `serve()` resolves so the API is already
-  // listening and the timer delay never blocks startup. Callers that
-  // want an immediate sweep can call `gateway.recoverStuck()` themselves.
+  // recovery loop after the edge server is listening (`serveEdgeOnNode` in
+  // `index.ts`) so the API is already listening and the timer delay never
+  // blocks startup. Callers that want an immediate sweep can call
+  // `gateway.recoverStuck()` themselves.
   fiber = Effect.runFork(loop());
 
   return {
