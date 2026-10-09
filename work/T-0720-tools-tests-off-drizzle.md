@@ -1,7 +1,7 @@
 ---
 id: T-0720
 title: "tests off drizzle (tools): replace every drizzle query in tools/routes.test.ts, tools/service.test.ts, tools/adapters.test.ts with testSql(context) + effect/sql; drop the drizzle-orm and db/schema imports"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0720-tools-tests-off-drizzle
 model: auto
@@ -53,4 +53,27 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Replaced every drizzle query in the three tools test files with `testSql(context)` + effect/sql, and dropped the `drizzle-orm` and `../db/schema` imports. Same rows, values, order and assertions; selects only the columns each test reads, with small local row types (`AuditRow`, `AuditSubjectRow`, `ToolVersionRow`, `ToolRunRow`).
+
+- `apps/server/src/tools/routes.test.ts`: `seedAi`/`seedGroup` and the two private-topic inserts now use `INSERT INTO provider_connections/ais/ai_limits/groups/group_members/group_ais/topics/topic_members` (snake_case columns, `NULL` omitted for `label`); the three `audit_log` reads are `SELECT action, detail FROM audit_log`; the `ais` status flip is `UPDATE ais SET status = 'stopped' WHERE id = ...`.
+- `apps/server/src/tools/service.test.ts`: same seed conversion plus `seedTopic`; version reads are `SELECT version ... WHERE tool_id`; history-immutability reads select content columns (`id, tool_id, version, source, hosts, message, created_by` / run-row content columns) instead of `select *`; `deleted_at`, run-id and audit reads (incl. `subject_id, actor_user_id, ai_id` for the created/updated test) select only what the test reads. Kept the `sqlRuntimeFor` import (still used by the two AI-removal tests) and all `context.db` args passed into module functions.
+- `apps/server/src/tools/adapters.test.ts`: same seed conversion plus `seedTopic`; audit reads are `SELECT action, detail` (secrets-absence test) and `SELECT action, subject_id, detail` (revoke test, which asserts `subjectId`).
+
+No test patched `context.db.transaction` or another drizzle method (verified with grep: no `transaction`/`vi.mock` in the tools tests), so spec item 5 needed no `sqlRuntimeFor`-mock move. All columns drizzle defaulted in JS (`label: null`) were handled in raw SQL (`label` omitted/nullable); every other omitted column has a SQL default. No assertion meaning changed.
+
+Commands (real results):
+- Before: `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/tools/routes.test.ts src/tools/service.test.ts src/tools/adapters.test.ts` → 3 files, 92 passed.
+- After (same command): 3 files, 92 passed.
+- Acceptance grep `git grep -n "drizzle-orm\|db/schema" -- <three files>` → prints nothing; no `context.db.insert/select/update/delete` remain.
+- `pnpm gate` (from repo root):
+  - `gate: 4 changed file(s) against main`
+  - `PASS install (frozen)`, `PASS format`, `PASS lint`, `PASS typecheck`, `PASS tests @zilar/server`
+  - `scope: every changed file is inside the Allowed files`
+  - `GATE PASS`
+- One hiccup: first gate run failed on `format` (service.test.ts long SQL lines); fixed with `prettier --write` on that file, re-ran gate → PASS. No deviations from the spec; no open questions.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. The pre-review was clean (packet head 56ee51b7), and all 92 tools tests pass. Two nits are accepted:
+- an `AuditRow` type names a column that one query does not select;
+- the history-immutability checks no longer compare `created_at`, which no path touches.
