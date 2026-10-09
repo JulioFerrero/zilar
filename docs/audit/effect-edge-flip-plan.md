@@ -168,9 +168,10 @@ Today the only reason for `SOCKET_ADDRESS_HEADER` is that Hono's
 `getConnInfo(context)` is the only socket source (`effect/http.ts:176-183`), and
 `forwardRequest` re-stamps it (`effect/http.ts:168-170`). With
 `NodeHttpServer.layer`, `HttpServerRequest.remoteAddress` is already the real
-socket address (`HttpIncomingMessage.d.ts:59`); `machines/api.ts`,
-`invite-links/api.ts`, `setup/api.ts` and their `clientIpFrom` calls
-(`apps/server/src/http/client-ip.ts:34`) read it directly. The
+socket address (`HttpIncomingMessage.d.ts:59`). `machines/api.ts:494` calls
+`socketAddressOf` directly in its limiter; `invite-links/api.ts` and
+`setup/api.ts` go through `clientIpFrom` (`apps/server/src/http/client-ip.ts:34`).
+All three read it directly afterwards. The
 `SOCKET_ADDRESS_HEADER` strip-then-set logic becomes unnecessary and is deleted.
 
 ### 2.3 How tests call the app afterwards
@@ -271,6 +272,13 @@ B1.3 lands. B1.8 and B1.9 are serial tails.
 ---
 
 ## 5. Decisions for Julio
+
+**Lead decisions, 2026-10-09 (Julio asleep, following his "Effect HTTP replaces Hono"):**
+- **D1:** add `@effect/platform-node@4.0.2`. `npm view` shows it exists, with peer `effect ^4.0.2`.
+- **D2:** B1.9 lands after A12, and A12 stays Julio's call.
+- **D3:** architecture A; B is a follow-up.
+
+Julio may overrule any of these.
 
 - **D1 — add `@effect/platform-node@4.0.2`?** The spec named `NodeHttpServer`,
   but it is not in the installed `effect` package, and `@effect/platform-node`
