@@ -14,6 +14,7 @@ import { useEffect } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { useAuthStore } from '@/auth/session';
+import { mobileRuntime } from '@/lib/effect/runtime';
 import { NAV_THEME } from '@/lib/theme';
 import { ChatStoreProvider } from '@/store/chat-store-provider';
 
@@ -22,6 +23,10 @@ export { ErrorBoundary } from 'expo-router';
 // D24 is dark only: keep the splash up until Geist is loaded, then force dark
 // whatever the system setting is.
 void SplashScreen.preventAutoHideAsync().catch(() => {});
+
+// Keeps the Effect runtime (and FetchHttpClient) in the bundle so the Hermes
+// export checks it; the mobile Effect tasks build on it (T-0800, decision D6).
+void mobileRuntime;
 
 /** Restores the persisted session once, on app start. */
 function SessionBootstrap() {

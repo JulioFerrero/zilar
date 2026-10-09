@@ -1,7 +1,7 @@
 ---
 id: T-0800
 title: "F3 + F4: mobile Effect toolkit — apps/mobile/src/lib/effect/{runtime,errors,api-effect,use-action,use-query}.ts mirroring the web toolkit, FetchHttpClient checked on Hermes via expo export (decision D6), tests for each"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0800-mobile-effect-toolkit
 model: auto
@@ -59,4 +59,24 @@ pnpm --filter @zilar/mobile build
 
 ## Report (written by the worker when done)
 
+Wave mode: only the task's Checks were run, no `pnpm gate`.
+
+- **effect:map kinds:** `runtime.ts`, `errors.ts`, `api-effect.ts`, `use-action.ts`, `use-query.ts` are all `effect`. `apps/mobile/src/app/_layout.tsx` is `needs-effect`; it was already, because of its existing `void bootstrap()` and `.catch(() => {})`. I only added an import and `void mobileRuntime;`.
+- **Tests:** none before (new files). After: 4 files, 52 tests (errors 7, api-effect 5, use-action 26, use-query 14), passed in 3 of 3 runs of `pnpm --filter @zilar/mobile exec vitest run --reporter=dot src/lib/effect`.
+- **Typecheck:** `pnpm --filter @zilar/mobile exec tsc --noEmit -p .` is clean (exit 0, no output).
+- **Bundle (`expo export`, hbc):**
+  - Before: `dist` 28M; android 12,678,012 bytes, ios 12,462,943 bytes.
+  - After: `dist` 29M; android 12,706,338 bytes (+28 KB), ios 12,491,186 bytes (+28 KB).
+  - `apps/mobile/dist` is gitignored; I deleted it after each run.
+- **D6 outcome:** `expo export` for ios and android succeeded with `FetchHttpClient.layer`, so `mobileLayer = FetchHttpClient.layer` stays (no `Layer.empty` fallback). The export only proves the bundle builds; the lead's `phone:smoke` checks it on Hermes at runtime.
+- **Behaviour differences:** none for existing code; the toolkit is new and nothing calls it yet except the `void mobileRuntime` reference.
+  - `toApiFailure` is duck-typed, as the spec says: any object with numeric `status` and string `code` and `message` is copied. `detail` is taken when it is a record, else `{}` (web copies `ApiError.detail`; mobile api errors have none).
+  - The hooks are a verbatim copy of the web ones, using `mobileAtomRuntime`.
+- **Tests without testing-library:** mobile has no `@testing-library/react`, and adding a dependency is not allowed. The two hook tests use `// @vitest-environment jsdom` with `react-dom/client` through `createRequire`, the pattern already in `store/atomStore.test.ts`, plus a small inline `renderHook` and `waitFor` (act-wrapped polling). The helper is duplicated in the two test files because only the Allowed files may change. The test cases are the web ones, ported.
+- **Unsure:** nothing important. The duplicated test helper could move to a shared file in a later task.
+
+
 ## Review (written by Claude)
+
+**2026-10-09, lead (wave 1):** approved. The lead reviewed the Report. The wave 1 combined check (all 12 branches on one tree, by hand) passed the whole-repo typecheck and every package suite: web 1916, server 2279, mobile 2222, xmpp-core 245, runner 63, runner-tunnel 71, devtools 796 after the T-0799 fix, chat-core 174, protocol 174.
+- Worker: Sonnet 5.5. The mobile toolkit mirrors the web one; 52 tests. D6: `expo export` passes with FetchHttpClient (+28 KB per bundle). The lead runs phone:smoke with wave 2.

@@ -11,7 +11,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0792](T-0792-gateway-s2.md) | S2: AI gateway part 2 on Effect | in-progress | sonnet-5.5 | | wave 1 |
 | [T-0799](T-0799-lead-batch.md) | lead batch: one combined check per wave | in-progress | sonnet-5.5 | | wave 1 |
-| [T-0800](T-0800-mobile-effect-toolkit.md) | F3 + F4: mobile Effect toolkit | in-progress | sonnet-5.5 | | wave 1 |
 | [T-0801](T-0801-xmpp-core-effect.md) | X3-X7: xmpp-core Effect core | in-progress | sonnet-5.5 | | wave 1; Julio checks messaging live before deploy |
 | [T-0802](T-0802-mobile-r4-parse-markers.md) | R4: mobile parses and markers | in-progress | haiku-5.5 | | wave 1 |
 | [T-0803](T-0803-mobile-r5-mock-gate.md) | R5: mobile mock env in one place | in-progress | haiku-5.5 | | wave 1 |
@@ -838,3 +837,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0798](T-0798-runner-tunnel-mux.md) | H1: runner-tunnel mux on Effect | 2026-10-09 |
 | [T-0797](T-0797-push-sender-component.md) | S6: push component and sender on Effect | 2026-10-09 |
 | [T-0796](T-0796-sandbox-tool-worker.md) | S5b: sandbox tool worker on Effect | 2026-10-09 |
+| [T-0800](T-0800-mobile-effect-toolkit.md) | F3 + F4: mobile Effect toolkit | 2026-10-09 |
