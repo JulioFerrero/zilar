@@ -2,6 +2,12 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-09 09:40 UTC:**
+- **Backgrounds on the volume (Julio said yes):** the lead added the service variable `BACKGROUND_STORAGE_DIR=/data/avatars/backgrounds`, which Coolify injects into the containers, so the compose body is not edited. A restart on the same pinned image followed (about 25 s down).
+- **Result:** the server created `/data/avatars/backgrounds` on the `avatar-data` volume, and the container-layer warning is gone. Health is ok, web returns 200 and `/api/me` returns 401.
+- **S3 (Julio chose "backups + plan app storage"):** audit T-0747 is running and writes `docs/audit/s3-storage-plan.md`. Off-host backups then need Julio's bucket and keys.
+- **Live sign-in:** the lead does not sign in on the live site, even with its own account. A local test copy is the only place the lead logs in. Julio signs in himself, and the lead watches the logs.
+
 **2026-10-09 08:59 UTC: LIVE on `748bbae7`**
 - **The deploy:** the lead set the service variable `IMAGE_TAG=sha-748bbae78c44` and restarted with `pull_latest`. The swap took about 20 s.
 - **The new server container** is `3e7eb5a3f0ad`. It applied the pending migrations (the 0043 notice is in the log), logged "listening", and shows no errors.
