@@ -1,7 +1,13 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router';
+import { Effect } from 'effect';
+import { AsyncResult } from 'effect/reactivity';
 import { MessageSquare, Pencil, Plus, Trash2, Zap } from 'lucide-react';
-import { deleteAi, listAis, listConnections, type PublicAi } from '@/lib/api';
+import { ApiError, deleteAi, listAis, listConnections, type PublicAi } from '@/lib/api';
+import { fromApi } from '@/lib/effect/api-effect';
+import type { ApiFailure } from '@/lib/effect/errors';
+import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { useQuery } from '@/lib/effect/use-query';
 import { AiBadge } from '@/components/AiBadge';
 import { Avatar } from '@/components/Avatar';
 import { FieldError } from '@/components/ais/AiPageShell';
@@ -14,79 +20,50 @@ import { formatLimit } from '@/components/ais/limits';
 import { NewAiDialog } from '@/components/ais/NewAiDialog';
 import { templateLabel } from '@/components/ais/templates';
 
-type PageStatus = 'loading' | 'ready' | 'error';
-
 /** `$2` -> `$2.00`. Server amounts are plain USD numbers. */
 function formatUsd(value: number): string {
   return `$${value.toFixed(2)}`;
 }
 
+/** The last failure, hidden while a new call runs (the page cleared it at once before). */
+function shownFailure<A, E>(state: AsyncResult.AsyncResult<A, E>): E | undefined {
+  return isWaiting(state) ? undefined : failureOf(state);
+}
+
+/**
+ * The words for an api.ts failure, through describeAiError so each server code
+ * keeps its wording. A call that never reached the server gets the fallback.
+ */
+function aiFailureText(failure: ApiFailure, fallback: string): string {
+  if (failure.code === 'unknown_error') {
+    return fallback;
+  }
+  return describeAiError(
+    new ApiError(failure.status, failure.code, failure.message, failure.detail),
+    fallback,
+  ).message;
+}
+
 export function AisPage() {
   const navigate = useNavigate();
 
-  const [ais, setAis] = useState<PublicAi[]>([]);
-  const [providers, setProviders] = useState<Record<string, string>>({});
-  const [status, setStatus] = useState<PageStatus>('loading');
-  const [errorMessage, setErrorMessage] = useState('');
+  const [list, reload] = useQuery(() => fromApi(() => listAis()), []);
+  const ais = AsyncResult.isSuccess(list) ? list.value : undefined;
+  const [providers] = useQuery(() => providerNamesOf(ais ?? []), [ais]);
+  const providerNames: Record<string, string> = AsyncResult.isSuccess(providers)
+    ? providers.value
+    : {};
+
+  const [removedIds, setRemovedIds] = useState<ReadonlySet<string>>(() => new Set());
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
 
-  const [confirmingId, setConfirmingId] = useState<string | null>(null);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [actionError, setActionError] = useState('');
+  const loadError = shownFailure(list);
+  const visible = (ais ?? []).filter((ai) => !removedIds.has(ai.id));
 
-  const load = useCallback(async () => {
-    try {
-      const list = await listAis();
-      setAis(list);
-      setStatus('ready');
-      setErrorMessage('');
-      void loadProviderNames(list, setProviders);
-    } catch (error) {
-      setErrorMessage(describeAiError(error, 'Could not load your AIs').message);
-      setStatus('error');
-    }
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-    void listAis()
-      .then((list) => {
-        if (!active) {
-          return;
-        }
-        setAis(list);
-        setStatus('ready');
-        setErrorMessage('');
-        void loadProviderNames(list, setProviders);
-      })
-      .catch((error: unknown) => {
-        if (active) {
-          setErrorMessage(describeAiError(error, 'Could not load your AIs').message);
-          setStatus('error');
-        }
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  const retry = (): void => {
-    setStatus('loading');
-    void load();
-  };
-
-  const confirmDelete = async (id: string): Promise<void> => {
-    setActionError('');
-    setDeletingId(id);
-    try {
-      await deleteAi(id);
-      setAis((previous) => previous.filter((ai) => ai.id !== id));
-      setConfirmingId(null);
-    } catch (error) {
-      setActionError(describeAiError(error, 'Could not delete the AI').message);
-    } finally {
-      setDeletingId(null);
-    }
+  const markRemoved = (id: string): void => {
+    setRemovedIds((ids) => new Set(ids).add(id));
+    setConfirmingId(null);
   };
 
   return (
@@ -96,17 +73,19 @@ export function AisPage() {
       onBack={() => navigate('/')}
     >
       <div className={SETTINGS_COLUMN}>
-        {status === 'loading' && <StateMessage kind="loading" title="Loading…" />}
+        {loadError === undefined && ais === undefined && (
+          <StateMessage kind="loading" title="Loading…" />
+        )}
 
-        {status === 'error' && (
+        {loadError !== undefined && (
           <StateMessage
             kind="error"
-            title={errorMessage}
-            action={{ label: 'Retry', onClick: retry }}
+            title={aiFailureText(loadError, 'Could not load your AIs')}
+            action={{ label: 'Retry', onClick: () => reload() }}
           />
         )}
 
-        {status === 'ready' && ais.length === 0 && (
+        {ais !== undefined && visible.length === 0 && (
           <StateMessage
             kind="empty"
             icon={Zap}
@@ -116,7 +95,7 @@ export function AisPage() {
           />
         )}
 
-        {status === 'ready' && ais.length > 0 && (
+        {ais !== undefined && visible.length > 0 && (
           <section aria-label="Your AIs" className="flex flex-col gap-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-[16px] font-semibold">Your AIs</h2>
@@ -132,25 +111,17 @@ export function AisPage() {
             </div>
 
             <ul className="flex flex-col gap-2">
-              {ais.map((ai) => (
+              {visible.map((ai) => (
                 <li key={ai.id}>
                   <AiRow
                     ai={ai}
-                    providerName={providers[ai.providerConnectionId]}
+                    providerName={providerNames[ai.providerConnectionId]}
                     confirming={confirmingId === ai.id}
-                    deleting={deletingId === ai.id}
-                    actionError={confirmingId === ai.id ? actionError : ''}
                     onOpenChat={() => navigate(`/c/${encodeURIComponent(ai.jid)}`)}
                     onEdit={() => navigate(`/c/${encodeURIComponent(ai.jid)}?panel=ai`)}
-                    onAskDelete={() => {
-                      setActionError('');
-                      setConfirmingId(ai.id);
-                    }}
-                    onCancelDelete={() => {
-                      setActionError('');
-                      setConfirmingId(null);
-                    }}
-                    onConfirmDelete={() => void confirmDelete(ai.id)}
+                    onAskDelete={() => setConfirmingId(ai.id)}
+                    onCancelDelete={() => setConfirmingId(null)}
+                    onDeleted={markRemoved}
                   />
                 </li>
               ))}
@@ -164,29 +135,47 @@ export function AisPage() {
   );
 }
 
+/**
+ * One AI row with its own delete action, so two rows can be removed at once;
+ * a second click on the same row waits for the first.
+ */
 function AiRow({
   ai,
   providerName,
   confirming,
-  deleting,
-  actionError,
   onOpenChat,
   onEdit,
   onAskDelete,
   onCancelDelete,
-  onConfirmDelete,
+  onDeleted,
 }: {
   ai: PublicAi;
   providerName: string | undefined;
   confirming: boolean;
-  deleting: boolean;
-  actionError: string;
   onOpenChat: () => void;
   onEdit: () => void;
   onAskDelete: () => void;
   onCancelDelete: () => void;
-  onConfirmDelete: () => void;
+  onDeleted: (id: string) => void;
 }) {
+  const [deleteState, remove, controls] = useAction((id: string) =>
+    fromApi(() => deleteAi(id)).pipe(Effect.tap(() => Effect.sync(() => onDeleted(id)))),
+  );
+  const deleting = isWaiting(deleteState);
+  const failure = shownFailure(deleteState);
+  const actionError =
+    confirming && failure !== undefined ? aiFailureText(failure, 'Could not delete the AI') : '';
+
+  // Asking again or cancelling clears the last error, as the page did before.
+  const askDelete = (): void => {
+    controls.reset();
+    onAskDelete();
+  };
+  const cancelDelete = (): void => {
+    controls.reset();
+    onCancelDelete();
+  };
+
   return (
     <div className="flex flex-wrap items-start gap-3 rounded-xl border border-border bg-surface px-3 py-2.5">
       <Avatar id={ai.id} name={ai.name} size={44} ai avatarUrl={ai.avatarUrl} />
@@ -229,7 +218,7 @@ function AiRow({
               variant="destructive"
               size="sm"
               disabled={deleting}
-              onClick={onConfirmDelete}
+              onClick={() => remove(ai.id)}
             >
               Remove
             </Button>
@@ -238,7 +227,7 @@ function AiRow({
               variant="ghost"
               size="sm"
               disabled={deleting}
-              onClick={onCancelDelete}
+              onClick={cancelDelete}
             >
               Cancel
             </Button>
@@ -273,7 +262,7 @@ function AiRow({
               size="icon"
               aria-label={`Delete ${ai.name}`}
               title={`Delete ${ai.name}`}
-              onClick={onAskDelete}
+              onClick={askDelete}
               className="text-muted-foreground hover:bg-danger/10 hover:text-danger"
             >
               <Trash2 className="size-4" aria-hidden="true" />
@@ -285,22 +274,19 @@ function AiRow({
   );
 }
 
-// The provider name is decoration on a row, never a reason to fail the page.
-async function loadProviderNames(
-  ais: PublicAi[],
-  setProviders: (providers: Record<string, string>) => void,
-): Promise<void> {
+/** The provider name is decoration on a row, never a reason to fail the page. */
+function providerNamesOf(ais: ReadonlyArray<PublicAi>): Effect.Effect<Record<string, string>> {
   if (ais.length === 0) {
-    return;
+    return Effect.succeed<Record<string, string>>({});
   }
-  try {
-    const connections = await listConnections();
-    const map: Record<string, string> = {};
-    for (const connection of connections) {
-      map[connection.id] = providerLabel(connection.provider);
-    }
-    setProviders(map);
-  } catch {
-    setProviders({});
-  }
+  return fromApi(() => listConnections()).pipe(
+    Effect.map((connections) => {
+      const map: Record<string, string> = {};
+      for (const connection of connections) {
+        map[connection.id] = providerLabel(connection.provider);
+      }
+      return map;
+    }),
+    Effect.orElseSucceed((): Record<string, string> => ({})),
+  );
 }

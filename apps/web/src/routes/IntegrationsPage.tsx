@@ -1,11 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router';
+import { Data, Effect } from 'effect';
+import { AsyncResult } from 'effect/reactivity';
 import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
 import { Button } from '@/components/ui/button';
 import { StateMessage } from '@/components/ui/state-message';
 import { SecretInput, TextInput } from '@/components/ui/text-input';
 import {
-  ApiError,
   getIntegrationsStatus,
   removeTelegramBotToken,
   removeVoiceTranscriptionSettings,
@@ -14,35 +15,49 @@ import {
   saveVoiceTranscriptionSettings,
   type IntegrationsStatus,
 } from '@/lib/api';
+import { fromApi } from '@/lib/effect/api-effect';
+import type { ApiFailure } from '@/lib/effect/errors';
+import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { useQuery } from '@/lib/effect/use-query';
 
 type PageStatus = 'loading' | 'ready' | 'forbidden';
 
-function friendlyError(error: unknown): string {
-  if (error instanceof ApiError) {
-    if (error.code === 'invalid_token') {
-      return 'Telegram rejected the bot token. Check it and try again.';
-    }
-    if (error.code === 'mail_send_failed') {
-      return 'The test email could not be sent. Check the Resend key and the sender address.';
-    }
-    if (error.code === 'managed_by_environment') {
-      return 'Email is managed by environment variables on this server.';
-    }
-    if (error.code === 'endpoint_unreachable') {
-      return 'The transcription endpoint could not be reached. Check the URL.';
-    }
-    if (error.code === 'endpoint_rejected') {
-      return 'The transcription endpoint rejected the test request. Check the URL, key and model.';
-    }
-    if (error.code === 'rate_limited') {
-      return 'Too many tries — wait a little and try again.';
-    }
-    if (error.code === 'network_error') {
-      return 'Could not reach the server.';
-    }
-    return error.message;
+/** The form's own checks, each one before anything is sent. */
+class SenderMissing extends Data.TaggedError('SenderMissing') {}
+class EndpointMissing extends Data.TaggedError('EndpointMissing') {}
+class TokenMissing extends Data.TaggedError('TokenMissing') {}
+
+/** The last failure, hidden while a new call runs (the page cleared it at once before). */
+function shownFailure<A, E>(state: AsyncResult.AsyncResult<A, E>): E | undefined {
+  return isWaiting(state) ? undefined : failureOf(state);
+}
+
+function friendlyError(error: ApiFailure): string {
+  if (error.code === 'unknown_error') {
+    return 'Something went wrong. Try again.';
   }
-  return error instanceof Error ? error.message : 'Something went wrong. Try again.';
+  if (error.code === 'invalid_token') {
+    return 'Telegram rejected the bot token. Check it and try again.';
+  }
+  if (error.code === 'mail_send_failed') {
+    return 'The test email could not be sent. Check the Resend key and the sender address.';
+  }
+  if (error.code === 'managed_by_environment') {
+    return 'Email is managed by environment variables on this server.';
+  }
+  if (error.code === 'endpoint_unreachable') {
+    return 'The transcription endpoint could not be reached. Check the URL.';
+  }
+  if (error.code === 'endpoint_rejected') {
+    return 'The transcription endpoint rejected the test request. Check the URL, key and model.';
+  }
+  if (error.code === 'rate_limited') {
+    return 'Too many tries — wait a little and try again.';
+  }
+  if (error.code === 'network_error') {
+    return 'Could not reach the server.';
+  }
+  return error.message;
 }
 
 /**
@@ -60,49 +75,20 @@ function friendlyError(error: unknown): string {
  */
 export function IntegrationsPage() {
   const navigate = useNavigate();
-  const [status, setStatus] = useState<PageStatus>('loading');
-  const [data, setData] = useState<IntegrationsStatus | undefined>(undefined);
-  const [errorMessage, setErrorMessage] = useState('');
+  const [loaded, refresh] = useQuery(() => fromApi(() => getIntegrationsStatus()), []);
+  // A card that saves or removes puts its reloaded part here, so the page shows it at once.
+  const [patched, setPatched] = useState<Partial<IntegrationsStatus>>({});
+  const data = AsyncResult.isSuccess(loaded) ? { ...loaded.value, ...patched } : undefined;
 
-  useEffect(() => {
-    let active = true;
-    getIntegrationsStatus()
-      .then((loaded) => {
-        if (!active) {
-          return;
-        }
-        setData(loaded);
-        setStatus('ready');
-      })
-      .catch((error: unknown) => {
-        if (active) {
-          // 404 (not the owner) and load failures both land here: the note
-          // below names the owner case, and Retry covers the rest.
-          if (error instanceof ApiError && error.status !== 404) {
-            setErrorMessage(friendlyError(error));
-          }
-          setStatus('forbidden');
-        }
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  const reload = async (): Promise<void> => {
-    setStatus('loading');
-    setErrorMessage('');
-    try {
-      const loaded = await getIntegrationsStatus();
-      setData(loaded);
-      setStatus('ready');
-    } catch (error) {
-      if (error instanceof ApiError && error.status !== 404) {
-        setErrorMessage(friendlyError(error));
-      }
-      setStatus('forbidden');
-    }
-  };
+  // A failed load shows the owner note; while a retry runs, the page is loading again.
+  const failed = AsyncResult.isFailure(loaded) && !isWaiting(loaded);
+  const failure = failed ? failureOf(loaded) : undefined;
+  const status: PageStatus = failed ? 'forbidden' : data === undefined ? 'loading' : 'ready';
+  // 404 (not the owner) and unknown load failures get the note alone; a server answer gets its message and Retry.
+  const errorMessage =
+    failure !== undefined && failure.code !== 'unknown_error' && failure.status !== 404
+      ? friendlyError(failure)
+      : '';
 
   return (
     <SettingsShell
@@ -125,7 +111,7 @@ export function IntegrationsPage() {
             )}
             {errorMessage !== '' && (
               <div>
-                <Button type="button" size="lg" onClick={() => void reload()}>
+                <Button type="button" size="lg" onClick={() => refresh()}>
                   Retry
                 </Button>
               </div>
@@ -135,16 +121,21 @@ export function IntegrationsPage() {
 
         {status === 'ready' && data !== undefined && (
           <div className="flex flex-col gap-4">
-            <EmailCard email={data.email} onSaved={(next) => setData({ ...data, email: next })} />
+            <EmailCard
+              email={data.email}
+              onSaved={(next) => setPatched((current) => ({ ...current, email: next }))}
+            />
             <TelegramCard
               telegram={data.telegram}
-              onSaved={(next) => setData({ ...data, telegram: next })}
+              onSaved={(next) => setPatched((current) => ({ ...current, telegram: next }))}
             />
             <VoiceTranscriptionCard
               voiceTranscription={
                 data.voiceTranscription ?? { configured: false, baseUrl: null, model: null }
               }
-              onSaved={(next) => setData({ ...data, voiceTranscription: next })}
+              onSaved={(next) =>
+                setPatched((current) => ({ ...current, voiceTranscription: next }))
+              }
             />
           </div>
         )}
@@ -163,36 +154,42 @@ function EmailCard({
   const managedByEnv = email.source === 'env';
   const [from, setFrom] = useState(email.from ?? '');
   const [key, setKey] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [error, setError] = useState('');
-
-  const save = async (): Promise<void> => {
-    setError('');
-    setSaved(false);
-    if (from.trim() === '') {
-      setError('Enter the sender address first.');
-      return;
-    }
-    setBusy(true);
-    try {
-      const trimmedKey = key.trim();
-      await saveEmailSettings(
-        trimmedKey === '' ? { from: from.trim() } : { from: from.trim(), resendApiKey: trimmedKey },
+  const [state, saveEmail] = useAction(
+    (draft: {
+      readonly from: string;
+      readonly key: string;
+    }): Effect.Effect<void, SenderMissing | ApiFailure> => {
+      const trimmedFrom = draft.from.trim();
+      if (trimmedFrom === '') {
+        return Effect.fail(new SenderMissing());
+      }
+      const trimmedKey = draft.key.trim();
+      return fromApi(() =>
+        saveEmailSettings(
+          trimmedKey === ''
+            ? { from: trimmedFrom }
+            : { from: trimmedFrom, resendApiKey: trimmedKey },
+        ),
+      ).pipe(
+        Effect.tap(() => Effect.sync(() => setKey(''))),
+        Effect.andThen(fromApi(() => getIntegrationsStatus())),
+        // The flag flips only after the reload proved the save stuck; a
+        // failed reload fails the action, so the success line never lies.
+        Effect.tap((next) => Effect.sync(() => onSaved(next.email))),
+        Effect.asVoid,
       );
-      setKey('');
-      const next = await getIntegrationsStatus();
-      onSaved(next.email);
-      // The flag flips only after the reload proved the save stuck; a
-      // failed reload clears it so the success line never lies.
-      setSaved(true);
-    } catch (cause) {
-      setSaved(false);
-      setError(friendlyError(cause));
-    } finally {
-      setBusy(false);
-    }
-  };
+    },
+  );
+
+  const busy = isWaiting(state);
+  const saved = !busy && AsyncResult.isSuccess(state);
+  const failure = shownFailure(state);
+  const errorMessage =
+    failure === undefined
+      ? ''
+      : failure._tag === 'SenderMissing'
+        ? 'Enter the sender address first.'
+        : friendlyError(failure);
 
   return (
     <section
@@ -243,9 +240,9 @@ function EmailCard({
             />
           </label>
           <p className="text-[13px] text-muted-foreground">Leave empty to keep the current key.</p>
-          {error !== '' && (
+          {errorMessage !== '' && (
             <p role="alert" className="text-[14px] text-danger">
-              {error}
+              {errorMessage}
             </p>
           )}
           {saved && (
@@ -254,7 +251,12 @@ function EmailCard({
             </p>
           )}
           <div>
-            <Button type="button" size="default" onClick={() => void save()} disabled={busy}>
+            <Button
+              type="button"
+              size="default"
+              onClick={() => saveEmail({ from, key })}
+              disabled={busy}
+            >
               {busy ? 'Sending a test email…' : 'Save'}
             </Button>
           </div>
@@ -263,6 +265,15 @@ function EmailCard({
     </section>
   );
 }
+
+type VoiceOp =
+  | {
+      readonly kind: 'save';
+      readonly baseUrl: string;
+      readonly key: string;
+      readonly model: string;
+    }
+  | { readonly kind: 'remove' };
 
 function VoiceTranscriptionCard({
   voiceTranscription,
@@ -274,59 +285,60 @@ function VoiceTranscriptionCard({
   const [baseUrl, setBaseUrl] = useState(voiceTranscription.baseUrl ?? '');
   const [key, setKey] = useState('');
   const [model, setModel] = useState(voiceTranscription.model ?? 'whisper-1');
-  const [busy, setBusy] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [error, setError] = useState('');
-
-  const save = async (): Promise<void> => {
-    setError('');
-    setSaved(false);
-    if (baseUrl.trim() === '') {
-      setError('Enter the endpoint base URL first.');
-      return;
-    }
-    setBusy(true);
-    try {
-      const trimmedKey = key.trim();
-      await saveVoiceTranscriptionSettings({
-        baseUrl: baseUrl.trim(),
-        ...(trimmedKey === '' ? {} : { apiKey: trimmedKey }),
-        model: model.trim() === '' ? 'whisper-1' : model.trim(),
-      });
-      setKey('');
-      const next = await getIntegrationsStatus();
-      onSaved(
-        next.voiceTranscription ?? {
-          configured: true,
-          baseUrl: baseUrl.trim(),
-          model: model.trim(),
-        },
+  const [state, runVoice] = useAction(
+    (op: VoiceOp): Effect.Effect<'saved' | 'removed', EndpointMissing | ApiFailure> => {
+      if (op.kind === 'remove') {
+        return fromApi(() => removeVoiceTranscriptionSettings()).pipe(
+          Effect.andThen(fromApi(() => getIntegrationsStatus())),
+          Effect.tap((next) =>
+            Effect.sync(() =>
+              onSaved(next.voiceTranscription ?? { configured: false, baseUrl: null, model: null }),
+            ),
+          ),
+          Effect.as('removed' as const),
+        );
+      }
+      const trimmedBaseUrl = op.baseUrl.trim();
+      if (trimmedBaseUrl === '') {
+        return Effect.fail(new EndpointMissing());
+      }
+      const trimmedKey = op.key.trim();
+      const trimmedModel = op.model.trim();
+      return fromApi(() =>
+        saveVoiceTranscriptionSettings({
+          baseUrl: trimmedBaseUrl,
+          ...(trimmedKey === '' ? {} : { apiKey: trimmedKey }),
+          model: trimmedModel === '' ? 'whisper-1' : trimmedModel,
+        }),
+      ).pipe(
+        Effect.tap(() => Effect.sync(() => setKey(''))),
+        Effect.andThen(fromApi(() => getIntegrationsStatus())),
+        // Only after the reload proved the save stuck (same as Email).
+        Effect.tap((next) =>
+          Effect.sync(() =>
+            onSaved(
+              next.voiceTranscription ?? {
+                configured: true,
+                baseUrl: trimmedBaseUrl,
+                model: trimmedModel,
+              },
+            ),
+          ),
+        ),
+        Effect.as('saved' as const),
       );
-      // Only after the reload proved the save stuck (same as Email).
-      setSaved(true);
-    } catch (cause) {
-      setSaved(false);
-      setError(friendlyError(cause));
-    } finally {
-      setBusy(false);
-    }
-  };
+    },
+  );
 
-  const remove = async (): Promise<void> => {
-    setError('');
-    setSaved(false);
-    setBusy(true);
-    try {
-      await removeVoiceTranscriptionSettings();
-      setSaved(false);
-      const next = await getIntegrationsStatus();
-      onSaved(next.voiceTranscription ?? { configured: false, baseUrl: null, model: null });
-    } catch (cause) {
-      setError(friendlyError(cause));
-    } finally {
-      setBusy(false);
-    }
-  };
+  const busy = isWaiting(state);
+  const saved = !busy && AsyncResult.isSuccess(state) && state.value === 'saved';
+  const failure = shownFailure(state);
+  const errorMessage =
+    failure === undefined
+      ? ''
+      : failure._tag === 'EndpointMissing'
+        ? 'Enter the endpoint base URL first.'
+        : friendlyError(failure);
 
   return (
     <section
@@ -389,18 +401,28 @@ function VoiceTranscriptionCard({
         Optional — leave empty for a self-hosted server without one. The key is never shown again
         after saving.
       </p>
-      {error !== '' && (
+      {errorMessage !== '' && (
         <p role="alert" className="text-[14px] text-danger">
-          {error}
+          {errorMessage}
         </p>
       )}
       {saved && <p className="text-[14px] text-online">Saved — transcripts are on.</p>}
       <div className="flex flex-wrap gap-2">
-        <Button type="button" size="default" onClick={() => void save()} disabled={busy}>
+        <Button
+          type="button"
+          size="default"
+          onClick={() => runVoice({ kind: 'save', baseUrl, key, model })}
+          disabled={busy}
+        >
           {busy ? 'Checking…' : 'Save'}
         </Button>
         {voiceTranscription.configured && (
-          <Button type="button" variant="outline" onClick={() => void remove()} disabled={busy}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => runVoice({ kind: 'remove' })}
+            disabled={busy}
+          >
             Remove
           </Button>
         )}
@@ -408,6 +430,8 @@ function VoiceTranscriptionCard({
     </section>
   );
 }
+
+type TelegramOp = { readonly kind: 'save'; readonly token: string } | { readonly kind: 'remove' };
 
 function TelegramCard({
   telegram,
@@ -418,48 +442,38 @@ function TelegramCard({
 }) {
   const managedByEnv = telegram.source === 'env';
   const [token, setToken] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [error, setError] = useState('');
+  const [state, runTelegram] = useAction(
+    (op: TelegramOp): Effect.Effect<'saved' | 'removed', TokenMissing | ApiFailure> => {
+      if (op.kind === 'remove') {
+        return fromApi(() => removeTelegramBotToken()).pipe(
+          Effect.andThen(fromApi(() => getIntegrationsStatus())),
+          Effect.tap((next) => Effect.sync(() => onSaved(next.telegram))),
+          Effect.as('removed' as const),
+        );
+      }
+      const trimmedToken = op.token.trim();
+      if (trimmedToken === '') {
+        return Effect.fail(new TokenMissing());
+      }
+      return fromApi(() => saveTelegramBotToken(trimmedToken)).pipe(
+        Effect.tap(() => Effect.sync(() => setToken(''))),
+        Effect.andThen(fromApi(() => getIntegrationsStatus())),
+        // Only after the reload proved the save stuck (same as Email).
+        Effect.tap((next) => Effect.sync(() => onSaved(next.telegram))),
+        Effect.as('saved' as const),
+      );
+    },
+  );
 
-  const save = async (): Promise<void> => {
-    setError('');
-    setSaved(false);
-    if (token.trim() === '') {
-      setError('Paste the bot token first.');
-      return;
-    }
-    setBusy(true);
-    try {
-      await saveTelegramBotToken(token.trim());
-      setToken('');
-      const next = await getIntegrationsStatus();
-      onSaved(next.telegram);
-      // Only after the reload proved the save stuck (same as Email).
-      setSaved(true);
-    } catch (cause) {
-      setSaved(false);
-      setError(friendlyError(cause));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const remove = async (): Promise<void> => {
-    setError('');
-    setSaved(false);
-    setBusy(true);
-    try {
-      await removeTelegramBotToken();
-      setSaved(false);
-      const next = await getIntegrationsStatus();
-      onSaved(next.telegram);
-    } catch (cause) {
-      setError(friendlyError(cause));
-    } finally {
-      setBusy(false);
-    }
-  };
+  const busy = isWaiting(state);
+  const saved = !busy && AsyncResult.isSuccess(state) && state.value === 'saved';
+  const failure = shownFailure(state);
+  const errorMessage =
+    failure === undefined
+      ? ''
+      : failure._tag === 'TokenMissing'
+        ? 'Paste the bot token first.'
+        : friendlyError(failure);
 
   return (
     <section
@@ -501,18 +515,28 @@ function TelegramCard({
               onChange={(event) => setToken(event.target.value)}
             />
           </label>
-          {error !== '' && (
+          {errorMessage !== '' && (
             <p role="alert" className="text-[14px] text-danger">
-              {error}
+              {errorMessage}
             </p>
           )}
           {saved && <p className="text-[14px] text-online">Saved — imports are on.</p>}
           <div className="flex flex-wrap gap-2">
-            <Button type="button" size="default" onClick={() => void save()} disabled={busy}>
+            <Button
+              type="button"
+              size="default"
+              onClick={() => runTelegram({ kind: 'save', token })}
+              disabled={busy}
+            >
               {busy ? 'Checking…' : 'Save'}
             </Button>
             {telegram.configured && (
-              <Button type="button" variant="outline" onClick={() => void remove()} disabled={busy}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => runTelegram({ kind: 'remove' })}
+                disabled={busy}
+              >
                 Remove
               </Button>
             )}
