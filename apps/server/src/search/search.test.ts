@@ -1,14 +1,15 @@
 import { PGlite } from '@electric-sql/pglite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { eq } from 'drizzle-orm';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
 import { randomUUID } from 'node:crypto';
-import { aiLimits, ais, groups, providerConnections } from '../db/schema';
 import { headlineToSnippet, correctionTarget, retractTarget, stanzaFrom } from './routes';
 import {
   bootstrapUser,
   contactOf,
   createTestContext,
   testApp,
+  testSql,
   TEST_BASE_URL,
   TEST_XMPP_DOMAIN,
   TEST_XMPP_MUC_DOMAIN,
@@ -44,6 +45,10 @@ function correctionXml(body: string, originalId: string): string {
 
 function retractXml(targetId: string): string {
   return `<message type="chat"><body>This person attempted to retract a previous message.</body><retract xmlns="urn:xmpp:message-retract:1" id="${targetId}"/></message>`;
+}
+
+interface GroupRow {
+  roomLocalpart: string;
 }
 
 interface SeedRow {
@@ -392,7 +397,12 @@ describe('GET /api/search', () => {
   it('never shows another user DM, a left group, or a private topic the caller is not in', async () => {
     const { alice, bob, stranger } = await setupDm();
     const group = await createGroup(alice.cookie, 'Team', [bob.id]);
-    const [groupRow] = await context.db.select().from(groups).where(eq(groups.id, group.id));
+    const [groupRow] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<GroupRow>`SELECT room_localpart FROM groups WHERE id = ${group.id}`;
+      }),
+    );
     const generalJid = `${groupRow?.roomLocalpart}@${TEST_XMPP_MUC_DOMAIN}`;
     const secret = await createTopic(alice.cookie, group.id, {
       name: 'Hiring',
@@ -589,29 +599,24 @@ describe('GET /api/search', () => {
   it('searches an AI DM under the caller archive', async () => {
     const alice = await bootstrapUser(context, app, 'alice@example.com');
     const connectionId = randomUUID();
-    await context.db.insert(providerConnections).values({
-      id: connectionId,
-      owner: alice.id,
-      provider: 'openai',
-      encryptedKey: 'not-a-real-key',
-      label: null,
-    });
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO provider_connections (id, owner, provider, encrypted_key, label)
+          VALUES (${connectionId}, ${alice.id}, ${'openai'}, ${'not-a-real-key'}, ${null})`;
+      }),
+    );
     const aiId = randomUUID();
     const aiLocalpart = `ai-${aiId}`;
     const aiJid = `${aiLocalpart}@${TEST_XMPP_DOMAIN}`;
-    await context.db.insert(ais).values({
-      id: aiId,
-      owner: alice.id,
-      name: 'Helper',
-      template: 'dev',
-      persona: 'A persona',
-      providerConnectionId: connectionId,
-      model: 'gpt-4o-mini',
-      localpart: aiLocalpart,
-      jid: aiJid,
-      status: 'active',
-    });
-    await context.db.insert(aiLimits).values({ aiId, perDayUsd: '1.00', perMonthUsd: '20.00' });
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO ais (id, owner, name, template, persona, provider_connection_id, model, localpart, jid, status)
+          VALUES (${aiId}, ${alice.id}, ${'Helper'}, ${'dev'}, ${'A persona'}, ${connectionId}, ${'gpt-4o-mini'}, ${aiLocalpart}, ${aiJid}, ${'active'})`;
+        yield* sql`INSERT INTO ai_limits (ai_id, per_day_usd, per_month_usd) VALUES (${aiId}, ${'1.00'}, ${'20.00'})`;
+      }),
+    );
 
     await seedArchive(archiveClient, [
       {
@@ -641,7 +646,12 @@ describe('GET /api/search', () => {
       visibility: 'private',
       memberIds: [],
     });
-    const [groupRow] = await context.db.select().from(groups).where(eq(groups.id, group.id));
+    const [groupRow] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<GroupRow>`SELECT room_localpart FROM groups WHERE id = ${group.id}`;
+      }),
+    );
     const generalJid = `${groupRow?.roomLocalpart}@${TEST_XMPP_MUC_DOMAIN}`;
 
     // A role attached to the private topic: every holder sees the room.
@@ -774,7 +784,12 @@ describe('GET /api/search', () => {
   it('uses the room nick for group hits', async () => {
     const { alice, bob } = await setupDm();
     const group = await createGroup(alice.cookie, 'Team', [bob.id]);
-    const [groupRow] = await context.db.select().from(groups).where(eq(groups.id, group.id));
+    const [groupRow] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<GroupRow>`SELECT room_localpart FROM groups WHERE id = ${group.id}`;
+      }),
+    );
     const generalJid = `${groupRow?.roomLocalpart}@${TEST_XMPP_MUC_DOMAIN}`;
     await seedArchive(archiveClient, [
       {

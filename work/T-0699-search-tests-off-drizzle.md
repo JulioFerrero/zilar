@@ -1,7 +1,7 @@
 ---
 id: T-0699
 title: "tests off drizzle (search): replace every drizzle query in search/search.test.ts with testSql(context) + effect/sql; drop the drizzle-orm and db/schema imports"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0699-search-tests-off-drizzle
 model: auto
@@ -50,4 +50,34 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- `apps/server/src/search/search.test.ts`: removed the `drizzle-orm` and `../db/schema` imports and added `Effect`, `SqlClient` and `testSql` imports, following `pins/pins.test.ts`.
+- Three group lookups (was `context.db.select().from(groups).where(eq(groups.id, group.id))`) now run `SELECT room_localpart FROM groups WHERE id = ${group.id}` through `testSql(context)`, typed with a new local `GroupRow { roomLocalpart: string }`.
+- Seed of an AI DM: one `INSERT INTO provider_connections (id, owner, provider, encrypted_key, label)`, one `INSERT INTO ais (...)` with the 10 columns the test set (`provider_connection_id`, `localpart`, `jid`, `status`, and so on), and one `INSERT INTO ai_limits (ai_id, per_day_usd, per_month_usd)` with `'1.00'` and `'20.00'`. Every column name was checked against `apps/server/src/db/schema.ts`. The tables have no JS-side `$defaultFn` or `$onUpdate`, so nothing is filled in by hand: `created_at`, `updated_at`, `can_delegate`, `accepts_delegation`, `previous_persona` and `machine_id` take their SQL defaults or NULL.
+- Left alone: `db: context.db` at line 137 (the `createApp` argument), as the spec asks.
+- Assertions, rows and values are unchanged.
+
+### Commands and results
+- `pnpm install`: done, exit 0.
+- Baseline before any change, `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/search/search.test.ts`: Test Files 1 passed (1), Tests 27 passed (27).
+- After the change, same command: Test Files 1 passed (1), Tests 27 passed (27).
+- `git grep -n "drizzle-orm\|db/schema" -- apps/server/src/search/search.test.ts`: no output (exit 1, no match).
+- `pnpm gate` from `/Users/julio/personal-projects/zilar-T-0699`, exit 0:
+  - PASS install (frozen)
+  - PASS format
+  - PASS lint
+  - PASS typecheck
+  - PASS tests @zilar/server
+  - scope: every changed file is inside the Allowed files
+  - GATE PASS
+- Changed files (`git status`): `apps/server/src/search/search.test.ts` and `work/T-0699-search-tests-off-drizzle.md`.
+
+### Problems and deviations
+- None against the spec. The gate's test step does not print test counts, so the 27 comes from the single-file run.
+
+### Blocked / needs a decision
+- None.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Haiku 5.5, in one round (about 7.8 min). The lead reviewed the diff directly. The seed inserts and group reads are on `testSql`, with snake_case columns and explicit ids. There are 27 tests before and after, no drizzle import is left, and the gate passed.
