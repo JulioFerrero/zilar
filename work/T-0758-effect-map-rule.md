@@ -1,7 +1,7 @@
 ---
 id: T-0758
 title: "R1: the Effect map implements the 100% rule from docs/audit/effect-100-plan.md §1.4 — kinds effect / needs-effect / plain / exempt (+ legacy), hard and weak signals, effect-plain markers (max 25), Tier B count, coverage = Effect lines / (Effect + needs-effect lines); page and summary show it"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0758-effect-map-rule
 model: auto
@@ -74,4 +74,65 @@ In the Report, paste the new summary line and compare it per package with the §
 
 ## Report (written by the worker when done)
 
+### What was done
+- `generate.ts`: the five kinds (effect, needs-effect, plain, exempt, legacy), the §1.4 scope additions, the exempt rules (mock folders, `-mock.ts`, `.config.ts`, mobile ios/android/scripts, `apps/site/`, `packages/devtools/`, the marker), the nine signals H1 H2 H3 H5 H8 H9 W4 W6 W7, comment and string blanking, `signals`, `firstHit`, `tierB`, `marker` per file, and `coveragePct`, `tierB`, `needsWeak`, `markers`, `markersOverBudget` in the summary. `markerBudget` (25) is added to the map data for the page. `checkNeedsEffectBaseline` implements the `--check-baseline` ratchet check (validated with Effect `Schema`, not zod).
+- `cli.ts`: the new summary line, the step-summary columns (Coverage, Needs-effect files), and `--check-baseline <file>`.
+- `template.html`: five colours (needs-effect red, exempt muted blue-grey), the coverage headline with "imports Effect" as the secondary line, the per-package table (Coverage, Needs, Tier B, Legacy; Files hidden at phone width), a markers section, and signals and first hit in the tooltip of needs-effect files.
+- `generate.test.ts`: 54 tests, all passing (the existing ones, with one changed: `import type { Effect }` is no longer Effect).
+
+### Commands run
+- `pnpm install`: done.
+- `pnpm --filter @zilar/devtools test --maxWorkers=2 --reporter=dot src/effect-map`: 54 passed, 0 failed (run before and after prettier).
+- `pnpm effect:map`: ran before the edits (baseline `852 files (Effect 197, plain 655, legacy 0), Effect 35.7%`) and after prettier (the line below).
+- `pnpm effect:map -- --check-baseline <file>` with a baseline of 0 and one of 250: exit 1 with `needs-effect files 250 exceed the baseline 0`, and exit 0 for 250.
+- `pnpm gate`: GATE PASS. The first gate run reported one file outside scope, which was my own `.gate-out.txt` log in the worktree; I deleted it, and the second run (log kept in scratchpad) printed `scope: every changed file is inside the Allowed files`.
+
+### Summary line (after the change)
+`effect-map: 832 files, coverage 46.6% (effect 189, needs-effect 250, plain 300, exempt 93, legacy 0), tier B 125, markers 0/25 -> dist/effect-map/index.html`
+
+### Per package against the §1.6 baseline (coverage %, files)
+| Package | §1.6 | now | Note |
+| --- | --- | --- | --- |
+| packages/protocol | 14 / 100 | 14 / 100.0 | same |
+| packages/ui-tokens | 1 / n/a | 1 / 100.0 | page shows n/a (no Effect and no needs-effect lines) |
+| packages/chat-core | 16 / n/a | 16 / 100.0 | page shows n/a |
+| packages/agent-drivers | 4 / 100 | 4 / 100.0 | same |
+| apps/runner | 5 / 59 | 5 / 58.5 | 635/1085; the plan rounds to 59, within 3 points |
+| packages/runner-tunnel | 8 / 65 | 8 / 65.1 | same |
+| packages/xmpp-core | 9 / 0 | 9 / 0.0 | same |
+| packages/devtools | 38 / 24 | 41 / 100.0 | exempt (D7); the only difference over 3 points; main has 3 more devtools files |
+| scripts | 2 / 0 | 2 / 0.0 | same |
+| apps/server | 202 / 87 | 202 / 87.4 | effect, failing and tier B line counts identical to §1.6 |
+| apps/web | 193 / 10 | 193 / 9.8 | 8 mock files moved plain to exempt; needs-effect lines identical |
+| apps/mobile | 329 / 19 | 329 / 19.3 | 16 mock files moved plain to exempt; needs-effect lines identical |
+| apps/site | 8 / n/a | 8 / 100.0 | exempt (D2); page shows n/a |
+| Total | 829 / 45.4 | 832 / 46.6 | see reconciliation |
+
+Reconciliation: effect lines 68206 to 66240 (minus 1966, exactly the devtools effect lines in §1.6), needs-effect lines 82143 to 75983 (minus 6160, exactly the devtools failing lines), so 66240 / (66240 + 75983) = 46.6%. Tier B 130 files / 56537 lines becomes 125 files / 54873 (minus the 5 devtools files, 1664 lines), exact.
+
+### Decisions I made (please check)
+- Legacy is checked before exempt, so an exempt file importing zod is still legacy. The spec said "legacy still winning"; I read it as winning over the exemptions too.
+- Type-only imports (`import type`) are skipped for H8 and H9 as well as for Effect, since they are erased. §1.4 does not say this.
+- Template literal text is not blanked, as §1.4 says, so `fetch(` inside a backtick template still hits (a known false positive). A `//` inside a string does not start a comment.
+- A marker needs a non-empty reason to count.
+- `needsWeak` and `tierB` are `{files, lines}` tallies. The summary line counts files for the kinds and Tier B.
+- The `-mock.ts` rule is literal; no `-mock.tsx` file exists.
+
+### Not verified
+- The page was NOT viewed in a browser. The Chrome extension refused file:// URLs and I may not start a local server, so phone width, no horizontal scroll and dark mode are untested. Only the template's CSS and JS were read and the data was checked in Node.
+- `cli.ts` `main` is not unit-tested (importing it runs the generator); the flag was checked by running it, as above.
+
+### Open questions
+- None blocking. Should the page be checked in Julio's browser before merge?
+
+### Fix round 1 (lead review, one item)
+- Treemap folder labels now show the folder's coverage, not the imports-Effect share. The aggregation lives only in `template.html` (`sum` adds `needsLines` and `exemptLines` per folder; `folderCoverage` at top level of the script), so there is no unit test for it. The formula is kept identical to `coveragePct` in `generate.ts`: Effect lines / (Effect + needs-effect lines), to one decimal. A folder with neither shows "exempt" when all its files are exempt, otherwise a dash.
+- Checked from `dist/effect-map/data.json`: apps/server/src 87.4%, packages/devtools/src exempt, apps/web/src 9.8%, apps/mobile/src 19.3%, packages/chat-core/src dash, apps/site/src exempt. The page script passes `node --check`; the page itself was not rendered in a browser.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved after one fix round (folder labels now show coverage). Worker: Haiku 5.5. The lead rendered the page in the browser.
+- **The rule:** five kinds, hard and weak signals with blanking, markers (0 of 25), Tier B and coverage.
+- **The map:** the baseline reconciles with plan §1.6 (46.6%; the difference is devtools, which is exempt under D7).
+- **`--check-baseline`:** exists and is tested, for R6.
+- **Results:** 54 tests pass, and the gate passed.

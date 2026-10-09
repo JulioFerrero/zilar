@@ -18,6 +18,8 @@
         --line: #d3dad5;
         --effect: #2e9c4c;
         --plain: #aab3ad;
+        --needs-effect: #e5484d;
+        --exempt: #cfd8e3;
         --legacy: #d9862b;
         --live: #1f6feb;
         --group: #dfe6e1;
@@ -37,6 +39,8 @@
           --line: #262c29;
           --effect: #2e9c4c;
           --plain: #6b7570;
+          --needs-effect: #ff6b6b;
+          --exempt: #8c98a6;
           --legacy: #e0a040;
           --live: #7fb2ff;
           --group: #1a1f1d;
@@ -127,6 +131,12 @@
       .sw.legacy {
         background: var(--legacy);
       }
+      .sw.needs-effect {
+        background: var(--needs-effect);
+      }
+      .sw.exempt {
+        background: var(--exempt);
+      }
       .sw.open {
         outline: 2px solid var(--live);
         outline-offset: -2px;
@@ -195,7 +205,7 @@
       }
       .row {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) 3rem 6.5rem 4rem;
+        grid-template-columns: minmax(0, 1fr) 3.4rem 7.5rem 4.4rem 4.4rem 4.4rem;
         gap: 8px;
         align-items: center;
         padding: 6px 0;
@@ -260,9 +270,12 @@
           padding: 14px;
         }
         .row {
-          grid-template-columns: minmax(0, 1fr) 2.6rem 5rem 3.2rem;
+          grid-template-columns: minmax(0, 1fr) 5rem 3rem 3rem 3rem;
           gap: 6px;
           font-size: 12px;
+        }
+        .opt-sm {
+          display: none;
         }
       }
       @media (prefers-reduced-motion: reduce) {
@@ -278,11 +291,17 @@
       <h1>Effect migration map</h1>
       <div class="stat">
         <span class="pct" id="pct"></span>
-        <span class="note" id="pct-note"></span>
+        <span class="note">coverage: Effect lines out of Effect and needs-Effect lines</span>
       </div>
+      <p class="note" id="pct-note"></p>
       <div class="legend" aria-label="Legend">
         <span><i class="sw effect"></i>Effect</span>
-        <span><i class="sw plain"></i>plain (no Effect, no legacy)</span>
+        <span
+          ><i class="sw needs-effect"></i>needs Effect (async, network, timers, storage, native I/O,
+          try/catch)</span
+        >
+        <span><i class="sw plain"></i>plain</span>
+        <span><i class="sw exempt"></i>exempt (devtools, site, mocks, markers)</span>
         <span><i class="sw legacy"></i>still imports drizzle, hono, zod or zustand</span>
         <span><i class="sw open"></i>open task (todo, in-progress, review)</span>
       </div>
@@ -301,9 +320,17 @@
     <section aria-labelledby="packages-h">
       <h2 id="packages-h">Per package</h2>
       <p class="note">
-        Share of lines that use Effect, and files that still import a legacy library.
+        Coverage is the share of Effect and needs-Effect lines that are Effect. Needs is the number
+        of needs-Effect files, Tier B the Effect files that still hold a Promise edge, and Legacy
+        the files that still import a legacy library.
       </p>
       <div class="table" id="packages"></div>
+    </section>
+
+    <section aria-labelledby="markers-h">
+      <h2 id="markers-h">Effect-plain markers</h2>
+      <p class="note" id="markers-note"></p>
+      <ul class="tasks" id="markers"></ul>
     </section>
 
     <section aria-labelledby="tasks-h">
@@ -324,7 +351,13 @@
         );
       const fmt = (n) => n.toLocaleString('en-US');
       const pct = (n) => `${n.toFixed(1)}%`;
-      const KIND_NAME = { effect: 'Effect', plain: 'plain', legacy: 'legacy' };
+      const KIND_NAME = {
+        effect: 'Effect',
+        'needs-effect': 'needs Effect',
+        plain: 'plain',
+        exempt: 'exempt',
+        legacy: 'legacy',
+      };
 
       const canvas = $('map');
       const ctx = canvas.getContext('2d');
@@ -347,6 +380,8 @@
         palette = {
           effect: get('--effect'),
           plain: get('--plain'),
+          'needs-effect': get('--needs-effect'),
+          exempt: get('--exempt'),
           legacy: get('--legacy'),
           live: get('--live'),
           group: get('--group'),
@@ -389,6 +424,14 @@
           node.value = node.children.reduce((s, c) => s + c.value, 0);
           node.effectLines = node.children.reduce(
             (s, c) => s + (c.file ? (c.file.kind === 'effect' ? c.value : 0) : c.effectLines),
+            0,
+          );
+          node.needsLines = node.children.reduce(
+            (s, c) => s + (c.file ? (c.file.kind === 'needs-effect' ? c.value : 0) : c.needsLines),
+            0,
+          );
+          node.exemptLines = node.children.reduce(
+            (s, c) => s + (c.file ? (c.file.kind === 'exempt' ? c.value : 0) : c.exemptLines),
             0,
           );
         };
@@ -517,6 +560,14 @@
         return t.length > 1 ? `${t}…` : '';
       }
 
+      // Same formula as coveragePct in generate.ts: Effect lines / (Effect + needs-effect lines),
+      // to one decimal. A folder with neither shows "exempt" when all its files are exempt, else a dash.
+      function folderCoverage(node) {
+        const whole = node.effectLines + node.needsLines;
+        if (whole > 0) return `${(Math.round((node.effectLines / whole) * 1000) / 10).toFixed(1)}%`;
+        return node.exemptLines === node.value ? 'exempt' : '—';
+      }
+
       function draw() {
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         ctx.fillStyle = palette.bg;
@@ -544,10 +595,13 @@
         ctx.textBaseline = 'middle';
         for (const g of groups) {
           if (!g.head) continue;
-          const share = g.node.value ? Math.round((g.node.effectLines / g.node.value) * 100) : 0;
           ctx.font = `11px ${palette.ui}`;
           ctx.fillStyle = palette.groupInk;
-          ctx.fillText(clip(`${g.node.name}  ${share}%`, g.w - 8), g.x + 4, g.y + 7);
+          ctx.fillText(
+            clip(`${g.node.name}  ${folderCoverage(g.node)}`, g.w - 8),
+            g.x + 4,
+            g.y + 7,
+          );
         }
         if (hover) {
           ctx.strokeStyle = palette.leafInk;
@@ -583,6 +637,12 @@
         const f = leaf.node.file;
         let html = `<b>${esc(f.path)}</b><br>${fmt(f.lines)} lines · ${KIND_NAME[f.kind]}`;
         if (f.legacy.length) html += `<br>still imports ${esc(f.legacy.join(', '))}`;
+        if (f.kind === 'needs-effect') {
+          html += `<br>signals ${esc(f.signals.join(', '))}`;
+          if (f.firstHit) html += `<br>line ${f.firstHit.line}: ${esc(f.firstHit.text)}`;
+        }
+        if (f.tierB) html += '<br>Tier B: Promise edge';
+        if (f.marker) html += `<br>marker: ${esc(f.marker)}`;
         for (const t of f.tasks) html += `<br>open task ${esc(t.id)} (${esc(t.status)})`;
         return html;
       }
@@ -646,24 +706,50 @@
 
       function renderSummary() {
         const t = MAP.total;
-        $('pct').textContent = pct(t.effectLinesPct);
+        const over = t.markersOverBudget ? ' (over budget)' : '';
+        $('pct').textContent = pct(t.coveragePct);
         $('pct-note').textContent =
-          `of lines use Effect · ${pct(t.effectFilesPct)} of files · ${fmt(t.kinds.legacy.files)} legacy files · ${MAP.tasks.length} open tasks`;
+          `imports Effect: ${pct(t.effectLinesPct)} of lines · needs Effect: ${fmt(t.kinds['needs-effect'].files)} files (${fmt(t.needsWeak.files)} weak only) · Tier B: ${fmt(t.tierB.files)} files · markers ${t.markers.length}/${MAP.markerBudget}${over} · ${MAP.tasks.length} open tasks`;
+      }
+
+      // A package with no Effect and no needs-Effect line has nothing to cover.
+      function coverageCell(p) {
+        const whole = p.kinds.effect.lines + p.kinds['needs-effect'].lines;
+        if (whole === 0) return '<span class="eff"><b>n/a</b></span>';
+        return (
+          `<span class="eff"><span class="bar"><i style="width:${p.coveragePct}%"></i></span>` +
+          `<b>${pct(p.coveragePct)}</b></span>`
+        );
       }
 
       function renderPackages() {
         const line = (p, cls) =>
           `<div class="row${cls}">` +
           `<span>${esc(p.name)}</span>` +
-          `<span>${fmt(p.files)}</span>` +
-          `<span class="eff"><span class="bar"><i style="width:${p.effectLinesPct}%"></i></span><b>${pct(p.effectLinesPct)}</b></span>` +
+          `<span class="opt-sm">${fmt(p.files)}</span>` +
+          coverageCell(p) +
+          `<span>${fmt(p.kinds['needs-effect'].files)}</span>` +
+          `<span>${fmt(p.tierB.files)}</span>` +
           `<span>${fmt(p.kinds.legacy.files)}</span>` +
           '</div>';
         $('packages').innerHTML = [
-          '<div class="row head"><span>Package</span><span>Files</span><span>Effect (lines)</span><span>Legacy</span></div>',
+          '<div class="row head"><span>Package</span><span class="opt-sm">Files</span><span>Coverage</span><span>Needs</span><span>Tier B</span><span>Legacy</span></div>',
           line({ name: 'All packages', ...MAP.total }, ' total'),
           ...MAP.packages.map((p) => line(p, '')),
         ].join('');
+      }
+
+      function renderMarkers() {
+        const count = MAP.total.markers.length;
+        $('markers-note').textContent =
+          `${count} of ${MAP.markerBudget} allowed${MAP.total.markersOverBudget ? ' (over budget)' : ''}`;
+        $('markers').innerHTML = count
+          ? MAP.total.markers
+              .map(
+                (m) => `<li><b>${esc(m.path)}</b> <span class="muted">${esc(m.reason)}</span></li>`,
+              )
+              .join('')
+          : '<li class="muted">No markers.</li>';
       }
 
       function renderTasks() {
@@ -686,6 +772,7 @@
       zoom = buildTree(MAP.files);
       renderSummary();
       renderPackages();
+      renderMarkers();
       renderTasks();
       renderMeta();
       layout();

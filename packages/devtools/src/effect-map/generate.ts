@@ -1,13 +1,15 @@
 // Builds the data behind the Effect map: one entry per counted source file
-// (its line count, its kind, the legacy libraries it still imports and the
-// open tasks whose Allowed files cover it), plus per-package and total sums.
+// (its line count, its kind, the signals that make it need Effect, the legacy
+// libraries it still imports and the open tasks whose Allowed files cover it),
+// plus per-package and total sums. The rule is docs/audit/effect-100-plan.md §1.4.
 // Works in any checkout: the root comes from git, nothing lives in $HOME.
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { Result, Schema } from 'effect';
 import { tokenMatcher } from '../gate/scope.js';
 
-export type Kind = 'effect' | 'plain' | 'legacy';
+export type Kind = 'effect' | 'needs-effect' | 'plain' | 'exempt' | 'legacy';
 
 export interface TaskRef {
   id: string;
@@ -19,11 +21,25 @@ export interface OpenTask extends TaskRef {
   matchers: RegExp[];
 }
 
+export interface SignalHit {
+  id: string;
+  line: number;
+  text: string;
+}
+
 export interface SourceFile {
   path: string;
   lines: number;
   kind: Kind;
   legacy: string[];
+  /** Ids of the signals hit anywhere in the file (H = hard, W = weak), in SIGNAL_IDS order. */
+  signals: string[];
+  /** The first line that hits a signal, its text trimmed to 120 characters. */
+  firstHit: { line: number; text: string } | null;
+  /** An Effect file that still contains a hard signal: a Promise edge, tracked not failed. */
+  tierB: boolean;
+  /** The reason of the `// effect-plain:` marker in the first 15 lines, or null. */
+  marker: string | null;
   tasks: TaskRef[];
 }
 
@@ -32,12 +48,25 @@ export interface Tally {
   lines: number;
 }
 
+export interface Marker {
+  path: string;
+  reason: string;
+}
+
 export interface Summary {
   files: number;
   lines: number;
   kinds: Record<Kind, Tally>;
   effectFilesPct: number;
+  /** Share of all counted lines that are Effect lines (the secondary figure). */
   effectLinesPct: number;
+  /** Effect lines / (Effect lines + needs-effect lines), in percent; 100 when both are 0. */
+  coveragePct: number;
+  tierB: Tally;
+  /** needs-effect files whose only hits are weak signals. */
+  needsWeak: Tally;
+  markers: Marker[];
+  markersOverBudget: boolean;
 }
 
 export interface PackageSummary extends Summary {
@@ -52,11 +81,14 @@ export interface EffectMap {
   generatedAt: string;
   commit: string;
   commitSubject: string;
+  markerBudget: number;
   total: Summary;
   packages: PackageSummary[];
   tasks: TaskSummary[];
   files: SourceFile[];
 }
+
+export const MARKER_BUDGET = 25;
 
 const LEGACY_LIBS: ReadonlyArray<readonly [string, RegExp]> = [
   ['drizzle', /^drizzle-orm/],
@@ -66,8 +98,75 @@ const LEGACY_LIBS: ReadonlyArray<readonly [string, RegExp]> = [
 ];
 const IMPORT = /^\s*(import|export)\s+(type\s+)?[^'"]*?from\s+['"]([^'"]+)['"]/gm;
 const EFFECT_MODULE = /^effect(\/|$)|^@effect\//;
-const EXCLUDED = /\.test\.|\.spec\.|\/test\/|__tests__|\.d\.ts$|\.cosmos\.|fixtures|test-tables/;
+const EXCLUDED =
+  /\.test\.|\.spec\.|\/test\/|__tests__|\.d\.ts$|\.cosmos\.|\.fixture\.|fixtures|test-tables|(^|\/)(test-harness|test-support)\.ts$|(^|\/)fake-[^/]*\.ts$/;
+const EXEMPT_PATHS: readonly RegExp[] = [
+  /(^|\/)mock\//,
+  /-mock\.ts$/,
+  /\.config\.ts$/,
+  /^apps\/mobile\/(ios|android|scripts)\//,
+  /^apps\/site\//,
+  /^packages\/devtools\//,
+];
+const MARKER = /^\s*\/\/\s*effect-plain:\s*(\S.*?)\s*$/;
+const MARKER_LINES = 15;
 const OPEN_STATUSES = ['todo', 'in-progress', 'review', 'blocked'];
+const SIGNAL_IDS = ['H1', 'H2', 'H3', 'H5', 'H8', 'H9', 'W4', 'W6', 'W7'];
+
+interface Signal {
+  id: string;
+  pattern: RegExp;
+}
+
+// Run on the code with strings and comments blanked, one line at a time.
+const LINE_SIGNALS: readonly Signal[] = [
+  {
+    id: 'H1',
+    pattern:
+      /\basync\b|\bawait\b|\bnew Promise\b|\.then\(|\bPromise\.(?:all|allSettled|race|any|resolve|reject)\b/,
+  },
+  {
+    id: 'H2',
+    pattern:
+      /(?<![\w.$])fetch\(|\bXMLHttpRequest\b|\bnew (?:WebSocket|EventSource)\b|\bsendBeacon\(/,
+  },
+  { id: 'H3', pattern: /\b(?:setTimeout|setInterval|setImmediate|requestIdleCallback)\(/ },
+  { id: 'H5', pattern: /\b(?:localStorage|sessionStorage|AsyncStorage|indexedDB)\b/ },
+  { id: 'W4', pattern: /\btry\s*\{|\.catch\(|\bcatch\s*(?:\(|\{)/ },
+  { id: 'W6', pattern: /\bJSON\.parse\(/ },
+  { id: 'W7', pattern: /\bprocess\.env\b|\bimport\.meta\.env\b|\bEXPO_PUBLIC_\w+/ },
+];
+
+// Run on the module specifier of each value import (type-only imports are erased).
+const IMPORT_SIGNALS: readonly Signal[] = [
+  {
+    id: 'H8',
+    pattern:
+      /^(?:node:)?(?:fs|fs\/promises|child_process|net|http|https|http2|os|worker_threads|dgram|dns|tls|readline|stream|zlib)$/,
+  },
+  {
+    id: 'H9',
+    pattern:
+      /^(?:expo-(?:file-system|secure-store|notifications|av|audio|image-picker|document-picker|media-library|camera|contacts|clipboard|sharing|location|haptics|crypto)|@react-native-async-storage\/async-storage|react-native-mmkv)(?:\/|$)/,
+  },
+];
+
+// Strings (kept as empty quotes), line comments and block comments (kept as
+// blank lines) are blanked in one left-to-right pass, so `'http://x'` is a string
+// and not a comment. Template literals are kept as they are, as §1.4 says.
+const NON_CODE =
+  /\/\*[\s\S]*?\*\/|\/\/[^\n]*|'(?:[^'\\\n]|\\.)*'|"(?:[^"\\\n]|\\.)*"|`(?:[^`\\]|\\.)*`/g;
+
+export function blankNonCode(source: string): string {
+  return source.replace(NON_CODE, (token) => {
+    if (token.startsWith('/*')) return token.replace(/[^\n]/g, ' ');
+    if (token.startsWith('//')) return '';
+    if (token.startsWith('`')) return token;
+    return `${token[0]}${token[0]}`;
+  });
+}
+
+const isHard = (id: string): boolean => id.startsWith('H');
 
 export function isCountedSource(path: string): boolean {
   return (
@@ -75,23 +174,78 @@ export function isCountedSource(path: string): boolean {
   );
 }
 
+export function isExemptPath(path: string): boolean {
+  return EXEMPT_PATHS.some((pattern) => pattern.test(path));
+}
+
+// The reason of a `// effect-plain: <reason>` marker in the first 15 lines, or null.
+export function markerReason(source: string): string | null {
+  for (const line of source.split('\n', MARKER_LINES)) {
+    const reason = MARKER.exec(line)?.[1];
+    if (reason !== undefined) return reason;
+  }
+  return null;
+}
+
+interface ImportRef {
+  specifier: string;
+  typeOnly: boolean;
+  line: number;
+}
+
+function importRefs(source: string): ImportRef[] {
+  return [...source.matchAll(IMPORT)].map((match) => {
+    const start = (match.index ?? 0) + (match[0].length - match[0].trimStart().length);
+    return {
+      specifier: match[3] ?? '',
+      typeOnly: Boolean(match[2]),
+      line: source.slice(0, start).split('\n').length,
+    };
+  });
+}
+
 // Legacy wins over Effect: a file that still imports one legacy library is
-// not finished, even when it also imports Effect.
-export function classifySource(source: string): { kind: Kind; legacy: string[] } {
+// not finished, even when it also imports Effect. Only value imports count,
+// so `import type { Effect }` is not Effect.
+export function classifySource(source: string): {
+  kind: 'effect' | 'plain' | 'legacy';
+  legacy: string[];
+} {
   const legacy = new Set<string>();
   let effect = false;
-  for (const match of source.matchAll(IMPORT)) {
-    const isTypeOnly = Boolean(match[2]);
-    const specifier = match[3] ?? '';
-    if (EFFECT_MODULE.test(specifier)) effect = true;
-    if (isTypeOnly) continue;
+  for (const ref of importRefs(source)) {
+    if (ref.typeOnly) continue;
+    if (EFFECT_MODULE.test(ref.specifier)) effect = true;
     for (const [name, pattern] of LEGACY_LIBS) {
-      if (pattern.test(specifier)) legacy.add(name);
+      if (pattern.test(ref.specifier)) legacy.add(name);
     }
   }
   const libs = [...legacy];
   if (libs.length > 0) return { kind: 'legacy', legacy: libs };
   return { kind: effect ? 'effect' : 'plain', legacy: [] };
+}
+
+// Every signal hit with its line. Hits in comments and strings are blanked first.
+export function signalHits(source: string): SignalHit[] {
+  const lines = source.split('\n');
+  const code = blankNonCode(source).split('\n');
+  const hits: SignalHit[] = [];
+  code.forEach((codeLine, index) => {
+    for (const signal of LINE_SIGNALS) {
+      if (signal.pattern.test(codeLine)) {
+        hits.push({ id: signal.id, line: index + 1, text: lines[index] ?? '' });
+      }
+    }
+  });
+  for (const ref of importRefs(source)) {
+    if (ref.typeOnly) continue;
+    for (const signal of IMPORT_SIGNALS) {
+      if (signal.pattern.test(ref.specifier)) {
+        hits.push({ id: signal.id, line: ref.line, text: lines[ref.line - 1] ?? '' });
+      }
+    }
+  }
+  return hits;
 }
 
 // apps/server/src/x.ts -> apps/server; scripts/x.ts -> scripts.
@@ -149,35 +303,90 @@ export function openTask(row: BoardRow, taskText: string): OpenTask {
   };
 }
 
+function kindOf(
+  path: string,
+  importKind: 'effect' | 'plain' | 'legacy',
+  marker: string | null,
+  signals: readonly string[],
+): Kind {
+  if (importKind === 'legacy') return 'legacy';
+  if (isExemptPath(path) || marker !== null) return 'exempt';
+  if (importKind === 'effect') return 'effect';
+  return signals.length > 0 ? 'needs-effect' : 'plain';
+}
+
 export function sourceFile(path: string, source: string, tasks: readonly OpenTask[]): SourceFile {
-  const { kind, legacy } = classifySource(source);
+  const hits = signalHits(source);
+  const signals = SIGNAL_IDS.filter((id) => hits.some((hit) => hit.id === id));
+  const first = hits.reduce<SignalHit | null>(
+    (best, hit) => (best === null || hit.line < best.line ? hit : best),
+    null,
+  );
+  const { kind: importKind, legacy } = classifySource(source);
+  const marker = markerReason(source);
+  const kind = kindOf(path, importKind, marker, signals);
   const covering = tasks
     .filter((task) => task.matchers.some((matcher) => matcher.test(path)))
     .map(({ id, title, status }) => ({ id, title, status }));
-  return { path, lines: source.split('\n').length, kind, legacy, tasks: covering };
+  return {
+    path,
+    lines: source.split('\n').length,
+    kind,
+    legacy,
+    signals,
+    firstHit: first === null ? null : { line: first.line, text: first.text.trim().slice(0, 120) },
+    tierB: kind === 'effect' && signals.some(isHard),
+    marker,
+    tasks: covering,
+  };
 }
 
 const share = (part: number, whole: number): number =>
   whole === 0 ? 0 : Math.round((part / whole) * 1000) / 10;
 
+const coverage = (effectLines: number, needsEffectLines: number): number => {
+  const whole = effectLines + needsEffectLines;
+  return whole === 0 ? 100 : share(effectLines, whole);
+};
+
+const emptyTally = (): Tally => ({ files: 0, lines: 0 });
+
+function bump(tally: Tally, lines: number): void {
+  tally.files += 1;
+  tally.lines += lines;
+}
+
 export function summarise(files: readonly SourceFile[]): Summary {
   const kinds: Record<Kind, Tally> = {
-    effect: { files: 0, lines: 0 },
-    plain: { files: 0, lines: 0 },
-    legacy: { files: 0, lines: 0 },
+    effect: emptyTally(),
+    'needs-effect': emptyTally(),
+    plain: emptyTally(),
+    exempt: emptyTally(),
+    legacy: emptyTally(),
   };
+  const tierB = emptyTally();
+  const needsWeak = emptyTally();
   let lines = 0;
   for (const file of files) {
-    kinds[file.kind].files += 1;
-    kinds[file.kind].lines += file.lines;
+    bump(kinds[file.kind], file.lines);
     lines += file.lines;
+    if (file.tierB) bump(tierB, file.lines);
+    if (file.kind === 'needs-effect' && !file.signals.some(isHard)) bump(needsWeak, file.lines);
   }
+  const markers = files.flatMap((file) =>
+    file.marker === null ? [] : [{ path: file.path, reason: file.marker }],
+  );
   return {
     files: files.length,
     lines,
     kinds,
     effectFilesPct: share(kinds.effect.files, files.length),
     effectLinesPct: share(kinds.effect.lines, lines),
+    coveragePct: coverage(kinds.effect.lines, kinds['needs-effect'].lines),
+    tierB,
+    needsWeak,
+    markers,
+    markersOverBudget: markers.length > MARKER_BUDGET,
   };
 }
 
@@ -216,11 +425,25 @@ export function buildEffectMap(input: {
     generatedAt: input.generatedAt,
     commit: input.commit,
     commitSubject: input.commitSubject,
+    markerBudget: MARKER_BUDGET,
     total: summarise(input.files),
     packages: packageSummaries(input.files),
     tasks: taskSummaries(input.tasks, input.files),
     files: [...input.files],
   };
+}
+
+const NeedsEffectBaseline = Schema.Struct({ needsEffectFiles: Schema.Number });
+
+// The ratchet (task R6): a message when the map has more needs-effect files
+// than the baseline allows, or null when it is within the baseline.
+export function checkNeedsEffectBaseline(map: EffectMap, json: string): string | null {
+  const parsed: unknown = JSON.parse(json);
+  const decoded = Schema.decodeUnknownResult(NeedsEffectBaseline)(parsed);
+  if (Result.isFailure(decoded)) return 'baseline must be JSON {"needsEffectFiles": number}';
+  const allowed = decoded.success.needsEffectFiles;
+  const current = map.total.kinds['needs-effect'].files;
+  return current > allowed ? `needs-effect files ${current} exceed the baseline ${allowed}` : null;
 }
 
 export function repoRoot(cwd: string = process.cwd()): string {
