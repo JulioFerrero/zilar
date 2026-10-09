@@ -4,7 +4,7 @@ import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import pino from 'pino';
 import { createAuditRecorder, type AuditRecorder } from '../audit/service';
-import { sqlRuntimeFor } from '../effect/sql';
+import type { ServerDatabase } from '../db/client';
 import {
   bootstrapUser,
   createTestContext,
@@ -600,27 +600,19 @@ describe('approvals routes', () => {
       now,
     );
 
-    // A recorder whose internal `recordAudit` throws — the recorder must
-    // catch and the route must still answer 200. The modules run on
-    // effect/sql now, so the failure is injected at that seam: every
-    // `runPromise` is counted and only the audit write's call rejects. The
-    // approve_once decision path makes three runtime calls before the
-    // recorder's (SELECT approvals, SELECT ais owner, the decision
-    // transaction), so the fourth call is the audit INSERT. The recorder
-    // swallows, the route keeps going.
-    const passthrough = vi.mocked(sqlRuntimeFor).getMockImplementation();
-    let calls = 0;
-    vi.mocked(sqlRuntimeFor).mockImplementation((db) => {
-      calls += 1;
-      if (calls === 4) {
-        return { runPromise: () => Promise.reject(new Error('database is down')) } as never;
-      }
-      return passthrough!(db);
-    });
-
+    // The recorder runs on a database with no effect/sql runtime registered,
+    // so every audit write throws before it reaches SQL. The recorder must
+    // catch that, log it once, and the route must still answer 200. The
+    // failure does not depend on how many queries run before the audit write.
+    const unregisteredDb = {} as unknown as ServerDatabase;
+    const auditErrors: string[] = [];
     const recorder = createAuditRecorder({
-      db: context.db,
-      logger: { error: () => undefined },
+      db: unregisteredDb,
+      logger: {
+        error: (_fields, message) => {
+          auditErrors.push(message);
+        },
+      },
     });
 
     const clockNow = now.getTime();
@@ -630,27 +622,23 @@ describe('approvals routes', () => {
       audit: recorder,
       now: () => clockNow,
     });
-    try {
-      const response = await localApp.request(
-        `${TEST_BASE_URL}/api/approvals/${created.id}/decision`,
-        {
-          method: 'POST',
-          headers: { 'content-type': 'application/json', cookie: owner.cookie },
-          body: JSON.stringify({ decision: 'approve_once' }),
-        },
-      );
-      expect(response.status).toBe(200);
-      expect(calls).toBe(4);
-      const auditRows = await testSql(context)(
-        Effect.gen(function* () {
-          const sql = yield* SqlClient.SqlClient;
-          return yield* sql<AuditReadRow>`SELECT id, action, subject_id, actor_user_id, ai_id, args_hash, result, detail FROM audit_log`;
-        }),
-      );
-      expect(auditRows).toHaveLength(0);
-    } finally {
-      vi.mocked(sqlRuntimeFor).mockImplementation(passthrough!);
-    }
+    const response = await localApp.request(
+      `${TEST_BASE_URL}/api/approvals/${created.id}/decision`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie: owner.cookie },
+        body: JSON.stringify({ decision: 'approve_once' }),
+      },
+    );
+    expect(response.status).toBe(200);
+    expect(auditErrors).toEqual(['audit write failed; carrying on']);
+    const auditRows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<AuditReadRow>`SELECT id, action, subject_id, actor_user_id, ai_id, args_hash, result, detail FROM audit_log`;
+      }),
+    );
+    expect(auditRows).toHaveLength(0);
   });
 
   it('fires onDecided after a successful decision and not after a 409', async () => {
