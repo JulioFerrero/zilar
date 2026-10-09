@@ -2,6 +2,21 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-09 05:50, Julio asleep:**
+- **Merged since 03:24:**
+  - every test folder is off drizzle (T-0718 to T-0729); only `db/migrate.test.ts` and `effect/sql.test.ts` remain, and they belong to D3;
+  - T-0730: the Effect edge replaced the Hono app in `createApp`, after 2 automatic rounds that fixed the production socket address and HEAD parity;
+  - T-0731: the Hono bridge `effect/http.ts` is deleted;
+  - T-0732: the edge nits, `errors.ts` off Hono, and the 36 `api.ts` header comments.
+- **Running:** T-0733 (B1.6): `index.ts` starts on `NodeHttpServer` and `@hono/node-server` is removed.
+- **Hono after T-0733:** only `git/*`, which is A12 and Julio's call; its routes are not mounted anywhere.
+- **Drizzle left:** `db/*`, `auth/auth.ts` (`drizzleAdapter`), `auth/auth-schema.ts`, `auth/cli-config.ts`, `test-support.ts` and the `effect/sql.ts` snapshot helper. All wait for Julio:
+  - **D2 switch:** `auth.ts` onto the T-0690 adapter. This is the login path, and the timestamp parsing needs checking on production `pg`;
+  - **S1:** the test-support switch, which needs D2;
+  - **D3:** the migrator switch on the live DB;
+  - **DEL:** deleting `db/schema.ts` and the drizzle dependencies.
+- **Fallback:** the free Muse was rate-limited from about 03:15, so workers have run on paid Muse.
+
 **2026-10-09 03:24, 8 workers:**
 - **Merged since 02:20:** T-0694 (B1.1, the http-core split), T-0696 (B1.2, platform-node), T-0717 (B1.3a, the mount list) and 23 test-folder tasks moving tests off drizzle. Each Haiku result was reviewed in its diff; each DeepSeek result went through its pre-review.
 - **Running:**
