@@ -15,6 +15,9 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0705](T-0705-backgrounds-delegation-tests-off-drizzle.md) | tests off drizzle: backgrounds + agents/delegation | in-progress | haiku-5.5 | T-0695 | |
 | [T-0706](T-0706-audit-tests-off-drizzle.md) | tests off drizzle: audit | in-progress | haiku-5.5 | T-0695 | |
 | [T-0707](T-0707-invite-links-tests-off-drizzle.md) | tests off drizzle: invite-links | in-progress | auto | T-0695 | |
+| [T-0708](T-0708-xmpp-tests-off-drizzle.md) | tests off drizzle: xmpp | in-progress | haiku-5.5 | T-0695 | |
+| [T-0709](T-0709-small-folders-tests-off-drizzle.md) | tests off drizzle: avatars + chat-folders + connections + files | in-progress | auto | T-0695 | |
+| [T-0710](T-0710-stickers-tests-off-drizzle.md) | tests off drizzle: stickers | in-progress | haiku-5.5 | T-0695 | |
 
 ## Follow-ups
 
