@@ -2,6 +2,21 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-09 07:00, morning summary for Julio:**
+- **Overnight:** about 70 tasks merged. Haiku 5.5 did about 40 of them, and the lead checked each diff. Every merge passed the gate.
+- **Effect 4 status:**
+  - every server module and every test is off drizzle;
+  - the HTTP edge is Effect: `createApp` returns `effect/edge.ts`, served on `NodeHttpServer`;
+  - Hono is left only in `git/*`;
+  - the lead smoke-tested the server locally (health GET and HEAD, 401, CORS preflight, SIGTERM).
+- **Production:** unchanged. The images pipeline was broken since yesterday (web image, fixed in T-0734) and is green now, but auto-deploy has no Coolify secrets, so nothing deployed.
+- **Decisions waiting for you:**
+  1. **D2:** switch login (`auth.ts`) to the new effect/sql adapter (T-0690). It needs a check of the timestamp parsing on production `pg`.
+  2. **D3:** switch the migrator on the live DB (the adoption seed).
+  3. **DEL:** delete `db/schema.ts` and the drizzle dependencies, after D2, S1 and D3.
+  4. **A12:** delete `git/*` or mount it.
+  5. **Deploy:** when to deploy tonight's work. That means a manual Coolify deploy, or setting the three secrets.
+
 **2026-10-09 06:35, Julio asleep:**
 - **Merged:**
   - T-0733 (B1.6): the server starts through `serveEdgeOnNode` (`effect/node-serve.ts`) on `NodeHttpServer`, and `@hono/node-server` is gone;
