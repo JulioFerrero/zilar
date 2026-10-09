@@ -2,6 +2,10 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-09 18:35 UTC: main green at `30e1c38a`; 100.0% Effect; nothing deployed**
+- **CI was red from 17:55 to 18:15 UTC:** a web test (`MessageSearchResults` "opens a hit on click") raced the Effect scheduler in CI, and the Composer voice tests were flaky the same way. T-0842 (test-only) made them wait for the visible state, and CI on `30e1c38a` passed all jobs.
+- **Production images:** all four built, and the server image smoke start ("zilar-server listening") passed with the new Effect entry (T-0838). The deploy job skipped because the Coolify secrets are not set, and live `/health` still reports `73fae1bf`.
+
 **2026-10-09 18:00 UTC: 100.0% Effect on main (`ee84523a`)**
 - **The map:** `pnpm effect:map` on main gives 879 files: effect 438, needs-effect 0, plain 329, exempt 112, legacy 0. Markers are 16 of 25, and Tier B (tracked only, decision D1) has 161 files.
 - **Merged since 17:55:**
