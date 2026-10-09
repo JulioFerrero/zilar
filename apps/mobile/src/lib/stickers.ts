@@ -6,6 +6,9 @@
  * modules — see `apps/mobile` test notes in T-0112).
  */
 
+import { Effect } from 'effect';
+import { parseUrl } from '@zilar/chat-core';
+
 /** The sticker packs in a panel list (the server's shape, validated by hand). */
 export interface StickerPack {
   id: string;
@@ -79,10 +82,8 @@ export function isSameOriginStickerUrl(url: string, apiUrl: string): boolean {
   if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
     return false;
   }
-  let parsed: URL;
-  try {
-    parsed = new URL(trimmed);
-  } catch {
+  const parsed = parseUrl(trimmed);
+  if (parsed === undefined) {
     return false;
   }
   return (
@@ -98,11 +99,7 @@ export function apiOrigin(apiUrl: string): string {
 }
 
 function originOf(apiUrl: string): string | undefined {
-  try {
-    return new URL(apiUrl).origin;
-  } catch {
-    return undefined;
-  }
+  return parseUrl(apiUrl)?.origin;
 }
 
 /**
@@ -124,17 +121,18 @@ export function stickerImageSource(
   return token === undefined ? { uri } : { uri, headers: { authorization: `Bearer ${token}` } };
 }
 
+/** Parses stored JSON; text that does not parse gives `undefined`, never a throw. */
+const parseStoredJson = (raw: string): Effect.Effect<unknown> =>
+  Effect.try({ try: () => JSON.parse(raw) as unknown, catch: () => undefined }).pipe(
+    Effect.catch(() => Effect.succeed(undefined)),
+  );
+
 /** Reads the recents; hostile or missing data resolves to an empty list. */
 export function readRecentStickers(raw: string | null | undefined): RecentStickerEntry[] {
   if (raw === null || raw === undefined || raw === '') {
     return [];
   }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return [];
-  }
+  const parsed = Effect.runSync(parseStoredJson(raw));
   if (!Array.isArray(parsed)) {
     return [];
   }

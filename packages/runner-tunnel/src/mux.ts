@@ -1,4 +1,5 @@
 import net from 'node:net';
+import { Cause, Deferred, Duration, Effect } from 'effect';
 import type { WebSocket } from 'ws';
 import {
   FRAME_DATA,
@@ -8,8 +9,6 @@ import {
   encodeBinaryFrame,
   type ControlMessage,
 } from './protocol.ts';
-
-const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** The tunnel died (or never existed) while a stream was using it. Never hangs: always thrown. */
 export class TunnelClosedError extends Error {
@@ -59,11 +58,8 @@ export class StreamMux {
   private readonly streams = new Map<number, StreamSink>();
   private readonly locallyPaused = new Set<number>();
   private readonly pausedByRemote = new Set<number>();
-  private readonly resumeWaiters = new Map<
-    number,
-    Array<{ resolve: () => void; reject: (e: Error) => void }>
-  >();
-  private readonly tails = new Map<number, Promise<void>>();
+  private readonly resumeWaiters = new Map<number, Array<Deferred.Deferred<void, Error>>>();
+  private readonly tails = new Map<number, Deferred.Deferred<void>>();
   private failed: Error | null = null;
 
   private readonly ws: WebSocket;
@@ -111,22 +107,31 @@ export class StreamMux {
    * served FIFO: concurrent calls are queued behind each other, and a queued
    * teardown always runs last, so a FIN can never overtake trailing data.
    */
-  async sendStreamData(streamId: number, chunk: Buffer): Promise<void> {
-    const previous = this.tails.get(streamId) ?? Promise.resolve();
-    let release!: () => void;
-    const current = new Promise<void>((resolve) => {
-      release = resolve;
+  sendStreamData(streamId: number, chunk: Buffer): Promise<void> {
+    return Effect.runPromise(this.sendStreamDataEffect(streamId, chunk));
+  }
+
+  /**
+   * `sendStreamData` as an Effect, for callers that already run on a fiber.
+   * The stream's queue slot is taken when the Effect starts running, so a
+   * teardown queued after it can never overtake it.
+   */
+  sendStreamDataEffect(streamId: number, chunk: Buffer): Effect.Effect<void, Error> {
+    return Effect.suspend(() => {
+      const previous = this.tails.get(streamId);
+      const current = Deferred.makeUnsafe<void>();
+      this.tails.set(streamId, current);
+      const release = Effect.sync(() => {
+        if (this.tails.get(streamId) === current) {
+          this.tails.delete(streamId);
+        }
+        Deferred.doneUnsafe(current, Effect.void);
+      });
+      return (previous === undefined ? Effect.void : Deferred.await(previous)).pipe(
+        Effect.andThen(this.sendNow(streamId, chunk)),
+        Effect.ensuring(release),
+      );
     });
-    this.tails.set(streamId, current);
-    await previous.catch(() => undefined);
-    try {
-      await this.sendNow(streamId, chunk);
-    } finally {
-      release();
-      if (this.tails.get(streamId) === current) {
-        this.tails.delete(streamId);
-      }
-    }
   }
 
   /**
@@ -135,39 +140,51 @@ export class StreamMux {
    * stream acts; the rest are no-ops. Never throws.
    */
   enqueueTeardown(streamId: number, kind: 'fin' | { closed: string }): void {
-    const previous = this.tails.get(streamId) ?? Promise.resolve();
-    const done = previous
-      .catch(() => undefined)
-      .then(() => {
-        if (this.unregisterStream(streamId)) {
-          if (kind === 'fin') {
-            this.sendFin(streamId);
-          } else {
-            try {
-              this.sendControl({ type: 'tunnel.closed', stream_id: streamId, reason: kind.closed });
-            } catch {
-              // The tunnel is dying; failAll below cleans the stream up.
-            }
-          }
-        }
-        if (this.tails.get(streamId) === done) {
-          this.tails.delete(streamId);
-        }
-      })
-      .catch(() => undefined);
+    const previous = this.tails.get(streamId);
+    const done = Deferred.makeUnsafe<void>();
     this.tails.set(streamId, done);
+    const teardown = Effect.gen({ self: this }, function* () {
+      if (previous !== undefined) {
+        yield* Deferred.await(previous);
+      }
+      if (this.unregisterStream(streamId)) {
+        if (kind === 'fin') {
+          this.sendFin(streamId);
+        } else {
+          // The tunnel is dying; failAll below cleans the stream up.
+          yield* Effect.try(() =>
+            this.sendControl({ type: 'tunnel.closed', stream_id: streamId, reason: kind.closed }),
+          ).pipe(Effect.ignore);
+        }
+      }
+    });
+    Effect.runFork(
+      teardown.pipe(
+        Effect.catchCause(() => Effect.void),
+        Effect.ensuring(
+          Effect.sync(() => {
+            if (this.tails.get(streamId) === done) {
+              this.tails.delete(streamId);
+            }
+            Deferred.doneUnsafe(done, Effect.void);
+          }),
+        ),
+      ),
+    );
   }
 
-  private async sendNow(streamId: number, chunk: Buffer): Promise<void> {
-    let offset = 0;
-    while (offset < chunk.length) {
-      await this.waitSendable(streamId);
-      const end = Math.min(chunk.length, offset + MAX_FRAME_BYTES);
-      const frame = encodeBinaryFrame(streamId, FRAME_DATA, chunk.subarray(offset, end));
-      offset = end;
-      this.peakBufferedAmount = Math.max(this.peakBufferedAmount, this.ws.bufferedAmount);
-      await this.sendRaw(frame);
-    }
+  private sendNow(streamId: number, chunk: Buffer): Effect.Effect<void, Error> {
+    return Effect.gen({ self: this }, function* () {
+      let offset = 0;
+      while (offset < chunk.length) {
+        yield* this.waitSendable(streamId);
+        const end = Math.min(chunk.length, offset + MAX_FRAME_BYTES);
+        const frame = encodeBinaryFrame(streamId, FRAME_DATA, chunk.subarray(offset, end));
+        offset = end;
+        this.peakBufferedAmount = Math.max(this.peakBufferedAmount, this.ws.bufferedAmount);
+        yield* this.sendRaw(frame);
+      }
+    });
   }
 
   sendFin(streamId: number): void {
@@ -233,7 +250,7 @@ export class StreamMux {
     const waiters = this.resumeWaiters.get(streamId);
     this.resumeWaiters.delete(streamId);
     for (const waiter of waiters ?? []) {
-      waiter.resolve();
+      Deferred.doneUnsafe(waiter, Effect.void);
     }
   }
 
@@ -283,7 +300,7 @@ export class StreamMux {
     this.failed = err;
     for (const waiters of this.resumeWaiters.values()) {
       for (const waiter of waiters) {
-        waiter.reject(err);
+        Deferred.doneUnsafe(waiter, Effect.fail(err));
       }
     }
     this.resumeWaiters.clear();
@@ -300,52 +317,74 @@ export class StreamMux {
     }
   }
 
-  private throwIfDead(): void {
+  private deadError(): Error | null {
     if (this.failed !== null) {
-      throw this.failed;
+      return this.failed;
     }
     if (this.ws.readyState !== this.ws.OPEN) {
-      throw new TunnelClosedError('websocket is not open');
+      return new TunnelClosedError('websocket is not open');
+    }
+    return null;
+  }
+
+  private throwIfDead(): void {
+    const dead = this.deadError();
+    if (dead !== null) {
+      throw dead;
     }
   }
 
-  private async waitSendable(streamId: number): Promise<void> {
-    for (;;) {
-      this.throwIfDead();
-      if (!this.pausedByRemote.has(streamId) && this.ws.bufferedAmount <= this.highWaterMark) {
-        return;
-      }
-      if (this.pausedByRemote.has(streamId)) {
-        await this.waitResume(streamId);
-      } else {
-        await delay(2);
-      }
-    }
+  private failIfDead(): Effect.Effect<void, Error> {
+    return Effect.suspend(() => {
+      const dead = this.deadError();
+      return dead === null ? Effect.void : Effect.fail(dead);
+    });
   }
 
-  private waitResume(streamId: number): Promise<void> {
-    return new Promise<void>((resolve, reject) => {
+  private waitSendable(streamId: number): Effect.Effect<void, Error> {
+    return Effect.gen({ self: this }, function* () {
+      for (;;) {
+        yield* this.failIfDead();
+        if (!this.pausedByRemote.has(streamId) && this.ws.bufferedAmount <= this.highWaterMark) {
+          return;
+        }
+        if (this.pausedByRemote.has(streamId)) {
+          yield* this.waitResume(streamId);
+        } else {
+          yield* Effect.sleep(Duration.millis(2));
+        }
+      }
+    });
+  }
+
+  private waitResume(streamId: number): Effect.Effect<void, Error> {
+    return Effect.suspend(() => {
+      const waiter = Deferred.makeUnsafe<void, Error>();
       const list = this.resumeWaiters.get(streamId) ?? [];
-      list.push({ resolve, reject });
+      list.push(waiter);
       this.resumeWaiters.set(streamId, list);
+      return Deferred.await(waiter);
     });
   }
 
-  private sendRaw(frame: Buffer): Promise<void> {
-    this.throwIfDead();
-    return new Promise<void>((resolve, reject) => {
-      try {
-        this.ws.send(frame, (err) => {
-          if (err) {
-            reject(new TunnelClosedError(err.message));
-          } else {
-            resolve();
+  private sendRaw(frame: Buffer): Effect.Effect<void, Error> {
+    return this.failIfDead().pipe(
+      Effect.andThen(
+        Effect.callback<void, Error>((resume) => {
+          try {
+            this.ws.send(frame, (err) => {
+              resume(err ? Effect.fail(new TunnelClosedError(err.message)) : Effect.void);
+            });
+          } catch (err) {
+            resume(
+              Effect.fail(
+                err instanceof Error ? err : new TunnelClosedError('websocket send failed'),
+              ),
+            );
           }
-        });
-      } catch (err) {
-        reject(err instanceof Error ? err : new TunnelClosedError('websocket send failed'));
-      }
-    });
+        }),
+      ),
+    );
   }
 }
 
@@ -407,16 +446,21 @@ export function attachSocketToStream(
   });
   socket.on('data', (chunk: Buffer) => {
     socket.pause();
-    void mux
-      .sendStreamData(streamId, chunk)
-      .then(() => {
-        if (!socket.destroyed) {
-          socket.resume();
-        }
-      })
-      .catch((err: unknown) => {
-        socket.destroy(err instanceof Error ? err : new TunnelClosedError('send failed'));
-      });
+    Effect.runFork(
+      mux.sendStreamDataEffect(streamId, chunk).pipe(
+        Effect.matchCause({
+          onSuccess: () => {
+            if (!socket.destroyed) {
+              socket.resume();
+            }
+          },
+          onFailure: (cause) => {
+            const err = Cause.squash(cause);
+            socket.destroy(err instanceof Error ? err : new TunnelClosedError('send failed'));
+          },
+        }),
+      ),
+    );
   });
   socket.on('end', () => {
     mux.enqueueTeardown(streamId, 'fin');

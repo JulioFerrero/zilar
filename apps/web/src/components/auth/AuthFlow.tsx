@@ -1,12 +1,16 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import { Effect } from 'effect';
 import { useLocation, useNavigate } from 'react-router';
 import { OtpInput } from './OtpInput';
 import { Button } from '@/components/ui/button';
 import { TextInput } from '@/components/ui/text-input';
 import { useAuth } from '@/auth/AuthProvider';
 import { authClient, sendSignInCode, verifySignInCode } from '@/lib/auth';
+import { useAction } from '@/lib/effect/use-action';
+import { useQuery } from '@/lib/effect/use-query';
 
 const RESEND_SECONDS = 30;
+const RESEND_TICK_MS = 1000;
 
 interface AuthErrorLike {
   code?: string;
@@ -55,32 +59,43 @@ export function AuthFlow({
   const [email, setEmail] = useState(initialEmail ?? '');
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | undefined>(undefined);
+  // `busy` is a state the two actions below set and clear themselves, so the
+  // buttons re-enable the moment the server answers (before the session
+  // reads and the redirect), exactly as before.
   const [busy, setBusy] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(0);
 
-  useEffect(() => {
-    if (secondsLeft <= 0) {
-      return;
-    }
-    const timer = setInterval(() => {
-      setSecondsLeft((value) => Math.max(0, value - 1));
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [secondsLeft]);
+  // One second per value of `secondsLeft`: each tick (or a new 30s) restarts
+  // the wait, and an unmount interrupts it.
+  useQuery(
+    () =>
+      secondsLeft <= 0
+        ? Effect.void
+        : Effect.sleep(RESEND_TICK_MS).pipe(
+            Effect.andThen(Effect.sync(() => setSecondsLeft((value) => Math.max(0, value - 1)))),
+          ),
+    [secondsLeft],
+  );
 
-  const requestCode = async (): Promise<void> => {
-    setBusy(true);
-    setError(undefined);
-    const result = await sendSignInCode(email.trim(), inviteCode);
-    setBusy(false);
-    if (result.error) {
-      setError(errorMessageFor(result.error as AuthErrorLike));
-      return;
-    }
-    setCode('');
-    setStep('code');
-    setSecondsLeft(RESEND_SECONDS);
-  };
+  const [, requestCode] = useAction((address: string) =>
+    Effect.gen(function* () {
+      yield* Effect.sync(() => {
+        setBusy(true);
+        setError(undefined);
+      });
+      const result = yield* Effect.promise(() => sendSignInCode(address, inviteCode));
+      yield* Effect.sync(() => setBusy(false));
+      if (result.error) {
+        yield* Effect.sync(() => setError(errorMessageFor(result.error as AuthErrorLike)));
+        return;
+      }
+      yield* Effect.sync(() => {
+        setCode('');
+        setStep('code');
+        setSecondsLeft(RESEND_SECONDS);
+      });
+    }),
+  );
 
   const submitEmail = (event: React.FormEvent): void => {
     event.preventDefault();
@@ -88,36 +103,50 @@ export function AuthFlow({
       setError('Enter a valid email address');
       return;
     }
-    void requestCode();
+    requestCode(email.trim());
   };
 
-  const verify = async (value: string): Promise<void> => {
+  const [, verifyCode] = useAction((attempt: { address: string; value: string }) =>
+    Effect.gen(function* () {
+      yield* Effect.sync(() => {
+        setBusy(true);
+        setError(undefined);
+      });
+      const result = yield* Effect.promise(() =>
+        verifySignInCode(attempt.address, attempt.value, inviteCode),
+      );
+      yield* Effect.sync(() => setBusy(false));
+      if (result.error) {
+        yield* Effect.sync(() => {
+          setError(errorMessageFor(result.error as AuthErrorLike));
+          setCode('');
+        });
+        return;
+      }
+
+      yield* Effect.promise(() => auth.refetch());
+      const session = yield* Effect.promise(() => authClient.getSession());
+      const name = session.data?.user.name ?? '';
+      const from = (location.state as { from?: string } | null)?.from;
+      // A nameless user picks a name first, then continues to `from` — the
+      // name step reads the same `next` state JoinPage writes. The handle
+      // step follows the name step (HandlePage chains the same way).
+      yield* Effect.sync(() =>
+        navigate(
+          name.trim() === '' ? '/welcome/name' : (from ?? '/'),
+          name.trim() === ''
+            ? { replace: true, state: from === undefined ? undefined : { next: from } }
+            : { replace: true },
+        ),
+      );
+    }),
+  );
+
+  const verify = (value: string): void => {
     if (busy || value.length !== 6) {
       return;
     }
-    setBusy(true);
-    setError(undefined);
-    const result = await verifySignInCode(email.trim(), value, inviteCode);
-    setBusy(false);
-    if (result.error) {
-      setError(errorMessageFor(result.error as AuthErrorLike));
-      setCode('');
-      return;
-    }
-
-    await auth.refetch();
-    const session = await authClient.getSession();
-    const name = session.data?.user.name ?? '';
-    const from = (location.state as { from?: string } | null)?.from;
-    // A nameless user picks a name first, then continues to `from` — the
-    // name step reads the same `next` state JoinPage writes. The handle
-    // step follows the name step (HandlePage chains the same way).
-    navigate(
-      name.trim() === '' ? '/welcome/name' : (from ?? '/'),
-      name.trim() === ''
-        ? { replace: true, state: from === undefined ? undefined : { next: from } }
-        : { replace: true },
-    );
+    verifyCode({ address: email.trim(), value });
   };
 
   return (
@@ -168,7 +197,7 @@ export function AuthFlow({
             <OtpInput
               value={code}
               onChange={setCode}
-              onComplete={(value) => void verify(value)}
+              onComplete={verify}
               disabled={busy}
               invalid={error !== undefined}
             />
@@ -178,7 +207,7 @@ export function AuthFlow({
               </p>
             )}
             <div className="flex items-center gap-3">
-              <Button type="button" disabled={busy} onClick={() => void verify(code)} size="lg">
+              <Button type="button" disabled={busy} onClick={() => verify(code)} size="lg">
                 Continue
               </Button>
               {secondsLeft > 0 ? (
@@ -189,7 +218,7 @@ export function AuthFlow({
                   variant="link"
                   size="sm"
                   disabled={busy}
-                  onClick={() => void requestCode()}
+                  onClick={() => requestCode(email.trim())}
                   className="h-auto px-0 text-[14px] text-accent"
                 >
                   Resend code

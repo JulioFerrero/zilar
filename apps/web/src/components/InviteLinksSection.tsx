@@ -1,9 +1,12 @@
+import { Effect } from 'effect';
+import { AsyncResult } from 'effect/reactivity';
 import { Check, Copy } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { TextInput } from '@/components/ui/text-input';
 import { copyText } from '@/lib/clipboard';
 import type { GroupInviteLink } from '@/lib/api';
+import { isWaiting, useAction } from '@/lib/effect/use-action';
 
 function linkState(
   link: GroupInviteLink,
@@ -35,6 +38,19 @@ function describeLink(link: GroupInviteLink, now: number): string {
 }
 
 /**
+ * A revoke is either the DELETE promise GroupPanel returns or an Effect
+ * ChannelPanel builds. The row stays busy until it settles, success or failure.
+ */
+type RevokeHandler = (linkId: string) => void | Promise<void> | Effect.Effect<void, unknown>;
+
+const settle = (
+  result: void | Promise<void> | Effect.Effect<void, unknown>,
+): Effect.Effect<void, unknown> =>
+  Effect.isEffect(result)
+    ? result
+    : Effect.tryPromise({ try: () => Promise.resolve(result), catch: (cause) => cause });
+
+/**
  * The group invite-links section (T-0115): owners and admins create a link
  * (label, expiry, max uses), see the URL once with a Copy button and a
  * warning that anyone with the link can join, and list/revoke links.
@@ -53,15 +69,17 @@ export function InviteLinksSection({
   error: string | undefined;
   created: { url: string } | undefined;
   onCreate: (input: { label?: string; expiresInHours?: number; maxUses?: number }) => void;
-  onRevoke: (linkId: string) => void | Promise<void>;
+  onRevoke: RevokeHandler;
   onDismissCreated: () => void;
 }) {
   const [label, setLabel] = useState('');
   const [expiry, setExpiry] = useState('');
   const [maxUses, setMaxUses] = useState('');
-  const [copied, setCopied] = useState(false);
   const [formError, setFormError] = useState<string | undefined>(undefined);
-  const [revokingId, setRevokingId] = useState<string | undefined>(undefined);
+  const [copyState, copyCreated] = useAction<string, void, unknown>((url) =>
+    Effect.tryPromise({ try: () => copyText(url), catch: (cause) => cause }),
+  );
+  const copied = AsyncResult.isSuccess(copyState);
 
   const submit = (event: React.FormEvent): void => {
     event.preventDefault();
@@ -95,22 +113,9 @@ export function InviteLinksSection({
     if (created === undefined) {
       return;
     }
-    void copyText(created.url).then(() => setCopied(true));
+    copyCreated(created.url);
   };
 
-  const revoke = async (linkId: string): Promise<void> => {
-    setRevokingId(linkId);
-    // The parent owns the request and its error; the busy mark clears when
-    // its promise settles (success or failure) so a failed revoke never
-    // sticks on "Revoking…" (the error renders from the parent's `error`
-    // prop). Awaiting the parent's DELETE keeps the button busy until the
-    // request settles instead of clearing on the next microtask.
-    try {
-      await onRevoke(linkId);
-    } finally {
-      setRevokingId((current) => (current === linkId ? undefined : current));
-    }
-  };
   return (
     <section aria-label="Invite links" className="flex flex-col gap-2 px-2">
       <h2 className="px-2 text-[13px] font-semibold text-muted-foreground">Invite links</h2>
@@ -196,19 +201,17 @@ export function InviteLinksSection({
         )}
       </form>
 
-      <LinkStatesList links={links} revokingId={revokingId} onRevoke={revoke} />
+      <LinkStatesList links={links} onRevoke={onRevoke} />
     </section>
   );
 }
 
 function LinkStatesList({
   links,
-  revokingId,
   onRevoke,
 }: {
   links: GroupInviteLink[];
-  revokingId: string | undefined;
-  onRevoke: (linkId: string) => void | Promise<void>;
+  onRevoke: RevokeHandler;
 }) {
   // Fixed at mount: the expired/exhausted labels only re-render with the
   // list itself (the parent reloads after create/revoke).
@@ -218,44 +221,58 @@ function LinkStatesList({
   }
   return (
     <ul className="flex flex-col gap-1">
-      {links.map((link) => {
-        const state = linkState(link, now);
-        const revoking = revokingId === link.id;
-        return (
-          <li
-            key={link.id}
-            className="flex items-center gap-2 rounded-xl px-2 py-1.5 hover:bg-list-hover"
-          >
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-[14px]">
-                {link.label === null || link.label === '' ? (
-                  <span className="font-mono">····{link.tokenHint}</span>
-                ) : (
-                  link.label
-                )}
-              </p>
-              <p className="truncate text-[12px] text-muted-foreground">
-                {describeLink(link, now)}
-              </p>
-            </div>
-            {state !== 'revoked' ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                aria-label={`Revoke invite link ${link.label ?? link.tokenHint}`}
-                disabled={revoking}
-                onClick={() => onRevoke(link.id)}
-                className="shrink-0"
-              >
-                {revoking ? 'Revoking…' : 'Revoke'}
-              </Button>
-            ) : (
-              <span className="shrink-0 px-2 text-[12px] text-muted-foreground">revoked</span>
-            )}
-          </li>
-        );
-      })}
+      {links.map((link) => (
+        <LinkRow key={link.id} link={link} now={now} onRevoke={onRevoke} />
+      ))}
     </ul>
+  );
+}
+
+/**
+ * One link with its own Revoke action, so two links can be revoked at once;
+ * a second click on the same row waits for the first.
+ */
+function LinkRow({
+  link,
+  now,
+  onRevoke,
+}: {
+  link: GroupInviteLink;
+  now: number;
+  onRevoke: RevokeHandler;
+}) {
+  const [revokeState, revoke] = useAction<string, void, unknown>((linkId) =>
+    settle(onRevoke(linkId)),
+  );
+  const state = linkState(link, now);
+  const revoking = isWaiting(revokeState);
+  return (
+    <li className="flex items-center gap-2 rounded-xl px-2 py-1.5 hover:bg-list-hover">
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-[14px]">
+          {link.label === null || link.label === '' ? (
+            <span className="font-mono">····{link.tokenHint}</span>
+          ) : (
+            link.label
+          )}
+        </p>
+        <p className="truncate text-[12px] text-muted-foreground">{describeLink(link, now)}</p>
+      </div>
+      {state !== 'revoked' ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          aria-label={`Revoke invite link ${link.label ?? link.tokenHint}`}
+          disabled={revoking}
+          onClick={() => revoke(link.id)}
+          className="shrink-0"
+        >
+          {revoking ? 'Revoking…' : 'Revoke'}
+        </Button>
+      ) : (
+        <span className="shrink-0 px-2 text-[12px] text-muted-foreground">revoked</span>
+      )}
+    </li>
   );
 }

@@ -1,10 +1,60 @@
 import type { ChatSummary } from '@zilar/chat-core';
+import { Data, Effect } from 'effect';
 import { Archive, Bell, BellOff, Pin, PinOff } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
-import { MUTE_DURATIONS, type MuteDurationId } from '@/lib/chatPrefs';
+import { MUTE_DURATIONS } from '@/lib/chatPrefs';
+import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
 import { cn } from '@/lib/utils';
-import { Menu, MenuItem } from './ui/menu';
+import { Menu, MenuItem, type MenuItemProps } from './ui/menu';
+
+const SAVE_ERROR = 'Could not save that change';
+
+/** The chat store rejected a change; the menu shows the fixed sentence. */
+class PrefSaveFailed extends Data.TaggedError('PrefSaveFailed') {}
+
+/**
+ * One menu entry with its own save, so two entries can run at the same time
+ * and a second click on the same entry while it waits is ignored. The
+ * parent shows the error sentence and gets told whether the change failed.
+ */
+function PrefMenuItem({
+  save,
+  onDone,
+  onError,
+  children,
+  ...item
+}: Omit<MenuItemProps, 'onSelect'> & {
+  save: () => Promise<void>;
+  onDone: (failed: boolean) => void;
+  onError: (message: string | undefined) => void;
+}) {
+  const [state, runSave] = useAction<void, void, PrefSaveFailed>(() =>
+    Effect.tryPromise({ try: save, catch: () => new PrefSaveFailed() }).pipe(
+      Effect.tap(() => Effect.sync(() => onDone(false))),
+      Effect.tapError(() =>
+        Effect.sync(() => {
+          onError(SAVE_ERROR);
+          onDone(true);
+        }),
+      ),
+    ),
+  );
+  const busy = isWaiting(state);
+  const startSave = (): void => {
+    if (busy) {
+      return;
+    }
+    onError(undefined);
+    runSave();
+  };
+
+  return (
+    <MenuItem {...item} onSelect={startSave}>
+      {children}
+    </MenuItem>
+  );
+}
 
 /** Pin / Mute / Archive items for one chat row, shared by the row menu, the
  *  header menu and the topic menu. `children` renders after the Archive
@@ -27,41 +77,37 @@ export function ChatPrefMenuItems({
   const PinIcon = pinned ? PinOff : Pin;
   const BellIcon = chat.muted ? Bell : BellOff;
 
-  async function run(action: () => Promise<void>): Promise<void> {
-    setError(undefined);
-    try {
-      await action();
-      onDone(false);
-    } catch {
-      setError('Could not save that change');
-      onDone(true);
-    }
-  }
-
-  function mute(duration: MuteDurationId): void {
-    void run(() => storeApi.getState().setMuted(chat.id, duration));
-  }
-
   return (
     <>
-      <MenuItem
+      <PrefMenuItem
         icon={PinIcon}
         ariaLabel={pinned ? `Unpin ${chat.title}` : `Pin ${chat.title}`}
-        onSelect={() => void run(() => storeApi.getState().setPinned(chat.id, !pinned))}
+        save={() => storeApi.getState().setPinned(chat.id, !pinned)}
+        onDone={onDone}
+        onError={setError}
       >
         {pinned ? 'Unpin' : 'Pin'}
-      </MenuItem>
+      </PrefMenuItem>
       {muteOpen ? (
         <div aria-label="Mute duration" className="border-t border-border">
           {MUTE_DURATIONS.map((option) => (
-            <MenuItem key={option.id} onSelect={() => mute(option.id)}>
+            <PrefMenuItem
+              key={option.id}
+              save={() => storeApi.getState().setMuted(chat.id, option.id)}
+              onDone={onDone}
+              onError={setError}
+            >
               {option.label}
-            </MenuItem>
+            </PrefMenuItem>
           ))}
           {chat.muted && (
-            <MenuItem onSelect={() => void run(() => storeApi.getState().setMuted(chat.id, null))}>
+            <PrefMenuItem
+              save={() => storeApi.getState().setMuted(chat.id, null)}
+              onDone={onDone}
+              onError={setError}
+            >
               Unmute
-            </MenuItem>
+            </PrefMenuItem>
           )}
         </div>
       ) : (
@@ -73,13 +119,15 @@ export function ChatPrefMenuItems({
           {chat.muted ? 'Mute…' : 'Mute'}
         </MenuItem>
       )}
-      <MenuItem
+      <PrefMenuItem
         icon={Archive}
         ariaLabel={archived ? `Unarchive chat ${chat.title}` : `Archive chat ${chat.title}`}
-        onSelect={() => void run(() => storeApi.getState().setArchived(chat.id, !archived))}
+        save={() => storeApi.getState().setArchived(chat.id, !archived)}
+        onDone={onDone}
+        onError={setError}
       >
         {archived ? 'Unarchive chat' : 'Archive chat'}
-      </MenuItem>
+      </PrefMenuItem>
       {error !== undefined && (
         <p role="alert" className="px-3 py-1 text-[13px] text-danger">
           {error}

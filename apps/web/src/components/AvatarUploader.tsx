@@ -1,3 +1,4 @@
+import { Data, Effect } from 'effect';
 import { useCallback, useRef, useState } from 'react';
 import { Avatar } from '@/components/Avatar';
 import { Button } from '@/components/ui/button';
@@ -12,6 +13,7 @@ import {
   fitInView,
   type CropState,
 } from '@/lib/avatar-crop';
+import { isWaiting, useAction } from '@/lib/effect/use-action';
 
 export type AvatarKind = 'user' | 'ai' | 'group';
 
@@ -39,64 +41,122 @@ type Phase =
     }
   | { name: 'error'; message: string };
 
-async function loadImageSize(objectUrl: string): Promise<{ width: number; height: number }> {
-  const image = new Image();
-  image.decoding = 'async';
-  const loaded = new Promise<void>((resolve, reject) => {
-    image.onload = (): void => resolve();
-    image.onerror = (): void => reject(new Error('decode'));
-  });
-  image.src = objectUrl;
-  await loaded;
-  return { width: image.naturalWidth, height: image.naturalHeight };
-}
-
-function encodeExport(
+type ImageSize = { width: number; height: number };
+type ImageLoader = (objectUrl: string) => Promise<ImageSize>;
+type Exporter = (
   image: HTMLImageElement,
-  source: { width: number; height: number },
+  source: ImageSize,
   state: CropState,
   mime: 'image/webp' | 'image/png',
-): Promise<Blob | null> {
-  const canvas = document.createElement('canvas');
-  canvas.width = AVATAR_EXPORT_SIDE;
-  canvas.height = AVATAR_EXPORT_SIDE;
-  const context = canvas.getContext('2d');
-  if (context === null) {
-    return Promise.resolve(null);
-  }
-  const args = exportDrawArgs(source, state);
-  context.drawImage(image, args.sx, args.sy, args.sSide, args.sSide, 0, 0, args.dSide, args.dSide);
-  return new Promise((resolve) => {
-    canvas.toBlob((blob) => resolve(blob), mime, mime === 'image/webp' ? 0.92 : undefined);
+) => Promise<Blob | null>;
+
+/** The browser could not decode the picked file. */
+class ImageUnreadable extends Data.TaggedError('ImageUnreadable') {}
+
+/** Decodes the picked file. Interrupting the load clears the image handlers. */
+const loadImageSize = (objectUrl: string): Effect.Effect<ImageSize, ImageUnreadable> =>
+  Effect.callback<ImageSize, ImageUnreadable>((resume) => {
+    const image = new Image();
+    image.decoding = 'async';
+    image.onload = (): void =>
+      resume(Effect.succeed({ width: image.naturalWidth, height: image.naturalHeight }));
+    image.onerror = (): void => resume(Effect.fail(new ImageUnreadable()));
+    image.src = objectUrl;
+    return Effect.sync(() => {
+      image.onload = null;
+      image.onerror = null;
+    });
   });
-}
+
+/** Draws the crop onto a canvas and encodes it. A null blob means no encoder. */
+const encodeAvatar = (
+  image: HTMLImageElement,
+  source: ImageSize,
+  state: CropState,
+  mime: 'image/webp' | 'image/png',
+): Effect.Effect<Blob | null> =>
+  Effect.callback<Blob | null>((resume) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = AVATAR_EXPORT_SIDE;
+    canvas.height = AVATAR_EXPORT_SIDE;
+    const context = canvas.getContext('2d');
+    if (context === null) {
+      resume(Effect.succeed(null));
+      return;
+    }
+    const args = exportDrawArgs(source, state);
+    context.drawImage(
+      image,
+      args.sx,
+      args.sy,
+      args.sSide,
+      args.sSide,
+      0,
+      0,
+      args.dSide,
+      args.dSide,
+    );
+    canvas.toBlob(
+      (blob) => resume(Effect.succeed(blob)),
+      mime,
+      mime === 'image/webp' ? 0.92 : undefined,
+    );
+  });
+
+// The injectable props keep their Promise types (the tests pass Promise
+// fakes), so the browser defaults run their Effects at this edge.
+const defaultImageLoader: ImageLoader = (objectUrl) => Effect.runPromise(loadImageSize(objectUrl));
+const defaultExporter: Exporter = (image, source, state, mime) =>
+  Effect.runPromise(encodeAvatar(image, source, state, mime));
 
 // jsdom (and some test environments) has no `URL.createObjectURL`: fall
 // back to a synthetic url the injected `imageLoader` fake ignores. The
 // `<img>` still gets a `src`, so production behaviour is unchanged.
 let previewCounter = 0;
 
-function createPreviewUrl(file: File): string {
-  if (typeof URL.createObjectURL === 'function') {
-    try {
-      return URL.createObjectURL(file);
-    } catch {
-      // Fall through to the synthetic url below.
-    }
-  }
+const syntheticPreviewUrl = (): string => {
   previewCounter += 1;
   return `avatar-preview-${previewCounter}`;
+};
+
+/** The preview URL for a picked file; a browser that refuses it gets the synthetic url. */
+const previewUrlFor = (file: File): Effect.Effect<string> =>
+  typeof URL.createObjectURL === 'function'
+    ? Effect.try(() => URL.createObjectURL(file)).pipe(Effect.orElseSucceed(syntheticPreviewUrl))
+    : Effect.sync(syntheticPreviewUrl);
+
+/** Best effort: a refused revoke is ignored. */
+const revokePreviewUrl = (url: string): Effect.Effect<void> =>
+  url.startsWith('blob:') && typeof URL.revokeObjectURL === 'function'
+    ? Effect.ignore(Effect.try(() => URL.revokeObjectURL(url)))
+    : Effect.void;
+
+interface PickedCrop {
+  image: HTMLImageElement;
+  natural: ImageSize;
+  objectUrl: string;
+  crop: CropState;
 }
 
-function revokePreviewUrl(url: string): void {
-  if (url.startsWith('blob:') && typeof URL.revokeObjectURL === 'function') {
-    try {
-      URL.revokeObjectURL(url);
-    } catch {
-      // Best effort only.
+/** WebP first, then PNG when the browser cannot encode WebP. A null result means neither. */
+const exportAvatarFile = (
+  exporter: Exporter,
+  picked: PickedCrop,
+): Effect.Effect<File | null, unknown> =>
+  Effect.gen(function* () {
+    const webp = yield* Effect.tryPromise({
+      try: () => exporter(picked.image, picked.natural, picked.crop, 'image/webp'),
+      catch: (cause) => cause,
+    });
+    if (webp !== null) {
+      return new File([webp], 'avatar', { type: 'image/webp' });
     }
-  }
-}
+    const png = yield* Effect.tryPromise({
+      try: () => exporter(picked.image, picked.natural, picked.crop, 'image/png'),
+      catch: (cause) => cause,
+    });
+    return png === null ? null : new File([png], 'avatar', { type: 'image/png' });
+  });
 
 /**
  * Reusable avatar picker (T-0165): choose a file (or drop one), crop it in
@@ -114,24 +174,26 @@ export function AvatarUploader({
   ownerName,
   currentUrl,
   onChanged,
-  imageLoader = loadImageSize,
-  exporter = encodeExport,
+  imageLoader = defaultImageLoader,
+  exporter = defaultExporter,
 }: AvatarUploaderProps & {
-  imageLoader?: (objectUrl: string) => Promise<{ width: number; height: number }>;
-  exporter?: (
-    image: HTMLImageElement,
-    source: { width: number; height: number },
-    state: CropState,
-    mime: 'image/webp' | 'image/png',
-  ) => Promise<Blob | null>;
+  imageLoader?: ImageLoader;
+  exporter?: Exporter;
 }) {
   const [phase, setPhase] = useState<Phase>({ name: 'idle' });
   const [crop, setCrop] = useState<CropState>({ zoom: 1, offsetX: 0, offsetY: 0 });
-  const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | undefined>(undefined);
   const fileRef = useRef<HTMLInputElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
   const dragRef = useRef<{ x: number; y: number; offsetX: number; offsetY: number } | null>(null);
+
+  // Each user action is one Effect. A new pick replaces a pick still loading
+  // (the replaced preview URL is revoked on interrupt). Save and Remove drop a
+  // second click while the first one waits, so `busy` is the waiting state.
+  const [, runLoad] = useAction((load: Effect.Effect<void>) => load, { mode: 'replace' });
+  const [saveState, runSave] = useAction((save: Effect.Effect<void>) => save);
+  const [removeState, runRemove] = useAction((remove: Effect.Effect<void>) => remove);
+  const busy = isWaiting(saveState) || isWaiting(removeState);
 
   // The crop object URL is revoked when the dialog closes (cancel, save
   // or a failed save): every path out of the crop phase revokes it, so no
@@ -157,74 +219,99 @@ export function AvatarUploader({
         });
         return;
       }
-      const objectUrl = createPreviewUrl(file);
-      void imageLoader(objectUrl).then(
-        (natural) => {
-          if (natural.width <= 0 || natural.height <= 0) {
-            revokePreviewUrl(objectUrl);
-            setPhase({ name: 'error', message: 'That image could not be read. Try another file.' });
-            return;
-          }
-          setCrop({ zoom: 1, offsetX: 0, offsetY: 0 });
-          setPhase({ name: 'crop', fileName: file.name, objectUrl, natural });
-        },
-        () => {
-          revokePreviewUrl(objectUrl);
-          setPhase({ name: 'error', message: 'That image could not be read. Try another file.' });
-        },
+      const unreadable = (objectUrl: string): Effect.Effect<void> =>
+        revokePreviewUrl(objectUrl).pipe(
+          Effect.andThen(
+            Effect.sync(() =>
+              setPhase({
+                name: 'error',
+                message: 'That image could not be read. Try another file.',
+              }),
+            ),
+          ),
+        );
+      runLoad(
+        previewUrlFor(file).pipe(
+          Effect.flatMap((objectUrl) =>
+            Effect.tryPromise({
+              try: () => imageLoader(objectUrl),
+              catch: () => new ImageUnreadable(),
+            }).pipe(
+              Effect.matchEffect({
+                onSuccess: (natural) =>
+                  natural.width <= 0 || natural.height <= 0
+                    ? unreadable(objectUrl)
+                    : Effect.sync(() => {
+                        setCrop({ zoom: 1, offsetX: 0, offsetY: 0 });
+                        setPhase({ name: 'crop', fileName: file.name, objectUrl, natural });
+                      }),
+                onFailure: () => unreadable(objectUrl),
+              }),
+              Effect.onInterrupt(() => revokePreviewUrl(objectUrl)),
+            ),
+          ),
+        ),
       );
     },
-    [imageLoader],
+    [imageLoader, runLoad],
   );
 
-  const save = useCallback(async (): Promise<void> => {
-    if (phase.name !== 'crop' || imageRef.current === null || busy) {
-      return;
-    }
-    setBusy(true);
-    setMessage(undefined);
-    try {
-      const image = imageRef.current;
-      let blob = await exporter(image, phase.natural, crop, 'image/webp');
-      let type: 'image/webp' | 'image/png' = 'image/webp';
-      if (blob === null) {
-        blob = await exporter(image, phase.natural, crop, 'image/png');
-        type = 'image/png';
-      }
-      if (blob === null) {
-        setPhase({
-          name: 'error',
-          message: 'The picture could not be prepared. Try another file.',
-        });
+  // Save: export, upload, then hand the new URL to the parent. A failure at
+  // any step shows its sentence in the error phase, as before.
+  const saveCrop = (picked: PickedCrop): Effect.Effect<void> =>
+    Effect.gen(function* () {
+      yield* Effect.sync(() => setMessage(undefined));
+      const file = yield* exportAvatarFile(exporter, picked);
+      if (file === null) {
+        yield* Effect.sync(() =>
+          setPhase({
+            name: 'error',
+            message: 'The picture could not be prepared. Try another file.',
+          }),
+        );
         return;
       }
-      const typed = new File([blob], 'avatar', { type });
-      const { url } = await uploadAvatar(kind, ownerId, typed);
-      revokePreviewUrl(phase.objectUrl);
-      setPhase({ name: 'idle' });
-      onChanged(url);
-    } catch (error) {
-      setPhase({ name: 'error', message: friendlyUploadError(error) });
-    } finally {
-      setBusy(false);
-    }
-  }, [phase, crop, busy, kind, ownerId, onChanged, exporter]);
+      const { url } = yield* Effect.tryPromise({
+        try: () => uploadAvatar(kind, ownerId, file),
+        catch: (cause) => cause,
+      });
+      yield* revokePreviewUrl(picked.objectUrl);
+      yield* Effect.sync(() => {
+        setPhase({ name: 'idle' });
+        onChanged(url);
+      });
+    }).pipe(
+      Effect.matchEffect({
+        onSuccess: () => Effect.void,
+        onFailure: (cause) =>
+          Effect.sync(() => setPhase({ name: 'error', message: friendlyUploadError(cause) })),
+      }),
+    );
 
-  const remove = useCallback(async (): Promise<void> => {
-    if (busy) {
+  const onSave = (): void => {
+    const image = imageRef.current;
+    if (phase.name !== 'crop' || image === null) {
       return;
     }
-    setBusy(true);
-    setMessage(undefined);
-    try {
-      await removeAvatar(kind, ownerId);
-      onChanged(undefined);
-    } catch (error) {
-      setMessage(friendlyUploadError(error));
-    } finally {
-      setBusy(false);
-    }
-  }, [busy, kind, ownerId, onChanged]);
+    runSave(saveCrop({ image, natural: phase.natural, objectUrl: phase.objectUrl, crop }));
+  };
+
+  const onRemove = (): void => {
+    runRemove(
+      Effect.sync(() => setMessage(undefined)).pipe(
+        Effect.andThen(
+          Effect.tryPromise({
+            try: () => removeAvatar(kind, ownerId),
+            catch: (cause) => cause,
+          }),
+        ),
+        Effect.matchEffect({
+          onSuccess: () => Effect.sync(() => onChanged(undefined)),
+          onFailure: (cause) => Effect.sync(() => setMessage(friendlyUploadError(cause))),
+        }),
+      ),
+    );
+  };
 
   const onPointerDown = (event: React.PointerEvent<HTMLDivElement>): void => {
     if (phase.name !== 'crop') {
@@ -261,7 +348,7 @@ export function AvatarUploader({
 
   const closeCrop = (): void => {
     if (phase.name === 'crop') {
-      revokePreviewUrl(phase.objectUrl);
+      Effect.runSync(revokePreviewUrl(phase.objectUrl));
     }
     setPhase({ name: 'idle' });
   };
@@ -281,7 +368,7 @@ export function AvatarUploader({
             {currentUrl === undefined ? 'Add picture' : 'Change picture'}
           </Button>
           {currentUrl !== undefined && (
-            <Button type="button" variant="outline" onClick={() => void remove()} disabled={busy}>
+            <Button type="button" variant="outline" onClick={onRemove} disabled={busy}>
               {busy ? 'Removing…' : 'Remove'}
             </Button>
           )}
@@ -329,7 +416,7 @@ export function AvatarUploader({
               <Button type="button" variant="ghost" onClick={closeCrop} disabled={busy}>
                 Cancel
               </Button>
-              <Button type="button" onClick={() => void save()} disabled={busy}>
+              <Button type="button" onClick={onSave} disabled={busy}>
                 {busy ? 'Saving…' : 'Save picture'}
               </Button>
             </>

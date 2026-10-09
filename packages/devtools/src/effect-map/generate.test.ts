@@ -1,19 +1,27 @@
 import { describe, expect, it } from 'vitest';
 import {
+  blankNonCode,
   buildEffectMap,
+  checkNeedsEffectBaseline,
   classifySource,
   isCountedSource,
+  markerReason,
   packageOf,
   allowedPaths,
   openTask,
   packageSummaries,
   parseBoard,
+  signalHits,
   sourceFile,
   summarise,
 } from './generate.js';
 
 const EFFECT_SOURCE = "import { Effect } from 'effect';\nexport const run = Effect.succeed(1);\n";
 const LEGACY_SOURCE = "import { z } from 'zod';\nexport const schema = z.string();\n";
+const MARKER = '// effect-plain: pure parser of a constant';
+
+const signalsOf = (source: string): string[] => sourceFile('apps/web/src/a.ts', source, []).signals;
+const kindOfSource = (path: string, source: string): string => sourceFile(path, source, []).kind;
 
 describe('classifySource', () => {
   it('calls a file with no imports plain', () => {
@@ -40,12 +48,12 @@ describe('classifySource', () => {
     expect(classifySource(both)).toEqual({ kind: 'legacy', legacy: ['zod'] });
   });
 
-  it('ignores type-only imports of legacy libraries but still counts Effect type imports', () => {
+  it('ignores type-only imports: a type import of Effect is not Effect, nor is a legacy type', () => {
     expect(classifySource("import type { ZodType } from 'zod';\n")).toEqual({
       kind: 'plain',
       legacy: [],
     });
-    expect(classifySource("import type { Effect } from 'effect';\n").kind).toBe('effect');
+    expect(classifySource("import type { Effect } from 'effect';\n").kind).toBe('plain');
   });
 
   it('reads re-exports as imports', () => {
@@ -76,6 +84,14 @@ describe('isCountedSource', () => {
     expect(isCountedSource('docs/effect-reference/index.ts')).toBe(false);
     expect(isCountedSource('apps/server/src/app.js')).toBe(false);
   });
+
+  it('skips Cosmos fixtures and the test helpers (test-harness, test-support, fake-*)', () => {
+    expect(isCountedSource('apps/web/src/components/ui/button.fixture.tsx')).toBe(false);
+    expect(isCountedSource('packages/runner-tunnel/src/test-harness.ts')).toBe(false);
+    expect(isCountedSource('apps/server/src/test-support.ts')).toBe(false);
+    expect(isCountedSource('packages/agent-drivers/src/fake-opencode-server.ts')).toBe(false);
+    expect(isCountedSource('apps/server/src/fakery-notes.ts')).toBe(true);
+  });
 });
 
 describe('packageOf', () => {
@@ -86,47 +102,272 @@ describe('packageOf', () => {
   });
 });
 
-describe('summarise', () => {
-  const files = [
-    sourceFile('apps/server/src/a.ts', EFFECT_SOURCE + '\n'.repeat(9), []),
-    sourceFile('apps/server/src/b.ts', LEGACY_SOURCE, []),
-    sourceFile('apps/server/src/c.ts', 'export const c = 1;', []),
-    sourceFile('apps/server/src/d.ts', 'export const d = 1;', []),
-  ];
+describe('signals (§1.4): one hit and one known false positive each', () => {
+  it('H1 async control flow: hit on async and await, not on Promise<void> in a type', () => {
+    expect(signalsOf('export async function go() {}\n')).toContain('H1');
+    expect(signalsOf('export interface Job {\n  done: Promise<void>;\n}\n')).toEqual([]);
+  });
 
-  it('counts files and lines per kind and the Effect share by files and by lines', () => {
-    const total = summarise(files);
-    expect(total.files).toBe(4);
-    expect(total.kinds.effect.files).toBe(1);
-    expect(total.kinds.legacy.files).toBe(1);
-    expect(total.kinds.plain.files).toBe(2);
-    expect(total.effectFilesPct).toBe(25);
-    expect(total.lines).toBe(files.reduce((sum, f) => sum + f.lines, 0));
-    expect(total.effectLinesPct).toBe(
-      Math.round(((files[0]?.lines ?? 0) / total.lines) * 1000) / 10,
+  it('H2 network: hit on fetch(, not on a comment, a string, this.fetch( or fetchImpl(', () => {
+    expect(signalsOf('export const load = () => fetch(url);\n')).toContain('H2');
+    const falsePositives =
+      "// call fetch(url) later\nexport const label = 'fetch(url)';\n" +
+      'export const pick = (fetchImpl: typeof fetch) => fetchImpl(url);\n' +
+      'export const self = (c: { fetch: () => void }) => c.fetch(url);\n';
+    expect(signalsOf(falsePositives)).toEqual([]);
+  });
+
+  it('H3 timers: hit on setTimeout(, not on requestAnimationFrame(', () => {
+    expect(signalsOf('export const wait = () => setTimeout(done, 10);\n')).toContain('H3');
+    expect(signalsOf('export const frame = () => requestAnimationFrame(draw);\n')).toEqual([]);
+  });
+
+  it('H5 storage: hit on localStorage, not on a storage parameter', () => {
+    expect(signalsOf("export const get = () => localStorage.getItem('k');\n")).toContain('H5');
+    expect(
+      signalsOf(
+        "export function read(storage: Storage | null) {\n  return storage?.getItem('k');\n}\n",
+      ),
+    ).toEqual([]);
+  });
+
+  it('H8 node I/O import: hit on node:fs, not on node:path', () => {
+    expect(signalsOf("import { readFileSync } from 'node:fs';\n")).toContain('H8');
+    expect(signalsOf("import { join } from 'node:path';\nexport const p = join('a');\n")).toEqual(
+      [],
     );
   });
 
-  it('reports zero percentages for an empty list', () => {
-    const empty = summarise([]);
-    expect(empty.files).toBe(0);
-    expect(empty.effectFilesPct).toBe(0);
-    expect(empty.effectLinesPct).toBe(0);
+  it('H9 native I/O import: hit on expo-file-system, not on a type-only import of it', () => {
+    expect(signalsOf("import * as FS from 'expo-file-system';\n")).toContain('H9');
+    expect(signalsOf("import type { FileInfo } from 'expo-file-system';\n")).toEqual([]);
+  });
+
+  it('W4 try/catch: hit on try and catch, not on the words in a comment or a string', () => {
+    expect(
+      signalsOf('export const f = () => {\n  try {\n    run();\n  } catch (e) {}\n};\n'),
+    ).toContain('W4');
+    expect(signalsOf("// try { again later\nexport const word = 'catch (';\n")).toEqual([]);
+  });
+
+  it('W6 JSON.parse: hit on the call, not on the text inside a string', () => {
+    expect(signalsOf('export const parse = (s: string) => JSON.parse(s);\n')).toContain('W6');
+    expect(signalsOf("export const doc = 'JSON.parse(text) is the call';\n")).toEqual([]);
+  });
+
+  it('W7 env read: hit on process.env, not on a comment or an EXPO_PUBLIC_ string', () => {
+    expect(signalsOf('export const url = process.env.API_URL;\n')).toContain('W7');
+    expect(
+      signalsOf(
+        "// process.env.API_URL is read in the entry point\nexport const name = 'EXPO_PUBLIC_NAME';\n",
+      ),
+    ).toEqual([]);
+  });
+
+  it('lists every id that hits once, in the order H1 H2 H3 H5 H8 H9 W4 W6 W7', () => {
+    expect(
+      signalsOf("await fetch(x);\nJSON.parse(y);\nimport 'x';\nimport { a } from 'node:os';\n"),
+    ).toEqual(['H1', 'H2', 'H8', 'W6']);
+  });
+
+  it('keeps a // inside a string, so the code after it still counts', () => {
+    expect(signalsOf("export const u = 'http://x'; setTimeout(f, 1);\n")).toEqual(['H3']);
+    expect(blankNonCode("const u = 'a//b'; // tail\n")).toBe("const u = ''; \n");
+  });
+
+  it('reports the first hit line, trimmed and cut to 120 characters', () => {
+    const file = sourceFile(
+      'apps/web/src/a.ts',
+      'export const a = 1;\n  export const w = fetch(x);\n',
+      [],
+    );
+    expect(file.firstHit).toEqual({ line: 2, text: 'export const w = fetch(x);' });
+    const long = `export const w = fetch('${'x'.repeat(200)}');`;
+    expect(sourceFile('apps/web/src/a.ts', long, []).firstHit?.text).toHaveLength(120);
+  });
+
+  it('returns no hit line for a file with no signal', () => {
+    expect(sourceFile('apps/web/src/a.ts', 'export const a = 1;\n', []).firstHit).toBeNull();
+    expect(signalHits('export const a = 1;\n')).toEqual([]);
   });
 });
 
-describe('packageSummaries', () => {
-  it('groups files by package, biggest package first', () => {
+describe('classes and exemptions (§1.4)', () => {
+  it('calls a file with a hard signal and no Effect needs-effect', () => {
+    expect(kindOfSource('apps/web/src/a.ts', 'export async function go() {}\n')).toBe(
+      'needs-effect',
+    );
+  });
+
+  it('calls a file with only a weak signal needs-effect too', () => {
+    expect(kindOfSource('apps/web/src/a.ts', 'export const p = JSON.parse(s);\n')).toBe(
+      'needs-effect',
+    );
+  });
+
+  it('reads a marker only in the first 15 lines: line 15 is exempt, line 20 is not', () => {
+    const body = 'export async function run() {}\n';
+    expect(kindOfSource('apps/web/src/a.ts', `${'\n'.repeat(14)}${MARKER}\n${body}`)).toBe(
+      'exempt',
+    );
+    expect(kindOfSource('apps/web/src/a.ts', `${'\n'.repeat(19)}${MARKER}\n${body}`)).toBe(
+      'needs-effect',
+    );
+  });
+
+  it('takes the marker reason, and an empty reason is not a marker', () => {
+    expect(markerReason(`${MARKER}\n`)).toBe('pure parser of a constant');
+    expect(markerReason('// effect-plain:\nexport const a = 1;\n')).toBeNull();
+    expect(markerReason('export const a = 1;\n')).toBeNull();
+  });
+
+  it('exempts the devtools package, apps/site, mock folders and config files', () => {
+    const hard = 'export const t = setTimeout(f, 1);\n';
+    expect(kindOfSource('packages/devtools/src/lead/x.ts', hard)).toBe('exempt');
+    expect(kindOfSource('apps/site/src/scene.ts', 'await fetch(x);\n')).toBe('exempt');
+    expect(kindOfSource('apps/web/src/mock/store.ts', hard)).toBe('exempt');
+    expect(kindOfSource('apps/web/src/store/app-mock.ts', hard)).toBe('exempt');
+    expect(kindOfSource('apps/web/vite.config.ts', hard)).toBe('exempt');
+    expect(kindOfSource('apps/mobile/ios/x.ts', hard)).toBe('exempt');
+  });
+
+  it('does not exempt a folder whose name only looks similar', () => {
+    expect(kindOfSource('apps/web/src/mocking.ts', 'export const t = setTimeout(f, 1);\n')).toBe(
+      'needs-effect',
+    );
+  });
+
+  it('keeps legacy above exempt: a devtools file importing zod is legacy', () => {
+    expect(kindOfSource('packages/devtools/src/x.ts', LEGACY_SOURCE)).toBe('legacy');
+  });
+
+  it('calls a file that imports Effect effect when no signal or exemption applies', () => {
+    expect(kindOfSource('apps/server/src/a.ts', EFFECT_SOURCE)).toBe('effect');
+  });
+
+  it('calls a file with nothing in it plain', () => {
+    expect(kindOfSource('apps/web/src/a.ts', 'export const a = 1;\n')).toBe('plain');
+  });
+});
+
+describe('Tier B and the needs-weak count', () => {
+  it('marks an Effect file with a hard signal as Tier B, and one with only weak signals as not', () => {
+    const hard = sourceFile('apps/server/src/a.ts', `${EFFECT_SOURCE}setTimeout(f, 1);\n`, []);
+    const weak = sourceFile('apps/server/src/b.ts', `${EFFECT_SOURCE}JSON.parse(s);\n`, []);
+    expect(hard.kind).toBe('effect');
+    expect(hard.tierB).toBe(true);
+    expect(weak.kind).toBe('effect');
+    expect(weak.tierB).toBe(false);
+  });
+
+  it('never marks a needs-effect or plain file as Tier B', () => {
+    expect(sourceFile('apps/web/src/a.ts', 'setTimeout(f, 1);\n', []).tierB).toBe(false);
+    expect(sourceFile('apps/web/src/b.ts', 'export const a = 1;\n', []).tierB).toBe(false);
+  });
+
+  it('counts needs-effect files whose only hits are weak, by lines', () => {
     const files = [
-      sourceFile('packages/shared/src/x.ts', 'export {};', []),
-      sourceFile('apps/web/src/a.tsx', LEGACY_SOURCE.repeat(50), []),
-      sourceFile('apps/web/src/b.tsx', EFFECT_SOURCE.repeat(50), []),
+      sourceFile('apps/web/src/a.ts', 'export const p = JSON.parse(s);\n' + '\n'.repeat(9), []),
+      sourceFile('apps/web/src/b.ts', 'export async function go() {}\n', []),
     ];
-    const packages = packageSummaries(files);
-    expect(packages.map((p) => p.name)).toEqual(['apps/web', 'packages/shared']);
-    expect(packages[0]?.files).toBe(2);
-    expect(packages[0]?.kinds.legacy.files).toBe(1);
-    expect(packages[0]?.kinds.effect.files).toBe(1);
+    const total = summarise(files);
+    expect(total.needsWeak).toEqual({ files: 1, lines: files[0]?.lines ?? 0 });
+    expect(total.tierB).toEqual({ files: 0, lines: 0 });
+  });
+});
+
+describe('coverage and the summary', () => {
+  it('is Effect lines over Effect plus needs-effect lines, ignoring plain and exempt lines', () => {
+    const effect = sourceFile('apps/server/src/a.ts', EFFECT_SOURCE + '\n'.repeat(7), []);
+    const needs = sourceFile(
+      'apps/web/src/b.ts',
+      'export const w = fetch(x);' + '\n'.repeat(29),
+      [],
+    );
+    const plain = sourceFile('apps/web/src/c.ts', 'export const c = 1;' + '\n'.repeat(99), []);
+    const exempt = sourceFile('packages/devtools/src/d.ts', 'await x;' + '\n'.repeat(49), []);
+    expect(effect.lines).toBe(10);
+    expect(needs.lines).toBe(30);
+    const total = summarise([effect, needs, plain, exempt]);
+    expect(total.coveragePct).toBe(25);
+    expect(total.kinds.plain.files).toBe(1);
+    expect(total.kinds.exempt.files).toBe(1);
+  });
+
+  it('reads 100 when there is no Effect and no needs-effect line, including an empty list', () => {
+    expect(summarise([]).coveragePct).toBe(100);
+    expect(
+      summarise([sourceFile('apps/web/src/a.ts', 'export const a = 1;\n', [])]).coveragePct,
+    ).toBe(100);
+  });
+
+  it('keeps the old imports-Effect share as a secondary figure', () => {
+    // Both files have 12 lines, so the imports-Effect share and the coverage are both 50.
+    const files = [
+      sourceFile('apps/server/src/a.ts', EFFECT_SOURCE + '\n'.repeat(9), []),
+      sourceFile('apps/web/src/b.ts', 'export const b = fetch(x);' + '\n'.repeat(11), []),
+    ];
+    expect(files.map((f) => f.lines)).toEqual([12, 12]);
+    const total = summarise(files);
+    expect(total.effectLinesPct).toBe(50);
+    expect(total.coveragePct).toBe(50);
+  });
+
+  it('lists every marker file with its reason and flags more than 25 without throwing', () => {
+    const marked = (count: number) =>
+      Array.from({ length: count }, (_, i) =>
+        sourceFile(`apps/web/src/m${i}.ts`, `${MARKER}\nexport const a = 1;\n`, []),
+      );
+    const within = summarise(marked(25));
+    expect(within.markers).toHaveLength(25);
+    expect(within.markers[0]).toEqual({
+      path: 'apps/web/src/m0.ts',
+      reason: 'pure parser of a constant',
+    });
+    expect(within.markersOverBudget).toBe(false);
+    const over = summarise(marked(26));
+    expect(over.markers).toHaveLength(26);
+    expect(over.markersOverBudget).toBe(true);
+  });
+
+  it('puts the coverage into the total and into each package', () => {
+    const files = [sourceFile('apps/server/src/a.ts', EFFECT_SOURCE, [])];
+    const map = buildEffectMap({
+      files,
+      tasks: [],
+      generatedAt: '2026-10-09T00:00:00.000Z',
+      commit: 'abc1234',
+      commitSubject: 'Spec T-0758',
+    });
+    expect(map.total.coveragePct).toBe(100);
+    expect(map.packages[0]?.coveragePct).toBe(100);
+  });
+});
+
+describe('checkNeedsEffectBaseline (the ratchet flag)', () => {
+  const map = buildEffectMap({
+    files: [sourceFile('apps/web/src/a.ts', 'export async function go() {}\n', [])],
+    tasks: [],
+    generatedAt: '2026-10-09T00:00:00.000Z',
+    commit: 'abc1234',
+    commitSubject: 'Spec T-0758',
+  });
+
+  it('passes when the needs-effect count is at or under the baseline', () => {
+    expect(checkNeedsEffectBaseline(map, '{"needsEffectFiles": 1}')).toBeNull();
+    expect(checkNeedsEffectBaseline(map, '{"needsEffectFiles": 5}')).toBeNull();
+  });
+
+  it('fails with a message when the count is higher than the baseline', () => {
+    expect(checkNeedsEffectBaseline(map, '{"needsEffectFiles": 0}')).toBe(
+      'needs-effect files 1 exceed the baseline 0',
+    );
+  });
+
+  it('refuses a baseline file that is not the expected shape', () => {
+    expect(checkNeedsEffectBaseline(map, '{"count": 1}')).toBe(
+      'baseline must be JSON {"needsEffectFiles": number}',
+    );
   });
 });
 
@@ -274,5 +515,20 @@ describe('sourceFile and buildEffectMap', () => {
     expect(map.total.files).toBe(3);
     expect(map.commit).toBe('abc1234');
     expect(map.files).toHaveLength(3);
+  });
+});
+
+describe('packageSummaries', () => {
+  it('groups files by package, biggest package first', () => {
+    const files = [
+      sourceFile('packages/shared/src/x.ts', 'export {};', []),
+      sourceFile('apps/web/src/a.tsx', LEGACY_SOURCE.repeat(50), []),
+      sourceFile('apps/web/src/b.tsx', EFFECT_SOURCE.repeat(50), []),
+    ];
+    const packages = packageSummaries(files);
+    expect(packages.map((p) => p.name)).toEqual(['apps/web', 'packages/shared']);
+    expect(packages[0]?.files).toBe(2);
+    expect(packages[0]?.kinds.legacy.files).toBe(1);
+    expect(packages[0]?.kinds.effect.files).toBe(1);
   });
 });

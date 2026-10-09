@@ -10,6 +10,7 @@ import {
   type ReplyRef,
   type UiMention,
 } from '@zilar/chat-core';
+import { Data, Effect, Fiber, Schedule } from 'effect';
 import { ArrowUp, Mic, Paperclip, Send, Smile, Trash2, X } from 'lucide-react';
 import {
   useCallback,
@@ -61,9 +62,27 @@ interface PressState {
   released: boolean;
   /** Set once the 400 ms hold timer fires. */
   hold: boolean;
-  /** Marks a press held past 400 ms as hold-to-send; cleared on release. */
-  holdTimer: number | undefined;
+  /** Marks a press held past 400 ms as hold-to-send; interrupted on release. */
+  holdTimer: Fiber.Fiber<void> | undefined;
 }
+
+/** A step of the voice or GIF flow failed; `message` is the fixed sentence shown inline. */
+class ComposerFailure extends Data.TaggedError('ComposerFailure')<{
+  readonly message: string;
+}> {}
+
+const GIF_LOAD_FAILED = 'Could not load that GIF. Try another.';
+const VOICE_SAVE_FAILED = 'Could not save the recording, try again';
+
+/** Runs `effect` at once and in the background; the caller never waits for it. */
+const fork = (effect: Effect.Effect<void>): void => {
+  Effect.runFork(effect);
+};
+
+/** The old `clearTimeout` / `clearInterval`: stops a forked timer fiber. */
+const stopTimer = (timer: Fiber.Fiber<unknown, unknown>): void => {
+  fork(Fiber.interrupt(timer));
+};
 
 export function Composer({
   chatId,
@@ -324,7 +343,7 @@ export function Composer({
   useEffect(
     () => () => {
       if (pressRef.current?.holdTimer !== undefined) {
-        window.clearTimeout(pressRef.current.holdTimer);
+        stopTimer(pressRef.current.holdTimer);
       }
       pressRef.current = null;
       const recorder = recorderRef.current;
@@ -342,7 +361,7 @@ export function Composer({
       return false;
     }
     if (pressRef.current?.holdTimer !== undefined) {
-      window.clearTimeout(pressRef.current.holdTimer);
+      stopTimer(pressRef.current.holdTimer);
     }
     pressRef.current = null;
     const recorder = recorderRef.current;
@@ -363,7 +382,7 @@ export function Composer({
       return;
     }
     if (pressRef.current?.holdTimer !== undefined) {
-      window.clearTimeout(pressRef.current.holdTimer);
+      stopTimer(pressRef.current.holdTimer);
     }
     pressRef.current = null;
     const recorder = recorderRef.current;
@@ -380,13 +399,17 @@ export function Composer({
     if (!recording) {
       return;
     }
-    const timer = window.setInterval(() => {
+    // The first tick comes after 100 ms, then every 100 ms, as `setInterval` did.
+    const tick = Effect.sync(() => {
       const recorder = recorderRef.current;
       if (recorder !== null) {
         setElapsedMs(recorder.durationMs);
       }
-    }, 100);
-    return () => window.clearInterval(timer);
+    });
+    const timer = Effect.runFork(
+      Effect.repeat(tick, Schedule.spaced(100)).pipe(Effect.delay(100), Effect.asVoid),
+    );
+    return () => stopTimer(timer);
   }, [recording]);
 
   // Escape is a backstop while recording (click mode or a held press):
@@ -448,29 +471,35 @@ export function Composer({
       setStickerOpen(false);
       onCancelReply();
       setAttachmentError(undefined);
-      void (async () => {
-        let blob: Blob | null;
-        try {
-          const response = await fetch(gif.url, { credentials: 'same-origin' });
-          if (!response.ok) {
-            throw new Error('proxy refused the media');
-          }
-          blob = await response.blob();
-        } catch {
-          setAttachmentError('Could not load that GIF. Try another.');
-          return;
-        }
-        if (blob.size === 0) {
-          setAttachmentError('Could not load that GIF. Try another.');
-          return;
-        }
-        const { mime, extension } = gifBlobType(blob.type, gif.kind);
-        const file = new File([blob], `gif-${gif.id.slice(0, 16)}.${extension}`, { type: mime });
-        store.sendAttachment(chatId, file, {
-          ...(caption.length === 0 ? {} : { caption }),
-          ...(replyTo === undefined ? {} : { replyTo }),
-        });
-      })();
+      const loadFailed = (): ComposerFailure => new ComposerFailure({ message: GIF_LOAD_FAILED });
+      fork(
+        Effect.tryPromise({
+          try: (signal) => fetch(gif.url, { credentials: 'same-origin', signal }),
+          catch: loadFailed,
+        }).pipe(
+          // The proxy refused the media.
+          Effect.filterOrFail((response) => response.ok, loadFailed),
+          Effect.flatMap((response) =>
+            Effect.tryPromise({ try: () => response.blob(), catch: loadFailed }),
+          ),
+          Effect.filterOrFail((blob) => blob.size > 0, loadFailed),
+          Effect.flatMap((blob) =>
+            Effect.sync(() => {
+              const { mime, extension } = gifBlobType(blob.type, gif.kind);
+              const file = new File([blob], `gif-${gif.id.slice(0, 16)}.${extension}`, {
+                type: mime,
+              });
+              store.sendAttachment(chatId, file, {
+                ...(caption.length === 0 ? {} : { caption }),
+                ...(replyTo === undefined ? {} : { replyTo }),
+              });
+            }),
+          ),
+          Effect.catchTag('ComposerFailure', (failure) =>
+            Effect.sync(() => setAttachmentError(failure.message)),
+          ),
+        ),
+      );
     },
     [chatId, onCancelReply, replyTo, store, value],
   );
@@ -630,7 +659,7 @@ export function Composer({
   // The reply is read through `replyRef` at send time: it may change while
   // the browser's microphone prompt is showing, and the document pointer
   // listeners below are registered once with a stale closure.
-  const beginRecording = async (startX: number, clickMode: boolean): Promise<void> => {
+  const beginRecording = (startX: number, clickMode: boolean): void => {
     const press: PressState = {
       startX,
       slidToCancel: false,
@@ -644,27 +673,54 @@ export function Composer({
     setLocked(false);
     setCancelArmed(false);
     if (!clickMode) {
-      press.holdTimer = window.setTimeout(() => {
-        // A press held this long is a hold-to-send: when the recorder starts
-        // it runs in hold mode until release.
-        press.hold = true;
-      }, HOLD_MS);
+      press.holdTimer = Effect.runFork(
+        Effect.sleep(HOLD_MS).pipe(
+          // A press held this long is a hold-to-send: when the recorder starts
+          // it runs in hold mode until release.
+          Effect.andThen(
+            Effect.sync(() => {
+              press.hold = true;
+            }),
+          ),
+        ),
+      );
     }
-    let recorder: VoiceRecorder;
-    try {
-      recorder = await VoiceRecorder.start();
-    } catch (error) {
-      if (pressRef.current !== press) {
-        return;
-      }
-      if (press.holdTimer !== undefined) {
-        window.clearTimeout(press.holdTimer);
-        press.holdTimer = undefined;
-      }
-      pressRef.current = null;
-      setVoiceError(error instanceof VoiceError ? error.message : 'Microphone unavailable');
+    // `runFork` starts the fiber at once, so `VoiceRecorder.start()` still runs
+    // inside the click (the microphone permission needs it); only the wait for
+    // the result is an Effect.
+    fork(
+      Effect.tryPromise({
+        try: () => VoiceRecorder.start(),
+        catch: (error) =>
+          new ComposerFailure({
+            message: error instanceof VoiceError ? error.message : 'Microphone unavailable',
+          }),
+      }).pipe(
+        Effect.match({
+          onFailure: (failure) => onRecorderFailed(press, failure.message),
+          onSuccess: (recorder) => onRecorderStarted(press, recorder, clickMode),
+        }),
+      ),
+    );
+  };
+
+  const onRecorderFailed = (press: PressState, message: string): void => {
+    if (pressRef.current !== press) {
       return;
     }
+    if (press.holdTimer !== undefined) {
+      stopTimer(press.holdTimer);
+      press.holdTimer = undefined;
+    }
+    pressRef.current = null;
+    setVoiceError(message);
+  };
+
+  const onRecorderStarted = (
+    press: PressState,
+    recorder: VoiceRecorder,
+    clickMode: boolean,
+  ): void => {
     // The composer unmounted or the chat switched while the prompt was up.
     if (pressRef.current !== press) {
       recorder.cancel();
@@ -686,17 +742,17 @@ export function Composer({
         // A long press released during the prompt still sends: it was
         // always a hold gesture, even though the recorder started late.
         if (press.holdTimer !== undefined) {
-          window.clearTimeout(press.holdTimer);
+          stopTimer(press.holdTimer);
           press.holdTimer = undefined;
         }
-        void finishRecording(false);
+        finishRecording(false);
       } else {
         // A short press released during the prompt: the user clicked while
         // the browser asked for permission. Keep recording in click mode
         // instead of silently discarding it. The press is over either way,
         // so its hold timer is cleared.
         if (press.holdTimer !== undefined) {
-          window.clearTimeout(press.holdTimer);
+          stopTimer(press.holdTimer);
           press.holdTimer = undefined;
         }
         pressRef.current = null;
@@ -716,7 +772,7 @@ export function Composer({
   // validated and sent through the store. The reply is read through
   // `replyRef`, never a closure: the document pointer listeners below are
   // registered once and would otherwise send a stale mount-time reply.
-  const finishRecording = async (cancel: boolean): Promise<void> => {
+  const finishRecording = (cancel: boolean): void => {
     const press = pressRef.current;
     const recorder = recorderRef.current;
     pressRef.current = null;
@@ -733,34 +789,40 @@ export function Composer({
       return;
     }
 
-    let recorded: { blob: Blob; durationMs: number };
-    try {
-      recorded = await recorder.stop();
-    } catch {
-      setVoiceError('Could not save the recording, try again');
-      return;
-    }
-    if (recorded.durationMs < VOICE_MIN_MS) {
-      setVoiceError('Recording too short');
-      return;
-    }
-    if (recorded.blob.size > VOICE_MAX_BYTES) {
-      setVoiceError('Recording is too long');
-      return;
-    }
-    const reply = replyRef.current;
-    try {
-      const waveform = await computeWaveform(recorded.blob);
-      store.sendVoice(
-        chatIdRef.current,
-        { blob: recorded.blob, durationMs: recorded.durationMs, waveform },
-        reply === undefined ? undefined : { replyTo: reply },
-      );
-    } catch {
-      setVoiceError('Could not save the recording, try again');
-      return;
-    }
-    onCancelReply();
+    const saveFailed = (): ComposerFailure => new ComposerFailure({ message: VOICE_SAVE_FAILED });
+    fork(
+      Effect.gen(function* () {
+        const recorded = yield* Effect.tryPromise({
+          try: () => recorder.stop(),
+          catch: saveFailed,
+        });
+        if (recorded.durationMs < VOICE_MIN_MS) {
+          return yield* Effect.fail(new ComposerFailure({ message: 'Recording too short' }));
+        }
+        if (recorded.blob.size > VOICE_MAX_BYTES) {
+          return yield* Effect.fail(new ComposerFailure({ message: 'Recording is too long' }));
+        }
+        const reply = replyRef.current;
+        const waveform = yield* Effect.tryPromise({
+          try: () => computeWaveform(recorded.blob),
+          catch: saveFailed,
+        });
+        yield* Effect.try({
+          try: () =>
+            store.sendVoice(
+              chatIdRef.current,
+              { blob: recorded.blob, durationMs: recorded.durationMs, waveform },
+              reply === undefined ? undefined : { replyTo: reply },
+            ),
+          catch: saveFailed,
+        });
+        onCancelReply();
+      }).pipe(
+        Effect.catchTag('ComposerFailure', (failure) =>
+          Effect.sync(() => setVoiceError(failure.message)),
+        ),
+      ),
+    );
   };
 
   // Press-and-hold still works for touch and mouse: a press held past
@@ -773,7 +835,7 @@ export function Composer({
     if (pressRef.current !== null || canSend || recordingRef.current) {
       return;
     }
-    void beginRecording(0, true);
+    beginRecording(0, true);
   };
 
   const onMicPointerDown = (event: ReactPointerEvent<HTMLButtonElement>): void => {
@@ -786,12 +848,15 @@ export function Composer({
     const target = event.currentTarget as HTMLElement & {
       setPointerCapture?: (pointerId: number) => void;
     };
-    try {
-      target.setPointerCapture?.(event.pointerId);
-    } catch {
-      // Pointer capture is best-effort; the press state still works.
-    }
-    void beginRecording(event.clientX, false);
+    // Pointer capture is best-effort; the press state still works without it.
+    Effect.runSync(
+      Effect.ignore(
+        Effect.try(() => {
+          target.setPointerCapture?.(event.pointerId);
+        }),
+      ),
+    );
+    beginRecording(event.clientX, false);
   };
 
   // The slide-to-cancel gesture while holding: shared with the document
@@ -812,12 +877,12 @@ export function Composer({
       // Click mode: the mic button is hidden while recording, so a press
       // here means the recorder never started; nothing to finish.
       if (recorderRef.current !== null) {
-        void finishRecording(false);
+        finishRecording(false);
       }
       return;
     }
     if (press.holdTimer !== undefined) {
-      window.clearTimeout(press.holdTimer);
+      stopTimer(press.holdTimer);
       press.holdTimer = undefined;
     }
     press.released = true;
@@ -828,11 +893,11 @@ export function Composer({
     }
     if (press.hold && !press.slidToCancel) {
       // A long press: releasing sends, as before.
-      void finishRecording(false);
+      finishRecording(false);
       return;
     }
     if (press.slidToCancel) {
-      void finishRecording(true);
+      finishRecording(true);
       return;
     }
     // A hold released before the recorder started but after the prompt
@@ -874,7 +939,7 @@ export function Composer({
     // resurrect a prompt that failed before starting.
     const press = pressRef.current;
     if (press?.holdTimer !== undefined) {
-      window.clearTimeout(press.holdTimer);
+      stopTimer(press.holdTimer);
       press.holdTimer = undefined;
     }
     pressRef.current = null;
@@ -1030,7 +1095,7 @@ export function Composer({
           <Button
             type="button"
             aria-label="Send voice message"
-            onClick={() => void finishRecording(false)}
+            onClick={() => finishRecording(false)}
             className="size-9 rounded-[10px] p-0"
           >
             <Send className="size-4" aria-hidden="true" />

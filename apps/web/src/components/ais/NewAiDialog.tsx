@@ -1,12 +1,18 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
+import { Effect } from 'effect';
+import { AsyncResult } from 'effect/reactivity';
 import { useNavigate } from 'react-router';
 import type { ChatSummary } from '@zilar/chat-core';
 import { ChevronDown } from 'lucide-react';
-import { createAi, listConnections, type AiTemplate, type Connection } from '@/lib/api';
+import { ApiError, createAi, listConnections, type AiTemplate, type Connection } from '@/lib/api';
+import { fromApi } from '@/lib/effect/api-effect';
+import type { ApiFailure } from '@/lib/effect/errors';
+import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { useQuery } from '@/lib/effect/use-query';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
 import { Button, FieldError } from './AiPageShell';
 import { ConnectionPicker, providerLabel } from './ConnectionPicker';
-import { describeAiError } from './errors';
+import { describeAiError, type AiErrorInfo } from './errors';
 import { LimitsFields } from './LimitsFields';
 import { validateLimits } from './limits';
 import { ModelPicker } from './ModelPicker';
@@ -25,6 +31,19 @@ import { StateMessage } from '@/components/ui/state-message';
 
 type DialogStatus = 'loading' | 'ready' | 'unavailable' | 'error';
 
+// An api.ts failure keeps its server answer: it is rebuilt as the ApiError that
+// describeAiError reads. A failure with no status did not come from the server,
+// so it shows the fixed fallback sentence instead of the thrown text.
+function describeFailure(failure: ApiFailure, fallback: string): AiErrorInfo {
+  if (failure.status === 0) {
+    return { message: fallback, unavailable: false };
+  }
+  return describeAiError(
+    new ApiError(failure.status, failure.code, failure.message, failure.detail),
+    fallback,
+  );
+}
+
 /**
  * The one-screen "New AI" dialog: a name, a template and Create. Everything else
  * keeps a safe default and lives behind "More options". It mirrors the chrome of
@@ -34,9 +53,24 @@ export function NewAiDialog({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate();
   const storeApi = useChatStoreApi();
 
-  const [connections, setConnections] = useState<Connection[]>([]);
-  const [status, setStatus] = useState<DialogStatus>('loading');
-  const [errorMessage, setErrorMessage] = useState('');
+  // The connections are read once; the dialog shows the active ones, or why it could not.
+  const [connectionList] = useQuery(() => fromApi(() => listConnections()), []);
+  const connections: Connection[] = AsyncResult.isSuccess(connectionList)
+    ? connectionList.value.filter((connection) => connection.status === 'active')
+    : [];
+  const loadFailure = isWaiting(connectionList) ? undefined : failureOf(connectionList);
+  const loadInfo =
+    loadFailure === undefined
+      ? null
+      : describeFailure(loadFailure, 'Could not load your connections');
+  const status: DialogStatus = AsyncResult.isSuccess(connectionList)
+    ? 'ready'
+    : loadInfo === null
+      ? 'loading'
+      : loadInfo.unavailable
+        ? 'unavailable'
+        : 'error';
+  const errorMessage = loadInfo?.message ?? '';
 
   const [name, setName] = useState('');
   const [template, setTemplate] = useState<AiTemplate>('dev');
@@ -48,32 +82,7 @@ export function NewAiDialog({ onClose }: { onClose: () => void }) {
   const [day, setDay] = useState(String(DEFAULT_DAILY_USD));
   const [month, setMonth] = useState(String(DEFAULT_MONTHLY_USD));
   const [moreOptionsOpen, setMoreOptionsOpen] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
-  const inFlight = useRef(false);
-
-  useEffect(() => {
-    let active = true;
-    listConnections()
-      .then((list) => {
-        if (!active) {
-          return;
-        }
-        setConnections(list.filter((connection) => connection.status === 'active'));
-        setStatus('ready');
-      })
-      .catch((error: unknown) => {
-        if (!active) {
-          return;
-        }
-        const info = describeAiError(error, 'Could not load your connections');
-        setErrorMessage(info.message);
-        setStatus(info.unavailable ? 'unavailable' : 'error');
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
 
   // Esc, the backdrop, Cancel and the actions footer all close via the kit
   // `Dialog`; the focus effect below still moves focus into the name input.
@@ -90,30 +99,15 @@ export function NewAiDialog({ onClose }: { onClose: () => void }) {
   const limits = validateLimits(day, month);
   const providerConnectionId = effectiveConnection?.id ?? null;
   const customNeedsPersona = template === 'custom' && persona.trim() === '';
-  const canSubmit =
+  const formReady =
     name.trim() !== '' &&
     providerConnectionId !== null &&
     model.trim() !== '' &&
     limits.limits !== null &&
-    !customNeedsPersona &&
-    !submitting;
+    !customNeedsPersona;
 
-  const chooseTemplate = (next: AiTemplate): void => {
-    setTemplate(next);
-    setPersona(defaultPersonaFor(next));
-    setPersonaTouched(false);
-  };
-
-  const chooseConnection = (id: string): void => {
-    setSelectedConnectionId(id);
-    // Switching provider re-prefills that provider's default model.
-    setModelDraft(null);
-  };
-
-  const submit = async (): Promise<void> => {
-    if (inFlight.current) {
-      return;
-    }
+  // One create at a time: a second click while the call waits is dropped (mode 'ignore').
+  const [submitState, submit] = useAction<void, void, ApiFailure>(() => {
     const form: AiFormState = {
       name,
       template,
@@ -125,38 +119,54 @@ export function NewAiDialog({ onClose }: { onClose: () => void }) {
       month,
     };
     const body = buildCreateBody(form, limits.limits);
-    if (body === null || !canSubmit) {
-      return;
+    if (body === null || !formReady) {
+      return Effect.void;
     }
-    inFlight.current = true;
-    setSubmitting(true);
-    setSubmitError('');
-    try {
-      const created = await createAi(body);
-      const summary: ChatSummary = {
-        id: created.jid,
-        title: created.name,
-        kind: 'dm',
-        isAI: true,
-        space: 'personal',
-        unread: 0,
-        muted: false,
-        online: false,
-      };
-      // Show the new AI in the list immediately. The store's T-0033 roster
-      // refresh reconciles it a moment later; a chat already there is kept.
-      storeApi.setState((state) => ({
-        chats: state.chats.some((chat) => chat.id === created.jid)
-          ? state.chats
-          : [summary, ...state.chats],
-      }));
-      onClose();
-      navigate(`/c/${encodeURIComponent(created.jid)}`);
-    } catch (error) {
-      setSubmitError(describeAiError(error, 'Could not create the AI').message);
-      setSubmitting(false);
-      inFlight.current = false;
-    }
+    return Effect.sync(() => setSubmitError('')).pipe(
+      Effect.andThen(fromApi(() => createAi(body))),
+      Effect.tap((created) =>
+        Effect.sync(() => {
+          const summary: ChatSummary = {
+            id: created.jid,
+            title: created.name,
+            kind: 'dm',
+            isAI: true,
+            space: 'personal',
+            unread: 0,
+            muted: false,
+            online: false,
+          };
+          // Show the new AI in the list immediately. The store's T-0033 roster
+          // refresh reconciles it a moment later; a chat already there is kept.
+          storeApi.setState((state) => ({
+            chats: state.chats.some((chat) => chat.id === created.jid)
+              ? state.chats
+              : [summary, ...state.chats],
+          }));
+          onClose();
+          navigate(`/c/${encodeURIComponent(created.jid)}`);
+        }),
+      ),
+      Effect.catchTag('ApiFailure', (failure) =>
+        Effect.sync(() =>
+          setSubmitError(describeFailure(failure, 'Could not create the AI').message),
+        ),
+      ),
+    );
+  });
+  const submitting = isWaiting(submitState);
+  const canSubmit = formReady && !submitting;
+
+  const chooseTemplate = (next: AiTemplate): void => {
+    setTemplate(next);
+    setPersona(defaultPersonaFor(next));
+    setPersonaTouched(false);
+  };
+
+  const chooseConnection = (id: string): void => {
+    setSelectedConnectionId(id);
+    // Switching provider re-prefills that provider's default model.
+    setModelDraft(null);
   };
 
   return (
@@ -171,7 +181,7 @@ export function NewAiDialog({ onClose }: { onClose: () => void }) {
             Cancel
           </Button>
           {status === 'ready' && connections.length > 0 && (
-            <Button type="button" size="lg" disabled={!canSubmit} onClick={() => void submit()}>
+            <Button type="button" size="lg" disabled={!canSubmit} onClick={() => submit()}>
               {submitting ? 'Creating…' : 'Create'}
             </Button>
           )}

@@ -1,3 +1,4 @@
+import { Effect, Fiber } from 'effect';
 import { ContactsApiError, type ContactsApi, type HandleProfile } from '../../lib/contacts-api';
 import type { SearchScheduler } from '../chat/message-search';
 import { addContactHandle } from './add-contact';
@@ -57,9 +58,13 @@ export interface PeopleSearchControllerOptions {
   frames?: SearchScheduler;
 }
 
+// The default clock: a fiber that sleeps, interrupted when it is cleared.
 const defaultScheduler: SearchScheduler = {
-  setTimeout: (callback, ms) => setTimeout(callback, ms),
-  clearTimeout: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+  setTimeout: (callback, ms) =>
+    Effect.runFork(Effect.sleep(ms).pipe(Effect.andThen(Effect.sync(callback)))),
+  clearTimeout: (handle) => {
+    Effect.runFork(Fiber.interrupt(handle as Fiber.Fiber<unknown, unknown>));
+  },
 };
 
 /**
@@ -124,7 +129,7 @@ export class PeopleSearchController {
     if (handle === this.lastRequested) {
       return;
     }
-    this.fetch(handle);
+    this.runLookup(handle);
   }
 
   setFound(profile: HandleProfile, sent: boolean): void {
@@ -155,29 +160,32 @@ export class PeopleSearchController {
     this.timer = this.frames.setTimeout(() => {
       this.timer = null;
       if (!this.disposed) {
-        this.fetch(handle);
+        this.runLookup(handle);
       }
     }, PEOPLE_SEARCH_DEBOUNCE_MS);
   }
 
-  private fetch(handle: string): void {
+  private runLookup(handle: string): void {
     this.lastRequested = handle;
     this.set({ status: 'looking' });
     const id = this.nextId();
     const api = this.api;
-    void api.lookupByHandle(handle).then(
-      (profile) => {
-        if (this.disposed || id !== this.requestId) {
-          return;
-        }
-        this.set({ status: 'found', profile, sent: false });
-      },
-      (error: unknown) => {
-        if (this.disposed || id !== this.requestId) {
-          return;
-        }
-        this.set(failureView(error));
-      },
+    const stillWanted = (): boolean => !this.disposed && id === this.requestId;
+    Effect.runFork(
+      Effect.tryPromise({ try: () => api.lookupByHandle(handle), catch: (cause) => cause }).pipe(
+        Effect.match({
+          onFailure: (error: unknown) => {
+            if (stillWanted()) {
+              this.set(failureView(error));
+            }
+          },
+          onSuccess: (profile: HandleProfile) => {
+            if (stillWanted()) {
+              this.set({ status: 'found', profile, sent: false });
+            }
+          },
+        }),
+      ),
     );
   }
 

@@ -1,34 +1,33 @@
-import { useEffect, useState } from 'react';
+import { Effect } from 'effect';
+import { AsyncResult } from 'effect/reactivity';
 import { useParams } from 'react-router';
 import { AuthFlow } from '@/components/auth/AuthFlow';
 import { getInvite } from '@/lib/api';
+import { fromApi } from '@/lib/effect/api-effect';
+import { useQuery } from '@/lib/effect/use-query';
+
+type InviteState = 'checking' | 'valid' | 'invalid';
+
+// A lookup that fails for any reason is invalid too, so no error text ever
+// reaches the page.
+const checkInvite = (code: string): Effect.Effect<boolean> =>
+  fromApi(() => getInvite(code)).pipe(
+    Effect.map((result) => result.valid),
+    Effect.catchTag('ApiFailure', () => Effect.succeed(false)),
+  );
 
 export function InvitePage() {
   const { code } = useParams<{ code: string }>();
-  const [state, setState] = useState<'checking' | 'valid' | 'invalid'>(
-    code === undefined ? 'invalid' : 'checking',
-  );
-
-  useEffect(() => {
-    if (code === undefined) {
-      return;
-    }
-    let active = true;
-    getInvite(code)
-      .then((result) => {
-        if (active) {
-          setState(result.valid ? 'valid' : 'invalid');
-        }
-      })
-      .catch(() => {
-        if (active) {
-          setState('invalid');
-        }
-      });
-    return () => {
-      active = false;
-    };
-  }, [code]);
+  // A missing code is invalid at once, without a lookup.
+  const [lookup] = useQuery(() => (code === undefined ? Effect.never : checkInvite(code)), [code]);
+  const state: InviteState =
+    code === undefined
+      ? 'invalid'
+      : AsyncResult.isSuccess(lookup)
+        ? lookup.value
+          ? 'valid'
+          : 'invalid'
+        : 'checking';
 
   if (state === 'checking') {
     return (

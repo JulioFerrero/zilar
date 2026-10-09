@@ -17,7 +17,7 @@ interface ApprovedMachineCardProps {
    *  the AI list could not be loaded the prop is null and the line is
    *  hidden — a failure here never blocks the rest of the card. */
   aiNames: string[] | null;
-  onRename: (name: string) => Promise<void> | void;
+  onRename: (name: string) => void;
   onAskRevoke: () => void;
   onCancelRevoke: () => void;
   onConfirmRevoke: () => void;
@@ -62,7 +62,9 @@ export function ApprovedMachineCard({
     setEditing(false);
   };
 
-  const commitEdit = async (): Promise<void> => {
+  // The page runs the rename and shows the new name at once, so the field
+  // closes without waiting for the request.
+  const commitEdit = (): void => {
     const next = draft.trim();
     if (next === '' || next === machine.name) {
       cancelEdit();
@@ -71,7 +73,7 @@ export function ApprovedMachineCard({
     if (next.length > 64) {
       return;
     }
-    await onRename(next);
+    onRename(next);
     setEditing(false);
   };
 
@@ -97,13 +99,13 @@ export function ApprovedMachineCard({
               onKeyDown={(event) => {
                 if (event.key === 'Enter') {
                   event.preventDefault();
-                  void commitEdit();
+                  commitEdit();
                 } else if (event.key === 'Escape') {
                   event.preventDefault();
                   cancelEdit();
                 }
               }}
-              onBlur={() => void commitEdit()}
+              onBlur={commitEdit}
               className="px-2 py-1 text-[16px] font-semibold"
             />
           ) : (

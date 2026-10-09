@@ -1,3 +1,4 @@
+import { Effect } from 'effect';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
@@ -16,7 +17,16 @@ import { useDirectoryApi } from '@/components/directory/use-directory-api';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import type { DirectoryEntry } from '@/lib/directory-api';
+import { useAction } from '@/lib/effect/use-action';
 import { useChatStore } from '@/store/chat-store-provider';
+
+/**
+ * Lifts a *-api.ts call into an Effect that fails with the thrown error
+ * itself: the describe helpers read its class, status and code.
+ */
+function attempt<A>(call: () => Promise<A>): Effect.Effect<A, unknown> {
+  return Effect.tryPromise({ try: call, catch: (cause) => cause });
+}
 
 /**
  * The `@handle` share entry (T-0183): `zilar://at/<handle>` (custom scheme,
@@ -52,37 +62,27 @@ function HandleCard({ handle }: { handle: string | undefined }) {
   const [joinError, setJoinError] = useState('');
   const [retries, setRetries] = useState(0);
 
+  // The lookup waits one tick before it applies the checking state (the lint
+  // rule flags synchronous setState inside effects), and a newer lookup or an
+  // unmount interrupts it, so a stale answer never replaces the card.
+  const [, lookup, lookupControls] = useAction(
+    (value: string) =>
+      Effect.sleep(0).pipe(
+        Effect.andThen(Effect.sync(() => setView({ state: 'checking' }))),
+        Effect.andThen(attempt(() => api.lookupGroupByHandle(value))),
+        Effect.tap((entry) => Effect.sync(() => setView({ state: 'ready', entry }))),
+        Effect.tapError((error) => Effect.sync(() => setView(handleRouteViewFor(error)))),
+      ),
+    { mode: 'replace' },
+  );
+
   useEffect(() => {
     if (handle === undefined || handle === '') {
       return;
     }
-    // The effect only schedules the lookup; the timeout callback applies
-    // the checking state and the promise the card once (the lint rule flags
-    // synchronous setState inside effects).
-    let active = true;
-    const pending = setTimeout(() => {
-      if (!active) {
-        return;
-      }
-      setView({ state: 'checking' });
-      void api
-        .lookupGroupByHandle(handle)
-        .then((entry) => {
-          if (active) {
-            setView({ state: 'ready', entry });
-          }
-        })
-        .catch((error: unknown) => {
-          if (active) {
-            setView(handleRouteViewFor(error));
-          }
-        });
-    }, 0);
-    return () => {
-      active = false;
-      clearTimeout(pending);
-    };
-  }, [api, handle, retries]);
+    lookup(handle);
+    return lookupControls.interrupt;
+  }, [api, handle, retries, lookup, lookupControls]);
 
   const close = () => {
     router.replace('/');
@@ -96,6 +96,23 @@ function HandleCard({ handle }: { handle: string | undefined }) {
   // landed when the join resolves — so the group screen opens from the id
   // the server answered (or the entry), never from a synchronous list read
   // that would fall through to the chats list on every success.
+  const [, joinPublic] = useAction((entry: DirectoryEntry) =>
+    attempt(() => api.joinPublicGroup(entry.id)).pipe(
+      Effect.tap((result) =>
+        Effect.sync(() => {
+          reloadChats();
+          router.replace(postJoinTarget(result.groupId));
+        }),
+      ),
+      Effect.tapError((error) =>
+        Effect.sync(() => {
+          setJoinError(describeJoinError(error));
+          setBusy(false);
+        }),
+      ),
+    ),
+  );
+
   const join = (entry: DirectoryEntry) => {
     if (busy) {
       return;
@@ -107,16 +124,7 @@ function HandleCard({ handle }: { handle: string | undefined }) {
     }
     setBusy(true);
     setJoinError('');
-    void api
-      .joinPublicGroup(entry.id)
-      .then((result) => {
-        reloadChats();
-        router.replace(postJoinTarget(result.groupId));
-      })
-      .catch((error: unknown) => {
-        setJoinError(describeJoinError(error));
-        setBusy(false);
-      });
+    joinPublic(entry);
   };
 
   return (

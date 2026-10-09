@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
-import { ApiError } from '@/lib/api';
+import { Data, Effect, Result, Schema } from 'effect';
+import { AsyncResult } from 'effect/reactivity';
+import { useState } from 'react';
 import {
   deleteTool,
   getToolDetail,
@@ -18,11 +19,27 @@ import { Button, FieldError } from '@/components/ais/AiPageShell';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { StateMessage } from '@/components/ui/state-message';
 import { TextArea } from '@/components/ui/text-input';
+import { fromApi } from '@/lib/effect/api-effect';
+import { type ApiFailure } from '@/lib/effect/errors';
+import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { useQuery } from '@/lib/effect/use-query';
 import { CodeBlock, TruncatedText } from './CodeBlock';
 
-type DetailStatus = 'loading' | 'ready' | 'error';
-
 const MAX_RUN_INPUT_BYTES = 4 * 1024;
+
+/** The run input is any JSON value, decoded from its text by Effect Schema. */
+const RUN_INPUT_JSON = Schema.fromJsonString(Schema.Unknown);
+
+class InputNotJson extends Data.TaggedError('InputNotJson') {}
+class InputTooLarge extends Data.TaggedError('InputTooLarge') {}
+
+type RunFailure = InputNotJson | InputTooLarge | ApiFailure;
+
+interface LoadedTool {
+  readonly detail: ToolDetail;
+  readonly versions: ToolVersion[];
+  readonly runs: ToolRun[];
+}
 
 function hostsLine(hosts: readonly string[]): string {
   return hosts.length === 0 ? 'no sites' : hosts.join(', ');
@@ -32,6 +49,79 @@ function runStatusText(run: ToolRun): string {
   const at = new Date(run.createdAt);
   const label = run.status === 'ok' ? 'ok' : `error (${run.errorKind ?? 'failed'})`;
   return `${label} · v${run.version} · ${run.trigger} · ${run.durationMs} ms · ${at.toLocaleString()}`;
+}
+
+/** The API's own message, or the fallback for a failure that was not an API answer. */
+function failureText(failure: ApiFailure | undefined, fallback: string): string {
+  if (failure === undefined || (failure.status === 0 && failure.code === 'unknown_error')) {
+    return fallback;
+  }
+  return failure.message;
+}
+
+/** The typed failure of a call that has ended; a call still running shows none. */
+function settledFailure<A, E>(state: AsyncResult.AsyncResult<A, E>): E | undefined {
+  return isWaiting(state) ? undefined : failureOf(state);
+}
+
+function loadDetail(toolId: string): Effect.Effect<LoadedTool, ApiFailure> {
+  return Effect.all(
+    {
+      detail: fromApi(() => getToolDetail(toolId)),
+      versions: fromApi(() => listToolVersions(toolId)),
+      runs: fromApi(() => listToolRuns(toolId)),
+    },
+    { concurrency: 'unbounded' },
+  );
+}
+
+/** Checks the optional JSON input (max 4 KB), then runs the tool once. */
+function runToolWithInput(toolId: string, text: string): Effect.Effect<ToolRunResult, RunFailure> {
+  const trimmed = text.trim();
+  const input: Effect.Effect<unknown, InputNotJson | InputTooLarge> =
+    trimmed === '' ? Effect.succeed(undefined) : parseRunInput(trimmed);
+  return input.pipe(
+    Effect.andThen((value) =>
+      fromApi(() => (value === undefined ? runToolNow(toolId) : runToolNow(toolId, value))),
+    ),
+  );
+}
+
+function parseRunInput(trimmed: string): Effect.Effect<unknown, InputNotJson | InputTooLarge> {
+  const decoded = Schema.decodeUnknownResult(RUN_INPUT_JSON)(trimmed);
+  if (!Result.isSuccess(decoded)) {
+    return Effect.fail(new InputNotJson());
+  }
+  if (new Blob([trimmed]).size > MAX_RUN_INPUT_BYTES) {
+    return Effect.fail(new InputTooLarge());
+  }
+  return Effect.succeed(decoded.success);
+}
+
+/** The text under the run input field, for an input the run never sent. */
+function inputErrorText(failure: RunFailure | undefined): string | undefined {
+  if (failure?._tag === 'InputNotJson') {
+    return 'Input must be valid JSON.';
+  }
+  if (failure?._tag === 'InputTooLarge') {
+    return 'Input must be at most 4 KB.';
+  }
+  return undefined;
+}
+
+/** The text under the Run button, for a run the API refused or failed. */
+function runErrorText(failure: RunFailure | undefined): string | undefined {
+  if (
+    failure === undefined ||
+    failure._tag === 'InputNotJson' ||
+    failure._tag === 'InputTooLarge'
+  ) {
+    return undefined;
+  }
+  if (failure.status === 403 || failure.status === 404) {
+    return 'You may not run this tool.';
+  }
+  return failureText(failure, 'Could not run the tool.');
 }
 
 /**
@@ -54,146 +144,62 @@ export function ToolDetailPanel({
   onDeleted: (toolId: string) => void;
   onClose: () => void;
 }) {
-  const [status, setStatus] = useState<DetailStatus>('loading');
-  const [tool, setTool] = useState<ToolDetail | null>(null);
-  const [versions, setVersions] = useState<ToolVersion[]>([]);
-  const [runs, setRuns] = useState<ToolRun[]>([]);
-  const [message, setMessage] = useState('');
-  const [reloadTick, setReloadTick] = useState(0);
+  const [loaded, reloadDetail] = useQuery(() => loadDetail(toolId), [toolId]);
 
-  // Version source preview: the current version by default, an older one
-  // when picked from the history.
-  const [shownVersion, setShownVersion] = useState<number | null>(null);
-  const [shownSource, setShownSource] = useState<string | null>(null);
-  const [sourceError, setSourceError] = useState('');
-
+  // The source the user picked from the history; undefined shows the
+  // current version. Cleared on every reload, as the panel did before.
+  const [picked, setPicked] = useState<{ version: number; source: string } | null>(null);
+  // The recent runs after a run; undefined shows the loaded list.
+  const [freshRuns, setFreshRuns] = useState<ToolRun[] | null>(null);
   const [confirmingRevert, setConfirmingRevert] = useState<number | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [actionError, setActionError] = useState('');
 
-  // Run now: optional JSON input, validated client-side (max 4 KB) before
-  // the POST (the server also enforces 16 KiB).
+  // Run now: optional JSON input, validated before the POST (the server also
+  // enforces 16 KiB). The result stays in local state, as before.
   const [runInput, setRunInput] = useState('');
-  const [runInputError, setRunInputError] = useState('');
-  const [running, setRunning] = useState(false);
   const [runResult, setRunResult] = useState<ToolRunResult | null>(null);
-  const [runError, setRunError] = useState('');
 
-  useEffect(() => {
-    let active = true;
-    void (async () => {
-      try {
-        const [detail, history, recent] = await Promise.all([
-          getToolDetail(toolId),
-          listToolVersions(toolId),
-          listToolRuns(toolId),
-        ]);
-        if (!active) {
-          return;
-        }
-        setTool(detail);
-        setVersions(history);
-        setRuns(recent);
-        setShownVersion(detail.currentVersion);
-        setShownSource(detail.source);
-        setStatus('ready');
-      } catch (error) {
-        if (!active) {
-          return;
-        }
-        setMessage(error instanceof Error ? error.message : 'Could not load the tool.');
-        setStatus('error');
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, [toolId, reloadTick]);
-
-  const showVersion = async (version: number): Promise<void> => {
-    if (tool !== null && version === tool.currentVersion) {
-      setShownVersion(version);
-      setShownSource(tool.source);
-      setSourceError('');
-      return;
-    }
-    setSourceError('');
-    try {
-      const detail = await getToolVersion(toolId, version);
-      setShownVersion(detail.version);
-      setShownSource(detail.source);
-    } catch (error) {
-      setSourceError(error instanceof Error ? error.message : 'Could not load that version.');
-    }
-  };
+  const [sourceState, showSource, showControls] = useAction(
+    (version: number) =>
+      fromApi(() => getToolVersion(toolId, version)).pipe(
+        Effect.tap((detail) =>
+          Effect.sync(() => setPicked({ version: detail.version, source: detail.source })),
+        ),
+      ),
+    { mode: 'replace' },
+  );
 
   const reload = (): void => {
-    setReloadTick((tick) => tick + 1);
+    setPicked(null);
+    setFreshRuns(null);
+    reloadDetail();
   };
 
-  const revert = async (version: number): Promise<void> => {
-    setBusy(true);
-    setActionError('');
-    try {
-      await revertTool(toolId, version);
-      setConfirmingRevert(null);
-      reload();
-    } catch (error) {
-      setActionError(error instanceof Error ? error.message : 'Could not revert the tool.');
-      setConfirmingRevert(null);
-    } finally {
-      setBusy(false);
-    }
-  };
+  const [revertState, revertVersion] = useAction((version: number) =>
+    fromApi(() => revertTool(toolId, version)).pipe(
+      Effect.tap(() => Effect.sync(reload)),
+      Effect.ensuring(Effect.sync(() => setConfirmingRevert(null))),
+    ),
+  );
 
-  const run = async (): Promise<void> => {
-    setRunInputError('');
-    setRunError('');
-    setRunResult(null);
-    let input: unknown = undefined;
-    const trimmed = runInput.trim();
-    if (trimmed !== '') {
-      try {
-        input = JSON.parse(trimmed) as unknown;
-      } catch {
-        setRunInputError('Input must be valid JSON.');
-        return;
-      }
-      const bytes = new Blob([trimmed]).size;
-      if (bytes > MAX_RUN_INPUT_BYTES) {
-        setRunInputError('Input must be at most 4 KB.');
-        return;
-      }
-    }
-    setRunning(true);
-    try {
-      const result =
-        input === undefined ? await runToolNow(toolId) : await runToolNow(toolId, input);
-      setRunResult(result);
+  const [runState, runNow] = useAction((text: string) =>
+    runToolWithInput(toolId, text).pipe(
+      Effect.tap((result) => Effect.sync(() => setRunResult(result))),
       // The run itself succeeded: a failed history refresh must not turn it
       // into an error, the old list simply stays until the next refresh.
-      await listToolRuns(toolId)
-        .then(setRuns)
-        .catch(() => {});
-    } catch (error) {
-      if (error instanceof ApiError && (error.status === 403 || error.status === 404)) {
-        setRunError('You may not run this tool.');
-      } else {
-        setRunError(error instanceof Error ? error.message : 'Could not run the tool.');
-      }
-    } finally {
-      setRunning(false);
-    }
-  };
+      Effect.tap(() =>
+        fromApi(() => listToolRuns(toolId)).pipe(
+          Effect.tap((fresh) => Effect.sync(() => setFreshRuns(fresh))),
+          Effect.ignore,
+        ),
+      ),
+    ),
+  );
 
-  if (status === 'loading') {
-    return <StateMessage kind="loading" size="inline" title="Loading…" />;
-  }
-
-  if (status === 'error' || tool === null) {
+  if (AsyncResult.isFailure(loaded)) {
+    const loadFailure = failureOf(loaded);
     return (
       <div className="flex flex-col gap-2 px-2">
-        <FieldError>{message === '' ? 'Could not load the tool.' : message}</FieldError>
+        <FieldError>{failureText(loadFailure, 'Could not load the tool.')}</FieldError>
         <div className="flex gap-2">
           <Button type="button" size="lg" className="rounded-full px-4" onClick={reload}>
             Retry
@@ -212,10 +218,41 @@ export function ToolDetailPanel({
     );
   }
 
+  if (!AsyncResult.isSuccess(loaded)) {
+    return <StateMessage kind="loading" size="inline" title="Loading…" />;
+  }
+
+  const { detail: tool, versions, runs: loadedRuns } = loaded.value;
+  const shownVersion = picked?.version ?? tool.currentVersion;
+  const shownSource = picked?.source ?? tool.source;
+  const runs = freshRuns ?? loadedRuns;
+  // A failure shows only once its call has ended; a new call clears it.
+  const sourceError = settledFailure(sourceState);
+  const revertFailure = settledFailure(revertState);
+  const runFailure = settledFailure(runState);
+  const inputError = inputErrorText(runFailure);
+  const runError = runErrorText(runFailure);
+  const busy = isWaiting(revertState);
+  const running = isWaiting(runState);
+
   const shownHosts =
     versions.find((version) => version.version === shownVersion)?.hosts ?? tool.hosts;
   const approvedHosts = tool.approvedHosts ?? [];
   const unapproved = tool.hosts.filter((host) => !approvedHosts.includes(host));
+
+  const showVersion = (version: number): void => {
+    if (version === tool.currentVersion) {
+      setPicked(null);
+      showControls.reset();
+      return;
+    }
+    showSource(version);
+  };
+
+  const startRun = (): void => {
+    setRunResult(null);
+    runNow(runInput);
+  };
 
   return (
     <div className="flex flex-col gap-4">
@@ -245,16 +282,13 @@ export function ToolDetailPanel({
 
       <section aria-label="Source" className="flex flex-col gap-2">
         <h4 className="px-2 text-[13px] font-semibold text-muted-foreground">
-          Source (v{shownVersion ?? tool.currentVersion}, read-only)
+          Source (v{shownVersion}, read-only)
         </h4>
-        {sourceError !== '' && <FieldError>{sourceError}</FieldError>}
-        {shownSource !== null && (
-          <CodeBlock
-            code={shownSource}
-            label={`Source of ${tool.name} v${shownVersion ?? tool.currentVersion}`}
-          />
+        {sourceError !== undefined && (
+          <FieldError>{failureText(sourceError, 'Could not load that version.')}</FieldError>
         )}
-        {shownVersion !== null && shownVersion !== tool.currentVersion && (
+        <CodeBlock code={shownSource} label={`Source of ${tool.name} v${shownVersion}`} />
+        {shownVersion !== tool.currentVersion && (
           <p className="px-2 text-[13px] text-muted-foreground">
             Showing v{shownVersion} ({hostsLine(shownHosts)}); revert to make it current.
           </p>
@@ -273,7 +307,7 @@ export function ToolDetailPanel({
           >
             <button
               type="button"
-              onClick={() => void showVersion(version.version)}
+              onClick={() => showVersion(version.version)}
               aria-label={`Show source of v${version.version}`}
               className="min-w-0 flex-1 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
             >
@@ -300,7 +334,9 @@ export function ToolDetailPanel({
             )}
           </div>
         ))}
-        {actionError !== '' && <FieldError>{actionError}</FieldError>}
+        {revertFailure !== undefined && (
+          <FieldError>{failureText(revertFailure, 'Could not revert the tool.')}</FieldError>
+        )}
       </section>
 
       {canManage && (
@@ -319,19 +355,19 @@ export function ToolDetailPanel({
               className="min-h-0 font-mono text-[13px]"
             />
           </label>
-          {runInputError !== '' && <FieldError>{runInputError}</FieldError>}
+          {inputError !== undefined && <FieldError>{inputError}</FieldError>}
           <div className="px-2">
             <Button
               type="button"
               size="lg"
               className="rounded-full px-4"
               disabled={running}
-              onClick={() => void run()}
+              onClick={startRun}
             >
               {running ? 'Running…' : 'Run now'}
             </Button>
           </div>
-          {runError !== '' && <FieldError>{runError}</FieldError>}
+          {runError !== undefined && <FieldError>{runError}</FieldError>}
           {runResult !== null && <RunResultBlock result={runResult} />}
         </section>
       )}
@@ -381,7 +417,7 @@ export function ToolDetailPanel({
           title={`Revert ${tool.name} to v${confirmingRevert}?`}
           body="This creates a new version copying that version's code. The history keeps every version."
           confirmLabel={busy ? 'Reverting…' : 'Revert'}
-          onConfirm={() => void revert(confirmingRevert)}
+          onConfirm={() => revertVersion(confirmingRevert)}
           onCancel={() => setConfirmingRevert(null)}
         />
       )}
@@ -435,25 +471,17 @@ function DeleteToolButton({
   onDeleted: (toolId: string) => void;
 }) {
   const [confirming, setConfirming] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
+  const [state, remove] = useAction<void, void, ApiFailure>(() =>
+    fromApi(() => deleteTool(toolId)).pipe(
+      Effect.tap(() => Effect.sync(() => onDeleted(toolId))),
+      Effect.ensuring(Effect.sync(() => setConfirming(false))),
+    ),
+  );
   if (!canManage) {
     return null;
   }
-  const remove = async (): Promise<void> => {
-    setBusy(true);
-    setError('');
-    try {
-      await deleteTool(toolId);
-      setConfirming(false);
-      onDeleted(toolId);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not delete the tool.');
-      setConfirming(false);
-    } finally {
-      setBusy(false);
-    }
-  };
+  const busy = isWaiting(state);
+  const failure = busy ? undefined : failureOf(state);
   return (
     <div className="flex flex-col gap-2 px-2">
       <div>
@@ -468,13 +496,15 @@ function DeleteToolButton({
           Delete tool
         </Button>
       </div>
-      {error !== '' && <FieldError>{error}</FieldError>}
+      {failure !== undefined && (
+        <FieldError>{failureText(failure, 'Could not delete the tool.')}</FieldError>
+      )}
       {confirming && (
         <ConfirmDialog
           title={`Delete ${toolName}?`}
           body="This deletes the tool and its routines. This cannot be undone."
           confirmLabel={busy ? 'Deleting…' : 'Delete'}
-          onConfirm={() => void remove()}
+          onConfirm={() => remove()}
           onCancel={() => setConfirming(false)}
         />
       )}

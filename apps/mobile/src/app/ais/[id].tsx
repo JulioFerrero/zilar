@@ -1,5 +1,7 @@
+import { Effect } from 'effect';
+import { AsyncResult } from 'effect/reactivity';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, View } from 'react-native';
 
 import { RequireAisAuth } from '@/components/ais/require-ais-auth';
@@ -29,6 +31,14 @@ import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import type { Connection as AisConnection, PublicAi, UpdateAiInput } from '@/lib/ais-api';
 import type { Machine } from '@/lib/machines-api';
+import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { useQuery } from '@/lib/effect/use-query';
+
+// The raw rejection is kept, not mapped, so describeAisError and the machine
+// helper still see their own error classes.
+function rawCall<A>(call: () => Promise<A>) {
+  return Effect.tryPromise({ try: call, catch: (cause) => ({ cause }) });
+}
 
 export default function EditAiScreen() {
   return (
@@ -69,73 +79,127 @@ function EditAi() {
   // at once and a failed one restores the previous value. Set from the
   // loaded AI, then from each PUT answer (the server is the source of truth).
   const [homeMachineId, setHomeMachineId] = useState<string | null>(null);
-  const [machineBusy, setMachineBusy] = useState(false);
-  const machineBusyRef = useRef(false);
   const [machineError, setMachineError] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-  // Guards against a double tap landing before React re-renders the disabled
-  // button, so one Save can never PATCH twice.
-  const savingRef = useRef(false);
 
-  const load = useCallback(() => {
-    void api
-      .listAis()
-      .then((list) => {
-        const ai = list.find((item) => item.id === id) ?? null;
-        if (ai === null) {
-          setLoadError('That AI no longer exists.');
-          setStatus('error');
-          return;
-        }
-        setLoaded(ai);
-        setName(ai.name);
-        setPersona(ai.persona);
-        setDay(String(ai.limits.perDayUsd));
-        setMonth(String(ai.limits.perMonthUsd));
-        setSelectedConnectionId(ai.providerConnectionId);
-        setModelDraft(ai.model);
-        setHomeMachineId(ai.machineId ?? null);
-        setStatus('ready');
-      })
-      .catch((cause: unknown) => {
-        setLoadError(describeAisError(cause, 'Could not load the AI').message);
-        setStatus('error');
-      });
-  }, [api, id]);
+  // Shows the AI the list answered with; an AI missing from the list is a
+  // load error. The form fills from it once per load.
+  const showAi = (list: PublicAi[]): void => {
+    const ai = list.find((item) => item.id === id) ?? null;
+    if (ai === null) {
+      setLoadError('That AI no longer exists.');
+      setStatus('error');
+      return;
+    }
+    setLoaded(ai);
+    setName(ai.name);
+    setPersona(ai.persona);
+    setDay(String(ai.limits.perDayUsd));
+    setMonth(String(ai.limits.perMonthUsd));
+    setSelectedConnectionId(ai.providerConnectionId);
+    setModelDraft(ai.model);
+    setHomeMachineId(ai.machineId ?? null);
+    setStatus('ready');
+  };
 
-  useEffect(() => {
-    connectionsApi
-      .listConnections()
-      .then((list) => {
-        setConnections(list.filter((connection) => connection.status === 'active'));
-      })
-      .catch(() => {
-        setConnections([]);
-      });
-  }, [connectionsApi]);
+  // The AI loads on mount and again on Retry, through the same query.
+  const [, reloadAi] = useQuery(
+    () =>
+      rawCall(() => api.listAis()).pipe(
+        Effect.tap((list) => Effect.sync(() => showAi(list))),
+        Effect.catch(({ cause }) =>
+          Effect.sync(() => {
+            setLoadError(describeAisError(cause, 'Could not load the AI').message);
+            setStatus('error');
+          }),
+        ),
+      ),
+    [api, id],
+  );
 
-  useEffect(() => {
-    machinesApi
-      .listMachines()
-      .then((list) => {
-        setMachines(list);
-        setMachinesLoaded(true);
-      })
-      .catch(() => {
-        setMachines([]);
-        setMachinesLoaded(false);
-      });
-  }, [machinesApi]);
+  useQuery(
+    () =>
+      rawCall(() => connectionsApi.listConnections()).pipe(
+        Effect.tap((list) =>
+          Effect.sync(() => {
+            setConnections(list.filter((connection) => connection.status === 'active'));
+          }),
+        ),
+        Effect.catch(() =>
+          Effect.sync(() => {
+            setConnections([]);
+          }),
+        ),
+      ),
+    [connectionsApi],
+  );
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useQuery(
+    () =>
+      rawCall(() => machinesApi.listMachines()).pipe(
+        Effect.tap((list) =>
+          Effect.sync(() => {
+            setMachines(list);
+            setMachinesLoaded(true);
+          }),
+        ),
+        Effect.catch(() =>
+          Effect.sync(() => {
+            setMachines([]);
+            setMachinesLoaded(false);
+          }),
+        ),
+      ),
+    [machinesApi],
+  );
 
   const retry = (): void => {
     setStatus('loading');
-    load();
+    reloadAi();
   };
+
+  // Sets or clears the AI's home machine through the separate machine route,
+  // exactly like web `AiPanel`. The helper never rejects: on failure it hands
+  // back the previous value and a fixed error sentence, and the PUT answer is
+  // the source of truth on success.
+  const [machineChange, runMachineChange] = useAction(
+    (change: { aiId: string; next: string | null; previous: string | null }) =>
+      Effect.promise(() =>
+        applyMachineChange(machinesApi, change.aiId, change.next, change.previous),
+      ).pipe(
+        Effect.tap((outcome) =>
+          Effect.sync(() => {
+            setHomeMachineId(outcome.home);
+            setMachineError(outcome.error);
+          }),
+        ),
+      ),
+  );
+  const machineBusy = isWaiting(machineChange);
+
+  const changeMachine = (machineId: string | null): void => {
+    if (loaded === null || machineBusy) {
+      return;
+    }
+    setMachineError('');
+    runMachineChange({ aiId: loaded.id, next: machineId, previous: homeMachineId });
+  };
+
+  const [saveState, runSave] = useAction(
+    (change: {
+      aiId: string;
+      patch: UpdateAiInput & { model?: string; providerConnectionId?: string };
+    }) =>
+      rawCall(() => api.updateAi(change.aiId, change.patch)).pipe(
+        Effect.tap(() => Effect.sync(() => router.back())),
+      ),
+  );
+  // The button stays on "Saving…" after a success, until the route leaves.
+  const saving = isWaiting(saveState) || AsyncResult.isSuccess(saveState);
+  const saveFailure = isWaiting(saveState) ? undefined : failureOf(saveState);
+  const error =
+    saveFailure === undefined
+      ? ''
+      : describeAisError(saveFailure.cause, 'Could not update the AI').message;
 
   const limits = validateLimits(day, month);
   const canSave = loaded !== null && name.trim() !== '' && limits.limits !== null && !saving;
@@ -150,32 +214,8 @@ function EditAi() {
     }
   };
 
-  // Sets or clears the AI's home machine through the separate machine route,
-  // exactly like web `AiPanel`. The outcome helper keeps the previous value
-  // on failure and carries a fixed error sentence; the PUT answer is the
-  // source of truth on success.
-  const changeMachine = (machineId: string | null): void => {
-    if (loaded === null || machineBusyRef.current) {
-      return;
-    }
-    machineBusyRef.current = true;
-    const previous = homeMachineId;
-    const aiId = loaded.id;
-    setMachineBusy(true);
-    setMachineError('');
-    void applyMachineChange(machinesApi, aiId, machineId, previous)
-      .then((outcome) => {
-        setHomeMachineId(outcome.home);
-        setMachineError(outcome.error);
-      })
-      .finally(() => {
-        machineBusyRef.current = false;
-        setMachineBusy(false);
-      });
-  };
-
   const save = (): void => {
-    if (loaded === null || savingRef.current) {
+    if (loaded === null || saving) {
       return;
     }
     const base = buildPatch({
@@ -207,17 +247,7 @@ function EditAi() {
     if (name.trim() === '' || limits.limits === null || patch === null) {
       return;
     }
-    savingRef.current = true;
-    setSaving(true);
-    setError('');
-    void api
-      .updateAi(loaded.id, patch)
-      .then(() => router.back())
-      .catch((cause: unknown) => {
-        savingRef.current = false;
-        setError(describeAisError(cause, 'Could not update the AI').message);
-        setSaving(false);
-      });
+    runSave({ aiId: loaded.id, patch });
   };
 
   return (

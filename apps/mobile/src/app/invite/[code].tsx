@@ -1,7 +1,8 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams } from 'expo-router';
+import { Effect } from 'effect';
+import { AsyncResult } from 'effect/reactivity';
 import { useColorScheme } from 'nativewind';
-import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -11,34 +12,28 @@ import { asColorScheme } from '@/lib/color-scheme';
 import { CHAT_BACKGROUND } from '@/lib/colors';
 import { API_URL } from '@/lib/auth';
 import { checkInvite } from '@/lib/auth-api';
+import { fromApi } from '@/lib/effect/api-effect';
+import type { ApiFailure } from '@/lib/effect/errors';
+import { useQuery } from '@/lib/effect/use-query';
 
 type InviteState = 'checking' | 'valid' | 'invalid';
+
+/** A failed check reads as an invalid invite, like an answer of "not valid". */
+function inviteStateOf(check: AsyncResult.AsyncResult<boolean, ApiFailure>): InviteState {
+  if (AsyncResult.isSuccess(check)) {
+    return check.value ? 'valid' : 'invalid';
+  }
+  return AsyncResult.isFailure(check) ? 'invalid' : 'checking';
+}
 
 export default function InviteRoute() {
   const params = useLocalSearchParams<{ code?: string }>();
   const code = typeof params.code === 'string' ? params.code : undefined;
-  const [state, setState] = useState<InviteState>(code === undefined ? 'invalid' : 'checking');
-
-  useEffect(() => {
-    if (code === undefined) {
-      return;
-    }
-    let active = true;
-    checkInvite(API_URL, code)
-      .then((valid) => {
-        if (active) {
-          setState(valid ? 'valid' : 'invalid');
-        }
-      })
-      .catch(() => {
-        if (active) {
-          setState('invalid');
-        }
-      });
-    return () => {
-      active = false;
-    };
-  }, [code]);
+  const [check] = useQuery(
+    () => (code === undefined ? Effect.succeed(false) : fromApi(() => checkInvite(API_URL, code))),
+    [code],
+  );
+  const state = code === undefined ? 'invalid' : inviteStateOf(check);
 
   if (state === 'checking') {
     return <InviteMessage title="Checking your invite…" />;

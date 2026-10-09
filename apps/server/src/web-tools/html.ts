@@ -5,6 +5,7 @@
 // entities, and collapses whitespace. Input is capped so huge or
 // malformed HTML cannot hang the server; output is plain text the
 // adapters put in `modelText` (never in a summary).
+// effect-plain: pure HTML-to-text extraction; malformed input yields text, no I/O
 const MAX_HTML_INPUT_CHARS = 2 * 1024 * 1024;
 
 const DROP_ELEMENTS = new Set(['script', 'style', 'head', 'nav', 'noscript', 'template']);

@@ -1,3 +1,4 @@
+import { Data, Effect, type Effect as EffectType } from 'effect';
 import { StickersApiError } from '../../lib/stickers-api';
 
 /**
@@ -192,19 +193,83 @@ export interface DeletePackApi {
   deleteStickerPack(packId: string): Promise<{ warning: string }>;
 }
 
+/** A save step that threw: `error` is the thrown value, mapped to a sentence later. */
+class SaveStepFailed extends Data.TaggedError('SaveStepFailed')<{ readonly error: unknown }> {}
+
+/** Runs a sync step; a throw becomes a typed failure that keeps the thrown value. */
+const attempt = <A>(run: () => A): EffectType.Effect<A, SaveStepFailed> =>
+  Effect.try({ try: run, catch: (error) => new SaveStepFailed({ error }) });
+
+/** Runs a promise step; a rejection (or a sync throw) becomes a typed failure. */
+const attemptPromise = <A>(run: () => PromiseLike<A>): EffectType.Effect<A, SaveStepFailed> =>
+  Effect.tryPromise({ try: run, catch: (error) => new SaveStepFailed({ error }) });
+
+const deletePackEffect = (api: DeletePackApi, packId: string): EffectType.Effect<boolean> =>
+  attemptPromise(() => api.deleteStickerPack(packId)).pipe(
+    Effect.as(true),
+    Effect.catch(() => Effect.succeed(false)),
+  );
+
 /**
  * Deletes the pack for the delete modal. Returns whether the pack is gone;
  * the screen closes the modal and goes back on success, or keeps it open
  * with the fixed sentence on failure.
  */
-export async function runDeletePack(api: DeletePackApi, packId: string): Promise<boolean> {
-  try {
-    await api.deleteStickerPack(packId);
-    return true;
-  } catch {
-    return false;
-  }
+export function runDeletePack(api: DeletePackApi, packId: string): Promise<boolean> {
+  return Effect.runPromise(deletePackEffect(api, packId));
 }
+
+type CreatedPack = { id: string; title: string; visibility: 'private' | 'server' };
+
+/** Create mode, first save: mint the pack, then hand its id to the screen at once. */
+const mintPack = (
+  input: SavePackInput,
+  title: string,
+): EffectType.Effect<CreatedPack, SaveStepFailed> =>
+  attemptPromise(() => input.api.createStickerPack({ title, visibility: input.visibility })).pipe(
+    Effect.map((pack): CreatedPack => ({ id: pack.id, title, visibility: input.visibility })),
+    Effect.tap((created) => attempt(() => input.onCreated?.(created))),
+  );
+
+/**
+ * Edit mode, or a create-mode retry: patch the title/visibility when they
+ * changed, delete the removed stickers, then flush the removed list. Returns
+ * the pack id the uploads go to.
+ */
+const saveExistingPack = Effect.fnUntraced(function* (
+  input: SavePackInput,
+  trimmed: string,
+): EffectType.fn.Return<string, SaveStepFailed> {
+  const targetId =
+    input.target.kind === 'create' ? (input.target.createdPackId as string) : input.target.packId;
+  const baselineTitle =
+    input.target.kind === 'create' ? (input.target.createdTitle ?? '') : input.initialTitle;
+  const baselineVisibility =
+    input.target.kind === 'create'
+      ? (input.target.createdVisibility ?? 'private')
+      : input.initialVisibility;
+  if (trimmed !== baselineTitle || input.visibility !== baselineVisibility) {
+    yield* attemptPromise(() =>
+      input.api.patchStickerPack(targetId, { title: trimmed, visibility: input.visibility }),
+    );
+  }
+  // Deletions run in edit mode and on a create-mode retry alike: a row
+  // removed after its upload landed (create or edit) joins `removedIds`
+  // on removal, so the next Save deletes it instead of orphaning it.
+  for (const stickerId of input.removedIds) {
+    // A 404 means the sticker is already gone (a previous partial save
+    // deleted it before an upload failed), so a retry must not stick on the
+    // ghost id. Any other delete error still fails the save and the delete
+    // is retried next time.
+    yield* attemptPromise(() => input.api.deletePackSticker(targetId, stickerId)).pipe(
+      Effect.catch((failure) =>
+        lookupFailureKind(failure.error) === 'not-found' ? Effect.void : Effect.fail(failure),
+      ),
+    );
+  }
+  yield* attempt(() => input.onRemovedFlushed());
+  return targetId;
+});
 
 /**
  * The Save loop both modes share (web order): create the pack first in
@@ -213,80 +278,60 @@ export async function runDeletePack(api: DeletePackApi, packId: string): Promise
  * upload failure leaves the editor open with per-row Retry; only a pack or
  * patch failure is a form error.
  */
-export async function runSavePack(input: SavePackInput): Promise<SavePackOutcome> {
+const savePackSteps = Effect.fnUntraced(function* (
+  input: SavePackInput,
+): EffectType.fn.Return<SavePackOutcome, SaveStepFailed> {
   const trimmed = input.title.trim();
-  try {
-    let targetId: string;
-    let created: { id: string; title: string; visibility: 'private' | 'server' } | undefined;
-    if (input.target.kind === 'create' && input.target.createdPackId === undefined) {
-      const pack = await input.api.createStickerPack({
-        title: trimmed,
-        visibility: input.visibility,
-      });
-      targetId = pack.id;
-      created = { id: pack.id, title: trimmed, visibility: input.visibility };
-      input.onCreated?.(created);
-    } else {
-      targetId =
-        input.target.kind === 'create'
-          ? (input.target.createdPackId as string)
-          : input.target.packId;
-      const baselineTitle =
-        input.target.kind === 'create' ? (input.target.createdTitle ?? '') : input.initialTitle;
-      const baselineVisibility =
-        input.target.kind === 'create'
-          ? (input.target.createdVisibility ?? 'private')
-          : input.initialVisibility;
-      if (trimmed !== baselineTitle || input.visibility !== baselineVisibility) {
-        await input.api.patchStickerPack(targetId, {
-          title: trimmed,
-          visibility: input.visibility,
-        });
-      }
-      // Deletions run in edit mode and on a create-mode retry alike: a row
-      // removed after its upload landed (create or edit) joins `removedIds`
-      // on removal, so the next Save deletes it instead of orphaning it.
-      for (const stickerId of input.removedIds) {
-        try {
-          await input.api.deletePackSticker(targetId, stickerId);
-        } catch (error) {
-          // A 404 means the sticker is already gone (a previous partial
-          // save deleted it before an upload failed), so a retry must not
-          // stick on the ghost id. Any other delete error still fails the
-          // save and the delete is retried next time.
-          if (lookupFailureKind(error) !== 'not-found') {
-            throw error;
-          }
-        }
-      }
-      input.onRemovedFlushed();
-    }
-    let done = 0;
-    let failed = 0;
-    for (const item of input.pending) {
-      input.onRow(item.key, 'uploading');
-      try {
-        const uploaded = await input.api.uploadStickerFile(
-          targetId,
-          { uri: item.uri, mimeType: item.mimeType },
-          item.emoji === '' ? undefined : item.emoji,
-        );
-        done += 1;
-        input.onProgress(done, input.pending.length);
-        input.onRow(item.key, 'uploaded', uploaded.id);
-      } catch (error) {
+  const created =
+    input.target.kind === 'create' && input.target.createdPackId === undefined
+      ? yield* mintPack(input, trimmed)
+      : undefined;
+  const targetId = created !== undefined ? created.id : yield* saveExistingPack(input, trimmed);
+  let done = 0;
+  let failed = 0;
+  for (const item of input.pending) {
+    yield* attempt(() => input.onRow(item.key, 'uploading'));
+    // A failed upload, or a throw from the progress or row callback after
+    // it, marks the row as failed; the save itself goes on.
+    yield* attemptPromise(() =>
+      input.api.uploadStickerFile(
+        targetId,
+        { uri: item.uri, mimeType: item.mimeType },
+        item.emoji === '' ? undefined : item.emoji,
+      ),
+    ).pipe(
+      Effect.flatMap((uploaded) =>
+        attempt(() => {
+          done += 1;
+          input.onProgress(done, input.pending.length);
+          input.onRow(item.key, 'uploaded', uploaded.id);
+        }),
+      ),
+      Effect.catch((failure) => {
         failed += 1;
-        input.onRow(item.key, 'uploadFailed', rowErrorFor(error));
-      }
-    }
-    if (failed > 0) {
-      // A partial upload failure leaves the editor open with per-row Retry
-      // (the rows already carry their sentences): not a form error. The
-      // created id travels back so the screen keeps it for the retry.
-      return { ok: false, partial: true, ...(created === undefined ? {} : { created }) };
-    }
-    return { ok: true, packId: targetId, ...(created === undefined ? {} : { created }) };
-  } catch (error) {
-    return { ok: false, partial: false, formError: formErrorFor(error) };
+        return attempt(() => input.onRow(item.key, 'uploadFailed', rowErrorFor(failure.error)));
+      }),
+    );
   }
+  if (failed > 0) {
+    // A partial upload failure leaves the editor open with per-row Retry
+    // (the rows already carry their sentences): not a form error. The
+    // created id travels back so the screen keeps it for the retry.
+    return { ok: false, partial: true, ...(created === undefined ? {} : { created }) };
+  }
+  return { ok: true, packId: targetId, ...(created === undefined ? {} : { created }) };
+});
+
+export function runSavePack(input: SavePackInput): Promise<SavePackOutcome> {
+  return Effect.runPromise(
+    savePackSteps(input).pipe(
+      Effect.catch((failure) =>
+        Effect.succeed<SavePackOutcome>({
+          ok: false,
+          partial: false,
+          formError: formErrorFor(failure.error),
+        }),
+      ),
+    ),
+  );
 }

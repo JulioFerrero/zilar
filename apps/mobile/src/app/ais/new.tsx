@@ -1,8 +1,10 @@
 import { useRouter } from 'expo-router';
 import { Plus, Zap } from 'lucide-react-native';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, View } from 'react-native';
 import { useColorScheme } from 'nativewind';
+import { Effect } from 'effect';
+import { AsyncResult } from 'effect/reactivity';
 
 import { RequireAisAuth } from '@/components/ais/require-ais-auth';
 import { describeAisError, type AisErrorInfo } from '@/components/ais/errors';
@@ -21,11 +23,19 @@ import { Button } from '@/components/ui/button';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
-import type { AiLimits, AiTemplate, Connection } from '@/lib/ais-api';
+import type { AiLimits, AiTemplate, Connection, CreateAiInput } from '@/lib/ais-api';
 import { ACCENT } from '@/lib/colors';
 import { asColorScheme } from '@/lib/color-scheme';
+import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { useQuery } from '@/lib/effect/use-query';
 
 const LAST_STEP = 6;
+
+// The raw rejection is kept, not mapped, so describeAisError still sees the
+// AisApiError class and its fixed messages.
+function rawCall<A>(call: () => Promise<A>) {
+  return Effect.tryPromise({ try: call, catch: (cause) => ({ cause }) });
+}
 
 const INITIAL_FORM: WizardForm = {
   name: '',
@@ -53,35 +63,29 @@ function CreateAiWizard() {
   const [day, setDay] = useState('2');
   const [month, setMonth] = useState('20');
   const [step, setStep] = useState(1);
-  const [connections, setConnections] = useState<Connection[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<AisErrorInfo>({ message: '', unavailable: false });
-  const [submitting, setSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState('');
   // Guards against a double tap landing before React re-renders the disabled
   // button, so one Create can never POST twice.
   const submittingRef = useRef(false);
 
-  const loadConnections = useCallback(() => {
-    void api
-      .listConnections()
-      .then((list) => {
-        setConnections(list.filter((connection) => connection.status === 'active'));
-        setLoadError({ message: '', unavailable: false });
-      })
-      .catch((error: unknown) => {
-        setLoadError(describeAisError(error, 'Could not load your connections'));
-      })
-      .finally(() => setLoading(false));
-  }, [api]);
-
-  useEffect(() => {
-    loadConnections();
-  }, [loadConnections]);
+  // The active connections load on mount and again on Retry. A failure keeps
+  // its raw cause for describeAisError; a waiting call hides the last one.
+  const [listed, reloadConnections] = useQuery(
+    () =>
+      rawCall(() => api.listConnections()).pipe(
+        Effect.map((list) => list.filter((connection) => connection.status === 'active')),
+      ),
+    [api],
+  );
+  const connections: Connection[] = AsyncResult.isSuccess(listed) ? listed.value : [];
+  const loading = isWaiting(listed) || AsyncResult.isInitial(listed);
+  const loadFailure = isWaiting(listed) ? undefined : failureOf(listed);
+  const loadError: AisErrorInfo =
+    loadFailure === undefined
+      ? { message: '', unavailable: false }
+      : describeAisError(loadFailure.cause, 'Could not load your connections');
 
   const retryConnections = (): void => {
-    setLoading(true);
-    loadConnections();
+    reloadConnections();
   };
 
   const limits = validateLimits(day, month);
@@ -122,6 +126,28 @@ function CreateAiWizard() {
     }
   };
 
+  const [created, createAi] = useAction((input: CreateAiInput) =>
+    rawCall(() => api.createAi(input)).pipe(
+      Effect.tap((ai) =>
+        Effect.sync(() => {
+          router.replace({ pathname: '/ais', params: { highlight: ai.id } });
+        }),
+      ),
+      Effect.tapError(() =>
+        Effect.sync(() => {
+          submittingRef.current = false;
+        }),
+      ),
+    ),
+  );
+  // The button stays on "Creating…" after a success, until the route leaves.
+  const submitting = isWaiting(created) || AsyncResult.isSuccess(created);
+  const createFailure = isWaiting(created) ? undefined : failureOf(created);
+  const submitError =
+    createFailure === undefined
+      ? ''
+      : describeAisError(createFailure.cause, 'Could not create the AI').message;
+
   const submit = (): void => {
     if (submittingRef.current) {
       return;
@@ -132,18 +158,7 @@ function CreateAiWizard() {
       return;
     }
     submittingRef.current = true;
-    setSubmitting(true);
-    setSubmitError('');
-    void api
-      .createAi(input)
-      .then((created) => {
-        router.replace({ pathname: '/ais', params: { highlight: created.id } });
-      })
-      .catch((error: unknown) => {
-        submittingRef.current = false;
-        setSubmitError(describeAisError(error, 'Could not create the AI').message);
-        setSubmitting(false);
-      });
+    createAi(input);
   };
 
   if (loadError.unavailable) {

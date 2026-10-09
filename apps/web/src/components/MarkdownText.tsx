@@ -1,6 +1,7 @@
 import { memo } from 'react';
 import Markdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { parseUrl } from '@zilar/chat-core';
 
 const ALLOWED_PROTOCOLS = new Set(['http:', 'https:', 'mailto:']);
 
@@ -10,10 +11,8 @@ const ALLOWED_PROTOCOLS = new Set(['http:', 'https:', 'mailto:']);
  * its anchor is skipped and the text stays plain.
  */
 function safeUrl(url: string): string | undefined {
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
+  const parsed = parseUrl(url);
+  if (parsed === undefined) {
     return undefined;
   }
   return ALLOWED_PROTOCOLS.has(parsed.protocol) ? url : undefined;

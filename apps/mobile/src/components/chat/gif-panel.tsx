@@ -1,3 +1,4 @@
+import { Effect, Fiber } from 'effect';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Image } from 'expo-image';
 import { Modal, Pressable, ScrollView, View } from 'react-native';
@@ -20,6 +21,24 @@ import {
 import { createGifsApi, GifsApiError, type GifPage, type GifsApi } from '@/lib/gifs-api';
 
 const CELL_ASPECT = 4 / 3;
+
+/**
+ * Runs an Effect for as long as the component's effect lasts: the returned
+ * cleanup interrupts it (the old `cancelled` flag).
+ */
+function runUntilCleanup(effect: Effect.Effect<void>): () => void {
+  const fiber = Effect.runFork(effect);
+  return () => {
+    Effect.runFork(Fiber.interrupt(fiber));
+  };
+}
+
+/** Interrupts a debounce wait that is still pending (the old `clearTimeout`). */
+function cancelWait(fiber: Fiber.Fiber<void> | undefined): void {
+  if (fiber !== undefined) {
+    Effect.runFork(Fiber.interrupt(fiber));
+  }
+}
 
 /**
  * Whether the panel may show a preview inline: same-origin proxy URLs
@@ -114,7 +133,7 @@ export function GifPanel({ open, mockItems, api, onPick }: GifPanelProps) {
   const [rateLimited, setRateLimited] = useState(false);
   const [client] = useState<GifsApi>(() => api ?? createGifsApi());
   const inflight = useRef<AbortController | undefined>(undefined);
-  const debounceTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const debounceWait = useRef<Fiber.Fiber<void> | undefined>(undefined);
   // The synchronous in-flight guard for infinite scroll (T-0157): a ref set
   // before the fetch starts, so a second scroll event while a page is in
   // flight cannot fire an overlapping page load. `loadingMore` state only
@@ -149,41 +168,56 @@ export function GifPanel({ open, mockItems, api, onPick }: GifPanelProps) {
         setRateLimited(false);
       }
       const trimmed = search.trim();
-      const request = fetchGifPage({ query: trimmed, pos, client, signal: controller.signal });
-      void request.then(
-        (page) => {
-          if (controller.signal.aborted) {
-            return;
-          }
-          setItems((previous) => (append ? [...previous, ...page.items] : page.items));
-          setNextPos(page.nextPos);
-          setLoading(false);
-          loadingMoreRef.current = false;
-          setLoadingMore(false);
-        },
-        (requestError: unknown) => {
-          if (controller.signal.aborted) {
-            return;
-          }
-          if (requestError instanceof DOMException && requestError.name === 'AbortError') {
-            return;
-          }
-          // The provider is off: remember it for the session so the tab
-          // hides (the composer probes this cache), and show Retry here.
-          if (requestError instanceof GifsApiError && requestError.code === 'gifs_unavailable') {
-            setGifsAvailability(false);
-          } else if (requestError instanceof GifsApiError && requestError.code === 'rate_limited') {
-            setRateLimited(true);
-          }
-          setError(
-            requestError instanceof GifsApiError && requestError.code === 'rate_limited'
-              ? 'Too many GIF searches. Try again in a moment.'
-              : 'Could not load GIFs. Try again.',
-          );
-          setLoading(false);
-          loadingMoreRef.current = false;
-          setLoadingMore(false);
-        },
+      const request = fetchGifPageEffect({
+        query: trimmed,
+        pos,
+        client,
+        signal: controller.signal,
+      });
+      Effect.runFork(
+        request.pipe(
+          Effect.match({
+            onSuccess: (page) => {
+              if (controller.signal.aborted) {
+                return;
+              }
+              setItems((previous) => (append ? [...previous, ...page.items] : page.items));
+              setNextPos(page.nextPos);
+              setLoading(false);
+              loadingMoreRef.current = false;
+              setLoadingMore(false);
+            },
+            onFailure: (requestError: unknown) => {
+              if (controller.signal.aborted) {
+                return;
+              }
+              if (requestError instanceof DOMException && requestError.name === 'AbortError') {
+                return;
+              }
+              // The provider is off: remember it for the session so the tab
+              // hides (the composer probes this cache), and show Retry here.
+              if (
+                requestError instanceof GifsApiError &&
+                requestError.code === 'gifs_unavailable'
+              ) {
+                setGifsAvailability(false);
+              } else if (
+                requestError instanceof GifsApiError &&
+                requestError.code === 'rate_limited'
+              ) {
+                setRateLimited(true);
+              }
+              setError(
+                requestError instanceof GifsApiError && requestError.code === 'rate_limited'
+                  ? 'Too many GIF searches. Try again in a moment.'
+                  : 'Could not load GIFs. Try again.',
+              );
+              setLoading(false);
+              loadingMoreRef.current = false;
+              setLoadingMore(false);
+            },
+          }),
+        ),
       );
     },
     [mockItems, client],
@@ -196,26 +230,30 @@ export function GifPanel({ open, mockItems, api, onPick }: GifPanelProps) {
     if (!open) {
       return;
     }
-    let cancelled = false;
-    void getSessionToken().then((value) => {
-      if (!cancelled) {
-        setToken(value);
-      }
-    });
+    const stops = [
+      runUntilCleanup(
+        Effect.tryPromise({ try: () => getSessionToken(), catch: (error) => error }).pipe(
+          Effect.match({
+            onFailure: () => undefined,
+            onSuccess: (value) => setToken(value),
+          }),
+        ),
+      ),
+    ];
     if (mockItems === undefined) {
-      void Promise.resolve().then(() => {
-        if (!cancelled) {
-          load('', undefined, false);
-        }
-      });
+      // The first page fires from a later tick, never synchronously in the
+      // effect body (the `set-state-in-effect` rule).
+      stops.push(
+        runUntilCleanup(
+          Effect.yieldNow.pipe(Effect.andThen(Effect.sync(() => load('', undefined, false)))),
+        ),
+      );
     }
     return () => {
-      cancelled = true;
+      stops.forEach((stop) => stop());
       inflight.current?.abort();
-      if (debounceTimer.current !== undefined) {
-        clearTimeout(debounceTimer.current);
-        debounceTimer.current = undefined;
-      }
+      cancelWait(debounceWait.current);
+      debounceWait.current = undefined;
     };
   }, [open, mockItems, load]);
 
@@ -224,14 +262,17 @@ export function GifPanel({ open, mockItems, api, onPick }: GifPanelProps) {
   }
 
   const scheduleSearch = (search: string): void => {
-    if (debounceTimer.current !== undefined) {
-      clearTimeout(debounceTimer.current);
-      debounceTimer.current = undefined;
-    }
-    debounceTimer.current = setTimeout(() => {
-      debounceTimer.current = undefined;
-      load(search, undefined, false);
-    }, GIF_SEARCH_DEBOUNCE_MS);
+    cancelWait(debounceWait.current);
+    debounceWait.current = Effect.runFork(
+      Effect.sleep(GIF_SEARCH_DEBOUNCE_MS).pipe(
+        Effect.andThen(
+          Effect.sync(() => {
+            debounceWait.current = undefined;
+            load(search, undefined, false);
+          }),
+        ),
+      ),
+    );
   };
 
   return (
@@ -322,17 +363,29 @@ export function GifPanel({ open, mockItems, api, onPick }: GifPanelProps) {
  * trending feed for an empty query, a search otherwise). Kept here (not on
  * the panel) so the request shape is unit-testable in Node (T-0157).
  */
-export async function fetchGifPage(input: {
+export const fetchGifPage = (input: {
   query: string;
   pos: string | undefined;
   client: { searchGifs: GifsApi['searchGifs']; trendingGifs: GifsApi['trendingGifs'] };
   signal: AbortSignal;
-}): Promise<GifPage> {
-  const trimmed = input.query.trim();
-  return trimmed === ''
-    ? input.client.trendingGifs(input.pos, input.signal)
-    : input.client.searchGifs(trimmed, input.pos, input.signal);
-}
+}): Promise<GifPage> => Effect.runPromise(fetchGifPageEffect(input));
+
+// One page as an Effect; a rejected call keeps its own error, unchanged.
+const fetchGifPageEffect = (input: {
+  query: string;
+  pos: string | undefined;
+  client: { searchGifs: GifsApi['searchGifs']; trendingGifs: GifsApi['trendingGifs'] };
+  signal: AbortSignal;
+}): Effect.Effect<GifPage, unknown> =>
+  Effect.tryPromise({
+    try: () => {
+      const trimmed = input.query.trim();
+      return trimmed === ''
+        ? input.client.trendingGifs(input.pos, input.signal)
+        : input.client.searchGifs(trimmed, input.pos, input.signal);
+    },
+    catch: (error) => error,
+  });
 
 /**
  * Probes GIF availability once per session and remembers the answer: `false`
@@ -341,22 +394,33 @@ export async function fetchGifPage(input: {
  * Retry) so a transient outage does not permanently hide the tab. Mirrors
  * web's `probeGifsAvailability`.
  */
-export async function probeGifsAvailability(api?: GifsApi): Promise<boolean> {
+export const probeGifsAvailability = (api?: GifsApi): Promise<boolean> =>
+  Effect.runPromise(probeGifsAvailabilityEffect(api));
+
+function probeGifsAvailabilityEffect(api?: GifsApi): Effect.Effect<boolean> {
   const cached = gifsAvailability();
   if (cached !== undefined) {
-    return cached;
+    return Effect.succeed(cached);
   }
-  try {
-    await (api ?? createGifsApi()).trendingGifs(undefined, undefined);
-    setGifsAvailability(true);
-    return true;
-  } catch (error) {
-    if (error instanceof GifsApiError && error.code === 'gifs_unavailable') {
-      setGifsAvailability(false);
-      return false;
-    }
-    return true;
-  }
+  return Effect.tryPromise({
+    try: () => (api ?? createGifsApi()).trendingGifs(undefined, undefined),
+    catch: (error) => error,
+  }).pipe(
+    Effect.andThen(
+      Effect.sync(() => {
+        setGifsAvailability(true);
+        return true;
+      }),
+    ),
+    Effect.catch((error) =>
+      error instanceof GifsApiError && error.code === 'gifs_unavailable'
+        ? Effect.sync(() => {
+            setGifsAvailability(false);
+            return false;
+          })
+        : Effect.succeed(true),
+    ),
+  );
 }
 
 /**

@@ -1,5 +1,8 @@
-import { useEffect, useState } from 'react';
+import { Effect } from 'effect';
+import { AsyncResult } from 'effect/reactivity';
 import { getIntegrationsStatus } from '@/lib/api';
+import { fromApi } from '@/lib/effect/api-effect';
+import { useQuery } from '@/lib/effect/use-query';
 
 /**
  * Whether the signed-in user is the server owner (T-0162). The owner is
@@ -15,40 +18,27 @@ import { getIntegrationsStatus } from '@/lib/api';
 let cached: boolean | undefined;
 
 export function useIsServerOwner(): boolean {
-  const [isOwner, setIsOwner] = useState(cached ?? false);
-
-  // The effect only synchronizes with the owner endpoint (the lint rule
-  // flags synchronous setState inside effects); the fetch promise resolves
-  // the next state, applied once.
-  useEffect(() => {
-    if (cached !== undefined) {
-      return;
-    }
-    let active = true;
-    void ownerFromServer().then((next) => {
-      cached = next;
-      if (active) {
-        setIsOwner(next);
-      }
-    });
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  return isOwner;
+  // The query runs once per mount, or not at all when the answer is cached.
+  const [owner] = useQuery(
+    (): Effect.Effect<boolean> =>
+      cached === undefined ? ownerFromServer() : Effect.succeed(cached),
+    [],
+  );
+  return AsyncResult.getOrElse(owner, () => false);
 }
 
-async function ownerFromServer(): Promise<boolean> {
-  try {
-    await getIntegrationsStatus();
-    return true;
-  } catch {
+const ownerFromServer = (): Effect.Effect<boolean> =>
+  fromApi(() => getIntegrationsStatus()).pipe(
+    Effect.as(true),
     // 404 (not the owner) and any error both read as not-owner: the
     // endpoint reveals nothing beyond the status either way.
-    return false;
-  }
-}
+    Effect.catchTag('ApiFailure', () => Effect.succeed(false)),
+    Effect.tap((next) =>
+      Effect.sync(() => {
+        cached = next;
+      }),
+    ),
+  );
 
 /** Forgets the cached owner answer (tests only). */
 export function resetIsServerOwnerCache(): void {

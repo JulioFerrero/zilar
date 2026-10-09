@@ -1,5 +1,6 @@
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useRef, useState } from 'react';
+import { Effect } from 'effect';
+import { useCallback, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -10,11 +11,26 @@ import type { PickedPicture } from '@/components/settings/avatar-native';
 import { friendlyAvatarError } from '@/components/settings/profile-logic';
 import { Text } from '@/components/ui/text';
 import { StateMessage } from '@/components/ui/state-message';
+import { fromApi } from '@/lib/effect/api-effect';
+import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { getSessionToken } from '@/lib/session-token';
 import { ProfileApiError, type MyProfile } from '@/lib/profile-api';
 import { useProfileApi } from '@/components/settings/use-profile-api';
 
 type ProfileStatus = 'loading' | 'ready' | 'error';
+
+// The photo actions share one run at a time (the old shared guard): a tap
+// while one is waiting is dropped.
+type PhotoJob =
+  | { kind: 'pick' }
+  | { kind: 'save'; profile: MyProfile; picked: PickedPicture }
+  | { kind: 'remove'; profile: MyProfile };
+
+// The session token as an Effect: a failed read fails the profile load.
+const sessionTokenEffect = Effect.tryPromise({
+  try: () => getSessionToken(),
+  catch: (cause) => cause,
+});
 
 export default function ProfileTabScreen() {
   return (
@@ -39,25 +55,26 @@ function ProfileTab() {
   const [profile, setProfile] = useState<MyProfile | null>(null);
   const [token, setToken] = useState<string | undefined>(undefined);
   const [photoError, setPhotoError] = useState('');
-  const [photoBusy, setPhotoBusy] = useState(false);
   // Staged pick: Set photo opens the library and stages the preview; only
   // the explicit Save uploads (the settings/profile.tsx pattern).
   const [staged, setStaged] = useState<PickedPicture | null>(null);
-  // A ref guard, not state: two rapid taps before the first setState paints
-  // would otherwise open two pickers (state reads stale in the same tick).
-  const photoRef = useRef(false);
 
   const load = useCallback(() => {
     setStatus('loading');
-    void Promise.all([api.getMe(), getSessionToken()])
-      .then(([me, sessionToken]) => {
-        setProfile(me);
-        setToken(sessionToken);
-        setStatus('ready');
-      })
-      .catch(() => {
-        setStatus('error');
-      });
+    Effect.runFork(
+      Effect.all([fromApi(() => api.getMe()), sessionTokenEffect], {
+        concurrency: 'unbounded',
+      }).pipe(
+        Effect.tap(([me, sessionToken]) =>
+          Effect.sync(() => {
+            setProfile(me);
+            setToken(sessionToken);
+            setStatus('ready');
+          }),
+        ),
+        Effect.catch(() => Effect.sync(() => setStatus('error'))),
+      ),
+    );
   }, [api]);
 
   useFocusEffect(
@@ -66,84 +83,127 @@ function ProfileTab() {
     }, [load]),
   );
 
-  const pickPhoto = (): void => {
-    if (photoRef.current) {
-      return;
+  // The upload reads the session token like the old uploader: the one the
+  // screen loaded, or a fresh read when there is none.
+  const uploadEffect = (url: string, picked: PickedPicture): Effect.Effect<unknown, unknown> =>
+    (token === undefined ? sessionTokenEffect : Effect.succeed(token)).pipe(
+      Effect.flatMap((sessionToken): Effect.Effect<unknown, unknown> =>
+        sessionToken === undefined
+          ? Effect.fail(new ProfileApiError(401, 'unauthorized', 'No session'))
+          : Effect.tryPromise({
+              try: () =>
+                createAvatarFileUploader().upload(
+                  url,
+                  { uri: picked.uri, mimeType: picked.mimeType, width: 0, height: 0 },
+                  sessionToken,
+                ),
+              catch: (cause) => cause,
+            }),
+      ),
+    );
+
+  const [photoState, runPhoto] = useAction((job: PhotoJob): Effect.Effect<void> => {
+    switch (job.kind) {
+      case 'pick':
+        return Effect.tryPromise({
+          try: () => createPicturePicker().pickPicture(),
+          catch: (cause) => cause,
+        }).pipe(
+          Effect.tap((result) =>
+            Effect.sync(() => {
+              if (result.status === 'picked') {
+                setStaged(result.picture);
+              } else if (result.status === 'error') {
+                setPhotoError(result.message);
+              }
+            }),
+          ),
+          Effect.catch(() =>
+            Effect.sync(() => {
+              setPhotoError('Could not pick that picture. Try again.');
+            }),
+          ),
+          Effect.asVoid,
+        );
+      case 'save': {
+        const picked = job.picked;
+        const uploader = (url: string): Promise<unknown> =>
+          Effect.runPromise(uploadEffect(url, picked));
+        return Effect.tryPromise({
+          try: () =>
+            api.uploadAvatar(job.profile.id, new Blob([], { type: picked.mimeType }), uploader),
+          catch: (cause) => cause,
+        }).pipe(
+          Effect.tap((saved) =>
+            Effect.sync(() => {
+              setProfile({ ...job.profile, avatarUrl: saved.url });
+              setStaged(null);
+            }),
+          ),
+          Effect.catch((error: unknown) =>
+            Effect.sync(() => {
+              setPhotoError(friendlyAvatarError(error));
+            }),
+          ),
+          Effect.asVoid,
+        );
+      }
+      case 'remove':
+        return Effect.tryPromise({
+          try: () => api.removeAvatar(job.profile.id),
+          catch: (cause) => cause,
+        }).pipe(
+          Effect.tap(() =>
+            Effect.sync(() => {
+              setProfile({ ...job.profile, avatarUrl: undefined });
+            }),
+          ),
+          Effect.catch((error: unknown) =>
+            Effect.sync(() => {
+              setPhotoError(friendlyAvatarError(error));
+            }),
+          ),
+          Effect.asVoid,
+        );
     }
-    photoRef.current = true;
-    setPhotoBusy(true);
+  });
+  const photoBusy = isWaiting(photoState);
+
+  const pickPhoto = (): void => {
     setPhotoError('');
-    void createPicturePicker()
-      .pickPicture()
-      .then((result) => {
-        if (result.status === 'picked') {
-          setStaged(result.picture);
-        } else if (result.status === 'error') {
-          setPhotoError(result.message);
-        }
-      })
-      .catch(() => {
-        setPhotoError('Could not pick that picture. Try again.');
-      })
-      .finally(() => {
-        photoRef.current = false;
-        setPhotoBusy(false);
-      });
+    runPhoto({ kind: 'pick' });
   };
 
   const savePhoto = (): void => {
-    if (photoRef.current || profile === null || staged === null) {
+    if (profile === null || staged === null) {
       return;
     }
-    const picked = staged;
-    photoRef.current = true;
-    setPhotoBusy(true);
     setPhotoError('');
-    const uploader = async (url: string): Promise<unknown> => {
-      const sessionToken = token ?? (await getSessionToken());
-      if (sessionToken === undefined) {
-        throw new ProfileApiError(401, 'unauthorized', 'No session');
-      }
-      return createAvatarFileUploader().upload(
-        url,
-        { uri: picked.uri, mimeType: picked.mimeType, width: 0, height: 0 },
-        sessionToken,
-      );
-    };
-    void api
-      .uploadAvatar(profile.id, new Blob([], { type: picked.mimeType }), uploader)
-      .then((saved) => {
-        setProfile({ ...profile, avatarUrl: saved.url });
-        setStaged(null);
-      })
-      .catch((error: unknown) => {
-        setPhotoError(friendlyAvatarError(error));
-      })
-      .finally(() => {
-        photoRef.current = false;
-        setPhotoBusy(false);
-      });
+    runPhoto({ kind: 'save', profile, picked: staged });
   };
 
   const removePhoto = (): void => {
-    if (photoRef.current || profile === null) {
+    if (profile === null) {
       return;
     }
-    photoRef.current = true;
-    setPhotoBusy(true);
     setPhotoError('');
-    void api
-      .removeAvatar(profile.id)
-      .then(() => {
-        setProfile({ ...profile, avatarUrl: undefined });
-      })
-      .catch((error: unknown) => {
-        setPhotoError(friendlyAvatarError(error));
-      })
-      .finally(() => {
-        photoRef.current = false;
-        setPhotoBusy(false);
-      });
+    runPhoto({ kind: 'remove', profile });
+  };
+
+  // Copies "@handle". The clipboard module loads on first use, as before.
+  const copyUsername = (current: MyProfile): void => {
+    Effect.runFork(
+      Effect.tryPromise({ try: () => import('expo-clipboard'), catch: (cause) => cause }).pipe(
+        Effect.flatMap((Clipboard): Effect.Effect<unknown, unknown> =>
+          current.handle === null
+            ? Effect.void
+            : Effect.tryPromise({
+                try: () => Clipboard.setStringAsync(`@${current.handle}`),
+                catch: (cause) => cause,
+              }),
+        ),
+      ),
+    );
   };
 
   return (
@@ -186,15 +246,7 @@ function ProfileTab() {
                 onEditInfo={() => router.push('/settings/profile')}
                 onOpenSettings={() => router.push('/settings')}
                 onClaimUsername={() => router.push('/settings/profile')}
-                onCopyUsername={() =>
-                  import('expo-clipboard')
-                    .then((Clipboard) =>
-                      profile.handle === null
-                        ? undefined
-                        : Clipboard.setStringAsync(`@${profile.handle}`),
-                    )
-                    .then(() => {})
-                }
+                onCopyUsername={() => copyUsername(profile)}
               />
               {photoBusy ? (
                 <Text className="mt-2 text-center text-[14px] text-muted-foreground">

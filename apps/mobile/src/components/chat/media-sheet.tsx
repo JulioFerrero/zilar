@@ -1,4 +1,5 @@
 import { formatDuration, formatShortDate } from '@zilar/chat-core';
+import { Effect, Fiber } from 'effect';
 import { useEffect, useRef, useState } from 'react';
 import { Image, Linking, Pressable, View } from 'react-native';
 
@@ -358,27 +359,36 @@ export function MediaSheet({
   const { tab } = state;
 
   useEffect(() => {
-    let active = true;
-    void (async () => {
-      try {
-        const page = await loadChatMedia(chatId, tab);
-        if (!active) return;
-        setState((current) =>
-          current.tab !== tab
-            ? current
-            : { ...current, status: 'ready', items: page.items, next: page.next, error: '' },
-        );
-      } catch {
-        if (!active) return;
-        setState((current) =>
-          current.tab !== tab
-            ? current
-            : { ...current, status: 'error', items: [], next: null, error: MEDIA_LOAD_ERROR_TEXT },
-        );
-      }
-    })();
+    // The cleanup interrupts the load, so an answer for an old tab or chat
+    // never replaces the current one.
+    const fiber = Effect.runFork(
+      Effect.tryPromise(() => loadChatMedia(chatId, tab)).pipe(
+        Effect.match({
+          onSuccess: (page) => {
+            setState((current) =>
+              current.tab !== tab
+                ? current
+                : { ...current, status: 'ready', items: page.items, next: page.next, error: '' },
+            );
+          },
+          onFailure: () => {
+            setState((current) =>
+              current.tab !== tab
+                ? current
+                : {
+                    ...current,
+                    status: 'error',
+                    items: [],
+                    next: null,
+                    error: MEDIA_LOAD_ERROR_TEXT,
+                  },
+            );
+          },
+        }),
+      ),
+    );
     return () => {
-      active = false;
+      Effect.runSync(Fiber.interrupt(fiber));
     };
   }, [chatId, tab, reloadTick, loadChatMedia]);
 
@@ -409,29 +419,37 @@ export function MediaSheet({
     const targetTab = state.tab;
     loadingMoreRef.current = true;
     setState((current) => ({ ...current, loadingMore: true, error: '' }));
-    void (async () => {
-      try {
-        const page = await loadChatMedia(chatId, targetTab, cursor);
-        setState((current) =>
-          current.tab !== targetTab
-            ? current
-            : {
-                ...current,
-                items: [...current.items, ...page.items],
-                next: page.next,
-                loadingMore: false,
-              },
-        );
-      } catch {
-        setState((current) =>
-          current.tab !== targetTab
-            ? current
-            : { ...current, loadingMore: false, error: MEDIA_MORE_ERROR_TEXT },
-        );
-      } finally {
-        loadingMoreRef.current = false;
-      }
-    })();
+    // Not tied to the sheet's lifetime: a page in flight still lands, as before.
+    Effect.runFork(
+      Effect.tryPromise(() => loadChatMedia(chatId, targetTab, cursor)).pipe(
+        Effect.match({
+          onSuccess: (page) => {
+            setState((current) =>
+              current.tab !== targetTab
+                ? current
+                : {
+                    ...current,
+                    items: [...current.items, ...page.items],
+                    next: page.next,
+                    loadingMore: false,
+                  },
+            );
+          },
+          onFailure: () => {
+            setState((current) =>
+              current.tab !== targetTab
+                ? current
+                : { ...current, loadingMore: false, error: MEDIA_MORE_ERROR_TEXT },
+            );
+          },
+        }),
+        Effect.ensuring(
+          Effect.sync(() => {
+            loadingMoreRef.current = false;
+          }),
+        ),
+      ),
+    );
   };
 
   const showInChat = (item: MediaItem) => {
@@ -443,9 +461,8 @@ export function MediaSheet({
     if (!/^https?:\/\//i.test(url)) {
       return;
     }
-    void Linking.openURL(url).catch(() => {
-      // A refused open (no handler) is silent, like the rest of the app.
-    });
+    // A refused open (no handler) is silent, like the rest of the app.
+    Effect.runFork(Effect.tryPromise(() => Linking.openURL(url)).pipe(Effect.ignore));
   };
 
   return (

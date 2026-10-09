@@ -1,14 +1,22 @@
 import { Tabs, TabSlot, TabList, TabTrigger } from 'expo-router/ui';
+import { Effect, Fiber } from 'effect';
 import { useCallback, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { View } from 'react-native';
 
 import { FloatingTabBar, FLOATING_TABS } from '@/components/nav/floating-tab-bar';
 import { useProfileApi } from '@/components/settings/use-profile-api';
+import { fromApi } from '@/lib/effect/api-effect';
 import { unreadCount } from '@/lib/filter';
 import { getSessionToken } from '@/lib/session-token';
 import { useChatStore } from '@/store/chat-store-provider';
 import type { TabProfile } from '@/components/nav/floating-tab-bar';
+
+// The session token as an Effect: a failed read fails the profile load.
+const sessionTokenEffect = Effect.tryPromise({
+  try: () => getSessionToken(),
+  catch: (cause) => cause,
+});
 
 /**
  * The four phone tabs (Chats, AIs, Settings, Profile). Each `TabTrigger`
@@ -24,24 +32,25 @@ export default function TabsLayout() {
 
   useFocusEffect(
     useCallback(() => {
-      let active = true;
-      void Promise.all([api.getMe(), getSessionToken()])
-        .then(([me, sessionToken]) => {
-          if (active) {
+      // Leaving the tab interrupts a load still in flight, so a late answer
+      // never sets the profile of a tab that is no longer shown.
+      const load = Effect.all([fromApi(() => api.getMe()), sessionTokenEffect], {
+        concurrency: 'unbounded',
+      }).pipe(
+        Effect.tap(([me, sessionToken]) =>
+          Effect.sync(() => {
             const next: TabProfile =
               me.avatarUrl === undefined
                 ? { id: me.id, name: me.name }
                 : { id: me.id, name: me.name, avatarUrl: me.avatarUrl };
             setProfile(sessionToken === undefined ? next : { ...next, token: sessionToken });
-          }
-        })
-        .catch(() => {
-          if (active) {
-            setProfile(undefined);
-          }
-        });
+          }),
+        ),
+        Effect.catch(() => Effect.sync(() => setProfile(undefined))),
+      );
+      const fiber = Effect.runFork(load);
       return () => {
-        active = false;
+        Effect.runFork(Fiber.interrupt(fiber));
       };
     }, [api]),
   );

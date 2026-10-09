@@ -1,3 +1,4 @@
+import { Effect } from 'effect';
 import type { SuccessContext } from 'better-auth/react';
 import { emailOTPClient } from 'better-auth/client/plugins';
 import { createAuthClient } from 'better-auth/react';
@@ -92,28 +93,43 @@ export interface VerifyResult extends AuthRequestResult {
   token?: string;
 }
 
+// The token is captured per call, so two verifications never share a value.
+const verifySignInCodeEffect = (
+  client: AuthClient,
+  email: string,
+  otp: string,
+  inviteCode?: string,
+): Effect.Effect<VerifyResult> =>
+  Effect.suspend(() => {
+    let token: string | undefined;
+    return Effect.map(
+      Effect.promise(() =>
+        client.signIn.emailOtp({
+          email,
+          otp,
+          fetchOptions: {
+            ...inviteFetchOptions(inviteCode),
+            onSuccess: (context: SuccessContext) => {
+              const value = context.response.headers.get(SET_AUTH_TOKEN_HEADER);
+              if (value !== null && value !== '') {
+                token = value;
+              }
+            },
+          },
+        }),
+      ),
+      (result) => (token === undefined ? result : { ...result, token }),
+    );
+  });
+
 /** Verifies the code and returns the bearer token from the sign-in response. */
-export async function verifySignInCode(
+export function verifySignInCode(
   client: AuthClient,
   email: string,
   otp: string,
   inviteCode?: string,
 ): Promise<VerifyResult> {
-  let token: string | undefined;
-  const result = await client.signIn.emailOtp({
-    email,
-    otp,
-    fetchOptions: {
-      ...inviteFetchOptions(inviteCode),
-      onSuccess: (context: SuccessContext) => {
-        const value = context.response.headers.get(SET_AUTH_TOKEN_HEADER);
-        if (value !== null && value !== '') {
-          token = value;
-        }
-      },
-    },
-  });
-  return token === undefined ? result : { ...result, token };
+  return Effect.runPromise(verifySignInCodeEffect(client, email, otp, inviteCode));
 }
 
 /** Ends the server session for the current bearer token. */

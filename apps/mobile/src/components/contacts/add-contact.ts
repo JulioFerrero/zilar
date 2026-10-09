@@ -1,3 +1,4 @@
+import { Effect, type Effect as EffectType } from 'effect';
 import {
   contactChatId,
   ContactsApiError,
@@ -72,32 +73,44 @@ export const NO_USER_MESSAGE = 'No user with that username';
 
 /**
  * Runs a request action (Cancel, Accept, Decline) for the profile's pending
- * row, then re-fetches the profile inline in the same promise chain so the
- * card shows the new relation. The refresh must stay in this chain — never
- * go through the busy-guarded runner, which would drop it while the action
- * still holds the guard and leave the card stale.
+ * row, then re-fetches the profile inline in the same chain so the card shows
+ * the new relation. The refresh must stay in this chain — never go through the
+ * busy-guarded runner, which would drop it while the action still holds the
+ * guard and leave the card stale. A rejection reaches the caller unchanged.
  */
-export async function actOnProfileRequest(
+export const actOnProfileRequestEffect = Effect.fnUntraced(function* (
+  api: ContactsApi,
+  target: { userId: string; handle: string },
+  work: (id: string) => Promise<unknown>,
+  onProfile: (profile: HandleProfile) => void,
+  onSentNone: () => void,
+): EffectType.fn.Return<void, unknown> {
+  const list = yield* Effect.tryPromise({
+    try: () => api.listContactRequests(),
+    catch: (cause) => cause,
+  });
+  const row = [...list.incoming, ...list.outgoing].find(
+    (entry) => entry.other.userId === target.userId,
+  );
+  if (row !== undefined) {
+    yield* Effect.tryPromise({ try: () => work(row.id), catch: (cause) => cause });
+  }
+  const found = yield* Effect.tryPromise({
+    try: () => api.lookupByHandle(target.handle),
+    catch: (cause) => cause,
+  });
+  onProfile(found);
+  onSentNone();
+});
+
+export function actOnProfileRequest(
   api: ContactsApi,
   target: { userId: string; handle: string },
   work: (id: string) => Promise<unknown>,
   onProfile: (profile: HandleProfile) => void,
   onSentNone: () => void,
 ): Promise<void> {
-  const list = await api.listContactRequests();
-  const row = [...list.incoming, ...list.outgoing].find(
-    (entry) => entry.other.userId === target.userId,
-  );
-  if (row === undefined) {
-    const found = await api.lookupByHandle(target.handle);
-    onProfile(found);
-    onSentNone();
-    return;
-  }
-  await work(row.id);
-  const found = await api.lookupByHandle(target.handle);
-  onProfile(found);
-  onSentNone();
+  return Effect.runPromise(actOnProfileRequestEffect(api, target, work, onProfile, onSentNone));
 }
 
 /**

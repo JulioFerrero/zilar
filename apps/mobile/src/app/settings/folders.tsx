@@ -1,4 +1,5 @@
 import { FOLDERS_MAX, type ChatFolder, type FolderIcon } from '@zilar/chat-core';
+import { Effect } from 'effect';
 import { useRouter } from 'expo-router';
 import { ChevronDown, ChevronUp, Plus } from 'lucide-react-native';
 import { useColorScheme } from 'nativewind';
@@ -19,6 +20,7 @@ import { Text } from '@/components/ui/text';
 import { asColorScheme, type ColorScheme } from '@/lib/color-scheme';
 import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
 import { useChatStore } from '@/store/chat-store-provider';
+import { isWaiting, useAction } from '@/lib/effect/use-action';
 
 /**
  * Settings → Chat folders (T-0255, mirrors the web `FoldersPage`): the list of
@@ -46,7 +48,19 @@ function FoldersSettings() {
   const folders = useChatStore((state) => state.folders);
   const reorderFolders = useChatStore((state) => state.reorderFolders);
   const [error, setError] = useState('');
-  const [busy, setBusy] = useState(false);
+  // One reorder at a time: a press while one is saving is ignored.
+  const [reorderState, runReorder] = useAction((ids: string[]) =>
+    Effect.sync(() => setError('')).pipe(
+      Effect.andThen(
+        Effect.tryPromise({
+          try: () => reorderFolders(ids),
+          catch: () => 'Could not reorder folders. Try again.',
+        }),
+      ),
+      Effect.catch((message: string) => Effect.sync(() => setError(message))),
+    ),
+  );
+  const busy = isWaiting(reorderState);
 
   const atLimit = folders.length >= FOLDERS_MAX;
 
@@ -66,11 +80,7 @@ function FoldersSettings() {
       return;
     }
     next.splice(target, 0, moved);
-    setBusy(true);
-    setError('');
-    reorderFolders(next)
-      .catch(() => setError('Could not reorder folders. Try again.'))
-      .finally(() => setBusy(false));
+    runReorder(next);
   };
 
   const openFolder = (id: string): void => {

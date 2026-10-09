@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 import { RefreshCw } from 'lucide-react-native';
+import { Effect, Fiber } from 'effect';
 
 import { useColorScheme } from 'nativewind';
 
@@ -28,36 +29,54 @@ export type AiActivityState = {
   loadingMore: boolean;
 };
 
-/** Loads the first activity page for one AI. Any failure throws. */
-export async function loadAiActivity(
+/**
+ * Loads the first activity page for one AI. Any failure is the api's own
+ * error, passed through unchanged, so a caller sees the same class.
+ */
+export const loadAiActivityEffect = (api: AuditApi, aiId: string) =>
+  Effect.tryPromise({ try: () => api.listAiAudit(aiId), catch: (cause) => cause }).pipe(
+    Effect.map((page) => ({ entries: page.entries, next: page.next })),
+  );
+
+/** Promise form of `loadAiActivityEffect`: any failure throws. */
+export const loadAiActivity = (
   api: AuditApi,
   aiId: string,
-): Promise<{ entries: PublicAuditEntry[]; next: string | null }> {
-  const page = await api.listAiAudit(aiId);
-  return { entries: page.entries, next: page.next };
-}
+): Promise<{ entries: PublicAuditEntry[]; next: string | null }> =>
+  Effect.runPromise(loadAiActivityEffect(api, aiId));
 
 /**
  * Appends the next activity page, de-duplicated by id (the server cursor is
- * inclusive on retries). Any failure throws; the caller keeps the rows.
+ * inclusive on retries). Any failure fails the Effect; the caller keeps the rows.
  */
-export async function appendAiActivity(
+export const appendAiActivityEffect = (
   api: AuditApi,
   aiId: string,
   before: string,
   current: PublicAuditEntry[],
-): Promise<{ entries: PublicAuditEntry[]; next: string | null }> {
-  const page = await api.listAiAudit(aiId, before);
-  const seen = new Set(current.map((entry) => entry.id));
-  const entries = [...current];
-  for (const entry of page.entries) {
-    if (!seen.has(entry.id)) {
-      entries.push(entry);
-      seen.add(entry.id);
-    }
-  }
-  return { entries, next: page.next };
-}
+) =>
+  Effect.tryPromise({ try: () => api.listAiAudit(aiId, before), catch: (cause) => cause }).pipe(
+    Effect.map((page) => {
+      const seen = new Set(current.map((entry) => entry.id));
+      const entries = [...current];
+      for (const entry of page.entries) {
+        if (!seen.has(entry.id)) {
+          entries.push(entry);
+          seen.add(entry.id);
+        }
+      }
+      return { entries, next: page.next };
+    }),
+  );
+
+/** Promise form of `appendAiActivityEffect`: any failure throws. */
+export const appendAiActivity = (
+  api: AuditApi,
+  aiId: string,
+  before: string,
+  current: PublicAuditEntry[],
+): Promise<{ entries: PublicAuditEntry[]; next: string | null }> =>
+  Effect.runPromise(appendAiActivityEffect(api, aiId, before, current));
 
 function ActivityRow({ entry, now }: { entry: PublicAuditEntry; now: Date }) {
   const at = new Date(entry.at);
@@ -179,31 +198,34 @@ export function AiActivity({ api, aiId }: { api: AuditApi; aiId: string }) {
   const loadingMoreRef = useRef(false);
 
   useEffect(() => {
-    let active = true;
-    void (async () => {
-      try {
-        const page = await loadAiActivity(api, aiId);
-        if (!active) return;
-        setState({
-          status: 'ready',
-          entries: page.entries,
-          next: page.next,
-          message: '',
-          loadingMore: false,
-        });
-      } catch {
-        if (!active) return;
-        setState({
-          status: 'error',
-          entries: [],
-          next: null,
-          message: ACTIVITY_LOAD_FAILED_MESSAGE,
-          loadingMore: false,
-        });
-      }
-    })();
+    // Unmount or a new aiId interrupts the load, so a late answer never lands.
+    const load = loadAiActivityEffect(api, aiId).pipe(
+      Effect.matchEffect({
+        onFailure: () =>
+          Effect.sync(() =>
+            setState({
+              status: 'error',
+              entries: [],
+              next: null,
+              message: ACTIVITY_LOAD_FAILED_MESSAGE,
+              loadingMore: false,
+            }),
+          ),
+        onSuccess: (page) =>
+          Effect.sync(() =>
+            setState({
+              status: 'ready',
+              entries: page.entries,
+              next: page.next,
+              message: '',
+              loadingMore: false,
+            }),
+          ),
+      }),
+    );
+    const fiber = Effect.runFork(load);
     return () => {
-      active = false;
+      Effect.runFork(Fiber.interrupt(fiber));
     };
   }, [api, aiId, reloadTick]);
 
@@ -215,26 +237,35 @@ export function AiActivity({ api, aiId }: { api: AuditApi; aiId: string }) {
     const base = state.entries;
     loadingMoreRef.current = true;
     setState((current) => ({ ...current, loadingMore: true }));
-    void (async () => {
-      try {
-        const merged = await appendAiActivity(api, aiId, cursor, base);
-        setState((current) => ({
-          ...current,
-          entries: merged.entries,
-          next: merged.next,
-          message: '',
-          loadingMore: false,
-        }));
-      } catch {
-        setState((current) => ({
-          ...current,
-          message: ACTIVITY_MORE_FAILED_MESSAGE,
-          loadingMore: false,
-        }));
-      } finally {
-        loadingMoreRef.current = false;
-      }
-    })();
+    Effect.runFork(
+      appendAiActivityEffect(api, aiId, cursor, base).pipe(
+        Effect.matchEffect({
+          onFailure: () =>
+            Effect.sync(() =>
+              setState((current) => ({
+                ...current,
+                message: ACTIVITY_MORE_FAILED_MESSAGE,
+                loadingMore: false,
+              })),
+            ),
+          onSuccess: (merged) =>
+            Effect.sync(() =>
+              setState((current) => ({
+                ...current,
+                entries: merged.entries,
+                next: merged.next,
+                message: '',
+                loadingMore: false,
+              })),
+            ),
+        }),
+        Effect.ensuring(
+          Effect.sync(() => {
+            loadingMoreRef.current = false;
+          }),
+        ),
+      ),
+    );
   };
 
   const refresh = (): void => {

@@ -1,4 +1,5 @@
 import type { UiMessage } from '@zilar/chat-core';
+import { Effect } from 'effect';
 
 /**
  * The search-jump retry driver (T-0138/T-0157), kept UI-free next to the list
@@ -31,24 +32,42 @@ export interface SearchJumpDeps {
  * bug, a router failure) propagates to the caller instead of silently
  * mis-landing the user.
  */
-export async function openSearchHit(
+export function openSearchHitEffect(
   deps: SearchJumpDeps,
   chatId: string,
   messageId: string,
-): Promise<'landed' | 'not-found'> {
-  try {
-    await deps.openAtMessage(chatId, messageId);
-  } catch (error) {
-    if (!isMessageNotFound(error)) {
-      throw error;
-    }
-    deps.pushChatNotFound(chatId);
-    deps.onNotFound(chatId);
-    return 'not-found';
-  }
-  deps.pushChat(chatId);
-  return 'landed';
+): Effect.Effect<'landed' | 'not-found', unknown> {
+  return Effect.tryPromise({
+    try: () => deps.openAtMessage(chatId, messageId),
+    catch: (error) => error,
+  }).pipe(
+    Effect.matchEffect({
+      onSuccess: () =>
+        Effect.sync(() => {
+          deps.pushChat(chatId);
+          return 'landed' as const;
+        }),
+      onFailure: (error) => {
+        if (!isMessageNotFound(error)) {
+          return Effect.fail(error);
+        }
+        return Effect.sync(() => {
+          deps.pushChatNotFound(chatId);
+          deps.onNotFound(chatId);
+          return 'not-found' as const;
+        });
+      },
+    }),
+  );
 }
+
+/** The Promise edge for the list: a rejection carries the original error. */
+export const openSearchHit = (
+  deps: SearchJumpDeps,
+  chatId: string,
+  messageId: string,
+): Promise<'landed' | 'not-found'> =>
+  Effect.runPromise(openSearchHitEffect(deps, chatId, messageId));
 
 /** The store's give-up signal: history ran out (or the page cap hit). */
 function isMessageNotFound(error: unknown): boolean {

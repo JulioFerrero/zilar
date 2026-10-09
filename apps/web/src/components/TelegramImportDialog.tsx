@@ -1,13 +1,16 @@
 import { useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import { Link } from 'react-router';
-import { ApiError, importTelegramStickers, type TelegramImportResult } from '@/lib/api';
+import { Effect } from 'effect';
+import { AsyncResult } from 'effect/reactivity';
+import { importTelegramStickers } from '@/lib/api';
+import { fromApi } from '@/lib/effect/api-effect';
+import type { ApiFailure } from '@/lib/effect/errors';
+import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { useIsServerOwner } from '@/lib/useIsServerOwner';
 import { Button } from '@/components/ui/button';
 import { TextInput } from '@/components/ui/text-input';
 import { Dialog } from './ui/dialog';
-
-type DialogStatus = 'idle' | 'busy' | 'done';
 
 /**
  * The Telegram import dialog (T-0123, overlay + unavailable state T-0162):
@@ -45,56 +48,44 @@ export function TelegramImportDialog({
   importFn?: typeof importTelegramStickers;
 }) {
   const [input, setInput] = useState('');
-  const [status, setStatus] = useState<DialogStatus>('idle');
-  const [error, setError] = useState('');
-  const [result, setResult] = useState<TelegramImportResult | undefined>(undefined);
-  const [unavailable, setUnavailable] = useState(false);
-  const [tokenInvalid, setTokenInvalid] = useState(false);
+  const [notice, setNotice] = useState('');
+  // The import call. Unmounting interrupts it, so a closed dialog never
+  // reports back. A 501 also tells the entry point (`onUnavailable`).
+  const [importState, runImport] = useAction((value: string) =>
+    fromApi(() => importFn(value)).pipe(
+      Effect.tapError((failure) =>
+        Effect.sync(() => {
+          if (failure.status === 501) {
+            onUnavailable?.();
+          }
+        }),
+      ),
+    ),
+  );
   const inputRef = useRef<HTMLInputElement>(null);
-  const busy = status === 'busy';
+  const busy = isWaiting(importState);
+  // A call that is running hides the previous outcome, as the form did before.
+  const failure = busy ? undefined : failureOf(importState);
+  const result = !busy && AsyncResult.isSuccess(importState) ? importState.value : undefined;
+  // The not-set-up state and the token state replace the form. The saved
+  // token died at Telegram's side (revoked or replaced after it was stored):
+  // not a form error, so the whole dialog becomes the message.
+  const unavailable = failure?.status === 501;
+  const tokenInvalid = failure?.code === 'token_invalid';
   // The owner view: the prop wins when given (tests), else the shared hook.
   // The hook call is unconditional (rules of hooks); the prop only decides
   // which value is used.
   const hookOwner = useIsServerOwner();
   const ownerView = isOwner ?? hookOwner;
+  const error = notice !== '' ? notice : failure !== undefined ? importErrorText(failure) : '';
 
-  const run = async (): Promise<void> => {
+  const run = (): void => {
     if (input.trim() === '') {
-      setError('Paste a pack link or name first.');
+      setNotice('Paste a pack link or name first.');
       return;
     }
-    setStatus('busy');
-    setError('');
-    try {
-      const outcome = await importFn(input);
-      setResult(outcome);
-      setStatus('done');
-    } catch (cause) {
-      if (cause instanceof ApiError && cause.status === 501) {
-        onUnavailable?.();
-        setUnavailable(true);
-        setStatus('idle');
-        return;
-      } else if (cause instanceof ApiError && cause.code === 'token_invalid') {
-        // The saved token died at Telegram's side (revoked/replaced after
-        // it was stored). Not a form error: the whole dialog becomes the
-        // message, with the settings link for the owner.
-        setTokenInvalid(true);
-        setStatus('idle');
-        return;
-      } else if (cause instanceof ApiError && cause.status === 429) {
-        setError('Too many imports — try again in an hour.');
-      } else if (cause instanceof ApiError && cause.code === 'pack_not_found') {
-        setError('That Telegram sticker pack was not found.');
-      } else if (cause instanceof ApiError && cause.code === 'custom_emoji_unsupported') {
-        setError('Custom emoji sets cannot be imported as sticker packs.');
-      } else if (cause instanceof ApiError && cause.code === 'try_later') {
-        setError('Telegram is busy — try again later.');
-      } else {
-        setError(cause instanceof Error ? cause.message : 'The import failed.');
-      }
-      setStatus('idle');
-    }
+    setNotice('');
+    runImport(input);
   };
 
   // The old panel header's close icon, now the first thing in the body. Escape and
@@ -186,7 +177,7 @@ export function TelegramImportDialog({
     );
   }
 
-  if (status === 'done' && result !== undefined) {
+  if (result !== undefined) {
     return (
       <Dialog
         open
@@ -276,4 +267,21 @@ export function TelegramImportDialog({
       )}
     </Dialog>
   );
+}
+
+/** The fixed sentence for each server answer; anything else shows the server's own message. */
+function importErrorText(failure: ApiFailure): string {
+  if (failure.status === 429) {
+    return 'Too many imports — try again in an hour.';
+  }
+  if (failure.code === 'pack_not_found') {
+    return 'That Telegram sticker pack was not found.';
+  }
+  if (failure.code === 'custom_emoji_unsupported') {
+    return 'Custom emoji sets cannot be imported as sticker packs.';
+  }
+  if (failure.code === 'try_later') {
+    return 'Telegram is busy — try again later.';
+  }
+  return failure.code === 'unknown_error' ? 'The import failed.' : failure.message;
 }

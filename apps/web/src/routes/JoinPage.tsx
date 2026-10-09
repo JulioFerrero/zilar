@@ -1,8 +1,27 @@
-import { useEffect, useState } from 'react';
+import { Data, Effect } from 'effect';
+import { AsyncResult } from 'effect/reactivity';
 import { Link, useNavigate, useParams } from 'react-router';
 import { useAuth } from '@/auth/AuthProvider';
 import { Button } from '@/components/ui/button';
-import { ApiError, joinByLink, previewJoinLink, type JoinPreview } from '@/lib/api';
+import { joinByLink, previewJoinLink, type JoinPreview } from '@/lib/api';
+import { fromApi } from '@/lib/effect/api-effect';
+import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { useQuery } from '@/lib/effect/use-query';
+
+class OpenFailed extends Data.TaggedError('OpenFailed') {}
+
+type LoadedPreview =
+  | { readonly state: 'ready'; readonly preview: JoinPreview }
+  | { readonly state: 'invalid'; readonly preview: undefined };
+
+// Any failure of the preview call means the link is not valid.
+const loadPreview = (token: string): Effect.Effect<LoadedPreview> =>
+  fromApi(() => previewJoinLink(token)).pipe(
+    Effect.map((preview): LoadedPreview => ({ state: 'ready', preview })),
+    Effect.catchTag('ApiFailure', () =>
+      Effect.succeed<LoadedPreview>({ state: 'invalid', preview: undefined }),
+    ),
+  );
 
 /**
  * Join-by-link page (T-0115): `/j/:token`. Shows a preview card (group
@@ -25,7 +44,7 @@ import { ApiError, joinByLink, previewJoinLink, type JoinPreview } from '@/lib/a
  * the General chat id from the painted list.
  */
 export function JoinPage({
-  openGroupChat = async () => undefined,
+  openGroupChat = () => Promise.resolve(undefined),
   refreshChats = () => {},
 }: {
   openGroupChat?: (groupId: string) => Promise<string | undefined>;
@@ -34,42 +53,58 @@ export function JoinPage({
   const { token } = useParams<{ token: string }>();
   const auth = useAuth();
   const navigate = useNavigate();
-  const [preview, setPreview] = useState<JoinPreview | undefined>(undefined);
-  const [state, setState] = useState<'checking' | 'ready' | 'invalid' | 'full'>('checking');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | undefined>(undefined);
 
-  useEffect(() => {
-    if (auth.status === 'loading' || token === undefined) {
-      return;
-    }
-    if (auth.status === 'guest') {
-      return;
-    }
-    // The effect only synchronizes with the session/token (the lint rule
-    // flags synchronous setState inside effects); the fetch helper resolves
-    // the next state, applied once.
-    let active = true;
-    void loadPreview(token).then((next) => {
-      if (active) {
-        setPreview(next.preview);
-        setState(next.state);
-      }
-    });
-    return () => {
-      active = false;
-    };
-    async function loadPreview(value: string): Promise<{
-      preview: JoinPreview | undefined;
-      state: 'ready' | 'invalid';
-    }> {
-      try {
-        return { preview: await previewJoinLink(value), state: 'ready' };
-      } catch {
-        return { preview: undefined, state: 'invalid' };
-      }
-    }
-  }, [auth.status, token]);
+  // The preview loads once the session is known and signed in. Until then
+  // (and for a guest, who sees the sign-in card) the query never answers, so
+  // the state stays 'checking'. A failed preview is 'invalid'.
+  const [previewResult] = useQuery(
+    () =>
+      token === undefined || auth.status !== 'authenticated' ? Effect.never : loadPreview(token),
+    [auth.status, token],
+  );
+  const loaded = AsyncResult.isSuccess(previewResult) ? previewResult.value : undefined;
+  const preview = loaded?.preview;
+
+  // Opens the group chat for a group id: resolves the General chat (the
+  // General chat id is the group id) from the painted list first, so the
+  // new membership had a chance to arrive; falls back to `/` when the
+  // list has not refreshed yet.
+  const openGroupEffect = (groupId: string): Effect.Effect<void, OpenFailed> =>
+    Effect.try({ try: refreshChats, catch: () => new OpenFailed() }).pipe(
+      Effect.andThen(
+        Effect.tryPromise({ try: () => openGroupChat(groupId), catch: () => undefined }).pipe(
+          Effect.orElseSucceed(() => undefined),
+        ),
+      ),
+      Effect.andThen((chatId) =>
+        Effect.sync(() =>
+          navigate(chatId === undefined ? '/' : `/c/${encodeURIComponent(chatId)}`, {
+            replace: true,
+          }),
+        ),
+      ),
+    );
+
+  // "Already a member" opens the group without touching the Join state.
+  const [, openGroup] = useAction((groupId: string) => openGroupEffect(groupId));
+  const [joinState, runJoin] = useAction((joinToken: string) =>
+    fromApi(() => joinByLink(joinToken)).pipe(
+      Effect.andThen((result) => openGroupEffect(result.groupId)),
+    ),
+  );
+  const busy = isWaiting(joinState);
+  const joinFailure = busy ? undefined : failureOf(joinState);
+  const refusal = joinFailure?._tag === 'ApiFailure' ? joinFailure.code : undefined;
+  const state: 'checking' | 'ready' | 'invalid' | 'full' =
+    refusal === 'group_full'
+      ? 'full'
+      : refusal === 'invalid_link'
+        ? 'invalid'
+        : (loaded?.state ?? 'checking');
+  const error =
+    joinFailure !== undefined && refusal !== 'group_full' && refusal !== 'invalid_link'
+      ? 'Could not join the group. Try again.'
+      : undefined;
 
   if (token === undefined) {
     return <JoinCard title="Invite link not valid" body="This link is missing its token." />;
@@ -133,46 +168,20 @@ export function JoinPage({
     );
   }
 
-  const join = async (): Promise<void> => {
+  const join = (): void => {
     if (busy || preview === undefined || needsName) {
       return;
     }
-    // Opens the group chat for a group id: resolves the General chat (the
-    // General chat id is the group id) from the painted list first, so the
-    // new membership had a chance to arrive; falls back to `/` when the
-    // list has not refreshed yet.
-    const openGroup = async (groupId: string): Promise<void> => {
-      refreshChats();
-      const chatId = await openGroupChat(groupId).catch(() => undefined);
-      navigate(chatId === undefined ? '/' : `/c/${encodeURIComponent(chatId)}`, {
-        replace: true,
-      });
-    };
     // Already a member: just open the group.
     if (preview.alreadyMember) {
       if (preview.groupId === undefined) {
         navigate('/', { replace: true });
         return;
       }
-      await openGroup(preview.groupId);
+      openGroup(preview.groupId);
       return;
     }
-    setBusy(true);
-    setError(undefined);
-    try {
-      const result = await joinByLink(token);
-      await openGroup(result.groupId);
-    } catch (joinError) {
-      if (joinError instanceof ApiError && joinError.code === 'group_full') {
-        setState('full');
-      } else if (joinError instanceof ApiError && joinError.code === 'invalid_link') {
-        setState('invalid');
-      } else {
-        setError('Could not join the group. Try again.');
-      }
-    } finally {
-      setBusy(false);
-    }
+    runJoin(token);
   };
 
   return (
@@ -212,13 +221,7 @@ export function JoinPage({
             </Link>
           </Button>
         ) : (
-          <Button
-            type="button"
-            disabled={busy}
-            onClick={() => void join()}
-            size="lg"
-            className="mt-5 w-full"
-          >
+          <Button type="button" disabled={busy} onClick={join} size="lg" className="mt-5 w-full">
             {busy
               ? 'Joining…'
               : preview?.alreadyMember === true

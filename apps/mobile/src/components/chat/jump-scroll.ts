@@ -10,6 +10,8 @@
  * scroll to a stale row.
  */
 
+import { Effect, Fiber } from 'effect';
+
 /** The retry delays, mirroring the mount scroll above the jump effect. */
 export const JUMP_SCROLL_RETRY_MS: readonly number[] = [80, 200, 400];
 
@@ -19,9 +21,13 @@ export interface JumpScrollTimers {
   clearTimeout: (handle: unknown) => void;
 }
 
+// Each retry is a fiber that sleeps for its delay; clearing it interrupts the fiber.
 const defaultTimers: JumpScrollTimers = {
-  setTimeout: (callback, ms) => setTimeout(callback, ms),
-  clearTimeout: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+  setTimeout: (callback, ms) =>
+    Effect.runFork(Effect.sleep(ms).pipe(Effect.andThen(Effect.sync(callback)))),
+  clearTimeout: (handle) => {
+    Effect.runFork(Fiber.interrupt(handle as Fiber.Fiber<void>));
+  },
 };
 
 /**

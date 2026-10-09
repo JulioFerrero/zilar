@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, screen } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { VOICE_MIN_MS, VoiceError, VoiceRecorder } from '@/lib/voice';
 import { renderApp } from '@/test/renderApp';
 
@@ -76,18 +76,18 @@ describe('Composer voice recording (T-0166)', () => {
     resolveStart(recorder);
     await flushStart();
     // The recording row shows the elapsed time and the cancel gesture.
-    expect(screen.getByText('Slide to cancel')).toBeTruthy();
+    expect(await screen.findByText('Slide to cancel')).toBeTruthy();
 
     // A short release locks into click mode with Send/Cancel to finish.
     releaseMic();
-    expect(screen.getByLabelText('Send voice message')).toBeTruthy();
-    expect(screen.getByLabelText('Cancel voice message')).toBeTruthy();
+    expect(await screen.findByLabelText('Send voice message')).toBeTruthy();
+    expect(await screen.findByLabelText('Cancel voice message')).toBeTruthy();
     expect(cancelSpy).not.toHaveBeenCalled();
 
     await act(async () => {
       fireEvent.click(screen.getByLabelText('Send voice message'));
     });
-    expect(store.getState().messages('c-ana')).toHaveLength(before + 1);
+    await waitFor(() => expect(store.getState().messages('c-ana')).toHaveLength(before + 1));
   });
 
   it('keeps recording when permission is granted after release (click mode)', async () => {
@@ -104,7 +104,7 @@ describe('Composer voice recording (T-0166)', () => {
     await flushStart();
 
     // Never silently cancelled: still recording, with Send/Cancel to finish.
-    expect(screen.getByLabelText('Send voice message')).toBeTruthy();
+    expect(await screen.findByLabelText('Send voice message')).toBeTruthy();
     expect(cancelSpy).not.toHaveBeenCalled();
   });
 
@@ -132,7 +132,7 @@ describe('Composer voice recording (T-0166)', () => {
     const recorder = makeRecorder();
     resolveStart(recorder);
     await flushStart();
-    expect(screen.getByText('Slide to cancel')).toBeTruthy();
+    expect(await screen.findByText('Slide to cancel')).toBeTruthy();
     // A real 500 ms wait crosses the 400 ms hold threshold.
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 500));
@@ -141,7 +141,7 @@ describe('Composer voice recording (T-0166)', () => {
     await act(async () => {
       releaseMic();
     });
-    expect(store.getState().messages('c-ana')).toHaveLength(before + 1);
+    await waitFor(() => expect(store.getState().messages('c-ana')).toHaveLength(before + 1));
   });
 
   it('cancels with the trash button and sends nothing', async () => {
@@ -155,7 +155,7 @@ describe('Composer voice recording (T-0166)', () => {
     resolveStart(recorder);
     await flushStart();
     releaseMic();
-    expect(screen.getByLabelText('Send voice message')).toBeTruthy();
+    expect(await screen.findByLabelText('Send voice message')).toBeTruthy();
     fireEvent.click(screen.getByLabelText('Cancel voice message'));
 
     expect(cancelSpy).toHaveBeenCalled();
@@ -174,7 +174,7 @@ describe('Composer voice recording (T-0166)', () => {
     resolveStart(recorder);
     await flushStart();
     releaseMic();
-    expect(screen.getByLabelText('Send voice message')).toBeTruthy();
+    expect(await screen.findByLabelText('Send voice message')).toBeTruthy();
     // Escape is handled on the document while recording in click mode.
     fireEvent.keyDown(document, { key: 'Escape' });
 
@@ -191,15 +191,15 @@ describe('Composer voice recording (T-0166)', () => {
     pressMic();
     resolveStart(recorder);
     await flushStart();
-    expect(screen.getByText('Slide to cancel')).toBeTruthy();
+    expect(await screen.findByText('Slide to cancel')).toBeTruthy();
 
     // Leaving the chat discards the recording and stops the mic tracks:
     // navigate to another chat like a user would.
     fireEvent.click(screen.getByText('Viernes 🍻'));
     await flushStart();
 
-    expect(cancelSpy).toHaveBeenCalled();
-    expect(screen.queryByText('Slide to cancel')).toBeNull();
+    await waitFor(() => expect(cancelSpy).toHaveBeenCalled());
+    await waitFor(() => expect(screen.queryByText('Slide to cancel')).toBeNull());
   });
 
   it('shows "Recording too short" for an accidental tap', async () => {
@@ -217,6 +217,7 @@ describe('Composer voice recording (T-0166)', () => {
     holdMic();
     resolveStart(recorder);
     await flushStart();
+    expect(await screen.findByText('Slide to cancel')).toBeTruthy();
     // A long hold released after start sends (or, here, reports too short).
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 500));
@@ -240,6 +241,7 @@ describe('Composer voice recording (T-0166)', () => {
     holdMic();
     resolveStart(recorder);
     await flushStart();
+    expect(await screen.findByText('Slide to cancel')).toBeTruthy();
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 500));
     });
@@ -266,6 +268,7 @@ describe('Composer voice recording (T-0166)', () => {
     const recorder = makeRecorder();
     resolveStart(recorder);
     await flushStart();
+    expect(await screen.findByText('Slide to cancel')).toBeTruthy();
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 500));
     });
@@ -274,8 +277,8 @@ describe('Composer voice recording (T-0166)', () => {
       releaseMic();
     });
 
+    await waitFor(() => expect(store.getState().messages('c-ana')).toHaveLength(before + 1));
     const sent = store.getState().messages('c-ana');
-    expect(sent).toHaveLength(before + 1);
     expect(sent.at(-1)?.replyTo).toEqual({
       id: 'ana-22',
       senderName: 'You',
@@ -294,12 +297,12 @@ describe('Composer voice recording (T-0166)', () => {
     resolveStart(makeRecorder());
     await flushStart();
 
-    expect(screen.getByLabelText('Send voice message')).toBeTruthy();
-    expect(screen.getByLabelText('Cancel voice message')).toBeTruthy();
+    expect(await screen.findByLabelText('Send voice message')).toBeTruthy();
+    expect(await screen.findByLabelText('Cancel voice message')).toBeTruthy();
 
     await act(async () => {
       fireEvent.click(screen.getByLabelText('Send voice message'));
     });
-    expect(store.getState().messages('c-ana')).toHaveLength(before + 1);
+    await waitFor(() => expect(store.getState().messages('c-ana')).toHaveLength(before + 1));
   });
 });

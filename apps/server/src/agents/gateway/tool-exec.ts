@@ -1,3 +1,4 @@
+import { Effect } from 'effect';
 import type { ChatCompletionMessage } from '../context';
 import { revertPersonaFromChat, setPersonaFromChat } from '../../ais/service';
 import { TOOL_GUIDE } from '../tool-guide';
@@ -70,7 +71,9 @@ export function createToolExec(ctx: ToolExecContext) {
     // this closure, which is created once per turn, so it resets with the
     // turn.
     let savedFacts = 0;
-    return async (call) => {
+    const execute = Effect.fnUntraced(function* (
+      call: ValidToolCall,
+    ): Effect.fn.Return<ToolExecution> {
       // A turn that was computing when the AI was stopped must not change the
       // persona afterwards, and a tier-2 action must not run without the
       // owner's approval.
@@ -106,12 +109,12 @@ export function createToolExec(ctx: ToolExecContext) {
         }
       }
       if (call.tool === RECALL_TOOL) {
-        const lines = await recallMemory(deps.db, aiId, chatKey, call.query);
+        const lines = yield* Effect.promise(() => recallMemory(deps.db, aiId, chatKey, call.query));
         logger.info({ aiId, tool: call.tool, ok: true }, 'AI memory tool');
         return { content: lines.length === 0 ? 'no matches' : lines.join('\n') };
       }
       if (call.tool === MEMORY_ZOOM_TOOL) {
-        const lines = await zoomMemory(deps.db, aiId, chatKey, call.block);
+        const lines = yield* Effect.promise(() => zoomMemory(deps.db, aiId, chatKey, call.block));
         if (lines === null) {
           logger.info({ aiId, tool: call.tool, ok: false }, 'AI memory tool');
           return { content: 'invalid: unknown block' };
@@ -128,7 +131,7 @@ export function createToolExec(ctx: ToolExecContext) {
           logger.info({ aiId, tool: call.tool, ok: false }, 'AI memory tool');
           return { content: 'refused: looks like a secret' };
         }
-        const outcome = await addFact(deps.db, aiId, chatKey, call.text);
+        const outcome = yield* Effect.promise(() => addFact(deps.db, aiId, chatKey, call.text));
         if (outcome === 'saved') {
           savedFacts += 1;
           logger.info({ aiId, tool: call.tool, ok: true }, 'AI memory tool');
@@ -171,9 +174,8 @@ export function createToolExec(ctx: ToolExecContext) {
           return { content: 'refused: no hops left for this message' };
         }
         const bossNick = session.rooms.get(context.roomJid)?.nick ?? '';
-        let created: Awaited<ReturnType<typeof createDelegation>>;
-        try {
-          created = await createDelegation(deps.db, {
+        const created = yield* Effect.promise(() =>
+          createDelegation(deps.db, {
             fromAiId: session.aiId,
             toAiId: call.toAiId,
             groupId: context.groupId,
@@ -183,12 +185,19 @@ export function createToolExec(ctx: ToolExecContext) {
             ...(call.acceptance === undefined ? {} : { acceptance: call.acceptance }),
             ...(call.returnFormat === undefined ? {} : { returnFormat: call.returnFormat }),
             replyTo: context.triggerId,
-          });
-        } catch (error) {
-          logger.warn(
-            { err: errorName(error), fromAiId: session.aiId, toAiId: call.toAiId },
-            'AI delegation create threw',
-          );
+          }),
+        ).pipe(
+          Effect.catchDefect((error) =>
+            Effect.sync(() => {
+              logger.warn(
+                { err: errorName(error), fromAiId: session.aiId, toAiId: call.toAiId },
+                'AI delegation create threw',
+              );
+              return null;
+            }),
+          ),
+        );
+        if (created === null) {
           return { content: 'the task could not be started' };
         }
         if (!created.ok) {
@@ -217,12 +226,19 @@ export function createToolExec(ctx: ToolExecContext) {
           delegationId: created.delegation.id,
         });
         worker.roomPending.set(context.roomJid, queued);
-        void pumpRoom(worker, context.roomJid).catch((error: unknown) => {
-          logger.warn(
-            { err: toRedactedError(error, secretsFor()), aiId: worker.aiId },
-            'AI group pump failed',
-          );
-        });
+        const pumpedWorker = worker;
+        Effect.runFork(
+          Effect.promise(() => pumpRoom(pumpedWorker, context.roomJid)).pipe(
+            Effect.catchDefect((error) =>
+              Effect.sync(() => {
+                logger.warn(
+                  { err: toRedactedError(error, secretsFor()), aiId: pumpedWorker.aiId },
+                  'AI group pump failed',
+                );
+              }),
+            ),
+          ),
+        );
         if (round !== undefined) {
           round.hops += 1;
         }
@@ -246,7 +262,7 @@ export function createToolExec(ctx: ToolExecContext) {
         if (context === undefined) {
           return { content: 'invalid: unknown tool' };
         }
-        const view = await getDelegationForAi(deps.db, call.taskId, aiId);
+        const view = yield* Effect.promise(() => getDelegationForAi(deps.db, call.taskId, aiId));
         if (view === null) {
           return { content: 'invalid: unknown task' };
         }
@@ -259,7 +275,7 @@ export function createToolExec(ctx: ToolExecContext) {
         };
       }
       if (call.tool === UPDATE_PERSONA_TOOL) {
-        await setPersonaFromChat(deps.db, aiId, call.persona);
+        yield* Effect.promise(() => setPersonaFromChat(deps.db, aiId, call.persona));
         logger.info({ aiId, tool: call.tool, ok: true }, 'AI persona updated by chat');
         return { content: 'ok', notice: formatPersonaUpdatedLine(call.summary) };
       }
@@ -270,7 +286,7 @@ export function createToolExec(ctx: ToolExecContext) {
           // gateway, and short-circuit to `denied: not allowed` when they
           // are no longer an owner or admin. The gateway is never invoked
           // in that case, so no audit row is written and no card appears.
-          const stillAllowed = await context.isStillAllowed();
+          const stillAllowed = yield* Effect.promise(() => context.isStillAllowed());
           if (!stillAllowed) {
             logger.info(
               { aiId: session.aiId, action: call.action, groupId: context.groupId },
@@ -279,7 +295,7 @@ export function createToolExec(ctx: ToolExecContext) {
             return { content: 'denied: not allowed' };
           }
         }
-        return runRequestAction(
+        return yield* runRequestActionEffect(
           session,
           call,
           context === undefined
@@ -287,13 +303,14 @@ export function createToolExec(ctx: ToolExecContext) {
             : { groupId: context.groupId, topicId: context.topicId },
         );
       }
-      const outcome = await revertPersonaFromChat(deps.db, aiId);
+      const outcome = yield* Effect.promise(() => revertPersonaFromChat(deps.db, aiId));
       logger.info({ aiId, tool: call.tool, ok: true }, 'AI persona revert by chat');
       if (outcome === 'nothing to undo') {
         return { content: 'nothing to undo' };
       }
       return { content: 'ok', notice: PERSONA_RESTORED_LINE };
-    };
+    });
+    return (call) => Effect.runPromise(execute(call));
   }
 
   // Routes a `request_action` call into the action gateway. The ai id and
@@ -304,33 +321,39 @@ export function createToolExec(ctx: ToolExecContext) {
   // reaches the AI. The group context (when present) adjusts the
   // pending-approval wording — owners see "in this chat", admins see "in
   // this room" — and tags the request with the room's group and topic ids.
-  async function runRequestAction(
+  const runRequestActionEffect = Effect.fnUntraced(function* (
     session: AiSession,
     call: Extract<ValidToolCall, { tool: typeof REQUEST_ACTION_TOOL }>,
     chat?: { groupId: string; topicId: string },
-  ): Promise<ToolExecution> {
+  ): Effect.fn.Return<ToolExecution> {
     const actions = deps.actions;
     if (actions === undefined) {
       // No action gateway wired: the tool was never offered, so this call
       // is treated as an unknown tool and answered honestly.
       return { content: 'invalid: unknown tool: request_action' };
     }
-    let outcome: RequestOutcome;
-    try {
-      outcome = await actions.request({
+    const outcome = yield* Effect.promise(() =>
+      actions.request({
         aiId: session.aiId,
         ...(chat === undefined ? {} : { groupId: chat.groupId, topicId: chat.topicId }),
         action: call.action,
         args: call.args,
         requestedBy: session.aiJid,
-      });
-    } catch (error) {
-      // The gateway is best-effort: a thrown error here would mean a bug
-      // we cannot leak. Log the class name only and answer as failed.
-      logger.warn(
-        { err: errorName(error), aiId: session.aiId, action: call.action },
-        'action gateway request threw',
-      );
+      }),
+    ).pipe(
+      Effect.catchDefect((error) =>
+        // The gateway is best-effort: a thrown error here would mean a bug
+        // we cannot leak. Log the class name only and answer as failed.
+        Effect.sync((): RequestOutcome | null => {
+          logger.warn(
+            { err: errorName(error), aiId: session.aiId, action: call.action },
+            'action gateway request threw',
+          );
+          return null;
+        }),
+      ),
+    );
+    if (outcome === null) {
       return { content: 'the action failed' };
     }
     switch (outcome.status) {
@@ -353,7 +376,13 @@ export function createToolExec(ctx: ToolExecContext) {
       case 'denied':
         return { content: `denied: ${denialReasonForModel(outcome.reason)}` };
     }
-  }
+  });
+
+  const runRequestAction = (
+    session: AiSession,
+    call: Extract<ValidToolCall, { tool: typeof REQUEST_ACTION_TOOL }>,
+    chat?: { groupId: string; topicId: string },
+  ): Promise<ToolExecution> => Effect.runPromise(runRequestActionEffect(session, call, chat));
 
   // T-0106: appends the fixed tool guide to the last user turn. The system
   // prompt builders take no options (their shape is frozen for provider

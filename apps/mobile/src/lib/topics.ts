@@ -1,4 +1,10 @@
-import type { ChatSummary, TopicInfo, TopicKind, TopicStatus } from '@zilar/chat-core';
+import {
+  parseUrl,
+  type ChatSummary,
+  type TopicInfo,
+  type TopicKind,
+  type TopicStatus,
+} from '@zilar/chat-core';
 
 import { chatEntryTopics, type Topic } from './topics-api';
 import type { ChatEntry } from './chat-api';
@@ -314,12 +320,11 @@ export function httpsTopicUrl(url: string | null | undefined): string | undefine
   if (trimmed === '') {
     return undefined;
   }
-  try {
-    const parsed = new URL(trimmed);
-    return parsed.protocol === 'https:' ? parsed.toString() : undefined;
-  } catch {
+  const parsed = parseUrl(trimmed);
+  if (parsed === undefined) {
     return undefined;
   }
+  return parsed.protocol === 'https:' ? parsed.toString() : undefined;
 }
 
 /** The link chip text: the label, else the hostname, else "Add link". */
@@ -329,11 +334,7 @@ export function topicLinkText(topic: TopicInfo | undefined): string {
   }
   const href = httpsTopicUrl(topic?.linkUrl);
   if (href !== undefined) {
-    try {
-      return new URL(href).hostname;
-    } catch {
-      return href;
-    }
+    return parseUrl(href)?.hostname ?? href;
   }
   return 'Add link';
 }

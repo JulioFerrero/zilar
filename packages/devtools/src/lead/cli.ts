@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { runAutopilot, type AutopilotDeps } from './autopilot.js';
 import { alreadyPassedKey, gatePassDir, hasPassRecord, treeKey } from '../gate/pass-record.js';
+import { realBatchDeps, realBatchMergeDeps, runBatchCheck, runBatchMerge } from './batch.js';
 import { OpencodeCliClient } from './client.js';
 import { doctorWorktreeFor, startDoctorSession } from './doctor.js';
 import { RealGitRunner } from './git.js';
@@ -33,7 +34,10 @@ Usage: lead <command> [options]
   prereview <T-XXXX>                                        start a Muse pre-review manually
   reply <T-XXXX> <prompt-file> [--fresh]                   interrupt the worker and re-prompt it
   merge <T-XXXX> --summary "<one line>" [--skip-gate]       rebase, run the gate, squash onto main, board, push, clean up
-  spec-check <T-XXXX>                                       check a spec's paths, routes and web claims against the code
+  batch check <T-A> <T-B> ...                               combine the branches on a wave worktree, run install, typecheck and every
+                                                            package's tests, write one fix file per task under ~/.zilar-lead/wave/
+  batch merge <T-A> <T-B> ...                               merge a checked wave task by task, no gate (refuses when the check is stale)
+  spec-check <T-XXXX>                                    check a spec's paths, routes and web claims against the code
   snapshot                                                  JSON of every task in flight, its step and timings
   dashboard <out.html>                                      the snapshot rendered as the dashboard page
   status                                                    compact table of every tracked task
@@ -279,6 +283,21 @@ async function runMerge(positional: string[], args: string[]): Promise<void> {
   console.log(`${task} merged`);
 }
 
+async function runBatch(positional: string[]): Promise<void> {
+  const [subcommand, ...tasks] = positional;
+  const root = findRepoRoot();
+  if (subcommand === 'check') {
+    const result = await runBatchCheck(realBatchDeps(root), tasks);
+    if (!result.ok) {
+      process.exitCode = 1;
+    }
+  } else if (subcommand === 'merge') {
+    await runBatchMerge(realBatchMergeDeps(root), tasks);
+  } else {
+    throw new Error('usage: lead batch <check|merge> <T-XXXX> <T-XXXX> ...');
+  }
+}
+
 function runSpecCheck(positional: string[]): void {
   const task = positional[0];
   if (task === undefined) {
@@ -376,6 +395,8 @@ export async function main(argv: string[]): Promise<void> {
     runSpecCheck(positional);
   } else if (command === 'merge') {
     await runMerge(positional, rest);
+  } else if (command === 'batch') {
+    await runBatch(positional);
   } else if (command === 'status') {
     await runStatus();
   } else if (command === 'watch') {

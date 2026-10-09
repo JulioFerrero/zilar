@@ -1,3 +1,7 @@
+import { Effect } from 'effect';
+
+import { runMobile } from '@/lib/effect/runtime';
+
 import { createBoundStore, type UseBoundStore } from '../store/atomStore';
 
 import type { Me } from '../lib/auth-api';
@@ -66,77 +70,97 @@ function isUnauthorized(error: unknown): boolean {
   return isRecord(error) && error['status'] === 401;
 }
 
+// A rejected call keeps the error it threw, so a caller sees what it saw.
+const attempt = <A>(call: () => Promise<A>): Effect.Effect<A, unknown> =>
+  Effect.tryPromise({ try: call, catch: (error) => error });
+
 export function createAuthStore(deps: {
   api: AuthApi;
   storage: SessionStorage;
 }): UseBoundStore<AuthStore> {
   const { api, storage } = deps;
 
-  return createBoundStore<AuthStore>((set) => ({
-    status: 'loading',
-    me: null,
+  const clearTokenQuietly = Effect.ignore(attempt(() => storage.clearToken()));
 
-    async bootstrap() {
-      let token: string | undefined;
-      try {
-        token = await storage.getToken();
-      } catch {
-        token = undefined;
-      }
+  return createBoundStore<AuthStore>((set) => {
+    const bootstrap = Effect.gen(function* () {
+      const token = yield* attempt(() => storage.getToken()).pipe(
+        Effect.orElseSucceed((): string | undefined => undefined),
+      );
       if (token === undefined) {
         set({ status: 'guest', me: null });
         return;
       }
-      try {
-        const me = await api.fetchMe(token);
-        set({ status: 'authenticated', me });
-      } catch (error) {
-        if (isUnauthorized(error)) {
-          await storage.clearToken().catch(() => undefined);
+      yield* attempt(() => api.fetchMe(token)).pipe(
+        Effect.matchEffect({
+          onSuccess: (me) => Effect.sync(() => set({ status: 'authenticated', me })),
+          onFailure: (error) =>
+            (isUnauthorized(error) ? clearTokenQuietly : Effect.void).pipe(
+              Effect.andThen(Effect.sync(() => set({ status: 'guest', me: null }))),
+            ),
+        }),
+      );
+    });
+
+    const signIn = (input: SignInInput): Effect.Effect<SignInOutcome, unknown> =>
+      Effect.gen(function* () {
+        const result = yield* attempt(() =>
+          api.verifyCode(input.email, input.otp, input.inviteCode),
+        );
+        if (result.error !== undefined || result.token === undefined) {
+          return { ok: false, error: result.error ?? { code: 'missing_token' } } as const;
         }
-        set({ status: 'guest', me: null });
-      }
-    },
+        const token = result.token;
+        yield* attempt(() => storage.setToken(token));
+        return yield* attempt(() => api.fetchMe(token)).pipe(
+          Effect.matchEffect({
+            onSuccess: (me) =>
+              Effect.sync((): SignInOutcome => {
+                set({ status: 'authenticated', me });
+                return { ok: true, me };
+              }),
+            onFailure: (error) =>
+              clearTokenQuietly.pipe(
+                Effect.as<SignInOutcome>({ ok: false, error: toAuthError(error) }),
+              ),
+          }),
+        );
+      });
 
-    async signIn(input) {
-      const result = await api.verifyCode(input.email, input.otp, input.inviteCode);
-      if (result.error !== undefined || result.token === undefined) {
-        return { ok: false, error: result.error ?? { code: 'missing_token' } };
-      }
-      await storage.setToken(result.token);
-      try {
-        const me = await api.fetchMe(result.token);
-        set({ status: 'authenticated', me });
-        return { ok: true, me };
-      } catch (error) {
-        await storage.clearToken().catch(() => undefined);
-        return { ok: false, error: toAuthError(error) };
-      }
-    },
+    const setName = (name: string): Effect.Effect<{ ok: boolean; error?: AuthError }, unknown> =>
+      Effect.gen(function* () {
+        const token = yield* attempt(() => storage.getToken());
+        if (token === undefined) {
+          return { ok: false, error: { code: 'unauthorized' } };
+        }
+        return yield* attempt(() => api.updateMe(token, name)).pipe(
+          Effect.matchEffect({
+            onSuccess: (me) =>
+              Effect.sync(() => {
+                set({ me });
+                return { ok: true };
+              }),
+            onFailure: (error) => Effect.succeed({ ok: false, error: toAuthError(error) }),
+          }),
+        );
+      });
 
-    async setName(name) {
-      const token = await storage.getToken();
-      if (token === undefined) {
-        return { ok: false, error: { code: 'unauthorized' } };
-      }
-      try {
-        const me = await api.updateMe(token, name);
-        set({ me });
-        return { ok: true };
-      } catch (error) {
-        return { ok: false, error: toAuthError(error) };
-      }
-    },
+    // Signing out locally must always succeed, even when offline.
+    const signOut = Effect.ignore(attempt(() => api.signOut())).pipe(
+      Effect.ensuring(
+        clearTokenQuietly.pipe(
+          Effect.andThen(Effect.sync(() => set({ status: 'guest', me: null }))),
+        ),
+      ),
+    );
 
-    async signOut() {
-      try {
-        await api.signOut();
-      } catch {
-        // Signing out locally must always succeed, even when offline.
-      } finally {
-        await storage.clearToken().catch(() => undefined);
-        set({ status: 'guest', me: null });
-      }
-    },
-  }));
+    return {
+      status: 'loading',
+      me: null,
+      bootstrap: () => runMobile(bootstrap),
+      signIn: (input) => runMobile(signIn(input)),
+      setName: (name) => runMobile(setName(name)),
+      signOut: () => runMobile(signOut),
+    };
+  });
 }

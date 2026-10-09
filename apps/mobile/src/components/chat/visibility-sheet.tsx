@@ -1,3 +1,4 @@
+import { Effect, Fiber } from 'effect';
 import { useEffect, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
@@ -6,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import { DirectoryApiError, type GroupVisibility } from '@/lib/directory-api';
+import { useAction } from '@/lib/effect/use-action';
 
 /**
  * Visibility helpers (T-0183): the same rules as the web
@@ -102,7 +104,7 @@ export function VisibilitySheet({
 }) {
   // `copied` resets when the sheet closes: keyed render state would need the
   // screen to remount the sheet, so the copy button resets on close here.
-  // The effect only schedules the reset; the timeout applies it once (the
+  // The effect only starts the reset fiber; the fiber applies it once (the
   // lint rule flags synchronous setState inside effects).
   const [copied, setCopied] = useState(false);
 
@@ -110,9 +112,21 @@ export function VisibilitySheet({
     if (visible) {
       return;
     }
-    const pending = setTimeout(() => setCopied(false), 0);
-    return () => clearTimeout(pending);
+    const pending = Effect.runFork(
+      Effect.sleep(0).pipe(Effect.andThen(Effect.sync(() => setCopied(false)))),
+    );
+    return () => {
+      Effect.runFork(Fiber.interrupt(pending));
+    };
   }, [visible]);
+
+  const [, copyText] = useAction(
+    (text: string) =>
+      Effect.tryPromise({ try: () => share.copyText(text), catch: (cause) => cause }).pipe(
+        Effect.tap(() => Effect.sync(() => setCopied(true))),
+      ),
+    { mode: 'replace' },
+  );
 
   const shareLink =
     handle === null || handle === '' ? null : `zilar://at/${encodeURIComponent(handle)}`;
@@ -121,7 +135,7 @@ export function VisibilitySheet({
     if (shareLink === null) {
       return;
     }
-    void share.copyText(shareLink).then(() => setCopied(true));
+    copyText(shareLink);
   };
 
   return (

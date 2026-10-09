@@ -1,3 +1,4 @@
+import { Cause, Effect } from 'effect';
 import type { ChatMessage } from '@zilar/xmpp-core';
 import { normBareJid } from '../context';
 import { completeChat } from '../reply';
@@ -11,6 +12,8 @@ import { loadGroupListenerSettings, loadTopicIsGeneral } from './db';
 import {
   LISTENER_EVERY_N_DEFAULT,
   LISTENER_QUIET_MS_DEFAULT,
+  attempt,
+  cancelTimer,
   isAiSender,
   toRedactedError,
   type AgentGatewayDeps,
@@ -102,26 +105,41 @@ export function createRoomListener(ctx: RoomListenerContext) {
     state.count += 1;
     if (state.count >= (listener.everyN ?? LISTENER_EVERY_N_DEFAULT)) {
       clearListenerTimer(state);
-      void fireRoomListener(roomJid, state);
+      fireRoomListener(roomJid, state);
       return;
     }
     clearListenerTimer(state);
-    state.timer = setTimeout(() => {
-      state.timer = undefined;
-      void fireRoomListener(roomJid, state);
-    }, listener.quietMs ?? LISTENER_QUIET_MS_DEFAULT);
+    // The debounce is a fiber that sleeps, then fires the check. It clears
+    // the field first, so a later `clearListenerTimer` never touches it.
+    state.timer = Effect.runFork(
+      Effect.sleep(listener.quietMs ?? LISTENER_QUIET_MS_DEFAULT).pipe(
+        Effect.andThen(
+          Effect.sync(() => {
+            state.timer = undefined;
+            fireRoomListener(roomJid, state);
+          }),
+        ),
+      ),
+    );
   }
 
   function clearListenerTimer(state: RoomListenerState): void {
-    if (state.timer !== undefined) {
-      clearTimeout(state.timer);
-      state.timer = undefined;
-    }
+    cancelTimer(state.timer);
+    state.timer = undefined;
+  }
+
+  // Starts the room's scoring call and does not wait for it: it logs its own
+  // failures, so nothing is left to await.
+  function fireRoomListener(roomJid: string, state: RoomListenerState): void {
+    Effect.runFork(fireRoomListenerEffect(roomJid, state));
   }
 
   // One scoring call per room. Skips while a call is in flight and drops a
   // result whose window a newer human message replaced (plan §2.1).
-  async function fireRoomListener(roomJid: string, state: RoomListenerState): Promise<void> {
+  const fireRoomListenerEffect = Effect.fnUntraced(function* (
+    roomJid: string,
+    state: RoomListenerState,
+  ): Effect.fn.Return<void> {
     const listener = deps.listener;
     if (listener === undefined || state.inFlight) {
       return;
@@ -133,53 +151,69 @@ export function createRoomListener(ctx: RoomListenerContext) {
       sender: entry.sender,
       text: entry.text,
     }));
-    try {
-      const group = await loadGroupListenerSettings(deps.db, state.groupId);
+    yield* Effect.gen(function* () {
+      const group = yield* attempt(() => loadGroupListenerSettings(deps.db, state.groupId));
       if (group === null || !group.listenerEnabled) {
         return;
       }
-      const isGeneralRow = await loadTopicIsGeneral(deps.db, state.topicId);
+      const isGeneralRow = yield* attempt(() => loadTopicIsGeneral(deps.db, state.topicId));
       // General rooms score the group's AIs; every other topic its own.
       const isGeneral = state.topicId === '' || isGeneralRow === true;
-      const roster = await loadRoster(
-        deps.db,
-        isGeneral ? { groupId: state.groupId } : { groupId: state.groupId, topicId: state.topicId },
+      const roster = yield* attempt(() =>
+        loadRoster(
+          deps.db,
+          isGeneral
+            ? { groupId: state.groupId }
+            : { groupId: state.groupId, topicId: state.topicId },
+        ),
       );
-      const result = await scoreRoom({
-        complete: listener.complete ?? completeChat,
-        baseUrl,
-        virtualKey: listener.virtualKey,
-        model: listener.model,
-        roster,
-        window,
-        eagerness: group.listenerEagerness,
-      });
+      const result = yield* attempt(() =>
+        scoreRoom({
+          complete: listener.complete ?? completeChat,
+          baseUrl,
+          virtualKey: listener.virtualKey,
+          model: listener.model,
+          roster,
+          window,
+          eagerness: group.listenerEagerness,
+        }),
+      );
       if (state.generation !== generation) {
         return;
       }
       if (result !== null) {
-        await wakeListenerAis(roomJid, state, result.wake);
+        wakeListenerAis(roomJid, state, result.wake);
       }
-    } catch (error) {
-      logger.warn(
-        { err: toRedactedError(error, secretsFor(listener.virtualKey)), groupId: state.groupId },
-        'AI listener check failed',
-      );
-    } finally {
-      state.count = 0;
-      state.inFlight = false;
-    }
-  }
+    }).pipe(
+      Effect.catchCause((cause) =>
+        Effect.sync(() => {
+          logger.warn(
+            {
+              err: toRedactedError(Cause.squash(cause), secretsFor(listener.virtualKey)),
+              groupId: state.groupId,
+            },
+            'AI listener check failed',
+          );
+        }),
+      ),
+      Effect.ensuring(
+        Effect.sync(() => {
+          state.count = 0;
+          state.inFlight = false;
+        }),
+      ),
+    );
+  });
 
   // Wakes each scored AI that still holds a live session in this room by
   // queueing the latest window message as a normal turn. The short "looking at
   // this" line is posted at turn time, once the turn passed every gate. The
   // turn-time checks (member, daily limit, rate limit, round budget) apply.
-  async function wakeListenerAis(
+  function wakeListenerAis(
     roomJid: string,
     state: RoomListenerState,
     wakeIds: readonly string[],
-  ): Promise<void> {
+  ): void {
     const latest = state.window[state.window.length - 1];
     if (latest === undefined) {
       return;
@@ -205,12 +239,18 @@ export function createRoomListener(ctx: RoomListenerContext) {
         wake: true,
       });
       session.roomPending.set(roomJid, queued);
-      void pumpRoom(session, roomJid).catch((error: unknown) => {
-        logger.warn(
-          { err: toRedactedError(error, secretsFor()), aiId: session.aiId },
-          'AI listener pump failed',
-        );
-      });
+      Effect.runFork(
+        attempt(() => pumpRoom(session, roomJid)).pipe(
+          Effect.catch((error: unknown) =>
+            Effect.sync(() => {
+              logger.warn(
+                { err: toRedactedError(error, secretsFor()), aiId: session.aiId },
+                'AI listener pump failed',
+              );
+            }),
+          ),
+        ),
+      );
       woken.push(aiId);
     }
     if (woken.length > 0) {

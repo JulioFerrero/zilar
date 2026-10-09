@@ -1,7 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import { Effect } from 'effect';
+import { AsyncResult } from 'effect/reactivity';
 import { Check, Copy } from 'lucide-react';
-import { createPairingCode, type PairingCode } from '@/lib/api';
+import { ApiError, createPairingCode } from '@/lib/api';
 import { copyText } from '@/lib/clipboard';
+import { fromApi } from '@/lib/effect/api-effect';
+import type { ApiFailure } from '@/lib/effect/errors';
+import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { useQuery } from '@/lib/effect/use-query';
 import { machineErrorMessage } from './errors';
 import { FieldError } from '@/components/ais/AiPageShell';
 import { cn } from '@/lib/utils';
@@ -11,6 +17,8 @@ import { Dialog } from '@/components/ui/dialog';
 type DialogStatus = 'loading' | 'ready' | 'expired' | 'error';
 
 const EXPIRED_ANNOUNCE = 'Code expired';
+const COUNTDOWN_TICK_MS = 1000;
+const COPIED_MS = 1500;
 
 /**
  * The "Add machine" dialog: mints a fresh pairing code, shows it big in Geist
@@ -19,84 +27,63 @@ const EXPIRED_ANNOUNCE = 'Code expired';
  * command says so honestly.
  */
 export function AddMachineDialog({ onClose }: { onClose: () => void }) {
-  const [status, setStatus] = useState<DialogStatus>('loading');
-  const [pairing, setPairing] = useState<PairingCode | null>(null);
-  const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
   const [remainingMs, setRemainingMs] = useState(0);
-  const [announcement, setAnnouncement] = useState('');
+  const [pairingState, newPairing] = useQuery(
+    () =>
+      fromApi(() => createPairingCode()).pipe(
+        Effect.tap((next) =>
+          Effect.sync(() => setRemainingMs(new Date(next.expiresAt).getTime() - Date.now())),
+        ),
+      ),
+    [],
+  );
+  const pairing =
+    AsyncResult.isSuccess(pairingState) && !isWaiting(pairingState) ? pairingState.value : null;
 
-  useEffect(() => {
-    let active = true;
-    createPairingCode()
-      .then((next) => {
-        if (!active) {
-          return;
-        }
-        setPairing(next);
-        setRemainingMs(new Date(next.expiresAt).getTime() - Date.now());
-        setStatus('ready');
-      })
-      .catch((cause: unknown) => {
-        if (!active) {
-          return;
-        }
-        setError(machineErrorMessage(cause, 'Could not create a pairing code.'));
-        setStatus('error');
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
+  // The countdown is a run per code: it ends at expiry, and a new code, a
+  // close or an unmount interrupts it.
+  const expiresAt = pairing?.expiresAt;
+  const [countdownState] = useQuery(
+    () =>
+      expiresAt === undefined
+        ? Effect.void
+        : countDown(new Date(expiresAt).getTime(), setRemainingMs),
+    [expiresAt],
+  );
+  const expired = pairing !== null && AsyncResult.isSuccess(countdownState);
+  const failed = !isWaiting(pairingState) && AsyncResult.isFailure(pairingState);
+  const status: DialogStatus = failed
+    ? 'error'
+    : pairing === null
+      ? 'loading'
+      : expired
+        ? 'expired'
+        : 'ready';
+  const error = failed
+    ? failureText(failureOf(pairingState), 'Could not create a pairing code.')
+    : '';
 
-  // The countdown ticks each second; stops at zero. No fake-timer shortcuts.
-  useEffect(() => {
-    if (status !== 'ready') {
-      return undefined;
+  // A second click restarts the copy and the "Copied" flash, as before.
+  const [, copy] = useAction(
+    (code: string) =>
+      Effect.promise(() => copyText(code)).pipe(
+        Effect.andThen(Effect.sync(() => setCopied(true))),
+        Effect.andThen(Effect.sleep(COPIED_MS)),
+        Effect.andThen(Effect.sync(() => setCopied(false))),
+      ),
+    { mode: 'replace' },
+  );
+
+  const copyCode = (): void => {
+    if (pairing !== null) {
+      copy(pairing.code);
     }
-    const id = window.setInterval(() => {
-      if (pairing === null) {
-        return;
-      }
-      const left = new Date(pairing.expiresAt).getTime() - Date.now();
-      if (left <= 0) {
-        setRemainingMs(0);
-        setStatus('expired');
-        setAnnouncement(EXPIRED_ANNOUNCE);
-        window.clearInterval(id);
-      } else {
-        setRemainingMs(left);
-      }
-    }, 1000);
-    return () => window.clearInterval(id);
-  }, [status, pairing]);
-
-  const copy = (): void => {
-    if (pairing === null) {
-      return;
-    }
-    void copyText(pairing.code).then(() => {
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1500);
-    });
   };
 
   const refresh = (): void => {
-    setStatus('loading');
-    setError('');
-    setPairing(null);
     setCopied(false);
-    setAnnouncement('');
-    createPairingCode()
-      .then((next) => {
-        setPairing(next);
-        setRemainingMs(new Date(next.expiresAt).getTime() - Date.now());
-        setStatus('ready');
-      })
-      .catch((cause: unknown) => {
-        setError(machineErrorMessage(cause, 'Could not create a pairing code.'));
-        setStatus('error');
-      });
+    newPairing();
   };
 
   const actions =
@@ -166,7 +153,7 @@ export function AddMachineDialog({ onClose }: { onClose: () => void }) {
                 aria-label="Copy pairing code"
                 title="Copy pairing code"
                 disabled={status === 'expired'}
-                onClick={copy}
+                onClick={copyCode}
                 size="sm"
               >
                 {copied ? (
@@ -191,7 +178,7 @@ export function AddMachineDialog({ onClose }: { onClose: () => void }) {
 
           {/* Visually hidden so AT users hear the expiry once. */}
           <p role="status" aria-live="polite" className="sr-only">
-            {announcement}
+            {expired ? EXPIRED_ANNOUNCE : ''}
           </p>
         </>
       )}
@@ -204,4 +191,38 @@ function formatRemaining(ms: number): string {
   const minutes = Math.floor(total / 60);
   const seconds = total % 60;
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+}
+
+/**
+ * Waits one tick, then reports the time left; a tick at or past expiry reports
+ * zero and ends the run, which is what turns the dialog to "expired".
+ */
+const countDown = Effect.fnUntraced(function* (
+  expiresAt: number,
+  onTick: (remainingMs: number) => void,
+) {
+  for (;;) {
+    yield* Effect.sleep(COUNTDOWN_TICK_MS);
+    const left = expiresAt - Date.now();
+    if (left <= 0) {
+      yield* Effect.sync(() => onTick(0));
+      return;
+    }
+    yield* Effect.sync(() => onTick(left));
+  }
+});
+
+/**
+ * The text machineErrorMessage gives for an API answer. fromApi keeps an
+ * ApiError's code, status and message; any other throw became the generic
+ * unknown_error, which shows this component's fallback sentence instead.
+ */
+function failureText(failure: ApiFailure | undefined, fallback: string): string {
+  if (failure === undefined || failure.code === 'unknown_error') {
+    return fallback;
+  }
+  return machineErrorMessage(
+    new ApiError(failure.status, failure.code, failure.message, failure.detail),
+    fallback,
+  );
 }

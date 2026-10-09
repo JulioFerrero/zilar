@@ -1,4 +1,5 @@
 import { formatListTime } from '@zilar/chat-core';
+import { Effect } from 'effect';
 import { useRouter } from 'expo-router';
 import { memo, useCallback, useEffect, useRef } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, View } from 'react-native';
@@ -11,7 +12,7 @@ import type { SearchApi, SearchItem } from '@/lib/search-api';
 import type { ChatSummary } from '@/lib/types';
 import { useChatStore } from '@/store/chat-store-provider';
 import { groupSearchByChat, nearEnd, searchResultTitle } from './message-search';
-import { openSearchHit } from './search-jump';
+import { openSearchHitEffect } from './search-jump';
 import { SearchHitLine } from './search-snippet';
 import { useMessageSearch, type MessageSearchView } from './use-message-search';
 
@@ -95,21 +96,28 @@ export function MessageSearchList({
       // `MESSAGE_JUMP_MAX_PAGES` history pages, then gives up with
       // "Message not found" — the chat opens at its bottom with the notice,
       // never a retry loop (T-0157).
-      void openSearchHit(
-        {
-          openAtMessage,
-          pushChat: (chatId) => router.push({ pathname: '/chat/[id]', params: { id: chatId } }),
-          pushChatNotFound: (chatId) =>
-            router.push({ pathname: '/chat/[id]', params: { id: chatId, notFound: '1' } }),
-          onNotFound: (chatId) => notFoundRef.current(chatId),
-        },
-        item.chatJid,
-        item.messageId,
-      ).catch(() => {
-        // An unexpected failure (history or router) must not vanish: show the
-        // same miss notice instead of leaving the user on a spinner.
+      // An unexpected failure (history or router) must not vanish: show the
+      // same miss notice instead of leaving the user on a spinner. Interruption
+      // is neither caught nor reported.
+      const miss = Effect.sync(() => {
         notFoundRef.current(item.chatJid);
       });
+      Effect.runFork(
+        openSearchHitEffect(
+          {
+            openAtMessage,
+            pushChat: (chatId) => router.push({ pathname: '/chat/[id]', params: { id: chatId } }),
+            pushChatNotFound: (chatId) =>
+              router.push({ pathname: '/chat/[id]', params: { id: chatId, notFound: '1' } }),
+            onNotFound: (chatId) => notFoundRef.current(chatId),
+          },
+          item.chatJid,
+          item.messageId,
+        ).pipe(
+          Effect.catch(() => miss),
+          Effect.catchDefect(() => miss),
+        ),
+      );
     },
     [openAtMessage, router],
   );

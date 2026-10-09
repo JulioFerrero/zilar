@@ -1,5 +1,7 @@
+import { Effect, Option, Result, Schema, type Effect as EffectType } from 'effect';
 import * as ImagePicker from 'expo-image-picker';
 import { ProfileApiError, parseApiErrorBody } from '@/lib/profile-api';
+import { runMobile } from '@/lib/effect/runtime';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { File, UploadType } from 'expo-file-system';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
@@ -95,17 +97,22 @@ export function createAvatarTranscoder(
   manipulate: typeof manipulateAsync = manipulateAsync,
 ): AvatarTranscoder {
   return {
-    async transcode(uri, width, height) {
+    transcode(uri, width, height) {
       const crop = centeredSquareCrop(width, height);
-      const result = await manipulate(
-        uri,
-        [
-          ...(crop === null ? [] : [{ crop }]),
-          { resize: { width: AVATAR_EXPORT_SIDE, height: AVATAR_EXPORT_SIDE } },
-        ],
-        { format: SaveFormat.PNG },
+      return runMobile(
+        Effect.tryPromise({
+          try: () =>
+            manipulate(
+              uri,
+              [
+                ...(crop === null ? [] : [{ crop }]),
+                { resize: { width: AVATAR_EXPORT_SIDE, height: AVATAR_EXPORT_SIDE } },
+              ],
+              { format: SaveFormat.PNG },
+            ),
+          catch: (cause: unknown) => cause,
+        }).pipe(Effect.map((result) => ({ uri: result.uri }))),
       );
-      return { uri: result.uri };
     },
   };
 }
@@ -115,16 +122,91 @@ export function createAvatarSizeReader(
   getInfo: typeof LegacyFileSystem.getInfoAsync = LegacyFileSystem.getInfoAsync,
 ): AvatarSizeReader {
   return {
-    async sizeOf(uri) {
-      try {
-        const info = await getInfo(uri);
-        return info.exists === true && info.isDirectory === false ? info.size : undefined;
-      } catch {
-        return undefined;
-      }
+    sizeOf(uri) {
+      return runMobile(
+        Effect.tryPromise({ try: () => getInfo(uri), catch: (cause: unknown) => cause }).pipe(
+          Effect.match({
+            onSuccess: (info) =>
+              info.exists === true && info.isDirectory === false ? info.size : undefined,
+            onFailure: () => undefined,
+          }),
+        ),
+      );
     },
   };
 }
+
+/**
+ * The picker flow as one Effect. Each early return is a result, not an error:
+ * a failed permission call or size read rejects as before, and the picker and
+ * transcode failures become the fixed messages.
+ */
+const pickPictureEffect = Effect.fnUntraced(function* (
+  reader: AvatarSizeReader,
+  transcoder: AvatarTranscoder,
+): EffectType.fn.Return<PickPictureResult> {
+  const permission = yield* Effect.promise(() => ImagePicker.requestMediaLibraryPermissionsAsync());
+  if (!permission.granted) {
+    return { status: 'error', message: DENIED_MESSAGE };
+  }
+  // The system editor crops (`allowsEditing` + square aspect): the
+  // phone has no canvas crop dialog like web, so the OS sheet does it.
+  // The transcode below crops again from the asset dimensions, so a
+  // sheet without an editor still yields a square PNG.
+  const launched = yield* Effect.result(
+    Effect.tryPromise({
+      try: () =>
+        ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ['images'],
+          allowsEditing: true,
+          aspect: [1, 1],
+          quality: 0.9,
+        }),
+      catch: (cause: unknown) => cause,
+    }),
+  );
+  if (Result.isFailure(launched)) {
+    return { status: 'error', message: PICK_FAILED_MESSAGE };
+  }
+  const result = launched.success;
+  if (result.canceled) {
+    return { status: 'cancelled' };
+  }
+  const asset = result.assets[0];
+  if (asset === undefined) {
+    return { status: 'cancelled' };
+  }
+  // Re-encode to the upload bytes (256 x 256 PNG): the server rejects
+  // JPEG by magic bytes, and phone photos are JPEG.
+  const transcoded = yield* Effect.result(
+    Effect.tryPromise({
+      try: () => transcoder.transcode(asset.uri, asset.width, asset.height),
+      catch: (cause: unknown) => cause,
+    }),
+  );
+  if (Result.isFailure(transcoded)) {
+    return { status: 'error', message: PREPARE_FAILED_MESSAGE };
+  }
+  const { uri } = transcoded.success;
+  // The caps apply to the real upload bytes, not the picked JPEG: an
+  // unknown size is not an empty file, but a real zero refuses.
+  const size = yield* Effect.promise(() => reader.sizeOf(uri));
+  if (size !== undefined && size === 0) {
+    return { status: 'error', message: EMPTY_MESSAGE };
+  }
+  if (size !== undefined && size > AVATAR_UPLOAD_MAX_BYTES) {
+    return { status: 'error', message: TOO_LARGE_MESSAGE };
+  }
+  return {
+    status: 'picked',
+    picture: {
+      uri,
+      mimeType: 'image/png',
+      width: AVATAR_EXPORT_SIDE,
+      height: AVATAR_EXPORT_SIDE,
+    },
+  };
+});
 
 /** The real picture picker: the photo library, then the PNG transcode. */
 export function createPicturePicker(options?: {
@@ -136,71 +218,24 @@ export function createPicturePicker(options?: {
   const reader = options?.sizeReader ?? createAvatarSizeReader();
   const transcoder = options?.transcoder ?? createAvatarTranscoder();
   return {
-    async pickPicture() {
-      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!permission.granted) {
-        return { status: 'error', message: DENIED_MESSAGE };
-      }
-      let result: ImagePicker.ImagePickerResult;
-      try {
-        // The system editor crops (`allowsEditing` + square aspect): the
-        // phone has no canvas crop dialog like web, so the OS sheet does it.
-        // The transcode below crops again from the asset dimensions, so a
-        // sheet without an editor still yields a square PNG.
-        result = await ImagePicker.launchImageLibraryAsync({
-          mediaTypes: ['images'],
-          allowsEditing: true,
-          aspect: [1, 1],
-          quality: 0.9,
-        });
-      } catch {
-        return { status: 'error', message: PICK_FAILED_MESSAGE };
-      }
-      if (result.canceled) {
-        return { status: 'cancelled' };
-      }
-      const asset = result.assets[0];
-      if (asset === undefined) {
-        return { status: 'cancelled' };
-      }
-      // Re-encode to the upload bytes (256 x 256 PNG): the server rejects
-      // JPEG by magic bytes, and phone photos are JPEG.
-      let uri: string;
-      try {
-        ({ uri } = await transcoder.transcode(asset.uri, asset.width, asset.height));
-      } catch {
-        return { status: 'error', message: PREPARE_FAILED_MESSAGE };
-      }
-      // The caps apply to the real upload bytes, not the picked JPEG: an
-      // unknown size is not an empty file, but a real zero refuses.
-      const size = await reader.sizeOf(uri);
-      if (size !== undefined && size === 0) {
-        return { status: 'error', message: EMPTY_MESSAGE };
-      }
-      if (size !== undefined && size > AVATAR_UPLOAD_MAX_BYTES) {
-        return { status: 'error', message: TOO_LARGE_MESSAGE };
-      }
-      return {
-        status: 'picked',
-        picture: {
-          uri,
-          mimeType: 'image/png',
-          width: AVATAR_EXPORT_SIDE,
-          height: AVATAR_EXPORT_SIDE,
-        },
-      };
+    pickPicture() {
+      return runMobile(pickPictureEffect(reader, transcoder));
     },
   };
 }
 
+/**
+ * Decodes a JSON text to its value, or none when it is not JSON. Synchronous,
+ * so the parsers below keep their plain return values.
+ */
+const decodeJsonBody = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Unknown));
+
+/** The JSON value of a response body, or null when the body is not JSON. */
+const jsonBody = (body: string): unknown => Option.getOrNull(decodeJsonBody(body));
+
 /** Parses the upload response body into the avatar url, or null when unexpected. */
 export function parseAvatarUploadBody(body: string): { url: string } | null {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(body);
-  } catch {
-    return null;
-  }
+  const parsed = jsonBody(body);
   if (typeof parsed !== 'object' || parsed === null) {
     return null;
   }
@@ -211,38 +246,46 @@ export function parseAvatarUploadBody(body: string): { url: string } | null {
 /** The real avatar file uploader: a binary-content PUT with the session bearer. */
 export function createAvatarFileUploader(): AvatarFileUploader {
   return {
-    async upload(url, file, token, onProgress) {
-      const source = new File(file.uri);
-      let result: { status: number; body: string };
-      try {
-        result = await source.upload(url, {
-          httpMethod: 'PUT',
-          uploadType: UploadType.BINARY_CONTENT,
-          headers: { 'content-type': file.mimeType, authorization: `Bearer ${token}` },
-          mimeType: file.mimeType,
-          onProgress:
-            onProgress === undefined
-              ? undefined
-              : (data) => {
-                  if (data.totalBytes > 0) {
-                    onProgress(Math.min(1, Math.max(0, data.bytesSent / data.totalBytes)));
-                  }
-                },
-        });
-      } catch {
-        throw new ProfileApiError(0, 'network_error', 'Could not reach the server');
-      }
-      if (result.status < 200 || result.status >= 300) {
-        throw toAvatarUploadError(result.status, result.body);
-      }
-      const parsed = parseAvatarUploadBody(result.body);
-      if (parsed === null) {
-        throw new ProfileApiError(200, 'invalid_response', UPLOAD_FAILED_MESSAGE);
-      }
-      return parsed;
+    upload(url, file, token, onProgress) {
+      return runMobile(uploadEffect(url, file, token, onProgress));
     },
   };
 }
+
+const uploadEffect = Effect.fnUntraced(function* (
+  url: string,
+  file: PickedPicture,
+  token: string,
+  onProgress?: (fraction: number) => void,
+): EffectType.fn.Return<{ url: string }, ProfileApiError> {
+  const source = new File(file.uri);
+  const result = yield* Effect.tryPromise({
+    try: () =>
+      source.upload(url, {
+        httpMethod: 'PUT',
+        uploadType: UploadType.BINARY_CONTENT,
+        headers: { 'content-type': file.mimeType, authorization: `Bearer ${token}` },
+        mimeType: file.mimeType,
+        onProgress:
+          onProgress === undefined
+            ? undefined
+            : (data) => {
+                if (data.totalBytes > 0) {
+                  onProgress(Math.min(1, Math.max(0, data.bytesSent / data.totalBytes)));
+                }
+              },
+      }),
+    catch: () => new ProfileApiError(0, 'network_error', 'Could not reach the server'),
+  });
+  if (result.status < 200 || result.status >= 300) {
+    return yield* Effect.fail(toAvatarUploadError(result.status, result.body));
+  }
+  const parsed = parseAvatarUploadBody(result.body);
+  if (parsed === null) {
+    return yield* Effect.fail(new ProfileApiError(200, 'invalid_response', UPLOAD_FAILED_MESSAGE));
+  }
+  return parsed;
+});
 
 /**
  * Maps a refused avatar PUT to a `ProfileApiError`, so `friendlyAvatarError`
@@ -252,13 +295,7 @@ export function createAvatarFileUploader(): AvatarFileUploader {
  * not an image); anything else is the generic upload failure.
  */
 export function toAvatarUploadError(status: number, body: string): ProfileApiError {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(body);
-  } catch {
-    parsed = null;
-  }
-  const { code, message } = parseApiErrorBody(parsed);
+  const { code, message } = parseApiErrorBody(jsonBody(body));
   if (code !== 'request_failed') {
     return new ProfileApiError(status, code, message ?? UPLOAD_FAILED_MESSAGE);
   }

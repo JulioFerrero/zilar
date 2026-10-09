@@ -1,3 +1,4 @@
+import { Data, Effect } from 'effect';
 import { useRouter } from 'expo-router';
 import { Compass, Link, Megaphone, MessageSquarePlus, Plus, Users } from 'lucide-react-native';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -11,6 +12,8 @@ import { JoinLinkForm } from '@/components/chat/join-link';
 import { NewChannelSheet } from '@/components/chat/new-channel-sheet';
 import { NewGroupSheet } from '@/components/chat/new-group-sheet';
 import { NewMessageSheet } from '@/components/chat/new-message-sheet';
+import { runMobile } from '@/lib/effect/runtime';
+import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { createInvitesApi } from '@/lib/invites-api';
 import { getSessionToken } from '@/lib/session-token';
 import { useKeyboardHeight } from '@/lib/use-keyboard-height';
@@ -42,6 +45,44 @@ export function createSheetBottomPadding(
   return platform === 'android' ? 16 + keyboardHeight : undefined;
 }
 
+/**
+ * Creating a channel or a group, or opening the new screen, failed. `reason`
+ * is the original error: `createErrorText` reads its code and never shows its
+ * text.
+ */
+class CreateFailed extends Data.TaggedError('CreateFailed')<{ readonly reason: unknown }> {}
+
+type ChannelInput = {
+  title: string;
+  description?: string;
+  visibility?: 'public';
+  handle?: string;
+};
+
+type GroupInput = {
+  title: string;
+  memberIds: string[];
+  visibility?: 'public';
+  handle?: string;
+};
+
+// The clipboard/share bridge for the invite box. `expo-clipboard` is imported
+// lazily (the native module does not load under Vitest/Node). The sheet takes
+// Promise callbacks, so each Effect runs through `runMobile` and a rejection
+// is still the original error.
+const copyToClipboard = (text: string): Effect.Effect<void, unknown> =>
+  Effect.tryPromise({ try: () => import('expo-clipboard'), catch: (error) => error }).pipe(
+    Effect.flatMap((Clipboard) =>
+      Effect.tryPromise({ try: () => Clipboard.setStringAsync(text), catch: (error) => error }),
+    ),
+    Effect.asVoid,
+  );
+
+const shareViaSheet = (text: string): Effect.Effect<void, unknown> =>
+  Effect.tryPromise({ try: () => Share.share({ message: text }), catch: (error) => error }).pipe(
+    Effect.asVoid,
+  );
+
 /** The 56 px primary FAB with a "New channel" / "New group" / "New message" / "Join" menu. */
 export function NewChatButton() {
   const router = useRouter();
@@ -52,10 +93,47 @@ export function NewChatButton() {
   const createChannel = useChatStore((state) => state.createChannel);
   const createGroup = useChatStore((state) => state.createGroup);
   const contacts = useChatStore((state) => state.contacts);
-  const [channelBusy, setChannelBusy] = useState(false);
-  const [channelError, setChannelError] = useState('');
-  const [groupBusy, setGroupBusy] = useState(false);
-  const [groupError, setGroupError] = useState('');
+  // Closes the dialog and opens the new group's screen; a throw here reads
+  // like a failed create.
+  const openGroupScreen = (groupId: string) =>
+    Effect.try({
+      try: () => {
+        setAction(undefined);
+        router.push({ pathname: '/group/[id]', params: { id: groupId } });
+      },
+      catch: (reason) => new CreateFailed({ reason }),
+    });
+
+  // T-0144: creating a channel refreshes the chat list first (the store
+  // returns the new group id from the POST answer), then opens the
+  // channel screen. A failure reads inline, never raw.
+  // T-0228: public creates carry the handle; failures map to fixed
+  // sentences.
+  const [channelState, create] = useAction((input: ChannelInput) =>
+    Effect.tryPromise({
+      try: () => createChannel(input),
+      catch: (reason) => new CreateFailed({ reason }),
+    }).pipe(Effect.flatMap(openGroupScreen)),
+  );
+  const channelBusy = isWaiting(channelState);
+  const channelFailure = failureOf(channelState);
+  const channelError =
+    !channelBusy && channelFailure !== undefined
+      ? createErrorText(channelFailure.reason, 'channel')
+      : '';
+  // T-0214: creating a group mirrors the channel flow (the store
+  // returns the new group id from the POST answer), then opens the
+  // group screen. A failure reads inline, never raw.
+  const [groupState, submitGroup] = useAction((input: GroupInput) =>
+    Effect.tryPromise({
+      try: () => createGroup(input),
+      catch: (reason) => new CreateFailed({ reason }),
+    }).pipe(Effect.flatMap(openGroupScreen)),
+  );
+  const groupBusy = isWaiting(groupState);
+  const groupFailure = failureOf(groupState);
+  const groupError =
+    !groupBusy && groupFailure !== undefined ? createErrorText(groupFailure.reason, 'group') : '';
   // T-0254: pad the sheet content by the keyboard height on Android and scroll
   // to its end when the keyboard opens, so the lowest field and Create stay
   // reachable. The ref only fires while the modal is mounted.
@@ -83,11 +161,8 @@ export function NewChatButton() {
   // `group/[id].tsx` pattern).
   const inviteShare = useMemo(
     () => ({
-      copyText: (text: string) =>
-        import('expo-clipboard').then((Clipboard) => Clipboard.setStringAsync(text)).then(() => {}),
-      shareText: async (text: string): Promise<void> => {
-        await Share.share({ message: text });
-      },
+      copyText: (text: string): Promise<void> => runMobile(copyToClipboard(text)),
+      shareText: (text: string): Promise<void> => runMobile(shareViaSheet(text)),
     }),
     [],
   );
@@ -102,48 +177,6 @@ export function NewChatButton() {
   const joinWithToken = (token: string) => {
     setAction(undefined);
     router.push({ pathname: '/join/[token]', params: { token } });
-  };
-
-  // T-0144: creating a channel refreshes the chat list first (the store
-  // returns the new group id from the POST answer), then opens the
-  // channel screen. A failure reads inline, never raw.
-  // T-0228: public creates carry the handle; failures map to fixed
-  // sentences.
-  const create = (input: {
-    title: string;
-    description?: string;
-    visibility?: 'public';
-    handle?: string;
-  }) => {
-    setChannelBusy(true);
-    setChannelError('');
-    void createChannel(input)
-      .then((groupId) => {
-        setAction(undefined);
-        router.push({ pathname: '/group/[id]', params: { id: groupId } });
-      })
-      .catch((error: unknown) => setChannelError(createErrorText(error, 'channel')))
-      .finally(() => setChannelBusy(false));
-  };
-
-  // T-0214: creating a group mirrors the channel flow (the store
-  // returns the new group id from the POST answer), then opens the
-  // group screen. A failure reads inline, never raw.
-  const submitGroup = (input: {
-    title: string;
-    memberIds: string[];
-    visibility?: 'public';
-    handle?: string;
-  }) => {
-    setGroupBusy(true);
-    setGroupError('');
-    void createGroup(input)
-      .then((groupId) => {
-        setAction(undefined);
-        router.push({ pathname: '/group/[id]', params: { id: groupId } });
-      })
-      .catch((error: unknown) => setGroupError(createErrorText(error, 'group')))
-      .finally(() => setGroupBusy(false));
   };
 
   return (

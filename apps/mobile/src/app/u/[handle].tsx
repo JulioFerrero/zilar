@@ -1,6 +1,7 @@
+import { Effect } from 'effect';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { ChevronLeft } from 'lucide-react-native';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useColorScheme } from 'nativewind';
@@ -26,7 +27,16 @@ import {
 import { performBlock, performUnblock } from '@/components/contacts/blocks';
 import { ProfileCard } from '@/components/contacts/profile-card';
 import { useContactsApi } from '@/components/contacts/use-contacts-api';
+import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { useChatStore } from '@/store/chat-store-provider';
+
+/**
+ * Lifts a *-api.ts call into an Effect that fails with the thrown error
+ * itself: the failure helpers read its class, status and code.
+ */
+function fromThrown<A>(call: () => Promise<A>): Effect.Effect<A, unknown> {
+  return Effect.tryPromise({ try: call, catch: (cause) => cause });
+}
 
 /**
  * The `@handle` profile screen (T-0182, the mobile twin of the web
@@ -57,9 +67,39 @@ function HandleProfileView() {
   const [loading, setLoading] = useState(true);
   const [missing, setMissing] = useState(false);
   const [error, setError] = useState('');
-  const [actionBusy, setActionBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  const busyRef = useRef(false);
+
+  // A newer load interrupts the one in flight, so a stale answer never
+  // replaces the card.
+  const [, fetchProfile] = useAction(
+    (value: string) =>
+      fromThrown(() => api.lookupByHandle(value)).pipe(
+        Effect.tap((found) =>
+          Effect.sync(() => {
+            setProfile(found);
+            setSent(false);
+            setLoading(false);
+          }),
+        ),
+        Effect.tapError((loadError) =>
+          Effect.sync(() => {
+            if (
+              loadError !== null &&
+              typeof loadError === 'object' &&
+              'status' in loadError &&
+              loadError.status === 404
+            ) {
+              setMissing(true);
+              setLoading(false);
+              return;
+            }
+            setError(describeLoad(loadError));
+            setLoading(false);
+          }),
+        ),
+      ),
+    { mode: 'replace' },
+  );
 
   const load = useCallback(() => {
     if (handle === '') {
@@ -70,28 +110,8 @@ function HandleProfileView() {
     setLoading(true);
     setMissing(false);
     setError('');
-    void api
-      .lookupByHandle(handle)
-      .then((found) => {
-        setProfile(found);
-        setSent(false);
-        setLoading(false);
-      })
-      .catch((loadError: unknown) => {
-        if (
-          loadError !== null &&
-          typeof loadError === 'object' &&
-          'status' in loadError &&
-          loadError.status === 404
-        ) {
-          setMissing(true);
-          setLoading(false);
-          return;
-        }
-        setError(describeLoad(loadError));
-        setLoading(false);
-      });
-  }, [api, handle]);
+    fetchProfile(handle);
+  }, [handle, fetchProfile]);
 
   useFocusEffect(
     useCallback(() => {
@@ -99,37 +119,45 @@ function HandleProfileView() {
     }, [load]),
   );
 
-  const runAction = (work: () => Promise<void>): void => {
-    if (busyRef.current) {
-      return;
-    }
-    busyRef.current = true;
-    setActionBusy(true);
-    setActionError(null);
-    void work()
-      .catch((actionFailure: unknown) => {
-        setActionError(addContactSendFailure(actionFailure));
-      })
-      .finally(() => {
-        busyRef.current = false;
-        setActionBusy(false);
-      });
-  };
+  // One profile action at a time: a press while one runs is dropped, and the
+  // card is busy for as long as it runs.
+  const [actionState, runWork] = useAction((work: Effect.Effect<unknown, unknown>) =>
+    Effect.sync(() => setActionError(null)).pipe(
+      Effect.andThen(work),
+      Effect.tapError((actionFailure) =>
+        Effect.sync(() => setActionError(addContactSendFailure(actionFailure))),
+      ),
+    ),
+  );
+  const actionBusy = isWaiting(actionState);
+
+  // `performBlock` and `performUnblock` answer with the inline failure text
+  // (or null) instead of rejecting.
+  const showFailure = (failure: string | null) =>
+    Effect.sync(() => {
+      if (failure !== null) {
+        setActionError(failure);
+      }
+    });
 
   const send = (): void => {
     if (profile === null) {
       return;
     }
     const active = profile;
-    runAction(() =>
-      api.sendContactRequest(active.handle).then((created) => {
-        if (created.incoming === true) {
-          setProfile({ ...active, relation: 'request_received' });
-          setSent(false);
-        } else {
-          setSent(true);
-        }
-      }),
+    runWork(
+      fromThrown(() => api.sendContactRequest(active.handle)).pipe(
+        Effect.tap((created) =>
+          Effect.sync(() => {
+            if (created.incoming === true) {
+              setProfile({ ...active, relation: 'request_received' });
+              setSent(false);
+            } else {
+              setSent(true);
+            }
+          }),
+        ),
+      ),
     );
   };
 
@@ -138,7 +166,9 @@ function HandleProfileView() {
       return;
     }
     const target = { userId: profile.userId, handle };
-    runAction(() => actOnProfileRequest(api, target, work, setProfile, () => setSent(false)));
+    runWork(
+      fromThrown(() => actOnProfileRequest(api, target, work, setProfile, () => setSent(false))),
+    );
   };
 
   const block = (): void => {
@@ -146,14 +176,13 @@ function HandleProfileView() {
       return;
     }
     const active = profile;
-    runAction(async () => {
-      const failure = await performBlock(api, active.userId, () => {
-        setProfile({ ...active, relation: 'blocked' });
-      });
-      if (failure !== null) {
-        setActionError(failure);
-      }
-    });
+    runWork(
+      fromThrown(() =>
+        performBlock(api, active.userId, () => {
+          setProfile({ ...active, relation: 'blocked' });
+        }),
+      ).pipe(Effect.tap(showFailure)),
+    );
   };
 
   const unblock = (): void => {
@@ -161,14 +190,13 @@ function HandleProfileView() {
       return;
     }
     const active = profile;
-    runAction(async () => {
-      const failure = await performUnblock(api, active.userId, () => {
-        setProfile({ ...active, relation: 'none' });
-      });
-      if (failure !== null) {
-        setActionError(failure);
-      }
-    });
+    runWork(
+      fromThrown(() =>
+        performUnblock(api, active.userId, () => {
+          setProfile({ ...active, relation: 'none' });
+        }),
+      ).pipe(Effect.tap(showFailure)),
+    );
   };
 
   const openMessage = (): void => {

@@ -5,6 +5,7 @@
  * the interfaces below), so Vitest never loads the native modules uninvoked.
  */
 
+import { Effect, type Effect as EffectType } from 'effect';
 import type { VoiceMeta } from '@zilar/protocol';
 import type { SendFailureReason } from '@zilar/chat-core';
 
@@ -120,6 +121,16 @@ export interface NativeRecorderShape {
   getStatus?: () => { metering?: number | undefined };
 }
 
+/** The expo-audio pieces the recorder needs (test seam). */
+export interface RecordingAudio {
+  requestRecordingPermissionsAsync: () => Promise<{ granted: boolean }>;
+  AudioRecorder: new (options: unknown) => NativeRecorderShape;
+  HIGH_QUALITY?: unknown;
+}
+
+type AudioMode = { playsInSilentMode: boolean; allowsRecording: boolean };
+type StartResult = { status: 'started' } | { status: 'error'; message: string };
+
 /**
  * The options handed to the native recorder. `RecordingPresets.HIGH_QUALITY`
  * keeps the platform codec settings under `ios` and `android`; expo-audio's
@@ -143,133 +154,152 @@ export function buildRecordingOptions(preset: unknown, os: string): Record<strin
   };
 }
 
+/** The expo-audio pieces, loaded only when a recording starts (lazy). */
+const loadExpoAudio: Effect.Effect<RecordingAudio, unknown> = Effect.tryPromise({
+  try: () => import('expo-audio'),
+  catch: (error: unknown) => error,
+}).pipe(
+  Effect.map((module) => ({
+    requestRecordingPermissionsAsync: module.AudioModule.requestRecordingPermissionsAsync,
+    AudioRecorder: module.AudioModule.AudioRecorder as new (
+      options: unknown,
+    ) => NativeRecorderShape,
+    HIGH_QUALITY: module.RecordingPresets.HIGH_QUALITY as unknown,
+  })),
+);
+
+/** The platform name for the recording options; 'unknown' when react-native is missing. */
+const platformOs: Effect.Effect<string> = Effect.tryPromise({
+  try: () => import('react-native'),
+  catch: () => undefined,
+}).pipe(
+  Effect.map((module) => module.Platform.OS as string),
+  Effect.orElseSucceed(() => 'unknown'),
+);
+
+/**
+ * Switches the audio session mode. It is a nicety: a failure here never
+ * blocks recording or playback, so every error is swallowed.
+ */
+const setAudioModeEffect = (
+  setAudioMode: ((mode: AudioMode) => Promise<void>) | undefined,
+  mode: AudioMode,
+): Effect.Effect<void> =>
+  (setAudioMode === undefined
+    ? Effect.tryPromise({ try: () => import('expo-audio'), catch: () => undefined }).pipe(
+        Effect.flatMap((module) =>
+          Effect.tryPromise({
+            try: () => module.setAudioModeAsync(mode),
+            catch: () => undefined,
+          }),
+        ),
+      )
+    : Effect.tryPromise({ try: () => setAudioMode(mode), catch: () => undefined })
+  ).pipe(Effect.orElseSucceed(() => undefined));
+
 /** Creates the real recorder: permission first, `expo-audio` m4a second. */
 export function createVoiceRecorder(deps?: {
-  audio?: {
-    requestRecordingPermissionsAsync: () => Promise<{ granted: boolean }>;
-    AudioRecorder: new (options: unknown) => NativeRecorderShape;
-    HIGH_QUALITY?: unknown;
-  };
-  setAudioMode?:
-    ((mode: { playsInSilentMode: boolean; allowsRecording: boolean }) => Promise<void>) | undefined;
+  audio?: RecordingAudio;
+  setAudioMode?: ((mode: AudioMode) => Promise<void>) | undefined;
   fileReader?: ((uri: string) => Promise<{ size: number | undefined }>) | undefined;
   platform?: string | undefined;
 }): VoiceRecorderPort {
   let recorder: NativeRecorderShape | null = null;
   // Recording leaves the audio session in record mode, which makes playback
   // quiet and tinny on some phones: switch back once the mic is released.
-  const restorePlaybackMode = async (): Promise<void> => {
-    try {
-      const mode = { playsInSilentMode: true, allowsRecording: false };
-      if (deps?.setAudioMode === undefined) {
-        const { setAudioModeAsync } = await import('expo-audio');
-        await setAudioModeAsync(mode);
-      } else {
-        await deps.setAudioMode(mode);
-      }
-    } catch {
-      // A nicety: never blocks sending.
+  const restorePlaybackMode = setAudioModeEffect(deps?.setAudioMode, {
+    playsInSilentMode: true,
+    allowsRecording: false,
+  });
+  const recordMode = setAudioModeEffect(deps?.setAudioMode, {
+    playsInSilentMode: true,
+    allowsRecording: true,
+  });
+
+  // Everything that can throw — the native import, the permission request,
+  // the recorder build — lands in one handled failure (finding 1, round 3):
+  // see `start` below. A denial stays the denied copy.
+  const startEffect = Effect.fnUntraced(function* (): EffectType.fn.Return<StartResult, unknown> {
+    const audio = deps?.audio ?? (yield* loadExpoAudio);
+    const permission = yield* Effect.promise(() => audio.requestRecordingPermissionsAsync());
+    if (!permission.granted) {
+      return { status: 'error', message: MIC_DENIED_MESSAGE };
     }
+    yield* recordMode;
+    // Mono 48 kHz AAC: a phone microphone is mono, so a stereo preset only
+    // doubles the file; metering feeds the live waveform.
+    const os = deps?.platform ?? (yield* platformOs);
+    const fresh = new audio.AudioRecorder(buildRecordingOptions(audio.HIGH_QUALITY, os));
+    yield* Effect.promise(() => fresh.prepareToRecordAsync());
+    fresh.record();
+    recorder = fresh;
+    return { status: 'started' };
+  });
+
+  // A missing native module (pre-rebuild) is a mic-failed copy, never an
+  // unhandled rejection; any other failure of the start is the same copy.
+  const micFailed = (): StartResult => {
+    recorder = null;
+    return { status: 'error', message: MIC_FAILED_MESSAGE };
   };
+
+  const stopEffect = Effect.fnUntraced(function* (
+    current: NativeRecorderShape,
+  ): EffectType.fn.Return<RecordResult> {
+    const durationMs = Math.max(0, Math.round(current.currentTime * 1000));
+    const uri = current.uri;
+    const stopped = yield* Effect.tryPromise({
+      try: () => current.stop(),
+      catch: () => undefined,
+    }).pipe(
+      Effect.map(() => true),
+      Effect.orElseSucceed(() => false),
+    );
+    yield* restorePlaybackMode;
+    if (!stopped) {
+      return { status: 'error', message: RECORD_FAILED_MESSAGE };
+    }
+    const settledUri = current.uri ?? uri;
+    if (settledUri === null || settledUri === '') {
+      return { status: 'error', message: RECORD_FAILED_MESSAGE };
+    }
+    // A size failure is "unknown", never "empty": only a real zero refuses
+    // as `voice_empty` downstream (finding 3).
+    const size = yield* readFileSize(settledUri, deps?.fileReader);
+    if (size === undefined) {
+      return { status: 'error', message: RECORD_FAILED_MESSAGE };
+    }
+    return {
+      status: 'recorded',
+      recording: { uri: settledUri, mimeType: 'audio/mp4', size, durationMs },
+    };
+  });
+
   return {
-    async start() {
-      // Everything that can throw — the native import, the permission
-      // request, the recorder build — lands in one handled failure (finding
-      // 1, round 3): a missing native module (pre-rebuild) is a mic-failed
-      // copy, never an unhandled rejection. A denial stays the denied copy.
-      try {
-        const audio: {
-          requestRecordingPermissionsAsync: () => Promise<{ granted: boolean }>;
-          AudioRecorder: new (options: unknown) => NativeRecorderShape;
-          HIGH_QUALITY?: unknown;
-        } =
-          deps?.audio ??
-          (await import('expo-audio').then((module) => ({
-            requestRecordingPermissionsAsync: module.AudioModule.requestRecordingPermissionsAsync,
-            AudioRecorder: module.AudioModule.AudioRecorder as new (
-              options: unknown,
-            ) => NativeRecorderShape,
-            HIGH_QUALITY: module.RecordingPresets.HIGH_QUALITY as unknown,
-          })));
-        const permission = await audio.requestRecordingPermissionsAsync();
-        if (!permission.granted) {
-          return { status: 'error', message: MIC_DENIED_MESSAGE };
-        }
-        if (deps?.setAudioMode === undefined) {
-          try {
-            const { setAudioModeAsync } = await import('expo-audio');
-            await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: true });
-          } catch {
-            // The audio mode is a nicety; a failure must not block recording.
-          }
-        } else {
-          try {
-            await deps.setAudioMode({ playsInSilentMode: true, allowsRecording: true });
-          } catch {
-            // The audio mode is a nicety; a failure must not block recording.
-          }
-        }
-        // Mono 48 kHz AAC: a phone microphone is mono, so a stereo preset only
-        // doubles the file; metering feeds the live waveform.
-        const os =
-          deps?.platform ??
-          (await import('react-native').then(
-            (module) => module.Platform.OS as string,
-            () => 'unknown',
-          ));
-        const fresh = new audio.AudioRecorder(buildRecordingOptions(audio.HIGH_QUALITY, os));
-        await fresh.prepareToRecordAsync();
-        fresh.record();
-        recorder = fresh;
-        return { status: 'started' };
-      } catch {
-        recorder = null;
-        return { status: 'error', message: MIC_FAILED_MESSAGE };
-      }
+    start(): Promise<StartResult> {
+      return Effect.runPromise(startEffect().pipe(Effect.catchCause(() => Effect.sync(micFailed))));
     },
-    async stop(): Promise<RecordResult> {
+    stop(): Promise<RecordResult> {
       const current = recorder;
       recorder = null;
-      if (current === null) {
-        return { status: 'cancelled' };
-      }
-      const durationMs = Math.max(0, Math.round(current.currentTime * 1000));
-      const uri = current.uri;
-      try {
-        await current.stop();
-      } catch {
-        return { status: 'error', message: RECORD_FAILED_MESSAGE };
-      } finally {
-        await restorePlaybackMode();
-      }
-      const settledUri = current.uri ?? uri;
-      if (settledUri === null || settledUri === '') {
-        return { status: 'error', message: RECORD_FAILED_MESSAGE };
-      }
-      // A size failure is "unknown", never "empty": only a real zero refuses
-      // as `voice_empty` downstream (finding 3).
-      const size = await readFileSize(settledUri, deps?.fileReader);
-      if (size === undefined) {
-        return { status: 'error', message: RECORD_FAILED_MESSAGE };
-      }
-      const recorded: RecordResult = {
-        status: 'recorded',
-        recording: { uri: settledUri, mimeType: 'audio/mp4', size, durationMs },
-      };
-      return recorded;
+      return Effect.runPromise(
+        current === null
+          ? Effect.succeed<RecordResult>({ status: 'cancelled' })
+          : stopEffect(current),
+      );
     },
-    async cancel() {
+    cancel(): Promise<void> {
       const current = recorder;
       recorder = null;
-      if (current === null) {
-        return;
-      }
-      try {
-        await current.stop();
-      } catch {
-        // Discarding never reports: the mic is released either way.
-      }
-      await restorePlaybackMode();
+      return Effect.runPromise(
+        current === null
+          ? Effect.void
+          : Effect.tryPromise({ try: () => current.stop(), catch: () => undefined }).pipe(
+              // Discarding never reports: the mic is released either way.
+              Effect.orElseSucceed(() => undefined),
+              Effect.flatMap(() => restorePlaybackMode),
+            ),
+      );
     },
     currentDurationMs() {
       const current = recorder;
@@ -292,20 +322,21 @@ export function createVoiceRecorder(deps?: {
  * `size` property (0 when the file does not exist or cannot be read).
  * Undefined when the read itself failed ("unknown", not "empty").
  */
-async function readFileSize(
+const readFileSize = (
   uri: string,
   reader?: ((uri: string) => Promise<{ size: number | undefined }>) | undefined,
-): Promise<number | undefined> {
-  try {
-    if (reader !== undefined) {
-      return (await reader(uri)).size;
-    }
-    const { File } = await import('expo-file-system');
-    return new File(uri).size;
-  } catch {
-    return undefined;
-  }
-}
+): Effect.Effect<number | undefined> =>
+  (reader !== undefined
+    ? Effect.tryPromise({ try: () => reader(uri), catch: () => undefined }).pipe(
+        Effect.map((read) => read.size),
+      )
+    : Effect.tryPromise({ try: () => import('expo-file-system'), catch: () => undefined }).pipe(
+        Effect.map(({ File }) => new File(uri).size),
+      )
+  ).pipe(
+    Effect.orElseSucceed((): number | undefined => undefined),
+    Effect.catchDefect(() => Effect.succeed<number | undefined>(undefined)),
+  );
 
 /** Playback speeds, cycled by the bubble's speed button. */
 export const VOICE_SPEEDS = [1, 1.5, 2] as const;
@@ -381,13 +412,19 @@ export function isPlayableVoiceUrl(url: string, trustedHosts: ReadonlySet<string
  * origin (never to the upload host). Undefined when there is nothing to
  * play (untrusted URL, upload still running, already failed).
  */
-export async function voiceAudioSource(input: {
+export function voiceAudioSource(input: {
   voice: VoiceMeta;
   localUri?: string | undefined;
   trustedHosts: ReadonlySet<string>;
   apiUrl?: string | undefined;
   getToken?: (() => Promise<string | undefined>) | undefined;
 }): Promise<{ uri: string; headers?: Record<string, string> } | undefined> {
+  return Effect.runPromise(voiceAudioSourceEffect(input));
+}
+
+const voiceAudioSourceEffect = Effect.fnUntraced(function* (
+  input: Parameters<typeof voiceAudioSource>[0],
+): EffectType.fn.Return<{ uri: string; headers?: Record<string, string> } | undefined> {
   if (input.localUri !== undefined && input.localUri !== '') {
     return { uri: input.localUri };
   }
@@ -397,17 +434,18 @@ export async function voiceAudioSource(input: {
   }
   const apiUrl = input.apiUrl ?? API_URL;
   const getToken = input.getToken ?? getSessionToken;
-  let sameOrigin = false;
-  try {
-    sameOrigin = new URL(apiUrl).origin === new URL(url).origin;
-  } catch {
-    sameOrigin = false;
-  }
+  const sameOrigin = yield* Effect.try({
+    try: () => new URL(apiUrl).origin === new URL(url).origin,
+    catch: () => false,
+  }).pipe(Effect.orElseSucceed(() => false));
   if (!sameOrigin) {
     return { uri: url };
   }
-  const token = await getToken().catch(() => undefined);
+  const token = yield* Effect.tryPromise({
+    try: () => getToken(),
+    catch: () => undefined,
+  }).pipe(Effect.orElseSucceed(() => undefined));
   return token === undefined
     ? { uri: url }
     : { uri: url, headers: { authorization: `Bearer ${token}` } };
-}
+});

@@ -4,7 +4,7 @@ import { useMemo } from 'react';
 import { createInvitesApi, type InvitesApi } from '@/lib/invites-api';
 import { getSessionToken } from '@/lib/session-token';
 import { createMockInvitesApi } from '@/mock/invites';
-import { mockParamAllowed } from '@/mock/gate';
+import { ENV_MOCK, mockParamAllowed } from '@/mock/gate';
 
 export interface InvitesApiHandle {
   api: InvitesApi;
@@ -19,7 +19,7 @@ export interface InvitesApiHandle {
  */
 export function useInvitesApi(): InvitesApiHandle {
   const params = useGlobalSearchParams();
-  const envMock = process.env.EXPO_PUBLIC_ZILAR_MOCK;
+  const envMock = ENV_MOCK;
   const rawParam = params['mock'];
   const param = mockParamAllowed({ dev: __DEV__, envMock })
     ? Array.isArray(rawParam)

@@ -1,3 +1,5 @@
+import { Effect, Semaphore } from 'effect';
+
 import { planQuietCutChunks } from './chunks';
 import { normalizeWhistleLanguage } from './model';
 import { parseWhistleResult, WhistleError, whistleErrorFor } from './result';
@@ -6,24 +8,27 @@ import { getNativeModule } from './ZilarWhistleModule';
 
 /** True on Android arm64 where the native module is linked, false elsewhere. */
 export function isAvailable(): boolean {
-  const native = getNativeModule();
-  if (native === null) {
-    return false;
-  }
-  try {
-    return native.isAvailable();
-  } catch {
-    return false;
-  }
+  return Effect.runSync(isAvailableEffect());
 }
+
+const isAvailableEffect = (): Effect.Effect<boolean> =>
+  Effect.gen(function* () {
+    const native = getNativeModule();
+    if (native === null) {
+      return false;
+    }
+    return yield* Effect.try({ try: () => native.isAvailable(), catch: () => false }).pipe(
+      Effect.orElseSucceed(() => false),
+    );
+  });
 
 /**
  * One transcription at a time: the engine holds a single process-global
  * model, so a second call waits for the first instead of racing it. The
- * guard always clears — on success AND on failure — so a failed call can
+ * permit always releases — on success AND on failure — so a failed call can
  * never hang later ones.
  */
-let inFlight: Promise<WhistleTranscript> | undefined;
+const transcribeGate = Semaphore.makeUnsafe(1);
 
 export interface TranscribeOptions {
   language?: string | undefined;
@@ -56,69 +61,53 @@ export function transcribe(
   fileUri: string,
   options?: TranscribeOptions,
 ): Promise<WhistleTranscript> {
-  if (inFlight !== undefined) {
-    const previous = inFlight;
-    const next = previous.then(
-      () => runTranscribe(fileUri, options),
-      () => runTranscribe(fileUri, options),
-    );
-    inFlight = next;
-    return next;
-  }
-  const current = runTranscribe(fileUri, options);
-  inFlight = current;
-  // Clears on success and on failure alike: a rejection must release the
-  // guard, or every later call would hang behind the failed one. Queued
-  // followers replace `inFlight` with their own chained promise, so this
-  // only clears when nothing followed.
-  const release = () => {
-    if (inFlight === current) {
-      inFlight = undefined;
-    }
-  };
-  void current.then(release, release);
-  return current;
+  return Effect.runPromise(transcribeGate.withPermits(1)(runTranscribeEffect(fileUri, options)));
 }
 
-async function runTranscribe(
-  fileUri: string,
-  options?: TranscribeOptions,
-): Promise<WhistleTranscript> {
-  const native = getNativeModule();
-  if (native === null || !isAvailable()) {
-    throw new WhistleError('unavailable', 'On-device transcription needs Android arm64');
-  }
-  if (fileUri === '') {
-    throw new WhistleError('not_audio', 'That file could not be read as audio');
-  }
-  const localPath = toLocalPath(fileUri);
-  const started = Date.now();
-  const language = normalizeWhistleLanguage(options?.language);
-  const ranges = await planRangesMs(localPath, options);
-  let raw: Record<string, unknown>;
-  try {
-    raw =
-      ranges === null
-        ? await native.transcribeFile(localPath, language)
-        : await native.transcribeRanges(localPath, ranges, language);
-  } catch (error) {
-    throw whistleErrorFor(error);
-  }
-  const parsed = parseWhistleResult(raw);
-  return {
-    text: parsed.text,
-    language: parsed.language,
-    ttftMs: parsed.ttftMs,
-    decodeTps: parsed.decodeTps,
-    audioMs: parsed.audioMs,
-    wallMs: Math.max(0, Date.now() - started),
-  };
-}
+const runTranscribeEffect = (fileUri: string, options?: TranscribeOptions) =>
+  Effect.gen(function* () {
+    const native = getNativeModule();
+    if (native === null || !(yield* isAvailableEffect())) {
+      return yield* Effect.fail(
+        new WhistleError('unavailable', 'On-device transcription needs Android arm64'),
+      );
+    }
+    if (fileUri === '') {
+      return yield* Effect.fail(
+        new WhistleError('not_audio', 'That file could not be read as audio'),
+      );
+    }
+    const localPath = toLocalPath(fileUri);
+    const started = Date.now();
+    const language = normalizeWhistleLanguage(options?.language);
+    const ranges = yield* planRangesEffect(localPath, options);
+    const raw = yield* Effect.tryPromise({
+      try: () =>
+        ranges === null
+          ? native.transcribeFile(localPath, language)
+          : native.transcribeRanges(localPath, ranges, language),
+      catch: (error) => whistleErrorFor(error),
+    });
+    const parsed = yield* Effect.try({
+      try: () => parseWhistleResult(raw),
+      catch: (error) => whistleErrorFor(error),
+    });
+    return {
+      text: parsed.text,
+      language: parsed.language,
+      ttftMs: parsed.ttftMs,
+      decodeTps: parsed.decodeTps,
+      audioMs: parsed.audioMs,
+      wallMs: Math.max(0, Date.now() - started),
+    };
+  });
 
 /** Strips the `file://` scheme the recorder URIs carry for the native side. */
 export function toLocalPath(fileUri: string): string {
   return fileUri.startsWith('file://') ? fileUri.slice('file://'.length) : fileUri;
 }
+
+type PlannedRanges = Array<[number, number]> | null;
 
 /**
  * Plans the native (startMs, endMs) ranges with the tested quiet-cut planner
@@ -137,31 +126,32 @@ export function planRangesMs(
 ): Promise<Array<[number, number]> | null> {
   const localPath = typeof localPathOrOptions === 'string' ? localPathOrOptions : undefined;
   const options = typeof localPathOrOptions === 'string' ? maybeOptions : localPathOrOptions;
-  return planRanges(localPath, options);
+  return Effect.runPromise(planRangesEffect(localPath, options));
 }
 
-async function planRanges(
+const planRangesEffect = (
   localPath: string | undefined,
   options?: TranscribeOptions,
-): Promise<Array<[number, number]> | null> {
-  const audioMs = options?.audioMs ?? 0;
-  if (!Number.isFinite(audioMs) || audioMs <= 28_000) {
-    return null;
-  }
-  const totalSamples = Math.floor((audioMs * 16000) / 1000);
-  if (totalSamples <= 0) {
-    return null;
-  }
-  const amplitudes = options?.amplitudes ?? (await envelopeAmplitudes(localPath));
-  const chunks = planQuietCutChunks(totalSamples, amplitudes);
-  if (chunks.length <= 1) {
-    return null;
-  }
-  return chunks.map((chunk): [number, number] => [
-    (chunk.start * 1000) / 16000,
-    (chunk.end * 1000) / 16000,
-  ]);
-}
+): Effect.Effect<PlannedRanges> =>
+  Effect.gen(function* () {
+    const audioMs = options?.audioMs ?? 0;
+    if (!Number.isFinite(audioMs) || audioMs <= 28_000) {
+      return null;
+    }
+    const totalSamples = Math.floor((audioMs * 16000) / 1000);
+    if (totalSamples <= 0) {
+      return null;
+    }
+    const amplitudes = options?.amplitudes ?? (yield* envelopeAmplitudesEffect(localPath));
+    const chunks = planQuietCutChunks(totalSamples, amplitudes);
+    if (chunks.length <= 1) {
+      return null;
+    }
+    return chunks.map((chunk): [number, number] => [
+      (chunk.start * 1000) / 16000,
+      (chunk.end * 1000) / 16000,
+    ]);
+  });
 
 /**
  * Reads the native 10 ms amplitude envelope (one mean absolute amplitude per
@@ -169,24 +159,24 @@ async function planRanges(
  * the even-window fallback (`() => 1`) when there is no local path or the
  * native call fails.
  */
-async function envelopeAmplitudes(
+const envelopeAmplitudesEffect = (
   localPath: string | undefined,
-): Promise<(sample: number) => number> {
-  const fallback = (): number => 1;
-  if (localPath === undefined || localPath === '') {
-    return fallback;
-  }
-  const native = getNativeModule();
-  if (native === null) {
-    return fallback;
-  }
-  try {
-    const envelope = await native.amplitudeEnvelope(localPath);
+): Effect.Effect<(sample: number) => number> =>
+  Effect.gen(function* () {
+    const fallback = (): number => 1;
+    if (localPath === undefined || localPath === '') {
+      return fallback;
+    }
+    const native = getNativeModule();
+    if (native === null) {
+      return fallback;
+    }
+    const envelope = yield* Effect.tryPromise({
+      try: () => native.amplitudeEnvelope(localPath),
+      catch: () => 'unreadable' as const,
+    }).pipe(Effect.orElseSucceed(() => [] as number[]));
     if (!Array.isArray(envelope) || envelope.length === 0) {
       return fallback;
     }
     return (sample: number): number => envelope[Math.floor(sample / 160)] ?? 0;
-  } catch {
-    return fallback;
-  }
-}
+  });

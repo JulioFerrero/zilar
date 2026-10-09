@@ -2,6 +2,7 @@ import type { Auth } from '../auth/auth';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
+import { Effect } from 'effect';
 import type { Logger } from 'pino';
 import {
   allowedArchives,
@@ -300,26 +301,30 @@ export interface SearchResult {
 
 // The search core shared by the Effect `HttpApi` adapter (`api.ts`): session,
 // archive and rate-limit checks run in the endpoint middleware (in the same
-// order as the old Hono route), so this starts at the decoded query. The log
-// carries only the result count and duration — never the query.
-export async function runSearch(
+// order as the old Hono route), so this starts at the decoded query. Failures
+// are typed `HttpError`s; the adapter turns them into defects for the envelope.
+// The log carries only the result count and duration — never the query.
+export const runSearchEffect = Effect.fnUntraced(function* (
   deps: SearchRoutesDependencies,
   userId: string,
   query: SearchQuery,
-): Promise<SearchResult> {
-  if (deps.archive === undefined) {
-    throw new HttpError(501, 'search_unavailable', 'Message search is not configured');
+): Effect.fn.Return<SearchResult, HttpError> {
+  const archive = deps.archive;
+  if (archive === undefined) {
+    return yield* Effect.fail(
+      new HttpError(501, 'search_unavailable', 'Message search is not configured'),
+    );
   }
   const q = query.q.trim();
   if (q.length < 2 || q.length > 100) {
-    throw new HttpError(400, 'invalid_request', 'Invalid search query');
+    return yield* Effect.fail(new HttpError(400, 'invalid_request', 'Invalid search query'));
   }
 
-  const allowed = await allowedArchives(deps.db, deps.config, userId);
+  const allowed = yield* Effect.promise(() => allowedArchives(deps.db, deps.config, userId));
   const chat = query.chat?.trim();
   const filter = chat === undefined || chat === '' ? null : resolveChatFilter(allowed, chat);
   if (chat !== undefined && chat !== '' && filter === null) {
-    throw new HttpError(404, 'not_found', 'Chat not found');
+    return yield* Effect.fail(new HttpError(404, 'not_found', 'Chat not found'));
   }
 
   const limit = query.limit ?? SEARCH_DEFAULT_LIMIT;
@@ -334,22 +339,31 @@ export async function runSearch(
 
   const start = performance.now();
   const scopeInput = { owners: allowed, filter, cutoffMicros, beforeMicros };
-  let rows: ArchiveRow[];
-  let editRows: ArchiveEditRow[];
-  try {
-    if (tsquery === null) {
-      rows = [];
-      editRows = [];
-    } else {
-      const built = buildArchiveQuery({ tsquery, ...scopeInput });
-      const edits = buildArchiveEditsQuery(scopeInput);
-      [rows, editRows] = await Promise.all([
-        deps.archive.query(built.text, built.values),
-        deps.archive.query(edits.text, edits.values),
-      ]);
-    }
-  } catch {
-    throw new HttpError(502, 'search_failed', 'Message search failed, try again later');
+  const searchFailed = (): HttpError =>
+    new HttpError(502, 'search_failed', 'Message search failed, try again later');
+  let rows: ArchiveRow[] = [];
+  let editRows: ArchiveEditRow[] = [];
+  if (tsquery !== null) {
+    const built = yield* Effect.try({
+      try: () => ({
+        rows: buildArchiveQuery({ tsquery, ...scopeInput }),
+        edits: buildArchiveEditsQuery(scopeInput),
+      }),
+      catch: searchFailed,
+    });
+    [rows, editRows] = yield* Effect.all(
+      [
+        Effect.tryPromise({
+          try: () => archive.query(built.rows.text, built.rows.values),
+          catch: searchFailed,
+        }),
+        Effect.tryPromise({
+          try: () => archive.query(built.edits.text, built.edits.values),
+          catch: searchFailed,
+        }),
+      ],
+      { concurrency: 2 },
+    );
   }
 
   // Corrections store the new full body in a second row naming the
@@ -381,7 +395,8 @@ export async function runSearch(
   }
   const seen = new Set<string>();
   const items: SearchItem[] = [];
-  let oldest: bigint | null = null;
+  // `as` keeps TypeScript from narrowing `oldest` to `null`: pushItem assigns it inside a closure.
+  let oldest = null as bigint | null;
   const ownJid = ownBareJid(allowed, deps.config.xmpp.domain);
   const pushItem = (
     row: ArchiveRow,
@@ -456,29 +471,36 @@ export async function runSearch(
     q.trim().length >= SEARCH_MIN_FUZZY_QUERY_CHARS &&
     terms.length > 0
   ) {
-    try {
-      const fuzzy = buildFuzzyCandidatesQuery(scopeInput);
-      const candidates = await deps.archive.query(fuzzy.text, fuzzy.values);
-      for (const row of candidates) {
-        if (items.length >= limit) {
-          break;
+    const fuzzy = yield* Effect.try({
+      try: () => buildFuzzyCandidatesQuery(scopeInput),
+      catch: searchFailed,
+    });
+    const candidates = yield* Effect.tryPromise({
+      try: () => archive.query(fuzzy.text, fuzzy.values),
+      catch: searchFailed,
+    });
+    yield* Effect.try({
+      try: () => {
+        for (const row of candidates) {
+          if (items.length >= limit) {
+            break;
+          }
+          const key = visibleKey(row);
+          if (key === null) {
+            continue;
+          }
+          const body = row.body ?? '';
+          const spans = matchMessageTerms(terms, body, true);
+          if (spans === null) {
+            continue;
+          }
+          const chatJid = chatJidFor(row);
+          const { snippet, marks } = windowSnippet(body, spans);
+          pushItem(row, chatJid, key, snippet, marks, 'fuzzy');
         }
-        const key = visibleKey(row);
-        if (key === null) {
-          continue;
-        }
-        const body = row.body ?? '';
-        const spans = matchMessageTerms(terms, body, true);
-        if (spans === null) {
-          continue;
-        }
-        const chatJid = chatJidFor(row);
-        const { snippet, marks } = windowSnippet(body, spans);
-        pushItem(row, chatJid, key, snippet, marks, 'fuzzy');
-      }
-    } catch {
-      throw new HttpError(502, 'search_failed', 'Message search failed, try again later');
-    }
+      },
+      catch: searchFailed,
+    });
   }
 
   // The log carries only the result count and duration — never the query.
@@ -495,7 +517,7 @@ export async function runSearch(
     items,
     ...(oldest === null || items.length < limit ? {} : { nextBefore: oldest.toString() }),
   };
-}
+});
 
 function tagAttribute(xml: string, tag: string): string | null {
   const match = xml.match(new RegExp(`<${tag}[^>]*\\bid\\s*=\\s*["']([^"']+)["']`, 's'));

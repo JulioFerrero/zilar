@@ -1,9 +1,12 @@
+import { Effect } from 'effect';
 import type { ChatMessage, XmppCore, XmppCoreOptions } from '@zilar/xmpp-core';
 import type { ActiveAiForGateway } from '../../ais/service';
 import { issueXmppToken } from '../../xmpp/token';
 import {
   GATEWAY_RESOURCE,
   XMPP_TOKEN_TTL_SECONDS,
+  attempt,
+  cancelTimer,
   retryDelayMs,
   toRedactedError,
   type AgentGatewayDeps,
@@ -53,53 +56,72 @@ export function createSessionLifecycle(ctx: SessionLifecycleContext) {
     }
     session.retryAttempt += 1;
     const delay = retryDelayMs(session.retryAttempt, retryBaseMs);
-    if (session.retryTimer !== undefined) {
-      clearTimeout(session.retryTimer);
+    cancelTimer(session.retryTimer);
+    // The pending reconnect is a fiber that sleeps, then reconnects; the
+    // fiber clears the field first so a later cancel never touches it.
+    session.retryTimer = Effect.runFork(
+      Effect.sleep(delay).pipe(Effect.andThen(Effect.suspend(() => reconnect(session)))),
+    );
+  }
+
+  function reconnect(session: AiSession): Effect.Effect<void> {
+    session.retryTimer = undefined;
+    if (session.stopped || sessions.get(session.aiId) !== session) {
+      return Effect.void;
     }
-    session.retryTimer = setTimeout(() => {
-      session.retryTimer = undefined;
-      if (session.stopped || sessions.get(session.aiId) !== session) {
-        return;
-      }
-      void session.core
-        .connect()
-        .then(() => {
-          session.retryAttempt = 0;
-        })
-        .catch((error: unknown) => {
+    return attempt(() => session.core.connect()).pipe(
+      Effect.map(() => {
+        session.retryAttempt = 0;
+      }),
+      Effect.catch((error: unknown) =>
+        Effect.sync(() => {
           logger.warn(
             { err: toRedactedError(error, secretsFor()), aiId: session.aiId },
             'AI reconnect failed; retrying',
           );
           scheduleRetry(session);
-        });
-    }, delay);
+        }),
+      ),
+    );
   }
 
-  async function connectAi(record: ActiveAiForGateway): Promise<void> {
+  const connectAiEffect = Effect.fnUntraced(function* (
+    record: ActiveAiForGateway,
+  ): Effect.fn.Return<void> {
     if (!isStarted() || sessions.has(record.id) || superseded.has(record.id)) {
       return;
     }
     const aiId = record.id;
     const aiJid = record.jid;
-    let core: XmppCore;
-    try {
-      core = createCore({
-        service: deps.xmpp.wsPublicUrl,
-        domain: deps.xmpp.domain,
-        resource: GATEWAY_RESOURCE,
-        getToken: async () => {
-          const issued = await issueXmppToken(deps.xmpp, aiJid, XMPP_TOKEN_TTL_SECONDS);
-          return { jid: aiJid, token: issued.token };
-        },
-      });
-    } catch (error) {
-      logger.warn(
-        { err: toRedactedError(error, secretsFor()), aiId },
-        'AI client could not be created',
-      );
+    const created = yield* Effect.try({
+      try: () =>
+        createCore({
+          service: deps.xmpp.wsPublicUrl,
+          domain: deps.xmpp.domain,
+          resource: GATEWAY_RESOURCE,
+          getToken: () =>
+            Effect.runPromise(
+              attempt(() => issueXmppToken(deps.xmpp, aiJid, XMPP_TOKEN_TTL_SECONDS)).pipe(
+                Effect.map((issued) => ({ jid: aiJid, token: issued.token })),
+              ),
+            ),
+        }),
+      catch: (error) => error,
+    }).pipe(
+      Effect.catch((error: unknown) =>
+        Effect.sync(() => {
+          logger.warn(
+            { err: toRedactedError(error, secretsFor()), aiId },
+            'AI client could not be created',
+          );
+          return undefined;
+        }),
+      ),
+    );
+    if (created === undefined) {
       return;
     }
+    const core: XmppCore = created;
 
     const session: AiSession = {
       aiId,
@@ -134,31 +156,39 @@ export function createSessionLifecycle(ctx: SessionLifecycleContext) {
       }),
     );
 
-    try {
-      await core.connect();
-      session.retryAttempt = 0;
-    } catch (error) {
-      // One AI failing to connect must never stop the others; the retry
-      // timer and the reconcile loop pick it up later.
-      logger.warn(
-        { err: toRedactedError(error, secretsFor()), aiId },
-        'AI failed to connect; retrying',
-      );
-      scheduleRetry(session);
+    const connected = yield* attempt(() => core.connect()).pipe(
+      Effect.map(() => {
+        session.retryAttempt = 0;
+        return true;
+      }),
+      Effect.catch((error: unknown) =>
+        Effect.sync(() => {
+          // One AI failing to connect must never stop the others; the retry
+          // timer and the reconcile loop pick it up later.
+          logger.warn(
+            { err: toRedactedError(error, secretsFor()), aiId },
+            'AI failed to connect; retrying',
+          );
+          scheduleRetry(session);
+          return false;
+        }),
+      ),
+    );
+    if (!connected) {
       return;
     }
     // The gateway may have stopped while the login was in flight: never keep
     // a connection nobody owns any more.
     if (!isStarted() || session.stopped || sessions.get(aiId) !== session) {
-      await disconnectAi(aiId).catch(() => undefined);
+      yield* disconnectAiEffect(aiId).pipe(Effect.catchCause(() => Effect.void));
       return;
     }
     // Rooms never break DMs: a room sync failure is logged inside and the
     // session stays up for DMs either way.
-    await syncAiRooms(session, record.name);
-  }
+    yield* syncAiRoomsEffect(session, record.name);
+  });
 
-  async function disconnectAi(aiId: string): Promise<void> {
+  const disconnectAiEffect = Effect.fnUntraced(function* (aiId: string): Effect.fn.Return<void> {
     const session = sessions.get(aiId);
     if (session === undefined) {
       return;
@@ -168,43 +198,47 @@ export function createSessionLifecycle(ctx: SessionLifecycleContext) {
       dropRoomListenerIfUnused(roomJid);
     }
     session.stopped = true;
-    if (session.retryTimer !== undefined) {
-      clearTimeout(session.retryTimer);
-      session.retryTimer = undefined;
-    }
-    for (const unsub of session.unsubs) {
-      try {
-        unsub();
-      } catch {
-        // Unsubscribing is best-effort during shutdown.
-      }
-    }
+    cancelTimer(session.retryTimer);
+    session.retryTimer = undefined;
+    // Unsubscribing is best-effort during shutdown.
+    yield* Effect.forEach(session.unsubs, (unsub) =>
+      Effect.try({ try: unsub, catch: (error) => error }).pipe(Effect.ignore),
+    );
     session.unsubs = [];
-    try {
-      await session.core.disconnect();
-    } catch (error) {
-      logger.warn({ err: toRedactedError(error, secretsFor()), aiId }, 'AI disconnect failed');
-    }
+    yield* attempt(() => session.core.disconnect()).pipe(
+      Effect.catch((error: unknown) =>
+        Effect.sync(() => {
+          logger.warn({ err: toRedactedError(error, secretsFor()), aiId }, 'AI disconnect failed');
+        }),
+      ),
+    );
     logger.info({ aiId }, 'AI is offline');
-  }
+  });
 
   // Drifts the AI's room joins toward the database: joins every room the AI
   // belongs to with the AI's name as nick, re-joins when the nick went stale,
   // and leaves rooms the AI no longer belongs to. A join failure is logged
   // (ids only) and retried by the next reconcile; it never throws and never
   // breaks the AI's DMs.
-  async function syncAiRooms(session: AiSession, aiName: string): Promise<void> {
+  const syncAiRoomsEffect = Effect.fnUntraced(function* (
+    session: AiSession,
+    aiName: string,
+  ): Effect.fn.Return<void> {
     if (session.stopped || sessions.get(session.aiId) !== session) {
       return;
     }
-    let rooms: Array<{ groupId: string; topicId: string; roomLocalpart: string }>;
-    try {
-      rooms = await listAiRooms(deps.db, session.aiId);
-    } catch (error) {
-      logger.warn(
-        { err: toRedactedError(error, secretsFor()), aiId: session.aiId },
-        'AI rooms lookup failed',
-      );
+    const rooms = yield* attempt(() => listAiRooms(deps.db, session.aiId)).pipe(
+      Effect.catch((error: unknown) =>
+        Effect.sync(() => {
+          logger.warn(
+            { err: toRedactedError(error, secretsFor()), aiId: session.aiId },
+            'AI rooms lookup failed',
+          );
+          return null;
+        }),
+      ),
+    );
+    if (rooms === null) {
       return;
     }
     const wanted = new Set<string>();
@@ -216,15 +250,25 @@ export function createSessionLifecycle(ctx: SessionLifecycleContext) {
         continue;
       }
       if (known !== undefined) {
-        await leaveRoomQuietly(session, roomJid, known.groupId);
+        yield* leaveRoomQuietlyEffect(session, roomJid, known.groupId);
       }
-      try {
-        await session.core.joinRoom(roomJid, aiName);
-      } catch (error) {
-        logger.warn(
-          { err: toRedactedError(error, secretsFor()), aiId: session.aiId, groupId: room.groupId },
-          'AI room join failed; reconcile will retry',
-        );
+      const joined = yield* attempt(() => session.core.joinRoom(roomJid, aiName)).pipe(
+        Effect.as(true),
+        Effect.catch((error: unknown) =>
+          Effect.sync(() => {
+            logger.warn(
+              {
+                err: toRedactedError(error, secretsFor()),
+                aiId: session.aiId,
+                groupId: room.groupId,
+              },
+              'AI room join failed; reconcile will retry',
+            );
+            return false;
+          }),
+        ),
+      );
+      if (!joined) {
         continue;
       }
       session.rooms.set(roomJid, {
@@ -237,33 +281,49 @@ export function createSessionLifecycle(ctx: SessionLifecycleContext) {
     }
     for (const [roomJid, sub] of session.rooms) {
       if (!wanted.has(roomJid)) {
-        await leaveRoomQuietly(session, roomJid, sub.groupId);
+        yield* leaveRoomQuietlyEffect(session, roomJid, sub.groupId);
       }
     }
-  }
+  });
 
-  async function leaveRoomQuietly(
+  const leaveRoomQuietlyEffect = Effect.fnUntraced(function* (
     session: AiSession,
     roomJid: string,
     groupId: string,
-  ): Promise<void> {
+  ): Effect.fn.Return<void> {
     session.rooms.delete(roomJid);
     session.roomPending.delete(roomJid);
     session.roomBusy.delete(roomJid);
     // A re-added AI starts with a fresh rate budget.
     session.roomTurns.delete(roomJid);
     dropRoomListenerIfUnused(roomJid);
-    try {
-      await session.core.leaveRoom(roomJid);
-    } catch (error) {
-      logger.warn(
-        { err: toRedactedError(error, secretsFor()), aiId: session.aiId, groupId },
-        'AI room leave failed',
-      );
+    const left = yield* attempt(() => session.core.leaveRoom(roomJid)).pipe(
+      Effect.as(true),
+      Effect.catch((error: unknown) =>
+        Effect.sync(() => {
+          logger.warn(
+            { err: toRedactedError(error, secretsFor()), aiId: session.aiId, groupId },
+            'AI room leave failed',
+          );
+          return false;
+        }),
+      ),
+    );
+    if (!left) {
       return;
     }
     logger.info({ aiId: session.aiId, groupId }, 'AI left the room');
-  }
+  });
+
+  // The factory keeps its Promise-typed methods: callers outside this file
+  // still await them.
+  const connectAi = (record: ActiveAiForGateway): Promise<void> =>
+    Effect.runPromise(connectAiEffect(record));
+  const disconnectAi = (aiId: string): Promise<void> => Effect.runPromise(disconnectAiEffect(aiId));
+  const syncAiRooms = (session: AiSession, aiName: string): Promise<void> =>
+    Effect.runPromise(syncAiRoomsEffect(session, aiName));
+  const leaveRoomQuietly = (session: AiSession, roomJid: string, groupId: string): Promise<void> =>
+    Effect.runPromise(leaveRoomQuietlyEffect(session, roomJid, groupId));
 
   // Another gateway logged this AI in with the same resource and ejabberd
   // replaced this session: the newest gateway wins, so this process stands
@@ -279,7 +339,7 @@ export function createSessionLifecycle(ctx: SessionLifecycleContext) {
     logger.warn({ aiId: session.aiId }, 'AI session replaced by another gateway; standing down');
     session.pending.length = 0;
     session.roomPending.clear();
-    void disconnectAi(session.aiId).catch(() => undefined);
+    Effect.runFork(disconnectAiEffect(session.aiId).pipe(Effect.catchCause(() => Effect.void)));
   }
 
   return { scheduleRetry, connectAi, disconnectAi, syncAiRooms, leaveRoomQuietly, handleReplaced };

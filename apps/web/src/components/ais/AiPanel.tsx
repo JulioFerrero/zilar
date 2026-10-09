@@ -1,8 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
+import { Effect } from 'effect';
+import { AsyncResult } from 'effect/reactivity';
 import { useNavigate } from 'react-router';
 import type { ChatSummary } from '@zilar/chat-core';
 import { X } from 'lucide-react';
 import {
+  ApiError,
   deleteAi,
   getAi,
   listAis,
@@ -13,10 +16,13 @@ import {
   stopAi,
   updateAi,
   type Connection,
-  type Machine,
   type PublicAi,
   type UpdateAiInput,
 } from '@/lib/api';
+import { fromApi } from '@/lib/effect/api-effect';
+import type { ApiFailure } from '@/lib/effect/errors';
+import { isWaiting, useAction } from '@/lib/effect/use-action';
+import { useQuery } from '@/lib/effect/use-query';
 import { AiBadge } from '@/components/AiBadge';
 import { Avatar } from '@/components/Avatar';
 import { AvatarUploader } from '@/components/AvatarUploader';
@@ -34,7 +40,7 @@ import { AlwaysAllowedList } from '@/components/approvals/AlwaysAllowedList';
 import { RoutinesSection } from '@/components/tools/RoutinesSection';
 import { ToolsSection } from '@/components/tools/ToolsSection';
 import { ConnectionPicker } from './ConnectionPicker';
-import { describeAiError } from './errors';
+import { describeAiError, type AiErrorInfo } from './errors';
 import { LimitsFields } from './LimitsFields';
 import { validateLimits } from './limits';
 import { ModelPicker } from './ModelPicker';
@@ -42,6 +48,27 @@ import { defaultModelFor, modelSuggestionsFor } from './models';
 import { buildPatch } from './aiForm';
 
 type PanelStatus = 'loading' | 'ready' | 'missing' | 'error';
+
+// An api.ts failure keeps its server answer: it is rebuilt as the ApiError that
+// describeAiError reads. A failure with no status did not come from the server,
+// so it shows the fixed fallback sentence instead of the thrown text.
+function describeFailure(failure: ApiFailure, fallback: string): AiErrorInfo {
+  if (failure.status === 0) {
+    return { message: fallback, unavailable: false };
+  }
+  return describeAiError(
+    new ApiError(failure.status, failure.code, failure.message, failure.detail),
+    fallback,
+  );
+}
+
+// Reads the AI again after a failed write. The read is best-effort: the inline
+// error stays visible whether or not it works, so its own failure is dropped.
+const refetchAi = (id: string, apply: (next: PublicAi) => void) =>
+  fromApi(() => getAi(id)).pipe(
+    Effect.tap((fresh) => Effect.sync(() => apply(fresh))),
+    Effect.catchTag('ApiFailure', () => Effect.void),
+  );
 
 /** The AI's picture (T-0165), for the AI's owner. Refreshes the panel row
  *  from the uploader's answer so the header shows the new picture at once. */
@@ -149,14 +176,11 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
   const [persona, setPersona] = useState('');
   const [day, setDay] = useState('');
   const [month, setMonth] = useState('');
-  const [connections, setConnections] = useState<Connection[]>([]);
   const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(null);
   const [modelDraft, setModelDraft] = useState('');
-  const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [confirmingDelete, setConfirmingDelete] = useState(false);
-  const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
   // T-0080: the owner kill switch. `confirmingStop` mirrors the delete
   // confirm step (one tap to arm, one tap to act) so a stray click on the
@@ -164,9 +188,7 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
   // button stays disabled and an inline error shows on failure, like the
   // other panel actions.
   const [confirmingStop, setConfirmingStop] = useState(false);
-  const [stopping, setStopping] = useState(false);
   const [stopError, setStopError] = useState('');
-  const [resuming, setResuming] = useState(false);
   const [resumeError, setResumeError] = useState('');
   // T-0091: the home machine. `machines` is the owner's full list, kept
   // here so the dropdown stays in sync with the Machines page even after a
@@ -175,89 +197,60 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
   // the select stays disabled too — the pending state is the disabled
   // state, exactly like the kill switch. `machineError` is the inline
   // failure message; on success we clear it.
-  const [machines, setMachines] = useState<Machine[] | null>(null);
-  const [machineBusy, setMachineBusy] = useState(false);
   const [machineError, setMachineError] = useState('');
   // T-0478: the owner's delegation opt-ins. Each switch saves on its own
   // through `updateAi`, separate from the main form's Save.
-  const [delegationBusy, setDelegationBusy] = useState(false);
   const [delegationError, setDelegationError] = useState('');
 
-  useEffect(() => {
-    let active = true;
-    listAis()
-      .then((list) => {
-        if (!active) {
-          return;
-        }
-        const found = list.find((item) => item.jid === chat.id) ?? null;
-        if (found === null) {
-          setStatus('missing');
-          return;
-        }
-        setAi(found);
-        setName(found.name);
-        setPersona(found.persona);
-        setDay(String(found.limits.perDayUsd));
-        setMonth(String(found.limits.perMonthUsd));
-        setSelectedConnectionId(found.providerConnectionId);
-        setModelDraft(found.model);
-        setStatus('ready');
-      })
-      .catch((error: unknown) => {
-        if (!active) {
-          return;
-        }
-        setErrorMessage(describeAiError(error, 'Could not load the AI').message);
-        setStatus('error');
-      });
-    return () => {
-      active = false;
-    };
-  }, [chat.id]);
+  // Seeds the form from the AI the panel shows. A later save replaces these values.
+  const seedForm = (next: PublicAi): void => {
+    setAi(next);
+    setName(next.name);
+    setPersona(next.persona);
+    setDay(String(next.limits.perDayUsd));
+    setMonth(String(next.limits.perMonthUsd));
+    setSelectedConnectionId(next.providerConnectionId);
+    setModelDraft(next.model);
+  };
 
-  useEffect(() => {
-    let active = true;
-    listConnections()
-      .then((list) => {
-        if (!active) {
-          return;
-        }
-        setConnections(list.filter((connection) => connection.status === 'active'));
-      })
-      .catch(() => {
-        // The model picker still works without connections: it just offers no
-        // provider suggestions, and the connection picker stays hidden.
-        if (active) {
-          setConnections([]);
-        }
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
+  // The panel's AI is the one whose jid is this chat's id. The list is read
+  // once per chat; the result seeds the panel, or shows why it could not.
+  useQuery(
+    () =>
+      fromApi(() => listAis()).pipe(
+        Effect.map((list) => list.find((item) => item.jid === chat.id) ?? null),
+        Effect.tap((found) =>
+          Effect.sync(() => {
+            if (found === null) {
+              setStatus('missing');
+              return;
+            }
+            seedForm(found);
+            setStatus('ready');
+          }),
+        ),
+        Effect.tapError((failure) =>
+          Effect.sync(() => {
+            setErrorMessage(describeFailure(failure, 'Could not load the AI').message);
+            setStatus('error');
+          }),
+        ),
+      ),
+    [chat.id],
+  );
+
+  // The model picker still works without connections: a failed read just offers
+  // no provider suggestions, and the connection picker stays hidden.
+  const [connectionList] = useQuery(() => fromApi(() => listConnections()), []);
+  const connections: Connection[] = AsyncResult.isSuccess(connectionList)
+    ? connectionList.value.filter((connection) => connection.status === 'active')
+    : [];
 
   // T-0091: the home machine dropdown lists the owner's approved machines.
-  // A failure here must not block the rest of the panel: we keep
-  // `machines` null so the select can render its disabled "current value
-  // only" state.
-  useEffect(() => {
-    let active = true;
-    listMachines()
-      .then((list) => {
-        if (active) {
-          setMachines(list);
-        }
-      })
-      .catch(() => {
-        if (active) {
-          setMachines(null);
-        }
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
+  // A failure here must not block the rest of the panel: `machines` stays null
+  // so the select can render its disabled "current value only" state.
+  const [machineList] = useQuery(() => fromApi(() => listMachines()), []);
+  const machines = AsyncResult.isSuccess(machineList) ? machineList.value : null;
 
   // The approved machines the dropdown may pick from; an unloaded list
   // means the select is disabled with the current value only.
@@ -272,7 +265,6 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
   // "The platform", which would be a silent change.
   const knownMachineIds = new Set(approvedMachines.map((machine) => machine.id));
   const currentMachineIsKnown = currentMachineId === null || knownMachineIds.has(currentMachineId);
-  const machineSelectDisabled = !machineOptionsLoaded || machineBusy;
 
   const usableConnections = connections;
   const effectiveConnection =
@@ -312,13 +304,12 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
     };
   }
   const switchingModel = patch !== null && ('model' in patch || 'providerConnectionId' in patch);
-  const canSave =
+  const savable =
     ai !== null &&
     name.trim() !== '' &&
     modelTrimmed !== '' &&
     limits.limits !== null &&
-    patch !== null &&
-    !busy;
+    patch !== null;
 
   const markEdited = (): void => {
     setSaved(false);
@@ -336,177 +327,179 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
     markEdited();
   };
 
-  const save = async (): Promise<void> => {
-    if (ai === null || patch === null || !canSave) {
-      return;
+  // A combined PATCH can commit one field and fail a later one (the model swaps
+  // before the roster rename), so a failure reads the AI again and shows what the
+  // server really has. When even that read fails, the form falls back to the
+  // values the save started from.
+  const [saveState, runSave] = useAction<void, void, never>(() => {
+    if (ai === null || patch === null || !savable) {
+      return Effect.void;
     }
-    setBusy(true);
-    setSaveError('');
-    try {
-      const updated = await updateAi(ai.id, patch);
-      setAi(updated);
-      setName(updated.name);
-      setPersona(updated.persona);
-      setDay(String(updated.limits.perDayUsd));
-      setMonth(String(updated.limits.perMonthUsd));
-      setSelectedConnectionId(updated.providerConnectionId);
-      setModelDraft(updated.model);
-      setSaved(true);
-      storeApi.setState((state) => ({
-        chats: state.chats.map((chatItem) =>
-          chatItem.id === chat.id ? { ...chatItem, title: updated.name } : chatItem,
+    const target = ai;
+    const changes = patch;
+    return Effect.sync(() => setSaveError('')).pipe(
+      Effect.andThen(fromApi(() => updateAi(target.id, changes))),
+      Effect.tap((updated) =>
+        Effect.sync(() => {
+          seedForm(updated);
+          setSaved(true);
+          storeApi.setState((state) => ({
+            chats: state.chats.map((chatItem) =>
+              chatItem.id === chat.id ? { ...chatItem, title: updated.name } : chatItem,
+            ),
+          }));
+        }),
+      ),
+      Effect.catchTag('ApiFailure', (failure) =>
+        Effect.sync(() =>
+          setSaveError(describeFailure(failure, 'Could not update the AI').message),
+        ).pipe(
+          Effect.andThen(
+            fromApi(() => getAi(target.id)).pipe(
+              Effect.tap((fresh) => Effect.sync(() => seedForm(fresh))),
+              Effect.catchTag('ApiFailure', () =>
+                Effect.sync(() => {
+                  setSelectedConnectionId(target.providerConnectionId);
+                  setModelDraft(target.model);
+                }),
+              ),
+            ),
+          ),
         ),
-      }));
-    } catch (error) {
-      setSaveError(describeAiError(error, 'Could not update the AI').message);
-      // A combined PATCH can commit one field and fail a later one (the model
-      // swaps before the roster rename), so show what the server really has
-      // instead of the stale snapshot. When even that fails, fall back to it.
-      try {
-        const fresh = await getAi(ai.id);
-        setAi(fresh);
-        setName(fresh.name);
-        setPersona(fresh.persona);
-        setDay(String(fresh.limits.perDayUsd));
-        setMonth(String(fresh.limits.perMonthUsd));
-        setSelectedConnectionId(fresh.providerConnectionId);
-        setModelDraft(fresh.model);
-      } catch {
-        setSelectedConnectionId(ai.providerConnectionId);
-        setModelDraft(ai.model);
-      }
-    } finally {
-      setBusy(false);
-    }
-  };
+      ),
+    );
+  });
+  const busy = isWaiting(saveState);
+  const canSave = savable && !busy;
 
   // T-0478: the delegation switches save on their own. On success the fresh
   // AI replaces the local copy; on failure the inline error shows and the
   // switch keeps the old value (we never flip it optimistically).
-  const saveDelegation = async (input: UpdateAiInput): Promise<void> => {
+  const [delegationState, saveDelegation] = useAction<UpdateAiInput, void, never>((input) => {
     if (ai === null) {
-      return;
+      return Effect.void;
     }
-    setDelegationBusy(true);
-    setDelegationError('');
-    try {
-      const updated = await updateAi(ai.id, input);
-      setAi(updated);
-    } catch (error) {
-      setDelegationError(describeAiError(error, 'Could not update the AI').message);
-    } finally {
-      setDelegationBusy(false);
-    }
-  };
+    const target = ai;
+    return Effect.sync(() => setDelegationError('')).pipe(
+      Effect.andThen(fromApi(() => updateAi(target.id, input))),
+      Effect.tap((updated) => Effect.sync(() => setAi(updated))),
+      Effect.asVoid,
+      Effect.catchTag('ApiFailure', (failure) =>
+        Effect.sync(() =>
+          setDelegationError(describeFailure(failure, 'Could not update the AI').message),
+        ),
+      ),
+    );
+  });
+  const delegationBusy = isWaiting(delegationState);
 
-  const confirmDelete = async (): Promise<void> => {
+  const [deleteState, runDelete] = useAction<void, void, never>(() => {
     if (ai === null) {
-      return;
+      return Effect.void;
     }
-    setDeleting(true);
-    setDeleteError('');
-    try {
-      await deleteAi(ai.id);
-      storeApi.setState((state) => ({
-        chats: state.chats.filter((chatItem) => chatItem.id !== chat.id),
-      }));
-      onClose();
-      navigate('/');
-    } catch (error) {
-      setDeleteError(describeAiError(error, 'Could not delete the AI').message);
-      setDeleting(false);
-    }
-  };
+    const target = ai;
+    return Effect.sync(() => setDeleteError('')).pipe(
+      Effect.andThen(fromApi(() => deleteAi(target.id))),
+      Effect.tap(() =>
+        Effect.sync(() => {
+          storeApi.setState((state) => ({
+            chats: state.chats.filter((chatItem) => chatItem.id !== chat.id),
+          }));
+          onClose();
+          navigate('/');
+        }),
+      ),
+      Effect.asVoid,
+      Effect.catchTag('ApiFailure', (failure) =>
+        Effect.sync(() =>
+          setDeleteError(describeFailure(failure, 'Could not delete the AI').message),
+        ),
+      ),
+    );
+  });
+  const deleting = isWaiting(deleteState);
 
   // T-0080: stop the AI. The server returns the fresh public AI so the
   // panel re-renders against the server truth (the `stopped` label appears
   // immediately); a 409 (the AI was already in another terminal state)
   // refetches to align the UI with the server.
-  const confirmStop = async (): Promise<void> => {
+  const [stopState, runStop] = useAction<void, void, never>(() => {
     if (ai === null) {
-      return;
+      return Effect.void;
     }
-    setStopping(true);
-    setStopError('');
-    try {
-      const fresh = await stopAi(ai.id);
-      setAi(fresh);
-    } catch (error) {
-      setStopError(describeAiError(error, 'Could not stop the AI').message);
-      try {
-        setAi(await getAi(ai.id));
-      } catch {
-        // The refetch is best-effort; the inline error stays visible.
-      }
-    } finally {
-      setStopping(false);
-      setConfirmingStop(false);
-    }
-  };
+    const target = ai;
+    return Effect.sync(() => setStopError('')).pipe(
+      Effect.andThen(fromApi(() => stopAi(target.id))),
+      Effect.tap((fresh) => Effect.sync(() => setAi(fresh))),
+      Effect.asVoid,
+      Effect.catchTag('ApiFailure', (failure) =>
+        Effect.sync(() =>
+          setStopError(describeFailure(failure, 'Could not stop the AI').message),
+        ).pipe(Effect.andThen(refetchAi(target.id, setAi))),
+      ),
+      Effect.ensuring(Effect.sync(() => setConfirmingStop(false))),
+    );
+  });
+  const stopping = isWaiting(stopState);
 
-  // T-0080: resume. Same shape as `confirmStop`: the server's answer is the
-  // source of truth for the new status, and a 409 just refetches.
-  const confirmResume = async (): Promise<void> => {
+  // T-0080: resume. Same shape as the stop action: the server's answer is the
+  // source of truth for the new status, and a failure reads the AI again.
+  const [resumeState, runResume] = useAction<void, void, never>(() => {
     if (ai === null) {
-      return;
+      return Effect.void;
     }
-    setResuming(true);
-    setResumeError('');
-    try {
-      const fresh = await resumeAi(ai.id);
-      setAi(fresh);
-    } catch (error) {
-      setResumeError(describeAiError(error, 'Could not resume the AI').message);
-      try {
-        setAi(await getAi(ai.id));
-      } catch {
-        // The refetch is best-effort; the inline error stays visible.
-      }
-    } finally {
-      setResuming(false);
-    }
-  };
+    const target = ai;
+    return Effect.sync(() => setResumeError('')).pipe(
+      Effect.andThen(fromApi(() => resumeAi(target.id))),
+      Effect.tap((fresh) => Effect.sync(() => setAi(fresh))),
+      Effect.asVoid,
+      Effect.catchTag('ApiFailure', (failure) =>
+        Effect.sync(() =>
+          setResumeError(describeFailure(failure, 'Could not resume the AI').message),
+        ).pipe(Effect.andThen(refetchAi(target.id, setAi))),
+      ),
+    );
+  });
+  const resuming = isWaiting(resumeState);
 
   // T-0091: set or clear the home machine. The select carries the chosen
   // value already (`event.target.value`), so on a failure we have to roll
   // it back to the AI's previous value: the select itself is uncontrolled
   // and uses `ai.machineId` as the canonical source.
-  const changeMachine = async (nextValue: string): Promise<void> => {
-    if (ai === null || machineBusy) {
-      return;
+  // The select only carries approved machines plus "The platform", so a chosen id
+  // is by construction known to the server. Still, the server is the source of
+  // truth; on a 404 (a revoke that raced us) the panel reads the AI again instead
+  // of crashing. A second change while one is in flight is dropped.
+  const [machineState, runMachine] = useAction<string, void, never>((nextValue) => {
+    if (ai === null) {
+      return Effect.void;
     }
     const previous = ai.machineId ?? null;
     const next = nextValue === '' ? null : nextValue;
     if (next === previous) {
-      return;
+      return Effect.void;
     }
-    // The select only carries approved machines plus "The platform", so a
-    // chosen id is by construction known to the server. Still, the server
-    // is the source of truth; on a 404 (a revoke that raced us) we refetch
-    // instead of crashing the panel.
-    const optimistic: PublicAi = { ...ai, machineId: next };
-    setAi(optimistic);
-    setMachineBusy(true);
-    setMachineError('');
-    try {
-      const fresh = await setAiMachine(ai.id, next);
-      setAi(fresh);
-    } catch (error) {
-      // Roll back to the AI's previous value, then refetch so the panel
-      // matches the server's view. The refetch is best-effort: the inline
-      // error stays visible either way.
-      setAi((current) => (current === null ? current : { ...current, machineId: previous }));
-      setMachineError(describeAiError(error, 'Could not update the home machine').message);
-      try {
-        const fresh = await getAi(ai.id);
-        setAi(fresh);
-      } catch {
-        // The refetch is best-effort; the inline error stays visible.
-      }
-    } finally {
-      setMachineBusy(false);
-    }
-  };
+    const target = ai;
+    const optimistic: PublicAi = { ...target, machineId: next };
+    return Effect.sync(() => {
+      setAi(optimistic);
+      setMachineError('');
+    }).pipe(
+      Effect.andThen(fromApi(() => setAiMachine(target.id, next))),
+      Effect.tap((fresh) => Effect.sync(() => setAi(fresh))),
+      Effect.asVoid,
+      Effect.catchTag('ApiFailure', (failure) =>
+        // Roll back to the AI's previous value, then read the AI again so the panel
+        // matches the server's view. The inline error stays visible either way.
+        Effect.sync(() => {
+          setAi((current) => (current === null ? current : { ...current, machineId: previous }));
+          setMachineError(describeFailure(failure, 'Could not update the home machine').message);
+        }).pipe(Effect.andThen(refetchAi(target.id, setAi))),
+      ),
+    );
+  });
+  const machineBusy = isWaiting(machineState);
+  const machineSelectDisabled = !machineOptionsLoaded || machineBusy;
 
   return (
     <>
@@ -634,7 +627,7 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
                   aria-label="Runs on"
                   value={currentMachineId ?? ''}
                   disabled={machineSelectDisabled}
-                  onChange={(event) => void changeMachine(event.target.value)}
+                  onChange={(event) => runMachine(event.target.value)}
                   className="rounded-lg border border-input bg-background px-3 py-2 text-[15px] outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground"
                 >
                   {machineOptionsLoaded && <option value="">The platform (no machine)</option>}
@@ -666,7 +659,7 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
                   </span>
                   <Switch
                     checked={ai.canDelegate === true}
-                    onCheckedChange={(checked) => void saveDelegation({ canDelegate: checked })}
+                    onCheckedChange={(checked) => saveDelegation({ canDelegate: checked })}
                     label="Can delegate"
                     hideLabel
                     disabled={delegationBusy}
@@ -682,9 +675,7 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
                   </span>
                   <Switch
                     checked={ai.acceptsDelegation === true}
-                    onCheckedChange={(checked) =>
-                      void saveDelegation({ acceptsDelegation: checked })
-                    }
+                    onCheckedChange={(checked) => saveDelegation({ acceptsDelegation: checked })}
                     label="Accepts tasks"
                     hideLabel
                     disabled={delegationBusy}
@@ -745,7 +736,7 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
                           size="lg"
                           className="rounded-full px-4"
                           disabled={stopping}
-                          onClick={() => void confirmStop()}
+                          onClick={() => runStop()}
                         >
                           {stopping ? 'Stopping…' : 'Stop AI'}
                         </Button>
@@ -786,7 +777,7 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
                       size="lg"
                       className="self-start rounded-full px-4"
                       disabled={resuming}
-                      onClick={() => void confirmResume()}
+                      onClick={() => runResume()}
                     >
                       {resuming ? 'Resuming…' : 'Resume'}
                     </Button>
@@ -809,7 +800,7 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
                         size="lg"
                         className="rounded-full px-4"
                         disabled={deleting}
-                        onClick={() => void confirmDelete()}
+                        onClick={() => runDelete()}
                       >
                         {deleting ? 'Deleting…' : 'Delete'}
                       </Button>
@@ -867,7 +858,7 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
               size="lg"
               className="rounded-full px-5"
               disabled={!canSave}
-              onClick={() => void save()}
+              onClick={() => runSave()}
             >
               {busy ? (switchingModel ? 'Switching model…' : 'Saving…') : 'Save'}
             </Button>

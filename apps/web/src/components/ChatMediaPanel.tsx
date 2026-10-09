@@ -1,11 +1,17 @@
+import { Effect } from 'effect';
+import { AsyncResult } from 'effect/reactivity';
 import { FileText, Image as ImageIcon, Link2, Mic, X } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { Button } from './ui/button';
 import { SegmentedControl } from './ui/segmented-control';
 import { Sheet } from './ui/sheet';
 import { StateMessage } from './ui/state-message';
 import type { MediaItem, MediaPage, MediaTab } from '@/lib/api';
 import { formatFileSize, mediaSrc, safeHttpUrl } from '@/lib/attachments';
+import { fromApi } from '@/lib/effect/api-effect';
+import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { useQuery } from '@/lib/effect/use-query';
+import { scrollToMessage } from '@/lib/scrollToMessage';
 import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
 
 const TABS: { value: MediaTab; label: string }[] = [
@@ -57,13 +63,40 @@ function mediaItemKey(item: MediaItem, index: number): string {
   return `${item.messageId}-${item.kind}-${item.url ?? item.linkUrl ?? ''}-${index}`;
 }
 
-function ShowInChatButton({
-  item,
-  onJump,
-}: {
-  item: MediaItem;
-  onJump: (item: MediaItem) => void;
-}) {
+/** The chat a row opens items in, and the panel's reactions to a jump. */
+interface JumpTarget {
+  readonly chatId: string;
+  readonly onStart: () => void;
+  readonly onOpened: () => void;
+  readonly onFailed: () => void;
+}
+
+// Opens an item at its message: the panel closes and the bubble is scrolled
+// into view. Each row calls this with its own action, so two rows can jump
+// at once while a second click on the same row waits for the first.
+function useShowInChat(target: JumpTarget): (item: MediaItem) => void {
+  const storeApi = useChatStoreApi();
+  const [, open] = useAction((item: MediaItem) =>
+    fromApi(() => storeApi.getState().openAtMessage(target.chatId, item.messageId)).pipe(
+      Effect.tap(() =>
+        Effect.sync(() => {
+          target.onOpened();
+          window.requestAnimationFrame(() => {
+            scrollToMessage(item.messageId);
+          });
+        }),
+      ),
+      Effect.tapError(() => Effect.sync(target.onFailed)),
+    ),
+  );
+  return (item) => {
+    target.onStart();
+    open(item);
+  };
+}
+
+function ShowInChatButton({ item, jump }: { item: MediaItem; jump: JumpTarget }) {
+  const showInChat = useShowInChat(jump);
   const label =
     item.name !== undefined && item.name !== ''
       ? item.name
@@ -77,14 +110,14 @@ function ShowInChatButton({
       size="sm"
       aria-label={`Show ${label} in chat`}
       className="shrink-0"
-      onClick={() => onJump(item)}
+      onClick={() => showInChat(item)}
     >
       Show in chat
     </Button>
   );
 }
 
-function FileRow({ item, onJump }: { item: MediaItem; onJump: (item: MediaItem) => void }) {
+function FileRow({ item, jump }: { item: MediaItem; jump: JumpTarget }) {
   const icon =
     item.kind === 'image' || item.kind === 'gif' ? (
       <ImageIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
@@ -106,12 +139,12 @@ function FileRow({ item, onJump }: { item: MediaItem; onJump: (item: MediaItem) 
         <div className="truncate text-[14px] font-semibold">{title}</div>
         <div className="truncate text-[13px] text-muted-foreground">{rowSubtitle(item)}</div>
       </div>
-      <ShowInChatButton item={item} onJump={onJump} />
+      <ShowInChatButton item={item} jump={jump} />
     </div>
   );
 }
 
-function LinkRow({ item, onJump }: { item: MediaItem; onJump: (item: MediaItem) => void }) {
+function LinkRow({ item, jump }: { item: MediaItem; jump: JumpTarget }) {
   const href = item.linkUrl === undefined ? undefined : safeHttpUrl(item.linkUrl);
   return (
     <div className="flex items-center gap-2 rounded-xl px-2 py-1.5 hover:bg-list-hover">
@@ -135,20 +168,13 @@ function LinkRow({ item, onJump }: { item: MediaItem; onJump: (item: MediaItem) 
             .join(' · ')}
         </div>
       </div>
-      <ShowInChatButton item={item} onJump={onJump} />
+      <ShowInChatButton item={item} jump={jump} />
     </div>
   );
 }
 
-function MediaThumb({
-  chatId,
-  item,
-  onJump,
-}: {
-  chatId: string;
-  item: MediaItem;
-  onJump: (item: MediaItem) => void;
-}) {
+function MediaThumb({ chatId, item, jump }: { chatId: string; item: MediaItem; jump: JumpTarget }) {
+  const showInChat = useShowInChat(jump);
   if (item.url === undefined) {
     return null;
   }
@@ -156,7 +182,7 @@ function MediaThumb({
   return (
     <button
       type="button"
-      onClick={() => onJump(item)}
+      onClick={() => showInChat(item)}
       aria-label={`Show ${label} in chat`}
       className="aspect-square overflow-hidden rounded-lg bg-surface-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
     >
@@ -171,6 +197,137 @@ function MediaThumb({
 }
 
 /**
+ * The pages of one tab of one chat. It is keyed by chat and tab, so a tab
+ * switch remounts it and interrupts the load still running for the old tab.
+ * The first page loads on mount; "Load more" appends the next page.
+ */
+function MediaBody({
+  chatId,
+  tab,
+  jump,
+  onRetry,
+}: {
+  chatId: string;
+  tab: MediaTab;
+  jump: JumpTarget;
+  onRetry: () => void;
+}) {
+  const storeApi = useChatStoreApi();
+  const [first, reloadFirst] = useQuery(
+    () => fromApi(() => storeApi.getState().loadChatMedia(chatId, tab, undefined)),
+    [storeApi, chatId, tab],
+  );
+  const [extra, setExtra] = useState<ReadonlyArray<MediaPage>>([]);
+  const [more, loadMore, moreControls] = useAction((cursor: string) =>
+    fromApi(() => storeApi.getState().loadChatMedia(chatId, tab, cursor)).pipe(
+      Effect.tap((page) =>
+        Effect.sync(() => {
+          setExtra((pages) => [...pages, page]);
+        }),
+      ),
+    ),
+  );
+
+  const page = AsyncResult.isSuccess(first) ? first.value : undefined;
+  // A failure is hidden while a new call runs, as the page did before.
+  const firstFailure = isWaiting(first) ? undefined : failureOf(first);
+  const moreFailure = isWaiting(more) ? undefined : failureOf(more);
+  const pages = page === undefined ? [] : [page, ...extra];
+  const items = pages.flatMap((entry) => entry.items);
+  const next = pages[pages.length - 1]?.next ?? null;
+  const loadingMore = isWaiting(more);
+
+  let status: 'loading' | 'ready' | 'error';
+  if (isWaiting(first) || (page === undefined && firstFailure === undefined)) {
+    status = 'loading';
+  } else if (firstFailure !== undefined || moreFailure !== undefined) {
+    status = 'error';
+  } else {
+    status = 'ready';
+  }
+
+  const retry = (): void => {
+    moreControls.reset();
+    setExtra([]);
+    onRetry();
+    reloadFirst();
+  };
+
+  const loadNext = (): void => {
+    if (next === null) {
+      return;
+    }
+    loadMore(next);
+  };
+
+  const withUrl = tab === 'media' ? items.filter((item) => item.url !== undefined) : [];
+  const withoutUrl = tab === 'media' ? items.filter((item) => item.url === undefined) : [];
+
+  return (
+    <>
+      {status === 'loading' && <StateMessage kind="loading" title="Loading…" />}
+      {status === 'error' && (
+        <StateMessage
+          kind="error"
+          title="Could not load media"
+          hint="Check your connection and try again."
+          action={{ label: 'Retry', onClick: retry }}
+        />
+      )}
+      {status === 'ready' && items.length === 0 && (
+        <StateMessage kind="empty" title={EMPTY_TITLE[tab]} />
+      )}
+      {status === 'ready' && items.length > 0 && (
+        <>
+          {tab === 'media' && (
+            <div className="flex flex-col gap-2">
+              {withUrl.length > 0 && (
+                <div className="grid grid-cols-3 gap-1">
+                  {withUrl.map((item, index) => (
+                    <MediaThumb
+                      key={mediaItemKey(item, index)}
+                      chatId={chatId}
+                      item={item}
+                      jump={jump}
+                    />
+                  ))}
+                </div>
+              )}
+              {withoutUrl.map((item, index) => (
+                <FileRow key={mediaItemKey(item, index)} item={item} jump={jump} />
+              ))}
+            </div>
+          )}
+          {tab === 'files' &&
+            items.map((item, index) => (
+              <FileRow key={mediaItemKey(item, index)} item={item} jump={jump} />
+            ))}
+          {tab === 'links' &&
+            items.map((item, index) => (
+              <LinkRow key={mediaItemKey(item, index)} item={item} jump={jump} />
+            ))}
+          {tab === 'voice' &&
+            items.map((item, index) => (
+              <FileRow key={mediaItemKey(item, index)} item={item} jump={jump} />
+            ))}
+          {next !== null && (
+            <Button
+              type="button"
+              variant="outline"
+              className="mt-2 self-center"
+              disabled={loadingMore}
+              onClick={loadNext}
+            >
+              {loadingMore ? 'Loading…' : 'Load more'}
+            </Button>
+          )}
+        </>
+      )}
+    </>
+  );
+}
+
+/**
  * The chat media gallery (T-0434): Media / Files / Links / Voice tabs backed by
  * `GET /api/media`. Media items on an untrusted host arrive without a `url`
  * (see the real store), so they render as a file row and never auto-load.
@@ -178,106 +335,26 @@ function MediaThumb({
  */
 export function ChatMediaPanel({ chatId, onClose }: { chatId: string; onClose: () => void }) {
   const store = useChatStore();
-  const storeApi = useChatStoreApi();
   const [tab, setTab] = useState<MediaTab>('media');
-  const [items, setItems] = useState<MediaItem[]>([]);
-  const [next, setNext] = useState<string | null>(null);
-  const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [jumpError, setJumpError] = useState('');
-  const requestId = useRef(0);
+  const [jumpFailed, setJumpFailed] = useState(false);
 
-  const applyPage = useCallback((mode: 'replace' | 'append', page: MediaPage, gen: number) => {
-    if (gen !== requestId.current) {
-      return;
-    }
-    setItems((previous) => (mode === 'append' ? [...previous, ...page.items] : page.items));
-    setNext(page.next);
-    setStatus('ready');
-    setLoadingMore(false);
-  }, []);
-
-  const applyError = useCallback((gen: number) => {
-    if (gen !== requestId.current) {
-      return;
-    }
-    setNext(null);
-    setStatus('error');
-    setLoadingMore(false);
-  }, []);
-
-  // The setState calls live in the promise callbacks, never synchronously in
-  // the effect below (oxlint `react(set-state-in-effect)`).
-  const request = useCallback(
-    (target: MediaTab, cursor: string | undefined, mode: 'replace' | 'append') => {
-      requestId.current += 1;
-      const gen = requestId.current;
-      storeApi
-        .getState()
-        .loadChatMedia(chatId, target, cursor)
-        .then((page) => applyPage(mode, page, gen))
-        .catch(() => applyError(gen));
-    },
-    [chatId, storeApi, applyPage, applyError],
-  );
-
-  useEffect(() => {
-    request(tab, undefined, 'replace');
-  }, [request, tab]);
+  const jump: JumpTarget = {
+    chatId,
+    onStart: () => setJumpFailed(false),
+    onOpened: onClose,
+    onFailed: () => setJumpFailed(true),
+  };
 
   const selectTab = (value: MediaTab): void => {
     if (value === tab) {
       return;
     }
-    requestId.current += 1;
-    setItems([]);
-    setNext(null);
-    setStatus('loading');
-    setLoadingMore(false);
-    setJumpError('');
+    setJumpFailed(false);
     setTab(value);
-  };
-
-  const retry = (): void => {
-    requestId.current += 1;
-    setItems([]);
-    setNext(null);
-    setStatus('loading');
-    setJumpError('');
-    request(tab, undefined, 'replace');
-  };
-
-  const loadMore = (): void => {
-    if (next === null) {
-      return;
-    }
-    setLoadingMore(true);
-    request(tab, next, 'append');
   };
 
   const chat = store.chats.find((entry) => entry.id === chatId);
   const label = chat?.title ?? 'this chat';
-
-  const jump = (item: MediaItem): void => {
-    setJumpError('');
-    storeApi
-      .getState()
-      .openAtMessage(chatId, item.messageId)
-      .then(() => {
-        onClose();
-        window.requestAnimationFrame(() => {
-          document
-            .querySelector(`[data-message-id="${CSS.escape(item.messageId)}"]`)
-            ?.scrollIntoView({ block: 'center' });
-        });
-      })
-      .catch(() => {
-        setJumpError('Message not found');
-      });
-  };
-
-  const withUrl = tab === 'media' ? items.filter((item) => item.url !== undefined) : [];
-  const withoutUrl = tab === 'media' ? items.filter((item) => item.url === undefined) : [];
 
   return (
     <Sheet open onClose={onClose} ariaLabel={`Media, files and links in ${label}`}>
@@ -309,67 +386,16 @@ export function ChatMediaPanel({ chatId, onClose }: { chatId: string; onClose: (
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto p-4">
-        {status === 'loading' && <StateMessage kind="loading" title="Loading…" />}
-        {status === 'error' && (
-          <StateMessage
-            kind="error"
-            title="Could not load media"
-            hint="Check your connection and try again."
-            action={{ label: 'Retry', onClick: retry }}
-          />
-        )}
-        {status === 'ready' && items.length === 0 && (
-          <StateMessage kind="empty" title={EMPTY_TITLE[tab]} />
-        )}
-        {status === 'ready' && items.length > 0 && (
-          <>
-            {tab === 'media' && (
-              <div className="flex flex-col gap-2">
-                {withUrl.length > 0 && (
-                  <div className="grid grid-cols-3 gap-1">
-                    {withUrl.map((item, index) => (
-                      <MediaThumb
-                        key={mediaItemKey(item, index)}
-                        chatId={chatId}
-                        item={item}
-                        onJump={jump}
-                      />
-                    ))}
-                  </div>
-                )}
-                {withoutUrl.map((item, index) => (
-                  <FileRow key={mediaItemKey(item, index)} item={item} onJump={jump} />
-                ))}
-              </div>
-            )}
-            {tab === 'files' &&
-              items.map((item, index) => (
-                <FileRow key={mediaItemKey(item, index)} item={item} onJump={jump} />
-              ))}
-            {tab === 'links' &&
-              items.map((item, index) => (
-                <LinkRow key={mediaItemKey(item, index)} item={item} onJump={jump} />
-              ))}
-            {tab === 'voice' &&
-              items.map((item, index) => (
-                <FileRow key={mediaItemKey(item, index)} item={item} onJump={jump} />
-              ))}
-            {next !== null && (
-              <Button
-                type="button"
-                variant="outline"
-                className="mt-2 self-center"
-                disabled={loadingMore}
-                onClick={loadMore}
-              >
-                {loadingMore ? 'Loading…' : 'Load more'}
-              </Button>
-            )}
-          </>
-        )}
-        {jumpError !== '' && (
+        <MediaBody
+          key={`${chatId}|${tab}`}
+          chatId={chatId}
+          tab={tab}
+          jump={jump}
+          onRetry={() => setJumpFailed(false)}
+        />
+        {jumpFailed && (
           <p role="alert" className="px-2 text-[13px] text-danger">
-            {jumpError}
+            Message not found
           </p>
         )}
       </div>

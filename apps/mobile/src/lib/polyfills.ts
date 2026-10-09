@@ -1,3 +1,4 @@
+// effect-plain: runtime polyfills; nextTick must stay a Promise microtask
 // Minimal global shims that xmpp.js needs on Hermes / React Native. Task T-0004
 // proved exactly two are required: `process.nextTick` and
 // `crypto.randomUUID`. Both are installed only when the runtime lacks them, so

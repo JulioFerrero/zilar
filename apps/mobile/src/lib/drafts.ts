@@ -9,6 +9,8 @@
  * Frames that fail validation are dropped silently; nothing here throws and the
  * token and draft text are never logged.
  */
+import { Effect, Fiber, Option, Schema } from 'effect';
+
 import type { AppStateLike } from '../store/real-store';
 
 /** The stream path, joined with the API URL by the store. */
@@ -65,13 +67,14 @@ export interface DraftStreamOptions {
   createXhr?: () => DraftXhr;
   /** Test seam for the jittered backoff. */
   random?: () => number;
-  setTimer?: (handler: () => void, delay: number) => ReturnType<typeof setTimeout>;
-  clearTimer?: (handle: ReturnType<typeof setTimeout>) => void;
   baseDelayMs?: number;
   maxDelayMs?: number;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Text that is not JSON decodes to `None`, never throws. */
+const decodeJson = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Unknown));
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -83,12 +86,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * over the same shapes as the web's schemas.
  */
 function parseEventData(data: string): DraftHubEvent | undefined {
-  let json: unknown;
-  try {
-    json = JSON.parse(data);
-  } catch {
-    return undefined;
-  }
+  const json = Option.getOrUndefined(decodeJson(data));
   if (!isRecord(json)) {
     return undefined;
   }
@@ -164,8 +162,6 @@ export function subscribeToDrafts(
 ): () => void {
   const createXhr = options.createXhr ?? defaultXhr;
   const random = options.random ?? Math.random;
-  const setTimer = options.setTimer ?? ((handler, delay) => setTimeout(handler, delay));
-  const clearTimer = options.clearTimer ?? ((handle) => clearTimeout(handle));
   const baseDelayMs = options.baseDelayMs ?? DRAFT_RECONNECT_BASE_MS;
   const maxDelayMs = options.maxDelayMs ?? DRAFT_RECONNECT_MAX_MS;
 
@@ -174,13 +170,14 @@ export function subscribeToDrafts(
   let xhr: DraftXhr | null = null;
   let offset = 0;
   let buffer = '';
-  let retryTimer: ReturnType<typeof setTimeout> | null = null;
+  let retryTimer: Fiber.Fiber<void> | null = null;
   let attempt = 0;
 
   function clearRetry(): void {
     if (retryTimer !== null) {
-      clearTimer(retryTimer);
+      const pending = retryTimer;
       retryTimer = null;
+      Effect.runSync(Fiber.interrupt(pending));
     }
   }
 
@@ -226,10 +223,16 @@ export function subscribeToDrafts(
     attempt += 1;
     // Full jitter: half the base plus up to half again.
     const delay = Math.round(base / 2 + (base / 2) * random());
-    retryTimer = setTimer(() => {
-      retryTimer = null;
-      void open();
-    }, delay);
+    retryTimer = Effect.runFork(
+      Effect.sleep(delay).pipe(
+        Effect.andThen(
+          Effect.sync(() => {
+            retryTimer = null;
+            startOpen();
+          }),
+        ),
+      ),
+    );
   }
 
   function finish(): void {
@@ -244,16 +247,21 @@ export function subscribeToDrafts(
     scheduleRetry();
   }
 
-  async function open(): Promise<void> {
+  // A token read that throws or rejects is "no token", like a missing one.
+  const readToken: Effect.Effect<string | undefined> = Effect.try(() => options.getToken()).pipe(
+    Effect.flatMap((token) =>
+      typeof token === 'string' || token === undefined
+        ? Effect.succeed(token)
+        : Effect.tryPromise(() => token),
+    ),
+    Effect.orElseSucceed(() => undefined),
+  );
+
+  const open: Effect.Effect<void> = Effect.gen(function* () {
     if (closed || !active || xhr !== null) {
       return;
     }
-    let token: string | undefined;
-    try {
-      token = await options.getToken();
-    } catch {
-      token = undefined;
-    }
+    const token = yield* readToken;
     if (closed || !active || xhr !== null) {
       return;
     }
@@ -284,14 +292,16 @@ export function subscribeToDrafts(
         finish();
       }
     };
-    try {
+    yield* Effect.try(() => {
       request.open('GET', options.url);
       request.setRequestHeader('Accept', 'text/event-stream');
       request.setRequestHeader('Authorization', `Bearer ${token}`);
       request.send();
-    } catch {
-      finish();
-    }
+    }).pipe(Effect.catch(() => Effect.sync(finish)));
+  });
+
+  function startOpen(): void {
+    Effect.runFork(open);
   }
 
   const unsubscribe = options.appState.subscribe((state) => {
@@ -306,14 +316,14 @@ export function subscribeToDrafts(
     if (active) {
       clearRetry();
       attempt = 0;
-      void open();
+      startOpen();
     } else {
       clearRetry();
       closeXhr();
     }
   });
 
-  void open();
+  startOpen();
 
   return () => {
     closed = true;

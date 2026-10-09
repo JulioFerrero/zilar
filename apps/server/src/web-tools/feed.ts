@@ -3,6 +3,7 @@
 // `<!DOCTYPE` or `<!ENTITY` is rejected before parsing, so no external
 // entity can ever be fetched. Items come back newest-first as far as a
 // tag scan can tell; the adapter caps counts and snippet lengths.
+// effect-plain: pure RSS/Atom parse; malformed input is a result value, not an error
 export interface FeedItem {
   title: string;
   link: string;

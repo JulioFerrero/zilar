@@ -1,3 +1,6 @@
+import { parseUrl } from '@zilar/chat-core';
+import { Duration, Effect } from 'effect';
+import { runWeb } from '@/lib/effect/runtime';
 import type { UploadSlotRequester } from './voice';
 
 /** Hard cap on an attachment, mirroring the plan question D6 default. */
@@ -73,12 +76,10 @@ export function formatFileSize(bytes: number): string {
 
 /** The URL to follow only when it is http(s); anything else (`javascript:`, `data:`) is not. */
 export function safeHttpUrl(url: string): string | undefined {
-  try {
-    const parsed = new URL(url);
-    return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? url : undefined;
-  } catch {
-    return undefined;
-  }
+  const parsed = parseUrl(url);
+  return parsed !== undefined && (parsed.protocol === 'http:' || parsed.protocol === 'https:')
+    ? url
+    : undefined;
 }
 
 /**
@@ -93,10 +94,8 @@ export function mediaSrc(
   url: string,
   origin: string = window.location.origin,
 ): string {
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
+  const parsed = parseUrl(url);
+  if (parsed === undefined) {
     return url;
   }
   if (parsed.origin !== origin) {
@@ -125,14 +124,11 @@ export interface MediaTokenShape {
  */
 export function trustedMediaHosts(token: MediaTokenShape): ReadonlySet<string> {
   const hosts = new Set<string>();
-  try {
-    const serviceHost = new URL(token.service).hostname.toLowerCase();
-    if (serviceHost !== '') {
-      hosts.add(serviceHost);
-    }
-  } catch {
-    // A malformed service URL just means we trust nothing from it; the domain
-    // below still covers the production case.
+  // A malformed service URL just means we trust nothing from it; the domain
+  // below still covers the production case.
+  const serviceHost = parseUrl(token.service)?.hostname.toLowerCase();
+  if (serviceHost !== undefined && serviceHost !== '') {
+    hosts.add(serviceHost);
   }
   const domain = token.domain.trim().toLowerCase();
   if (domain !== '') {
@@ -149,24 +145,18 @@ export function trustedMediaHosts(token: MediaTokenShape): ReadonlySet<string> {
  * untrusted.
  */
 export function isTrustedMediaUrl(url: string, trustedHosts: ReadonlySet<string>): boolean {
-  try {
-    const parsed = new URL(url);
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-      return false;
-    }
-    return trustedHosts.has(parsed.hostname.toLowerCase());
-  } catch {
+  const parsed = parseUrl(url);
+  if (parsed === undefined || (parsed.protocol !== 'http:' && parsed.protocol !== 'https:')) {
     return false;
   }
+  return trustedHosts.has(parsed.hostname.toLowerCase());
 }
 
 /** A best-effort object URL; test environments without it get `undefined`. */
 export function objectUrlFor(blob: Blob): string | undefined {
-  try {
-    return URL.createObjectURL(blob);
-  } catch {
-    return undefined;
-  }
+  return Effect.runSync(
+    Effect.try(() => URL.createObjectURL(blob)).pipe(Effect.orElseSucceed(() => undefined)),
+  );
 }
 
 /**
@@ -178,38 +168,28 @@ export function readImageSize(
   file: File,
   timeoutMs = 5000,
 ): Promise<{ width: number; height: number } | undefined> {
-  return new Promise((resolve) => {
-    if (
-      typeof Image === 'undefined' ||
-      typeof URL === 'undefined' ||
-      typeof URL.createObjectURL !== 'function'
-    ) {
-      resolve(undefined);
-      return;
-    }
-    let objectUrl: string | undefined;
-    try {
-      objectUrl = URL.createObjectURL(file);
-    } catch {
-      resolve(undefined);
-      return;
-    }
+  return runWeb(readImageSizeEffect(file, timeoutMs));
+}
+
+export type ImageSize = { width: number; height: number };
+
+// Loads the object URL into an `Image`. The load or error handler settles it;
+// the timeout (which interrupts the wait and detaches the handlers) gives
+// `undefined`, so an image that never answers cannot hang the caller.
+const decodeImageSize = (
+  objectUrl: string,
+  timeoutMs: number,
+): Effect.Effect<ImageSize | undefined> =>
+  Effect.callback<ImageSize | undefined>((resume) => {
     const image = new Image();
-    let settled = false;
-    const finish = (result: { width: number; height: number } | undefined): void => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      clearTimeout(timer);
+    const detach = (): void => {
       image.onload = null;
       image.onerror = null;
-      if (objectUrl !== undefined) {
-        URL.revokeObjectURL(objectUrl);
-      }
-      resolve(result);
     };
-    const timer = setTimeout(() => finish(undefined), timeoutMs);
+    const finish = (result: ImageSize | undefined): void => {
+      detach();
+      resume(Effect.succeed(result));
+    };
     image.onload = () => {
       finish(
         image.naturalWidth > 0 && image.naturalHeight > 0
@@ -219,48 +199,87 @@ export function readImageSize(
     };
     image.onerror = () => finish(undefined);
     image.src = objectUrl;
+    return Effect.sync(detach);
+  }).pipe(
+    Effect.timeoutOrElse({
+      duration: Duration.millis(timeoutMs),
+      orElse: () => Effect.succeed(undefined),
+    }),
+  );
+
+export const readImageSizeEffect = (
+  file: File,
+  timeoutMs = 5000,
+): Effect.Effect<ImageSize | undefined> =>
+  Effect.suspend(() => {
+    if (
+      typeof Image === 'undefined' ||
+      typeof URL === 'undefined' ||
+      typeof URL.createObjectURL !== 'function'
+    ) {
+      return Effect.succeed(undefined);
+    }
+    // The object URL is always revoked once the image has settled; when it
+    // cannot be created the size is simply omitted.
+    return Effect.acquireUseRelease(
+      Effect.try(() => URL.createObjectURL(file)),
+      (objectUrl) => decodeImageSize(objectUrl, timeoutMs),
+      (objectUrl) => Effect.sync(() => URL.revokeObjectURL(objectUrl)),
+    ).pipe(Effect.orElseSucceed(() => undefined));
   });
-}
 
 /**
  * Asks for a XEP-0363 slot, PUTs the bytes with the slot's headers and returns
  * the download URL. The cap is enforced before any request is made; a refused
  * or unreachable PUT throws an `AttachmentError`.
  */
-export async function uploadAttachment(
+export function uploadAttachment(
   requester: UploadSlotRequester,
   file: File,
   fetchFn: typeof fetch = fetch,
 ): Promise<string> {
+  return runWeb(uploadAttachmentEffect(requester, file, fetchFn));
+}
+
+// A rejection from `requestUploadSlot` is a defect, so the caller sees the
+// original error; only the PUT failures become an `AttachmentError`.
+export const uploadAttachmentEffect = Effect.fnUntraced(function* (
+  requester: UploadSlotRequester,
+  file: File,
+  fetchFn: typeof fetch,
+): Effect.fn.Return<string, AttachmentError> {
   if (file.size === 0) {
-    throw new AttachmentError('empty_file', 'That file is empty.');
+    return yield* Effect.fail(new AttachmentError('empty_file', 'That file is empty.'));
   }
   if (file.size > MAX_ATTACHMENT_BYTES) {
-    throw new AttachmentError('too_large', 'That file is larger than 50 MB.');
+    return yield* Effect.fail(new AttachmentError('too_large', 'That file is larger than 50 MB.'));
   }
 
   const contentType = file.type === '' ? 'application/octet-stream' : file.type;
-  const slot = await requester.requestUploadSlot({
-    filename: cleanFilename(file.name),
-    size: file.size,
-    contentType,
-  });
+  const slot = yield* Effect.promise(() =>
+    requester.requestUploadSlot({
+      filename: cleanFilename(file.name),
+      size: file.size,
+      contentType,
+    }),
+  );
 
-  let response: Response;
-  try {
-    response = await fetchFn(slot.putUrl, {
-      method: 'PUT',
-      headers: { 'content-type': contentType, ...slot.headers },
-      body: file,
-    });
-  } catch {
-    throw new AttachmentError('upload_failed', 'Could not upload the file');
-  }
+  const response = yield* Effect.tryPromise({
+    try: () =>
+      fetchFn(slot.putUrl, {
+        method: 'PUT',
+        headers: { 'content-type': contentType, ...slot.headers },
+        body: file,
+      }),
+    catch: () => new AttachmentError('upload_failed', 'Could not upload the file'),
+  });
   if (!response.ok) {
-    throw new AttachmentError('upload_failed', 'The upload service refused the file');
+    return yield* Effect.fail(
+      new AttachmentError('upload_failed', 'The upload service refused the file'),
+    );
   }
   return slot.getUrl;
-}
+});
 
 /**
  * The mime and file extension for GIF-tab bytes (T-0122), taken from the

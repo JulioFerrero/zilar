@@ -1,13 +1,42 @@
 # Effect guide for workers
 
+> **Status, 2026-10-09:**
+> - The codebase is Effect 4.0 end to end: Effect HTTP replaced Hono, `effect/sql` replaced drizzle, Effect Schema replaced zod, and both chat stores run on Effect. `pnpm effect:map` reads 99.6% on main; the last file, the server entry, is T-0838.
+> - Workers start with the one-page `docs/EFFECT_BRIEF.md`. The section "The 100% rule and the client patterns" below is the reference behind it.
+> - The older sections describe the first, server-only conversions. Where they say a framework "stays", the 2026-10-07 scope change overrides them.
+
 Effect 4.0 owns the logic between our frameworks: pipelines, timeouts,
-cancellation, single-flight, background loops. Hono routes, React
-components, drizzle queries and better-auth keep their current shape, and
-zod stays at the boundaries. This guide shows the idioms actually used in
+cancellation, single-flight, background loops. The early sections show the idioms used in
 `apps/server/src/voice-transcription/pipeline.ts` — read it alongside that
 file. For anything beyond it, read `docs/effect-reference/` first
 (`LLMS.md` and the examples are Effect 4 and win over what you remember of
 v3).
+
+## The 100% rule and the client patterns (2026-10-09)
+
+**The rule** (`docs/audit/effect-100-plan.md` section 1). A file is done when it uses Effect for everything that can wait, fail or touch the outside world, or when it has nothing of that kind in it.
+- **The checker:** `pnpm effect:map` classifies every non-test source file as `effect`, `plain` (pure, which is fine), `exempt` (a `// effect-plain: <reason>` marker in the first 15 lines; at most 25 in the repo), or `needs-effect`.
+- **Coverage:** Effect lines / (Effect lines + needs-effect lines).
+- **The ratchet:** the gate fails on a new or regressed needs-effect file (R6, T-0768).
+- **Tier B:** a Promise edge inside an Effect file (`Effect.runPromise` at a library callback, `await` inside `Effect.promise`). It is tracked, not failing.
+- **Exempt by decision:** `packages/devtools/**`, `apps/site`, and the dev-only mock backends (`apps/web/src/store/mockStore.ts`, `apps/mobile/src/store/chat-store.ts`).
+
+**Web and mobile UI:**
+- **Actions:** one `useAction` per action and per row (keyed by the row id), never one guard for the whole screen. `useQuery` loads data; a reload keeps the old rows on screen until the answer arrives.
+- **Browser and permission calls:** the clipboard, `prompt()`, pickers and media permissions are called synchronously inside the click, before any Effect step.
+- **Structure and text:** keep the rendered structure; dialogs stay where they are (they are not portalled). Keep every text, and a store's `Error` message keeps its sentence.
+- **API errors:** `fromApi` maps failures to `ApiFailure`. When a screen's error text reads a typed API error class (`instanceof AisApiError`, `ProfileApiError` and similar), keep the raw error with `Effect.tryPromise({ try, catch: (e) => e })` instead.
+- **Interruption:** leaving a screen interrupts its loads. An action that must finish once started (leave a group, change a role, save then navigate) is `Effect.uninterruptible`, or it is forked so unmount does not stop it.
+- **Send-like actions** (each GIF pick, each message) run as their own fiber. Never use `replace` or `ignore` for them; `replace` is for loads where a stale answer must not win.
+- **Loops and timers** (tickers, polling) survive a throw only with `Effect.catchDefect` inside the repeat. Never use `catchCause` there, because it also sees normal interruption.
+- **Lint:** never read `ref.current` during render, and never call setState inside an effect only to mirror state. Run `pnpm exec oxlint <files>` before you commit.
+
+**The stores** (T-0835 web, T-0836 mobile):
+- **Shape:** each concern lives in a module under `store/effects/` (lifecycle, polling, history, send, groups, events, pins), and every background job runs in the store's Scope, so `stop()` interrupts it.
+- **Unchanged API:** `StoreApi` is the same as before, and the Promise `XmppCore` is reached through `lift`.
+- **Not yet:** `XmppCoreEffect` (T-0801) is ready, but moving the stores and the AI gateway onto it, and deleting the Promise facade (plan X8), is a separate step. It needs Julio's live messaging check.
+
+**Server fire-and-forget:** `Effect.runFork` with `Effect.catchDefect`, keeping the same log text and fields. A fork that must start at once (a busy flag) is started synchronously.
 
 ## The Promise boundary rule
 

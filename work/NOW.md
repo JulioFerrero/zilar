@@ -2,6 +2,79 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-09 18:00 UTC: 100.0% Effect on main (`ee84523a`)**
+- **The map:** `pnpm effect:map` on main gives 879 files: effect 438, needs-effect 0, plain 329, exempt 112, legacy 0. Markers are 16 of 25, and Tier B (tracked only, decision D1) has 161 files.
+- **Merged since 17:55:**
+  - wave 2: all 25 mobile tasks (T-0810 to T-0834);
+  - chains: T-0835 (web store), T-0836 (mobile store), T-0838 (server entry);
+  - T-0839 (mobile search list), T-0840 (`lead batch check` runs lint), T-0841 (the people-search card fix);
+  - Z2 docs: the 100% rule and client patterns in `docs/EFFECT_GUIDE.md`, and an update in `docs/ROADMAP_EFFECT.md`.
+- **Running:** nothing.
+- **Open in the plan:**
+  - X8: move the stores and gateway onto `XmppCoreEffect` and delete the Promise facade. It touches messaging, so it waits for Julio.
+  - Z1: make needs-effect = 0 a hard gate. The R6 ratchet already blocks regressions; the gate policy is Julio's decision.
+- **Deploy:** live is still `73fae1bf`. Everything since is on main only and waits for Julio's live checks (listed in the 17:55 entry, plus the server start and a redeploy stop for T-0838).
+
+**2026-10-09 17:55 UTC: batch waves, 37 tasks through in about 2 hours; coverage near 90% once the queue drains**
+- **The new system** (Julio asked for speed): waves of up to 20 Claude subagents. Each worker runs only its own tests. The lead then runs one combined check (`lead batch check`, T-0799) and sends every fix back at once; one Sonnet worker takes each same-file chain. The rules are in `docs/EFFECT_BRIEF.md` and the `batch-waves` memory.
+- **Wave 1 (12 tasks), merged:** T-0792 (S2), T-0799 (`lead batch`), T-0800 (mobile toolkit), T-0801 (xmpp-core X3-X7), T-0802 (R4), T-0803 (R5), T-0804 (S10), T-0805 (server sweep), T-0806 (H2+H3), T-0807 (WU5), T-0808 (WU9), T-0809 (WU18). T-0837 (gateway S3+S4) is merged too.
+- **Wave 2 (mobile MU1-MU25, T-0810 to T-0834):**
+  - **Combined check:** all 25 pass together (typecheck and the full mobile suite). The server and web failures in it were load flakes that pass on main.
+  - **Phone smoke** of the combined branch on the emulator: 17 screens PASS, 8 skipped for route parameters. The screenshots look right.
+  - **Status:** 21 are merged. T-0810, T-0814, T-0819 and T-0824 had lint errors that the combined check did not run (fixed by T-0840); they are fixed and queued.
+- **Chains, reviewed and queued:** T-0835 (web store; full web suite 1943 green) and T-0836 (mobile store; full mobile suite 2254 green).
+- **Running:**
+  - T-0838 (S12+S13, the server entry, Sonnet; with a local start/stop rehearsal);
+  - T-0839 (the last mobile needs-effect file);
+  - T-0841 (the mobile people-search card shows the old relation after Accept, Decline or Cancel; found by T-0833).
+
+  T-0840 (`lead batch check` runs lint) is reviewed and queued.
+- **Left in the plan after these:** X8 (delete the xmpp Promise facade; the stores and gateway still use it through `lift`), Z1 (a hard gate on needs-effect = 0; Julio decides the gate policy) and Z2 (docs).
+- **Deploy:** live is still `73fae1bf`. Before any deploy, Julio checks these live:
+  - messaging, connect, reconnect and history (xmpp-core and both stores);
+  - sending during a reconnect, and sign out and back in;
+  - a DM and a group AI reply (gateway);
+  - web sign-in (S10);
+  - the server start and stop (T-0838).
+
+**2026-10-09 17:50 UTC: coverage 55.3%, the full web suite green on main**
+- **Merged since 15:05:**
+  - web: T-0772 (WU2), T-0773 (WU22), T-0775 (WU7), T-0776 (WU8), T-0778 (WU11 + WU12), T-0779 (WU13), T-0781 (WU15), T-0782 (WU16), T-0783 (WU10), T-0784 (WU19), T-0785 (WU17), T-0786 (WU20);
+  - xmpp-core: T-0777 (X2b Deferred requests; the integration tests pass 4 of 4 on local ejabberd), T-0780 (request path tests).
+- **Main was red, now fixed:** an AiPanel test broke at T-0767, and the nearest-tests gate missed it. T-0778 fixed it. The full web suite passed on main at `82db347b` (1813 tests), and workers now run it before they finish.
+- **New pattern rules from reviews** (in every web spec): keep per-row actions; keep dialogs where they are (they are not portalled); store-action `Error` messages keep their text.
+- **Running:**
+  - web: T-0787 (WU23), T-0788 (WU24), T-0789 (WU25), T-0790 (WU26), T-0793 (WU21);
+  - server: T-0791 (S1, gateway part 1; Sonnet).
+- **Written, waiting:** T-0792 (S2, gateway part 2), which goes after T-0791.
+- **Follow-ups:**
+  - why `useQuery` fetched twice in AlwaysAllowedList (remount or StrictMode);
+  - why a stale `Effect.sleep` in replace mode was not interrupted under fake timers (T-0784);
+  - xmpp `disconnect()` does not fail pending joins or history queries (T-0780).
+- **Deploy:** live is still `73fae1bf`. The xmpp-core changes (X1, X2a, X2b) wait for Julio's live messaging and reconnect check before the next deploy.
+
+**2026-10-09 15:05 UTC: 17 Effect-plan tasks merged today; coverage at 48% and climbing**
+- **Merged since 14:50:**
+  - server: T-0764 (S8), T-0770 (R2 markers), T-0771 (S5a sandbox host fetch);
+  - web: T-0765 (R3 URL helper), T-0766 (WU1 hooks), T-0767 (WU6 + WU14 pages);
+  - tooling: T-0768 (R6 ratchet: the gate now fails on a new or regressed needs-effect file), T-0774 (CI on main no longer cancels a running check);
+  - xmpp-core: T-0769 (X2a timers as fibers). The lead ran the integration tests on local ejabberd after X2a: 4 of 4 pass, including stream management.
+- **Running:** T-0772 (WU2), T-0773 (WU22), T-0775 (WU7), T-0776 (WU8), T-0777 (X2b xmpp Deferreds).
+- **Deploy:** main has not been deployed since 13:55 (`73fae1bf`). Before the next deploy, the xmpp-core changes (X1, X2a, X2b) need Julio's live messaging and reconnect check, or the lead deploys only after he OKs it.
+
+**2026-10-09 14:50 UTC: the 100% Effect plan is running (`docs/audit/effect-100-plan.md`, T-0753)**
+- **Julio's decisions:** he accepted D1-D6, D8 and D9; D7 makes `packages/devtools` exempt, so H4-H12 are dropped.
+- **Measure:** coverage 47.2%, as Effect lines / (Effect + needs-effect lines), from `pnpm effect:map` on `a7abe70f`. The Pages map shows the same rule (T-0758).
+- **Merged:** T-0757 (lead watch shows Claude-subagent tasks), T-0758 (R1, the map rule), T-0759 (F1, web runtime and `ApiFailure`), T-0760 (S7), T-0761 (S9), T-0762 (F2, `useAction` and `useQuery`), T-0763 (X1, xmpp-core typed errors).
+- **Running** (Claude subagents, shown in lead watch): T-0764 (S8), T-0765 (R3), T-0766 (WU1), T-0767 (WU6 + WU14), T-0768 (R6 ratchet).
+- **Next:**
+  - X2, the xmpp-core connection state machine (Sonnet; it needs Julio's live check before it is deployed);
+  - more WU web tasks;
+  - S5, S6 and S10 (S6 and S10 carry live-risk flags);
+  - H1-H3 (runner);
+  - R2, R4 and R5 (markers, mobile).
+- **Not deployed since 13:55:** everything after `73fae1bf` is in main only (all of it behaviour-preserving). The next deploy waits for a green tip and a calm moment.
+
 **2026-10-09 14:10 UTC: speed-ups merged (T-0754, T-0755, T-0756) and the map on Pages (T-0752)**
 - **CI:** pushes that touch only `work/`, `docs/` or `*.md` no longer start CI; the checks run as 4 parallel jobs with a Turborepo cache.
 - **Images:** green-main builds are amd64-only (the live host is x86_64) with a gha cache, and only `v*` tags build arm64. The image-build check takes the last commit that changed code, so docs commits on top are fine.

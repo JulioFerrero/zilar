@@ -4,6 +4,7 @@
 // the AI's own model (the caller supplies `complete`). It never logs, and text
 // only ever moves from the mirror into a summary.
 
+import { Effect } from 'effect';
 import type { ServerDatabase } from '../../db/client';
 import { looksLikeSecret } from './secrets';
 import { buildCompactionPrompt, compactionInput, pendingNodes, putNode } from './store';
@@ -38,18 +39,26 @@ function firstLine(raw: string): string {
 // Build the pending nodes for one chat, in order. A `complete` that throws
 // stops the loop and is rethrown: the caller (the gateway) logs it. A block
 // whose input is empty (every row deleted) is stored as `(nothing kept)`
-// without a model call; a summary that looks like a secret is withheld.
-export async function compactMemory(input: CompactMemoryInput): Promise<CompactMemoryResult> {
+// without a model call; a summary that looks like a secret is withheld. The
+// database and model calls are lifted with plain `Effect.promise`, so a
+// failure dies with the original error and `runPromise` rejects with it
+// unwrapped.
+export const compactMemoryEffect = Effect.fnUntraced(function* (
+  input: CompactMemoryInput,
+): Effect.fn.Return<CompactMemoryResult> {
   const { db, aiId, chatKey, complete } = input;
   const limit = input.limit ?? DEFAULT_LIMIT;
   let built = 0;
   let withheld = 0;
 
-  for (const block of await pendingNodes(db, aiId, chatKey, limit)) {
-    const lines = await compactionInput(db, aiId, chatKey, block);
+  const blocks = yield* Effect.promise(() => pendingNodes(db, aiId, chatKey, limit));
+  for (const block of blocks) {
+    const lines = yield* Effect.promise(() => compactionInput(db, aiId, chatKey, block));
     let summary = NOTHING_KEPT;
     if (lines.length > 0) {
-      const raw = await complete(buildCompactionPrompt(formatBlockId(block), lines));
+      const raw = yield* Effect.promise(() =>
+        complete(buildCompactionPrompt(formatBlockId(block), lines)),
+      );
       const line = firstLine(raw);
       if (line !== '') summary = line;
     }
@@ -57,9 +66,13 @@ export async function compactMemory(input: CompactMemoryInput): Promise<CompactM
       summary = SUMMARY_WITHHELD;
       withheld += 1;
     }
-    await putNode(db, aiId, chatKey, block, summary);
+    yield* Effect.promise(() => putNode(db, aiId, chatKey, block, summary));
     built += 1;
   }
 
   return { built, withheld };
+});
+
+export function compactMemory(input: CompactMemoryInput): Promise<CompactMemoryResult> {
+  return Effect.runPromise(compactMemoryEffect(input));
 }

@@ -4,6 +4,8 @@
  * the pure helpers the panel and the composer use (caret insertion, recents).
  */
 
+import { Effect } from 'effect';
+
 export type EmojiCategoryId =
   | 'smileys'
   | 'people'
@@ -355,17 +357,18 @@ export function rememberRecentEmoji(recents: readonly string[], emoji: string): 
   return [emoji, ...recents.filter((item) => item !== emoji)].slice(0, MAX_RECENT_EMOJI);
 }
 
+/** Parses stored JSON; text that does not parse gives `undefined`, never a throw. */
+const parseStoredJson = (raw: string): Effect.Effect<unknown> =>
+  Effect.try({ try: () => JSON.parse(raw) as unknown, catch: () => undefined }).pipe(
+    Effect.catch(() => Effect.succeed(undefined)),
+  );
+
 /** Reads stored emoji recents; hostile or missing data resolves to []. */
 export function readRecentEmoji(raw: string | null | undefined): string[] {
   if (raw === null || raw === undefined || raw === '') {
     return [];
   }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return [];
-  }
+  const parsed = Effect.runSync(parseStoredJson(raw));
   if (!Array.isArray(parsed)) {
     return [];
   }
@@ -396,29 +399,45 @@ export const EMOJI_RECENTS_STORAGE = {
   write: (raw: string): Promise<void> => emojiBackend.write(raw),
 };
 
+const readStoredEmojiRecentsEffect = (): Effect.Effect<string[]> =>
+  Effect.tryPromise({ try: () => emojiBackend.read(), catch: () => undefined }).pipe(
+    Effect.flatMap((raw) =>
+      Effect.try({ try: () => readRecentEmoji(raw), catch: () => undefined }),
+    ),
+    Effect.catch(() => Effect.succeed<string[]>([])),
+  );
+
 /** Reads the emoji recents; hostile or missing data resolves to []. */
-export async function readStoredEmojiRecents(): Promise<string[]> {
-  try {
-    return readRecentEmoji(await emojiBackend.read());
-  } catch {
-    return [];
-  }
+export function readStoredEmojiRecents(): Promise<string[]> {
+  return Effect.runPromise(readStoredEmojiRecentsEffect());
 }
+
+const persistEmojiRecentEffect = (
+  storage: Pick<RecentsStorageBackend, 'write'>,
+  recents: readonly string[],
+  emoji: string,
+): Effect.Effect<string[]> =>
+  Effect.sync(() => rememberRecentEmoji(recents, emoji)).pipe(
+    Effect.flatMap((next) =>
+      Effect.tryPromise({
+        try: () => storage.write(JSON.stringify(next)),
+        catch: () => undefined,
+      }).pipe(
+        // A blocked storage must never break typing.
+        Effect.catch(() => Effect.void),
+        Effect.as(next),
+      ),
+    ),
+  );
 
 /**
  * Records a picked emoji in per-device recents; a failing storage never
  * breaks typing.
  */
-export async function persistEmojiRecent(
+export function persistEmojiRecent(
   storage: Pick<RecentsStorageBackend, 'write'>,
   recents: readonly string[],
   emoji: string,
 ): Promise<string[]> {
-  const next = rememberRecentEmoji(recents, emoji);
-  try {
-    await storage.write(JSON.stringify(next));
-  } catch {
-    // A blocked storage must never break typing.
-  }
-  return next;
+  return Effect.runPromise(persistEmojiRecentEffect(storage, recents, emoji));
 }

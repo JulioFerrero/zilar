@@ -1,4 +1,5 @@
 import { useFocusEffect, useRouter } from 'expo-router';
+import { Effect, Fiber } from 'effect';
 import {
   Ban,
   ChevronRight,
@@ -25,6 +26,7 @@ import { ListRow } from '@/components/ui/list-row';
 import { Text } from '@/components/ui/text';
 import { ACCENT, ICON, MUTED_FOREGROUND } from '@/lib/colors';
 import { asColorScheme } from '@/lib/color-scheme';
+import { fromApi } from '@/lib/effect/api-effect';
 import type { MyProfile } from '@/lib/profile-api';
 
 import { useContactsApi } from '@/components/contacts/use-contacts-api';
@@ -137,47 +139,43 @@ function SettingsHub() {
 
   useFocusEffect(
     useCallback(() => {
-      let active = true;
       setLoading(true);
-      void api
-        .getMe()
-        .then((me) => {
-          if (active) {
-            setProfile(me);
-            setLoading(false);
-          }
-        })
-        .catch(() => {
-          if (active) {
-            // The name still comes from the session; the handle line stays
-            // empty rather than blocking the hub on a profile failure.
-            setLoading(false);
-          }
-        });
+      // Leaving the tab interrupts a load still in flight, so a late answer
+      // never lands on a hub that is no longer shown.
+      const load = Effect.runFork(
+        fromApi(() => api.getMe()).pipe(
+          Effect.tap((me) =>
+            Effect.sync(() => {
+              setProfile(me);
+              setLoading(false);
+            }),
+          ),
+          // The name still comes from the session; the handle line stays
+          // empty rather than blocking the hub on a profile failure.
+          Effect.catch(() => Effect.sync(() => setLoading(false))),
+        ),
+      );
       return () => {
-        active = false;
+        Effect.runFork(Fiber.interrupt(load));
       };
     }, [api]),
   );
 
   useFocusEffect(
     useCallback(() => {
-      let active = true;
       // The same source the requests screen counts: incoming plus outgoing.
-      void contactsApi
-        .listContactRequests()
-        .then((list) => {
-          if (active) {
-            setPendingRequests(list.incoming.length + list.outgoing.length);
-          }
-        })
-        .catch(() => {
-          if (active) {
-            setPendingRequests(0);
-          }
-        });
+      const count = Effect.runFork(
+        fromApi(() => contactsApi.listContactRequests()).pipe(
+          Effect.tap((list) =>
+            Effect.sync(() => {
+              setPendingRequests(list.incoming.length + list.outgoing.length);
+            }),
+          ),
+          Effect.catch(() => Effect.sync(() => setPendingRequests(0))),
+        ),
+      );
       return () => {
-        active = false;
+        Effect.runFork(Fiber.interrupt(count));
       };
     }, [contactsApi]),
   );

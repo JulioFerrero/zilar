@@ -1,4 +1,6 @@
+import { Effect } from 'effect';
 import { useEffect, useState } from 'react';
+import { runWeb } from '@/lib/effect/runtime';
 
 // Browser side of web push (T-0119): PushManager subscription, permission
 // states, the install prompt, the app badge and notification dismissal.
@@ -82,9 +84,11 @@ export function realPushBrowser(): PushBrowser | undefined {
   return {
     serviceWorker: {
       register: (script) =>
-        navigator.serviceWorker.register(script).then((registration) => ({
-          pushManager: registration.pushManager,
-        })),
+        runWeb(
+          Effect.promise(() => navigator.serviceWorker.register(script)).pipe(
+            Effect.map((registration) => ({ pushManager: registration.pushManager })),
+          ),
+        ),
       getRegistration: () => navigator.serviceWorker.getRegistration(),
     },
     Notification: {
@@ -99,69 +103,104 @@ export function realPushBrowser(): PushBrowser | undefined {
 
 // Registers the app service worker (idempotent: the browser returns the
 // existing registration when already registered).
-export async function ensureServiceWorker(browser: PushBrowser): Promise<void> {
-  await browser.serviceWorker.register('/sw.js');
+export function ensureServiceWorker(browser: PushBrowser): Promise<void> {
+  return runWeb(ensureServiceWorkerEffect(browser));
 }
+
+const ensureServiceWorkerEffect = (browser: PushBrowser): Effect.Effect<void> =>
+  Effect.promise(() => browser.serviceWorker.register('/sw.js')).pipe(Effect.asVoid);
 
 export interface DeviceSubscription {
   endpoint: string;
   keys: { p256dh: string; auth: string };
 }
 
-export async function currentSubscription(
+// The Promise API rejects with the browser's own error: a rejection from a
+// browser promise is a defect here, so the caller still sees that error. The
+// plain `Error`s below keep the class and message the API always rejected with.
+const existingSubscription = (
+  registration: { pushManager: PushManagerLike } | undefined,
+): Effect.Effect<PushSubscriptionLike | null | undefined> =>
+  registration === undefined
+    ? Effect.succeed(undefined)
+    : Effect.promise(() => registration.pushManager.getSubscription());
+
+export function currentSubscription(browser: PushBrowser): Promise<DeviceSubscription | null> {
+  return runWeb(currentSubscriptionEffect(browser));
+}
+
+const currentSubscriptionEffect = Effect.fnUntraced(function* (
   browser: PushBrowser,
-): Promise<DeviceSubscription | null> {
-  const registration = await browser.serviceWorker.getRegistration();
-  const subscription = await registration?.pushManager.getSubscription();
+): Effect.fn.Return<DeviceSubscription | null, Error> {
+  const registration = yield* Effect.promise(() => browser.serviceWorker.getRegistration());
+  const subscription = yield* existingSubscription(registration);
   if (subscription === undefined || subscription === null) {
     return null;
   }
-  return { endpoint: subscription.endpoint, ...subscriptionKeys(subscription) };
-}
+  return { endpoint: subscription.endpoint, ...(yield* subscriptionKeys(subscription)) };
+});
 
-export async function subscribeBrowser(
+export function subscribeBrowser(
   browser: PushBrowser,
   vapidPublicKey: string,
 ): Promise<{ subscription: DeviceSubscription; label: string }> {
-  const permission = await browser.Notification.requestPermission();
-  if (permission !== 'granted') {
-    throw new Error(`notification permission ${permission}`);
-  }
-  await ensureServiceWorker(browser);
-  const registration = await browser.serviceWorker.getRegistration();
-  if (registration === undefined) {
-    throw new Error('no service worker registration');
-  }
-  let subscription = await registration.pushManager.getSubscription();
-  if (subscription === null) {
-    subscription = await registration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
-    });
-  }
-  return {
-    subscription: { endpoint: subscription.endpoint, ...subscriptionKeys(subscription) },
-    label: deviceLabel(),
-  };
+  return runWeb(subscribeBrowserEffect(browser, vapidPublicKey));
 }
 
-function subscriptionKeys(subscription: PushSubscriptionLike): {
-  keys: { p256dh: string; auth: string };
-} {
+const subscribeBrowserEffect = Effect.fnUntraced(function* (
+  browser: PushBrowser,
+  vapidPublicKey: string,
+): Effect.fn.Return<{ subscription: DeviceSubscription; label: string }, Error> {
+  const permission = yield* Effect.promise(() => browser.Notification.requestPermission());
+  if (permission !== 'granted') {
+    return yield* Effect.fail(new Error(`notification permission ${permission}`));
+  }
+  yield* ensureServiceWorkerEffect(browser);
+  const registration = yield* Effect.promise(() => browser.serviceWorker.getRegistration());
+  if (registration === undefined) {
+    return yield* Effect.fail(new Error('no service worker registration'));
+  }
+  let subscription = yield* Effect.promise(() => registration.pushManager.getSubscription());
+  if (subscription === null) {
+    subscription = yield* Effect.promise(() =>
+      registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
+      }),
+    );
+  }
+  return {
+    subscription: { endpoint: subscription.endpoint, ...(yield* subscriptionKeys(subscription)) },
+    label: deviceLabel(),
+  };
+});
+
+function subscriptionKeys(subscription: PushSubscriptionLike): Effect.Effect<
+  {
+    keys: { p256dh: string; auth: string };
+  },
+  Error
+> {
   const json = subscription.toJSON();
   const p256dh = json.keys?.p256dh;
   const auth = json.keys?.auth;
   if (p256dh === undefined || auth === undefined) {
-    throw new Error('the browser subscription has no keys');
+    return Effect.fail(new Error('the browser subscription has no keys'));
   }
-  return { keys: { p256dh, auth } };
+  return Effect.succeed({ keys: { p256dh, auth } });
 }
 
-export async function unsubscribeBrowser(browser: PushBrowser): Promise<void> {
-  const registration = await browser.serviceWorker.getRegistration();
-  const subscription = await registration?.pushManager.getSubscription();
-  await subscription?.unsubscribe();
+export function unsubscribeBrowser(browser: PushBrowser): Promise<void> {
+  return runWeb(unsubscribeBrowserEffect(browser));
 }
+
+const unsubscribeBrowserEffect = Effect.fnUntraced(function* (browser: PushBrowser) {
+  const registration = yield* Effect.promise(() => browser.serviceWorker.getRegistration());
+  const subscription = yield* existingSubscription(registration);
+  if (subscription !== undefined && subscription !== null) {
+    yield* Effect.promise(() => subscription.unsubscribe());
+  }
+});
 
 // A short human label for the device list, from the user agent only.
 export function deviceLabel(userAgent?: string): string {
@@ -197,56 +236,88 @@ export function totalBadgeUnread(
 ): number {
   return chats.reduce((sum, chat) => (chat.muted === true ? sum : sum + chat.unread), 0);
 }
-export async function updateAppBadge(
-  unread: number,
-  navigatorSurface?: {
-    setAppBadge?: (count: number) => Promise<void>;
-    clearAppBadge?: () => Promise<void>;
-  },
-): Promise<void> {
-  const surface = navigatorSurface ?? (typeof navigator === 'undefined' ? undefined : navigator);
-  if (surface === undefined) {
-    return;
+interface BadgeSurface {
+  setAppBadge?: (count: number) => Promise<void>;
+  clearAppBadge?: () => Promise<void>;
+}
+
+// The pending badge call, or nothing when the surface lacks the method.
+function badgeCall(surface: BadgeSurface, unread: number): Promise<void> | undefined {
+  if (unread > 0 && surface.setAppBadge !== undefined) {
+    return surface.setAppBadge(unread);
   }
-  try {
-    if (unread > 0 && surface.setAppBadge !== undefined) {
-      await surface.setAppBadge(unread);
-    } else if (unread <= 0 && surface.clearAppBadge !== undefined) {
-      await surface.clearAppBadge();
+  if (unread <= 0 && surface.clearAppBadge !== undefined) {
+    return surface.clearAppBadge();
+  }
+  return undefined;
+}
+
+export function updateAppBadge(unread: number, navigatorSurface?: BadgeSurface): Promise<void> {
+  return runWeb(updateAppBadgeEffect(unread, navigatorSurface));
+}
+
+const updateAppBadgeEffect = (
+  unread: number,
+  navigatorSurface?: BadgeSurface,
+): Effect.Effect<void> =>
+  Effect.suspend(() => {
+    const surface = navigatorSurface ?? (typeof navigator === 'undefined' ? undefined : navigator);
+    if (surface === undefined) {
+      return Effect.void;
     }
-  } catch {
     // Browsers may reject (e.g. permission revoked after install): the badge
     // is decoration, never load-bearing.
-  }
-}
+    return Effect.try(() => badgeCall(surface, unread)).pipe(
+      Effect.flatMap((pending) =>
+        pending === undefined ? Effect.void : Effect.tryPromise(() => pending),
+      ),
+      Effect.ignore,
+    );
+  });
 
 // Dismisses the push notifications of a chat once it is read in the app.
 // Tags are per-message (see the dismissal contract in `public/sw.js`), so
 // this enumerates all visible notifications and closes the ones whose
 // `data.chatId` matches — filtering by tag would miss every message-tagged
 // notification in production.
-export async function dismissChatNotifications(
+export function dismissChatNotifications(
   chatId: string,
   getRegistration?: () => Promise<ServiceWorkerRegistrationLike | undefined>,
 ): Promise<void> {
-  const registration =
-    getRegistration === undefined
-      ? await navigator.serviceWorker?.getRegistration()
-      : await getRegistration();
-  if (registration?.getNotifications === undefined) {
+  return runWeb(dismissChatNotificationsEffect(chatId, getRegistration));
+}
+
+type NotifyingRegistration = ServiceWorkerRegistrationLike &
+  Required<Pick<ServiceWorkerRegistrationLike, 'getNotifications'>>;
+
+const canListNotifications = (
+  registration: ServiceWorkerRegistrationLike | undefined,
+): registration is NotifyingRegistration => registration?.getNotifications !== undefined;
+
+const dismissChatNotificationsEffect = Effect.fnUntraced(function* (
+  chatId: string,
+  getRegistration?: () => Promise<ServiceWorkerRegistrationLike | undefined>,
+) {
+  const pending: Promise<ServiceWorkerRegistrationLike | undefined> | undefined =
+    getRegistration === undefined ? navigator.serviceWorker?.getRegistration() : getRegistration();
+  const registration = pending === undefined ? undefined : yield* Effect.promise(() => pending);
+  if (!canListNotifications(registration)) {
     return;
   }
-  try {
-    const notifications = await registration.getNotifications();
-    for (const notification of notifications) {
-      if (notification.data?.chatId === chatId) {
-        notification.close();
-      }
-    }
-  } catch {
-    // Dismissal is best effort.
-  }
-}
+  // Dismissal is best effort.
+  yield* Effect.tryPromise(() => registration.getNotifications()).pipe(
+    Effect.flatMap((notifications) =>
+      Effect.try(() => {
+        for (const notification of notifications) {
+          if (notification.data?.chatId === chatId) {
+            notification.close();
+          }
+        }
+      }),
+    ),
+    Effect.ignore,
+  );
+});
 
 // --- Install prompt ---------------------------------------------------------
 
@@ -262,11 +333,11 @@ export function isStandaloneDisplay(env: {
   if (env.standalone === true) {
     return true;
   }
-  try {
-    return env.matchMedia?.('(display-mode: standalone)')?.matches === true;
-  } catch {
-    return false;
-  }
+  return Effect.runSync(
+    Effect.try(() => env.matchMedia?.('(display-mode: standalone)')?.matches === true).pipe(
+      Effect.orElseSucceed(() => false),
+    ),
+  );
 }
 
 export interface BeforeInstallPromptEvent extends Event {
@@ -291,9 +362,14 @@ export function useInstallPrompt(): {
   }, []);
   return {
     installEvent,
-    promptInstall: async () => {
-      await installEvent?.prompt();
-      setInstallEvent(null);
-    },
+    promptInstall: () =>
+      runWeb(
+        Effect.gen(function* () {
+          if (installEvent !== null) {
+            yield* Effect.promise(() => installEvent.prompt());
+          }
+          setInstallEvent(null);
+        }),
+      ),
   };
 }

@@ -1,3 +1,4 @@
+// effect-plain: pure canonical JSON and SHA-256 hash; bad input is a typed CanonicalJsonError
 import { createHash } from 'node:crypto';
 
 // A typed error thrown by `canonicalJson` when the value is not a tree of

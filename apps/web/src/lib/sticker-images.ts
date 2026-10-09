@@ -9,6 +9,7 @@
  * `createImageBitmap` (a GIF decodes to its first frame: a still) and a
  * `<canvas>` encode.
  */
+import { Data, Effect } from 'effect';
 
 export const STICKER_PREP_MAX_DIM = 512;
 export const STICKER_PREP_MAX_BYTES = 512 * 1024;
@@ -36,6 +37,9 @@ export class PrepError extends Error {
     this.fileName = fileName;
   }
 }
+
+/** One encode call failed; the next step decides what to do. */
+class EncodeAttemptFailed extends Data.TaggedError('EncodeAttemptFailed') {}
 
 export interface PrepBitmap {
   width: number;
@@ -82,11 +86,14 @@ function isAcceptedType(type: string): boolean {
 }
 
 /** Decodes with `createImageBitmap`: a GIF yields its first frame (a still). */
-async function decodeWithBitmap(file: Blob): Promise<PrepBitmap> {
+function decodeWithBitmap(file: Blob): Promise<PrepBitmap> {
   // Never closed here: a closed bitmap is detached and `drawImage` throws,
   // so it stays open until `releaseBitmap` runs after the final encode.
-  const bitmap = await createImageBitmap(file);
-  return { width: bitmap.width, height: bitmap.height, image: bitmap };
+  return Effect.runPromise(
+    Effect.promise(() => createImageBitmap(file)).pipe(
+      Effect.map((bitmap) => ({ width: bitmap.width, height: bitmap.height, image: bitmap })),
+    ),
+  );
 }
 
 /** Closes the decoded bitmap after the final encode; GC reclaims the rest. */
@@ -100,24 +107,34 @@ function releaseBitmap(image: unknown): void {
 }
 
 /** Encodes through a `<canvas>`; `null` when the browser cannot do the mime. */
-async function encodeWithCanvas(
+function encodeWithCanvas(
   image: unknown,
   width: number,
   height: number,
   mime: StickerPrepMime,
   quality: number,
 ): Promise<Blob | null> {
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  const context = canvas.getContext('2d');
-  if (context === null) {
-    return null;
-  }
-  context.drawImage(image as CanvasImageSource, 0, 0, width, height);
-  return new Promise((resolve) => {
-    canvas.toBlob((blob) => resolve(blob), mime, mime === 'image/webp' ? quality : undefined);
-  });
+  return Effect.runPromise(
+    Effect.gen(function* () {
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext('2d');
+      if (context === null) {
+        return null;
+      }
+      yield* Effect.sync(() => {
+        context.drawImage(image as CanvasImageSource, 0, 0, width, height);
+      });
+      return yield* Effect.callback<Blob | null>((resume) => {
+        canvas.toBlob(
+          (blob) => resume(Effect.succeed(blob)),
+          mime,
+          mime === 'image/webp' ? quality : undefined,
+        );
+      });
+    }),
+  );
 }
 
 function defaultDeps(): PrepDeps {
@@ -128,64 +145,71 @@ function defaultDeps(): PrepDeps {
  * Prepares one picked file for upload. Throws a `PrepError` with a
  * human-readable message; the caller keeps the other files.
  */
-export async function prepareStickerImage(
+export function prepareStickerImage(
   file: File,
   deps: PrepDeps = defaultDeps(),
 ): Promise<PrepResult> {
-  const name = file.name !== '' ? file.name : 'image';
-  if (!isAcceptedType(file.type)) {
-    throw new PrepError(
-      'unsupported_type',
-      name,
-      `${name}: only PNG, JPEG, WebP or GIF images work as stickers.`,
-    );
-  }
-  let decoded: PrepBitmap;
-  try {
-    decoded = await deps.decode(file);
-  } catch {
-    throw new PrepError('decode_failed', name, `${name}: the image could not be read.`);
-  }
-  if (
-    !Number.isFinite(decoded.width) ||
-    !Number.isFinite(decoded.height) ||
-    decoded.width <= 0 ||
-    decoded.height <= 0
-  ) {
-    throw new PrepError('decode_failed', name, `${name}: the image could not be read.`);
-  }
-  const size = fitStickerSize(decoded.width, decoded.height);
+  return Effect.runPromise(prepareEffect(file, deps));
+}
 
-  // WebP first (quality steps down while over the cap), then one PNG try.
-  // The decoded image is released after the final encode, never before:
-  // closing an ImageBitmap detaches it and `drawImage` throws on it.
-  let blob: Blob | null = null;
-  try {
-    try {
-      blob = await deps.encode(
-        decoded.image,
-        size.width,
-        size.height,
-        'image/webp',
-        STICKER_PREP_QUALITY_STEPS[0]!,
+function prepareEffect(file: File, deps: PrepDeps): Effect.Effect<PrepResult, PrepError> {
+  const name = file.name !== '' ? file.name : 'image';
+  return Effect.gen(function* () {
+    if (!isAcceptedType(file.type)) {
+      return yield* Effect.fail(
+        new PrepError(
+          'unsupported_type',
+          name,
+          `${name}: only PNG, JPEG, WebP or GIF images work as stickers.`,
+        ),
       );
-    } catch {
-      blob = null;
     }
+    const decoded = yield* Effect.tryPromise({
+      try: () => deps.decode(file),
+      catch: () => new PrepError('decode_failed', name, `${name}: the image could not be read.`),
+    });
+    if (
+      !Number.isFinite(decoded.width) ||
+      !Number.isFinite(decoded.height) ||
+      decoded.width <= 0 ||
+      decoded.height <= 0
+    ) {
+      return yield* Effect.fail(
+        new PrepError('decode_failed', name, `${name}: the image could not be read.`),
+      );
+    }
+    const size = fitStickerSize(decoded.width, decoded.height);
+    const attempt = (mime: StickerPrepMime, quality: number): Effect.Effect<Blob | null> =>
+      Effect.tryPromise({
+        try: () => deps.encode(decoded.image, size.width, size.height, mime, quality),
+        catch: () => new EncodeAttemptFailed(),
+      }).pipe(Effect.orElseSucceed(() => null));
+
+    return yield* encodeStages(name, size, attempt).pipe(
+      // The decoded image is released after the final encode, never before:
+      // closing an ImageBitmap detaches it and `drawImage` throws on it.
+      // Releasing is best-effort; GC reclaims the bitmap either way.
+      Effect.ensuring(
+        Effect.try(() => deps.release?.(decoded.image)).pipe(Effect.orElseSucceed(() => undefined)),
+      ),
+    );
+  });
+}
+
+/**
+ * WebP first (quality steps down while over the cap), then one PNG try.
+ * `attempt` never fails: a failed encode is `null`.
+ */
+function encodeStages(
+  name: string,
+  size: { width: number; height: number },
+  attempt: (mime: StickerPrepMime, quality: number) => Effect.Effect<Blob | null>,
+): Effect.Effect<PrepResult, PrepError> {
+  return Effect.gen(function* () {
+    let blob = yield* attempt('image/webp', STICKER_PREP_QUALITY_STEPS[0]!);
     if (blob !== null && blob.size > STICKER_PREP_MAX_BYTES) {
       for (const quality of STICKER_PREP_QUALITY_STEPS.slice(1)) {
-        let stepped: Blob | null = null;
-        try {
-          stepped = await deps.encode(
-            decoded.image,
-            size.width,
-            size.height,
-            'image/webp',
-            quality,
-          );
-        } catch {
-          stepped = null;
-        }
+        const stepped = yield* attempt('image/webp', quality);
         blob = stepped ?? blob;
         if (blob.size <= STICKER_PREP_MAX_BYTES) {
           break;
@@ -202,33 +226,27 @@ export async function prepareStickerImage(
       };
     }
     // The browser cannot encode WebP, or no quality fits: one PNG attempt.
-    try {
-      blob = await deps.encode(decoded.image, size.width, size.height, 'image/png', 1);
-    } catch {
-      blob = null;
-    }
+    blob = yield* attempt('image/png', 1);
     if (blob === null || blob.size <= 0) {
-      throw new PrepError(
-        'encode_failed',
-        name,
-        `${name}: the image could not be converted. Try another file.`,
+      return yield* Effect.fail(
+        new PrepError(
+          'encode_failed',
+          name,
+          `${name}: the image could not be converted. Try another file.`,
+        ),
       );
     }
     if (blob.size > STICKER_PREP_MAX_BYTES) {
-      throw new PrepError(
-        'too_large',
-        name,
-        `${name}: still over 512 KiB after conversion. Try a smaller image.`,
+      return yield* Effect.fail(
+        new PrepError(
+          'too_large',
+          name,
+          `${name}: still over 512 KiB after conversion. Try a smaller image.`,
+        ),
       );
     }
     return { blob, mime: 'image/png', width: size.width, height: size.height, bytes: blob.size };
-  } finally {
-    try {
-      deps.release?.(decoded.image);
-    } catch {
-      // Releasing is best-effort; GC reclaims the bitmap either way.
-    }
-  }
+  });
 }
 
 /** "320 x 410 · 84 KiB" for the editor preview. */

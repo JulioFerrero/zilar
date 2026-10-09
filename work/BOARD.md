@@ -9,9 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-0757](T-0757-watch-claude-tasks.md) | lead watch shows Claude-subagent tasks from the board | in-progress | haiku-5.5 | | Julio asked 10-09 |
-| [T-0758](T-0758-effect-map-rule.md) | R1: the Effect map measures the 100% rule | in-progress | haiku-5.5 | | effect-100-plan Phase 0 |
-| [T-0759](T-0759-web-effect-runtime.md) | F1: web Effect runtime, ApiFailure, fromApi | in-progress | haiku-5.5 | | effect-100-plan Phase 1 |
 
 ## Follow-ups
 
@@ -788,3 +785,89 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0756](T-0756-gate-faster.md) | gate faster: changed-file format, skip re-gate of passed tree | 2026-10-09 |
 | [T-0752](T-0752-effect-map-pages.md) | self-updating Effect map on GitHub Pages | 2026-10-09 |
 | [T-0753](T-0753-effect-100-plan.md) | the plan to a 100% Effect codebase | 2026-10-09 |
+| [T-0759](T-0759-web-effect-runtime.md) | F1: web Effect runtime, ApiFailure, fromApi | 2026-10-09 |
+| [T-0757](T-0757-watch-claude-tasks.md) | lead watch shows Claude-subagent tasks | 2026-10-09 |
+| [T-0761](T-0761-server-edges-c.md) | S9: git proxy and connection probe on Effect | 2026-10-09 |
+| [T-0760](T-0760-server-edges-a.md) | S7: voice engine, GIF media fetch, version on Effect | 2026-10-09 |
+| [T-0762](T-0762-web-use-action.md) | F2: web hooks useAction and useQuery | 2026-10-09 |
+| [T-0763](T-0763-xmpp-typed-errors.md) | X1: xmpp-core typed errors | 2026-10-09 |
+| [T-0758](T-0758-effect-map-rule.md) | R1: the Effect map measures the 100% rule | 2026-10-09 |
+| [T-0765](T-0765-url-helper.md) | R3: pure URL helpers in chat-core | 2026-10-09 |
+| [T-0764](T-0764-server-edges-b.md) | S8: message search and draft throttle on Effect | 2026-10-09 |
+| [T-0768](T-0768-effect-ratchet.md) | R6: Effect ratchet in the gate | 2026-10-09 |
+| [T-0770](T-0770-server-markers.md) | R2: effect-plain markers on pure server files | 2026-10-09 |
+| [T-0766](T-0766-web-lib-hooks.md) | WU1: web lib hooks on Effect | 2026-10-09 |
+| [T-0769](T-0769-xmpp-timers-fibers.md) | X2a: xmpp-core timers as Effect fibers | 2026-10-09 |
+| [T-0767](T-0767-web-approvals-pages.md) | WU6 + WU14: approvals and list pages on Effect | 2026-10-09 |
+| [T-0774](T-0774-ci-no-cancel-main.md) | CI on main: a running check always finishes | 2026-10-09 |
+| [T-0771](T-0771-sandbox-host-fetch.md) | S5a: sandbox host fetch on Effect | 2026-10-09 |
+| [T-0773](T-0773-web-dialogs.md) | WU22: web dialogs on Effect | 2026-10-09 |
+| [T-0772](T-0772-web-lib-helpers.md) | WU2: web lib helpers on Effect | 2026-10-09 |
+| [T-0777](T-0777-xmpp-requests-deferred.md) | X2b: xmpp-core requests on Deferred | 2026-10-09 |
+| [T-0778](T-0778-web-ai-panel.md) | WU11 + WU12: web AI components on Effect | 2026-10-09 |
+| [T-0775](T-0775-web-settings-pages.md) | WU7: AI, connections, integrations pages on Effect | 2026-10-09 |
+| [T-0776](T-0776-web-machines.md) | WU8: machines pages on Effect | 2026-10-09 |
+| [T-0779](T-0779-web-tools-sections.md) | WU13: web tools sections on Effect | 2026-10-09 |
+| [T-0780](T-0780-xmpp-request-tests.md) | xmpp-core request path tests | 2026-10-09 |
+| [T-0783](T-0783-web-stickers-page.md) | WU10: StickersPage on Effect | 2026-10-09 |
+| [T-0784](T-0784-web-gif-sticker-panels.md) | WU19: GifPanel and StickerPanel on Effect | 2026-10-09 |
+| [T-0781](T-0781-web-group-panel.md) | WU15: GroupPanel on Effect | 2026-10-09 |
+| [T-0786](T-0786-web-pack-editor-import.md) | WU20: PackEditor and Telegram import on Effect | 2026-10-09 |
+| [T-0785](T-0785-web-channel-invites.md) | WU17: channel and invite components on Effect | 2026-10-09 |
+| [T-0782](T-0782-web-topic-panel.md) | WU16: TopicPanel on Effect | 2026-10-09 |
+| [T-0790](T-0790-web-list-bubble-app.md) | WU26: ChatList, MessageBubble, App on Effect | 2026-10-09 |
+| [T-0788](T-0788-web-profile-explore.md) | WU24: profile, explore, visibility on Effect | 2026-10-09 |
+| [T-0793](T-0793-web-voice-avatar.md) | WU21: VoiceMessage and AvatarUploader on Effect | 2026-10-09 |
+| [T-0789](T-0789-web-strip-media-pins.md) | WU25: task strip, media panel, pins, search results on Effect | 2026-10-09 |
+| [T-0787](T-0787-web-chat-header.md) | WU23: chat header, actions menu, background dialog on Effect | 2026-10-09 |
+| [T-0795](T-0795-web-auth.md) | WU4: web auth on Effect | 2026-10-09 |
+| [T-0791](T-0791-gateway-s1.md) | S1: AI gateway part 1 on Effect | 2026-10-09 |
+| [T-0794](T-0794-web-lib-ports.md) | WU3: web lib ports (attachments, voice, push) on Effect | 2026-10-09 |
+| [T-0798](T-0798-runner-tunnel-mux.md) | H1: runner-tunnel mux on Effect | 2026-10-09 |
+| [T-0797](T-0797-push-sender-component.md) | S6: push component and sender on Effect | 2026-10-09 |
+| [T-0796](T-0796-sandbox-tool-worker.md) | S5b: sandbox tool worker on Effect | 2026-10-09 |
+| [T-0800](T-0800-mobile-effect-toolkit.md) | F3 + F4: mobile Effect toolkit | 2026-10-09 |
+| [T-0801](T-0801-xmpp-core-effect.md) | X3-X7: xmpp-core Effect core | 2026-10-09 |
+| [T-0802](T-0802-mobile-r4-parse-markers.md) | R4: mobile parses and markers | 2026-10-09 |
+| [T-0803](T-0803-mobile-r5-mock-gate.md) | R5: mobile mock env in one place | 2026-10-09 |
+| [T-0804](T-0804-server-auth-db.md) | S10: server auth and db client on Effect | 2026-10-09 |
+| [T-0805](T-0805-small-sweep.md) | Small sweep: spike delete, markers, group events | 2026-10-09 |
+| [T-0806](T-0806-runner-chain.md) | H2 + H3: runner-tunnel and apps/runner on Effect | 2026-10-09 |
+| [T-0807](T-0807-web-onboarding.md) | WU5: web onboarding routes on Effect | 2026-10-09 |
+| [T-0809](T-0809-web-composer.md) | WU18: Composer on Effect | 2026-10-09 |
+| [T-0792](T-0792-gateway-s2.md) | S2: AI gateway part 2 on Effect | 2026-10-09 |
+| [T-0799](T-0799-lead-batch.md) | lead batch: one combined check per wave | 2026-10-09 |
+| [T-0808](T-0808-web-notifications.md) | WU9: NotificationsPage and GroupHandleRoute on Effect | 2026-10-09 |
+| [T-0837](T-0837-gateway-s3-s4.md) | S3 + S4: AI gateway parts 3 and 4 on Effect | 2026-10-09 |
+| [T-0811](T-0811-mobile-mu2.md) | MU2: mobile on Effect | 2026-10-09 |
+| [T-0812](T-0812-mobile-mu3.md) | MU3: mobile on Effect | 2026-10-09 |
+| [T-0813](T-0813-mobile-mu4.md) | MU4: mobile on Effect | 2026-10-09 |
+| [T-0815](T-0815-mobile-mu6.md) | MU6: mobile on Effect | 2026-10-09 |
+| [T-0816](T-0816-mobile-mu7.md) | MU7: mobile on Effect | 2026-10-09 |
+| [T-0817](T-0817-mobile-mu8.md) | MU8: mobile on Effect | 2026-10-09 |
+| [T-0818](T-0818-mobile-mu9.md) | MU9: mobile on Effect | 2026-10-09 |
+| [T-0820](T-0820-mobile-mu11.md) | MU11: mobile on Effect | 2026-10-09 |
+| [T-0821](T-0821-mobile-mu12.md) | MU12: mobile on Effect | 2026-10-09 |
+| [T-0822](T-0822-mobile-mu13.md) | MU13: mobile on Effect | 2026-10-09 |
+| [T-0823](T-0823-mobile-mu14.md) | MU14: mobile on Effect | 2026-10-09 |
+| [T-0825](T-0825-mobile-mu16.md) | MU16: mobile on Effect | 2026-10-09 |
+| [T-0826](T-0826-mobile-mu17.md) | MU17: mobile on Effect | 2026-10-09 |
+| [T-0827](T-0827-mobile-mu18.md) | MU18: mobile on Effect | 2026-10-09 |
+| [T-0828](T-0828-mobile-mu19.md) | MU19: mobile on Effect | 2026-10-09 |
+| [T-0829](T-0829-mobile-mu20.md) | MU20: mobile on Effect | 2026-10-09 |
+| [T-0830](T-0830-mobile-mu21.md) | MU21: mobile on Effect | 2026-10-09 |
+| [T-0831](T-0831-mobile-mu22.md) | MU22: mobile on Effect | 2026-10-09 |
+| [T-0832](T-0832-mobile-mu23.md) | MU23: mobile on Effect | 2026-10-09 |
+| [T-0833](T-0833-mobile-mu24.md) | MU24: mobile on Effect | 2026-10-09 |
+| [T-0834](T-0834-mobile-mu25.md) | MU25: mobile on Effect | 2026-10-09 |
+| [T-0814](T-0814-mobile-mu5.md) | MU5: mobile on Effect | 2026-10-09 |
+| [T-0810](T-0810-mobile-mu1.md) | MU1: mobile on Effect | 2026-10-09 |
+| [T-0824](T-0824-mobile-mu15.md) | MU15: mobile on Effect | 2026-10-09 |
+| [T-0819](T-0819-mobile-mu10.md) | MU10: mobile on Effect | 2026-10-09 |
+| [T-0836](T-0836-mobile-store.md) | MS1-MS10: mobile chat store on Effect | 2026-10-09 |
+| [T-0840](T-0840-batch-lint.md) | lead batch check runs lint | 2026-10-09 |
+| [T-0835](T-0835-web-store.md) | WS1-WS11: web chat store on Effect | 2026-10-09 |
+| [T-0839](T-0839-mobile-search-list.md) | mobile message-search-list on Effect | 2026-10-09 |
+| [T-0841](T-0841-people-search-stale-card.md) | mobile people-search card shows the refreshed relation | 2026-10-09 |
+| [T-0838](T-0838-server-entry.md) | S12 + S13: server entry on Effect | 2026-10-09 |
+| [T-0842](T-0842-web-test-races.md) | web tests wait for the visible state | 2026-10-09 |

@@ -1,9 +1,13 @@
+import { Effect } from 'effect';
 import { Pin } from 'lucide-react';
 import { useState } from 'react';
 import { LinkText } from './LinkText';
 import { Button } from './ui/button';
 import { cn } from '@/lib/utils';
 import type { Pin as PinRow } from '@/lib/api';
+import { fromApi } from '@/lib/effect/api-effect';
+import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { scrollToMessage } from '@/lib/scrollToMessage';
 import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
 
 const KIND_LABEL: Record<PinRow['kind'], string> = {
@@ -30,7 +34,20 @@ export function PinnedBanner({ chatId }: { chatId: string }) {
   const pins = store.pins(chatId);
   const pinsError = store.pinsError?.chatId === chatId ? store.pinsError : undefined;
   const [index, setIndex] = useState(0);
-  const [jumpError, setJumpError] = useState('');
+  const [jumpState, jumpTo, jumpControls] = useAction((messageId: string) =>
+    fromApi(() => storeApi.getState().openAtMessage(chatId, messageId)).pipe(
+      // The message is loaded now: bring its bubble into view.
+      Effect.tap(() =>
+        Effect.sync(() => {
+          window.requestAnimationFrame(() => {
+            scrollToMessage(messageId);
+          });
+        }),
+      ),
+    ),
+  );
+  // The last jump failed; hidden while a new jump runs.
+  const jumpFailed = !isWaiting(jumpState) && failureOf(jumpState) !== undefined;
 
   if (pins.length === 0) {
     return pinsError === undefined ? null : (
@@ -59,27 +76,10 @@ export function PinnedBanner({ chatId }: { chatId: string }) {
   const snapshot = deleted ? 'Message deleted' : current.text;
 
   const cycle = (): void => {
-    setJumpError('');
+    if (jumpFailed) {
+      jumpControls.reset();
+    }
     setIndex((value) => (value + 1) % pins.length);
-  };
-
-  const jump = (): void => {
-    setJumpError('');
-    storeApi
-      .getState()
-      .openAtMessage(chatId, current.messageId)
-      .then(() => {
-        // The message is loaded now: bring its bubble into view. The list
-        // renders every message with `data-message-id`.
-        window.requestAnimationFrame(() => {
-          document
-            .querySelector(`[data-message-id="${CSS.escape(current.messageId)}"]`)
-            ?.scrollIntoView({ block: 'center' });
-        });
-      })
-      .catch(() => {
-        setJumpError('Message not found');
-      });
   };
 
   return (
@@ -88,7 +88,7 @@ export function PinnedBanner({ chatId }: { chatId: string }) {
         <Pin className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
         <button
           type="button"
-          onClick={jump}
+          onClick={() => jumpTo(current.messageId)}
           aria-label={`Jump to pinned message from ${current.senderName}`}
           className="min-w-0 flex-1 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
         >
@@ -126,12 +126,12 @@ export function PinnedBanner({ chatId }: { chatId: string }) {
           List
         </Button>
       </div>
-      {jumpError !== '' && (
+      {jumpFailed && (
         <p
           role="alert"
           className={cn('mx-auto w-full max-w-[860px] px-1 pt-1 text-[12px] text-danger')}
         >
-          {jumpError}
+          Message not found
         </p>
       )}
       {pinsError !== undefined && (

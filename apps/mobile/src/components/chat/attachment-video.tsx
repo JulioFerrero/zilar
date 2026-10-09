@@ -1,4 +1,6 @@
+import { parseUrl } from '@zilar/chat-core';
 import type { Attachment } from '@zilar/protocol';
+import { Effect, Fiber } from 'effect';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { Video, Play } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
@@ -65,14 +67,20 @@ export function AttachmentVideo({
     if (!needsToken || uri === undefined) {
       return;
     }
-    let cancelled = false;
-    void getSessionToken().then((value) => {
-      if (!cancelled) {
-        setToken(value);
-      }
-    });
+    // A cleanup interrupts the read, so a late token never reaches a stale source.
+    // A failed read leaves the token unset, as before: the player stays unloaded.
+    const fiber = Effect.runFork(
+      Effect.tryPromise(() => getSessionToken()).pipe(
+        Effect.match({
+          onSuccess: (value) => {
+            setToken(value);
+          },
+          onFailure: () => {},
+        }),
+      ),
+    );
     return () => {
-      cancelled = true;
+      Effect.runSync(Fiber.interrupt(fiber));
     };
   }, [needsToken, uri]);
   const gif = isGifOrigin(attachment);
@@ -98,22 +106,25 @@ export function AttachmentVideo({
   // GIF-origin videos auto-play once the source is ready — unless the
   // viewer asked for reduced motion, in which case the still frame waits
   // for an explicit tap. Regular videos never auto-play. The state update
-  // rides a microtask (like the token fetch below): the effect only
+  // waits one scheduler yield (like the token read below): the effect only
   // synchronizes with the external player, never cascading a render.
   const [playing, setPlaying] = useState(false);
   useEffect(() => {
     if (!gif || reduceMotion || uri === undefined) {
       return;
     }
-    let cancelled = false;
-    void Promise.resolve().then(() => {
-      if (!cancelled) {
-        player.play();
-        setPlaying(true);
-      }
-    });
+    const fiber = Effect.runFork(
+      Effect.yieldNow.pipe(
+        Effect.andThen(
+          Effect.sync(() => {
+            player.play();
+            setPlaying(true);
+          }),
+        ),
+      ),
+    );
     return () => {
-      cancelled = true;
+      Effect.runSync(Fiber.interrupt(fiber));
     };
   }, [gif, reduceMotion, uri, player]);
 
@@ -229,17 +240,8 @@ function isGifOrigin(attachment: Attachment): boolean {
  * session bearer. Absolute upload-host URLs stay headerless.
  */
 function isApiOriginUrl(url: string): boolean {
-  let apiOrigin: string;
-  try {
-    apiOrigin = new URL(API_URL).origin;
-  } catch {
-    return false;
-  }
-  try {
-    return new URL(url).origin === apiOrigin;
-  } catch {
-    return false;
-  }
+  const apiOrigin = parseUrl(API_URL)?.origin;
+  return apiOrigin !== undefined && parseUrl(url)?.origin === apiOrigin;
 }
 
 function VideoFullscreen({
@@ -254,7 +256,12 @@ function VideoFullscreen({
   viewRef: { current: { enterFullscreen: () => Promise<void> } | null };
 }) {
   useEffect(() => {
-    viewRef.current?.enterFullscreen().catch(() => {});
+    const view = viewRef.current;
+    if (view === null) {
+      return;
+    }
+    // A refused fullscreen keeps the inline player.
+    Effect.runFork(Effect.tryPromise(() => view.enterFullscreen()).pipe(Effect.ignore));
   }, [viewRef]);
   return (
     <View className="absolute inset-0 items-center justify-center bg-black/95">

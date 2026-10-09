@@ -1,4 +1,5 @@
 import { parseArgs } from 'node:util';
+import { Cause, Effect } from 'effect';
 import { CapabilitiesSchema } from './capabilities.ts';
 import {
   type IdentityStorage,
@@ -81,45 +82,66 @@ export interface CliResult {
   stderr: string;
 }
 
-export async function runCli(argv: string[], io: CliIo = defaultIo): Promise<CliResult> {
-  const stdoutLines: string[] = [];
-  const stderrLines: string[] = [];
-  const captured: CliIo = {
-    stdout: (line) => {
-      stdoutLines.push(line);
-      io.stdout(line);
-    },
-    stderr: (line) => {
-      stderrLines.push(line);
-      io.stderr(line);
-    },
-    env: io.env,
-  };
+// A rejected Promise from the identity, pairing or connect modules becomes a
+// typed failure that carries the original error, so describeError sees it as before.
+const attempt = <A>(thunk: () => Promise<A>): Effect.Effect<A, unknown> =>
+  Effect.tryPromise({ try: thunk, catch: (err) => err });
 
-  let exitCode = EXIT_OK;
-  try {
-    const command = argv[0];
-    if (command === undefined || command === 'help' || command === '--help' || command === '-h') {
+export const runCliEffect = (argv: string[], io: CliIo = defaultIo): Effect.Effect<CliResult> =>
+  Effect.gen(function* () {
+    const stdoutLines: string[] = [];
+    const stderrLines: string[] = [];
+    const captured: CliIo = {
+      stdout: (line) => {
+        stdoutLines.push(line);
+        io.stdout(line);
+      },
+      stderr: (line) => {
+        stderrLines.push(line);
+        io.stderr(line);
+      },
+      env: io.env,
+    };
+
+    // Failures and thrown values (parseArgs, a throwing io) both end here.
+    const exitCode = yield* dispatch(argv, captured).pipe(
+      Effect.matchCause({
+        onSuccess: (code) => code,
+        onFailure: (cause) => {
+          const { exitCode: code, message } = describeError(Cause.squash(cause));
+          captured.stderr(message);
+          return code;
+        },
+      }),
+    );
+
+    return { exitCode, stdout: stdoutLines.join('\n'), stderr: stderrLines.join('\n') };
+  });
+
+export const runCli = (argv: string[], io: CliIo = defaultIo): Promise<CliResult> =>
+  Effect.runPromise(runCliEffect(argv, io));
+
+function dispatch(argv: string[], captured: CliIo): Effect.Effect<number, unknown> {
+  const command = argv[0];
+  if (command === undefined || command === 'help' || command === '--help' || command === '-h') {
+    return Effect.sync(() => {
       captured.stdout(USAGE);
-      return { exitCode: EXIT_OK, stdout: stdoutLines.join('\n'), stderr: stderrLines.join('\n') };
-    }
-    if (command === 'pair') {
-      await runPair(argv.slice(1), captured);
-    } else if (command === 'run') {
-      await runConnect(argv.slice(1), captured);
-    } else if (command === 'status') {
-      await runStatus(argv.slice(1), captured);
-    } else {
-      captured.stderr(`Unknown command: ${command}\n\n${USAGE}`);
-      exitCode = EXIT_USAGE;
-    }
-  } catch (err) {
-    const { exitCode: code, message } = describeError(err);
-    captured.stderr(message);
-    exitCode = code;
+      return EXIT_OK;
+    });
   }
-
-  return { exitCode, stdout: stdoutLines.join('\n'), stderr: stderrLines.join('\n') };
+  if (command === 'pair') {
+    return runPair(argv.slice(1), captured).pipe(Effect.as(EXIT_OK));
+  }
+  if (command === 'run') {
+    return runConnect(argv.slice(1), captured).pipe(Effect.as(EXIT_OK));
+  }
+  if (command === 'status') {
+    return runStatus(argv.slice(1), captured).pipe(Effect.as(EXIT_OK));
+  }
+  return Effect.sync(() => {
+    captured.stderr(`Unknown command: ${command}\n\n${USAGE}`);
+    return EXIT_USAGE;
+  });
 }
 
 function buildStorage(home: string | undefined, env: NodeJS.ProcessEnv): IdentityStorage {
@@ -127,139 +149,159 @@ function buildStorage(home: string | undefined, env: NodeJS.ProcessEnv): Identit
   return identityPaths(dir);
 }
 
-async function runPair(argv: string[], io: CliIo): Promise<void> {
-  const { values, positionals } = parseArgs({
-    args: argv,
-    allowPositionals: true,
-    options: {
-      server: { type: 'string' },
-      name: { type: 'string' },
-      force: { type: 'boolean' },
-      home: { type: 'string' },
-      'timeout-ms': { type: 'string' },
-    },
+const runPair = (argv: string[], io: CliIo): Effect.Effect<void, unknown> =>
+  Effect.gen(function* () {
+    const { values, positionals } = parseArgs({
+      args: argv,
+      allowPositionals: true,
+      options: {
+        server: { type: 'string' },
+        name: { type: 'string' },
+        force: { type: 'boolean' },
+        home: { type: 'string' },
+        'timeout-ms': { type: 'string' },
+      },
+    });
+    if (values.server === undefined) {
+      return yield* Effect.fail(new UsageError('--server <URL> is required.'));
+    }
+    const code = positionals[0];
+    if (code === undefined) {
+      return yield* Effect.fail(new UsageError('Usage: zilar-runner pair <CODE> --server <URL>'));
+    }
+    const storage = buildStorage(values.home, io.env);
+    const options: PairOptions = {
+      code,
+      serverUrl: values.server,
+      storage,
+      force: values.force === true,
+    };
+    if (values.name !== undefined) {
+      options.name = values.name;
+    }
+    if (values['timeout-ms'] !== undefined) {
+      options.timeoutMs = Number(values['timeout-ms']);
+    }
+    const result: PairResult = yield* attempt(() => pairRunner(options));
+    io.stdout('Paired with the server.');
+    io.stdout(`  machine id   ${result.machineId}`);
+    io.stdout(`  fingerprint  ${result.fingerprint}`);
+    io.stdout(`  identity     ${storage.filePath}`);
+    io.stdout('Approve the machine in Settings → Machines to finish.');
   });
-  if (values.server === undefined) {
-    throw new UsageError('--server <URL> is required.');
-  }
-  const code = positionals[0];
-  if (code === undefined) {
-    throw new UsageError('Usage: zilar-runner pair <CODE> --server <URL>');
-  }
-  const storage = buildStorage(values.home, io.env);
-  const options: PairOptions = {
-    code,
-    serverUrl: values.server,
-    storage,
-    force: values.force === true,
-  };
-  if (values.name !== undefined) {
-    options.name = values.name;
-  }
-  if (values['timeout-ms'] !== undefined) {
-    options.timeoutMs = Number(values['timeout-ms']);
-  }
-  const result: PairResult = await pairRunner(options);
-  io.stdout('Paired with the server.');
-  io.stdout(`  machine id   ${result.machineId}`);
-  io.stdout(`  fingerprint  ${result.fingerprint}`);
-  io.stdout(`  identity     ${storage.filePath}`);
-  io.stdout('Approve the machine in Settings → Machines to finish.');
-}
 
-async function runConnect(argv: string[], io: CliIo): Promise<void> {
-  const { values, positionals } = parseArgs({
-    args: argv,
-    allowPositionals: true,
-    options: {
-      hub: { type: 'string' },
-      home: { type: 'string' },
-    },
-  });
-  if (positionals.length > 0) {
-    throw new UsageError(`Unknown argument: ${positionals[0]}`);
-  }
-  const storage = buildStorage(values.home, io.env);
-  const identity = await loadIdentity(storage);
+const runConnect = (argv: string[], io: CliIo): Effect.Effect<void, unknown> =>
+  Effect.gen(function* () {
+    const { values, positionals } = parseArgs({
+      args: argv,
+      allowPositionals: true,
+      options: {
+        hub: { type: 'string' },
+        home: { type: 'string' },
+      },
+    });
+    if (positionals.length > 0) {
+      return yield* Effect.fail(new UsageError(`Unknown argument: ${positionals[0]}`));
+    }
+    const storage = buildStorage(values.home, io.env);
+    const identity = yield* attempt(() => loadIdentity(storage));
 
-  let nextHub = values.hub;
-  if (nextHub === undefined && identity.hubUrl !== undefined) {
-    nextHub = identity.hubUrl;
-  }
-  if (nextHub === undefined) {
-    throw new UsageError(
-      'First run needs --hub WS_URL (e.g. ws://your-server:3189/tunnel). It will be saved for next time.',
+    let nextHub = values.hub;
+    if (nextHub === undefined && identity.hubUrl !== undefined) {
+      nextHub = identity.hubUrl;
+    }
+    if (nextHub === undefined) {
+      return yield* Effect.fail(
+        new UsageError(
+          'First run needs --hub WS_URL (e.g. ws://your-server:3189/tunnel). It will be saved for next time.',
+        ),
+      );
+    }
+    const hubUrl = nextHub;
+    yield* Effect.try({ try: () => validateHubUrl(hubUrl), catch: (err) => err });
+
+    if (identity.hubUrl !== hubUrl) {
+      const updated = { ...identity, hubUrl };
+      yield* attempt(() => saveIdentity(storage, updated));
+      io.stdout(`Saved hub URL to ${storage.filePath}`);
+    }
+
+    const controller = new AbortController();
+    let stopping = false;
+    const stop = (signal: NodeJS.Signals): void => {
+      if (stopping) return;
+      stopping = true;
+      io.stdout(`\nReceived ${signal}, stopping…`);
+      controller.abort();
+    };
+    const sigintHandler = (): void => stop('SIGINT');
+    const sigtermHandler = (): void => stop('SIGTERM');
+    const result = yield* Effect.acquireUseRelease(
+      Effect.sync(() => {
+        process.on('SIGINT', sigintHandler);
+        process.on('SIGTERM', sigtermHandler);
+      }),
+      () =>
+        Effect.suspend(() => {
+          io.stdout('Connecting to the runner hub…');
+          return attempt(() =>
+            runRunner({
+              identity,
+              hubUrl,
+              signal: controller.signal,
+              logger: (line) => io.stdout(line),
+            }),
+          );
+        }),
+      () =>
+        Effect.sync(() => {
+          process.removeListener('SIGINT', sigintHandler);
+          process.removeListener('SIGTERM', sigtermHandler);
+        }),
     );
-  }
-  validateHubUrl(nextHub);
 
-  if (identity.hubUrl !== nextHub) {
-    const updated = { ...identity, hubUrl: nextHub };
-    await saveIdentity(storage, updated);
-    io.stdout(`Saved hub URL to ${storage.filePath}`);
-  }
-
-  const controller = new AbortController();
-  let stopping = false;
-  const stop = (signal: NodeJS.Signals): void => {
-    if (stopping) return;
-    stopping = true;
-    io.stdout(`\nReceived ${signal}, stopping…`);
-    controller.abort();
-  };
-  const sigintHandler = (): void => stop('SIGINT');
-  const sigtermHandler = (): void => stop('SIGTERM');
-  process.on('SIGINT', sigintHandler);
-  process.on('SIGTERM', sigtermHandler);
-
-  io.stdout('Connecting to the runner hub…');
-  const result = await runRunner({
-    identity,
-    hubUrl: nextHub,
-    signal: controller.signal,
-    logger: (line) => io.stdout(line),
+    yield* handleRunResult(result, io);
   });
 
-  process.removeListener('SIGINT', sigintHandler);
-  process.removeListener('SIGTERM', sigtermHandler);
-  handleRunResult(result, io);
-}
-
-function handleRunResult(result: RunResult, io: CliIo): void {
+function handleRunResult(result: RunResult, io: CliIo): Effect.Effect<void, ConnectError> {
   switch (result.status) {
     case 'stopped':
-      io.stdout('Runner stopped.');
-      return;
+      return Effect.sync(() => {
+        io.stdout('Runner stopped.');
+      });
     case 'revoked':
-      throw new ConnectError('revoked', `Revoked: ${result.message}`);
+      return Effect.fail(new ConnectError('revoked', `Revoked: ${result.message}`));
     case 'auth_failed':
-      throw new ConnectError('auth_failed', `Auth failed: ${result.message}`);
+      return Effect.fail(new ConnectError('auth_failed', `Auth failed: ${result.message}`));
     case 'version_mismatch':
-      throw new ConnectError('version_mismatch', `Protocol mismatch: ${result.message}`);
+      return Effect.fail(
+        new ConnectError('version_mismatch', `Protocol mismatch: ${result.message}`),
+      );
     case 'disconnected':
-      throw new ConnectError('disconnected', `Disconnected: ${result.message}`);
+      return Effect.fail(new ConnectError('disconnected', `Disconnected: ${result.message}`));
   }
 }
 
-async function runStatus(argv: string[], io: CliIo): Promise<void> {
-  const { values } = parseArgs({
-    args: argv,
-    allowPositionals: false,
-    options: {
-      home: { type: 'string' },
-    },
+const runStatus = (argv: string[], io: CliIo): Effect.Effect<void, unknown> =>
+  Effect.gen(function* () {
+    const { values } = parseArgs({
+      args: argv,
+      allowPositionals: false,
+      options: {
+        home: { type: 'string' },
+      },
+    });
+    const storage = buildStorage(values.home, io.env);
+    const summary = yield* attempt(() => summarizeIdentity(storage));
+    io.stdout('Zilar runner identity');
+    io.stdout(`  machine id   ${summary.machineId}`);
+    io.stdout(`  name         ${summary.name}`);
+    io.stdout(`  server       ${summary.serverUrl}`);
+    io.stdout(`  fingerprint  ${summary.fingerprint}`);
+    io.stdout(`  hub          ${summary.hubUrl ?? '(not set)'}`);
+    io.stdout(`  created at   ${summary.createdAt}`);
+    io.stdout(`  file         ${summary.filePath}`);
   });
-  const storage = buildStorage(values.home, io.env);
-  const summary = await summarizeIdentity(storage);
-  io.stdout('Zilar runner identity');
-  io.stdout(`  machine id   ${summary.machineId}`);
-  io.stdout(`  name         ${summary.name}`);
-  io.stdout(`  server       ${summary.serverUrl}`);
-  io.stdout(`  fingerprint  ${summary.fingerprint}`);
-  io.stdout(`  hub          ${summary.hubUrl ?? '(not set)'}`);
-  io.stdout(`  created at   ${summary.createdAt}`);
-  io.stdout(`  file         ${summary.filePath}`);
-}
 
 function describeError(err: unknown): { exitCode: number; message: string } {
   if (err instanceof UsageError) {
@@ -290,6 +332,9 @@ const isMain =
   (entry.endsWith(`${'apps'}/runner/src/cli.ts`) || entry === 'cli.ts');
 
 if (isMain) {
-  const result = await runCli(process.argv.slice(2));
-  process.exit(result.exitCode);
+  Effect.runFork(
+    runCliEffect(process.argv.slice(2)).pipe(
+      Effect.flatMap((result) => Effect.sync(() => process.exit(result.exitCode))),
+    ),
+  );
 }

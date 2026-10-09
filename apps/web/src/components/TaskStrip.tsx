@@ -1,12 +1,23 @@
 import type { ChatSummary } from '@zilar/chat-core';
+import { Effect, Option, Schema } from 'effect';
 import { ExternalLink } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
 import type { PatchTopicInput, TopicStatus } from '@/lib/api';
+import { fromApi } from '@/lib/effect/api-effect';
+import { useAction } from '@/lib/effect/use-action';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
 import { Menu, MenuRadioItem } from '@/components/ui/menu';
 import { Button } from '@/components/ui/button';
 import { TextInput } from '@/components/ui/text-input';
+
+const SAVE_FAILED = 'Could not save. Try again.';
+
+interface TopicChange {
+  readonly input: PatchTopicInput;
+  /** Puts the topic back as it was before the optimistic change. */
+  readonly rollback: () => void;
+}
 
 const STATUS_ORDER: TopicStatus[] = ['open', 'in_progress', 'in_review', 'blocked', 'done'];
 
@@ -66,12 +77,8 @@ export function httpsUrl(url: string | null | undefined): string | undefined {
   if (trimmed === '') {
     return undefined;
   }
-  try {
-    const parsed = new URL(trimmed);
-    return parsed.protocol === 'https:' ? parsed.toString() : undefined;
-  } catch {
-    return undefined;
-  }
+  const parsed = Option.getOrUndefined(Schema.decodeUnknownOption(Schema.URLFromString)(trimmed));
+  return parsed?.protocol === 'https:' ? parsed.toString() : undefined;
 }
 
 function linkText(chat: ChatSummary): string {
@@ -81,11 +88,7 @@ function linkText(chat: ChatSummary): string {
   }
   const href = httpsUrl(topic?.linkUrl);
   if (href !== undefined) {
-    try {
-      return new URL(href).hostname;
-    } catch {
-      return href;
-    }
+    return new URL(href).hostname;
   }
   return 'Add link';
 }
@@ -106,6 +109,21 @@ export function TaskStrip({ chat }: { chat: ChatSummary }) {
   const [linkUrl, setLinkUrl] = useState('');
   const [linkLabel, setLinkLabel] = useState('');
   const [error, setError] = useState('');
+
+  const saveTopic = (change: TopicChange) =>
+    fromApi(() => storeApi.getState().patchTopic(chat.id, change.input)).pipe(
+      Effect.tapError(() =>
+        Effect.sync(() => {
+          change.rollback();
+          setError(SAVE_FAILED);
+        }),
+      ),
+    );
+  // One action per kind of change: a status change and an owner change can
+  // both be in flight. A second change of the same kind replaces the first.
+  const [, runStatusSave] = useAction(saveTopic, { mode: 'replace' });
+  const [, runOwnerSave] = useAction(saveTopic, { mode: 'replace' });
+  const [, runLinkSave] = useAction(saveTopic, { mode: 'replace' });
 
   // Esc closes the link form. The status and owner menus close through
   // the kit Menu, whose document Escape handler stops propagation.
@@ -141,14 +159,21 @@ export function TaskStrip({ chat }: { chat: ChatSummary }) {
   const members = candidates.filter((member) => !member.jid.startsWith('ai-'));
   const aiCandidates = candidates.filter((member) => member.jid.startsWith('ai-'));
 
-  const patch = async (input: PatchTopicInput, rollback: () => void): Promise<void> => {
+  const restore =
+    (previous: ChatSummary): (() => void) =>
+    () => {
+      storeApi.setState((state) => ({
+        chats: state.chats.map((entry) => (entry.id === chat.id ? previous : entry)),
+      }));
+    };
+
+  const startSave = (
+    run: (change: TopicChange) => void,
+    input: PatchTopicInput,
+    rollback: () => void,
+  ): void => {
     setError('');
-    try {
-      await storeApi.getState().patchTopic(chat.id, input);
-    } catch {
-      rollback();
-      setError('Could not save. Try again.');
-    }
+    run({ input, rollback });
   };
 
   const chooseStatus = (next: TopicStatus): void => {
@@ -164,11 +189,7 @@ export function TaskStrip({ chat }: { chat: ChatSummary }) {
           : entry,
       ),
     }));
-    void patch({ status: next }, () => {
-      storeApi.setState((state) => ({
-        chats: state.chats.map((entry) => (entry.id === chat.id ? previous : entry)),
-      }));
-    });
+    startSave(runStatusSave, { status: next }, restore(previous));
   };
 
   const chooseOwner = (owner: { kind: 'user' | 'ai'; id: string; name: string } | null): void => {
@@ -196,11 +217,11 @@ export function TaskStrip({ chat }: { chat: ChatSummary }) {
           : entry,
       ),
     }));
-    void patch({ owner: owner === null ? null : { kind: owner.kind, id: owner.id } }, () => {
-      storeApi.setState((state) => ({
-        chats: state.chats.map((entry) => (entry.id === chat.id ? previous : entry)),
-      }));
-    });
+    startSave(
+      runOwnerSave,
+      { owner: owner === null ? null : { kind: owner.kind, id: owner.id } },
+      restore(previous),
+    );
   };
 
   const saveLink = (): void => {
@@ -220,11 +241,7 @@ export function TaskStrip({ chat }: { chat: ChatSummary }) {
           : entry,
       ),
     }));
-    void patch({ linkUrl: nextUrl, linkLabel: nextLabel }, () => {
-      storeApi.setState((state) => ({
-        chats: state.chats.map((entry) => (entry.id === chat.id ? previous : entry)),
-      }));
-    });
+    startSave(runLinkSave, { linkUrl: nextUrl, linkLabel: nextLabel }, restore(previous));
   };
 
   return (

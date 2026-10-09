@@ -12,10 +12,12 @@ on:
     paths-ignore: ['work/**', 'docs/**', '**/*.md']
   pull_request:
 
-# A newer push to main makes older runs stale, so cancel them and verify the tip sooner.
+# Pull requests cancel stale runs. On main the running check finishes and GitHub keeps only
+# the newest pending run, so a busy merge day still gets a verified tip (T-0774: runs were
+# cancelled before they finished for over an hour on 2026-10-09).
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read

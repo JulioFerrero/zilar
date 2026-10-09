@@ -9,6 +9,7 @@ import {
   Plus,
   Server,
 } from 'lucide-react-native';
+import { Data, Effect } from 'effect';
 import { useCallback, useRef, useState } from 'react';
 import { Modal, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -24,11 +25,79 @@ import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import { asColorScheme } from '@/lib/color-scheme';
 import { ACCENT_FOREGROUND, ICON } from '@/lib/colors';
-import type { Machine, PairingCode } from '@/lib/machines-api';
+import { useAction } from '@/lib/effect/use-action';
+import type { Machine, MachinesApi, PairingCode } from '@/lib/machines-api';
 import { describeMachinesError, type MachinesErrorInfo } from '@/components/machines/errors';
 import { useMachinesApi } from '@/components/machines/use-machines-api';
 
 type PageStatus = 'loading' | 'ready' | 'error';
+
+/** A failed machines call, carrying the fixed sentence the screen shows. */
+class MachineCallFailed extends Data.TaggedError('MachineCallFailed')<{
+  readonly message: string;
+}> {}
+
+/** A row or dialog change: the machine that came back, or `null` when it was removed. */
+interface MachineChange {
+  readonly id: string;
+  readonly machine: Machine | null;
+}
+
+/** One mutation the list can run; each one's failure text is fixed. */
+type MachineMutation =
+  | { readonly kind: 'approve' | 'deny' | 'revoke' | 'delete'; readonly id: string }
+  | { readonly kind: 'rename'; readonly id: string; readonly name: string };
+
+/**
+ * Runs one machines-api call. A rejection becomes the sentence for its error
+ * (or the fallback), never the server's raw text.
+ */
+function call<A>(attempt: () => Promise<A>, fallback: string) {
+  return Effect.tryPromise({
+    try: attempt,
+    catch: (cause) =>
+      new MachineCallFailed({ message: describeMachinesError(cause, fallback).message }),
+  });
+}
+
+/** The API call behind a mutation, mapped to the change it makes in the list. */
+function mutationCall(
+  api: MachinesApi,
+  input: MachineMutation,
+): Effect.Effect<MachineChange, MachineCallFailed> {
+  switch (input.kind) {
+    case 'approve':
+      return call(() => api.approveMachine(input.id), 'Could not approve the machine.').pipe(
+        Effect.map((machine) => ({ id: input.id, machine })),
+      );
+    case 'deny':
+      return call(() => api.denyMachine(input.id), 'Could not deny the machine.').pipe(
+        Effect.map(() => ({ id: input.id, machine: null })),
+      );
+    case 'rename':
+      return call(
+        () => api.renameMachine(input.id, input.name),
+        'Could not rename the machine.',
+      ).pipe(Effect.map((machine) => ({ id: input.id, machine })));
+    case 'revoke':
+      return call(() => api.revokeMachine(input.id), 'Could not revoke the machine.').pipe(
+        Effect.map((machine) => ({ id: input.id, machine })),
+      );
+    case 'delete':
+      return call(() => api.deleteMachine(input.id), 'Could not delete the machine.').pipe(
+        Effect.map(() => ({ id: input.id, machine: null })),
+      );
+  }
+}
+
+/** Replaces the changed machine, or drops it when it was removed. */
+function applyChange(list: Machine[], change: MachineChange): Machine[] {
+  if (change.machine === null) {
+    return list.filter((m) => m.id !== change.id);
+  }
+  const next = change.machine;
+  return list.map((m) => (m.id === change.id ? next : m));
+}
 
 /**
  * Settings → Machines (mirrors web's `MachinesPage`): pending machines with
@@ -55,9 +124,6 @@ function MachinesList() {
   const [errorInfo, setErrorInfo] = useState<MachinesErrorInfo>({ message: '' });
   const [actionErrors, setActionErrors] = useState<Record<string, string>>({});
   const [busyId, setBusyId] = useState<string | null>(null);
-  // Guards against a double tap landing before React re-renders the disabled
-  // button, so one confirm can never send two requests.
-  const busyRef = useRef(false);
   const [confirming, setConfirming] = useState<{ kind: 'revoke' | 'delete'; id: string } | null>(
     null,
   );
@@ -65,78 +131,15 @@ function MachinesList() {
   // The add flow state lives in the parent: the "Add machine" tap mints
   // the code directly (an event, not an effect), and the sheet only renders
   // the result. `addToken` guards a late answer after the sheet closed.
-  // `addBusyRef` stops a double tap minting two pairing codes (10 per hour).
+  // `mintCode` ignores a second tap while a code is being made (10 per hour).
   const [adding, setAdding] = useState(false);
   const [pairing, setPairing] = useState<PairingCode | null>(null);
   const [pairingLoading, setPairingLoading] = useState(false);
   const [pairingError, setPairingError] = useState('');
   const addToken = useRef(0);
-  const addBusyRef = useRef(false);
-
-  const openAdd = useCallback(() => {
-    if (addBusyRef.current) {
-      return;
-    }
-    addBusyRef.current = true;
-    addToken.current += 1;
-    const token = addToken.current;
-    setAdding(true);
-    setPairingLoading(true);
-    setPairingError('');
-    setPairing(null);
-    void api
-      .createPairingCode()
-      .then((next) => {
-        if (addToken.current === token) {
-          setPairing(next);
-        }
-      })
-      .catch((cause: unknown) => {
-        if (addToken.current === token) {
-          setPairingError(describeMachinesError(cause, 'Could not create a pairing code.').message);
-        }
-      })
-      .finally(() => {
-        addBusyRef.current = false;
-        if (addToken.current === token) {
-          setPairingLoading(false);
-        }
-      });
-  }, [api]);
-
-  const closeAdd = useCallback(() => {
-    addToken.current += 1;
-    setAdding(false);
-  }, []);
-
-  const retryAdd = useCallback(() => {
-    closeAdd();
-    openAdd();
-  }, [closeAdd, openAdd]);
   const [showRevoked, setShowRevoked] = useState(false);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState('');
-
-  const reload = useCallback(() => {
-    setStatus('loading');
-    setActionErrors({});
-    void api
-      .listMachines()
-      .then((list) => {
-        setMachines(list);
-        setStatus('ready');
-      })
-      .catch((error: unknown) => {
-        setErrorInfo(describeMachinesError(error, 'Could not load your machines.'));
-        setStatus('error');
-      });
-  }, [api]);
-
-  useFocusEffect(
-    useCallback(() => {
-      reload();
-    }, [reload]),
-  );
 
   const setRowError = (id: string, message: string): void => {
     setActionErrors((previous) => ({ ...previous, [id]: message }));
@@ -153,43 +156,135 @@ function MachinesList() {
     });
   };
 
-  const run = (id: string, task: () => Promise<void>, fallback: string): void => {
-    if (busyRef.current) {
-      return;
-    }
-    busyRef.current = true;
-    setBusyId(id);
-    clearRowError(id);
-    void task()
-      .catch((error: unknown) => {
-        setRowError(id, describeMachinesError(error, fallback).message);
-      })
-      .finally(() => {
-        busyRef.current = false;
-        setBusyId(null);
-      });
-  };
+  // Loads the list. A reload (focus, Retry) replaces one still running.
+  const [, loadList] = useAction(
+    (_input: void) =>
+      Effect.sync(() => {
+        setStatus('loading');
+        setActionErrors({});
+      }).pipe(
+        Effect.andThen(call(() => api.listMachines(), 'Could not load your machines.')),
+        Effect.tap((list) =>
+          Effect.sync(() => {
+            setMachines(list);
+            setStatus('ready');
+          }),
+        ),
+        Effect.catch((failure) =>
+          Effect.sync(() => {
+            setErrorInfo({ message: failure.message });
+            setStatus('error');
+          }),
+        ),
+      ),
+    { mode: 'replace' },
+  );
+
+  const reload = useCallback(() => {
+    loadList();
+  }, [loadList]);
+
+  useFocusEffect(
+    useCallback(() => {
+      reload();
+    }, [reload]),
+  );
+
+  // One mutation at a time: a second tap while one runs is dropped.
+  const [, runMutation] = useAction((input: MachineMutation) => {
+    const dialog = input.kind === 'revoke' || input.kind === 'delete';
+    return Effect.sync(() => {
+      setBusyId(input.id);
+      if (dialog) {
+        setConfirmError('');
+      } else {
+        clearRowError(input.id);
+      }
+    }).pipe(
+      Effect.andThen(mutationCall(api, input)),
+      Effect.tap((change) =>
+        Effect.sync(() => {
+          setMachines((previous) => applyChange(previous, change));
+          if (input.kind === 'rename') {
+            setRenamingId(null);
+          }
+          if (dialog) {
+            setConfirming(null);
+          }
+        }),
+      ),
+      Effect.catch((failure) =>
+        Effect.sync(() => {
+          if (dialog) {
+            setConfirmError(failure.message);
+          } else {
+            setRowError(input.id, failure.message);
+          }
+        }),
+      ),
+      Effect.ensuring(Effect.sync(() => setBusyId(null))),
+    );
+  });
+
+  const [, mintCode] = useAction(
+    (_input: void) =>
+      Effect.sync(() => {
+        addToken.current += 1;
+        setAdding(true);
+        setPairingLoading(true);
+        setPairingError('');
+        setPairing(null);
+        return addToken.current;
+      }).pipe(
+        Effect.flatMap((token) =>
+          call(() => api.createPairingCode(), 'Could not create a pairing code.').pipe(
+            Effect.tap((next) =>
+              Effect.sync(() => {
+                if (addToken.current === token) {
+                  setPairing(next);
+                }
+              }),
+            ),
+            Effect.catch((failure) =>
+              Effect.sync(() => {
+                if (addToken.current === token) {
+                  setPairingError(failure.message);
+                }
+              }),
+            ),
+            Effect.ensuring(
+              Effect.sync(() => {
+                if (addToken.current === token) {
+                  setPairingLoading(false);
+                }
+              }),
+            ),
+          ),
+        ),
+      ),
+    { mode: 'ignore' },
+  );
+
+  const openAdd = useCallback(() => {
+    mintCode();
+  }, [mintCode]);
+
+  const closeAdd = useCallback(() => {
+    addToken.current += 1;
+    setAdding(false);
+  }, []);
+
+  const retryAdd = useCallback(() => {
+    closeAdd();
+    openAdd();
+  }, [closeAdd, openAdd]);
 
   const approve = (id: string): void => {
-    run(
-      id,
-      () =>
-        api.approveMachine(id).then((updated) => {
-          setMachines((previous) => previous.map((m) => (m.id === id ? updated : m)));
-        }),
-      'Could not approve the machine.',
-    );
+    runMutation({ kind: 'approve', id });
   };
 
   const deny = (id: string): void => {
-    run(
-      id,
-      () =>
-        api.denyMachine(id).then(() => {
-          setMachines((previous) => previous.filter((m) => m.id !== id));
-        }),
-      'Could not deny the machine.',
-    );
+    runMutation({ kind: 'deny', id });
   };
 
   const openRename = (machine: Machine): void => {
@@ -204,15 +299,7 @@ function MachinesList() {
       setRowError(id, 'Give the machine a name.');
       return;
     }
-    run(
-      id,
-      () =>
-        api.renameMachine(id, name).then((updated) => {
-          setMachines((previous) => previous.map((m) => (m.id === id ? updated : m)));
-          setRenamingId(null);
-        }),
-      'Could not rename the machine.',
-    );
+    runMutation({ kind: 'rename', id, name });
   };
 
   const askConfirm = (kind: 'revoke' | 'delete', id: string): void => {
@@ -221,35 +308,10 @@ function MachinesList() {
   };
 
   const confirmAction = (): void => {
-    if (confirming === null || busyRef.current) {
+    if (confirming === null) {
       return;
     }
-    const { kind, id } = confirming;
-    busyRef.current = true;
-    setBusyId(id);
-    setConfirmError('');
-    const task =
-      kind === 'revoke'
-        ? api.revokeMachine(id).then((updated) => {
-            setMachines((previous) => previous.map((m) => (m.id === id ? updated : m)));
-          })
-        : api.deleteMachine(id).then(() => {
-            setMachines((previous) => previous.filter((m) => m.id !== id));
-          });
-    void task
-      .then(() => setConfirming(null))
-      .catch((error: unknown) => {
-        setConfirmError(
-          describeMachinesError(
-            error,
-            kind === 'revoke' ? 'Could not revoke the machine.' : 'Could not delete the machine.',
-          ).message,
-        );
-      })
-      .finally(() => {
-        busyRef.current = false;
-        setBusyId(null);
-      });
+    runMutation({ kind: confirming.kind, id: confirming.id });
   };
 
   const pending = machines.filter((m) => m.status === 'pending');
@@ -540,9 +602,9 @@ function MachineCard({
 /**
  * The add flow (mirrors web's `AddMachineDialog`): shows the pairing code
  * big with a Copy button and the `zilar-runner pair <CODE>` command. The
- * code is minted by the parent's "Add machine" tap, so this sheet is pure
- * render. The desktop runner is not published yet, so the sheet says so
- * honestly, exactly like web.
+ * code is minted by the parent's "Add machine" tap, so this sheet only
+ * renders the result. The desktop runner is not published yet, so the sheet
+ * says so honestly, exactly like web.
  */
 function AddMachineSheet({
   visible,
@@ -561,15 +623,24 @@ function AddMachineSheet({
 }) {
   const [copied, setCopied] = useState(false);
   const scheme = asColorScheme(useColorScheme().colorScheme);
+  const [, copyCode] = useAction((code: string) =>
+    Effect.tryPromise({
+      try: () => Clipboard.setStringAsync(code),
+      catch: () => new MachineCallFailed({ message: 'Could not copy the code.' }),
+    }).pipe(
+      Effect.tap(() =>
+        Effect.sync(() => {
+          setCopied(true);
+        }),
+      ),
+    ),
+  );
 
   const copy = (): void => {
     if (pairing === null) {
       return;
     }
-    const code = pairing.code;
-    void Clipboard.setStringAsync(code).then(() => {
-      setCopied(true);
-    });
+    copyCode(pairing.code);
   };
 
   return (

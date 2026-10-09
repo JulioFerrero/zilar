@@ -1,3 +1,4 @@
+import { Effect } from 'effect';
 import * as Haptics from 'expo-haptics';
 import { Reply } from 'lucide-react-native';
 import { useRef, type ReactNode } from 'react';
@@ -38,8 +39,14 @@ type SwipeToReplyProps = {
 export function SwipeToReply({ color, onReply, enabled = true, children }: SwipeToReplyProps) {
   const swipeRef = useRef<SwipeableMethods>(null);
 
+  // A failed haptic is ignored: the swipe itself still works without it.
   const haptic = () => {
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    Effect.runFork(
+      Effect.tryPromise({
+        try: () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light),
+        catch: (error) => error,
+      }).pipe(Effect.ignore),
+    );
   };
 
   return (

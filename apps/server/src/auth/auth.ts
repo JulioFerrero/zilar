@@ -1,6 +1,7 @@
 import { betterAuth } from 'better-auth';
 import { APIError, createAuthMiddleware } from 'better-auth/api';
 import { bearer, emailOTP } from 'better-auth/plugins';
+import { Cause, Effect } from 'effect';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
 import { setUpContactsFromInvite } from '../contacts/service';
@@ -33,6 +34,28 @@ export interface CreateAuthInput {
 export interface AuthLogger {
   warn: (fields: Record<string, unknown>, message: string) => void;
 }
+
+const isMailNotConfigured = (error: unknown): error is MailNotConfiguredError =>
+  error instanceof MailNotConfiguredError;
+
+const mailNotConfiguredError = () =>
+  new APIError(503, {
+    code: 'mail_not_configured',
+    message: 'Email is not configured. Finish the server setup first.',
+  });
+
+// Sign-up must never fail because a follow-up step did: log the cause as an
+// object (so redaction applies) and carry on.
+const warnAndContinue =
+  (logger: AuthLogger | undefined, userId: string, message: string) =>
+  <A, E, R>(self: Effect.Effect<A, E, R>) =>
+    self.pipe(
+      Effect.catchCause((cause) =>
+        Effect.sync(() => {
+          logger?.warn({ userId, err: Cause.squash(cause) }, message);
+        }),
+      ),
+    );
 
 export function createAuth({
   db,
@@ -76,108 +99,113 @@ export function createAuth({
         expiresIn: OTP_EXPIRES_IN_SECONDS,
         allowedAttempts: OTP_ALLOWED_ATTEMPTS,
         storeOTP: 'hashed',
-        async sendVerificationOTP({ email, otp, type }) {
-          try {
-            await mailer.sendOtp(email, otp, type);
-          } catch (error) {
-            if (error instanceof MailNotConfiguredError) {
-              throw new APIError(503, {
-                code: 'mail_not_configured',
-                message: 'Email is not configured. Finish the server setup first.',
-              });
-            }
-            throw error;
-          }
-        },
+        sendVerificationOTP: ({ email, otp, type }) =>
+          Effect.runPromise(
+            Effect.tryPromise({
+              try: () => mailer.sendOtp(email, otp, type),
+              catch: (error) => error,
+            }).pipe(
+              Effect.catchIf(isMailNotConfigured, () => Effect.fail(mailNotConfiguredError())),
+            ),
+          ),
       }),
       bearer(),
     ],
     hooks: {
-      before: createAuthMiddleware(async (ctx) => {
-        if (ctx.path !== SEND_OTP_PATH) {
-          return;
-        }
+      before: createAuthMiddleware((ctx) =>
+        Effect.runPromise(
+          Effect.gen(function* () {
+            if (ctx.path !== SEND_OTP_PATH) {
+              return;
+            }
 
-        // No transport can send while unconfigured (T-0161): fail every
-        // code request loudly with 503 `mail_not_configured` instead of
-        // the fake success below. Uniform for every email, so nothing
-        // about accounts leaks.
-        if (!isTransportConfigured(mailer)) {
-          throw new APIError(503, {
-            code: 'mail_not_configured',
-            message: 'Email is not configured. Finish the server setup first.',
-          });
-        }
+            // No transport can send while unconfigured (T-0161): fail every
+            // code request loudly with 503 `mail_not_configured` instead of
+            // the fake success below. Uniform for every email, so nothing
+            // about accounts leaks.
+            if (!isTransportConfigured(mailer)) {
+              return yield* Effect.fail(mailNotConfiguredError());
+            }
 
-        const rawEmail = ctx.body?.email;
-        if (typeof rawEmail !== 'string' || rawEmail.length === 0) {
-          return;
-        }
+            const rawEmail = ctx.body?.email;
+            if (typeof rawEmail !== 'string' || rawEmail.length === 0) {
+              return;
+            }
 
-        const email = rawEmail.toLowerCase();
-        const existingUser = await ctx.context.internalAdapter.findUserByEmail(email);
-        if (existingUser) {
-          return;
-        }
+            const email = rawEmail.toLowerCase();
+            const existingUser = yield* Effect.promise(() =>
+              ctx.context.internalAdapter.findUserByEmail(email),
+            );
+            if (existingUser) {
+              return;
+            }
 
-        const code = ctx.headers?.get(INVITE_HEADER)?.trim();
-        const invite = code ? await findUsableInvite(db, code) : null;
-        if (invite) {
-          return;
-        }
+            const code = ctx.headers?.get(INVITE_HEADER)?.trim();
+            const invite = code ? yield* Effect.promise(() => findUsableInvite(db, code)) : null;
+            if (invite) {
+              return;
+            }
 
-        return ctx.json({ success: true });
-      }),
+            return ctx.json({ success: true });
+          }),
+        ),
+      ),
     },
     databaseHooks: {
       user: {
         create: {
-          before: async (user, context) => {
-            const code = context?.headers?.get(INVITE_HEADER)?.trim();
-            if (!code) {
-              throw new APIError('BAD_REQUEST', {
-                message: 'An invite is required to create an account.',
-              });
-            }
-            const invite = await consumeInvite(db, code);
-            if (!invite) {
-              throw new APIError('BAD_REQUEST', {
-                message: 'This invite is invalid, expired or already used.',
-              });
-            }
-            return { data: user };
-          },
-          after: async (user, context) => {
-            // The XMPP account is created here, but its failure must never block
-            // sign-up: the token endpoint provisions lazily on the next request.
-            try {
-              await ensureXmppAccount(db, adminClient, user.id, config.xmpp.domain);
-            } catch (error) {
-              logger?.warn(
-                { userId: user.id, err: error },
-                'could not provision the XMPP account on sign-up',
-              );
-            }
-
-            // Contacts from the invite: record which invite created the user
-            // and, when the inviter is known, make them contacts and add the
-            // two roster items. Roster failures are retried on the token
-            // endpoint, so they must never block sign-up.
-            const inviteCode = context?.headers?.get(INVITE_HEADER)?.trim();
-            if (inviteCode) {
-              try {
-                await setUpContactsFromInvite(db, adminClient, config.xmpp.domain, {
-                  userId: user.id,
-                  inviteCode,
-                });
-              } catch (error) {
-                logger?.warn(
-                  { userId: user.id, err: error },
-                  'could not set up contacts on sign-up',
+          before: (user, context) =>
+            Effect.runPromise(
+              Effect.gen(function* () {
+                const code = context?.headers?.get(INVITE_HEADER)?.trim();
+                if (!code) {
+                  return yield* Effect.fail(
+                    new APIError('BAD_REQUEST', {
+                      message: 'An invite is required to create an account.',
+                    }),
+                  );
+                }
+                const invite = yield* Effect.promise(() => consumeInvite(db, code));
+                if (!invite) {
+                  return yield* Effect.fail(
+                    new APIError('BAD_REQUEST', {
+                      message: 'This invite is invalid, expired or already used.',
+                    }),
+                  );
+                }
+                return { data: user };
+              }),
+            ),
+          after: (user, context) =>
+            Effect.runPromise(
+              Effect.gen(function* () {
+                // The XMPP account is created here, but its failure must never block
+                // sign-up: the token endpoint provisions lazily on the next request.
+                yield* Effect.promise(() =>
+                  ensureXmppAccount(db, adminClient, user.id, config.xmpp.domain),
+                ).pipe(
+                  warnAndContinue(
+                    logger,
+                    user.id,
+                    'could not provision the XMPP account on sign-up',
+                  ),
                 );
-              }
-            }
-          },
+
+                // Contacts from the invite: record which invite created the user
+                // and, when the inviter is known, make them contacts and add the
+                // two roster items. Roster failures are retried on the token
+                // endpoint, so they must never block sign-up.
+                const inviteCode = context?.headers?.get(INVITE_HEADER)?.trim();
+                if (inviteCode) {
+                  yield* Effect.promise(() =>
+                    setUpContactsFromInvite(db, adminClient, config.xmpp.domain, {
+                      userId: user.id,
+                      inviteCode,
+                    }),
+                  ).pipe(warnAndContinue(logger, user.id, 'could not set up contacts on sign-up'));
+                }
+              }),
+            ),
         },
       },
     },

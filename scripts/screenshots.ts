@@ -1,3 +1,4 @@
+// effect-plain: dev screenshot script, not shipped
 /**
  * Regenerates every screenshot in `docs/screenshots/` (T-0131).
  *

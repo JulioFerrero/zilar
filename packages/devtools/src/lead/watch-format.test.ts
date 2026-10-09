@@ -152,6 +152,20 @@ describe('modelBadge', () => {
     });
     expect(modelBadge('acme/other-free', 'high').free).toBe(true);
   });
+
+  it('names Claude models with family and version, in a colour of their own', () => {
+    expect(modelBadge('haiku-5.5', 'default')).toEqual({
+      name: 'Claude Haiku 5.5',
+      effort: 'default',
+      free: false,
+      color: '#7aa2f7',
+    });
+    expect(modelBadge('claude-sonnet-5-5', undefined).name).toBe('Claude Sonnet 5.5');
+    expect(modelBadge('opus-4', undefined).name).toBe('Claude Opus 4');
+    expect(modelBadge('claude', undefined).name).toBe('Claude');
+    expect(modelBadge('haiku-5.5', undefined).color).not.toBe('magenta');
+    expect(modelBadge('haiku-5.5', undefined).color).not.toBe('#f2a65e');
+  });
 });
 
 describe('iconText', () => {

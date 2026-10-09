@@ -1,6 +1,12 @@
+import { Effect } from 'effect';
 import { useEffect, useMemo, useState } from 'react';
 import { Plus, Star } from 'lucide-react';
-import { GifPanel, gifsAvailability, probeGifsAvailability, type GifChoice } from './GifPanel';
+import {
+  GifPanel,
+  gifsAvailability,
+  probeGifsAvailabilityEffect,
+  type GifChoice,
+} from './GifPanel';
 import type { Sticker, StickerPack } from '@/lib/api';
 import {
   addStickerFavorite,
@@ -9,6 +15,9 @@ import {
   listStickerPacks,
   removeStickerFavorite,
 } from '@/lib/api';
+import { fromApi } from '@/lib/effect/api-effect';
+import { useAction } from '@/lib/effect/use-action';
+import { useQuery } from '@/lib/effect/use-query';
 import { isMockMode } from '@/mock/gate';
 import { mockGifItems } from '@/mock/helpers';
 import { isPanelStickerUrl, readRecentStickers, rememberRecentSticker } from '@/lib/stickers';
@@ -79,6 +88,74 @@ function StickerThumb({ sticker, size }: { sticker: StickerChoice; size: number 
   );
 }
 
+/** The recents in localStorage at this sync edge; a blocked or hostile storage gives none. */
+function readStoredRecents(): RecentStickerEntry[] {
+  return Effect.runSync(
+    Effect.try(() => readRecentStickers(window.localStorage)).pipe(
+      Effect.orElseSucceed((): RecentStickerEntry[] => []),
+    ),
+  );
+}
+
+/** The page's localStorage for a write, or null when the browser blocks it. */
+function panelStorage(): Storage | null {
+  return Effect.runSync(
+    Effect.try(() => window.localStorage).pipe(Effect.orElseSucceed((): Storage | null => null)),
+  );
+}
+
+/**
+ * The favorite star on one sticker tile (T-0121). It has its own action, so a
+ * second click on the same star waits for the first request while other stars
+ * run at once. The request is uninterruptible: a row leaves the list at once
+ * when its favorite is removed on the Favorites tab, and a failed request must
+ * still roll back.
+ */
+function FavoriteStar({
+  sticker,
+  starred,
+  onApply,
+  onUndo,
+}: {
+  sticker: StickerChoice;
+  starred: boolean;
+  onApply: (sticker: StickerChoice, wasStarred: boolean) => void;
+  onUndo: (sticker: StickerChoice, wasStarred: boolean) => void;
+}) {
+  const [, toggle] = useAction((wasStarred: boolean) =>
+    Effect.sync(() => onApply(sticker, wasStarred)).pipe(
+      Effect.andThen(
+        Effect.uninterruptible(
+          (wasStarred
+            ? fromApi(() => removeStickerFavorite(sticker.stickerId))
+            : fromApi(() => addStickerFavorite(sticker.stickerId))
+          ).pipe(Effect.tapError(() => Effect.sync(() => onUndo(sticker, wasStarred)))),
+        ),
+      ),
+    ),
+  );
+
+  return (
+    <button
+      type="button"
+      aria-label={
+        starred
+          ? `Unfavorite ${sticker.emoji ?? 'sticker'}`
+          : `Favorite ${sticker.emoji ?? 'sticker'}`
+      }
+      aria-pressed={starred}
+      title={starred ? 'Remove from favorites' : 'Add to favorites'}
+      onClick={() => toggle(starred)}
+      className={cn(
+        'absolute top-0.5 right-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border border-edge bg-black/70 text-[10px] leading-none',
+        starred ? 'text-white' : 'text-muted-foreground opacity-80',
+      )}
+    >
+      <Star className={cn('size-3', starred && 'fill-current')} aria-hidden="true" />
+    </button>
+  );
+}
+
 type Tab = 'stickers' | 'gifs' | 'emoji';
 
 const PANEL_TABS: readonly Tab[] = ['stickers', 'gifs', 'emoji'] as const;
@@ -143,28 +220,20 @@ export function StickerPanel({
   const [activePackId, setActivePackId] = useState<string | undefined>(undefined);
   const [favorites, setFavorites] = useState<Sticker[] | undefined>(undefined);
   const [favoriteError, setFavoriteError] = useState('');
-  const [recents, setRecents] = useState<RecentStickerEntry[]>(() => {
-    try {
-      return readRecentStickers(window.localStorage);
-    } catch {
-      return [];
-    }
-  });
+  const [recents, setRecents] = useState<RecentStickerEntry[]>(readStoredRecents);
   const [preview, setPreview] = useState<StickerChoice | undefined>(undefined);
   // T-0146: the GIFs tab hides when the provider is off. The probe runs
   // once per session and remembers the answer; mock mode keeps the tab
   // (placeholders need no server). Shown/hidden are derived during render
-  // from the tri-state; the async probe settles through the promise below
-  // (an external-system sync, like the sticker list load), and a tab that
+  // from the tri-state; the probe settles into the state below (an
+  // external-system sync, like the sticker list load), and a tab that
   // disappears under the active tab falls back to Stickers at render time
   // so the panel never shows an empty body.
-  const [gifsProbe] = useState<Promise<boolean> | undefined>(() =>
-    // In the unit-test run (`MODE === 'test'`) and in mock mode the panel
-    // uses placeholders, so no probe is needed and the tab always shows.
-    // `isMockMode()` is true in tests (MODE=test), which also covers mock.
-    // `gifsTab` forces the answer in tests of the hidden state.
-    gifsTab !== undefined || isMockMode() ? undefined : probeGifsAvailability(),
-  );
+  // In the unit-test run (`MODE === 'test'`) and in mock mode the panel
+  // uses placeholders, so no probe is needed and the tab always shows.
+  // `isMockMode()` is true in tests (MODE=test), which also covers mock.
+  // `gifsTab` forces the answer in tests of the hidden state.
+  const gifsProbeNeeded = gifsTab === undefined && !isMockMode();
   const [gifsEnabled, setGifsEnabled] = useState<boolean | undefined>(() => {
     if (gifsTab !== undefined) {
       return gifsTab === 'show';
@@ -172,61 +241,58 @@ export function StickerPanel({
     return isMockMode() ? true : gifsAvailability();
   });
 
-  useEffect(() => {
-    if (gifsProbe === undefined) {
-      return;
-    }
-    let cancelled = false;
-    void gifsProbe.then((available) => {
-      if (!cancelled) {
-        setGifsEnabled(available);
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [gifsProbe]);
+  useQuery(
+    () =>
+      gifsProbeNeeded
+        ? probeGifsAvailabilityEffect().pipe(
+            Effect.tap((available) => Effect.sync(() => setGifsEnabled(available))),
+          )
+        : Effect.void,
+    [gifsProbeNeeded],
+  );
 
   // The visible tab: when the GIF tab disappears under the active tab, the
   // panel shows Stickers instead of an empty body.
   const visibleTab: Tab = tab === 'gifs' && gifsEnabled === false ? 'stickers' : tab;
 
-  useEffect(() => {
-    let cancelled = false;
-    listStickerPacks()
-      .then((loaded) => {
-        if (!cancelled) {
-          setPacks(loaded);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setPacks([]);
-        }
-      });
-    // Discover is best-effort: server packs are browsable even before T-0121.
-    discoverStickerPacks()
-      .then((page) => {
-        if (!cancelled && page.packs.length > 0) {
-          setPacks((previous) => {
-            const known = new Set((previous ?? []).map((pack) => pack.id));
-            return [...(previous ?? []), ...page.packs.filter((pack) => !known.has(pack.id))];
-          });
-        }
-      })
-      .catch(() => {});
-    // Favorites are best-effort too: the panel works without them.
-    listStickerFavorites()
-      .then((starred) => {
-        if (!cancelled) {
-          setFavorites(starred);
-        }
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // A failed list shows no packs; the panel says so instead of loading forever.
+  useQuery(
+    () =>
+      fromApi(() => listStickerPacks()).pipe(
+        Effect.tap((loaded) => Effect.sync(() => setPacks(loaded))),
+        Effect.catchTag('ApiFailure', () => Effect.sync(() => setPacks([]))),
+      ),
+    [],
+  );
+
+  // Discover is best-effort: server packs are browsable even before T-0121.
+  useQuery(
+    () =>
+      fromApi(() => discoverStickerPacks()).pipe(
+        Effect.tap((page) =>
+          Effect.sync(() => {
+            if (page.packs.length > 0) {
+              setPacks((previous) => {
+                const known = new Set((previous ?? []).map((pack) => pack.id));
+                return [...(previous ?? []), ...page.packs.filter((pack) => !known.has(pack.id))];
+              });
+            }
+          }),
+        ),
+        Effect.ignore,
+      ),
+    [],
+  );
+
+  // Favorites are best-effort too: the panel works without them.
+  useQuery(
+    () =>
+      fromApi(() => listStickerFavorites()).pipe(
+        Effect.tap((starred) => Effect.sync(() => setFavorites(starred))),
+        Effect.ignore,
+      ),
+    [],
+  );
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
@@ -277,14 +343,8 @@ export function StickerPanel({
   }, [activePackId, favorites, packs, recents]);
 
   const pick = (sticker: StickerChoice): void => {
-    let storage: Storage | null = null;
-    try {
-      storage = window.localStorage;
-    } catch {
-      storage = null;
-    }
     setRecents(
-      rememberRecentSticker(storage, {
+      rememberRecentSticker(panelStorage(), {
         stickerId: sticker.stickerId,
         packId: sticker.packId,
         url: sticker.url,
@@ -307,12 +367,12 @@ export function StickerPanel({
   // small corner button fully inside the tile.
   const TILE_PX = 56;
 
-  const toggleFavorite = (sticker: StickerChoice): void => {
-    const starred = favoriteIds.has(sticker.stickerId);
+  // Optimistic favorite: flip the star at once (`wasStarred` is the state
+  // before the click).
+  const applyFavorite = (sticker: StickerChoice, wasStarred: boolean): void => {
     setFavoriteError('');
-    // Optimistic: flip the star at once, roll back on failure.
     setFavorites((previous) => {
-      if (starred) {
+      if (wasStarred) {
         return (previous ?? []).filter((row) => row.id !== sticker.stickerId);
       }
       const added: Sticker = {
@@ -327,28 +387,27 @@ export function StickerPanel({
       };
       return [...(previous ?? []), added];
     });
-    const request = starred
-      ? removeStickerFavorite(sticker.stickerId)
-      : addStickerFavorite(sticker.stickerId).then(() => {});
-    request.catch(() => {
-      setFavorites((previous) => {
-        if (starred) {
-          const restored: Sticker = {
-            id: sticker.stickerId,
-            packId: sticker.packId,
-            emoji: sticker.emoji ?? null,
-            mime: sticker.mime,
-            width: sticker.width,
-            height: sticker.height,
-            bytes: 0,
-            url: sticker.url,
-          };
-          return [...(previous ?? []), restored];
-        }
-        return (previous ?? []).filter((row) => row.id !== sticker.stickerId);
-      });
-      setFavoriteError('Could not save the favorite. Try again.');
+  };
+
+  // Rolls back an optimistic favorite whose request failed.
+  const undoFavorite = (sticker: StickerChoice, wasStarred: boolean): void => {
+    setFavorites((previous) => {
+      if (wasStarred) {
+        const restored: Sticker = {
+          id: sticker.stickerId,
+          packId: sticker.packId,
+          emoji: sticker.emoji ?? null,
+          mime: sticker.mime,
+          width: sticker.width,
+          height: sticker.height,
+          bytes: 0,
+          url: sticker.url,
+        };
+        return [...(previous ?? []), restored];
+      }
+      return (previous ?? []).filter((row) => row.id !== sticker.stickerId);
     });
+    setFavoriteError('Could not save the favorite. Try again.');
   };
 
   return (
@@ -516,26 +575,12 @@ export function StickerPanel({
                     >
                       <StickerThumb sticker={sticker} size={TILE_PX - 12} />
                     </button>
-                    <button
-                      type="button"
-                      aria-label={
-                        starred
-                          ? `Unfavorite ${sticker.emoji ?? 'sticker'}`
-                          : `Favorite ${sticker.emoji ?? 'sticker'}`
-                      }
-                      aria-pressed={starred}
-                      title={starred ? 'Remove from favorites' : 'Add to favorites'}
-                      onClick={() => toggleFavorite(sticker)}
-                      className={cn(
-                        'absolute top-0.5 right-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border border-edge bg-black/70 text-[10px] leading-none',
-                        starred ? 'text-white' : 'text-muted-foreground opacity-80',
-                      )}
-                    >
-                      <Star
-                        className={cn('size-3', starred && 'fill-current')}
-                        aria-hidden="true"
-                      />
-                    </button>
+                    <FavoriteStar
+                      sticker={sticker}
+                      starred={starred}
+                      onApply={applyFavorite}
+                      onUndo={undoFavorite}
+                    />
                   </span>
                 );
               })}

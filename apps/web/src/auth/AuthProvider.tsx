@@ -1,6 +1,10 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useContext, useState, type ReactNode } from 'react';
+import { Effect } from 'effect';
 import { authClient } from '@/lib/auth';
 import { getMe } from '@/lib/api';
+import { fromApi } from '@/lib/effect/api-effect';
+import { runWeb } from '@/lib/effect/runtime';
+import { useQuery } from '@/lib/effect/use-query';
 import { isMockMode } from '@/mock/gate';
 import { currentUserId } from '@/mock/ids';
 
@@ -32,29 +36,24 @@ function LiveAuthProvider({ children }: { children: ReactNode }) {
   // T-0165: the own picture rides the same fetch.
   const [handle, setHandle] = useState<string | null | undefined>(undefined);
   const [avatarUrl, setAvatarUrl] = useState<string | undefined>(undefined);
-  useEffect(() => {
-    if (userId === undefined) {
-      return;
-    }
-    // The effect only synchronizes with the session (the lint rule flags
-    // synchronous setState inside effects); the fetch promise resolves the
-    // next state, applied once.
-    let active = true;
-    // Handled rejection (failure keeps `handle` undefined — see above), so
-    // no unhandled rejection escapes when the request fails.
-    void getMe().then(
-      (me) => {
-        if (active) {
-          setHandle(me.handle ?? null);
-          setAvatarUrl(me.avatarUrl);
-        }
-      },
-      () => {},
-    );
-    return () => {
-      active = false;
-    };
-  }, [userId]);
+  // The fetch is a query keyed on the user id: a new id or an unmount
+  // interrupts it, so a late answer never lands. A failure is ignored
+  // (failure keeps `handle` undefined — see above).
+  useQuery(
+    () =>
+      userId === undefined
+        ? Effect.void
+        : fromApi(() => getMe()).pipe(
+            Effect.tap((me) =>
+              Effect.sync(() => {
+                setHandle(me.handle ?? null);
+                setAvatarUrl(me.avatarUrl);
+              }),
+            ),
+            Effect.ignore,
+          ),
+    [userId],
+  );
   const state: AuthState =
     user !== undefined && user !== null
       ? {
@@ -66,16 +65,23 @@ function LiveAuthProvider({ children }: { children: ReactNode }) {
             handle,
             ...(avatarUrl === undefined ? {} : { avatarUrl }),
           },
-          refetch: async () => {
-            const me = await getMe().catch(() => null);
-            // A failed refetch keeps the previous handle: failure is not
-            // absence (see the effect above).
-            if (me !== null) {
-              setHandle(me.handle ?? null);
-              setAvatarUrl(me.avatarUrl);
-            }
-            await refetch();
-          },
+          refetch: () =>
+            runWeb(
+              fromApi(() => getMe()).pipe(
+                Effect.orElseSucceed(() => null),
+                // A failed refetch keeps the previous handle: failure is not
+                // absence (see the query above).
+                Effect.tap((me) =>
+                  me === null
+                    ? Effect.void
+                    : Effect.sync(() => {
+                        setHandle(me.handle ?? null);
+                        setAvatarUrl(me.avatarUrl);
+                      }),
+                ),
+                Effect.andThen(Effect.promise(() => refetch())),
+              ),
+            ),
         }
       : isPending
         ? { status: 'loading', user: undefined, refetch }
@@ -92,7 +98,7 @@ function MockAuthProvider({ children }: { children: ReactNode }) {
   const [state] = useState<AuthState>(() => ({
     status: 'authenticated',
     user: { id: currentUserId, name: 'You', email: 'you@zilar.test' },
-    refetch: async () => {},
+    refetch: () => runWeb(Effect.void),
   }));
 
   return <AuthContext.Provider value={state}>{children}</AuthContext.Provider>;

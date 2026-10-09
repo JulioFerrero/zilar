@@ -1,9 +1,13 @@
-import { useEffect, useState } from 'react';
+import { Effect } from 'effect';
+import { AsyncResult } from 'effect/reactivity';
+import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
+import { runMobile } from '@/lib/effect/runtime';
+import { useQuery } from '@/lib/effect/use-query';
 import { hostsLine, toolLastRunText } from '@/lib/routines-format';
 import { ToolsApiError, type AiToolsApi, type ToolListItem, type ToolsApi } from '@/lib/tools-api';
 
@@ -21,22 +25,40 @@ export type ToolsSectionState = {
   message: string;
 };
 
+/** A 404 or an unparseable response: the list reads as empty, not as an error. */
+const isEmptyListError = (error: unknown): boolean =>
+  error instanceof ToolsApiError && (error.status === 404 || error.code === 'invalid_response');
+
 /**
  * Loads one AI's tools. A 404 or an unparseable response reads as an empty
- * list, not an error (web does the same); any other failure throws.
+ * list, not an error (web does the same); any other failure stays a failure
+ * with the original error.
  */
-export async function loadAiTools(api: ToolsApi, aiId: string): Promise<ToolListItem[]> {
-  try {
-    return await api.listAiTools(aiId);
-  } catch (error) {
-    if (
-      error instanceof ToolsApiError &&
-      (error.status === 404 || error.code === 'invalid_response')
-    ) {
-      return [];
-    }
-    throw error;
+export const loadAiToolsEffect = (
+  api: ToolsApi,
+  aiId: string,
+): Effect.Effect<ToolListItem[], unknown> =>
+  Effect.tryPromise({ try: () => api.listAiTools(aiId), catch: (error) => error }).pipe(
+    Effect.catchIf(isEmptyListError, () => Effect.succeed([])),
+  );
+
+/** Promise form of `loadAiToolsEffect`, the same rejection as before. */
+export const loadAiTools = (api: ToolsApi, aiId: string): Promise<ToolListItem[]> =>
+  runMobile(loadAiToolsEffect(api, aiId));
+
+/** The section state the view renders: the load result minus the tools deleted here. */
+export function sectionStateOf(
+  load: AsyncResult.AsyncResult<ToolListItem[], unknown>,
+  deletedIds: ReadonlyArray<string>,
+): ToolsSectionState {
+  if (AsyncResult.isSuccess(load)) {
+    const tools = deletedIds.reduce(withoutTool, load.value);
+    return { status: 'ready', tools, message: '' };
   }
+  if (AsyncResult.isFailure(load)) {
+    return { status: 'error', tools: [], message: TOOLS_LOAD_FAILED_MESSAGE };
+  }
+  return { status: 'loading', tools: [], message: '' };
 }
 
 function ToolRow({ tool, onOpen }: { tool: ToolListItem; onOpen: () => void }) {
@@ -130,46 +152,24 @@ export function withoutTool(tools: ToolListItem[], toolId: string): ToolListItem
  * sheet (T-0218).
  */
 export function ToolsSection({ api, aiId }: { api: AiToolsApi; aiId: string }) {
-  const [state, setState] = useState<ToolsSectionState>({
-    status: 'loading',
-    tools: [],
-    message: '',
-  });
-  const [reloadTick, setReloadTick] = useState(0);
   const [openId, setOpenId] = useState<string | null>(null);
-
-  useEffect(() => {
-    let active = true;
-    void (async () => {
-      try {
-        const tools = await loadAiTools(api, aiId);
-        if (!active) return;
-        setState({ status: 'ready', tools, message: '' });
-      } catch {
-        if (!active) return;
-        setState({ status: 'error', tools: [], message: TOOLS_LOAD_FAILED_MESSAGE });
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, [api, aiId, reloadTick]);
+  const [deletedIds, setDeletedIds] = useState<ReadonlyArray<string>>([]);
+  // A refresh keeps the rows on screen until the reload answers. Loading…
+  // shows only before the first list.
+  const [load, reloadTools] = useQuery(() => loadAiToolsEffect(api, aiId), [api, aiId]);
+  const state = sectionStateOf(load, deletedIds);
 
   return (
     <View accessibilityLabel="Tools" className="gap-1">
       <Text className="px-2 text-[13px] font-semibold text-muted-foreground">Tools</Text>
-      <ToolsSectionContent
-        state={state}
-        onRetry={() => setReloadTick((tick) => tick + 1)}
-        onOpenTool={setOpenId}
-      />
+      <ToolsSectionContent state={state} onRetry={() => reloadTools()} onOpenTool={setOpenId} />
       <ToolDetailSheet
         api={api}
         toolId={openId}
-        onClose={() => closeDetailSheet(setOpenId, () => setReloadTick((tick) => tick + 1))}
+        onClose={() => closeDetailSheet(setOpenId, () => reloadTools())}
         onDeleted={(toolId) => {
           setOpenId(null);
-          setState((current) => ({ ...current, tools: withoutTool(current.tools, toolId) }));
+          setDeletedIds((ids) => [...ids, toolId]);
         }}
       />
     </View>

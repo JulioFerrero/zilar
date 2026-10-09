@@ -8,6 +8,7 @@
 
 import os from 'node:os';
 import path from 'node:path';
+import { isCountedSource } from '../effect-map/generate.js';
 
 // Turbo's persistent cache, shared by every worktree.
 export const turboCacheDir = path.join(os.homedir(), '.zilar-turbo-cache');
@@ -156,6 +157,7 @@ export function gateSteps(
       ],
       env: { TURBO_SCM_BASE: base },
     },
+    effectStep(changedFiles, base, exists),
   ];
   for (const pkg of packagesTouched(changedFiles, workspace)) {
     if (!pkg.hasTests) {
@@ -218,6 +220,40 @@ function formatStep(
     label: 'format',
     command: 'pnpm',
     args: ['exec', 'prettier', '--check', '--ignore-unknown', ...present],
+  };
+}
+
+// The Effect ratchet (task R6): the changed counted sources that still exist are
+// checked against the base, so a new or regressed needs-effect file fails. Skipped
+// when no existing changed file is a counted source. Runs in devtools, which is
+// exempt, so the step's own files never trip it.
+function effectStep(
+  changedFiles: string[],
+  base: string,
+  exists: (file: string) => boolean,
+): GateStep {
+  const sources = changedFiles.filter((file) => isCountedSource(file) && exists(file));
+  if (sources.length === 0) {
+    return {
+      label: 'effect',
+      command: 'pnpm',
+      args: [],
+      skipReason: 'no source files changed',
+    };
+  }
+  return {
+    label: 'effect',
+    command: 'pnpm',
+    args: [
+      '--filter',
+      '@zilar/devtools',
+      'exec',
+      'tsx',
+      'src/effect-map/ratchet-cli.ts',
+      '--base',
+      base,
+      ...sources,
+    ],
   };
 }
 

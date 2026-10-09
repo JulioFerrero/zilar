@@ -315,6 +315,8 @@ Rules: no `async`, `await`, `.then`, `try` or timer in a component or screen; `u
 | R5 | Mobile: read EXPO_PUBLIC_ZILAR_MOCK once, in mock/gate.ts; the 13 use-*-api hooks and the store provider import it | mock/gate.ts, components/ais/use-ai-memory-api.ts, components/ais/use-ais-api.ts +12 more | 659 | gate | R1 | mobile | 0.5 | - |
 | R6 | Gate ratchet: pnpm gate fails when the needs-effect file count rises above the committed baseline | devtools/gate/plan.ts, devtools/effect-map/baseline.json |  | gate tests (2 files) | R1 | tooling | 0.25 | Julio: the gate runs for every task |
 
+R6 as built (T-0768) is per file, not a committed baseline count: the gate's `effect` step checks each changed counted source against the branch base (`git show <base>:<path>`, the map's rules); a file that is needs-effect on the branch and was absent or not needs-effect on the base fails the gate with its first hit, while a file already needs-effect on the base passes and stays tracked by the map.
+
 #### Phase 1: foundations and xmpp-core
 
 | ID | Task | Files | Lines | Tests (existing, must pass unchanged) | Depends on | Tag | Days | Julio |

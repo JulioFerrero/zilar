@@ -1,12 +1,17 @@
-import { useEffect, useRef, useState } from 'react';
+import { Effect } from 'effect';
+import { AsyncResult } from 'effect/reactivity';
+import { useState } from 'react';
 import {
   listAiApprovalRules,
   listGroupApprovalRules,
   revokeApprovalRule,
-  ApiError,
   type ApprovalRule,
   type GroupDetail,
 } from '@/lib/api';
+import { fromApi } from '@/lib/effect/api-effect';
+import type { ApiFailure } from '@/lib/effect/errors';
+import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { useQuery } from '@/lib/effect/use-query';
 import { useChatStore } from '@/store/ChatStoreProvider';
 import { Button, FieldError } from '@/components/ais/AiPageShell';
 import { StateMessage } from '@/components/ui/state-message';
@@ -50,14 +55,6 @@ export function scopeTextFor(
   return name === undefined || name === '' ? 'In a group' : `In a group › ${name}`;
 }
 
-type ListStatus = 'loading' | 'ready' | 'error';
-
-interface RulesListState {
-  status: ListStatus;
-  rules: ApprovalRule[];
-  message: string;
-}
-
 /**
  * The "Always allowed" list (T-0100): the standing approval rules for one
  * AI or one group, with a one-step revoke per row. Shared by the AI panel
@@ -82,94 +79,49 @@ export function AlwaysAllowedList({
   readOnly?: boolean;
 }) {
   const { groupInfos } = useChatStore();
-  const [state, setState] = useState<RulesListState>({ status: 'loading', rules: [], message: '' });
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [revokingId, setRevokingId] = useState<string | null>(null);
-  const [revokeError, setRevokeError] = useState('');
-  const [refreshTick, setRefreshTick] = useState(0);
+  const [removedIds, setRemovedIds] = useState<ReadonlySet<string>>(() => new Set());
 
   const scopeKey = scopeKeyOf(scope, topicId);
-  // A ref tracks the latest scope so the effect body can spread it without
-  // re-running on every render: callers pass a fresh `{ aiId }` / `{
-  // groupId }` literal each render, and including `scope` in the deps would
-  // loop. Same shape as `ActivitySection`.
-  const scopeRef = useRef<AlwaysAllowedScope>(scope);
-  const topicIdRef = useRef<string | undefined>(topicId);
-  useEffect(() => {
-    scopeRef.current = scope;
-    topicIdRef.current = topicId;
-  });
+  // Built once per scope key: the list is read again when the key changes or
+  // when Retry calls `reload`. Callers pass a fresh `{ aiId }` literal each
+  // render, so the key, not the object, decides when to load.
+  const [list, reload] = useQuery(() => fromApi(() => loadScopeRules(scope)), [scopeKey]);
 
-  // Reset to `loading` while rendering (not inside the effect body): when
-  // the scope or the retry tick changed this render, the previous key is
-  // still in `lastLoadKey`, so we drop the stale list at once. Same shape
-  // as the polling hook's reset — the repo's lint forbids setState in an
-  // effect body.
-  const loadKey = `${scopeKey}#${refreshTick}`;
-  const [lastLoadKey, setLastLoadKey] = useState(loadKey);
-  if (lastLoadKey !== loadKey) {
-    setLastLoadKey(loadKey);
-    setState({ status: 'loading', rules: [], message: '' });
-  }
-
-  useEffect(() => {
-    let active = true;
-    const onlyTopic = topicIdRef.current;
-    void loadScopeRules(scopeRef.current).then(
-      (rules) => {
-        if (active) {
-          setState({
-            status: 'ready',
-            rules:
-              onlyTopic === undefined ? rules : rules.filter((rule) => rule.topicId === onlyTopic),
-            message: '',
-          });
-        }
-      },
-      (error: unknown) => {
-        if (active) {
-          setState({
-            status: 'error',
-            rules: [],
-            message: error instanceof Error ? error.message : 'Could not load the rules.',
-          });
-        }
-      },
-    );
-    return () => {
-      active = false;
-    };
-  }, [scopeKey, refreshTick]);
-
-  const retry = (): void => {
-    setRefreshTick((tick) => tick + 1);
+  const dropRule = (id: string): void => {
+    setConfirmingId((current) => (current === id ? null : current));
+    setRemovedIds((ids) => new Set(ids).add(id));
   };
+  const [revokeState, revoke, revokeControls] = useAction((rule: ApprovalRule) =>
+    fromApi(() => revokeApprovalRule(rule.id)).pipe(
+      Effect.tap(() => Effect.sync(() => dropRule(rule.id))),
+      // A 404 means the rule is already gone (revoked elsewhere): drop the row quietly.
+      Effect.catchTag('ApiFailure', (failure) =>
+        failure.status === 404 ? Effect.sync(() => dropRule(rule.id)) : Effect.fail(failure),
+      ),
+      Effect.ensuring(
+        Effect.sync(() => setRevokingId((current) => (current === rule.id ? null : current))),
+      ),
+    ),
+  );
 
-  const revoke = async (rule: ApprovalRule): Promise<void> => {
+  const failure = listFailure(list);
+  const status = AsyncResult.isSuccess(list)
+    ? 'ready'
+    : failure !== undefined
+      ? 'error'
+      : 'loading';
+  const rules = AsyncResult.isSuccess(list)
+    ? list.value.filter(
+        (rule) => !removedIds.has(rule.id) && (topicId === undefined || rule.topicId === topicId),
+      )
+    : [];
+  const revokeFailure = isWaiting(revokeState) ? undefined : failureOf(revokeState);
+
+  const startRevoke = (rule: ApprovalRule): void => {
     setRevokingId(rule.id);
-    setRevokeError('');
-    try {
-      await revokeApprovalRule(rule.id);
-      setConfirmingId((current) => (current === rule.id ? null : current));
-      setState((current) => ({
-        ...current,
-        rules: current.rules.filter((item) => item.id !== rule.id),
-      }));
-    } catch (error) {
-      // A 404 means the rule is already gone (revoked elsewhere): drop
-      // the row quietly, like a successful revoke.
-      if (error instanceof ApiError && error.status === 404) {
-        setConfirmingId((current) => (current === rule.id ? null : current));
-        setState((current) => ({
-          ...current,
-          rules: current.rules.filter((item) => item.id !== rule.id),
-        }));
-        return;
-      }
-      setRevokeError(error instanceof Error ? error.message : 'Could not revoke the rule.');
-    } finally {
-      setRevokingId((current) => (current === rule.id ? null : current));
-    }
+    revoke(rule);
   };
 
   return (
@@ -180,24 +132,29 @@ export function AlwaysAllowedList({
     >
       <h3 className="text-[14px] font-medium">Always allowed</h3>
 
-      {state.status === 'loading' && <StateMessage kind="loading" size="inline" title="Loading…" />}
+      {status === 'loading' && <StateMessage kind="loading" size="inline" title="Loading…" />}
 
-      {state.status === 'error' && (
+      {status === 'error' && failure !== undefined && (
         <div className="flex flex-col gap-2">
-          <FieldError>{state.message}</FieldError>
-          <Button type="button" size="lg" className="self-start rounded-full px-5" onClick={retry}>
+          <FieldError>{loadMessage(failure)}</FieldError>
+          <Button
+            type="button"
+            size="lg"
+            className="self-start rounded-full px-5"
+            onClick={() => reload()}
+          >
             Retry
           </Button>
         </div>
       )}
 
-      {state.status === 'ready' && state.rules.length === 0 && (
+      {status === 'ready' && rules.length === 0 && (
         <StateMessage kind="empty" size="inline" title="Nothing is always allowed here." />
       )}
 
-      {state.status === 'ready' && state.rules.length > 0 && (
+      {status === 'ready' && rules.length > 0 && (
         <ul className="flex flex-col gap-1.5" aria-label="Always allowed rules">
-          {state.rules.map((rule) => {
+          {rules.map((rule) => {
             const confirming = confirmingId === rule.id;
             const revoking = revokingId === rule.id;
             return (
@@ -222,7 +179,7 @@ export function AlwaysAllowedList({
                       size="sm"
                       aria-label={`Confirm revoking ${rule.action}`}
                       disabled={revoking}
-                      onClick={() => void revoke(rule)}
+                      onClick={() => startRevoke(rule)}
                     >
                       {revoking ? 'Revoking…' : 'Revoke'}
                     </Button>
@@ -233,7 +190,7 @@ export function AlwaysAllowedList({
                       disabled={revoking}
                       onClick={() => {
                         setConfirmingId(null);
-                        setRevokeError('');
+                        revokeControls.reset();
                       }}
                     >
                       Cancel
@@ -249,7 +206,7 @@ export function AlwaysAllowedList({
                     disabled={revokingId !== null}
                     onClick={() => {
                       setConfirmingId(rule.id);
-                      setRevokeError('');
+                      revokeControls.reset();
                     }}
                   >
                     Revoke
@@ -261,7 +218,22 @@ export function AlwaysAllowedList({
         </ul>
       )}
 
-      {revokeError !== '' && <FieldError>{revokeError}</FieldError>}
+      {revokeFailure !== undefined && <FieldError>{revokeMessage(revokeFailure)}</FieldError>}
     </section>
   );
+}
+
+/** The failed load, or undefined while a Retry is running. */
+function listFailure(
+  list: AsyncResult.AsyncResult<ApprovalRule[], ApiFailure>,
+): ApiFailure | undefined {
+  return isWaiting(list) ? undefined : failureOf(list);
+}
+
+function loadMessage(failure: ApiFailure): string {
+  return failure.code === 'unknown_error' ? 'Could not load the rules.' : failure.message;
+}
+
+function revokeMessage(failure: ApiFailure): string {
+  return failure.code === 'unknown_error' ? 'Could not revoke the rule.' : failure.message;
 }

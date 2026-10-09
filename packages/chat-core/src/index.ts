@@ -13,4 +13,5 @@ export * from './edits';
 export * from './folders';
 export * from './ai';
 export * from './blocked';
+export * from './url';
 export type { Attachment, Payload, VoiceMeta } from '@zilar/protocol';

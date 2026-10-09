@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
+import * as gate from './gate';
 import { mockParamAllowed } from './gate';
+
+describe('mock env constants', () => {
+  it('exports the bundle-time mock env values the hooks import', () => {
+    expect(Object.keys(gate)).toEqual(
+      expect.arrayContaining(['ENV_MOCK', 'ENV_MOCK_SCENARIO', 'ENV_NODE_ENV', 'MOCK_ENV']),
+    );
+  });
+});
 
 describe('mockParamAllowed', () => {
   it('covers dev on/off against every EXPO_PUBLIC_ZILAR_MOCK value', () => {

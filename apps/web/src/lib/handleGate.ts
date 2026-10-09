@@ -1,3 +1,4 @@
+import { Effect } from 'effect';
 /**
  * The "asked once" dismissal for the handle gate (T-0163). "Skip for now"
  * records the dismissal for the current browser session, keyed per user id
@@ -11,25 +12,30 @@ function dismissalKey(userId: string): string {
   return `zilar:handleGateDismissed:${userId}`;
 }
 
+/**
+ * Runs one sessionStorage step at this sync edge. A storage that throws (or a
+ * missing window) gives `fallback`, the same answer as before.
+ */
+function sessionStep<A>(fallback: A, step: (storage: Storage) => A): A {
+  return Effect.runSync(
+    Effect.try(() => step(window.sessionStorage)).pipe(Effect.orElseSucceed(() => fallback)),
+  );
+}
+
 export function hasDismissedHandleGate(userId: string): boolean {
   if (dismissedForUser.has(userId)) {
     return true;
   }
-  try {
-    return window.sessionStorage.getItem(dismissalKey(userId)) === '1';
-  } catch {
-    return false;
-  }
+  return sessionStep(false, (storage) => storage.getItem(dismissalKey(userId)) === '1');
 }
 
 export function dismissHandleGate(userId: string): void {
   dismissedForUser.add(userId);
-  try {
-    window.sessionStorage.setItem(dismissalKey(userId), '1');
-  } catch {
-    // Storage may throw (private mode, blocked cookies): the in-memory
-    // flag above still covers this page load.
-  }
+  // Storage may throw (private mode, blocked cookies): the in-memory flag
+  // above still covers this page load.
+  sessionStep(undefined, (storage) => {
+    storage.setItem(dismissalKey(userId), '1');
+  });
 }
 
 /** Clears the dismissal (sign-out, and tests). */
@@ -39,9 +45,8 @@ export function resetHandleGateDismissal(userId?: string): void {
     return;
   }
   dismissedForUser.delete(userId);
-  try {
-    window.sessionStorage.removeItem(dismissalKey(userId));
-  } catch {
-    // Best effort only.
-  }
+  // Best effort only.
+  sessionStep(undefined, (storage) => {
+    storage.removeItem(dismissalKey(userId));
+  });
 }

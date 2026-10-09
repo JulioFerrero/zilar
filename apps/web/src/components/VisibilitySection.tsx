@@ -1,11 +1,64 @@
-import { useEffect, useState } from 'react';
+import { Data, Effect } from 'effect';
+import { AsyncResult } from 'effect/reactivity';
+import { useState } from 'react';
 import { ApiError, checkGroupHandle } from '@/lib/api';
 import { copyText } from '@/lib/clipboard';
+import { fromApi } from '@/lib/effect/api-effect';
+import { toApiFailure, type ApiFailure } from '@/lib/effect/errors';
+import { isWaiting, useAction } from '@/lib/effect/use-action';
+import { useQuery } from '@/lib/effect/use-query';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
 import { FieldError } from './ais/AiPageShell';
 import { Button } from '@/components/ui/button';
 import { SegmentedControl } from '@/components/ui/segmented-control';
 import { TextInput } from './ui/text-input';
+
+/** A chat-store call rejected with a plain Error: the sentence is the store's own. */
+class StoreFailed extends Data.TaggedError('StoreFailed')<{ readonly message: string }> {}
+
+/**
+ * Lifts a chat-store call. An ApiError keeps its code (as in api.ts), a plain
+ * Error keeps its message, and any other value becomes the generic failure.
+ */
+function fromStore<A>(call: () => Promise<A>): Effect.Effect<A, ApiFailure | StoreFailed> {
+  return Effect.tryPromise({
+    try: call,
+    catch: (cause) =>
+      cause instanceof Error && !(cause instanceof ApiError)
+        ? new StoreFailed({ message: cause.message })
+        : toApiFailure(cause),
+  });
+}
+
+type HandleCheck =
+  { state: 'idle' } | { state: 'done'; available: boolean; reason?: string | undefined };
+
+const IDLE_CHECK: HandleCheck = { state: 'idle' };
+
+// Debounced live availability for a public handle: the 300 ms sleep is the
+// debounce, and useQuery interrupts it when the handle or visibility changes.
+const visibilityCheck = (
+  picked: 'private' | 'public',
+  value: string,
+  ownHandle: boolean,
+): Effect.Effect<HandleCheck> =>
+  picked !== 'public' || value === '' || ownHandle
+    ? Effect.succeed(IDLE_CHECK)
+    : Effect.sleep(300).pipe(
+        Effect.andThen(fromApi(() => checkGroupHandle(value))),
+        Effect.map((result): HandleCheck => ({
+          state: 'done',
+          available: result.available,
+          reason: result.reason,
+        })),
+        Effect.catchTag('ApiFailure', (failure) =>
+          Effect.succeed(
+            failure.code === 'rate_limited'
+              ? ({ state: 'done', available: false, reason: 'rate_limited' } as const)
+              : IDLE_CHECK,
+          ),
+        ),
+      );
 
 /**
  * Visibility settings (T-0164, owner only): flip a group or channel private
@@ -32,10 +85,6 @@ export function VisibilitySection({
   const storeApi = useChatStoreApi();
   const [picked, setPicked] = useState<'private' | 'public'>(visibility);
   const [typed, setTyped] = useState(handle ?? '');
-  const [check, setCheck] = useState<
-    { state: 'idle' } | { state: 'done'; available: boolean; reason?: string | undefined }
-  >({ state: 'idle' });
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
   const [saved, setSaved] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -58,39 +107,31 @@ export function VisibilitySection({
   const ownHandle =
     handle !== null && handle !== '' && trimmed.toLowerCase() === handle.toLowerCase();
 
-  // Debounced live availability for a changed handle.
-  useEffect(() => {
-    if (picked !== 'public' || trimmed === '' || ownHandle) {
-      return;
-    }
-    let active = true;
-    const value = trimmed;
-    const pending = setTimeout(() => {
-      void checkGroupHandle(value).then(
-        (result) => {
-          if (active) {
-            setCheck({ state: 'done', available: result.available, reason: result.reason });
-          }
-        },
-        (checkError: unknown) => {
-          if (!active) {
-            return;
-          }
-          if (checkError instanceof ApiError && checkError.code === 'rate_limited') {
-            setCheck({ state: 'done', available: false, reason: 'rate_limited' });
-            return;
-          }
-          setCheck({ state: 'idle' });
-        },
-      );
-    }, 300);
-    return () => {
-      active = false;
-      clearTimeout(pending);
-    };
-  }, [picked, trimmed, ownHandle]);
+  const [checkResult] = useQuery(
+    () => visibilityCheck(picked, trimmed, ownHandle),
+    [picked, trimmed, ownHandle],
+  );
+  const check: HandleCheck = AsyncResult.isSuccess(checkResult) ? checkResult.value : IDLE_CHECK;
 
-  const save = async (): Promise<void> => {
+  const [saveState, runSave] = useAction<void, void, ApiFailure | StoreFailed>(() =>
+    fromStore(() =>
+      storeApi.getState().setGroupVisibility(chatId, {
+        visibility: picked,
+        ...(picked === 'public' ? { handle: trimmed } : {}),
+      }),
+    ).pipe(
+      Effect.tap(() =>
+        Effect.sync(() => {
+          setSaved(true);
+          setConfirmingPrivate(false);
+        }),
+      ),
+      Effect.tapError((failure) => Effect.sync(() => setError(friendlyError(failure)))),
+    ),
+  );
+  const busy = isWaiting(saveState);
+
+  const save = (): void => {
     if (picked === 'public' && trimmed === '') {
       setError('Choose a handle for the public group.');
       return;
@@ -99,22 +140,19 @@ export function VisibilitySection({
       setConfirmingPrivate(true);
       return;
     }
-    setBusy(true);
+    if (busy) {
+      return;
+    }
     setError(undefined);
     setSaved(false);
-    try {
-      await storeApi.getState().setGroupVisibility(chatId, {
-        visibility: picked,
-        ...(picked === 'public' ? { handle: trimmed } : {}),
-      });
-      setSaved(true);
-      setConfirmingPrivate(false);
-    } catch (saveError) {
-      setError(friendlyError(saveError));
-    } finally {
-      setBusy(false);
-    }
+    runSave();
   };
+
+  const [, copyShare] = useAction((url: string) =>
+    Effect.tryPromise(() => copyText(url)).pipe(
+      Effect.tap(() => Effect.sync(() => setCopied(true))),
+    ),
+  );
 
   const shareUrl =
     typeof window === 'undefined' || handle === null
@@ -138,7 +176,6 @@ export function VisibilitySection({
               return;
             }
             setPicked(next);
-            setCheck({ state: 'idle' });
             setError(undefined);
             setSaved(false);
             setConfirmingPrivate(false);
@@ -159,7 +196,6 @@ export function VisibilitySection({
               maxLength={32}
               onChange={(event) => {
                 setTyped(event.target.value);
-                setCheck({ state: 'idle' });
                 setSaved(false);
               }}
               placeholder="hiking_club"
@@ -184,7 +220,7 @@ export function VisibilitySection({
         {error !== undefined && <FieldError>{error}</FieldError>}
         {saved && <p className="text-[14px] text-muted-foreground">Saved.</p>}
         <div className="flex flex-wrap gap-2">
-          <Button type="button" onClick={() => void save()} disabled={busy || unchanged}>
+          <Button type="button" onClick={() => save()} disabled={busy || unchanged}>
             {busy ? 'Saving…' : confirmingPrivate ? 'Confirm going private' : 'Save visibility'}
           </Button>
           {confirmingPrivate && (
@@ -193,13 +229,7 @@ export function VisibilitySection({
             </Button>
           )}
           {shareUrl !== null && (
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                void copyText(shareUrl).then(() => setCopied(true));
-              }}
-            >
+            <Button type="button" variant="outline" onClick={() => copyShare(shareUrl)}>
               {copied ? 'Copied' : 'Copy share link'}
             </Button>
           )}
@@ -222,30 +252,33 @@ function reasonText(reason: string | undefined): string {
   }
 }
 
-function friendlyError(error: unknown): string {
-  if (error instanceof ApiError) {
-    switch (error.code) {
-      case 'handle_invalid':
-        return 'Use 3–32 characters: letters, numbers and _, starting with a letter.';
-      case 'handle_reserved':
-        return 'That handle is reserved. Try another.';
-      case 'handle_taken':
-        return 'That handle was just taken. Try another.';
-      case 'handle_change_too_soon': {
-        const next = error.detail.nextChangeAt;
-        if (typeof next === 'string' && next !== '') {
-          const date = new Date(next);
-          if (!Number.isNaN(date.getTime())) {
-            return `Next change possible on ${date.toLocaleDateString()}`;
-          }
-        }
-        return error.message;
-      }
-      case 'rate_limited':
-        return 'Too many tries — wait a little and try again.';
-      default:
-        return error.message;
-    }
+function friendlyError(error: ApiFailure | StoreFailed): string {
+  if (error._tag === 'StoreFailed') {
+    return error.message;
   }
-  return 'Could not save the visibility. Try again.';
+  if (error.code === 'unknown_error') {
+    return 'Could not save the visibility. Try again.';
+  }
+  switch (error.code) {
+    case 'handle_invalid':
+      return 'Use 3–32 characters: letters, numbers and _, starting with a letter.';
+    case 'handle_reserved':
+      return 'That handle is reserved. Try another.';
+    case 'handle_taken':
+      return 'That handle was just taken. Try another.';
+    case 'handle_change_too_soon': {
+      const next = error.detail.nextChangeAt;
+      if (typeof next === 'string' && next !== '') {
+        const date = new Date(next);
+        if (!Number.isNaN(date.getTime())) {
+          return `Next change possible on ${date.toLocaleDateString()}`;
+        }
+      }
+      return error.message;
+    }
+    case 'rate_limited':
+      return 'Too many tries — wait a little and try again.';
+    default:
+      return error.message;
+  }
 }

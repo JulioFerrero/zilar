@@ -1,6 +1,7 @@
 import { StickerSchema, isValid, type Attachment } from '@zilar/protocol';
+import { Data, Effect, Fiber } from 'effect';
 import { ArrowUp, Paperclip, Smile, X } from 'lucide-react-native';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Keyboard, Pressable, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -16,6 +17,7 @@ import { createAttachmentPicker, createGifDownloader } from '@/lib/attachment-na
 import type { AttachmentPicker, GifDownloader, PickedFile } from '@/lib/attachment-ports';
 import { asColorScheme } from '@/lib/color-scheme';
 import { ICON } from '@/lib/colors';
+import { isWaiting, useAction } from '@/lib/effect/use-action';
 import {
   ACCENT_FOREGROUND,
   KEY_PRIMARY_PRESSED_SHADOW,
@@ -57,6 +59,27 @@ import type {
 } from '@/store/types';
 import { useChatStore } from '@/store/chat-store-provider';
 import { useColorScheme } from 'nativewind';
+
+/**
+ * A storage read or write, a server load, a picker or a download rejected.
+ * The composer never shows the cause: each step either ignores the failure or
+ * shows its own fixed sentence.
+ */
+class ComposerStepFailed extends Data.TaggedError('ComposerStepFailed')<{
+  readonly reason: unknown;
+}> {}
+
+/**
+ * Lifts one Promise call into an Effect. `run` is called with no argument, so
+ * the abort signal never lands in an optional parameter such as the `api` of
+ * `loadStickerPacks`.
+ */
+function step<A>(run: () => Promise<A>): Effect.Effect<A, ComposerStepFailed> {
+  return Effect.tryPromise({
+    try: () => run(),
+    catch: (reason) => new ComposerStepFailed({ reason }),
+  });
+}
 
 const MIN_INPUT_HEIGHT = 36;
 const MAX_INPUT_HEIGHT = 132;
@@ -237,7 +260,6 @@ export function Composer({
   // the `VoiceRecorderButton` below and sends through `onSendVoice`.
   const [voiceRecording, setVoiceRecording] = useState(false);
   const [attachOpen, setAttachOpen] = useState(false);
-  const [attachBusy, setAttachBusy] = useState(false);
   const [attachError, setAttachError] = useState<string | undefined>(undefined);
   const [picked, setPicked] = useState<PickedFile | undefined>(undefined);
   // Production defaults to the real `expo-file-system` stat for unknown
@@ -247,6 +269,34 @@ export function Composer({
     () => gifDownloaderProp ?? createGifDownloader(),
     [gifDownloaderProp],
   );
+  // The press handler runs this action, which starts the picker (and so the
+  // OS permission prompt) at once; the sheet is busy while it waits.
+  const [pickState, pickAttachment] = useAction((choice: AttachmentChoice) =>
+    step(() =>
+      choice === 'library'
+        ? picker.pickImageOrVideo()
+        : choice === 'camera'
+          ? picker.takePhoto()
+          : picker.pickFile(),
+    ).pipe(
+      Effect.tap((result) =>
+        Effect.sync(() => {
+          if (result.status === 'cancelled') {
+            return;
+          }
+          if (result.status === 'error') {
+            setAttachError(result.message);
+            return;
+          }
+          setPicked(result.file);
+        }),
+      ),
+      Effect.catchTag('ComposerStepFailed', () =>
+        Effect.sync(() => setAttachError('Could not pick that file. Try again.')),
+      ),
+    ),
+  );
+  const attachBusy = isWaiting(pickState);
   const canSend = text.trim().length > 0 || picked !== undefined;
 
   // The sticker panel: the user's packs from the server (demo packs in mock
@@ -257,6 +307,28 @@ export function Composer({
   const [panelState, setPanelState] = useState<StickerPanelState>('loading');
   const [recents, setRecents] = useState<RecentStickerEntry[]>([]);
   const [activePackId, setActivePackId] = useState<string | undefined>(undefined);
+
+  // The latest load wins: a Retry while an older load runs replaces it.
+  const [, loadPacks] = useAction<void, StickerPack[] | void, never>(
+    () =>
+      step(() => loadStickerPacks()).pipe(
+        Effect.tap((loaded) =>
+          Effect.sync(() => {
+            setPacks(loaded);
+            // A pack deleted on the web leaves a stale tab: reset it so the
+            // panel resolves back to Recent or the first pack.
+            setActivePackId((current) =>
+              current !== undefined && loaded.some((pack) => pack.id === current)
+                ? current
+                : undefined,
+            );
+            setPanelState(loaded.length === 0 ? 'empty' : 'ready');
+          }),
+        ),
+        Effect.catchTag('ComposerStepFailed', () => Effect.sync(() => setPanelState('error'))),
+      ),
+    { mode: 'replace' },
+  );
 
   const loadPanel = useCallback(() => {
     setActivePackId((current) =>
@@ -270,20 +342,8 @@ export function Composer({
       return;
     }
     setPanelState('loading');
-    void loadStickerPacks()
-      .then((loaded) => {
-        setPacks(loaded);
-        // A pack deleted on the web leaves a stale tab: reset it so the
-        // panel resolves back to Recent or the first pack.
-        setActivePackId((current) =>
-          current !== undefined && loaded.some((pack) => pack.id === current) ? current : undefined,
-        );
-        setPanelState(loaded.length === 0 ? 'empty' : 'ready');
-      })
-      .catch(() => {
-        setPanelState('error');
-      });
-  }, [demoPacks]);
+    loadPacks();
+  }, [demoPacks, loadPacks]);
 
   // The GIF tab: hidden once the server answers 501 (provider off),
   // probed once per session. Mock mode serves demo GIFs without a server.
@@ -307,24 +367,60 @@ export function Composer({
     undefined,
   );
 
+  // Opening the sheet reads both recents and, once per session, probes the
+  // GIF provider. A failed read leaves the row empty; the reads run side by
+  // side and a reopen replaces a run that is still going.
+  const [, hydrateSheet] = useAction(
+    (probeGifs: boolean) =>
+      Effect.all(
+        [
+          step(() => readStoredRecents()).pipe(
+            Effect.tap((stored) => Effect.sync(() => setRecents(stored))),
+            Effect.ignore,
+          ),
+          step(() => readStoredEmojiRecents()).pipe(
+            Effect.tap((stored) => Effect.sync(() => setEmojiRecents(stored))),
+            Effect.ignore,
+          ),
+          probeGifs
+            ? step(() => probeGifsAvailability()).pipe(
+                Effect.tap((available) => Effect.sync(() => setGifAvailable(available))),
+                Effect.ignore,
+              )
+            : Effect.void,
+        ],
+        { concurrency: 'unbounded', discard: true },
+      ),
+    { mode: 'replace' },
+  );
+
   const openSheet = () => {
     // On Android with the keyboard open the sheet replaces the keyboard:
     // dismiss it now, and a tap on the field brings it back.
     Keyboard.dismiss();
     setSheetOpen(true);
     loadPanel();
-    void readStoredRecents()
-      .then(setRecents)
-      .catch(() => {});
-    void readStoredEmojiRecents()
-      .then(setEmojiRecents)
-      .catch(() => {});
-    if (demoGifItems === undefined && gifsAvailability() === undefined) {
-      void probeGifsAvailability().then((available) => {
-        setGifAvailable(available);
-      });
-    }
+    hydrateSheet(demoGifItems === undefined && gifsAvailability() === undefined);
   };
+
+  // Remembering a picked emoji or sticker never blocks typing or sending: a
+  // failing store leaves the row as it was.
+  const [, rememberEmoji] = useAction(
+    (input: { recents: readonly string[]; emoji: string }) =>
+      step(() => persistEmojiRecent(EMOJI_RECENTS_STORAGE, input.recents, input.emoji)).pipe(
+        Effect.tap((next) => Effect.sync(() => setEmojiRecents(next))),
+        Effect.ignore,
+      ),
+    { mode: 'replace' },
+  );
+  const [, rememberSticker] = useAction(
+    (input: { recents: readonly RecentStickerEntry[]; sticker: StickerChoice }) =>
+      step(() => persistRecent(RECENTS_STORAGE, input.recents, input.sticker)).pipe(
+        Effect.tap((next) => Effect.sync(() => setRecents(next))),
+        Effect.ignore,
+      ),
+    { mode: 'replace' },
+  );
 
   // Tapping an emoji inserts it at the caret and keeps the sheet open, so
   // several can be added; the sheet closes with its handle, a tap outside,
@@ -344,9 +440,7 @@ export function Composer({
       setMentions(state.mentions);
       setMentionQuery(state.query);
     }
-    void persistEmojiRecent(EMOJI_RECENTS_STORAGE, emojiRecents, emoji)
-      .then(setEmojiRecents)
-      .catch(() => {});
+    rememberEmoji({ recents: emojiRecents, emoji });
   };
 
   // A GIF pick fetches the media through the proxy, then sends it with the
@@ -354,32 +448,59 @@ export function Composer({
   // like web's `sendGif`. The mime and the extension come from the real
   // content type; failures show the inline error, and the attachment
   // bubble's Retry covers upload failures.
+  // Every pick runs as its own fiber, so two picks while the first download
+  // is still running both send (a shared action would drop or replace one).
+  // The handler that sends is inside `Effect.try`, so a throw there shows the
+  // same sentence as a failed download. Unmounting interrupts the fibers
+  // that are still running.
+  const gifFibers = useRef(new Set<Fiber.Fiber<void, never>>());
+  useEffect(() => {
+    const running = gifFibers.current;
+    return () => {
+      Effect.runFork(Fiber.interruptAll(running));
+      running.clear();
+    };
+  }, []);
+
+  const sendGif = (gif: GifItem) => {
+    const caption = text.trim();
+    const send = onSendAttachment;
+    const reply = replyTo;
+    const fiber = Effect.runFork(
+      step(() => gifDownloader.download(gif)).pipe(
+        Effect.flatMap((result) =>
+          Effect.try({
+            try: () => {
+              if (result.status !== 'downloaded') {
+                setAttachError(result.message);
+                return;
+              }
+              send?.(result.file, {
+                ...(caption.length === 0 ? {} : { caption }),
+                ...(reply === undefined ? {} : { replyTo: reply }),
+              });
+              setText('');
+              setInputHeight(MIN_INPUT_HEIGHT);
+              onCancelReply();
+            },
+            catch: (reason) => new ComposerStepFailed({ reason }),
+          }),
+        ),
+        Effect.catchTag('ComposerStepFailed', () =>
+          Effect.sync(() => setAttachError('Could not load that GIF. Try another.')),
+        ),
+      ),
+    );
+    gifFibers.current.add(fiber);
+    fiber.addObserver(() => gifFibers.current.delete(fiber));
+  };
+
   const pickGif = (gif: GifItem) => {
     setSheetOpen(false);
     if (onSendAttachment === undefined) {
       return;
     }
-    const caption = text.trim();
-    const send = onSendAttachment;
-    const reply = replyTo;
-    void gifDownloader
-      .download(gif)
-      .then((result) => {
-        if (result.status !== 'downloaded') {
-          setAttachError(result.message);
-          return;
-        }
-        send(result.file, {
-          ...(caption.length === 0 ? {} : { caption }),
-          ...(reply === undefined ? {} : { replyTo: reply }),
-        });
-        setText('');
-        setInputHeight(MIN_INPUT_HEIGHT);
-        onCancelReply();
-      })
-      .catch(() => {
-        setAttachError('Could not load that GIF. Try another.');
-      });
+    sendGif(gif);
   };
 
   const pickSticker = (sticker: StickerChoice) => {
@@ -399,9 +520,7 @@ export function Composer({
       onSendSticker(sticker);
       return;
     }
-    void persistRecent(RECENTS_STORAGE, recents, sticker)
-      .then(setRecents)
-      .catch(() => {});
+    rememberSticker({ recents, sticker });
     onSendSticker(sticker);
   };
 
@@ -482,31 +601,8 @@ export function Composer({
   // the busy state. A picked file stays in the sheet as the preview row, and
   // the composer's send button sends it with the caption.
   const chooseAttachment = (choice: AttachmentChoice) => {
-    setAttachBusy(true);
     setAttachError(undefined);
-    const attempt =
-      choice === 'library'
-        ? picker.pickImageOrVideo()
-        : choice === 'camera'
-          ? picker.takePhoto()
-          : picker.pickFile();
-    void attempt
-      .then((result) => {
-        if (result.status === 'cancelled') {
-          return;
-        }
-        if (result.status === 'error') {
-          setAttachError(result.message);
-          return;
-        }
-        setPicked(result.file);
-      })
-      .catch(() => {
-        setAttachError('Could not pick that file. Try again.');
-      })
-      .finally(() => {
-        setAttachBusy(false);
-      });
+    pickAttachment(choice);
   };
 
   // A demo attachment becomes a picked file: the gradient URL is the

@@ -1,4 +1,6 @@
+import { Effect } from 'effect';
 import type { MachinesApi } from '../../lib/machines-api';
+import { runMobile } from '../../lib/effect/runtime';
 import { describeMachinesError } from './errors';
 
 export interface MachineChangeOutcome {
@@ -15,19 +17,24 @@ export interface MachineChangeOutcome {
  * becomes the shown machine; on failure the previous value is restored and
  * a fixed error sentence comes back.
  */
-export async function applyMachineChange(
+export function applyMachineChange(
   api: MachinesApi,
   aiId: string,
   next: string | null,
   previous: string | null,
 ): Promise<MachineChangeOutcome> {
-  try {
-    const fresh = await api.setAiMachine(aiId, next);
-    return { home: fresh, error: '' };
-  } catch (cause: unknown) {
-    return {
-      home: previous,
-      error: describeMachinesError(cause, 'Could not update the home machine.').message,
-    };
-  }
+  return runMobile(
+    Effect.tryPromise({
+      try: () => api.setAiMachine(aiId, next),
+      catch: (cause: unknown) => cause,
+    }).pipe(
+      Effect.match({
+        onSuccess: (fresh): MachineChangeOutcome => ({ home: fresh, error: '' }),
+        onFailure: (cause): MachineChangeOutcome => ({
+          home: previous,
+          error: describeMachinesError(cause, 'Could not update the home machine.').message,
+        }),
+      }),
+    ),
+  );
 }

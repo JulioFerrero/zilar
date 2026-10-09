@@ -1,6 +1,7 @@
+import { Effect } from 'effect';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Eye, EyeOff, Lock, Mail, Mic, Send } from 'lucide-react-native';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { View } from 'react-native';
 import { useColorScheme } from 'nativewind';
 
@@ -27,6 +28,7 @@ import type {
   TelegramIntegrationStatus,
   VoiceIntegrationStatus,
 } from '@/lib/integrations-api';
+import { useAction } from '@/lib/effect/use-action';
 
 type PageStatus = 'loading' | 'ready' | 'forbidden' | 'error';
 
@@ -43,6 +45,11 @@ const UNCONFIGURED_VOICE: VoiceIntegrationStatus = {
  * shows the owner sentence instead of the cards. Secrets are write-only: a
  * secret field is never prefilled, is cleared the moment its save succeeds,
  * and is never rendered, logged or stored anywhere else.
+ *
+ * The screens keep their state in React `useState`; every network call is an
+ * Effect run by `useAction`, which writes its result back into that state.
+ * `useAction` also ignores a second press while a call runs and interrupts a
+ * running call on unmount.
  */
 export default function IntegrationsScreen() {
   return (
@@ -61,23 +68,37 @@ function IntegrationsBody() {
   const [status, setStatus] = useState<PageStatus>('loading');
   const [errorInfo, setErrorInfo] = useState<{ message: string }>({ message: '' });
 
+  // Latest reload wins: a focus reload replaces a load still in flight.
+  const [, load] = useAction(
+    () =>
+      Effect.tryPromise({
+        try: () => api.getIntegrationsStatus(),
+        catch: (cause: unknown) => cause,
+      }).pipe(
+        Effect.tap((loaded) =>
+          Effect.sync(() => {
+            setData(loaded);
+            setStatus('ready');
+          }),
+        ),
+        Effect.catch((cause) =>
+          Effect.sync(() => {
+            if (cause instanceof Error && 'status' in cause && cause.status === 404) {
+              setStatus('forbidden');
+            } else {
+              setErrorInfo({ message: 'Could not load integrations.' });
+              setStatus('error');
+            }
+          }),
+        ),
+      ),
+    { mode: 'replace' },
+  );
+
   const reload = useCallback(() => {
     setStatus('loading');
-    void api
-      .getIntegrationsStatus()
-      .then((loaded) => {
-        setData(loaded);
-        setStatus('ready');
-      })
-      .catch((error: unknown) => {
-        if (error instanceof Error && 'status' in error && error.status === 404) {
-          setStatus('forbidden');
-        } else {
-          setErrorInfo({ message: 'Could not load integrations.' });
-          setStatus('error');
-        }
-      });
-  }, [api]);
+    load(undefined);
+  }, [load]);
 
   useFocusEffect(
     useCallback(() => {
@@ -302,7 +323,26 @@ function EmailCard({
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
-  const busyRef = useRef(false);
+
+  const [, saveCard] = useAction((draft: { readonly from: string; readonly key: string }) =>
+    Effect.sync(() => setBusy(true)).pipe(
+      Effect.andThen(Effect.promise(() => saveEmailCard(api, draft))),
+      Effect.tap((outcome) =>
+        Effect.sync(() => {
+          // The key clears whenever the save itself succeeded — even when the
+          // status reload fails, the server already stores the new key.
+          setKey(outcome.secretAfterSave);
+          if (outcome.status !== null) {
+            setShowKey(false);
+            onSaved(outcome.status);
+          }
+          setSaved(outcome.saved);
+          setError(outcome.error);
+        }),
+      ),
+      Effect.ensuring(Effect.sync(() => setBusy(false))),
+    ),
+  );
 
   const save = (): void => {
     setError('');
@@ -311,27 +351,10 @@ function EmailCard({
       setError('Enter the sender address first.');
       return;
     }
-    if (busyRef.current) {
+    if (busy) {
       return;
     }
-    busyRef.current = true;
-    setBusy(true);
-    void saveEmailCard(api, { from, key })
-      .then((outcome) => {
-        // The key clears whenever the save itself succeeded — even when the
-        // status reload fails, the server already stores the new key.
-        setKey(outcome.secretAfterSave);
-        if (outcome.status !== null) {
-          setShowKey(false);
-          onSaved(outcome.status);
-        }
-        setSaved(outcome.saved);
-        setError(outcome.error);
-      })
-      .finally(() => {
-        busyRef.current = false;
-        setBusy(false);
-      });
+    saveCard({ from, key });
   };
 
   return (
@@ -429,8 +452,45 @@ function VoiceCard({
   const [confirming, setConfirming] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [confirmError, setConfirmError] = useState('');
-  const busyRef = useRef(false);
-  const removingRef = useRef(false);
+
+  const [, saveCard] = useAction(
+    (draft: { readonly baseUrl: string; readonly model: string; readonly key: string }) =>
+      Effect.sync(() => setBusy(true)).pipe(
+        Effect.andThen(Effect.promise(() => saveVoiceCard(api, draft))),
+        Effect.tap((outcome) =>
+          Effect.sync(() => {
+            // The key clears whenever the save itself succeeded — even when the
+            // status reload fails, the server already stores the new key.
+            setKey(outcome.secretAfterSave);
+            if (outcome.status !== null) {
+              setShowKey(false);
+              onSaved(outcome.status);
+            }
+            setSaved(outcome.saved);
+            setError(outcome.error);
+          }),
+        ),
+        Effect.ensuring(Effect.sync(() => setBusy(false))),
+      ),
+  );
+
+  const [, removeCard] = useAction(() =>
+    Effect.sync(() => setRemoving(true)).pipe(
+      Effect.andThen(Effect.promise(() => removeIntegrationCard(api, 'voice'))),
+      Effect.tap((outcome) =>
+        Effect.sync(() => {
+          if (outcome.status !== null) {
+            setSaved(false);
+            onSaved(outcome.status);
+            setConfirming(false);
+          } else {
+            setConfirmError(outcome.error);
+          }
+        }),
+      ),
+      Effect.ensuring(Effect.sync(() => setRemoving(false))),
+    ),
+  );
 
   const save = (): void => {
     setError('');
@@ -439,50 +499,18 @@ function VoiceCard({
       setError('Enter the endpoint base URL first.');
       return;
     }
-    if (busyRef.current) {
+    if (busy) {
       return;
     }
-    busyRef.current = true;
-    setBusy(true);
-    void saveVoiceCard(api, { baseUrl, model, key })
-      .then((outcome) => {
-        // The key clears whenever the save itself succeeded — even when the
-        // status reload fails, the server already stores the new key.
-        setKey(outcome.secretAfterSave);
-        if (outcome.status !== null) {
-          setShowKey(false);
-          onSaved(outcome.status);
-        }
-        setSaved(outcome.saved);
-        setError(outcome.error);
-      })
-      .finally(() => {
-        busyRef.current = false;
-        setBusy(false);
-      });
+    saveCard({ baseUrl, model, key });
   };
 
   const confirmRemove = (): void => {
-    if (removingRef.current) {
+    if (removing) {
       return;
     }
-    removingRef.current = true;
-    setRemoving(true);
     setConfirmError('');
-    void removeIntegrationCard(api, 'voice')
-      .then((outcome) => {
-        if (outcome.status !== null) {
-          setSaved(false);
-          onSaved(outcome.status);
-          setConfirming(false);
-        } else {
-          setConfirmError(outcome.error);
-        }
-      })
-      .finally(() => {
-        removingRef.current = false;
-        setRemoving(false);
-      });
+    removeCard(undefined);
   };
 
   const openConfirm = (): void => {
@@ -596,8 +624,44 @@ function TelegramCard({
   const [confirming, setConfirming] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [confirmError, setConfirmError] = useState('');
-  const busyRef = useRef(false);
-  const removingRef = useRef(false);
+
+  const [, saveCard] = useAction((draft: { readonly token: string }) =>
+    Effect.sync(() => setBusy(true)).pipe(
+      Effect.andThen(Effect.promise(() => saveTelegramCard(api, draft))),
+      Effect.tap((outcome) =>
+        Effect.sync(() => {
+          // The token clears whenever the save itself succeeded — even when
+          // the status reload fails, the server already stores the new token.
+          setToken(outcome.secretAfterSave);
+          if (outcome.status !== null) {
+            setShowToken(false);
+            onSaved(outcome.status);
+          }
+          setSaved(outcome.saved);
+          setError(outcome.error);
+        }),
+      ),
+      Effect.ensuring(Effect.sync(() => setBusy(false))),
+    ),
+  );
+
+  const [, removeCard] = useAction(() =>
+    Effect.sync(() => setRemoving(true)).pipe(
+      Effect.andThen(Effect.promise(() => removeIntegrationCard(api, 'telegram'))),
+      Effect.tap((outcome) =>
+        Effect.sync(() => {
+          if (outcome.status !== null) {
+            setSaved(false);
+            onSaved(outcome.status);
+            setConfirming(false);
+          } else {
+            setConfirmError(outcome.error);
+          }
+        }),
+      ),
+      Effect.ensuring(Effect.sync(() => setRemoving(false))),
+    ),
+  );
 
   const save = (): void => {
     setError('');
@@ -606,50 +670,18 @@ function TelegramCard({
       setError('Paste the bot token first.');
       return;
     }
-    if (busyRef.current) {
+    if (busy) {
       return;
     }
-    busyRef.current = true;
-    setBusy(true);
-    void saveTelegramCard(api, { token })
-      .then((outcome) => {
-        // The token clears whenever the save itself succeeded — even when
-        // the status reload fails, the server already stores the new token.
-        setToken(outcome.secretAfterSave);
-        if (outcome.status !== null) {
-          setShowToken(false);
-          onSaved(outcome.status);
-        }
-        setSaved(outcome.saved);
-        setError(outcome.error);
-      })
-      .finally(() => {
-        busyRef.current = false;
-        setBusy(false);
-      });
+    saveCard({ token });
   };
 
   const confirmRemove = (): void => {
-    if (removingRef.current) {
+    if (removing) {
       return;
     }
-    removingRef.current = true;
-    setRemoving(true);
     setConfirmError('');
-    void removeIntegrationCard(api, 'telegram')
-      .then((outcome) => {
-        if (outcome.status !== null) {
-          setSaved(false);
-          onSaved(outcome.status);
-          setConfirming(false);
-        } else {
-          setConfirmError(outcome.error);
-        }
-      })
-      .finally(() => {
-        removingRef.current = false;
-        setRemoving(false);
-      });
+    removeCard(undefined);
   };
 
   const openConfirm = (): void => {

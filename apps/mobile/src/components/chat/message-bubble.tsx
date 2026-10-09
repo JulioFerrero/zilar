@@ -5,6 +5,7 @@ import {
   isBigEmoji,
   type UiMessage,
 } from '@zilar/chat-core';
+import { Effect } from 'effect';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { useEffect, useRef, useState } from 'react';
@@ -356,8 +357,14 @@ export function MessageBubble({
     isGroup && !outgoing && isFirstInGroup && !bigEmoji && sticker === undefined;
   const showAvatar = isGroup && !outgoing && isLastInGroup;
 
+  // The haptic is a native call the press does not wait for; it starts here,
+  // in the press handler, and a failed haptic is ignored.
   const openMenu = () => {
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    Effect.runFork(
+      Effect.tryPromise(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)).pipe(
+        Effect.ignore,
+      ),
+    );
     setMenuOpen(true);
   };
 
@@ -701,7 +708,11 @@ export function MessageBubble({
         }}
         onCopy={() => {
           setMenuOpen(false);
-          void Clipboard.setStringAsync(message.text ?? '');
+          Effect.runFork(
+            Effect.tryPromise(() => Clipboard.setStringAsync(message.text ?? '')).pipe(
+              Effect.ignore,
+            ),
+          );
         }}
         onDelete={() => {
           setConfirmOpen(true);

@@ -1,5 +1,10 @@
+import { Data, Effect } from 'effect';
+import { AsyncResult } from 'effect/reactivity';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
+import { fromApi } from '@/lib/effect/api-effect';
+import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { useQuery } from '@/lib/effect/use-query';
 import { Avatar } from './Avatar';
 import { AiBadge } from './AiBadge';
 import { Button } from './ui/button';
@@ -18,6 +23,25 @@ const TYPE_CHIPS: { kind: TopicKind; label: string }[] = [
   { kind: 'ui', label: 'UI' },
   { kind: 'routine', label: 'Routine' },
 ];
+
+class TopicNameMissing extends Data.TaggedError('TopicNameMissing') {}
+class TopicCreateFailed extends Data.TaggedError('TopicCreateFailed') {}
+
+type TopicFailure = TopicNameMissing | TopicCreateFailed;
+
+function topicErrorText(failure: TopicFailure): string {
+  return failure._tag === 'TopicNameMissing'
+    ? 'Enter a topic name'
+    : 'Could not create the topic. Try again.';
+}
+
+// The group's roles feed the Roles picker; a failed load shows no roles.
+const rolesOf = (groupId: string | undefined): Effect.Effect<GroupRole[]> =>
+  groupId === undefined
+    ? Effect.succeed([])
+    : fromApi(() => listGroupRoles(groupId)).pipe(
+        Effect.catchTag('ApiFailure', () => Effect.succeed([])),
+      );
 
 function glyphFor(name: string): string {
   const first = [...name.trim()][0] ?? 'G';
@@ -50,11 +74,6 @@ export function NewTopicDialog({
   // `setTopicRoles` after the topic exists.
   const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
   const [approverRoleId, setApproverRoleId] = useState<string | null>(null);
-  const [groupRoles, setGroupRoles] = useState<GroupRole[]>([]);
-  const [myAis, setMyAis] = useState<PublicAi[]>([]);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-
   const chat = store.chats.find((entry) => entry.id === groupId);
   // The group detail is keyed by the chat that loaded it (a topic row id or
   // the legacy group id); the loader runs for the id the dialog was opened
@@ -66,48 +85,19 @@ export function NewTopicDialog({
     storeApi.getState().refreshGroupInfo(groupId);
   }, [storeApi, groupId]);
 
-  // The group's roles feed the Roles picker for private topics.
-  useEffect(() => {
-    let active = true;
-    const id = detail?.id;
-    if (id === undefined) {
-      return;
-    }
-    listGroupRoles(id)
-      .then((roles) => {
-        if (active) {
-          setGroupRoles(roles);
-        }
-      })
-      .catch(() => {
-        if (active) {
-          setGroupRoles([]);
-        }
-      });
-    return () => {
-      active = false;
-    };
-  }, [detail?.id]);
+  const detailId = detail?.id;
+  const [rolesResult] = useQuery(() => rolesOf(detailId), [detailId]);
+  const groupRoles: GroupRole[] = AsyncResult.isSuccess(rolesResult) ? rolesResult.value : [];
 
-  useEffect(() => {
-    let active = true;
-    storeApi
-      .getState()
-      .listMyAis()
-      .then((list) => {
-        if (active) {
-          setMyAis(list.filter((ai) => ai.status === 'active'));
-        }
-      })
-      .catch(() => {
-        if (active) {
-          setMyAis([]);
-        }
-      });
-    return () => {
-      active = false;
-    };
-  }, [storeApi]);
+  const [myAisResult] = useQuery(
+    () =>
+      fromApi(() => storeApi.getState().listMyAis()).pipe(
+        Effect.map((list) => list.filter((ai) => ai.status === 'active')),
+        Effect.catchTag('ApiFailure', () => Effect.succeed([])),
+      ),
+    [storeApi],
+  );
+  const myAis: PublicAi[] = AsyncResult.isSuccess(myAisResult) ? myAisResult.value : [];
 
   const members = detail?.members ?? [];
   const groupAis = detail?.ais ?? [];
@@ -139,49 +129,47 @@ export function NewTopicDialog({
     );
   };
 
-  const create = async (): Promise<void> => {
-    const trimmed = name.trim();
-    if (trimmed.length === 0) {
-      setError('Enter a topic name');
-      return;
-    }
-    setBusy(true);
-    setError('');
-    try {
-      const chatJid = await storeApi.getState().createTopic(groupId, {
-        name: trimmed.slice(0, 80),
-        kind,
-        visibility,
-        glyph: glyphFor(trimmed),
-        ...(memberIds === undefined ? {} : { memberIds }),
-      });
-      for (const aiId of selectedAis) {
-        try {
-          await storeApi.getState().addTopicAi(chatJid, aiId);
-        } catch {
-          // One AI failing must not lose the topic: the panel can add it.
-        }
+  // A second click while the call waits is dropped (mode 'ignore').
+  const [createState, runCreate] = useAction<void, void, TopicFailure>(() =>
+    Effect.gen(function* () {
+      const trimmed = name.trim();
+      if (trimmed.length === 0) {
+        return yield* new TopicNameMissing();
       }
+      const chatJid = yield* fromApi(() =>
+        storeApi.getState().createTopic(groupId, {
+          name: trimmed.slice(0, 80),
+          kind,
+          visibility,
+          glyph: glyphFor(trimmed),
+          ...(memberIds === undefined ? {} : { memberIds }),
+        }),
+      ).pipe(Effect.catchTag('ApiFailure', () => Effect.fail(new TopicCreateFailed())));
+      // One AI failing must not lose the topic: the panel can add it.
+      yield* Effect.forEach(
+        selectedAis,
+        (aiId) => fromApi(() => storeApi.getState().addTopicAi(chatJid, aiId)).pipe(Effect.ignore),
+        { discard: true },
+      );
       // T-0116: attach the picked roles (and approver) to the new private
       // topic. A failure here must not lose the topic either: the panel
       // can attach them.
       if (visibility === 'private' && selectedRoles.length > 0) {
-        try {
-          await storeApi.getState().setTopicRoles(chatJid, {
+        yield* fromApi(() =>
+          storeApi.getState().setTopicRoles(chatJid, {
             roleIds: selectedRoles,
             approverRoleId,
-          });
-        } catch {
-          // The topic exists; the panel can attach the roles.
-        }
+          }),
+        ).pipe(Effect.ignore);
       }
-      onClose();
-      navigate(`/c/${encodeURIComponent(chatJid)}`);
-    } catch {
-      setBusy(false);
-      setError('Could not create the topic. Try again.');
-    }
-  };
+      yield* Effect.sync(() => {
+        onClose();
+        navigate(`/c/${encodeURIComponent(chatJid)}`);
+      });
+    }),
+  );
+  const busy = isWaiting(createState);
+  const createFailure = busy ? undefined : failureOf(createState);
 
   return (
     <Dialog
@@ -207,7 +195,7 @@ export function NewTopicDialog({
             size="lg"
             className="rounded-full px-5"
             disabled={busy || name.trim().length === 0}
-            onClick={() => void create()}
+            onClick={() => runCreate()}
           >
             {busy ? 'Creating…' : 'Create topic'}
           </Button>
@@ -366,9 +354,9 @@ export function NewTopicDialog({
         </div>
       )}
 
-      {error !== '' && (
+      {createFailure !== undefined && (
         <p role="alert" className="mt-3 text-[13px] text-danger">
-          {error}
+          {topicErrorText(createFailure)}
         </p>
       )}
     </Dialog>

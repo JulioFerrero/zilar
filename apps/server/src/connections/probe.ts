@@ -1,3 +1,4 @@
+import { Data, Duration, Effect } from 'effect';
 import { redactSecrets } from '../ai/litellm-client';
 import type { ProviderId } from './providers';
 
@@ -57,39 +58,68 @@ const ENDPOINTS: Record<ProviderId, Endpoint> = {
   },
 };
 
-export function createProviderProbe(fetchImpl: FetchLike = fetch): ProviderProbe {
-  return {
-    async testKey(provider, key) {
-      const endpoint = ENDPOINTS[provider];
+// A failed or timed-out fetch. Internal only: it never reaches a caller, it is
+// turned into the "unreachable" outcome below.
+class ProbeUnreachable extends Data.TaggedError('ProbeUnreachable') {}
 
-      let response: Response;
-      try {
-        response = await fetchImpl(endpoint.buildUrl(key), {
+function outcomeFor(response: Response): ProbeOutcome {
+  if (response.status === 401 || response.status === 403) {
+    return { ok: false, message: 'The provider rejected the key' };
+  }
+  if (response.status === 429) {
+    return {
+      ok: false,
+      message: 'The provider is rate-limiting this key. Try again in a minute.',
+    };
+  }
+  if (response.ok) {
+    return { ok: true };
+  }
+  return { ok: false, message: 'The provider returned an unexpected response' };
+}
+
+// Every outcome is a value, so the effect has no error channel. The fetch
+// receives the Effect abort signal, which fires when the probe is interrupted.
+export function testKeyEffect(
+  fetchImpl: FetchLike,
+): (provider: ProviderId, key: string) => Effect.Effect<ProbeOutcome> {
+  return Effect.fnUntraced(function* (
+    provider: ProviderId,
+    key: string,
+  ): Effect.fn.Return<ProbeOutcome> {
+    const endpoint = ENDPOINTS[provider];
+    const probe = Effect.tryPromise({
+      try: (signal) =>
+        fetchImpl(endpoint.buildUrl(key), {
           method: 'GET',
           headers: endpoint.buildHeaders(key),
-          signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
-        });
-      } catch {
-        // Unreachable is a distinct, honest answer — not a false failure of the
-        // key and not a false success. The message carries no detail from the
-        // error object because a URL (Google puts the key in the query) could
-        // echo the key back.
-        return { ok: false, message: 'The provider is unreachable' };
-      }
+          signal,
+        }),
+      catch: () => new ProbeUnreachable(),
+    }).pipe(
+      Effect.timeoutOrElse({
+        duration: Duration.millis(PROBE_TIMEOUT_MS),
+        orElse: () => Effect.fail(new ProbeUnreachable()),
+      }),
+    );
+    // Unreachable is a distinct, honest answer: not a false failure of the key
+    // and not a false success. The message carries no detail from the error
+    // object because a URL (Google puts the key in the query) could echo the
+    // key back.
+    return yield* probe.pipe(
+      Effect.map(outcomeFor),
+      Effect.catchTag('ProbeUnreachable', () =>
+        Effect.succeed<ProbeOutcome>({ ok: false, message: 'The provider is unreachable' }),
+      ),
+    );
+  });
+}
 
-      if (response.status === 401 || response.status === 403) {
-        return { ok: false, message: 'The provider rejected the key' };
-      }
-      if (response.status === 429) {
-        return {
-          ok: false,
-          message: 'The provider is rate-limiting this key. Try again in a minute.',
-        };
-      }
-      if (response.ok) {
-        return { ok: true };
-      }
-      return { ok: false, message: 'The provider returned an unexpected response' };
+export function createProviderProbe(fetchImpl: FetchLike = fetch): ProviderProbe {
+  const probeKey = testKeyEffect(fetchImpl);
+  return {
+    testKey(provider, key) {
+      return Effect.runPromise(probeKey(provider, key));
     },
   };
 }

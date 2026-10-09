@@ -1,3 +1,4 @@
+// effect-plain: synchronous AES-GCM decrypt; failure is a typed DecryptionError
 import {
   createCipheriv,
   createDecipheriv,

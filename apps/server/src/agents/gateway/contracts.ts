@@ -1,3 +1,4 @@
+import { Effect, type Fiber } from 'effect';
 import type { Payload } from '@zilar/protocol';
 import type { XmppCore, XmppCoreOptions } from '@zilar/xmpp-core';
 import type { ActionGateway, DeniedReason } from '../../actions/gateway';
@@ -179,7 +180,8 @@ export interface RoomListenerState {
   count: number;
   generation: number;
   inFlight: boolean;
-  timer: ReturnType<typeof setTimeout> | undefined;
+  /** The pending debounce: a fiber that sleeps, then fires the check. */
+  timer: Fiber.Fiber<void> | undefined;
 }
 
 export interface AiSession {
@@ -190,7 +192,8 @@ export interface AiSession {
   pending: PendingMessage[];
   stopped: boolean;
   retryAttempt: number;
-  retryTimer: ReturnType<typeof setTimeout> | undefined;
+  /** The pending reconnect: a fiber that sleeps, then reconnects. */
+  retryTimer: Fiber.Fiber<void> | undefined;
   unsubs: Array<() => void>;
   /** Rooms the AI currently holds a join for, keyed by bare room JID. */
   rooms: Map<string, RoomSubscription>;
@@ -233,6 +236,18 @@ export function isAiSender(bare: string): boolean {
 
 export function retryDelayMs(attempt: number, baseMs: number): number {
   return Math.min(baseMs * 2 ** (attempt - 1), RETRY_MAX_DELAY_MS);
+}
+
+// Interrupting the fiber cancels its sleep synchronously, like `clearTimeout`;
+// it is a no-op for a timer that already fired.
+export function cancelTimer(timer: Fiber.Fiber<void> | undefined): void {
+  timer?.interruptUnsafe();
+}
+
+// A Promise-returning call as an Effect. A rejection (or a synchronous throw)
+// arrives in the error channel as the very value that was thrown.
+export function attempt<A>(thunk: () => PromiseLike<A>): Effect.Effect<A, unknown> {
+  return Effect.tryPromise({ try: thunk, catch: (error) => error });
 }
 
 export function errorName(error: unknown): string {

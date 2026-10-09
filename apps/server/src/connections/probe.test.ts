@@ -1,5 +1,6 @@
+import { Effect, Fiber } from 'effect';
 import { describe, expect, it, vi } from 'vitest';
-import { createProviderProbe, redactKey } from './probe';
+import { createProviderProbe, redactKey, testKeyEffect } from './probe';
 
 function fakeFetch(status: number) {
   return vi.fn(async (_input: string, _init: RequestInit) => new Response(null, { status }));
@@ -64,6 +65,25 @@ describe('provider probe', () => {
 
     const [url] = fetchImpl.mock.calls[0]!;
     expect(url).toContain('key=sk-fake-1234');
+  });
+
+  it('aborts the provider request when the probe is interrupted', async () => {
+    let signal: AbortSignal | undefined;
+    let requested: () => void = () => undefined;
+    const reached = new Promise<void>((resolve) => {
+      requested = resolve;
+    });
+    const fetchImpl = vi.fn((_input: string, init: RequestInit) => {
+      signal = init.signal ?? undefined;
+      requested();
+      return new Promise<Response>(() => undefined);
+    });
+    const fiber = Effect.runFork(testKeyEffect(fetchImpl)('openai', 'sk-fake-1234'));
+
+    await reached;
+    await Effect.runPromise(Fiber.interrupt(fiber));
+
+    expect(signal?.aborted).toBe(true);
   });
 });
 

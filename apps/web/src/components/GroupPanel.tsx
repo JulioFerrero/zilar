@@ -1,4 +1,6 @@
 import type { ChatSummary } from '@zilar/chat-core';
+import { Data, Effect } from 'effect';
+import { AsyncResult } from 'effect/reactivity';
 import { Brain, Image, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type {
@@ -8,6 +10,7 @@ import type {
   GroupRole,
   ListenerEagerness,
   PublicAi,
+  SetGroupListenerInput,
 } from '@/lib/api';
 import {
   createGroupInviteLink,
@@ -19,6 +22,11 @@ import {
   revokeGroupInviteLink,
   setGroupRoleMembers,
 } from '@/lib/api';
+import { fromApi } from '@/lib/effect/api-effect';
+import type { ApiFailure } from '@/lib/effect/errors';
+import { runWeb } from '@/lib/effect/runtime';
+import { failureOf, isWaiting, useAction, type ActionState } from '@/lib/effect/use-action';
+import { useQuery } from '@/lib/effect/use-query';
 import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { HandleSuffix } from './HandleSuffix';
 import { ActivitySection } from './ais/AiActivity';
@@ -48,6 +56,88 @@ function roleLabel(role: 'owner' | 'admin' | 'member'): string | undefined {
   return role === 'member' ? undefined : role;
 }
 
+/** A failed panel action; `message` is the sentence the panel shows. */
+class PanelFailure extends Data.TaggedError('PanelFailure')<{ readonly message: string }> {}
+
+/**
+ * The sentence for a failed API call: the server's message, or the fallback
+ * when the call never reached the server (`toApiFailure` marks that case).
+ */
+function apiFailureText(failure: ApiFailure, fallback: string): string {
+  return failure.code === 'unknown_error' ? fallback : failure.message;
+}
+
+/** An API call whose failure shows `fallback` unless the server sent a message. */
+function apiStep<A>(call: () => Promise<A>, fallback: string): Effect.Effect<A, PanelFailure> {
+  return fromApi(call).pipe(
+    Effect.mapError((failure) => new PanelFailure({ message: apiFailureText(failure, fallback) })),
+  );
+}
+
+/**
+ * A store call. The store throws the raw error, so `textOf` builds the
+ * sentence from that error (the text the panel showed before the move).
+ */
+function storeStep<A>(
+  call: () => Promise<A>,
+  textOf: (error: unknown) => string,
+): Effect.Effect<A, PanelFailure> {
+  return Effect.tryPromise({
+    try: call,
+    catch: (error) => new PanelFailure({ message: textOf(error) }),
+  });
+}
+
+function settingText(error: unknown): string {
+  return error instanceof Error ? error.message : 'Could not save the setting.';
+}
+
+function addAiText(error: unknown): string {
+  return describeAiError(error, 'Could not add the AI').message;
+}
+
+function removeAiText(error: unknown): string {
+  return describeAiError(error, 'Could not remove the AI').message;
+}
+
+/** The shown failure of the last call; hidden while a new call runs. */
+function messageOf<A>(state: ActionState<A, PanelFailure>): string | undefined {
+  return isWaiting(state) ? undefined : failureOf(state)?.message;
+}
+
+/** The invite links, for managers only; a plain member makes no request. */
+function loadLinks(
+  manager: boolean,
+  groupId: string | undefined,
+): Effect.Effect<GroupInviteLink[], PanelFailure> {
+  if (!manager || groupId === undefined) {
+    return Effect.succeed([]);
+  }
+  return fromApi(() => listGroupInviteLinks(groupId)).pipe(
+    Effect.mapError(() => new PanelFailure({ message: 'Could not load the invite links.' })),
+  );
+}
+
+/** The group's roles. With no group yet the load waits, so the section reads as loading. */
+function loadRoles(groupId: string | undefined): Effect.Effect<GroupRole[], PanelFailure> {
+  if (groupId === undefined) {
+    return Effect.never;
+  }
+  return apiStep(() => listGroupRoles(groupId), 'Could not load the roles.');
+}
+
+type RolesView = { status: 'loading' | 'ready' | 'error'; roles: GroupRole[]; message: string };
+
+function rolesViewOf(result: AsyncResult.AsyncResult<GroupRole[], PanelFailure>): RolesView {
+  if (isWaiting(result) || AsyncResult.isInitial(result)) {
+    return { status: 'loading', roles: [], message: '' };
+  }
+  if (AsyncResult.isSuccess(result)) {
+    return { status: 'ready', roles: result.value, message: '' };
+  }
+  return { status: 'error', roles: [], message: failureOf(result)?.message ?? '' };
+}
+
 /**
  * The group info panel: the people, the AIs (with their owner), add one of my
  * AIs, remove one. It slides in from the right on wide screens and fills the
@@ -64,141 +154,66 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
   const memberCount =
     info === undefined ? (chat.memberCount ?? 0) : info.members.length + info.ais.length;
 
-  const [myAis, setMyAis] = useState<PublicAi[]>([]);
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const [addingId, setAddingId] = useState<string | undefined>(undefined);
-  const [removingId, setRemovingId] = useState<string | undefined>(undefined);
-  const [confirmingId, setConfirmingId] = useState<string | undefined>(undefined);
+  // The add picker: undefined while closed, else the AIs it offers. The list is
+  // a snapshot taken on open, so an option that was just added stays mounted
+  // until the panel closes the picker (its success callback needs that).
+  const [pickerChoices, setPickerChoices] = useState<PublicAi[] | undefined>(undefined);
   const [errorMessage, setErrorMessage] = useState('');
-  const [switchBusy, setSwitchBusy] = useState(false);
-  const [switchError, setSwitchError] = useState('');
-  // T-0478: the AI listener switch and eagerness, owner/admin only.
-  const [listenerBusy, setListenerBusy] = useState(false);
-  const [listenerError, setListenerError] = useState('');
   const [memoryAi, setMemoryAi] = useState<{ id: string; name: string } | undefined>(undefined);
   /** T-0466: the manager-only group background dialog. */
   const [backgroundOpen, setBackgroundOpen] = useState(false);
 
   // T-0115: invite links for owners/admins. The list carries hints, never
-  // tokens; the created URL is shown once with a Copy button. The load runs
-  // through a small helper so the effect only synchronizes with the group id
-  // (the lint rule flags synchronous setState inside effects).
+  // tokens; the created URL is shown once with a Copy button.
   const groupId = info?.id;
-  const [links, setLinks] = useState<GroupInviteLink[]>([]);
-  const [linksBusy, setLinksBusy] = useState(false);
-  const [linksError, setLinksError] = useState<string | undefined>(undefined);
+  const [linksResult, refreshLinks] = useQuery(
+    () => loadLinks(isManager, groupId),
+    [isManager, groupId],
+  );
+  const links = AsyncResult.getOrElse(linksResult, (): GroupInviteLink[] => []);
   const [createdLink, setCreatedLink] = useState<CreatedInviteLink | undefined>(undefined);
-
-  useEffect(() => {
-    if (!isManager || groupId === undefined) {
-      return;
-    }
-    let active = true;
-    void loadLinks(groupId).then((result) => {
-      if (active) {
-        setLinks(result.links);
-        setLinksError(result.error);
-        setLinksBusy(false);
-      }
-    });
-    return () => {
-      active = false;
-    };
-    async function loadLinks(
-      id: string,
-    ): Promise<{ links: GroupInviteLink[]; error: string | undefined }> {
-      try {
-        return { links: await listGroupInviteLinks(id), error: undefined };
-      } catch {
-        return { links: [], error: 'Could not load the invite links.' };
-      }
-    }
-  }, [isManager, groupId]);
-
-  const createLink = async (input: {
-    label?: string;
-    expiresInHours?: number;
-    maxUses?: number;
-  }): Promise<void> => {
-    if (groupId === undefined || linksBusy) {
-      return;
-    }
-    setLinksBusy(true);
-    setLinksError(undefined);
-    try {
-      const created = await createGroupInviteLink(groupId, input);
-      setCreatedLink(created);
-      setLinks(await listGroupInviteLinks(groupId));
-    } catch (error) {
-      setLinksError(error instanceof Error ? error.message : 'Could not create the link.');
-    } finally {
-      setLinksBusy(false);
-    }
-  };
-
-  const revokeLink = async (linkId: string): Promise<void> => {
+  const [createState, createLink] = useAction<
+    { label?: string; expiresInHours?: number; maxUses?: number },
+    void,
+    PanelFailure
+  >((input) => {
     if (groupId === undefined) {
-      return;
+      return Effect.void;
     }
-    try {
-      await revokeGroupInviteLink(groupId, linkId);
-      setLinks(await listGroupInviteLinks(groupId));
-    } catch (error) {
-      setLinksError(error instanceof Error ? error.message : 'Could not revoke the link.');
-    }
-  };
+    return apiStep(() => createGroupInviteLink(groupId, input), 'Could not create the link.').pipe(
+      Effect.tap((created) =>
+        Effect.sync(() => {
+          setCreatedLink(created);
+          refreshLinks();
+        }),
+      ),
+      Effect.asVoid,
+    );
+  });
+  const linksBusy = isWaiting(createState);
+  const [revokeError, setRevokeError] = useState<string | undefined>(undefined);
+  const linksError = messageOf(createState) ?? revokeError ?? messageOf(linksResult);
 
-  const [rolesState, setRolesState] = useState<{
-    status: 'loading' | 'ready' | 'error';
-    roles: GroupRole[];
-    message: string;
-  }>({ status: 'loading', roles: [], message: '' });
+  // Revoke runs as a promise because InviteLinksSection awaits it to keep the
+  // button on "Revoking…" until the request settles (T-0141). It never rejects:
+  // a failure is shown through `revokeError`.
+  const revokeLink = (linkId: string): Promise<void> =>
+    runWeb(
+      groupId === undefined
+        ? Effect.void
+        : apiStep(() => revokeGroupInviteLink(groupId, linkId), 'Could not revoke the link.').pipe(
+            Effect.tap(() => Effect.sync(refreshLinks)),
+            Effect.tapError((failure) => Effect.sync(() => setRevokeError(failure.message))),
+            Effect.ignore,
+          ),
+    );
 
   // Custom group roles (T-0116): every member sees who holds what (the
   // chips below); managers get the CRUD section further down. A failure
   // shows an inline error with Retry and never breaks the rest of the
   // panel.
-  useEffect(() => {
-    let active = true;
-    const groupId = info?.id;
-    if (groupId === undefined) {
-      return;
-    }
-    listGroupRoles(groupId)
-      .then((roles) => {
-        if (active) {
-          setRolesState({ status: 'ready', roles, message: '' });
-        }
-      })
-      .catch((error: unknown) => {
-        if (active) {
-          setRolesState({
-            status: 'error',
-            roles: [],
-            message: error instanceof Error ? error.message : 'Could not load the roles.',
-          });
-        }
-      });
-    return () => {
-      active = false;
-    };
-  }, [info?.id]);
-
-  const reloadRoles = async (): Promise<void> => {
-    if (info === undefined) {
-      return;
-    }
-    setRolesState({ status: 'loading', roles: [], message: '' });
-    try {
-      setRolesState({ status: 'ready', roles: await listGroupRoles(info.id), message: '' });
-    } catch (error) {
-      setRolesState({
-        status: 'error',
-        roles: [],
-        message: error instanceof Error ? error.message : 'Could not load the roles.',
-      });
-    }
-  };
+  const [rolesResult, refreshRoles] = useQuery(() => loadRoles(info?.id), [info?.id]);
+  const rolesState = rolesViewOf(rolesResult);
 
   const rolesByUser = new Map<string, GroupRole[]>();
   if (rolesState.status === 'ready') {
@@ -211,116 +226,70 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
     }
   }
 
+  // The AI list feeds the add picker.
+  const [myAisResult] = useQuery(
+    () =>
+      Effect.tryPromise({
+        try: () => storeApi.getState().listMyAis(),
+        catch: () => undefined,
+      }).pipe(Effect.orElseSucceed((): PublicAi[] => [])),
+    [storeApi],
+  );
+  const myAis = AsyncResult.getOrElse(myAisResult, (): PublicAi[] => []);
+
   const eligibleAis = myAis.filter(
     (ai) => ai.status === 'active' && info?.ais.some((item) => item.aiId === ai.id) !== true,
   );
 
   // The panel refreshes the members when it opens, so a change made elsewhere
-  // shows up here. The AI list feeds the add picker.
+  // shows up here.
   useEffect(() => {
     storeApi.getState().refreshGroupInfo(chat.id);
   }, [storeApi, chat.id]);
-
-  useEffect(() => {
-    let active = true;
-    storeApi
-      .getState()
-      .listMyAis()
-      .then((list) => {
-        if (active) {
-          setMyAis(list);
-        }
-      })
-      .catch(() => {
-        if (active) {
-          setMyAis([]);
-        }
-      });
-    return () => {
-      active = false;
-    };
-  }, [storeApi]);
-
-  const add = async (aiId: string): Promise<void> => {
-    setAddingId(aiId);
-    setErrorMessage('');
-    try {
-      await storeApi.getState().addGroupAi(chat.id, aiId);
-      setPickerOpen(false);
-    } catch (error) {
-      setErrorMessage(describeAiError(error, 'Could not add the AI').message);
-    } finally {
-      setAddingId(undefined);
-    }
-  };
-
-  const remove = async (aiId: string): Promise<void> => {
-    setRemovingId(aiId);
-    setErrorMessage('');
-    try {
-      await storeApi.getState().removeGroupAi(chat.id, aiId);
-      setConfirmingId(undefined);
-    } catch (error) {
-      setErrorMessage(describeAiError(error, 'Could not remove the AI').message);
-    } finally {
-      setRemovingId(undefined);
-    }
-  };
 
   const ownerName = (ai: GroupAi): string =>
     info?.members.find((member) => member.userId === ai.ownerId)?.name ?? 'someone';
   const isOwner = meRole === 'owner';
 
-  const flipTopicSwitch = async (): Promise<void> => {
-    if (info === undefined || switchBusy) {
-      return;
-    }
-    setSwitchBusy(true);
-    setSwitchError('');
-    try {
-      await storeApi
-        .getState()
-        .setMembersCanCreateTopics(chat.id, info.membersCanCreateTopics !== true);
-    } catch (error) {
-      setSwitchError(error instanceof Error ? error.message : 'Could not save the setting.');
-    } finally {
-      setSwitchBusy(false);
+  const [switchState, setTopicsAllowed] = useAction<boolean, void, PanelFailure>((allowed) =>
+    storeStep(
+      () => storeApi.getState().setMembersCanCreateTopics(chat.id, allowed),
+      settingText,
+    ).pipe(Effect.asVoid),
+  );
+  const switchBusy = isWaiting(switchState);
+  const switchError = messageOf(switchState) ?? '';
+
+  const flipTopicSwitch = (): void => {
+    if (info !== undefined) {
+      setTopicsAllowed(info.membersCanCreateTopics !== true);
     }
   };
 
   // T-0478: the listener switch and eagerness. Both go through
   // `setGroupListener`; the store refreshes the detail on success and an
-  // inline error shows on failure, exactly like `flipTopicSwitch`.
+  // inline error shows on failure, exactly like the topic switch.
   const listenerEnabled = info?.listener?.enabled === true;
   const listenerAvailable = info?.listener?.available === true;
 
-  const flipListenerSwitch = async (): Promise<void> => {
-    if (info === undefined || listenerBusy || !listenerAvailable) {
-      return;
-    }
-    setListenerBusy(true);
-    setListenerError('');
-    try {
-      await storeApi.getState().setGroupListener(chat.id, { listenerEnabled: !listenerEnabled });
-    } catch (error) {
-      setListenerError(error instanceof Error ? error.message : 'Could not save the setting.');
-    } finally {
-      setListenerBusy(false);
+  const [listenerState, saveListener] = useAction<SetGroupListenerInput, void, PanelFailure>(
+    (input) =>
+      storeStep(() => storeApi.getState().setGroupListener(chat.id, input), settingText).pipe(
+        Effect.asVoid,
+      ),
+  );
+  const listenerBusy = isWaiting(listenerState);
+  const listenerError = messageOf(listenerState) ?? '';
+
+  const flipListenerSwitch = (): void => {
+    if (info !== undefined && listenerAvailable) {
+      saveListener({ listenerEnabled: !listenerEnabled });
     }
   };
 
-  const chooseEagerness = async (eagerness: ListenerEagerness): Promise<void> => {
-    if (info === undefined || listenerBusy || !listenerAvailable) {
-      return;
-    }
-    setListenerBusy(true);
-    setListenerError('');
-    try {
-      await storeApi.getState().setGroupListener(chat.id, { listenerEagerness: eagerness });
-    } catch (error) {
-      setListenerError(error instanceof Error ? error.message : 'Could not save the setting.');
-    } finally {
-      setListenerBusy(false);
+  const chooseEagerness = (eagerness: ListenerEagerness): void => {
+    if (info !== undefined && listenerAvailable) {
+      saveListener({ listenerEagerness: eagerness });
     }
   };
 
@@ -411,7 +380,7 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
                   ...(member.avatarUrl === undefined ? {} : { avatarUrl: member.avatarUrl }),
                 }))}
                 rolesState={rolesState}
-                onReload={() => void reloadRoles()}
+                onReload={refreshRoles}
               />
             )}
 
@@ -420,108 +389,37 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
               {info.ais.length === 0 && (
                 <p className="px-2 text-[13px] text-muted-foreground">No AIs in this group yet.</p>
               )}
-              {info.ais.map((ai) => {
-                const canRemove = ai.ownerId === me || isManager;
-                const confirming = confirmingId === ai.aiId;
-                const removing = removingId === ai.aiId;
-                return (
-                  <div
-                    key={ai.aiId}
-                    className="flex items-center gap-2 rounded-xl px-2 py-1.5 hover:bg-list-hover"
-                  >
-                    <Avatar id={ai.jid} name={ai.name} size={32} ai avatarUrl={ai.avatarUrl} />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5">
-                        <span className="truncate text-[14px]">{ai.name}</span>
-                        <AiBadge />
-                      </div>
-                      <p className="truncate text-[12px] text-muted-foreground">
-                        Added by {ownerName(ai)}
-                      </p>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      aria-label={`What ${ai.name} remembers`}
-                      className="shrink-0 text-muted-foreground"
-                      onClick={() => setMemoryAi({ id: ai.aiId, name: ai.name })}
-                    >
-                      <Brain className="size-4" aria-hidden="true" />
-                    </Button>
-                    {canRemove &&
-                      (confirming ? (
-                        <div className="flex shrink-0 items-center gap-1">
-                          <Button
-                            type="button"
-                            variant="destructive"
-                            size="sm"
-                            aria-label={`Confirm removing ${ai.name}`}
-                            disabled={removing}
-                            onClick={() => void remove(ai.aiId)}
-                          >
-                            {removing ? 'Removing…' : 'Remove'}
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            disabled={removing}
-                            onClick={() => setConfirmingId(undefined)}
-                          >
-                            Cancel
-                          </Button>
-                        </div>
-                      ) : (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          aria-label={`Remove ${ai.name} from the group`}
-                          className="shrink-0"
-                          onClick={() => setConfirmingId(ai.aiId)}
-                        >
-                          Remove
-                        </Button>
-                      ))}
-                  </div>
-                );
-              })}
+              {info.ais.map((ai) => (
+                <GroupAiRow
+                  key={ai.aiId}
+                  ai={ai}
+                  chatId={chat.id}
+                  ownerName={ownerName(ai)}
+                  canRemove={ai.ownerId === me || isManager}
+                  onOpenMemory={() => setMemoryAi({ id: ai.aiId, name: ai.name })}
+                  onError={setErrorMessage}
+                />
+              ))}
 
-              {isManager && eligibleAis.length > 0 && (
+              {isManager && (eligibleAis.length > 0 || pickerChoices !== undefined) && (
                 <div className="mt-1 flex flex-col gap-2 px-2">
-                  {pickerOpen ? (
+                  {pickerChoices !== undefined ? (
                     <div className="flex flex-col gap-1">
-                      {eligibleAis.map((ai) => (
-                        <Button
+                      {pickerChoices.map((ai) => (
+                        <AddAiOption
                           key={ai.id}
-                          type="button"
-                          variant="outline"
-                          disabled={addingId !== undefined}
-                          onClick={() => void add(ai.id)}
-                          className="h-auto justify-start gap-2 rounded-xl px-2 py-1.5 text-left text-[14px] font-normal"
-                        >
-                          <Avatar
-                            id={ai.jid}
-                            name={ai.name}
-                            size={28}
-                            ai
-                            avatarUrl={ai.avatarUrl}
-                          />
-                          <span className="min-w-0 flex-1 truncate">{ai.name}</span>
-                          <AiBadge />
-                          {addingId === ai.id && (
-                            <span className="text-[12px] text-muted-foreground">Adding…</span>
-                          )}
-                        </Button>
+                          ai={ai}
+                          chatId={chat.id}
+                          onAdded={() => setPickerChoices(undefined)}
+                          onError={setErrorMessage}
+                        />
                       ))}
                       <Button
                         type="button"
                         variant="ghost"
                         size="sm"
                         className="self-start"
-                        disabled={addingId !== undefined}
-                        onClick={() => setPickerOpen(false)}
+                        onClick={() => setPickerChoices(undefined)}
                       >
                         Cancel
                       </Button>
@@ -531,7 +429,7 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
                       type="button"
                       size="lg"
                       className="self-start rounded-full px-4"
-                      onClick={() => setPickerOpen(true)}
+                      onClick={() => setPickerChoices(eligibleAis)}
                     >
                       Add my AI
                     </Button>
@@ -585,10 +483,8 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
                 busy={linksBusy}
                 error={linksError}
                 created={createdLink === undefined ? undefined : { url: createdLink.url }}
-                onCreate={(input) => void createLink(input)}
-                // Returns the DELETE promise so the section keeps the
-                // button busy until the revoke settles (T-0141).
-                onRevoke={(linkId) => revokeLink(linkId)}
+                onCreate={(input) => createLink(input)}
+                onRevoke={revokeLink}
                 onDismissCreated={() => setCreatedLink(undefined)}
               />
             )}
@@ -601,7 +497,7 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
                   <span className="text-[14px]">Members can create topics</span>
                   <Switch
                     checked={info.membersCanCreateTopics === true}
-                    onCheckedChange={() => void flipTopicSwitch()}
+                    onCheckedChange={() => flipTopicSwitch()}
                     label="Members can create topics"
                     hideLabel
                     disabled={switchBusy}
@@ -619,7 +515,7 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
                   <span className="text-[14px]">Let AIs answer without @mention</span>
                   <Switch
                     checked={listenerEnabled}
-                    onCheckedChange={() => void flipListenerSwitch()}
+                    onCheckedChange={() => flipListenerSwitch()}
                     label="Let AIs answer without @mention"
                     hideLabel
                     disabled={!listenerAvailable || listenerBusy}
@@ -637,7 +533,7 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
                         { value: 'eager', label: 'Eager' },
                       ]}
                       value={info.listener?.eagerness ?? 'normal'}
-                      onChange={(value) => void chooseEagerness(value as ListenerEagerness)}
+                      onChange={(value) => chooseEagerness(value as ListenerEagerness)}
                       ariaLabel="Eagerness"
                       mode="radio"
                     />
@@ -692,6 +588,150 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
         )}
       </div>
     </Sheet>
+  );
+}
+
+/**
+ * One AI in the group, with its own Remove action so two AIs can be removed
+ * at once; a second click on the same row waits for the first.
+ */
+function GroupAiRow({
+  ai,
+  chatId,
+  ownerName,
+  canRemove,
+  onOpenMemory,
+  onError,
+}: {
+  ai: GroupAi;
+  chatId: string;
+  ownerName: string;
+  canRemove: boolean;
+  onOpenMemory: () => void;
+  onError: (message: string) => void;
+}) {
+  const storeApi = useChatStoreApi();
+  const [confirming, setConfirming] = useState(false);
+  const [state, removeAi] = useAction<void, void, PanelFailure>(() =>
+    storeStep(() => storeApi.getState().removeGroupAi(chatId, ai.aiId), removeAiText).pipe(
+      Effect.asVoid,
+      Effect.tap(() => Effect.sync(() => setConfirming(false))),
+      Effect.tapError((failure) => Effect.sync(() => onError(failure.message))),
+    ),
+  );
+  const busy = isWaiting(state);
+  const startRemove = (): void => {
+    if (busy) {
+      return;
+    }
+    onError('');
+    removeAi();
+  };
+
+  return (
+    <div className="flex items-center gap-2 rounded-xl px-2 py-1.5 hover:bg-list-hover">
+      <Avatar id={ai.jid} name={ai.name} size={32} ai avatarUrl={ai.avatarUrl} />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5">
+          <span className="truncate text-[14px]">{ai.name}</span>
+          <AiBadge />
+        </div>
+        <p className="truncate text-[12px] text-muted-foreground">Added by {ownerName}</p>
+      </div>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        aria-label={`What ${ai.name} remembers`}
+        className="shrink-0 text-muted-foreground"
+        onClick={onOpenMemory}
+      >
+        <Brain className="size-4" aria-hidden="true" />
+      </Button>
+      {canRemove &&
+        (confirming ? (
+          <div className="flex shrink-0 items-center gap-1">
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              aria-label={`Confirm removing ${ai.name}`}
+              disabled={busy}
+              onClick={startRemove}
+            >
+              {busy ? 'Removing…' : 'Remove'}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={busy}
+              onClick={() => setConfirming(false)}
+            >
+              Cancel
+            </Button>
+          </div>
+        ) : (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            aria-label={`Remove ${ai.name} from the group`}
+            className="shrink-0"
+            onClick={() => setConfirming(true)}
+          >
+            Remove
+          </Button>
+        ))}
+    </div>
+  );
+}
+
+/**
+ * One of my AIs in the add picker, with its own add action so two options
+ * can run at once; a second click on the same option waits for the first.
+ */
+function AddAiOption({
+  ai,
+  chatId,
+  onAdded,
+  onError,
+}: {
+  ai: PublicAi;
+  chatId: string;
+  onAdded: () => void;
+  onError: (message: string) => void;
+}) {
+  const storeApi = useChatStoreApi();
+  const [state, addAi] = useAction<void, void, PanelFailure>(() =>
+    storeStep(() => storeApi.getState().addGroupAi(chatId, ai.id), addAiText).pipe(
+      Effect.asVoid,
+      Effect.tap(() => Effect.sync(onAdded)),
+      Effect.tapError((failure) => Effect.sync(() => onError(failure.message))),
+    ),
+  );
+  const busy = isWaiting(state);
+  const startAdd = (): void => {
+    if (busy) {
+      return;
+    }
+    onError('');
+    addAi();
+  };
+
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      disabled={busy}
+      onClick={startAdd}
+      className="h-auto justify-start gap-2 rounded-xl px-2 py-1.5 text-left text-[14px] font-normal"
+    >
+      <Avatar id={ai.jid} name={ai.name} size={28} ai avatarUrl={ai.avatarUrl} />
+      <span className="min-w-0 flex-1 truncate">{ai.name}</span>
+      <AiBadge />
+      {busy && <span className="text-[12px] text-muted-foreground">Adding…</span>}
+    </Button>
   );
 }
 
@@ -753,54 +793,57 @@ function RolesSection({
   const [renameValue, setRenameValue] = useState('');
   const [confirmingId, setConfirmingId] = useState<string | undefined>(undefined);
   const [assigningId, setAssigningId] = useState<string | undefined>(undefined);
-  const [busy, setBusy] = useState(false);
-  const [errorMessage, setErrorMessage] = useState('');
+  // One action for the section, as before: every role button is disabled
+  // while a change runs, and the roles reload after each success.
+  const [changeState, runChange] = useAction<Effect.Effect<void, PanelFailure>, void, PanelFailure>(
+    (change) => change.pipe(Effect.tap(() => Effect.sync(onReload))),
+  );
+  const busy = isWaiting(changeState);
+  const errorMessage = messageOf(changeState) ?? '';
 
-  const run = async (work: () => Promise<void>): Promise<void> => {
-    setBusy(true);
-    setErrorMessage('');
-    try {
-      await work();
-      onReload();
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Could not save the roles.');
-    } finally {
-      setBusy(false);
-    }
+  const create = (): void => {
+    const name = newName.trim();
+    runChange(
+      name === ''
+        ? Effect.fail(new PanelFailure({ message: 'Enter a role name.' }))
+        : apiStep(
+            () => createGroupRole(groupId, name.slice(0, 30)),
+            'Could not save the roles.',
+          ).pipe(Effect.tap(() => Effect.sync(() => setNewName('')))),
+    );
   };
 
-  const create = (): Promise<void> =>
-    run(async () => {
-      const name = newName.trim();
-      if (name === '') {
-        throw new Error('Enter a role name.');
-      }
-      await createGroupRole(groupId, name.slice(0, 30));
-      setNewName('');
-    });
+  const rename = (roleId: string): void => {
+    const name = renameValue.trim();
+    runChange(
+      name === ''
+        ? Effect.fail(new PanelFailure({ message: 'Enter a role name.' }))
+        : apiStep(
+            () => renameGroupRole(groupId, roleId, name.slice(0, 30)),
+            'Could not save the roles.',
+          ).pipe(Effect.tap(() => Effect.sync(() => setRenamingId(undefined)))),
+    );
+  };
 
-  const rename = (roleId: string): Promise<void> =>
-    run(async () => {
-      const name = renameValue.trim();
-      if (name === '') {
-        throw new Error('Enter a role name.');
-      }
-      await renameGroupRole(groupId, roleId, name.slice(0, 30));
-      setRenamingId(undefined);
-    });
+  const remove = (roleId: string): void => {
+    runChange(
+      apiStep(() => deleteGroupRole(groupId, roleId), 'Could not save the roles.').pipe(
+        Effect.tap(() => Effect.sync(() => setConfirmingId(undefined))),
+      ),
+    );
+  };
 
-  const remove = (roleId: string): Promise<void> =>
-    run(async () => {
-      await deleteGroupRole(groupId, roleId);
-      setConfirmingId(undefined);
-    });
-
-  const toggleHolder = (role: GroupRole, userId: string): Promise<void> => {
+  const toggleHolder = (role: GroupRole, userId: string): void => {
     const held = role.members.some((holder) => holder.userId === userId);
     const userIds = held
       ? role.members.filter((holder) => holder.userId !== userId).map((holder) => holder.userId)
       : [...role.members.map((holder) => holder.userId), userId];
-    return run(() => setGroupRoleMembers(groupId, role.id, userIds).then(() => {}));
+    runChange(
+      apiStep(
+        () => setGroupRoleMembers(groupId, role.id, userIds),
+        'Could not save the roles.',
+      ).pipe(Effect.asVoid),
+    );
   };
 
   return (
@@ -855,7 +898,7 @@ function RolesSection({
                       variant="outline"
                       size="sm"
                       disabled={busy}
-                      onClick={() => void rename(role.id)}
+                      onClick={() => rename(role.id)}
                     >
                       Save
                     </Button>
@@ -877,7 +920,7 @@ function RolesSection({
                       size="sm"
                       aria-label={`Confirm deleting ${role.name}`}
                       disabled={busy}
-                      onClick={() => void remove(role.id)}
+                      onClick={() => remove(role.id)}
                     >
                       Delete
                     </Button>
@@ -945,7 +988,7 @@ function RolesSection({
                           checked={checked}
                           disabled={busy}
                           label={`${member.name} holds ${role.name}`}
-                          onCheckedChange={() => void toggleHolder(role, member.userId)}
+                          onCheckedChange={() => toggleHolder(role, member.userId)}
                         />
                         <Avatar
                           id={member.userId}
@@ -976,7 +1019,7 @@ function RolesSection({
           size="lg"
           className="shrink-0 rounded-full px-4"
           disabled={busy || newName.trim() === ''}
-          onClick={() => void create()}
+          onClick={() => create()}
         >
           {busy ? 'Saving…' : 'Add role'}
         </Button>

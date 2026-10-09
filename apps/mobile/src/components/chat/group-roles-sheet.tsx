@@ -1,3 +1,4 @@
+import { Effect } from 'effect';
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
@@ -9,6 +10,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
+import { fromApi } from '@/lib/effect/api-effect';
+import { useAction } from '@/lib/effect/use-action';
 import type { GroupRole } from '@/lib/chat-api';
 import { deleteRoleConfirmText } from '@/lib/roles';
 import type { CustomGroupRole } from '@/lib/roles-api';
@@ -64,12 +67,40 @@ export function GroupRolesSheet({
   const [confirmingId, setConfirmingId] = useState<string | undefined>(undefined);
   const [assigningId, setAssigningId] = useState<string | undefined>(undefined);
 
+  // Each action keeps its own post-step (the clear or close after the store
+  // call succeeds). `replace` lets a second tap start at once; a superseded
+  // store call still finishes, only its post-step is skipped.
+  const [, createRole] = useAction(
+    (name: string) =>
+      fromApi(() => onCreateRole(name)).pipe(Effect.tap(() => Effect.sync(() => setNewName('')))),
+    { mode: 'replace' },
+  );
+  const [, renameRole] = useAction(
+    (input: { roleId: string; name: string }) =>
+      fromApi(() => onRenameRole(input.roleId, input.name)).pipe(
+        Effect.tap(() => Effect.sync(() => setRenamingId(undefined))),
+      ),
+    { mode: 'replace' },
+  );
+  const [, deleteRole] = useAction(
+    (roleId: string) =>
+      fromApi(() => onDeleteRole(roleId)).pipe(
+        Effect.tap(() => Effect.sync(() => setConfirmingId(undefined))),
+      ),
+    { mode: 'replace' },
+  );
+  const [, toggleMember] = useAction(
+    (input: { role: CustomGroupRole; userId: string }) =>
+      fromApi(() => onToggleMember(input.role, input.userId)),
+    { mode: 'replace' },
+  );
+
   const create = () => {
     const name = newName.trim();
     if (name === '') {
       return;
     }
-    void onCreateRole(name.slice(0, 30)).then(() => setNewName(''));
+    createRole(name.slice(0, 30));
   };
 
   const rename = (roleId: string) => {
@@ -77,7 +108,7 @@ export function GroupRolesSheet({
     if (name === '') {
       return;
     }
-    void onRenameRole(roleId, name.slice(0, 30)).then(() => setRenamingId(undefined));
+    renameRole({ roleId, name: name.slice(0, 30) });
   };
 
   return (
@@ -186,9 +217,7 @@ export function GroupRolesSheet({
                       size="sm"
                       accessibilityLabel={`Confirm deleting ${role.name}`}
                       disabled={busy}
-                      onPress={() => {
-                        void onDeleteRole(role.id).then(() => setConfirmingId(undefined));
-                      }}
+                      onPress={() => deleteRole(role.id)}
                     >
                       <Text>Delete</Text>
                     </Button>
@@ -254,9 +283,7 @@ export function GroupRolesSheet({
                       accessibilityState={{ checked }}
                       accessibilityLabel={`${member.name} holds ${role.name}`}
                       disabled={busy}
-                      onPress={() => {
-                        void onToggleMember(role, member.userId);
-                      }}
+                      onPress={() => toggleMember({ role, userId: member.userId })}
                       className="flex-row items-center gap-3 rounded-lg px-2 py-1.5 active:bg-surface-raised disabled:opacity-50"
                     >
                       <Checkbox checked={checked} />

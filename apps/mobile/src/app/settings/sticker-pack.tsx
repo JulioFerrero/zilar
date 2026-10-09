@@ -12,6 +12,7 @@ import {
 import { useColorScheme } from 'nativewind';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Image as RNImage, Pressable, TextInput, View, useWindowDimensions } from 'react-native';
+import { Effect, Fiber } from 'effect';
 
 import { useAuthStore } from '@/auth/session';
 import { RequireStickersAuth } from '@/components/stickers/require-stickers-auth';
@@ -117,14 +118,17 @@ function StickerPackBody({ picker, preparer }: StickerPackScreenDeps) {
   const [createdPackId, setCreatedPackId] = useState<string | undefined>(undefined);
 
   useEffect(() => {
-    let cancelled = false;
-    void getSessionToken().then((value) => {
-      if (!cancelled) {
-        setToken(value);
-      }
-    });
+    const fiber = Effect.runFork(
+      Effect.promise(() => getSessionToken()).pipe(
+        Effect.tap((value) =>
+          Effect.sync(() => {
+            setToken(value);
+          }),
+        ),
+      ),
+    );
     return () => {
-      cancelled = true;
+      Effect.runFork(Fiber.interrupt(fiber));
     };
   }, []);
 
@@ -133,31 +137,42 @@ function StickerPackBody({ picker, preparer }: StickerPackScreenDeps) {
       return;
     }
     setStatus('loading');
-    void api
-      .listStickerPacks()
-      .then((panel) => {
-        const found = panel.find((pack) => pack.id === packId);
-        if (found === undefined) {
-          setStatus('not-found');
-          return;
-        }
-        if (found.ownerId !== undefined && (me === null || found.ownerId !== me.id)) {
-          setStatus('forbidden');
-          return;
-        }
-        setTitle(found.title);
-        setInitialTitle(found.title);
-        const nextVisibility = found.visibility ?? 'private';
-        setVisibility(nextVisibility);
-        setInitialVisibility(nextVisibility);
-        setImportedFrom(found.importedFrom);
-        setSaved(found.stickers);
-        setStatus('ready');
-      })
-      .catch((error: unknown) => {
-        const kind = lookupFailureKind(error);
-        setStatus(kind === 'not-found' ? 'not-found' : 'load-error');
-      });
+    // The raw error is kept (no ApiFailure mapping): lookupFailureKind
+    // checks StickersApiError by class.
+    Effect.runFork(
+      Effect.tryPromise({
+        try: () => api.listStickerPacks(),
+        catch: (error: unknown) => error,
+      }).pipe(
+        Effect.tap((panel) =>
+          Effect.sync(() => {
+            const found = panel.find((pack) => pack.id === packId);
+            if (found === undefined) {
+              setStatus('not-found');
+              return;
+            }
+            if (found.ownerId !== undefined && (me === null || found.ownerId !== me.id)) {
+              setStatus('forbidden');
+              return;
+            }
+            setTitle(found.title);
+            setInitialTitle(found.title);
+            const nextVisibility = found.visibility ?? 'private';
+            setVisibility(nextVisibility);
+            setInitialVisibility(nextVisibility);
+            setImportedFrom(found.importedFrom);
+            setSaved(found.stickers);
+            setStatus('ready');
+          }),
+        ),
+        Effect.catch((error: unknown) =>
+          Effect.sync(() => {
+            const kind = lookupFailureKind(error);
+            setStatus(kind === 'not-found' ? 'not-found' : 'load-error');
+          }),
+        ),
+      ),
+    );
   }, [api, me, packId]);
 
   useFocusEffect(
@@ -208,56 +223,70 @@ function StickerPackBody({ picker, preparer }: StickerPackScreenDeps) {
     const picker = activePicker;
     const preparer = activePreparer;
     const take = slotsLeft;
-    void picker.pickImages().then((result) => {
-      if (result.status === 'error') {
-        setFormError(result.message);
-        return;
-      }
-      if (result.status !== 'picked') {
-        return;
-      }
-      const { taken, skipped } = takeFittingImages(result.images, take);
-      if (skipped) {
-        setSkippedNote(true);
-      }
-      if (taken.length === 0) {
-        return;
-      }
-      const picked: PickedStickerImage[] = taken;
-      setPreparing((active) => active + picked.length);
-      void (async () => {
-        for (const image of picked) {
-          const prepared = await preparer.prepare(image);
-          if (prepared.status === 'prepared') {
-            const row: EditorNewItem = {
-              key: nextEditorKey(),
-              uri: prepared.image.uri,
-              mimeType: prepared.image.mimeType,
-              width: prepared.image.width,
-              height: prepared.image.height,
-              bytes: prepared.image.bytes,
-              emoji: '',
-              status: 'ready',
-            };
-            setFresh((previous) => [...previous, row]);
-          } else {
-            const row: EditorNewItem = {
-              key: nextEditorKey(),
-              uri: image.uri,
-              mimeType: 'image/png',
-              width: 0,
-              height: 0,
-              bytes: 0,
-              emoji: '',
-              status: 'failed-prepare',
-              error: prepared.message,
-            };
-            setFresh((previous) => [...previous, row]);
-          }
-          setPreparing((active) => active - 1);
-        }
-      })();
-    });
+    // One image at a time, in order.
+    const prepareEach = (picked: readonly PickedStickerImage[]): Effect.Effect<void> =>
+      Effect.forEach(
+        picked,
+        (image) =>
+          Effect.promise(() => preparer.prepare(image)).pipe(
+            Effect.tap((prepared) =>
+              Effect.sync(() => {
+                if (prepared.status === 'prepared') {
+                  const row: EditorNewItem = {
+                    key: nextEditorKey(),
+                    uri: prepared.image.uri,
+                    mimeType: prepared.image.mimeType,
+                    width: prepared.image.width,
+                    height: prepared.image.height,
+                    bytes: prepared.image.bytes,
+                    emoji: '',
+                    status: 'ready',
+                  };
+                  setFresh((previous) => [...previous, row]);
+                } else {
+                  const row: EditorNewItem = {
+                    key: nextEditorKey(),
+                    uri: image.uri,
+                    mimeType: 'image/png',
+                    width: 0,
+                    height: 0,
+                    bytes: 0,
+                    emoji: '',
+                    status: 'failed-prepare',
+                    error: prepared.message,
+                  };
+                  setFresh((previous) => [...previous, row]);
+                }
+                setPreparing((active) => active - 1);
+              }),
+            ),
+          ),
+        { discard: true },
+      );
+    Effect.runFork(
+      Effect.promise(() => picker.pickImages()).pipe(
+        Effect.flatMap((result) =>
+          Effect.sync(() => {
+            if (result.status === 'error') {
+              setFormError(result.message);
+              return [];
+            }
+            if (result.status !== 'picked') {
+              return [];
+            }
+            const { taken, skipped } = takeFittingImages(result.images, take);
+            if (skipped) {
+              setSkippedNote(true);
+            }
+            if (taken.length > 0) {
+              setPreparing((active) => active + taken.length);
+            }
+            return taken;
+          }),
+        ),
+        Effect.flatMap((picked) => prepareEach(picked)),
+      ),
+    );
   }, [activePicker, activePreparer, count, saving]);
 
   // Edit order on Save: patch title/visibility, then deletions, then
@@ -301,71 +330,80 @@ function StickerPackBody({ picker, preparer }: StickerPackScreenDeps) {
       createdTitle: createdTitleRef.current,
       createdVisibility: createdVisibilityRef.current,
     };
-    void runSavePack({
-      api,
-      target:
-        packId !== undefined
-          ? { kind: 'edit', packId }
-          : {
-              kind: 'create',
-              createdPackId: snapshot.createdPackId,
-              createdTitle: snapshot.createdTitle,
-              createdVisibility: snapshot.createdVisibility,
-            },
-      title: snapshot.title,
-      visibility: snapshot.visibility,
-      initialTitle: snapshot.initialTitle,
-      initialVisibility: snapshot.initialVisibility,
-      removedIds: snapshot.removed,
-      pending: snapshot.pending,
-      onRow: (key, status, error) => {
-        setFresh((previous) =>
-          previous.map((row) => {
-            if (row.key !== key) {
-              return row;
+    const saveEffect = Effect.promise(() =>
+      runSavePack({
+        api,
+        target:
+          packId !== undefined
+            ? { kind: 'edit', packId }
+            : {
+                kind: 'create',
+                createdPackId: snapshot.createdPackId,
+                createdTitle: snapshot.createdTitle,
+                createdVisibility: snapshot.createdVisibility,
+              },
+        title: snapshot.title,
+        visibility: snapshot.visibility,
+        initialTitle: snapshot.initialTitle,
+        initialVisibility: snapshot.initialVisibility,
+        removedIds: snapshot.removed,
+        pending: snapshot.pending,
+        onRow: (key, status, error) => {
+          setFresh((previous) =>
+            previous.map((row) => {
+              if (row.key !== key) {
+                return row;
+              }
+              if (status === 'uploading') {
+                return { ...row, status: 'uploading' as const, error: undefined };
+              }
+              if (status === 'uploaded') {
+                return { ...row, status: 'uploaded' as const, stickerId: error };
+              }
+              return { ...row, status: 'uploadFailed' as const, error };
+            }),
+          );
+        },
+        onProgress: (done, total) => {
+          setProgress({ done, total });
+        },
+        onRemovedFlushed: () => {
+          setRemovedIds([]);
+        },
+        onCreated: (created) => {
+          createdPackIdRef.current = created.id;
+          createdTitleRef.current = created.title;
+          createdVisibilityRef.current = created.visibility;
+        },
+      }),
+    );
+    Effect.runFork(
+      saveEffect.pipe(
+        Effect.tap((outcome) =>
+          Effect.sync(() => {
+            if (outcome.ok) {
+              router.back();
+            } else if (outcome.partial) {
+              // Brief §5: create mode keeps the minted pack across the retry (no
+              // second pack) and the button flips to `Save`. The save stays
+              // enabled because the uploaded rows are still in `fresh` (they
+              // count as a change once the pack exists).
+              if (outcome.created !== undefined) {
+                createdPackIdRef.current = outcome.created.id;
+                createdTitleRef.current = outcome.created.title;
+                createdVisibilityRef.current = outcome.created.visibility;
+                setCreatedPackId(outcome.created.id);
+              }
+            } else {
+              setFormError(outcome.formError);
             }
-            if (status === 'uploading') {
-              return { ...row, status: 'uploading' as const, error: undefined };
-            }
-            if (status === 'uploaded') {
-              return { ...row, status: 'uploaded' as const, stickerId: error };
-            }
-            return { ...row, status: 'uploadFailed' as const, error };
+            busyRef.current = false;
+            setSaving(false);
+            setProgress(undefined);
           }),
-        );
-      },
-      onProgress: (done, total) => {
-        setProgress({ done, total });
-      },
-      onRemovedFlushed: () => {
-        setRemovedIds([]);
-      },
-      onCreated: (created) => {
-        createdPackIdRef.current = created.id;
-        createdTitleRef.current = created.title;
-        createdVisibilityRef.current = created.visibility;
-      },
-    }).then((outcome) => {
-      if (outcome.ok) {
-        router.back();
-      } else if (outcome.partial) {
-        // Brief §5: create mode keeps the minted pack across the retry (no
-        // second pack) and the button flips to `Save`. The save stays
-        // enabled because the uploaded rows are still in `fresh` (they
-        // count as a change once the pack exists).
-        if (outcome.created !== undefined) {
-          createdPackIdRef.current = outcome.created.id;
-          createdTitleRef.current = outcome.created.title;
-          createdVisibilityRef.current = outcome.created.visibility;
-          setCreatedPackId(outcome.created.id);
-        }
-      } else {
-        setFormError(outcome.formError);
-      }
-      busyRef.current = false;
-      setSaving(false);
-      setProgress(undefined);
-    });
+        ),
+      ),
+    );
   }, [
     api,
     fresh,
@@ -423,16 +461,22 @@ function StickerPackBody({ picker, preparer }: StickerPackScreenDeps) {
     busyRef.current = true;
     setDeleting(true);
     setDeleteError('');
-    void runDeletePack(api, packId).then((deleted) => {
-      if (deleted) {
-        setConfirmingDelete(false);
-        router.back();
-      } else {
-        setDeleteError(DELETE_ERROR);
-      }
-      busyRef.current = false;
-      setDeleting(false);
-    });
+    Effect.runFork(
+      Effect.promise(() => runDeletePack(api, packId)).pipe(
+        Effect.tap((deleted) =>
+          Effect.sync(() => {
+            if (deleted) {
+              setConfirmingDelete(false);
+              router.back();
+            } else {
+              setDeleteError(DELETE_ERROR);
+            }
+            busyRef.current = false;
+            setDeleting(false);
+          }),
+        ),
+      ),
+    );
   }, [api, packId, router]);
 
   const imported = importedFrom !== undefined;

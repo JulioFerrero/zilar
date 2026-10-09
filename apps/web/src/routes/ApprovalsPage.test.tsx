@@ -586,4 +586,107 @@ describe('Approvals menu item', () => {
     expect(await screen.findByRole('heading', { name: 'Approvals' })).toBeTruthy();
     expect(await screen.findByText('Nothing is waiting for you.')).toBeTruthy();
   });
+
+  it('two different rows can be decided at once; a second click on the same row sends once', async () => {
+    const decided: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+        const url = String(input);
+        if ((init?.method ?? 'GET') === 'GET') {
+          return Promise.resolve(
+            jsonResponse(200, [
+              makeApproval({ id: 'apr-1' }),
+              makeApproval({ id: 'apr-2', action: 'deploy_site' }),
+            ]),
+          );
+        }
+        decided.push(url);
+        // The decisions never answer: the test only counts the requests sent.
+        return new Promise<Response>(() => undefined);
+      }),
+    );
+
+    renderApprovalsPage();
+
+    const first = await screen.findByRole('button', { name: 'Approve merge_pull_request' });
+    fireEvent.click(first);
+    fireEvent.click(screen.getByRole('button', { name: 'Approve deploy_site' }));
+    fireEvent.click(first);
+
+    await waitFor(() => expect(decided).toHaveLength(2));
+    expect(decided).toEqual(['/api/approvals/apr-1/decision', '/api/approvals/apr-2/decision']);
+  });
+
+  it('the decision notice stays for 3 seconds and then goes away', async () => {
+    vi.useFakeTimers();
+    const approval = makeApproval({ id: 'apr-1' });
+    vi.stubGlobal(
+      'fetch',
+      fetchRouter([
+        { method: 'GET', path: '/api/approvals', respond: () => jsonResponse(200, [approval]) },
+        {
+          method: 'POST',
+          path: '/api/approvals/apr-1/decision',
+          respond: () =>
+            jsonResponse(200, { ...approval, status: 'approved_once', decidedAt: null }),
+        },
+      ]),
+    );
+
+    renderApprovalsPage();
+
+    await flushFakeTimers();
+    fireEvent.click(screen.getByRole('button', { name: 'Approve merge_pull_request' }));
+    await flushFakeTimers();
+
+    const notice = 'Approved “merge_pull_request”.';
+    expect(screen.getByText(notice)).toBeTruthy();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_900);
+    });
+    expect(screen.queryByText(notice)).not.toBeNull();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(200);
+    });
+    expect(screen.queryByText(notice)).toBeNull();
+  });
+
+  it('the expires-in countdown moves once a minute', async () => {
+    vi.useFakeTimers();
+    // Ten and a half minutes left at mount: the 30 s refresh moves nothing
+    // (still "in 11 min"), the 60 s tick moves it to "in 10 min".
+    const approval = makeApproval({
+      id: 'apr-1',
+      expiresAt: new Date(Date.now() + 11 * 60_000 + 30_000).toISOString(),
+    });
+    vi.stubGlobal(
+      'fetch',
+      fetchRouter([
+        { method: 'GET', path: '/api/approvals', respond: () => jsonResponse(200, [approval]) },
+      ]),
+    );
+
+    renderApprovalsPage();
+
+    await flushFakeTimers();
+    expect(screen.getByText('expires in 11 min')).toBeTruthy();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(59_000);
+    });
+    expect(screen.getByText('expires in 11 min')).toBeTruthy();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    expect(screen.getByText('expires in 10 min')).toBeTruthy();
+  });
 });
+
+/** Lets queued fetches and Effect steps run without moving the fake clock. */
+async function flushFakeTimers(): Promise<void> {
+  await act(async () => {
+    for (let index = 0; index < 5; index += 1) {
+      await vi.advanceTimersByTimeAsync(0);
+    }
+  });
+}

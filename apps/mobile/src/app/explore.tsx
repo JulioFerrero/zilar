@@ -1,3 +1,4 @@
+import { Effect } from 'effect';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { ChevronLeft, Compass } from 'lucide-react-native';
 
@@ -22,11 +23,20 @@ import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { asColorScheme } from '@/lib/color-scheme';
 import { ICON } from '@/lib/colors';
-import type { DirectoryEntry, DirectoryKind } from '@/lib/directory-api';
+import type { DirectoryEntry, DirectoryKind, SearchDirectoryInput } from '@/lib/directory-api';
+import { useAction } from '@/lib/effect/use-action';
 import { postJoinTarget } from '@/components/directory/handle-helpers';
 import { useChatStore } from '@/store/chat-store-provider';
 
 type KindFilter = 'all' | DirectoryKind;
+
+/**
+ * Lifts a *-api.ts call into an Effect that fails with the thrown error
+ * itself: the describe helpers read its class, status and code.
+ */
+function fromThrown<A>(call: () => Promise<A>): Effect.Effect<A, unknown> {
+  return Effect.tryPromise({ try: call, catch: (cause) => cause });
+}
 
 const KIND_OPTIONS: readonly { value: KindFilter; label: string }[] = [
   { value: 'all', label: 'All' },
@@ -70,49 +80,49 @@ function ExploreList() {
   const trimmed = query.trim();
 
   // Debounced search: under 2 characters (but not empty) waits for more
-  // typing instead of erroring, like the web Explore page. The effect only
-  // schedules the fetch; the timeout callback applies the loading state and
-  // the promise callbacks the rows once (the lint rule flags synchronous
-  // setState inside effects).
+  // typing instead of erroring, like the web Explore page. The search waits
+  // before it applies the loading state (the lint rule flags synchronous
+  // setState inside effects); a newer search, a change of the inputs or an
+  // unmount interrupts it, so a stale page never replaces the rows.
+  const [, search, searchControls] = useAction(
+    (input: SearchDirectoryInput) =>
+      Effect.sleep(300).pipe(
+        Effect.andThen(
+          Effect.sync(() => {
+            setStatus('loading');
+            setJoinError('');
+          }),
+        ),
+        Effect.andThen(fromThrown(() => api.searchDirectory(input))),
+        Effect.tap((page) =>
+          Effect.sync(() => {
+            setEntries(page.entries);
+            setNext(page.next);
+            setStatus('ready');
+          }),
+        ),
+        Effect.tapError((error) =>
+          Effect.sync(() => {
+            setErrorMessage(
+              describeDirectoryError(error, 'Could not load the directory. Try again.'),
+            );
+            setStatus('error');
+          }),
+        ),
+      ),
+    { mode: 'replace' },
+  );
+
   useEffect(() => {
     if (trimmed !== '' && trimmed.length < 2) {
       return;
     }
-    let active = true;
-    const pending = setTimeout(() => {
-      if (!active) {
-        return;
-      }
-      setStatus('loading');
-      setJoinError('');
-      void api
-        .searchDirectory({
-          ...(trimmed === '' ? {} : { q: trimmed }),
-          ...(kind === 'all' ? {} : { kind }),
-        })
-        .then((page) => {
-          if (!active) {
-            return;
-          }
-          setEntries(page.entries);
-          setNext(page.next);
-          setStatus('ready');
-        })
-        .catch((error: unknown) => {
-          if (!active) {
-            return;
-          }
-          setErrorMessage(
-            describeDirectoryError(error, 'Could not load the directory. Try again.'),
-          );
-          setStatus('error');
-        });
-    }, 300);
-    return () => {
-      active = false;
-      clearTimeout(pending);
-    };
-  }, [api, trimmed, kind, attempt]);
+    search({
+      ...(trimmed === '' ? {} : { q: trimmed }),
+      ...(kind === 'all' ? {} : { kind }),
+    });
+    return searchControls.interrupt;
+  }, [api, trimmed, kind, attempt, search, searchControls]);
 
   const reload = useCallback(() => {
     setStatus('loading');
@@ -125,24 +135,30 @@ function ExploreList() {
     }, [reload]),
   );
 
+  const [, fetchMore] = useAction((input: SearchDirectoryInput) =>
+    fromThrown(() => api.searchDirectory(input)).pipe(
+      Effect.tap((page) =>
+        Effect.sync(() => {
+          setEntries((current) => [...current, ...page.entries]);
+          setNext(page.next);
+        }),
+      ),
+      Effect.tapError(() => Effect.sync(() => setMoreError('Could not load more. Try again.'))),
+      Effect.ensuring(Effect.sync(() => setLoadingMore(false))),
+    ),
+  );
+
   const loadMore = () => {
     if (next === null || loadingMore) {
       return;
     }
     setLoadingMore(true);
     setMoreError('');
-    void api
-      .searchDirectory({
-        ...(trimmed === '' ? {} : { q: trimmed }),
-        ...(kind === 'all' ? {} : { kind }),
-        cursor: next,
-      })
-      .then((page) => {
-        setEntries((current) => [...current, ...page.entries]);
-        setNext(page.next);
-      })
-      .catch(() => setMoreError('Could not load more. Try again.'))
-      .finally(() => setLoadingMore(false));
+    fetchMore({
+      ...(trimmed === '' ? {} : { q: trimmed }),
+      ...(kind === 'all' ? {} : { kind }),
+      cursor: next,
+    });
   };
 
   // After a join the store refreshes the list, but the refresh has not
@@ -154,6 +170,22 @@ function ExploreList() {
     router.replace(postJoinTarget(entry.id));
   };
 
+  const [, joinPublic] = useAction((entry: DirectoryEntry) =>
+    fromThrown(() => api.joinPublicGroup(entry.id)).pipe(
+      Effect.tap((result) =>
+        Effect.sync(() => {
+          setEntries((current) =>
+            current.map((row) => (row.id === entry.id ? { ...row, joined: true } : row)),
+          );
+          reloadChats();
+          router.replace(postJoinTarget(result.groupId));
+        }),
+      ),
+      Effect.tapError((error) => Effect.sync(() => setJoinError(describeJoinError(error)))),
+      Effect.ensuring(Effect.sync(() => setJoiningId(undefined))),
+    ),
+  );
+
   const join = (entry: DirectoryEntry) => {
     if (joiningId !== undefined) {
       return;
@@ -164,17 +196,7 @@ function ExploreList() {
     }
     setJoiningId(entry.id);
     setJoinError('');
-    void api
-      .joinPublicGroup(entry.id)
-      .then((result) => {
-        setEntries((current) =>
-          current.map((row) => (row.id === entry.id ? { ...row, joined: true } : row)),
-        );
-        reloadChats();
-        router.replace(postJoinTarget(result.groupId));
-      })
-      .catch((error: unknown) => setJoinError(describeJoinError(error)))
-      .finally(() => setJoiningId(undefined));
+    joinPublic(entry);
   };
 
   const emptyLine =
