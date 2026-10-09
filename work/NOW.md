@@ -12,9 +12,8 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
 - **Main CI** is green again since T-0745. T-0738 had broken an approvals test that counted `sqlRuntimeFor` calls; the lead bisected it.
 - **Waiting for Julio:** the live Coolify compose needs `BACKGROUND_STORAGE_DIR: /data/avatars/backgrounds`. The live log warns that `/app/data/backgrounds` is on the container layer.
 - **Follow-ups:**
-  - the startup log labels the backgrounds dir as "STICKER_STORAGE_DIR did not exist";
-  - the voice pipeline test waits 20 s of real time, because its `TestClock` does not reach the inner runtime;
-  - other `sqlRuntimeFor` call-counter seams remain at `setup/routes.test.ts:265`, `agents/gateway.test.ts:2270` and `actions/recovery-loop.effect.test.ts:35`.
+  - T-0746 (merged 11:20 local) fixed the startup "created" log label and moved the voice timeout test to `TestClock` (4 ms, was 20 s). It goes live with the next deploy; live stays pinned to `sha-748bbae78c44`.
+  - One fragile `sqlRuntimeFor` call counter remains, at `setup/routes.test.ts:265` (it fails the 3rd call, the rollback). It passes today and its route runs no login queries, so it is left as is. `agents/gateway.test.ts:2270` and `actions/recovery-loop.effect.test.ts:35` count fakes, not `sqlRuntimeFor`, and are fine.
 
 **2026-10-09 ~08:20 UTC:**
 - **Merged:**
