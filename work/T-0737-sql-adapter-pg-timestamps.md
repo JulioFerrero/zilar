@@ -1,7 +1,7 @@
 ---
 id: T-0737
 title: "D2 prep: the better-auth sql adapter's utcTimestamp read fix is PGlite-only (on real pg, @effect/sql-pg already reads `timestamp` as UTC fields, so it would shift by the host offset); add a gated real-Postgres test that runs the adapter + drizzle cross-reads under a non-UTC TZ"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0737-sql-adapter-pg-timestamps
 model: auto
@@ -61,4 +61,46 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**What changed**
+- `apps/server/src/auth/sql-adapter.ts`:
+  - `normalizeRow` now returns rows unchanged on real pg; the `utcTimestamp` rebuild runs only for PGlite. The comment cites `@effect/sql-pg` 4.0.2 `dist/PgTypes.js:23-27`.
+  - New `bindRow` helper: on real pg every `Date` value in an insert or update is bound with `PgTypes.timestamp(value)`, so the stored wall clock is the UTC wall clock whatever the session `TimeZone`. PGlite keeps the plain `Date` binding.
+  - `normalizeRow` takes `db` as its first argument (4 call sites).
+- `apps/server/src/auth/sql-adapter.pg.test.ts` (new): skipped unless `ZILAR_PG_INTEGRATION=1`; refuses any host other than `127.0.0.1` or `localhost`; pins `process.env.TZ` to `Europe/Madrid` (and asserts the -60 offset) and restores it after; three tests:
+  - adapter round trip, plus the stored wall clock read as text (`2030-03-10 12:34:56.789`);
+  - a row written by `drizzleAdapter` is read by the adapter at the same instant;
+  - a row written by the adapter is read by `drizzleAdapter` at the same instant.
+  - Rows are found by a random per-run `identifier`, recorded before each insert, and deleted by that identifier in `afterAll`.
+- `work/T-0737-sql-adapter-pg-timestamps.md`: this Report and the status.
+- `auth.ts` is unchanged.
+
+**Commands and results**
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/auth/sql-adapter.test`: 8 passed (1 file). PGlite adapter tests unchanged.
+- `ZILAR_PG_INTEGRATION=1 TZ=Europe/Madrid pnpm --filter @zilar/server test --maxWorkers=1 --reporter=dot src/auth/sql-adapter.pg.test` against the local dev Postgres (`DATABASE_URL` from the main checkout's `.env`, passed through the environment): 3 passed (1 file).
+- `ZILAR_PG_INTEGRATION=1 TZ=UTC pnpm --filter @zilar/server test --maxWorkers=1 --reporter=dot src/auth/sql-adapter.pg.test`: 3 passed (1 file).
+- `docker exec zilar-dev-postgres-1 ... select count(*) from verification where identifier like 'pg-test-%'`: 0 after the runs.
+- `pnpm exec prettier --write` on both changed files, then `pnpm exec tsc --noEmit` in `apps/server`: clean.
+- `pnpm gate` (from the worktree root), last run:
+  - `gate: 2 changed file(s) against main`
+  - `PASS install (frozen)`, `PASS format`, `PASS lint`, `PASS typecheck`, `PASS tests @zilar/server`
+  - `scope: every changed file is inside the Allowed files`
+  - `GATE PASS`
+
+**Problems on the way (fixed)**
+- My first gated runs failed on all three tests. The adapter factory assigns its own `id`, so I looked rows up by the id I passed, which matched nothing. I changed the test to use the returned id or the unique identifier. Those failed runs left 6 `pg-test-%` rows in `verification`. I deleted them with `DELETE ... WHERE identifier LIKE 'pg-test-%'` (6 before, 0 after). No other rows were touched.
+- The first gate failed typecheck: `create<T>` did not include `identifier` in its type argument. Fixed; the gate passed on the next run.
+
+**Not covered or unsure**
+- The gated test pins `Europe/Madrid` itself, so the `TZ=UTC` run differs from the Madrid run only in the zone the process starts with. Both runs exercise Madrid inside the test.
+- The write change is not proven by this test. The dev DB session `TimeZone` is `Etc/UTC`, so the stored wall clock is correct with or without `bindRow`. The read change is exercised: with the old read rebuild, the Madrid process would shift the value by an hour. I did not run a mutation check to confirm this.
+- Where-clauses are not changed. A `Date` in a `where` (`lt`, `gt`, `=`, ...) still binds as `timestamptz`, so on a non-UTC session `TimeZone` a comparison against a `timestamp` column would use the session zone. The spec covers writes only. Decide if the lead wants that in this task or a follow-up.
+
+**Blocked / needs a decision:** none.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Haiku 5.5, in one round (about 5.6 min). The lead reviewed the diff directly.
+- **Reads:** `normalizeRow` now runs on PGlite only. Real pg already reads `timestamp` as UTC fields (`PgTypes.js:23-27`).
+- **Writes:** on pg, dates bind through `PgTypes.timestamp`, so the stored wall clock is UTC whatever the session time zone.
+- **Tests:** the gated real-pg test passes against the local dev Postgres under `TZ=Europe/Madrid` (3 passed) and under UTC (3 passed). The 8 PGlite tests are unchanged, and the gate passed.
+- **For the D2 switch task:** `Date` values in `WHERE` clauses still bind as `timestamptz`. This is harmless while the Postgres session `TimeZone` is UTC (dev: `Etc/UTC`), but bind them with `PgTypes.timestamp` too.
