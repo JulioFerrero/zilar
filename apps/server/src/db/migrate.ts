@@ -1,18 +1,18 @@
-import { migrate as migratePglite } from 'drizzle-orm/pglite/migrator';
-import { migrate as migratePostgres } from 'drizzle-orm/postgres-js/migrator';
-import { fileURLToPath } from 'node:url';
-import type { PgliteServerDatabase, ServerDatabase } from './client';
+import { Effect } from 'effect';
+import { migrateSql, sqlRuntimeFor } from '../effect/sql';
+import type { ServerDatabase } from './client';
 
-export const migrationsFolder = fileURLToPath(new URL('../../drizzle', import.meta.url));
-
+// Applies the committed migrations on the effect/sql runtime registered for
+// `db`. Every caller registers that runtime first (`index.ts`, `createApp`,
+// the CLIs and the test contexts).
 export async function runMigrations(db: ServerDatabase): Promise<void> {
-  if (isPglite(db)) {
-    await migratePglite(db, { migrationsFolder });
-    return;
-  }
-  await migratePostgres(db, { migrationsFolder });
-}
-
-function isPglite(db: ServerDatabase): db is PgliteServerDatabase {
-  return typeof db.$client !== 'function';
+  await sqlRuntimeFor(db).runPromise(
+    migrateSql().pipe(
+      Effect.tap((migrated) =>
+        migrated.length === 0
+          ? Effect.void
+          : Effect.logInfo(`database migrations applied: ${migrated.map(([id]) => id).join(', ')}`),
+      ),
+    ),
+  );
 }

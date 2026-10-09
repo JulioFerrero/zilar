@@ -17,17 +17,18 @@
 import { PGlite } from '@electric-sql/pglite';
 import { PgliteClient } from '@effect/sql-pglite';
 import { PgClient } from '@effect/sql-pg';
-import { drizzle } from 'drizzle-orm/pglite';
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { Config, Effect, Layer, ManagedRuntime, Redacted } from 'effect';
 import { Migrator, SqlClient, SqlError } from 'effect/sql';
 import type { PgliteServerDatabase, ServerDatabase } from '../db/client';
-import { runMigrations } from '../db/migrate';
-import * as schema from '../db/schema';
 
 export const SQL_POOL_MAX = 10;
 export const SQL_MIGRATIONS_TABLE = 'effect_sql_migrations';
+
+// The committed migrations: `apps/server/drizzle`, the same folder drizzle used.
+export const migrationsFolder = fileURLToPath(new URL('../../drizzle', import.meta.url));
 
 export type SqlRuntime = ManagedRuntime.ManagedRuntime<SqlClient.SqlClient, SqlError.SqlError>;
 
@@ -117,14 +118,14 @@ export async function disposeSqlRuntime(db: ServerDatabase): Promise<void> {
 }
 
 // Test layer: a fresh PGlite per use, started from a snapshot of a database
-// migrated by drizzle. The snapshot idea is the one `test-support.ts` uses;
+// migrated by `migrateSql`. The snapshot idea is the one `test-support.ts` uses;
 // this copy exists so a module test can ask for a SQL client without going
 // through `createTestContext`.
 let migratedSnapshot: Promise<Blob> | undefined;
 
 async function snapshotOfMigratedDatabase(): Promise<Blob> {
   const template = new PGlite();
-  await runMigrations(drizzle(template, { schema }));
+  await migratePglite(template);
   const snapshot = await template.dumpDataDir('none');
   await template.close();
   return snapshot;
@@ -202,4 +203,88 @@ export function runSqlMigrations(options: {
   SqlClient.SqlClient
 > {
   return Migrator.make({})({ loader: options.loader, table: SQL_MIGRATIONS_TABLE });
+}
+
+// One-time adoption seed (D3). A database drizzle already migrated has one row
+// in `drizzle.__drizzle_migrations` per applied file, applied in file order.
+// That count is the highest migration id already applied (file N is id N+1),
+// so the effect journal gets it as its only row and the committed history is
+// skipped. It runs only while the effect journal is empty, so every later
+// start is a no-op. `drizzle.__drizzle_migrations` is only read, never written.
+// Returns the adopted count the first time it seeds, `undefined` otherwise.
+function adoptDrizzleJournal(): Effect.Effect<
+  number | undefined,
+  SqlError.SqlError,
+  SqlClient.SqlClient
+> {
+  return Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const [drizzleJournal] = yield* sql<{ present: boolean }>`
+      SELECT to_regclass('drizzle.__drizzle_migrations') IS NOT NULL AS present`;
+    if (drizzleJournal?.present !== true) {
+      return undefined;
+    }
+    const seeded = yield* sql.withTransaction(
+      Effect.gen(function* () {
+        yield* sql`CREATE TABLE IF NOT EXISTS ${sql(SQL_MIGRATIONS_TABLE)} (
+          migration_id integer primary key,
+          created_at timestamp with time zone not null default now(),
+          name text not null
+        )`;
+        return yield* sql<{ migrationId: number }>`
+          INSERT INTO ${sql(SQL_MIGRATIONS_TABLE)} (migration_id, name)
+          SELECT (SELECT count(*)::int FROM drizzle.__drizzle_migrations), 'adopted-from-drizzle'
+          WHERE NOT EXISTS (SELECT 1 FROM ${sql(SQL_MIGRATIONS_TABLE)})
+          RETURNING migration_id`;
+      }),
+    );
+    return seeded[0]?.migrationId;
+  });
+}
+
+// The server's migrator (D3). It adopts a drizzle-migrated database, then runs
+// each committed migration in id order. `runSqlMigrations` skips every id at
+// or below the journal's latest and locks the journal table inside its own
+// transaction, so one call per id commits each migration on its own: when a
+// later migration fails, the earlier ones stay committed and journaled.
+export function migrateSql(
+  directory: string = migrationsFolder,
+): Effect.Effect<
+  ReadonlyArray<readonly [id: number, name: string]>,
+  Migrator.MigrationError | SqlError.SqlError,
+  SqlClient.SqlClient
+> {
+  return Effect.gen(function* () {
+    const adopted = yield* adoptDrizzleJournal();
+    if (adopted !== undefined) {
+      yield* Effect.logInfo(`migrations: adopted ${adopted} drizzle migrations`);
+    }
+    const migrations = yield* sqlFileLoader(directory);
+    const applied: Array<readonly [id: number, name: string]> = [];
+    for (const [id] of migrations) {
+      const migrated = yield* runSqlMigrations({
+        loader: Effect.succeed(migrations.filter(([candidate]) => candidate === id)),
+      });
+      applied.push(...migrated);
+    }
+    return applied;
+  });
+}
+
+// Runs `migrateSql` on a raw PGlite handle, without drizzle. The caller owns
+// the handle and closes it.
+export function migratePglite(
+  pglite: PGlite,
+): Promise<ReadonlyArray<readonly [id: number, name: string]>> {
+  return Effect.runPromise(
+    migrateSql().pipe(
+      Effect.provide(
+        PgliteClient.layer({
+          liveClient: pglite,
+          transformResultNames: snakeToCamel,
+          transformJson: false,
+        }),
+      ),
+    ),
+  );
 }

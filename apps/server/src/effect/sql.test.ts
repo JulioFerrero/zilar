@@ -1,21 +1,25 @@
 import { PGlite } from '@electric-sql/pglite';
 import { PgliteClient } from '@effect/sql-pglite';
 import { drizzle } from 'drizzle-orm/pglite';
+import { migrate as migrateDrizzle } from 'drizzle-orm/pglite/migrator';
 import { Effect, ManagedRuntime } from 'effect';
 import { SqlClient } from 'effect/sql';
-import { describe, expect, it } from 'vitest';
+import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, expect, it } from 'vitest';
 import type { ServerDatabase } from '../db/client';
-import { migrationsFolder, runMigrations } from '../db/migrate';
 import * as schema from '../db/schema';
 import {
   SQL_MIGRATIONS_TABLE,
   SqlTest,
   disposeSqlRuntime,
   freshMigratedPglite,
+  migratePglite,
+  migrateSql,
+  migrationsFolder,
   registerSqlRuntime,
-  runSqlMigrations,
   snakeToCamel,
-  sqlFileLoader,
 } from './sql';
 
 function runtimeFor(pglite: PGlite) {
@@ -29,6 +33,51 @@ async function countRows(pglite: PGlite, table: string): Promise<number> {
     `SELECT count(*)::int AS total FROM ${table}`,
   );
   return result.rows[0]?.total ?? -1;
+}
+
+async function journalIds(pglite: PGlite): Promise<Array<number>> {
+  const result = await pglite.query<{ migration_id: number }>(
+    `SELECT migration_id FROM ${SQL_MIGRATIONS_TABLE} ORDER BY migration_id`,
+  );
+  return result.rows.map((row) => row.migration_id);
+}
+
+// Runs `migrateSql` on a PGlite through a runtime that is disposed afterwards.
+async function migrateWithSql(pglite: PGlite, directory: string = migrationsFolder) {
+  const runtime = runtimeFor(pglite);
+  try {
+    return await runtime.runPromise(migrateSql(directory));
+  } finally {
+    await runtime.dispose();
+  }
+}
+
+const tempDirs: Array<string> = [];
+
+afterEach(async () => {
+  await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
+});
+
+async function newTempDir(): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), 'zilar-sql-migrations-'));
+  tempDirs.push(dir);
+  return dir;
+}
+
+// A temp folder holding the first `count` committed migrations and a drizzle
+// journal trimmed to match, so drizzle can migrate a database up to that point.
+async function committedMigrationsUpTo(count: number): Promise<string> {
+  const folder = await newTempDir();
+  const journal = JSON.parse(
+    await readFile(join(migrationsFolder, 'meta', '_journal.json'), 'utf8'),
+  ) as { version: string; dialect: string; entries: Array<{ tag: string }> };
+  const entries = journal.entries.slice(0, count);
+  await mkdir(join(folder, 'meta'));
+  await writeFile(join(folder, 'meta', '_journal.json'), JSON.stringify({ ...journal, entries }));
+  for (const { tag } of entries) {
+    await copyFile(join(migrationsFolder, `${tag}.sql`), join(folder, `${tag}.sql`));
+  }
+  return folder;
 }
 
 describe('effect/sql', () => {
@@ -89,44 +138,94 @@ describe('effect/sql', () => {
 
   it('adopts a database drizzle already migrated without re-running the history', async () => {
     const pglite = new PGlite();
-    await runMigrations(drizzle(pglite, { schema }));
-    expect(await countRows(pglite, 'drizzle.__drizzle_migrations')).toBe(46);
+    try {
+      await migrateDrizzle(drizzle(pglite), { migrationsFolder });
+      expect(await countRows(pglite, 'drizzle.__drizzle_migrations')).toBe(46);
 
-    // One-time adoption: seed the effect migrator's journal with the highest
-    // migration id drizzle applied. Its rule is `id <= latest` is skipped, so
-    // no committed SQL runs again.
-    await pglite.exec(`
-      CREATE TABLE IF NOT EXISTS ${SQL_MIGRATIONS_TABLE} (
-        migration_id integer primary key,
-        created_at timestamp with time zone not null default now(),
-        name text not null
-      );
-      INSERT INTO ${SQL_MIGRATIONS_TABLE} (migration_id, name)
-      SELECT (SELECT count(*)::int FROM drizzle.__drizzle_migrations), 'adopted-from-drizzle'
-      WHERE NOT EXISTS (SELECT 1 FROM ${SQL_MIGRATIONS_TABLE});
-    `);
+      const applied = await migrateWithSql(pglite);
 
-    const runtime = runtimeFor(pglite);
-    const completed = await runtime.runPromise(
-      runSqlMigrations({ loader: sqlFileLoader(migrationsFolder) }),
-    );
-    await runtime.dispose();
-
-    expect(completed).toHaveLength(0);
-    expect(await countRows(pglite, 'pinned_messages')).toBe(0);
-    await pglite.close();
+      expect(applied).toEqual([]);
+      expect(await countRows(pglite, 'pinned_messages')).toBe(0);
+      // The seed records the highest drizzle id and leaves drizzle's journal alone.
+      expect(await journalIds(pglite)).toEqual([46]);
+      expect(await countRows(pglite, 'drizzle.__drizzle_migrations')).toBe(46);
+    } finally {
+      await pglite.close();
+    }
   });
 
-  it('runs the committed drizzle SQL from empty with the effect/sql migrator', async () => {
+  it('applies only the committed migrations drizzle had not applied', async () => {
+    const folder = await committedMigrationsUpTo(41);
     const pglite = new PGlite();
-    const runtime = runtimeFor(pglite);
-    const completed = await runtime.runPromise(
-      runSqlMigrations({ loader: sqlFileLoader(migrationsFolder) }),
-    );
-    await runtime.dispose();
+    try {
+      await migrateDrizzle(drizzle(pglite), { migrationsFolder: folder });
+      expect(await countRows(pglite, 'drizzle.__drizzle_migrations')).toBe(41);
 
-    expect(completed).toHaveLength(46);
-    expect(await countRows(pglite, 'pinned_messages')).toBe(0);
-    await pglite.close();
+      const applied = await migrateWithSql(pglite);
+
+      expect(applied.map(([id]) => id)).toEqual([42, 43, 44, 45, 46]);
+      // 0045 creates the ai_delegations table.
+      const table = await pglite.query<{ table: string | null }>(
+        "select to_regclass('public.ai_delegations') as table",
+      );
+      expect(table.rows[0]?.table).toBe('ai_delegations');
+    } finally {
+      await pglite.close();
+    }
+  });
+
+  it('runs the committed drizzle SQL from empty and journals all 46 migrations', async () => {
+    const pglite = new PGlite();
+    try {
+      const applied = await migratePglite(pglite);
+
+      expect(applied.map(([id]) => id)).toEqual(Array.from({ length: 46 }, (_, i) => i + 1));
+      expect(await countRows(pglite, 'pinned_messages')).toBe(0);
+      expect(await countRows(pglite, SQL_MIGRATIONS_TABLE)).toBe(46);
+      // Nothing in this path touches drizzle's journal table.
+      const journal = await pglite.query<{ table: string | null }>(
+        "select to_regclass('drizzle.__drizzle_migrations') as table",
+      );
+      expect(journal.rows[0]?.table).toBeNull();
+    } finally {
+      await pglite.close();
+    }
+  });
+
+  it('commits each migration on its own, so a failing one leaves the earlier ones journaled', async () => {
+    const folder = await newTempDir();
+    await writeFile(join(folder, '0000_first_probe.sql'), 'CREATE TABLE first_probe (id integer);');
+    await writeFile(join(folder, '0001_broken_probe.sql'), 'CREATE TABLE broken_probe (');
+    const pglite = new PGlite();
+    try {
+      await expect(migrateWithSql(pglite, folder)).rejects.toThrow();
+
+      expect(await journalIds(pglite)).toEqual([1]);
+      expect(await countRows(pglite, 'first_probe')).toBe(0);
+      const broken = await pglite.query<{ table: string | null }>(
+        "select to_regclass('public.broken_probe') as table",
+      );
+      expect(broken.rows[0]?.table).toBeNull();
+    } finally {
+      await pglite.close();
+    }
+  });
+
+  it('applies nothing on a second run and journals exactly one adoption row', async () => {
+    const folder = await committedMigrationsUpTo(41);
+    const pglite = new PGlite();
+    try {
+      await migrateDrizzle(drizzle(pglite), { migrationsFolder: folder });
+      expect(await migrateWithSql(pglite)).toHaveLength(5);
+
+      expect(await migrateWithSql(pglite)).toEqual([]);
+      const adopted = await pglite.query<{ total: number }>(
+        `SELECT count(*)::int AS total FROM ${SQL_MIGRATIONS_TABLE} WHERE name = 'adopted-from-drizzle'`,
+      );
+      expect(adopted.rows[0]?.total).toBe(1);
+      expect(await journalIds(pglite)).toEqual([41, 42, 43, 44, 45, 46]);
+    } finally {
+      await pglite.close();
+    }
   });
 });

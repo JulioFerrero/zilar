@@ -6,9 +6,8 @@ import type { Logger } from 'pino';
 import { createApp } from './app';
 import { loadServerConfig, type ServerConfig } from './config';
 import type { PgliteServerDatabase } from './db/client';
-import { runMigrations } from './db/migrate';
 import * as schema from './db/schema';
-import { disposeSqlRuntime, registerSqlRuntime, sqlRuntimeFor } from './effect/sql';
+import { disposeSqlRuntime, migratePglite, registerSqlRuntime, sqlRuntimeFor } from './effect/sql';
 import { createAuth, INVITE_HEADER, type Auth } from './auth/auth';
 import { createInvite } from './auth/invites';
 import type { OtpPurpose } from './auth/mailer';
@@ -292,7 +291,7 @@ let migratedSnapshot: Promise<Blob> | undefined;
 
 async function snapshotOfMigratedDatabase(): Promise<Blob> {
   const template = new PGlite();
-  await runMigrations(drizzle(template, { schema }));
+  await migratePglite(template);
   const snapshot = await template.dumpDataDir('none');
   await template.close();
   return snapshot;

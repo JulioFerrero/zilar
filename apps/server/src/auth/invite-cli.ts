@@ -72,10 +72,11 @@ async function main(): Promise<void> {
   const { db, close } = createDb(config.DATABASE_URL);
 
   try {
-    await runMigrations(db);
-    // `createInvite` runs on `effect/sql`; this process never builds an app, so
-    // it registers (and below disposes) the runtime for its own database.
+    // The migrator and `createInvite` both run on `effect/sql`; this process
+    // never builds an app, so it registers (and below disposes) the runtime for
+    // its own database before the first query.
     registerSqlRuntime(db, config.DATABASE_URL);
+    await runMigrations(db);
     const invite = await createInvite(db, {
       createdBy: null,
       maxUses: options.uses,

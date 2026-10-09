@@ -1,6 +1,7 @@
 import { PGlite } from '@electric-sql/pglite';
 import { drizzle } from 'drizzle-orm/pglite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { disposeSqlRuntime, registerSqlRuntime } from '../effect/sql';
 import type { PgliteServerDatabase } from './client';
 import { runMigrations } from './migrate';
 import * as schema from './schema';
@@ -24,9 +25,11 @@ describe('runMigrations', () => {
   beforeEach(() => {
     client = new PGlite();
     db = drizzle(client, { schema });
+    registerSqlRuntime(db, '');
   });
 
   afterEach(async () => {
+    await disposeSqlRuntime(db);
     await client.close();
   });
 

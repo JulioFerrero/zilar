@@ -1,7 +1,7 @@
 ---
 id: T-0741
 title: "D3: migrations on effect/sql — a migrateSql Effect (drizzle-journal adoption seed + one transaction per migration) replaces drizzle's migrator; runMigrations(db) runs it on the registered runtime; every caller registers the runtime first; the test snapshots migrate a raw PGlite through it; 5 migrator tests"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0741-migrator-switch
 model: auto
@@ -86,4 +86,49 @@ The second check runs the whole server suite once, because every test starts fro
 
 ## Report (written by the worker when done)
 
+**Changed files (all in Allowed files):**
+- `apps/server/src/effect/sql.ts`: `migrationsFolder` moved here. Added `migrateSql(directory = migrationsFolder)`: adoption seed (only when `drizzle.__drizzle_migrations` exists; `CREATE TABLE IF NOT EXISTS` plus `INSERT ... WHERE NOT EXISTS` in one transaction; logs `migrations: adopted N drizzle migrations` the first time), then `sqlFileLoader` once, then one `runSqlMigrations` call per migration id in ascending order, each with a loader holding only that id, so each migration commits in its own transaction. Added `migratePglite(pglite)`. The snapshot uses `migratePglite`. The drizzle, `db/migrate` and `db/schema` imports are gone from this file.
+- `apps/server/src/db/migrate.ts`: `runMigrations(db)` keeps its signature and runs `migrateSql()` on `sqlRuntimeFor(db)`, logging the applied ids when there are any. No drizzle import.
+- `apps/server/src/auth/invite-cli.ts`: `registerSqlRuntime` moved before `runMigrations`.
+- `apps/server/src/db/migrate-cli.ts`: registers before, `disposeSqlRuntime` in `finally`.
+- `apps/server/src/test-support.ts`: snapshot uses `migratePglite(template)`. The drizzle wrapper in `createTestContext` stays.
+- `apps/server/src/db/migrate.test.ts`: registers the runtime in `beforeEach`, disposes it in `afterEach`.
+- `apps/server/src/effect/sql.test.ts`: the two `runSqlMigrations` tests are replaced by the five migrator tests (i) to (v). The other three tests are unchanged. `drizzle-orm/pglite/migrator` is imported only here.
+- `apps/server/src/index.ts`: unchanged (the runtime is already registered at line 76).
+- `apps/server/drizzle/`: untouched. `drizzle.__drizzle_migrations` is only read, never written.
+
+**Test counts (PGlite only):**
+- Before, `src/effect/sql.test` + `src/db/migrate.test`: `14 passed` (sql.test 5, migrate.test 9).
+- After: `17 passed` (sql.test 8 = 3 kept + 5 new; migrate.test 9).
+
+**Full server suite:** `Test Files  151 passed | 7 skipped (158)` and `Tests  2257 passed | 12 skipped (2269)`.
+The spec's command repeats `--testTimeout`, and vitest refused it (`Expected a single value for option "--testTimeout"`). The run that passed was `pnpm --filter @zilar/server test --maxWorkers=4 --reporter=dot`, because the package script already sets `--testTimeout=30000 --hookTimeout=30000`.
+
+**Other checks:** `tsc --noEmit` in `apps/server`: exit 0. `git grep "drizzle-orm/.*migrator" -- apps/server/src` shows only `effect/sql.test.ts`. `db/migrate.ts` has no drizzle import.
+
+**`pnpm gate`:** `PASS  install (frozen)`, `PASS  format`, `PASS  lint`, `PASS  typecheck`, `PASS  tests @zilar/server`, `scope: every changed file is inside the Allowed files`, `GATE PASS`.
+
+**Deviations and notes:**
+- The spec says "keep its four tests" for `migrate.test.ts`, but the file has nine. All nine are kept.
+- The spec's order is kept: the seed runs before the files are loaded.
+- `runMigrations` logs with `Effect.logInfo`. The SQL runtime has no pino layer, so the line goes to Effect's default logger. In `migrate.test.ts` it prints one line per call.
+- Nothing was run against a real Postgres (the rule is PGlite only). The seed SQL uses only standard Postgres (`to_regclass`, `count`, `WHERE NOT EXISTS`), but the live path is untested.
+
+**Open question:** the seed is not locked across processes. Two servers starting at the same moment on an un-adopted database could race on the seed INSERT, and one would fail with a unique violation. The per-migration `LOCK TABLE` covers the migrations themselves. I did not test this (PGlite has one connection). One server process runs at deploy, so I believe it is not a live risk.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Julio OKed D3. Worker: Haiku 5.5, in one round (about 8.7 min). The lead reviewed the diff directly.
+- **The diff:**
+  - the seed only reads `drizzle.__drizzle_migrations` and inserts under `WHERE NOT EXISTS`;
+  - there is one `runSqlMigrations` call per id;
+  - every caller registers the runtime first (`invite-cli` was reordered, `migrate-cli` now registers and disposes);
+  - the snapshots use `migratePglite`, with no drizzle.
+- **Tests:** 17, up from 14, plus the full suite (2257 passed). The gate passed.
+- **Real-Postgres rehearsal (lead, local):** the `zilar-postgres:sha-748bbae78c44` image, migrating as the `zilar` role.
+  - (A1) The live server image migrated a fresh DB with drizzle: 46 rows, 60 tables.
+  - (A2) The D3 image on that DB logged "adopted 46 drizzle migrations" and applied nothing; the drizzle journal is untouched and the server is listening.
+  - (A3) A second start was a no-op, with one journal row.
+  - (B1) The D3 image on an empty DB applied ids 1 to 46 and reached listening.
+  - The `pg_dump --schema-only` of A and B is identical except for the `vector` extension, which comes from the image init (`deploy/postgres/init/10-create-databases.sql:27`) and was missing only because the lead recreated the DB by hand.
+- **Noted:** the seed is not locked across processes. This is acceptable with a single server.
