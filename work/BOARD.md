@@ -8,6 +8,34 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
+| [T-0810](T-0810-mobile-mu1.md) | MU1: mobile auth on Effect | in-progress | sonnet-5.5 | | wave 2 |
+| [T-0811](T-0811-mobile-mu2.md) | MU2: mobile lib basics on Effect | in-progress | haiku-5.5 | | wave 2 |
+| [T-0812](T-0812-mobile-mu3.md) | MU3: mobile lib voice and drafts on Effect | in-progress | sonnet-5.5 | | wave 2 |
+| [T-0813](T-0813-mobile-mu4.md) | MU4: mobile lib native on Effect | in-progress | haiku-5.5 | | wave 2 |
+| [T-0814](T-0814-mobile-mu5.md) | MU5: mobile whistle module on Effect | in-progress | haiku-5.5 | | wave 2 |
+| [T-0815](T-0815-mobile-mu6.md) | MU6: mobile tabs on Effect | in-progress | haiku-5.5 | | wave 2 |
+| [T-0816](T-0816-mobile-mu7.md) | MU7: mobile routes on Effect | in-progress | sonnet-5.5 | | wave 2 |
+| [T-0817](T-0817-mobile-mu8.md) | MU8: mobile chat screen on Effect | in-progress | sonnet-5.5 | | wave 2 |
+| [T-0818](T-0818-mobile-mu9.md) | MU9: mobile group and AI screens on Effect | in-progress | haiku-5.5 | | wave 2 |
+| [T-0819](T-0819-mobile-mu10.md) | MU10: mobile settings A on Effect | in-progress | haiku-5.5 | | wave 2 |
+| [T-0820](T-0820-mobile-mu11.md) | MU11: mobile settings B on Effect | in-progress | haiku-5.5 | | wave 2 |
+| [T-0821](T-0821-mobile-mu12.md) | MU12: mobile settings C on Effect | in-progress | haiku-5.5 | | wave 2 |
+| [T-0822](T-0822-mobile-mu13.md) | MU13: mobile settings D on Effect | in-progress | haiku-5.5 | | wave 2 |
+| [T-0823](T-0823-mobile-mu14.md) | MU14: mobile AI components A on Effect | in-progress | haiku-5.5 | | wave 2 |
+| [T-0824](T-0824-mobile-mu15.md) | MU15: mobile AI components B on Effect | in-progress | haiku-5.5 | | wave 2 |
+| [T-0825](T-0825-mobile-mu16.md) | MU16: mobile chat input A on Effect | in-progress | sonnet-5.5 | | wave 2 |
+| [T-0826](T-0826-mobile-mu17.md) | MU17: mobile chat input B on Effect | in-progress | haiku-5.5 | | wave 2 |
+| [T-0827](T-0827-mobile-mu18.md) | MU18: mobile chat voice on Effect | in-progress | sonnet-5.5 | | wave 2 |
+| [T-0828](T-0828-mobile-mu19.md) | MU19: mobile chat media on Effect | in-progress | haiku-5.5 | | wave 2 |
+| [T-0829](T-0829-mobile-mu20.md) | MU20: mobile chat sheets on Effect | in-progress | haiku-5.5 | | wave 2 |
+| [T-0830](T-0830-mobile-mu21.md) | MU21: mobile chat list on Effect | in-progress | haiku-5.5 | | wave 2 |
+| [T-0831](T-0831-mobile-mu22.md) | MU22: mobile chat search and small on Effect | in-progress | haiku-5.5 | | wave 2 |
+| [T-0832](T-0832-mobile-mu23.md) | MU23: mobile stickers on Effect | in-progress | haiku-5.5 | | wave 2 |
+| [T-0833](T-0833-mobile-mu24.md) | MU24: mobile contacts on Effect | in-progress | haiku-5.5 | | wave 2 |
+| [T-0834](T-0834-mobile-mu25.md) | MU25: mobile small components on Effect | in-progress | haiku-5.5 | | wave 2 |
+| [T-0835](T-0835-web-store.md) | WS1-WS11: web chat store on Effect | in-progress | sonnet-5.5 | T-0801 | chain; Julio checks connect, history, sending live |
+| [T-0836](T-0836-mobile-store.md) | MS1-MS10: mobile chat store on Effect | in-progress | sonnet-5.5 | T-0801 | chain; Julio checks connect, resume, sending live |
+| [T-0837](T-0837-gateway-s3-s4.md) | S3 + S4: AI gateway parts 3 and 4 on Effect | in-progress | sonnet-5.5 | T-0792 | chain; Julio checks AI replies live |
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 
 ## Follow-ups
