@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 import { Brain, Trash2 } from 'lucide-react-native';
+import { Effect, Fiber } from 'effect';
 
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -50,33 +51,43 @@ export function removeFact(memory: AiMemory, factId: string): AiMemory {
 
 /**
  * Forgets one fact on the server. A 404 means the fact is already gone, which
- * the caller treats as success; any other failure is rethrown.
+ * the caller treats as success; any other failure fails the Effect with the
+ * api's own error.
  */
-export async function requestForgetFact(
+export const requestForgetFactEffect = (
   api: AiMemoryApi,
   chat: string,
   aiId: string,
   factId: string,
-): Promise<void> {
-  try {
-    await api.forgetFact(chat, aiId, factId);
-  } catch (error) {
-    if (error instanceof AiMemoryApiError && error.status === 404) {
-      return;
-    }
-    throw error;
-  }
-}
+) =>
+  Effect.tryPromise({
+    try: () => api.forgetFact(chat, aiId, factId),
+    catch: (cause) => cause,
+  }).pipe(
+    Effect.catch((error) =>
+      error instanceof AiMemoryApiError && error.status === 404 ? Effect.void : Effect.fail(error),
+    ),
+  );
 
-/** Clears the memory on the server, then reloads and returns the empty one. */
-export async function clearAiMemory(
+/** Promise form of `requestForgetFactEffect`: any other failure throws. */
+export const requestForgetFact = (
   api: AiMemoryApi,
   chat: string,
   aiId: string,
-): Promise<AiMemory> {
-  await api.clear(chat, aiId);
-  return api.getMemory(chat, aiId);
-}
+  factId: string,
+): Promise<void> => Effect.runPromise(requestForgetFactEffect(api, chat, aiId, factId));
+
+/** Clears the memory on the server, then reloads and returns the empty one. */
+export const clearAiMemoryEffect = (api: AiMemoryApi, chat: string, aiId: string) =>
+  Effect.tryPromise({ try: () => api.clear(chat, aiId), catch: (cause) => cause }).pipe(
+    Effect.flatMap(() =>
+      Effect.tryPromise({ try: () => api.getMemory(chat, aiId), catch: (cause) => cause }),
+    ),
+  );
+
+/** Promise form of `clearAiMemoryEffect`. */
+export const clearAiMemory = (api: AiMemoryApi, chat: string, aiId: string): Promise<AiMemory> =>
+  Effect.runPromise(clearAiMemoryEffect(api, chat, aiId));
 
 /**
  * The open/closed body of the memory section, split out so tests can render
@@ -268,20 +279,23 @@ export function AiMemorySection({
     if (!open) {
       return;
     }
-    let active = true;
-    void (async () => {
-      try {
-        const loaded = await api.getMemory(chat, aiId);
-        if (!active) return;
-        setMemory(loaded);
-        setStatus('ready');
-      } catch {
-        if (!active) return;
-        setStatus('error');
-      }
-    })();
+    // Closing the section or a new chat interrupts the load in flight.
+    const load = Effect.tryPromise({
+      try: () => api.getMemory(chat, aiId),
+      catch: (cause) => cause,
+    }).pipe(
+      Effect.matchEffect({
+        onFailure: () => Effect.sync(() => setStatus('error')),
+        onSuccess: (loaded) =>
+          Effect.sync(() => {
+            setMemory(loaded);
+            setStatus('ready');
+          }),
+      }),
+    );
+    const fiber = Effect.runFork(load);
     return () => {
-      active = false;
+      Effect.runFork(Fiber.interrupt(fiber));
     };
   }, [open, chat, aiId, api, reloadTick]);
 
@@ -303,31 +317,40 @@ export function AiMemorySection({
     forgettingRef.current = factId;
     setForgettingId(factId);
     setForgetError('');
-    void (async () => {
-      try {
-        await requestForgetFact(api, chat, aiId, factId);
-        setMemory((current) => (current === null ? current : removeFact(current, factId)));
-      } catch {
-        setForgetError(MEMORY_FORGET_FAILED_MESSAGE);
-      } finally {
-        forgettingRef.current = null;
-        setForgettingId(null);
-      }
-    })();
+    Effect.runFork(
+      requestForgetFactEffect(api, chat, aiId, factId).pipe(
+        Effect.matchEffect({
+          onFailure: () => Effect.sync(() => setForgetError(MEMORY_FORGET_FAILED_MESSAGE)),
+          onSuccess: () =>
+            Effect.sync(() =>
+              setMemory((current) => (current === null ? current : removeFact(current, factId))),
+            ),
+        }),
+        Effect.ensuring(
+          Effect.sync(() => {
+            forgettingRef.current = null;
+            setForgettingId(null);
+          }),
+        ),
+      ),
+    );
   };
 
   const confirmClear = (): void => {
     setConfirmingClear(false);
     setClearError('');
-    void (async () => {
-      try {
-        const reloaded = await clearAiMemory(api, chat, aiId);
-        setMemory(reloaded);
-        setStatus('ready');
-      } catch {
-        setClearError(MEMORY_CLEAR_FAILED_MESSAGE);
-      }
-    })();
+    Effect.runFork(
+      clearAiMemoryEffect(api, chat, aiId).pipe(
+        Effect.matchEffect({
+          onFailure: () => Effect.sync(() => setClearError(MEMORY_CLEAR_FAILED_MESSAGE)),
+          onSuccess: (reloaded) =>
+            Effect.sync(() => {
+              setMemory(reloaded);
+              setStatus('ready');
+            }),
+        }),
+      ),
+    );
   };
 
   return (

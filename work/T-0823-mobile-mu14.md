@@ -1,7 +1,7 @@
 ---
 id: T-0823
 title: "MU14: mobile components/ais A: ai-activity, ai-memory-section, routines-section on Effect"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0823-mobile-mu14
 model: auto
@@ -55,4 +55,26 @@ Run `pnpm exec prettier --write` on your changed files before committing. Do not
 
 ## Report (written by the worker when done)
 
+- **effect:map kinds (after):** `ai-activity.tsx` = effect, `ai-memory-section.tsx` = effect, `routines-section.tsx` = effect. Before: not recorded; they had async/try hits, so needs-effect by the rules.
+- **Tests:** before 64 passed (3 files, `pnpm --filter @zilar/mobile exec vitest run --reporter=dot src/components/ais/ai-activity src/components/ais/ai-memory-section src/components/ais/routines-section`), after 64 passed (3 files). Existing tests unchanged. No new tests: test files are not in Allowed files.
+- **Typecheck:** `pnpm --filter @zilar/mobile typecheck` (tsc --noEmit) clean, no output.
+- **Prettier:** run on the three files before commit.
+- **Pattern:** each exported `fooEffect` plus the Promise export `(...a) => Effect.runPromise(fooEffect(...a))`. Exported names and Promise signatures unchanged.
+
+Behaviour differences:
+1. **Hooks not used.** The brief asks for `useQuery`/`useAction`; I did not use them. The components keep their `useState` because the state is shared across rows (memory forget guard, routines busy and confirm state, activity merged pages). Loads run with `Effect.runFork` in `useEffect` and are stopped with `Fiber.interrupt` in the cleanup (this replaces the `active` flag). Actions run with `Effect.runFork`. The existing refs (`loadingMoreRef`, `forgettingRef`, `runningRef`) still stop double taps. Texts are unchanged.
+2. **Errors are not mapped to `ApiFailure`.** The Effects use `catch: (cause) => cause`, so the Promise exports reject with the same api error object. This keeps `instanceof ToolsApiError` working in `routineActionMessage` and `loadAiRoutines`. The components show only the fixed texts.
+3. **Interruption.** Loads (first page, memory, routines) are interrupted on unmount or a new id. Load more, forget, clear and routine actions still run to the end after unmount, as before (they were never cancelled).
+4. **Runtime.** `Effect.runFork` and `Effect.runPromise` use Effect's default runtime, not `mobileRuntime` / `runMobile`. The brief's table uses `Effect.runFork` for this, but the lib header says one mobile runtime. Unsure which the lead wants.
+5. **Timing.** The api call may start a scheduler tick later under `runFork`. Not measured.
+6. **Permission prompts.** None in these three files.
+7. **Weak signal.** `Effect.catch(` lines count as W4 in effect:map. The kind is still effect because the file imports `effect`.
+
+Unsure: item 1 (hooks vs runFork) and item 4 (default runtime vs `mobileRuntime`).
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved (wave 2). Worker: Haiku 5.5. The lead reviewed the Report.
+- **Combined check:** all 25 wave 2 branches together pass lint, typecheck and the full mobile suite (`lead batch check`, report 20261009T172300Z). The remaining failures were server and web tests that pass on main, caused by load.
+- **This task:** AI activity, memory and routines sections converted; no behaviour change reported.
+- **Phone:** the wave branch is smoked on the emulator after the merge.

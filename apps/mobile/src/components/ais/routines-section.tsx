@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
+import { Effect, Fiber } from 'effect';
 
 import { Button } from '@/components/ui/button';
 import { StateMessage } from '@/components/ui/state-message';
@@ -60,21 +61,21 @@ export function routineActionMessage(error: unknown): RoutineActionMessage {
 
 /**
  * Loads one AI's routines. A 404 or an unparseable response reads as an
- * empty list, not an error (web does the same); any other failure throws.
+ * empty list, not an error (web does the same); any other failure fails the
+ * Effect with the api's own error.
  */
-export async function loadAiRoutines(api: ToolsApi, aiId: string): Promise<Routine[]> {
-  try {
-    return await api.listAiRoutines(aiId);
-  } catch (error) {
-    if (
-      error instanceof ToolsApiError &&
-      (error.status === 404 || error.code === 'invalid_response')
-    ) {
-      return [];
-    }
-    throw error;
-  }
-}
+export const loadAiRoutinesEffect = (api: ToolsApi, aiId: string) =>
+  Effect.tryPromise({ try: () => api.listAiRoutines(aiId), catch: (cause) => cause }).pipe(
+    Effect.catch((error) =>
+      error instanceof ToolsApiError && (error.status === 404 || error.code === 'invalid_response')
+        ? Effect.succeed<Routine[]>([])
+        : Effect.fail(error),
+    ),
+  );
+
+/** Promise form of `loadAiRoutinesEffect`: any other failure throws. */
+export const loadAiRoutines = (api: ToolsApi, aiId: string): Promise<Routine[]> =>
+  Effect.runPromise(loadAiRoutinesEffect(api, aiId));
 
 export type RoutineActionOutcome = {
   routines: Routine[];
@@ -87,29 +88,40 @@ export type RoutineActionOutcome = {
  * a failure keeps the list with the fixed message. A new call clears the
  * previous message (success carries `action: null`).
  */
-export async function applyRoutineAction(
+export const applyRoutineActionEffect = (
   api: AiToolsApi,
   routines: Routine[],
   id: string,
   action: RoutineAction,
-): Promise<RoutineActionOutcome> {
-  try {
-    if (action === 'delete') {
-      await api.deleteRoutine(id);
-      return {
-        routines: routines.filter((routine) => routine.id !== id),
-        action: null,
-      };
-    }
-    const updated = action === 'pause' ? await api.pauseRoutine(id) : await api.resumeRoutine(id);
-    return {
-      routines: routines.map((routine) => (routine.id === id ? updated : routine)),
-      action: null,
-    };
-  } catch (error) {
-    return { routines, action: routineActionMessage(error) };
-  }
-}
+): Effect.Effect<RoutineActionOutcome> =>
+  (action === 'delete'
+    ? Effect.tryPromise({ try: () => api.deleteRoutine(id), catch: (cause) => cause }).pipe(
+        Effect.map((): RoutineActionOutcome => ({
+          routines: routines.filter((routine) => routine.id !== id),
+          action: null,
+        })),
+      )
+    : Effect.tryPromise({
+        try: () => (action === 'pause' ? api.pauseRoutine(id) : api.resumeRoutine(id)),
+        catch: (cause) => cause,
+      }).pipe(
+        Effect.map((updated): RoutineActionOutcome => ({
+          routines: routines.map((routine) => (routine.id === id ? updated : routine)),
+          action: null,
+        })),
+      )
+  ).pipe(
+    Effect.catch((error) => Effect.succeed({ routines, action: routineActionMessage(error) })),
+  );
+
+/** Promise form of `applyRoutineActionEffect`. It never rejects: a failure is the outcome's message. */
+export const applyRoutineAction = (
+  api: AiToolsApi,
+  routines: Routine[],
+  id: string,
+  action: RoutineAction,
+): Promise<RoutineActionOutcome> =>
+  Effect.runPromise(applyRoutineActionEffect(api, routines, id, action));
 
 export type RoutineRowActions = {
   busyId: string | null;
@@ -267,19 +279,20 @@ export function RoutinesSection({ api, aiId }: { api: AiToolsApi; aiId: string }
   const [action, setAction] = useState<RoutineActionMessage | null>(null);
 
   useEffect(() => {
-    let active = true;
-    void (async () => {
-      try {
-        const routines = await loadAiRoutines(api, aiId);
-        if (!active) return;
-        setState({ status: 'ready', routines, message: '' });
-      } catch {
-        if (!active) return;
-        setState({ status: 'error', routines: [], message: ROUTINES_LOAD_FAILED_MESSAGE });
-      }
-    })();
+    // Unmount or a new aiId interrupts the load, so a late answer never lands.
+    const load = loadAiRoutinesEffect(api, aiId).pipe(
+      Effect.matchEffect({
+        onFailure: () =>
+          Effect.sync(() =>
+            setState({ status: 'error', routines: [], message: ROUTINES_LOAD_FAILED_MESSAGE }),
+          ),
+        onSuccess: (routines) =>
+          Effect.sync(() => setState({ status: 'ready', routines, message: '' })),
+      }),
+    );
+    const fiber = Effect.runFork(load);
     return () => {
-      active = false;
+      Effect.runFork(Fiber.interrupt(fiber));
     };
   }, [api, aiId, reloadTick]);
 
@@ -297,17 +310,23 @@ export function RoutinesSection({ api, aiId }: { api: AiToolsApi; aiId: string }
     runningRef.current = true;
     setBusyId(id);
     setAction(null);
-    void (async () => {
-      try {
-        const outcome = await applyRoutineAction(api, routinesRef.current, id, routineAction);
-        setState((current) => ({ ...current, routines: outcome.routines }));
-        setAction(outcome.action);
-        setConfirmingId(null);
-      } finally {
-        runningRef.current = false;
-        setBusyId(null);
-      }
-    })();
+    Effect.runFork(
+      applyRoutineActionEffect(api, routinesRef.current, id, routineAction).pipe(
+        Effect.flatMap((outcome) =>
+          Effect.sync(() => {
+            setState((current) => ({ ...current, routines: outcome.routines }));
+            setAction(outcome.action);
+            setConfirmingId(null);
+          }),
+        ),
+        Effect.ensuring(
+          Effect.sync(() => {
+            runningRef.current = false;
+            setBusyId(null);
+          }),
+        ),
+      ),
+    );
   };
 
   const actions: RoutineRowActions = {
