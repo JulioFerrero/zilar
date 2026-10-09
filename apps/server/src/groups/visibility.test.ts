@@ -4,16 +4,8 @@
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
-import { eq } from 'drizzle-orm';
-import {
-  aiLimits,
-  ais,
-  groupAis,
-  groupMembers,
-  groups,
-  handles,
-  providerConnections,
-} from '../db/schema';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
 import { aiLocalpart } from '../ais/service';
 import { joinPublicGroup } from './join';
 import { PUBLIC_GROUP_MAX_MEMBERS } from '../directory/service';
@@ -23,6 +15,7 @@ import {
   contactOf,
   createTestContext,
   testApp,
+  testSql,
   TEST_BASE_URL,
   TEST_XMPP_DOMAIN,
   type TestApp,
@@ -136,7 +129,14 @@ describe('public groups and channels', () => {
     ).json()) as VisibilityBody;
     expect(detail.visibility).toBe('private');
     expect(detail.handle).toBeNull();
-    const [row] = await context.db.select().from(groups).where(eq(groups.id, groupId));
+    const [row] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ visibility: string }>`
+          SELECT visibility FROM "groups" WHERE id = ${groupId}
+        `;
+      }),
+    );
     expect(row?.visibility).toBe('private');
   });
 
@@ -227,7 +227,14 @@ describe('public groups and channels', () => {
     });
     expect(unknown.status).toBe(404);
     // Untouched: still private.
-    const [row] = await context.db.select().from(groups).where(eq(groups.id, groupId));
+    const [row] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ visibility: string }>`
+          SELECT visibility FROM "groups" WHERE id = ${groupId}
+        `;
+      }),
+    );
     expect(row?.visibility).toBe('private');
   });
 
@@ -338,7 +345,14 @@ describe('public groups and channels', () => {
     expect((await byHandleRequest(strangerCookie, 'trip_pub')).status).toBe(404);
     // …but members stay members.
     expect(
-      await context.db.select().from(groupMembers).where(eq(groupMembers.groupId, groupId)),
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ userId: string }>`
+            SELECT user_id FROM group_members WHERE group_id = ${groupId}
+          `;
+        }),
+      ),
     ).toHaveLength(2);
 
     // The old handle is reserved for this group: a stranger cannot take it…
@@ -382,12 +396,23 @@ describe('public groups and channels', () => {
 
     // Nothing was written: no group with that title, and no handle row for a new group.
     expect(
-      await context.db.select().from(groups).where(eq(groups.title, 'Retired create')),
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ id: string }>`
+            SELECT id FROM "groups" WHERE title = 'Retired create'
+          `;
+        }),
+      ),
     ).toEqual([]);
-    const claims = await context.db
-      .select()
-      .from(handles)
-      .where(eq(handles.handleLower, 'kept_pub'));
+    const claims = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ groupId: string | null }>`
+          SELECT group_id FROM handles WHERE handle_lower = ${'kept_pub'}
+        `;
+      }),
+    );
     expect(claims.every((claim) => claim.groupId === groupId)).toBe(true);
   });
 
@@ -426,15 +451,26 @@ describe('public groups and channels', () => {
     expect(again.status).toBe(200);
     expect(await again.json()).toEqual({ groupId, alreadyMember: true });
 
-    const rows = await context.db
-      .select()
-      .from(groupMembers)
-      .where(eq(groupMembers.groupId, groupId));
+    const rows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ userId: string }>`
+          SELECT user_id FROM group_members WHERE group_id = ${groupId}
+        `;
+      }),
+    );
     expect(rows.map((row) => row.userId).sort()).toContain(strangerId);
 
     // The joiner holds a `member` room affiliation in the group's
     // unmoderated room — voice to post, like an invited member.
-    const [groupRow] = await context.db.select().from(groups).where(eq(groups.id, groupId));
+    const [groupRow] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ roomLocalpart: string }>`
+          SELECT room_localpart FROM "groups" WHERE id = ${groupId}
+        `;
+      }),
+    );
     const strangerJid = `${localpartFor(strangerId)}@${TEST_XMPP_DOMAIN}`;
     expect(
       context.adminClient.affiliationState.get(groupRow!.roomLocalpart)?.get(strangerJid),
@@ -648,11 +684,14 @@ describe('public groups and channels', () => {
     ).toBe(200);
     expect((await joinRequest(strangerCookie, groupId)).status).toBe(200);
 
-    const { auditLog } = await import('../db/schema');
-    const rows = await context.db
-      .select({ action: auditLog.action, detail: auditLog.detail })
-      .from(auditLog)
-      .where(eq(auditLog.groupId, groupId));
+    const rows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ action: string; detail: unknown }>`
+          SELECT action, detail FROM audit_log WHERE group_id = ${groupId}
+        `;
+      }),
+    );
     const actions = rows.map((row) => row.action);
     expect(actions).toContain('group.visibility_changed');
     expect(actions).toContain('group.joined_public');
@@ -690,10 +729,14 @@ describe('public groups and channels', () => {
     expect(detail.visibility).toBe('public');
     expect(detail.handle).toBe('releases');
     expect(detail.members).toEqual([]);
-    const [row] = await context.db
-      .select()
-      .from(groupMembers)
-      .where(eq(groupMembers.groupId, groupId));
+    const [row] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ userId: string }>`
+          SELECT user_id FROM group_members WHERE group_id = ${groupId}
+        `;
+      }),
+    );
     expect(row).toBeDefined();
   });
 
@@ -711,24 +754,38 @@ describe('public groups and channels', () => {
 
   it('rejects a raw visibility value outside private/public at the database', async () => {
     const owner = await bootstrapUser(context, app, 'owner@example.com');
-    const { sql } = await import('drizzle-orm');
     await expect(
-      context.db.execute(
-        sql`INSERT INTO "groups" ("id", "room_localpart", "title", "created_by", "visibility") VALUES ('g-raw', 'grawroomlocalpart1', 'Raw', ${owner.id}, 'archived')`,
+      testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`
+            INSERT INTO "groups" ("id", "room_localpart", "title", "created_by", "visibility")
+            VALUES ('g-raw', 'grawroomlocalpart1', 'Raw', ${owner.id}, 'archived')
+          `;
+        }),
       ),
     ).rejects.toThrow();
     // …while both legal values write fine.
     for (const visibility of ['private', 'public'] as const) {
-      await context.db.insert(groups).values({
-        id: `g-raw-${visibility}`,
-        roomLocalpart: `grawroom${visibility}12`,
-        title: 'Raw',
-        createdBy: owner.id,
-        visibility,
-      });
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`
+            INSERT INTO "groups" ("id", "room_localpart", "title", "created_by", "visibility")
+            VALUES (${`g-raw-${visibility}`}, ${`grawroom${visibility}12`}, 'Raw', ${owner.id}, ${visibility})
+          `;
+        }),
+      );
     }
     expect(
-      await context.db.select({ id: groups.id }).from(groups).where(eq(groups.createdBy, owner.id)),
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ id: string }>`
+            SELECT id FROM "groups" WHERE created_by = ${owner.id}
+          `;
+        }),
+      ),
     ).toHaveLength(2);
   });
 
@@ -746,26 +803,33 @@ describe('public groups and channels', () => {
     async function seedAi(ownerId: string): Promise<string> {
       const aiId = randomUUID();
       const connectionId = randomUUID();
-      await context.db.insert(providerConnections).values({
-        id: connectionId,
-        owner: ownerId,
-        provider: 'openai',
-        encryptedKey: 'sealed-placeholder',
-        label: null,
-      });
-      await context.db.insert(ais).values({
-        id: aiId,
-        owner: ownerId,
-        name: 'Helper AI',
-        template: 'dev',
-        persona: 'A helpful persona.',
-        providerConnectionId: connectionId,
-        model: 'gpt-4o-mini',
-        localpart: aiLocalpart(aiId),
-        jid: `${aiLocalpart(aiId)}@example.com`,
-        status: 'active',
-      });
-      await context.db.insert(aiLimits).values({ aiId, perDayUsd: '1.00', perMonthUsd: '20.00' });
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`
+            INSERT INTO provider_connections ("id", "owner", "provider", "encrypted_key", "label")
+            VALUES (${connectionId}, ${ownerId}, 'openai', 'sealed-placeholder', NULL)
+          `;
+        }),
+      );
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`
+            INSERT INTO ais ("id", "owner", "name", "template", "persona", "provider_connection_id", "model", "localpart", "jid", "status")
+            VALUES (${aiId}, ${ownerId}, 'Helper AI', 'dev', 'A helpful persona.', ${connectionId}, 'gpt-4o-mini', ${aiLocalpart(aiId)}, ${`${aiLocalpart(aiId)}@example.com`}, 'active')
+          `;
+        }),
+      );
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`
+            INSERT INTO ai_limits ("ai_id", "per_day_usd", "per_month_usd")
+            VALUES (${aiId}, '1.00', '20.00')
+          `;
+        }),
+      );
       return aiId;
     }
 
@@ -821,10 +885,14 @@ describe('public groups and channels', () => {
       if (loser !== undefined && !loser.ok) {
         expect(loser.error).toMatchObject({ status: 409, code: 'group_full' });
       }
-      const rows = await context.db
-        .select()
-        .from(groupMembers)
-        .where(eq(groupMembers.groupId, groupId));
+      const rows = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ userId: string }>`
+            SELECT user_id FROM group_members WHERE group_id = ${groupId}
+          `;
+        }),
+      );
       // Owner + 2 fillers + exactly one racer: the cap is never exceeded.
       expect(rows).toHaveLength(4);
     });
@@ -836,7 +904,15 @@ describe('public groups and channels', () => {
       const groupId = await publicGroup(owner.cookie, 'AI room');
       // Cap 3: owner (person) + 1 AI = 2 occupants, one seat left…
       const aiId = await seedAi(owner.id);
-      await context.db.insert(groupAis).values({ groupId, aiId, addedBy: owner.id });
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`
+            INSERT INTO group_ais ("group_id", "ai_id", "added_by")
+            VALUES (${groupId}, ${aiId}, ${owner.id})
+          `;
+        }),
+      );
 
       const joined = await joinPublicGroup(service(3), groupId, newcomer.id);
       expect(joined).toEqual({ groupId, alreadyMember: false });
@@ -857,7 +933,15 @@ describe('public groups and channels', () => {
       // Cap 3: owner + 2 AIs = cap before anyone joins.
       for (let index = 0; index < 2; index += 1) {
         const aiId = await seedAi(owner.id);
-        await context.db.insert(groupAis).values({ groupId, aiId, addedBy: owner.id });
+        await testSql(context)(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            yield* sql`
+              INSERT INTO group_ais ("group_id", "ai_id", "added_by")
+              VALUES (${groupId}, ${aiId}, ${owner.id})
+            `;
+          }),
+        );
       }
       const refused = await joinPublicGroup(service(3), groupId, newcomer.id).then(
         () => null,
@@ -865,7 +949,14 @@ describe('public groups and channels', () => {
       );
       expect(refused).toMatchObject({ status: 409, code: 'group_full' });
       expect(
-        await context.db.select().from(groupMembers).where(eq(groupMembers.groupId, groupId)),
+        await testSql(context)(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            return yield* sql<{ userId: string }>`
+              SELECT user_id FROM group_members WHERE group_id = ${groupId}
+            `;
+          }),
+        ),
       ).toHaveLength(1);
     });
   });

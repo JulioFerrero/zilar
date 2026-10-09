@@ -1,7 +1,7 @@
 ---
 id: T-0719
 title: "tests off drizzle (groups): replace every drizzle query in groups/groups.test.ts, groups/visibility.test.ts with testSql(context) + effect/sql; drop the drizzle-orm and db/schema imports"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0719-groups-tests-off-drizzle
 model: auto
@@ -51,4 +51,22 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Done. Both files are off drizzle; `git grep -n "drizzle-orm\|db/schema" -- apps/server/src/groups/groups.test.ts apps/server/src/groups/visibility.test.ts` prints nothing (exit 1, no matches).
+
+What changed (work split across two converters, one per file):
+- `apps/server/src/groups/groups.test.ts`: removed `drizzle-orm`, `../db/schema`, and now-unused `user` (`../auth/auth-schema`) imports; added `Effect`/`SqlClient` and `testSql`. Every `context.db`/`ownContext.db` select/insert/update/delete became `testSql(context)(...)` / `testSql(ownContext)(...)` (raw SQL with snake_case columns, bound params; `sql.insert` with snake_case keys for simple seeds; `"user"` quoted; `count(*)::int` helper `tableCount` for whole-table assertions; `${JSON.stringify(value)}::jsonb` for the `routines` jsonb columns that have no SQL default). Left alone: `listGroupsForUser(context.db, …)` and `desiredMembers(context.db, …)`. Added `import type { TopicRow } from '../topics/access'` for the `desiredMembers` call.
+- `apps/server/src/groups/visibility.test.ts`: removed `drizzle-orm` (including the dynamic `await import('drizzle-orm')` + `context.db.execute`) and `../db/schema` imports; added `Effect`/`SqlClient` and `testSql`. All 13 query sites (incl. `seedAi` seeding of `provider_connections`/`ais`/`ai_limits` and `group_ais` inserts) became `testSql(context)(...)`. Left alone: `db: context.db` passed to `joinPublicGroup`.
+
+Assertions adapted (read shape only, meaning preserved): whole-table `select().from(...)` length checks became `count(*)::int` count checks; `.insert(...).returning()` ids that were only used for their id are now generated up front (`groupRuleId`/`personalRuleId`/`otherGroupRuleId`, `groupToolId`/`personalToolId`, `groupRoutineId`/`personalRoutineId`). No assertion checks something different than before. visibility.test.ts needed no adaptation.
+
+Commands (real results):
+- Before: `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/groups/groups.test.ts src/groups/visibility.test.ts` → 2 files, 81 passed.
+- After (same command): 2 files, 81 passed (56 groups + 25 visibility).
+- `pnpm gate` (first run): GATE FAIL on `format` only (`groups.test.ts` prettier warning); scope check already passed. Fixed with `pnpm exec prettier --write apps/server/src/groups/groups.test.ts` (allowed file only), no test changes.
+- `pnpm gate` (second run): `PASS install, PASS format, PASS lint, PASS typecheck, PASS tests @zilar/server`; `scope: every changed file is inside the Allowed files`; `GATE PASS`.
+
+Security checklist: no secrets touched; no deletes/updates outside test seeding; test-only change, no routes, caps, or audit entries affected.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. The pre-review was clean (packet head 5ef4f9f3). Both groups test files are on `testSql`, with no drizzle import left.
