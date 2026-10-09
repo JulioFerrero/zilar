@@ -1,7 +1,7 @@
 ---
 id: T-0747
 title: "AUDIT (docs only): S3 object storage for Zilar — (1) off-host backups through Coolify's S3 destination, (2) app files (stickers, avatars, backgrounds, chat uploads via ejabberd) on S3; write docs/audit/s3-storage-plan.md with file:line facts, options, risks and an ordered task list"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0747-s3-storage-audit
 model: auto
@@ -67,4 +67,44 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Docs only. Wrote `docs/audit/s3-storage-plan.md` (inventory, Part A backups, Part B app files, risks, ordered task list with Julio-only steps, unverified list, sources). No code or config changed.
+
+**Key findings**
+- ejabberd cannot store uploads on S3 out of the box. The image `ghcr.io/processone/ejabberd:26.07` (ejabberd 26.7.0) has only the local-disk `mod_http_upload` (no S3, AWS or bucket names in the beam, checked read-only with `docker run --network none`). ejabberd-contrib has `mod_s3_upload`, not in the image, which defaults to `set_public: true` (public downloads). Recommendation: back up with Coolify now; spike `mod_s3_upload` before any chat-upload change; Julio decides.
+- Stickers, avatars and backgrounds can move to S3 behind a storage interface without URL changes; all reads, writes and deletes are at the file:line listed in the plan. No S3 SDK is installed; a new dependency needs Julio's approval.
+- Chat uploads already read through `GET /api/files` (`apps/server/src/files/api.ts:161, 202, 279-282`), which streams from ejabberd.
+- Coolify: DB dumps to S3 and volume backups to S3 are supported (`backup_set` fields checked in the MCP schema; `backup_set` replaces the whole schedule, no read-back).
+- Doc conflict: `docs/RELEASING.md:41` says the scheduled backup covers the file volumes; `deploy/coolify/scheduled-backup.md:45-67` says it does not. The Coolify file is right; fix in task A4.
+
+**Commands run**
+- `pnpm install`: done, no errors.
+- `pnpm exec prettier --write docs/audit/s3-storage-plan.md` then `--check`: "All matched files use Prettier code style!"
+- `docker run --rm --network none ...` on `ghcr.io/processone/ejabberd:26.07` (read-only grep of beams and config; no daemon).
+- `pnpm gate`: GATE PASS (below). No single tests were run; the gate ran the nearest tests itself.
+
+**Gate summary**
+```
+gate: 2 changed file(s) against main
+PASS  install (frozen)  (1.1s)
+PASS  format  (12.7s)
+PASS  lint  (0.8s)
+PASS  typecheck  (1.3s)
+scope: every changed file is inside the Allowed files
+GATE PASS
+```
+
+**Deviations and open points**
+- Volume list (five volumes) taken from the task spec; not re-listed in Coolify.
+- Hetzner's price did not render on the fetched page; R2 and B2 S3 compatibility not checked. All marked unverified in the plan.
+- Upload-auth-plan's client file citation (`packages/xmpp-core/src/client.ts:1049-1081`) is carried over, not re-checked.
+
+**Blocked / needs a decision:** none for the docs. The plan's B-tasks need Julio's decisions (dependency approval, public-download policy, live data migration).
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Haiku 5.5, in one round (about 5.3 min). The lead read the whole plan.
+- **Quality:** facts are cited by `file:line`, and the ejabberd verdict is backed by a read-only image inspection plus the contrib README.
+- **Lead corrections:**
+  - the five-volume list in §6 was verified by the lead in Coolify on 2026-10-09 (storages list), so it is not unverified;
+  - §2.3 step 4 says "four file volumes" but means the three file volumes (`ejabberd-uploads`, `sticker-data`, `avatar-data`), as task A3 says.
+- **Next:** A1 (bucket and keys) waits for Julio. B1 can start, and B7 (the `mod_s3_upload` spike) needs Julio because of public downloads.
