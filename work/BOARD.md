@@ -11,7 +11,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0694](T-0694-split-effect-http-core.md) | B1.1: split effect/http.ts into http-core (no Hono) + the bridge | in-progress | auto | T-0689 | |
 | [T-0696](T-0696-platform-node-smoke.md) | B1.2: add @effect/platform-node 4.0.2 + NodeHttpServer smoke test | in-progress | auto | T-0689 | |
-| [T-0698](T-0698-voice-integrations-tests-off-drizzle.md) | tests off drizzle: voice-transcription + integrations | in-progress | haiku-5.5 | T-0695 | |
 | [T-0700](T-0700-blocks-handles-tests-off-drizzle.md) | tests off drizzle: blocks + handles | in-progress | auto | T-0695 | |
 
 ## Follow-ups
@@ -731,3 +730,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0701](T-0701-auth-tests-off-drizzle.md) | tests off drizzle: auth | 2026-10-09 |
 | [T-0702](T-0702-push-tests-off-drizzle.md) | tests off drizzle: push | 2026-10-09 |
 | [T-0697](T-0697-chats-media-tests-off-drizzle.md) | tests off drizzle: chats and media | 2026-10-09 |
+| [T-0698](T-0698-voice-integrations-tests-off-drizzle.md) | tests off drizzle: voice-transcription and integrations | 2026-10-09 |

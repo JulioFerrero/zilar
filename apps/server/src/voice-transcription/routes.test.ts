@@ -7,15 +7,16 @@
 
 import { createHash } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { eq } from 'drizzle-orm';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
 import { createAuditRecorder } from '../audit/service';
 import { createApp } from '../app';
-import { auditLog, instanceSettings, voiceTranscripts } from '../db/schema';
 import {
   bootstrapUser,
   contactOf,
   createTestContext,
   TEST_BASE_URL,
+  testSql,
   type SignedInUser,
   type TestContext,
 } from '../test-support';
@@ -30,6 +31,33 @@ import {
 } from './settings';
 import { settingsCipherFor } from '../setup/settings';
 import { TranscriptionProviderError } from './provider';
+
+interface AuditRow {
+  id: string;
+  at: Date;
+  actorUserId: string | null;
+  aiId: string | null;
+  groupId: string | null;
+  action: string;
+  subjectId: string | null;
+  argsHash: string | null;
+  costCurrency: string | null;
+  costAmount: string | null;
+  result: string;
+  detail: unknown;
+}
+
+interface SettingRow {
+  value: string;
+}
+
+interface TranscriptRow {
+  text: string;
+}
+
+interface UrlHashRow {
+  urlHash: string;
+}
 
 const SENTINEL_KEY = 'SENTINEL_TRANSCRIPT_KEY_9f8e7d6c5b4a';
 const SENTINEL_BASE = 'https://transcribe.example.com/v1';
@@ -151,10 +179,12 @@ describe('GET /api/voice/transcription', () => {
     const app = appFor(fake);
     expect((await configureOwner(app)).status).toBe(200);
     // Corrupt the stored key envelope: decryption now fails.
-    await context.db
-      .update(instanceSettings)
-      .set({ value: 'v1:broken:envelope' })
-      .where(eq(instanceSettings.key, VOICE_TRANSCRIPTION_API_KEY_SETTING));
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`UPDATE instance_settings SET value = ${'v1:broken:envelope'} WHERE key = ${VOICE_TRANSCRIPTION_API_KEY_SETTING}`;
+      }),
+    );
     const response = await jsonRequest(app, 'GET', '/api/voice/transcription', stranger);
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ enabled: false });
@@ -209,10 +239,12 @@ describe('POST /api/voice/transcript', () => {
     expect(fake.calls).toBe(1);
 
     const hash = createHash('sha256').update(SENTINEL_URL, 'utf8').digest('hex');
-    const [row] = await context.db
-      .select()
-      .from(voiceTranscripts)
-      .where(eq(voiceTranscripts.urlHash, hash));
+    const [row] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<TranscriptRow>`SELECT text FROM voice_transcripts WHERE url_hash = ${hash}`;
+      }),
+    );
     expect(row?.text).toBe(SENTINEL_TEXT);
   });
 
@@ -305,7 +337,12 @@ describe('POST /api/voice/transcript', () => {
     const raw = await response.text();
     expect(JSON.parse(raw)).toMatchObject({ error: { code: 'transcription_failed' } });
     expect(raw).not.toContain(SENTINEL_KEY);
-    const rows = await context.db.select().from(voiceTranscripts);
+    const rows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<UrlHashRow>`SELECT url_hash FROM voice_transcripts`;
+      }),
+    );
     expect(rows).toHaveLength(0);
   });
 
@@ -327,7 +364,12 @@ describe('POST /api/voice/transcript', () => {
     expect(raw).not.toContain('socket hangup');
     expect(raw).not.toContain(SENTINEL_URL);
     expect(fake.calls).toBe(0);
-    const rows = await context.db.select().from(voiceTranscripts);
+    const rows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<UrlHashRow>`SELECT url_hash FROM voice_transcripts`;
+      }),
+    );
     expect(rows).toHaveLength(0);
   });
 
@@ -385,10 +427,12 @@ describe('POST /api/voice/transcript', () => {
     expect(context.logOutput()).not.toContain(SENTINEL_TEXT);
     expect(context.logOutput()).not.toContain(SENTINEL_URL);
 
-    const rows = await context.db
-      .select()
-      .from(auditLog)
-      .where(eq(auditLog.action, 'voice.transcript_requested'));
+    const rows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<AuditRow>`SELECT id, "at", actor_user_id, ai_id, group_id, action, subject_id, args_hash, cost_currency, cost_amount, result, detail FROM audit_log WHERE action = ${'voice.transcript_requested'}`;
+      }),
+    );
     expect(rows).toHaveLength(1);
     const serialised = JSON.stringify(rows[0]);
     expect(serialised).not.toContain(SENTINEL_KEY);
@@ -410,10 +454,12 @@ describe('POST /api/voice/transcript', () => {
       expect(response.status).toBe(200);
     }
     expect(fake.calls).toBe(1);
-    const rows = await context.db
-      .select()
-      .from(auditLog)
-      .where(eq(auditLog.action, 'voice.transcript_requested'));
+    const rows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<AuditRow>`SELECT id, "at", actor_user_id, ai_id, group_id, action, subject_id, args_hash, cost_currency, cost_amount, result, detail FROM audit_log WHERE action = ${'voice.transcript_requested'}`;
+      }),
+    );
     expect(rows).toHaveLength(2);
     expect(JSON.stringify(rows)).not.toContain(SENTINEL_TEXT);
   });
@@ -462,10 +508,12 @@ describe('PUT /api/settings/integrations/voice-transcription', () => {
       settingsCipherFor(context.config),
     );
     expect(stored).toEqual({ baseUrl: SENTINEL_BASE, apiKey: SENTINEL_KEY, model: 'whisper-1' });
-    const [row] = await context.db
-      .select()
-      .from(instanceSettings)
-      .where(eq(instanceSettings.key, VOICE_TRANSCRIPTION_BASE_URL_SETTING));
+    const [row] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<SettingRow>`SELECT value FROM instance_settings WHERE key = ${VOICE_TRANSCRIPTION_BASE_URL_SETTING}`;
+      }),
+    );
     expect(row?.value).toBe(SENTINEL_BASE);
 
     const status = (await (
@@ -609,10 +657,12 @@ describe('PUT /api/settings/integrations/voice-transcription', () => {
     await jsonRequest(app, 'DELETE', '/api/settings/integrations/voice-transcription', owner);
     expect(context.logOutput()).not.toContain(SENTINEL_KEY);
 
-    const rows = await context.db
-      .select()
-      .from(auditLog)
-      .where(eq(auditLog.action, 'integrations.voice_transcription_set'));
+    const rows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<AuditRow>`SELECT id, "at", actor_user_id, ai_id, group_id, action, subject_id, args_hash, cost_currency, cost_amount, result, detail FROM audit_log WHERE action = ${'integrations.voice_transcription_set'}`;
+      }),
+    );
     expect(rows).toHaveLength(1);
     expect(rows[0]?.detail).toBeNull();
     expect(JSON.stringify(rows[0])).not.toContain(SENTINEL_KEY);
