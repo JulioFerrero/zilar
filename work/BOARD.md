@@ -11,7 +11,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0758](T-0758-effect-map-rule.md) | R1: the Effect map measures the 100% rule | in-progress | haiku-5.5 | | effect-100-plan Phase 0 |
 | [T-0760](T-0760-server-edges-a.md) | S7: voice engine, GIF media fetch, version on Effect | in-progress | haiku-5.5 | | effect-100-plan Phase 2 |
-| [T-0761](T-0761-server-edges-c.md) | S9: git proxy and connection probe on Effect | in-progress | haiku-5.5 | | effect-100-plan Phase 2 |
 | [T-0762](T-0762-web-use-action.md) | F2: web hooks useAction and useQuery | in-progress | sonnet-5.5 | T-0759 | effect-100-plan Phase 1 |
 | [T-0763](T-0763-xmpp-typed-errors.md) | X1: xmpp-core typed errors | in-progress | haiku-5.5 | | effect-100-plan Phase 1 |
 
@@ -792,3 +791,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0753](T-0753-effect-100-plan.md) | the plan to a 100% Effect codebase | 2026-10-09 |
 | [T-0759](T-0759-web-effect-runtime.md) | F1: web Effect runtime, ApiFailure, fromApi | 2026-10-09 |
 | [T-0757](T-0757-watch-claude-tasks.md) | lead watch shows Claude-subagent tasks | 2026-10-09 |
+| [T-0761](T-0761-server-edges-c.md) | S9: git proxy and connection probe on Effect | 2026-10-09 |

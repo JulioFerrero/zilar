@@ -1,3 +1,4 @@
+import { Effect } from 'effect';
 import { isPushAllowed } from './branches';
 import { HttpError } from '../errors';
 import type { GitHubAppTokenClient } from './token';
@@ -133,30 +134,38 @@ function buildUpstreamUrl(baseUrl: string, inbound: URL, pathPrefix: string): UR
 
 export type GitProxy = (request: Request) => Promise<Response>;
 
-export function createGitProxy(deps: GitProxyDependencies): GitProxy {
+// The proxy as an Effect program. Refusals are `HttpError` failures with the
+// same status and code as before. A rejection from the request body, the token
+// client or the upstream fetch is lifted with `Effect.promise`, so it reaches
+// the Promise edge as the original error, as the old `await` let it through.
+export function gitProxyEffect(
+  deps: GitProxyDependencies,
+): (request: Request) => Effect.Effect<Response, HttpError> {
   const { aiName, tokenClient } = deps;
   const upstreamBaseUrl = deps.upstreamBaseUrl.replace(/\/+$/, '');
   const pathPrefix = deps.pathPrefix ?? DEFAULT_GIT_PATH_PREFIX;
   const fetchImpl = deps.fetch ?? fetch;
 
-  return async (request: Request) => {
+  return Effect.fnUntraced(function* (request: Request): Effect.fn.Return<Response, HttpError> {
     const inbound = new URL(request.url);
     const service = serviceFor(inbound);
     const isReceivePackPost = service === 'receive-pack' && request.method === 'POST';
 
     let body: ArrayBuffer | ReadableStream<Uint8Array> | null;
     if (isReceivePackPost) {
-      const buffer = await request.arrayBuffer();
+      const buffer = yield* Effect.promise(() => request.arrayBuffer());
       const parsed = parseRefUpdates(new Uint8Array(buffer));
       // A push we cannot enumerate is not a push we can allow: refuse an
       // unreadable or empty body rather than forwarding a write that GitHub
       // might act on but our branch rule never saw.
       if (parsed.malformed || parsed.refs.length === 0) {
-        throw new HttpError(403, 'push_rejected', 'push is unparseable');
+        return yield* Effect.fail(new HttpError(403, 'push_rejected', 'push is unparseable'));
       }
       for (const ref of parsed.refs) {
         if (!isAllowedRef(aiName, ref)) {
-          throw new HttpError(403, 'push_rejected', 'push to this branch is not allowed');
+          return yield* Effect.fail(
+            new HttpError(403, 'push_rejected', 'push to this branch is not allowed'),
+          );
         }
       }
       body = buffer;
@@ -168,13 +177,18 @@ export function createGitProxy(deps: GitProxyDependencies): GitProxy {
     for (const name of HOP_BY_HOP_HEADERS) {
       headers.delete(name);
     }
-    const token = await tokenClient.getToken();
+    const token = yield* Effect.promise(() => tokenClient.getToken());
     headers.set('authorization', `Bearer ${token}`);
 
-    return fetchImpl(buildUpstreamUrl(upstreamBaseUrl, inbound, pathPrefix).toString(), {
-      method: request.method,
-      headers,
-      body,
-    });
-  };
+    const upstreamUrl = buildUpstreamUrl(upstreamBaseUrl, inbound, pathPrefix).toString();
+    // The signal aborts the upstream request if this effect is interrupted.
+    return yield* Effect.promise((signal) =>
+      fetchImpl(upstreamUrl, { method: request.method, headers, body, signal }),
+    );
+  });
+}
+
+export function createGitProxy(deps: GitProxyDependencies): GitProxy {
+  const proxy = gitProxyEffect(deps);
+  return (request: Request) => Effect.runPromise(proxy(request));
 }

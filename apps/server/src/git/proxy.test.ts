@@ -1,7 +1,8 @@
+import { Effect, Fiber } from 'effect';
 import { pino } from 'pino';
 import { describe, expect, it } from 'vitest';
 import { createGitApi } from './api';
-import type { FetchLike } from './proxy';
+import { gitProxyEffect, type FetchLike } from './proxy';
 import type { GitHubAppTokenClient } from './token';
 
 const BASE = 'http://localhost:3000';
@@ -181,5 +182,33 @@ describe('git proxy', () => {
     const call = calls[0]!;
     expect(call.url).toBe('https://github.com/acme/repo.git/info/refs?service=git-upload-pack');
     expect(new Headers(call.init.headers).get('authorization')).toBe(`Bearer ${TOKEN}`);
+  });
+
+  it('can be interrupted while the token call never resolves, without reaching upstream', async () => {
+    const { fetchImpl, calls } = createFetch(() => new Response('ok', { status: 200 }));
+    let tokenRequested: () => void = () => undefined;
+    const tokenAsked = new Promise<void>((resolve) => {
+      tokenRequested = resolve;
+    });
+    const stalledToken: GitHubAppTokenClient = {
+      getToken: () => {
+        tokenRequested();
+        return new Promise<string>(() => undefined);
+      },
+    };
+    const proxy = gitProxyEffect({
+      aiName: 'alice',
+      tokenClient: stalledToken,
+      upstreamBaseUrl: UPSTREAM,
+      fetch: fetchImpl,
+    });
+
+    const fiber = Effect.runFork(
+      proxy(new Request(`${BASE}/git/acme/repo.git/info/refs?service=git-upload-pack`)),
+    );
+    await tokenAsked;
+    await Effect.runPromise(Fiber.interrupt(fiber));
+
+    expect(calls).toHaveLength(0);
   });
 });
