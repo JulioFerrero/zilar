@@ -35,7 +35,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0834](T-0834-mobile-mu25.md) | MU25: mobile small components on Effect | in-progress | haiku-5.5 | | wave 2 |
 | [T-0835](T-0835-web-store.md) | WS1-WS11: web chat store on Effect | in-progress | sonnet-5.5 | T-0801 | chain; Julio checks connect, history, sending live |
 | [T-0836](T-0836-mobile-store.md) | MS1-MS10: mobile chat store on Effect | in-progress | sonnet-5.5 | T-0801 | chain; Julio checks connect, resume, sending live |
-| [T-0837](T-0837-gateway-s3-s4.md) | S3 + S4: AI gateway parts 3 and 4 on Effect | in-progress | sonnet-5.5 | T-0792 | chain; Julio checks AI replies live |
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 
 ## Follow-ups
@@ -866,3 +865,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0792](T-0792-gateway-s2.md) | S2: AI gateway part 2 on Effect | 2026-10-09 |
 | [T-0799](T-0799-lead-batch.md) | lead batch: one combined check per wave | 2026-10-09 |
 | [T-0808](T-0808-web-notifications.md) | WU9: NotificationsPage and GroupHandleRoute on Effect | 2026-10-09 |
+| [T-0837](T-0837-gateway-s3-s4.md) | S3 + S4: AI gateway parts 3 and 4 on Effect | 2026-10-09 |

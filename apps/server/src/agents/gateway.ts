@@ -1,3 +1,4 @@
+import { Effect } from 'effect';
 import { createXmppCore, type ChatMessage } from '@zilar/xmpp-core';
 import { DEFAULT_LITELLM_BASE_URL, type LitellmAdminClient } from '../ai/litellm-client';
 import { modelNameForAi } from '../ai/model-entry';
@@ -178,7 +179,7 @@ export function createAgentGateway(
   // This is a pure move: the factory takes the live session, the budget gate,
   // the memory runner and the gateway callbacks the moved code closes over,
   // and the destructured name keeps `handleIncoming`'s call site unchanged.
-  const { pumpSession } = createDmTurn({
+  const { pumpSessionEffect } = createDmTurn({
     deps,
     logger,
     turnLogger,
@@ -288,12 +289,18 @@ export function createAgentGateway(
     session.pending.push({ id: message.id, body, fromJid: message.fromJid });
     // `busy` is reset in the pump's `finally`, but a truly unexpected throw
     // still needs a redacted log line rather than an unhandled rejection.
-    void pumpSession(session).catch((error: unknown) => {
-      logger.warn(
-        { err: toRedactedError(error, secretsFor()), aiId: session.aiId },
-        'AI pump failed',
-      );
-    });
+    Effect.runFork(
+      pumpSessionEffect(session).pipe(
+        Effect.catchDefect((error) =>
+          Effect.sync(() => {
+            logger.warn(
+              { err: toRedactedError(error, secretsFor()), aiId: session.aiId },
+              'AI pump failed',
+            );
+          }),
+        ),
+      ),
+    );
   }
 
   // (T-0549: `sessionForAiJid`, `handleRoomIncoming` and `pumpRoom` now live

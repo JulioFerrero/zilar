@@ -1,3 +1,4 @@
+import { Effect } from 'effect';
 import type { ChatMessage } from '@zilar/xmpp-core';
 import { randomUUID } from 'node:crypto';
 import type { DraftHub } from '../../drafts/hub';
@@ -31,7 +32,7 @@ type LiveSession = ReturnType<typeof createLiveSession>;
 // T-0540 (plan §3, G7): the DM turn extracted from `createAgentGateway`. The
 // factory takes the shared live session, budget gate, memory runner and the
 // gateway callbacks the moved code closes over, and returns the same
-// `pumpSession` the gateway calls. A pure move: no logic or wording changed.
+// `pumpSessionEffect` the gateway forks. A pure move: no logic or wording changed.
 interface DmTurnContext {
   deps: AgentGatewayDeps;
   logger: GatewayLogger;
@@ -77,28 +78,44 @@ export function createDmTurn(ctx: DmTurnContext) {
 
   // One turn at a time per AI. Messages arriving during a turn are coalesced:
   // when the turn ends, one more turn runs if new owner messages came in.
-  async function pumpSession(session: AiSession): Promise<void> {
+  const pumpSessionEffect = Effect.fnUntraced(function* (
+    session: AiSession,
+  ): Effect.fn.Return<void> {
     if (session.busy) {
       return;
     }
     session.busy = true;
-    try {
+    yield* Effect.gen(function* () {
       while (session.pending.length > 0 && !session.stopped) {
         const batch = session.pending.splice(0, session.pending.length);
-        await runSessionTurn(session, batch);
+        yield* runSessionTurnEffect(session, batch);
       }
-    } finally {
-      session.busy = false;
-    }
-  }
+    }).pipe(
+      Effect.ensuring(
+        Effect.sync(() => {
+          session.busy = false;
+        }),
+      ),
+    );
+  });
 
-  async function runSessionTurn(session: AiSession, batch: PendingMessage[]): Promise<void> {
+  // The Promise-typed calls below are lifted with plain `Effect.promise`: a
+  // rejection (or a synchronous throw) dies with the original error, and
+  // `catchDefect` handles it where the old code had a `catch`.
+  const runSessionTurnEffect = Effect.fnUntraced(function* (
+    session: AiSession,
+    batch: PendingMessage[],
+  ): Effect.fn.Return<void> {
     // The owner JID comes from the database, never from the message. The AI
     // id below is the gateway's own: it keyed this session, so `ensureAiModel`
     // can never be aimed at an id taken from message content.
-    const ai = await loadActiveAi(deps.db, session.aiId).catch(() => null);
+    const ai = yield* Effect.promise(() => loadActiveAi(deps.db, session.aiId)).pipe(
+      Effect.catchDefect(() => Effect.succeed(null)),
+    );
     if (ai === null) {
-      await disconnectAi(session.aiId).catch(() => undefined);
+      yield* Effect.promise(() => disconnectAi(session.aiId)).pipe(
+        Effect.catchDefect(() => Effect.void),
+      );
       return;
     }
     const ownerJid = jidFor(localpartFor(ai.owner), deps.xmpp.domain);
@@ -137,11 +154,13 @@ export function createDmTurn(ctx: DmTurnContext) {
     // messages that day get no reply and no notice. The usage read also
     // decides the 80% warnings, which go out after the reply below.
     const dmChatKey = `dm:${ownerBare}`;
-    const dmBudget = await budgetGate.checkDailyLimit({
-      aiId: session.aiId,
-      chatKey: dmChatKey,
-      sendNotice: (text) => liveSendMessage(session, ownerJid, 'chat', text),
-    });
+    const dmBudget = yield* Effect.promise(() =>
+      budgetGate.checkDailyLimit({
+        aiId: session.aiId,
+        chatKey: dmChatKey,
+        sendNotice: (text) => liveSendMessage(session, ownerJid, 'chat', text),
+      }),
+    );
     if (dmBudget.limited) {
       return;
     }
@@ -154,41 +173,50 @@ export function createDmTurn(ctx: DmTurnContext) {
     // without drafts.
     const turnDrafts = draftHub.publishTurn(ai.owner, ai.jid, randomUUID());
     let virtualKey: string | undefined;
-    try {
-      await ensureAiModel(aiDeps(), session.aiId);
-      const encryptedKey = await loadEncryptedVirtualKey(deps.db, session.aiId);
+    const turnBody = Effect.gen(function* () {
+      yield* Effect.promise(() => ensureAiModel(aiDeps(), session.aiId));
+      const encryptedKey = yield* Effect.promise(() =>
+        loadEncryptedVirtualKey(deps.db, session.aiId),
+      );
       if (encryptedKey === null) {
         throw new Error(`AI ${session.aiId} has no virtual key`);
       }
       // Decrypted in memory only; never stored, logged or returned.
-      virtualKey = (deps.cipher as KeyCipher).decrypt(encryptedKey);
+      const key = (deps.cipher as KeyCipher).decrypt(encryptedKey);
+      virtualKey = key;
 
-      let history: ChatMessage[] = [];
-      try {
-        const page = await session.core.loadHistory(ownerJid, 'chat', {
+      const history = yield* Effect.promise(() =>
+        session.core.loadHistory(ownerJid, 'chat', {
           max: DM_HISTORY_MESSAGE_LIMIT,
-        });
-        history = page.messages;
-      } catch (historyError) {
-        logger.warn(
-          { err: toRedactedError(historyError, secretsFor(virtualKey)), aiId: session.aiId },
-          'AI history lookup failed; replying without history',
-        );
-      }
+        }),
+      ).pipe(
+        Effect.map((page): ChatMessage[] => page.messages),
+        Effect.catchDefect((historyError) =>
+          Effect.sync((): ChatMessage[] => {
+            logger.warn(
+              { err: toRedactedError(historyError, secretsFor(key)), aiId: session.aiId },
+              'AI history lookup failed; replying without history',
+            );
+            return [];
+          }),
+        ),
+      );
 
-      const ownerName = await loadOwnerName(deps.db, ai.owner);
+      const ownerName = yield* Effect.promise(() => loadOwnerName(deps.db, ai.owner));
       const now = (deps.now ?? (() => new Date()))();
       const today = now.toISOString().slice(0, 10);
-      const memory = await loadMemoryContext({
-        aiId: session.aiId,
-        chatKey: dmChatKey,
-        archiveOwner: ai.localpart,
-        scope: { kind: 'dm', peer: ownerBare },
-        aiBareJid: bareJid(ai.jid),
-        ownerName,
-        now,
-        virtualKey,
-      });
+      const memory = yield* Effect.promise(() =>
+        loadMemoryContext({
+          aiId: session.aiId,
+          chatKey: dmChatKey,
+          archiveOwner: ai.localpart,
+          scope: { kind: 'dm', peer: ownerBare },
+          aiBareJid: bareJid(ai.jid),
+          ownerName,
+          now,
+          virtualKey: key,
+        }),
+      );
       // The batch is newer than the archive may know: merge the triggering
       // messages into the history (skipping ids MAM already returned) so a
       // coalesced turn sees every message that arrived, and the trigger below
@@ -235,75 +263,83 @@ export function createDmTurn(ctx: DmTurnContext) {
       // first tool round and update it per round; it is retracted when the
       // final text lands. Best effort: the turn never fails over it.
       const dmProgress = liveProgressReporter(session, ownerJid, 'chat', ai.jid);
-      const outcome = await runDmTurn({
-        aiId: session.aiId,
-        ownerJid,
-        messages: dmMessages,
-        baseUrl: baseUrl,
-        virtualKey,
-        model: modelNameForAi(session.aiId),
-        executeTool: executeToolCall(session, dmChatKey),
-        tools: buildTools(deps.actions?.listActions() ?? []),
-        ...(deps.fetchImpl === undefined ? {} : { fetchImpl: deps.fetchImpl }),
-        ...(deps.toolMaxRounds === undefined ? {} : { maxRounds: deps.toolMaxRounds }),
-        checkRoundGate: () => budgetGate.checkDmRoundGate(session),
-        reportProgress: dmProgress.reportProgress,
-        clearProgress: dmProgress.clearProgress,
-        // T-0156: wires the per-turn counts line (ids and counts only,
-        // never content) into production — the wire the T-0106 review
-        // deferred.
-        turnLogger,
-        onDelta: (textSoFar) => {
-          if (sessionIsLive(session)) {
-            turnDrafts.push(textSoFar);
-          }
-        },
-        beforeFinalSend: (text) => {
-          if (sessionIsLive(session)) {
-            turnDrafts.flush(text);
-          }
-        },
-        sendMessage: (to, kind, text) => liveSendMessage(session, to, kind, text),
-        sendTyping: (to, kind, state) => {
-          liveSendTyping(session, to, kind, state);
-        },
-        logger,
-        secrets: secretsFor(),
-      });
+      const outcome = yield* Effect.promise(() =>
+        runDmTurn({
+          aiId: session.aiId,
+          ownerJid,
+          messages: dmMessages,
+          baseUrl: baseUrl,
+          virtualKey: key,
+          model: modelNameForAi(session.aiId),
+          executeTool: executeToolCall(session, dmChatKey),
+          tools: buildTools(deps.actions?.listActions() ?? []),
+          ...(deps.fetchImpl === undefined ? {} : { fetchImpl: deps.fetchImpl }),
+          ...(deps.toolMaxRounds === undefined ? {} : { maxRounds: deps.toolMaxRounds }),
+          checkRoundGate: () => budgetGate.checkDmRoundGate(session),
+          reportProgress: dmProgress.reportProgress,
+          clearProgress: dmProgress.clearProgress,
+          // T-0156: wires the per-turn counts line (ids and counts only,
+          // never content) into production — the wire the T-0106 review
+          // deferred.
+          turnLogger,
+          onDelta: (textSoFar) => {
+            if (sessionIsLive(session)) {
+              turnDrafts.push(textSoFar);
+            }
+          },
+          beforeFinalSend: (text) => {
+            if (sessionIsLive(session)) {
+              turnDrafts.flush(text);
+            }
+          },
+          sendMessage: (to, kind, text) => liveSendMessage(session, to, kind, text),
+          sendTyping: (to, kind, state) => {
+            liveSendTyping(session, to, kind, state);
+          },
+          logger,
+          secrets: secretsFor(),
+        }),
+      );
       turnDrafts.end(outcome.kind === 'replied' && sessionIsLive(session) ? 'sent' : 'failed');
       // The 80% heads-ups go out after the reply, so the owner reads the
       // answer first. A failed warning send only logs and never fails the
       // turn.
-      await budgetGate.sendBudgetWarnings({
-        aiId: session.aiId,
-        chatKey: dmChatKey,
-        usage: dmBudget.usage,
-        sendWarning: (text) => liveSendMessage(session, ownerJid, 'chat', text),
-      });
-      startCompaction(session, dmChatKey, virtualKey);
-    } catch (error) {
-      // ensureAiModel, the key lookup and anything else outside the turn: an
-      // honest short message, never the raw error.
-      logger.warn(
-        { err: toRedactedError(error, secretsFor(virtualKey)), aiId: session.aiId },
-        'AI turn failed',
+      yield* Effect.promise(() =>
+        budgetGate.sendBudgetWarnings({
+          aiId: session.aiId,
+          chatKey: dmChatKey,
+          usage: dmBudget.usage,
+          sendWarning: (text) => liveSendMessage(session, ownerJid, 'chat', text),
+        }),
       );
-      const reply = mapFailureToReply(error);
-      try {
-        await liveSendMessage(session, ownerJid, 'chat', reply);
-      } catch {
-        // There is nobody left to tell when the send itself fails.
-      }
-      // The failed `end` goes out only after the failure text was sent (or
-      // its send was attempted): the contract promises `end` comes last.
-      try {
-        liveSendTyping(session, ownerJid, 'chat', 'paused');
-      } catch {
-        // Typing state is best-effort.
-      }
-      turnDrafts.end('failed');
-    }
-  }
+      startCompaction(session, dmChatKey, key);
+    });
+    yield* turnBody.pipe(
+      Effect.catchDefect((error) =>
+        Effect.gen(function* () {
+          // ensureAiModel, the key lookup and anything else outside the turn: an
+          // honest short message, never the raw error.
+          logger.warn(
+            { err: toRedactedError(error, secretsFor(virtualKey)), aiId: session.aiId },
+            'AI turn failed',
+          );
+          const reply = mapFailureToReply(error);
+          // There is nobody left to tell when the send itself fails.
+          yield* Effect.promise(() => liveSendMessage(session, ownerJid, 'chat', reply)).pipe(
+            Effect.catchDefect(() => Effect.void),
+          );
+          // The failed `end` goes out only after the failure text was sent (or
+          // its send was attempted): the contract promises `end` comes last.
+          // Typing state is best-effort.
+          yield* Effect.try({
+            try: () => liveSendTyping(session, ownerJid, 'chat', 'paused'),
+            catch: (typingError) => typingError,
+          }).pipe(Effect.ignore);
+          turnDrafts.end('failed');
+        }),
+      ),
+    );
+  });
 
-  return { pumpSession };
+  return { pumpSessionEffect };
 }

@@ -1,3 +1,4 @@
+import { Effect } from 'effect';
 import type { ChatMessage } from '@zilar/xmpp-core';
 import { modelNameForAi } from '../../ai/model-entry';
 import { ensureAiModel, type AiServiceDeps } from '../../ais/service';
@@ -118,28 +119,32 @@ export function createGroupTurn(ctx: GroupTurnContext) {
     nowMs,
   } = ctx;
 
-  async function runGroupSessionTurn(
+  // The Promise-typed calls below are lifted with plain `Effect.promise`: a
+  // rejection (or a synchronous throw) dies with the original error, and
+  // `catchDefect` handles it where the old code had a `catch`.
+  const runGroupSessionTurnEffect = Effect.fnUntraced(function* (
     session: AiSession,
     roomJid: string,
     batch: RoomPendingMessage[],
-  ): Promise<void> {
+  ): Effect.fn.Return<void> {
     // The AI id below is the gateway's own: it keyed this session, so nothing
     // here can be aimed at an id taken from message content.
-    const ai = await loadActiveAi(deps.db, session.aiId).catch(() => null);
+    const ai = yield* Effect.promise(() => loadActiveAi(deps.db, session.aiId)).pipe(
+      Effect.catchDefect(() => Effect.succeed(null)),
+    );
     if (ai === null) {
-      await disconnectAi(session.aiId).catch(() => undefined);
+      yield* Effect.promise(() => disconnectAi(session.aiId)).pipe(
+        Effect.catchDefect(() => Effect.void),
+      );
       return;
     }
     const room = session.rooms.get(roomJid);
     if (room === undefined) {
       return;
     }
-    const gate = await loadRoomGateState(
-      deps.db,
-      room.groupId,
-      deps.xmpp.domain,
-      room.topicId,
-    ).catch(() => null);
+    const gate = yield* Effect.promise(() =>
+      loadRoomGateState(deps.db, room.groupId, deps.xmpp.domain, room.topicId),
+    ).pipe(Effect.catchDefect(() => Effect.succeed(null)));
     if (gate === null) {
       logger.warn({ aiId: session.aiId, groupId: room.groupId }, 'AI group state lookup failed');
       return;
@@ -183,23 +188,29 @@ export function createGroupTurn(ctx: GroupTurnContext) {
     // not leave its row `working` forever. Fails quietly: a lookup or update
     // error here only logs ids. A turn that does reach the model finishes its
     // row below with the worker's text.
-    const failDelegationQuietly = async (delegationId: string | undefined): Promise<void> => {
+    const failDelegationQuietly = Effect.fnUntraced(function* (
+      delegationId: string | undefined,
+    ): Effect.fn.Return<void> {
       if (delegationId === undefined) {
         return;
       }
-      try {
-        await finishDelegation(deps.db, {
+      yield* Effect.promise(() =>
+        finishDelegation(deps.db, {
           id: delegationId,
           aiId: session.aiId,
           status: 'failed',
-        });
-      } catch (error) {
-        logger.warn(
-          { err: errorName(error), aiId: session.aiId, delegationId },
-          'AI delegation finish failed',
-        );
-      }
-    };
+        }),
+      ).pipe(
+        Effect.catchDefect((error) =>
+          Effect.sync(() => {
+            logger.warn(
+              { err: errorName(error), aiId: session.aiId, delegationId },
+              'AI delegation finish failed',
+            );
+          }),
+        ),
+      );
+    });
 
     // The soft daily limit is checked before the rate budget and any model
     // call: a limited AI sends at most one fixed notice per room per UTC day
@@ -209,13 +220,15 @@ export function createGroupTurn(ctx: GroupTurnContext) {
     // goes through `liveSendMessage` so a stop that lands between the spend
     // read and the notice is silently dropped.
     const groupChatKey = `room:${roomJid}`;
-    const groupBudget = await budgetGate.checkDailyLimit({
-      aiId: session.aiId,
-      chatKey: groupChatKey,
-      sendNotice: (text) => liveSendMessage(session, roomJid, 'groupchat', text),
-    });
+    const groupBudget = yield* Effect.promise(() =>
+      budgetGate.checkDailyLimit({
+        aiId: session.aiId,
+        chatKey: groupChatKey,
+        sendNotice: (text) => liveSendMessage(session, roomJid, 'groupchat', text),
+      }),
+    );
     if (groupBudget.limited) {
-      await failDelegationQuietly(trigger.delegationId);
+      yield* failDelegationQuietly(trigger.delegationId);
       return;
     }
 
@@ -229,7 +242,7 @@ export function createGroupTurn(ctx: GroupTurnContext) {
         { aiId: session.aiId, groupId: room.groupId, messageId: trigger.id },
         'AI group rate limit reached; dropping the turn',
       );
-      await failDelegationQuietly(trigger.delegationId);
+      yield* failDelegationQuietly(trigger.delegationId);
       return;
     }
     recent.push(atMs);
@@ -247,7 +260,7 @@ export function createGroupTurn(ctx: GroupTurnContext) {
         { aiId: session.aiId, groupId: room.groupId, messageId: trigger.id },
         'AI round budget spent; dropping the turn',
       );
-      await failDelegationQuietly(trigger.delegationId);
+      yield* failDelegationQuietly(trigger.delegationId);
       return;
     }
     if (round !== undefined) {
@@ -258,9 +271,9 @@ export function createGroupTurn(ctx: GroupTurnContext) {
     // in the batch) shows the short "looking at this" line only once the turn
     // has passed every gate above. A mention turn never posts it.
     if (eligible.every((item) => item.wake === true)) {
-      await liveSendMessage(session, roomJid, 'groupchat', `${room.nick} is looking at this`).catch(
-        () => undefined,
-      );
+      yield* Effect.promise(() =>
+        liveSendMessage(session, roomJid, 'groupchat', `${room.nick} is looking at this`),
+      ).pipe(Effect.catchDefect(() => Effect.void));
     }
 
     // The room history the AI reads for a turn is that topic's room only:
@@ -270,54 +283,61 @@ export function createGroupTurn(ctx: GroupTurnContext) {
     // T-0109: names for the topic-aware system prompt. Best effort: a lookup
     // failure keeps the old generic prompt. The topic name goes to the model
     // alone, never into another topic's turn or any log line.
-    let groupName: string | undefined;
+    // Best effort: the turn still runs with the generic prompt.
+    const groupName = yield* Effect.promise(() => loadGroupTitle(deps.db, room.groupId)).pipe(
+      Effect.map((title) => title ?? undefined),
+      Effect.catchDefect(() => Effect.succeed(undefined)),
+    );
     let topicName: string | undefined;
-    try {
-      groupName = (await loadGroupTitle(deps.db, room.groupId)) ?? undefined;
-    } catch {
-      // Best effort: the turn still runs with the generic prompt.
-    }
     if (room.topicId !== '') {
-      try {
-        topicName = (await loadTopicName(deps.db, room.topicId)) ?? undefined;
-      } catch {
-        // Best effort: the turn still runs with the generic prompt.
-      }
+      topicName = yield* Effect.promise(() => loadTopicName(deps.db, room.topicId)).pipe(
+        Effect.map((name) => name ?? undefined),
+        Effect.catchDefect(() => Effect.succeed(undefined)),
+      );
     }
     let virtualKey: string | undefined;
-    try {
-      await ensureAiModel(aiDeps(), session.aiId);
-      const encryptedKey = await loadEncryptedVirtualKey(deps.db, session.aiId);
+    const turnBody = Effect.gen(function* () {
+      yield* Effect.promise(() => ensureAiModel(aiDeps(), session.aiId));
+      const encryptedKey = yield* Effect.promise(() =>
+        loadEncryptedVirtualKey(deps.db, session.aiId),
+      );
       if (encryptedKey === null) {
         throw new Error(`AI ${session.aiId} has no virtual key`);
       }
       // Decrypted in memory only; never stored, logged or returned.
-      virtualKey = (deps.cipher as KeyCipher).decrypt(encryptedKey);
+      const key = (deps.cipher as KeyCipher).decrypt(encryptedKey);
+      virtualKey = key;
 
-      let history: ChatMessage[] = [];
-      try {
-        const page = await session.core.loadHistory(roomJid, 'groupchat', {
+      const history = yield* Effect.promise(() =>
+        session.core.loadHistory(roomJid, 'groupchat', {
           max: DM_HISTORY_MESSAGE_LIMIT,
-        });
-        history = page.messages;
-      } catch (historyError) {
-        logger.warn(
-          { err: toRedactedError(historyError, secretsFor(virtualKey)), aiId: session.aiId },
-          'AI group history lookup failed; replying without history',
-        );
-      }
+        }),
+      ).pipe(
+        Effect.map((page): ChatMessage[] => page.messages),
+        Effect.catchDefect((historyError) =>
+          Effect.sync((): ChatMessage[] => {
+            logger.warn(
+              { err: toRedactedError(historyError, secretsFor(key)), aiId: session.aiId },
+              'AI group history lookup failed; replying without history',
+            );
+            return [];
+          }),
+        ),
+      );
 
       const now = (deps.now ?? (() => new Date()))();
       const today = now.toISOString().slice(0, 10);
-      const memory = await loadMemoryContext({
-        aiId: session.aiId,
-        chatKey: groupChatKey,
-        archiveOwner: roomJid,
-        scope: { kind: 'room', room: roomJid },
-        aiBareJid: normBareJid(ai.jid),
-        now,
-        virtualKey,
-      });
+      const memory = yield* Effect.promise(() =>
+        loadMemoryContext({
+          aiId: session.aiId,
+          chatKey: groupChatKey,
+          archiveOwner: roomJid,
+          scope: { kind: 'room', room: roomJid },
+          aiBareJid: normBareJid(ai.jid),
+          now,
+          virtualKey: key,
+        }),
+      );
       // The batch is newer than the archive may know: merge the eligible
       // messages into the history (skipping ids MAM already returned) so a
       // coalesced turn sees every mention that arrived, and the context
@@ -347,23 +367,26 @@ export function createGroupTurn(ctx: GroupTurnContext) {
       let handoffTargets: { aiId: string; nick: string; jid: string }[] = [];
       let canDelegate = false;
       if (otherSessions.length > 0) {
-        try {
-          const rows = await loadDelegationFlags(deps.db, [
+        // Best effort: no handoff targets, the turn runs as before.
+        yield* Effect.promise(() =>
+          loadDelegationFlags(deps.db, [
             session.aiId,
             ...otherSessions.map((candidate) => candidate.aiId),
-          ]);
-          canDelegate = rows.find((row) => row.id === session.aiId)?.canDelegate ?? false;
-          const accepting = new Set(rows.filter((row) => row.accepts).map((row) => row.id));
-          handoffTargets = otherSessions.flatMap((candidate) => {
-            const subscription = candidate.rooms.get(roomJid);
-            if (subscription === undefined || !accepting.has(candidate.aiId)) {
-              return [];
-            }
-            return [{ aiId: candidate.aiId, nick: subscription.nick, jid: candidate.aiJid }];
-          });
-        } catch {
-          // Best effort: no handoff targets, the turn runs as before.
-        }
+          ]),
+        ).pipe(
+          Effect.map((rows) => {
+            canDelegate = rows.find((row) => row.id === session.aiId)?.canDelegate ?? false;
+            const accepting = new Set(rows.filter((row) => row.accepts).map((row) => row.id));
+            handoffTargets = otherSessions.flatMap((candidate) => {
+              const subscription = candidate.rooms.get(roomJid);
+              if (subscription === undefined || !accepting.has(candidate.aiId)) {
+                return [];
+              }
+              return [{ aiId: candidate.aiId, nick: subscription.nick, jid: candidate.aiJid }];
+            });
+          }),
+          Effect.catchDefect(() => Effect.void),
+        );
       }
       const messages: ChatCompletionMessage[] = buildGroupMessages({
         aiName: ai.name,
@@ -406,21 +429,22 @@ export function createGroupTurn(ctx: GroupTurnContext) {
       // demotion that landed between the mention and the tool call
       // short-circuits to `denied: not allowed` without invoking the
       // action gateway.
-      const isStillAllowed = async (): Promise<boolean> => {
-        const fresh = await loadRoomGateState(
-          deps.db,
-          room.groupId,
-          deps.xmpp.domain,
-          room.topicId,
+      const isStillAllowed = (): Promise<boolean> =>
+        Effect.runPromise(
+          Effect.promise(() =>
+            loadRoomGateState(deps.db, room.groupId, deps.xmpp.domain, room.topicId),
+          ).pipe(
+            Effect.map((fresh) => {
+              if (fresh === null) {
+                return false;
+              }
+              const role = fresh.memberRolesByJid.get(triggerBare);
+              // T-0109: the sender must still be a group owner/admin AND a member
+              // of this topic. Either check failing denies the action.
+              return (role === 'owner' || role === 'admin') && fresh.memberJids.has(triggerBare);
+            }),
+          ),
         );
-        if (fresh === null) {
-          return false;
-        }
-        const role = fresh.memberRolesByJid.get(triggerBare);
-        // T-0109: the sender must still be a group owner/admin AND a member
-        // of this topic. Either check failing denies the action.
-        return (role === 'owner' || role === 'admin') && fresh.memberJids.has(triggerBare);
-      };
 
       // No persona tools in groups and no drafts: the reply goes straight to
       // the room with `composing`/`paused` chat states around it. The 80%
@@ -436,93 +460,112 @@ export function createGroupTurn(ctx: GroupTurnContext) {
       const groupProgress = liveProgressReporter(session, roomJid, 'groupchat', ai.jid);
       const groupMessages =
         deps.toolsEnabled === true && allowActions ? withToolGuide(messages) : messages;
-      const turnOutcome = await runGroupTurn({
-        aiId: session.aiId,
-        roomJid,
-        triggerId: trigger.id,
-        senderJid: normBareJid(trigger.fromJid),
-        senderName,
-        messages: groupMessages,
-        baseUrl: baseUrl,
-        virtualKey,
-        model: modelNameForAi(session.aiId),
-        ...(deps.fetchImpl === undefined ? {} : { fetchImpl: deps.fetchImpl }),
-        tools: groupTools,
-        executeTool: executeToolCall(session, groupChatKey, {
-          groupId: room.groupId,
-          topicId: room.topicId,
+      const turnOutcome = yield* Effect.promise(() =>
+        runGroupTurn({
+          aiId: session.aiId,
           roomJid,
           triggerId: trigger.id,
-          isStillAllowed,
-          allowActions,
-          delegateTargetIds: new Set(delegateTargets?.map((target) => target.id) ?? []),
+          senderJid: normBareJid(trigger.fromJid),
+          senderName,
+          messages: groupMessages,
+          baseUrl: baseUrl,
+          virtualKey: key,
+          model: modelNameForAi(session.aiId),
+          ...(deps.fetchImpl === undefined ? {} : { fetchImpl: deps.fetchImpl }),
+          tools: groupTools,
+          executeTool: executeToolCall(session, groupChatKey, {
+            groupId: room.groupId,
+            topicId: room.topicId,
+            roomJid,
+            triggerId: trigger.id,
+            isStillAllowed,
+            allowActions,
+            delegateTargetIds: new Set(delegateTargets?.map((target) => target.id) ?? []),
+          }),
+          ...(deps.toolMaxRounds === undefined ? {} : { maxRounds: deps.toolMaxRounds }),
+          ...(handoffTargets.length === 0 ? {} : { handoffTargets }),
+          checkRoundGate: () => budgetGate.checkDmRoundGate(session),
+          reportProgress: groupProgress.reportProgress,
+          clearProgress: groupProgress.clearProgress,
+          // T-0156: the per-turn counts line (ids and counts only), like the
+          // DM path below.
+          turnLogger,
+          sendMessage: (to, kind, text, opts) => liveSendMessage(session, to, kind, text, opts),
+          sendTyping: (to, kind, state) => {
+            liveSendTyping(session, to, kind, state);
+          },
+          logger,
+          secrets: secretsFor(),
         }),
-        ...(deps.toolMaxRounds === undefined ? {} : { maxRounds: deps.toolMaxRounds }),
-        ...(handoffTargets.length === 0 ? {} : { handoffTargets }),
-        checkRoundGate: () => budgetGate.checkDmRoundGate(session),
-        reportProgress: groupProgress.reportProgress,
-        clearProgress: groupProgress.clearProgress,
-        // T-0156: the per-turn counts line (ids and counts only), like the
-        // DM path below.
-        turnLogger,
-        sendMessage: (to, kind, text, opts) => liveSendMessage(session, to, kind, text, opts),
-        sendTyping: (to, kind, state) => {
-          liveSendTyping(session, to, kind, state);
-        },
-        logger,
-        secrets: secretsFor(),
-      });
+      );
       // T-0482: a delegated turn stores its result on the row. The worker's
       // posted text (with the `@<boss> ` prefix) is the stored summary; a
       // failed turn stores whatever was posted instead. Log ids only.
-      if (trigger.delegationId !== undefined) {
-        try {
-          await finishDelegation(deps.db, {
-            id: trigger.delegationId,
+      const finishedDelegationId = trigger.delegationId;
+      if (finishedDelegationId !== undefined) {
+        yield* Effect.promise(() =>
+          finishDelegation(deps.db, {
+            id: finishedDelegationId,
             aiId: session.aiId,
             status: turnOutcome.kind === 'replied' ? 'completed' : 'failed',
             resultSummary: turnOutcome.text,
-          });
-        } catch (error) {
-          logger.warn(
-            { err: errorName(error), aiId: session.aiId, delegationId: trigger.delegationId },
-            'AI delegation finish failed',
-          );
-        }
+          }),
+        ).pipe(
+          Effect.catchDefect((error) =>
+            Effect.sync(() => {
+              logger.warn(
+                { err: errorName(error), aiId: session.aiId, delegationId: finishedDelegationId },
+                'AI delegation finish failed',
+              );
+            }),
+          ),
+        );
       }
-      await budgetGate.sendBudgetWarnings({
-        aiId: session.aiId,
-        chatKey: groupChatKey,
-        usage: groupBudget.usage,
-        sendWarning: (text) => liveSendMessage(session, roomJid, 'groupchat', text),
-      });
-      startCompaction(session, groupChatKey, virtualKey);
-    } catch (error) {
-      // ensureAiModel, the key lookup and anything else outside the turn: an
-      // honest short message in the room, never the raw error.
-      logger.warn(
-        { err: toRedactedError(error, secretsFor(virtualKey)), aiId: session.aiId },
-        'AI group turn failed',
+      yield* Effect.promise(() =>
+        budgetGate.sendBudgetWarnings({
+          aiId: session.aiId,
+          chatKey: groupChatKey,
+          usage: groupBudget.usage,
+          sendWarning: (text) => liveSendMessage(session, roomJid, 'groupchat', text),
+        }),
       );
-      // T-0482: if this was a delegated turn, the model call never happened
-      // (or the turn failed around it), so the row must not stay `working`.
-      await failDelegationQuietly(trigger.delegationId);
-      const reply = mapFailureToReply(error);
-      const name = senderName.trim() === '' ? normBareJid(trigger.fromJid) : senderName.trim();
-      try {
-        await liveSendMessage(session, roomJid, 'groupchat', `@${name} ${reply}`, {
-          replyTo: { id: trigger.id },
-          mentions: [{ jid: normBareJid(trigger.fromJid), begin: 0, end: name.length + 1 }],
-        });
-      } catch {
-        // There is nobody left to tell when the send itself fails.
-      }
-      try {
-        liveSendTyping(session, roomJid, 'groupchat', 'paused');
-      } catch {
-        // Typing state is best-effort.
-      }
-    }
-  }
-  return { runGroupSessionTurn };
+      startCompaction(session, groupChatKey, key);
+    });
+    yield* turnBody.pipe(
+      Effect.catchDefect((error) =>
+        Effect.gen(function* () {
+          // ensureAiModel, the key lookup and anything else outside the turn: an
+          // honest short message in the room, never the raw error.
+          logger.warn(
+            { err: toRedactedError(error, secretsFor(virtualKey)), aiId: session.aiId },
+            'AI group turn failed',
+          );
+          // T-0482: if this was a delegated turn, the model call never happened
+          // (or the turn failed around it), so the row must not stay `working`.
+          yield* failDelegationQuietly(trigger.delegationId);
+          const reply = mapFailureToReply(error);
+          const name = senderName.trim() === '' ? normBareJid(trigger.fromJid) : senderName.trim();
+          // There is nobody left to tell when the send itself fails.
+          yield* Effect.promise(() =>
+            liveSendMessage(session, roomJid, 'groupchat', `@${name} ${reply}`, {
+              replyTo: { id: trigger.id },
+              mentions: [{ jid: normBareJid(trigger.fromJid), begin: 0, end: name.length + 1 }],
+            }),
+          ).pipe(Effect.catchDefect(() => Effect.void));
+          // Typing state is best-effort.
+          yield* Effect.try({
+            try: () => liveSendTyping(session, roomJid, 'groupchat', 'paused'),
+            catch: (typingError) => typingError,
+          }).pipe(Effect.ignore);
+        }),
+      ),
+    );
+  });
+  return {
+    runGroupSessionTurn: (
+      session: AiSession,
+      roomJid: string,
+      batch: RoomPendingMessage[],
+    ): Promise<void> => Effect.runPromise(runGroupSessionTurnEffect(session, roomJid, batch)),
+  };
 }
