@@ -9,6 +9,7 @@
  * session).
  */
 
+import { Effect } from 'effect';
 import { readRecentStickers, type RecentStickerEntry } from './stickers';
 
 export const RECENT_STICKERS_KEY = 'zilar:recentStickers';
@@ -22,11 +23,13 @@ export interface RecentsStorageBackend {
 export function createMemoryRecentsBackend(initial?: string): RecentsStorageBackend {
   let raw: string | null = initial ?? null;
   return {
-    read: () => Promise.resolve(raw),
-    write: (next) => {
-      raw = next;
-      return Promise.resolve();
-    },
+    read: () => Effect.runPromise(Effect.sync(() => raw)),
+    write: (next) =>
+      Effect.runPromise(
+        Effect.sync(() => {
+          raw = next;
+        }),
+      ),
   };
 }
 
@@ -43,11 +46,15 @@ export const RECENTS_STORAGE = {
   write: (raw: string): Promise<void> => backend.write(raw),
 };
 
+const readStoredRecentsEffect = (): Effect.Effect<RecentStickerEntry[]> =>
+  Effect.tryPromise({ try: () => backend.read(), catch: () => undefined }).pipe(
+    Effect.flatMap((raw) =>
+      Effect.try({ try: () => readRecentStickers(raw), catch: () => undefined }),
+    ),
+    Effect.catch(() => Effect.succeed<RecentStickerEntry[]>([])),
+  );
+
 /** Reads the recents; hostile or missing data resolves to an empty list. */
-export async function readStoredRecents(): Promise<RecentStickerEntry[]> {
-  try {
-    return readRecentStickers(await backend.read());
-  } catch {
-    return [];
-  }
+export function readStoredRecents(): Promise<RecentStickerEntry[]> {
+  return Effect.runPromise(readStoredRecentsEffect());
 }

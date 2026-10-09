@@ -1,7 +1,7 @@
 ---
 id: T-0811
 title: "MU2: mobile lib basics: approval-state, auth, blocked-users, polyfills, session-token, stickers-storage, stickers, emoji-data on Effect"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0811-mobile-mu2
 model: auto
@@ -61,4 +61,28 @@ Run `pnpm exec prettier --write` on your changed files before committing. Do not
 
 ## Report (written by the worker when done)
 
+- **Commits:** `d5596fc1` T-0811: tests before (polyfills.test.ts, session-token.test.ts); then the conversion commit.
+- **effect:map kinds (after):** approval-state `effect`; auth `effect`; blocked-users `effect`; emoji-data `effect`; polyfills `plain` (no Effect import, see unsure); session-token `effect`; stickers-storage `effect`; stickers `effect`.
+- **Weak signals left (not hard, no tier B):** auth.ts W7 (`process.env.EXPO_PUBLIC_ZILAR_API_URL`, line 22: `apps/mobile/src/mock/gate.ts` has no such constant, so the read stays); W4 in five files is the `Effect.catch(` combinator (the classifier matches `.catch(`); W6 in emoji-data and stickers is the `JSON.parse` inside a `parseStoredJson` helper that feeds `Effect.runSync`.
+- **Tests:** before: 82 passed (6 existing files; polyfills and session-token had none). After: 92 passed in 10 files (82 unchanged + 7 new in polyfills.test.ts + 3 new in session-token.test.ts). The 92 passed on three runs.
+- **Typecheck:** `pnpm --filter @zilar/mobile typecheck` (tsc --noEmit): clean. Oxlint on the 10 changed files: clean. Prettier run on all changed files.
+- **Behaviour differences:**
+  - polyfills.ts: the `process.nextTick` shim now calls `queueMicrotask(callback)` instead of `Promise.resolve().then(callback)`. Same microtask queue. A throw inside the callback is now reported as an uncaught error, not an unhandled rejection. RN 0.86 polyfills `queueMicrotask` on every runtime (`node_modules/react-native/Libraries/Core/setUpTimers.js`). Not run on a device.
+  - approval-state.ts `applyDecision`: the 409 reload also catches a synchronous throw from `api.getApproval` (the old code would reject). The `*-api` functions are `async`, so this does not happen in practice.
+  - blocked-users.ts: the in-flight guard is a boolean instead of a stored Promise. Same behaviour (one load at a time, a failed load keeps the last set). Loads start with `Effect.runFork`; unmount still does not cancel them, as before.
+  - blocked-users.ts, stickers.ts, stickers-storage.ts, emoji-data.ts: JSON parsing, URL parsing and storage reads now run inside `Effect.try` / `Effect.tryPromise`, with the same fallbacks (`[]`, `null`, `undefined`).
+  - stickers.ts imports `parseUrl` from `@zilar/chat-core` (a workspace package, already used by blocked-users.ts) instead of `new URL` in try/catch. So components that import stickers.ts now also load chat-core.
+  - session-token.ts and auth.ts `verifySignInCode`: a rejection reaches the caller as the same error object (checked by a test for session-token; `runPromise` rejects with the original error for typed failures and defects).
+  - All exports keep their names, signatures and Promise return types.
+  - None besides the above.
+- **Unsure:**
+  - polyfills.ts is `plain`, not `effect`: a nextTick shim has to be a microtask, and I used `queueMicrotask` rather than an Effect scheduler (a scheduler would move it to a macrotask or put Effect on every nextTick). Accepted under the "plain when no async work is left" rule; say if you want it on Effect anyway.
+  - stickers-storage.ts `readStoredRecents` and emoji-data.ts `readStoredEmojiRecents` call the sync reader (`readRecentStickers` / `readRecentEmoji`, which use `Effect.runSync`) inside an `Effect.try`. That nested sync run is correct in Vitest; not checked on a device.
+  - The `process.env` read in auth.ts is kept (weak W7, no constant to import from the mock gate).
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved (wave 2). Worker: Haiku 5.5. The lead reviewed the Report.
+- **Combined check:** all 25 wave 2 branches together pass lint, typecheck and the full mobile suite (`lead batch check`, report 20261009T172300Z). The remaining failures were server and web tests that pass on main, caused by load.
+- **This task:** Fix round 1: `polyfills.ts` keeps the Promise `nextTick` shim and carries an effect-plain marker, so a throwing callback stays a rejection instead of an uncaught error.
+- **Phone:** the wave branch is smoked on the emulator after the merge.

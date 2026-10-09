@@ -1,3 +1,4 @@
+import { Effect } from 'effect';
 import {
   ApprovalsApiError,
   type ApprovalDecision,
@@ -30,18 +31,26 @@ export function approvalStatusLabel(approval: PublicApproval): string {
 // A 404 means the viewer may not decide this request (or it does not exist):
 // the card then shows no buttons and no error. Any other failure on the first
 // load surfaces the request text with a Retry button.
-export async function loadApprovalCardState(
+const loadCardStateEffect = (
+  api: ApprovalsApi,
+  approvalId: string,
+): Effect.Effect<ApprovalCardState> =>
+  Effect.tryPromise({ try: () => api.getApproval(approvalId), catch: (error) => error }).pipe(
+    Effect.map((approval): ApprovalCardState => ({ kind: 'ready', approval })),
+    Effect.catch((error) =>
+      Effect.succeed<ApprovalCardState>(
+        error instanceof ApprovalsApiError && error.status === 404
+          ? { kind: 'notDecidable' }
+          : { kind: 'error' },
+      ),
+    ),
+  );
+
+export function loadApprovalCardState(
   api: ApprovalsApi,
   approvalId: string,
 ): Promise<ApprovalCardState> {
-  try {
-    return { kind: 'ready', approval: await api.getApproval(approvalId) };
-  } catch (error) {
-    if (error instanceof ApprovalsApiError && error.status === 404) {
-      return { kind: 'notDecidable' };
-    }
-    return { kind: 'error' };
-  }
+  return Effect.runPromise(loadCardStateEffect(api, approvalId));
 }
 
 // The decide flow: success replaces the row; a 409 (race / expired) reloads the
@@ -52,25 +61,45 @@ export type DecisionOutcome =
   | { kind: 'reloaded'; approval: PublicApproval | null }
   | { kind: 'error'; message: string };
 
-export async function applyDecision(
+// The reload after a 409 never fails: a row that cannot be read is `null`.
+const reloadApprovalEffect = (
+  api: ApprovalsApi,
+  approvalId: string,
+): Effect.Effect<PublicApproval | null> =>
+  Effect.tryPromise({ try: () => api.getApproval(approvalId), catch: () => null }).pipe(
+    Effect.catch(() => Effect.succeed(null)),
+  );
+
+const applyDecisionEffect = (
+  api: ApprovalsApi,
+  approvalId: string,
+  decision: ApprovalDecision,
+): Effect.Effect<DecisionOutcome> =>
+  Effect.tryPromise({
+    try: () => api.decideApproval(approvalId, decision),
+    catch: (error) => error,
+  }).pipe(
+    Effect.map((approval): DecisionOutcome => ({ kind: 'ready', approval })),
+    Effect.catch((error): Effect.Effect<DecisionOutcome> => {
+      if (
+        error instanceof ApprovalsApiError &&
+        (error.code === 'not_pending' || error.code === 'expired')
+      ) {
+        return reloadApprovalEffect(api, approvalId).pipe(
+          Effect.map((refreshed): DecisionOutcome => ({ kind: 'reloaded', approval: refreshed })),
+        );
+      }
+      return Effect.succeed<DecisionOutcome>({
+        kind: 'error',
+        message: error instanceof Error ? error.message : 'Could not send the decision',
+      });
+    }),
+  );
+
+export function applyDecision(
   api: ApprovalsApi,
   approvalId: string,
   decision: ApprovalDecision,
 ): Promise<DecisionOutcome> {
-  try {
-    const approval = await api.decideApproval(approvalId, decision);
-    return { kind: 'ready', approval };
-  } catch (error) {
-    if (
-      error instanceof ApprovalsApiError &&
-      (error.code === 'not_pending' || error.code === 'expired')
-    ) {
-      const refreshed = await api.getApproval(approvalId).catch(() => null);
-      return { kind: 'reloaded', approval: refreshed };
-    }
-    return {
-      kind: 'error',
-      message: error instanceof Error ? error.message : 'Could not send the decision',
-    };
-  }
+  return Effect.runPromise(applyDecisionEffect(api, approvalId, decision));
 }
