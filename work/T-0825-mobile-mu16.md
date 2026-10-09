@@ -1,7 +1,7 @@
 ---
 id: T-0825
 title: "MU16: mobile chat input A: composer, channel-composer-bar, new-chat-button on Effect"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0825-mobile-mu16
 model: auto
@@ -56,4 +56,25 @@ Run `pnpm exec prettier --write` on your changed files before committing. Do not
 
 ## Report (written by the worker when done)
 
+- **effect:map kinds:** `channel-composer-bar.tsx` effect (no signals), `new-chat-button.tsx` effect (no signals), `composer.tsx` effect (one weak signal left: W7, the `process.env.EXPO_PUBLIC_ZILAR_MOCK` read; `apps/mobile/src/mock/gate.ts` has no constant for it and is not an Allowed file, so the read stays as the spec allows).
+- **Tests:** tests first committed as "T-0825: tests before" (`composer.test.tsx` 18 tests, `channel-composer-bar.test.tsx` 7 tests, jsdom, RN primitives and the two sheets mocked; they pass on the old and the new code). Check run (3 files plus their neighbours, 6 test files): 34 tests before my tests, 59 with them, 59 after the conversion, 60 after fix round 1 (one new GIF test), run 3 times, all green. Mobile typecheck clean; oxlint clean on the five files.
+- **What changed:**
+  - `channel-composer-bar.tsx`: the mute toggle is one `useAction`; busy is `isWaiting`, the fixed sentence shows from the failure.
+  - `composer.tsx`: one `step()` helper (`Effect.tryPromise` with a typed `ComposerStepFailed`) and `useAction` for sticker load, sheet open reads and GIF probe, emoji and sticker recents, and attachment pick; GIF picks run as one fiber each. `attachBusy` is now `isWaiting` of the pick action. The picker call starts inside the tap (a test checks the picker is called synchronously after the press).
+  - `new-chat-button.tsx`: channel and group create are `useAction` with busy and error derived from the state (`createErrorText` still gets the original error, kept in `CreateFailed.reason`); the clipboard and share callbacks are Effects run with `runMobile` and still return Promises, rejecting with the original error.
+- **Behaviour differences:**
+  - Composer `mode: 'replace'` on sticker load, sheet reads and emoji/sticker recents: a newer call interrupts an older one that is still running, so a stale response no longer overwrites a newer one.
+  - GIF pick (fix round 1): each pick runs as its own `Effect.runFork` fiber, so two picks while the first download is still running both send, as before. The fibers are interrupted on unmount. A test covers it.
+  - Composer attachment pick uses mode `ignore`: a second pick while one runs is dropped (the sheet already shows busy).
+  - Channel mute and the create sheets use mode `ignore` (a second tap while busy is dropped, as the old `busy` guard did).
+  - Unmounting now interrupts a running load, pick or create (before, it kept running and set state on an unmounted component).
+  - The create error text shows only while no create is running (it cleared on retry before too); closing and reopening a dialog after a failure still shows the old error, as before.
+  - Otherwise none: same texts, same order of side effects.
+- **Unsure / not covered:** `new-chat-button.test.tsx` is not an Allowed file, so the create flows and the invite copy/share are not covered by a committed test. I checked them with a temporary jsdom test (channel and group create, busy, fixed error texts, navigation, clear on retry, clipboard and share success and rejection with the original error), which I deleted before committing. I did not run the phone; the lead's `phone:smoke` should check sending a message, a sticker, a GIF, attaching a file and creating a channel.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved (wave 2). Worker: Sonnet 5.5. The lead reviewed the Report.
+- **Combined check:** all 25 wave 2 branches together pass lint, typecheck and the full mobile suite (`lead batch check`, report 20261009T172300Z). The remaining failures were server and web tests that pass on main, caused by load.
+- **This task:** 25 new tests. Fix round 1: every GIF pick sends, as before (own fiber per pick); stale loads still use replace.
+- **Phone:** the wave branch is smoked on the emulator after the merge.

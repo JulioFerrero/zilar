@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Data, Effect } from 'effect';
 import { Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Attachment } from '@zilar/protocol';
@@ -6,6 +6,7 @@ import type { Attachment } from '@zilar/protocol';
 import { Text } from '@/components/ui/text';
 import { channelViewerRole, isChannelChat, mayPostInChannel } from '@/lib/channels';
 import { mutedUntilFor } from '@/lib/chat-prefs';
+import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import type { ChatSummary, ReplyRef } from '@/lib/types';
 import { useChatStore } from '@/store/chat-store-provider';
 import type { StickerPack } from '@/lib/stickers';
@@ -18,6 +19,13 @@ import type {
 } from '@/store/types';
 import type { PickedFile } from '@/lib/attachment-ports';
 import { Composer } from './composer';
+
+/** The store refused the mute change; the bar shows a fixed sentence, never the cause. */
+class MuteChangeFailed extends Data.TaggedError('MuteChangeFailed')<{
+  readonly reason: unknown;
+}> {}
+
+const MUTE_ERROR_TEXT = 'Could not change the mute. Try again.';
 
 type ChannelComposerProps = {
   chat: ChatSummary;
@@ -73,8 +81,16 @@ export function ChannelComposerBar({
     groupId === undefined ? undefined : state.groupDetail(groupId),
   );
   const setChatPref = useChatStore((state) => state.setChatPref);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
+  // A second tap while a change is running is dropped (mode 'ignore'), and
+  // the previous failure clears as soon as the next try starts.
+  const [muteState, changeMute] = useAction((mutedUntil: string | null) =>
+    Effect.tryPromise({
+      try: () => setChatPref(chat.id, { mutedUntil }),
+      catch: (reason) => new MuteChangeFailed({ reason }),
+    }),
+  );
+  const busy = isWaiting(muteState);
+  const error = !busy && failureOf(muteState) !== undefined ? MUTE_ERROR_TEXT : '';
 
   const role = channelViewerRole(chat, groupDetail, currentUserId);
   const canPost = mayPostInChannel(role);
@@ -97,19 +113,10 @@ export function ChannelComposerBar({
     );
   }
 
+  // Muted = mute forever; unmuted = clear. The durations live in the chat
+  // menu; this bar is the quick toggle.
   const toggleMute = () => {
-    if (busy) {
-      return;
-    }
-    setBusy(true);
-    setError('');
-    // Muted = mute forever; unmuted = clear. The durations live in the chat
-    // menu; this bar is the quick toggle.
-    void setChatPref(chat.id, {
-      mutedUntil: chat.muted ? null : mutedUntilFor('forever', new Date()),
-    })
-      .catch(() => setError('Could not change the mute. Try again.'))
-      .finally(() => setBusy(false));
+    changeMute(chat.muted ? null : mutedUntilFor('forever', new Date()));
   };
 
   return (
