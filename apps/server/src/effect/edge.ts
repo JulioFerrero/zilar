@@ -92,6 +92,14 @@ export interface ZilarEdge {
   request: (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
   routes: ReadonlyArray<EdgeRoute>;
   dispose: () => Promise<void>;
+  /**
+   * The same `appLayer` the web handler uses, so a Node server can serve it
+   * (B1.6: `HttpRouter.serve(app.layer, …)` with `NodeHttpServer.layer`).
+   * `fetch`/`request` callers keep the `SocketAddressOverride` path; under
+   * `NodeHttpServer` the dispatch falls back to `request.remoteAddress`, the
+   * real socket address.
+   */
+  layer: Layer.Layer<never, unknown, HttpRouter.HttpRouter>;
 }
 
 interface CompiledRoute {
@@ -295,9 +303,10 @@ export function createEdge(input: CreateEdgeInput): ZilarEdge {
     const start = performance.now();
     const requestId = resolveRequestId(request.headers[REQUEST_ID_HEADER] ?? null);
     const method = request.method;
-    // Hono parity (`hono-base.js` `#dispatch`): HEAD is routed as GET; the
-    // runtime (`HttpEffect.toWebHandlerWith`) strips the body from the final
-    // web response. Logging, the preflight check and the origin guard keep
+    // Hono parity (`hono-base.js` `#dispatch`): HEAD is routed as GET. Under
+    // `toWebHandler` the Effect `HttpEffect` layer strips the body from the
+    // final web response; under `NodeHttpServer` Node's `http` omits the body
+    // for HEAD itself. Logging, the preflight check and the origin guard keep
     // the raw method.
     const routeMethod = method === 'HEAD' ? 'GET' : method;
     const url = new URL(request.url, 'http://localhost');
@@ -470,5 +479,6 @@ export function createEdge(input: CreateEdgeInput): ZilarEdge {
     },
     routes: edgeRoutes,
     dispose,
+    layer: appLayer,
   };
 }

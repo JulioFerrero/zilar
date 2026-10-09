@@ -1,4 +1,3 @@
-import { serve } from '@hono/node-server';
 import {
   createLitellmAdminClientFromConfig,
   DEFAULT_LITELLM_BASE_URL,
@@ -15,6 +14,7 @@ import {
 import { buildAlwaysEligible, buildRegistry } from './actions/registry';
 import { createAgentGateway, type AgentGateway } from './agents/gateway';
 import { createApp } from './app';
+import { serveEdgeOnNode } from './effect/node-serve';
 import { resolveStorageDir } from './stickers/service';
 import { startApprovalsSweeper, type ApprovalsSweeperHandle } from './approvals/sweeper';
 import { createAuditRecorder } from './audit/service';
@@ -398,9 +398,20 @@ const gateway = createAgentGateway(
 // gateway's `postToChat` answers `false` while it is stopped or before it
 // starts, which is the same behaviour the spec asks for.
 gatewayRef = gateway;
-const server = serve({ fetch: app.fetch, port: config.PORT }, (info) => {
-  logger.info({ port: info.port }, 'zilar-server listening');
+// How long open connections (SSE streams) get before they are closed, and the
+// point at which a stuck shutdown gives up and exits.
+const CONNECTION_GRACE_MS = 3_000;
+const FORCE_EXIT_MS = 15_000;
+
+// The Effect edge (T-0730) on its own `node:http` server (T-0733, B1.6).
+// `NodeHttpServer` fills `HttpServerRequest.remoteAddress` from the real
+// socket, so the old `serve({ fetch })`-bindings workaround (via
+// `SocketAddressOverride`) is only needed for `fetch` callers such as tests.
+const { port: boundPort, close: closeNodeServer } = await serveEdgeOnNode(app, {
+  port: config.PORT,
+  connectionGraceMs: CONNECTION_GRACE_MS,
 });
+logger.info({ port: boundPort }, 'zilar-server listening');
 
 // Runner hub (T-0071): starts only when RUNNER_HUB_ENABLED=true, after the
 // HTTP server is listening. A start failure (port in use, bad config) must
@@ -491,11 +502,6 @@ const routineScheduler: RoutineSchedulerHandle | null = buildRoutineScheduler({
   },
 });
 
-// How long open connections (SSE streams) get before they are closed, and the
-// point at which a stuck shutdown gives up and exits.
-const CONNECTION_GRACE_MS = 3_000;
-const FORCE_EXIT_MS = 15_000;
-
 let shuttingDown = false;
 
 async function shutdown(signal: NodeJS.Signals): Promise<void> {
@@ -505,23 +511,17 @@ async function shutdown(signal: NodeJS.Signals): Promise<void> {
   shuttingDown = true;
   logger.info({ signal }, 'shutting down');
 
-  // `server.close()` waits for every open connection, and the SSE draft
-  // streams never end on their own, so a plain close hangs until SIGKILL.
-  // Drop idle connections at once, live ones after a short grace, and exit
-  // hard if anything else still blocks the shutdown.
+  // `httpServer` only closes when every open connection is gone, and the
+  // SSE draft streams never end on their own, so a plain close hangs until
+  // SIGKILL. The helper drops idle connections at once and live ones after
+  // the grace passed at startup, then releases the runtime; the force-exit
+  // below still caps a stuck shutdown, and the other components stop after.
   const forceExit = setTimeout(() => {
     logger.error('shutdown timed out; exiting');
     process.exit(1);
   }, FORCE_EXIT_MS);
   forceExit.unref();
-  await new Promise<void>((resolve) => {
-    server.close(() => resolve());
-    // `serve()` returns an HTTP/1 server here; the type also allows HTTP/2.
-    if ('closeAllConnections' in server) {
-      server.closeIdleConnections();
-      setTimeout(() => server.closeAllConnections(), CONNECTION_GRACE_MS).unref();
-    }
-  });
+  await closeNodeServer();
   if (runnerHub !== null) {
     await runnerHub.close();
   }

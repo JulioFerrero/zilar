@@ -15,7 +15,6 @@
     "@effect/platform-node": "4.0.2",
     "@effect/sql-pg": "4.0.2",
     "@effect/sql-pglite": "4.0.2",
-    "@hono/node-server": "^2.1.1",
     "@types/web-push": "^3.6.4",
     "@xmpp/component": "^0.14.0",
     "@zilar/protocol": "workspace:*",
