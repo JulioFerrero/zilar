@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router';
+import { safeDecode } from '@zilar/chat-core';
 import { ChatList } from '@/components/ChatList';
 import { EmptyState } from '@/components/EmptyState';
 import { FolderRail } from '@/components/FolderRail';
@@ -13,11 +14,7 @@ function decodeParam(value: string | undefined): string | undefined {
   if (value === undefined) {
     return undefined;
   }
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    return value;
-  }
+  return safeDecode(value);
 }
 
 export function ChatShell() {
