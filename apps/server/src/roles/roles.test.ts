@@ -1,16 +1,42 @@
+import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { eq } from 'drizzle-orm';
-import { auditLog, groupMemberRoles, groupRoles, topicRoleAccess, topics } from '../db/schema';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
+import { aiLocalpart } from '../ais/service';
 import {
   bootstrapUser,
   contactOf,
   createTestContext,
   expectedJid,
   testApp,
+  testSql,
   TEST_BASE_URL,
   type TestApp,
   type TestContext,
 } from '../test-support';
+
+interface AuditRow {
+  action: string;
+  subjectId: string | null;
+  detail: unknown;
+}
+
+interface GroupMemberRoleRow {
+  roleId: string;
+  userId: string;
+}
+
+interface TopicRoleAccessRow {
+  roleId: string;
+}
+
+interface TopicArchiveRow {
+  archivedAt: Date | null;
+}
+
+interface TopicApproverRow {
+  approverRoleId: string | null;
+}
 
 interface RoleBody {
   id: string;
@@ -108,12 +134,33 @@ describe('group roles (T-0116)', () => {
     });
   }
 
+  // An AI owned by `ownerId`, added to `groupId`, with the provider key and
+  // limits an approval needs. Returns its id.
+  async function seedAi(ownerId: string, groupId: string): Promise<string> {
+    const connectionId = randomUUID();
+    const aiId = randomUUID();
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO provider_connections (id, owner, provider, encrypted_key, label)
+          VALUES (${connectionId}, ${ownerId}, ${'openai'}, ${'sealed-placeholder'}, ${null})`;
+        yield* sql`INSERT INTO ais (id, owner, name, template, persona, provider_connection_id, model, localpart, jid, status)
+          VALUES (${aiId}, ${ownerId}, ${'Helper'}, ${'dev'}, ${'A helpful persona.'}, ${connectionId}, ${'gpt-4o-mini'}, ${aiLocalpart(aiId)}, ${`${aiLocalpart(aiId)}@zilar.localhost`}, ${'active'})`;
+        yield* sql`INSERT INTO ai_limits (ai_id, per_day_usd, per_month_usd) VALUES (${aiId}, ${'1.00'}, ${'20.00'})`;
+        yield* sql`INSERT INTO group_ais (group_id, ai_id, added_by) VALUES (${groupId}, ${aiId}, ${ownerId})`;
+      }),
+    );
+    return aiId;
+  }
+
   it('creates, renames and deletes roles with manager-only writes and member reads', async () => {
     const { owner, admin, member, stranger, group } = await setup();
-    await context.db
-      .update((await import('../db/schema')).groupMembers)
-      .set({ role: 'admin' })
-      .where(eq((await import('../db/schema')).groupMembers.userId, admin.id));
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`UPDATE group_members SET role = 'admin' WHERE user_id = ${admin.id}`;
+      }),
+    );
 
     const created = await createRole(owner.cookie, group.id, { name: 'Designers' });
     expect(created.status).toBe(201);
@@ -206,7 +253,12 @@ describe('group roles (T-0116)', () => {
     expect(((await replaced.json()) as RoleBody).members.map((entry) => entry.userId)).toEqual([
       member.id,
     ]);
-    const rows = await context.db.select().from(groupMemberRoles);
+    const rows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<GroupMemberRoleRow>`SELECT role_id, user_id FROM group_member_roles`;
+      }),
+    );
     expect(rows.map((row) => row.userId)).toEqual([member.id]);
 
     // A stranger (not a group member) cannot be assigned.
@@ -346,7 +398,12 @@ describe('group roles (T-0116)', () => {
       headers: { cookie: other.cookie },
     });
     expect(left.status).toBe(200);
-    const rows = await context.db.select().from(groupMemberRoles);
+    const rows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<GroupMemberRoleRow>`SELECT role_id, user_id FROM group_member_roles`;
+      }),
+    );
     expect(rows.map((row) => row.userId)).not.toContain(other.id);
     expect(context.adminClient.affiliationState.get(room)?.has(expectedJid(other.id))).toBe(false);
     // `member` keeps access (direct row and role agree).
@@ -383,7 +440,14 @@ describe('group roles (T-0116)', () => {
       headers: { cookie: owner.cookie },
     });
     expect(deleted.status).toBe(204);
-    expect(await context.db.select().from(topicRoleAccess)).toEqual([]);
+    expect(
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<TopicRoleAccessRow>`SELECT role_id FROM topic_role_access`;
+        }),
+      ),
+    ).toEqual([]);
     expect(context.adminClient.affiliationState.get(firstRoom)?.has(expectedJid(member.id))).toBe(
       false,
     );
@@ -422,39 +486,7 @@ describe('group roles (T-0116)', () => {
     });
 
     // Seed an AI + approval in the topic (the AI owner is `owner`).
-    const { randomUUID } = await import('node:crypto');
-    const { aiLocalpart } = await import('../ais/service');
-    const connectionId = randomUUID();
-    await context.db.insert((await import('../db/schema')).providerConnections).values({
-      id: connectionId,
-      owner: owner.id,
-      provider: 'openai',
-      encryptedKey: 'sealed-placeholder',
-      label: null,
-    });
-    const aiId = randomUUID();
-    await context.db.insert((await import('../db/schema')).ais).values({
-      id: aiId,
-      owner: owner.id,
-      name: 'Helper',
-      template: 'dev',
-      persona: 'A helpful persona.',
-      providerConnectionId: connectionId,
-      model: 'gpt-4o-mini',
-      localpart: aiLocalpart(aiId),
-      jid: `${aiLocalpart(aiId)}@zilar.localhost`,
-      status: 'active',
-    });
-    await context.db.insert((await import('../db/schema')).aiLimits).values({
-      aiId,
-      perDayUsd: '1.00',
-      perMonthUsd: '20.00',
-    });
-    await context.db.insert((await import('../db/schema')).groupAis).values({
-      groupId: group.id,
-      aiId,
-      addedBy: owner.id,
-    });
+    const aiId = await seedAi(owner.id, group.id);
     const { createApproval } = await import('../approvals/service');
     const approval = await createApproval(
       context.db,
@@ -562,36 +594,7 @@ describe('group roles (T-0116)', () => {
       ).status,
     ).toBe(200);
 
-    const { randomUUID } = await import('node:crypto');
-    const { aiLocalpart } = await import('../ais/service');
-    const schema = await import('../db/schema');
-    const connectionId = randomUUID();
-    await context.db.insert(schema.providerConnections).values({
-      id: connectionId,
-      owner: owner.id,
-      provider: 'openai',
-      encryptedKey: 'sealed-placeholder',
-      label: null,
-    });
-    const aiId = randomUUID();
-    await context.db.insert(schema.ais).values({
-      id: aiId,
-      owner: owner.id,
-      name: 'Helper',
-      template: 'dev',
-      persona: 'A helpful persona.',
-      providerConnectionId: connectionId,
-      model: 'gpt-4o-mini',
-      localpart: aiLocalpart(aiId),
-      jid: `${aiLocalpart(aiId)}@zilar.localhost`,
-      status: 'active',
-    });
-    await context.db.insert(schema.aiLimits).values({
-      aiId,
-      perDayUsd: '1.00',
-      perMonthUsd: '20.00',
-    });
-    await context.db.insert(schema.groupAis).values({ groupId: group.id, aiId, addedBy: owner.id });
+    const aiId = await seedAi(owner.id, group.id);
     const { createApproval } = await import('../approvals/service');
     const approval = await createApproval(
       context.db,
@@ -651,7 +654,12 @@ describe('group roles (T-0116)', () => {
     });
     expect(deleted.status).toBe(204);
 
-    const rows = await context.db.select().from(auditLog);
+    const rows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<AuditRow>`SELECT action, subject_id, detail FROM audit_log`;
+      }),
+    );
     const roleRows = rows.filter(
       (row) =>
         row.action.startsWith('group.role') ||
@@ -675,10 +683,29 @@ describe('group roles (T-0116)', () => {
         'topic.role_removed',
       ]),
     );
-    const unassigned = await context.db.select().from(groupMemberRoles);
+    const unassigned = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<GroupMemberRoleRow>`SELECT role_id, user_id FROM group_member_roles`;
+      }),
+    );
     expect(unassigned).toEqual([]);
-    expect(await context.db.select().from(topicRoleAccess)).toEqual([]);
-    expect(await context.db.select().from(groupRoles)).toEqual([]);
+    expect(
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<TopicRoleAccessRow>`SELECT role_id FROM topic_role_access`;
+        }),
+      ),
+    ).toEqual([]);
+    expect(
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ id: string }>`SELECT id FROM group_roles`;
+        }),
+      ),
+    ).toEqual([]);
   });
 
   it('lists topic members through roles and requires auth on every roles route', async () => {
@@ -805,7 +832,12 @@ describe('group roles (T-0116)', () => {
       headers: { cookie: member.cookie },
     });
     expect(left.status).toBe(200);
-    const rows = await context.db.select().from(groupMemberRoles);
+    const rows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<GroupMemberRoleRow>`SELECT role_id, user_id FROM group_member_roles`;
+      }),
+    );
     expect(rows.map((row) => [row.roleId, row.userId])).toEqual([[secondRole.id, member.id]]);
     expect(context.adminClient.affiliationState.get(secondRoom)?.get(expectedJid(member.id))).toBe(
       'member',
@@ -850,10 +882,12 @@ describe('group roles (T-0116)', () => {
       { method: 'DELETE', headers: { cookie: owner.cookie } },
     );
     expect(selfLeave.status).toBe(200);
-    const [row] = await context.db
-      .select()
-      .from((await import('../db/schema')).topics)
-      .where(eq((await import('../db/schema')).topics.id, topic.id));
+    const [row] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<TopicArchiveRow>`SELECT archived_at FROM topics WHERE id = ${topic.id}`;
+      }),
+    );
     expect(row?.archivedAt).toBeNull();
     const seen = await app.request(`${TEST_BASE_URL}/api/topics/${topic.id}`, {
       headers: { cookie: other.cookie },
@@ -867,10 +901,12 @@ describe('group roles (T-0116)', () => {
       headers: { cookie: owner.cookie },
     });
     expect(left.status).toBe(200);
-    const [archived] = await context.db
-      .select()
-      .from((await import('../db/schema')).topics)
-      .where(eq((await import('../db/schema')).topics.id, topic.id));
+    const [archived] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<TopicArchiveRow>`SELECT archived_at FROM topics WHERE id = ${topic.id}`;
+      }),
+    );
     expect(archived?.archivedAt).not.toBeNull();
   });
 
@@ -896,12 +932,22 @@ describe('group roles (T-0116)', () => {
     // The room is stale, so the caller sees the 502 — but the database
     // committed, and the audit rows are there anyway.
     expect(attached.status).toBe(502);
-    const rows = await context.db.select().from(auditLog);
+    const rows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<AuditRow>`SELECT action, subject_id, detail FROM audit_log`;
+      }),
+    );
     const actions = rows.map((row) => row.action).sort();
     expect(actions).toEqual(
       expect.arrayContaining(['topic.approver_role_set', 'topic.role_added']),
     );
-    const access = await context.db.select().from(topicRoleAccess);
+    const access = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<TopicRoleAccessRow>`SELECT role_id FROM topic_role_access`;
+      }),
+    );
     expect(access.map((entry) => entry.roleId)).toEqual([role.id]);
   });
 
@@ -936,11 +982,12 @@ describe('group roles (T-0116)', () => {
     ).json()) as RoleBody;
     // A stale membership row for the foreign role (as if a leave-cleanup
     // missed it): without the group join this would grant decide rights.
-    await context.db.insert(groupMemberRoles).values({
-      roleId: foreignRole.id,
-      userId: member.id,
-      assignedBy: owner.id,
-    });
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO group_member_roles (role_id, user_id, assigned_by) VALUES (${foreignRole.id}, ${member.id}, ${owner.id})`;
+      }),
+    );
     const topic = (await (
       await createTopic(owner.cookie, group.id, {
         name: 'Hiring',
@@ -950,41 +997,14 @@ describe('group roles (T-0116)', () => {
     ).json()) as TopicBody;
     // Point the topic at the foreign role directly (stale data the service
     // must not trust).
-    await context.db
-      .update((await import('../db/schema')).topics)
-      .set({ approverRoleId: foreignRole.id })
-      .where(eq((await import('../db/schema')).topics.id, topic.id));
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`UPDATE topics SET approver_role_id = ${foreignRole.id} WHERE id = ${topic.id}`;
+      }),
+    );
 
-    const schema = await import('../db/schema');
-    const { randomUUID } = await import('node:crypto');
-    const { aiLocalpart } = await import('../ais/service');
-    const connectionId = randomUUID();
-    await context.db.insert(schema.providerConnections).values({
-      id: connectionId,
-      owner: owner.id,
-      provider: 'openai',
-      encryptedKey: 'sealed-placeholder',
-      label: null,
-    });
-    const aiId = randomUUID();
-    await context.db.insert(schema.ais).values({
-      id: aiId,
-      owner: owner.id,
-      name: 'Helper',
-      template: 'dev',
-      persona: 'A helpful persona.',
-      providerConnectionId: connectionId,
-      model: 'gpt-4o-mini',
-      localpart: aiLocalpart(aiId),
-      jid: `${aiLocalpart(aiId)}@zilar.localhost`,
-      status: 'active',
-    });
-    await context.db.insert(schema.aiLimits).values({
-      aiId,
-      perDayUsd: '1.00',
-      perMonthUsd: '20.00',
-    });
-    await context.db.insert(schema.groupAis).values({ groupId: group.id, aiId, addedBy: owner.id });
+    const aiId = await seedAi(owner.id, group.id);
     const { createApproval } = await import('../approvals/service');
     const approval = await createApproval(
       context.db,
@@ -1019,9 +1039,13 @@ describe('group roles (T-0116)', () => {
     // exactly, with no leftovers from the first.
     expect((await setMembers(owner.cookie, group.id, role.id, [member.id])).status).toBe(200);
     expect((await setMembers(owner.cookie, group.id, role.id, [other.id])).status).toBe(200);
-    expect((await context.db.select().from(groupMemberRoles)).map((row) => row.userId)).toEqual([
-      other.id,
-    ]);
+    const sequentialRows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<GroupMemberRoleRow>`SELECT role_id, user_id FROM group_member_roles`;
+      }),
+    );
+    expect(sequentialRows.map((row) => row.userId)).toEqual([other.id]);
 
     // Concurrent replacements: the final set is exactly one of the two
     // inputs — never a merge of the stale baselines. (PGlite serializes
@@ -1034,8 +1058,13 @@ describe('group roles (T-0116)', () => {
     ]);
     expect(first.status).toBe(200);
     expect(second.status).toBe(200);
-    const final = (await context.db.select().from(groupMemberRoles)).map((row) => row.userId);
-    expect([[member.id], [other.id]]).toContainEqual(final);
+    const final = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<GroupMemberRoleRow>`SELECT role_id, user_id FROM group_member_roles`;
+      }),
+    );
+    expect([[member.id], [other.id]]).toContainEqual(final.map((row) => row.userId));
   });
 
   it('replaces a topic’s roles last-writer-wins under concurrency (round 2.1)', async () => {
@@ -1060,7 +1089,12 @@ describe('group roles (T-0116)', () => {
     ]);
     expect(first.status).toBe(200);
     expect(second.status).toBe(200);
-    const access = await context.db.select().from(topicRoleAccess);
+    const access = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<TopicRoleAccessRow>`SELECT role_id FROM topic_role_access`;
+      }),
+    );
     expect([[roleA.id], [roleB.id]]).toContainEqual(access.map((row) => row.roleId));
   });
 
@@ -1078,7 +1112,12 @@ describe('group roles (T-0116)', () => {
       headers: { cookie: member.cookie },
     });
     expect(left.status).toBe(200);
-    const rows = await context.db.select().from(auditLog);
+    const rows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<AuditRow>`SELECT action, subject_id, detail FROM audit_log`;
+      }),
+    );
     const dropped = rows.filter((row) => row.action === 'group.role_unassigned');
     expect(dropped).toHaveLength(1);
     expect(dropped[0]?.subjectId).toBe(role.id);
@@ -1096,14 +1135,13 @@ describe('group roles (T-0116)', () => {
     expect((await setMembers(owner.cookie, group.id, role.id, [member.id])).status).toBe(200);
     // A stale row for a non-member (as if a leave cleanup missed it, or a
     // concurrent leave raced the read): the list must not show them.
-    await context.db.insert(groupMemberRoles).values({
-      roleId: role.id,
-      userId: other.id,
-      assignedBy: owner.id,
-    });
-    await context.db
-      .delete((await import('../db/schema')).groupMembers)
-      .where(eq((await import('../db/schema')).groupMembers.userId, other.id));
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO group_member_roles (role_id, user_id, assigned_by) VALUES (${role.id}, ${other.id}, ${owner.id})`;
+        yield* sql`DELETE FROM group_members WHERE user_id = ${other.id}`;
+      }),
+    );
 
     const listed = await app.request(`${TEST_BASE_URL}/api/groups/${group.id}/roles`, {
       headers: { cookie: owner.cookie },
@@ -1135,9 +1173,19 @@ describe('group roles (T-0116)', () => {
       });
     expect((await patch({ visibility: 'public', confirmExposeHistory: true })).status).toBe(200);
     expect(
-      await context.db.select().from(topicRoleAccess).where(eq(topicRoleAccess.topicId, topic.id)),
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<TopicRoleAccessRow>`SELECT role_id FROM topic_role_access WHERE topic_id = ${topic.id}`;
+        }),
+      ),
     ).toEqual([]);
-    const [afterPublic] = await context.db.select().from(topics).where(eq(topics.id, topic.id));
+    const [afterPublic] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<TopicApproverRow>`SELECT approver_role_id FROM topics WHERE id = ${topic.id}`;
+      }),
+    );
     expect(afterPublic?.approverRoleId).toBeNull();
 
     // Making it private again with only the owner must not bring the role back.

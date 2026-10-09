@@ -1,7 +1,7 @@
 ---
 id: T-0715
 title: "tests off drizzle (roles): replace every drizzle query in roles/roles.test.ts with testSql(context) + effect/sql; drop the drizzle-orm and db/schema imports"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0715-roles-tests-off-drizzle
 model: auto
@@ -50,4 +50,32 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**Done.** Every drizzle query in `apps/server/src/roles/roles.test.ts` now goes through `testSql(context)(Effect.gen(...))` with `effect/sql` and snake_case SQL. The `drizzle-orm` and `../db/schema` imports, including the dynamic `import('../db/schema')`, are gone. `context.db` stays only where it is passed to module functions (`createApproval`, `canDecide`). No production code changed.
+
+Changes in the file:
+- New local row types: `AuditRow`, `GroupMemberRoleRow`, `TopicRoleAccessRow`, `TopicArchiveRow`, `TopicApproverRow`. Each read selects only the columns the test uses.
+- New `seedAi(ownerId, groupId)` helper. It replaces three identical copies of the raw seed (provider connection, AI, ai_limits, group_ais). Same rows and values, same order.
+- `randomUUID` and `aiLocalpart` are now static imports (they were dynamic before).
+- The "sequential replacements" read and the "concurrent replacements" read each go through `testSql` with a local name (`sequentialRows`, `final`). Assertions are unchanged.
+- Column names checked against `apps/server/src/db/schema.ts`: `provider_connections`, `ais`, `ai_limits`, `group_ais`, `group_members`, `group_member_roles` (`assigned_at` left to its SQL default), `topic_role_access`, `topics` (`archived_at`, `approver_role_id`), `group_roles`, `audit_log` (`subject_id`, `detail`). None of these tables has a JS-side `$defaultFn` or `$onUpdate` that the raw inserts would miss.
+
+Commands run:
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/roles/roles.test.ts` before the change: 1 file passed, 22 tests passed.
+- The same command after the change: 1 file passed, 22 tests passed.
+- `pnpm exec prettier --write apps/server/src/roles/roles.test.ts`: exit 0.
+- `git grep -n "drizzle-orm\|db/schema" -- apps/server/src/roles/roles.test.ts`: no output, exit 1.
+- `pnpm gate` from the worktree root: exit 0.
+  - `gate: 2 changed file(s) against main`
+  - `PASS  install (frozen)  (2.5s)`
+  - `PASS  format  (28.3s)`
+  - `PASS  lint  (1.7s)`
+  - `PASS  typecheck  (4.9s)`
+  - `PASS  tests @zilar/server  (22.0s)`
+  - `scope: every changed file is inside the Allowed files`
+  - `GATE PASS`
+
+Open questions: none. One detail to check in review: `archived_at` now comes back through `effect/sql`, and the two assertions only check for null or not-null. I did not compare the Date type itself.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Haiku 5.5, in one round (about 4.9 min). The lead reviewed the diff directly and checked it against main. The seeds, the role and approver updates (the same `WHERE` as the drizzle originals) and the reads are on `testSql`. There are 22 tests before and after, no drizzle import is left, and the gate passed.

@@ -12,7 +12,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0712](T-0712-agents-memory-tests-off-drizzle.md) | tests off drizzle: agents/memory | in-progress | auto | T-0695 | |
 | [T-0713](T-0713-machines-tests-off-drizzle.md) | tests off drizzle: machines | in-progress | auto | T-0695 | |
 | [T-0714](T-0714-topics-tests-off-drizzle.md) | tests off drizzle: topics | in-progress | haiku-5.5 | T-0695 | |
-| [T-0715](T-0715-roles-tests-off-drizzle.md) | tests off drizzle: roles | in-progress | haiku-5.5 | T-0695 | |
 | [T-0716](T-0716-setup-tests-off-drizzle.md) | tests off drizzle: setup | in-progress | auto | T-0695 | |
 | [T-0717](T-0717-app-mount-list.md) | B1.3a: one ordered module mount list in app.ts | in-progress | haiku-5.5 | T-0694 | |
 | [T-0718](T-0718-routines-tests-off-drizzle.md) | tests off drizzle: routines | in-progress | auto | T-0695 | |
@@ -748,3 +747,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0707](T-0707-invite-links-tests-off-drizzle.md) | tests off drizzle: invite-links | 2026-10-09 |
 | [T-0709](T-0709-small-folders-tests-off-drizzle.md) | tests off drizzle: avatars, chat-folders, connections, files | 2026-10-09 |
 | [T-0711](T-0711-listener-score-tests-off-drizzle.md) | tests off drizzle: agents/listener | 2026-10-09 |
+| [T-0715](T-0715-roles-tests-off-drizzle.md) | tests off drizzle: roles | 2026-10-09 |
