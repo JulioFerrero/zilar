@@ -11,6 +11,7 @@
 // AES-256-GCM authenticates ciphertext, IV and tag together: any
 // tampering, or decrypting with the wrong master key, fails loudly here
 // instead of returning garbage.
+// effect-plain: synchronous AES-GCM decrypt; failure is a typed SettingsDecryptionError
 
 import {
   createCipheriv,

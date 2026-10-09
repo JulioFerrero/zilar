@@ -1,7 +1,7 @@
 ---
 id: T-0770
 title: "R2: effect-plain markers on 8 pure server files (connections/crypto, push/crypto, setup/crypto, actions/canonical, groups/events, web-tools/feed, web-tools/html, sandbox/ip-guard) — one comment line each with the reason; no code change"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0770-server-markers
 model: auto
@@ -51,4 +51,31 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### Done
+Added one `// effect-plain: <reason>` line to seven files. No other change: `git diff --stat` shows 7 files, 7 insertions, 0 deletions.
+
+Markers and kinds (`pnpm effect:map` prints each as `exempt`):
+- `connections/crypto.ts` (line 1): synchronous AES-GCM decrypt; failure is a typed DecryptionError
+- `push/crypto.ts` (line 1): synchronous AES-GCM decrypt; failure is a typed PushDecryptionError
+- `setup/crypto.ts` (line 14, after the header): synchronous AES-GCM decrypt; failure is a typed SettingsDecryptionError
+- `actions/canonical.ts` (line 1): pure canonical JSON and SHA-256 hash; bad input is a typed CanonicalJsonError
+- `web-tools/feed.ts` (line 6, after the header): pure RSS/Atom parse; malformed input is a result value, not an error
+- `web-tools/html.ts` (line 8, after the header): pure HTML-to-text extraction; malformed input yields text, no I/O
+- `sandbox/ip-guard.ts` (line 1): pure IP classification and total IPv6 parse; no I/O, failures are values
+
+### Not marked
+- `groups/events.ts` stays `needs-effect`. It holds module-level mutable state: the listener Sets `groupAiListeners` (line 9) and `topicAiListeners` (line 38), which `onGroupAi`/`onTopicAi` add to and remove from at runtime. `docs/audit/effect-100-plan.md` §1.4 (line 8) says a file that holds shared state must use Effect, and the "do not mark" rule in the spec covers shared mutable state. Question for Claude: confirm it stays unmarked (my reading), or tell me to mark it.
+
+### Commands and results
+- `pnpm install`: done.
+- `pnpm effect:map`: `841 files, coverage 48.0% (effect 202, needs-effect 234, plain 302, exempt 103, legacy 0), tier B 128, markers 8/25`. Marker count went from 1 to 8 of the budget of 25.
+- `pnpm exec prettier --write` on the 7 changed files: all unchanged.
+- `pnpm gate` (from the worktree root): exit 0, `GATE PASS`. Steps: install (frozen) PASS, format PASS, lint PASS, typecheck PASS, effect PASS, tests @zilar/server PASS. Scope: `every changed file is inside the Allowed files`.
+- I ran no separate single-file tests; the gate ran the @zilar/server tests.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Haiku 5.5. The lead reviewed the diff directly.
+- **Markers:** 7 one-line comments with specific reasons, and no code change; the count is now 8 of 25.
+- **`groups/events.ts` stays unmarked, rightly:** it holds module-level listener Sets (shared state), so it moves to an Effect PubSub in a later task.
+- **Results:** coverage 48.0%, and the gate (with the effect step) passed.

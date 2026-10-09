@@ -1,3 +1,4 @@
+// effect-plain: pure IP classification and total IPv6 parse; no I/O, failures are values
 import { isIP } from 'node:net';
 
 export type IpClassification = 'public' | 'blocked';
