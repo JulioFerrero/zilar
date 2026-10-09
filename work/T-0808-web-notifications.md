@@ -1,7 +1,7 @@
 ---
 id: T-0808
 title: "WU9: web NotificationsPage and GroupHandleRoute on Effect (push permission flow, storage and JSON reads, the handle debounce)"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0808-web-notifications
 model: auto
@@ -32,7 +32,7 @@ Follow `docs/EFFECT_BRIEF.md` (the wave rules, the building blocks and the traps
 `AGENTS.md`, `docs/EFFECT_BRIEF.md`, `apps/web/src/lib/push.ts`, `apps/web/src/lib/topicsUi.ts`, `apps/web/src/lib/effect/use-action.ts`, `use-query.ts`, the two files and their tests.
 
 ### Allowed files
-`apps/web/src/routes/NotificationsPage.tsx`, `apps/web/src/routes/GroupHandleRoute.tsx`, `work/T-0808-web-notifications.md`.
+`apps/web/src/routes/NotificationsPage.tsx`, `apps/web/src/routes/GroupHandleRoute.tsx`, `apps/web/src/routes/GroupHandleRoute.test.tsx`, `work/T-0808-web-notifications.md`.
 
 ### Checks (wave mode: your own tests and your package typecheck only; no whole suite, no `pnpm gate`)
 ```bash
@@ -51,4 +51,30 @@ Run the tests 3 times when the code has timers or concurrency. Run `pnpm exec pr
 
 ## Report (written by the worker when done)
 
+- effect:map kind: `apps/web/src/routes/NotificationsPage.tsx` = effect (signal H5 left: `localStorage` inside `Effect.try`, as topicsUi); `apps/web/src/routes/GroupHandleRoute.tsx` = effect (no signals).
+- Tests before: 17 passed (2 files). After: 17 passed (2 files), run 3 times, all green.
+- Typecheck: `pnpm --filter @zilar/web typecheck` exit 0.
+- Fix round 1: a changed handle keeps the last settled view (React state, set during render with its lookup) while its lookup is checking, so no Add contact flash; Retry clears it first and shows the dialog again, as before. New test in `GroupHandleRoute.test.tsx`. Tests now 18 passed, run 3 times; typecheck exit 0.
+- Prettier: run on both files.
+- Not run: whole suite, `pnpm gate` (wave mode).
+
+Behaviour differences:
+- Enable on this device: `Notification.requestPermission()` is now called synchronously in the click handler (per the spec), before `getPushConfig()`. Before, it fired after the config fetch. If the config fetch fails, the browser prompt has already been shown. The subscribe step awaits the same answer (a wrapped `PushBrowser` in the page file; `lib/push.ts` untouched).
+- Page actions (enable, disable, remove, previews, test, join) run as `Effect.runFork` pipelines, not `useAction`: a navigation away does not cancel an in-flight subscribe, register, rollback or join-then-navigate. Same as the old async handlers.
+- Page load: `useQuery` on mount, setters inside the Effect. Leaving the page mid-load now interrupts it (before: result ignored), so the stale-handle cleanup write may be skipped. Harmless, reconciled on the next load.
+- Unsupported browsers: status is derived as `unsupported` at once (before: one frame of "Loading" first).
+- Stored handle: decoded with a Schema Struct (extra JSON fields are dropped). Only id and node are used, so no visible change.
+- `friendlyError` accepts `ApiFailure` as well as `ApiError`. Non-ApiError throws from api.ts would show "Something went wrong" (no trailing "Try again."); api.ts push calls only throw ApiError, so none expected.
+- GroupHandleRoute: the lookup uses `useQuery` with `Effect.sleep(0)` as the debounce. When the handle changes, the page shows the Add contact dialog while re-checking (before: the previous card stayed until the new lookup landed). Retry is `refresh()`.
+- Sync-edge `Effect.runSync` for storage reads and writes, as topicsUi does.
+
+Unsure:
+- Whether the lead wants the page actions on `useAction` instead of `runFork`. I chose `runFork` because `useAction` cancels on unmount, which would drop a rollback or the post-join navigation.
+- The permission-prompt move (the spec's "click stays synchronous") is a visible ordering change; Julio should check the live flow.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead (wave 1):** approved after one fix round. Worker: Haiku 5.5. The lead reviewed the Report.
+- **The routes:** both are Effect files. The push permission prompt is requested inside the click (Julio checks it live). `runFork` for the page actions keeps the old no-cancel behaviour.
+- **Fix round 1:** GroupHandleRoute keeps the previous card while a changed handle is re-checked, with a test.
+- **Results:** 18 tests pass 3 of 3 runs; the wave 1 combined check passed for web (1916).

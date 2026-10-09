@@ -81,6 +81,45 @@ describe('GroupHandleRoute', () => {
     expect(await screen.findByRole('button', { name: 'Open' })).toBeTruthy();
   });
 
+  it('keeps the previous card while a changed handle is checked, then shows the new result', async () => {
+    const store = createChatStore();
+    const chess = { ...HIKING, id: 'g-chess', title: 'Chess club', handle: 'chess_club' };
+    const waiting: Array<(entry: typeof chess) => void> = [];
+    lookupMock.mockImplementation((handle: string) =>
+      handle === 'hiking_club'
+        ? Promise.resolve(HIKING)
+        : new Promise((resolve) => {
+            waiting.push(resolve);
+          }),
+    );
+    const page = (atHandle: string) => (
+      <MemoryRouter>
+        <AuthProvider
+          value={{
+            status: 'authenticated',
+            user: { id: 'u-you', name: 'You', email: 'you@zilar.test', handle: 'you' },
+            refetch: async () => {},
+          }}
+        >
+          <ChatStoreProvider store={store}>
+            <GroupHandleRoute atHandle={atHandle} />
+          </ChatStoreProvider>
+        </AuthProvider>
+      </MemoryRouter>
+    );
+    const { rerender } = render(page('hiking_club'));
+    expect(await screen.findByRole('dialog', { name: 'Join Hiking club' })).toBeTruthy();
+
+    rerender(page('chess_club'));
+    await waitFor(() => expect(lookupMock).toHaveBeenCalledWith('chess_club'));
+    // chess_club is still being checked: the Hiking card stays, no Add contact dialog.
+    expect(screen.getByRole('dialog', { name: 'Join Hiking club' })).toBeTruthy();
+    expect(screen.queryByRole('dialog', { name: 'Add contact' })).toBeNull();
+
+    waiting[0]?.(chess);
+    expect(await screen.findByRole('dialog', { name: 'Join Chess club' })).toBeTruthy();
+  });
+
   it('falls back to the Add contact dialog for a person', async () => {
     const { ApiError } = await import('@/lib/api');
     lookupMock.mockRejectedValue(new ApiError(404, 'not_found', 'No public group'));
