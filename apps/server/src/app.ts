@@ -1,4 +1,5 @@
-import { sql } from 'drizzle-orm';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { requestId, type RequestIdVariables } from 'hono/request-id';
@@ -36,7 +37,7 @@ import { createContactRequestsApi } from './contact-requests/api';
 import { createDirectoryApi } from './directory/api';
 import { createHandlesApi } from './handles/api';
 import { mountEffectRoutes } from './effect/http';
-import { registerSqlRuntime } from './effect/sql';
+import { registerSqlRuntime, sqlRuntimeFor } from './effect/sql';
 import type { ServerDatabase } from './db/client';
 import { HttpError } from './errors';
 import { createGroupsApi } from './groups/api';
@@ -666,7 +667,15 @@ export function createApp({
 
 async function isDatabaseUp(db: ServerDatabase): Promise<boolean> {
   try {
-    await withTimeout(Promise.resolve(db.execute(sql`select 1`)), DB_HEALTH_TIMEOUT_MS);
+    await withTimeout(
+      sqlRuntimeFor(db).runPromise(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`select 1`;
+        }),
+      ),
+      DB_HEALTH_TIMEOUT_MS,
+    );
     return true;
   } catch {
     return false;

@@ -1,7 +1,7 @@
 ---
 id: T-0693
 title: "effect/sql: app.ts isDatabaseUp runs `select 1` through sqlRuntimeFor (drop the drizzle `sql` import); app.test.ts down-database test fakes sqlRuntimeFor instead of spying on db.execute"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0693-health-check-effect-sql
 model: auto
@@ -55,4 +55,35 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**What I did**
+- `apps/server/src/app.ts`: removed the `drizzle-orm` import; added `Effect` (from `effect`) and `SqlClient` (from `effect/sql`), copied from the same import style as `topics/service.ts`; `./effect/sql` import now also takes `sqlRuntimeFor`. `isDatabaseUp` runs `select 1` through `sqlRuntimeFor(db).runPromise(Effect.gen(...))` inside the same `withTimeout`, with the same true/false result.
+- `apps/server/src/app.test.ts`: added the partial `vi.mock('./effect/sql', …)` (same pattern as `setup/routes.test.ts`). The down-database test now builds the app first, then `mockReturnValueOnce` a rejecting runtime right before `request('/health')`. The other tests are unchanged. No `mockImplementation` was needed.
+- `work/T-0693-health-check-effect-sql.md`: status and Report only.
+
+**Commands run (real results)**
+- `pnpm install`: done (Done in 11.7s).
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/app.test`: 9 passed, 0 failed (1 file).
+- `pnpm gate` from the worktree root: exit 0.
+
+**Gate summary lines**
+```
+gate: 3 changed file(s) against main
+PASS  install (frozen)  (1.3s)
+PASS  format  (25.6s)
+PASS  lint  (1.7s)
+PASS  typecheck  (4.4s)
+PASS  tests @zilar/server  (7.2s)
+scope: every changed file is inside the Allowed files
+GATE PASS
+```
+
+**Problems / deviations**
+- None against the spec. `app.ts` has no drizzle import left (`grep` of `drizzle` in `app.ts` is empty).
+
+**Blocked / needs a decision**
+- None.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Haiku 5.5, in one round (about 1.6 min). The lead reviewed the diff directly.
+- **Result:** `isDatabaseUp` runs `select 1` through `sqlRuntimeFor(db)` inside the same timeout, and the down test fakes a rejecting runtime (the T-0675 pattern). **`app.ts` now has no drizzle import.** The gate passed.
