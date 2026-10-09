@@ -1,3 +1,4 @@
+import { Effect } from 'effect';
 import type { ChatMessage } from '@zilar/xmpp-core';
 import { normBareJid } from '../context';
 import {
@@ -145,22 +146,32 @@ export function createGroupIngest(ctx: GroupIngestContext) {
       ...(handoff ? { handoff: true as const } : {}),
     });
     session.roomPending.set(roomJid, queued);
-    void pumpRoom(session, roomJid).catch((error: unknown) => {
-      logger.warn(
-        { err: toRedactedError(error, secretsFor()), aiId: session.aiId },
-        'AI group pump failed',
-      );
-    });
+    Effect.runFork(
+      pumpRoomEffect(session, roomJid).pipe(
+        Effect.catchDefect((error) =>
+          Effect.sync(() => {
+            logger.warn(
+              { err: toRedactedError(error, secretsFor()), aiId: session.aiId },
+              'AI group pump failed',
+            );
+          }),
+        ),
+      ),
+    );
   }
 
   // One turn at a time per (AI, room). Messages arriving during a turn are
   // coalesced: when the turn ends, one more turn runs if new mentions came in.
-  async function pumpRoom(session: AiSession, roomJid: string): Promise<void> {
+  // A failing turn rejects with its original error, after the room is freed.
+  const pumpRoomEffect = Effect.fnUntraced(function* (
+    session: AiSession,
+    roomJid: string,
+  ): Effect.fn.Return<void> {
     if (session.roomBusy.has(roomJid)) {
       return;
     }
     session.roomBusy.add(roomJid);
-    try {
+    yield* Effect.gen(function* () {
       while (!session.stopped) {
         const queued = session.roomPending.get(roomJid) ?? [];
         if (queued.length === 0) {
@@ -174,11 +185,13 @@ export function createGroupIngest(ctx: GroupIngestContext) {
         const take = nextDelegation === -1 ? queued.length : Math.max(1, nextDelegation);
         const batch = queued.slice(0, take);
         session.roomPending.set(roomJid, queued.slice(take));
-        await runGroupSessionTurn(session, roomJid, batch);
+        yield* Effect.promise(() => runGroupSessionTurn(session, roomJid, batch));
       }
-    } finally {
-      session.roomBusy.delete(roomJid);
-    }
+    }).pipe(Effect.ensuring(Effect.sync(() => session.roomBusy.delete(roomJid))));
+  });
+
+  function pumpRoom(session: AiSession, roomJid: string): Promise<void> {
+    return Effect.runPromise(pumpRoomEffect(session, roomJid));
   }
 
   return { sessionForAiJid, handleRoomIncoming, pumpRoom };

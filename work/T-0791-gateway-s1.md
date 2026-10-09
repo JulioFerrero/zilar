@@ -1,7 +1,7 @@
 ---
 id: T-0791
 title: "S1: AI gateway part 1 on Effect — gateway/budget.ts, gateway/memory.ts, gateway/group-ingest.ts, gateway/live.ts and agents/memory/compactor.ts (async/try/fire-and-forget as Effects behind the same factory interfaces); gateway suite unchanged"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0791-gateway-s1
 model: auto
@@ -59,4 +59,42 @@ Paste the three `src/agents` run counts and each file's `pnpm effect:map` kind i
 
 ## Report (written by the worker when done)
 
+### What I did
+Converted the five files to Effect. Every factory interface and every returned method keeps its Promise type; `Effect.runPromise` sits at each public method, so `dm-turn.ts`, `group-turn.ts`, `tool-exec.ts` and `gateway.ts` are untouched. Effect 4.0.2 APIs checked in `node_modules/effect/dist` (`runFork` evaluates the first step synchronously, `Effect.promise` keeps a rejection or a synchronous throw as the original value, `runPromise` rejects with the squashed cause).
+
+- `agents/memory/compactor.ts`: new exported `compactMemoryEffect` (`Effect.fnUntraced`, DB and `complete` calls lifted with plain `Effect.promise`); `compactMemory` is now `Effect.runPromise(compactMemoryEffect(input))`. A failing `complete` still rejects with the original error (existing test passes unchanged).
+- `gateway/budget.ts`: `checkDailyLimit`, `sendBudgetWarnings` and `checkDmRoundGate` are `Effect.fnUntraced` programs. Each old `try/catch` is `Effect.promise(...)` plus `Effect.catchDefect`, through a local `attempt` helper that logs with the same message and fields and answers a private `FAILED` symbol (so a resolved value can never be mistaken for a failure). `checkDmRoundGate` still swallows a failed usage read silently (null, as before). The three methods return Promises via `runPromise`; `utcDay` is unchanged.
+- `gateway/memory.ts`: `loadMemoryContext` is an Effect (index failure and read failure each logged with the same messages; `Promise.all` became `Effect.all` with `concurrency: 'unbounded'`). `startCompaction` stays sync and fire-and-forget.
+- `gateway/group-ingest.ts`: `pumpRoom` is `pumpRoomEffect` (busy flag set, loop, `Effect.ensuring` releases `roomBusy`), exported as a Promise function through `runPromise`.
+- `gateway/live.ts`: `liveSendMessage` uses `liveSendMessageEffect` (`Effect.succeed({ id: '' })` when the session is not live); `reportProgress`, `clearProgress` and `postToChat` are Effect programs behind Promise methods. `sessionIsLive`, `liveSendTyping` and `liveMarkDisplayed` are sync and unchanged.
+
+### Fire-and-forget, timer and try sites
+- `memory.ts` `startCompaction` (`void (async () => { try ... finally ... })()`): now `Effect.runFork(compactionEffect(...).pipe(Effect.catchDefect(log 'AI memory compaction failed'), Effect.ensuring(delete from runningCompactions)))`. The set entry is still added synchronously before the fork and removed after the log. It uses the `compactMemoryEffect` directly.
+- `group-ingest.ts` `void pumpRoom(...).catch(log)`: now `Effect.runFork(pumpRoomEffect(...).pipe(Effect.catchDefect(log 'AI group pump failed')))`, same message and fields (`err` redacted, `aiId`).
+- No timer in these five files (the `setTimeout` code of the gateway lives in files for S2 to S4).
+- try/catch: budget.ts (4 blocks + the silent one), memory.ts (3), live.ts (2) all became `Effect.promise` + `catchDefect` with the same log lines.
+
+### effect:map after the change (`pnpm effect:map`, data.json)
+All five are `effect`, tier B false, no signals left: `gateway/budget.ts`, `gateway/memory.ts`, `gateway/group-ingest.ts`, `gateway/live.ts`, `memory/compactor.ts`. Before: all five were `needs-effect` (H1 W4, compactor H1).
+
+### Commands and results
+- Before (untouched code): `pnpm --filter @zilar/server test --maxWorkers=4 --reporter=dot src/agents`: 16 files passed, 1 skipped; 431 passed, 1 skipped (432).
+- Rerun after each file (compactor, budget, memory, group-ingest, live): all 431 passed, 1 skipped.
+- Final 3 runs: 431 passed | 1 skipped (432), 431 passed | 1 skipped (432), 431 passed | 1 skipped (432). No test file was changed.
+- `pnpm gate`: `PASS install (frozen)`, `PASS format`, `PASS lint`, `PASS typecheck`, `PASS effect`, `PASS tests @zilar/server`, `scope: every changed file is inside the Allowed files`, `GATE PASS`.
+
+### Behaviour differences
+- `liveSendMessage` is no longer a plain function returning the core's promise: if `core.sendMessage` threw synchronously (not by rejecting) the old code threw synchronously; now the returned promise rejects with the same error. The real `XmppCore.sendMessage` is async, so nothing changes in practice.
+- `loadMemoryContext` reads facts and the memory block with `Effect.all` concurrently instead of `Promise.all`. Both calls still start together. If one fails, the other fiber is interrupted, but the underlying query is not aborted (no signal is passed), so the outcome is the same: one warning, the empty memory context.
+- Each `runPromise` adds a few microtask ticks before a method settles, compared to a bare `await`. No test depends on it (3 of 3 green).
+- Otherwise none: same order of side effects, same log messages and fields, same error values reaching callers.
+
+### Open questions
+None. One point I checked rather than assumed: I used `Effect.catchDefect` (as the guide says) instead of `Effect.catchCause`, because these Promise calls fail only as defects and `catchCause` would also log a normal interruption.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Sonnet 5.5. The lead reviewed the Report.
+- **The files:** all five are Effect files behind the same factory interfaces.
+- **Fire-and-forget sites:** they use `runFork` with `catchDefect` and the same log text. `catchDefect` instead of `catchCause` is correct, because it does not log interruption (EFFECT_GUIDE line 169).
+- **Results:** `src/agents` gave 431 passed and 1 skipped before and in all 3 runs after; the gate passed.
