@@ -2,6 +2,19 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-09 14:50 UTC: the 100% Effect plan is running (`docs/audit/effect-100-plan.md`, T-0753)**
+- **Julio's decisions:** he accepted D1-D6, D8 and D9; D7 makes `packages/devtools` exempt, so H4-H12 are dropped.
+- **Measure:** coverage 47.2%, as Effect lines / (Effect + needs-effect lines), from `pnpm effect:map` on `a7abe70f`. The Pages map shows the same rule (T-0758).
+- **Merged:** T-0757 (lead watch shows Claude-subagent tasks), T-0758 (R1, the map rule), T-0759 (F1, web runtime and `ApiFailure`), T-0760 (S7), T-0761 (S9), T-0762 (F2, `useAction` and `useQuery`), T-0763 (X1, xmpp-core typed errors).
+- **Running** (Claude subagents, shown in lead watch): T-0764 (S8), T-0765 (R3), T-0766 (WU1), T-0767 (WU6 + WU14), T-0768 (R6 ratchet).
+- **Next:**
+  - X2, the xmpp-core connection state machine (Sonnet; it needs Julio's live check before it is deployed);
+  - more WU web tasks;
+  - S5, S6 and S10 (S6 and S10 carry live-risk flags);
+  - H1-H3 (runner);
+  - R2, R4 and R5 (markers, mobile).
+- **Not deployed since 13:55:** everything after `73fae1bf` is in main only (all of it behaviour-preserving). The next deploy waits for a green tip and a calm moment.
+
 **2026-10-09 14:10 UTC: speed-ups merged (T-0754, T-0755, T-0756) and the map on Pages (T-0752)**
 - **CI:** pushes that touch only `work/`, `docs/` or `*.md` no longer start CI; the checks run as 4 parallel jobs with a Turborepo cache.
 - **Images:** green-main builds are amd64-only (the live host is x86_64) with a gha cache, and only `v*` tags build arm64. The image-build check takes the last commit that changed code, so docs commits on top are fine.
