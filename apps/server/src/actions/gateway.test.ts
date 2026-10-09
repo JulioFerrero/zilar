@@ -1,21 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import { eq } from 'drizzle-orm';
-import { Schema } from 'effect';
+import { Effect, Schema } from 'effect';
+import { SqlClient } from 'effect/sql';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { createTestContext, type TestContext } from '../test-support';
-import {
-  aiLimits,
-  ais,
-  approvals,
-  auditLog,
-  groupAis,
-  groupMembers,
-  groups,
-  pendingActions,
-  providerConnections,
-  topics,
-  user,
-} from '../db/schema';
+import { createTestContext, testSql, type TestContext } from '../test-support';
 import { decideApproval } from '../approvals/service';
 import { createRule } from '../approvals/rules';
 import { type AuditEntry, createAuditRecorder } from '../audit/service';
@@ -23,6 +10,29 @@ import { type ActionAnnouncer } from './announce';
 import { createActionGateway, type ActionGateway, type ActionGatewayLogger } from './gateway';
 import { startRecoveryStuckTimer } from './gateway';
 import { buildRegistry, type ActionAdapter, type ActionRegistry } from './registry';
+
+interface ApprovalRow {
+  action: string;
+  summary: string;
+  argsHash: string;
+  worstCaseCurrency: string | null;
+  worstCaseAmount: string | null;
+}
+
+interface PendingRow {
+  args: unknown;
+  argsHash: string;
+  status: string;
+  resultSummary: string | null;
+}
+
+interface AuditRow {
+  action: string;
+  aiId: string | null;
+  groupId: string | null;
+  subjectId: string | null;
+  argsHash: string | null;
+}
 
 interface AdapterCall {
   ctx: { aiId: string; groupId: string | null; requestId: string };
@@ -67,7 +77,13 @@ interface Harness {
 async function seedUser(context: TestContext, email = 'owner@example.com'): Promise<string> {
   void email;
   const id = randomUUID();
-  await context.db.insert(user).values({ id, name: 'Owner', email: `${id}@example.com` });
+  const address = `${id}@example.com`;
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO "user" (id, name, email) VALUES (${id}, 'Owner', ${address})`;
+    }),
+  );
   return id;
 }
 
@@ -77,29 +93,18 @@ async function seedAi(
   overrides: { status?: 'active' | 'disabled' | 'stopped' } = {},
 ): Promise<{ aiId: string }> {
   const connectionId = randomUUID();
-  await context.db.insert(providerConnections).values({
-    id: connectionId,
-    owner: ownerId,
-    provider: 'openai',
-    encryptedKey: 'sealed-placeholder',
-    label: null,
-  });
   const aiId = randomUUID();
   const localpart = `ai-${aiId}`;
   const jid = `${localpart}@zilar.localhost`;
-  await context.db.insert(ais).values({
-    id: aiId,
-    owner: ownerId,
-    name: 'Helper',
-    template: 'dev',
-    persona: 'A persona',
-    providerConnectionId: connectionId,
-    model: 'gpt-4o-mini',
-    localpart,
-    jid,
-    status: overrides.status ?? 'active',
-  });
-  await context.db.insert(aiLimits).values({ aiId, perDayUsd: '1.00', perMonthUsd: '20.00' });
+  const status = overrides.status ?? 'active';
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO provider_connections (id, owner, provider, encrypted_key, label) VALUES (${connectionId}, ${ownerId}, 'openai', 'sealed-placeholder', NULL)`;
+      yield* sql`INSERT INTO ais (id, owner, name, template, persona, provider_connection_id, model, localpart, jid, status) VALUES (${aiId}, ${ownerId}, 'Helper', 'dev', 'A persona', ${connectionId}, 'gpt-4o-mini', ${localpart}, ${jid}, ${status})`;
+      yield* sql`INSERT INTO ai_limits (ai_id, per_day_usd, per_month_usd) VALUES (${aiId}, '1.00', '20.00')`;
+    }),
+  );
   return { aiId };
 }
 
@@ -110,29 +115,19 @@ async function seedGroup(
 ): Promise<{ groupId: string; generalTopicId: string }> {
   const groupId = randomUUID();
   const roomLocalpart = `g${randomUUID().replace(/-/g, '').slice(0, 15)}`;
-  await context.db.insert(groups).values({
-    id: groupId,
-    roomLocalpart,
-    title: 'Crew',
-    createdBy: ownerId,
-  });
-  await context.db.insert(groupMembers).values({ groupId, userId: ownerId, role: 'owner' });
-  for (const aiId of aiIds) {
-    await context.db.insert(groupAis).values({ groupId, aiId, addedBy: ownerId });
-  }
   const generalTopicId = randomUUID();
-  await context.db.insert(topics).values({
-    id: generalTopicId,
-    groupId,
-    name: 'General',
-    glyph: 'G',
-    roomLocalpart: `g${randomUUID().replace(/-/g, '').slice(0, 15)}`,
-    visibility: 'public',
-    kind: 'chat',
-    status: 'open',
-    isGeneral: true,
-    createdBy: ownerId,
-  });
+  const generalRoomLocalpart = `g${randomUUID().replace(/-/g, '').slice(0, 15)}`;
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO groups (id, room_localpart, title, created_by) VALUES (${groupId}, ${roomLocalpart}, 'Crew', ${ownerId})`;
+      yield* sql`INSERT INTO group_members (group_id, user_id, role) VALUES (${groupId}, ${ownerId}, 'owner')`;
+      for (const aiId of aiIds) {
+        yield* sql`INSERT INTO group_ais (group_id, ai_id, added_by) VALUES (${groupId}, ${aiId}, ${ownerId})`;
+      }
+      yield* sql`INSERT INTO topics (id, group_id, name, glyph, room_localpart, visibility, kind, status, is_general, created_by) VALUES (${generalTopicId}, ${groupId}, 'General', 'G', ${generalRoomLocalpart}, 'public', 'chat', 'open', true, ${ownerId})`;
+    }),
+  );
   return { groupId, generalTopicId };
 }
 
@@ -143,18 +138,13 @@ async function seedTopic(
   name: string,
 ): Promise<string> {
   const topicId = randomUUID();
-  await context.db.insert(topics).values({
-    id: topicId,
-    groupId,
-    name,
-    glyph: 'T',
-    roomLocalpart: `g${randomUUID().replace(/-/g, '').slice(0, 15)}`,
-    visibility: 'public',
-    kind: 'chat',
-    status: 'open',
-    isGeneral: false,
-    createdBy: creatorId,
-  });
+  const roomLocalpart = `g${randomUUID().replace(/-/g, '').slice(0, 15)}`;
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO topics (id, group_id, name, glyph, room_localpart, visibility, kind, status, is_general, created_by) VALUES (${topicId}, ${groupId}, ${name}, 'T', ${roomLocalpart}, 'public', 'chat', 'open', false, ${creatorId})`;
+    }),
+  );
   return topicId;
 }
 
@@ -354,10 +344,12 @@ describe('action gateway', () => {
       });
       expect(unjoined).toEqual({ status: 'denied', reason: 'ai_not_in_group' });
       // An archived topic: denied, the room is gone.
-      await harness.context.db
-        .update(topics)
-        .set({ archivedAt: new Date() })
-        .where(eq(topics.id, first.generalTopicId));
+      await testSql(harness.context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`UPDATE topics SET archived_at = now() WHERE id = ${first.generalTopicId}`;
+        }),
+      );
       const archived = await harness.gateway.request({
         aiId,
         groupId: first.groupId,
@@ -392,7 +384,12 @@ describe('action gateway', () => {
       });
       expect(result).toEqual({ status: 'executed', summary: 'Echoed: hello' });
       expect(harness.adapters[0]?.calls).toHaveLength(1);
-      const pending = await harness.context.db.select().from(pendingActions);
+      const pending = await testSql(harness.context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ id: string }>`SELECT id FROM pending_actions`;
+        }),
+      );
       expect(pending).toHaveLength(0);
     });
 
@@ -436,10 +433,12 @@ describe('action gateway', () => {
       if (result.status !== 'pending_approval') {
         throw new Error('expected pending_approval');
       }
-      const [row] = await harness.context.db
-        .select()
-        .from(approvals)
-        .where(eq(approvals.id, result.approvalId));
+      const [row] = await testSql(harness.context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<ApprovalRow>`SELECT action, summary, args_hash, worst_case_currency, worst_case_amount FROM approvals WHERE id = ${result.approvalId}`;
+        }),
+      );
       expect(row).toBeDefined();
       expect(row?.action).toBe('tier2.echo');
       expect(row?.summary).toBe('Echo spicy');
@@ -447,10 +446,12 @@ describe('action gateway', () => {
       expect(row?.worstCaseCurrency).toBe('EUR');
       expect(row?.worstCaseAmount).toBe('9.50');
 
-      const [pending] = await harness.context.db
-        .select()
-        .from(pendingActions)
-        .where(eq(pendingActions.approvalId, result.approvalId));
+      const [pending] = await testSql(harness.context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<PendingRow>`SELECT args, args_hash, status, result_summary FROM pending_actions WHERE approval_id = ${result.approvalId}`;
+        }),
+      );
       expect(pending?.args).toEqual({ value: 'spicy' });
       expect(pending?.argsHash).toBe(row?.argsHash);
       expect(pending?.status).toBe('waiting');
@@ -488,10 +489,12 @@ describe('action gateway', () => {
       const calls = harness.adapters[2]?.calls;
       expect(calls).toHaveLength(1);
       expect(calls?.[0]?.args).toEqual({ value: 'first' });
-      const [pending] = await harness.context.db
-        .select()
-        .from(pendingActions)
-        .where(eq(pendingActions.approvalId, result.approvalId));
+      const [pending] = await testSql(harness.context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<PendingRow>`SELECT args, args_hash, status, result_summary FROM pending_actions WHERE approval_id = ${result.approvalId}`;
+        }),
+      );
       expect(pending?.status).toBe('executed');
       expect(pending?.resultSummary).toBe('Echoed: first');
     });
@@ -522,10 +525,12 @@ describe('action gateway', () => {
       await harness.gateway.onApprovalDecided(result.approvalId);
 
       expect(harness.adapters[2]?.calls).toHaveLength(0);
-      const [pending] = await harness.context.db
-        .select()
-        .from(pendingActions)
-        .where(eq(pendingActions.approvalId, result.approvalId));
+      const [pending] = await testSql(harness.context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<PendingRow>`SELECT args, args_hash, status, result_summary FROM pending_actions WHERE approval_id = ${result.approvalId}`;
+        }),
+      );
       expect(pending?.status).toBe('cancelled');
     });
 
@@ -542,18 +547,23 @@ describe('action gateway', () => {
         throw new Error('expected pending_approval');
       }
       // Roll the stored expiry into the past so the approval is past-due.
-      await harness.context.db
-        .update(approvals)
-        .set({ expiresAt: new Date(Date.now() - 1) })
-        .where(eq(approvals.id, result.approvalId));
+      const expiredAt = new Date(Date.now() - 1).toISOString();
+      await testSql(harness.context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`UPDATE approvals SET expires_at = ${expiredAt}::timestamptz WHERE id = ${result.approvalId}`;
+        }),
+      );
 
       await harness.gateway.onApprovalDecided(result.approvalId);
 
       expect(harness.adapters[2]?.calls).toHaveLength(0);
-      const [pending] = await harness.context.db
-        .select()
-        .from(pendingActions)
-        .where(eq(pendingActions.approvalId, result.approvalId));
+      const [pending] = await testSql(harness.context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<PendingRow>`SELECT args, args_hash, status, result_summary FROM pending_actions WHERE approval_id = ${result.approvalId}`;
+        }),
+      );
       expect(pending?.status).toBe('cancelled');
     });
 
@@ -608,18 +618,22 @@ describe('action gateway', () => {
       );
       // Tamper with the stored hash on the pending row to simulate a
       // buggy migration or a hand-edited database.
-      await harness.context.db
-        .update(pendingActions)
-        .set({ argsHash: 'a'.repeat(64) })
-        .where(eq(pendingActions.approvalId, result.approvalId));
+      await testSql(harness.context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`UPDATE pending_actions SET args_hash = ${'a'.repeat(64)} WHERE approval_id = ${result.approvalId}`;
+        }),
+      );
 
       await harness.gateway.onApprovalDecided(result.approvalId);
 
       expect(harness.adapters[2]?.calls).toHaveLength(0);
-      const [pending] = await harness.context.db
-        .select()
-        .from(pendingActions)
-        .where(eq(pendingActions.approvalId, result.approvalId));
+      const [pending] = await testSql(harness.context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<PendingRow>`SELECT args, args_hash, status, result_summary FROM pending_actions WHERE approval_id = ${result.approvalId}`;
+        }),
+      );
       expect(pending?.status).toBe('cancelled');
     });
 
@@ -645,15 +659,22 @@ describe('action gateway', () => {
         new Date(),
       );
       // Kill switch: stop the AI before the hook fires.
-      await harness.context.db.update(ais).set({ status: 'stopped' }).where(eq(ais.id, aiId));
+      await testSql(harness.context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`UPDATE ais SET status = 'stopped' WHERE id = ${aiId}`;
+        }),
+      );
 
       await harness.gateway.onApprovalDecided(result.approvalId);
 
       expect(harness.adapters[2]?.calls).toHaveLength(0);
-      const [pending] = await harness.context.db
-        .select()
-        .from(pendingActions)
-        .where(eq(pendingActions.approvalId, result.approvalId));
+      const [pending] = await testSql(harness.context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<PendingRow>`SELECT args, args_hash, status, result_summary FROM pending_actions WHERE approval_id = ${result.approvalId}`;
+        }),
+      );
       expect(pending?.status).toBe('cancelled');
     });
 
@@ -693,16 +714,24 @@ describe('action gateway', () => {
         if (result.status !== 'pending_approval') {
           throw new Error('expected pending_approval');
         }
-        const [row] = await context.db
-          .select()
-          .from(approvals)
-          .where(eq(approvals.id, result.approvalId));
+        const [row] = await testSql(context)(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            return yield* sql<{
+              summary: string;
+              details: string | null;
+              argsHash: string;
+            }>`SELECT summary, details, args_hash FROM approvals WHERE id = ${result.approvalId}`;
+          }),
+        );
         expect(row?.summary).toBe('Bound raw');
         expect(row?.details).toBe('bound=true');
-        const [pending] = await context.db
-          .select()
-          .from(pendingActions)
-          .where(eq(pendingActions.approvalId, result.approvalId));
+        const [pending] = await testSql(context)(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            return yield* sql<PendingRow>`SELECT args, args_hash, status, result_summary FROM pending_actions WHERE approval_id = ${result.approvalId}`;
+          }),
+        );
         expect(pending?.args).toEqual({ value: 'raw', bound: true });
         expect(pending?.argsHash).toBe(row?.argsHash);
       } finally {
@@ -742,8 +771,20 @@ describe('action gateway', () => {
           requestedBy: 'ai-bot@zilar.localhost',
         });
         expect(result).toEqual({ status: 'failed' });
-        expect(await context.db.select().from(approvals)).toHaveLength(0);
-        expect(await context.db.select().from(pendingActions)).toHaveLength(0);
+        const approvalRows = await testSql(context)(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            return yield* sql<{ id: string }>`SELECT id FROM approvals`;
+          }),
+        );
+        expect(approvalRows).toHaveLength(0);
+        const pendingRows = await testSql(context)(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            return yield* sql<{ id: string }>`SELECT id FROM pending_actions`;
+          }),
+        );
+        expect(pendingRows).toHaveLength(0);
       } finally {
         await context.close();
       }
@@ -813,12 +854,23 @@ describe('action gateway', () => {
           modelText: 'SECRET-TOOL-OUTPUT-DO-NOT-AUDIT',
         });
 
-        const [pending] = await built.context.db.select().from(pendingActions);
+        // Every column: the secret must be absent from the whole row.
+        const [pending] = await testSql(built.context)(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            return yield* sql<PendingRow>`SELECT * FROM pending_actions`;
+          }),
+        );
         expect(pending?.resultSummary ?? null).toBeNull();
         expect(JSON.stringify(pending ?? null)).not.toContain('SECRET-TOOL-OUTPUT-DO-NOT-AUDIT');
 
         expect(JSON.stringify(built.auditEntries)).not.toContain('SECRET-TOOL-OUTPUT-DO-NOT-AUDIT');
-        const auditRows = await built.context.db.select().from(auditLog);
+        const auditRows = await testSql(built.context)(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            return yield* sql<AuditRow>`SELECT * FROM audit_log`;
+          }),
+        );
         expect(JSON.stringify(auditRows)).not.toContain('SECRET-TOOL-OUTPUT-DO-NOT-AUDIT');
         expect(JSON.stringify(built.announcerCalls)).not.toContain(
           'SECRET-TOOL-OUTPUT-DO-NOT-AUDIT',
@@ -929,7 +981,12 @@ describe('action gateway', () => {
       // The secret text never appears anywhere: not in the audit log, not
       // in any pending-action row (there are none for tier 0), not in the
       // return value.
-      const auditRows = await context.db.select().from(auditLog);
+      const auditRows = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<AuditRow>`SELECT * FROM audit_log`;
+        }),
+      );
       const allText = JSON.stringify({ ...auditRows, calls, result, auditEntries });
       expect(allText).not.toContain('SECRET-DO-NOT-LOG');
 
@@ -979,19 +1036,21 @@ describe('action gateway', () => {
       // `ApprovalServiceError('pending_limit')`. The transaction wraps
       // both `createApproval` and the pending-action insert, so a throw
       // in either step must leave no row behind.
-      for (let index = 0; index < 50; index += 1) {
-        await context.db.insert(approvals).values({
-          id: randomUUID(),
-          aiId,
-          action: 'noop',
-          summary: 'noop',
-          argsHash: 'a'.repeat(64),
-          requestedBy: 'noop',
-          status: 'pending',
-          expiresAt: new Date(Date.now() + 60_000),
-        });
-      }
-      const approvalsBefore = await context.db.select().from(approvals);
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          for (let index = 0; index < 50; index += 1) {
+            const expiresAt = new Date(Date.now() + 60_000).toISOString();
+            yield* sql`INSERT INTO approvals (id, ai_id, action, summary, args_hash, requested_by, status, expires_at) VALUES (${randomUUID()}, ${aiId}, 'noop', 'noop', ${'a'.repeat(64)}, 'noop', 'pending', ${expiresAt}::timestamptz)`;
+          }
+        }),
+      );
+      const approvalsBefore = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ id: string }>`SELECT id FROM approvals`;
+        }),
+      );
       const result = await harness.gateway.request({
         aiId,
         action: 'tier2.echo',
@@ -1001,9 +1060,19 @@ describe('action gateway', () => {
       expect(result).toEqual({ status: 'denied', reason: 'ai_not_active' });
       // The transaction rolled back: no new approval or pending-action
       // row for the tier2.echo request was written.
-      const pending = await context.db.select().from(pendingActions);
+      const pending = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ action: string }>`SELECT action FROM pending_actions`;
+        }),
+      );
       expect(pending.filter((row) => row.action === 'tier2.echo')).toHaveLength(0);
-      const approvalsAfter = await context.db.select().from(approvals);
+      const approvalsAfter = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ id: string }>`SELECT id FROM approvals`;
+        }),
+      );
       expect(approvalsAfter.length).toBe(approvalsBefore.length);
     });
   });
@@ -1022,24 +1091,33 @@ describe('action gateway', () => {
         throw new Error('expected pending_approval');
       }
       // Move the pending row to `running` and back-date `startedAt`.
-      await harness.context.db
-        .update(pendingActions)
-        .set({ status: 'running', startedAt: new Date(Date.now() - 11 * 60 * 1000) })
-        .where(eq(pendingActions.approvalId, result.approvalId));
+      const startedAt = new Date(Date.now() - 11 * 60 * 1000).toISOString();
+      await testSql(harness.context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`UPDATE pending_actions SET status = 'running', started_at = ${startedAt}::timestamptz WHERE approval_id = ${result.approvalId}`;
+        }),
+      );
 
       await harness.gateway.recoverStuck();
 
-      const [pending] = await harness.context.db
-        .select()
-        .from(pendingActions)
-        .where(eq(pendingActions.approvalId, result.approvalId));
+      const [pending] = await testSql(harness.context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<PendingRow>`SELECT args, args_hash, status, result_summary FROM pending_actions WHERE approval_id = ${result.approvalId}`;
+        }),
+      );
       expect(pending?.status).toBe('failed');
       // The adapter was never invoked.
       expect(harness.adapters[2]?.calls).toHaveLength(0);
-      const stuckAudit = await harness.context.db
-        .select()
-        .from(auditLog)
-        .where(eq(auditLog.action, 'action.failed'));
+      const stuckAudit = await testSql(harness.context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{
+            detail: unknown;
+          }>`SELECT detail FROM audit_log WHERE action = 'action.failed'`;
+        }),
+      );
       expect(stuckAudit.length).toBeGreaterThan(0);
       const last = stuckAudit[stuckAudit.length - 1];
       expect(last?.detail).toEqual({ reason: 'stuck' });
@@ -1057,21 +1135,23 @@ describe('action gateway', () => {
       if (result.status !== 'pending_approval') {
         throw new Error('expected pending_approval');
       }
-      await harness.context.db
-        .update(pendingActions)
-        .set({
-          status: 'running',
-          createdAt: new Date(Date.now() - 25 * 60 * 1000),
-          startedAt: new Date(),
-        })
-        .where(eq(pendingActions.approvalId, result.approvalId));
+      const createdAt = new Date(Date.now() - 25 * 60 * 1000).toISOString();
+      const startedAt = new Date().toISOString();
+      await testSql(harness.context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`UPDATE pending_actions SET status = 'running', created_at = ${createdAt}::timestamptz, started_at = ${startedAt}::timestamptz WHERE approval_id = ${result.approvalId}`;
+        }),
+      );
 
       await harness.gateway.recoverStuck();
 
-      const [pending] = await harness.context.db
-        .select()
-        .from(pendingActions)
-        .where(eq(pendingActions.approvalId, result.approvalId));
+      const [pending] = await testSql(harness.context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<PendingRow>`SELECT args, args_hash, status, result_summary FROM pending_actions WHERE approval_id = ${result.approvalId}`;
+        }),
+      );
       expect(pending?.status).toBe('running');
     });
 
@@ -1090,10 +1170,12 @@ describe('action gateway', () => {
 
       await harness.gateway.onApprovalDecided(result.approvalId);
 
-      const [pending] = await harness.context.db
-        .select()
-        .from(pendingActions)
-        .where(eq(pendingActions.approvalId, result.approvalId));
+      const [pending] = await testSql(harness.context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<PendingRow>`SELECT args, args_hash, status, result_summary FROM pending_actions WHERE approval_id = ${result.approvalId}`;
+        }),
+      );
       expect(pending?.status).toBe('waiting');
       expect(harness.adapters[2]?.calls).toHaveLength(0);
     });
@@ -1110,17 +1192,22 @@ describe('action gateway', () => {
       if (result.status !== 'pending_approval') {
         throw new Error('expected pending_approval');
       }
-      await harness.context.db
-        .update(approvals)
-        .set({ expiresAt: new Date(Date.now() - 1) })
-        .where(eq(approvals.id, result.approvalId));
+      const expiredAt = new Date(Date.now() - 1).toISOString();
+      await testSql(harness.context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`UPDATE approvals SET expires_at = ${expiredAt}::timestamptz WHERE id = ${result.approvalId}`;
+        }),
+      );
 
       await harness.gateway.recoverStuck();
 
-      const [pending] = await harness.context.db
-        .select()
-        .from(pendingActions)
-        .where(eq(pendingActions.approvalId, result.approvalId));
+      const [pending] = await testSql(harness.context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<PendingRow>`SELECT args, args_hash, status, result_summary FROM pending_actions WHERE approval_id = ${result.approvalId}`;
+        }),
+      );
       expect(pending?.status).toBe('cancelled');
     });
   });
@@ -1150,7 +1237,13 @@ describe('action gateway', () => {
       );
       await harness.gateway.onApprovalDecided(result.approvalId);
 
-      const rows = await harness.context.db.select().from(auditLog);
+      // Every column: the secret must be absent from the whole row.
+      const rows = await testSql(harness.context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<AuditRow>`SELECT * FROM audit_log`;
+        }),
+      );
       const all = JSON.stringify(rows);
       expect(all).not.toContain(secret);
       const actions = rows.map((row) => row.action);
@@ -1301,15 +1394,23 @@ describe('action gateway', () => {
         { aiId, groupId, topicId: generalTopicId, approvalId: result.approvalId },
       ]);
       // The stored rows carry the topic.
-      const [approval] = await harness.context.db
-        .select()
-        .from(approvals)
-        .where(eq(approvals.id, result.approvalId));
+      const [approval] = await testSql(harness.context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{
+            topicId: string | null;
+          }>`SELECT topic_id FROM approvals WHERE id = ${result.approvalId}`;
+        }),
+      );
       expect(approval?.topicId).toBe(generalTopicId);
-      const [pending] = await harness.context.db
-        .select()
-        .from(pendingActions)
-        .where(eq(pendingActions.approvalId, result.approvalId));
+      const [pending] = await testSql(harness.context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{
+            topicId: string | null;
+          }>`SELECT topic_id FROM pending_actions WHERE approval_id = ${result.approvalId}`;
+        }),
+      );
       expect(pending?.topicId).toBe(generalTopicId);
     });
 
@@ -1427,7 +1528,12 @@ describe('action gateway', () => {
       // The adapter's error text never leaks through the announcer summary.
       expect(JSON.stringify(calls)).not.toContain('SECRET-DO-NOT-ANNOUNCE');
       // The audit log has the failure recorded without leaking the error text.
-      const rows = await context.db.select().from(auditLog);
+      const rows = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<AuditRow>`SELECT * FROM audit_log`;
+        }),
+      );
       expect(JSON.stringify(rows)).not.toContain('SECRET-DO-NOT-ANNOUNCE');
       await context.close();
     });
@@ -1463,10 +1569,13 @@ describe('action gateway', () => {
       if (r2.status !== 'pending_approval') {
         throw new Error('expected pending_approval');
       }
-      await harness.context.db
-        .update(approvals)
-        .set({ expiresAt: new Date(Date.now() - 1) })
-        .where(eq(approvals.id, r2.approvalId));
+      const expiredAt = new Date(Date.now() - 1).toISOString();
+      await testSql(harness.context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`UPDATE approvals SET expires_at = ${expiredAt}::timestamptz WHERE id = ${r2.approvalId}`;
+        }),
+      );
       await harness.gateway.onApprovalDecided(r2.approvalId);
 
       // 3) stopped AI
@@ -1484,7 +1593,12 @@ describe('action gateway', () => {
         { approvalId: r3.approvalId, userId: ownerId, decision: 'approve_once' },
         new Date(),
       );
-      await harness.context.db.update(ais).set({ status: 'stopped' }).where(eq(ais.id, aiId));
+      await testSql(harness.context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`UPDATE ais SET status = 'stopped' WHERE id = ${aiId}`;
+        }),
+      );
       await harness.gateway.onApprovalDecided(r3.approvalId);
 
       expect(harness.announcerCalls.outcome).toEqual([
@@ -1549,10 +1663,12 @@ describe('action gateway', () => {
       await gateway.onApprovalDecided(result.approvalId);
 
       // Outcome unchanged: adapter threw → failed.
-      const [pending] = await context.db
-        .select()
-        .from(pendingActions)
-        .where(eq(pendingActions.approvalId, result.approvalId));
+      const [pending] = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<PendingRow>`SELECT args, args_hash, status, result_summary FROM pending_actions WHERE approval_id = ${result.approvalId}`;
+        }),
+      );
       expect(pending?.status).toBe('failed');
       // Audit entries still got written.
       const actions = auditEntries.map((entry) => entry.action);
@@ -1653,7 +1769,12 @@ describe('action gateway', () => {
           { aiId, groupId: null, topicId: null, action: 'rules.echo', createdBy: ownerId },
           ruleNow,
         );
-        const approvalsBefore = await ruled.context.db.select().from(approvals);
+        const approvalsBefore = await testSql(ruled.context)(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            return yield* sql<{ id: string }>`SELECT id FROM approvals`;
+          }),
+        );
         const outcome = await gatewayWithAnnounce.request({
           aiId,
           action: 'rules.echo',
@@ -1661,9 +1782,13 @@ describe('action gateway', () => {
           requestedBy: 'ai-bot@zilar.localhost',
         });
         expect(outcome).toEqual({ status: 'executed', summary: 'Echoed: fast' });
-        expect(await ruled.context.db.select().from(approvals)).toHaveLength(
-          approvalsBefore.length,
+        const approvalsAfter = await testSql(ruled.context)(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            return yield* sql<{ id: string }>`SELECT id FROM approvals`;
+          }),
         );
+        expect(approvalsAfter).toHaveLength(approvalsBefore.length);
         expect(ruled.picked.calls).toHaveLength(1);
         expect(calls.approvalRequested).toHaveLength(0);
         expect(calls.outcome).toEqual([
@@ -1674,7 +1799,13 @@ describe('action gateway', () => {
             summary: 'Ran automatically (always allowed in this chat): Echoed: fast',
           },
         ]);
-        const auditRows = await ruled.context.db.select().from(auditLog);
+        // Every column: the args text must be absent from the whole row.
+        const auditRows = await testSql(ruled.context)(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            return yield* sql<AuditRow>`SELECT * FROM audit_log`;
+          }),
+        );
         const auto = auditRows.find((row) => row.action === 'action.auto_approved');
         expect(auto).toMatchObject({ subjectId: rule.id, aiId, groupId: null });
         expect(auto?.argsHash).toMatch(/^[0-9a-f]{64}$/);
@@ -1719,7 +1850,13 @@ describe('action gateway', () => {
           requestedBy: 'ai-bot@zilar.localhost',
         });
         expect(outcome).toEqual({ status: 'failed' });
-        const auditRows = await context.db.select().from(auditLog);
+        // Every column: the error text must be absent from the whole row.
+        const auditRows = await testSql(context)(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            return yield* sql<AuditRow>`SELECT * FROM audit_log`;
+          }),
+        );
         expect(JSON.stringify(auditRows)).not.toContain('SECRET-RULE-FAILURE');
         expect(auditRows.find((row) => row.action === 'action.auto_approved')).toBeDefined();
         expect(auditRows.find((row) => row.action === 'action.failed')).toBeDefined();

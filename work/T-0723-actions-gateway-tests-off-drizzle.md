@@ -1,7 +1,7 @@
 ---
 id: T-0723
 title: "tests off drizzle (actions/gateway): replace every drizzle query in actions/gateway.test.ts with testSql(context) + effect/sql; drop the drizzle-orm and db/schema imports"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0723-actions-gateway-tests-off-drizzle
 model: auto
@@ -51,4 +51,36 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**Done.** Every drizzle query in `apps/server/src/actions/gateway.test.ts` (seeds, updates, reads, counts) is now `testSql(context)(Effect.gen(...))` with raw SQL on snake_case columns. The `drizzle-orm` and `../db/schema` imports are removed. `context.db` is still passed to module functions (`createAuditRecorder`, `decideApproval`, `createRule`, the gateway `db:` option), as the spec asks.
+
+Notes on the translation:
+- Row types added at the top of the file: `ApprovalRow`, `PendingRow`, `AuditRow`. Other reads use inline `sql<{...}>` types.
+- Where a test checks that a secret is absent from a whole row (`JSON.stringify(rows)).not.toContain(...)`), the read is `SELECT *`, so the check still covers every column. These are the audit-log and pending-row checks.
+- Timestamps are passed as ISO strings with `::timestamptz`, computed in JS the same way as before (`new Date(Date.now() - 1)` and similar). `archived_at` is set with `now()`.
+- No ORDER BY was added where drizzle had none (the "last audit row" check keeps the same implicit order).
+- The file had no `vi.mock`, no patched `db.transaction` and no other injected drizzle method, so the spec's point 5 did not apply.
+- No schema defaults were JS-side: `schema.ts` has one `$defaultFn` (line 793, in `chatFolders`), and this file does not write that table.
+
+Commands run (worktree `/Users/julio/personal-projects/zilar-T-0723`):
+- `pnpm install`: exit 0.
+- Baseline `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/actions/gateway.test.ts` before any edit: 1 file passed, **46 tests passed**.
+- `pnpm exec prettier --write apps/server/src/actions/gateway.test.ts`: done.
+- Same test command after the edits and formatting: 1 file passed, **46 tests passed** (same count).
+- `git grep -n "drizzle-orm\|db/schema" -- apps/server/src/actions/gateway.test.ts`: no output (exit 1, no match).
+- `pnpm gate`: exit 0. Summary lines:
+  - `gate: 1 changed file(s) against main`
+  - `PASS  install (frozen)  (2.0s)`
+  - `PASS  format  (37.2s)`
+  - `PASS  lint  (1.5s)`
+  - `PASS  typecheck  (5.7s)`
+  - `PASS  tests @zilar/server  (26.7s)`
+  - `scope: every changed file is inside the Allowed files`
+  - `GATE PASS`
+
+Problems: none. Scratch logs went to the session scratchpad outside the worktree, so `git status` shows only `apps/server/src/actions/gateway.test.ts` (and this task file).
+
+Open question: none that blocks. I was least sure about the `SELECT *` reads for the "must not contain" checks, which copy more than the spec's "select only the columns a test reads". I kept `SELECT *` on purpose so those assertions do not weaken; the lead can say if they want column lists instead.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Haiku 5.5, in one round (about 6.8 min). The lead reviewed the diff directly. The reads behind the no-secret checks keep `SELECT *` on purpose, so they cover every column. There are 46 tests before and after, no drizzle import is left, and the gate passed.
