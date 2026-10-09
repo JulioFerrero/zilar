@@ -2,7 +2,7 @@
 
 ## 1. Summary
 
-- The repo is cleaner than expected. No zod/drizzle/hono/zustand dependency or import remains in any source file (only the devtools classifier's test fixtures mention them). "galena" appears in code once (`apps/server/src/kdf-labels.ts`, intentional). Commented-out code is about 6 lines. 21 TODO/FIXME in non-test code.
+- The repo is cleaner than expected. No zod/drizzle/hono/zustand dependency or import remains in any source file (only the devtools classifier's test fixtures mention them). The legacy product name appears in code once (`apps/server/src/kdf-labels.ts`, intentional). Commented-out code is about 6 lines. 21 TODO/FIXME in non-test code.
 - Confirmed dead files (zero importers, not even tests): `apps/mobile/src/components/chat/use-invites-api.ts` (38) plus its only dependency `apps/mobile/src/mock/invites.ts` (21), `apps/server/src/auth/session.ts` (18, `requireSession*` have no callers), `apps/mobile/src/lib/protocol.ts` (4, used only by its own test). About 81 lines with tests. Small.
 - 41 exported declarations are referenced nowhere in the repo (about 202 lines, list in section 3 F2). 756 more exports are used only inside their own file (drop the `export`, no line savings). 521 exports are used only by tests (about 7,500 lines of declarations, mostly legitimate test seams).
 - Bigger but UNCERTAIN: `apps/server/src/git/*` (proxy, 454 src lines plus 447 test lines) is not mounted in `app.ts`/`main.ts` (its own header says so). `apps/server/src/effect/logger.ts` + `runtime.ts` (131 src plus 282 test lines) have no production importer.
@@ -26,7 +26,7 @@
 | Legacy deps | grep package.json files for zod/drizzle/hono/zustand | none |
 | Legacy imports | `git ls-files` + grep `from 'zod\|hono\|zustand\|drizzle'` | only `packages/devtools/src/effect-map/generate.test.ts` fixtures |
 | "drizzle" in code | grep | 66 hits in 19 non-test files, all comments (e.g. `apps/server/src/contacts/service.ts:4-5` still says "modules still on drizzle", `auth/invite-cli.ts:91` "closing the drizzle client") |
-| "galena" | grep in tracked code/config | 1 file (`apps/server/src/kdf-labels.ts`, 2 hits; KDF labels intentionally keep old text per project notes) |
+| the legacy product name | grep in tracked code/config | 1 file (`apps/server/src/kdf-labels.ts`, 2 hits; KDF labels intentionally keep old text per project notes) |
 | Commented-out code | regex for 3+ consecutive commented statements over 907 non-test src files | 2 blocks, 6 lines (both are doc-comment examples in `use-action.ts`) |
 | Env flags | grep `process.env`/`import.meta.env` | no stale-looking flags; `ZILAR_PUSH_GATE`, `ZILAR_XMPP_SM_*`, `*_INTEGRATION` are test switches. The mock flag is documented in F6. |
 
