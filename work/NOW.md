@@ -17,6 +17,8 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
      - a gated real-pg test passes against the local dev Postgres under both `Europe/Madrid` and UTC.
 
      One item is left for the switch task: `Date` values in `WHERE` clauses, which are safe while Postgres runs in UTC.
+
+     The switch spec is drafted as T-0738 (`auth.ts` onto `effectSqlAdapter`, the `WHERE` date binding, and a gated real-pg OTP sign-in test). It is not committed or launched; it waits for your yes.
   2. **D3:** switch the migrator on the live DB (the adoption seed).
   3. **DEL:** delete `db/schema.ts` and the drizzle dependencies, after D2, S1 and D3.
   4. **A12:** delete `git/*` or mount it.
