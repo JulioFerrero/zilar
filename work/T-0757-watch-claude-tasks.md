@@ -1,7 +1,7 @@
 ---
 id: T-0757
 title: "lead watch shows Claude-subagent tasks: board rows in todo/in-progress/review/blocked with no autopilot record get a card (model from the board's model column, phase from the board status, changed files from ../zilar-T-XXXX), with a 'Claude' badge"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0757-watch-claude-tasks
 model: auto
@@ -61,4 +61,41 @@ Also run `cd packages/devtools && pnpm exec tsx src/lead/cli.ts watch --data` on
 
 ## Report (written by the worker when done)
 
+Status: **review**. The lead's answer on the model column is applied: `parseBoard` gives the ids and statuses, and a new `boardModelFor` in `watch.ts` reads the 4th cell of the board row. `generate.ts` is untouched.
+
+### What changed
+
+- `packages/devtools/src/lead/watch.ts`:
+  - `boardModelFor(boardText, id)`: the model cell of the row `| [id](`; `undefined` when empty or missing.
+  - `boardTaskEntry(facts)`: pure. Board row plus facts in, `WatchEntry` out. `in-progress` gives `coding` and running; `review` gives `waiting-lead` (needs lead); `blocked` gives `blocked` (needs lead); `todo` gives no card. Model defaults to `unknown` when the cell is empty.
+  - `boardOnlyEntries`, called at the end of `buildView`: for each open board row with no state record and a worktree `path.join(path.dirname(root), 'zilar-' + id)`, it adds a card. Effort comes from `readEffort`, files from `collectFiles`, age from `git log --reverse --format=%ct main..HEAD` (first line, else the worktree mtime) through `formatDuration`, step from `git log -1 --format=%s main..HEAD` (null when there is no commit beyond main).
+- `packages/devtools/src/lead/watch-format.ts`: `modelBadge` gives `Claude <Family> <version>` for ids containing haiku, sonnet, opus or claude (`Claude` alone when there is no family). Colour `#7aa2f7` (light blue), distinct from Muse (magenta) and MiniMax (orange).
+- Tests: `watch.test.ts` has 11 new cases (3 for `boardModelFor`, 5 for `boardTaskEntry`, 3 for `buildView` board-only: running card with files and age, review card, and no duplicate when a record exists; missing worktree and todo give no card). `watch-format.test.ts` has one new case for the Claude badge. Temp dirs only, injected git runner, real `~/.zilar-lead` untouched.
+
+### Commands run
+
+- `pnpm exec prettier --write` on the four changed files: done.
+- `pnpm --filter @zilar/devtools test --maxWorkers=2 --reporter=dot src/lead/watch-format`: 27 passed.
+- `pnpm --filter @zilar/devtools test --maxWorkers=2 --reporter=dot src/lead/watch.test`: 55 passed. (The first run had one failure: my duplicate-record test lacked the task file the record path needs. Fixed in the test, not in the code.)
+- `pnpm --filter @zilar/devtools test --reporter=dot src/lead/watch` (the spec's filter): 3 files, 135 passed.
+- `cd packages/devtools && pnpm exec tsx src/lead/cli.ts watch --data` (read-only, the allowed live run): before the change `entries: 0`. After the change `entries: 2`:
+  - `T-0757` coding, running, model `haiku-5.5`, age `3 min 4 s`, 4 files
+  - `T-0758` coding, running, model `haiku-5.5`, age `3 min 14 s`, 2 files
+- `pnpm gate` from the worktree root: GATE PASS. Summary lines:
+  - `gate: 5 changed file(s) against main`
+  - `PASS install (frozen)`, `PASS format`, `PASS lint`, `PASS typecheck`, `PASS tests @zilar/devtools`
+  - `scope: every changed file is inside the Allowed files`
+  - `GATE PASS`
+
+### Deviations and open points
+
+- The spec does not say what to show when a board row has no model. I used `unknown`.
+- Review and blocked rows also get a step (the latest commit subject) and an age, as the spec says. The card shows the step only while running, so these are computed but not shown.
+- I have not looked at the Claude badge colour on a real terminal; I only tested the colour value.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved after one blocked question. The model cell is read in `watch.ts` (`boardModelFor`), because T-0758 was editing `generate.ts`. Worker: Haiku 5.5. The lead reviewed the diff directly.
+- **Board-only cards:** open rows with no state record and an existing `../zilar-<id>` worktree get a card (in-progress is `coding`, review is `waiting-lead`, blocked is `blocked`). The age comes from the first commit after main, and the step is the latest commit subject.
+- **Claude badge:** `Claude Haiku 5.5`, in `#7aa2f7`.
+- **Results:** `watch --data` shows 2 entries in the worktree, which has the older board. The tests (135) and the gate pass.

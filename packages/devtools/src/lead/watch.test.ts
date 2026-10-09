@@ -3,6 +3,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+  boardModelFor,
+  boardTaskEntry,
   buildView,
   collectFiles,
   formatContext,
@@ -13,6 +15,7 @@ import {
   parseWatchView,
   sessionSpeed,
   sparkline,
+  type BoardTaskFacts,
   type ChangedFile,
   type WatchEntry,
   type WatchView,
@@ -561,6 +564,232 @@ describe('collectFiles', () => {
       ]);
     } finally {
       fs.rmSync(worktree, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('boardModelFor', () => {
+  const board = [
+    '| [T-0701](T-0701-a.md) | a | in-progress | haiku-5.5 | | |',
+    '| [T-0702](T-0702-b.md) | b | review | | | |',
+  ].join('\n');
+
+  it('returns the model cell of the row for the id', () => {
+    expect(boardModelFor(board, 'T-0701')).toBe('haiku-5.5');
+  });
+
+  it('returns undefined for an empty model cell', () => {
+    expect(boardModelFor(board, 'T-0702')).toBeUndefined();
+  });
+
+  it('returns undefined when no row has the id', () => {
+    expect(boardModelFor(board, 'T-0799')).toBeUndefined();
+  });
+});
+
+describe('boardTaskEntry', () => {
+  const facts = (status: string): BoardTaskFacts => ({
+    row: { id: 'T-0701', file: 'T-0701-a.md', title: 'a title', status },
+    model: 'haiku-5.5',
+    effort: 'low',
+    files: [],
+    totalAge: '2 min 0 s',
+    step: 'feat: step',
+  });
+
+  it('gives an in-progress row a running coding card', () => {
+    expect(boardTaskEntry(facts('in-progress'))).toMatchObject({
+      id: 'T-0701',
+      phaseId: 'coding',
+      phaseLabel: 'in-progress',
+      needsLead: false,
+      running: true,
+      model: 'haiku-5.5',
+      modelLabel: 'haiku-5.5 (low)',
+      step: 'feat: step',
+      autoFixRounds: 0,
+      speed: null,
+    });
+  });
+
+  it('gives a review row a waiting-for-lead card that is not running', () => {
+    expect(boardTaskEntry(facts('review'))).toMatchObject({
+      phaseId: 'waiting-lead',
+      phaseLabel: 'review',
+      needsLead: true,
+      running: false,
+    });
+  });
+
+  it('gives a blocked row a blocked card that needs the lead', () => {
+    expect(boardTaskEntry(facts('blocked'))).toMatchObject({
+      phaseId: 'blocked',
+      needsLead: true,
+      running: false,
+    });
+  });
+
+  it('gives no card to a todo row', () => {
+    expect(boardTaskEntry(facts('todo'))).toBeNull();
+  });
+
+  it('shows unknown as the model when the board cell is empty', () => {
+    expect(
+      boardTaskEntry({ ...facts('review'), model: undefined, effort: undefined }),
+    ).toMatchObject({ model: 'unknown', modelLabel: 'unknown' });
+  });
+});
+
+describe('buildView board-only tasks', () => {
+  // The worktree commit is at 1700000000 s, so the age is 2 min at this time.
+  const NOW = (1_700_000_000 + 120) * 1000;
+  const BOARD = [
+    '# Board',
+    '',
+    '| ID | Title | Status | Model | Depends on | Notes |',
+    '|---|---|---|---|---|---|',
+    '| [T-0701](T-0701-board-only.md) | Board only task | in-progress | haiku-5.5 | | |',
+    '| [T-0702](T-0702-review.md) | Review task | review | | | |',
+    '| [T-0703](T-0703-no-worktree.md) | No worktree | in-progress | haiku-5.5 | | |',
+    '| [T-0704](T-0704-todo.md) | Todo task | todo | haiku-5.5 | | |',
+    '| [T-0705](T-0705-recorded.md) | Recorded task | in-progress | haiku-5.5 | | |',
+  ].join('\n');
+
+  // A temp checkout at base/main with the board, and a worktree base/zilar-<id>
+  // for each id given. The state file is written by each test.
+  function sandbox(worktreeIds: string[]): { base: string; root: string; statePath: string } {
+    const base = fs.mkdtempSync(path.join(os.tmpdir(), 'watch-board-'));
+    const root = path.join(base, 'main');
+    fs.mkdirSync(path.join(root, 'work'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'work', 'BOARD.md'), BOARD);
+    for (const id of worktreeIds) {
+      fs.mkdirSync(path.join(base, `zilar-${id}`, 'work'), { recursive: true });
+    }
+    return { base, root, statePath: path.join(base, 'state.json') };
+  }
+
+  // Every zilar-* worktree answers git with one commit at 1700000000 and one
+  // changed file; the main checkout answers nothing.
+  function boardRunner(): GitRunner {
+    return {
+      run(cwd: string, args: string[]): GitResult {
+        if (!path.basename(cwd).startsWith('zilar-')) {
+          return { ok: false, stdout: '' };
+        }
+        if (args[0] === 'merge-base') return { ok: true, stdout: 'abc123\n' };
+        if (args[0] === 'diff') return { ok: true, stdout: 'M\tpackages/x.ts\n' };
+        if (args[0] === 'status') return { ok: true, stdout: '?? packages/new.ts\n' };
+        if (args.includes('--reverse')) return { ok: true, stdout: '1700000000\n' };
+        if (args[0] === 'log') return { ok: true, stdout: 'feat: step\n' };
+        return { ok: true, stdout: '' };
+      },
+    };
+  }
+
+  function writeState(statePath: string, tasks: Record<string, unknown>): void {
+    fs.writeFileSync(statePath, JSON.stringify({ version: 1, tasks }));
+  }
+
+  const EMPTY_VIEW: WatchView = {
+    clock: '00:00:00',
+    refreshFailed: false,
+    mergedToday: 0,
+    entries: [],
+  };
+
+  it('gives cards to the board rows with a worktree and no record, and skips todo and missing worktrees', async () => {
+    const { base, root, statePath } = sandbox(['T-0701', 'T-0702', 'T-0704']);
+    fs.writeFileSync(
+      path.join(base, 'zilar-T-0701', 'work', 'T-0701-board-only.md'),
+      '---\nid: T-0701\neffort: low\n---\n',
+    );
+    writeState(statePath, {});
+    try {
+      const view = await buildView(
+        EMPTY_VIEW,
+        root,
+        statePath,
+        fakeClient(),
+        boardRunner(),
+        new Map(),
+        NOW,
+      );
+      expect(view.refreshFailed).toBe(false);
+      expect(view.entries.map((e) => e.id)).toEqual(['T-0701', 'T-0702']);
+      expect(view.entries[0]).toMatchObject({
+        title: 'Board only task',
+        phaseId: 'coding',
+        running: true,
+        model: 'haiku-5.5',
+        modelLabel: 'haiku-5.5 (low)',
+        totalAge: '2 min 0 s',
+        step: 'feat: step',
+        files: [
+          { path: 'packages/new.ts', kind: 'created' },
+          { path: 'packages/x.ts', kind: 'modified' },
+        ],
+      });
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+  it('gives a review row a waiting-for-lead card that is not running', async () => {
+    const { base, root, statePath } = sandbox(['T-0702']);
+    writeState(statePath, {});
+    try {
+      const view = await buildView(
+        EMPTY_VIEW,
+        root,
+        statePath,
+        fakeClient(),
+        boardRunner(),
+        new Map(),
+        NOW,
+      );
+      expect(view.entries).toHaveLength(1);
+      expect(view.entries[0]).toMatchObject({
+        id: 'T-0702',
+        phaseId: 'waiting-lead',
+        needsLead: true,
+        running: false,
+        model: 'unknown',
+      });
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+  it('does not add a second card for a row that has an autopilot record', async () => {
+    const { base, root, statePath } = sandbox(['T-0705']);
+    const worktree = path.join(base, 'zilar-T-0705');
+    fs.writeFileSync(
+      path.join(worktree, 'work', 'T-0705-recorded.md'),
+      '---\nid: T-0705\nstatus: in-progress\n---\n',
+    );
+    writeState(statePath, {
+      'T-0705': {
+        task: 'T-0705',
+        sessionId: 'ses_recorded',
+        worktree,
+        model: 'haiku-5.5',
+        role: 'worker',
+        startedAt: new Date(0).toISOString(),
+      },
+    });
+    try {
+      const view = await buildView(
+        EMPTY_VIEW,
+        root,
+        statePath,
+        fakeClient(),
+        boardRunner(),
+        new Map(),
+        NOW,
+      );
+      expect(view.entries.filter((e) => e.id === 'T-0705')).toHaveLength(1);
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
     }
   });
 });

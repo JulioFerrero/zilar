@@ -53,10 +53,29 @@ export interface ModelBadge {
   name: string;
   effort: string | undefined;
   free: boolean;
-  color: 'magenta' | '#f2a65e' | undefined;
+  color: 'magenta' | '#f2a65e' | '#7aa2f7' | undefined;
+}
+
+// Claude badge colour: a light blue that reads on a dark terminal and differs
+// from Muse (magenta) and MiniMax (orange).
+const CLAUDE_BADGE_COLOR = '#7aa2f7';
+
+// `Claude Haiku 5.5` for `haiku-5.5` or `claude-haiku-5-5`; `Claude` alone when
+// no family name is in the id.
+function claudeName(lower: string): string {
+  const match = /(haiku|sonnet|opus)[-_. ]?(\d+)?(?:[-_.](\d+))?/.exec(lower);
+  if (match === null) {
+    return 'Claude';
+  }
+  const family = match[1] ?? '';
+  const major = match[2];
+  const minor = match[3];
+  const version = major === undefined ? '' : ` ${major}${minor === undefined ? '' : `.${minor}`}`;
+  return `Claude ${family.charAt(0).toUpperCase()}${family.slice(1)}${version}`;
 }
 
 // `Muse` for any model id containing `muse`, `MiniMax` for `minimax`,
+// `Claude <family> <version>` for Claude ids (haiku, sonnet, opus, claude),
 // otherwise the bare model id. `free` is true when the id ends in `-free`.
 export function modelBadge(model: string, effort: string | undefined): ModelBadge {
   const lower = model.toLowerCase();
@@ -67,6 +86,9 @@ export function modelBadge(model: string, effort: string | undefined): ModelBadg
   }
   if (lower.includes('minimax')) {
     return { name: 'MiniMax', effort, free, color: '#f2a65e' };
+  }
+  if (/haiku|sonnet|opus|claude/.test(lower)) {
+    return { name: claudeName(lower), effort, free, color: CLAUDE_BADGE_COLOR };
   }
   return { name: stripped, effort, free, color: undefined };
 }
