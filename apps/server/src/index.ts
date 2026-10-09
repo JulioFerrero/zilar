@@ -70,6 +70,10 @@ try {
 }
 
 const { db, close } = createDb(config.DATABASE_URL);
+// `createApp` below reuses this runtime; registering here, before any startup
+// step that reads the database (migrations, stored mail settings, startup
+// checks), keeps them all on the same `effect/sql` client.
+registerSqlRuntime(db, config.DATABASE_URL);
 await runMigrations(db);
 
 // First-run setup (T-0161): the auth flow sends through this holder, so
@@ -97,9 +101,6 @@ if (config.MAIL_TRANSPORT === undefined) {
 // the mismatch certain; that second line is logged below.
 const stickerDir = resolveStorageDir(config.STICKER_STORAGE_DIR);
 await ensureWritableDir(stickerDir, 'STICKER_STORAGE_DIR');
-// `createApp` below reuses this runtime; registering here keeps the startup
-// checks on the same `effect/sql` client.
-registerSqlRuntime(db, config.DATABASE_URL);
 await warnOnEmptyStorageDir({
   db,
   storageDir: stickerDir,

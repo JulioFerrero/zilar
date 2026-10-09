@@ -115,33 +115,71 @@ jobs:
       # Why this step exists (T-0739): on 2026-10-09 the server image crash-looped
       # at start (ERR_MODULE_NOT_FOUND for @electric-sql/pglite, a devDependency),
       # CI never ran the built image, and the broken image was pushed as latest.
-      # Start the server image here, before any push. The database is unreachable
-      # on purpose (port 1): the check is only that the modules load and the config
-      # parses. A connection error passes; a module error fails the job.
+      # Start the server image here, before any push. T-0739 checked only that the
+      # modules load, with an unreachable database; T-0743 showed that misses crashes
+      # after the connection (the server crashed right after migrations). So this
+      # starts a throwaway postgres:17 on a docker network, starts the server image
+      # against it with no MAIL_TRANSPORT, and passes only when the server logs
+      # "zilar-server listening" within 90 seconds. A module error or a missing
+      # listening line fails the job.
       - name: Smoke-start the server image (before any push)
         if: matrix.name == 'zilar-server'
         env:
-          SMOKE_DATABASE_URL: postgres://smoke:smoke@127.0.0.1:1/smoke
           SMOKE_AUTH_SECRET: smoke-only-placeholder-not-a-real-secret
           SMOKE_XMPP_SECRET: smoke-only-placeholder-not-a-real-secret
         run: |
+          net=zilar-smoke-net
+          pg=zilar-smoke-pg
+          srv=zilar-server-smoke
+          trap 'docker rm -f "$srv" "$pg" >/dev/null 2>&1 || true; docker network rm "$net" >/dev/null 2>&1 || true' EXIT
           docker build --platform linux/amd64 -f apps/server/Dockerfile -t zilar-server:smoke .
-          status=0
-          out="$(timeout 60 docker run --rm --name zilar-server-smoke \
+          docker network create "$net" >/dev/null
+          docker run -d --rm --name "$pg" --network "$net" \
+            -e POSTGRES_USER=smoke -e POSTGRES_PASSWORD=smoke -e POSTGRES_DB=smoke \
+            postgres:17 >/dev/null
+          # The postgres entrypoint first starts a temporary server with no TCP, so
+          # wait for TCP inside the container, not just the unix socket.
+          for _ in $(seq 1 60); do
+            if docker exec "$pg" pg_isready -h 127.0.0.1 -p 5432 -U smoke -d smoke >/dev/null 2>&1; then
+              break
+            fi
+            sleep 1
+          done
+          docker run -d --name "$srv" --network "$net" \
             -e NODE_ENV=production \
-            -e DATABASE_URL="$SMOKE_DATABASE_URL" \
+            -e DATABASE_URL="postgres://smoke:smoke@${pg}:5432/smoke" \
             -e BETTER_AUTH_SECRET="$SMOKE_AUTH_SECRET" \
             -e EJABBERD_ADMIN_JID=admin@zilar.localhost \
             -e EJABBERD_ADMIN_PASSWORD=smoke-only-placeholder \
             -e ZILAR_XMPP_JWT_SECRET="$SMOKE_XMPP_SECRET" \
-            zilar-server:smoke 2>&1)" || status=$?
-          docker rm -f zilar-server-smoke >/dev/null 2>&1 || true
+            zilar-server:smoke >/dev/null
+          start="$(date +%s)"
+          out=""
+          while :; do
+            out="$(docker logs "$srv" 2>&1 || true)"
+            case "$out" in
+              *'zilar-server listening'*) break ;;
+            esac
+            running="$(docker inspect -f '{{.State.Running}}' "$srv" 2>/dev/null || echo false)"
+            if [ "$running" != "true" ] || [ $(( $(date +%s) - start )) -ge 90 ]; then
+              break
+            fi
+            sleep 2
+          done
           printf '%s\n' "$out" | tail -n 40
-          echo "Smoke run exit status: ${status} (124 means still running after 60 seconds)."
+          fail=0
           if printf '%s\n' "$out" | grep -E 'ERR_MODULE_NOT_FOUND|Cannot find package|Cannot find module'; then
             echo "::error::The server image cannot load its modules; it must not be pushed."
-            exit 1
+            fail=1
           fi
+          case "$out" in
+            *'zilar-server listening'*) ;;
+            *)
+              echo "::error::The server did not log 'zilar-server listening' within 90 seconds; it must not be pushed."
+              fail=1
+              ;;
+          esac
+          exit "$fail"
 
       - name: Build ${{ matrix.name }} (no push)
         if: "!startsWith(github.ref, 'refs/tags/v') && github.event_name != 'workflow_run'"

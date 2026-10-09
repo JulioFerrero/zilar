@@ -1,7 +1,7 @@
 ---
 id: T-0743
 title: "HOTFIX 2: the server crashes at start when MAIL_TRANSPORT is unset (getMailSettings runs before registerSqlRuntime); register the runtime right after createDb, and make the CI image smoke start against a real throwaway Postgres and require 'zilar-server listening'"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0743-startup-sql-runtime-order
 model: auto
@@ -59,4 +59,39 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What changed
+- `apps/server/src/index.ts`: `registerSqlRuntime(db, config.DATABASE_URL)` now sits directly after `createDb` (line 76), before `runMigrations`, with its comment moved along. The later call and its comment (after `ensureWritableDir`) are removed. Nothing else changed.
+- `.github/workflows/images.yml`: the "Smoke-start the server image" step now starts `postgres:17` on a docker network (user, password and database `smoke`, `--rm`), waits for `pg_isready -h 127.0.0.1`, then runs the server image on that network with `DATABASE_URL=postgres://smoke:smoke@<pg container>:5432/smoke` and no `MAIL_TRANSPORT`. It polls the logs for 90 s; it passes only when the output has `zilar-server listening`. It fails on the module-error grep or on a missing listening line. It prints the last 40 lines either way, and the comment above the step is updated. A trap removes both containers and the network.
+
+### Local proof (throwaway names only, all removed afterwards)
+- Fixed image (`docker build -f apps/server/Dockerfile -t t0743-server:proof .`, exit 0), against `t0743-pg` (postgres:17, TCP ready after 1 s), no `MAIL_TRANSPORT`. Listening line:
+  `{"level":30,"time":1791532959046,"pid":18,"hostname":"83538c1e35ab","port":3000,"msg":"zilar-server listening"}`
+  The container was still running after 20 s.
+- Old `index.ts` (HEAD, built as `t0743-server:old`, exit 0; only `index.ts` was stashed, then restored): same database and env. The container exited with
+  `Error: No effect/sql runtime registered for this database` (thrown at the `sqlRuntimeFor` path, from `getMailSettings`). No listening line, `Running: false`.
+- The CI step script, extracted from the workflow with js-yaml and run with only the names changed (`t0743-ci-net`, `t0743-ci-pg`, `t0743-ci-srv`, image `t0743-server:ci`, `--platform linux/amd64` dropped so the lead's `zilar-server:smoke` tag is not touched): exit 0, listening line in the output, and afterwards 0 containers and 0 networks left. The YAML parses, and the script passes `bash -n`.
+- Not verified: the `--platform linux/amd64` build itself (it ran on the native arch only), and the old-image failure through the CI script (checked by hand, see above).
+
+### Commands and results
+- `pnpm install`: done (exit 0).
+- `pnpm exec prettier --write apps/server/src/index.ts .github/workflows/images.yml`: both unchanged.
+- No single tests were run by hand; the gate ran the nearest tests.
+- `pnpm gate` (repo root, exit 0):
+  - `PASS install (frozen)`
+  - `PASS format`
+  - `PASS lint`
+  - `PASS typecheck`
+  - `PASS tests @zilar/server`
+  - `gate: 2 changed file(s) against main`
+  - `scope: every changed file is inside the Allowed files`
+  - `GATE PASS`
+
+### Deviations and open questions
+- None against the spec. Unsure only about the untested amd64 CI build (see above).
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Haiku 5.5, in one round (about 5.3 min). The lead reviewed the diff directly.
+- **The fix:** `registerSqlRuntime` moved directly after `createDb`, before migrations and mail settings.
+- **The smoke step:** it now starts a throwaway `postgres:17` on its own network, requires `zilar-server listening` within 90 s, fails on module errors as well, and always cleans up through a trap.
+- **Local proof:** the fixed image logs listening, and the old `index.ts` crashes with "No effect/sql runtime registered". The gate passed.
