@@ -1,34 +1,22 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { and, eq } from 'drizzle-orm';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
 import { randomUUID } from 'node:crypto';
 import { aiLocalpart } from '../ais/service';
-import {
-  aiLimits,
-  ais,
-  aiTools,
-  approvalRules,
-  auditLog,
-  groupAis,
-  groupMembers,
-  groups,
-  providerConnections,
-  topicAis,
-  topicMembers,
-  topics,
-} from '../db/schema';
 import {
   bootstrapUser,
   contactOf,
   createTestContext,
   expectedJid,
   testApp,
+  testSql,
   TEST_BASE_URL,
   TEST_XMPP_DOMAIN,
   TEST_XMPP_MUC_DOMAIN,
   type TestApp,
   type TestContext,
 } from '../test-support';
-import type { TopicView } from './access';
+import type { TopicRow, TopicView } from './access';
 
 interface TopicsBody {
   topics: TopicView[];
@@ -39,6 +27,14 @@ interface DetailBody {
   title: string;
   createdBy: string;
   membersCanCreateTopics: boolean;
+}
+
+interface GeneralRow {
+  id: string;
+  roomLocalpart: string;
+  name: string;
+  visibility: string;
+  isGeneral: boolean;
 }
 
 describe('topics', () => {
@@ -98,7 +94,12 @@ describe('topics', () => {
   }
 
   async function generalOf(groupId: string) {
-    const rows = await context.db.select().from(topics).where(eq(topics.groupId, groupId));
+    const rows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<GeneralRow>`SELECT id, room_localpart, name, visibility, is_general FROM topics WHERE group_id = ${groupId}`;
+      }),
+    );
     const general = rows.find((row) => row.isGeneral);
     if (!general) {
       throw new Error('no General topic');
@@ -109,7 +110,14 @@ describe('topics', () => {
   it('creates a General topic with the group room when the group is created', async () => {
     const { group } = await setup();
     const general = await generalOf(group.id);
-    const [groupRow] = await context.db.select().from(groups).where(eq(groups.id, group.id));
+    const [groupRow] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{
+          roomLocalpart: string;
+        }>`SELECT room_localpart FROM groups WHERE id = ${group.id}`;
+      }),
+    );
     expect(general.roomLocalpart).toBe(groupRow?.roomLocalpart);
     expect(general.name).toBe('General');
     expect(general.visibility).toBe('public');
@@ -162,7 +170,15 @@ describe('topics', () => {
     expect(privateCreated.body.visibility).toBe('private');
     expect(privateCreated.body.memberCount).toBe(2);
 
-    const rows = await context.db.select().from(topicMembers);
+    const rows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{
+          topicId: string;
+          userId: string;
+        }>`SELECT topic_id, user_id FROM topic_members`;
+      }),
+    );
     expect(
       rows
         .filter((row) => row.topicId === privateCreated.body.id)
@@ -198,10 +214,12 @@ describe('topics', () => {
   it('hides private topics from non-members, including group admins who were not added', async () => {
     const { owner, member, other, stranger, group } = await setup();
     // `other` becomes a group admin but is not in the private topic.
-    await context.db
-      .update(groupMembers)
-      .set({ role: 'admin' })
-      .where(eq(groupMembers.userId, other.id));
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`UPDATE group_members SET role = 'admin' WHERE user_id = ${other.id}`;
+      }),
+    );
     const privateCreated = await createTopic(owner.cookie, group.id, {
       name: 'Hiring',
       visibility: 'private',
@@ -312,10 +330,14 @@ describe('topics', () => {
     expect(context.adminClient.affiliationState.get(privateRoom)?.has(expectedJid(member.id))).toBe(
       false,
     );
-    const rows = await context.db
-      .select()
-      .from(topicMembers)
-      .where(eq(topicMembers.topicId, privateCreated.body.id));
+    const rows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{
+          userId: string;
+        }>`SELECT user_id FROM topic_members WHERE topic_id = ${privateCreated.body.id}`;
+      }),
+    );
     expect(rows.map((row) => row.userId)).not.toContain(member.id);
   });
 
@@ -328,7 +350,12 @@ describe('topics', () => {
       memberIds: [member.id],
     });
     expect(created.status).toBe(502);
-    const rows = await context.db.select().from(topics).where(eq(topics.groupId, group.id));
+    const rows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ name: string }>`SELECT name FROM topics WHERE group_id = ${group.id}`;
+      }),
+    );
     expect(rows.filter((row) => row.name === 'Backend')).toHaveLength(0);
     expect(context.adminClient.destroyedRooms.length).toBeGreaterThan(0);
   });
@@ -416,7 +443,14 @@ describe('topics', () => {
     );
     // Gone: the topic archived itself, so it answers the missing-topic 404.
     expect(removed.status).toBe(404);
-    const [row] = await context.db.select().from(topics).where(eq(topics.id, topicId));
+    const [row] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{
+          archivedAt: unknown;
+        }>`SELECT archived_at FROM topics WHERE id = ${topicId}`;
+      }),
+    );
     expect(row?.archivedAt).not.toBeNull();
     // The archived room keeps nobody: the last removal synced everyone out.
     expect(context.adminClient.affiliationState.get(room)?.size ?? 0).toBe(0);
@@ -567,10 +601,12 @@ describe('topics', () => {
 
   it('never puts a private topic name in an audit row, and hides entries from outsiders', async () => {
     const { owner, member, other, group } = await setup();
-    await context.db
-      .update(groupMembers)
-      .set({ role: 'admin' })
-      .where(eq(groupMembers.userId, other.id));
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`UPDATE group_members SET role = 'admin' WHERE user_id = ${other.id}`;
+      }),
+    );
     const privateCreated = await createTopic(owner.cookie, group.id, {
       name: 'Secret Hiring Plans',
       visibility: 'private',
@@ -579,7 +615,15 @@ describe('topics', () => {
     const topicId = privateCreated.body.id;
     await patchTopic(owner.cookie, topicId, { status: 'done' });
 
-    const rows = await context.db.select().from(auditLog);
+    const rows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{
+          action: string;
+          detail: unknown;
+        }>`SELECT action, detail FROM audit_log`;
+      }),
+    );
     const topicRows = rows.filter((row) => row.action.startsWith('topic.'));
     expect(topicRows.length).toBeGreaterThan(0);
     for (const row of topicRows) {
@@ -611,24 +655,28 @@ describe('topics', () => {
     const alice = await bootstrapUser(context, app, 'alice@example.com');
     const groupA = randomUUID();
     const groupB = randomUUID();
-    await context.db.insert(groups).values({
-      id: groupA,
-      roomLocalpart: 'gbackfillroomaaaaa',
-      title: 'Old A',
-      createdBy: alice.id,
-    });
-    await context.db.insert(groups).values({
-      id: groupB,
-      roomLocalpart: 'gbackfillroombbbbb',
-      title: 'Old B',
-      createdBy: alice.id,
-    });
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO groups (id, room_localpart, title, created_by) VALUES (${groupA}, ${'gbackfillroomaaaaa'}, ${'Old A'}, ${alice.id})`;
+        yield* sql`INSERT INTO groups (id, room_localpart, title, created_by) VALUES (${groupB}, ${'gbackfillroombbbbb'}, ${'Old B'}, ${alice.id})`;
+      }),
+    );
     await context.client.query(
       `INSERT INTO "topics" ("id", "group_id", "name", "glyph", "room_localpart", "visibility", "kind", "status", "is_general", "created_by")
        SELECT md5('topic-general-' || "groups"."id"), "groups"."id", 'General', 'G', "groups"."room_localpart", 'public', 'chat', 'open', TRUE, "groups"."created_by"
        FROM "groups" ON CONFLICT DO NOTHING`,
     );
-    const rows = await context.db.select().from(topics);
+    const rows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{
+          groupId: string;
+          name: string;
+          isGeneral: boolean;
+        }>`SELECT group_id, name, is_general FROM topics`;
+      }),
+    );
     const generals = rows.filter((row) => row.isGeneral);
     expect(generals.map((row) => row.groupId).sort()).toEqual([groupA, groupB].sort());
     expect(generals.every((row) => row.name === 'General')).toBe(true);
@@ -665,28 +713,16 @@ describe('topics', () => {
     ): Promise<{ aiId: string; jid: string }> {
       const aiId = randomUUID();
       const connectionId = randomUUID();
-      await context.db.insert(providerConnections).values({
-        id: connectionId,
-        owner: ownerId,
-        provider: 'openai',
-        encryptedKey: 'sealed-placeholder',
-        label: null,
-      });
       const localpart = aiLocalpart(aiId);
       const jid = `${localpart}@${TEST_XMPP_DOMAIN}`;
-      await context.db.insert(ais).values({
-        id: aiId,
-        owner: ownerId,
-        name,
-        template: 'dev',
-        persona: 'A helpful persona.',
-        providerConnectionId: connectionId,
-        model: 'gpt-4o-mini',
-        localpart,
-        jid,
-        status: 'active',
-      });
-      await context.db.insert(aiLimits).values({ aiId, perDayUsd: '1.00', perMonthUsd: '20.00' });
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO provider_connections (id, owner, provider, encrypted_key, label) VALUES (${connectionId}, ${ownerId}, 'openai', 'sealed-placeholder', NULL)`;
+          yield* sql`INSERT INTO ais (id, owner, name, template, persona, provider_connection_id, model, localpart, jid, status) VALUES (${aiId}, ${ownerId}, ${name}, 'dev', 'A helpful persona.', ${connectionId}, 'gpt-4o-mini', ${localpart}, ${jid}, 'active')`;
+          yield* sql`INSERT INTO ai_limits (ai_id, per_day_usd, per_month_usd) VALUES (${aiId}, '1.00', '20.00')`;
+        }),
+      );
       return { aiId, jid };
     }
 
@@ -779,9 +815,12 @@ describe('topics', () => {
 
       // The AI owner cannot see this private topic: same 404.
       const ownerOnly = await seedAi(other.id);
-      await context.db
-        .insert(groupAis)
-        .values({ groupId: group.id, aiId: ownerOnly.aiId, addedBy: owner.id });
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO group_ais (group_id, ai_id, added_by) VALUES (${group.id}, ${ownerOnly.aiId}, ${owner.id})`;
+        }),
+      );
       const blind = await addTopicAi(other.cookie, topicId, ownerOnly.aiId);
       expect(blind.status).toBe(404);
       expect(blind.body.error).toBeDefined();
@@ -852,65 +891,55 @@ describe('topics', () => {
       const general = await generalOf(group.id);
 
       const ruleNow = new Date('2026-01-01T00:00:00Z');
-      const [topicRule] = await context.db
-        .insert(approvalRules)
-        .values({
-          id: randomUUID(),
-          aiId,
-          groupId: group.id,
-          topicId,
-          action: 'demo.echo',
-          createdBy: owner.id,
-          createdAt: ruleNow,
-        })
-        .returning();
-      const [generalRule] = await context.db
-        .insert(approvalRules)
-        .values({
-          id: randomUUID(),
-          aiId,
-          groupId: group.id,
-          topicId: general.id,
-          action: 'demo.echo',
-          createdBy: owner.id,
-          createdAt: ruleNow,
-        })
-        .returning();
+      const topicRuleId = randomUUID();
+      const generalRuleId = randomUUID();
+      const topicToolId = randomUUID();
       const toolNow = new Date('2026-01-01T00:00:00Z');
-      const [topicTool] = await context.db
-        .insert(aiTools)
-        .values({
-          id: randomUUID(),
-          aiId,
-          groupId: group.id,
-          topicId,
-          name: 'topic-tool',
-          description: 'A topic tool',
-          currentVersion: 1,
-          createdBy: owner.id,
-          createdAt: toolNow,
-          updatedAt: toolNow,
-        })
-        .returning();
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO approval_rules (id, ai_id, group_id, topic_id, action, created_by, created_at) VALUES (${topicRuleId}, ${aiId}, ${group.id}, ${topicId}, 'demo.echo', ${owner.id}, ${ruleNow.toISOString()})`;
+          yield* sql`INSERT INTO approval_rules (id, ai_id, group_id, topic_id, action, created_by, created_at) VALUES (${generalRuleId}, ${aiId}, ${group.id}, ${general.id}, 'demo.echo', ${owner.id}, ${ruleNow.toISOString()})`;
+          yield* sql`INSERT INTO ai_tools (id, ai_id, group_id, topic_id, name, description, current_version, created_by, created_at, updated_at) VALUES (${topicToolId}, ${aiId}, ${group.id}, ${topicId}, 'topic-tool', 'A topic tool', 1, ${owner.id}, ${toolNow.toISOString()}, ${toolNow.toISOString()})`;
+        }),
+      );
 
       const removed = await removeTopicAi(owner.cookie, topicId, aiId);
       expect(removed.status).toBe(200);
 
-      const rules = await context.db.select().from(approvalRules);
+      const rules = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{
+            id: string;
+            revokedAt: unknown;
+          }>`SELECT id, revoked_at FROM approval_rules`;
+        }),
+      );
       const rulesById = new Map(rules.map((row) => [row.id, row]));
-      expect(rulesById.get(topicRule!.id)?.revokedAt).not.toBeNull();
-      expect(rulesById.get(generalRule!.id)?.revokedAt).toBeNull();
-      const tools = await context.db.select().from(aiTools);
+      expect(rulesById.get(topicRuleId)?.revokedAt).not.toBeNull();
+      expect(rulesById.get(generalRuleId)?.revokedAt).toBeNull();
+      const tools = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{
+            id: string;
+            deletedAt: unknown;
+          }>`SELECT id, deleted_at FROM ai_tools`;
+        }),
+      );
       const toolsById = new Map(tools.map((row) => [row.id, row]));
-      expect(toolsById.get(topicTool!.id)?.deletedAt).not.toBeNull();
+      expect(toolsById.get(topicToolId)?.deletedAt).not.toBeNull();
     });
 
     it('lets a topic manager who is not the AI owner remove it', async () => {
       const { owner, other, group } = await setup();
-      await context.db
-        .update(groupMembers)
-        .set({ role: 'admin' })
-        .where(eq(groupMembers.userId, other.id));
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`UPDATE group_members SET role = 'admin' WHERE user_id = ${other.id}`;
+        }),
+      );
       const { aiId } = await seedAi(owner.id);
       expect((await addGroupAi(owner.cookie, group.id, aiId)).status).toBe(200);
       const privateCreated = await createTopic(owner.cookie, group.id, {
@@ -943,7 +972,14 @@ describe('topics', () => {
         headers: { cookie: owner.cookie },
       });
       expect(removed.status).toBe(200);
-      const rows = await context.db.select().from(topicAis).where(eq(topicAis.aiId, aiId));
+      const rows = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{
+            topicId: string;
+          }>`SELECT topic_id FROM topic_ais WHERE ai_id = ${aiId}`;
+        }),
+      );
       expect(rows).toEqual([]);
       expect(context.adminClient.affiliationState.get(firstRoom)?.get(jid)).toBeUndefined();
       expect(context.adminClient.affiliationState.get(secondRoom)?.get(jid)).toBeUndefined();
@@ -989,22 +1025,32 @@ describe('topics', () => {
       );
       expect(selfLeave.status).toBe(200);
       expect(context.adminClient.affiliationState.get(room)?.get(jid)).toBeUndefined();
-      const rows = await context.db
-        .select()
-        .from(topicAis)
-        .where(and(eq(topicAis.topicId, topicId), eq(topicAis.aiId, aiId)));
+      const rows = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{
+            topicId: string;
+          }>`SELECT topic_id FROM topic_ais WHERE topic_id = ${topicId} AND ai_id = ${aiId}`;
+        }),
+      );
       expect(rows).toHaveLength(1);
 
       // Adding the owner back brings the AI back into the room, with no new
       // `topic.ai_added` row needed. The remaining member is not a manager,
       // so insert the membership row directly (the route would 403): the
       // derived rule is what the test pins, not the add-member permission.
-      await context.db.insert(topicMembers).values({
-        topicId,
-        userId: owner.id,
-        addedBy: member.id,
-      });
-      const [revived] = await context.db.select().from(topics).where(eq(topics.id, topicId));
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO topic_members (topic_id, user_id, added_by) VALUES (${topicId}, ${owner.id}, ${member.id})`;
+        }),
+      );
+      const [revived] = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<TopicRow>`SELECT * FROM topics WHERE id = ${topicId}`;
+        }),
+      );
       const { syncTopicRoom } = await import('./rooms');
       await syncTopicRoom(
         {
@@ -1022,10 +1068,12 @@ describe('topics', () => {
       const { owner, member, other, group } = await setup();
       // `other` is a group admin so they can manage the topic the owner
       // created, while the owner stays out of the new private member list.
-      await context.db
-        .update(groupMembers)
-        .set({ role: 'admin' })
-        .where(eq(groupMembers.userId, other.id));
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`UPDATE group_members SET role = 'admin' WHERE user_id = ${other.id}`;
+        }),
+      );
       const { aiId, jid } = await seedAi(owner.id);
       expect((await addGroupAi(owner.cookie, group.id, aiId)).status).toBe(200);
       const created = await createTopic(owner.cookie, group.id, { name: 'Backend' });
@@ -1042,10 +1090,14 @@ describe('topics', () => {
       });
       expect(patched.status).toBe(200);
       expect(context.adminClient.affiliationState.get(room)?.get(jid)).toBeUndefined();
-      const rows = await context.db
-        .select()
-        .from(topicAis)
-        .where(and(eq(topicAis.topicId, topicId), eq(topicAis.aiId, aiId)));
+      const rows = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{
+            topicId: string;
+          }>`SELECT topic_id FROM topic_ais WHERE topic_id = ${topicId} AND ai_id = ${aiId}`;
+        }),
+      );
       expect(rows).toHaveLength(1);
     });
 
@@ -1061,10 +1113,14 @@ describe('topics', () => {
 
       // The owner is not in `topic_members` (public topics have no rows) and
       // the AI still belongs in the room.
-      const members = await context.db
-        .select()
-        .from(topicMembers)
-        .where(eq(topicMembers.topicId, topicId));
+      const members = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{
+            userId: string;
+          }>`SELECT user_id FROM topic_members WHERE topic_id = ${topicId}`;
+        }),
+      );
       expect(members).toEqual([]);
       expect(context.adminClient.affiliationState.get(room)?.get(jid)).toBe('member');
     });
@@ -1080,7 +1136,16 @@ describe('topics', () => {
       expect((await addTopicAi(owner.cookie, privateCreated.body.id, aiId)).status).toBe(200);
       expect((await removeTopicAi(owner.cookie, privateCreated.body.id, aiId)).status).toBe(200);
 
-      const rows = await context.db.select().from(auditLog);
+      const rows = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{
+            action: string;
+            subjectId: string | null;
+            detail: unknown;
+          }>`SELECT action, subject_id, detail FROM audit_log`;
+        }),
+      );
       const added = rows.find((row) => row.action === 'topic.ai_added');
       const removedRow = rows.find((row) => row.action === 'topic.ai_removed');
       expect(added).toBeDefined();
@@ -1091,10 +1156,14 @@ describe('topics', () => {
       }
 
       // The AI row is gone from the database after removal.
-      const remaining = await context.db
-        .select()
-        .from(topicAis)
-        .where(and(eq(topicAis.topicId, privateCreated.body.id), eq(topicAis.aiId, aiId)));
+      const remaining = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{
+            topicId: string;
+          }>`SELECT topic_id FROM topic_ais WHERE topic_id = ${privateCreated.body.id} AND ai_id = ${aiId}`;
+        }),
+      );
       expect(remaining).toEqual([]);
     });
   });

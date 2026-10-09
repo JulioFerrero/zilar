@@ -1,7 +1,7 @@
 ---
 id: T-0714
 title: "tests off drizzle (topics): replace every drizzle query in topics/topics.test.ts with testSql(context) + effect/sql; drop the drizzle-orm and db/schema imports"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0714-topics-tests-off-drizzle
 model: auto
@@ -50,4 +50,34 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- `apps/server/src/topics/topics.test.ts`: every drizzle query (seed inserts, updates, reads used by assertions) now goes through `testSql(context)` with raw `effect/sql` SQL that names snake_case columns. Each read selects only the columns it asserts on, with a small local row type. `generalOf` has a `GeneralRow` interface.
+- Removed the `drizzle-orm` and `../db/schema` imports (the `and`/`eq` helpers went with them).
+- Inserts that used `.returning()` now generate their uuids in JS (`topicRuleId`, `generalRuleId`, `topicToolId`) and the assertions read those ids. Same rows and values.
+- The one full-row read, the revived topic before `syncTopicRoom` (line 1051), is `SELECT *` typed as `TopicRow` from `./access`, because `syncTopicRoom` takes the full row type. Still a type import, not `db/schema`.
+- Kept as they were: `context.db` passed to `syncTopicRoom` (module function, not a drizzle query), and the existing raw `context.client.query` backfill INSERT (plain PGlite SQL, not drizzle).
+- No table here has a JS-side default (`$defaultFn`/`$onUpdate`); the DB defaults fill the omitted columns. Timestamps are passed as `toISOString()`, the same as `backgrounds/routes.test.ts`.
+- Only file changed besides this report: the task front matter status.
+
+### Commands and results
+- Before any change: `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/topics/topics.test.ts`: 1 file passed, 32 tests passed.
+- After the change (and after prettier): same command, 1 file passed, 32 tests passed.
+- `git grep -n "drizzle-orm\|db/schema" -- apps/server/src/topics/topics.test.ts`: no output (exit 1).
+- `pnpm exec prettier --write apps/server/src/topics/topics.test.ts`: formatted.
+- `pnpm gate` (from /Users/julio/personal-projects/zilar-T-0714, exit 0), summary lines:
+  - `PASS  install (frozen)  (1.7s)`
+  - `PASS  format  (30.2s)`
+  - `PASS  lint  (2.1s)`
+  - `PASS  typecheck  (6.6s)`
+  - `PASS  tests @zilar/server  (20.1s)`
+  - `scope: every changed file is inside the Allowed files`
+  - `GATE PASS`
+  - Gate reported 2 changed files against main: the test file and this task file.
+
+### Problems, deviations, open questions
+- No deviations from the spec. No test needed its assertion changed.
+- Not verified beyond the test run and gate: I did not check the exact runtime types of timestamp and jsonb values from `testSql` (the assertions only check null / not-null and string containment, which hold).
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Haiku 5.5, in one round (about 5.5 min). The lead reviewed the diff directly and checked it against main. The role updates keep the same `WHERE user_id` as the originals, and the tool seeds carry explicit timestamps. There are 32 tests before and after, no drizzle import is left, and the gate passed.
