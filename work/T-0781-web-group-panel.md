@@ -1,7 +1,7 @@
 ---
 id: T-0781
 title: "WU15: GroupPanel on Effect"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0781-web-group-panel
 model: auto
@@ -62,4 +62,42 @@ Run `pnpm effect:map` and list each file's kind in the Report, then run the whol
 
 ## Report (written by the worker when done)
 
+**Changed:** `apps/web/src/components/GroupPanel.tsx` only (no test edited).
+
+**Structure.** Loads are `useQuery`: invite links (managers only), roles (no group id = loading, via `Effect.never`), and my AIs for the picker. Actions are `useAction`: create link, topic switch, listener switch/eagerness, and one action for the roles section (each change is passed in as an Effect). Each AI row has its own remove action (`GroupAiRow`), and each picker option has its own add action (`AddAiOption`). API calls go through `fromApi` (`apiStep`); store calls go through `Effect.tryPromise` (`storeStep`), keeping the raw error for `describeAiError`. The invite-link revoke returns a promise through `runWeb`, because `InviteLinksSection` awaits it (T-0141). The promise never rejects. Dialogs (`AiMemoryDialog`, `ChatBackgroundDialog`) stay at panel level where they were; no row renders a dialog (the lead's note of this turn).
+
+**effect:map (before, main 82db347b): `GroupPanel.tsx` needs-effect (H1, W4). After: `effect`, no signals.** Coverage 55.3% to 56.0%.
+
+**Grep check.** `async`, `await`, `.then(`, `setTimeout`, `setInterval`: none. The only `try`/`catch` text is the `try:`/`catch:` option keys of `Effect.tryPromise` (2 places).
+
+**Tests.** Before: `GroupPanel.test.tsx` has 29 tests; whole web suite 1813 (from the spec, not re-measured before my edit). After: GroupPanel file 29 passed; whole web suite `Test Files 170 passed (170)`, `Tests 1813 passed (1813)`. No test was edited.
+
+**Behaviour differences (all in the panel's error text or per-row state):**
+1. Non-API failures on API calls (links create/revoke/load, roles load and changes) now show the component's fallback sentence (`Could not create the link.` etc.) where the old code showed raw `error.message` for a non-ApiError (e.g. a network TypeError). ApiError messages are unchanged.
+2. Store-call failures (add, remove, topic switch, listener) keep the old raw text (`The server is down` test asserts it), so no fallback there.
+3. Add picker: each option disables only itself while its add runs. Before, all options and Cancel were disabled during any add. Cancel is no longer disabled.
+4. AI removal: each row has its own confirm state. Before, one panel-level state allowed only one row in confirm; now two rows can be in confirm at once. Different rows can remove at the same time.
+5. Invite links: one error slot before; now create error, then revoke error, then load error, each hidden while its own action runs. Links list keeps the old list while a refresh runs (`AsyncResult.getOrElse`).
+6. Fixed in fix round 1: the picker now lists a snapshot of the eligible AIs taken when it opens (`pickerChoices`), so an option stays mounted until the panel closes the picker. The panel's `setPickerChoices(undefined)` runs on success and on Cancel. The option list no longer follows the live store while the picker is open (an AI added elsewhere meanwhile stays listed until the picker closes).
+All other fixed sentences, labels and disabled states are unchanged.
+
+**Fix round 1 (lead review).** Item 6 fixed as above; items 3 and 4 kept (per-option disabling, per-row remove). The lead asked for a test "open picker, add, picker closed, AI in list". I wrote it and it passes on the new code, but it is NOT committed: `apps/web/src/components/GroupPanel.test.tsx` is not in this task's Allowed files, and committing it fails the gate's scope check. Its diff is saved outside the repo. It also passes on the previous commit 908030a5 even when the mocked add removes the option from the live list first, so it does not reproduce the timing regression; the fix is structural (the option cannot unmount while the picker is open), not proven by that test. Needs the lead to add `apps/web/src/components/GroupPanel.test.tsx` to Allowed files if the test should land.
+Whole web suite after fix round 1: `Test Files 170 passed (170)`, `Tests 1813 passed (1813)` (GroupPanel file 29 tests, all passing).
+Gate after fix round 1: `scope: every changed file is inside the Allowed files`, `GATE PASS`, `PASS install (frozen)`, `PASS format`, `PASS lint`, `PASS typecheck`, `PASS effect`, `PASS tests @zilar/web`.
+
+**Gate.** `pnpm gate` (run once, from the worktree root):
+- `scope: every changed file is inside the Allowed files`
+- `GATE PASS`
+- `PASS install (frozen)`, `PASS format`, `PASS lint`, `PASS typecheck`, `PASS effect`, `PASS tests @zilar/web`
+
+Also run: `pnpm --filter @zilar/web typecheck` (passed), `pnpm exec oxlint apps/web/src/components/GroupPanel.tsx` (clean), `pnpm exec prettier --write` on the file.
+
+**Not verified:** no browser run of the picker close (item 6) or of the two-row confirm (item 4).
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved after one fix round. Worker: Haiku 5.5. The lead reviewed the Report.
+- **The panel** is an Effect file. Store failures keep their sentences; API failures go through `ApiFailure`.
+- **Fix round 1:** the picker lists a snapshot taken when it opens and closes after a successful add, as before. The picker list no longer follows the live store while it is open, which is accepted.
+- **The worker's extra test was not committed:** it was outside Allowed and did not reproduce the old timing.
+- **Results:** 29 tests and the whole web suite (1813) pass; the gate passed.
