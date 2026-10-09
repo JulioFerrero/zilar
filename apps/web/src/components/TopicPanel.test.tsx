@@ -686,3 +686,21 @@ describe('topic remove-member superseded re-check (T-0141)', () => {
     expect(screen.getByRole('dialog', { name: /topic info/ })).toBeTruthy();
   });
 });
+
+describe('store action failures (fix round 1)', () => {
+  it('shows the exact message of a plain Error thrown by a store action', async () => {
+    // The store throws a plain Error whose message is a user-facing sentence:
+    // the panel shows that exact text, not the generic fallback.
+    const { dialog, store } = openHiringPanelWithStore();
+    expect(await within(dialog).findByText('Ana')).toBeTruthy();
+    store.setState({
+      removeTopicMember: async () => {
+        throw new Error('Only admins can do that');
+      },
+    });
+    removeAna(dialog);
+    expect(await within(dialog).findByText('Only admins can do that')).toBeTruthy();
+    expect(screen.queryByText('Something went wrong')).toBeNull();
+    expect(screen.getByRole('dialog', { name: /topic info/ })).toBeTruthy();
+  });
+});

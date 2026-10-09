@@ -1,4 +1,5 @@
 import type { ChatSummary } from '@zilar/chat-core';
+import { Effect } from 'effect';
 import { Brain, Lock, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
@@ -30,13 +31,45 @@ import {
   type TopicRole,
   type TopicTool,
 } from '@/lib/api';
+import { fromApi } from '@/lib/effect/api-effect';
+import { ApiFailure, isApiFailureCode, toApiFailure } from '@/lib/effect/errors';
+import { isWaiting, useAction } from '@/lib/effect/use-action';
+import { useQuery } from '@/lib/effect/use-query';
 import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
 
 type PanelStatus = 'loading' | 'ready' | 'error';
+type GroupMemberRow = GroupDetail['members'][number];
 
 function visibilityLabel(visibility: 'public' | 'private'): string {
   return visibility === 'public' ? 'Public' : 'Private';
 }
+
+/**
+ * The sentence shown for a failed call: the API's own message, or the fixed
+ * fallback for anything else (AGENTS.md: user-facing errors are fixed sentences).
+ */
+const textOf = (failure: ApiFailure, fallback: string): string =>
+  failure.code === 'unknown_error' ? fallback : failure.message;
+
+/**
+ * A chat-store action. The store throws an ApiError (mapped as fromApi maps
+ * it) or a plain Error whose message is the user-facing sentence, which keeps
+ * its text. Any other cause becomes the unknown failure, so `textOf` shows the
+ * fixed fallback.
+ */
+const storeCall = <A,>(call: () => Promise<A>): Effect.Effect<A, ApiFailure> =>
+  Effect.tryPromise({
+    try: call,
+    catch: (cause) =>
+      cause instanceof Error && !(cause instanceof ApiError)
+        ? new ApiFailure({ status: 0, code: 'store_error', message: cause.message, detail: {} })
+        : toApiFailure(cause),
+  });
+
+/** Shows a failure as the panel's inline error, with its fixed fallback. */
+const failInline =
+  (setError: (message: string) => void, fallback: string) => (failure: ApiFailure) =>
+    Effect.sync(() => setError(textOf(failure, fallback)));
 
 /**
  * The topic info panel (T-0111): visibility, members (private list with
@@ -47,11 +80,27 @@ function visibilityLabel(visibility: 'public' | 'private'): string {
  * history-exposure warning).
  */
 export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => void }) {
+  const topic = chat.topic;
+  if (topic === undefined) {
+    return null;
+  }
+  return <TopicPanelBody chat={chat} topic={topic} onClose={onClose} />;
+}
+
+function TopicPanelBody({
+  chat,
+  topic,
+  onClose,
+}: {
+  chat: ChatSummary;
+  topic: NonNullable<ChatSummary['topic']>;
+  onClose: () => void;
+}) {
   const storeApi = useChatStoreApi();
   const store = useChatStore();
   const navigate = useNavigate();
 
-  const topic = chat.topic;
+  const topicId = topic.id;
   const groupTitle = chat.groupTitle ?? store.groupInfo(chat.id)?.title ?? '';
   const info: GroupDetail | undefined = store.groupInfo(chat.id);
   const me = store.currentUserId;
@@ -72,7 +121,6 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
   const [myAis, setMyAis] = useState<PublicAi[]>([]);
   const [memberPickerOpen, setMemberPickerOpen] = useState(false);
   const [aiPickerOpen, setAiPickerOpen] = useState(false);
-  const [busyId, setBusyId] = useState<string | undefined>(undefined);
   const [confirmingVisibility, setConfirmingVisibility] = useState(false);
   const [confirmingArchive, setConfirmingArchive] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -82,238 +130,134 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
     storeApi.getState().refreshGroupInfo(chat.id);
   }, [storeApi, chat.id]);
 
-  // Members and AIs load once when the panel opens; the topic detail (strip)
+  // Members and AIs load when the panel opens; the topic detail (strip)
   // already rides the chat row. A failure shows an inline error with Retry.
-  const topicId = topic?.id;
-  useEffect(() => {
-    let active = true;
-    if (topicId === undefined) {
-      return;
-    }
-    listTopicMembers(topicId)
-      .then((members) => {
-        if (active) {
+  // A list that is already shown stays on screen while it reloads, so the
+  // rows of a call still running are not unmounted under it.
+  const setMembersFailure = (failure: ApiFailure): void =>
+    setMembersState({
+      status: 'error',
+      members: [],
+      message: textOf(failure, 'Could not load the members.'),
+    });
+  // `onShown` runs in the same step as the list update, so a row or picker
+  // that the update removes has finished its last step.
+  const fetchMembers = (onShown: () => void = () => undefined): Effect.Effect<void, ApiFailure> =>
+    fromApi(() => listTopicMembers(topicId)).pipe(
+      Effect.tap((members) =>
+        Effect.sync(() => {
           setMembersState({ status: 'ready', members, message: '' });
-        }
-      })
-      .catch((error: unknown) => {
-        if (active) {
-          setMembersState({
-            status: 'error',
-            members: [],
-            message: error instanceof Error ? error.message : 'Could not load the members.',
-          });
-        }
-      });
-    listTopicAis(topicId)
-      .then((ais) => {
-        if (active) {
+          onShown();
+        }),
+      ),
+      Effect.asVoid,
+    );
+  const loadMembers = Effect.sync(() =>
+    setMembersState((previous) =>
+      previous.status === 'ready' ? previous : { status: 'loading', members: [], message: '' },
+    ),
+  ).pipe(
+    Effect.andThen(fetchMembers()),
+    Effect.catchTag('ApiFailure', (failure) => Effect.sync(() => setMembersFailure(failure))),
+  );
+  const [, refreshMembers] = useQuery(() => loadMembers, [topicId]);
+  // The list re-read after an action: a failure shows the list's inline error,
+  // and `done` runs in the same step either way.
+  const reloadMembersAfter = (done: () => void = () => undefined): Effect.Effect<void> =>
+    fetchMembers(done).pipe(
+      Effect.catchTag('ApiFailure', (failure) =>
+        Effect.sync(() => {
+          setMembersFailure(failure);
+          done();
+        }),
+      ),
+    );
+
+  const setAisFailure = (failure: ApiFailure): void =>
+    setAisState({ status: 'error', ais: [], message: textOf(failure, 'Could not load the AIs.') });
+  const fetchAis = (onShown: () => void = () => undefined): Effect.Effect<void, ApiFailure> =>
+    fromApi(() => listTopicAis(topicId)).pipe(
+      Effect.tap((ais) =>
+        Effect.sync(() => {
           setAisState({ status: 'ready', ais, message: '' });
-        }
-      })
-      .catch((error: unknown) => {
-        if (active) {
-          setAisState({
-            status: 'error',
-            ais: [],
-            message: error instanceof Error ? error.message : 'Could not load the AIs.',
-          });
-        }
-      });
-    listTopicTools(topicId)
-      .then((tools: TopicTool[]) => {
-        if (active) {
-          setToolsCount(tools.length);
-        }
-      })
-      .catch(() => {
-        if (active) {
-          setToolsCount(null);
-        }
-      });
-    return () => {
-      active = false;
-    };
-  }, [topicId]);
+          onShown();
+        }),
+      ),
+      Effect.asVoid,
+    );
+  const loadAis = Effect.sync(() =>
+    setAisState((previous) =>
+      previous.status === 'ready' ? previous : { status: 'loading', ais: [], message: '' },
+    ),
+  ).pipe(
+    Effect.andThen(fetchAis()),
+    Effect.catchTag('ApiFailure', (failure) => Effect.sync(() => setAisFailure(failure))),
+  );
+  const [, refreshAis] = useQuery(() => loadAis, [topicId]);
+  const reloadAisAfter = (done: () => void = () => undefined): Effect.Effect<void> =>
+    fetchAis(done).pipe(
+      Effect.catchTag('ApiFailure', (failure) =>
+        Effect.sync(() => {
+          setAisFailure(failure);
+          done();
+        }),
+      ),
+    );
 
-  useEffect(() => {
-    let active = true;
-    storeApi
-      .getState()
-      .listMyAis()
-      .then((list) => {
-        if (active) {
-          setMyAis(list.filter((ai) => ai.status === 'active'));
-        }
-      })
-      .catch(() => {
-        if (active) {
-          setMyAis([]);
-        }
-      });
-    return () => {
-      active = false;
-    };
-  }, [storeApi]);
+  useQuery(
+    () =>
+      fromApi(() => listTopicTools(topicId)).pipe(
+        Effect.tap((tools: TopicTool[]) => Effect.sync(() => setToolsCount(tools.length))),
+        Effect.catchTag('ApiFailure', () => Effect.sync(() => setToolsCount(null))),
+      ),
+    [topicId],
+  );
 
-  if (topic === undefined) {
-    return null;
-  }
+  useQuery(
+    () =>
+      storeCall(() => storeApi.getState().listMyAis()).pipe(
+        Effect.tap((list) =>
+          Effect.sync(() => setMyAis(list.filter((ai) => ai.status === 'active'))),
+        ),
+        Effect.catchTag('ApiFailure', () => Effect.sync(() => setMyAis([]))),
+      ),
+    [storeApi],
+  );
 
-  // The reload after a remove re-lists from the server. It throws (the
-  // panel catches) so a delete-followed-by-failed-reload can drop the row
-  // locally with its own "Could not refresh the list." line instead of
-  // either showing an error state that looks like the delete failed or
-  // swallowing the failure. The panel Retry buttons catch the same shape.
-  const reloadMembers = async (): Promise<void> => {
-    setMembersState({ status: 'loading', members: [], message: '' });
-    try {
-      setMembersState({ status: 'ready', members: await listTopicMembers(topic.id), message: '' });
-    } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Could not load the members.');
-    }
-  };
-
-  const reloadAis = async (): Promise<void> => {
-    setAisState({ status: 'loading', ais: [], message: '' });
-    try {
-      setAisState({ status: 'ready', ais: await listTopicAis(topic.id), message: '' });
-    } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Could not load the AIs.');
-    }
-  };
-
-  const run = async (label: string, work: () => Promise<void>): Promise<void> => {
-    setBusyId(label);
-    setErrorMessage('');
-    try {
-      await work();
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : `Could not ${label}.`);
-    } finally {
-      setBusyId(undefined);
-    }
-  };
-
-  const addMember = (userId: string): Promise<void> =>
-    run(`add:${userId}`, async () => {
-      // ONE call: the store issues the POST and folds the row back in.
-      await storeApi.getState().addTopicMember(chat.id, userId);
-      await reloadMembers().catch((error: unknown) => {
-        setMembersState({
-          status: 'error',
-          members: [],
-          message: error instanceof Error ? error.message : 'Could not load the members.',
-        });
-      });
-      setMemberPickerOpen(false);
-    });
-
-  const removeMember = (userId: string): Promise<void> =>
-    run(`remove:${userId}`, async () => {
-      // ONE call: the store issues the DELETE and folds the row back in
-      // (real) or drops it when archived (both). A 404 alone never means
-      // "the topic is gone" — the server also 404s for a user who is not a
-      // member — so only navigate away when the refreshed list no longer
-      // has the topic row. Any other failure keeps the user here with the
-      // inline error. A failed reload after a successful delete drops the
-      // row locally with its own refresh message (never a stale row).
-      try {
-        await storeApi.getState().removeTopicMember(chat.id, userId);
-      } catch (error) {
-        if (error instanceof ApiError && error.status === 404) {
-          const gone = await refreshTopicRowOnce();
-          if (gone) {
-            navigate('/');
-            onClose();
-            return;
-          }
-          await reloadMembers().catch((reloadError: unknown) => {
-            setMembersState({
-              status: 'error',
-              members: [],
-              message:
-                reloadError instanceof Error ? reloadError.message : 'Could not load the members.',
-            });
-          });
-          return;
-        }
-        throw error;
-      }
-      try {
-        await reloadMembers();
-      } catch {
-        removeMemberRowFallback(userId);
-      }
-    });
+  const clearError = Effect.sync(() => setErrorMessage(''));
 
   // The row re-check after a removal 404. A superseded refresh (the store
   // restarted mid-flight) rejects with `stale_refresh` instead of merging:
   // retry once so a transient restart does not surface the store's
   // "superseded" wording in the panel; a second supersede is genuinely
   // stale state, so report a generic message the user can act on.
-  const refreshTopicRowOnce = async (): Promise<boolean> => {
-    try {
-      return await storeApi.getState().refreshTopicRow(chat.id, topic.id);
-    } catch (error) {
-      if (error instanceof ApiError && error.code === 'stale_refresh') {
-        try {
-          return await storeApi.getState().refreshTopicRow(chat.id, topic.id);
-        } catch (retryError) {
-          if (retryError instanceof ApiError && retryError.code === 'stale_refresh') {
-            throw new Error('Could not refresh the topic. Try again.');
-          }
-          throw retryError;
-        }
-      }
-      throw error;
-    }
+  const refreshTopicRowOnce = (): Effect.Effect<boolean, ApiFailure> => {
+    const recheck = storeCall(() => storeApi.getState().refreshTopicRow(chat.id, topic.id));
+    return recheck.pipe(
+      Effect.catchIf(isApiFailureCode('stale_refresh'), () =>
+        recheck.pipe(
+          Effect.catchIf(isApiFailureCode('stale_refresh'), () =>
+            Effect.fail(
+              new ApiFailure({
+                status: 0,
+                code: 'stale_refresh',
+                message: 'Could not refresh the topic. Try again.',
+                detail: {},
+              }),
+            ),
+          ),
+        ),
+      ),
+    );
   };
 
-  const leave = (): Promise<void> =>
-    run('leave', async () => {
-      // The store's `leaveTopic` swallows the last-seat 404 itself (the
-      // topic archived, so there is nothing left to leave): success means
-      // the caller is out either way, so navigate away. A 404 that means
-      // "not a member" rethrows (the row re-check found the topic alive),
-      // like any other failure (network, 403) — stay with the inline error.
-      await storeApi.getState().leaveTopic(chat.id);
-      navigate('/');
-      onClose();
-    });
+  const closeTopicScreen = Effect.sync(() => {
+    navigate('/');
+    onClose();
+  });
 
-  const addAi = (aiId: string): Promise<void> =>
-    run(`addAi:${aiId}`, async () => {
-      // ONE call: the store issues the POST and folds the row back in.
-      await storeApi.getState().addTopicAi(chat.id, aiId);
-      await reloadAis().catch((error: unknown) => {
-        setAisState({
-          status: 'error',
-          ais: [],
-          message: error instanceof Error ? error.message : 'Could not load the AIs.',
-        });
-      });
-      setAiPickerOpen(false);
-    });
-
-  const removeAi = (aiId: string): Promise<void> =>
-    run(`removeAi:${aiId}`, async () => {
-      // ONE call: the store issues the DELETE and folds the row back in.
-      // The reload may fail after a successful delete (transient network):
-      // never show the removed row as if the delete failed — drop it
-      // locally and surface the refresh problem with its own Retry instead.
-      await storeApi.getState().removeTopicAi(chat.id, aiId);
-      await reloadAis().catch(() => {
-        setAisState((previous) => ({
-          status: previous.status === 'ready' && previous.ais.length > 0 ? 'ready' : 'error',
-          ais: previous.ais.filter((ai) => ai.id !== aiId),
-          message: 'Could not refresh the list.',
-        }));
-      });
-    });
-
-  /** Same as `removeAi`: a failed reload after a delete drops the row locally. */
-  const removeMemberRowFallback = (userId: string): void => {
+  /** A failed reload after a delete drops the member's row locally (never a stale row). */
+  const dropMemberRow = (userId: string): void => {
     setMembersState((previous) => ({
       status: previous.status === 'ready' && previous.members.length > 1 ? 'ready' : 'error',
       members: previous.members.filter((member) => member.userId !== userId),
@@ -321,44 +265,128 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
     }));
   };
 
-  const archive = (): Promise<void> =>
-    run('archive', async () => {
-      try {
-        await storeApi.getState().patchTopic(chat.id, { archived: true });
-      } catch {
-        setErrorMessage('Could not archive the topic.');
-        setConfirmingArchive(false);
-        return;
-      }
-      setConfirmingArchive(false);
-      navigate('/');
-      onClose();
-    });
+  // A 404 alone never means "the topic is gone" — the server also 404s for a
+  // user who is not a member — so only navigate away when the refreshed list
+  // no longer has the topic row. Any other failure keeps the user here with
+  // the inline error.
+  const afterMissingMember = (): Effect.Effect<void, ApiFailure> =>
+    refreshTopicRowOnce().pipe(
+      Effect.flatMap((gone) => (gone ? closeTopicScreen : reloadMembersAfter())),
+    );
 
-  const flipVisibility = (): Promise<void> =>
-    run('visibility', async () => {
-      const toPublic = topic.visibility === 'private';
-      try {
-        await storeApi.getState().patchTopic(chat.id, {
-          visibility: toPublic ? 'public' : 'private',
-          ...(toPublic ? { confirmExposeHistory: true } : { memberIds: [me] }),
-        });
-      } catch {
-        setErrorMessage(
-          toPublic ? 'Could not make the topic public.' : 'Could not make the topic private.',
-        );
-        setConfirmingVisibility(false);
-        return;
-      }
-      setConfirmingVisibility(false);
-      await reloadMembers().catch((error: unknown) => {
-        setMembersState({
-          status: 'error',
-          members: [],
-          message: error instanceof Error ? error.message : 'Could not load the members.',
-        });
-      });
-    });
+  // ONE call: the store issues the POST and folds the row back in. The
+  // picker closes in the same step as the list update.
+  const addMember = (userId: string): Effect.Effect<void, ApiFailure> =>
+    storeCall(() => storeApi.getState().addTopicMember(chat.id, userId)).pipe(
+      Effect.andThen(reloadMembersAfter(() => setMemberPickerOpen(false))),
+    );
+
+  // ONE call: the store issues the DELETE and folds the row back in (real)
+  // or drops it when archived (both). A 404 alone never means "the topic is
+  // gone" (see afterMissingMember).
+  const removeMember = (userId: string): Effect.Effect<void, ApiFailure> =>
+    storeCall(() => storeApi.getState().removeTopicMember(chat.id, userId)).pipe(
+      Effect.matchEffect({
+        onFailure: (failure: ApiFailure): Effect.Effect<void, ApiFailure> =>
+          failure.status === 404 ? afterMissingMember() : Effect.fail(failure),
+        onSuccess: (): Effect.Effect<void> =>
+          fetchMembers().pipe(
+            Effect.catchTag('ApiFailure', () => Effect.sync(() => dropMemberRow(userId))),
+          ),
+      }),
+    );
+
+  // ONE call: the store issues the POST and folds the row back in.
+  const addAi = (aiId: string): Effect.Effect<void, ApiFailure> =>
+    storeCall(() => storeApi.getState().addTopicAi(chat.id, aiId)).pipe(
+      Effect.andThen(reloadAisAfter(() => setAiPickerOpen(false))),
+    );
+
+  // ONE call: the store issues the DELETE and folds the row back in.
+  // The reload may fail after a successful delete (transient network):
+  // never show the removed row as if the delete failed — drop it
+  // locally and surface the refresh problem with its own Retry instead.
+  const removeAi = (aiId: string): Effect.Effect<void, ApiFailure> =>
+    storeCall(() => storeApi.getState().removeTopicAi(chat.id, aiId)).pipe(
+      Effect.andThen(
+        fetchAis().pipe(
+          Effect.catchTag('ApiFailure', () =>
+            Effect.sync(() =>
+              setAisState((previous) => ({
+                status: previous.status === 'ready' && previous.ais.length > 0 ? 'ready' : 'error',
+                ais: previous.ais.filter((ai) => ai.id !== aiId),
+                message: 'Could not refresh the list.',
+              })),
+            ),
+          ),
+        ),
+      ),
+    );
+
+  const leaveEffect = storeCall(() => storeApi.getState().leaveTopic(chat.id)).pipe(
+    // The store's `leaveTopic` swallows the last-seat 404 itself (the topic
+    // archived, so there is nothing left to leave): success means the caller
+    // is out either way, so navigate away.
+    Effect.andThen(closeTopicScreen),
+  );
+
+  const archiveEffect = storeCall(() =>
+    storeApi.getState().patchTopic(chat.id, { archived: true }),
+  ).pipe(
+    Effect.matchEffect({
+      onFailure: (): Effect.Effect<void> =>
+        Effect.sync(() => {
+          setErrorMessage('Could not archive the topic.');
+          setConfirmingArchive(false);
+        }),
+      onSuccess: (): Effect.Effect<void> =>
+        Effect.sync(() => setConfirmingArchive(false)).pipe(Effect.andThen(closeTopicScreen)),
+    }),
+  );
+
+  const flipVisibilityEffect = (): Effect.Effect<void, ApiFailure> => {
+    const toPublic = topic.visibility === 'private';
+    return storeCall(() =>
+      storeApi.getState().patchTopic(chat.id, {
+        visibility: toPublic ? 'public' : 'private',
+        ...(toPublic ? { confirmExposeHistory: true } : { memberIds: [me] }),
+      }),
+    ).pipe(
+      Effect.matchEffect({
+        onFailure: (): Effect.Effect<void> =>
+          Effect.sync(() => {
+            setErrorMessage(
+              toPublic ? 'Could not make the topic public.' : 'Could not make the topic private.',
+            );
+            setConfirmingVisibility(false);
+          }),
+        onSuccess: (): Effect.Effect<void> =>
+          Effect.sync(() => setConfirmingVisibility(false)).pipe(
+            Effect.andThen(reloadMembersAfter()),
+          ),
+      }),
+    );
+  };
+
+  // The panel-level buttons each own their call; the confirm dialogs stay here.
+  const [leaveState, runLeave] = useAction<void, void, never>(() =>
+    clearError.pipe(
+      Effect.andThen(leaveEffect),
+      Effect.catchTag('ApiFailure', failInline(setErrorMessage, 'Could not leave the topic.')),
+    ),
+  );
+  const [archiveState, runArchive] = useAction<void, void, never>(() =>
+    clearError.pipe(Effect.andThen(archiveEffect)),
+  );
+  const [visibilityState, runVisibility] = useAction<void, void, never>(() =>
+    clearError.pipe(
+      Effect.andThen(flipVisibilityEffect()),
+      Effect.catchTag(
+        'ApiFailure',
+        failInline(setErrorMessage, 'Could not change the visibility.'),
+      ),
+    ),
+  );
 
   const isPrivate = topic.visibility === 'private';
   const groupMembers = info?.members ?? [];
@@ -384,6 +412,7 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
     return ownerId === me || isManager;
   };
   const iAmMember = membersState.members.some((member) => member.userId === me);
+  const visibilityBusy = isWaiting(visibilityState);
 
   return (
     <>
@@ -433,18 +462,7 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
                       type="button"
                       size="lg"
                       className="self-start rounded-full px-4"
-                      onClick={() =>
-                        void reloadMembers().catch((error: unknown) => {
-                          setMembersState({
-                            status: 'error',
-                            members: [],
-                            message:
-                              error instanceof Error
-                                ? error.message
-                                : 'Could not load the members.',
-                          });
-                        })
-                      }
+                      onClick={() => refreshMembers()}
                     >
                       Retry
                     </Button>
@@ -459,18 +477,7 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
                       type="button"
                       variant="ghost"
                       size="sm"
-                      onClick={() =>
-                        void reloadMembers().catch((error: unknown) => {
-                          setMembersState({
-                            status: 'error',
-                            members: [],
-                            message:
-                              error instanceof Error
-                                ? error.message
-                                : 'Could not load the members.',
-                          });
-                        })
-                      }
+                      onClick={() => refreshMembers()}
                     >
                       Retry
                     </Button>
@@ -479,7 +486,6 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
                 {membersState.status === 'ready' &&
                   membersState.members.map((member) => {
                     const detail = groupMembers.find((item) => item.userId === member.userId);
-                    const removing = busyId === `remove:${member.userId}`;
                     return (
                       <div
                         key={member.userId}
@@ -503,17 +509,11 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
                           </span>
                         )}
                         {isManager && member.userId !== me && (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            aria-label={`Remove ${member.name} from the topic`}
-                            className="shrink-0"
-                            disabled={busyId !== undefined}
-                            onClick={() => void removeMember(member.userId)}
-                          >
-                            {removing ? 'Removing…' : 'Remove'}
-                          </Button>
+                          <RemoveMemberButton
+                            member={member}
+                            remove={removeMember}
+                            onError={setErrorMessage}
+                          />
                         )}
                       </div>
                     );
@@ -523,25 +523,12 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
                     {memberPickerOpen ? (
                       <>
                         {addableMembers.map((member) => (
-                          <Button
+                          <AddMemberButton
                             key={member.userId}
-                            type="button"
-                            variant="outline"
-                            disabled={busyId !== undefined}
-                            onClick={() => void addMember(member.userId)}
-                            className="h-auto justify-start gap-2 rounded-xl px-2 py-1.5 text-left text-[14px] font-normal"
-                          >
-                            <Avatar
-                              id={member.userId}
-                              name={member.name}
-                              size={28}
-                              avatarUrl={member.avatarUrl}
-                            />
-                            <span className="min-w-0 flex-1 truncate">{member.name}</span>
-                            {busyId === `add:${member.userId}` && (
-                              <span className="text-[12px] text-muted-foreground">Adding…</span>
-                            )}
-                          </Button>
+                            member={member}
+                            add={addMember}
+                            onError={setErrorMessage}
+                          />
                         ))}
                         <Button
                           type="button"
@@ -571,10 +558,10 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
                     variant="outline"
                     size="lg"
                     className="mx-2 self-start rounded-full px-4"
-                    disabled={busyId !== undefined}
-                    onClick={() => void leave()}
+                    disabled={isWaiting(leaveState)}
+                    onClick={() => runLeave()}
                   >
-                    {busyId === 'leave' ? 'Leaving…' : 'Leave topic'}
+                    {isWaiting(leaveState) ? 'Leaving…' : 'Leave topic'}
                   </Button>
                 )}
               </>
@@ -600,15 +587,7 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
                   type="button"
                   size="lg"
                   className="self-start rounded-full px-4"
-                  onClick={() =>
-                    void reloadAis().catch((error: unknown) => {
-                      setAisState({
-                        status: 'error',
-                        ais: [],
-                        message: error instanceof Error ? error.message : 'Could not load the AIs.',
-                      });
-                    })
-                  }
+                  onClick={() => refreshAis()}
                 >
                   Retry
                 </Button>
@@ -622,27 +601,13 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
             {aisState.status === 'ready' && aisState.message !== '' && (
               <div className="flex items-center gap-2 px-2">
                 <p className="flex-1 text-[12px] text-muted-foreground">{aisState.message}</p>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() =>
-                    void reloadAis().catch((error: unknown) => {
-                      setAisState({
-                        status: 'error',
-                        ais: [],
-                        message: error instanceof Error ? error.message : 'Could not load the AIs.',
-                      });
-                    })
-                  }
-                >
+                <Button type="button" variant="ghost" size="sm" onClick={() => refreshAis()}>
                   Retry
                 </Button>
               </div>
             )}
             {aisState.status === 'ready' &&
               aisState.ais.map((ai) => {
-                const removing = busyId === `removeAi:${ai.id}`;
                 // Topic AI rows carry no picture; the group detail knows it.
                 const picture = groupAis.find((item) => item.aiId === ai.id)?.avatarUrl;
                 return (
@@ -671,17 +636,7 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
                       <Brain className="size-4" aria-hidden="true" />
                     </Button>
                     {canRemoveAi(ai.id) && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        aria-label={`Remove ${ai.name} from the topic`}
-                        className="shrink-0"
-                        disabled={busyId !== undefined}
-                        onClick={() => void removeAi(ai.id)}
-                      >
-                        {removing ? 'Removing…' : 'Remove'}
-                      </Button>
+                      <RemoveAiButton ai={ai} remove={removeAi} onError={setErrorMessage} />
                     )}
                   </div>
                 );
@@ -691,21 +646,7 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
                 {aiPickerOpen ? (
                   <>
                     {addableAis.map((ai) => (
-                      <Button
-                        key={ai.id}
-                        type="button"
-                        variant="outline"
-                        disabled={busyId !== undefined}
-                        onClick={() => void addAi(ai.id)}
-                        className="h-auto justify-start gap-2 rounded-xl px-2 py-1.5 text-left text-[14px] font-normal"
-                      >
-                        <Avatar id={ai.jid} name={ai.name} size={28} ai avatarUrl={ai.avatarUrl} />
-                        <span className="min-w-0 flex-1 truncate">{ai.name}</span>
-                        <AiBadge />
-                        {busyId === `addAi:${ai.id}` && (
-                          <span className="text-[12px] text-muted-foreground">Adding…</span>
-                        )}
-                      </Button>
+                      <AddAiButton key={ai.id} ai={ai} add={addAi} onError={setErrorMessage} />
                     ))}
                     <Button
                       type="button"
@@ -763,7 +704,7 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
 
           {/* T-0107: tools and routines of this topic. Managers see the
               actions (run, revert, pause, resume, delete); members read. */}
-          {topicId !== undefined && chat.groupId !== undefined && (
+          {chat.groupId !== undefined && (
             <>
               <ToolsSection
                 scope={{ topicId }}
@@ -790,7 +731,7 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
                       variant="outline"
                       size="lg"
                       className="self-start rounded-full px-4"
-                      disabled={busyId !== undefined}
+                      disabled={visibilityBusy}
                       onClick={() => setConfirmingVisibility(true)}
                     >
                       Make public
@@ -801,10 +742,10 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
                       variant="outline"
                       size="lg"
                       className="self-start rounded-full px-4"
-                      disabled={busyId !== undefined}
-                      onClick={() => void flipVisibility()}
+                      disabled={visibilityBusy}
+                      onClick={() => runVisibility()}
                     >
-                      {busyId === 'visibility' ? 'Saving…' : 'Make private'}
+                      {visibilityBusy ? 'Saving…' : 'Make private'}
                     </Button>
                   )}
                   <Button
@@ -812,7 +753,7 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
                     variant="destructive"
                     size="lg"
                     className="self-start rounded-full px-4"
-                    disabled={busyId !== undefined}
+                    disabled={isWaiting(archiveState)}
                     onClick={() => setConfirmingArchive(true)}
                   >
                     Archive topic
@@ -830,8 +771,8 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
         <ConfirmDialog
           title="Make this topic public?"
           body={`Everyone in ${groupTitle} will be able to read the whole history of “${chat.title}”, including messages sent while it was private.`}
-          confirmLabel={busyId === 'visibility' ? 'Making public…' : 'Make public'}
-          onConfirm={() => void flipVisibility()}
+          confirmLabel={visibilityBusy ? 'Making public…' : 'Make public'}
+          onConfirm={() => runVisibility()}
           onCancel={() => setConfirmingVisibility(false)}
         />
       )}
@@ -839,12 +780,150 @@ export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
         <ConfirmDialog
           title={`Archive “${chat.title}”?`}
           body="The topic disappears from the list for everyone. Its history stays on the server."
-          confirmLabel={busyId === 'archive' ? 'Archiving…' : 'Archive'}
-          onConfirm={() => void archive()}
+          confirmLabel={isWaiting(archiveState) ? 'Archiving…' : 'Archive'}
+          onConfirm={() => runArchive()}
           onCancel={() => setConfirmingArchive(false)}
         />
       )}
     </>
+  );
+}
+
+/**
+ * Removes one member. The row owns its call, so two rows can run at once, and
+ * a second click on the same row is ignored while it waits.
+ */
+function RemoveMemberButton({
+  member,
+  remove,
+  onError,
+}: {
+  member: TopicMember;
+  remove: (userId: string) => Effect.Effect<void, ApiFailure>;
+  onError: (message: string) => void;
+}) {
+  const [state, run] = useAction<string, void, never>((userId) =>
+    remove(userId).pipe(
+      Effect.catchTag('ApiFailure', failInline(onError, 'Could not remove the member.')),
+    ),
+  );
+  const removing = isWaiting(state);
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      aria-label={`Remove ${member.name} from the topic`}
+      className="shrink-0"
+      disabled={removing}
+      onClick={() => {
+        onError('');
+        run(member.userId);
+      }}
+    >
+      {removing ? 'Removing…' : 'Remove'}
+    </Button>
+  );
+}
+
+/** Adds one group member from the picker; one call per row, as RemoveMemberButton. */
+function AddMemberButton({
+  member,
+  add,
+  onError,
+}: {
+  member: GroupMemberRow;
+  add: (userId: string) => Effect.Effect<void, ApiFailure>;
+  onError: (message: string) => void;
+}) {
+  const [state, run] = useAction<string, void, never>((userId) =>
+    add(userId).pipe(
+      Effect.catchTag('ApiFailure', failInline(onError, 'Could not add the member.')),
+    ),
+  );
+  const adding = isWaiting(state);
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      disabled={adding}
+      onClick={() => {
+        onError('');
+        run(member.userId);
+      }}
+      className="h-auto justify-start gap-2 rounded-xl px-2 py-1.5 text-left text-[14px] font-normal"
+    >
+      <Avatar id={member.userId} name={member.name} size={28} avatarUrl={member.avatarUrl} />
+      <span className="min-w-0 flex-1 truncate">{member.name}</span>
+      {adding && <span className="text-[12px] text-muted-foreground">Adding…</span>}
+    </Button>
+  );
+}
+
+/** Removes one AI from the topic, with its own call. */
+function RemoveAiButton({
+  ai,
+  remove,
+  onError,
+}: {
+  ai: TopicAi;
+  remove: (aiId: string) => Effect.Effect<void, ApiFailure>;
+  onError: (message: string) => void;
+}) {
+  const [state, run] = useAction<string, void, never>((aiId) =>
+    remove(aiId).pipe(
+      Effect.catchTag('ApiFailure', failInline(onError, 'Could not remove the AI.')),
+    ),
+  );
+  const removing = isWaiting(state);
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      aria-label={`Remove ${ai.name} from the topic`}
+      className="shrink-0"
+      disabled={removing}
+      onClick={() => {
+        onError('');
+        run(ai.id);
+      }}
+    >
+      {removing ? 'Removing…' : 'Remove'}
+    </Button>
+  );
+}
+
+/** Adds one of my AIs from the picker, with its own call. */
+function AddAiButton({
+  ai,
+  add,
+  onError,
+}: {
+  ai: PublicAi;
+  add: (aiId: string) => Effect.Effect<void, ApiFailure>;
+  onError: (message: string) => void;
+}) {
+  const [state, run] = useAction<string, void, never>((aiId) =>
+    add(aiId).pipe(Effect.catchTag('ApiFailure', failInline(onError, 'Could not add the AI.'))),
+  );
+  const adding = isWaiting(state);
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      disabled={adding}
+      onClick={() => {
+        onError('');
+        run(ai.id);
+      }}
+      className="h-auto justify-start gap-2 rounded-xl px-2 py-1.5 text-left text-[14px] font-normal"
+    >
+      <Avatar id={ai.jid} name={ai.name} size={28} ai avatarUrl={ai.avatarUrl} />
+      <span className="min-w-0 flex-1 truncate">{ai.name}</span>
+      <AiBadge />
+      {adding && <span className="text-[12px] text-muted-foreground">Adding…</span>}
+    </Button>
   );
 }
 
@@ -869,7 +948,8 @@ function TopicRulesSection({
  * The topic's roles (T-0116): attached roles with holder counts next to the
  * people list, and the approver select ("Owner and admins only" or one
  * role). Managers edit; everyone else reads. Saving goes through the
- * store so the chat row refreshes.
+ * store so the chat row refreshes. Saves stay one action for the section:
+ * each save sends the whole role list, so two saves at once would drop one.
  */
 function TopicRolesSection({
   chatId,
@@ -891,73 +971,56 @@ function TopicRolesSection({
   }>({ status: 'loading', roles: [], approverRole: null, message: '' });
   const [groupRoles, setGroupRoles] = useState<GroupRole[]>([]);
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [busy, setBusy] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
-  const reload = async (): Promise<void> => {
-    setRolesState({ status: 'loading', roles: [], approverRole: null, message: '' });
-    try {
-      const [topic, roles] = await Promise.all([getTopic(topicId), listGroupRoles(groupId)]);
-      setGroupRoles(roles);
-      setRolesState({
-        status: 'ready',
-        roles: topic.roles ?? [],
-        approverRole: topic.approverRole ?? null,
-        message: '',
-      });
-    } catch (error) {
-      setRolesState({
-        status: 'error',
-        roles: [],
-        approverRole: null,
-        message: error instanceof Error ? error.message : 'Could not load the roles.',
-      });
-    }
-  };
+  // The topic and the group's roles load side by side; a failure shows the
+  // inline error with Retry.
+  const loadRoles = Effect.sync(() =>
+    setRolesState({ status: 'loading', roles: [], approverRole: null, message: '' }),
+  ).pipe(
+    Effect.andThen(
+      Effect.all([fromApi(() => getTopic(topicId)), fromApi(() => listGroupRoles(groupId))], {
+        concurrency: 'unbounded',
+      }),
+    ),
+    Effect.tap(([topic, roles]) =>
+      Effect.sync(() => {
+        setGroupRoles(roles);
+        setRolesState({
+          status: 'ready',
+          roles: topic.roles ?? [],
+          approverRole: topic.approverRole ?? null,
+          message: '',
+        });
+      }),
+    ),
+    Effect.catchTag('ApiFailure', (failure) =>
+      Effect.sync(() =>
+        setRolesState({
+          status: 'error',
+          roles: [],
+          approverRole: null,
+          message: textOf(failure, 'Could not load the roles.'),
+        }),
+      ),
+    ),
+  );
+  const [, refreshRoles] = useQuery(() => loadRoles, [topicId, groupId]);
 
-  useEffect(() => {
-    let active = true;
-    void (async () => {
-      try {
-        const [topic, roles] = await Promise.all([getTopic(topicId), listGroupRoles(groupId)]);
-        if (active) {
-          setGroupRoles(roles);
-          setRolesState({
-            status: 'ready',
-            roles: topic.roles ?? [],
-            approverRole: topic.approverRole ?? null,
-            message: '',
-          });
-        }
-      } catch (error) {
-        if (active) {
-          setRolesState({
-            status: 'error',
-            roles: [],
-            approverRole: null,
-            message: error instanceof Error ? error.message : 'Could not load the roles.',
-          });
-        }
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, [topicId, groupId]);
+  // A second click while a save waits is dropped (mode 'ignore').
+  const [saveState, saveRoles] = useAction(
+    (input: { roleIds: string[]; approverRoleId: string | null }) =>
+      Effect.sync(() => setErrorMessage('')).pipe(
+        Effect.andThen(storeCall(() => storeApi.getState().setTopicRoles(chatId, input))),
+        Effect.andThen(loadRoles),
+        Effect.andThen(Effect.sync(() => setPickerOpen(false))),
+        Effect.catchTag('ApiFailure', failInline(setErrorMessage, 'Could not save the roles.')),
+      ),
+  );
+  const busy = isWaiting(saveState);
 
-  const save = async (roleIds: string[], approverRoleId: string | null): Promise<void> => {
-    setBusy(true);
-    setErrorMessage('');
-    try {
-      await storeApi.getState().setTopicRoles(chatId, { roleIds, approverRoleId });
-      await reload();
-      setPickerOpen(false);
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Could not save the roles.');
-    } finally {
-      setBusy(false);
-    }
-  };
+  const save = (roleIds: string[], approverRoleId: string | null): void =>
+    saveRoles({ roleIds, approverRoleId });
 
   const toggleRole = (roleId: string): void => {
     if (rolesState.status !== 'ready') {
@@ -967,14 +1030,14 @@ function TopicRolesSection({
     const roleIds = attached
       ? rolesState.roles.filter((role) => role.id !== roleId).map((role) => role.id)
       : [...rolesState.roles.map((role) => role.id), roleId];
-    void save(roleIds, rolesState.approverRole?.id ?? null);
+    save(roleIds, rolesState.approverRole?.id ?? null);
   };
 
   const pickApprover = (value: string): void => {
     if (rolesState.status !== 'ready') {
       return;
     }
-    void save(
+    save(
       rolesState.roles.map((role) => role.id),
       value === '' ? null : value,
     );
@@ -993,7 +1056,7 @@ function TopicRolesSection({
             type="button"
             size="lg"
             className="self-start rounded-full px-4"
-            onClick={() => void reload()}
+            onClick={() => refreshRoles()}
           >
             Retry
           </Button>
