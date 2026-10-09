@@ -1,7 +1,7 @@
 ---
 id: T-0691
 title: "audit + plan (no code): the last drizzle removal (D1/D3 + tests) — a test recipe and helper to replace context.db.select/insert/update/delete in 56 test files and the test-support seeders, the test-support switch to the SqlTest client, the migrator switch, and the delete order; writes docs/audit/drizzle-removal-plan.md"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0691-plan-drizzle-removal
 model: auto
@@ -61,4 +61,81 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+Wrote `docs/audit/drizzle-removal-plan.md` (no code changed) with the five
+required sections, every claim citing `file:line`:
+
+1. **Inventory** — all 56 test files that import `drizzle-orm` with per-file
+   query sites/lines/tests and per-method totals (754 sites: 326 select, 377
+   insert, 36 update, 12 delete, 3 execute); the 10 non-test files that import
+   `drizzle-orm` plus the 4 callers that use drizzle-derived types; the
+   `test-support.ts` seeders; and every `$inferSelect`/table-object reliance.
+2. **Test recipe** — `testSql(context)` (exact signature) and
+   `registerPgliteSqlRuntime` in `effect/sql.ts`, with before/after for a select
+   with `where`, an insert, an update and a count, plus how to keep row types
+   once `db/schema.ts` is gone.
+3. **Test-support switch** — `createTestContext` builds a raw PGlite +
+   `registerPgliteSqlRuntime`; `context.db` stays as the runtime key; a thin
+   `ServerDatabase = object` alias can remain (96 files / 532 occurrences).
+4. **Migrator switch (D3)** — steps, the adoption seed SQL, the
+   one-transaction-per-migration point (effect wraps all pending in one;
+   `Migrator.js:146`), how to test, and the live-DB deploy risk.
+5. **Ordered task list** — `H1` helper first, then 33 per-folder test-conversion
+   tasks smallest-first, then `S1` (test-support), `D3` (migrator), `H2`
+   (health check) and `DEL` (deletions), with parallel/Julio notes.
+
+### Files changed
+- `docs/audit/drizzle-removal-plan.md` (new, Allowed).
+- `work/T-0691-plan-drizzle-removal.md` (status + this Report, Allowed).
+
+No other file was touched.
+
+### Commands run (real results)
+- `pnpm install --prefer-offline` — "Done in 18.8s"; one pre-existing peer
+  warning (`apps/mobile` `@types/react-dom` 19.3.0 wants `@types/react`
+  ^19.3.0, found 19.2.18), unrelated to this task.
+- Measurement greps (`git grep -l "from 'drizzle-orm" -- 'apps/server/src/*.test.ts'`
+  → 56; a `comm` of that list with the `db/schema` importers → 13 more; the
+  `context.db.<m>(` counts reproduced the spec's 57 and 59 exactly).
+- `pnpm gate` from the repo root — summary:
+  ```
+  gate: 2 changed file(s) against main
+  PASS  install (frozen)  (1.3s)
+  PASS  format  (15.3s)
+  PASS  lint  (1.4s)
+  PASS  typecheck  (1.7s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+  The gate ran no package tests because the diff is docs-only; I ran no test
+  files directly (there is no code change to test).
+
+### Problems / deviations from the spec
+- The spec says "56 `*.test.ts` files import `drizzle-orm`". That is correct,
+  but **13 more** test files import table objects from `db/schema` (and call
+  `context.db.*`) without importing `drizzle-orm`
+  (`actions/announce.test.ts`, `agents/listener/score.test.ts`,
+  `auth/auth.test.ts`, `avatars/routes.test.ts`, `chat-folders/*.test.ts`,
+  `connections/routes.test.ts`, `files/routes.test.ts`, `push/rooms.test.ts`,
+  `push/service.test.ts`, `stickers/routes.test.ts`, `tools/adapters.test.ts`,
+  `xmpp/provisioning.test.ts`, `xmpp/routes.test.ts`). They are in the plan
+  (§1.2) because `db/schema.ts` cannot be deleted until they move.
+- The task's D1/D3 labels differ from `docs/audit/effect-last-mile.md` §2 (there
+  D1 = client/schema/harness). The plan says so and uses the task's labels.
+
+### Open questions
+- The better-auth adapter (`D2` / T-0690) is still undecided (open question 1 in
+  `docs/audit/effect-sql-migration.md:269`); it blocks deleting
+  `auth/auth-schema.ts` and `auth/cli-config.ts` and the full drizzle-free
+  `createTestContext` (the plan gives the transitional split).
+- The "one transaction per migration" implementation (call the migrator once per
+  pending id in a loop vs accept the single transaction) is the one behaviour
+  change; the plan recommends the per-id loop and a rollback test.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. The pre-review was clean (packet head 15790ffd).
+- **Lead notes:**
+  - H2 was already done by T-0693;
+  - H1 lands as just the `testSql` helper, and `registerPgliteSqlRuntime` plus the `ServerDatabase` change move to S1;
+  - D3 and DEL wait for Julio (live DB and schema), as the plan says.
