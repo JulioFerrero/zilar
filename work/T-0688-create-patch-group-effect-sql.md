@@ -1,7 +1,7 @@
 ---
 id: T-0688
 title: "effect/sql: move createGroup (group + members + General topic + handle claim + room calls in one transaction) and patchGroup's update in groups/service.ts onto effect/sql; groups/service.ts drops drizzle (groups slice 5)"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0688-create-patch-group-effect-sql
 model: auto
@@ -61,4 +61,35 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**What changed** (`apps/server/src/groups/service.ts` only)
+- `patchGroup`: the conditional update is now `UPDATE groups SET ${sql.update(changes)} WHERE id = ...` with snake_case keys (`members_can_create_topics`, `listener_enabled`, `listener_eagerness`, and the three `background_*` columns, all from `resolveGroupBackground`). Keys are added only when the input has them, as before.
+- `createGroup`: the drizzle `db.transaction` is now `runSql` + `sql.withTransaction`, same steps in the same order: groups insert, group_members insert (`sql.insert` of owner and member rows), General topic insert, then for a public group the `handles` check (409 `handle_taken`), the `retired_handles` check (409 when reserved by another holder, otherwise delete), and the `handles` insert whose unique violation maps to 409 via `Effect.catchIf(isUniqueViolation)`. The XMPP calls are `Effect.tryPromise({ try, catch: (error) => error })`. `roomCreated`, the room destroy in the outer `catch`, and `mapXmppError` are unchanged.
+- Errors inside the transaction are `Effect.fail(new HttpError(...))`, so the caller gets the same object (confirmed by the existing `handle_taken` test in `groups/visibility.test.ts:156-164`).
+- Imports: the `drizzle-orm` import and the `handles`, `retiredHandles`, `topics` schema imports are removed. `groups` and `groupMembers` stay, for the `GroupRow` and `GroupMemberRow` types.
+- Correction to the spec: the client does camelCase result names (`apps/server/src/effect/sql.ts:56,74`, `transformResultNames: snakeToCamel`). Query names are not transformed, so writes use snake_case keys and reads use camelCase (`formerGroupId`, `reservedUntil`). The spec's read names are right. Reads select only the needed columns instead of `SELECT *`.
+- Formatting: the first gate run failed on `format` (Prettier, `apps/server/src/groups/service.ts`). I ran `prettier --write` on that one file. No other change.
+
+**Commands and real results**
+- `pnpm install`: done.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/groups src/handles`: 4 files passed, 97 tests passed, 0 failed (includes `groups.test.ts:323`, the rollback when affiliations fail).
+- `pnpm gate`, first run: exit 1, `FAIL format` (prettier, one file). Fixed as above.
+- `pnpm gate`, second run: exit 0.
+  - PASS install (frozen)
+  - PASS format
+  - PASS lint
+  - PASS typecheck
+  - PASS tests @zilar/server
+  - scope: every changed file is inside the Allowed files
+  - GATE PASS
+- Check: `grep -c drizzle apps/server/src/groups/service.ts` gives 0.
+
+**Not covered / open**
+- The retired-handle reservation branch for a group (a `retired_handles` row with `former_group_id` set, reserved by another holder) is not directly exercised by a test I read. The suite passes, but I did not add a test, and the spec says tests stay unchanged.
+- No blocked items. I did not change any test or any file outside the Allowed list.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Haiku 5.5, in one round (about 5.2 min). The lead reviewed the diff directly.
+- **Result:** `createGroup` runs one `sql.withTransaction` with the same 7 steps in order. The handle checks fail with the same `HttpError`, and a unique violation on the handle insert maps to the same 409 through `Effect.catchIf(isUniqueViolation)`. The room calls go through `Effect.tryPromise`, so `roomCreated` is set at the same point. `patchGroup` uses `sql.update` with snake_case keys. **`groups/service.ts` now has no drizzle import.** The gate passed.
+- **Correction to my spec:** results ARE camelCased (`transformResultNames`); only query names are not. The worker handled it correctly.
+- **Gap:** no test covers the retired-handle branch where another group holds the reservation.

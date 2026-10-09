@@ -1,11 +1,10 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { Effect } from 'effect';
 import { SqlClient, type SqlError } from 'effect/sql';
-import { eq } from 'drizzle-orm';
 import { findOwnedAi } from '../ais/service';
 import { avatarIdsByOwner, avatarUrlFor } from '../avatars/service';
 import type { ServerDatabase } from '../db/client';
-import { groupMembers, groups, handles, retiredHandles, topics } from '../db/schema';
+import { groupMembers, groups } from '../db/schema';
 import { sqlRuntimeFor } from '../effect/sql';
 import { HttpError } from '../errors';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
@@ -276,19 +275,29 @@ export async function patchGroup(db: ServerDatabase, input: PatchGroupInput): Pr
     input.listenerEnabled !== undefined ||
     input.listenerEagerness !== undefined
   ) {
-    await db
-      .update(groups)
-      .set({
-        ...(input.membersCanCreateTopics === undefined
-          ? {}
-          : { membersCanCreateTopics: input.membersCanCreateTopics }),
-        ...(input.listenerEnabled === undefined ? {} : { listenerEnabled: input.listenerEnabled }),
-        ...(input.listenerEagerness === undefined
-          ? {}
-          : { listenerEagerness: input.listenerEagerness }),
-        ...background,
-      })
-      .where(eq(groups.id, input.groupId));
+    const changes = {
+      ...(input.membersCanCreateTopics === undefined
+        ? {}
+        : { members_can_create_topics: input.membersCanCreateTopics }),
+      ...(input.listenerEnabled === undefined ? {} : { listener_enabled: input.listenerEnabled }),
+      ...(input.listenerEagerness === undefined
+        ? {}
+        : { listener_eagerness: input.listenerEagerness }),
+      ...(background === undefined
+        ? {}
+        : {
+            background_preset: background.backgroundPreset,
+            background_image_id: background.backgroundImageId,
+            background_dim: background.backgroundDim,
+          }),
+    };
+    await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`UPDATE groups SET ${sql.update(changes)} WHERE id = ${input.groupId}`;
+      }),
+    );
   }
   const detail = await getGroupDetail(db, input.groupId);
   if (!detail) {
@@ -344,112 +353,133 @@ export async function createGroup(
   }
 
   try {
-    await db.transaction(async (tx) => {
-      await tx.insert(groups).values({
-        id: groupId,
-        roomLocalpart,
-        title: input.title,
-        createdBy: input.creatorId,
-        kind,
-        description,
-        ...(wantPublic ? { visibility: 'public' as const } : {}),
-      });
-      await tx
-        .insert(groupMembers)
-        .values([
-          { groupId, userId: input.creatorId, role: 'owner' },
-          ...memberIds.map((userId) => ({ groupId, userId, role: 'member' as const })),
-        ]);
-      // T-0108: the group's room becomes its General topic (same room, same
-      // history). The row is created in the same transaction as the group.
-      // T-0124: a channel's General topic is its only topic — the feed.
-      await tx.insert(topics).values({
-        id: randomUUID(),
-        groupId,
-        name: 'General',
-        glyph: 'G',
-        roomLocalpart,
-        visibility: 'public',
-        kind: 'chat',
-        status: 'open',
-        isGeneral: true,
-        createdBy: input.creatorId,
-      });
+    await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql.withTransaction(
+          Effect.gen(function* () {
+            yield* sql`INSERT INTO groups ${sql.insert({
+              id: groupId,
+              room_localpart: roomLocalpart,
+              title: input.title,
+              created_by: input.creatorId,
+              kind,
+              description,
+              ...(wantPublic ? { visibility: 'public' } : {}),
+            })}`;
+            yield* sql`INSERT INTO group_members ${sql.insert([
+              { group_id: groupId, user_id: input.creatorId, role: 'owner' },
+              ...memberIds.map((userId) => ({
+                group_id: groupId,
+                user_id: userId,
+                role: 'member',
+              })),
+            ])}`;
+            // T-0108: the group's room becomes its General topic (same room, same
+            // history). The row is created in the same transaction as the group.
+            // T-0124: a channel's General topic is its only topic — the feed.
+            yield* sql`INSERT INTO topics ${sql.insert({
+              id: randomUUID(),
+              group_id: groupId,
+              name: 'General',
+              glyph: 'G',
+              room_localpart: roomLocalpart,
+              visibility: 'public',
+              kind: 'chat',
+              status: 'open',
+              is_general: true,
+              created_by: input.creatorId,
+            })}`;
 
-      // T-0164: a public create claims the handle in the same transaction
-      // (the creator's first claim is always allowed — no interval — and a
-      // retired reservation of this group reads as free, reclaimed by
-      // deleting it here). Concurrent creates race on the primary key:
-      // exactly one wins and the loser maps to 409 `handle_taken`.
-      if (wantPublic) {
-        const lower = normalizeHandle(trimmedHandle);
-        const [taken] = await tx
-          .select()
-          .from(handles)
-          .where(eq(handles.handleLower, lower))
-          .limit(1);
-        if (taken) {
-          throw new HttpError(409, 'handle_taken', 'That handle is taken');
-        }
-        const [retired] = await tx
-          .select()
-          .from(retiredHandles)
-          .where(eq(retiredHandles.handleLower, lower))
-          .limit(1);
-        if (retired) {
-          const reserved = retired.reservedUntil.getTime() > now.getTime();
-          if (reserved && retired.formerGroupId !== groupId) {
-            throw new HttpError(409, 'handle_taken', 'That handle is taken');
-          }
-          await tx.delete(retiredHandles).where(eq(retiredHandles.handleLower, lower));
-        }
-        try {
-          await tx.insert(handles).values({
-            handleLower: lower,
-            handle: trimmedHandle,
-            userId: null,
-            groupId,
-            createdAt: now,
-            changedAt: now,
-          });
-        } catch (error) {
-          if (isUniqueViolation(error)) {
-            throw new HttpError(409, 'handle_taken', 'That handle is taken');
-          }
-          throw error;
-        }
-      }
+            // T-0164: a public create claims the handle in the same transaction
+            // (the creator's first claim is always allowed — no interval — and a
+            // retired reservation of this group reads as free, reclaimed by
+            // deleting it here). Concurrent creates race on the primary key:
+            // exactly one wins and the loser maps to 409 `handle_taken`.
+            if (wantPublic) {
+              const lower = normalizeHandle(trimmedHandle);
+              const [taken] = yield* sql<{ handleLower: string }>`SELECT handle_lower
+                FROM handles WHERE handle_lower = ${lower} LIMIT 1`;
+              if (taken) {
+                return yield* Effect.fail(
+                  new HttpError(409, 'handle_taken', 'That handle is taken'),
+                );
+              }
+              const [retired] = yield* sql<{
+                formerGroupId: string | null;
+                reservedUntil: Date | string;
+              }>`SELECT former_group_id, reserved_until FROM retired_handles
+                WHERE handle_lower = ${lower} LIMIT 1`;
+              if (retired) {
+                const reserved = new Date(retired.reservedUntil).getTime() > now.getTime();
+                if (reserved && retired.formerGroupId !== groupId) {
+                  return yield* Effect.fail(
+                    new HttpError(409, 'handle_taken', 'That handle is taken'),
+                  );
+                }
+                yield* sql`DELETE FROM retired_handles WHERE handle_lower = ${lower}`;
+              }
+              yield* sql`INSERT INTO handles ${sql.insert({
+                handle_lower: lower,
+                handle: trimmedHandle,
+                user_id: null,
+                group_id: groupId,
+                created_at: now,
+                changed_at: now,
+              })}`.pipe(
+                Effect.catchIf(
+                  (error) => isUniqueViolation(error),
+                  () => Effect.fail(new HttpError(409, 'handle_taken', 'That handle is taken')),
+                ),
+              );
+            }
 
-      // T-0124: a channel's room is moderated with `members_by_default:
-      // false`, so subscribers (affiliation `member`) join as visitors:
-      // they read but cannot post. Affiliations `admin`/`owner` carry voice,
-      // so admins and the owner post. Group rooms stay unmoderated with the
-      // ejabberd default, so every member keeps voice.
-      await adminClient.createRoom(roomLocalpart, {
-        title: input.title,
-        membersOnly: true,
-        persistent: true,
-        mam: true,
-        anonymous: false,
-        ...(kind === 'channel' ? { moderated: true, membersByDefault: false } : {}),
-      });
-      roomCreated = true;
-      await adminClient.setAffiliation(
-        roomLocalpart,
-        jidFor(localpartFor(input.creatorId), input.domain),
-        'owner',
-      );
-      for (const userId of memberIds) {
-        // T-0124: in a moderated channel room only affiliations admin/owner
-        // carry voice, so every initial member joins as a voice-less member
-        // (a visitor once they enter). Group rooms keep `member` for all.
-        await adminClient.setAffiliation(
-          roomLocalpart,
-          jidFor(localpartFor(userId), input.domain),
-          'member',
+            // T-0124: a channel's room is moderated with `members_by_default:
+            // false`, so subscribers (affiliation `member`) join as visitors:
+            // they read but cannot post. Affiliations `admin`/`owner` carry voice,
+            // so admins and the owner post. Group rooms stay unmoderated with the
+            // ejabberd default, so every member keeps voice.
+            yield* Effect.tryPromise({
+              try: () =>
+                adminClient.createRoom(roomLocalpart, {
+                  title: input.title,
+                  membersOnly: true,
+                  persistent: true,
+                  mam: true,
+                  anonymous: false,
+                  ...(kind === 'channel' ? { moderated: true, membersByDefault: false } : {}),
+                }),
+              catch: (error) => error,
+            });
+            roomCreated = true;
+            yield* Effect.tryPromise({
+              try: () =>
+                adminClient.setAffiliation(
+                  roomLocalpart,
+                  jidFor(localpartFor(input.creatorId), input.domain),
+                  'owner',
+                ),
+              catch: (error) => error,
+            });
+            for (const userId of memberIds) {
+              // T-0124: in a moderated channel room only affiliations admin/owner
+              // carry voice, so every initial member joins as a voice-less member
+              // (a visitor once they enter). Group rooms keep `member` for all.
+              yield* Effect.tryPromise({
+                try: () =>
+                  adminClient.setAffiliation(
+                    roomLocalpart,
+                    jidFor(localpartFor(userId), input.domain),
+                    'member',
+                  ),
+                catch: (error) => error,
+              });
+            }
+          }),
         );
-      }
-    });
+      }),
+    );
   } catch (error) {
     if (roomCreated) {
       await destroyQuietly(adminClient, roomLocalpart);
