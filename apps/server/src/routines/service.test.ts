@@ -1,20 +1,8 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { eq } from 'drizzle-orm';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
 import { pino } from 'pino';
-import {
-  aiLimits,
-  ais,
-  aiTools,
-  auditLog,
-  groupAis,
-  groupMembers,
-  groups,
-  providerConnections,
-  routines,
-  topicMembers,
-  topics,
-} from '../db/schema';
 import { createAuditRecorder } from '../audit/service';
 import { approveToolHosts, deleteTool, saveToolVersion } from '../tools/service';
 import {
@@ -22,6 +10,7 @@ import {
   contactOf,
   createTestContext,
   testApp,
+  testSql,
   TEST_BASE_URL,
   TEST_XMPP_DOMAIN,
   type TestApp,
@@ -41,28 +30,19 @@ const INTERVAL_60 = { kind: 'interval', everyMinutes: 60 } as const;
 
 async function seedAi(context: TestContext, ownerId: string): Promise<string> {
   const connectionId = randomUUID();
-  await context.db.insert(providerConnections).values({
-    id: connectionId,
-    owner: ownerId,
-    provider: 'openai',
-    encryptedKey: 'sealed-placeholder',
-    label: null,
-  });
   const aiId = randomUUID();
   const localpart = `ai-${aiId}`;
-  await context.db.insert(ais).values({
-    id: aiId,
-    owner: ownerId,
-    name: 'Helper AI',
-    template: 'dev',
-    persona: 'A persona',
-    providerConnectionId: connectionId,
-    model: 'gpt-4o-mini',
-    localpart,
-    jid: `${localpart}@${TEST_XMPP_DOMAIN}`,
-    status: 'active',
-  });
-  await context.db.insert(aiLimits).values({ aiId, perDayUsd: '1.00', perMonthUsd: '20.00' });
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO provider_connections (id, owner, provider, encrypted_key, label)
+        VALUES (${connectionId}, ${ownerId}, 'openai', 'sealed-placeholder', NULL)`;
+      yield* sql`INSERT INTO ais (id, owner, name, template, persona, provider_connection_id, model, localpart, jid, status)
+        VALUES (${aiId}, ${ownerId}, 'Helper AI', 'dev', 'A persona', ${connectionId}, 'gpt-4o-mini', ${localpart}, ${`${localpart}@${TEST_XMPP_DOMAIN}`}, 'active')`;
+      yield* sql`INSERT INTO ai_limits (ai_id, per_day_usd, per_month_usd)
+        VALUES (${aiId}, '1.00', '20.00')`;
+    }),
+  );
   return aiId;
 }
 
@@ -73,29 +53,24 @@ async function seedGroup(
   aiIds: string[],
 ): Promise<{ groupId: string; generalTopicId: string }> {
   const groupId = randomUUID();
-  await context.db.insert(groups).values({
-    id: groupId,
-    roomLocalpart: `g${randomBytes(15).toString('hex').slice(0, 15)}`,
-    title: 'Trip',
-    createdBy: ownerId,
-  });
-  await context.db.insert(groupMembers).values({ groupId, userId: ownerId, role });
-  for (const aiId of aiIds) {
-    await context.db.insert(groupAis).values({ groupId, aiId, addedBy: ownerId });
-  }
+  const groupRoom = `g${randomBytes(15).toString('hex').slice(0, 15)}`;
   const generalTopicId = randomUUID();
-  await context.db.insert(topics).values({
-    id: generalTopicId,
-    groupId,
-    name: 'General',
-    glyph: 'G',
-    roomLocalpart: `g${randomBytes(15).toString('hex').slice(0, 15)}`,
-    visibility: 'public',
-    kind: 'chat',
-    status: 'open',
-    isGeneral: true,
-    createdBy: ownerId,
-  });
+  const topicRoom = `g${randomBytes(15).toString('hex').slice(0, 15)}`;
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO groups (id, room_localpart, title, created_by)
+        VALUES (${groupId}, ${groupRoom}, 'Trip', ${ownerId})`;
+      yield* sql`INSERT INTO group_members (group_id, user_id, role)
+        VALUES (${groupId}, ${ownerId}, ${role})`;
+      for (const aiId of aiIds) {
+        yield* sql`INSERT INTO group_ais (group_id, ai_id, added_by)
+          VALUES (${groupId}, ${aiId}, ${ownerId})`;
+      }
+      yield* sql`INSERT INTO topics (id, group_id, name, glyph, room_localpart, visibility, kind, status, is_general, created_by)
+        VALUES (${generalTopicId}, ${groupId}, 'General', 'G', ${topicRoom}, 'public', 'chat', 'open', true, ${ownerId})`;
+    }),
+  );
   return { groupId, generalTopicId };
 }
 
@@ -106,21 +81,18 @@ async function seedPrivateTopic(
   memberId: string | null,
 ): Promise<string> {
   const topicId = randomUUID();
-  await context.db.insert(topics).values({
-    id: topicId,
-    groupId,
-    name: `secret-${topicId.slice(0, 8)}`,
-    glyph: 'S',
-    roomLocalpart: `g${randomBytes(15).toString('hex').slice(0, 15)}`,
-    visibility: 'private',
-    kind: 'chat',
-    status: 'open',
-    isGeneral: false,
-    createdBy: ownerId,
-  });
-  if (memberId !== null) {
-    await context.db.insert(topicMembers).values({ topicId, userId: memberId, addedBy: ownerId });
-  }
+  const room = `g${randomBytes(15).toString('hex').slice(0, 15)}`;
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO topics (id, group_id, name, glyph, room_localpart, visibility, kind, status, is_general, created_by)
+        VALUES (${topicId}, ${groupId}, ${`secret-${topicId.slice(0, 8)}`}, 'S', ${room}, 'private', 'chat', 'open', false, ${ownerId})`;
+      if (memberId !== null) {
+        yield* sql`INSERT INTO topic_members (topic_id, user_id, added_by)
+          VALUES (${topicId}, ${memberId}, ${ownerId})`;
+      }
+    }),
+  );
   return topicId;
 }
 
@@ -362,7 +334,16 @@ describe('routines service and routes (T-0104)', () => {
       })();
       void owner;
       void aiId;
-      const entries = await context.db.select().from(auditLog);
+      const entries = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{
+            action: string;
+            subjectId: string | null;
+            detail: unknown;
+          }>`SELECT action, subject_id, detail FROM audit_log`;
+        }),
+      );
       const created = entries.filter((entry) => entry.action === 'routine.created');
       expect(created).toHaveLength(1);
       expect(created[0]?.subjectId).toBe(routine.id);
@@ -509,9 +490,13 @@ describe('routines service and routes (T-0104)', () => {
         `read-member-${emailCounter}@example.com`,
       );
       // The member must join the group to read.
-      await context.db
-        .insert(groupMembers)
-        .values({ groupId: setup.groupId, userId: member.id, role: 'member' });
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO group_members (group_id, user_id, role)
+            VALUES (${setup.groupId}, ${member.id}, 'member')`;
+        }),
+      );
       const response = await app.request(`${TEST_BASE_URL}/api/groups/${setup.groupId}/routines`, {
         headers: { cookie: member.cookie },
       });
@@ -561,7 +546,13 @@ describe('routines service and routes (T-0104)', () => {
         owner.id,
         `read-outsider-${emailCounter}@example.com`,
       );
-      await context.db.insert(groupMembers).values({ groupId, userId: member.id, role: 'member' });
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO group_members (group_id, user_id, role)
+            VALUES (${groupId}, ${member.id}, 'member')`;
+        }),
+      );
       const response = await app.request(`${TEST_BASE_URL}/api/groups/${groupId}/routines`, {
         headers: { cookie: member.cookie },
       });
@@ -579,9 +570,13 @@ describe('routines service and routes (T-0104)', () => {
         setup.owner.id,
         `pause-member-${emailCounter}@example.com`,
       );
-      await context.db
-        .insert(groupMembers)
-        .values({ groupId: setup.groupId, userId: member.id, role: 'member' });
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO group_members (group_id, user_id, role)
+            VALUES (${setup.groupId}, ${member.id}, 'member')`;
+        }),
+      );
 
       const memberPause = await app.request(
         `${TEST_BASE_URL}/api/routines/${setup.routine.id}/pause`,
@@ -621,9 +616,13 @@ describe('routines service and routes (T-0104)', () => {
         setup.owner.id,
         `routine-admin-${emailCounter}@example.com`,
       );
-      await context.db
-        .insert(groupMembers)
-        .values({ groupId: setup.groupId, userId: admin.id, role: 'admin' });
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO group_members (group_id, user_id, role)
+            VALUES (${setup.groupId}, ${admin.id}, 'admin')`;
+        }),
+      );
       // The admin sees the public General topic.
       const pause = await app.request(`${TEST_BASE_URL}/api/routines/${setup.routine.id}/pause`, {
         method: 'POST',
@@ -640,10 +639,12 @@ describe('routines service and routes (T-0104)', () => {
 
     it('resume from needs_approval answers 409; strangers get identical 404s', async () => {
       const setup = await ownerWithGroupRoutine(`needs-${emailCounter}@example.com`);
-      await context.db
-        .update(routines)
-        .set({ status: 'needs_approval', pausedReason: 'hosts_changed' })
-        .where(eq(routines.id, setup.routine.id));
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`UPDATE routines SET status = 'needs_approval', paused_reason = 'hosts_changed' WHERE id = ${setup.routine.id}`;
+        }),
+      );
       const resume = await app.request(`${TEST_BASE_URL}/api/routines/${setup.routine.id}/resume`, {
         method: 'POST',
         headers: { cookie: setup.owner.cookie, 'content-type': 'application/json' },
@@ -684,26 +685,29 @@ describe('routines service and routes (T-0104)', () => {
 
     it('resume after failures resets the counter and recomputes next_run_at', async () => {
       const setup = await ownerWithGroupRoutine(`resume-fail-${emailCounter}@example.com`);
-      await context.db
-        .update(routines)
-        .set({
-          status: 'paused',
-          pausedReason: 'failures',
-          consecutiveFailures: 3,
-          nextRunAt: new Date(NOW.getTime() - 10_000),
-        })
-        .where(eq(routines.id, setup.routine.id));
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`UPDATE routines SET status = 'paused', paused_reason = 'failures', consecutive_failures = 3, next_run_at = ${new Date(NOW.getTime() - 10_000)} WHERE id = ${setup.routine.id}`;
+        }),
+      );
       const resume = await app.request(`${TEST_BASE_URL}/api/routines/${setup.routine.id}/resume`, {
         method: 'POST',
         headers: { cookie: setup.owner.cookie, 'content-type': 'application/json' },
         body: '{}',
       });
       expect(resume.status).toBe(200);
-      const [row] = await context.db
-        .select()
-        .from(routines)
-        .where(eq(routines.id, setup.routine.id))
-        .limit(1);
+      const rows = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{
+            status: string;
+            consecutiveFailures: number;
+            nextRunAt: Date;
+          }>`SELECT status, consecutive_failures, next_run_at FROM routines WHERE id = ${setup.routine.id} LIMIT 1`;
+        }),
+      );
+      const row = rows[0];
       expect(row?.status).toBe('active');
       expect(row?.consecutiveFailures).toBe(0);
       expect(row !== undefined && row.nextRunAt.getTime()).toBeGreaterThan(NOW.getTime());
@@ -721,7 +725,16 @@ describe('routines service and routes (T-0104)', () => {
         headers: { cookie: setup.owner.cookie },
       });
       expect(second.status).toBe(204);
-      const entries = await context.db.select().from(auditLog);
+      const entries = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{
+            action: string;
+            subjectId: string | null;
+            detail: unknown;
+          }>`SELECT action, subject_id, detail FROM audit_log`;
+        }),
+      );
       expect(entries.filter((entry) => entry.action === 'routine.deleted')).toHaveLength(1);
       const pausedResumed = entries.filter(
         (entry) => entry.action === 'routine.paused' || entry.action === 'routine.resumed',
@@ -743,11 +756,14 @@ describe('routines service and routes (T-0104)', () => {
         domain: TEST_XMPP_DOMAIN,
         logger,
       });
-      const [row] = await context.db
-        .select()
-        .from(routines)
-        .where(eq(routines.id, setup.routine.id))
-        .limit(1);
+      const [row] = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{
+            deletedAt: Date | null;
+          }>`SELECT deleted_at FROM routines WHERE id = ${setup.routine.id} LIMIT 1`;
+        }),
+      );
       expect(row?.deletedAt).not.toBeNull();
     });
 
@@ -778,16 +794,22 @@ describe('routines service and routes (T-0104)', () => {
         deleteRoutinesForAiInGroupEffect({ aiId: setup.aiId, groupId: setup.groupId, now: NOW }),
       );
       expect(deletedIds).toEqual([setup.routine.id]);
-      const [groupRow] = await context.db
-        .select()
-        .from(routines)
-        .where(eq(routines.id, setup.routine.id))
-        .limit(1);
-      const [elsewhereRow] = await context.db
-        .select()
-        .from(routines)
-        .where(eq(routines.id, elsewhere.id))
-        .limit(1);
+      const [groupRow] = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{
+            deletedAt: Date | null;
+          }>`SELECT deleted_at FROM routines WHERE id = ${setup.routine.id} LIMIT 1`;
+        }),
+      );
+      const [elsewhereRow] = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{
+            deletedAt: Date | null;
+          }>`SELECT deleted_at FROM routines WHERE id = ${elsewhere.id} LIMIT 1`;
+        }),
+      );
       expect(groupRow?.deletedAt).not.toBeNull();
       expect(elsewhereRow?.deletedAt).toBeNull();
     });
@@ -796,20 +818,16 @@ describe('routines service and routes (T-0104)', () => {
       const { owner, aiId } = await ownerWithAi(`remove-topic-ai-${emailCounter}@example.com`);
       const { groupId } = await seedGroup(context, owner.id, 'owner', [aiId]);
       const topicId = randomUUID();
-      await context.db.insert(topics).values({
-        id: topicId,
-        groupId,
-        name: 'work',
-        glyph: 'W',
-        roomLocalpart: `g${randomBytes(15).toString('hex').slice(0, 15)}`,
-        visibility: 'public',
-        kind: 'chat',
-        status: 'open',
-        isGeneral: false,
-        createdBy: owner.id,
-      });
-      const { topicAis } = await import('../db/schema');
-      await context.db.insert(topicAis).values({ topicId, aiId, addedBy: owner.id });
+      const topicRoom = `g${randomBytes(15).toString('hex').slice(0, 15)}`;
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO topics (id, group_id, name, glyph, room_localpart, visibility, kind, status, is_general, created_by)
+            VALUES (${topicId}, ${groupId}, 'work', 'W', ${topicRoom}, 'public', 'chat', 'open', false, ${owner.id})`;
+          yield* sql`INSERT INTO topic_ais (topic_id, ai_id, added_by)
+            VALUES (${topicId}, ${aiId}, ${owner.id})`;
+        }),
+      );
       const toolId = await seedTool(context, { aiId, groupId, topicId, userId: owner.id });
       const routine = await createRoutine(
         context.db,
@@ -837,22 +855,28 @@ describe('routines service and routes (T-0104)', () => {
         owner.id,
         aiId,
       );
-      const [row] = await context.db
-        .select()
-        .from(routines)
-        .where(eq(routines.id, routine.id))
-        .limit(1);
+      const [row] = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{
+            deletedAt: Date | null;
+          }>`SELECT deleted_at FROM routines WHERE id = ${routine.id} LIMIT 1`;
+        }),
+      );
       expect(row?.deletedAt).not.toBeNull();
     });
 
     it('deleting a tool soft-deletes its routines', async () => {
       const setup = await ownerWithGroupRoutine(`del-tool-${emailCounter}@example.com`);
       await deleteTool(context.db, setup.toolId, NOW);
-      const [row] = await context.db
-        .select()
-        .from(routines)
-        .where(eq(routines.id, setup.routine.id))
-        .limit(1);
+      const [row] = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{
+            deletedAt: Date | null;
+          }>`SELECT deleted_at FROM routines WHERE id = ${setup.routine.id} LIMIT 1`;
+        }),
+      );
       expect(row?.deletedAt).not.toBeNull();
     });
 
@@ -868,7 +892,16 @@ describe('routines service and routes (T-0104)', () => {
         headers: { cookie: setup.owner.cookie, 'content-type': 'application/json' },
         body: '{}',
       });
-      const entries = await context.db.select().from(auditLog);
+      const entries = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{
+            action: string;
+            subjectId: string | null;
+            detail: unknown;
+          }>`SELECT action, subject_id, detail FROM audit_log`;
+        }),
+      );
       const serialised = JSON.stringify(entries);
       expect(serialised).not.toContain('return { text');
       expect(serialised).not.toContain('gold 3000');
@@ -880,7 +913,12 @@ describe('routines service and routes (T-0104)', () => {
       const { owner } = await ownerWithAi(`errmap-${emailCounter}@example.com`);
       void owner;
       expect(new RoutineServiceError('not_found', 'Routine not found').errorCode).toBe('not_found');
-      const [row] = await context.db.select({ id: aiTools.id }).from(aiTools).limit(1);
+      const [row] = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ id: string }>`SELECT id FROM ai_tools LIMIT 1`;
+        }),
+      );
       expect(row).toBeUndefined();
     });
   });

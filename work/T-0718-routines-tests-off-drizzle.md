@@ -1,7 +1,7 @@
 ---
 id: T-0718
 title: "tests off drizzle (routines): replace every drizzle query in routines/scheduler.effect.test.ts, routines/scheduler.test.ts, routines/service.test.ts with testSql(context) + effect/sql; drop the drizzle-orm and db/schema imports"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0718-routines-tests-off-drizzle
 model: auto
@@ -52,4 +52,71 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Did: replaced every drizzle query in the three routines test files with
+`testSql(context)(Effect.gen(...))` + `SqlClient`, following the
+`pins.test.ts` worked example; removed all `drizzle-orm` and `../db/schema`
+imports (including the dynamic `import('../db/schema')` for `topicAis` in
+`service.test.ts`). `context.db` is now only passed through to module
+functions (`createRoutine`, `saveToolVersion`, `deleteTool`,
+`createAuditRecorder`, `removeGroupAi`, `removeTopicAi`,
+`sqlRuntimeFor`), never queried directly.
+
+- `scheduler.effect.test.ts`: `seedUser` inserts `"user"`;
+  `seedActiveAi` inserts `provider_connections` / `ais` / `ai_limits`;
+  both `rearm` closures `UPDATE routines SET next_run_at`.
+- `scheduler.test.ts`: `seedAi` (with explicit `status` bind param, so the
+  `stopped`-AI test works), `seedGroupWithTopic`, `seedNonGeneralTopic`,
+  `seedRoutine` rearm, `readRoutine` (selects `last_status`,
+  `consecutive_failures`, `last_run_at`, `next_run_at`, `status`,
+  `paused_reason`, `deleted_at` into a local `RoutineRow`), `auditEntries`
+  (selects `action, result, detail`), all pause/resume/rearm `UPDATE`s,
+  both `ai_tools` name lookups, the deleted-tool `routines` lookup, and the
+  audit-failure loop updates.
+- `service.test.ts`: `seedAi`, `seedGroup` (group_ais loop inside one
+  `Effect.gen`), `seedPrivateTopic`, all three `audit_log` selects (one
+  `SELECT action, subject_id, detail`, applied with replaceAll since the
+  text was identical), all `group_members` inserts, the `needs_approval`
+  and resume-fail `UPDATE`s, all `routines` deleted/status reads, the
+  `topics` + `topic_ais` seed in the remove-topic-AI test, and the
+  `ai_tools` empty check (`SELECT id ... LIMIT 1`, `rows[0]` is
+  `undefined`, same assertion as before).
+- Raw SQL names snake_case columns; results come back camelCased. Dates
+  are bound/read as `Date` (unchanged assertions like
+  `row.nextRunAt.getTime()` still hold). `ai_limits` numerics inserted as
+  `'1.00'`/`'20.00'` strings. No JS-default columns in these tables
+  (only `chat_folders.id` uses `$defaultFn`, untouched), so every raw
+  insert lists all non-defaulted columns explicitly. No assertion’s
+  meaning was changed.
+
+Files changed:
+- `apps/server/src/routines/scheduler.effect.test.ts`
+- `apps/server/src/routines/scheduler.test.ts`
+- `apps/server/src/routines/service.test.ts`
+- `work/T-0718-routines-tests-off-drizzle.md` (this report + status)
+
+Commands and real results:
+- `pnpm install`: done (23.7s).
+- Baseline before changes:
+  `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot
+  src/routines/scheduler.effect.test.ts src/routines/scheduler.test.ts
+  src/routines/service.test.ts` → 3 files, 43 passed.
+- Same command after changes → 3 files, 43 passed (identical count).
+- `git grep -n "drizzle-orm\|db/schema" -- <three files>` → prints
+  nothing (exit 1, no matches).
+- `pnpm gate` (after `prettier --write` on the two reformatted test
+  files; first gate run failed format only): `gate: 4 changed file(s)
+  against main / PASS install (frozen) / PASS format / PASS lint /
+  PASS typecheck / PASS tests @zilar/server /
+  scope: every changed file is inside the Allowed files / GATE PASS`.
+
+Problems: none. First `pnpm gate` failed on `format` for the two larger
+files (long `testSql` lines); fixed with prettier, no logic change.
+Deviations: none. Open questions: none.
+
+Security checklist: test-only change; no secrets, routes, caps, or audit
+content touched. Deletes/updates in tests are scoped by primary key
+(`WHERE id = ...`).
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. The pre-review was clean (packet head 94f4de2e). All 43 routines tests pass with the same assertions, and no drizzle import is left.
