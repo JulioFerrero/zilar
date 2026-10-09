@@ -1,7 +1,7 @@
 ---
 id: T-0797
 title: "S6: push component.ts and sender.ts on Effect (per-node send chain, web-push send and expiry check; same delivery order)"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0797-push-sender-component
 model: auto
@@ -57,4 +57,49 @@ Paste each test run's counts and each file's `pnpm effect:map` kind into the Rep
 
 ## Report (written by the worker when done)
 
+**Commits:** `ad843415` "T-0797: tests before" (new `sender.test.ts`, status in-progress); the conversion commit follows on this branch, message "T-0797: ...".
+
+**Files changed:** `apps/server/src/push/sender.ts`, `apps/server/src/push/component.ts` (converted); `apps/server/src/push/sender.test.ts` (new). Public names, signatures, `PushComponentHandle`, `WebPushDelivery`, `isExpiredSubscription`, `createWebPushSender` and every log message, field and error text are unchanged.
+
+**Tests**
+- `sender.test.ts` written first, against the unconverted code: 7 passed (`pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/push/sender.test.ts`). `web-push` is mocked with `vi.mock` (`WebPushError` mirrored). It covers VAPID setup and the missing-key throw, a resolved send (`gone: false`, TTL/urgency args), 404 and 410 resolving `gone: true`, other statuses and a network error rejecting with the same object (`toBe`), and `isExpiredSubscription` on both shapes.
+- After the conversion: `component.test.ts` + `sender.test.ts`: 10 passed.
+- `pnpm --filter @zilar/server test --reporter=dot src/push`, 3 runs, each: 11 files passed, 1 skipped; 76 tests passed, 1 skipped (77). The pre-change full-push count was not measured; it is 69 + 1 skipped by subtraction.
+- `pnpm exec tsc --noEmit` in `apps/server`: exit 0. `oxlint` on the three files: no output.
+
+**effect:map kind:** `apps/server/src/push/component.ts` = effect; `apps/server/src/push/sender.ts` = effect. (`pnpm effect:map` writes `dist/`, which is gitignored; `sender.test.ts` is not listed.)
+
+**Per-node chain now:** `chains` is a `Map<node, Fiber<void>>` holding the latest job. Each publish IQ runs `afterPrevious(previous, handleNotification(...))` with `Effect.runFork`: it waits for the previous fiber with `Fiber.join` (its exit ignored via `Effect.exit`), then runs the handler, which logs exactly as before and always answers `result`. A failing job is dropped quietly by `catchCause`, as the old `cleanup` did. A fiber observer removes the entry when it is still the latest job.
+- Deviation from the spec's suggestion: I did not use a `Semaphore` or `Queue`. In effect 4.0.2 a released semaphore wakes its waiters through `setImmediate` (`node_modules/effect/dist/Semaphore.js`, `releaseUnsafe`), so a stanza that arrives in between can take the permit ahead of a queued publish, which breaks arrival order. Joining the previous fiber is strictly FIFO.
+
+**Behaviour differences**
+- The first handler for a node now starts synchronously inside the `stanza` listener (`runFork` evaluates synchronously). Before, it started one microtask later. Order across IQs and nodes is the same.
+- Library `start`/`stop`/`send` throws are now caught: a sync throw from `xmpp.start()` is logged as `push component failed to start` instead of escaping `startPushComponent`, and a sync throw from `xmpp.stop()` now rejects the returned Promise instead of throwing. I did not verify that `@xmpp/component` can throw synchronously; its methods are async.
+- A send that rejects with a non-expired error is re-raised with `Effect.die(error)`; `runPromise` rejects with the same object (tested). An expired one resolves `{ gone: true }`, as before.
+- The disco and `result` replies are still sent synchronously from the listener, so their order is unchanged.
+
+**Gate (final run, from the worktree root):**
+```
+gate: 4 changed file(s) against main
+PASS  install (frozen)
+PASS  format
+PASS  lint
+PASS  typecheck
+PASS  effect
+PASS  tests @zilar/server
+scope: every changed file is inside the Allowed files
+GATE PASS
+```
+The first gate run failed the scope check on a scratch output file I had written into the worktree (`.gate-out.tmp`). I deleted it and reran; the file was never committed.
+
+**Open points:** none blocking. The per-node fiber chain differs from the spec's listed options (see above); Claude should confirm that is acceptable. Re-entrancy: a `stanza` event fired synchronously inside `runFork` would register its job after its predecessor; socket events cannot do that, so I left it as is.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Haiku 5.5. The lead reviewed the Report.
+- **Tests first:** 7 sender tests were committed against the old code.
+- **Both files** are Effect files.
+- **The per-node chain** is a map of the latest job fiber; each job joins the previous one. This keeps the strict per-node order that a Semaphore wake-up (`setImmediate`) could break, so it is accepted.
+- **Errors:** a non-expired send error is re-raised as the same object.
+- **Results:** 76 tests pass 3 of 3 runs; the gate passed.
+- **Live check:** Julio checks a push on live before the next deploy.

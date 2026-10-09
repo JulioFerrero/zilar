@@ -1,3 +1,4 @@
+import { Effect } from 'effect';
 import webpush from 'web-push';
 
 export type PushConfigInput = {
@@ -40,25 +41,31 @@ export function createWebPushSender(config: VapidConfig): WebPushDelivery {
     config.PUSH_VAPID_PRIVATE_KEY,
   );
   return {
-    send: async (subscription, payload) => {
-      try {
-        await webpush.sendNotification(
-          {
-            endpoint: subscription.endpoint,
-            keys: { p256dh: subscription.keys.p256dh, auth: subscription.keys.auth },
-          },
-          payload,
-          { TTL: 24 * 3600, urgency: 'normal' },
-        );
-        return { gone: false };
-      } catch (error) {
-        if (isExpiredSubscription(error)) {
-          return { gone: true };
-        }
-        throw error;
-      }
-    },
+    send: (subscription, payload) => Effect.runPromise(sendEffect(subscription, payload)),
   };
+}
+
+// One Web Push send. A rejection stays a defect, so the caller's Promise
+// rejects with the original error; an expired subscription is a value.
+function sendEffect(
+  subscription: { endpoint: string; keys: { p256dh: string; auth: string } },
+  payload: string,
+): Effect.Effect<{ gone: boolean }> {
+  return Effect.promise(() =>
+    webpush.sendNotification(
+      {
+        endpoint: subscription.endpoint,
+        keys: { p256dh: subscription.keys.p256dh, auth: subscription.keys.auth },
+      },
+      payload,
+      { TTL: 24 * 3600, urgency: 'normal' },
+    ),
+  ).pipe(
+    Effect.as({ gone: false }),
+    Effect.catchDefect((error) =>
+      isExpiredSubscription(error) ? Effect.succeed({ gone: true }) : Effect.die(error),
+    ),
+  );
 }
 
 export function isExpiredSubscription(error: unknown): boolean {

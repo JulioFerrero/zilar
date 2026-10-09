@@ -1,3 +1,4 @@
+import { Effect, Fiber } from 'effect';
 import {
   component,
   xml,
@@ -42,7 +43,8 @@ export function startPushComponent(options: PushComponentOptions): PushComponent
     password: options.secret,
   });
   const { service, logger } = options;
-  const chains = new Map<string, Promise<void>>();
+  // The latest job per node, as a fiber. The next job for that node joins it.
+  const chains = new Map<string, Fiber.Fiber<void>>();
 
   xmpp.on('error', (error: Error) => {
     // @xmpp/component reconnects on its own after an error; losing this
@@ -59,30 +61,50 @@ export function startPushComponent(options: PushComponentOptions): PushComponent
     // One node belongs to one device of one user. The chain always advances,
     // even when a handler throws, so one bad IQ can never wedge later ones;
     // a finished chain is dropped so the map does not grow forever.
-    const tail = chains.get(notification.node) ?? Promise.resolve();
-    const head = tail.then(() => handleNotification(xmpp, service, logger, stanza, notification));
-    const cleanup = head.then(
-      () => undefined,
-      () => undefined,
+    const job = Effect.runFork(
+      afterPrevious(
+        chains.get(notification.node),
+        handleNotification(xmpp, service, logger, stanza, notification),
+      ),
     );
-    chains.set(notification.node, cleanup);
-    void cleanup.then(() => {
-      if (chains.get(notification.node) === cleanup) {
+    chains.set(notification.node, job);
+    job.addObserver(() => {
+      if (chains.get(notification.node) === job) {
         chains.delete(notification.node);
       }
     });
   });
 
-  void xmpp.start().catch((error: unknown) => {
-    logger.warn(
-      { error: error instanceof Error ? error.message : String(error) },
-      'push component failed to start',
-    );
-  });
+  Effect.runFork(
+    Effect.promise(() => xmpp.start()).pipe(
+      Effect.catchDefect((error) =>
+        Effect.sync(() =>
+          logger.warn(
+            { error: error instanceof Error ? error.message : String(error) },
+            'push component failed to start',
+          ),
+        ),
+      ),
+    ),
+  );
 
   return {
-    stop: () => xmpp.stop().then(() => undefined),
+    stop: () => Effect.runPromise(Effect.promise(() => xmpp.stop()).pipe(Effect.asVoid)),
   };
+}
+
+// Runs `job` once the previous job for the same node has finished. The
+// previous job's outcome is ignored, so a failed one never skips this one.
+function afterPrevious(
+  previous: Fiber.Fiber<void> | undefined,
+  job: Effect.Effect<void>,
+): Effect.Effect<void> {
+  const settled = previous === undefined ? Effect.void : Effect.exit(Fiber.join(previous));
+  return settled.pipe(
+    Effect.andThen(job),
+    // As before, a job that still fails is dropped quietly so the next one runs.
+    Effect.catchCause(() => Effect.void),
+  );
 }
 
 // Anything that is not a push publish: answer disco `get` with our identity
@@ -102,12 +124,19 @@ function handleNonPushStanza(xmpp: PushComponent, stanza: PushXmppElement, domai
     type === 'get' &&
     stanza.getChild('query', 'http://jabber.org/protocol/disco#info') !== undefined
   ) {
-    void xmpp.send(withEnvelope(discoInfoHandler(domain), id, from)).catch(() => undefined);
+    sendQuietly(xmpp, withEnvelope(discoInfoHandler(domain), id, from));
     return;
   }
   if (type === 'set') {
-    void answerIq(xmpp, stanza, 'result');
+    Effect.runFork(answerIq(xmpp, stanza, 'result'));
   }
+}
+
+// Fire and forget: a failed send is dropped, never retried.
+function sendQuietly(xmpp: PushComponent, stanza: PushXmppElement): void {
+  Effect.runFork(
+    Effect.promise(() => xmpp.send(stanza)).pipe(Effect.catchDefect(() => Effect.void)),
+  );
 }
 
 function withEnvelope(stanza: PushXmppElement, id: string, to: string): PushXmppElement {
@@ -115,53 +144,58 @@ function withEnvelope(stanza: PushXmppElement, id: string, to: string): PushXmpp
   return xml('iq', attrs, ...stanza.getChildElements());
 }
 
-async function handleNotification(
+function handleNotification(
   xmpp: PushComponent,
   service: PushServiceDeps,
   logger: PushServiceDeps['logger'],
   stanza: PushXmppElement,
   notification: PushNotification,
-): Promise<void> {
-  try {
-    const outcome = await handleIncomingPush(service, notification);
-    switch (outcome.kind) {
-      case 'sent':
-        logger.info({ userId: outcome.userId, deviceId: outcome.deviceId }, 'push sent');
-        break;
-      case 'dropped':
-        logger.info(
-          { userId: outcome.userId, deviceId: outcome.deviceId, reason: outcome.reason },
-          'push dropped',
-        );
-        break;
-      case 'unknown-device':
-        // The node is a delivery target, not a secret, and logging it is how
-        // an operator matches a stray publish to a removed device.
-        logger.info({ node: outcome.node }, 'push publish for an unknown node; dropped');
-        break;
-    }
-  } catch (error) {
+): Effect.Effect<void> {
+  return Effect.promise(() => handleIncomingPush(service, notification)).pipe(
+    Effect.andThen((outcome) =>
+      Effect.sync(() => {
+        switch (outcome.kind) {
+          case 'sent':
+            logger.info({ userId: outcome.userId, deviceId: outcome.deviceId }, 'push sent');
+            break;
+          case 'dropped':
+            logger.info(
+              { userId: outcome.userId, deviceId: outcome.deviceId, reason: outcome.reason },
+              'push dropped',
+            );
+            break;
+          case 'unknown-device':
+            // The node is a delivery target, not a secret, and logging it is how
+            // an operator matches a stray publish to a removed device.
+            logger.info({ node: outcome.node }, 'push publish for an unknown node; dropped');
+            break;
+        }
+      }),
+    ),
     // `handleIncomingPush` is not supposed to throw, but an error IQ would
     // disable the push pair in ejabberd — log and carry on instead.
-    logger.warn(
-      { error: error instanceof Error ? error.message : String(error) },
-      'push handler failed',
-    );
-  }
-  await answerIq(xmpp, stanza, 'result');
+    Effect.catchDefect((error) =>
+      Effect.sync(() =>
+        logger.warn(
+          { error: error instanceof Error ? error.message : String(error) },
+          'push handler failed',
+        ),
+      ),
+    ),
+    Effect.andThen(answerIq(xmpp, stanza, 'result')),
+  );
 }
 
-async function answerIq(xmpp: PushComponent, stanza: PushXmppElement, type: string): Promise<void> {
+function answerIq(xmpp: PushComponent, stanza: PushXmppElement, type: string): Effect.Effect<void> {
   const id = stanza.attrs['id'];
   const from = stanza.attrs['from'];
   if (id === undefined || from === undefined) {
-    return;
+    return Effect.void;
   }
-  try {
-    await xmpp.send(xml('iq', { type, id, to: from }));
-  } catch {
-    // Best effort: the component reconnect path already logs.
-  }
+  // Best effort: the component reconnect path already logs.
+  return Effect.promise(() => xmpp.send(xml('iq', { type, id, to: from }))).pipe(
+    Effect.catchDefect(() => Effect.void),
+  );
 }
 
 export function discoInfoHandler(pushJid: string): PushXmppElement {
