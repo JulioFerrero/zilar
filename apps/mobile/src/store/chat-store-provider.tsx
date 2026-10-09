@@ -10,6 +10,7 @@ import {
 import { AppState } from 'react-native';
 
 import { useSession } from '@/auth/session';
+import { ENV_MOCK, ENV_NODE_ENV } from '@/mock/gate';
 
 import { createChatStore, isMockMode } from './chat-store';
 import { createRealChatStore, type AppStateLike } from './real-store';
@@ -44,8 +45,8 @@ export function ChatStoreProvider({ children }: { children: ReactNode }) {
   const [store] = useState<StoreApi<ChatStoreState>>(() =>
     isMockMode(params, {
       dev: __DEV__,
-      envMock: process.env.EXPO_PUBLIC_ZILAR_MOCK,
-      nodeEnv: process.env.NODE_ENV,
+      envMock: ENV_MOCK,
+      nodeEnv: ENV_NODE_ENV,
     })
       ? createChatStore()
       : createRealChatStore({

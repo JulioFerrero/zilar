@@ -4,7 +4,7 @@ import { useMemo } from 'react';
 import { createAuditApi, type AuditApi } from '@/lib/audit-api';
 import { getSessionToken } from '@/lib/session-token';
 import { createMockAuditApi } from '@/mock/audit';
-import { mockParamAllowed } from '@/mock/gate';
+import { ENV_MOCK, mockParamAllowed } from '@/mock/gate';
 
 /**
  * The audit API supports exactly one mock scenario (the seeded AI activity),
@@ -40,7 +40,7 @@ export interface AuditApiHandle {
  */
 export function useAuditApi(): AuditApiHandle {
   const params = useGlobalSearchParams();
-  const envMock = process.env.EXPO_PUBLIC_ZILAR_MOCK;
+  const envMock = ENV_MOCK;
   const mock = auditMockActive(envMock, params, mockParamAllowed({ dev: __DEV__, envMock }));
   const api = useMemo(
     () => (mock ? createMockAuditApi() : createAuditApi(getSessionToken)),

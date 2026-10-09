@@ -4,7 +4,7 @@ import { useMemo } from 'react';
 import { createApprovalsApi, type ApprovalsApi } from '@/lib/approvals-api';
 import { getSessionToken } from '@/lib/session-token';
 import { createMockApprovalsApi } from '@/mock/approvals';
-import { mockParamAllowed } from '@/mock/gate';
+import { ENV_MOCK, mockParamAllowed } from '@/mock/gate';
 
 /**
  * The approvals API supports exactly one mock scenario (the pending request
@@ -41,7 +41,7 @@ export interface ApprovalsApiHandle {
  */
 export function useApprovalsApi(): ApprovalsApiHandle {
   const params = useGlobalSearchParams();
-  const envMock = process.env.EXPO_PUBLIC_ZILAR_MOCK;
+  const envMock = ENV_MOCK;
   const mock = approvalsMockActive(envMock, params, mockParamAllowed({ dev: __DEV__, envMock }));
   const api = useMemo(
     () => (mock ? createMockApprovalsApi() : createApprovalsApi(getSessionToken)),

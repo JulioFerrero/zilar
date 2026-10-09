@@ -8,7 +8,7 @@ import {
   integrationsMockScenario,
   type IntegrationsMockScenario,
 } from './integrations-mock';
-import { mockParamAllowed } from '@/mock/gate';
+import { ENV_MOCK, MOCK_ENV, mockParamAllowed } from '@/mock/gate';
 
 export interface IntegrationsApiHandle {
   api: IntegrationsApi;
@@ -19,14 +19,9 @@ export interface IntegrationsApiHandle {
 /** Picks the real API or the mock one from the route's `?mock=` param. */
 export function useIntegrationsApi(): IntegrationsApiHandle {
   const params = useGlobalSearchParams();
-  // Referenced as static `process.env.EXPO_PUBLIC_*` expressions so
-  // babel-preset-expo inlines them into the bundle at Metro time.
-  const envMock = process.env.EXPO_PUBLIC_ZILAR_MOCK;
+  const envMock = ENV_MOCK;
   const scenario = integrationsMockScenario(
-    {
-      EXPO_PUBLIC_ZILAR_MOCK: envMock,
-      EXPO_PUBLIC_ZILAR_MOCK_SCENARIO: process.env.EXPO_PUBLIC_ZILAR_MOCK_SCENARIO,
-    },
+    MOCK_ENV,
     params,
     mockParamAllowed({ dev: __DEV__, envMock }),
   );

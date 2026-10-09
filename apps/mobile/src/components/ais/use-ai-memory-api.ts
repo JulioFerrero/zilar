@@ -4,7 +4,7 @@ import { useMemo } from 'react';
 import { createAiMemoryApi, type AiMemoryApi } from '@/lib/ai-memory-api';
 import { getSessionToken } from '@/lib/session-token';
 import { createMockAiMemoryApi } from '@/mock/ai-memory';
-import { mockParamAllowed } from '@/mock/gate';
+import { ENV_MOCK, mockParamAllowed } from '@/mock/gate';
 
 /**
  * The AI memory API supports exactly one mock scenario (the seeded memory),
@@ -40,7 +40,7 @@ export interface AiMemoryApiHandle {
  */
 export function useAiMemoryApi(): AiMemoryApiHandle {
   const params = useGlobalSearchParams();
-  const envMock = process.env.EXPO_PUBLIC_ZILAR_MOCK;
+  const envMock = ENV_MOCK;
   const mock = aiMemoryMockActive(envMock, params, mockParamAllowed({ dev: __DEV__, envMock }));
   const api = useMemo(
     () => (mock ? createMockAiMemoryApi() : createAiMemoryApi(getSessionToken)),
