@@ -161,6 +161,14 @@ The devtools removal (1.5) would add about 5.5k source and 6.3k test lines.
 
 ## 5. Decisions for Julio
 
+**Decided 2026-10-09 (Julio):**
+- **D-4:** everything first, and Julio tests once at the end.
+- **D-2 and D-5:** delete `packages/agent-drivers`, the unmounted git proxy and the unused xmpp `events.*` Streams. Keep the devtools lead code.
+- **D-1:** keep today's mobile behaviour (a failed send stays "sending" until a reconnect).
+- **D-3:** turn on the better-auth session cookie cache for 5 minutes.
+
+The questions as they were asked:
+
 - **D-1, failed text send on mobile:** keep "sending" until a reconnect, or show "Not sent" + Retry after 60 s as web does?
 - **D-2, deletions:**
   - `packages/agent-drivers` (no importers);
