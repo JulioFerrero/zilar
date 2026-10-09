@@ -3,6 +3,7 @@ import { ChevronDown, ChevronUp, Download, Pencil, Plus, Star, Sticker } from 'l
 import { useColorScheme } from 'nativewind';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Image, Pressable, View, useWindowDimensions } from 'react-native';
+import { Effect, Fiber } from 'effect';
 
 import { RequireStickersAuth } from '@/components/stickers/require-stickers-auth';
 import { Button } from '@/components/ui/button';
@@ -15,6 +16,7 @@ import { useAuthStore } from '@/auth/session';
 import { API_URL } from '@/lib/auth';
 import { asColorScheme } from '@/lib/color-scheme';
 import { ACCENT_FOREGROUND, FOREGROUND, ICON, MUTED_FOREGROUND } from '@/lib/colors';
+import { fromApi } from '@/lib/effect/api-effect';
 import { getSessionToken } from '@/lib/session-token';
 import {
   isSameOriginStickerUrl,
@@ -102,29 +104,44 @@ function StickersBody() {
   const discoverLoaded = useRef(false);
 
   useEffect(() => {
-    let cancelled = false;
-    void getSessionToken().then((value) => {
-      if (!cancelled) {
-        setToken(value);
-      }
-    });
+    const fiber = Effect.runFork(
+      Effect.promise(() => getSessionToken()).pipe(
+        Effect.tap((value) =>
+          Effect.sync(() => {
+            setToken(value);
+          }),
+        ),
+      ),
+    );
     return () => {
-      cancelled = true;
+      Effect.runFork(Fiber.interrupt(fiber));
     };
   }, []);
 
   const reload = useCallback(() => {
     setStatus('loading');
     setActionError('');
-    void Promise.all([api.listStickerPacks(), api.listStickerFavorites()])
-      .then(([panel, starred]) => {
-        setPacks(panel);
-        setFavorites(starred);
-        setStatus('ready');
-      })
-      .catch(() => {
-        setStatus('error');
-      });
+    Effect.runFork(
+      Effect.all(
+        [fromApi(() => api.listStickerPacks()), fromApi(() => api.listStickerFavorites())],
+        {
+          concurrency: 'unbounded',
+        },
+      ).pipe(
+        Effect.tap(([panel, starred]) =>
+          Effect.sync(() => {
+            setPacks(panel);
+            setFavorites(starred);
+            setStatus('ready');
+          }),
+        ),
+        Effect.catch(() =>
+          Effect.sync(() => {
+            setStatus('error');
+          }),
+        ),
+      ),
+    );
   }, [api]);
 
   useFocusEffect(
@@ -137,18 +154,26 @@ function StickersBody() {
     (search: string) => {
       setDiscoverBusy(true);
       setDiscoverError('');
-      void api
-        .discoverStickerPacks(search)
-        .then((page) => {
-          setDiscover(page.packs);
-          discoverLoaded.current = true;
-        })
-        .catch(() => {
-          setDiscoverError(DISCOVER_ERROR);
-        })
-        .finally(() => {
-          setDiscoverBusy(false);
-        });
+      Effect.runFork(
+        fromApi(() => api.discoverStickerPacks(search)).pipe(
+          Effect.tap((page) =>
+            Effect.sync(() => {
+              setDiscover(page.packs);
+              discoverLoaded.current = true;
+            }),
+          ),
+          Effect.catch(() =>
+            Effect.sync(() => {
+              setDiscoverError(DISCOVER_ERROR);
+            }),
+          ),
+          Effect.ensuring(
+            Effect.sync(() => {
+              setDiscoverBusy(false);
+            }),
+          ),
+        ),
+      );
     },
     [api],
   );
@@ -160,38 +185,51 @@ function StickersBody() {
     }
   };
 
-  const run = (id: string, task: () => Promise<void>, fallback: string): void => {
+  const run = (id: string, task: Effect.Effect<unknown, unknown>, fallback: string): void => {
     if (busyRef.current) {
       return;
     }
     busyRef.current = true;
     setBusyId(id);
     setActionError('');
-    void task()
-      .catch(() => {
-        setActionError(fallback);
-      })
-      .finally(() => {
-        busyRef.current = false;
-        setBusyId(null);
-      });
+    Effect.runFork(
+      task.pipe(
+        Effect.catch(() =>
+          Effect.sync(() => {
+            setActionError(fallback);
+          }),
+        ),
+        Effect.ensuring(
+          Effect.sync(() => {
+            busyRef.current = false;
+            setBusyId(null);
+          }),
+        ),
+      ),
+    );
   };
 
-  const refreshPanel = (): Promise<void> =>
-    api.listStickerPacks().then((panel) => {
-      setPacks(panel);
-    });
+  const refreshPanel = fromApi(() => api.listStickerPacks()).pipe(
+    Effect.tap((panel) =>
+      Effect.sync(() => {
+        setPacks(panel);
+      }),
+    ),
+  );
 
   const addPack = (packId: string): void => {
     run(
       packId,
-      () =>
-        api.addStickerPanelPack(packId).then(() => {
-          setDiscover((previous) =>
-            previous === undefined ? previous : previous.map((row) => ({ ...row })),
-          );
-          return refreshPanel();
-        }),
+      fromApi(() => api.addStickerPanelPack(packId)).pipe(
+        Effect.tap(() =>
+          Effect.sync(() => {
+            setDiscover((previous) =>
+              previous === undefined ? previous : previous.map((row) => ({ ...row })),
+            );
+          }),
+        ),
+        Effect.andThen(refreshPanel),
+      ),
       ADD_ERROR,
     );
   };
@@ -209,17 +247,27 @@ function StickersBody() {
     busyRef.current = true;
     setBusyId(packId);
     setConfirmError('');
-    void api
-      .removeStickerPanelPack(packId)
-      .then(() => refreshPanel())
-      .then(() => setConfirming(null))
-      .catch(() => {
-        setConfirmError(REMOVE_MODAL_ERROR);
-      })
-      .finally(() => {
-        busyRef.current = false;
-        setBusyId(null);
-      });
+    Effect.runFork(
+      fromApi(() => api.removeStickerPanelPack(packId)).pipe(
+        Effect.andThen(refreshPanel),
+        Effect.andThen(
+          Effect.sync(() => {
+            setConfirming(null);
+          }),
+        ),
+        Effect.catch(() =>
+          Effect.sync(() => {
+            setConfirmError(REMOVE_MODAL_ERROR);
+          }),
+        ),
+        Effect.ensuring(
+          Effect.sync(() => {
+            busyRef.current = false;
+            setBusyId(null);
+          }),
+        ),
+      ),
+    );
   };
 
   const movePack = (packId: string, direction: -1 | 1): void => {
@@ -237,25 +285,34 @@ function StickersBody() {
     const previous = packs;
     const byId = new Map(packs.map((pack) => [pack.id, pack]));
     setPacks(next.map((id) => byId.get(id)).filter((pack) => pack !== undefined));
-    void api
-      .reorderStickerPanelPacks(next)
-      .catch(() => {
-        setPacks(previous);
-        setActionError(REORDER_ERROR);
-      })
-      .finally(() => {
-        busyRef.current = false;
-        setBusyId(null);
-      });
+    Effect.runFork(
+      fromApi(() => api.reorderStickerPanelPacks(next)).pipe(
+        Effect.catch(() =>
+          Effect.sync(() => {
+            setPacks(previous);
+            setActionError(REORDER_ERROR);
+          }),
+        ),
+        Effect.ensuring(
+          Effect.sync(() => {
+            busyRef.current = false;
+            setBusyId(null);
+          }),
+        ),
+      ),
+    );
   };
 
   const unstar = (stickerId: string): void => {
     run(
       stickerId,
-      () =>
-        api.removeStickerFavorite(stickerId).then(() => {
-          setFavorites((previous) => previous.filter((row) => row.id !== stickerId));
-        }),
+      fromApi(() => api.removeStickerFavorite(stickerId)).pipe(
+        Effect.tap(() =>
+          Effect.sync(() => {
+            setFavorites((previous) => previous.filter((row) => row.id !== stickerId));
+          }),
+        ),
+      ),
       FAVORITE_ERROR,
     );
   };
