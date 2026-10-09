@@ -1,7 +1,7 @@
 ---
 id: T-0821
 title: "MU12: mobile settings C: machines, profile on Effect"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0821-mobile-mu12
 model: auto
@@ -55,4 +55,25 @@ Run `pnpm exec prettier --write` on your changed files before committing. Do not
 
 ## Report (written by the worker when done)
 
+- **effect:map kinds** (`pnpm effect:map`, data in `dist/effect-map/data.json`):
+  - `apps/mobile/src/app/settings/machines.tsx`: `effect` (650 to 722 lines). Signals H9 (`expo-clipboard`, a native import kept on purpose) and W4 (`Effect.catch(` matched by the `.catch(` regex, a false positive).
+  - `apps/mobile/src/app/settings/profile.tsx`: `effect` (381 to 522 lines). Signal W4 from `Effect.catch(` only (false positive). `process.env` is not read here.
+- **Tests before/after:** new `settings-machines-screen.test.tsx` 14 and `settings-profile-screen.test.tsx` 13 (27 total). All 27 pass before the conversion (commit "T-0821: tests before") and after it, three runs each. The existing `components/machines/machines-screen.test.tsx` (7 tests, unchanged) passes too.
+- **Checks:** `vitest run` on the two new files: 27 passed. `pnpm --filter @zilar/mobile typecheck` (tsc --noEmit): exit 0. Prettier check clean.
+- **Design:** every async call is an Effect (`Effect.tryPromise` with a typed `Data.TaggedError` that carries the fixed sentence). Each action is a `useAction` (mode `ignore`, which replaces the busy refs; the load uses mode `replace`). Timers: the handle check is an `Effect.sleep` fiber interrupted on change and unmount. Machines keeps its list, status and error states as `useState` because `components/machines/machines-screen.test.tsx` forces them by hook order; the Effects write to them through `Effect.sync`.
+- **Behaviour differences:**
+  1. Leaving the screen interrupts a request still in flight (the old code dropped the answer; the server-side change still happened or not as before).
+  2. Machines copy: a clipboard failure is now a silent failed state instead of an unhandled promise rejection (nothing was shown before either).
+  3. Profile handle check: a check still running is interrupted when the handle changes (before, its answer was ignored).
+  4. Profile load: `getMe` and the session token run concurrently and the first failure cancels the other (same as `Promise.all`).
+  5. Not a difference, noted: the machines row errors and the dialog errors keep the same sentences and the same places; the picker and the upload keep the same sentences.
+- **Unsure:**
+  - The avatar uploader now returns `Effect.runPromise(...)`. I checked in `node_modules/effect/dist/internal/effect.js` (`causeSquash`) that a typed failure rejects with the raw error value, so `friendlyAvatarError` still sees `ProfileApiError`. My profile test mocks `uploadAvatar` and does not run the real uploader, so this path is verified by reading code only.
+  - Nothing ran on a device or the emulator (wave mode); the lead's `phone:smoke` should cover both screens.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved (wave 2). Worker: Haiku 5.5. The lead reviewed the Report.
+- **Combined check:** all 25 wave 2 branches together pass lint, typecheck and the full mobile suite (`lead batch check`, report 20261009T172300Z). The remaining failures were server and web tests that pass on main, caused by load.
+- **This task:** 27 new tests. Leaving the screen interrupts a request in flight; a failed clipboard copy is silent.
+- **Phone:** the wave branch is smoked on the emulator after the merge.
