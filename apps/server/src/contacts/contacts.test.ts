@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { eq } from 'drizzle-orm';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
 import { createInvite } from '../auth/invites';
-import { contacts, user, userInvites } from '../db/schema';
 import {
   bootstrapUser,
   contactOf,
@@ -9,6 +9,7 @@ import {
   FakeAdminClient,
   signUpWithInvite,
   testApp,
+  testSql,
   TEST_BASE_URL,
   TEST_XMPP_DOMAIN,
   type TestApp,
@@ -16,6 +17,24 @@ import {
 } from '../test-support';
 import { localpartFor } from '../xmpp/provisioning';
 import { UNNAMED_CONTACT_NAME } from './service';
+
+interface ContactRow {
+  userId: string;
+  contactUserId: string;
+  source: string;
+  rosterSynced: boolean;
+}
+
+interface UserNameRow {
+  id: string;
+  name: string;
+}
+
+interface UserInviteRow {
+  userId: string;
+  invitedBy: string | null;
+  inviteId: string | null;
+}
 
 describe('contacts from invites', () => {
   let context: TestContext;
@@ -29,6 +48,33 @@ describe('contacts from invites', () => {
   afterEach(async () => {
     await context.close();
   });
+
+  async function contactRows(source: Pick<TestContext, 'db'> = context) {
+    return testSql(source)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<ContactRow>`SELECT user_id, contact_user_id, source, roster_synced FROM contacts`;
+      }),
+    );
+  }
+
+  async function userNames() {
+    return testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<UserNameRow>`SELECT id, name FROM "user"`;
+      }),
+    );
+  }
+
+  async function userInviteRows() {
+    return testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<UserInviteRow>`SELECT user_id, invited_by, invite_id FROM user_invites`;
+      }),
+    );
+  }
 
   async function setDisplayName(cookie: string, name: string): Promise<void> {
     const response = await app.request(`${TEST_BASE_URL}/api/me`, {
@@ -45,14 +91,14 @@ describe('contacts from invites', () => {
     const invite = await createInvite(context.db, { createdBy: inviter.id });
     const invitee = await signUpWithInvite(context, app, 'invitee@example.com', invite.code);
 
-    const rows = await context.db.select().from(contacts);
+    const rows = await contactRows();
     expect(rows).toHaveLength(2);
     expect(rows.map((row) => `${row.userId}->${row.contactUserId}`).sort()).toEqual(
       [`${inviter.id}->${invitee.id}`, `${invitee.id}->${inviter.id}`].sort(),
     );
     expect(rows.every((row) => row.source === 'invite' && row.rosterSynced)).toBe(true);
 
-    const names = new Map((await context.db.select().from(user)).map((row) => [row.id, row.name]));
+    const names = new Map((await userNames()).map((row) => [row.id, row.name]));
     expect(context.adminClient.rosterItems).toHaveLength(2);
     expect(context.adminClient.rosterItems).toEqual(
       expect.arrayContaining([
@@ -77,7 +123,7 @@ describe('contacts from invites', () => {
     expect(names.get(inviter.id)).toBe('Alice Inviter');
     expect(names.get(invitee.id)).toBe('');
 
-    const claims = await context.db.select().from(userInvites);
+    const claims = await userInviteRows();
     expect(claims).toHaveLength(2);
     expect(claims.find((claim) => claim.userId === invitee.id)).toMatchObject({
       userId: invitee.id,
@@ -89,10 +135,10 @@ describe('contacts from invites', () => {
   it('creates no contacts for a bootstrap invite', async () => {
     const userRecord = await bootstrapUser(context, app, 'bootstrap@example.com');
 
-    expect(await context.db.select().from(contacts)).toHaveLength(0);
+    expect(await contactRows()).toHaveLength(0);
     expect(context.adminClient.rosterItems).toHaveLength(0);
 
-    const claims = await context.db.select().from(userInvites);
+    const claims = await userInviteRows();
     expect(claims).toHaveLength(1);
     expect(claims[0]).toMatchObject({ userId: userRecord.id, invitedBy: null });
   });
@@ -112,7 +158,7 @@ describe('contacts from invites', () => {
         invite.code,
       );
 
-      const rows = await failing.db.select().from(contacts);
+      const rows = await contactRows(failing);
       expect(rows).toHaveLength(2);
       expect(rows.every((row) => !row.rosterSynced)).toBe(true);
       expect(adminClient.rosterItems).toHaveLength(0);
@@ -131,7 +177,7 @@ describe('contacts from invites', () => {
         contactJid: `${localpartFor(inviter.id)}@${TEST_XMPP_DOMAIN}`,
       });
 
-      const afterInvitee = await failing.db.select().from(contacts);
+      const afterInvitee = await contactRows(failing);
       expect(afterInvitee.filter((row) => row.userId === invitee.id)).toEqual([
         expect.objectContaining({ rosterSynced: true }),
       ]);
@@ -146,7 +192,7 @@ describe('contacts from invites', () => {
       });
       expect(inviterToken.status).toBe(200);
       expect(adminClient.rosterItems).toHaveLength(2);
-      const finalRows = await failing.db.select().from(contacts);
+      const finalRows = await contactRows(failing);
       expect(finalRows.every((row) => row.rosterSynced)).toBe(true);
     } finally {
       await failing.close();
@@ -191,7 +237,12 @@ describe('contacts from invites', () => {
     const amy = await contactOf(context, app, alice.id, 'amy-blank@example.com');
     await setDisplayName(zara.cookie, 'Zara');
     await setDisplayName(amy.cookie, 'Amy');
-    await context.db.update(user).set({ name: '   ' }).where(eq(user.id, spaces.id));
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`UPDATE "user" SET name = ${'   '} WHERE id = ${spaces.id}`;
+      }),
+    );
 
     const response = await app.request(`${TEST_BASE_URL}/api/contacts`, {
       headers: { cookie: alice.cookie },
@@ -259,9 +310,7 @@ describe('contacts from invites', () => {
       ]),
     );
 
-    const rows = (await context.db.select().from(contacts)).filter(
-      (row) => row.contactUserId === alice.id,
-    );
+    const rows = (await contactRows()).filter((row) => row.contactUserId === alice.id);
     expect(rows).toHaveLength(2);
     expect(rows.every((row) => row.rosterSynced)).toBe(true);
   });
@@ -275,9 +324,7 @@ describe('contacts from invites', () => {
     context.adminClient.failRoster = true;
     await setDisplayName(alice.cookie, 'Alice Wonderland');
 
-    const unsynced = (await context.db.select().from(contacts)).filter(
-      (row) => row.contactUserId === alice.id,
-    );
+    const unsynced = (await contactRows()).filter((row) => row.contactUserId === alice.id);
     expect(unsynced).toHaveLength(2);
     expect(unsynced.every((row) => !row.rosterSynced)).toBe(true);
     expect(context.adminClient.rosterItems).toHaveLength(0);
@@ -296,7 +343,7 @@ describe('contacts from invites', () => {
       }),
     ]);
 
-    const afterBob = await context.db.select().from(contacts);
+    const afterBob = await contactRows();
     expect(
       afterBob.find((row) => row.userId === bob.id && row.contactUserId === alice.id)?.rosterSynced,
     ).toBe(true);
@@ -311,9 +358,7 @@ describe('contacts from invites', () => {
     });
     expect(carolToken.status).toBe(200);
     expect(context.adminClient.rosterItems).toHaveLength(2);
-    const afterCarol = (await context.db.select().from(contacts)).filter(
-      (row) => row.contactUserId === alice.id,
-    );
+    const afterCarol = (await contactRows()).filter((row) => row.contactUserId === alice.id);
     expect(afterCarol.every((row) => row.rosterSynced)).toBe(true);
   });
 

@@ -1,7 +1,7 @@
 ---
 id: T-0704
 title: "tests off drizzle (contacts + contact-requests): replace every drizzle query in contacts/contacts.test.ts, contact-requests/contact-requests.test.ts with testSql(context) + effect/sql; drop the drizzle-orm and db/schema imports"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0704-contacts-tests-off-drizzle
 model: auto
@@ -51,4 +51,58 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- Moved every drizzle query in `apps/server/src/contacts/contacts.test.ts` and
+  `apps/server/src/contact-requests/contact-requests.test.ts` onto the `testSql(context)`
+  helper + `effect/sql`, keeping the same rows, values, order and assertions.
+- Removed the `drizzle-orm` imports, the `../db/schema` imports (and the dynamic
+  `await import('../db/schema')` in the handles test). `git grep -n "drizzle-orm\|db/schema"`
+  over both files prints nothing.
+- Left `createInvite(context.db, …)`, `claimHandle(context.db, …)` and the
+  `context.db` service seams alone, as the spec says.
+- Added small local row types + three/four thin helpers (`contactRows`, `userNames`,
+  `userInviteRows`, `contactRequestRows`) so the repeated selects stay readable; same
+  in-file style as `media/indexer.test.ts`'s `rowsForChat`.
+- Omitted explicit `created_at` on the recovery insert (`contact_requests`): the column
+  has a SQL `defaultNow()`, which the spec says can be left out. Bound `Date` values for
+  `decided_at` / `changed_at` updates as before.
+
+### Files changed
+- `apps/server/src/contacts/contacts.test.ts`
+- `apps/server/src/contact-requests/contact-requests.test.ts`
+- `work/T-0704-contacts-tests-off-drizzle.md` (status + this report)
+
+### Commands run (real results)
+- `pnpm install` — done, 13 workspace projects.
+- Baseline before edits:
+  `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/contacts/contacts.test.ts src/contact-requests/contact-requests.test.ts`
+  → 2 files passed, **24 tests passed**.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/contacts/contacts.test.ts`
+  → 1 file passed, 8 tests passed.
+- After edits, both files:
+  `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/contacts/contacts.test.ts src/contact-requests/contact-requests.test.ts`
+  → 2 files passed, **24 tests passed** (same as before).
+- `git grep -n "drizzle-orm\|db/schema" -- apps/server/src/contacts/contacts.test.ts apps/server/src/contact-requests/contact-requests.test.ts`
+  → no output (exit 1).
+- `pnpm gate` (repo root) — summary:
+  ```
+  PASS  install (frozen)  (2.9s)
+  PASS  format  (89.1s)
+  PASS  lint  (2.1s)
+  PASS  typecheck  (8.8s)
+  PASS  tests @zilar/server  (19.2s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Problems / deviations
+- Deviations are cosmetic and inside scope: local SQL helpers instead of inlining every
+  select, and dropping the explicit `created_at` on the recovery insert (SQL default).
+  No assertion meaning changed.
+
+### Blocked / needs a decision
+None.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. The pre-review was clean (packet head f81c939a). The contacts and contact-requests tests are on `testSql` with the same counts.
