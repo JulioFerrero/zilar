@@ -121,7 +121,7 @@ describe('selectTestFiles', () => {
 });
 
 describe('gateSteps', () => {
-  it('runs install, format, lint and typecheck, then only the nearest tests', () => {
+  it('runs install, format, lint, typecheck and the effect ratchet, then only the nearest tests', () => {
     const steps = gateSteps(
       ['apps/mobile/src/a.ts', 'apps/mobile/src/a.test.ts'],
       workspace,
@@ -133,6 +133,7 @@ describe('gateSteps', () => {
       'format',
       'lint',
       'typecheck',
+      'effect',
       'tests @zilar/mobile',
     ]);
     expect(steps.at(-1)?.args).toEqual([
@@ -231,7 +232,7 @@ describe('gateSteps', () => {
       'main',
       { testFiles: ['apps/server/src/b.test.ts'] },
     );
-    expect(steps.slice(4).map((step) => step.label)).toEqual([
+    expect(steps.slice(5).map((step) => step.label)).toEqual([
       'tests @zilar/mobile',
       'tests @zilar/server',
     ]);
@@ -258,6 +259,49 @@ describe('gateSteps', () => {
 
   it('finds no package for files outside every package', () => {
     expect(packagesTouched(['docs/a.md', 'work/T-1.md'], workspace)).toEqual([]);
+  });
+});
+
+describe('effect ratchet step', () => {
+  const effectOf = (changed: string[], exists?: (file: string) => boolean) =>
+    gateSteps(changed, workspace, 'main', exists === undefined ? {} : { exists }).find(
+      (step) => step.label === 'effect',
+    );
+
+  it('checks the existing changed counted sources against the base, with the devtools tsx', () => {
+    expect(
+      effectOf(
+        ['apps/server/src/a.ts', 'apps/server/src/gone.ts', 'work/T-1.md'],
+        (file) => file !== 'apps/server/src/gone.ts',
+      ),
+    ).toEqual({
+      label: 'effect',
+      command: 'pnpm',
+      args: [
+        '--filter',
+        '@zilar/devtools',
+        'exec',
+        'tsx',
+        'src/effect-map/ratchet-cli.ts',
+        '--base',
+        'main',
+        'apps/server/src/a.ts',
+      ],
+    });
+  });
+
+  it('skips when no changed file is a counted source (a task file, a doc, a test)', () => {
+    expect(effectOf(['work/T-1.md', 'docs/a.md', 'apps/server/src/a.test.ts'])).toMatchObject({
+      label: 'effect',
+      skipReason: 'no source files changed',
+    });
+  });
+
+  it('skips when the only counted source was deleted on the branch', () => {
+    expect(effectOf(['apps/server/src/gone.ts'], () => false)).toMatchObject({
+      label: 'effect',
+      skipReason: 'no source files changed',
+    });
   });
 });
 
