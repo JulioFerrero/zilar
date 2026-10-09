@@ -21,7 +21,7 @@
 //   the same error envelope as `app.onError`; `Cause.defects` carries the
 //   original thrown value, checked with `instanceof HttpError` first.
 
-import { Cause, Context, Effect, Layer, Option } from 'effect';
+import { Cause, Effect, Layer, Option } from 'effect';
 import { HttpRouter, HttpServer, HttpServerRequest, HttpServerResponse } from 'effect/http';
 import type { Logger } from 'pino';
 import type { ServerConfig } from '../config';
@@ -33,37 +33,6 @@ const REQUEST_ID_LIMIT = 255;
 const REQUEST_ID_PATTERN = /[^\w\-=]/;
 
 const CORS_ALLOW_METHODS = 'GET,HEAD,PUT,POST,DELETE,PATCH,QUERY';
-
-// The real TCP socket address never reaches the router through
-// `HttpServerRequest.remoteAddress`: `HttpRouter.toWebHandler` wraps the
-// inbound Web `Request` via `HttpServerRequest.fromWeb`, which sets no
-// `remoteAddressOverride`, so it is always `Option.none()` — even in
-// production. `serve({ fetch })` still calls `fetch(request, env)` with the
-// node bindings as the second argument, so `fetch` reads the address from
-// there and carries it into the dispatch through this tag. Without it every
-// per-IP limiter would share one `'unknown'` bucket.
-class SocketAddressOverride extends Context.Service<SocketAddressOverride, string>()(
-  'zilar/effect/edge/SocketAddressOverride',
-) {}
-
-// The `incoming` half of the `serve({ fetch })` bindings
-// (`HttpBindings | Http2Bindings`): only the socket address is read.
-// Structural on purpose: the edge takes no hono types.
-export interface ServeBindings {
-  readonly incoming?: {
-    readonly socket?: { readonly remoteAddress?: unknown };
-  };
-}
-
-// Same read as the old Hono edge (`getConnInfo(c).remote.address` with the
-// same `'unknown'` fallback): a missing/non-string address means no socket.
-function socketAddressOfBindings(bindings: unknown): string | undefined {
-  if (typeof bindings !== 'object' || bindings === null) {
-    return undefined;
-  }
-  const address = (bindings as ServeBindings).incoming?.socket?.remoteAddress;
-  return typeof address === 'string' && address.length > 0 ? address : undefined;
-}
 
 export interface EdgeAuth {
   handler: (request: Request) => Promise<Response>;
@@ -88,15 +57,14 @@ export interface EdgeRoute {
 }
 
 export interface ZilarEdge {
-  fetch: (request: Request, bindings?: ServeBindings) => Promise<Response>;
+  fetch: (request: Request) => Promise<Response>;
   request: (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
   routes: ReadonlyArray<EdgeRoute>;
   dispose: () => Promise<void>;
   /**
    * The same `appLayer` the web handler uses, so a Node server can serve it
    * (B1.6: `HttpRouter.serve(app.layer, …)` with `NodeHttpServer.layer`).
-   * `fetch`/`request` callers keep the `SocketAddressOverride` path; under
-   * `NodeHttpServer` the dispatch falls back to `request.remoteAddress`, the
+   * Under `NodeHttpServer` the dispatch reads `request.remoteAddress`, the
    * real socket address.
    */
   layer: Layer.Layer<never, unknown, HttpRouter.HttpRouter>;
@@ -338,14 +306,9 @@ export function createEdge(input: CreateEdgeInput): ZilarEdge {
     };
 
     const dispatch = Effect.gen(function* () {
-      // The socket address `serve({ fetch })` saw: the per-request override
-      // `fetch` stamped from the node bindings, else the router's own
-      // `remoteAddress` (always none under `toWebHandler`), else `'unknown'`
-      // — the same fallback as the old Hono edge.
-      const override = yield* Effect.serviceOption(SocketAddressOverride);
-      const socketAddress = Option.isSome(override)
-        ? override.value
-        : Option.getOrElse(request.remoteAddress, () => 'unknown');
+      // The socket address is the Node server's `remoteAddress`, or `'unknown'`
+      // when there is no socket (web-handler callers such as tests).
+      const socketAddress = Option.getOrElse(request.remoteAddress, () => 'unknown');
       // CORS preflight on /api/* answers here, before the origin guard and
       // routing, like the Hono cors middleware (204, echoed request headers,
       // `Vary: Origin`).
@@ -455,16 +418,7 @@ export function createEdge(input: CreateEdgeInput): ZilarEdge {
   const edgeRoutes: ReadonlyArray<EdgeRoute> = routes;
 
   return {
-    // `serve({ fetch })` calls `fetch(request, env)` with the node bindings
-    // as the second argument; the socket address is read from there (see
-    // `SocketAddressOverride`). The parameter stays optional so direct
-    // callers get the `'unknown'` fallback.
-    fetch: (request: Request, bindings?: ServeBindings) => {
-      const address = socketAddressOfBindings(bindings);
-      const requestContext =
-        address === undefined ? undefined : Context.make(SocketAddressOverride, address);
-      return handler(request, requestContext);
-    },
+    fetch: (request: Request) => handler(request),
     request: (requestInput: string | URL | Request, init?: RequestInit) => {
       if (requestInput instanceof Request) {
         return handler(init === undefined ? requestInput : new Request(requestInput, init));

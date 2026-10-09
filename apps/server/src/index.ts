@@ -140,7 +140,7 @@ const auth = createAuth({ db, config, mailer: currentMailer, adminClient, logger
 
 // Runner hub (T-0071): validated here so a misconfiguration fails fast with
 // a single clear message, before the HTTP server starts. The actual listener
-// comes up after `serve()` so the API is not delayed.
+// comes up after the edge server is listening so the API is not delayed.
 assertRunnerHubConfig({
   enabled: config.RUNNER_HUB_ENABLED,
   gatewayUrl: config.LITELLM_BASE_URL ?? DEFAULT_LITELLM_BASE_URL,
@@ -405,8 +405,7 @@ const FORCE_EXIT_MS = 15_000;
 
 // The Effect edge (T-0730) on its own `node:http` server (T-0733, B1.6).
 // `NodeHttpServer` fills `HttpServerRequest.remoteAddress` from the real
-// socket, so the old `serve({ fetch })`-bindings workaround (via
-// `SocketAddressOverride`) is only needed for `fetch` callers such as tests.
+// socket.
 const { port: boundPort, close: closeNodeServer } = await serveEdgeOnNode(app, {
   port: config.PORT,
   connectionGraceMs: CONNECTION_GRACE_MS,
@@ -449,7 +448,7 @@ void gateway.start().catch((error: unknown) => {
   logger.error({ err }, 'agent gateway failed to start');
 });
 
-// Approvals sweeper (T-0087): starts after `serve()` resolves so the API is
+// Approvals sweeper (T-0087): starts after the edge server is listening so the API is
 // already listening, never blocks startup. The handle is held in a variable
 // the shutdown sequence closes. The recorder wraps `recordAudit` so a
 // database write error never propagates into the timer.
@@ -476,7 +475,7 @@ void actionGateway.recoverStuck().catch((error: unknown) => {
   logger.error({ err: message }, 'initial recoverStuck sweep failed');
 });
 
-// Routines scheduler (T-0104): starts after `serve()` resolves when
+// Routines scheduler (T-0104): starts after the edge server is listening when
 // `ROUTINES_ENABLED=true`, with the gateway's `postToChat` (via the same
 // `gatewayRef` closure the announcer uses). T-0105 wires the sandbox as
 // the runner: with the flag on but `TOOLS_ENABLED=false` the builder logs

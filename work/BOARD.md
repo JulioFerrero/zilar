@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-0735](T-0735-drop-serve-bindings-path.md) | cleanup after B1.6: drop the dead serve-bindings socket path; stale serve() comments | in-progress | haiku-5.5 | T-0733 | |
 
 ## Follow-ups
 
@@ -764,3 +763,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0732](T-0732-edge-nits-comment-sweep.md) | sweep: edge nits, errors.ts off hono, api.ts header comments | 2026-10-09 |
 | [T-0733](T-0733-node-http-server-start.md) | B1.6: server starts on NodeHttpServer; @hono/node-server removed | 2026-10-09 |
 | [T-0734](T-0734-web-dockerfile-ui-tokens.md) | fix the production web image: Dockerfile copies packages/ui-tokens | 2026-10-09 |
+| [T-0735](T-0735-drop-serve-bindings-path.md) | cleanup after B1.6: drop the dead serve-bindings path | 2026-10-09 |

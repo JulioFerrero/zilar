@@ -2,7 +2,7 @@
 // `ZilarEdge`'s `layer` on its own `node:http` server, so `index.ts` and
 // tests share one start/stop path instead of reaching for an adapter.
 // `NodeHttpServer` fills `HttpServerRequest.remoteAddress` from the real
-// socket, so no `serve({ fetch })`-bindings workaround is needed.
+// socket.
 
 import { NodeHttpServer } from '@effect/platform-node';
 import { Effect, Layer, ManagedRuntime } from 'effect';

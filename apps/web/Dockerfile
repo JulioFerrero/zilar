@@ -29,7 +29,7 @@ RUN pnpm install --frozen-lockfile
 
 # Now the sources the web app imports (keep this list in sync with what
 # apps/web imports from the workspace: @zilar/chat-core,
-# @zilar/protocol, @zilar/xmpp-core).
+# @zilar/protocol, @zilar/ui-tokens, @zilar/xmpp-core).
 COPY apps/web apps/web
 COPY packages/protocol packages/protocol
 COPY packages/xmpp-core packages/xmpp-core

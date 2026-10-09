@@ -151,47 +151,6 @@ describe('effect edge', () => {
     await edge.dispose();
   });
 
-  it('carries the serve bindings socket address into the module request', async () => {
-    const { createEdge } = await import('./edge');
-    const seen: Array<string> = [];
-    const edge = createEdge({
-      mounts: [
-        {
-          routes: [{ method: 'GET', path: '/api/probe' }],
-          handler: (request: Request) => {
-            const seenRequest = HttpServerRequest.fromWeb(request);
-            const program = Effect.map(HttpServerRequest.HttpServerRequest, (serverRequest) =>
-              socketAddressOf(serverRequest),
-            );
-            return Effect.runPromise(
-              Effect.provideService(program, HttpServerRequest.HttpServerRequest, seenRequest),
-            ).then((address) => {
-              seen.push(address);
-              return new Response('ok');
-            });
-          },
-        },
-      ],
-      auth: { handler: () => Promise.resolve(new Response('not found', { status: 404 })) },
-      config: context.config,
-      logger: context.logger,
-      health: () => Promise.resolve({ status: 200, body: { ok: true } }),
-    });
-    // What `serve({ fetch })` passes as the second argument: the node
-    // bindings whose `incoming.socket` carries the real TCP address.
-    const bindings = { incoming: { socket: { remoteAddress: '203.0.113.7' } } };
-    const response = await edge.fetch(
-      new Request('http://localhost/api/probe', {
-        headers: { [SOCKET_ADDRESS_HEADER]: '198.51.100.99' },
-      }),
-      bindings,
-    );
-    expect(response.status).toBe(200);
-    // The client-forged header is stripped; the socket address wins.
-    expect(seen).toEqual(['203.0.113.7']);
-    await edge.dispose();
-  });
-
   it('answers OPTIONS /api/auth/* with 204 before better-auth, like the old cors middleware', async () => {
     const { createEdge } = await import('./edge');
     let authHits = 0;
