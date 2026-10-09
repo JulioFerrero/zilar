@@ -43,10 +43,10 @@ This is Phase 3 of `docs/audit/effect-100-plan.md` (task WU4, plan line 374), ac
 
 ### What to build
 1. **Write `apps/web/src/routes/LoginPage.test.tsx` first,** against the current code, covering what the page renders and what it does on success and failure. Commit it as "T-0795: tests before".
-2. **Convert the four files** with the pattern. The resend timer becomes an `Effect.sleep` or `Schedule` fiber that is interrupted on unmount, exactly as `apps/web/src/components/AddMachineDialog.tsx` does since T-0776.
+2. **Convert the four files** with the pattern. The resend timer becomes an `Effect.sleep` or `Schedule` fiber that is interrupted on unmount, exactly as `apps/web/src/components/machines/AddMachineDialog.tsx` does since T-0776.
 
 ### Read first
-`AGENTS.md`, `docs/EFFECT_GUIDE.md`, `apps/web/src/lib/effect/use-action.ts`, `apps/web/src/components/AddMachineDialog.tsx`, the four files and their tests, and `apps/web/src/lib/api.ts` (the auth calls they use).
+`AGENTS.md`, `docs/EFFECT_GUIDE.md`, `apps/web/src/lib/effect/use-action.ts`, `apps/web/src/components/machines/AddMachineDialog.tsx`, the four files and their tests, and `apps/web/src/lib/api.ts` (the auth calls they use).
 
 ### Allowed files
 `apps/web/src/auth/AuthProvider.tsx`, `apps/web/src/components/auth/AuthFlow.tsx`, `apps/web/src/routes/LoginPage.tsx`, `apps/web/src/routes/LoginPage.test.tsx`, `apps/web/src/routes/NamePage.tsx`, `work/T-0795-web-auth.md`.
