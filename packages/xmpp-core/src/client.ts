@@ -29,6 +29,7 @@ import { jidLocalPart } from './jid';
 import { DEFAULT_HISTORY_MAX, buildMamQuery, parseMamFin, toHistoryPage } from './mam';
 import { PING_NAMESPACE } from './namespaces';
 import { installStreamManagementAck } from './stream-management';
+import { schedule, type Cancel } from './timers';
 import {
   buildAvailablePresence,
   buildCarbonsEnable,
@@ -142,7 +143,7 @@ type StoredListener = (payload: never) => void;
 type PendingJoin = {
   resolve: () => void;
   reject: (error: Error) => void;
-  timer: ReturnType<typeof setTimeout>;
+  cancel: Cancel;
 };
 
 type PendingQuery = {
@@ -150,13 +151,13 @@ type PendingQuery = {
   messages: ChatMessage[];
   resolve: (page: HistoryPage) => void;
   reject: (error: Error) => void;
-  timer: ReturnType<typeof setTimeout>;
+  cancel: Cancel;
 };
 
 type PendingIq = {
   resolve: (stanza: XmppElement) => void;
   reject: (error: Error) => void;
-  timer: ReturnType<typeof setTimeout>;
+  cancel: Cancel;
 };
 
 let idSequence = 0;
@@ -250,9 +251,9 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
   let coldAttemptSeen = false;
   // The keepalive ping id while its reply is pending, if any.
   let keepalivePingId: string | undefined;
-  let keepaliveIdleTimer: ReturnType<typeof setTimeout> | undefined;
-  let keepaliveReplyTimer: ReturnType<typeof setTimeout> | undefined;
-  let watchdogTimer: ReturnType<typeof setTimeout> | undefined;
+  let keepaliveIdleTimer: Cancel | undefined;
+  let keepaliveReplyTimer: Cancel | undefined;
+  let watchdogTimer: Cancel | undefined;
   // How many times the watchdog replaced the client since the last online.
   let watchdogRestarts = 0;
   let latestToken: string | undefined;
@@ -260,7 +261,7 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
 
   let connectPromise: Promise<void> | undefined;
   let settleConnect: { resolve: () => void; reject: (error: Error) => void } | undefined;
-  let connectTimer: ReturnType<typeof setTimeout> | undefined;
+  let connectTimer: Cancel | undefined;
 
   const listeners = new Map<EventName, Set<StoredListener>>();
   const joinedRooms = new Map<string, string>();
@@ -321,17 +322,17 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
 
   function stopWatchdog(): void {
     if (watchdogTimer !== undefined) {
-      clearTimeout(watchdogTimer);
+      watchdogTimer();
       watchdogTimer = undefined;
     }
   }
 
   function armWatchdog(): void {
     if (watchdogTimer !== undefined || !desiredOnline || watchdogMs() <= 0) return;
-    watchdogTimer = setTimeout(() => {
+    watchdogTimer = schedule(watchdogMs(), () => {
       watchdogTimer = undefined;
       void restartStuckClient();
-    }, watchdogMs());
+    });
   }
 
   // The client has not come online in time: drop it and start a fresh one.
@@ -440,7 +441,7 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
 
   function finishConnect(error?: Error): void {
     if (connectTimer !== undefined) {
-      clearTimeout(connectTimer);
+      connectTimer();
       connectTimer = undefined;
     }
     const settle = settleConnect;
@@ -495,7 +496,7 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
   function rejectPendingIqs(makeError: () => XmppCoreError): void {
     for (const [id, pending] of pendingIqs) {
       pendingIqs.delete(id);
-      clearTimeout(pending.timer);
+      pending.cancel();
       pending.reject(makeError());
     }
   }
@@ -509,11 +510,11 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
   function stopKeepalive(): void {
     keepalivePingId = undefined;
     if (keepaliveIdleTimer !== undefined) {
-      clearTimeout(keepaliveIdleTimer);
+      keepaliveIdleTimer();
       keepaliveIdleTimer = undefined;
     }
     if (keepaliveReplyTimer !== undefined) {
-      clearTimeout(keepaliveReplyTimer);
+      keepaliveReplyTimer();
       keepaliveReplyTimer = undefined;
     }
   }
@@ -538,10 +539,10 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
   function startKeepalive(): void {
     stopKeepalive();
     if (!keepaliveEnabled() || !desiredOnline) return;
-    keepaliveIdleTimer = setTimeout(() => {
+    keepaliveIdleTimer = schedule(options.keepaliveMs ?? DEFAULT_KEEPALIVE_MS, () => {
       keepaliveIdleTimer = undefined;
       void sendKeepalivePing();
-    }, options.keepaliveMs ?? DEFAULT_KEEPALIVE_MS);
+    });
   }
 
   async function sendKeepalivePing(): Promise<void> {
@@ -556,11 +557,14 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
       reconnectDeadConnection();
       return;
     }
-    keepaliveReplyTimer = setTimeout(() => {
-      keepaliveReplyTimer = undefined;
-      keepalivePingId = undefined;
-      reconnectDeadConnection();
-    }, options.keepaliveTimeoutMs ?? DEFAULT_KEEPALIVE_TIMEOUT_MS);
+    keepaliveReplyTimer = schedule(
+      options.keepaliveTimeoutMs ?? DEFAULT_KEEPALIVE_TIMEOUT_MS,
+      () => {
+        keepaliveReplyTimer = undefined;
+        keepalivePingId = undefined;
+        reconnectDeadConnection();
+      },
+    );
   }
 
   // The keepalive found a dead connection: tear the socket down. The
@@ -583,7 +587,7 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
     if (keepalivePingId === undefined || keepalivePingId !== id) return false;
     keepalivePingId = undefined;
     if (keepaliveReplyTimer !== undefined) {
-      clearTimeout(keepaliveReplyTimer);
+      keepaliveReplyTimer();
       keepaliveReplyTimer = undefined;
     }
     // A result or an error both prove the connection is alive: a fresh idle
@@ -756,11 +760,11 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
         const type = stanza.attrs['type'];
         if (type === 'error') {
           pendingJoins.delete(from);
-          clearTimeout(pending.timer);
+          pending.cancel();
           pending.reject(new JoinRejected({ condition: stanzaErrorCondition(stanza) }));
         } else if (type === undefined) {
           pendingJoins.delete(from);
-          clearTimeout(pending.timer);
+          pending.cancel();
           pending.resolve();
         }
       }
@@ -796,7 +800,7 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
       const pending = pendingIqs.get(id);
       if (pending !== undefined) {
         pendingIqs.delete(id);
-        clearTimeout(pending.timer);
+        pending.cancel();
         if (stanza.attrs['type'] === 'error') {
           pending.reject(new IqFailed({ condition: stanzaErrorCondition(stanza) }));
         } else {
@@ -832,7 +836,7 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
     for (const [queryId, pending] of pendingQueries) {
       if (pending.iqId !== id) continue;
       pendingQueries.delete(queryId);
-      clearTimeout(pending.timer);
+      pending.cancel();
       if (stanza.attrs['type'] === 'error') {
         pending.reject(new HistoryFailed({ condition: stanzaErrorCondition(stanza) }));
         return;
@@ -878,9 +882,9 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
 
     connectPromise = new Promise<void>((resolve, reject) => {
       settleConnect = { resolve, reject };
-      connectTimer = setTimeout(() => {
+      connectTimer = schedule(CONNECT_TIMEOUT_MS, () => {
         finishConnect(new ConnectTimeout());
-      }, CONNECT_TIMEOUT_MS);
+      });
     });
 
     if (stuck) {
@@ -922,16 +926,16 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
     const key = `${roomJid}/${nick}`;
 
     await new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => {
+      const cancel = schedule(JOIN_TIMEOUT_MS, () => {
         pendingJoins.delete(key);
         reject(new JoinTimeout({ roomJid }));
-      }, JOIN_TIMEOUT_MS);
-      pendingJoins.set(key, { resolve, reject, timer });
+      });
+      pendingJoins.set(key, { resolve, reject, cancel });
       current.send(buildJoinPresence(roomJid, nick)).catch((error: unknown) => {
         const pending = pendingJoins.get(key);
         if (pending === undefined) return;
         pendingJoins.delete(key);
-        clearTimeout(pending.timer);
+        pending.cancel();
         reject(new JoinSendFailed({ roomJid, cause: errorMessage(error) }));
       });
     });
@@ -1043,17 +1047,17 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
     });
 
     return new Promise<HistoryPage>((resolve, reject) => {
-      const timer = setTimeout(() => {
+      const cancel = schedule(HISTORY_TIMEOUT_MS, () => {
         pendingQueries.delete(queryId);
         reject(new HistoryTimeout({ chatJid }));
-      }, HISTORY_TIMEOUT_MS);
-      pendingQueries.set(queryId, { iqId, messages: [], resolve, reject, timer });
+      });
+      pendingQueries.set(queryId, { iqId, messages: [], resolve, reject, cancel });
 
       current.send(query).catch((error: unknown) => {
         const pending = pendingQueries.get(queryId);
         if (pending === undefined) return;
         pendingQueries.delete(queryId);
-        clearTimeout(pending.timer);
+        pending.cancel();
         reject(new HistorySendFailed({ chatJid, cause: errorMessage(error) }));
       });
     });
@@ -1072,10 +1076,10 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
     });
 
     return new Promise<UploadSlot>((resolve, reject) => {
-      const timer = setTimeout(() => {
+      const cancel = schedule(UPLOAD_TIMEOUT_MS, () => {
         pendingIqs.delete(id);
         reject(new UploadSlotTimeout());
-      }, UPLOAD_TIMEOUT_MS);
+      });
       pendingIqs.set(id, {
         resolve: (reply) => {
           const slot = parseUploadSlot(reply);
@@ -1086,14 +1090,14 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
           resolve(slot);
         },
         reject,
-        timer,
+        cancel,
       });
 
       current.send(stanza).catch((error: unknown) => {
         const pending = pendingIqs.get(id);
         if (pending === undefined) return;
         pendingIqs.delete(id);
-        clearTimeout(pending.timer);
+        pending.cancel();
         reject(new UploadSlotFailed({ cause: errorMessage(error) }));
       });
     });
@@ -1115,21 +1119,21 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
         : buildPushDisable({ id, pushJid: options.pushJid, node: options.node });
 
     return new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => {
+      const cancel = schedule(PUSH_TIMEOUT_MS, () => {
         pendingIqs.delete(id);
         reject(new PushToggleTimeout());
-      }, PUSH_TIMEOUT_MS);
+      });
       pendingIqs.set(id, {
         resolve: () => resolve(),
         reject,
-        timer,
+        cancel,
       });
 
       current.send(stanza).catch((error: unknown) => {
         const pending = pendingIqs.get(id);
         if (pending === undefined) return;
         pendingIqs.delete(id);
-        clearTimeout(pending.timer);
+        pending.cancel();
         reject(new PushToggleFailed({ cause: errorMessage(error) }));
       });
     });
