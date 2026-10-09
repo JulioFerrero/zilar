@@ -51,7 +51,7 @@ This page is the short version for conversion workers. Read it, your task file a
 
 - **Run only your own tests:** your files' test files and the nearest folder, with `--reporter=dot`. Run them 3 times if the code has timers or concurrency.
 - **Do not run** the whole suite or `pnpm gate`: the lead runs one combined check for the whole wave and sends you every failure.
-- **Before you commit:** run `pnpm exec prettier --write <your files>` and the package typecheck (`pnpm --filter <pkg> exec tsc --noEmit -p .`).
+- **Before you commit:** run `pnpm exec prettier --write <your files>`, `pnpm exec oxlint <your files>` (it must be clean; the React rules forbid, for example, reading `ref.current` during render) and the package typecheck (`pnpm --filter <pkg> typecheck`).
 - **Existing tests:** do not edit them unless the task allows it. A task that says "tests first" commits them on the old code before converting.
 
 ## The Report
