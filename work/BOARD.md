@@ -9,6 +9,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
+| [T-0737](T-0737-sql-adapter-pg-timestamps.md) | D2 prep: auth adapter timestamps correct on real pg (PGlite-only read fix, UTC writes) + gated pg test | in-progress | haiku-5.5 | | |
 
 ## Follow-ups
 
