@@ -183,6 +183,22 @@ describe('warnOnEmptyStorageDir', () => {
   });
 });
 
+describe('ensureWritableDir default logging', () => {
+  it('names the given env var in the created-directory warning', async () => {
+    const parent = await mkdtemp(join(tmpdir(), 'zilar-startup-'));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const dir = join(parent, 'backgrounds');
+      await ensureWritableDir(dir, 'BACKGROUND_STORAGE_DIR');
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn).toHaveBeenCalledWith(`BACKGROUND_STORAGE_DIR did not exist; created ${dir}`);
+    } finally {
+      warn.mockRestore();
+      await rm(parent, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('ensureWritableDir failures', () => {
   it('fails clearly when the mkdir fails', async () => {
     const onError = vi.fn();

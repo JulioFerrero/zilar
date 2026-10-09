@@ -12,6 +12,7 @@ import { HttpError } from '../errors';
 import {
   AudioUnavailable,
   fetchAndTranscribe,
+  fetchAndTranscribeAsEffect,
   NotAudio,
   shareInFlight,
   transcriptErrorToHttp,
@@ -185,26 +186,19 @@ describe('pipeline timeouts', () => {
   } as const;
 
   it('a fetch that never starts maps to 502 audio_unavailable once its window passes', async () => {
-    const program = Effect.forkChild(
-      Effect.promise(() =>
-        fetchAndTranscribe({
+    // The Effect form runs on the TestClock, so the 20 s window is virtual.
+    const program = Effect.gen(function* () {
+      const fiber = yield* Effect.forkChild(
+        fetchAndTranscribeAsEffect({
           ...input,
           fetchAudio: () => new Promise<{ body: Uint8Array; contentType: string }>(() => {}),
           transcribe: () => Promise.resolve({ text: 'hi', language: null }),
-        }),
-      ),
-    ).pipe(
-      Effect.flatMap((fiber) =>
-        Effect.gen(function* () {
-          yield* TestClock.adjust(Duration.millis(VOICE_FETCH_TIMEOUT_MS + 1));
-          return yield* Fiber.join(fiber);
-        }),
-      ),
-    );
-    const error = await Effect.runPromise(program.pipe(Effect.provide(TestClock.layer()))).then(
-      () => null,
-      (caught: unknown) => caught,
-    );
+        }).pipe(Effect.flip),
+      );
+      yield* TestClock.adjust(Duration.millis(VOICE_FETCH_TIMEOUT_MS + 1));
+      return yield* Fiber.join(fiber);
+    });
+    const error = await Effect.runPromise(program.pipe(Effect.provide(TestClock.layer())));
     expect(error).toMatchObject({
       name: 'HttpError',
       status: 502,

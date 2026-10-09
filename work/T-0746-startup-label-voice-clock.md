@@ -1,7 +1,7 @@
 ---
 id: T-0746
 title: "follow-ups from the 10-09 deploy: ensureWritableDir's default 'created' warning names STICKER_STORAGE_DIR for every dir (use envName); the voice pipeline timeout test waits 20 s of real time because TestClock never reaches fetchAndTranscribe's own runPromise (drive the Effect form instead)"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0746-startup-label-voice-clock
 model: auto
@@ -63,4 +63,32 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**Done.** Both parts built as specified, inside the Allowed files only.
+
+### Changes
+- `apps/server/src/startup.ts`: `defaultDeps(envName)` takes the env name; the created-dir warning reads `${envName} did not exist; created ${dir}`; `ensureWritableDir` passes `envName` to `defaultDeps`.
+- `apps/server/src/startup.test.ts`: new `ensureWritableDir default logging` test. It calls `ensureWritableDir` with no custom deps on a new temp dir under `os.tmpdir()`, spies `console.warn`, and asserts the message names `BACKGROUND_STORAGE_DIR`. The spy is restored and the temp dir removed in `finally`.
+- `apps/server/src/voice-transcription/pipeline.ts`: new exported `fetchAndTranscribeAsEffect(input)`, which is `fetchAndTranscribeEffect(input)` piped through the same `catchTags` to `HttpError`. `fetchAndTranscribe` is now `Effect.runPromise(fetchAndTranscribeAsEffect(input))`. Behaviour is unchanged.
+- `apps/server/src/voice-transcription/pipeline.test.ts`: the "a fetch that never starts" test forks `fetchAndTranscribeAsEffect(...).pipe(Effect.flip)` with `Effect.forkChild` under `TestClock.layer()`, adjusts the clock by `VOICE_FETCH_TIMEOUT_MS + 1`, and joins the fiber. It asserts the same `HttpError` 502 `audio_unavailable`. The `fetchAndTranscribe` import stays because the other tests use it.
+- `work/T-0746-startup-label-voice-clock.md`: this Report and `status: review`.
+
+### Commands and results
+- `pnpm install`: done, no errors.
+- Before the change, `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/startup.test src/voice-transcription`: 5 files passed, 51 tests passed, 0 failed, 42.13 s. The script sets `--testTimeout=30000`, so the slow test passed here and did not time out locally.
+- After the change, the same command: 5 files passed, 52 tests passed, 0 failed, 15.81 s. The count is 51 + 1 new startup test.
+- Changed voice test under the default 5 s timeout: `cd apps/server && pnpm exec vitest run --maxWorkers=2 --reporter=verbose src/voice-transcription/pipeline.test.ts -t "never starts"`: 1 passed, 7 skipped, the test took 4 ms (the file ran in 490 ms).
+- I did not measure the test's duration before the change. The spec's 20,011 ms figure is from CI run 37890484924, and my local run did not reproduce it because of the 30 s script timeout.
+- `pnpm exec prettier --write` on the four source files: all unchanged.
+- `pnpm gate` from the worktree root, with output checked for the summary lines: `PASS install (frozen)`, `PASS format`, `PASS lint`, `PASS typecheck`, `PASS tests @zilar/server`, `scope: every changed file is inside the Allowed files`, `GATE PASS`. The gate reported `4 changed file(s) against main`.
+
+### Problems, deviations, open questions
+- No deviations from the spec. The gate log was written to a temp file in the worktree and deleted before the commit.
+- Unsure: `fetchAndTranscribeAsEffect` is annotated `EffectType.Effect<string, HttpError, never>`, matching the explicit annotations used elsewhere in `pipeline.ts`. The typecheck passes, but I did not check whether the lead prefers the annotation to be dropped.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Haiku 5.5, in one round (about 3.2 min). The lead reviewed the diff directly.
+- **The startup log:** `defaultDeps(envName)` now names the right variable, and a new test covers it.
+- **The voice pipeline:** `fetchAndTranscribeAsEffect` is the exported Effect form with the same `catchTags` mapping, and `fetchAndTranscribe` stays a thin Promise boundary.
+- **The timeout test:** it forks the Effect under `TestClock` and now takes 4 ms instead of 20 s of real time.
+- **Tests:** 52 pass, one more than before, and the gate passed. The explicit return type is fine.
