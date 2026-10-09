@@ -1,7 +1,7 @@
 ---
 id: T-0835
 title: "WS1-WS11: the web chat store on Effect — one Scope for the store lifetime, concerns as Effect modules under store/effects/, XmppCoreEffect, same StoreApi"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0835-web-store
 model: auto
@@ -61,4 +61,42 @@ pnpm --filter @zilar/web typecheck
 
 ## Report (written by the worker when done)
 
+**Steps done: all 9.** One commit per step, plus the sweep commit below (steps 1 to 8 are separate commits, step 9 is the last commit).
+
+| Step | Commit message | Main files |
+| --- | --- | --- |
+| 1 Ports | `T-0835: Ports` | `effects/ports.ts`, `constants.ts`, `chatRows.ts`, `runtime.ts` |
+| 2 Lifecycle | `T-0835: Lifecycle` | `effects/ctx.ts`, `util.ts`, `lifecycle.ts` |
+| 3 Polling and the draft stream | `T-0835: Polling and the draft stream` | `effects/polling.ts`, `pins.ts` |
+| 4 History, previews, chat list, `openChat` | `T-0835: History, previews, chat list refresh and openChat` | `effects/history.ts` |
+| 5 Send A and send B | `T-0835: Send A and send B` | `effects/send.ts`, `sendFailure.ts` |
+| 6 Groups, topics, channels, roles, members | `T-0835: Groups, topics, channels, roles, members` | `effects/groups.ts`, `groupMembers.ts` |
+| 7 Incoming events, edits, reactions, typing, prefs | `T-0835: Incoming events, edits, reactions, typing, chat prefs` | `effects/incoming.ts`, `messageActions.ts`, `prefs.ts`, `badge.ts` |
+| 8 Pins and media panel | `T-0835: Pins and media panel` | `effects/pins.ts` |
+| 9 Sweep and WS11 | `T-0835: Sweep and mock store` | `effects/reads.ts`, `mockStore.ts`, `store.ts` |
+
+**effect:map kinds** (`pnpm effect:map`, last run at the sweep):
+- `apps/web/src/store/realStore.ts`: `plain` (no `async`, `await`, `try`, `.then`, `.catch` or timers left; the only closure code left is the plain id-alias, edit, reaction, send-status and name bookkeeping, which the spec says stays plain).
+- `apps/web/src/store/store.ts`: `plain` (types, folder helpers, re-exports). `apps/web/src/store/mockStore.ts` carries the `// effect-plain:` marker as its first line.
+- `effect`: `effects/badge.ts`, `groupMembers.ts`, `groups.ts`, `history.ts`, `incoming.ts`, `lifecycle.ts`, `messageActions.ts`, `pins.ts`, `polling.ts`, `ports.ts`, `prefs.ts`, `reads.ts`, `runtime.ts`, `send.ts`, `util.ts`.
+- `plain` (not `effect`): `effects/chatRows.ts`, `constants.ts`, `ctx.ts`, `sendFailure.ts`. These are pure data, types and mapping functions with no effects to run; I did not add an `effect` import only to change the label. This is the one place where the acceptance line "every new `effects/*.ts` is `effect`" is not met literally.
+
+**Tests:** the original 196 store tests pass unchanged. With the new tests there are 17 test files and 222 tests, and the store run was green 3 of 3 times at every step (counts: 196 baseline, 200 after step 1, 205, 208, 211 after step 4, 211 through step 8, 222 after the new `sendFailure`, `chatRows` and `reads` tests). The web typecheck is clean, and `oxlint` on every changed file is clean (0 errors). I ran only the Checks, never the whole suite and never `pnpm gate`.
+
+**Design in one paragraph.** The store has one lazily opened Scope (`start` to `stop`), a session Scope per boot attempt (`start`, `retryChats`) and a per-connection Scope inside it. `FiberSet`/`FiberMap` runners start fibers synchronously, so the synchronous parts of `openAtMessage`, `react` and the draft tests keep their timing. The effect modules take `ctx` (state accessors, ports, lifetime and the plain helpers in `ctx.k`). The core's event listeners stay plain synchronous callbacks, because the tests' fake cores emit synchronously.
+
+**Behaviour differences:**
+1. In-flight work now belongs to the store Scope, so `stop()` interrupts it. Before, a Promise that was already running (a text, voice, attachment, sticker or forward send, a reaction/edit/delete send, a group-member load) kept going after `stop()` and could still write state or flip a bubble to `failed`; now it ends at `stop()`. No test depends on the old behaviour. A request that is already on the wire is still sent; only its later effect on the store is dropped.
+2. The 60 s send deadline (`SEND_TIMEOUT_MS`, same value, same `timed_out` reason) is now a fiber that waits on a `Deferred` with `timeoutOrElse`, not a `setTimeout`. The run-token rules are the same: a retry replaces the previous deadline, a late result from an older run is ignored, and `stop()` and `deleteFailedMessage` drop the deadline.
+3. The badge sync and the notification dismiss run as detached fibers (not tied to `stop()`, like the Promises they replace). Their result and their errors are still ignored.
+4. Otherwise none: texts, order of side effects, retry delays, timeouts and the moment of every `set` are the same, and the actions reject with the original error value.
+
+**Unsure / for Julio:** the highest-risk flows (connect and reconnect, history paging, sending text/voice/attachment, and stop/start) are covered by the existing fake-core tests but should be checked live before the next deploy, as the spec says. Difference 1 is the one I would watch: sign out and sign in again, and send during a reconnect.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Sonnet 5.5 (chain). The lead reviewed the Report.
+- **Shape:** 9 commits, one per step. `realStore.ts` has no async, try or timers left, and its concerns live in `store/effects/`. `createChatStore` moved to `mockStore.ts` (effect-plain marker, as decision D3 allows), and `store.ts` re-exports it, so no import changed. `StoreApi` is unchanged.
+- **Lead check, rebased on main:** oxlint is clean, the web typecheck passes, and the full web suite gives 1943 passed. Four helper files with only data and pure functions are `plain`, which the 100% rule accepts.
+- **Behaviour:** `stop()` now also interrupts in-flight sends, reaction, edit and delete sends, and member loads (the same as mobile T-0836). The 60 s send deadline is a fiber with the same value and reasons.
+- **Before the next deploy:** Julio checks live sign out and back in, connect and reconnect, history paging, and sending during a reconnect.

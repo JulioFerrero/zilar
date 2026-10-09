@@ -17,445 +17,103 @@ import type {
 import {
   applyEdit,
   applyReaction,
-  canDeleteMessage,
-  canEditMessage,
   editsFor,
   emptyEdits,
   emptyReactions,
   mergeEdits,
   mergeTargets,
-  mentionsForTrimmedText,
-  rebaseMentions,
   resolveEdits,
   sortFolders,
   summarize,
 } from '@zilar/chat-core';
-import type { ForwardOrigin, Payload } from '@zilar/protocol';
+import { type ChatMessage, type XmppCore } from '@zilar/xmpp-core';
 import {
-  AttachmentSchema,
-  ForwardOriginSchema,
-  PayloadSchema,
-  StickerSchema,
-  VoiceMetaSchema,
-  isValid,
-} from '@zilar/protocol';
-import { clearChatListCache, readChatListCache, writeChatListCache } from './chatListCache';
+  advanceStatus,
+  clearFailure,
+  moveChatToTop,
+  sortByRecency,
+  sortMessages,
+  summariesFor,
+} from './effects/chatRows';
 import {
-  createXmppCore,
-  type ChatMessage,
-  type Occupant,
-  type PresenceEvent,
-  type XmppCore,
-  type XmppCoreOptions,
-} from '@zilar/xmpp-core';
+  loadOlder as loadOlderInStore,
+  openAtMessage as openAtMessageEffect,
+  openChat as openChatInStore,
+  openHistory as openHistoryEffect,
+  scheduleChatsRefresh,
+} from './effects/history';
+import {
+  loadChatMedia,
+  pinMessage,
+  refreshPinsFor as refreshPinsForEffect,
+  setPushPair,
+  unpinMessage,
+} from './effects/pins';
+import type { SendRun, StoreCtx } from './effects/ctx';
+import { loadGroupMembersInBackground } from './effects/groupMembers';
+import { deleteForEveryone, editMessage, react, sendTyping } from './effects/messageActions';
+import {
+  refreshChatPrefs,
+  refreshDefaultBackground,
+  setArchived,
+  setChatBackground,
+  setChatBackgroundImage,
+  setDefaultBackground,
+  setDefaultBackgroundImage,
+  setMuted,
+  setPinned,
+} from './effects/prefs';
+import {
+  addGroupAi,
+  addTopicAi,
+  addTopicMember,
+  changeChannelRole,
+  createChannel as createChannelEffect,
+  createGroup as createGroupEffect,
+  createInvite as createInviteEffect,
+  createTopic,
+  joinPublicGroup,
+  leaveChannel,
+  leaveTopic,
+  patchTopic,
+  refreshGeneralTopic,
+  refreshTopicRow,
+  removeGroupAi,
+  removeTopicAi,
+  removeTopicMember,
+  setGroupBackground,
+  setGroupListener,
+  setGroupVisibility,
+  setMembersCanCreateTopics,
+  setTopicRoles,
+} from './effects/groups';
+import {
+  deleteFailedMessage,
+  forwardMessages,
+  retryAttachment,
+  retrySticker,
+  retryVoice,
+  sendAttachment,
+  sendSticker,
+  sendText,
+  sendVoice,
+} from './effects/send';
+import { retryBoot, signOutStore, startStore, stopStore } from './effects/lifecycle';
+import { portsLayer, readPorts, type RealStoreDeps } from './effects/ports';
+import { makeLifetime } from './effects/runtime';
 import { createAtomStore, type StoreApi } from './atomStore';
-import {
-  ApiError,
-  addGroupAi as addGroupAiRequest,
-  archiveTopic as archiveTopicRequest,
-  addTopicAi as addTopicAiRequest,
-  addTopicMember as addTopicMemberRequest,
-  changeGroupMemberRole as changeGroupMemberRoleRequest,
-  chatEntryTopics,
-  createGroup as createGroupRequest,
-  createGroupInviteLink as createGroupInviteLinkRequest,
-  createInvite as createInviteRequest,
-  createTopic as createTopicRequest,
-  getChats,
-  getChatBackgroundDefault as getChatBackgroundDefaultRequest,
-  getContacts,
-  getGroup,
-  getMe,
-  getTopic as getTopicRequest,
-  getXmppToken,
-  joinByLink as joinByLinkRequest,
-  joinPublicGroup as joinPublicGroupRequest,
-  listAis as listAisRequest,
-  listChatPrefs as listChatPrefsRequest,
-  listGroupInviteLinks as listGroupInviteLinksRequest,
-  listGroupMembers as listGroupMembersRequest,
-  listGroupTopics as listGroupTopicsRequest,
-  lookupGroupByHandle as lookupGroupByHandleRequest,
-  listPins as listPinsRequest,
-  listChatMedia as listChatMediaRequest,
-  listTopicAis as listTopicAisRequest,
-  listTopicMembers as listTopicMembersRequest,
-  patchTopic as patchTopicRequest,
-  pinMessage as pinMessageRequest,
-  previewJoinLink as previewJoinLinkRequest,
-  putChatBackgroundDefault as putChatBackgroundDefaultRequest,
-  putChatPref as putChatPrefRequest,
-  removeGroupAi as removeGroupAiRequest,
-  removeGroupMember as removeGroupMemberRequest,
-  removeTopicAi as removeTopicAiRequest,
-  removeTopicMember as removeTopicMemberRequest,
-  revokeGroupInviteLink as revokeGroupInviteLinkRequest,
-  searchDirectory as searchDirectoryRequest,
-  setGroupBackground as setGroupBackgroundRequest,
-  setGroupListener as setGroupListenerRequest,
-  setGroupVisibility as setGroupVisibilityRequest,
-  setMembersCanCreateTopics as setMembersCanCreateTopicsRequest,
-  setTopicRoles as setTopicRolesRequest,
-  unpinMessage as unpinMessageRequest,
-  type ChatEntry,
-  type ChatPref,
-  type ChatBackgroundChoice,
-  type Contact,
-  type CreateGroupInviteLinkInput,
-  type CreatedInviteLink,
-  type CreateTopicInput,
-  type DirectoryEntry,
-  type DirectoryPage,
-  type GroupBackground,
-  type GroupDetail,
-  type GroupInviteLink,
-  type GroupMember,
-  type Invite,
-  type JoinPreview,
-  type JoinResult,
-  type ListChatMediaInput,
-  type Me,
-  type MediaPage,
-  type PatchTopicInput,
-  type Pin,
-  type PinMessageInput,
-  type PublicAi,
-  type PublicJoinResult,
-  type PutChatPrefInput,
-  type Topic,
-  type TopicAi,
-  type TopicMember,
-  type SetGroupListenerInput,
-  type SetTopicRolesInput,
-  type XmppToken,
-} from '@/lib/api';
-import { authClient } from '@/lib/auth';
-import { resetHandleGateDismissal } from '@/lib/handleGate';
-import { resetIsServerOwnerCache } from '@/lib/useIsServerOwner';
-import {
-  subscribeToDrafts,
-  type DraftEndEvent,
-  type DraftHubEvent,
-  type OpenDraftStream,
-} from '@/lib/drafts';
-import { defaultVoicePort, type VoicePort } from '@/lib/voice';
-import {
-  cleanFilename,
-  defaultAttachmentPort,
-  isTrustedMediaUrl,
-  trustedMediaHosts,
-  type AttachmentPort,
-  type MediaTokenShape,
-} from '@/lib/attachments';
-import type { ChatStoreState, ConnectionStatus, DraftState } from './store';
-import { applyChatPrefs, mutedUntilFor } from '@/lib/chatPrefs';
-import { dismissChatNotifications, totalBadgeUnread, updateAppBadge } from '@/lib/push';
+import { type ChatEntry, type GroupDetail, type Me } from '@/lib/api';
+import { isTrustedMediaUrl, trustedMediaHosts, type MediaTokenShape } from '@/lib/attachments';
+import type { ChatStoreState } from './store';
 
-const LAST_READ_PREFIX = 'zilar:lastRead:';
-const PREVIEW_HISTORY_MAX = 1;
-const PAGE_HISTORY_MAX = 50;
-const TYPING_CLEAR_MS = 5000;
-const CHAT_REFRESH_DEBOUNCE_MS = 500;
-// Refetch `/api/chats` every 60 s while the tab is visible (T-0111), so a
-// topic created, made private, or where I was removed appears or disappears
-// without a reload.
-export const TOPIC_REFRESH_INTERVAL_MS = 60_000;
-// Waits between XMPP connect attempts after a failed token or login.
-export const CONNECT_RETRY_DELAYS_MS = [2_000, 5_000, 15_000, 30_000, 60_000];
+export { CONNECT_RETRY_DELAYS_MS, TOPIC_REFRESH_INTERVAL_MS } from './effects/constants';
+export { mergeWithPainted, summariesFor } from './effects/chatRows';
 
-// A send that neither succeeds nor fails within this long is marked failed
-// with the reason `timed_out`, so a hung request cannot sit on the clock.
-export const SEND_TIMEOUT_MS = 60_000;
+export { SEND_TIMEOUT_MS } from './effects/constants';
+export { sendFailureReasonFor } from './effects/sendFailure';
+export { DRAFT_END_FALLBACK_MS, DRAFT_IDLE_MS } from './effects/constants';
 
-/**
- * Maps any send-pipeline error to a fixed user-safe `SendFailureReason`
- * (T-0168). Raw error text, URLs and tokens never reach the UI or the logs:
- * the tables below read only the error class (`VoiceError`/`AttachmentError`
- * code, HTTP status, offline state).
- */
-export function sendFailureReasonFor(error: unknown, offline: boolean): SendFailureReason {
-  if (offline) {
-    return 'network';
-  }
-  const code = errorCodeOf(error);
-  if (code === 'too_large' || code === 'voice_too_large' || code === 'empty_file') {
-    return 'too_large';
-  }
-  if (code === 'unsupported' || code === 'voice_empty' || code === 'invalid_response') {
-    return 'unsupported_file';
-  }
-  if (code === 'convert_failed' || code === 'voice_failed' || code.startsWith('voice_')) {
-    return 'server_unavailable';
-  }
-  if (code === 'upload_refused' || code === 'upload_failed') {
-    return 'upload_refused';
-  }
-  if (code === 'timed_out') {
-    return 'timed_out';
-  }
-  if (code === 'network_error' || code === 'network') {
-    return 'network';
-  }
-  const status = httpStatusOf(error);
-  if (status !== undefined) {
-    if (status === 413) {
-      return 'too_large';
-    }
-    if (status === 415) {
-      return 'unsupported_file';
-    }
-    if (status === 403 || status === 404 || status === 409) {
-      return 'upload_refused';
-    }
-    if (status >= 500) {
-      return 'server_unavailable';
-    }
-    return 'network';
-  }
-  if (error instanceof Error && /timed out|timeout|aborted/i.test(error.message)) {
-    return 'timed_out';
-  }
-  return 'network';
-}
-
-/** The typed `code` of a `VoiceError`/`AttachmentError`, or `''`. */
-function errorCodeOf(error: unknown): string {
-  if (error !== null && typeof error === 'object' && 'code' in error) {
-    const code = (error as { code?: unknown }).code;
-    return typeof code === 'string' ? code : '';
-  }
-  return '';
-}
-
-/** The HTTP status of an `ApiError`, or undefined. */
-function httpStatusOf(error: unknown): number | undefined {
-  if (error !== null && typeof error === 'object' && 'status' in error) {
-    const status = (error as { status?: unknown }).status;
-    return typeof status === 'number' ? status : undefined;
-  }
-  return undefined;
-}
-
-// A finished draft is kept until its final XMPP message arrives. If that never
-// happens (XMPP down), it is dropped after this long so it cannot stick.
-export const DRAFT_END_FALLBACK_MS = 5_000;
-
-// A draft that sees no further event for this long is stale (e.g. the server
-// restarted mid-turn); the idle timer drops it rather than leaving it forever.
-export const DRAFT_IDLE_MS = 60_000;
-
-// Finished turn ids are remembered only to ignore a late `draft`. The set is
-// capped so it cannot grow for the life of the tab.
-const FINISHED_TURNS_MAX = 50;
-
-// Records which final message took over a draft's turn, capped like the
-// finished-turn set. Insertion order is the cap order.
-function rememberFinishedDraftMessage(
-  record: Record<string, string>,
-  messageId: string,
-  turnId: string,
-): Record<string, string> {
-  const next = { ...record, [messageId]: turnId };
-  const keys = Object.keys(next);
-  if (keys.length > FINISHED_TURNS_MAX) {
-    for (const key of keys.slice(0, keys.length - FINISHED_TURNS_MAX)) {
-      delete next[key];
-    }
-  }
-  return next;
-}
-
-export interface ApiClient {
-  getMe(): Promise<Me>;
-  getChats(): Promise<ChatEntry[]>;
-  getContacts(): Promise<Contact[]>;
-  getGroup(groupId: string): Promise<GroupDetail>;
-  getXmppToken(): Promise<XmppToken>;
-  createGroup(input: {
-    title: string;
-    memberIds: string[];
-    kind?: 'group' | 'channel';
-    description?: string;
-    // T-0164: `public` creates the group with a handle in one transaction.
-    visibility?: 'private' | 'public';
-    handle?: string;
-  }): Promise<GroupDetail>;
-  listGroupMembers(groupId: string): Promise<GroupMember[]>;
-  // T-0164: public visibility with a handle (directory + open join), the
-  // Explore search, the exact by-handle lookup, and the one-tap join.
-  setGroupVisibility(
-    groupId: string,
-    input: { visibility: 'private' | 'public'; handle?: string },
-  ): Promise<GroupDetail>;
-  searchDirectory(input: {
-    q?: string;
-    kind?: 'group' | 'channel';
-    cursor?: string;
-  }): Promise<DirectoryPage>;
-  lookupGroupByHandle(handle: string): Promise<DirectoryEntry>;
-  joinPublicGroup(groupId: string): Promise<PublicJoinResult>;
-  createInvite(): Promise<Invite>;
-  createGroupInviteLink(
-    groupId: string,
-    input: CreateGroupInviteLinkInput,
-  ): Promise<CreatedInviteLink>;
-  listGroupInviteLinks(groupId: string): Promise<GroupInviteLink[]>;
-  revokeGroupInviteLink(groupId: string, linkId: string): Promise<void>;
-  previewJoinLink(token: string): Promise<JoinPreview>;
-  joinByLink(token: string): Promise<JoinResult>;
-  changeGroupMemberRole(
-    groupId: string,
-    userId: string,
-    role: 'admin' | 'member',
-  ): Promise<GroupDetail>;
-  removeGroupMember(groupId: string, userId: string): Promise<GroupDetail>;
-  listAis(): Promise<PublicAi[]>;
-  addGroupAi(groupId: string, aiId: string): Promise<GroupDetail>;
-  removeGroupAi(groupId: string, aiId: string): Promise<GroupDetail>;
-  createTopic(groupId: string, input: CreateTopicInput): Promise<Topic>;
-  getTopic(topicId: string): Promise<Topic>;
-  patchTopic(topicId: string, input: PatchTopicInput): Promise<Topic>;
-  archiveTopic(topicId: string): Promise<Topic>;
-  listGroupTopics(groupId: string): Promise<Topic[]>;
-  listTopicMembers(topicId: string): Promise<TopicMember[]>;
-  addTopicMember(topicId: string, userId: string): Promise<Topic>;
-  removeTopicMember(topicId: string, userId: string): Promise<Topic>;
-  listTopicAis(topicId: string): Promise<TopicAi[]>;
-  addTopicAi(topicId: string, aiId: string): Promise<Topic>;
-  removeTopicAi(topicId: string, aiId: string): Promise<Topic>;
-  setTopicRoles(topicId: string, input: SetTopicRolesInput): Promise<Topic>;
-  setMembersCanCreateTopics(groupId: string, allowed: boolean): Promise<GroupDetail>;
-  setGroupBackground(groupId: string, background: GroupBackground): Promise<GroupDetail>;
-  setGroupListener(groupId: string, input: SetGroupListenerInput): Promise<GroupDetail>;
-  listChatPrefs(): Promise<ChatPref[]>;
-  getChatBackgroundDefault(): Promise<ChatBackgroundChoice>;
-  putChatBackgroundDefault(input: ChatBackgroundChoice): Promise<ChatBackgroundChoice>;
-  putChatPref(chatJid: string, input: PutChatPrefInput): Promise<ChatPref | null>;
-  listPins(chat: string): Promise<Pin[]>;
-  listChatMedia(input: ListChatMediaInput): Promise<MediaPage>;
-  pinMessage(input: PinMessageInput): Promise<Pin>;
-  unpinMessage(id: string): Promise<void>;
-}
-
-export interface StorageLike {
-  getItem(key: string): string | null;
-  setItem(key: string, value: string): void;
-  removeItem(key: string): void;
-}
-
-export interface RealStoreDeps {
-  api?: ApiClient;
-  createXmpp?: (options: XmppCoreOptions) => XmppCore;
-  storage?: StorageLike | null;
-  now?: () => Date;
-  documentVisible?: () => boolean;
-  /** Conversion + XEP-0363 upload; tests inject fakes. */
-  voice?: VoicePort;
-  /** Classification, image sizing + XEP-0363 upload; tests inject fakes. */
-  attachments?: AttachmentPort;
-  /** The AI draft SSE stream; tests inject a fake. */
-  openDrafts?: OpenDraftStream;
-  /** Leaves for the sign-in page after sign-out; tests inject a fake. */
-  goToLogin?: () => void;
-}
-
-const realApi: ApiClient = {
-  getMe,
-  getChats,
-  getContacts,
-  getGroup,
-  getXmppToken,
-  createGroup: createGroupRequest,
-  listGroupMembers: listGroupMembersRequest,
-  setGroupVisibility: setGroupVisibilityRequest,
-  searchDirectory: searchDirectoryRequest,
-  lookupGroupByHandle: lookupGroupByHandleRequest,
-  joinPublicGroup: joinPublicGroupRequest,
-  createInvite: createInviteRequest,
-  createGroupInviteLink: createGroupInviteLinkRequest,
-  listGroupInviteLinks: listGroupInviteLinksRequest,
-  revokeGroupInviteLink: revokeGroupInviteLinkRequest,
-  changeGroupMemberRole: changeGroupMemberRoleRequest,
-  removeGroupMember: removeGroupMemberRequest,
-  previewJoinLink: previewJoinLinkRequest,
-  joinByLink: joinByLinkRequest,
-  listAis: listAisRequest,
-  addGroupAi: addGroupAiRequest,
-  removeGroupAi: removeGroupAiRequest,
-  createTopic: createTopicRequest,
-  getTopic: getTopicRequest,
-  patchTopic: patchTopicRequest,
-  archiveTopic: archiveTopicRequest,
-  listGroupTopics: listGroupTopicsRequest,
-  listTopicMembers: listTopicMembersRequest,
-  addTopicMember: addTopicMemberRequest,
-  removeTopicMember: removeTopicMemberRequest,
-  listTopicAis: listTopicAisRequest,
-  addTopicAi: addTopicAiRequest,
-  removeTopicAi: removeTopicAiRequest,
-  setTopicRoles: setTopicRolesRequest,
-  setMembersCanCreateTopics: setMembersCanCreateTopicsRequest,
-  setGroupBackground: setGroupBackgroundRequest,
-  setGroupListener: setGroupListenerRequest,
-  listChatPrefs: listChatPrefsRequest,
-  getChatBackgroundDefault: getChatBackgroundDefaultRequest,
-  putChatBackgroundDefault: putChatBackgroundDefaultRequest,
-  putChatPref: putChatPrefRequest,
-  listPins: listPinsRequest,
-  listChatMedia: listChatMediaRequest,
-  pinMessage: pinMessageRequest,
-  unpinMessage: unpinMessageRequest,
-};
-
-function readLastRead(storage: StorageLike | null, userId: string): Record<string, string> {
-  if (storage === null) {
-    return {};
-  }
-  try {
-    const raw = storage.getItem(`${LAST_READ_PREFIX}${userId}`);
-    if (raw === null) {
-      return {};
-    }
-    const parsed: unknown = JSON.parse(raw);
-    if (parsed === null || typeof parsed !== 'object') {
-      return {};
-    }
-    const result: Record<string, string> = {};
-    for (const [chatId, messageId] of Object.entries(parsed)) {
-      if (typeof messageId === 'string') {
-        result[chatId] = messageId;
-      }
-    }
-    return result;
-  } catch {
-    return {};
-  }
-}
-
-function defaultStorage(): StorageLike | null {
-  try {
-    return window.localStorage;
-  } catch {
-    return null;
-  }
-}
-
-function defaultVisible(): boolean {
-  return typeof document === 'undefined' || document.visibilityState === 'visible';
-}
-
-// `URL.createObjectURL` is missing in some test environments.
-function objectUrlFor(blob: Blob): string | undefined {
-  try {
-    return URL.createObjectURL(blob);
-  } catch {
-    return undefined;
-  }
-}
-
-function coreKind(chat: ChatSummary): 'chat' | 'groupchat' {
-  return chat.kind === 'group' ? 'groupchat' : 'chat';
-}
+export type { ApiClient, RealStoreDeps, StorageLike } from './effects/ports';
 
 /**
  * An incoming image attachment on an untrusted host would auto-fetch from
@@ -547,289 +205,31 @@ function mentionLocalpart(jid: string): string {
   return at === -1 ? bare : bare.slice(0, at);
 }
 
-function sortMessages(messages: UiMessage[]): UiMessage[] {
-  return [...messages].sort(
-    (left, right) =>
-      left.createdAt.getTime() - right.createdAt.getTime() || left.id.localeCompare(right.id),
-  );
-}
-
-/** Drops the `failed` flag without leaving an `undefined` value behind. */
-function clearFailure(message: UiMessage): UiMessage {
-  if (message.failed === undefined && message.failureReason === undefined) {
-    return message;
-  }
-  const next: UiMessage = { ...message };
-  delete next.failed;
-  delete next.failureReason;
-  return next;
-}
-
-function sortByRecency(chats: ChatSummary[]): ChatSummary[] {
-  return [...chats].sort((left, right) => {
-    const leftTime = left.lastMessage?.createdAt.getTime() ?? Number.NEGATIVE_INFINITY;
-    const rightTime = right.lastMessage?.createdAt.getTime() ?? Number.NEGATIVE_INFINITY;
-    return rightTime - leftTime || left.title.localeCompare(right.title);
-  });
-}
-
-function moveChatToTop(chats: ChatSummary[], chatId: string): ChatSummary[] {
-  const index = chats.findIndex((chat) => chat.id === chatId);
-  if (index <= 0) {
-    return chats;
-  }
-  const next = [...chats];
-  const [chat] = next.splice(index, 1);
-  if (chat !== undefined) {
-    next.unshift(chat);
-  }
-  return next;
-}
-
-/**
- * Fresh server entries merged over what is already painted (the cached list
- * from the last visit): each chat keeps its preview and unread count, so rows
- * don't lose their second line or jump while XMPP catches up. A cached list
- * that belongs to another user is dropped.
- */
-export function mergeWithPainted(
-  painted: readonly ChatSummary[],
-  fresh: ChatSummary[],
-  paintedIsSameUser: boolean,
-): ChatSummary[] {
-  if (!paintedIsSameUser || painted.length === 0) {
-    return fresh;
-  }
-  const byId = new Map(painted.map((chat) => [chat.id, chat]));
-  return sortByRecency(
-    fresh.map((chat) => {
-      const previous = byId.get(chat.id);
-      if (previous === undefined) {
-        return chat;
-      }
-      const merged: ChatSummary = { ...chat, unread: previous.unread };
-      if (previous.lastMessage !== undefined) {
-        merged.lastMessage = previous.lastMessage;
-      }
-      return merged;
-    }),
-  );
-}
-
-function summaryFor(entry: ChatEntry): ChatSummary {
-  const base = {
-    id: entry.chatJid,
-    title: entry.title,
-    isAI: false,
-    space: 'personal' as const,
-    unread: 0,
-    muted: false,
-  };
-  if (entry.kind === 'dm') {
-    return {
-      ...base,
-      kind: 'dm',
-      isAI: entry.isAi === true,
-      ...(entry.avatarUrl === undefined ? {} : { avatarUrl: entry.avatarUrl }),
-      online: false,
-    };
-  }
-  // T-0124: channels ride the same rows as groups (their General topic is
-  // the feed); the feed row carries `chatKind: 'channel'`, the subscriber
-  // count and the blurb, plus the viewer's role (admins post, members read).
-  // T-0164: every group row also carries `visibility` + `handle` (the web
-  // paints a "Public" label from them).
-  const chatKind = entry.chatKind ?? 'group';
-  return {
-    ...base,
-    kind: 'group',
-    memberCount: entry.memberCount,
-    onlineCount: 0,
-    visibility: entry.visibility ?? 'private',
-    handle: entry.handle ?? null,
-    // T-0165: the group's picture rides the entry, like DMs carry theirs.
-    ...(entry.avatarUrl === undefined ? {} : { avatarUrl: entry.avatarUrl }),
-    // T-0466: the group's shared background rides the entry too.
-    ...(entry.background === undefined ? {} : { groupBackground: entry.background }),
-    ...(chatKind === 'channel'
-      ? {
-          chatKind: 'channel' as const,
-          subscriberCount: entry.subscriberCount ?? entry.memberCount,
-          description: entry.description ?? null,
-          myRole: entry.role,
-        }
-      : {}),
-  };
-}
-
-/**
- * One topic becomes its own chat row (T-0111), keyed by the topic's room JID.
- * The General topic keeps the group's old chat id, so existing `/c/<jid>`
- * deep links open it. A group without a `topics` field (older server) keeps
- * its single row from `summaryFor`. T-0124: a channel's General topic is its
- * feed, so the row carries the channel fields too.
- */
-function summaryForTopic(
-  groupTitle: string,
-  groupId: string,
-  topic: Topic,
-  channel: {
-    chatKind: 'channel';
-    subscriberCount: number;
-    description: string | null;
-    role: 'owner' | 'admin' | 'member';
-  } | null,
-  visibility: 'private' | 'public' = 'private',
-  handle: string | null = null,
-  avatarUrl?: string | undefined,
-  groupBackground?: GroupBackground,
-): ChatSummary {
-  return {
-    id: topic.chatJid,
-    title: topic.name,
-    kind: 'group',
-    isAI: false,
-    space: 'personal',
-    unread: 0,
-    muted: false,
-    memberCount: topic.memberCount,
-    onlineCount: 0,
-    // T-0164: topic rows keep their group's visibility + handle, so the
-    // header and the list paint the "Public" label on topics too.
-    visibility,
-    handle,
-    // T-0165: topic rows keep their group's picture too.
-    ...(avatarUrl === undefined ? {} : { avatarUrl }),
-    // T-0466: topic rows keep their group's shared background too.
-    ...(groupBackground === undefined ? {} : { groupBackground }),
-    ...(channel === null
-      ? {}
-      : {
-          chatKind: 'channel' as const,
-          subscriberCount: channel.subscriberCount,
-          description: channel.description,
-          myRole: channel.role,
-        }),
-    groupId,
-    groupTitle,
-    topic: {
-      id: topic.id,
-      glyph: topic.glyph,
-      kind: topic.kind,
-      status: topic.status,
-      visibility: topic.visibility,
-      isGeneral: topic.isGeneral,
-      archived: false,
-      owner: topic.owner,
-      linkUrl: topic.linkUrl,
-      linkLabel: topic.linkLabel,
-    },
-  };
-}
-
-/**
- * Maps one `/api/chats` entry to its chat rows: DMs and AI chats map to one
- * row as before; a group with `topics` maps to one row per visible topic
- * (General keeps the group's old chat id); a group without the field keeps
- * its single legacy row.
- */
-export function summariesFor(entry: ChatEntry): ChatSummary[] {
-  if (entry.kind !== 'group') {
-    return [summaryFor(entry)];
-  }
-  const topics = chatEntryTopics(entry).filter((topic) => !topic.archived);
-  if (topics.length === 0) {
-    return [summaryFor(entry)];
-  }
-  const chatKind = entry.chatKind ?? 'group';
-  const channel =
-    chatKind === 'channel'
-      ? {
-          chatKind: 'channel' as const,
-          subscriberCount: entry.subscriberCount ?? entry.memberCount,
-          description: entry.description ?? null,
-          role: entry.role,
-        }
-      : null;
-  return topics.map((topic) =>
-    summaryForTopic(
-      entry.title,
-      entry.groupId,
-      topic,
-      channel,
-      entry.visibility,
-      entry.handle,
-      entry.avatarUrl,
-      entry.background,
-    ),
-  );
-}
-
 export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStoreState> {
-  const api = deps.api ?? realApi;
-  const storage = deps.storage === undefined ? defaultStorage() : deps.storage;
-  const now = deps.now ?? ((): Date => new Date());
-  const isVisible = deps.documentVisible ?? defaultVisible;
-  const createXmpp = deps.createXmpp ?? ((options: XmppCoreOptions) => createXmppCore(options));
-  const voicePort = deps.voice ?? defaultVoicePort;
-  const attachmentPort = deps.attachments ?? defaultAttachmentPort;
-  const openDrafts = deps.openDrafts ?? subscribeToDrafts;
-  // A reload gives the next user a fresh store and XMPP connection.
-  const goToLogin =
-    deps.goToLogin ??
-    (() => {
-      if (typeof window !== 'undefined') {
-        window.location.assign('/login');
-      }
-    });
+  const ports = readPorts(portsLayer(deps));
+  const { api } = ports;
+  const rt = makeLifetime(ports);
 
   return createAtomStore<ChatStoreState>((set, get) => {
     let core: XmppCore | undefined;
-    let unsubscribers: Array<() => void> = [];
-    let typingTimers: Record<string, ReturnType<typeof setTimeout>> = {};
-    let sequence = 0;
     let lastRead: Record<string, string> = {};
     let lastReadUserId: string | undefined;
-    let generation = 0;
-    let connectRetryTimer: ReturnType<typeof setTimeout> | undefined;
-    let connectRetryAttempt = 0;
     // Group history (MUC MAM) only works once the room is joined, which
     // happens after the connection is online.
     let groupsJoined = false;
-    // The user whose cached chat list was painted on start, if any.
-    let cachedUserId: string | undefined;
-    // Closes the draft stream once opened; undefined means it is not open.
-    let closeDraftStream: (() => void) | undefined;
-    // Fallback removal of a finished draft, keyed by chat id.
-    const draftTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
     // Turn ids whose draft is done, so a late `draft` is ignored.
     const finishedTurns = new Set<string>();
     const finishedTurnOrder: string[] = [];
 
-    function saveChatList(): void {
-      const state = get();
-      if (state.chatsState === 'ready') {
-        writeChatListCache(storage, state.currentUserId, state.chats);
-        // Every painted-list change re-syncs the badge (mute changes the
-        // total too, not just unread bumps).
-        void syncBadge().catch(() => undefined);
-      }
-    }
-    let firstToken: XmppToken | undefined;
     // The XMPP token the latest session connected with, kept for the media
     // allow-list (T-0065 round 1): images are only auto-loaded from hosts the
     // server names, so a chat peer cannot make every viewer fetch a tracker.
     let mediaToken: MediaTokenShape | undefined;
-    let refreshTimer: ReturnType<typeof setTimeout> | undefined;
     // Open chat ids whose next disappearance moves silently (T-0130 review):
     // the client just archived that topic itself from its own header, so
     // the removed-while-open flow navigates without the "no longer
     // available" notice. Consumed on first use.
     const quietArchiveIds = new Set<string>();
-    // The 60 s visible-tab poll for new/removed topics (T-0111), plus its
-    // focus listener. Both stop when the store stops (or restarts).
-    let chatsPollTimer: ReturnType<typeof setInterval> | undefined;
-    let chatsPollFocusHandler: (() => void) | null = null;
     const cursors: Record<string, string | undefined> = {};
     const pendingOutgoing = new Map<string, string[]>();
     // An outgoing attachment's bytes, kept for a Retry after a failed upload.
@@ -837,11 +237,10 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
     // An outgoing voice recording's bytes, kept for a Retry after a failed
     // send (T-0168); dropped once the stanza send succeeds, like attachments.
     const pendingVoices = new Map<string, { blob: Blob; waveform: number[] }>();
-    // One in-flight send attempt's timeout handle and run token, keyed by the
-    // message's alias root (T-0168). The run token lets a retry's timer and a
-    // previous run's late pipeline agree on which outcome counts.
-    const sendTimeouts = new Map<string, { timer: ReturnType<typeof setTimeout>; run: object }>();
-    const sendTimeoutRuns = new Map<string, object>();
+    // The current send attempt of a message, keyed by its alias root (T-0168).
+    // The run lets a retry's deadline and a previous run's late pipeline agree
+    // on which outcome counts.
+    const sendRuns = new Map<string, SendRun>();
     const messageAliases = new Map<string, string>();
     // Local optimistic id -> the server id it resolved to, once known.
     const messageServerIds = new Map<string, string>();
@@ -864,102 +263,10 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
     const loadingOlder = new Set<string>();
     // First-page history loads currently in flight, by chat id.
     const loadingHistory = new Set<string>();
-    // Message search jumps at most this many history pages back looking for
-    // the hit before giving up with "Message not found".
-    const MESSAGE_JUMP_MAX_PAGES = 20;
-    // Upper bound for one stalled history wait inside `openAtMessage`: after
-    // this the jump gives up with "Message not found" instead of hanging.
-    const MESSAGE_JUMP_WAIT_MS = 10_000;
-    // Resolves true once the in-flight first-page load for a chat settles,
-    // false after MESSAGE_JUMP_WAIT_MS so a stalled fetch cannot hang the
-    // jump: the caller then shows "Message not found".
-    function waitForHistory(chatId: string): Promise<boolean> {
-      return new Promise<boolean>((resolve) => {
-        const timer = window.setInterval(() => {
-          if (!loadingHistory.has(chatId)) {
-            window.clearInterval(timer);
-            window.clearTimeout(timeout);
-            resolve(true);
-          }
-        }, 25);
-        const timeout = window.setTimeout(() => {
-          window.clearInterval(timer);
-          resolve(false);
-        }, MESSAGE_JUMP_WAIT_MS);
-      });
-    }
-    // One backwards history page, shared with `loadOlder` below.
-    async function loadOlderPage(chatId: string, cursor: string): Promise<void> {
-      const chat = get().chats.find((entry) => entry.id === chatId);
-      const current = core;
-      if (chat === undefined || current === undefined || loadingOlder.has(chatId)) {
-        return;
-      }
-      loadingOlder.add(chatId);
-      try {
-        const page = await current.loadHistory(chatId, coreKind(chat), {
-          before: cursor,
-          max: PAGE_HISTORY_MAX,
-        });
-        ingestHistoryReactions(page.messages);
-        ingestHistoryEdits(page.messages);
-        const older = page.messages
-          .filter((message) => !isReactionOnly(message) && !isEditStanza(message))
-          .map((message) => toUiMessage(message, get().currentUserId));
-        resolvePendingEdits(chatId);
-        const withEditsApplied = older.map((message) => withEdits(message, chatId));
-        set((state) => ({
-          messagesByChat: {
-            ...state.messagesByChat,
-            [chatId]: sortMessages([...withEditsApplied, ...listFor(state, chatId)]),
-          },
-          historyComplete: { ...state.historyComplete, [chatId]: page.complete },
-        }));
-        cursors[chatId] = page.first;
-        refreshEdits(chatId);
-      } catch {
-        // A failed page load leaves the cursor for a later retry.
-      } finally {
-        loadingOlder.delete(chatId);
-      }
-    }
     // A chat opened before the core was connected or before the chats had
     // arrived (e.g. a reload of /c/<jid>). Only the latest one counts; it
     // loads as soon as both are ready.
     let pendingOpenChatId: string | undefined;
-
-    function persistLastRead(): void {
-      if (storage === null || lastReadUserId === undefined) {
-        return;
-      }
-      try {
-        storage.setItem(`${LAST_READ_PREFIX}${lastReadUserId}`, JSON.stringify(lastRead));
-      } catch {
-        // A full or blocked localStorage must never break messaging.
-      }
-    }
-
-    function recordRead(chatId: string, messageId: string | undefined): void {
-      if (messageId !== undefined) {
-        lastRead[chatId] = messageId;
-        persistLastRead();
-      }
-      set((state) => ({
-        chats: state.chats.map((chat) =>
-          chat.id === chatId && chat.unread > 0 ? { ...chat, unread: 0 } : chat,
-        ),
-      }));
-      // The chat is read in the app: its push notifications go away and the
-      // app badge drops. Both are best effort.
-      void dismissChatNotifications(chatId).catch(() => undefined);
-      void syncBadge().catch(() => undefined);
-    }
-
-    // Total unread excluding muted chats, mirrored to the installed app's
-    // badge where the platform supports it.
-    function syncBadge(): Promise<void> {
-      return updateAppBadge(totalBadgeUnread(get().chats));
-    }
 
     function signatureFor(chatId: string, body: string, replyTo: ReplyRef | undefined): string {
       return `${chatId}|${body}|${replyTo?.id ?? ''}`;
@@ -1432,24 +739,6 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       }));
     }
 
-    // A status only moves forward: sending -> sent -> read. A late echo or
-    // send confirmation must never downgrade a message the peer already read.
-    // `failed` is outside the ladder: `advanceStatus` never moves into or out
-    // of it by accident — only an explicit retry does.
-    const STATUS_RANK: Record<MessageStatus, number> = {
-      sending: 0,
-      sent: 1,
-      read: 2,
-      failed: 2,
-    };
-
-    function advanceStatus(current: MessageStatus, next: MessageStatus): MessageStatus {
-      if (current === 'failed' || next === 'failed') {
-        return current;
-      }
-      return STATUS_RANK[next] > STATUS_RANK[current] ? next : current;
-    }
-
     // Updates a message's status in the open conversation and, when it is the
     // same message, in the chat list preview, so the two always agree.
     function updateMessageStatus(chatId: string, messageId: string, status: MessageStatus): void {
@@ -1676,36 +965,6 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       }));
     }
 
-    // The send step of a sticker, re-runnable from a Retry: the payload is
-    // already on the optimistic message, so only the stanza is (re)sent.
-    function runStickerSend(
-      chat: ChatSummary,
-      localId: string,
-      payload: Extract<Payload, { type: 'sticker' }>,
-      body: string,
-      replyTo: ReplyRef | undefined,
-    ): void {
-      const current = core;
-      if (current === undefined) {
-        markStickerFailed(chat.id, localId);
-        return;
-      }
-      current
-        .sendMessage(chat.id, coreKind(chat), body, {
-          payload,
-          ...(replyTo === undefined ? {} : { replyTo: { id: replyTo.id } }),
-        })
-        .then((sent) => {
-          linkMessageIds(localId, sent.id);
-          linkLocalToServer(localId, sent.id);
-          rememberOriginId(localId, sent.id);
-          updateMessageStatus(chat.id, localId, 'sent');
-        })
-        .catch(() => {
-          markStickerFailed(chat.id, localId);
-        });
-    }
-
     // A failed upload keeps the message and its local bytes, but shows a Retry
     // instead of a silent "sending" state.
     function markAttachmentFailed(chatId: string, messageId: string): void {
@@ -1717,113 +976,6 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           ),
         },
       }));
-    }
-
-    // One send attempt's deadline (T-0168): when it fires while the message is
-    // still `sending`, the send is marked `failed` with `timed_out` and the
-    // pipeline's late result is ignored. The run token pairs each timer with
-    // its pipeline, so a retry's timer and a previous run's late result agree
-    // on which outcome counts. The timer handle is dropped on `stop()` via
-    // the same map.
-    function armSendTimeout(chatId: string, messageId: string, run: object): void {
-      const key = aliasRoot(messageId);
-      const previous = sendTimeouts.get(key);
-      if (previous !== undefined) {
-        clearTimeout(previous.timer);
-      }
-      const timer = setTimeout(() => {
-        if (sendTimeoutRuns.get(key) !== run) {
-          return;
-        }
-        sendTimeouts.delete(key);
-        sendTimeoutRuns.delete(key);
-        markSendFailed(chatId, messageId, 'timed_out');
-      }, SEND_TIMEOUT_MS);
-      sendTimeouts.set(key, { timer, run });
-      sendTimeoutRuns.set(key, run);
-    }
-
-    // The pipeline settled this run: drop its timer without firing, so a late
-    // success after a manual failure (or the reverse) cannot flip the message.
-    function settleSendTimeout(messageId: string, run: object): void {
-      const key = aliasRoot(messageId);
-      if (sendTimeoutRuns.get(key) !== run) {
-        return;
-      }
-      const pending = sendTimeouts.get(key);
-      if (pending !== undefined && pending.run === run) {
-        clearTimeout(pending.timer);
-        sendTimeouts.delete(key);
-      }
-      sendTimeoutRuns.delete(key);
-    }
-
-    // Whether `run` is still the current send attempt for `messageId`: a
-    // retry arms a new run for the same message, and the older pipeline's
-    // late success or failure must then ignore itself instead of flipping a
-    // bubble another attempt owns.
-    function isCurrentSendRun(messageId: string, run: object): boolean {
-      return sendTimeoutRuns.get(aliasRoot(messageId)) === run;
-    }
-
-    // The upload steps of an attachment, re-runnable from a Retry: read the
-    // image size when it is one, PUT the bytes, then send the payload message.
-    function runAttachmentUpload(
-      chat: ChatSummary,
-      localId: string,
-      file: File,
-      caption: string,
-      replyTo: ReplyRef | undefined,
-    ): void {
-      const current = core;
-      if (current === undefined) {
-        markSendFailed(chat.id, localId, 'network');
-        return;
-      }
-      const run = {};
-      armSendTimeout(chat.id, localId, run);
-      void (async () => {
-        try {
-          const kind = attachmentPort.classify(file);
-          const measured = kind === 'image' ? await attachmentPort.readImageSize(file) : undefined;
-          const url = await attachmentPort.upload(current, file);
-          const data: Attachment = {
-            kind,
-            url,
-            name: cleanFilename(file.name),
-            size: file.size,
-            mime: file.type === '' ? 'application/octet-stream' : file.type,
-            ...(measured === undefined ? {} : { width: measured.width, height: measured.height }),
-          };
-          updateMessageAttachment(chat.id, localId, data);
-          const sent = await current.sendMessage(chat.id, coreKind(chat), caption, {
-            payload: { v: 0, type: 'attachment', data },
-            ...(replyTo === undefined ? {} : { replyTo: { id: replyTo.id } }),
-          });
-          linkMessageIds(localId, sent.id);
-          linkLocalToServer(localId, sent.id);
-          rememberOriginId(localId, sent.id);
-          // A retried attempt may own this message now: only this run's own
-          // success settles it, drops the timer and the kept bytes.
-          if (!isCurrentSendRun(localId, run)) {
-            return;
-          }
-          settleSendTimeout(localId, run);
-          updateMessageStatus(chat.id, localId, 'sent');
-          pendingAttachments.delete(localId);
-        } catch (error) {
-          // Same staleness rule on failure: a previous run racing a live
-          // retry must not flip the bubble the retry owns.
-          if (!isCurrentSendRun(localId, run)) {
-            return;
-          }
-          settleSendTimeout(localId, run);
-          // Keep the local bytes so the bubble can offer a Retry.
-          markSendFailed(chat.id, localId, sendFailureReasonFor(error, false));
-          // Pre-timeout code read only the `failed` flag; keep it in sync.
-          markAttachmentFailed(chat.id, localId);
-        }
-      })();
     }
 
     function myJid(): string | undefined {
@@ -2054,245 +1206,6 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       }
     }
 
-    async function applyTopicRow(topic: Topic): Promise<void> {
-      const entries = await api.getChats();
-      rememberGroupIds(entries);
-      const rows = entries.flatMap((entry) => summariesFor(entry));
-      const match = rows.find((row) => row.topic?.id === topic.id);
-      set((state) => {
-        // An archived topic is gone for everyone: the server excludes it
-        // from the list, so drop the row at once instead of waiting for
-        // the next poll. The open view follows via the removed-while-open
-        // flow in `refreshChats`.
-        if (match === undefined || topic.archived) {
-          const filtered = state.chats.filter((chat) => chat.topic?.id !== topic.id);
-          return filtered.length === state.chats.length ? state : { chats: filtered };
-        }
-        const before = state.chats.find((chat) => chat.id === match.id);
-        const merged: ChatSummary =
-          before === undefined
-            ? match
-            : {
-                ...match,
-                ...(before.lastMessage === undefined ? {} : { lastMessage: before.lastMessage }),
-                unread: before.unread,
-                ...(before.online === undefined ? {} : { online: before.online }),
-                ...(before.onlineCount === undefined ? {} : { onlineCount: before.onlineCount }),
-              };
-        return {
-          chats: state.chats.some((chat) => chat.id === merged.id)
-            ? state.chats.map((chat) => (chat.id === merged.id ? merged : chat))
-            : sortByRecency([...state.chats, merged]),
-        };
-      });
-    }
-
-    async function topicIdFor(chatId: string): Promise<{ topicId: string; groupId: string }> {
-      const chat = get().chats.find((entry) => entry.id === chatId);
-      const topicId = chat?.topic?.id;
-      const groupId = chat?.groupId ?? groupIds.get(chatId);
-      if (topicId === undefined || groupId === undefined) {
-        throw new Error('This topic is not available yet.');
-      }
-      return { topicId, groupId };
-    }
-
-    // The periodic + focus refresh: refetches `/api/chats` while visible so
-    // a topic created, made private, or where I was removed appears or
-    // disappears without a reload. Failures are silent; the next tick retries.
-    // T-0114: the open chat's pins refresh on the same tick and on focus (no
-    // realtime channel yet).
-    const PINS_REFRESH_INTERVAL_MS = 60_000;
-    let pinsPollTimer: ReturnType<typeof setInterval> | undefined;
-    let pinsPollFocusHandler: (() => void) | null = null;
-
-    function activePinsChatId(): string | undefined {
-      return get().activeChatId;
-    }
-
-    // An image or GIF item on an untrusted host is downgraded to a file-style
-    // item by dropping its `url`, so the panel never auto-loads it (T-0434).
-    // With no XMPP token yet, nothing is trusted and every such url is dropped.
-    function sanitizeMediaPage(page: MediaPage): MediaPage {
-      const trusted = mediaToken === undefined ? undefined : trustedMediaHosts(mediaToken);
-      return {
-        ...page,
-        items: page.items.map((item) => {
-          if (item.kind !== 'image' && item.kind !== 'gif') {
-            return item;
-          }
-          if (
-            item.url === undefined ||
-            trusted === undefined ||
-            !isTrustedMediaUrl(item.url, trusted)
-          ) {
-            const { url: _dropped, ...rest } = item;
-            void _dropped;
-            return rest;
-          }
-          return item;
-        }),
-      };
-    }
-
-    async function refreshPinsFor(chatId: string): Promise<void> {
-      try {
-        const pins = await api.listPins(chatId);
-        set((state) => ({
-          pinsByChat: { ...state.pinsByChat, [chatId]: pins },
-          pinsReady: { ...state.pinsReady, [chatId]: true },
-        }));
-      } catch {
-        // Pins are best-effort; the chat works without them.
-      }
-    }
-
-    function startPinsPolling(gen: number): void {
-      if (typeof window === 'undefined') {
-        return;
-      }
-      if (pinsPollTimer !== undefined) {
-        clearInterval(pinsPollTimer);
-      }
-      const tick = (): void => {
-        if (gen !== generation) {
-          return;
-        }
-        if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
-          return;
-        }
-        const chatId = activePinsChatId();
-        if (chatId !== undefined) {
-          void refreshPinsFor(chatId);
-        }
-      };
-      pinsPollTimer = window.setInterval(tick, PINS_REFRESH_INTERVAL_MS);
-      const onFocus = (): void => {
-        if (gen !== generation) {
-          return;
-        }
-        const chatId = activePinsChatId();
-        if (chatId !== undefined) {
-          void refreshPinsFor(chatId);
-        }
-      };
-      window.addEventListener('focus', onFocus);
-      pinsPollFocusHandler = onFocus;
-    }
-
-    function stopPinsPolling(): void {
-      if (typeof window !== 'undefined') {
-        if (pinsPollTimer !== undefined) {
-          clearInterval(pinsPollTimer);
-          pinsPollTimer = undefined;
-        }
-        if (pinsPollFocusHandler !== null) {
-          window.removeEventListener('focus', pinsPollFocusHandler);
-          pinsPollFocusHandler = null;
-        }
-      }
-    }
-
-    function startChatsPolling(gen: number): void {
-      if (typeof window === 'undefined') {
-        return;
-      }
-      if (chatsPollTimer !== undefined) {
-        clearInterval(chatsPollTimer);
-      }
-      const tick = (): void => {
-        if (gen !== generation) {
-          return;
-        }
-        if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
-          return;
-        }
-        void refreshChats();
-      };
-      chatsPollTimer = window.setInterval(tick, TOPIC_REFRESH_INTERVAL_MS);
-      const onFocus = (): void => {
-        if (gen === generation) {
-          void refreshChats();
-        }
-      };
-      window.addEventListener('focus', onFocus);
-      chatsPollFocusHandler = onFocus;
-    }
-
-    function stopChatsPolling(): void {
-      if (typeof window !== 'undefined') {
-        if (chatsPollTimer !== undefined) {
-          clearInterval(chatsPollTimer);
-          chatsPollTimer = undefined;
-        }
-        if (chatsPollFocusHandler !== null) {
-          window.removeEventListener('focus', chatsPollFocusHandler);
-          chatsPollFocusHandler = null;
-        }
-      }
-    }
-
-    // Loads the members of a group once per chat, so a typing indicator
-    // or a message from a member who is not a contact can still show a name.
-    // The mention picker and the group panel read the same list. The AIs the
-    // group holds (T-0054) ride along, keyed by their `ai-` localpart.
-    async function ensureGroupMembers(chatId: string, force = false): Promise<void> {
-      if (loadingGroupMembers.has(chatId)) {
-        return;
-      }
-      if (!force && groupInfos.has(chatId)) {
-        return;
-      }
-      const groupId = groupIds.get(chatId);
-      const mine = myJid();
-      if (groupId === undefined || mine === undefined) {
-        return;
-      }
-      const domain = mine.slice(mine.indexOf('@') + 1);
-      loadingGroupMembers.add(chatId);
-      try {
-        const detail = await api.getGroup(groupId);
-        applyGroupDetail(chatId, detail, domain);
-      } catch {
-        // The name falls back to the occupant nick or "Someone".
-      } finally {
-        loadingGroupMembers.delete(chatId);
-      }
-    }
-
-    // Caches a group detail and rebuilds the mention members from it, so the
-    // picker and the panel agree after a load, an add or a remove. Handles
-    // pass through from the detail (T-0169); AIs have none.
-    function applyGroupDetail(chatId: string, detail: GroupDetail, domain: string): void {
-      const members = new Map<string, MentionMember>();
-      for (const member of detail.members) {
-        const localpart = member.userId.toLowerCase();
-        members.set(localpart, {
-          jid: `${localpart}@${domain}`,
-          name: member.name,
-          ...(member.handle == null || member.handle === '' ? {} : { handle: member.handle }),
-        });
-      }
-      for (const ai of detail.ais) {
-        const localpart = (ai.jid.split('@')[0] ?? ai.jid).toLowerCase();
-        members.set(localpart, { jid: ai.jid, name: ai.name });
-      }
-      groupMembers.set(chatId, members);
-      groupInfos.set(chatId, detail);
-      // T-0466: the group's shared background paints every chat of that
-      // group, not only the chat the detail was loaded for.
-      const nextBackground = detail.background;
-      set((state) => ({
-        groupInfos: { ...state.groupInfos, [chatId]: detail },
-        chats:
-          nextBackground === undefined
-            ? state.chats
-            : state.chats.map((chat) =>
-                chat.groupId === detail.id ? { ...chat, groupBackground: nextBackground } : chat,
-              ),
-      }));
-    }
-
     // Maps the usable mentions of a message to names: the known group member,
     // else the text the range covers, else the JID's localpart.
     function mapMentions(
@@ -2411,364 +1324,6 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       return state.messagesByChat[chatId] ?? [];
     }
 
-    function setHistoryState(chatId: string, state: 'loading' | 'ready' | 'error'): void {
-      set((previous) => ({ historyState: { ...previous.historyState, [chatId]: state } }));
-    }
-
-    // Drops the 'loading' marker of a pending chat that was superseded before
-    // it ever loaded, so no ownerless entry stays behind. Settled entries and
-    // in-flight loads are left alone.
-    function clearSupersededMarker(chatId: string): void {
-      if (loadingHistory.has(chatId)) {
-        return;
-      }
-      set((previous) => {
-        if (previous.historyState[chatId] !== 'loading') {
-          return previous;
-        }
-        const next = { ...previous.historyState };
-        delete next[chatId];
-        return { historyState: next };
-      });
-    }
-
-    function markTurnFinished(turnId: string): void {
-      if (finishedTurns.has(turnId)) {
-        return;
-      }
-      finishedTurns.add(turnId);
-      finishedTurnOrder.push(turnId);
-      while (finishedTurnOrder.length > FINISHED_TURNS_MAX) {
-        const oldest = finishedTurnOrder.shift();
-        if (oldest !== undefined) {
-          finishedTurns.delete(oldest);
-        }
-      }
-    }
-
-    function withoutDraft(
-      drafts: Record<string, DraftState>,
-      chatId: string,
-    ): Record<string, DraftState> {
-      if (drafts[chatId] === undefined) {
-        return drafts;
-      }
-      const next = { ...drafts };
-      delete next[chatId];
-      return next;
-    }
-
-    function clearDraftTimeout(chatId: string): void {
-      const timer = draftTimeouts.get(chatId);
-      if (timer !== undefined) {
-        clearTimeout(timer);
-        draftTimeouts.delete(chatId);
-      }
-    }
-
-    function clearDraftState(): void {
-      for (const timer of draftTimeouts.values()) {
-        clearTimeout(timer);
-      }
-      draftTimeouts.clear();
-      finishedTurns.clear();
-      finishedTurnOrder.length = 0;
-    }
-
-    // (Re)arms the one removal timer of a chat, replacing any previous one.
-    // It removes the draft only when the same turn is still shown, so a newer
-    // turn's draft is never dropped by an older turn's timer.
-    function armDraftRemoval(chatJid: string, turnId: string, delay: number): void {
-      clearDraftTimeout(chatJid);
-      const timer = setTimeout(() => {
-        draftTimeouts.delete(chatJid);
-        // Not marked finished here: an idle turn (e.g. a slow tool call) may
-        // resume, and its next draft must show again. `end` marks it itself.
-        set((state) => {
-          const current = state.drafts[chatJid];
-          if (current === undefined || current.turnId !== turnId) {
-            return state;
-          }
-          return { drafts: withoutDraft(state.drafts, chatJid) };
-        });
-      }, delay);
-      draftTimeouts.set(chatJid, timer);
-    }
-
-    // A draft disappears only once its final message is there, so the two
-    // never leave a gap. Each `draft` re-arms an idle timer (a dead turn, e.g.
-    // the server restarted mid-turn, would otherwise leave the bubble forever);
-    // `end` replaces it with the short fallback; the final XMPP message (a
-    // separate channel) removes the draft in the same update that adds it.
-    function handleDraftEvent(event: DraftHubEvent): void {
-      if (event.type === 'end') {
-        handleDraftEnd(event);
-        return;
-      }
-      if (finishedTurns.has(event.turnId)) {
-        return;
-      }
-      set((state) => ({
-        drafts: { ...state.drafts, [event.chatJid]: { turnId: event.turnId, text: event.text } },
-      }));
-      armDraftRemoval(event.chatJid, event.turnId, DRAFT_IDLE_MS);
-    }
-
-    function handleDraftEnd(event: DraftEndEvent): void {
-      markTurnFinished(event.turnId);
-      const shown = get().drafts[event.chatJid];
-      if (shown === undefined || shown.turnId !== event.turnId) {
-        return;
-      }
-      armDraftRemoval(event.chatJid, event.turnId, DRAFT_END_FALLBACK_MS);
-    }
-
-    function startDraftStream(gen: number): void {
-      if (gen !== generation || closeDraftStream !== undefined) {
-        return;
-      }
-      closeDraftStream = openDrafts(handleDraftEvent);
-    }
-
-    function handleMessage(message: ChatMessage): void {
-      // A correction or a retraction is never a chat message: it edits another
-      // one, so it is ingested and returns before any rendering.
-      if (isEditStanza(message)) {
-        ingestEdit(message);
-        return;
-      }
-      // A reactions message that is only that (no body, no payload) must never
-      // render as a bubble or move the chat list preview. A message that also
-      // carries a body or payload is a normal message: its reactions are
-      // ingested and it is rendered as usual.
-      if (message.reactions !== undefined) {
-        ingestReaction(message);
-        if (isReactionOnly(message)) {
-          return;
-        }
-      }
-      const meId = get().currentUserId;
-      const chatId = message.chatJid;
-      const ui = toUiMessage(message, meId);
-
-      if (message.outgoing) {
-        // Reconcile our optimistic message with the server echo. Sticker
-        // echoes carry the sticker id in the payload, so they match the
-        // sticker-scoped signature (not the bare emoji body).
-        const replyRef =
-          message.replyTo === undefined ? undefined : { id: message.replyTo.id, senderName: '' };
-        const signature =
-          message.payload !== undefined && message.payload.type === 'sticker'
-            ? stickerSignatureFor(
-                chatId,
-                message.body ?? '',
-                message.payload.data.sticker_id,
-                replyRef,
-              )
-            : signatureFor(chatId, message.body ?? '', replyRef);
-        const queue = pendingOutgoing.get(signature);
-        const localId = queue?.shift();
-        if (queue !== undefined && queue.length === 0) {
-          pendingOutgoing.delete(signature);
-        }
-        if (localId !== undefined) {
-          linkMessageIds(localId, ui.id);
-          linkLocalToServer(localId, ui.id);
-          // An echo is proof the stanza reached the server: a bubble the
-          // pipeline had marked `failed` is delivered after all, so it moves
-          // to `sent` and its kept retry bytes can go, whichever pipeline
-          // stored them. `advanceStatus` below still guards against a later
-          // `sending`/`failed` update downgrading it again.
-          clearSendFailure(chatId, ui.id);
-          updateMessageStatus(chatId, ui.id, 'sent');
-          const root = aliasRoot(localId);
-          pendingVoices.delete(localId);
-          pendingVoices.delete(root);
-          pendingAttachments.delete(localId);
-          pendingAttachments.delete(root);
-        }
-        set((state) => {
-          const existing = listFor(state, chatId);
-          const previous = existing.find((item) => sameMessage(item.id, ui.id));
-          const reconciled: UiMessage =
-            previous === undefined
-              ? ui
-              : { ...ui, status: advanceStatus(previous.status, ui.status) };
-          const withoutLocal =
-            localId === undefined ? existing : existing.filter((item) => item.id !== localId);
-          return {
-            messagesByChat: {
-              ...state.messagesByChat,
-              [chatId]: sortMessages([
-                ...withoutLocal.filter((item) => item.id !== reconciled.id),
-                reconciled,
-              ]),
-            },
-            chats: moveChatToTop(
-              state.chats.map((chat) =>
-                chat.id === chatId ? { ...chat, lastMessage: reconciled } : chat,
-              ),
-              chatId,
-            ),
-          };
-        });
-        return;
-      }
-
-      const active = get().activeChatId === chatId && isVisible();
-      const isRead = active;
-      // Only the AI's own message in its DM finishes the draft. A message from
-      // my own JID (e.g. my second device) must leave the draft running.
-      const fromAi = message.fromJid === chatId && !isOwnSender(message.fromJid);
-      const draft = get().drafts[chatId];
-      if (draft !== undefined && fromAi) {
-        markTurnFinished(draft.turnId);
-        clearDraftTimeout(chatId);
-      }
-      set((state) => ({
-        messagesByChat: {
-          ...state.messagesByChat,
-          [chatId]: sortMessages([
-            ...listFor(state, chatId).filter((item) => item.id !== ui.id),
-            ui,
-          ]),
-        },
-        chats: moveChatToTop(
-          state.chats.map((chat) =>
-            chat.id === chatId
-              ? { ...chat, lastMessage: ui, unread: isRead ? 0 : chat.unread + 1 }
-              : chat,
-          ),
-          chatId,
-        ),
-        // The final message replaces the draft in one update: the bubble never
-        // leaves the screen, so there is no gap and no duplicate.
-        drafts: draft !== undefined && fromAi ? withoutDraft(state.drafts, chatId) : state.drafts,
-        // Remember the turn so the bubble keeps revealing on the draft's key.
-        finishedDraftMessages:
-          draft !== undefined && fromAi
-            ? rememberFinishedDraftMessage(state.finishedDraftMessages, ui.id, draft.turnId)
-            : state.finishedDraftMessages,
-      }));
-      // A message that just loaded may be the target of a correction or a
-      // retraction read earlier, from an older history page.
-      resolvePendingEdits(chatId);
-      refreshEdits(chatId);
-      if (!isRead) {
-        void syncBadge().catch(() => undefined);
-      }
-      if (isRead && core !== undefined) {
-        const chat = get().chats.find((entry) => entry.id === chatId);
-        if (chat !== undefined) {
-          recordRead(chatId, ui.id);
-          core.markDisplayed(chatId, coreKind(chat), ui.id);
-        }
-      }
-    }
-
-    function handleTyping(event: {
-      chatJid: string;
-      fromJid: string;
-      state: string;
-      outgoing: boolean;
-    }): void {
-      // A MUC reflects my own chat states back to me. When the sender cannot be
-      // resolved to a real JID, xmpp-core marks the reflection `outgoing` and
-      // keeps the full room JID, so the JID check alone is not enough.
-      if (event.outgoing || isOwnSender(event.fromJid)) {
-        return;
-      }
-      const chatId = event.chatJid;
-      void ensureGroupMembers(chatId);
-      const name = senderNameFor({
-        chatJid: chatId,
-        fromJid: event.fromJid,
-        outgoing: false,
-      } as ChatMessage);
-      const existing = typingTimers[chatId];
-      if (existing !== undefined) {
-        clearTimeout(existing);
-      }
-      if (event.state === 'composing') {
-        set((state) => ({ typing: { ...state.typing, [chatId]: { names: [name] } } }));
-        typingTimers[chatId] = setTimeout(() => {
-          set((state) => {
-            const next = { ...state.typing };
-            delete next[chatId];
-            return { typing: next };
-          });
-          delete typingTimers[chatId];
-        }, TYPING_CLEAR_MS);
-      } else {
-        set((state) => {
-          const next = { ...state.typing };
-          delete next[chatId];
-          return { typing: next };
-        });
-      }
-    }
-
-    function handleDisplayed(event: {
-      chatJid: string;
-      fromJid: string;
-      messageId: string;
-      outgoing: boolean;
-    }): void {
-      // A reflected marker of my own message means I displayed it, not that a
-      // peer read it. `outgoing` covers the unresolved full-room-JID case.
-      if (event.outgoing || isOwnSender(event.fromJid)) {
-        return;
-      }
-      updateMessageStatus(event.chatJid, event.messageId, 'read');
-    }
-
-    function handleOccupants(event: { roomJid: string; occupants: Occupant[] }): void {
-      const online = event.occupants.filter((occupant) => occupant.available).length;
-      set((state) => ({
-        chats: state.chats.map((chat) =>
-          chat.id === event.roomJid
-            ? {
-                ...chat,
-                onlineCount: online,
-                memberCount: Math.max(chat.memberCount ?? 0, event.occupants.length),
-              }
-            : chat,
-        ),
-      }));
-    }
-
-    function handlePresence(event: PresenceEvent): void {
-      set((state) => ({
-        chats: state.chats.map((chat) =>
-          chat.id === event.jid
-            ? {
-                ...chat,
-                online: event.available,
-                ...(event.available ? {} : { lastSeenAt: now() }),
-              }
-            : chat,
-        ),
-      }));
-    }
-
-    function subscribe(current: XmppCore): void {
-      unsubscribers = [
-        current.on('status', (status: ConnectionStatus) => {
-          set({ status });
-          if (status === 'online') {
-            flushPending();
-          }
-        }),
-        current.on('message', handleMessage),
-        current.on('typing', handleTyping),
-        current.on('displayed', handleDisplayed),
-        current.on('occupants', handleOccupants),
-        current.on('presence', handlePresence),
-        current.on('invited', handleInvited),
-        current.on('roster', handleRoster),
-      ];
-    }
-
     function nick(me: Me): string {
       const name = me.name.trim();
       if (name.length > 0) {
@@ -2777,719 +1332,116 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       return me.jid?.split('@')[0] ?? 'me';
     }
 
-    async function joinGroups(current: XmppCore, me: Me): Promise<void> {
-      for (const chat of get().chats) {
-        if (chat.kind !== 'group') {
-          continue;
-        }
-        void ensureGroupMembers(chat.id);
-        try {
-          await current.joinRoom(chat.id, nick(me));
-        } catch {
-          // A room can be joined later when the user opens it.
-        }
-      }
-    }
-
-    // A group invitation or a roster push means the chat list changed on the
-    // server. Refetch it, join any new group rooms and load their preview.
-    function handleInvited(): void {
-      scheduleChatsRefresh();
-    }
-
-    function handleRoster(): void {
-      scheduleChatsRefresh();
-    }
-
-    function scheduleChatsRefresh(): void {
-      if (refreshTimer !== undefined) {
-        clearTimeout(refreshTimer);
-      }
-      refreshTimer = setTimeout(() => {
-        refreshTimer = undefined;
-        void refreshChats();
-      }, CHAT_REFRESH_DEBOUNCE_MS);
-    }
-
-    // The throwing half of `refreshChats`: fetches the list and merges it,
-    // reporting fetch failures to the caller. The background callers
-    // (poll, focus, roster) swallow them and retry on the next tick; the
-    // row re-check (`refreshTopicRow`) lets them throw instead of reading
-    // a stale list as "alive".
-    async function refreshChats(): Promise<void> {
-      try {
-        await refreshChatsOrThrow();
-      } catch {
-        return;
-      }
-    }
-
-    async function refreshChatsOrThrow(): Promise<void> {
-      const gen = generation;
-      const [entries, prefs] = await Promise.all([
-        api.getChats(),
-        api.listChatPrefs().catch(() => [] as ChatPref[]),
-      ]);
-      if (gen !== generation) {
-        // A newer `start()`/`stop()` superseded this refresh (boot,
-        // retry, sign-out): the list below is stale, so say so instead
-        // of merging it — the caller (`refreshTopicRow`) rejects rather
-        // than read stale state as "topic alive".
-        throw new ApiError(0, 'stale_refresh', 'The chat list refresh was superseded');
-      }
-
-      const previous = get().chats;
-      const known = new Map(previous.map((chat) => [chat.id, chat]));
-      const activeChatId = get().activeChatId;
-      const freshRows = entries.flatMap((entry) => summariesFor(entry));
-      const fresh = freshRows.filter((row) => !known.has(row.id));
-      const kept = freshRows
-        .filter((row) => known.has(row.id))
-        .map((row) => {
-          const existing = known.get(row.id);
-          if (existing === undefined) {
-            return row;
-          }
-          return {
-            ...row,
-            ...(existing.lastMessage === undefined ? {} : { lastMessage: existing.lastMessage }),
-            unread: existing.unread,
-            ...(existing.online === undefined ? {} : { online: existing.online }),
-            ...(existing.onlineCount === undefined ? {} : { onlineCount: existing.onlineCount }),
-          };
-        });
-      // New chats appear at the top; the rest keep their recency order.
-      const byJid: Record<string, ChatPref> = {};
-      for (const pref of prefs) {
-        byJid[pref.chatJid.toLowerCase()] = pref;
-      }
-      set({
-        chats: applyChatPrefs([...fresh, ...sortByRecency(kept)], prefs, now().getTime()),
-        chatPrefs: byJid,
-      });
-      rememberGroupIds(entries);
-      // A topic that disappeared while open (made private, archived, or I was
-      // removed) navigates to the group's General topic with a short notice —
-      // unless the disappearance was just caused by this client on purpose
-      // (e.g. archiving the open topic from its own header): ids in
-      // `quietArchiveIds` move silently.
-      const openChat =
-        activeChatId === undefined
-          ? undefined
-          : get().chats.find((chat) => chat.id === activeChatId);
-      if (activeChatId !== undefined && openChat === undefined) {
-        // A deliberate self-archive moves silently: consume the quiet mark
-        // while resolving this disappearance, whichever branch handles it.
-        // Deleting only inside the General branch leaks the id when General
-        // is absent — or when `applyTopicRow` already dropped the row, so
-        // `was` below is undefined — and the leaked mark would silence a
-        // later, unrelated removal.
-        const quiet = quietArchiveIds.has(activeChatId);
-        quietArchiveIds.delete(activeChatId);
-        const was = previous.find((chat) => chat.id === activeChatId);
-        const notice =
-          was?.topic === undefined || was.groupId === undefined
-            ? undefined
-            : { groupId: was.groupId, groupTitle: was.groupTitle ?? '' };
-        if (notice !== undefined) {
-          const general = get().chats.find(
-            (chat) => chat.groupId === notice.groupId && chat.topic?.isGeneral === true,
-          );
-          if (general !== undefined) {
-            set({
-              activeChatId: general.id,
-              topicNotice: quiet
-                ? undefined
-                : { chatId: general.id, message: 'This topic is no longer available.' },
-            });
-            if (typeof window !== 'undefined') {
-              window.history.replaceState(null, '', `/c/${encodeURIComponent(general.id)}`);
-            }
-          } else {
-            set({ activeChatId: undefined });
-            if (typeof window !== 'undefined') {
-              window.history.replaceState(null, '', '/');
-            }
-          }
-        } else {
-          set({ activeChatId: undefined });
-        }
-      }
-      flushPending();
-
-      const current = core;
-      const me = get().me;
-      if (current === undefined || me === undefined) {
-        return;
-      }
-      for (const entry of entries) {
-        if (entry.kind !== 'group') {
-          continue;
-        }
-        for (const row of summariesFor(entry)) {
-          if (known.has(row.id)) {
-            continue;
-          }
-          await current.joinRoom(row.id, nick(me)).catch(() => {});
-          void ensureGroupMembers(row.id);
-        }
-      }
-      for (const row of freshRows) {
-        if (known.has(row.id)) {
-          continue;
-        }
-        const chat = get().chats.find((item) => item.id === row.id);
-        if (chat !== undefined) {
-          await loadPreview(current, chat);
-        }
-      }
-    }
-
-    async function loadPreview(current: XmppCore, chat: ChatSummary): Promise<void> {
-      try {
-        const page = await current.loadHistory(chat.id, coreKind(chat), {
-          max: PREVIEW_HISTORY_MAX,
-        });
-        ingestHistoryReactions(page.messages);
-        ingestHistoryEdits(page.messages);
-        const last = page.messages
-          .filter((message) => !isReactionOnly(message) && !isEditStanza(message))
-          .at(-1);
-        if (last === undefined) {
-          return;
-        }
-        const ui = toUiMessage(last, get().currentUserId);
-        resolvePendingEdits(chat.id);
-        const preview = previewFor(withEdits(ui, chat.id));
-        set((state) => ({
-          chats: state.chats.map((entry) =>
-            entry.id === chat.id && entry.lastMessage === undefined
-              ? { ...entry, lastMessage: preview }
-              : entry,
-          ),
-        }));
-        if (lastRead[chat.id] === undefined) {
-          lastRead[chat.id] = ui.id;
-          persistLastRead();
-        }
-        cursors[chat.id] = page.first;
-        set((state) => ({
-          historyComplete: { ...state.historyComplete, [chat.id]: page.complete },
-        }));
-      } catch {
-        // Preview is best-effort; the chat still works when opened.
-      }
-    }
-
-    // Runs the pending open once the core is connected and the chat is
-    // known. Called after every point where either can become ready: the
-    // first chat merge, a background refresh, and (re)connect.
-    function flushPending(): void {
-      const pending = pendingOpenChatId;
-      if (pending === undefined) {
-        return;
-      }
-      const chat = get().chats.find((entry) => entry.id === pending);
-      if (chat === undefined || !canLoadHistory(chat)) {
-        return;
-      }
-      pendingOpenChatId = undefined;
-      void openHistory(pending);
-    }
-
-    function canLoadHistory(chat: ChatSummary): boolean {
-      return (
-        core !== undefined && get().status === 'online' && (chat.kind !== 'group' || groupsJoined)
-      );
-    }
-
-    async function openHistory(chatId: string): Promise<void> {
-      const chat = get().chats.find((entry) => entry.id === chatId);
-      const current = core;
-      // `core` is assigned before `connect()` resolves, so "ready" means
-      // online: a MAM query sent while still connecting fails.
-      if (current === undefined || chat === undefined || !canLoadHistory(chat)) {
-        // The chat screen mounted before the data was there (e.g. a reload
-        // of /c/<jid>). Remember it and load once both are ready.
-        pendingOpenChatId = chatId;
-        setHistoryState(chatId, 'loading');
-        return;
-      }
-      if (loadingHistory.has(chatId)) {
-        // A load for this chat is already in flight; it covers this open.
-        if (pendingOpenChatId === chatId) {
-          pendingOpenChatId = undefined;
-        }
-        return;
-      }
-      if (pendingOpenChatId === chatId) {
-        pendingOpenChatId = undefined;
-      }
-      loadingHistory.add(chatId);
-      setHistoryState(chatId, 'loading');
-      try {
-        const page = await current.loadHistory(chatId, coreKind(chat), { max: PAGE_HISTORY_MAX });
-        ingestHistoryReactions(page.messages);
-        ingestHistoryEdits(page.messages);
-        const loaded = page.messages
-          .filter((message) => !isReactionOnly(message) && !isEditStanza(message))
-          .map((message) => toUiMessage(message, get().currentUserId));
-        resolvePendingEdits(chatId);
-        const withEditsApplied = loaded.map((message) => withEdits(message, chatId));
-        const newest = withEditsApplied.at(-1);
-        set((state) => {
-          const live = listFor(state, chatId).filter(
-            (message) => !withEditsApplied.some((item) => sameMessage(item.id, message.id)),
-          );
-          return {
-            messagesByChat: {
-              ...state.messagesByChat,
-              [chatId]: sortMessages([...withEditsApplied, ...live]),
-            },
-            historyComplete: { ...state.historyComplete, [chatId]: page.complete },
-            chats:
-              newest === undefined
-                ? state.chats
-                : state.chats.map((entry) =>
-                    entry.id === chatId ? { ...entry, lastMessage: previewFor(newest) } : entry,
-                  ),
-          };
-        });
-        cursors[chatId] = page.first;
-        refreshEdits(chatId);
-        const last = withEditsApplied.at(-1);
-        if (last !== undefined) {
-          recordRead(chatId, last.id);
-          current.markDisplayed(chatId, coreKind(chat), last.id);
-        }
-        setHistoryState(chatId, 'ready');
-      } catch {
-        // Keep whatever live messages we have; the view offers a retry.
-        setHistoryState(chatId, 'error');
-      } finally {
-        loadingHistory.delete(chatId);
-      }
-      flushPending();
-    }
-
-    function loadOlder(chatId: string): void {
-      const cursor = cursors[chatId];
-      if (cursor === undefined) {
-        return;
-      }
-      void loadOlderPage(chatId, cursor);
-    }
-
-    async function boot(gen: number): Promise<void> {
-      let me: Me;
-      let entries: ChatEntry[];
-      let contacts: Contact[];
-      let prefs: ChatPref[];
-      try {
-        [me, entries, contacts, prefs] = await Promise.all([
-          api.getMe(),
-          api.getChats(),
-          api.getContacts(),
-          api.listChatPrefs().catch(() => [] as ChatPref[]),
-        ]);
-      } catch {
-        if (gen === generation) {
-          set({ status: 'offline', chatsState: 'error' });
-        }
-        return;
-      }
-      if (gen !== generation) {
-        return;
-      }
-
-      lastReadUserId = me.id;
-      lastRead = readLastRead(storage, me.id);
-      rememberGroupIds(entries);
-      const freshRows = entries.flatMap((entry) => summariesFor(entry));
-      const byJid: Record<string, ChatPref> = {};
-      for (const pref of prefs) {
-        byJid[pref.chatJid.toLowerCase()] = pref;
-      }
-      set({
-        me,
-        currentUserId: me.id,
-        chats: applyChatPrefs(
-          mergeWithPainted(get().chats, freshRows, cachedUserId === me.id),
-          prefs,
-          now().getTime(),
-        ),
-        contacts,
-        chatPrefs: byJid,
-        chatsState: 'ready',
-      });
-      // T-0461: the global background default is a nice-to-have; load it
-      // without holding up the chat list, and leave it null on failure.
-      void get().refreshDefaultBackground();
-      startDraftStream(gen);
-      startChatsPolling(gen);
-      startPinsPolling(gen);
-      flushPending();
-      await connectXmpp(gen, me);
-    }
-
-    // After a failed token or login, try again with growing waits instead of
-    // staying offline until a reload (a 429 on the token route used to leave
-    // the app on "Waiting for network…" for good).
-    function scheduleConnectRetry(gen: number, me: Me): void {
-      if (gen !== generation || connectRetryTimer !== undefined) {
-        return;
-      }
-      const delay =
-        CONNECT_RETRY_DELAYS_MS[Math.min(connectRetryAttempt, CONNECT_RETRY_DELAYS_MS.length - 1)];
-      connectRetryAttempt += 1;
-      connectRetryTimer = setTimeout(() => {
-        connectRetryTimer = undefined;
-        if (gen === generation) {
-          void connectXmpp(gen, me);
-        }
-      }, delay);
-    }
-
-    async function connectXmpp(gen: number, me: Me): Promise<void> {
-      let token: XmppToken;
-      try {
-        token = await api.getXmppToken();
-      } catch {
-        if (gen === generation) {
-          set({ status: 'offline' });
-          scheduleConnectRetry(gen, me);
-        }
-        return;
-      }
-      if (gen !== generation) {
-        return;
-      }
-      firstToken = token;
-      mediaToken = { service: token.service, domain: token.domain };
-      set({ mediaTrustedHosts: trustedMediaHosts(mediaToken) });
-
-      const options: XmppCoreOptions = {
-        service: token.service,
-        domain: token.domain,
-        getToken: async () => {
-          if (firstToken !== undefined) {
-            const fresh = firstToken;
-            firstToken = undefined;
-            return { jid: fresh.jid, token: fresh.token };
-          }
-          const fresh = await api.getXmppToken();
-          mediaToken = { service: fresh.service, domain: fresh.domain };
-          set({ mediaTrustedHosts: trustedMediaHosts(mediaToken) });
-          return { jid: fresh.jid, token: fresh.token };
-        },
-      };
-
-      const current = createXmpp(options);
-      core = current;
-      subscribe(current);
-      try {
-        await current.connect();
-      } catch {
-        if (gen === generation) {
-          set({ status: 'offline' });
-          for (const unsubscribe of unsubscribers) {
-            unsubscribe();
-          }
-          unsubscribers = [];
-          core = undefined;
-          void current.disconnect().catch(() => {});
-          scheduleConnectRetry(gen, me);
-        }
-        return;
-      }
-      if (gen !== generation) {
-        void current.disconnect().catch(() => {});
-        return;
-      }
-      connectRetryAttempt = 0;
-      set({ status: 'online' });
-      flushPending();
-      await joinGroups(current, me);
-      if (gen === generation) {
-        groupsJoined = true;
-        flushPending();
-      }
-      await Promise.all(get().chats.map((chat) => loadPreview(current, chat)));
-      if (gen === generation) {
-        set((state) => ({ chats: sortByRecency(state.chats) }));
-        saveChatList();
-      }
-    }
-
-    // T-0113: pref helpers. `applyPrefs` replaces the pref map and merges it
-    // into the painted list; `updatePref` patches one row optimistically and
-    // rolls back to the previous pref state when the PUT fails.
-    function applyPrefs(prefs: ChatPref[]): void {
-      const byJid: Record<string, ChatPref> = {};
-      for (const pref of prefs) {
-        byJid[pref.chatJid.toLowerCase()] = pref;
-      }
-      set((state) => ({
-        chatPrefs: byJid,
-        chats: applyChatPrefs(state.chats, prefs, now().getTime()),
-      }));
-      void syncBadge().catch(() => undefined);
-    }
-
-    async function updatePref(chatId: string, patch: PutChatPrefInput): Promise<void> {
-      const chat = get().chats.find((entry) => entry.id === chatId);
-      if (chat === undefined) {
-        throw new Error('This chat is not available yet.');
-      }
-      const previous = get().chatPrefs;
-      const nowDate = now();
-      const key = chatId.toLowerCase();
-      const optimistic: ChatPref = {
-        chatJid: chatId,
-        mutedUntil:
-          patch.mutedUntil !== undefined ? patch.mutedUntil : (previous[key]?.mutedUntil ?? null),
-        archived:
-          patch.archived !== undefined ? patch.archived : (previous[key]?.archived ?? false),
-        pinnedAt:
-          patch.pinned !== undefined
-            ? patch.pinned
-              ? (previous[key]?.pinnedAt ?? nowDate.toISOString())
-              : null
-            : (previous[key]?.pinnedAt ?? null),
-        // T-0462: keep the background override on the optimistic row. A patch
-        // value wins, an omitted field keeps the previous one, else null.
-        backgroundPreset:
-          patch.backgroundPreset !== undefined
-            ? patch.backgroundPreset
-            : (previous[key]?.backgroundPreset ?? null),
-        backgroundImageId:
-          patch.backgroundImageId !== undefined
-            ? patch.backgroundImageId
-            : (previous[key]?.backgroundImageId ?? null),
-        backgroundDim:
-          patch.backgroundDim !== undefined
-            ? patch.backgroundDim
-            : (previous[key]?.backgroundDim ?? null),
-        updatedAt: nowDate.toISOString(),
-      };
-      const next: Record<string, ChatPref> = { ...previous };
-      if (
-        optimistic.mutedUntil === null &&
-        optimistic.archived === false &&
-        optimistic.pinnedAt === null &&
-        optimistic.backgroundPreset === null &&
-        optimistic.backgroundImageId === null &&
-        optimistic.backgroundDim === null
-      ) {
-        delete next[key];
-      } else {
-        next[key] = optimistic;
-      }
-      set((state) => ({
-        chatPrefs: next,
-        chats: applyChatPrefs(state.chats, Object.values(next), nowDate.getTime()),
-      }));
-      // Muting changes the badge total (and unmuting restores it): re-sync
-      // like recordRead does, on the optimistic paint and on every settle.
-      void syncBadge().catch(() => undefined);
-      let saved: ChatPref | null;
-      try {
-        saved = await api.putChatPref(chatId, patch);
-      } catch (error) {
-        // Roll back to the previous prefs and re-merge.
-        set((state) => ({
-          chatPrefs: previous,
-          chats: applyChatPrefs(state.chats, Object.values(previous), now().getTime()),
-        }));
-        void syncBadge().catch(() => undefined);
-        throw error;
-      }
-      set((state) => {
-        const merged: Record<string, ChatPref> = { ...get().chatPrefs };
-        if (saved === null) {
-          delete merged[key];
-        } else {
-          merged[key] = saved;
-        }
-        return {
-          chatPrefs: merged,
-          chats: applyChatPrefs(state.chats, Object.values(merged), now().getTime()),
-        };
-      });
-      void syncBadge().catch(() => undefined);
-    }
-
-    // The voice pipeline, re-runnable from a Retry (T-0168): convert, PUT
-    // the bytes, then send the payload message. Every throw — conversion,
-    // upload or the final send — lands the bubble in `failed` with a fixed
-    // user-safe reason, never a clock forever. The recording's bytes stay
-    // in `pendingVoices` until the stanza send succeeds, so a Retry after
-    // the cause is fixed re-runs the same pipeline from the retained blob.
-    function runVoiceSend(
-      chat: ChatSummary,
-      localId: string,
-      blob: Blob,
-      waveform: number[],
-      replyTo: ReplyRef | undefined,
-    ): void {
-      const current = core;
-      if (current === undefined) {
-        markSendFailed(chat.id, localId, 'network');
-        return;
-      }
-      const run = {};
-      armSendTimeout(chat.id, localId, run);
-      void (async () => {
-        try {
-          const converted = await voicePort.convert(blob);
-          const url = await voicePort.upload(current, converted.audio);
-          const voice: VoiceMeta = {
-            duration_ms: converted.durationMs,
-            mime: 'audio/mp4',
-            waveform,
-            url,
-          };
-          updateMessageVoice(chat.id, localId, voice);
-          const sent = await current.sendMessage(chat.id, coreKind(chat), '', {
-            payload: { v: 0, type: 'voice', data: voice },
-            ...(replyTo === undefined ? {} : { replyTo: { id: replyTo.id } }),
-          });
-          linkMessageIds(localId, sent.id);
-          linkLocalToServer(localId, sent.id);
-          rememberOriginId(localId, sent.id);
-          // A retried attempt may own this message now: only this run's own
-          // success settles it, drops the timer and the kept bytes.
-          if (!isCurrentSendRun(localId, run)) {
-            return;
-          }
-          settleSendTimeout(localId, run);
-          updateMessageStatus(chat.id, localId, 'sent');
-          pendingVoices.delete(localId);
-          pendingVoices.delete(aliasRoot(localId));
-        } catch (error) {
-          // Same staleness rule on failure: a previous run racing a live
-          // retry must not flip the bubble the retry owns.
-          if (!isCurrentSendRun(localId, run)) {
-            return;
-          }
-          settleSendTimeout(localId, run);
-          // The optimistic bubble keeps its local audio; the failure shows
-          // "Not sent" with Retry and Delete instead of a clock.
-          markSendFailed(chat.id, localId, sendFailureReasonFor(error, false));
-        }
-      })();
-    }
-
-    // The room identity a forward may carry (T-0414): only a public group or
-    // topic has a room JID safe to reveal. A DM/AI chat has no room JID, and a
-    // private topic (or private group) must omit both so the target never
-    // learns a room it may not see (forwarding plan §3.1/§3.6).
-    function forwardPublicRoomFor(source: ChatSummary | undefined): ChatSummary | undefined {
-      if (source === undefined || source.kind !== 'group') {
-        return undefined;
-      }
-      const visibility = source.topic?.visibility ?? source.visibility;
-      return visibility === 'public' ? source : undefined;
-    }
-
-    // The origin header of one forwarded copy. Reusing a message's own
-    // `forward` keeps the first author on a forward of a forward. Otherwise it
-    // is built from the source message; `ForwardOriginSchema` caps over-long
-    // names and rejects a bad timestamp, and such a message is skipped instead
-    // of putting junk on the wire.
-    function forwardOriginFor(message: UiMessage): ForwardOrigin | undefined {
-      if (message.forward !== undefined) {
-        return isValid(ForwardOriginSchema)(message.forward) ? message.forward : undefined;
-      }
-      const createdAt = message.createdAt.getTime();
-      if (Number.isNaN(createdAt)) {
-        return undefined;
-      }
-      const author = authorFor(message.id);
-      const room = forwardPublicRoomFor(get().chats.find((entry) => entry.id === message.chatId));
-      const originalId = correctionTargetFor(message.id);
-      const candidate = {
-        sender_id: author?.jid ?? message.senderId,
-        sender_name: message.senderName,
-        ...(room === undefined ? {} : { chat_id: room.id, chat_name: room.title }),
-        ...(originalId === undefined ? {} : { original_id: originalId }),
-        original_at: new Date(createdAt).toISOString(),
-      };
-      return isValid(ForwardOriginSchema)(candidate) ? candidate : undefined;
-    }
-
-    // The reused payload of a forwarded message: a sticker or other card as-is,
-    // an attachment or voice rebuilt from the UiMessage fields. The voice
-    // transcript is dropped (it is chat-scoped). Every payload is validated
-    // with the protocol schema before the optimistic insert, like `sendSticker`.
-    function forwardedPayloadFor(message: UiMessage): Payload | undefined {
-      if (message.card !== undefined) {
-        return isValid(PayloadSchema)(message.card) ? message.card : undefined;
-      }
-      if (message.attachment !== undefined) {
-        const data = message.attachment;
-        return isValid(AttachmentSchema)(data) ? { v: 0, type: 'attachment', data } : undefined;
-      }
-      if (message.voice !== undefined) {
-        const { transcript: _transcript, ...data } = message.voice;
-        return isValid(VoiceMetaSchema)(data) ? { v: 0, type: 'voice', data } : undefined;
-      }
-      return undefined;
-    }
-
-    // The content fields a forwarded payload paints into the optimistic bubble,
-    // so it looks like the echo the matching normal send would produce.
-    function forwardedUiFieldsFor(
-      payload: Payload,
-    ): Pick<UiMessage, 'voice' | 'attachment' | 'card'> {
-      if (payload.type === 'attachment') {
-        return { attachment: payload.data };
-      }
-      if (payload.type === 'voice') {
-        return { voice: payload.data };
-      }
-      return { card: payload };
-    }
-
-    // One forwarded copy's send: the same timeout/status machinery as voice and
-    // attachments, with a fixed user-safe reason on failure.
-    function runForwardSend(
-      target: ChatSummary,
-      localId: string,
-      body: string,
-      payload: Payload | undefined,
-      origin: ForwardOrigin,
-    ): void {
-      const current = core;
-      if (current === undefined) {
-        markSendFailed(target.id, localId, 'network');
-        return;
-      }
-      const run = {};
-      armSendTimeout(target.id, localId, run);
-      current
-        .sendMessage(target.id, coreKind(target), body, {
-          ...(payload === undefined ? {} : { payload }),
-          forward: origin,
-        })
-        .then((sent) => {
-          linkMessageIds(localId, sent.id);
-          linkLocalToServer(localId, sent.id);
-          rememberOriginId(localId, sent.id);
-          if (!isCurrentSendRun(localId, run)) {
-            return;
-          }
-          settleSendTimeout(localId, run);
-          updateMessageStatus(target.id, localId, 'sent');
-        })
-        .catch((error) => {
-          if (!isCurrentSendRun(localId, run)) {
-            return;
-          }
-          settleSendTimeout(localId, run);
-          markSendFailed(target.id, localId, sendFailureReasonFor(error, false));
-        });
-    }
+    // What the Effect modules share. The accessors read and write the
+    // closure variables the helpers above still use.
+    const ctx: StoreCtx = {
+      get,
+      set,
+      ports,
+      rt,
+      k: {
+        rememberGroupIds,
+        nick,
+        listFor,
+        sameMessage,
+        ingestHistoryReactions,
+        ingestHistoryEdits,
+        isReactionOnly,
+        isEditStanza,
+        toUiMessage,
+        resolvePendingEdits,
+        withEdits,
+        refreshEdits,
+        previewFor,
+        myJid,
+        aliasRoot,
+        linkMessageIds,
+        linkLocalToServer,
+        rememberOriginId,
+        rememberAuthor,
+        rememberBaseText,
+        authorFor,
+        correctionTargetFor,
+        signatureFor,
+        stickerSignatureFor,
+        setChatMessage,
+        updateMessageStatus,
+        updateMessageVoice,
+        updateMessageAttachment,
+        markSendFailed,
+        markSendRetrying,
+        markStickerFailed,
+        markAttachmentFailed,
+        removeFailedMessage,
+        clearSendFailure,
+        isOwnSender,
+        senderNameFor,
+        ingestEdit,
+        ingestReaction,
+        applyReactionUpdate,
+        wireTargetFor,
+        retractionTargetFor,
+        restoreMessage,
+        restoreEdits,
+      },
+      get core() {
+        return core;
+      },
+      set core(value) {
+        core = value;
+      },
+      get groupsJoined() {
+        return groupsJoined;
+      },
+      set groupsJoined(value) {
+        groupsJoined = value;
+      },
+      get pendingOpenChatId() {
+        return pendingOpenChatId;
+      },
+      set pendingOpenChatId(value) {
+        pendingOpenChatId = value;
+      },
+      get mediaToken() {
+        return mediaToken;
+      },
+      set mediaToken(value) {
+        mediaToken = value;
+      },
+      get lastRead() {
+        return lastRead;
+      },
+      set lastRead(value) {
+        lastRead = value;
+      },
+      get lastReadUserId() {
+        return lastReadUserId;
+      },
+      set lastReadUserId(value) {
+        lastReadUserId = value;
+      },
+      cachedUserId: undefined,
+      connectRetryAttempt: 0,
+      connectRetryPending: false,
+      groupIds,
+      loadingGroupMembers,
+      groupMembers,
+      groupInfos,
+      messageAuthors,
+      messageOriginIds,
+      messageBaseTexts,
+      finishedTurns,
+      finishedTurnOrder,
+      cursors,
+      loadingHistory,
+      loadingOlder,
+      quietArchiveIds,
+      sequence: 0,
+      pendingOutgoing,
+      pendingAttachments,
+      pendingVoices,
+      sendRuns,
+    };
 
     return {
       currentUserId: '',
@@ -3528,342 +1480,88 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       groupMembers: (chatId) => [...(groupMembers.get(chatId)?.values() ?? [])],
       groupInfo: (chatId) => get().groupInfos[chatId],
       refreshGroupInfo: (chatId) => {
-        void ensureGroupMembers(chatId, true);
+        loadGroupMembersInBackground(ctx, chatId, true);
       },
       listMyAis: () => api.listAis(),
       topicNotice: undefined,
       dismissTopicNotice: () => set({ topicNotice: undefined }),
       refreshChats: () => {
-        scheduleChatsRefresh();
+        scheduleChatsRefresh(ctx);
       },
       // T-0130 (review): resolves General from the painted list, refreshing
       // it first. `refreshChats` only schedules the 500 ms debounce, so this
-      // awaits the real `refreshChats()` closure — never the schedule.
-      refreshGeneralTopic: async (groupId) => {
-        await refreshChats().catch(() => {});
-        return get().chats.find(
-          (chat) => chat.groupId === groupId && chat.topic?.isGeneral === true,
-        )?.id;
-      },
-      createTopic: async (chatId, input) => {
-        const chat = get().chats.find((entry) => entry.id === chatId);
-        const groupId = chat?.groupId ?? groupIds.get(chatId);
-        if (groupId === undefined) {
-          throw new Error('This group is not available yet.');
-        }
-        const topic = await api.createTopic(groupId, input);
-        await applyTopicRow(topic);
-        const row = get().chats.find((entry) => entry.topic?.id === topic.id);
-        if (row === undefined) {
-          throw new Error('the new topic did not appear in the chat list');
-        }
-        const me = get().me;
-        if (core !== undefined && me !== undefined) {
-          await core.joinRoom(row.id, nick(me)).catch(() => {});
-        }
-        await openHistory(row.id);
-        return row.id;
-      },
-      patchTopic: async (chatId, input) => {
-        const { topicId } = await topicIdFor(chatId);
-        const topic = await api.patchTopic(topicId, input);
-        // A deliberate self-archive moves silently: the header already
-        // navigates to General itself, so the removed-while-open flow must
-        // not add a "no longer available" notice on top of it.
-        if (topic.archived && get().activeChatId === chatId) {
-          quietArchiveIds.add(chatId);
-        }
-        await applyTopicRow(topic);
-      },
-      addTopicAi: async (chatId, aiId) => {
-        const { topicId } = await topicIdFor(chatId);
-        const topic = await api.addTopicAi(topicId, aiId);
-        await applyTopicRow(topic);
-      },
-      removeTopicAi: async (chatId, aiId) => {
-        const { topicId } = await topicIdFor(chatId);
-        const topic = await api.removeTopicAi(topicId, aiId);
-        await applyTopicRow(topic);
-      },
-      addTopicMember: async (chatId, userId) => {
-        const { topicId } = await topicIdFor(chatId);
-        const topic = await api.addTopicMember(topicId, userId);
-        await applyTopicRow(topic);
-      },
-      removeTopicMember: async (chatId, userId) => {
-        const { topicId } = await topicIdFor(chatId);
-        // ONE DELETE. A 404 here does not always mean the topic is gone:
-        // the server also 404s for a user who is not a member (e.g. a
-        // stale member list, or a second click on Remove). Rethrow as-is;
-        // the caller re-checks the row via `refreshTopicRow`.
-        const topic = await api.removeTopicMember(topicId, userId);
-        await applyTopicRow(topic);
-      },
-      setTopicRoles: async (chatId, input) => {
-        const { topicId } = await topicIdFor(chatId);
-        const topic = await api.setTopicRoles(topicId, input);
-        await applyTopicRow(topic);
-      },
+      // runs the real refresh and waits for it, never the schedule.
+      refreshGeneralTopic: (groupId) => rt.runPromise(refreshGeneralTopic(ctx, groupId)),
+      createTopic: (chatId, input) => rt.runPromise(createTopic(ctx, chatId, input)),
+      patchTopic: (chatId, input) => rt.runPromise(patchTopic(ctx, chatId, input)),
+      addTopicAi: (chatId, aiId) => rt.runPromise(addTopicAi(ctx, chatId, aiId)),
+      removeTopicAi: (chatId, aiId) => rt.runPromise(removeTopicAi(ctx, chatId, aiId)),
+      addTopicMember: (chatId, userId) => rt.runPromise(addTopicMember(ctx, chatId, userId)),
+      removeTopicMember: (chatId, userId) => rt.runPromise(removeTopicMember(ctx, chatId, userId)),
+      setTopicRoles: (chatId, input) => rt.runPromise(setTopicRoles(ctx, chatId, input)),
       // T-0130 (review): re-reads the chat list and reports whether the
       // topic row is still there, so a member-removal 404 can be told
       // apart from a gone topic (last member removed → archived). A
       // failed refresh throws (instead of reading a stale list as
       // "alive"), so the panel shows the inline removal error.
-      refreshTopicRow: async (chatId, topicId) => {
-        await refreshChatsOrThrow();
-        return !get().chats.some((chat) => chat.id === chatId || chat.topic?.id === topicId);
-      },
-      leaveTopic: async (chatId) => {
-        const me = get().me;
-        if (me === undefined) {
-          throw new Error('This topic is not available yet.');
-        }
-        try {
-          await get().removeTopicMember(chatId, me.id);
-        } catch (error) {
-          // Leaving the last seat archives the topic: the server answers
-          // 404 `Topic not found`, and the row refreshes itself away — the
-          // caller navigates away. Any other 404 (e.g. "not a member")
-          // means nothing left to leave either, but the live row must say
-          // so: refresh the list first and swallow only when the topic
-          // really disappeared from it. Otherwise rethrow, so the caller
-          // shows the normal error instead of navigating away.
-          if (error instanceof ApiError && error.status === 404) {
-            const { topicId } = await topicIdFor(chatId);
-            const gone = await get().refreshTopicRow(chatId, topicId);
-            if (gone) {
-              await refreshChats().catch(() => {});
-              return;
-            }
-          }
-          throw error;
-        }
-      },
+      refreshTopicRow: (chatId, topicId) => rt.runPromise(refreshTopicRow(ctx, chatId, topicId)),
+      leaveTopic: (chatId) => rt.runPromise(leaveTopic(ctx, chatId)),
       // T-0124: channels share the create/list/refresh flow with groups (the
       // detail carries `kind`, the chat list paints the feed row).
       // T-0164: `visibility: 'public'` + `handle` creates the channel with
       // its directory entry in one transaction.
-      createChannel: async (title, memberIds, description, options) => {
-        const detail = await api.createGroup({
-          title,
-          memberIds,
-          kind: 'channel',
-          ...(description === undefined || description.trim() === ''
-            ? {}
-            : { description: description.trim() }),
-          ...(options?.visibility === undefined ? {} : { visibility: options.visibility }),
-          ...(options?.handle === undefined ? {} : { handle: options.handle }),
-        });
-        const [entries, prefs] = await Promise.all([
-          api.getChats(),
-          api.listChatPrefs().catch(() => [] as ChatPref[]),
-        ]);
-        rememberGroupIds(entries);
-        const previous = get().chats;
-        const freshRows = entries.flatMap((entry) => summariesFor(entry));
-        const byJid: Record<string, ChatPref> = {};
-        for (const pref of prefs) {
-          byJid[pref.chatJid.toLowerCase()] = pref;
-        }
-        set({
-          chats: applyChatPrefs(
-            sortByRecency(
-              freshRows.map((row) => {
-                const before = previous.find((chat) => chat.id === row.id);
-                return before === undefined
-                  ? row
-                  : {
-                      ...row,
-                      ...(before.lastMessage === undefined
-                        ? {}
-                        : { lastMessage: before.lastMessage }),
-                      unread: before.unread,
-                      ...(before.online === undefined ? {} : { online: before.online }),
-                    };
-              }),
-            ),
-            prefs,
-            now().getTime(),
-          ),
-          chatPrefs: byJid,
-        });
-        const created = entries.find(
-          (entry) => entry.kind === 'group' && entry.groupId === detail.id,
-        );
-        if (created === undefined) {
-          throw new Error('the new channel did not appear in the chat list');
-        }
-        const me = get().me;
-        if (core !== undefined && me !== undefined) {
-          await core.joinRoom(created.chatJid, nick(me)).catch(() => {});
-        }
-        void ensureGroupMembers(created.chatJid);
-        await openHistory(created.chatJid);
-        return created.chatJid;
-      },
+      createChannel: (title, memberIds, description, options) =>
+        rt.runPromise(createChannelEffect(ctx, title, memberIds, description, options)),
       // T-0124: leaving a channel removes the caller's membership through
       // the member route (the same route admins use to remove others). The
       // list refreshes itself away; the caller navigates away.
-      leaveChannel: async (chatId) => {
-        const groupId = groupIds.get(chatId);
-        const me = get().me;
-        if (groupId === undefined || me === undefined) {
-          throw new Error('This channel is not available yet.');
-        }
-        await api.removeGroupMember(groupId, me.id);
-        await refreshChatsOrThrow();
-      },
+      leaveChannel: (chatId) => rt.runPromise(leaveChannel(ctx, chatId)),
       // T-0124: promote/demote through the role route (owner only). The
       // detail refreshes, so the panel updates at once; the chat list
       // refreshes too, so the acting device's rows (myRole, counts) match
       // server truth and the composer bar flips. The target's own device
       // converges on the next list refresh (60s poll / focus), like every
       // other membership change in the app.
-      changeChannelRole: async (chatId, userId, role) => {
-        const groupId = groupIds.get(chatId);
-        const mine = myJid();
-        if (groupId === undefined || mine === undefined) {
-          throw new Error('This channel is not available yet.');
-        }
-        const domain = mine.slice(mine.indexOf('@') + 1);
-        const detail = await api.changeGroupMemberRole(groupId, userId, role);
-        applyGroupDetail(chatId, detail, domain);
-        await refreshChatsOrThrow();
-      },
-      setMembersCanCreateTopics: async (chatId, allowed) => {
-        const chat = get().chats.find((entry) => entry.id === chatId);
-        const groupId = chat?.groupId ?? groupIds.get(chatId);
-        const mine = myJid();
-        if (groupId === undefined || mine === undefined) {
-          throw new Error('This group is not available yet.');
-        }
-        const domain = mine.slice(mine.indexOf('@') + 1);
-        const detail = await api.setMembersCanCreateTopics(groupId, allowed);
-        applyGroupDetail(chatId, detail, domain);
-      },
+      changeChannelRole: (chatId, userId, role) =>
+        rt.runPromise(changeChannelRole(ctx, chatId, userId, role)),
+      setMembersCanCreateTopics: (chatId, allowed) =>
+        rt.runPromise(setMembersCanCreateTopics(ctx, chatId, allowed)),
       // T-0466: owners/admins set the group's shared background; the detail
       // refresh repaints every chat of the group at once.
-      setGroupBackground: async (chatId, background) => {
-        const chat = get().chats.find((entry) => entry.id === chatId);
-        const groupId = chat?.groupId ?? groupIds.get(chatId);
-        const mine = myJid();
-        if (groupId === undefined || mine === undefined) {
-          throw new Error('This group is not available yet.');
-        }
-        const domain = mine.slice(mine.indexOf('@') + 1);
-        const detail = await api.setGroupBackground(groupId, background);
-        applyGroupDetail(chatId, detail, domain);
-      },
+      setGroupBackground: (chatId, background) =>
+        rt.runPromise(setGroupBackground(ctx, chatId, background)),
       // T-0478: owners/admins turn the group's AI listener on/off or set its
       // eagerness; the detail refresh repaints the panel.
-      setGroupListener: async (chatId, input) => {
-        const chat = get().chats.find((entry) => entry.id === chatId);
-        const groupId = chat?.groupId ?? groupIds.get(chatId);
-        const mine = myJid();
-        if (groupId === undefined || mine === undefined) {
-          throw new Error('This group is not available yet.');
-        }
-        const domain = mine.slice(mine.indexOf('@') + 1);
-        const detail = await api.setGroupListener(groupId, input);
-        applyGroupDetail(chatId, detail, domain);
-      },
+      setGroupListener: (chatId, input) => rt.runPromise(setGroupListener(ctx, chatId, input)),
       // T-0164: the owner flips a group public (with a handle) or back to
       // private. The detail refreshes from server truth (like the role
       // change), so the panel, the label and the share link update at once.
-      setGroupVisibility: async (chatId, input) => {
-        const chat = get().chats.find((entry) => entry.id === chatId);
-        const groupId = chat?.groupId ?? groupIds.get(chatId);
-        const mine = myJid();
-        if (groupId === undefined || mine === undefined) {
-          throw new Error('This group is not available yet.');
-        }
-        const domain = mine.slice(mine.indexOf('@') + 1);
-        const detail = await api.setGroupVisibility(groupId, input);
-        applyGroupDetail(chatId, detail, domain);
-        await refreshChatsOrThrow();
-      },
+      setGroupVisibility: (chatId, input) => rt.runPromise(setGroupVisibility(ctx, chatId, input)),
       // T-0164: joins a public group with one request, then opens it: the
       // list refreshes (the new membership arrives) and the General chat id
       // resolves from the painted rows, falling back to undefined when the
       // list has not caught up yet (the caller navigates home instead).
-      joinPublicGroup: async (groupId) => {
-        await api.joinPublicGroup(groupId);
-        await refreshChatsOrThrow();
-        const opened = get().chats.find(
-          (entry) => entry.groupId === groupId && entry.topic?.isGeneral !== false,
-        );
-        return opened?.id;
-      },
-      addGroupAi: async (chatId, aiId) => {
-        const groupId = groupIds.get(chatId);
-        const mine = myJid();
-        if (groupId === undefined || mine === undefined) {
-          throw new Error('This group is not available yet.');
-        }
-        const domain = mine.slice(mine.indexOf('@') + 1);
-        const detail = await api.addGroupAi(groupId, aiId);
-        applyGroupDetail(chatId, detail, domain);
-      },
-      removeGroupAi: async (chatId, aiId) => {
-        const groupId = groupIds.get(chatId);
-        const mine = myJid();
-        if (groupId === undefined || mine === undefined) {
-          throw new Error('This group is not available yet.');
-        }
-        const domain = mine.slice(mine.indexOf('@') + 1);
-        const detail = await api.removeGroupAi(groupId, aiId);
-        applyGroupDetail(chatId, detail, domain);
-      },
+      joinPublicGroup: (groupId) => rt.runPromise(joinPublicGroup(ctx, groupId)),
+      addGroupAi: (chatId, aiId) => rt.runPromise(addGroupAi(ctx, chatId, aiId)),
+      removeGroupAi: (chatId, aiId) => rt.runPromise(removeGroupAi(ctx, chatId, aiId)),
       hasMore: (chatId) => get().historyComplete[chatId] !== true && cursors[chatId] !== undefined,
       openChat: (chatId) => {
-        set((state) => ({
-          activeChatId: chatId,
-          // Opening another chat dismisses the notice (it belongs to the
-          // previous view); reopening the same chat keeps it.
-          topicNotice: state.topicNotice?.chatId === chatId ? state.topicNotice : undefined,
-        }));
-        // Navigating away resolves a pending quiet self-archive: the mark
-        // exists so the disappearance refresh moves silently, but leaving
-        // first means no silent move is wanted — a leaked mark would
-        // silence a later, unrelated removal. Drop every mark except one
-        // for the chat just opened.
-        for (const id of quietArchiveIds) {
-          if (id !== chatId) {
-            quietArchiveIds.delete(id);
-          }
-        }
-        recordRead(chatId, lastRead[chatId]);
-        void ensureGroupMembers(chatId);
-        void refreshPinsFor(chatId);
-        if (pendingOpenChatId !== undefined && pendingOpenChatId !== chatId) {
-          clearSupersededMarker(pendingOpenChatId);
-        }
-        pendingOpenChatId = chatId;
-        void openHistory(chatId);
+        openChatInStore(ctx, chatId);
       },
       retryChats: () => {
-        generation += 1;
-        const gen = generation;
-        set({ chatsState: 'loading' });
-        void boot(gen);
+        rt.runDetached(retryBoot(ctx));
       },
       retryHistory: (chatId) => {
-        void openHistory(chatId);
+        rt.fork(openHistoryEffect(ctx, chatId));
       },
-      loadOlder,
+      loadOlder: (chatId) => {
+        loadOlderInStore(ctx, chatId);
+      },
       pins: (chatId) => get().pinsByChat[chatId] ?? [],
       pinsLoaded: (chatId) => get().pinsReady[chatId] === true,
-      loadPins: async (chatId) => {
-        await refreshPinsFor(chatId);
-      },
-      loadChatMedia: async (chatId, tab, before) => {
-        const page = await api.listChatMedia({
-          chat: chatId,
-          type: tab,
-          ...(before === undefined ? {} : { before }),
-        });
-        return sanitizeMediaPage(page);
-      },
+      loadPins: (chatId) => rt.runPromise(refreshPinsForEffect(ctx, chatId)),
+      loadChatMedia: (chatId, tab, before) =>
+        rt.runPromise(loadChatMedia(ctx, chatId, tab, before)),
       canPin: (chatId) => {
         const state = get();
         const chat = state.chats.find((entry) => entry.id === chatId);
@@ -3885,152 +1583,14 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       },
       pinFor: (chatId, messageId) =>
         (get().pinsByChat[chatId] ?? []).find((pin) => pin.messageId === messageId),
-      pinMessage: async (chatId, messageId) => {
-        const message = listFor(get(), chatId).find((item) => sameMessage(item.id, messageId));
-        if (message === undefined) {
-          throw new Error('Message not found');
-        }
-        const kind: Pin['kind'] =
-          message.voice !== undefined
-            ? 'voice'
-            : message.image !== undefined ||
-                (message.attachment !== undefined && message.attachment.kind === 'image')
-              ? 'image'
-              : message.attachment !== undefined
-                ? 'file'
-                : message.card !== undefined
-                  ? 'card'
-                  : 'text';
-        const snapshot: PinMessageInput = {
-          chat: chatId,
-          messageId: message.id,
-          senderName: message.senderName.slice(0, 80) || 'Someone',
-          ...(kind === 'text' ? { text: (message.text ?? '').slice(0, 300) } : { text: '' }),
-          kind,
-        };
-        const before = get().pinsByChat[chatId] ?? [];
-        const optimistic: Pin = {
-          ...snapshot,
-          id: `pin-local-${message.id}`,
-          pinnedBy: get().currentUserId,
-          pinnedAt: new Date().toISOString(),
-        };
-        set((state) => ({
-          pinsByChat: {
-            ...state.pinsByChat,
-            [chatId]: [optimistic, ...(state.pinsByChat[chatId] ?? [])],
-          },
-          pinsError: undefined,
-        }));
-        try {
-          const saved = await api.pinMessage(snapshot);
-          set((state) => ({
-            pinsByChat: {
-              ...state.pinsByChat,
-              [chatId]: (state.pinsByChat[chatId] ?? []).map((pin) =>
-                pin.id === optimistic.id ? saved : pin,
-              ),
-            },
-          }));
-        } catch (error) {
-          set((state) => ({
-            pinsByChat: { ...state.pinsByChat, [chatId]: before },
-            pinsError: { chatId, message: 'Could not pin the message. Try again.' },
-          }));
-          throw error;
-        }
-      },
-      unpinMessage: async (chatId, pinId) => {
-        const before = get().pinsByChat[chatId] ?? [];
-        set((state) => ({
-          pinsByChat: {
-            ...state.pinsByChat,
-            [chatId]: (state.pinsByChat[chatId] ?? []).filter((pin) => pin.id !== pinId),
-          },
-          pinsError: undefined,
-        }));
-        try {
-          await api.unpinMessage(pinId);
-        } catch (error) {
-          set((state) => ({
-            pinsByChat: { ...state.pinsByChat, [chatId]: before },
-            pinsError: { chatId, message: 'Could not unpin the message. Try again.' },
-          }));
-          throw error;
-        }
-      },
+      pinMessage: (chatId, messageId) => rt.runPromise(pinMessage(ctx, chatId, messageId)),
+      unpinMessage: (chatId, pinId) => rt.runPromise(unpinMessage(ctx, chatId, pinId)),
       pinsPanel: undefined,
       setPinsPanel: (chatId) => set({ pinsPanel: chatId === undefined ? undefined : { chatId } }),
-      openAtMessage: async (chatId, messageId) => {
-        get().openChat(chatId);
-        const chat = get().chats.find((entry) => entry.id === chatId);
-        const current = core;
-        if (chat === undefined || current === undefined || !canLoadHistory(chat)) {
-          const found = listFor(get(), chatId).find((item) => sameMessage(item.id, messageId));
-          if (found === undefined) {
-            throw new Error('message_not_found');
-          }
-          return found;
-        }
-        // Wait for the opening page when it is still in flight, then page
-        // backwards until the message is loaded or history runs out. A
-        // stalled wait (false) breaks out to "Message not found".
-        for (let pages = 0; pages < MESSAGE_JUMP_MAX_PAGES; pages += 1) {
-          const loaded = listFor(get(), chatId).find((item) => sameMessage(item.id, messageId));
-          if (loaded !== undefined) {
-            return loaded;
-          }
-          if (get().historyComplete[chatId] === true) {
-            break;
-          }
-          if (loadingHistory.has(chatId)) {
-            if (!(await waitForHistory(chatId))) {
-              break;
-            }
-            continue;
-          }
-          const cursor = cursors[chatId];
-          if (cursor === undefined) {
-            if (!(await waitForHistory(chatId))) {
-              break;
-            }
-            continue;
-          }
-          await loadOlderPage(chatId, cursor);
-        }
-        const found = listFor(get(), chatId).find((item) => sameMessage(item.id, messageId));
-        if (found === undefined) {
-          throw new Error('message_not_found');
-        }
-        return found;
-      },
+      openAtMessage: (chatId, messageId) =>
+        rt.runPromise(openAtMessageEffect(ctx, chatId, messageId)),
       react: (chatId, messageId, emoji) => {
-        const chat = get().chats.find((entry) => entry.id === chatId);
-        const mine = myJid();
-        if (chat === undefined || mine === undefined) {
-          return;
-        }
-        // The local key is alias-resolved; the wire target must be the server
-        // id everyone else knows. An unacked message has none yet, so reacting
-        // would send a target nobody could match: do nothing until it has one.
-        const targetId = aliasRoot(messageId);
-        const wireTarget = wireTargetFor(messageId);
-        const currentCore = core;
-        if (wireTarget === undefined || currentCore === undefined) {
-          return;
-        }
-        const current = get().reactions[chatId]?.targets[targetId]?.[mine]?.emojis ?? [];
-        const next = current.includes(emoji)
-          ? current.filter((entry) => entry !== emoji)
-          : [...current, emoji];
-        const apply = (emojis: string[]): void => {
-          applyReactionUpdate(chatId, targetId, mine, emojis, now().getTime());
-        };
-        apply(next);
-        currentCore.sendReactions(chatId, coreKind(chat), wireTarget, next).catch(() => {
-          // The send failed: undo the optimistic toggle.
-          apply(current);
-        });
+        react(ctx, chatId, messageId, emoji);
       },
       startEdit: (chatId, messageId) => {
         set({ editTarget: { chatId, messageId }, actionError: undefined });
@@ -4039,655 +1599,51 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         set({ editTarget: undefined });
       },
       editMessage: (chatId, messageId, text) => {
-        const trimmed = text.trim();
-        const chat = get().chats.find((entry) => entry.id === chatId);
-        const mine = myJid();
-        if (chat === undefined || mine === undefined || trimmed.length === 0) {
-          return;
-        }
-        const message = listFor(get(), chatId).find((item) => sameMessage(item.id, messageId));
-        if (message === undefined || !canEditMessage(message, get().currentUserId, now())) {
-          return;
-        }
-        // The UI already blocks a no-op edit; the store does too, so no stanza
-        // is ever sent for an unchanged text.
-        if (message.text === trimmed) {
-          return;
-        }
-        // XEP-0308 names the original by its sender-generated id.
-        const wireTarget = correctionTargetFor(messageId);
-        const currentCore = core;
-        if (wireTarget === undefined || currentCore === undefined) {
-          return;
-        }
-        const targetId = aliasRoot(messageId);
-        const author: EditAuthor = { jid: mine, resolved: true };
-        const priorMentions = rebaseMentions(message.text ?? '', text, message.mentions ?? []);
-        const mentions = mentionsForTrimmedText(text, trimmed, priorMentions);
-        const update: EditUpdate = {
-          kind: 'correction',
-          targetId,
-          author,
-          text: trimmed,
-          order: now().getTime(),
-        };
-        if (mentions.length > 0) {
-          update.mentions = mentions;
-        }
-        const previous = get().edits[chatId];
-        set({ actionError: undefined });
-        set((state) => ({
-          edits: {
-            ...state.edits,
-            [chatId]: applyEdit(state.edits[chatId] ?? emptyEdits(), update, author),
-          },
-        }));
-        refreshEdits(chatId);
-        currentCore
-          .sendCorrection(
-            chatId,
-            coreKind(chat),
-            wireTarget,
-            trimmed,
-            mentions.length === 0
-              ? undefined
-              : {
-                  mentions: mentions.map((mention) => ({
-                    jid: mention.jid,
-                    begin: mention.begin,
-                    end: mention.end,
-                  })),
-                },
-          )
-          .catch(() => {
-            restoreMessage(chatId, message);
-            restoreEdits(chatId, previous);
-            set({
-              actionError: { chatId, message: 'Could not save the edit. Try again.' },
-            });
-          });
+        editMessage(ctx, chatId, messageId, text);
       },
       deleteForEveryone: (chatId, messageId) => {
-        const chat = get().chats.find((entry) => entry.id === chatId);
-        const mine = myJid();
-        if (chat === undefined || mine === undefined) {
-          return;
-        }
-        const message = listFor(get(), chatId).find((item) => sameMessage(item.id, messageId));
-        if (message === undefined || !canDeleteMessage(message, get().currentUserId)) {
-          return;
-        }
-        const wireTarget = retractionTargetFor(chat, messageId);
-        const currentCore = core;
-        if (wireTarget === undefined || currentCore === undefined) {
-          return;
-        }
-        const targetId = aliasRoot(messageId);
-        const author: EditAuthor = { jid: mine, resolved: true };
-        const update: EditUpdate = {
-          kind: 'retraction',
-          targetId,
-          author,
-          order: now().getTime(),
-        };
-        const previous = get().edits[chatId];
-        set({ actionError: undefined });
-        set((state) => ({
-          edits: {
-            ...state.edits,
-            [chatId]: applyEdit(state.edits[chatId] ?? emptyEdits(), update, author),
-          },
-        }));
-        refreshEdits(chatId);
-        currentCore.sendRetraction(chatId, coreKind(chat), wireTarget).catch(() => {
-          restoreMessage(chatId, message);
-          restoreEdits(chatId, previous);
-          set({
-            actionError: { chatId, message: 'Could not delete the message. Try again.' },
-          });
-        });
+        deleteForEveryone(ctx, chatId, messageId);
       },
       sendTyping: (chatId) => {
-        const chat = get().chats.find((entry) => entry.id === chatId);
-        if (core !== undefined && chat !== undefined) {
-          core.sendTyping(chatId, coreKind(chat), 'composing');
-        }
+        sendTyping(ctx, chatId);
       },
-      // XEP-0357 enable/disable over the user's own session (ejabberd
-      // requires it; there is no admin shortcut). Rejects offline or when
-      // the core cannot send raw IQs, so the settings page can roll back.
-      setPushPair: async (input) => {
-        if (core === undefined || core.setPushEnabled === undefined) {
-          throw new Error('the chat connection cannot toggle push');
-        }
-        await core.setPushEnabled(input);
-      },
+      setPushPair: (input) => rt.runPromise(setPushPair(ctx, input)),
       sendText: (chatId, text, options) => {
-        const trimmed = text.trim();
-        const chat = get().chats.find((entry) => entry.id === chatId);
-        if (trimmed.length === 0 || chat === undefined) {
-          return;
-        }
-        const mentions = mentionsForTrimmedText(text, trimmed, options?.mentions ?? []);
-        sequence += 1;
-        const localId = `local-${sequence}`;
-        const replyTo = options?.replyTo;
-        const message: UiMessage = {
-          id: localId,
-          chatId,
-          senderId: get().currentUserId,
-          senderName: 'You',
-          text: trimmed,
-          createdAt: now(),
-          status: 'sending',
-          ...(mentions.length === 0 ? {} : { mentions }),
-          ...(replyTo === undefined ? {} : { replyTo }),
-        };
-        const signature = signatureFor(chatId, trimmed, replyTo);
-        const queue = pendingOutgoing.get(signature) ?? [];
-        queue.push(localId);
-        pendingOutgoing.set(signature, queue);
-        setChatMessage(chatId, message, true);
-        const mine = myJid();
-        if (mine !== undefined) {
-          rememberAuthor(localId, { jid: mine, resolved: true });
-        }
-        rememberBaseText(localId, trimmed);
-
-        if (core === undefined) {
-          return;
-        }
-        core
-          .sendMessage(chatId, coreKind(chat), trimmed, {
-            ...(replyTo === undefined ? {} : { replyTo: { id: replyTo.id } }),
-            ...(mentions.length === 0
-              ? {}
-              : {
-                  mentions: mentions.map((mention) => ({
-                    jid: mention.jid,
-                    begin: mention.begin,
-                    end: mention.end,
-                  })),
-                }),
-          })
-          .then((sent) => {
-            linkMessageIds(localId, sent.id);
-            linkLocalToServer(localId, sent.id);
-            rememberOriginId(localId, sent.id);
-            updateMessageStatus(chatId, localId, 'sent');
-          })
-          .catch(() => {
-            // The message stays marked as sending; a reconnect can resend later.
-          });
+        sendText(ctx, chatId, text, options);
       },
       sendVoice: (chatId, recording, options) => {
-        const chat = get().chats.find((entry) => entry.id === chatId);
-        if (chat === undefined || recording.blob.size === 0) {
-          return;
-        }
-        sequence += 1;
-        const localId = `local-${sequence}`;
-        const replyTo = options?.replyTo;
-        const localUrl = objectUrlFor(recording.blob);
-        const waveform = recording.waveform.length > 0 ? recording.waveform : [12];
-        const message: UiMessage = {
-          id: localId,
-          chatId,
-          senderId: get().currentUserId,
-          senderName: 'You',
-          createdAt: now(),
-          status: 'sending',
-          voice: {
-            duration_ms: Math.max(1, recording.durationMs),
-            mime: 'audio/mp4',
-            waveform,
-            ...(localUrl === undefined ? {} : { url: localUrl }),
-          },
-          ...(replyTo === undefined ? {} : { replyTo }),
-        };
-        const signature = signatureFor(chatId, '', replyTo);
-        const queue = pendingOutgoing.get(signature) ?? [];
-        queue.push(localId);
-        pendingOutgoing.set(signature, queue);
-        setChatMessage(chatId, message, true);
-        pendingVoices.set(localId, { blob: recording.blob, waveform });
-        const mine = myJid();
-        if (mine !== undefined) {
-          rememberAuthor(localId, { jid: mine, resolved: true });
-        }
-
-        runVoiceSend(chat, localId, recording.blob, waveform, replyTo);
+        sendVoice(ctx, chatId, recording, options);
       },
       retryVoice: (chatId, messageId) => {
-        const root = aliasRoot(messageId);
-        const kept = pendingVoices.get(root) ?? pendingVoices.get(messageId);
-        const chat = get().chats.find((entry) => entry.id === chatId);
-        if (kept === undefined || chat === undefined) {
-          return;
-        }
-        const message = listFor(get(), chatId).find((item) => sameMessage(item.id, messageId));
-        if (message === undefined || message.status !== 'failed' || message.voice === undefined) {
-          return;
-        }
-        markSendRetrying(chatId, messageId);
-        runVoiceSend(chat, messageId, kept.blob, kept.waveform, message.replyTo);
+        retryVoice(ctx, chatId, messageId);
       },
       deleteFailedMessage: (chatId, messageId) => {
-        const message = listFor(get(), chatId).find((item) => sameMessage(item.id, messageId));
-        if (message === undefined || message.status !== 'failed') {
-          return;
-        }
-        if (message.voice !== undefined) {
-          pendingVoices.delete(aliasRoot(messageId));
-          pendingVoices.delete(messageId);
-        }
-        const root = aliasRoot(messageId);
-        if (sendTimeoutRuns.has(root)) {
-          const pending = sendTimeouts.get(root);
-          if (pending !== undefined) {
-            clearTimeout(pending.timer);
-            sendTimeouts.delete(root);
-          }
-          sendTimeoutRuns.delete(root);
-        }
-        removeFailedMessage(chatId, messageId);
+        deleteFailedMessage(ctx, chatId, messageId);
       },
       sendAttachment: (chatId, file, options) => {
-        const chat = get().chats.find((entry) => entry.id === chatId);
-        if (chat === undefined || file.size === 0) {
-          return;
-        }
-        sequence += 1;
-        const localId = `local-${sequence}`;
-        const replyTo = options?.replyTo;
-        const caption = options?.caption?.trim() ?? '';
-        const kind = attachmentPort.classify(file);
-        const mime = file.type === '' ? 'application/octet-stream' : file.type;
-        const localUrl = kind === 'image' ? objectUrlFor(file) : undefined;
-        const message: UiMessage = {
-          id: localId,
-          chatId,
-          senderId: get().currentUserId,
-          senderName: 'You',
-          createdAt: now(),
-          status: 'sending',
-          attachment: {
-            kind,
-            url: localUrl ?? '',
-            name: cleanFilename(file.name),
-            size: file.size,
-            mime,
-          },
-          ...(caption.length === 0 ? {} : { text: caption }),
-          ...(replyTo === undefined ? {} : { replyTo }),
-        };
-        const signature = signatureFor(chatId, caption, replyTo);
-        const queue = pendingOutgoing.get(signature) ?? [];
-        queue.push(localId);
-        pendingOutgoing.set(signature, queue);
-        setChatMessage(chatId, message, true);
-        pendingAttachments.set(localId, file);
-        const mine = myJid();
-        if (mine !== undefined) {
-          rememberAuthor(localId, { jid: mine, resolved: true });
-        }
-        if (caption.length > 0) {
-          rememberBaseText(localId, caption);
-        }
-        runAttachmentUpload(chat, localId, file, caption, replyTo);
+        sendAttachment(ctx, chatId, file, options);
       },
       sendSticker: (chatId, sticker, options) => {
-        const chat = get().chats.find((entry) => entry.id === chatId);
-        if (chat === undefined) {
-          return;
-        }
-        // The choice may come from tampered localStorage recents or drifted
-        // pack rows: validate before the optimistic insert, because
-        // `encodePayload` throws synchronously on an invalid payload and
-        // would otherwise leave a stuck `sending` bubble with no retry.
-        const data = {
-          pack_id: sticker.packId,
-          sticker_id: sticker.stickerId,
-          url: sticker.url,
-          ...(sticker.emoji === undefined ? {} : { emoji: sticker.emoji }),
-          width: sticker.width,
-          height: sticker.height,
-          mime: sticker.mime,
-        };
-        if (!isValid(StickerSchema)(data)) {
-          set({ actionError: { chatId, message: 'That sticker could not be sent.' } });
-          return;
-        }
-        sequence += 1;
-        const localId = `local-${sequence}`;
-        const replyTo = options?.replyTo;
-        const body = sticker.emoji ?? '';
-        const payload = { v: 0, type: 'sticker', data } as const;
-        const message: UiMessage = {
-          id: localId,
-          chatId,
-          senderId: get().currentUserId,
-          senderName: 'You',
-          text: body,
-          createdAt: now(),
-          status: 'sending',
-          card: payload,
-          ...(replyTo === undefined ? {} : { replyTo }),
-        };
-        const signature = stickerSignatureFor(chatId, body, sticker.stickerId, replyTo);
-        const queue = pendingOutgoing.get(signature) ?? [];
-        queue.push(localId);
-        pendingOutgoing.set(signature, queue);
-        setChatMessage(chatId, message, true);
-        const mine = myJid();
-        if (mine !== undefined) {
-          rememberAuthor(localId, { jid: mine, resolved: true });
-        }
-        if (body.length > 0) {
-          rememberBaseText(localId, body);
-        }
-        if (core === undefined) {
-          markStickerFailed(chatId, localId);
-          return;
-        }
-        runStickerSend(chat, localId, payload, body, replyTo);
+        sendSticker(ctx, chatId, sticker, options);
       },
       forwardMessages: (targets, messages, options) => {
-        const comment = options?.comment?.trim();
-        const visited = new Set<string>();
-        for (const targetId of targets) {
-          if (visited.has(targetId)) {
-            continue;
-          }
-          visited.add(targetId);
-          const target = get().chats.find((entry) => entry.id === targetId);
-          if (target === undefined) {
-            continue;
-          }
-          let queued = false;
-          for (const message of messages) {
-            if (
-              message.deleted === true ||
-              message.failed === true ||
-              message.status === 'failed' ||
-              message.status === 'sending'
-            ) {
-              continue;
-            }
-            const origin = forwardOriginFor(message);
-            if (origin === undefined) {
-              continue;
-            }
-            const payload = forwardedPayloadFor(message);
-            const body = message.text ?? '';
-            if (body.length === 0 && payload === undefined) {
-              continue;
-            }
-            sequence += 1;
-            const localId = `local-${sequence}`;
-            const copy: UiMessage = {
-              id: localId,
-              chatId: targetId,
-              senderId: get().currentUserId,
-              senderName: 'You',
-              createdAt: now(),
-              status: 'sending',
-              forward: origin,
-              ...(body.length === 0 ? {} : { text: body }),
-              ...(payload === undefined ? {} : forwardedUiFieldsFor(payload)),
-            };
-            // Key the echo queue exactly as the matching normal send does, so
-            // the server echo links to this bubble instead of duplicating it.
-            const signature =
-              payload !== undefined && payload.type === 'sticker'
-                ? stickerSignatureFor(targetId, body, payload.data.sticker_id, undefined)
-                : signatureFor(targetId, body, undefined);
-            const queue = pendingOutgoing.get(signature) ?? [];
-            queue.push(localId);
-            pendingOutgoing.set(signature, queue);
-            setChatMessage(targetId, copy, true);
-            const mine = myJid();
-            if (mine !== undefined) {
-              rememberAuthor(localId, { jid: mine, resolved: true });
-            }
-            if (body.length > 0) {
-              rememberBaseText(localId, body);
-            }
-            queued = true;
-            runForwardSend(target, localId, body, payload, origin);
-          }
-          // The comment is a separate normal text message, only when this
-          // target received at least one copy.
-          if (queued && comment !== undefined && comment.length > 0) {
-            get().sendText(targetId, comment);
-          }
-        }
+        forwardMessages(ctx, targets, messages, options);
       },
       retrySticker: (chatId, messageId) => {
-        const chat = get().chats.find((entry) => entry.id === chatId);
-        if (chat === undefined) {
-          return;
-        }
-        const message = listFor(get(), chatId).find((item) => sameMessage(item.id, messageId));
-        const payload =
-          message?.card !== undefined && message.card.type === 'sticker' ? message.card : undefined;
-        if (message === undefined || payload === undefined) {
-          return;
-        }
-        if (!isValid(StickerSchema)(payload.data)) {
-          markStickerFailed(chatId, messageId);
-          return;
-        }
-        set((state) => ({
-          messagesByChat: {
-            ...state.messagesByChat,
-            [chatId]: listFor(state, chatId).map((item) =>
-              sameMessage(item.id, messageId) ? clearFailure(item) : item,
-            ),
-          },
-        }));
-        runStickerSend(chat, messageId, payload, message.text ?? '', message.replyTo);
+        retrySticker(ctx, chatId, messageId);
       },
       retryAttachment: (chatId, messageId) => {
-        const root = aliasRoot(messageId);
-        const file = pendingAttachments.get(root) ?? pendingAttachments.get(messageId);
-        const chat = get().chats.find((entry) => entry.id === chatId);
-        if (file === undefined || chat === undefined) {
-          return;
-        }
-        const message = listFor(get(), chatId).find((item) => sameMessage(item.id, messageId));
-        // Like `retryVoice`: only a `failed` bubble may relaunch the pipeline,
-        // so a double Retry click cannot double-send (the first click flips
-        // the bubble back to `sending`, and the second returns here).
-        if (message === undefined || message.status !== 'failed') {
-          return;
-        }
-        markSendRetrying(chatId, messageId);
-        runAttachmentUpload(chat, messageId, file, message.text ?? '', message.replyTo);
+        retryAttachment(ctx, chatId, messageId);
       },
-      createGroup: async (title, memberIds, options) => {
-        // T-0124: channels share this entry point (the dialog passes `kind`
-        // and `description` through the same call). The detail carries
-        // `kind`, and the chat list paints the feed row.
-        // T-0164: `visibility: 'public'` + `handle` creates the group with
-        // its directory entry in one transaction.
-        const detail = await api.createGroup({
-          title,
-          memberIds,
-          ...(options?.kind === undefined ? {} : { kind: options.kind }),
-          ...(options?.description === undefined ? {} : { description: options.description }),
-          ...(options?.visibility === undefined ? {} : { visibility: options.visibility }),
-          ...(options?.handle === undefined ? {} : { handle: options.handle }),
-        });
-        const [entries, prefs] = await Promise.all([
-          api.getChats(),
-          api.listChatPrefs().catch(() => [] as ChatPref[]),
-        ]);
-        rememberGroupIds(entries);
-        const previous = get().chats;
-        const freshRows = entries.flatMap((entry) => summariesFor(entry));
-        const byJid: Record<string, ChatPref> = {};
-        for (const pref of prefs) {
-          byJid[pref.chatJid.toLowerCase()] = pref;
-        }
-        set({
-          chats: applyChatPrefs(
-            sortByRecency(
-              freshRows.map((row) => {
-                const before = previous.find((chat) => chat.id === row.id);
-                return before === undefined
-                  ? row
-                  : {
-                      ...row,
-                      ...(before.lastMessage === undefined
-                        ? {}
-                        : { lastMessage: before.lastMessage }),
-                      unread: before.unread,
-                      ...(before.online === undefined ? {} : { online: before.online }),
-                    };
-              }),
-            ),
-            prefs,
-            now().getTime(),
-          ),
-          chatPrefs: byJid,
-        });
-        const created = entries.find(
-          (entry) => entry.kind === 'group' && entry.groupId === detail.id,
-        );
-        if (created === undefined) {
-          throw new Error('the new group did not appear in the chat list');
-        }
-        const me = get().me;
-        if (core !== undefined && me !== undefined) {
-          await core.joinRoom(created.chatJid, nick(me)).catch(() => {});
-        }
-        void ensureGroupMembers(created.chatJid);
-        await openHistory(created.chatJid);
-        return created.chatJid;
-      },
-      createInvite: async () => {
-        const invite = await api.createInvite();
-        return invite.url;
-      },
-      signOut: async () => {
-        get().stop();
-        clearChatListCache(storage);
-        resetIsServerOwnerCache();
-        // A new sign-in is a new session for the handle gate: clear every
-        // dismissal so the next user is asked again.
-        resetHandleGateDismissal();
-        cachedUserId = undefined;
-        lastRead = {};
-        if (storage !== null && lastReadUserId !== undefined) {
-          try {
-            storage.removeItem(`${LAST_READ_PREFIX}${lastReadUserId}`);
-          } catch {
-            // Ignore storage failures on the way out.
-          }
-        }
-        set({
-          currentUserId: '',
-          me: undefined,
-          status: 'offline',
-          chatsState: 'loading',
-          historyState: {},
-          chats: [],
-          contacts: [],
-          chatPrefs: {},
-          defaultBackground: null,
-          messagesByChat: {},
-          reactions: {},
-          edits: {},
-          pinsByChat: {},
-          pinsReady: {},
-          pinsPanel: undefined,
-          pinsError: undefined,
-          editTarget: undefined,
-          actionError: undefined,
-          mediaTrustedHosts: undefined,
-          activeChatId: undefined,
-          historyComplete: {},
-          groupInfos: {},
-          typing: {},
-          drafts: {},
-          finishedDraftMessages: {},
-          search: '',
-          searchChat: undefined,
-          activeFolder: 'all',
-          folders: [],
-        });
-        groupMembers.clear();
-        groupInfos.clear();
-        messageAuthors.clear();
-        messageOriginIds.clear();
-        messageBaseTexts.clear();
-        try {
-          await authClient.signOut();
-        } catch {
-          // The app still clears local state even if sign-out fails.
-        }
-        goToLogin();
-      },
+      createGroup: (title, memberIds, options) =>
+        rt.runPromise(createGroupEffect(ctx, title, memberIds, options)),
+      createInvite: () => rt.runPromise(createInviteEffect()),
+      signOut: () => rt.runPromise(signOutStore(ctx)),
       start: () => {
-        generation += 1;
-        if (get().chats.length === 0) {
-          const cached = readChatListCache(storage);
-          if (cached === null) {
-            set({ chatsState: 'loading' });
-          } else {
-            // Paint the last list at once; boot replaces it with fresh data.
-            cachedUserId = cached.userId;
-            set({ chats: cached.chats, chatsState: 'ready' });
-          }
-        }
-        if (typeof window !== 'undefined') {
-          window.addEventListener('pagehide', saveChatList);
-        }
-        void boot(generation);
+        rt.runDetached(startStore(ctx));
       },
       stop: () => {
-        generation += 1;
-        closeDraftStream?.();
-        closeDraftStream = undefined;
-        stopChatsPolling();
-        stopPinsPolling();
-        clearDraftState();
-        set({ drafts: {}, finishedDraftMessages: {}, defaultBackground: null });
-        pendingOpenChatId = undefined;
-        for (const unsubscribe of unsubscribers) {
-          unsubscribe();
-        }
-        unsubscribers = [];
-        for (const timer of Object.values(typingTimers)) {
-          clearTimeout(timer);
-        }
-        typingTimers = {};
-        for (const pending of sendTimeouts.values()) {
-          clearTimeout(pending.timer);
-        }
-        sendTimeouts.clear();
-        sendTimeoutRuns.clear();
-        if (refreshTimer !== undefined) {
-          clearTimeout(refreshTimer);
-          refreshTimer = undefined;
-        }
-        if (connectRetryTimer !== undefined) {
-          clearTimeout(connectRetryTimer);
-          connectRetryTimer = undefined;
-        }
-        connectRetryAttempt = 0;
-        groupsJoined = false;
-        mediaToken = undefined;
-        set({ mediaTrustedHosts: undefined });
-        if (typeof window !== 'undefined') {
-          window.removeEventListener('pagehide', saveChatList);
-        }
-        const current = core;
-        core = undefined;
-        if (current !== undefined) {
-          void current.disconnect().catch(() => {});
-        }
+        rt.runDetached(stopStore(ctx));
       },
       setSearch: (value) => set({ search: value }),
       setSearchChat: (chatId) => set({ searchChat: chatId }),
@@ -4703,102 +1659,18 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
               : 'all',
         }));
       },
-      refreshChatPrefs: async () => {
-        const gen = generation;
-        let prefs: ChatPref[];
-        try {
-          prefs = await api.listChatPrefs();
-        } catch {
-          return;
-        }
-        if (gen !== generation) {
-          return;
-        }
-        applyPrefs(prefs);
-      },
-      refreshDefaultBackground: async () => {
-        const gen = generation;
-        let value: ChatBackgroundChoice;
-        try {
-          value = await api.getChatBackgroundDefault();
-        } catch {
-          // A failed load keeps the slate grid; it never blocks the chat list.
-          return;
-        }
-        if (gen !== generation) {
-          return;
-        }
-        set({ defaultBackground: value });
-      },
-      setPinned: async (chatId, pinned) => {
-        await updatePref(chatId, { pinned });
-      },
-      setMuted: async (chatId, duration) => {
-        await updatePref(
-          chatId,
-          duration === null ? { mutedUntil: null } : { mutedUntil: mutedUntilFor(duration, now()) },
-        );
-      },
-      setArchived: async (chatId, archived) => {
-        await updatePref(chatId, { archived });
-        saveChatList();
-      },
-      // T-0462: pick a preset for one chat (null clears the override, so the
-      // chat inherits the caller's global default again).
-      setChatBackground: async (chatId, presetId) => {
-        await updatePref(chatId, {
-          backgroundPreset: presetId,
-          backgroundImageId: null,
-          backgroundDim: null,
-        });
-      },
-      // T-0462: pick the global default. Optimistic with rollback; the picker
-      // paints at once and the saved default replaces the optimistic value.
-      setDefaultBackground: async (presetId) => {
-        const previous = get().defaultBackground;
-        const optimistic: ChatBackgroundChoice = {
-          backgroundPreset: presetId,
-          backgroundImageId: null,
-          backgroundDim: null,
-        };
-        set({ defaultBackground: optimistic });
-        let saved: ChatBackgroundChoice;
-        try {
-          saved = await api.putChatBackgroundDefault(optimistic);
-        } catch (error) {
-          set({ defaultBackground: previous });
-          throw error;
-        }
-        set({ defaultBackground: saved });
-      },
-      // T-0464: pick an uploaded image for one chat, with the dim percentage.
-      // `updatePref` patches the row optimistically and rolls back on failure.
-      setChatBackgroundImage: async (chatId, imageId, dim) => {
-        await updatePref(chatId, {
-          backgroundPreset: null,
-          backgroundImageId: imageId,
-          backgroundDim: dim,
-        });
-      },
-      // T-0464: pick an uploaded image as the global default, optimistic with
-      // rollback like the preset setter above.
-      setDefaultBackgroundImage: async (imageId, dim) => {
-        const previous = get().defaultBackground;
-        const optimistic: ChatBackgroundChoice = {
-          backgroundPreset: null,
-          backgroundImageId: imageId,
-          backgroundDim: dim,
-        };
-        set({ defaultBackground: optimistic });
-        let saved: ChatBackgroundChoice;
-        try {
-          saved = await api.putChatBackgroundDefault(optimistic);
-        } catch (error) {
-          set({ defaultBackground: previous });
-          throw error;
-        }
-        set({ defaultBackground: saved });
-      },
+      refreshChatPrefs: () => rt.runPromise(refreshChatPrefs(ctx)),
+      refreshDefaultBackground: () => rt.runPromise(refreshDefaultBackground(ctx)),
+      setPinned: (chatId, pinned) => rt.runPromise(setPinned(ctx, chatId, pinned)),
+      setMuted: (chatId, duration) => rt.runPromise(setMuted(ctx, chatId, duration)),
+      setArchived: (chatId, archived) => rt.runPromise(setArchived(ctx, chatId, archived)),
+      setChatBackground: (chatId, presetId) =>
+        rt.runPromise(setChatBackground(ctx, chatId, presetId)),
+      setDefaultBackground: (presetId) => rt.runPromise(setDefaultBackground(ctx, presetId)),
+      setChatBackgroundImage: (chatId, imageId, dim) =>
+        rt.runPromise(setChatBackgroundImage(ctx, chatId, imageId, dim)),
+      setDefaultBackgroundImage: (imageId, dim) =>
+        rt.runPromise(setDefaultBackgroundImage(ctx, imageId, dim)),
       archivedChats: () =>
         sortByRecency(
           get().chats.filter((chat) => chat.archived === true && chat.topic === undefined),
