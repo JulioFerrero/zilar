@@ -1,7 +1,7 @@
 ---
 id: T-0731
 title: "B1.8: retire the Hono bridge — delete apps/server/src/effect/http.ts (mountEffectApi, mountEffectRoutes, forwardRequest); the blocks rate-limit wrappers and the effect/http tests use createEdge; machines/routes.test.ts imports SOCKET_ADDRESS_HEADER from http-core"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0731-retire-hono-bridge
 model: auto
@@ -62,4 +62,39 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- Deleted `apps/server/src/effect/http.ts` (`git rm`).
+- `apps/server/src/blocks/blocks.test.ts`: the two limiter tests now build `createEdge({ mounts: [createBlocksApi({...})], auth, config, logger, health })` and call `edge.request(...)` with the same paths, headers and assertions. Removed the `hono/request-id` and `../effect/http` imports; added `../effect/edge`.
+- `apps/server/src/machines/routes.test.ts`: `SOCKET_ADDRESS_HEADER` is imported from `../effect/http-core`.
+- `apps/server/src/effect/http.test.ts`: deleted the "strips a forged socket-address header" test; renamed the origin test to "...at the edge, before the Effect handler" (body unchanged); imports are now only `withErrorEnvelope` from `./http-core`. `HttpServerRequest`, `SOCKET_ADDRESS_HEADER` and `socketAddressOf` had no other use, so they went with it. Prettier reflowed the file.
+- `apps/server/src/effect/http-core.ts`: the header comment now says the edge that mounts the handlers is in `./edge.ts` (it named `./http.ts`).
+- Changed files: `apps/server/src/blocks/blocks.test.ts`, `apps/server/src/effect/http.test.ts`, `apps/server/src/effect/http-core.ts`, `apps/server/src/machines/routes.test.ts`, `apps/server/src/effect/http.ts` (deleted), this task file. `edge.ts` untouched.
+
+### Commands run (worktree `/Users/julio/personal-projects/zilar-T-0731`)
+- `pnpm install`: done.
+- `pnpm exec prettier --write` on the 4 changed `.ts` files: 1 reformatted (`http.test.ts`), 3 unchanged.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/blocks/blocks.test.ts`: 14 passed (1 file).
+- Same with `src/machines/routes.test.ts src/effect/http.test.ts`: 35 passed (2 files).
+- Same with `src/effect/edge.test.ts` (checks the forged-header case the deleted test used to cover): 11 passed.
+- I ran these three files, not the whole `src/effect` and `src/blocks` directories from the Checks list. The gate ran the server test suite anyway.
+- `pnpm gate` (run from the worktree root, `cwd` checked): exit 0. Summary lines:
+  - `gate: 6 changed file(s) against main`
+  - `PASS install (frozen)`, `PASS format`, `PASS lint`, `PASS typecheck`, `PASS tests @zilar/server`
+  - `scope: every changed file is inside the Allowed files`
+  - `GATE PASS`
+
+### Acceptance checks
+- `apps/server/src/effect/http.ts` no longer exists. `git grep` finds no import of `effect/http'`, `./http` or `../effect/http` left in `apps/server`.
+- `git grep -n "from 'hono'\|@hono" -- 'apps/server/src/*.ts'` lists `index.ts`, `git/proxy.test.ts`, `git/proxy.ts` and `git/routes.ts`. `errors.ts` is not in that output: it imports `hono/utils/http-status`, which the literal pattern does not match. Nothing else in `effect/` or `blocks/` imports Hono now.
+
+### Not done / follow-ups (outside Allowed files, not changed)
+- 31 files under `apps/server/src` still have comments that name `apps/server/src/effect/http.ts` as the Hono mount point. Most are the header comments of `*/api.ts` modules (for example `agents/memory/api.ts:3`, `ais/api.ts:4`, `auth/api.ts:3`). They are stale now; a small follow-up task should fix them.
+
+### Open questions
+- The two new limiter tests in `blocks.test.ts` do not call `edge.dispose()`. The old Hono wrapper had no teardown either, and `app.test.ts` and `edge.test.ts` do dispose their edges. I left it as-is because the spec said to keep the assertions and mounts unchanged. Say if you want `await edge.dispose()` added at the end of each test.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Haiku 5.5, in one round (about 3 min). The lead reviewed the diff directly.
+- `effect/http.ts` is deleted, and the two blocks limiter tests use `createEdge`. The forged-header bridge test was dropped, since `edge.test.ts` covers it. Hono is now imported only by `errors.ts` (T-0732), `git/*` (A12) and `index.ts` (B1.6). The gate passed.
+- The stale `effect/http.ts` mentions sit in the `api.ts` header comments that T-0732 rewrites.

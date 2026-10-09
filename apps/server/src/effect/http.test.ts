@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Effect } from 'effect';
-import { HttpServerRequest, HttpServerResponse } from 'effect/http';
+import { HttpServerResponse } from 'effect/http';
 import type { Logger } from 'pino';
 import { HttpError } from '../errors';
 import {
@@ -10,8 +10,7 @@ import {
   testApp,
   type TestContext,
 } from '../test-support';
-import { mountEffectRoutes, SOCKET_ADDRESS_HEADER } from './http';
-import { socketAddressOf, withErrorEnvelope } from './http-core';
+import { withErrorEnvelope } from './http-core';
 
 const silentLogger = { error: () => undefined } as unknown as Logger;
 
@@ -172,7 +171,7 @@ describe('effect http adapter', () => {
     });
   });
 
-  it('still rejects a disallowed origin in Hono, before the Effect handler', async () => {
+  it('still rejects a disallowed origin at the edge, before the Effect handler', async () => {
     const response = await app.request(`${TEST_BASE_URL}/api/me/handle`, {
       method: 'PUT',
       headers: { 'content-type': 'application/json', origin: 'https://evil.example' },
@@ -183,29 +182,5 @@ describe('effect http adapter', () => {
     expect(await response.json()).toMatchObject({
       error: { code: 'forbidden', message: 'Origin is not allowed' },
     });
-  });
-
-  it('strips a forged socket-address header before the Effect handler', async () => {
-    const { Hono } = await import('hono');
-    const seen: Array<string> = [];
-    const wrapper = new Hono<{ Variables: { requestId: string } }>();
-    mountEffectRoutes(wrapper, [{ method: 'GET', path: '/api/probe' }], async (request) => {
-      const seenRequest = HttpServerRequest.fromWeb(request);
-      const program = Effect.map(HttpServerRequest.HttpServerRequest, (serverRequest) =>
-        socketAddressOf(serverRequest),
-      );
-      seen.push(
-        await Effect.runPromise(
-          Effect.provideService(program, HttpServerRequest.HttpServerRequest, seenRequest),
-        ),
-      );
-      return new Response('ok');
-    });
-    const response = await wrapper.request('/api/probe', {
-      headers: { [SOCKET_ADDRESS_HEADER]: '203.0.113.99' },
-    });
-    expect(response.status).toBe(200);
-    expect(seen).toHaveLength(1);
-    expect(seen[0]).not.toBe('203.0.113.99');
   });
 });

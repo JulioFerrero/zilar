@@ -1,8 +1,8 @@
 // The Hono-free core shared by every Effect HTTP module (T-0694, plan §4
 // B1.1): the session middleware, the request-id and socket-address readers,
 // the one error envelope, and the route types a module hands back to `app.ts`.
-// This file must never import the edge framework packages; the Hono bridge that
-// mounts these handlers lives in `./http.ts`.
+// This file must never import the edge framework packages; the edge that
+// mounts these handlers lives in `./edge.ts`.
 //
 // One error encoding: any handler failure is rendered exactly like
 // `app.onError` — `HttpError` as `{ error: { ...detail, code, message,
