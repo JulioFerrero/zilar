@@ -2,6 +2,20 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-09 03:24, 8 workers:**
+- **Merged since 02:20:** T-0694 (B1.1, the http-core split), T-0696 (B1.2, platform-node), T-0717 (B1.3a, the mount list) and 23 test-folder tasks moving tests off drizzle. Each Haiku result was reviewed in its diff; each DeepSeek result went through its pre-review.
+- **Running:**
+  - T-0730: B1.3b, the Effect edge core (paid Muse after the rate-limit fallback);
+  - the last test folders: T-0722 (packet ready), T-0723 (done), T-0724, T-0726, T-0727 and T-0728.
+- **After the edge:** B1.4 (CORS middleware), B1.5 (`remoteAddress`), B1.7 (the route manifest), then B1.8 (retire the bridge).
+- **A comment sweep** waits for the edge: about 55 stale "drizzle service" and "under Hono" header comments in `*/api.ts`.
+- **Found tonight:** `git/routes.ts` and `git/proxy.ts` are not mounted anywhere (only their own tests use them), so A12 is not runtime work.
+- **For Julio:**
+  - D3 (the migrator switch on the live DB);
+  - DEL (deleting `db/schema.ts` and the drizzle dependencies);
+  - A12 (delete or mount `git/*`);
+  - the D2 switch: `auth.ts` onto the T-0690 adapter, after checking the timestamp parsing on production `pg`.
+
 **2026-10-09 02:20, 8 workers:**
 - **Merged since 02:05:**
   - T-0692 (the retired-handle test);
