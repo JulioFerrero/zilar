@@ -1,12 +1,13 @@
 import { randomBytes, randomUUID } from 'node:crypto';
-import { eq, sql } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { aiLimits, ais, auditLog, groupMembers, groups, providerConnections } from '../db/schema';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
 import {
   bootstrapUser,
   contactOf,
   createTestContext,
   testApp,
+  testSql,
   type TestApp,
   type TestContext,
 } from '../test-support';
@@ -19,6 +20,15 @@ import {
   recordAudit,
   type AuditEntry,
 } from './service';
+
+interface AuditRow {
+  id: string;
+  at: Date;
+  action: string;
+  actorUserId: string | null;
+  subjectId: string | null;
+  result: string;
+}
 
 interface CaptureLogger {
   error: (fields: Record<string, unknown>, message: string) => void;
@@ -37,27 +47,19 @@ function captureLogger(): CaptureLogger {
 
 async function seedAi(context: TestContext, ownerId: string): Promise<{ aiId: string }> {
   const connectionId = randomUUID();
-  await context.db.insert(providerConnections).values({
-    id: connectionId,
-    owner: ownerId,
-    provider: 'openai',
-    encryptedKey: 'sealed-placeholder',
-    label: null,
-  });
   const aiId = randomUUID();
-  await context.db.insert(ais).values({
-    id: aiId,
-    owner: ownerId,
-    name: 'Helper',
-    template: 'dev',
-    persona: 'A persona',
-    providerConnectionId: connectionId,
-    model: 'gpt-4o-mini',
-    localpart: `ai-${aiId}`,
-    jid: `ai-${aiId}@zilar.localhost`,
-    status: 'active',
-  });
-  await context.db.insert(aiLimits).values({ aiId, perDayUsd: '1.00', perMonthUsd: '20.00' });
+  const localpart = `ai-${aiId}`;
+  const jid = `ai-${aiId}@zilar.localhost`;
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO provider_connections (id, owner, provider, encrypted_key, label)
+        VALUES (${connectionId}, ${ownerId}, ${'openai'}, ${'sealed-placeholder'}, ${null})`;
+      yield* sql`INSERT INTO ais (id, owner, name, template, persona, provider_connection_id, model, localpart, jid, status)
+        VALUES (${aiId}, ${ownerId}, ${'Helper'}, ${'dev'}, ${'A persona'}, ${connectionId}, ${'gpt-4o-mini'}, ${localpart}, ${jid}, ${'active'})`;
+      yield* sql`INSERT INTO ai_limits (ai_id, per_day_usd, per_month_usd) VALUES (${aiId}, ${'1.00'}, ${'20.00'})`;
+    }),
+  );
   return { aiId };
 }
 
@@ -68,19 +70,20 @@ async function seedGroup(
 ): Promise<{ groupId: string }> {
   const groupId = randomUUID();
   const roomLocalpart = `g${randomBytes(15).toString('hex')}`;
-  await context.db.insert(groups).values({
-    id: groupId,
-    roomLocalpart,
-    title: 'Crew',
-    createdBy: ownerId,
-  });
   const rows = [
-    { groupId, userId: ownerId, role: 'owner' as const },
-    ...memberIds.map((userId) => ({ groupId, userId, role: 'member' as const })),
+    { userId: ownerId, role: 'owner' },
+    ...memberIds.map((userId) => ({ userId, role: 'member' })),
   ];
-  for (const row of rows) {
-    await context.db.insert(groupMembers).values(row);
-  }
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO groups (id, room_localpart, title, created_by)
+        VALUES (${groupId}, ${roomLocalpart}, ${'Crew'}, ${ownerId})`;
+      for (const row of rows) {
+        yield* sql`INSERT INTO group_members (group_id, user_id, role) VALUES (${groupId}, ${row.userId}, ${row.role})`;
+      }
+    }),
+  );
   return { groupId };
 }
 
@@ -121,7 +124,12 @@ describe('audit service', () => {
         now,
       );
 
-      const rows = await context.db.select().from(auditLog);
+      const rows = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<AuditRow>`SELECT id, at, action, actor_user_id, subject_id, result FROM audit_log`;
+        }),
+      );
       expect(rows).toHaveLength(1);
       const row = rows[0]!;
       expect(row.action).toBe('machine.paired');
@@ -190,21 +198,40 @@ describe('audit service', () => {
       ).rejects.toThrow(/Invalid audit entry/);
     });
 
-    it('refuses UPDATE through the Drizzle client because of the trigger', async () => {
+    it('refuses UPDATE through the SQL client because of the trigger', async () => {
       await recordAudit(context.db, baseEntry(), now);
       await expect(
-        context.db.update(auditLog).set({ action: 'machine.deleted' }),
+        testSql(context)(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            yield* sql`UPDATE audit_log SET action = ${'machine.deleted'}`;
+          }),
+        ),
       ).rejects.toThrow();
     });
 
-    it('refuses DELETE through the Drizzle client because of the trigger', async () => {
+    it('refuses DELETE through the SQL client because of the trigger', async () => {
       await recordAudit(context.db, baseEntry(), now);
-      await expect(context.db.delete(auditLog)).rejects.toThrow();
+      await expect(
+        testSql(context)(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            yield* sql`DELETE FROM audit_log`;
+          }),
+        ),
+      ).rejects.toThrow();
     });
 
     it('refuses TRUNCATE because of the trigger', async () => {
       await recordAudit(context.db, baseEntry(), now);
-      await expect(context.db.execute(sql`truncate table audit_log`)).rejects.toThrow();
+      await expect(
+        testSql(context)(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            yield* sql`TRUNCATE TABLE audit_log`;
+          }),
+        ),
+      ).rejects.toThrow();
     });
   });
 
@@ -213,7 +240,12 @@ describe('audit service', () => {
       const logger = captureLogger();
       const recorder = createAuditRecorder({ db: context.db, logger, now: () => now });
       await recorder.record(baseEntry({ subjectId: 'm1' }));
-      const rows = await context.db.select().from(auditLog);
+      const rows = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ id: string }>`SELECT id FROM audit_log`;
+        }),
+      );
       expect(rows).toHaveLength(1);
       expect(logger.calls).toHaveLength(0);
     });
@@ -245,7 +277,12 @@ describe('audit service', () => {
       ).resolves.toBeUndefined();
       // A second valid call still succeeds.
       await recorder.record(baseEntry({ subjectId: 'm2' }));
-      const rows = await context.db.select().from(auditLog);
+      const rows = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ subjectId: string | null }>`SELECT subject_id FROM audit_log`;
+        }),
+      );
       expect(rows).toHaveLength(1);
       expect(rows[0]!.subjectId).toBe('m2');
     });
@@ -375,10 +412,12 @@ describe('audit service', () => {
       stranger = { id: strangerApp.id };
       const seeded = await seedGroup(context, owner.id, [admin.id, member.id]);
       groupId = seeded.groupId;
-      await context.db
-        .update(groupMembers)
-        .set({ role: 'admin' })
-        .where(eq(groupMembers.userId, admin.id));
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`UPDATE group_members SET role = ${'admin'} WHERE user_id = ${admin.id}`;
+        }),
+      );
     });
 
     it('returns group entries to the owner and to an admin', async () => {

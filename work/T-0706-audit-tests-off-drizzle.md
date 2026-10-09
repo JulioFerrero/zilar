@@ -1,7 +1,7 @@
 ---
 id: T-0706
 title: "tests off drizzle (audit): replace every drizzle query in audit/routes.test.ts, audit/service.test.ts with testSql(context) + effect/sql; drop the drizzle-orm and db/schema imports"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0706-audit-tests-off-drizzle
 model: auto
@@ -51,4 +51,39 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**Done.** Every drizzle query in the two audit test files now runs through `testSql(context)` with `effect/sql`. The `drizzle-orm` and `../db/schema` imports are gone. `context.db` is still passed to module functions (`recordAudit`, `listAuditForAi`, `createAuditRecorder`, `createAuditApi` callers) and was left alone.
+
+**Files changed** (both in Allowed files, plus this task file):
+- `apps/server/src/audit/routes.test.ts`: seed inserts for `provider_connections`, `ais`, `ai_limits`, `groups`, `group_members` as raw SQL in `testSql`; the final `audit_log` read is a `SELECT action ... WHERE subject_id = ...`.
+- `apps/server/src/audit/service.test.ts`: the same seeds in `seedAi` and `seedGroup`; the group role update in `beforeEach`; the three trigger-refusal tests (UPDATE, DELETE, TRUNCATE) now run raw SQL and use `rejects.toThrow()`; the `audit_log` reads are narrow typed selects (`id, at, action, actor_user_id, subject_id, result` in the first read, `id` and `subject_id` in the others). Added a local `AuditRow` interface.
+- `work/T-0706-audit-tests-off-drizzle.md`: status and this Report.
+
+**Column check.** Every column name written was checked against `apps/server/src/db/schema.ts`. No table used here has a JS-side default (`$defaultFn` appears only on `chatFolders`), so the raw inserts give only the columns the tests already set.
+
+**Test counts** (`pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/audit/routes.test.ts src/audit/service.test.ts`):
+- Before: 2 files passed, 32 tests passed.
+- After: 2 files passed, 32 tests passed.
+
+**Acceptance.**
+- `git grep -n "drizzle-orm\|db/schema" -- apps/server/src/audit/routes.test.ts apps/server/src/audit/service.test.ts` prints nothing (exit 1).
+- Prettier was run on both files before the gate (`routes.test.ts` reformatted, `service.test.ts` unchanged).
+
+**`pnpm gate`** (run from the worktree root, output in the scratchpad log):
+```
+PASS  install (frozen)  (2.1s)
+PASS  format  (35.1s)
+PASS  lint  (1.5s)
+PASS  typecheck  (5.6s)
+PASS  tests @zilar/server  (18.5s)
+scope: every changed file is inside the Allowed files
+GATE PASS
+```
+The gate ran past the 120 s foreground limit and the harness moved it to the background; it completed with exit 0. I did not start any background job myself.
+
+**Blocked / needs a decision:** none.
+
+**Open question:** none. The timestamp assertion (`row.at` toEqual `now`) passes unchanged because PGlite returns `timestamptz` as a `Date`, the same type drizzle returned, so no read adaptation was needed.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Haiku 5.5, in one round (about 6.2 min). The lead reviewed the diff directly. The AI-chain and group seeds and the audit reads are on `testSql`. There are 32 tests before and after, no drizzle import is left, and the gate passed.
