@@ -1,4 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { Data, Effect } from 'effect';
+import { AsyncResult } from 'effect/reactivity';
+import { useRef, useState } from 'react';
 import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { X } from 'lucide-react-native';
@@ -10,6 +12,9 @@ import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import { asColorScheme } from '@/lib/color-scheme';
 import { MUTED_FOREGROUND } from '@/lib/colors';
+import { fromApi } from '@/lib/effect/api-effect';
+import { type ActionState, failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { useQuery } from '@/lib/effect/use-query';
 import { hostsLine, truncateOutput } from '@/lib/routines-format';
 import type {
   ToolActionsApi,
@@ -474,6 +479,27 @@ type LoadedDetail = {
 };
 
 /**
+ * A revert, run or delete that failed. `source` is the original error, which
+ * changeErrorMessage and runErrorMessage read (a status and an instance check).
+ */
+class ToolCallFailed extends Data.TaggedError('ToolCallFailed')<{ readonly source: unknown }> {}
+
+/** One tool call as an Effect; a rejection becomes a ToolCallFailed with the same error. */
+function toolCall<A>(call: () => Promise<A>): Effect.Effect<A, ToolCallFailed> {
+  return Effect.tryPromise({ try: call, catch: (source) => new ToolCallFailed({ source }) });
+}
+
+/**
+ * The message of a failed call, or '' when there is none. A call that runs
+ * again shows no old error: the state keeps the last failure while it waits.
+ */
+function failureText<A, E>(state: ActionState<A, E>, text: (failure: E) => string): string {
+  if (isWaiting(state)) return '';
+  const failure = failureOf(state);
+  return failure === undefined ? '' : text(failure);
+}
+
+/**
  * A full-height sheet with one tool's source, version history and recent
  * runs (read only). Tapping a history row shows that version's source;
  * `toolId` null hides the sheet.
@@ -531,73 +557,120 @@ function ToolDetailLoader({
   const insets = useSafeAreaInsets();
   const { colorScheme } = useColorScheme();
   const scheme = asColorScheme(colorScheme);
-  const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [loaded, setLoaded] = useState<LoadedDetail | null>(null);
   const [shownVersion, setShownVersion] = useState<number | null>(null);
   const [shownSource, setShownSource] = useState<string | null>(null);
-  const [sourceError, setSourceError] = useState('');
-  const [versionBusy, setVersionBusy] = useState(false);
   const [expandedOutputs, setExpandedOutputs] = useState<Set<string>>(new Set());
-  const [reloadTick, setReloadTick] = useState(0);
   const [confirmingRevert, setConfirmingRevert] = useState<number | null>(null);
-  const [actionBusy, setActionBusy] = useState(false);
-  const [actionError, setActionError] = useState('');
   const [runInput, setRunInput] = useState('');
   const [runInputError, setRunInputError] = useState('');
-  const [runError, setRunError] = useState('');
-  const [runBusy, setRunBusy] = useState(false);
   const [runResult, setRunResult] = useState<ToolRunResult | null>(null);
   const [expandedResult, setExpandedResult] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
-  const [deleteBusy, setDeleteBusy] = useState(false);
-  const [deleteError, setDeleteError] = useState('');
   const actionRef = useRef(false);
+  // Frees the one-action-at-a-time guard when a revert, run or delete ends.
+  const releaseAction = (): Effect.Effect<void> =>
+    Effect.sync(() => {
+      actionRef.current = false;
+    });
 
-  useEffect(() => {
-    let active = true;
-    void (async () => {
-      try {
-        const [detail, history, recent] = await Promise.all([
-          api.getTool(toolId),
-          api.listToolVersions(toolId),
-          api.listToolRuns(toolId),
-        ]);
-        if (!active) return;
-        setLoaded({ tool: detail, versions: history, runs: recent });
-        setShownVersion(detail.currentVersion);
-        setShownSource(detail.source);
-        setStatus('ready');
-      } catch {
-        if (!active) return;
-        setStatus('error');
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, [api, toolId, reloadTick]);
+  const setRunsOnly = (runs: ToolRun[]): void => {
+    setLoaded((current) =>
+      current === null ? current : { tool: current.tool, versions: current.versions, runs },
+    );
+  };
+
+  // The three reads run together. A retry or a revert calls reloadDetail;
+  // the rows stay on screen while that reload runs.
+  const [loadState, reloadDetail] = useQuery(
+    () =>
+      Effect.all(
+        [
+          fromApi(() => api.getTool(toolId)),
+          fromApi(() => api.listToolVersions(toolId)),
+          fromApi(() => api.listToolRuns(toolId)),
+        ],
+        { concurrency: 'unbounded' },
+      ).pipe(
+        Effect.tap(([tool, versions, runs]) =>
+          Effect.sync(() => {
+            setLoaded({ tool, versions, runs });
+            setShownVersion(tool.currentVersion);
+            setShownSource(tool.source);
+          }),
+        ),
+      ),
+    [api, toolId],
+  );
+
+  const [versionState, pickVersion, versionControls] = useAction((version: number) =>
+    fromApi(() => api.getToolVersion(toolId, version)).pipe(
+      Effect.tap((versionDetail) =>
+        Effect.sync(() => {
+          setShownVersion(versionDetail.version);
+          setShownSource(versionDetail.source);
+        }),
+      ),
+    ),
+  );
+
+  // One action at a time: a revert, run or delete in flight blocks the
+  // others, like `runningRef` in `routines-section.tsx`.
+  const [revertState, startRevert, revertControls] = useAction((version: number) =>
+    toolCall(() => api.revertTool(toolId, version)).pipe(
+      Effect.tap(() =>
+        Effect.sync(() => {
+          setConfirmingRevert(null);
+          reloadDetail();
+        }),
+      ),
+      Effect.tapError(() => Effect.sync(() => setConfirmingRevert(null))),
+      Effect.ensuring(releaseAction()),
+    ),
+  );
+
+  const [runState, startRun, runControls] = useAction((input: unknown) =>
+    toolCall(() =>
+      input === undefined ? api.runToolNow(toolId) : api.runToolNow(toolId, input),
+    ).pipe(
+      Effect.tap((result) => Effect.sync(() => setRunResult(result))),
+      // The run itself succeeded: a failed history refresh must not turn it
+      // into an error, the old list simply stays.
+      Effect.tap(() =>
+        fromApi(() => api.listToolRuns(toolId)).pipe(
+          Effect.tap((runs) => Effect.sync(() => setRunsOnly(runs))),
+          Effect.ignore,
+        ),
+      ),
+      Effect.ensuring(releaseAction()),
+    ),
+  );
+
+  // Uninterruptible: closing the sheet mid-delete unmounts it, and the list
+  // must still drop the tool once the delete has gone through.
+  const [deleteState, startDelete, deleteControls] = useAction((id: string) =>
+    Effect.uninterruptible(
+      toolCall(() => api.deleteTool(id)).pipe(
+        Effect.tap(() =>
+          Effect.sync(() => {
+            setConfirmingDelete(false);
+            onDeleted(toolId);
+          }),
+        ),
+        Effect.tapError(() => Effect.sync(() => setConfirmingDelete(false))),
+      ),
+    ).pipe(Effect.ensuring(releaseAction())),
+  );
 
   const showVersion = (version: number): void => {
     if (loaded === null) return;
     if (version === loaded.tool.currentVersion) {
+      versionControls.reset();
       setShownVersion(version);
       setShownSource(loaded.tool.source);
-      setSourceError('');
       return;
     }
-    setVersionBusy(true);
-    setSourceError('');
-    void (async () => {
-      try {
-        const detail = await api.getToolVersion(toolId, version);
-        setShownVersion(detail.version);
-        setShownSource(detail.source);
-      } catch {
-        setSourceError(TOOL_VERSION_LOAD_FAILED_MESSAGE);
-      } finally {
-        setVersionBusy(false);
-      }
-    })();
+    pickVersion(version);
   };
 
   const toggleOutput = (runId: string): void => {
@@ -612,34 +685,17 @@ function ToolDetailLoader({
     });
   };
 
-  /**
-   * One action at a time: a revert, run or delete in flight blocks the
-   * others, like `runningRef` in `routines-section.tsx`.
-   */
   const revert = (version: number): void => {
     if (actionRef.current) return;
     actionRef.current = true;
-    setActionBusy(true);
-    setActionError('');
-    void (async () => {
-      try {
-        await api.revertTool(toolId, version);
-        setConfirmingRevert(null);
-        setReloadTick((tick) => tick + 1);
-      } catch (error) {
-        setActionError(changeErrorMessage(error, REVERT_FAILED_MESSAGE));
-        setConfirmingRevert(null);
-      } finally {
-        actionRef.current = false;
-        setActionBusy(false);
-      }
-    })();
+    revertControls.reset();
+    startRevert(version);
   };
 
   const run = (): void => {
     if (actionRef.current) return;
     setRunInputError('');
-    setRunError('');
+    runControls.reset();
     setRunResult(null);
     setExpandedResult(false);
     const parsed = parseRunInput(runInput);
@@ -648,59 +704,38 @@ function ToolDetailLoader({
       return;
     }
     actionRef.current = true;
-    setRunBusy(true);
-    void (async () => {
-      try {
-        const result =
-          parsed.input === undefined
-            ? await api.runToolNow(toolId)
-            : await api.runToolNow(toolId, parsed.input);
-        setRunResult(result);
-        // The run itself succeeded: a failed history refresh must not
-        // turn it into an error, the old list simply stays.
-        await api
-          .listToolRuns(toolId)
-          .then(setRunsOnly)
-          .catch(() => {});
-      } catch (error) {
-        setRunError(runErrorMessage(error));
-      } finally {
-        actionRef.current = false;
-        setRunBusy(false);
-      }
-    })();
+    startRun(parsed.input);
   };
 
   const remove = (): void => {
     if (actionRef.current) return;
     actionRef.current = true;
-    setDeleteBusy(true);
-    setDeleteError('');
-    void (async () => {
-      try {
-        await api.deleteTool(toolId);
-        setConfirmingDelete(false);
-        onDeleted(toolId);
-      } catch (error) {
-        setDeleteError(changeErrorMessage(error, DELETE_FAILED_MESSAGE));
-        setConfirmingDelete(false);
-      } finally {
-        actionRef.current = false;
-        setDeleteBusy(false);
-      }
-    })();
+    deleteControls.reset();
+    startDelete(toolId);
   };
 
-  const setRunsOnly = (runs: ToolRun[]): void => {
-    setLoaded((current) =>
-      current === null ? current : { tool: current.tool, versions: current.versions, runs },
-    );
-  };
+  const loadStatus: 'loading' | 'ready' | 'error' = AsyncResult.isFailure(loadState)
+    ? 'error'
+    : AsyncResult.isSuccess(loadState)
+      ? 'ready'
+      : 'loading';
+  const versionBusy = isWaiting(versionState);
+  const sourceError = failureText(versionState, () => TOOL_VERSION_LOAD_FAILED_MESSAGE);
+  const actionBusy = isWaiting(revertState);
+  const actionError = failureText(revertState, (failure) =>
+    changeErrorMessage(failure.source, REVERT_FAILED_MESSAGE),
+  );
+  const runBusy = isWaiting(runState);
+  const runError = failureText(runState, (failure) => runErrorMessage(failure.source));
+  const deleteBusy = isWaiting(deleteState);
+  const deleteError = failureText(deleteState, (failure) =>
+    changeErrorMessage(failure.source, DELETE_FAILED_MESSAGE),
+  );
 
   const bodyState: ToolDetailBodyState =
-    status === 'error' || (status === 'ready' && loaded === null)
+    loadStatus === 'error' || (loadStatus === 'ready' && loaded === null)
       ? { status: 'error', message: TOOL_DETAIL_LOAD_FAILED_MESSAGE }
-      : status === 'ready' && loaded !== null
+      : loadStatus === 'ready' && loaded !== null
         ? {
             status: 'ready',
             tool: loaded.tool,
@@ -749,13 +784,13 @@ function ToolDetailLoader({
         <ToolDetailBody
           state={bodyState}
           actions={{
-            onRetry: () => setReloadTick((tick) => tick + 1),
+            onRetry: () => reloadDetail(),
             onClose,
             onShowVersion: showVersion,
             onToggleOutput: toggleOutput,
             expandedOutputs,
             onAskRevert: (version) => {
-              setActionError('');
+              revertControls.reset();
               setConfirmingRevert(version);
             },
             onCancelRevert: () => setConfirmingRevert(null),
@@ -764,7 +799,7 @@ function ToolDetailLoader({
             onRun: run,
             onToggleResult: () => setExpandedResult((current) => !current),
             onAskDelete: () => {
-              setDeleteError('');
+              deleteControls.reset();
               setConfirmingDelete(true);
             },
             onCancelDelete: () => setConfirmingDelete(false),

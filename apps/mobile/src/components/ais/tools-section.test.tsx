@@ -1,9 +1,11 @@
 import { createElement, type ReactElement } from 'react';
+import { AsyncResult, AtomRegistry } from 'effect/reactivity';
 import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import { createMockToolsApi } from '@/mock/tools';
-import { ToolsApiError, type ToolsApi } from '@/lib/tools-api';
+import { mobileAtomRuntime } from '@/lib/effect/runtime';
+import { ToolsApiError, type ToolListItem, type ToolsApi } from '@/lib/tools-api';
 
 import {
   TOOLS_EMPTY_MESSAGE,
@@ -12,6 +14,8 @@ import {
   ToolsSectionContent,
   closeDetailSheet,
   loadAiTools,
+  loadAiToolsEffect,
+  sectionStateOf,
   withoutTool,
   type ToolsSectionState,
 } from './tools-section';
@@ -198,11 +202,11 @@ describe('closeDetailSheet', () => {
     if (capturedSheetOnClose === undefined) throw new Error('expected the sheet onClose');
     const wiredOnClose: () => void = capturedSheetOnClose;
     // The wired onClose must be exactly the close-and-reload expression:
-    // `closeDetailSheet(setOpenId, () => setReloadTick(...))`. A revert to
-    // `onClose={() => setOpenId(null)}` drops the tick bump and fails here.
+    // `closeDetailSheet(setOpenId, () => reloadTools())`. A revert to
+    // `onClose={() => setOpenId(null)}` drops the reload and fails here.
     const source = wiredOnClose.toString().replace(/\s+/g, ' ');
     expect(source).toContain('closeDetailSheet');
-    expect(source).toContain('setReloadTick');
+    expect(source).toContain('reloadTools');
     expect(source).toContain('setOpenId');
     let directId: string | null = 'tool-1';
     let directTicks = 0;
@@ -216,5 +220,62 @@ describe('closeDetailSheet', () => {
     );
     expect(directId).toBeNull();
     expect(directTicks).toBe(1);
+  });
+});
+
+const settle = async (check: () => boolean): Promise<void> => {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    if (check()) return;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  throw new Error('the load did not settle');
+};
+
+describe('reload keeps the rows', () => {
+  it('shows the rows while a reload is in flight, then the new rows', async () => {
+    const first = await createMockToolsApi().listAiTools('ai-1');
+    const second: ToolListItem[] = first.slice(1);
+    let calls = 0;
+    let answerReload: (tools: ToolListItem[]) => void = () => {};
+    const api: ToolsApi = {
+      listAiTools: () => {
+        calls += 1;
+        if (calls === 1) return Promise.resolve(first);
+        return new Promise<ToolListItem[]>((resolve) => {
+          answerReload = resolve;
+        });
+      },
+      listAiRoutines: () => Promise.resolve([]),
+    };
+    const registry = AtomRegistry.make();
+    const load = mobileAtomRuntime.atom(loadAiToolsEffect(api, 'ai-1'));
+    const unsubscribe = registry.subscribe(load, () => {});
+
+    expect(sectionStateOf(registry.get(load), []).status).toBe('loading');
+
+    await settle(() => AsyncResult.isSuccess(registry.get(load)));
+    expect(sectionStateOf(registry.get(load), [])).toEqual({
+      status: 'ready',
+      tools: first,
+      message: '',
+    });
+
+    registry.refresh(load);
+    await settle(() => calls === 2);
+    const pending = registry.get(load);
+    expect(AsyncResult.isWaiting(pending)).toBe(true);
+    expect(sectionStateOf(pending, [])).toEqual({ status: 'ready', tools: first, message: '' });
+
+    answerReload(second);
+    await settle(() => {
+      const current = registry.get(load);
+      return AsyncResult.isSuccess(current) && !AsyncResult.isWaiting(current);
+    });
+    expect(sectionStateOf(registry.get(load), [])).toEqual({
+      status: 'ready',
+      tools: second,
+      message: '',
+    });
+    unsubscribe();
   });
 });
