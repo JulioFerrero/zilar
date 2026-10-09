@@ -105,7 +105,9 @@ export function usePeopleSearch(options: {
         { userId: active.userId, handle: target.handle },
         work,
         (found) => controller.setFound(found, false),
-        () => controller.setFound(active, false),
+        // Nothing to do: setFound(found, false) above already clears `sent`,
+        // and writing `active` here would overwrite the refreshed profile.
+        () => undefined,
       ),
     );
   };

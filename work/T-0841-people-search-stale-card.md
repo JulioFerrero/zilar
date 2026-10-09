@@ -1,7 +1,7 @@
 ---
 id: T-0841
 title: "Mobile fix: after Accept, Decline or Cancel on the @handle people-search card, the card shows the refreshed profile, not the pre-action one"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0841-people-search-stale-card
 model: auto
@@ -48,4 +48,20 @@ pnpm exec oxlint apps/mobile/src/components/contacts/use-people-search.ts
 
 ## Report (written by the worker when done)
 
+- Files changed: `apps/mobile/src/components/contacts/use-people-search.ts`, `apps/mobile/src/components/contacts/use-people-search.test.ts` (the real name is `.ts`, not `.tsx`), this task file.
+- Fix: the `onSentNone` callback passed from `actOnRequest` is now `() => undefined` with a comment. `setFound(found, false)` already clears `sent`, so the old `setFound(active, false)` no longer overwrites the refreshed profile.
+- New test: `accept shows the refreshed relation, not the one from before the action` (request_received card, Accept, second lookup returns `contact`; expects the view to equal the refreshed profile with `sent: false`).
+- Test counts (`pnpm --filter @zilar/mobile exec vitest run --reporter=dot src/components/contacts`):
+  - before the fix: 1 failed, 123 passed (124 total, 9 files). The new test failed with `relation: "request_received"` where `"contact"` was expected.
+  - after the fix: 124 passed (124 total, 9 files). Run 3 times in total, all green.
+- `pnpm --filter @zilar/mobile typecheck`: exit 0.
+- `pnpm exec oxlint` on `use-people-search.ts`: exit 0. The test file was also linted and formatted with prettier.
+- Behaviour differences: none other than the fix. Decline and Cancel go through the same `actOnRequest` path, so they get the same fix; I tested Accept only, as the spec asked.
+- Unsure: the Decline and Cancel paths are covered by code reading, not by a test. The `onSentNone` parameter stays in `actOnProfileRequestEffect`, since `add-contact.ts` and its other caller still pass it.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Haiku 5.5. The lead reviewed the Report and the diff.
+- **The fix:** `onSentNone` in `use-people-search.ts` is a no-op, because `setFound(found, false)` already clears `sent`, so the refreshed profile stays on the card.
+- **The test:** the new test failed on the old code (`request_received` instead of `contact`) and passes now. The contacts tests give 124 passed, 3 of 3 runs; typecheck and oxlint are clean.
+- **Coverage:** Decline and Cancel take the same path.

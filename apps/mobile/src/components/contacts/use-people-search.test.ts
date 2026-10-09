@@ -267,6 +267,35 @@ describe('usePeopleSearch actions', () => {
     expect(search.hook().view).toMatchObject({ status: 'found', profile: { userId: 'u-ada' } });
   });
 
+  it('accept shows the refreshed relation, not the one from before the action', async () => {
+    let lookups = 0;
+    const { api } = makeApi({
+      async lookupByHandle() {
+        lookups += 1;
+        return lookups === 1
+          ? { ...ADA, relation: 'request_received' }
+          : { ...ADA, relation: 'contact' };
+      },
+      async listContactRequests() {
+        return { incoming: [pendingIncoming()], outgoing: [] };
+      },
+    });
+    const search = mountSearch(baseOptions(api, { text: '@ada' }));
+    await act(async () => {
+      search.hook().lookupNow();
+      await settle();
+    });
+    await act(async () => {
+      search.hook().acceptRequest();
+      await settle();
+    });
+    expect(search.hook().view).toEqual({
+      status: 'found',
+      profile: { ...ADA, relation: 'contact' },
+      sent: false,
+    });
+  });
+
   it('an accept on a request that is gone says so', async () => {
     const { api } = makeApi({
       async listContactRequests() {
