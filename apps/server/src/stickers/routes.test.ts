@@ -3,12 +3,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '../app';
-import { stickerPacks, userStickerPacks } from '../db/schema';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
 import {
   bootstrapUser,
   contactOf,
   createTestContext,
   TEST_BASE_URL,
+  testSql,
   type SignedInUser,
   type TestContext,
 } from '../test-support';
@@ -377,20 +379,27 @@ describe('stickers routes', () => {
     const filler = await contactOf(context, app, owner.id, 'filler@example.com');
     for (let index = 0; index < 199; index += 1) {
       const packId = `panel-cap-pack-${index}`;
-      await context.db.insert(stickerPacks).values({
-        id: packId,
-        ownerId: filler.id,
-        title: `Panel ${index}`,
-        visibility: 'server',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
-      await context.db.insert(userStickerPacks).values({
-        userId: stranger.id,
-        packId,
-        position: index,
-        addedAt: new Date(),
-      });
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO sticker_packs ${sql.insert({
+            id: packId,
+            owner_id: filler.id,
+            title: `Panel ${index}`,
+            visibility: 'server',
+          })}`;
+        }),
+      );
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO user_sticker_packs ${sql.insert({
+            user_id: stranger.id,
+            pack_id: packId,
+            position: index,
+          })}`;
+        }),
+      );
     }
     // The 200th add lands; the 201st is a clear 400; re-adding an
     // existing pack at the cap stays idempotent 200.
