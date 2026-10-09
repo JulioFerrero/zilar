@@ -1,7 +1,7 @@
 ---
 id: T-0762
 title: "F2: web hooks useAction and useQuery on @effect/atom-react — an Atom.runtime over webLayer; useAction(fn) returns [AsyncResult, run, controls] (fn atom per component, ignores re-runs while waiting by default, interrupts on unmount); useQuery(effect, deps) returns [AsyncResult, refresh]; tested with testing-library"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0762-web-use-action
 model: auto
@@ -69,4 +69,51 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- `runtime.ts`: added `webAtomRuntime = Atom.runtime(webLayer)` with a comment.
+- `use-action.ts`: `useAction`, `failureOf`, `isWaiting`, the types `ActionMode`, `UseActionOptions`, `ActionControls`, `ActionState`, and the before/after usage comment from plan 3.6.
+- `use-query.ts`: `useQuery`.
+- `use-action.test.tsx` (13 tests x 2 registry modes = 26) and `use-query.test.tsx` (7 tests x 2 = 14), real Effects with `Deferred` gates and counters (`started`, `interrupted`, `finalized`) that finalizers flip.
+
+### Signatures
+```ts
+useAction<I, A, E>(fn: (input: I) => Effect<A, E, HttpClient>, options?: { mode?: 'ignore' | 'replace' })
+  : readonly [state: AsyncResult<A, E>, run: (input: I) => void, controls: { reset(): void; interrupt(): void }]
+useQuery<A, E>(make: () => Effect<A, E, HttpClient>, deps: ReadonlyArray<unknown>)
+  : readonly [state: AsyncResult<A, E>, refresh: () => void]
+failureOf(state): E | undefined      isWaiting(state): boolean
+```
+
+### Design notes and deviations
+- **`useAction` atom.** The fn atom is `webAtomRuntime.fn<Effect<A, E, HttpClient>>()((effect) => effect)`: `run(input)` builds the Effect from the latest `fn` (a ref set in `useLayoutEffect`) and writes it to the atom. The spec said "the atom calls the latest fn through a ref". The repo's oxlint `react(refs)` rule rejects reading a ref inside a `useMemo` callback, and `react(immutability)` rejects mutating a `useState` value. Reading the ref in the `run` callback passes lint, and the behaviour is the same: inline lambdas never rebuild the atom, and `run` / `controls` keep their identity (tested).
+- **`ignore` mode** checks `AsyncResult.isWaiting(registry.get(atom))` in `run`. `replace` is the `Atom.fn` default (a new write interrupts the previous run).
+- **Unmount** is not handled by extra code. Dropping the last subscriber lets the registry dispose the node, which interrupts the fiber. I first added an explicit `Atom.Interrupt` write in a cleanup effect, then removed it after a mutation check showed the unmount test passes without it. The test reads the finalizer flag, so it would fail if the interrupt did not happen.
+- **`useQuery`** does not use `useMemo(..., deps)`: oxlint (`react(use-memo)`, `exhaustive-deps`) rejects a non-literal deps array and `[...deps]`. It keeps `{ deps, atom }` in `useState` and rebuilds during render when `Object.is` differs per item (React's derived-state pattern). The abandoned atom loses its subscriber, which interrupts its run (tested).
+- No new dependencies, no component changes.
+
+### Mutation checks (to be sure the tests can fail)
+- `ignore` guard disabled: the two "ignore mode" tests fail (2 failed, 24 passed).
+- `useQuery` deps fixed to `[]`: the two "refetches on a deps change and interrupts the previous run" tests fail (2 failed, 12 passed).
+- Explicit unmount interrupt disabled (before I removed it): the unmount test still passed, so registry disposal does the interruption.
+Both mutated files were restored before the final runs.
+
+### Commands and results
+- `pnpm install`: ok.
+- `pnpm --filter @zilar/web test --reporter=dot src/lib/effect`: 4 files, 50 tests passed (use-action 26, use-query 14, plus the existing api-effect and errors tests).
+- `pnpm gate`: 
+  - `gate: 6 changed file(s) against main`
+  - `PASS  install (frozen)`, `PASS  format`, `PASS  lint`, `PASS  typecheck`, `PASS  tests @zilar/web`
+  - `scope: every changed file is inside the Allowed files`
+  - `GATE PASS`
+
+### Open questions
+- None blocking. `AsyncResult.isInterrupted` state after `interrupt()` is a `Failure`, and `failureOf` gives `undefined` for it; WU tasks that want a "cancelled" message must check `AsyncResult.isInterrupted(state)` themselves.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Sonnet 5.5. The lead reviewed the code directly.
+- **`useAction`:** one `webAtomRuntime.fn` per component, written with the Effect built from the latest `fn`. `ignore` mode checks `isWaiting` before running; unmount disposes the node and interrupts it.
+- **`useQuery`:** rebuilds the atom when its deps change, with the previous-render state pattern.
+- **Two changes from the spec were needed by oxlint, and both are fine.**
+- **Results:** 50 tests, run with a provider and with the default registry; the mutation checks show the guard and deps tests catch regressions. The gate passed.
+- **Note for WU specs:** after `interrupt()`, `failureOf` is `undefined`; use `AsyncResult.isInterrupted` for a "cancelled" message.
