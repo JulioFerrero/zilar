@@ -5,6 +5,8 @@
  * leave the phone; the cached download is always deleted.
  */
 
+import { Effect } from 'effect';
+
 import type { WhistlePort } from './whistle-port';
 import type { WhistleTranscript } from './whistle-port-types';
 
@@ -117,47 +119,53 @@ function errorMessageOf(error: unknown): string {
   return TRANSCRIBE_FAILED_MESSAGE;
 }
 
-async function defaultFiles(): Promise<TranscribeFileDeps> {
-  const { File, Paths } = await import('expo-file-system');
-  const { VOICE_MAX_BYTES } = await import('./voice');
+const defaultFiles: Effect.Effect<TranscribeFileDeps> = Effect.gen(function* () {
+  const { File, Paths } = yield* Effect.promise(() => import('expo-file-system'));
+  const { VOICE_MAX_BYTES } = yield* Effect.promise(() => import('./voice'));
   return {
-    downloadUrl: async (url, headers) => {
-      const destination = new File(
-        Paths.cache,
-        `voice-transcribe-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}.m4a`,
-      );
-      const controller = new AbortController();
-      try {
-        const downloaded = await File.downloadFileAsync(url, destination, {
-          idempotent: true,
-          ...(headers === undefined ? {} : { headers }),
-          signal: controller.signal,
-          onProgress: (progress) => {
-            if (transcribeDownloadOverCap(progress, VOICE_MAX_BYTES)) {
-              controller.abort();
-            }
-          },
-        });
-        return downloaded.uri;
-      } catch (error) {
-        if (destination.exists) {
-          destination.delete();
-        }
-        if (error instanceof Error && error.name === 'AbortError') {
-          throw new TranscribeTooLargeError();
-        }
-        throw error;
-      }
-    },
-    deleteCache: async (uri) => {
-      try {
-        new File(uri).delete();
-      } catch {
-        // The cache must never block the result.
-      }
-    },
+    downloadUrl: (url, headers) =>
+      Effect.runPromise(
+        Effect.suspend(() => {
+          const destination = new File(
+            Paths.cache,
+            `voice-transcribe-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}.m4a`,
+          );
+          const controller = new AbortController();
+          return Effect.tryPromise({
+            try: () =>
+              File.downloadFileAsync(url, destination, {
+                idempotent: true,
+                ...(headers === undefined ? {} : { headers }),
+                signal: controller.signal,
+                onProgress: (progress) => {
+                  if (transcribeDownloadOverCap(progress, VOICE_MAX_BYTES)) {
+                    controller.abort();
+                  }
+                },
+              }),
+            catch: (error) => error,
+          }).pipe(
+            Effect.map((downloaded) => downloaded.uri),
+            Effect.catch((error) =>
+              Effect.suspend(() => {
+                if (destination.exists) {
+                  destination.delete();
+                }
+                return Effect.fail(
+                  error instanceof Error && error.name === 'AbortError'
+                    ? new TranscribeTooLargeError()
+                    : error,
+                );
+              }),
+            ),
+          );
+        }),
+      ),
+    deleteCache: (uri) =>
+      // The cache must never block the result.
+      Effect.runPromise(Effect.try(() => new File(uri).delete()).pipe(Effect.ignore)),
   };
-}
+});
 
 function destinationName(id: string): string {
   return `voice-transcribe-${id}.m4a`;
@@ -178,75 +186,103 @@ function sanitizeId(id: string): string {
  * cache with its headers and the cached file is always deleted, on success
  * and on failure. An empty text resolves to the "nothing heard" error.
  */
-export async function transcribeVoiceNote(
+export function transcribeVoiceNote(
   input: TranscribeVoiceNoteInput,
 ): Promise<TranscribeVoiceNoteResult> {
-  const { port } = input;
-  const onPhase = phaseOf(input);
-  let cachedUri: string | undefined;
-  try {
-    if (!port.isAvailable()) {
-      return { status: 'error', message: TRANSCRIBE_UNAVAILABLE_MESSAGE };
-    }
-    let status: string;
-    try {
-      status = await port.modelStatus();
-    } catch {
-      return { status: 'error', message: TRANSCRIBE_FAILED_MESSAGE };
-    }
-    if (status !== 'ready') {
-      const confirmed = (await input.confirmDownload?.()) ?? true;
-      if (!confirmed) {
-        return { status: 'cancelled' };
-      }
-      try {
-        await port.downloadModel((fraction) => onPhase({ kind: 'downloading', fraction }));
-        onPhase({ kind: 'loading' });
-        await port.loadModel();
-      } catch (error) {
-        return { status: 'error', message: errorMessageOf(error) };
-      }
-    }
-    let fileUri = input.source.localUri;
-    if (fileUri === undefined || fileUri === '') {
-      const url = input.source.url;
-      if (url === undefined || url === '') {
-        return { status: 'error', message: TRANSCRIBE_FAILED_MESSAGE };
-      }
-      const files = input.files ?? (await defaultFiles());
-      try {
-        cachedUri = await files.downloadUrl(url, input.source.headers, onPhase);
-      } catch (error) {
-        if (error instanceof TranscribeTooLargeError) {
-          return { status: 'error', message: TRANSCRIBE_TOO_LONG_MESSAGE };
-        }
-        return { status: 'error', message: TRANSCRIBE_FAILED_MESSAGE };
-      }
-      fileUri = cachedUri;
-    }
-    onPhase({ kind: 'transcribing' });
-    let transcript: WhistleTranscript;
-    try {
-      transcript = await port.transcribe(fileUri, {
-        ...(input.language === undefined ? {} : { language: input.language }),
-        ...(input.audioMs === undefined ? {} : { audioMs: input.audioMs }),
-      });
-    } catch (error) {
-      return { status: 'error', message: errorMessageOf(error) };
-    }
-    if (transcript.text.trim() === '') {
-      return { status: 'error', message: TRANSCRIBE_EMPTY_MESSAGE };
-    }
-    return { status: 'done', transcript };
-  } finally {
-    if (cachedUri !== undefined) {
-      const cached = cachedUri;
-      try {
-        const files = input.files ?? (await defaultFiles());
-        await files.deleteCache(cached);
-      } catch {
-        // The cache must never block the result.
-      }
-    }
-  }
+  return Effect.runPromise(transcribeVoiceNoteEffect(input));
 }
+
+/** A run that stops early: the flow fails with its final result and `catch` returns it. */
+type EarlyResult = Exclude<TranscribeVoiceNoteResult, { status: 'done' }>;
+
+const stopWith = (message: string): Effect.Effect<never, EarlyResult> =>
+  Effect.fail({ status: 'error', message });
+
+/** `transcribeVoiceNote` as an Effect: it succeeds with every result, never fails. */
+export const transcribeVoiceNoteEffect = (
+  input: TranscribeVoiceNoteInput,
+): Effect.Effect<TranscribeVoiceNoteResult> =>
+  Effect.suspend(() => {
+    const { port } = input;
+    const onPhase = phaseOf(input);
+    const filesOf = input.files === undefined ? defaultFiles : Effect.succeed(input.files);
+    let cachedUri: string | undefined;
+
+    const run = Effect.gen(function* () {
+      if (!(yield* Effect.sync(() => port.isAvailable()))) {
+        return yield* stopWith(TRANSCRIBE_UNAVAILABLE_MESSAGE);
+      }
+      const status = yield* Effect.tryPromise({
+        try: () => port.modelStatus(),
+        catch: (): EarlyResult => ({ status: 'error', message: TRANSCRIBE_FAILED_MESSAGE }),
+      });
+      if (status !== 'ready') {
+        const confirmed = yield* Effect.suspend(() => {
+          const asking = input.confirmDownload?.();
+          return asking === undefined ? Effect.succeed(true) : Effect.promise(() => asking);
+        });
+        if (!confirmed) {
+          return yield* Effect.fail<EarlyResult>({ status: 'cancelled' });
+        }
+        const failed = (error: unknown): EarlyResult => ({
+          status: 'error',
+          message: errorMessageOf(error),
+        });
+        yield* Effect.tryPromise({
+          try: () => port.downloadModel((fraction) => onPhase({ kind: 'downloading', fraction })),
+          catch: failed,
+        });
+        yield* Effect.try({ try: () => onPhase({ kind: 'loading' }), catch: failed });
+        yield* Effect.tryPromise({ try: () => port.loadModel(), catch: failed });
+      }
+      let fileUri = input.source.localUri;
+      if (fileUri === undefined || fileUri === '') {
+        const url = input.source.url;
+        if (url === undefined || url === '') {
+          return yield* stopWith(TRANSCRIBE_FAILED_MESSAGE);
+        }
+        const files = yield* filesOf;
+        cachedUri = yield* Effect.tryPromise({
+          try: () => files.downloadUrl(url, input.source.headers, onPhase),
+          catch: (error): EarlyResult => ({
+            status: 'error',
+            message:
+              error instanceof TranscribeTooLargeError
+                ? TRANSCRIBE_TOO_LONG_MESSAGE
+                : TRANSCRIBE_FAILED_MESSAGE,
+          }),
+        });
+        fileUri = cachedUri;
+      }
+      yield* Effect.sync(() => onPhase({ kind: 'transcribing' }));
+      const uri = fileUri;
+      const transcript = yield* Effect.tryPromise({
+        try: () =>
+          port.transcribe(uri, {
+            ...(input.language === undefined ? {} : { language: input.language }),
+            ...(input.audioMs === undefined ? {} : { audioMs: input.audioMs }),
+          }),
+        catch: (error): EarlyResult => ({ status: 'error', message: errorMessageOf(error) }),
+      });
+      if (transcript.text.trim() === '') {
+        return yield* stopWith(TRANSCRIBE_EMPTY_MESSAGE);
+      }
+      return { status: 'done', transcript } satisfies TranscribeVoiceNoteResult;
+    });
+
+    // The cached download is always deleted; the cache must never block the result.
+    const deleteCached = Effect.suspend(() => {
+      const cached = cachedUri;
+      return cached === undefined
+        ? Effect.void
+        : filesOf.pipe(
+            Effect.flatMap((files) => Effect.promise(() => files.deleteCache(cached))),
+            Effect.catchCause(() => Effect.void),
+          );
+    });
+
+    return run.pipe(
+      Effect.catch((early) => Effect.succeed<TranscribeVoiceNoteResult>(early)),
+      Effect.ensuring(deleteCached),
+    );
+  });

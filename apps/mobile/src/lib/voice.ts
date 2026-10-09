@@ -10,6 +10,7 @@
  */
 
 import type { UploadSlot } from '@zilar/xmpp-core';
+import { Effect } from 'effect';
 
 /** Hard cap on a recording, matching the server's `POST /api/voice` limit. */
 export const VOICE_MAX_BYTES = 10 * 1024 * 1024;
@@ -78,18 +79,26 @@ export interface RecordedVoice {
  * reuse the same codes the recorder path reports.
  */
 export function validateRecording(recording: Pick<RecordedVoice, 'size' | 'durationMs'>): void {
+  Effect.runSync(validateRecordingEffect(recording));
+}
+
+/** The same guard as an Effect: a refusal fails with the `VoiceError`. */
+export function validateRecordingEffect(
+  recording: Pick<RecordedVoice, 'size' | 'durationMs'>,
+): Effect.Effect<void, VoiceError> {
   if (recording.size === 0) {
-    throw new VoiceError('voice_empty', 'The recording is empty');
+    return Effect.fail(new VoiceError('voice_empty', 'The recording is empty'));
   }
   if (recording.size > VOICE_MAX_BYTES) {
-    throw new VoiceError('voice_too_large', 'The recording is too long to send');
+    return Effect.fail(new VoiceError('voice_too_large', 'The recording is too long to send'));
   }
   if (recording.durationMs < VOICE_MIN_MS) {
-    throw new VoiceError('voice_too_short', 'The recording is too short');
+    return Effect.fail(new VoiceError('voice_too_short', 'The recording is too short'));
   }
   if (recording.durationMs > VOICE_MAX_DURATION_MS) {
-    throw new VoiceError('voice_too_long', 'The recording is too long');
+    return Effect.fail(new VoiceError('voice_too_long', 'The recording is too long'));
   }
+  return Effect.void;
 }
 
 /** The converted bytes plus the server-measured duration, like web. */
@@ -102,17 +111,14 @@ export interface ConvertedVoice {
   durationMs: number;
 }
 
-async function errorCode(response: Response): Promise<string> {
-  try {
-    const body = (await response.json()) as { error?: { code?: string } };
-    if (typeof body.error?.code === 'string') {
-      return body.error.code;
-    }
-  } catch {
-    // A non-JSON error body falls through to a generic code.
-  }
-  return 'voice_failed';
-}
+// A non-JSON error body falls through to a generic code.
+const errorCode = (response: Response): Effect.Effect<string> =>
+  Effect.tryPromise(() => response.json() as Promise<{ error?: { code?: string } } | null>).pipe(
+    Effect.map((body) =>
+      typeof body?.error?.code === 'string' ? body.error.code : 'voice_failed',
+    ),
+    Effect.orElseSucceed(() => 'voice_failed'),
+  );
 
 /**
  * Sends a recording to the server and gets back AAC/M4A plus its duration.
@@ -122,79 +128,92 @@ async function errorCode(response: Response): Promise<string> {
  * serve `file://` URIs) and POSTed with the session bearer. The duration
  * header is authoritative, like on web.
  */
-export async function convertVoice(
+export function convertVoice(
   file: { uri: string; mimeType: string; size: number; durationMs: number },
-  options?: {
-    apiUrl?: string;
-    getToken?: () => Promise<string | undefined>;
-    fetchFn?: typeof fetch;
-    /** Reads the recorded bytes; production reads the device file. */
-    readFile?: ((uri: string) => Promise<Uint8Array>) | undefined;
-  },
+  options?: ConvertVoiceOptions,
 ): Promise<ConvertedVoice> {
-  const fetchFn = options?.fetchFn ?? fetch;
-  validateRecording({ size: file.size, durationMs: file.durationMs });
-  const apiUrl = options?.apiUrl;
-  const token = await options?.getToken?.().catch(() => undefined);
-  if (apiUrl === undefined || token === undefined) {
-    throw new VoiceError('network_error', 'Could not reach the server');
-  }
-  let bytes: Uint8Array;
-  try {
-    bytes =
-      options?.readFile !== undefined
-        ? await options.readFile(file.uri)
-        : await readDeviceFile(file.uri);
-  } catch {
-    throw new VoiceError('voice_failed', 'Could not read the recording');
-  }
-  if (bytes.byteLength === 0) {
-    throw new VoiceError('voice_empty', 'The recording is empty');
-  }
-  if (bytes.byteLength > VOICE_MAX_BYTES) {
-    throw new VoiceError('voice_too_large', 'The recording is too long to send');
-  }
-  if (bytes.byteLength === 0) {
-    throw new VoiceError('voice_empty', 'The recording is empty');
-  }
-  if (bytes.byteLength > VOICE_MAX_BYTES) {
-    throw new VoiceError('voice_too_large', 'The recording is too long to send');
-  }
+  return Effect.runPromise(convertVoiceEffect(file, options));
+}
 
-  let response: Response;
-  try {
-    response = await fetchFn(`${apiUrl}/api/voice`, {
-      method: 'POST',
-      headers: {
-        authorization: `Bearer ${token}`,
-        'content-type': file.mimeType === '' ? 'application/octet-stream' : file.mimeType,
-      },
-      // The exact bytes, even when `readFile` returns a view over a larger
-      // buffer (finding 6, round 3): `buffer` alone would over-post.
-      body: voicePostBody(bytes),
+export interface ConvertVoiceOptions {
+  apiUrl?: string;
+  getToken?: () => Promise<string | undefined>;
+  fetchFn?: typeof fetch;
+  /** Reads the recorded bytes; production reads the device file. */
+  readFile?: ((uri: string) => Promise<Uint8Array>) | undefined;
+}
+
+/** `convertVoice` as an Effect: every refusal fails with a `VoiceError`. */
+export const convertVoiceEffect = (
+  file: { uri: string; mimeType: string; size: number; durationMs: number },
+  options?: ConvertVoiceOptions,
+): Effect.Effect<ConvertedVoice, VoiceError> =>
+  Effect.gen(function* () {
+    const fetchFn = options?.fetchFn ?? fetch;
+    yield* validateRecordingEffect({ size: file.size, durationMs: file.durationMs });
+    const apiUrl = options?.apiUrl;
+    // A rejected token read is "no token", like a missing one.
+    const token = yield* Effect.suspend(() => {
+      const pending = options?.getToken?.();
+      return pending === undefined
+        ? Effect.succeed(undefined)
+        : Effect.promise(() => pending).pipe(Effect.catchDefect(() => Effect.succeed(undefined)));
     });
-  } catch {
-    throw new VoiceError('network_error', 'Could not reach the server');
-  }
+    if (apiUrl === undefined || token === undefined) {
+      return yield* Effect.fail(new VoiceError('network_error', 'Could not reach the server'));
+    }
+    const readFile = options?.readFile;
+    const unreadable = () => new VoiceError('voice_failed', 'Could not read the recording');
+    const bytes = yield* readFile !== undefined
+      ? Effect.tryPromise({ try: () => readFile(file.uri), catch: unreadable })
+      : readDeviceFile(file.uri).pipe(Effect.mapError(unreadable));
+    yield* validateBytes(bytes);
 
-  if (!response.ok) {
-    throw new VoiceError(await errorCode(response), 'The server could not convert the recording');
-  }
+    const response = yield* Effect.tryPromise({
+      try: () =>
+        fetchFn(`${apiUrl}/api/voice`, {
+          method: 'POST',
+          headers: {
+            authorization: `Bearer ${token}`,
+            'content-type': file.mimeType === '' ? 'application/octet-stream' : file.mimeType,
+          },
+          // The exact bytes, even when `readFile` returns a view over a larger
+          // buffer (finding 6, round 3): `buffer` alone would over-post.
+          body: voicePostBody(bytes),
+        }),
+      catch: () => new VoiceError('network_error', 'Could not reach the server'),
+    });
 
-  const durationMs = Number(response.headers.get('x-zilar-duration-ms'));
-  if (!Number.isFinite(durationMs) || durationMs <= 0) {
-    throw new VoiceError('invalid_response', 'The server sent no duration');
+    if (!response.ok) {
+      const code = yield* errorCode(response);
+      return yield* Effect.fail(new VoiceError(code, 'The server could not convert the recording'));
+    }
+
+    const durationMs = Number(response.headers.get('x-zilar-duration-ms'));
+    if (!Number.isFinite(durationMs) || durationMs <= 0) {
+      return yield* Effect.fail(new VoiceError('invalid_response', 'The server sent no duration'));
+    }
+    const audio = new Uint8Array(yield* Effect.promise(() => response.arrayBuffer()));
+    yield* validateRecordingEffect({ size: audio.byteLength, durationMs });
+    return { uri: file.uri, mimeType: VOICE_MIME, size: audio.byteLength, durationMs };
+  });
+
+/** Refuses the bytes read from the device before they are posted. */
+function validateBytes(bytes: Uint8Array): Effect.Effect<void, VoiceError> {
+  if (bytes.byteLength === 0) {
+    return Effect.fail(new VoiceError('voice_empty', 'The recording is empty'));
   }
-  const audio = new Uint8Array(await response.arrayBuffer());
-  validateRecording({ size: audio.byteLength, durationMs });
-  return { uri: file.uri, mimeType: VOICE_MIME, size: audio.byteLength, durationMs };
+  if (bytes.byteLength > VOICE_MAX_BYTES) {
+    return Effect.fail(new VoiceError('voice_too_large', 'The recording is too long to send'));
+  }
+  return Effect.void;
 }
 
 /** Reads a recorded device file, the way the attachment uploader does. */
-async function readDeviceFile(uri: string): Promise<Uint8Array> {
-  const { File } = await import('expo-file-system');
-  return new File(uri).bytes();
-}
+const readDeviceFile = (uri: string): Effect.Effect<Uint8Array, unknown> =>
+  Effect.tryPromise(() => import('expo-file-system')).pipe(
+    Effect.flatMap(({ File }) => Effect.tryPromise(() => new File(uri).bytes())),
+  );
 
 /**
  * The exact POST body for recorded bytes (finding 6, round 3): a full-buffer
@@ -228,33 +247,47 @@ export interface VoiceUploader {
 }
 
 /** PUTs the converted bytes to the slot and returns the download URL. */
-export async function uploadVoice(
+export function uploadVoice(
   requester: UploadSlotRequester,
   uploader: VoiceUploader,
   audio: { uri: string; mimeType: string; size: number },
   onProgress?: (fraction: number) => void,
   messageId?: string,
 ): Promise<string> {
-  const slot = await requester.requestUploadSlot({
-    filename: VOICE_FILENAME,
-    size: audio.size,
-    contentType: VOICE_MIME,
-  });
-  try {
-    await uploader.upload(
-      { uri: audio.uri, mimeType: VOICE_MIME },
-      { putUrl: slot.putUrl, headers: slot.headers },
-      onProgress,
-      messageId,
-    );
-  } catch (error) {
-    if (error instanceof Error && error.message === 'cancelled') {
-      throw error;
-    }
-    throw new VoiceError('upload_failed', 'Could not upload the recording');
-  }
-  return slot.getUrl;
+  return Effect.runPromise(uploadVoiceEffect(requester, uploader, audio, onProgress, messageId));
 }
+
+/** `uploadVoice` as an Effect: a user cancel keeps its own error, the rest is `upload_failed`. */
+export const uploadVoiceEffect = (
+  requester: UploadSlotRequester,
+  uploader: VoiceUploader,
+  audio: { uri: string; mimeType: string; size: number },
+  onProgress?: (fraction: number) => void,
+  messageId?: string,
+): Effect.Effect<string, Error> =>
+  Effect.gen(function* () {
+    const slot = yield* Effect.promise(() =>
+      requester.requestUploadSlot({
+        filename: VOICE_FILENAME,
+        size: audio.size,
+        contentType: VOICE_MIME,
+      }),
+    );
+    yield* Effect.tryPromise({
+      try: () =>
+        uploader.upload(
+          { uri: audio.uri, mimeType: VOICE_MIME },
+          { putUrl: slot.putUrl, headers: slot.headers },
+          onProgress,
+          messageId,
+        ),
+      catch: (error) =>
+        error instanceof Error && error.message === 'cancelled'
+          ? error
+          : new VoiceError('upload_failed', 'Could not upload the recording'),
+    });
+    return slot.getUrl;
+  });
 
 /** The three steps the store needs; injected in tests. */
 export interface VoicePort {
@@ -276,25 +309,29 @@ export function createVoicePort(options: {
   readFile?: ((uri: string) => Promise<Uint8Array>) | undefined;
 }): VoicePort {
   return {
-    convert: async (recording) => {
-      // The send boundary (finding 1): the skip branch enforces the same
-      // size/duration limits as the conversion path, so an over-limit m4a
-      // never reaches the upload slot or the PUT.
-      validateRecording(recording);
-      return isAlreadyConverted(recording)
-        ? {
-            uri: recording.uri,
-            mimeType: VOICE_MIME,
-            size: recording.size,
-            durationMs: recording.durationMs,
+    convert: (recording) =>
+      Effect.runPromise(
+        Effect.gen(function* () {
+          // The send boundary (finding 1): the skip branch enforces the same
+          // size/duration limits as the conversion path, so an over-limit m4a
+          // never reaches the upload slot or the PUT.
+          yield* validateRecordingEffect(recording);
+          if (isAlreadyConverted(recording)) {
+            return {
+              uri: recording.uri,
+              mimeType: VOICE_MIME,
+              size: recording.size,
+              durationMs: recording.durationMs,
+            };
           }
-        : await convertVoice(recording, {
+          return yield* convertVoiceEffect(recording, {
             apiUrl: options.apiUrl,
             getToken: options.getToken,
             fetchFn: options.fetchFn,
             readFile: options.readFile,
           });
-    },
+        }),
+      ),
     upload: (requester, audio, onProgress, messageId) =>
       uploadVoice(requester, options.uploader, audio, onProgress, messageId),
   };

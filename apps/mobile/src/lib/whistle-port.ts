@@ -3,6 +3,8 @@
  * injected seam over the `zilar-whistle` local Expo module, so the screen
  * and its tests never touch the native handle directly.
  */
+import { Effect } from 'effect';
+
 import type { WhistleTranscript } from './whistle-port-types';
 
 export type WhistleStatus = 'missing' | 'ready';
@@ -28,6 +30,22 @@ export class WhistlePortError extends Error {
   }
 }
 
+/**
+ * A call into an injected function. A missing one answers with `absent`; a
+ * rejection of the real one is a defect that reaches the caller unchanged.
+ */
+function injectedCall<A>(
+  call: (() => Promise<A>) | undefined,
+  absent: Effect.Effect<A, WhistlePortError>,
+): Effect.Effect<A, WhistlePortError> {
+  return call === undefined ? absent : Effect.promise(() => call());
+}
+
+/** A synchronous availability check: a throw means "not available". */
+function readAvailability(read: () => boolean): boolean {
+  return Effect.runSync(Effect.try(read).pipe(Effect.orElseSucceed(() => false)));
+}
+
 /** Builds the real port from the module's functions (test seam). */
 export function createWhistlePort(deps?: {
   isAvailable?: (() => boolean) | undefined;
@@ -44,33 +62,36 @@ export function createWhistlePort(deps?: {
   if (deps !== undefined) {
     const injected = deps;
     return {
-      isAvailable: () => {
-        try {
-          return injected.isAvailable?.() ?? false;
-        } catch {
-          return false;
-        }
-      },
-      modelStatus: () => injected.modelStatus?.() ?? Promise.resolve('missing' as WhistleStatus),
-      downloadModel: (onProgress) => injected.downloadModel?.(onProgress) ?? Promise.resolve(),
-      loadModel: () => injected.loadModel?.() ?? Promise.resolve(),
+      isAvailable: () => readAvailability(() => injected.isAvailable?.() ?? false),
+      modelStatus: () =>
+        Effect.runPromise(
+          injectedCall(injected.modelStatus?.bind(injected), Effect.succeed('missing')),
+        ),
+      downloadModel: (onProgress) =>
+        Effect.runPromise(
+          injectedCall(injected.downloadModel?.bind(injected, onProgress), Effect.void),
+        ),
+      loadModel: () =>
+        Effect.runPromise(injectedCall(injected.loadModel?.bind(injected), Effect.void)),
       transcribe: (fileUri, options) =>
-        injected.transcribe?.(fileUri, options) ??
-        Promise.reject(
-          new WhistlePortError('unavailable', 'On-device transcription is unavailable'),
+        Effect.runPromise(
+          injectedCall(
+            injected.transcribe?.bind(injected, fileUri, options),
+            Effect.fail(
+              new WhistlePortError('unavailable', 'On-device transcription is unavailable'),
+            ),
+          ),
         ),
     };
   }
   return {
     // The real native check is synchronous and safe: `getNativeModule`
     // returns null off Android and `isAvailable` only reads the ABI list.
-    isAvailable: () => checkNativeAvailable(),
-    modelStatus: async () => (await lazyModuleAsync()).modelStatus(),
-    downloadModel: (onProgress) =>
-      lazyModuleAsync().then((module) => module.downloadModel(onProgress)),
-    loadModel: () => lazyModuleAsync().then((module) => module.loadModel()),
-    transcribe: (fileUri, options) =>
-      lazyModuleAsync().then((module) => module.transcribe(fileUri, options)),
+    isAvailable: () => readAvailability(checkNativeAvailable),
+    modelStatus: () => withModule((module) => module.modelStatus()),
+    downloadModel: (onProgress) => withModule((module) => module.downloadModel(onProgress)),
+    loadModel: () => withModule((module) => module.loadModel()),
+    transcribe: (fileUri, options) => withModule((module) => module.transcribe(fileUri, options)),
   };
 }
 
@@ -80,15 +101,11 @@ export function createWhistlePort(deps?: {
  * (which always injects the fake through `deps`) never loads native code.
  */
 function checkNativeAvailable(): boolean {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { getNativeModule } = require('zilar-whistle/src/ZilarWhistleModule') as {
-      getNativeModule: () => { isAvailable: () => boolean } | null;
-    };
-    return getNativeModule()?.isAvailable() ?? false;
-  } catch {
-    return false;
-  }
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { getNativeModule } = require('zilar-whistle/src/ZilarWhistleModule') as {
+    getNativeModule: () => { isAvailable: () => boolean } | null;
+  };
+  return getNativeModule()?.isAvailable() ?? false;
 }
 
 /**
@@ -112,4 +129,13 @@ let cached: Promise<WhistleModule> | undefined;
 function lazyModuleAsync(): Promise<WhistleModule> {
   cached ??= import('zilar-whistle') as Promise<WhistleModule>;
   return cached;
+}
+
+/** Loads the native module (once) and runs one call on it. */
+function withModule<A>(use: (module: WhistleModule) => Promise<A>): Promise<A> {
+  return Effect.runPromise(
+    Effect.promise(lazyModuleAsync).pipe(
+      Effect.flatMap((module) => Effect.promise(() => use(module))),
+    ),
+  );
 }
