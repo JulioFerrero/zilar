@@ -1,7 +1,7 @@
 ---
 id: T-0763
 title: "X1: xmpp-core typed errors — new packages/xmpp-core/src/errors.ts with one Data.TaggedError per failure mode (NotOnline, NoIdentity, ConnectTimeout, Disconnected, JoinRejected, JoinTimeout, JoinSendFailed, IqFailed, HistoryFailed, HistoryTimeout, HistorySendFailed, UploadSlotTimeout, UploadSlotInvalid, UploadSlotFailed, PushToggleTimeout, PushToggleFailed); the 17 `new Error(...)` sites in client.ts use them with byte-identical messages; exported from index.ts"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0763-xmpp-typed-errors
 model: auto
@@ -68,4 +68,59 @@ Paste the before and after counts of the xmpp-core suite into the Report.
 
 ## Report (written by the worker when done)
 
+**Files changed** (all in Allowed files): `packages/xmpp-core/src/errors.ts` (new), `packages/xmpp-core/src/errors.test.ts` (new), `packages/xmpp-core/src/client.ts`, `packages/xmpp-core/src/index.ts`, this task file.
+
+**Deviation: 17 classes, not 16.** `rejectPendingIqs(reason: string)` was called with two texts: `'the XMPP connection failed'` (from `stopAfterFailure`, HEAD line 464 via 479) and `'the XMPP client was disconnected'` (from `disconnect`, HEAD line 887). No class in the list carries the first text, so I added `ConnectionFailed`. `rejectPendingIqs` now takes a factory `() => XmppCoreError`, so each pending request still gets its own error object, as before. Only the message texts are kept; the names are mine.
+
+**Error classes and the HEAD line each replaces** (`new Error(` in HEAD `client.ts`):
+- `NotOnline`: 840 (`requireOnline`)
+- `NoIdentity`: 1011
+- `ConnectTimeout`: 862
+- `Disconnected`: 885 (`finishConnect` in `disconnect`) and 887 (via `rejectPendingIqs`, not a `new Error` site)
+- `ConnectionFailed` (added): 479 (via `rejectPendingIqs`, from 464)
+- `JoinRejected`: 740 (`condition`)
+- `JoinTimeout`: 907 (`roomJid`)
+- `JoinSendFailed`: 916 (`roomJid`, `cause`)
+- `IqFailed`: 781 (`condition`)
+- `HistoryFailed`: 817 (`condition`)
+- `HistoryTimeout`: 1030 (`chatJid`)
+- `HistorySendFailed`: 1040 (`chatJid`, `cause`)
+- `UploadSlotTimeout`: 1061
+- `UploadSlotInvalid`: 1067
+- `UploadSlotFailed`: 1081 (`cause`)
+- `PushToggleTimeout`: 1104
+- `PushToggleFailed`: 1117 (`cause`)
+
+That is 17 sites (479, 740, 781, 817, 840, 862, 885, 907, 916, 1011, 1030, 1040, 1061, 1067, 1081, 1104, 1117). `grep -c "new Error(" client.ts` is now 0. `XmppCoreError` is the union of all 17 classes. `index.ts` exports the classes and the union.
+
+**How the classes build their message.** Each class passes its text to the `Data.TaggedError` base as a `message` argument, so `.message` is set during construction. I checked this in `node_modules/effect/dist/internal/core.js` (4.0.2): the base extends `Error` and passes `args.message` to it. I did not use a `message` getter, because a getter would read the fields before the base sets them.
+
+**Behaviour change to know about.** A `Data.TaggedError` sets `.name` to its tag (for example `'NotOnline'`) instead of `'Error'`, and `.cause` is set when a `cause` field is passed. I grepped the web, mobile and server code for `.name` checks and string coercion of these errors and found none. The tests assert on messages only.
+
+**Suite counts (`pnpm --filter @zilar/xmpp-core test --maxWorkers=2 --reporter=dot`).**
+- Before: Test Files 7 passed, 4 skipped (11); Tests 198 passed, 4 skipped (202).
+- After: Test Files 8 passed, 4 skipped (12); Tests 215 passed, 4 skipped (219). The +17 tests are the 17 `it.each` cases in `errors.test.ts`. Every existing test passes unchanged.
+- The 4 skipped files are the `integration-*.test.ts` files, which need ejabberd. I did not run them.
+
+**Other checks.** `pnpm exec prettier --write` on the 4 TypeScript files. `tsc --noEmit` in `packages/xmpp-core` exits 0. I did not connect to any XMPP server.
+
+**`pnpm gate` (run from the worktree root, exit 0):**
+```
+gate: 5 changed file(s) against main
+PASS  install (frozen)  (1.3s)
+PASS  format  (0.7s)
+PASS  lint  (1.0s)
+PASS  typecheck  (3.5s)
+PASS  tests @zilar/xmpp-core  (2.0s)
+scope: every changed file is inside the Allowed files
+GATE PASS
+```
+
+**Open question.** Is the extra `ConnectionFailed` class acceptable, or should the 17th text move into `Disconnected`? Moving it would change the message at HEAD line 479, which I did not want to do.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Haiku 5.5. The lead reviewed the diff directly.
+- **The error classes:** 17 tagged errors, including the added `ConnectionFailed`, which is right because `rejectPendingIqs` takes two texts. No `new Error(` is left in `client.ts`, and the messages are byte-identical.
+- **`.name` changes**, for example to `NotOnline`. The lead checked with `git grep` that no consumer in web, mobile or the server agents reads these names or texts.
+- **Results:** the xmpp-core tests go from 198 to 215 (the new errors tests); the gate passed.

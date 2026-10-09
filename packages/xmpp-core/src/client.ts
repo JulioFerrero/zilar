@@ -5,6 +5,26 @@ import {
   type XmppElement,
   type XmppStatus,
 } from '@xmpp/client';
+import {
+  ConnectionFailed,
+  ConnectTimeout,
+  Disconnected,
+  HistoryFailed,
+  HistorySendFailed,
+  HistoryTimeout,
+  IqFailed,
+  JoinRejected,
+  JoinSendFailed,
+  JoinTimeout,
+  NoIdentity,
+  NotOnline,
+  PushToggleFailed,
+  PushToggleTimeout,
+  UploadSlotFailed,
+  UploadSlotInvalid,
+  UploadSlotTimeout,
+  type XmppCoreError,
+} from './errors';
 import { jidLocalPart } from './jid';
 import { DEFAULT_HISTORY_MAX, buildMamQuery, parseMamFin, toHistoryPage } from './mam';
 import { PING_NAMESPACE } from './namespaces';
@@ -461,7 +481,7 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
     setStatus('offline');
     meJid = undefined;
     clearAllRosters();
-    rejectPendingIqs('the XMPP connection failed');
+    rejectPendingIqs(() => new ConnectionFailed());
     const current = xmpp;
     if (current !== undefined) {
       try {
@@ -472,11 +492,11 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
     }
   }
 
-  function rejectPendingIqs(reason: string): void {
+  function rejectPendingIqs(makeError: () => XmppCoreError): void {
     for (const [id, pending] of pendingIqs) {
       pendingIqs.delete(id);
       clearTimeout(pending.timer);
-      pending.reject(new Error(reason));
+      pending.reject(makeError());
     }
   }
 
@@ -737,7 +757,7 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
         if (type === 'error') {
           pendingJoins.delete(from);
           clearTimeout(pending.timer);
-          pending.reject(new Error(`the room rejected the join: ${stanzaErrorCondition(stanza)}`));
+          pending.reject(new JoinRejected({ condition: stanzaErrorCondition(stanza) }));
         } else if (type === undefined) {
           pendingJoins.delete(from);
           clearTimeout(pending.timer);
@@ -778,7 +798,7 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
         pendingIqs.delete(id);
         clearTimeout(pending.timer);
         if (stanza.attrs['type'] === 'error') {
-          pending.reject(new Error(`the request failed: ${stanzaErrorCondition(stanza)}`));
+          pending.reject(new IqFailed({ condition: stanzaErrorCondition(stanza) }));
         } else {
           pending.resolve(stanza);
         }
@@ -814,7 +834,7 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
       pendingQueries.delete(queryId);
       clearTimeout(pending.timer);
       if (stanza.attrs['type'] === 'error') {
-        pending.reject(new Error(`the history query failed: ${stanzaErrorCondition(stanza)}`));
+        pending.reject(new HistoryFailed({ condition: stanzaErrorCondition(stanza) }));
         return;
       }
       pending.resolve(toHistoryPage(pending.messages, parseMamFin(stanza)));
@@ -837,7 +857,7 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
 
   function requireOnline(): XmppClient {
     if (xmpp === undefined || currentStatus !== 'online') {
-      throw new Error('the XMPP connection is not online');
+      throw new NotOnline();
     }
     return xmpp;
   }
@@ -859,7 +879,7 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
     connectPromise = new Promise<void>((resolve, reject) => {
       settleConnect = { resolve, reject };
       connectTimer = setTimeout(() => {
-        finishConnect(new Error('timed out connecting to XMPP'));
+        finishConnect(new ConnectTimeout());
       }, CONNECT_TIMEOUT_MS);
     });
 
@@ -882,9 +902,9 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
     transientTokenError = undefined;
     stopKeepalive();
     setStatus('offline');
-    finishConnect(new Error('the XMPP client was disconnected'));
+    finishConnect(new Disconnected());
     clearAllRosters();
-    rejectPendingIqs('the XMPP client was disconnected');
+    rejectPendingIqs(() => new Disconnected());
     const current = xmpp;
     if (current !== undefined) {
       try {
@@ -904,7 +924,7 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
     await new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => {
         pendingJoins.delete(key);
-        reject(new Error(`timed out joining ${roomJid}`));
+        reject(new JoinTimeout({ roomJid }));
       }, JOIN_TIMEOUT_MS);
       pendingJoins.set(key, { resolve, reject, timer });
       current.send(buildJoinPresence(roomJid, nick)).catch((error: unknown) => {
@@ -912,9 +932,7 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
         if (pending === undefined) return;
         pendingJoins.delete(key);
         clearTimeout(pending.timer);
-        reject(
-          new Error(`could not send the join presence for ${roomJid}: ${errorMessage(error)}`),
-        );
+        reject(new JoinSendFailed({ roomJid, cause: errorMessage(error) }));
       });
     });
   }
@@ -1008,7 +1026,7 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
   ): Promise<HistoryPage> {
     const current = requireOnline();
     if (meJid === undefined) {
-      throw new Error('the XMPP connection has no identity yet');
+      throw new NoIdentity();
     }
 
     const queryId = generateId();
@@ -1027,7 +1045,7 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
     return new Promise<HistoryPage>((resolve, reject) => {
       const timer = setTimeout(() => {
         pendingQueries.delete(queryId);
-        reject(new Error(`timed out loading the history of ${chatJid}`));
+        reject(new HistoryTimeout({ chatJid }));
       }, HISTORY_TIMEOUT_MS);
       pendingQueries.set(queryId, { iqId, messages: [], resolve, reject, timer });
 
@@ -1036,9 +1054,7 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
         if (pending === undefined) return;
         pendingQueries.delete(queryId);
         clearTimeout(pending.timer);
-        reject(
-          new Error(`could not send the history query for ${chatJid}: ${errorMessage(error)}`),
-        );
+        reject(new HistorySendFailed({ chatJid, cause: errorMessage(error) }));
       });
     });
   }
@@ -1058,13 +1074,13 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
     return new Promise<UploadSlot>((resolve, reject) => {
       const timer = setTimeout(() => {
         pendingIqs.delete(id);
-        reject(new Error('timed out requesting an upload slot'));
+        reject(new UploadSlotTimeout());
       }, UPLOAD_TIMEOUT_MS);
       pendingIqs.set(id, {
         resolve: (reply) => {
           const slot = parseUploadSlot(reply);
           if (slot === undefined) {
-            reject(new Error('the upload service returned an invalid slot'));
+            reject(new UploadSlotInvalid());
             return;
           }
           resolve(slot);
@@ -1078,7 +1094,7 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
         if (pending === undefined) return;
         pendingIqs.delete(id);
         clearTimeout(pending.timer);
-        reject(new Error(`could not request an upload slot: ${errorMessage(error)}`));
+        reject(new UploadSlotFailed({ cause: errorMessage(error) }));
       });
     });
   }
@@ -1101,7 +1117,7 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
     return new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => {
         pendingIqs.delete(id);
-        reject(new Error('timed out toggling push notifications'));
+        reject(new PushToggleTimeout());
       }, PUSH_TIMEOUT_MS);
       pendingIqs.set(id, {
         resolve: () => resolve(),
@@ -1114,7 +1130,7 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
         if (pending === undefined) return;
         pendingIqs.delete(id);
         clearTimeout(pending.timer);
-        reject(new Error(`could not toggle push notifications: ${errorMessage(error)}`));
+        reject(new PushToggleFailed({ cause: errorMessage(error) }));
       });
     });
   }

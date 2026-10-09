@@ -28,6 +28,26 @@ export type {
   XmppCore,
   XmppCoreOptions,
 } from './types';
+export {
+  ConnectionFailed,
+  ConnectTimeout,
+  Disconnected,
+  HistoryFailed,
+  HistorySendFailed,
+  HistoryTimeout,
+  IqFailed,
+  JoinRejected,
+  JoinSendFailed,
+  JoinTimeout,
+  NoIdentity,
+  NotOnline,
+  PushToggleFailed,
+  PushToggleTimeout,
+  UploadSlotFailed,
+  UploadSlotInvalid,
+  UploadSlotTimeout,
+} from './errors';
+export type { XmppCoreError } from './errors';
 
 /**
  * Creates the shared XMPP client. The returned object is the only chat API the
