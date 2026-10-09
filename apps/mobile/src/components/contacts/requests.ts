@@ -1,3 +1,4 @@
+import { Effect } from 'effect';
 import { ContactsApiError, type ContactsApi } from '@/lib/contacts-api';
 
 /**
@@ -36,23 +37,33 @@ export function requestsActionFailure(error: unknown): string {
  * the row stays on failure so the user can retry. UI-free so the screen
  * tests can drive it with a fake API.
  */
-export async function performRequestAction(
+const sendAction = (api: ContactsApi, id: string, action: RequestAction): Promise<unknown> => {
+  if (action === 'accept') {
+    return api.acceptContactRequest(id);
+  }
+  if (action === 'decline') {
+    return api.declineContactRequest(id);
+  }
+  return api.cancelContactRequest(id);
+};
+
+export const performRequestActionEffect = (
+  api: ContactsApi,
+  id: string,
+  action: RequestAction,
+  remove: (id: string) => void,
+): Effect.Effect<string | null> =>
+  Effect.tryPromise({ try: () => sendAction(api, id, action), catch: (cause) => cause }).pipe(
+    Effect.andThen(() => Effect.try({ try: () => remove(id), catch: (cause) => cause })),
+    Effect.map((): string | null => null),
+    Effect.catch((error: unknown) => Effect.succeed(requestsActionFailure(error))),
+  );
+
+export function performRequestAction(
   api: ContactsApi,
   id: string,
   action: RequestAction,
   remove: (id: string) => void,
 ): Promise<string | null> {
-  try {
-    if (action === 'accept') {
-      await api.acceptContactRequest(id);
-    } else if (action === 'decline') {
-      await api.declineContactRequest(id);
-    } else {
-      await api.cancelContactRequest(id);
-    }
-    remove(id);
-    return null;
-  } catch (error: unknown) {
-    return requestsActionFailure(error);
-  }
+  return Effect.runPromise(performRequestActionEffect(api, id, action, remove));
 }

@@ -1,3 +1,4 @@
+import { Effect, type Effect as EffectType } from 'effect';
 import { reloadBlockedJids } from '../../lib/blocked-users';
 import { ContactsApiError, type ContactsApi } from '../../lib/contacts-api';
 
@@ -40,41 +41,67 @@ export function blockedLoadFailure(error: unknown): string {
   return 'Could not load blocked people. Try again.';
 }
 
+const blockSteps = Effect.fnUntraced(function* (
+  api: ContactsApi,
+  userId: string,
+  onBlocked: () => void,
+): EffectType.fn.Return<void, unknown> {
+  yield* Effect.tryPromise({ try: () => api.blockUser(userId), catch: (cause) => cause });
+  yield* Effect.tryPromise({ try: () => reloadBlockedJids(api), catch: (cause) => cause });
+  yield* Effect.try({ try: onBlocked, catch: (cause) => cause });
+});
+
+const unblockSteps = Effect.fnUntraced(function* (
+  api: ContactsApi,
+  userId: string,
+  onUnblocked: () => void,
+): EffectType.fn.Return<void, unknown> {
+  yield* Effect.tryPromise({ try: () => api.unblockUser(userId), catch: (cause) => cause });
+  yield* Effect.tryPromise({ try: () => reloadBlockedJids(api), catch: (cause) => cause });
+  yield* Effect.try({ try: onUnblocked, catch: (cause) => cause });
+});
+
 /**
  * Blocks the user and runs `onBlocked` on success. Resolves null on success,
  * or the inline failure message. The caller updates the shown relation.
  */
-export async function performBlock(
+export const performBlockEffect = (
   api: ContactsApi,
   userId: string,
   onBlocked: () => void,
-): Promise<string | null> {
-  try {
-    await api.blockUser(userId);
-    await reloadBlockedJids(api);
-    onBlocked();
-    return null;
-  } catch (error: unknown) {
-    return blockFailure(error);
-  }
-}
+): Effect.Effect<string | null> =>
+  blockSteps(api, userId, onBlocked).pipe(
+    Effect.map((): string | null => null),
+    Effect.catch((error: unknown) => Effect.succeed(blockFailure(error))),
+  );
 
 /**
  * Unblocks the user and runs `onUnblocked` on success (the card updates the
  * relation, the blocked screen removes the row). Resolves null on success,
  * or the inline failure message (nothing changes so the user can retry).
  */
-export async function performUnblock(
+export const performUnblockEffect = (
+  api: ContactsApi,
+  userId: string,
+  onUnblocked: () => void,
+): Effect.Effect<string | null> =>
+  unblockSteps(api, userId, onUnblocked).pipe(
+    Effect.map((): string | null => null),
+    Effect.catch((error: unknown) => Effect.succeed(unblockFailure(error))),
+  );
+
+export function performBlock(
+  api: ContactsApi,
+  userId: string,
+  onBlocked: () => void,
+): Promise<string | null> {
+  return Effect.runPromise(performBlockEffect(api, userId, onBlocked));
+}
+
+export function performUnblock(
   api: ContactsApi,
   userId: string,
   onUnblocked: () => void,
 ): Promise<string | null> {
-  try {
-    await api.unblockUser(userId);
-    await reloadBlockedJids(api);
-    onUnblocked();
-    return null;
-  } catch (error: unknown) {
-    return unblockFailure(error);
-  }
+  return Effect.runPromise(performUnblockEffect(api, userId, onUnblocked));
 }

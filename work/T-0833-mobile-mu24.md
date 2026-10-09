@@ -1,7 +1,7 @@
 ---
 id: T-0833
 title: "MU24: mobile contacts: add-contact, blocks, people-search, requests, use-people-search on Effect"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0833-mobile-mu24
 model: auto
@@ -58,4 +58,22 @@ Run `pnpm exec prettier --write` on your changed files before committing. Do not
 
 ## Report (written by the worker when done)
 
+- **effect:map kinds (after):** `add-contact.ts` effect (no signals); `blocks.ts` effect (W4 only, a false positive from `Effect.catch`); `requests.ts` effect (W4, same); `use-people-search.ts` effect (W4, same); `people-search.ts` effect with one H3 (tier B): the injected `this.frames.setTimeout(` seam call, which the existing tests drive with a manual clock, so it stays.
+- **Tests before:** commit "T-0833: tests before" added 3 new files (add-contact.test.ts 17 tests, requests.test.ts 12, use-people-search.test.ts 12) and they passed on the unconverted code. Filtered run of the 5 contact folders: 72 passed (6 files, existing blocks/people-search included).
+- **Tests after:** same filter, 72 passed, 3 runs in a row. Existing `blocks.test.ts` and `people-search.test.ts` unchanged.
+- **Typecheck:** `pnpm --filter @zilar/mobile typecheck` exit 0. **Oxlint** on the 8 changed files: exit 0.
+- **Exports:** every exported name keeps its signature and Promise return type; each now wraps an `*Effect` export (`actOnProfileRequestEffect`, `performRequestActionEffect`, `performBlockEffect`, `performUnblockEffect`) run with `Effect.runPromise`. Errors reach callers unchanged (runPromise rethrows the raw error).
+- **Behaviour differences:**
+  1. `people-search.ts` default clock: `Effect.sleep` in a fiber, cleared with `Fiber.interrupt` (was `setTimeout`/`clearTimeout`). The injected `SearchScheduler` seam is unchanged.
+  2. `people-search.ts`: private method `fetch` renamed `runLookup` (internal; avoids a false H2 hit).
+  3. `use-people-search.ts`: the shared action guard, busy state and error text are unchanged, but a thrown sync error inside a state setter now dies the fiber instead of setting `actionError`. Edge case only.
+  4. None otherwise. Unmount still does not interrupt a running action (as before); the hook keeps one shared guard rather than `useAction`, because the actions share one busy flag.
+- **Pre-existing bug, left as is (lead to decide):** `actOnProfileRequest` calls `onProfile(found)` then `onSentNone()`, and the hook's `onSentNone` is `controller.setFound(active, false)`. So after accept, decline or cancel the refreshed relation is overwritten with the pre-action profile and the card stays stale until the next lookup. This contradicts the comment in `add-contact.ts`. The new hook test does not assert the relation for this reason.
+- **Unsure:** none on the API (checked in `node_modules/effect/dist/Effect.d.ts` and `internal/effect.js`). The default-clock fiber path is covered only through the hook test with a real 900 ms debounce.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved (wave 2). Worker: Haiku 5.5. The lead reviewed the Report.
+- **Combined check:** all 25 wave 2 branches together pass lint, typecheck and the full mobile suite (`lead batch check`, report 20261009T172300Z). The remaining failures were server and web tests that pass on main, caused by load.
+- **This task:** 41 new tests. Found an older bug, now a follow-up: after accept, decline or cancel the contact card shows the pre-action profile until the next lookup.
+- **Phone:** the wave branch is smoked on the emulator after the merge.

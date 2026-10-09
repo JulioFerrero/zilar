@@ -1,8 +1,13 @@
+import { Effect } from 'effect';
 import { useEffect, useReducer, useRef, useState } from 'react';
 
 import { ContactsApiError, domainOfJid, type ContactsApi } from '../../lib/contacts-api';
-import { actOnProfileRequest, addContactSendFailure, resolveContactChat } from './add-contact';
-import { performBlock, performUnblock } from './blocks';
+import {
+  actOnProfileRequestEffect,
+  addContactSendFailure,
+  resolveContactChat,
+} from './add-contact';
+import { performBlockEffect, performUnblockEffect } from './blocks';
 import { PeopleSearchController, type PeopleSearchView } from './people-search';
 
 /**
@@ -64,21 +69,28 @@ export function usePeopleSearch(options: {
     }
   }, [controller, submitRequest]);
 
-  const runAction = (work: () => Promise<void>): void => {
+  const runAction = (work: Effect.Effect<void, unknown>): void => {
     if (busyRef.current) {
       return;
     }
     busyRef.current = true;
     setBusy(true);
     setActionError(null);
-    void work()
-      .catch((error: unknown) => {
-        setActionError(actionErrorFor(error));
-      })
-      .finally(() => {
-        busyRef.current = false;
-        setBusy(false);
-      });
+    Effect.runFork(
+      work.pipe(
+        Effect.catch((error: unknown) =>
+          Effect.sync(() => {
+            setActionError(actionErrorFor(error));
+          }),
+        ),
+        Effect.ensuring(
+          Effect.sync(() => {
+            busyRef.current = false;
+            setBusy(false);
+          }),
+        ),
+      ),
+    );
   };
 
   const actOnRequest = (work: (id: string) => Promise<unknown>): void => {
@@ -87,8 +99,8 @@ export function usePeopleSearch(options: {
       return;
     }
     const active = target.profile;
-    runAction(() =>
-      actOnProfileRequest(
+    runAction(
+      actOnProfileRequestEffect(
         api,
         { userId: active.userId, handle: target.handle },
         work,
@@ -109,14 +121,19 @@ export function usePeopleSearch(options: {
         return;
       }
       const active = target.profile;
-      runAction(() =>
-        api.sendContactRequest(active.handle).then((created) => {
-          if (created.incoming === true) {
-            controller.setFound({ ...active, relation: 'request_received' }, false);
-          } else {
-            controller.setFound(active, true);
-          }
-        }),
+      runAction(
+        Effect.tryPromise({
+          try: () => api.sendContactRequest(active.handle),
+          catch: (cause) => cause,
+        }).pipe(
+          Effect.map((created) => {
+            if (created.incoming === true) {
+              controller.setFound({ ...active, relation: 'request_received' }, false);
+            } else {
+              controller.setFound(active, true);
+            }
+          }),
+        ),
       );
     },
     cancelRequest: () => actOnRequest((id) => api.cancelContactRequest(id)),
@@ -128,14 +145,17 @@ export function usePeopleSearch(options: {
         return;
       }
       const active = target.profile;
-      runAction(async () => {
-        const failure = await performBlock(api, active.userId, () => {
+      runAction(
+        performBlockEffect(api, active.userId, () => {
           controller.setFound({ ...active, relation: 'blocked' }, false);
-        });
-        if (failure !== null) {
-          setActionError(failure);
-        }
-      });
+        }).pipe(
+          Effect.map((failure) => {
+            if (failure !== null) {
+              setActionError(failure);
+            }
+          }),
+        ),
+      );
     },
     unblock: () => {
       const target = controller.actionTarget();
@@ -143,14 +163,17 @@ export function usePeopleSearch(options: {
         return;
       }
       const active = target.profile;
-      runAction(async () => {
-        const failure = await performUnblock(api, active.userId, () => {
+      runAction(
+        performUnblockEffect(api, active.userId, () => {
           controller.setFound({ ...active, relation: 'none' }, false);
-        });
-        if (failure !== null) {
-          setActionError(failure);
-        }
-      });
+        }).pipe(
+          Effect.map((failure) => {
+            if (failure !== null) {
+              setActionError(failure);
+            }
+          }),
+        ),
+      );
     },
     openMessage: () => {
       const target = controller.actionTarget();
