@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { Data, Effect } from 'effect';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   createStickerPack,
   deletePackSticker,
@@ -8,6 +9,8 @@ import {
   type StickerPack,
 } from '@/lib/api';
 import { formatStickerSize, prepareStickerImage, PrepError } from '@/lib/sticker-images';
+import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { useQuery } from '@/lib/effect/use-query';
 import { ChevronDown, ChevronUp, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -83,6 +86,105 @@ function describePrepError(error: unknown, name: string): string {
 }
 
 /**
+ * A call that failed. It keeps the thrown value whole, so a row or the form
+ * shows the thrown Error's own message, as the editor always did.
+ */
+class CallFailed extends Data.TaggedError('PackCallFailed')<{ readonly error: unknown }> {}
+
+/** Lifts one Promise call (an api.ts function or an injected one) into an Effect. */
+function call<A>(run: () => Promise<A>): Effect.Effect<A, CallFailed> {
+  return Effect.tryPromise({ try: run, catch: (error) => new CallFailed({ error }) });
+}
+
+/** The text of a failed call: the thrown Error's message, else the fixed sentence. */
+function messageOf(failure: CallFailed, fallback: string): string {
+  return failure.error instanceof Error ? failure.error.message : fallback;
+}
+
+/** One picked file, prepared. A failure becomes an error row, never a lost file. */
+function prepareItem(
+  file: File,
+  prepare: typeof prepareStickerImage,
+): Effect.Effect<PackEditorItem> {
+  const name = file.name !== '' ? file.name : 'image';
+  return call(() => prepare(file)).pipe(
+    Effect.match({
+      onFailure: (failure): PackEditorItem => ({
+        key: nextKey(),
+        name,
+        mime: 'image/webp',
+        width: 0,
+        height: 0,
+        bytes: 0,
+        emoji: '',
+        status: 'error',
+        error: describePrepError(failure.error, name),
+      }),
+      onSuccess: (prepared): PackEditorItem => ({
+        key: nextKey(),
+        name,
+        blob: prepared.blob,
+        mime: prepared.mime,
+        width: prepared.width,
+        height: prepared.height,
+        bytes: prepared.bytes,
+        emoji: '',
+        status: 'ready',
+      }),
+    }),
+  );
+}
+
+interface PrepareBatchJob {
+  readonly key: string;
+  readonly files: File[];
+}
+
+/**
+ * The files of one drop, prepared one after another as before. Each drop is
+ * its own batch, so two drops still prepare side by side; the batch leaves
+ * the list once its last file is in. The Effect starts on mount and stops
+ * when the batch unmounts.
+ */
+function PrepareBatch({
+  files,
+  prepare,
+  onPrepared,
+  onFinished,
+}: {
+  files: File[];
+  prepare: typeof prepareStickerImage;
+  onPrepared: (item: PackEditorItem) => void;
+  onFinished: () => void;
+}) {
+  // The latest prepare prop, kept current on render (the pattern of use-action.ts).
+  const latestPrepare = useRef(prepare);
+  useLayoutEffect(() => {
+    latestPrepare.current = prepare;
+  });
+  // The drop starts on mount and reads the prepare function then, so a drop
+  // always uses the prop the editor had when the files were picked.
+  useQuery(
+    () =>
+      Effect.sync(() => latestPrepare.current).pipe(
+        Effect.flatMap((currentPrepare) =>
+          Effect.forEach(
+            files,
+            (file) =>
+              prepareItem(file, currentPrepare).pipe(
+                Effect.tap((item) => Effect.sync(() => onPrepared(item))),
+              ),
+            { discard: true },
+          ),
+        ),
+        Effect.andThen(Effect.sync(() => onFinished())),
+      ),
+    [],
+  );
+  return null;
+}
+
+/**
  * One prepared sticker's preview. The object URL is owned by this node:
  * created on mount (or when the blob changes) and revoked when the node
  * leaves or the blob is replaced — so a URL is never revoked while its
@@ -94,13 +196,13 @@ function BlobPreview({ blob, alt }: { blob: Blob; alt: string }) {
   // Created once per mount (never in an effect, so no set-state-in-effect):
   // the blob per item never changes, and a StrictMode remount recreates
   // instead of reusing a revoked URL.
-  const [url] = useState(() => {
-    try {
-      return URL.createObjectURL(blob);
-    } catch {
-      return '';
-    }
-  });
+  // A browser (or a test DOM) that refuses the blob gets the placeholder: the
+  // refusal is caught by the Effect, not by a try block here.
+  const [url] = useState(() =>
+    Effect.runSync(
+      Effect.try(() => URL.createObjectURL(blob)).pipe(Effect.orElseSucceed(() => '')),
+    ),
+  );
   useEffect(
     () => () => {
       if (url !== '') {
@@ -113,6 +215,13 @@ function BlobPreview({ blob, alt }: { blob: Blob; alt: string }) {
     return <span className="text-[13px] text-muted-foreground">…</span>;
   }
   return <img src={url} alt={alt} className="max-h-16 max-w-16 object-contain" />;
+}
+
+/** What Save sends: the click-time values, so the save never reads a half-edited form. */
+interface SaveInput {
+  readonly title: string;
+  readonly visibility: 'private' | 'server';
+  readonly items: ReadonlyArray<PackEditorItem>;
 }
 
 /**
@@ -170,7 +279,7 @@ export function PackEditor({
     itemsRef.current = items;
   }, [items]);
   const [preparing, setPreparing] = useState(0);
-  const [busy, setBusy] = useState(false);
+  const [batches, setBatches] = useState<PrepareBatchJob[]>([]);
   const [formError, setFormError] = useState('');
   const [doneCount, setDoneCount] = useState(0);
   const [activeCount, setActiveCount] = useState(0);
@@ -183,45 +292,16 @@ export function PackEditor({
       return;
     }
     setPreparing((count) => count + list.length);
-    void (async () => {
-      for (const file of list) {
-        try {
-          const prepared = await prepare(file);
-          setItems((previous) => [
-            ...previous,
-            {
-              key: nextKey(),
-              name: file.name !== '' ? file.name : 'image',
-              blob: prepared.blob,
-              mime: prepared.mime,
-              width: prepared.width,
-              height: prepared.height,
-              bytes: prepared.bytes,
-              emoji: '',
-              status: 'ready',
-            },
-          ]);
-        } catch (error) {
-          const name = file.name !== '' ? file.name : 'image';
-          setItems((previous) => [
-            ...previous,
-            {
-              key: nextKey(),
-              name,
-              mime: 'image/webp',
-              width: 0,
-              height: 0,
-              bytes: 0,
-              emoji: '',
-              status: 'error',
-              error: describePrepError(error, name),
-            },
-          ]);
-        } finally {
-          setPreparing((count) => count - 1);
-        }
-      }
-    })();
+    setBatches((previous) => [...previous, { key: nextKey(), files: list }]);
+  };
+
+  const finishPreparing = (item: PackEditorItem): void => {
+    setItems((previous) => [...previous, item]);
+    setPreparing((count) => count - 1);
+  };
+
+  const removeBatch = (key: string): void => {
+    setBatches((previous) => previous.filter((batch) => batch.key !== key));
   };
 
   const removeItem = (key: string): void => {
@@ -265,6 +345,158 @@ export function PackEditor({
     );
   };
 
+  const updateRow = (key: string, patch: Partial<PackEditorItem>): void => {
+    setItems((previous) => previous.map((row) => (row.key === key ? { ...row, ...patch } : row)));
+  };
+
+  // Each landed delete leaves the queue at once, so a retry after a later
+  // failure does not 404 on an already-deleted sticker.
+  const flushRemovals = (pack: string): Effect.Effect<void, CallFailed> => {
+    const removedIds = removedIdsRef.current;
+    removedIdsRef.current = [];
+    return Effect.forEach(
+      removedIds,
+      (stickerId) =>
+        call(() => deleteStickerFn(pack, stickerId)).pipe(
+          Effect.tapError(() =>
+            Effect.sync(() => {
+              removedIdsRef.current = [
+                ...removedIds.slice(removedIds.indexOf(stickerId)),
+                ...removedIdsRef.current,
+              ];
+            }),
+          ),
+        ),
+      { discard: true },
+    );
+  };
+
+  // Create mode mints the pack on the first save and remembers it, so a
+  // retry resumes into the same pack.
+  const createStep = (input: SaveInput): Effect.Effect<string, CallFailed> =>
+    Effect.gen(function* () {
+      const created: StickerPack = yield* call(() =>
+        createPackFn({ title: input.title, visibility: input.visibility }),
+      );
+      createdPackIdRef.current = created.id;
+      createdTitleRef.current = input.title;
+      createdVisibilityRef.current = input.visibility;
+      return created.id;
+    });
+
+  // Edit mode: title/visibility patch first, then the sticker diff.
+  const editStep = (pack: string, input: SaveInput): Effect.Effect<string, CallFailed> =>
+    Effect.gen(function* () {
+      if (input.title !== initialTitle || input.visibility !== initialVisibility) {
+        yield* call(() => patchPackFn(pack, { title: input.title, visibility: input.visibility }));
+      }
+      yield* flushRemovals(pack);
+      return pack;
+    });
+
+  // Create-mode resume: the pack already exists from the first save, so a
+  // title/visibility change since the creation is patched onto it instead of
+  // silently dropped — and stickers uploaded then removed in-session are
+  // deleted, not orphaned.
+  const resumeStep = (pack: string, input: SaveInput): Effect.Effect<string, CallFailed> =>
+    Effect.gen(function* () {
+      if (
+        input.title !== createdTitleRef.current ||
+        input.visibility !== createdVisibilityRef.current
+      ) {
+        yield* call(() => patchPackFn(pack, { title: input.title, visibility: input.visibility }));
+        createdTitleRef.current = input.title;
+        createdVisibilityRef.current = input.visibility;
+      }
+      yield* flushRemovals(pack);
+      return pack;
+    });
+
+  const packStep = (input: SaveInput): Effect.Effect<string, CallFailed> => {
+    const known = packId ?? createdPackIdRef.current;
+    if (known === undefined) {
+      return createStep(input);
+    }
+    return packId !== undefined ? editStep(known, input) : resumeStep(known, input);
+  };
+
+  // The whole save: the pack, the removals, the uploads (one at a time, so
+  // the progress count is exact; a failed file becomes its row's error and
+  // the rest go on) and the order patch.
+  const saveEffect = (input: SaveInput): Effect.Effect<void, CallFailed> =>
+    Effect.gen(function* () {
+      const finalId = yield* packStep(input);
+      let done = 0;
+      const uploadedIds = new Map<string, string>();
+      const ordered = input.items.filter(
+        (item) => item.status !== 'done' && item.error === undefined,
+      );
+      const uploads = ordered.flatMap((item) =>
+        item.blob === undefined ? [] : [{ item, blob: item.blob }],
+      );
+      const landed = yield* Effect.forEach(uploads, ({ item, blob }) =>
+        Effect.sync(() => updateRow(item.key, { status: 'uploading', error: undefined })).pipe(
+          Effect.andThen(
+            call(() => uploadFile(finalId, blob, item.emoji === '' ? undefined : item.emoji)),
+          ),
+          Effect.matchEffect({
+            onFailure: (failure) =>
+              Effect.sync(() => {
+                updateRow(item.key, {
+                  status: 'error',
+                  error: messageOf(failure, 'The upload failed. Try again.'),
+                });
+                return false;
+              }),
+            onSuccess: (uploaded) =>
+              Effect.sync(() => {
+                done += 1;
+                setDoneCount(done);
+                uploadedIds.set(item.key, uploaded.id);
+                updateRow(item.key, { status: 'done', stickerId: uploaded.id });
+                return true;
+              }),
+          }),
+        ),
+      );
+      const failed = landed.filter((ok) => !ok).length;
+      // Edit mode keeps the server order matching the UI: removals,
+      // uploads and moves all land in one order patch, computed from the
+      // finished list (itemsRef), never the click-time snapshot.
+      if (packId !== undefined && failed === 0) {
+        const removed = new Set(removedIdsRef.current);
+        const currentIds: string[] = [];
+        for (const item of itemsRef.current) {
+          const id = uploadedIds.get(item.key) ?? item.stickerId;
+          if (id !== undefined && !removed.has(id)) {
+            currentIds.push(id);
+          }
+        }
+        const initialIds = initialIdsRef.current.filter((id) => !removed.has(id));
+        const orderChanged =
+          removedIdsRef.current.length > 0 ||
+          uploadedIds.size > 0 ||
+          currentIds.length !== initialIds.length ||
+          currentIds.some((id, index) => id !== initialIds[index]);
+        if (orderChanged) {
+          yield* call(() => patchPackFn(finalId, { order: currentIds }));
+        }
+      }
+      // Only finish when every sticker landed: a partial failure leaves
+      // the editor open (with per-file Retry) instead of closing over it.
+      if (failed === 0) {
+        yield* Effect.sync(() => onDone(finalId));
+      }
+    });
+
+  const [saveState, runSave] = useAction((input: SaveInput) => saveEffect(input));
+  const busy = isWaiting(saveState);
+  // A save that failed outright (not one file) shows here until the next save.
+  const saveFailure = busy ? undefined : failureOf(saveState);
+  const saveFailureText =
+    saveFailure !== undefined ? messageOf(saveFailure, 'Could not save the pack.') : '';
+  const shownFormError = formError !== '' ? formError : saveFailureText;
+
   const save = (): void => {
     const trimmed = title.trim();
     if (trimmed === '') {
@@ -281,132 +513,9 @@ export function PackEditor({
       return;
     }
     setFormError('');
-    setBusy(true);
     setDoneCount(0);
     setActiveCount(pending.length);
-    void (async () => {
-      // Each landed delete leaves the queue at once, so a retry after a
-      // later failure does not 404 on an already-deleted sticker.
-      const flushRemovals = async (pack: string): Promise<void> => {
-        const removedIds = removedIdsRef.current;
-        removedIdsRef.current = [];
-        for (const stickerId of removedIds) {
-          try {
-            await deleteStickerFn(pack, stickerId);
-          } catch (error) {
-            removedIdsRef.current = [
-              ...removedIds.slice(removedIds.indexOf(stickerId)),
-              ...removedIdsRef.current,
-            ];
-            throw error;
-          }
-        }
-      };
-      try {
-        let targetId = packId ?? createdPackIdRef.current;
-        if (targetId === undefined) {
-          const created: StickerPack = await createPackFn({ title: trimmed, visibility });
-          targetId = created.id;
-          createdPackIdRef.current = created.id;
-          createdTitleRef.current = trimmed;
-          createdVisibilityRef.current = visibility;
-        } else if (packId !== undefined) {
-          // Edit mode: title/visibility patch first, then the sticker diff.
-          if (trimmed !== initialTitle || visibility !== initialVisibility) {
-            await patchPackFn(targetId, { title: trimmed, visibility });
-          }
-          await flushRemovals(targetId);
-        } else {
-          // Create-mode resume: the pack already exists from the first
-          // save, so a title/visibility change since the creation is
-          // patched onto it instead of silently dropped — and stickers
-          // uploaded then removed in-session are deleted, not orphaned.
-          if (trimmed !== createdTitleRef.current || visibility !== createdVisibilityRef.current) {
-            await patchPackFn(targetId, { title: trimmed, visibility });
-            createdTitleRef.current = trimmed;
-            createdVisibilityRef.current = visibility;
-          }
-          await flushRemovals(targetId);
-        }
-        const finalId = targetId;
-        let done = 0;
-        let failed = 0;
-        const ordered = items.filter((item) => item.status !== 'done' && item.error === undefined);
-        const uploadedIds = new Map<string, string>();
-        for (const item of ordered) {
-          if (item.blob === undefined) {
-            continue;
-          }
-          setItems((previous) =>
-            previous.map((row) =>
-              row.key === item.key
-                ? { ...row, status: 'uploading' as const, error: undefined }
-                : row,
-            ),
-          );
-          try {
-            const emoji = item.emoji === '' ? undefined : item.emoji;
-            const uploaded = await uploadFile(finalId, item.blob, emoji);
-            done += 1;
-            setDoneCount(done);
-            uploadedIds.set(item.key, uploaded.id);
-            setItems((previous) =>
-              previous.map((row) =>
-                row.key === item.key
-                  ? { ...row, status: 'done' as const, stickerId: uploaded.id }
-                  : row,
-              ),
-            );
-          } catch (error) {
-            failed += 1;
-            setItems((previous) =>
-              previous.map((row) =>
-                row.key === item.key
-                  ? {
-                      ...row,
-                      status: 'error' as const,
-                      error:
-                        error instanceof Error ? error.message : 'The upload failed. Try again.',
-                    }
-                  : row,
-              ),
-            );
-          }
-        }
-        // Edit mode keeps the server order matching the UI: removals,
-        // uploads and moves all land in one order patch, computed from the
-        // finished list (itemsRef), never the click-time snapshot.
-        if (packId !== undefined && failed === 0) {
-          const removed = new Set(removedIdsRef.current);
-          const currentIds: string[] = [];
-          for (const item of itemsRef.current) {
-            const id = uploadedIds.get(item.key) ?? item.stickerId;
-            if (id !== undefined && !removed.has(id)) {
-              currentIds.push(id);
-            }
-          }
-          const initialIds = initialIdsRef.current.filter((id) => !removed.has(id));
-          const orderChanged =
-            removedIdsRef.current.length > 0 ||
-            uploadedIds.size > 0 ||
-            currentIds.length !== initialIds.length ||
-            currentIds.some((id, index) => id !== initialIds[index]);
-          if (orderChanged) {
-            await patchPackFn(finalId, { order: currentIds });
-          }
-        }
-        // Only finish when every sticker landed: a partial failure leaves
-        // the editor open (with per-file Retry) instead of closing over it.
-        if (failed === 0) {
-          onDone(finalId);
-        } else {
-          setBusy(false);
-        }
-      } catch (error) {
-        setFormError(error instanceof Error ? error.message : 'Could not save the pack.');
-        setBusy(false);
-      }
-    })();
+    runSave({ title: trimmed, visibility, items });
   };
 
   const readyCount = items.filter((item) => item.status === 'ready').length;
@@ -505,6 +614,15 @@ export function PackEditor({
       {preparing > 0 && (
         <p className="text-[13px] text-muted-foreground">Preparing {preparing} image…</p>
       )}
+      {batches.map((batch) => (
+        <PrepareBatch
+          key={batch.key}
+          files={batch.files}
+          prepare={prepare}
+          onPrepared={finishPreparing}
+          onFinished={() => removeBatch(batch.key)}
+        />
+      ))}
 
       {items.length > 0 && (
         <ol className="flex flex-col gap-2" aria-label="Stickers in this pack">
@@ -639,9 +757,9 @@ export function PackEditor({
           {progress}
         </p>
       )}
-      {formError !== '' && (
+      {shownFormError !== '' && (
         <p role="alert" className="text-[14px] text-danger">
-          {formError}
+          {shownFormError}
         </p>
       )}
 
