@@ -2,6 +2,30 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-09 02:20, 8 workers:**
+- **Merged since 02:05:**
+  - T-0692 (the retired-handle test);
+  - T-0693 (`/health` on effect/sql: `app.ts` drops drizzle);
+  - T-0689 (the B1 edge-flip plan) and T-0691 (the drizzle-removal plan);
+  - T-0695 (H1, the `testSql` helper);
+  - T-0690 (the better-auth adapter over effect/sql, built and tested, not switched).
+- **Lead decisions (in `docs/audit/effect-edge-flip-plan.md` §5):**
+  - add `@effect/platform-node@4.0.2`;
+  - B1.9 (deleting Hono) waits for A12;
+  - architecture A.
+- **Running:**
+  - T-0694: B1.1, the `effect/http` split (DeepSeek);
+  - T-0696: B1.2, the platform-node smoke test (DeepSeek);
+  - T-0700 and T-0701: the blocks + handles and the auth tests (DeepSeek);
+  - T-0697, T-0698, T-0699 and T-0702: the chats + media, voice + integrations, search and push tests (Haiku).
+- **Next:**
+  - T-0703 to T-0705 are written (chat-prefs, contacts, backgrounds + delegation), and more test folders follow;
+  - B1.3, the Effect edge core, after T-0694.
+- **For Julio:**
+  - D3 (the migrator switch on the live DB);
+  - DEL (deleting `db/schema.ts` and the drizzle dependencies);
+  - A12 (git).
+
 **2026-10-09 02:05, Julio asleep:**
 - **Merged since 01:50:**
   - T-0682 to T-0688: the groups, topics and approvals files, and `setup/routes.ts` deleted;
