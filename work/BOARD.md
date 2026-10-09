@@ -14,6 +14,8 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0769](T-0769-xmpp-timers-fibers.md) | X2a: xmpp-core timers as Effect fibers | in-progress | sonnet-5.5 | | live check before deploy |
 | [T-0770](T-0770-server-markers.md) | R2: effect-plain markers on 8 pure server files | in-progress | haiku-5.5 | | effect-100-plan Phase 0 |
 | [T-0771](T-0771-sandbox-host-fetch.md) | S5a: sandbox host fetch on Effect | in-progress | sonnet-5.5 | | security-sensitive |
+| [T-0772](T-0772-web-lib-helpers.md) | WU2: web lib helpers on Effect | in-progress | haiku-5.5 | | effect-100-plan Phase 3 |
+| [T-0773](T-0773-web-dialogs.md) | WU22: web dialogs on Effect | in-progress | haiku-5.5 | | effect-100-plan Phase 3 |
 
 ## Follow-ups
 
