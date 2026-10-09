@@ -1,7 +1,7 @@
 ---
 id: T-0753
 title: "AUDIT (docs only): the plan to a 100% Effect codebase — define '100%' precisely (which code must use Effect and which may stay plain), inventory every package against it with file:line facts, and write an ordered, small-task plan in docs/audit/effect-100-plan.md"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0753-effect-100-plan
 model: auto
@@ -75,4 +75,46 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**What I did.** Wrote `docs/audit/effect-100-plan.md` (docs only, no code or config changed). It has the five sections asked for (definition, inventory, designs, ordered task list, projection) plus a decisions table, an "unverified" list and two appendices (every failing file with `path:first line`, and an optional Phase 6). Counts come from a throwaway script, run at `19a769a9`, that is not committed; its core is printed in section 1.5 so the map task (T-0752, task R1) can port it.
+
+**Findings.**
+
+- **Definition:** a file is done when it either uses Effect for everything that waits, fails or touches the outside world, or has nothing of that kind. A script can check it: scope filter, an `exempt` class (mock folders, `*.config.ts`, `apps/site`, `// effect-plain: reason` markers, capped at 25), an `effect` class (value import of `effect` or `@effect/*`), a `needs-effect` class (hard signals H1 async, H2 network, H3 timers, H5 storage, H8 node I/O imports, H9 native imports; weak signals W4 try/catch, W6 JSON.parse, W7 env reads) and `plain`. Exact regexes and the known false positives are in section 1.4. 100% = zero `needs-effect` files, zero legacy imports (zod, drizzle, hono, zustand: none today), markers within budget, coverage = Effect lines / (Effect lines + failing lines) = 100.0%. Effect files that still contain a hard signal (130 files, 56,537 lines, "Tier B") are tracked but not part of 100%.
+- **Baseline:** 196 of 829 files import Effect (38.3% of non-exempt lines). 271 files (82,143 lines) fail the rule, so coverage by the new rule is 45.4%. Web has 86 failing files, mobile 119, devtools 21, server 37; chat-core, ui-tokens, protocol and agent-drivers have none; xmpp-core has one (`client.ts`, 1,142 lines).
+- **Plan:** 118 tasks, 54.5 worker-days, 6 phases; 37 tasks are flagged for Julio. Projected coverage: 46.6% after rule and markers, 47.3% after foundations and xmpp-core, 56.8% after server and tooling, 77.1% after web, 100.0% after mobile.
+- **Designs:** xmpp-core (Scope, PubSub and Streams, Deferred plus timeout, tagged errors, Promise facade kept until the last consumer moves), chat-core (stays plain), web and mobile data layers ("lift first, sink later" so no component test changes), the two stores (Scope replaces the `generation` counter), the `useAction` pattern for components, server leftovers and the entry point, runner and devtools.
+- **Stale docs found:** `AGENTS.md:41` still says to validate with zod; `docs/LEAD_LOOP.md:14` still says 4 workers while `CLAUDE.md` says 8 (3 mobile).
+
+**Checks.**
+
+- `pnpm exec prettier --write docs/audit/effect-100-plan.md` then `--check`: all matched files use Prettier code style.
+- `rg` for legacy imports over `apps`, `packages`, `scripts`: no hits.
+- `pnpm gate` from the worktree root, summary lines:
+
+```
+gate: 2 changed file(s) against main
+PASS  install (frozen)  (1.1s)
+PASS  format  (14.4s)
+PASS  lint  (2.1s)
+PASS  typecheck  (1.2s)
+scope: every changed file is inside the Allowed files
+GATE PASS
+```
+
+I ran no unit tests (nothing to test in a docs-only change).
+
+**Deviations and open points.**
+
+- Counts differ from the spec table (198 of 848 files, 36%): my scope also drops Cosmos fixtures and test helpers in `src/` (`test-harness.ts`, `test-support.ts`, `fake-*.ts`), and main has moved.
+- Line ranges for the xmpp-core and store tasks (X1 to X5, WS1 to WS10, MS1 to MS9) are function starts confirmed with `rg`; the ends must be re-read when each spec is written.
+- Not verified because nothing was built: `FetchHttpClient` and `@effect/atom-react` on Hermes, whether `effect/socket` can replace `mux.ts`, and the projection's assumptions (converted file keeps its size; stores end half Effect). They are listed in section 7.
+- Nine decisions for Julio are in section 6; D2 (`apps/site`) and D7 (`packages/devtools`) change the size of the plan.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Auditor: Sonnet 5.5. The lead read sections 0, 1.1-1.4, 4, 5, 6 and 7.
+- **The definition** can be checked by a script: needs-effect means hard or weak signals with no Effect import, and an exempt list plus `effect-plain` markers (at most 25).
+- **The plan:** 118 tasks and 54.5 worker-days in 6 phases, cut by folder and function range, with dependencies, tests and Julio flags.
+- **Decisions D1-D9** go to Julio.
+- **Line ranges are starts only:** every spec re-reads them before launch.
+- **Lead follow-ups:** `AGENTS.md:41` (zod) is stale and is the lead's to fix; `docs/LEAD_LOOP.md:14` should say 8 workers.
