@@ -92,12 +92,12 @@ Facts that cost time: `xcodebuild -destination` wants the hardware id (`00008140
 
 Since T-0260, the live install updates itself after every push to `main` whose CI passes, instead of waiting for a hand-made tag. The "Production images" workflow listens for the CI workflow finishing on `main` and does nothing unless that run concluded `success`:
 
-1. It checks out the exact commit CI verified (`workflow_run.head_sha`) and builds the four images for amd64 and arm64.
+1. It checks out the exact commit CI verified (`workflow_run.head_sha`) and builds the four images for amd64 only (the live host is x86_64; the arm64 leg hung for 3h18m, run 37911863834), with the GitHub Actions build cache. Version tags still build amd64 and arm64.
 2. It pushes each image as `latest` and as `sha-<first 12 characters of the commit>`, and bakes that commit into the server image as `ZILAR_COMMIT` (see `apps/server/Dockerfile`).
 3. The `deploy` job restarts the live Coolify service with "pull latest", so Coolify pulls the new `latest` images.
 4. It then polls `<ZILAR_PUBLIC_URL>/health` every 15 s for up to 10 minutes until the response has `"ok": true` and `"commit"` equal to the merged sha. The job fails if that never happens.
 
-Because merges land every few minutes, green-main builds overlap and can finish out of order, so before building a `tip` job compares the triggering sha with the current tip of `main` and a stale run skips building and deploying (it still ends green). A workflow-level `publish-main` concurrency group (`cancel-in-progress: false`) also serializes green-main runs so a newer one waits behind the run in flight, while tag and PR builds stay independent. On the CI side, a `ci-${{ github.ref }}` concurrency group with `cancel-in-progress: true` cancels an older `main` run as soon as a newer push arrives, so only a green run on the tip builds and deploys.
+Because merges land every few minutes, green-main builds overlap and can finish out of order, so before building a `tip` job compares the triggering sha with the last commit on `main` that changed code (not `work/`, `docs/` or `*.md`, since docs-only pushes skip CI, T-0754) and a stale run skips building and deploying (it still ends green). A workflow-level `publish-main` concurrency group (`cancel-in-progress: false`) also serializes green-main runs so a newer one waits behind the run in flight, while tag and PR builds stay independent. On the CI side, a `ci-${{ github.ref }}` concurrency group with `cancel-in-progress: true` cancels an older `main` run as soon as a newer push arrives, so only a green run on the tip builds and deploys.
 
 A `deploy-live` concurrency group (`cancel-in-progress: false`) means two merges never deploy at once: the newer run waits for the one in flight.
 

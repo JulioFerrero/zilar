@@ -33,19 +33,25 @@ jobs:
     outputs:
       latest: ${{ steps.compare.outputs.latest }}
     steps:
-      - name: Compare the triggering sha with the tip of main
+      # Full history of main, so the path-filtered log below can find the last code commit.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Compare the triggering sha with the last code commit on main
         id: compare
         env:
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
-          REPOSITORY: ${{ github.repository }}
         run: |
-          tip="$(git ls-remote "https://github.com/${REPOSITORY}" refs/heads/main | cut -f1)"
-          if [ "$tip" = "$HEAD_SHA" ]; then
+          # Docs-only pushes skip CI (T-0754), so the tip of main can be a docs
+          # commit that never built. work/, docs/ and *.md commits do not count.
+          code_tip="$(git log -1 --format=%H origin/main -- . ':(exclude)work/**' ':(exclude)docs/**' ':(exclude)**/*.md')"
+          if [ "$code_tip" = "$HEAD_SHA" ]; then
             echo "latest=true" >> "$GITHUB_OUTPUT"
-            echo "${HEAD_SHA} is the tip of main; publishing."
+            echo "${HEAD_SHA} is the last code commit on main; publishing."
           else
             echo "latest=false" >> "$GITHUB_OUTPUT"
-            echo "Skipping: ${HEAD_SHA} is no longer the tip of main (tip is ${tip})."
+            echo "Skipping: ${HEAD_SHA} is no longer the last code commit on main (it is ${code_tip})."
           fi
 
   build:
@@ -85,8 +91,12 @@ jobs:
           # On a workflow_run, build the exact commit CI verified.
           ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
 
-      # arm64 images are built on an amd64 runner, which needs emulation for their RUN steps
-      - uses: docker/setup-qemu-action@v4
+      # Only version tags build arm64 (self-hosters may run ARM). Green-main and PR
+      # builds are amd64 only: the live host is x86_64 and the QEMU arm64 leg hung
+      # for 3h18m (run 37911863834).
+      - name: Set up QEMU for the arm64 release images
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: docker/setup-qemu-action@v4
 
       - uses: docker/setup-buildx-action@v4
 
@@ -116,6 +126,19 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Builds the amd64 server image for the smoke start from the gha cache that the
+      # green-main build writes (scope per image), so a warm run skips the rebuild.
+      - name: Build the server image for the smoke start
+        if: matrix.name == 'zilar-server'
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: apps/server/Dockerfile
+          platforms: linux/amd64
+          load: true
+          tags: zilar-server:smoke
+          cache-from: type=gha,scope=${{ matrix.name }}
+
       # Why this step exists (T-0739): on 2026-10-09 the server image crash-looped
       # at start (ERR_MODULE_NOT_FOUND for @electric-sql/pglite, a devDependency),
       # CI never ran the built image, and the broken image was pushed as latest.
@@ -136,7 +159,6 @@ jobs:
           pg=zilar-smoke-pg
           srv=zilar-server-smoke
           trap 'docker rm -f "$srv" "$pg" >/dev/null 2>&1 || true; docker network rm "$net" >/dev/null 2>&1 || true' EXIT
-          docker build --platform linux/amd64 -f apps/server/Dockerfile -t zilar-server:smoke .
           docker network create "$net" >/dev/null
           docker run -d --rm --name "$pg" --network "$net" \
             -e POSTGRES_USER=smoke -e POSTGRES_PASSWORD=smoke -e POSTGRES_DB=smoke \
@@ -191,8 +213,11 @@ jobs:
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.file }}
-          platforms: linux/amd64,linux/arm64
+          # amd64 only, see the QEMU step (the arm64 leg hung for 3h18m, run 37911863834).
+          platforms: linux/amd64
           push: false
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
           build-args: |
             ZILAR_COMMIT=${{ steps.commit.outputs.sha }}
 
@@ -202,8 +227,10 @@ jobs:
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.file }}
+          # Releases stay multi-arch for self-hosters who may run ARM.
           platforms: linux/amd64,linux/arm64
           push: true
+          cache-from: type=gha,scope=${{ matrix.name }}
           tags: |
             ${{ steps.image.outputs.ref }}:${{ github.ref_name }}
             ${{ steps.image.outputs.ref }}:latest
@@ -219,8 +246,11 @@ jobs:
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.file }}
-          platforms: linux/amd64,linux/arm64
+          # amd64 only, see the QEMU step (the live host is x86_64).
+          platforms: linux/amd64
           push: true
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
           tags: |
             ${{ steps.image.outputs.ref }}:latest
             ${{ steps.image.outputs.ref }}:sha-${{ steps.commit.outputs.short }}

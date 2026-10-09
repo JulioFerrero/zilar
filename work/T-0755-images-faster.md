@@ -1,7 +1,7 @@
 ---
 id: T-0755
 title: "images faster + docs-safe: the tip check accepts a run whose sha is the last main commit that changed non-docs paths; green-main builds are linux/amd64 only (the live host is x86_64) with the GitHub Actions build cache; version-tag releases stay multi-arch"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0755-images-faster
 model: auto
@@ -60,4 +60,41 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**Changed (3 files):** `.github/workflows/images.yml`, `docs/RELEASING.md` (§9, two sentences), this task file.
+
+**What was done**
+- **Tip check (`tip` job):** added `actions/checkout@v7` with `fetch-depth: 0`. The compare step runs `git log -1 --format=%H origin/main -- . ':(exclude)work/**' ':(exclude)docs/**' ':(exclude)**/*.md'`, sets `latest=true` only when that sha equals `HEAD_SHA`, and logs the decision. The `git ls-remote` call is gone.
+  - Checked in the worktree: the same filter run from HEAD `f24203d8` (the spec commits above it) returns `73fae1bf T-0751: drizzle out of the server`, so docs and spec commits are skipped.
+- **Platforms per build step:**
+  - new smoke build step: `linux/amd64`, `load: true`, `cache-from` gha;
+  - no-push PR build: `linux/amd64`, `cache-from` + `cache-to` (mode=max);
+  - version-tag push: `linux/amd64,linux/arm64`, `cache-from` only;
+  - green-main push: `linux/amd64`, `cache-from` + `cache-to` (mode=max).
+  - Every gha cache uses `scope=${{ matrix.name }}`.
+- **QEMU:** `docker/setup-qemu-action@v4` now has `if: startsWith(github.ref, 'refs/tags/v')`. I also gave it a name, which the spec did not ask for.
+- **Smoke step reuses the cache:** yes. The `docker build` line is removed from the "Smoke-start the server image" run step; a new `docker/build-push-action@v7` step (`load: true`, `cache-from` gha, `scope=zilar-server`) builds the image first. Its `build-args` are not passed: `ZILAR_COMMIT` is an ARG in the runtime stage only (`apps/server/Dockerfile:48`), so the builder layers still hit the cache.
+- **Comments:** one comment per change, citing the 3h18m hang (run 37911863834), the x86_64 host, and T-0754.
+- **RELEASING §9:** the multi-arch sentence now says amd64 only with the gha cache, and tags still build amd64 and arm64. The tip-check sentence now says "last commit on `main` that changed code (not `work/`, `docs/` or `*.md`)".
+
+**Checks**
+- `pnpm install`: done.
+- Docs read: `docs.docker.com/build/cache/backends/gha/` confirms a per-image `scope`, `cache-from` and `cache-to` used together, and `mode=max` as the example. The `docker/build-push-action` README excerpt does not describe the gha options or `load` with one platform. The `actions/checkout` README says `fetch-depth: 0` fetches all history for all branches.
+- `actionlint`: not installed (`command -v actionlint` printed nothing), so not run.
+- The workflow parses with the repo's `yaml@2.9.1` package (jobs `tip,build,deploy`). The tip script passes `bash -n`.
+- `pnpm exec prettier --write` on the two source files: `images.yml` unchanged; `RELEASING.md` rewritten.
+- `pnpm gate` (from the worktree root): `gate: 3 changed file(s) against main`, `PASS install (frozen) (1.1s)`, `PASS format (16.8s)`, `PASS lint (1.5s)`, `PASS typecheck (1.9s)`, `scope: every changed file is inside the Allowed files`, `GATE PASS`. No package tests ran, because no package was touched.
+
+**Process note:** I wrote a scratch copy of the tip script to the scratchpad to syntax-check it, then deleted it.
+
+**Unverified (needs a real run)**
+- `load: true` together with `cache-from: type=gha` on the single-platform smoke build: the docs did not cover this combination.
+- The gha cache writes from a PR build and the job's `permissions` (`contents: read`, `packages: write`): not tested.
+- The tip job now fetches full history on every green-main run; its 5-minute timeout is untested.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Haiku 5.5. The lead reviewed the diff directly.
+- **The image-build check:** a full-history checkout, then `git log -1 origin/main` with `work/`, `docs/` and `*.md` excluded, so a docs commit on top no longer blocks the build of the code under it, and a newer code commit still makes older runs stale.
+- **Platforms:** QEMU only for `v*` tags; green-main and PR builds are amd64-only (the live host reports `x86_64`); both use the gha cache scoped per image. Tags stay multi-arch, with `cache-from` only.
+- **The smoke build:** it moved to `build-push-action` with `load: true` and a gha `cache-from`, placed after buildx setup and before the smoke run.
+- **Merged before T-0754.** The first real run on main is the check, since `load` plus a gha cache is unverified until then.
