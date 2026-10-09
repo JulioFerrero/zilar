@@ -2,6 +2,33 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-10 00:50 local: simplify plan waves 3 and 4 running; Julio asleep; nothing deployed**
+- **The plan:** `docs/audit/simplify-plan.md`. Julio chose "everything, test once" on 2026-10-09: the whole plan lands on main, then he does one live test before any deploy.
+- **Wave 3 (T-0843 to T-0865, 23 tasks):** 21 are done.
+  - **In the combined check:** 20 branches, rebased on main.
+  - **Still finishing:** T-0853 (test runs), T-0856 (test runs) and T-0864 (fix round: Dockerfiles).
+  - **Headline numbers:**
+    - web entry chunk 1,437 → 740 kB;
+    - mobile assets 4.5 → 0.5 MB;
+    - server image runs bundled JS (start CPU 1.75 → 1.1 s, about 50 MB less RAM);
+    - list endpoints lose their N+1 queries;
+    - about 4 MB of dead drizzle snapshots and 357 dead lines removed.
+- **Wave 4:**
+  - **Running (12 Claude workers):** T-0874 to T-0885, client-side. They move duplicated web/mobile code into `chat-core`, `protocol` and the new `packages/client-core`, and also cover web selectors part 2, lazy markdown, mobile dark-only, the last mock imports, the web panels and shared test fakes.
+  - **Written, waiting for the combined check:** T-0866 to T-0873, eight server sweeps onto T-0863's helpers with truthful statuses, plus T-0886 (gateway test split) and T-0887 (slow loop tests).
+- **Live-check list for Julio's single test** (it grows with each wave):
+  - sign in and out and back in, on web and mobile (session cookie cache, T-0858);
+  - AI DMs on mobile show as AI (T-0843);
+  - topic order and money format are the same on web and mobile (T-0844);
+  - streaming an AI reply in a long chat, on web and mobile (T-0845, T-0846);
+  - pin and unpin on web and mobile (T-0864, the first contract-derived client);
+  - the settings pages load (T-0862 lazy routes);
+  - the server starts and stops from the bundled image (T-0861);
+  - forwarding, reactions and edits (T-0877);
+  - mobile looks the same everywhere (T-0881 dark-only).
+- **Incident:** two workers' `git stash` pops swapped each other's changes, since the stash list is shared across worktrees. Both recovered, and `docs/EFFECT_BRIEF.md` now forbids `git stash`.
+- **Docker Desktop:** restarted after the reboot; the local stack (postgres, ejabberd, litellm) is up.
+
 **2026-10-09 18:35 UTC: main green at `30e1c38a`; 100.0% Effect; nothing deployed**
 - **CI was red from 17:55 to 18:15 UTC:** a web test (`MessageSearchResults` "opens a hit on click") raced the Effect scheduler in CI, and the Composer voice tests were flaky the same way. T-0842 (test-only) made them wait for the visible state, and CI on `30e1c38a` passed all jobs.
 - **Production images:** all four built, and the server image smoke start ("zilar-server listening") passed with the new Effect entry (T-0838). The deploy job skipped because the Coolify secrets are not set, and live `/health` still reports `73fae1bf`.

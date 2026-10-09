@@ -8,6 +8,28 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
+| [T-0866](T-0866-sweep-tools-chats.md) | Server sweep: tools, chats, contacts, drafts, xmpp onto the shared HTTP helpers (runSql,… | todo | sonnet-5.5 | T-0863 | wave 4, simplify plan |
+| [T-0867](T-0867-sweep-media-files.md) | Server sweep: stickers, avatars, backgrounds, files onto the shared HTTP helpers (runSql… | todo | sonnet-5.5 | T-0863 | wave 4, simplify plan |
+| [T-0868](T-0868-sweep-approvals-routines.md) | Server sweep: approvals, audit, routines, directory onto the shared HTTP helpers (runSql… | todo | sonnet-5.5 | T-0863 | wave 4, simplify plan |
+| [T-0869](T-0869-sweep-groups.md) | Server sweep: groups, invite-links, chat-folders, chat-prefs, roles onto the shared HTTP… | todo | sonnet-5.5 | T-0863 | wave 4, simplify plan |
+| [T-0870](T-0870-sweep-ais.md) | Server sweep: ais, agents/memory, connections, voice, search onto the shared HTTP helper… | todo | sonnet-5.5 | T-0863 | wave 4, simplify plan |
+| [T-0871](T-0871-sweep-push-topics.md) | Server sweep: push, topics, handles, media onto the shared HTTP helpers (runSql, SchemaE… | todo | sonnet-5.5 | T-0863 | wave 4, simplify plan |
+| [T-0872](T-0872-sweep-machines-setup.md) | Server sweep: machines, integrations, setup onto the shared HTTP helpers (runSql, Schema… | todo | sonnet-5.5 | T-0863 | wave 4, simplify plan |
+| [T-0873](T-0873-sweep-voice-auth.md) | Server sweep: voice-transcription, gifs, auth, contact-requests onto the shared HTTP hel… | todo | sonnet-5.5 | T-0863 | wave 4, simplify plan |
+| [T-0874](T-0874-protocol-jid-handles.md) | JID helpers and handle rules in @zilar/protocol, used by web, mobile, chat-core and the … | in-progress | sonnet-5.5 |  | wave 4, simplify plan |
+| [T-0875](T-0875-chat-core-format-media.md) | chat-core gets the duplicated format, attachment, media-trust, sticker-size and smooth-t… | in-progress | sonnet-5.5 |  | wave 4, simplify plan |
+| [T-0876](T-0876-chat-core-prefs-routines-ai.md) | chat-core gets chat prefs, routines formatting and the AI form logic (limits, templates,… | in-progress | sonnet-5.5 |  | wave 4, simplify plan |
+| [T-0877](T-0877-chat-core-store-ledger.md) | chat-core gets the store message-ledger helpers both stores copy: forwarding payloads, r… | in-progress | sonnet-5.5 |  | wave 4, simplify plan |
+| [T-0878](T-0878-client-core-react-glue.md) | packages/client-core: the shared React + Effect glue (useAction, useQuery, atomStore, ap… | in-progress | sonnet-5.5 |  | wave 4, simplify plan |
+| [T-0879](T-0879-web-selectors-rest.md) | Web: ChatView and the remaining useChatStore() call sites use useChatSelector; GroupHead… | in-progress | sonnet-5.5 |  | wave 4, simplify plan |
+| [T-0880](T-0880-web-lazy-markdown.md) | Web: lazy-load the markdown stack (about 120 KB min) behind a plain-text fallback | in-progress | sonnet-5.5 |  | wave 4, simplify plan |
+| [T-0881](T-0881-mobile-dark-only.md) | Mobile is dark-only: remove the dead light-theme branches (155 [scheme] lookups, 135 use… | in-progress | sonnet-5.5 |  | wave 4, simplify plan |
+| [T-0882](T-0882-mock-imports-rest.md) | The last static mock imports leave the production bundles (mobile chat screen, chats tab… | in-progress | haiku-5.5 |  | wave 4, simplify plan |
+| [T-0883](T-0883-web-panels-dedupe.md) | Web panels: one roleLabel/GroupAiRow/pick-row and one set of shared tagged errors instea… | in-progress | sonnet-5.5 |  | wave 4, simplify plan |
+| [T-0884](T-0884-fake-xmpp-core-mobile-fakes.md) | One createFakeXmppCore() in xmpp-core/testing; mobile store tests use it and shared fake… | in-progress | sonnet-5.5 |  | wave 4, simplify plan |
+| [T-0885](T-0885-web-store-fakes.md) | Web store tests share one fakeApi/fakeXmpp harness (159-line copies today) | in-progress | sonnet-5.5 |  | wave 4, simplify plan |
+| [T-0886](T-0886-gateway-test-split.md) | Split apps/server/src/agents/gateway.test.ts (7,242 lines, 100 s) into feature files aro… | todo | sonnet-5.5 |  | wave 4, simplify plan |
+| [T-0887](T-0887-slow-loop-tests.md) | Server: cut the loop-driven slow tests (600 real requests for a 429, 200 sticker uploads… | todo | haiku-5.5 |  | wave 4, simplify plan |
 | [T-0843](T-0843-mobile-ai-chats.md) | Mobile marks AI DMs as AI (isAi from /api/chats, as web does) | in-progress | haiku-5.5 | | wave 3, simplify plan |
 | [T-0844](T-0844-shared-topic-order-money.md) | One topic order and one money format in chat-core, used by web and mobile; mobile search… | in-progress | sonnet-5.5 | | wave 3, simplify plan |
 | [T-0845](T-0845-web-store-selectors.md) | Web store selector hook; MessageBubble, ChatListItem, MessageList and ChatList subscribe… | in-progress | sonnet-5.5 | | wave 3, simplify plan |
