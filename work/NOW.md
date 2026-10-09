@@ -2,6 +2,20 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-09 08:59 UTC: LIVE on `748bbae7`**
+- **The deploy:** the lead set the service variable `IMAGE_TAG=sha-748bbae78c44` and restarted with `pull_latest`. The swap took about 20 s.
+- **The new server container** is `3e7eb5a3f0ad`. It applied the pending migrations (the 0043 notice is in the log), logged "listening", and shows no errors.
+- **Checks:** `/health` shows the commit `748bbae7`, the web app returns 200 and `/api/me` returns 401.
+- **What is live now:** about 830 commits since `eeaddee3` (10-06), including the Effect edge, effect/sql everywhere, login on the effect/sql adapter (D2), migrations 0041 to 0045, and the removal of Hono.
+- **Not checked yet:** a real sign-in on live. That needs Julio's email (OTP); a live message needs his OK.
+- **Pinned:** `IMAGE_TAG` stays on the explicit sha, so a rollback means setting it back to `sha-eeaddee30d85` and restarting. Migrations 0041 to 0045 are additive, so the old image runs on the new schema.
+- **Main CI** is green again since T-0745. T-0738 had broken an approvals test that counted `sqlRuntimeFor` calls; the lead bisected it.
+- **Waiting for Julio:** the live Coolify compose needs `BACKGROUND_STORAGE_DIR: /data/avatars/backgrounds`. The live log warns that `/app/data/backgrounds` is on the container layer.
+- **Follow-ups:**
+  - the startup log labels the backgrounds dir as "STICKER_STORAGE_DIR did not exist";
+  - the voice pipeline test waits 20 s of real time, because its `TestClock` does not reach the inner runtime;
+  - other `sqlRuntimeFor` call-counter seams remain at `setup/routes.test.ts:265`, `agents/gateway.test.ts:2270` and `actions/recovery-loop.effect.test.ts:35`.
+
 **2026-10-09 ~08:20 UTC:**
 - **Merged:**
   - T-0739: `@electric-sql/pglite` is now a production dependency, and CI smoke-starts the server image;
