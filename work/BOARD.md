@@ -10,6 +10,10 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0764](T-0764-server-edges-b.md) | S8: message search and draft throttle on Effect | in-progress | haiku-5.5 | | effect-100-plan Phase 2 |
+| [T-0765](T-0765-url-helper.md) | R3: pure URL helpers in chat-core, web users | in-progress | haiku-5.5 | | effect-100-plan Phase 0 |
+| [T-0766](T-0766-web-lib-hooks.md) | WU1: web lib hooks on Effect | in-progress | haiku-5.5 | T-0762 | effect-100-plan Phase 3 |
+| [T-0767](T-0767-web-approvals-pages.md) | WU6 + WU14: approvals and list pages on Effect | in-progress | haiku-5.5 | T-0762 | effect-100-plan Phase 3 |
+| [T-0768](T-0768-effect-ratchet.md) | R6: Effect ratchet in the gate | in-progress | haiku-5.5 | | effect-100-plan Phase 0 |
 
 ## Follow-ups
 
