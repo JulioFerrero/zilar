@@ -2,6 +2,18 @@
 
 Julio's idea (2026-10-03): alternate one task that writes NEW code in Effect with one task that REDOES old code in Effect, and so on. This file is the plan; the board holds the tasks.
 
+## Update 2026-10-09: 100% reached on main (except the server entry, T-0838)
+
+- **The plan:** `docs/audit/effect-100-plan.md` (T-0753; Julio accepted D1-D6, D8 and D9; D7 makes `packages/devtools` exempt).
+- **How it ran:** waves of up to 20 Claude subagents. Each worker ran only its own tests, the lead ran one combined check per wave (`lead batch check`, T-0799, with lint since T-0840), and one Sonnet worker took each same-file chain (xmpp-core X3-X7, the gateway, the web store, the mobile store).
+- **Coverage on main:** 55.3% at 17:50 UTC, then 99.6% at 18:00 UTC after wave 1 (12 tasks), wave 2 (25 mobile tasks) and the four chains. The only needs-effect file left is `apps/server/src/index.ts` (S12+S13, T-0838).
+- **Still open:**
+  - X8, moving the stores and gateway onto `XmppCoreEffect` and deleting the Promise facade; it needs Julio's live messaging check;
+  - Z1, a hard gate on needs-effect = 0; Julio decides the gate policy;
+  - Tier B Promise edges (161 files), tracked only (decision D1).
+- **Deploy:** nothing after `73fae1bf` is live yet. Julio checks messaging, reconnect, sign-in, AI replies and the server start and stop before the next deploy.
+- **Patterns:** `docs/EFFECT_GUIDE.md`, section "The 100% rule and the client patterns".
+
 ## Update 2026-10-07: the whole codebase
 
 Julio: "i will like all the codebase to be effect 4.0 please". His answers:
