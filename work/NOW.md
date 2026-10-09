@@ -2,6 +2,17 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-09 10:30 UTC, off-host backups to Backblaze B2 (Coolify S3 storage `zilar-s3`, uuid `jvzs3n2dntdpr7klevjaaeac`):**
+- **Coolify database backups do not apply to this stack.** Coolify lists the `postgres` component as an application (`databases: []`), probably because of the custom `zilar-postgres` image. `deploy/coolify/scheduled-backup.md` is wrong on this point; that is a docs task.
+- **The dumps:** the Coolify scheduled task `pg-dump-nightly` (uuid `q22gm2wng2osueqajwts8nj5`, 03:30, container `postgres`) writes `globals.sql`, `zilar.dump` and `ejabberd.dump` (`pg_dump -Fc`) to `/var/lib/postgresql/dumps` on the `postgres-data` volume. Each file goes to a temp name and is then renamed, and the mode is 600. A test run succeeded: zilar 152 KB, ejabberd 50 KB.
+- **Volume backups to S3**, each with 3 copies locally and 30 copies or 30 days on S3, live copy with no stop:
+  - `postgres-data`, 03:40 (it carries the dumps; restore from the dumps, not from the raw files);
+  - `sticker-data`, 03:45;
+  - `avatar-data`, 04:00 (it includes backgrounds);
+  - `ejabberd-uploads`, 04:15.
+- **One run of each was queued at 10:27.** Coolify has no read-back, so **Julio checks the B2 bucket for 4 archives.**
+- **Still to do:** a restore drill on a throwaway local DB, and the docs fix (`RELEASING.md:41`, `scheduled-backup.md`).
+
 **2026-10-09 09:40 UTC:**
 - **Backgrounds on the volume (Julio said yes):** the lead added the service variable `BACKGROUND_STORAGE_DIR=/data/avatars/backgrounds`, which Coolify injects into the containers, so the compose body is not edited. A restart on the same pinned image followed (about 25 s down).
 - **Result:** the server created `/data/avatars/backgrounds` on the `avatar-data` volume, and the container-layer warning is gone. Health is ok, web returns 200 and `/api/me` returns 401.
