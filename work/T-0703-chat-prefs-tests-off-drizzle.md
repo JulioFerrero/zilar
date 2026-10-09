@@ -1,7 +1,7 @@
 ---
 id: T-0703
 title: "tests off drizzle (chat-prefs): replace every drizzle query in chat-prefs/chat-prefs.test.ts with testSql(context) + effect/sql; drop the drizzle-orm and db/schema imports"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0703-chat-prefs-tests-off-drizzle
 model: auto
@@ -50,4 +50,54 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**Done.** Every drizzle query in `apps/server/src/chat-prefs/chat-prefs.test.ts` now runs through `testSql(context)(Effect.gen(...))` with `SqlClient` and raw SQL. The `drizzle-orm` and `../db/schema` imports are gone, and `testSql` is imported from `../test-support`. The file has no `context.db` left, so nothing needed the "pass `context.db` to a module" exception.
+
+**Files changed:** `apps/server/src/chat-prefs/chat-prefs.test.ts`, `work/T-0703-chat-prefs-tests-off-drizzle.md`.
+
+**Column check against `apps/server/src/db/schema.ts`:**
+- `provider_connections` (id, owner, provider, encrypted_key, label)
+- `ais` (id, owner, name, template, persona, provider_connection_id, model, localpart, jid, status)
+- `ai_limits` (ai_id, per_day_usd, per_month_usd)
+- `chat_backgrounds` (id, user_id, mime, width, height, bytes, storage_key)
+- `chat_prefs` (user_id, chat_jid, archived, pinned_at, muted_until)
+- `chat_background_defaults` (user_id)
+
+None of these tables has a `$defaultFn`, so no JS-side value is missing. `created_at`/`updated_at` have SQL defaults in the migrations (0024, 0043).
+
+**Deviations and notes:**
+- Raw `INSERT` statements instead of `sql.insert`, the same style as `ais/service.ts`.
+- The three `seedAi` inserts share one `testSql` call. The 20-row pin seed and the 200-row cap seed each run as one call with a loop inside, in the same order as before.
+- The seeded `pinned_at` is the string `'2026-01-01T00:00:00Z'` instead of a `Date`. It is the same instant and Postgres casts it. No assertion changed.
+- The ownership check at the end selects `chat_jid` into a local `aliceRows` variable. It still asserts a length of 1.
+- Prettier reformatted the file after my first edit; the test count was unchanged.
+
+**Test counts (`pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/chat-prefs/chat-prefs.test.ts`):**
+- Before: 17 passed (17 tests), 1 file.
+- After: 17 passed (17 tests), 1 file.
+
+**Commands run:**
+- `pnpm install`: exit 0.
+- `git grep -n "drizzle-orm\|db/schema" -- apps/server/src/chat-prefs/chat-prefs.test.ts`: no output (acceptance met).
+- `pnpm exec prettier --write apps/server/src/chat-prefs/chat-prefs.test.ts`: done.
+- `pnpm gate` from the worktree root: exit 0.
+
+**Gate summary lines:**
+```
+gate: 2 changed file(s) against main
+PASS  install (frozen)  (2.6s)
+PASS  format  (77.2s)
+PASS  lint  (2.2s)
+PASS  typecheck  (6.7s)
+PASS  tests @zilar/server  (18.5s)
+scope: every changed file is inside the Allowed files
+GATE PASS
+```
+The gate's tests step ran the nearest server tests, which passed. The gate log I wrote to the worktree was deleted before the commit.
+
+**Blocked / needs a decision:** none.
+
+**Unsure:** nothing material. The only judgment call is passing the pin timestamp as a string rather than a `Date`, which has the same meaning.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Haiku 5.5, in one round (about 5.3 min). The lead reviewed the diff directly. The seeds (backgrounds, the AI chain, chat prefs) and the cleanup deletes are on `testSql`, and an ISO literal for `pinned_at` is the same instant. There are 17 tests before and after, and the gate passed.
