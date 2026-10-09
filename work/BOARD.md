@@ -11,6 +11,10 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0782](T-0782-web-topic-panel.md) | WU16: TopicPanel on Effect | in-progress | haiku-5.5 | | effect-100-plan Phase 3 |
 | [T-0785](T-0785-web-channel-invites.md) | WU17: channel and invite components on Effect | in-progress | haiku-5.5 | | effect-100-plan Phase 3 |
+| [T-0787](T-0787-web-chat-header.md) | WU23: chat header, actions menu, background dialog on Effect | in-progress | haiku-5.5 | | effect-100-plan Phase 3 |
+| [T-0788](T-0788-web-profile-explore.md) | WU24: profile, explore, visibility on Effect | in-progress | haiku-5.5 | | effect-100-plan Phase 3 |
+| [T-0789](T-0789-web-strip-media-pins.md) | WU25: task strip, media panel, pins, search results on Effect | in-progress | haiku-5.5 | | effect-100-plan Phase 3 |
+| [T-0790](T-0790-web-list-bubble-app.md) | WU26: ChatList, MessageBubble, App on Effect | in-progress | haiku-5.5 | | effect-100-plan Phase 3 |
 
 ## Follow-ups
 
