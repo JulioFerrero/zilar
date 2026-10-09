@@ -190,6 +190,34 @@ describe('draft hub', () => {
       'first and more',
     ]);
   });
+
+  it('end interrupts a pending throttled flush, so nothing publishes after end', () => {
+    vi.useFakeTimers();
+    const hub = createDraftHub();
+    const seen: DraftHubEvent[] = [];
+    hub.subscribe(OWNER, (event) => seen.push(event));
+
+    const publisher = turn(hub);
+    publisher.push('first');
+    publisher.push('first and more');
+    expect(vi.getTimerCount()).toBe(1);
+
+    publisher.end('sent');
+    expect(vi.getTimerCount()).toBe(0);
+    vi.advanceTimersByTime(DRAFT_THROTTLE_MS * 3);
+    expect(seen.map((event) => (event.type === 'draft' ? event.text : event.type))).toEqual([
+      'first',
+      'first and more',
+      'end',
+    ]);
+
+    // Control: on a turn that is not ended, the pending flush does fire under fake timers.
+    const other = turn(hub);
+    other.push('a');
+    other.push('ab');
+    vi.advanceTimersByTime(DRAFT_THROTTLE_MS);
+    expect(seen.at(-1)).toMatchObject({ type: 'draft', text: 'ab' });
+  });
 });
 
 describe('draft event contract', () => {

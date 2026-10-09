@@ -1,7 +1,7 @@
 // Search module on the Effect `HttpApi` adapter (T-0558): the same method,
 // path, step order, statuses and bodies as the deleted router
 // (`routes.ts`), mounted by the Effect edge (`apps/server/src/effect/edge.ts`).
-// The archive query core lives in `routes.ts` (`runSearch`); this module
+// The archive query core lives in `routes.ts` (`runSearchEffect`); this module
 // owns the Effect query schema, the 501/429 guards and the adapter wiring.
 
 import { Effect, Layer, Schema } from 'effect';
@@ -31,7 +31,7 @@ import {
   SEARCH_MAX_LIMIT,
   SEARCH_RATE_LIMIT_MAX,
   SEARCH_RATE_LIMIT_WINDOW_MS,
-  runSearch,
+  runSearchEffect,
   type SearchRoutesDependencies,
 } from './routes';
 
@@ -161,14 +161,12 @@ export function createSearchApi(deps: SearchRoutesDependencies): EffectApiMount 
         Effect.gen(function* () {
           const user = yield* CurrentUser;
           const query = request.query;
-          return yield* Effect.promise(() =>
-            runSearch(deps, user.id, {
-              q: query.q,
-              ...(query.chat === undefined ? {} : { chat: query.chat }),
-              ...(query.limit === undefined ? {} : { limit: query.limit }),
-              ...(query.before === undefined ? {} : { before: query.before }),
-            }),
-          );
+          return yield* runSearchEffect(deps, user.id, {
+            q: query.q,
+            ...(query.chat === undefined ? {} : { chat: query.chat }),
+            ...(query.limit === undefined ? {} : { limit: query.limit }),
+            ...(query.before === undefined ? {} : { before: query.before }),
+          }).pipe(Effect.orDie);
         }),
         logger,
         requestId,

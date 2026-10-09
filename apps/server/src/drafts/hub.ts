@@ -1,3 +1,4 @@
+import { Effect, Fiber } from 'effect';
 import type { DraftHubEvent } from './events';
 
 // At most one `draft` per turn this often. The text is cumulative, so a
@@ -71,7 +72,8 @@ export function createDraftHub(): DraftHub {
       let latest: string | undefined;
       let latestSent: string | undefined;
       let lastSentAt = 0;
-      let timer: ReturnType<typeof setTimeout> | undefined;
+      // The pending throttle flush: a fiber that sleeps, then flushes.
+      let timer: Fiber.Fiber<void> | undefined;
       let ended = false;
 
       const flushLatest = (): void => {
@@ -85,6 +87,14 @@ export function createDraftHub(): DraftHub {
         latestSent = latest;
         lastSentAt = Date.now();
         publish(ownerUserId, { type: 'draft', chatJid, turnId, text: latest });
+      };
+
+      // Interrupting the fiber cancels its sleep, so no timed flush fires later.
+      const cancelTimer = (): void => {
+        if (timer !== undefined) {
+          Effect.runSync(Fiber.interrupt(timer));
+          timer = undefined;
+        }
       };
 
       return {
@@ -105,7 +115,11 @@ export function createDraftHub(): DraftHub {
           if (Date.now() - lastSentAt >= DRAFT_THROTTLE_MS) {
             flushLatest();
           } else {
-            timer = setTimeout(flushLatest, DRAFT_THROTTLE_MS - (Date.now() - lastSentAt));
+            timer = Effect.runFork(
+              Effect.sleep(DRAFT_THROTTLE_MS - (Date.now() - lastSentAt)).pipe(
+                Effect.andThen(Effect.sync(flushLatest)),
+              ),
+            );
           }
         },
 
@@ -115,10 +129,7 @@ export function createDraftHub(): DraftHub {
           if (ended || text.length > DRAFT_MAX_CHARS) {
             return;
           }
-          if (timer !== undefined) {
-            clearTimeout(timer);
-            timer = undefined;
-          }
+          cancelTimer();
           latest = text;
           flushLatest();
         },
@@ -128,10 +139,7 @@ export function createDraftHub(): DraftHub {
             return;
           }
           ended = true;
-          if (timer !== undefined) {
-            clearTimeout(timer);
-            timer = undefined;
-          }
+          cancelTimer();
           flushLatest();
           publish(ownerUserId, { type: 'end', chatJid, turnId, outcome });
         },
