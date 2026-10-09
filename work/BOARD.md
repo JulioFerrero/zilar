@@ -13,6 +13,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0691](T-0691-plan-drizzle-removal.md) | plan (no code): last drizzle removal (tests, test-support, migrator, deletes) | in-progress | auto | | |
 | [T-0693](T-0693-health-check-effect-sql.md) | effect/sql: /health probe; app.ts drops drizzle | in-progress | haiku-5.5 | | |
 | [T-0694](T-0694-split-effect-http-core.md) | B1.1: split effect/http.ts into http-core (no Hono) + the bridge | in-progress | auto | T-0689 | |
+| [T-0695](T-0695-test-sql-helper.md) | H1: testSql helper; pins tests off drizzle | in-progress | haiku-5.5 | T-0691 | |
 
 ## Follow-ups
 
