@@ -1,12 +1,14 @@
 import { PGlite } from '@electric-sql/pglite';
 import { drizzle } from 'drizzle-orm/pglite';
+import type { Effect } from 'effect';
+import type { SqlClient, SqlError } from 'effect/sql';
 import type { Logger } from 'pino';
 import { createApp } from './app';
 import { loadServerConfig, type ServerConfig } from './config';
 import type { PgliteServerDatabase } from './db/client';
 import { runMigrations } from './db/migrate';
 import * as schema from './db/schema';
-import { disposeSqlRuntime, registerSqlRuntime } from './effect/sql';
+import { disposeSqlRuntime, registerSqlRuntime, sqlRuntimeFor } from './effect/sql';
 import { createAuth, INVITE_HEADER, type Auth } from './auth/auth';
 import { createInvite } from './auth/invites';
 import type { OtpPurpose } from './auth/mailer';
@@ -299,6 +301,13 @@ async function snapshotOfMigratedDatabase(): Promise<Blob> {
 async function freshDatabase(): Promise<PGlite> {
   migratedSnapshot ??= snapshotOfMigratedDatabase();
   return new PGlite({ loadDataDir: await migratedSnapshot });
+}
+
+// Runs one effect on the SQL client registered for this test context, so a
+// test seeds and asserts through the same effect/sql runtime the modules use.
+export function testSql(context: Pick<TestContext, 'db'>) {
+  return <A>(effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>): Promise<A> =>
+    sqlRuntimeFor(context.db).runPromise(effect);
 }
 
 export async function createTestContext(options: TestContextOptions = {}): Promise<TestContext> {

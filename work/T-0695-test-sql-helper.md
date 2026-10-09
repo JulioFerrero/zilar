@@ -1,7 +1,7 @@
 ---
 id: T-0695
 title: "H1: add testSql(context) to test-support.ts (runs an Effect on the test db's effect/sql runtime) and prove it by moving pins/pins.test.ts off drizzle (T3 of the drizzle-removal plan)"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0695-test-sql-helper
 model: auto
@@ -65,4 +65,37 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**What I did**
+- `apps/server/src/test-support.ts`: added `testSql(context)` (the task's version: the generic `<A>` sits on the returned runner) with a one-line comment, placed just before `createTestContext`. Imported `sqlRuntimeFor` next to `registerSqlRuntime`, and type-only imports of `Effect`, `SqlClient`, `SqlError`. Nothing else changed.
+- `apps/server/src/pins/pins.test.ts`: every drizzle query is now `testSql(context)(Effect.gen(...))` with raw SQL and bound parameters. Removed the `drizzle-orm` and `../db/schema` imports. Local row types: `AuditRow` (action, subjectId, groupId, detail) and `PinRow` (chatJid). The two `UPDATE`s copy the `set` values from the old code (`role = 'admin'`, `created_by = member.id`) with the same `WHERE` keys.
+- Count at pins.test.ts:318 uses `SELECT id FROM pinned_messages` and keeps `toHaveLength(20)`, instead of `count(*)`, so the assertion is unchanged.
+- Test file names checked against `apps/server/src/db/schema.ts`: `group_members` (group_id, user_id, role), `topics` (created_by), `pinned_messages` (chat_jid), `audit_log` (action, subject_id, group_id, detail). `detail` is jsonb and comes back as a parsed object (the groupId assertions for the private-topic pin pass, which relies on it).
+
+**Commands and results**
+- `pnpm install`: exit 0.
+- `grep -n "drizzle\|db/schema\|context\.db\|eq(\|and(" apps/server/src/pins/pins.test.ts`: no matches.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/pins`: 1 file passed, 10 tests passed (same count as before).
+- `pnpm gate` (from the worktree root, cwd checked): exit 0.
+
+**Gate summary lines**
+```
+gate: 3 changed file(s) against main
+PASS  install (frozen)  (2.5s)
+PASS  format  (30.6s)
+PASS  lint  (1.8s)
+PASS  typecheck  (5.7s)
+PASS  tests @zilar/server  (19.3s)
+scope: every changed file is inside the Allowed files
+GATE PASS
+```
+
+**Single tests run:** only `src/pins` (above). No other tests run by me.
+
+**Deviations:** none from the task spec. The plan's §2.1 snippet put the generic on `testSql`; I followed the task's version instead.
+
+**Open questions:** none. `detail` jsonb parsing is verified only on PGlite (the test runtime), which is the only runtime that exists in tests.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Haiku 5.5, in one round (about 2.6 min). The lead reviewed the diff directly.
+- **Result:** `testSql(context)` is exactly the plan §2.1 helper. The pins tests now use it for the two updates and three reads, select only the columns they read, and import no drizzle. The gate passed.
