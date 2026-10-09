@@ -37,6 +37,7 @@ import { createContactRequestsApi } from './contact-requests/api';
 import { createDirectoryApi } from './directory/api';
 import { createHandlesApi } from './handles/api';
 import { mountEffectRoutes } from './effect/http';
+import type { EffectApiMount } from './effect/http-core';
 import { registerSqlRuntime, sqlRuntimeFor } from './effect/sql';
 import type { ServerDatabase } from './db/client';
 import { HttpError } from './errors';
@@ -205,6 +206,17 @@ export interface AppDependencies {
 
 const DB_HEALTH_TIMEOUT_MS = 1000;
 const UNSAFE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+const mountsByApp = new WeakMap<
+  Hono<{ Variables: RequestIdVariables }>,
+  ReadonlyArray<EffectApiMount>
+>();
+
+/** The Effect module mounts of an app built by `createApp`, in mount order. */
+export function effectMountsOf(
+  app: Hono<{ Variables: RequestIdVariables }>,
+): ReadonlyArray<EffectApiMount> {
+  return mountsByApp.get(app) ?? [];
+}
 
 export function createApp({
   db,
@@ -305,8 +317,9 @@ export function createApp({
   });
 
   app.all('/api/auth/*', (c) => auth.handler(c.req.raw));
+  const mounts: EffectApiMount[] = [];
   const authApi = createAuthApi({ auth, db, config, adminClient, logger });
-  mountEffectRoutes(app, authApi.routes, authApi.handler);
+  mounts.push(authApi);
   // First-run setup (T-0161): public while no user exists, same 404 as an
   // unknown route once setup is done. Allowlisted in the authz sweep.
   // Without an explicit mailer the routes build one from the config, like
@@ -321,13 +334,13 @@ export function createApp({
     audit: auditRecorder,
     ...setup,
   });
-  mountEffectRoutes(app, setupApi.routes, setupApi.handler);
+  mounts.push(setupApi);
   const contactsApi = createContactsApi({ auth, db, config, logger });
-  mountEffectRoutes(app, contactsApi.routes, contactsApi.handler);
+  mounts.push(contactsApi);
   // @usernames and contact requests (T-0163): session-required, rate
   // limited; the sweep asserts every one of them answers 401 unauthenticated.
   const handlesApi = createHandlesApi({ auth, db, audit: auditRecorder, logger });
-  mountEffectRoutes(app, handlesApi.routes, handlesApi.handler);
+  mounts.push(handlesApi);
   const contactRequestsApi = createContactRequestsApi({
     auth,
     db,
@@ -336,16 +349,16 @@ export function createApp({
     audit: auditRecorder,
     logger,
   });
-  mountEffectRoutes(app, contactRequestsApi.routes, contactRequestsApi.handler);
+  mounts.push(contactRequestsApi);
   // User blocks (T-0171): session-required, write-rate-limited; the sweep
   // asserts every one of them answers 401 unauthenticated.
   const blocksApi = createBlocksApi({ auth, db, audit: auditRecorder, logger });
-  mountEffectRoutes(app, blocksApi.routes, blocksApi.handler);
+  mounts.push(blocksApi);
   // Public groups and channels (T-0164): the Explore directory and the
   // exact `@handle` lookup — public rows only, session-required, rate
   // limited; the sweep asserts both answer 401 unauthenticated.
   const directoryApi = createDirectoryApi({ auth, db, logger });
-  mountEffectRoutes(app, directoryApi.routes, directoryApi.handler);
+  mounts.push(directoryApi);
   const machinesApi = createMachinesApi({
     auth,
     db,
@@ -354,7 +367,7 @@ export function createApp({
     registry: machineRegistry ?? createDbMachineRegistry(db),
     ...(isMachineOnline === undefined ? {} : { isMachineOnline }),
   });
-  mountEffectRoutes(app, machinesApi.routes, machinesApi.handler);
+  mounts.push(machinesApi);
   const groupsApi = createGroupsApi({
     auth,
     db,
@@ -363,7 +376,7 @@ export function createApp({
     logger,
     audit: auditRecorder,
   });
-  mountEffectRoutes(app, groupsApi.routes, groupsApi.handler);
+  mounts.push(groupsApi);
   const inviteLinksApi = createInviteLinksApi({
     auth,
     db,
@@ -373,13 +386,13 @@ export function createApp({
     audit: auditRecorder,
     ...(testInviteLinksOverrides === undefined ? {} : testInviteLinksOverrides),
   });
-  mountEffectRoutes(app, inviteLinksApi.routes, inviteLinksApi.handler);
+  mounts.push(inviteLinksApi);
   const rolesApi = createRolesApi({ auth, db, config, adminClient, logger, audit: auditRecorder });
-  mountEffectRoutes(app, rolesApi.routes, rolesApi.handler);
+  mounts.push(rolesApi);
   const aiMemoryApi = createAiMemoryApi({ auth, db, config, logger });
-  mountEffectRoutes(app, aiMemoryApi.routes, aiMemoryApi.handler);
+  mounts.push(aiMemoryApi);
   const pinsApi = createPinsApi({ auth, db, config, audit: auditRecorder, logger });
-  mountEffectRoutes(app, pinsApi.routes, pinsApi.handler);
+  mounts.push(pinsApi);
   const topicsApi = createTopicsApi({
     auth,
     db,
@@ -388,16 +401,16 @@ export function createApp({
     logger,
     audit: auditRecorder,
   });
-  mountEffectRoutes(app, topicsApi.routes, topicsApi.handler);
+  mounts.push(topicsApi);
   const chatsApi = createChatsApi({ auth, db, config, logger });
-  mountEffectRoutes(app, chatsApi.routes, chatsApi.handler);
+  mounts.push(chatsApi);
   // Chat prefs and folders (T-0113/T-0232) on the Effect adapter: session
   // required, one write budget each; the sweep asserts every route answers 401
   // unauthenticated.
   const chatPrefsApi = createChatPrefsApi({ auth, db, config, logger });
-  mountEffectRoutes(app, chatPrefsApi.routes, chatPrefsApi.handler);
+  mounts.push(chatPrefsApi);
   const chatFoldersApi = createChatFoldersApi({ auth, db, config, logger });
-  mountEffectRoutes(app, chatFoldersApi.routes, chatFoldersApi.handler);
+  mounts.push(chatFoldersApi);
   // Push devices and settings (T-0119) mount always: with push off or
   // unconfigured every route answers 404/503 instead of disappearing, so
   // the web can show the matching state.
@@ -409,7 +422,7 @@ export function createApp({
     adminClient,
     logger,
   });
-  mountEffectRoutes(app, pushApi.routes, pushApi.handler);
+  mounts.push(pushApi);
   // Message search (T-0117) mounts always: without an archive pool every
   // search answers 501 `search_unavailable` instead of 404ing, so the web
   // can hide the feature. Never used by the AI gateway.
@@ -421,7 +434,7 @@ export function createApp({
     ...(archive === undefined ? {} : { archive }),
     ...(searchNow === undefined ? {} : { now: searchNow }),
   });
-  mountEffectRoutes(app, searchApi.routes, searchApi.handler);
+  mounts.push(searchApi);
   // Media gallery (T-0431) mounts the same way: without an archive pool every
   // request answers 501 `media_unavailable` instead of 404ing.
   const mediaApi = createMediaApi({
@@ -432,7 +445,7 @@ export function createApp({
     ...(archive === undefined ? {} : { archive }),
     ...(searchNow === undefined ? {} : { now: searchNow }),
   });
-  mountEffectRoutes(app, mediaApi.routes, mediaApi.handler);
+  mounts.push(mediaApi);
   const filesApi = createFilesApi({
     auth,
     db,
@@ -441,9 +454,9 @@ export function createApp({
     ...(archive === undefined ? {} : { archive }),
     ...(searchNow === undefined ? {} : { now: searchNow }),
   });
-  mountEffectRoutes(app, filesApi.routes, filesApi.handler);
+  mounts.push(filesApi);
   const draftsApi = createDraftsApi({ auth, logger });
-  mountEffectRoutes(app, draftsApi.routes, draftsApi.handler);
+  mounts.push(draftsApi);
   // Stickers (T-0120): packs, uploads and file serving. The storage dir
   // comes from `STICKER_STORAGE_DIR`; tests override it with a temp dir.
   // The bot token resolves per request: env wins, else the stored
@@ -470,7 +483,7 @@ export function createApp({
     ...(telegramImportNow === undefined ? {} : { now: telegramImportNow }),
   };
   const stickersApi = createStickersApi(stickersDeps);
-  mountEffectRoutes(app, stickersApi.routes, stickersApi.handler);
+  mounts.push(stickersApi);
   // Avatars (T-0165): upload / remove / serve profile pictures for
   // people, AIs, groups and channels. The storage dir comes from
   // `AVATAR_STORAGE_DIR`; tests override it with a temp dir.
@@ -484,7 +497,7 @@ export function createApp({
     ...(avatarNow === undefined ? {} : { now: avatarNow }),
     ...(avatarUploadLimiter === undefined ? {} : { uploadLimiter: avatarUploadLimiter }),
   });
-  mountEffectRoutes(app, avatarsApi.routes, avatarsApi.handler);
+  mounts.push(avatarsApi);
   // Background images (T-0460): upload / list / serve / delete personal
   // wallpapers, owner-only. The storage dir comes from
   // `BACKGROUND_STORAGE_DIR`; tests override it with a temp dir.
@@ -496,7 +509,7 @@ export function createApp({
     ...(backgroundNow === undefined ? {} : { now: backgroundNow }),
     ...(backgroundUploadLimiter === undefined ? {} : { uploadLimiter: backgroundUploadLimiter }),
   });
-  mountEffectRoutes(app, backgroundsApi.routes, backgroundsApi.handler);
+  mounts.push(backgroundsApi);
   // Integration settings (T-0162 + Email): owner-only; everyone else gets
   // the same 404 as an unknown route. Covered by the 401 sweep as
   // session-required routes (never allowlisted).
@@ -509,9 +522,9 @@ export function createApp({
     audit: auditRecorder,
     ...integrations,
   });
-  mountEffectRoutes(app, integrationsApi.routes, integrationsApi.handler);
+  mounts.push(integrationsApi);
   const auditApi = createAuditApi({ auth, db, logger });
-  mountEffectRoutes(app, auditApi.routes, auditApi.handler);
+  mounts.push(auditApi);
   // GIFs (T-0122): search, trending and the media proxy. Mounted always: an
   // unconfigured provider answers 501 `gifs_unavailable` instead of 404ing,
   // so the web can hide the tab.
@@ -523,7 +536,7 @@ export function createApp({
     ...(gifMediaFetcher === undefined ? {} : { mediaFetcher: gifMediaFetcher }),
     ...(gifNow === undefined ? {} : { now: gifNow }),
   });
-  mountEffectRoutes(app, gifsApi.routes, gifsApi.handler);
+  mounts.push(gifsApi);
   const approvalsApi = createApprovalsApi({
     auth,
     db,
@@ -532,7 +545,7 @@ export function createApp({
     onDecided: (approvalId) => gateway.onApprovalDecided(approvalId),
     ...(alwaysEligible === undefined ? {} : { alwaysEligible }),
   });
-  mountEffectRoutes(app, approvalsApi.routes, approvalsApi.handler);
+  mounts.push(approvalsApi);
   const toolsDeps: Omit<ToolsApiDependencies, 'logger'> = {
     auth,
     db,
@@ -540,18 +553,18 @@ export function createApp({
     ...(toolRunner === undefined ? {} : { toolRunner }),
   };
   const toolsApi = createToolsApi({ ...toolsDeps, logger });
-  mountEffectRoutes(app, toolsApi.routes, toolsApi.handler);
+  mounts.push(toolsApi);
   const routinesApi = createRoutinesApi({ auth, db, audit: auditRecorder, logger });
-  mountEffectRoutes(app, routinesApi.routes, routinesApi.handler);
+  mounts.push(routinesApi);
   const xmppApi = createXmppApi({ auth, db, adminClient, xmppConfig: config.xmpp, logger });
-  mountEffectRoutes(app, xmppApi.routes, xmppApi.handler);
+  mounts.push(xmppApi);
   const voiceApi = createVoiceApi({
     auth,
     logger,
     ...(voice === undefined ? {} : { engine: voice }),
     ...(voiceMaxBytes === undefined ? {} : { maxBytes: voiceMaxBytes }),
   });
-  mountEffectRoutes(app, voiceApi.routes, voiceApi.handler);
+  mounts.push(voiceApi);
   // Voice transcripts on demand (T-0170): the enabled flag plus the
   // transcript route for any signed-in user, and the owner-only endpoint
   // settings. Covered by the 401 sweep as session-required routes (never
@@ -565,7 +578,7 @@ export function createApp({
     audit: auditRecorder,
     ...voiceTranscription,
   });
-  mountEffectRoutes(app, voiceTranscriptionApi.routes, voiceTranscriptionApi.handler);
+  mounts.push(voiceTranscriptionApi);
 
   // Provider-key connections always mount: with no envelope-encryption master
   // key configured, each route answers 503 (`connections_unavailable`) rather
@@ -584,7 +597,7 @@ export function createApp({
     ...(connectionsCipher === undefined ? {} : { cipher: connectionsCipher }),
     ...(connections?.probe === undefined ? {} : { probe: connections.probe }),
   });
-  mountEffectRoutes(app, connectionsApi.routes, connectionsApi.handler);
+  mounts.push(connectionsApi);
 
   // AIs always mount. Creating one needs both the key cipher (to seal its
   // gateway key) and the LiteLLM admin client; when either is missing every
@@ -606,7 +619,10 @@ export function createApp({
     ...(aisCipher === undefined ? {} : { cipher: aisCipher }),
     ...(aisLitellm === undefined ? {} : { litellm: aisLitellm }),
   });
-  mountEffectRoutes(app, aisApi.routes, aisApi.handler);
+  mounts.push(aisApi);
+  for (const mount of mounts) {
+    mountEffectRoutes(app, mount.routes, mount.handler);
+  }
 
   app.get('/health', async (c) => {
     const up = await isDatabaseUp(db);
@@ -662,6 +678,7 @@ export function createApp({
     );
   });
 
+  mountsByApp.set(app, mounts);
   return app;
 }
 

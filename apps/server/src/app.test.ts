@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createApp } from './app';
+import { createApp, effectMountsOf } from './app';
 import { HttpError } from './errors';
 import { sqlRuntimeFor } from './effect/sql';
 import { createTestContext, type TestContext } from './test-support';
@@ -149,6 +149,18 @@ describe('createApp', () => {
     for (const path of ['/health', '/does-not-exist', '/test/conflict']) {
       const res = await testApp().request(path);
       expect(res.headers.get('x-request-id')).toBeTruthy();
+    }
+  });
+
+  it('lists the 36 Effect module mounts, each route registered on the app', () => {
+    const app = testApp();
+    const mounts = effectMountsOf(app);
+    expect(mounts).toHaveLength(36);
+    const registered = app.routes.map((route) => `${route.method} ${route.path}`);
+    for (const mount of mounts) {
+      for (const route of mount.routes) {
+        expect(registered).toContain(`${route.method} ${route.path}`);
+      }
     }
   });
 });

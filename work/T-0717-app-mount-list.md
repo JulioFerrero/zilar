@@ -1,7 +1,7 @@
 ---
 id: T-0717
 title: "B1.3a: app.ts collects the 36 module mounts into one ordered `mounts: EffectApiMount[]` list and mounts them on Hono in one loop; createApp also exposes that list (no behaviour change; prepares the Effect edge)"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0717-app-mount-list
 model: auto
@@ -56,4 +56,23 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Done as specified. Changes:
+- `apps/server/src/app.ts`: added `import type { EffectApiMount } from './effect/http-core'`; module-level `mountsByApp` WeakMap and exported `effectMountsOf(app)` (returns `[]` for an unknown app); `const mounts: EffectApiMount[] = []` before `authApi`; the 36 `mountEffectRoutes(app, x.routes, x.handler)` calls became `mounts.push(x)` at the same places, in the same order (each `x` pushed as the whole module object, no wrapper needed); one loop `for (const mount of mounts) mountEffectRoutes(...)` right before `app.get('/health')`; `mountsByApp.set(app, mounts)` before `return app`. Return type of `createApp` unchanged. Checked that no other `app.*` route registration sits between the old mount calls (only `/health`, `notFound`, `onError`), so registration order is unchanged.
+- `apps/server/src/app.test.ts`: `effectMountsOf` imported; one new test "lists the 36 Effect module mounts, each route registered on the app" (36 entries; every `{method, path}` appears in `app.routes`).
+
+Commands:
+- `pnpm install`: done.
+- `pnpm exec prettier --write` on the 3 changed files: app.ts reformatted (the WeakMap and function signature lines wrapped), no other changes.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/app.test src/authz-sweep.test`: 2 files passed, 15 tests passed, 0 failed.
+- `grep -c "mounts.push("` on app.ts: 36. `grep "mountEffectRoutes("`: only the one call inside the loop.
+- `pnpm gate` (from the worktree root, pwd checked): exit 0.
+  - `gate: 3 changed file(s) against main`
+  - `PASS install (frozen)`, `PASS format`, `PASS lint`, `PASS typecheck`, `PASS tests @zilar/server`
+  - `scope: every changed file is inside the Allowed files`
+  - `GATE PASS`
+
+Blocked / needs a decision: none.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Haiku 5.5, in one round (about 3.3 min). The lead reviewed the diff directly. The only removed lines are the 36 `mountEffectRoutes(app, …)` calls, now `mounts.push(xApi)` in the same places. One loop mounts them before `/health`, and `effectMountsOf(app)` exposes the list through a WeakMap. Returning `[]` for an unknown app is fine. The new test checks 36 mounts, every route registered. The gate passed.
