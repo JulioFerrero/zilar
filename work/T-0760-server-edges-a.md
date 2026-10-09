@@ -1,7 +1,7 @@
 ---
 id: T-0760
 title: "S7: server small edges A on Effect — voice/engine.ts (child process run as Effect.callback with timeout + kill on interrupt, probe/convert as Effects behind the unchanged VoiceEngine Promise interface), gifs/routes.ts fetchProxiedMedia (https request as Effect.callback, destroy on interrupt), version.ts (Schema decode of package.json); same error classes and messages"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0760-server-edges-a
 model: auto
@@ -57,4 +57,45 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What changed
+- `apps/server/src/voice/engine.ts`: `run` became `runCommand`, built with `Effect.callback`. Its finalizer sends SIGKILL when the fiber is interrupted, and `Effect.timeoutOrElse` fails with the same `FfmpegError("<cmd> timed out after <ms>ms")`. `probeEffect(ffprobe, inputPath)` and `convertEffect(ffmpeg, inputPath, outputPath)` are exported Effects. The ffprobe JSON is decoded with `Schema.fromJsonString(Schema.Struct({...}))` through `Schema.decodeUnknownEffect`; a decode failure gives `NotAudioError('ffprobe did not return JSON')`. `createFfmpegEngine` keeps its Promise methods, which run the Effects with `Effect.runPromise`. `NotAudioError`, `FfmpegError` and their messages are unchanged.
+- `apps/server/src/gifs/routes.ts`: new `fetchProxiedMediaEffect` built with `Effect.callback`. The first outcome wins (a `settled` flag), and an interrupt destroys the request. `fetchProxiedMedia` is now `Effect.runPromise(fetchProxiedMediaEffect(...))`. The texts `redirect refused`, `response too large` and `fetch timeout` are unchanged.
+- `apps/server/src/version.ts`: `package.json` is decoded with `Schema.decodeUnknownExit(Schema.fromJsonString(Schema.Struct({ version: Schema.String })))`. On failure it throws the same `apps/server/package.json must contain a string "version" field`. The `readFileSync` error still propagates as before.
+- `work/T-0760-server-edges-a.md`: status and this Report only.
+
+### Deviations and notes
+- `gifs/routes.ts` keeps `req.setTimeout(...)`. It is the request's idle socket timeout, not the global `setTimeout`. Moving it to `Effect.timeoutOrElse` would make it an overall deadline, which changes behaviour. So one line still matches a grep for `setTimeout`.
+- A malformed `package.json` now throws the fixed version message instead of a `SyntaxError`, which follows the spec's "same thrown message when decoding fails".
+- Malformed ffprobe output with a non-string field used to throw a `TypeError`; it now gives `NotAudioError`.
+- Interrupt handling: `probeEffect` and `runCommand` use a `settled` flag, so a late `close` or `error` after a kill is ignored.
+
+### Commands and results
+- Baseline before edits, `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/voice src/gifs`: Test Files 8 passed | 2 skipped (10); Tests 73 passed | 3 skipped (76).
+- After edits, same command: Test Files 8 passed | 2 skipped (10); Tests 73 passed | 3 skipped (76). The same counts before and after.
+- Real ffmpeg (ffmpeg is installed at /opt/homebrew/bin): `ZILAR_VOICE_INTEGRATION=1 ... src/voice/engine.test.ts`: Tests 2 passed (2).
+- `voice/integration.test.ts`: skipped. It is gated by `ZILAR_VOICE_INTEGRATION=1` and needs the live XMPP admin. I did not run it.
+- Gifs real-path check: `gifs/routes.test.ts` (lines 335-401) runs `fetchProxiedMedia` against a local HTTPS server, so the redirect, size-cap and timeout paths ran through the new code and passed.
+- Scratch checks, run with tsx from a script in the scratchpad (outside the worktree; no file left in the worktree): a missing binary gives `FfmpegError` "could not be started: spawn ... ENOENT"; non-JSON output gives `NotAudioError` "ffprobe did not return JSON"; exit code 1 gives `NotAudioError` "ffprobe rejected the upload (exit 1)"; a slow binary gives `FfmpegError` "timed out after 10000ms" after 10 s; interrupting the fiber kills the child process (checked by pid). `serverVersion` is "0.1.0" and equals `package.json`. The `instanceof` checks passed through `Effect.runPromise`.
+- `pnpm exec prettier --write` on the three files: all unchanged.
+- `pnpm gate` (exit 0):
+```
+PASS  install (frozen)  (1.5s)
+PASS  format  (0.6s)
+PASS  lint  (0.9s)
+PASS  typecheck  (3.5s)
+PASS  tests @zilar/server  (21.5s)
+scope: every changed file is inside the Allowed files
+GATE PASS
+```
+
+### Blocked / needs a decision
+None.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Haiku 5.5. The lead reviewed the diff directly.
+- **`runCommand`:** an `Effect.callback` whose finalizer sends SIGKILL to the child on timeout or interrupt; `timeoutOrElse` keeps the same `FfmpegError` text.
+- **ffprobe output:** decoded with `Schema.fromJsonString` (optional fields, so extra keys are ignored).
+- **The GIF fetch:** `req.setTimeout` is kept as the socket idle timeout, which is the right call because an Effect timeout would change it into an overall deadline.
+- **`version.ts`:** decoded with Schema.
+- **Results:** voice and gifs tests 73 pass, unchanged; the real-ffmpeg engine test passes 2 of 2; the gate passed.

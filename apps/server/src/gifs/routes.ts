@@ -1,4 +1,5 @@
 import { request as httpsRequest } from 'node:https';
+import { Effect } from 'effect';
 import type { Logger } from 'pino';
 import type { Auth } from '../auth/auth';
 import type { ServerConfig } from '../config';
@@ -31,16 +32,31 @@ export interface MediaFetch {
   (url: URL, address: string): Promise<{ status: number; contentType: string; body: Uint8Array }>;
 }
 
+interface ProxiedMedia {
+  status: number;
+  contentType: string;
+  body: Uint8Array;
+}
+
 // The media proxy fetches one provider URL with the full SSRF guard: resolve
 // every address, reject if any is non-public, connect to the validated IP
 // with SNI and Host kept as the hostname, follow no redirects.
-export async function fetchProxiedMedia(
+// The request is an `Effect.callback`: the first outcome wins, and an
+// interrupted fiber destroys the request so its socket is released.
+export function fetchProxiedMediaEffect(
   url: URL,
   address: string,
   options: { timeoutMs: number; maxBytes: number; port?: number },
-): Promise<{ status: number; contentType: string; body: Uint8Array }> {
-  return new Promise((resolve, reject) => {
+): Effect.Effect<ProxiedMedia, Error> {
+  return Effect.callback<ProxiedMedia, Error>((resume) => {
     const path = `${url.pathname}${url.search}`;
+    let settled = false;
+    const finish = (effect: Effect.Effect<ProxiedMedia, Error>): void => {
+      if (settled) return;
+      settled = true;
+      resume(effect);
+    };
+
     const req = httpsRequest(
       {
         host: address,
@@ -54,7 +70,7 @@ export async function fetchProxiedMedia(
         const status = res.statusCode ?? 0;
         if (status >= 300 && status < 400) {
           res.resume();
-          reject(new Error('redirect refused'));
+          finish(Effect.fail(new Error('redirect refused')));
           return;
         }
         const contentType = (res.headers['content-type'] ?? '').split(';')[0]?.trim() ?? '';
@@ -69,14 +85,30 @@ export async function fetchProxiedMedia(
           chunks.push(chunk);
         });
         res.on('end', () =>
-          resolve({ status, contentType, body: new Uint8Array(Buffer.concat(chunks)) }),
+          finish(
+            Effect.succeed({ status, contentType, body: new Uint8Array(Buffer.concat(chunks)) }),
+          ),
         );
-        res.on('error', (error: Error) => reject(error));
+        res.on('error', (error: Error) => finish(Effect.fail(error)));
       },
     );
     req.setTimeout(options.timeoutMs, () => req.destroy(new Error('fetch timeout')));
     req.on('timeout', () => req.destroy(new Error('fetch timeout')));
-    req.on('error', (error: Error) => reject(error));
+    req.on('error', (error: Error) => finish(Effect.fail(error)));
     req.end();
+
+    return Effect.sync(() => {
+      if (settled) return;
+      settled = true;
+      req.destroy();
+    });
   });
+}
+
+export function fetchProxiedMedia(
+  url: URL,
+  address: string,
+  options: { timeoutMs: number; maxBytes: number; port?: number },
+): Promise<ProxiedMedia> {
+  return Effect.runPromise(fetchProxiedMediaEffect(url, address, options));
 }
