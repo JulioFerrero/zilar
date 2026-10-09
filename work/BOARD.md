@@ -13,6 +13,8 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0788](T-0788-web-profile-explore.md) | WU24: profile, explore, visibility on Effect | in-progress | haiku-5.5 | | effect-100-plan Phase 3 |
 | [T-0789](T-0789-web-strip-media-pins.md) | WU25: task strip, media panel, pins, search results on Effect | in-progress | haiku-5.5 | | effect-100-plan Phase 3 |
 | [T-0790](T-0790-web-list-bubble-app.md) | WU26: ChatList, MessageBubble, App on Effect | in-progress | haiku-5.5 | | effect-100-plan Phase 3 |
+| [T-0791](T-0791-gateway-s1.md) | S1: AI gateway part 1 on Effect | in-progress | sonnet-5.5 | | effect-100-plan Phase 2 |
+| [T-0793](T-0793-web-voice-avatar.md) | WU21: VoiceMessage and AvatarUploader on Effect | in-progress | haiku-5.5 | | effect-100-plan Phase 3 |
 
 ## Follow-ups
 
