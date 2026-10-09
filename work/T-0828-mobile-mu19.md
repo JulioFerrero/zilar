@@ -1,7 +1,7 @@
 ---
 id: T-0828
 title: "MU19: mobile chat media: attachment-video, media-sheet on Effect"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0828-mobile-mu19
 model: auto
@@ -54,4 +54,23 @@ Run `pnpm exec prettier --write` on your changed files before committing. Do not
 
 ## Report (written by the worker when done)
 
+- **effect:map** (before -> after): `attachment-video.tsx` needs-effect -> effect; `media-sheet.tsx` needs-effect -> effect. Total effect files 294 -> 296, needs-effect 148 -> 146.
+- **Tests**: the two files, 15 passed before and 15 passed after (attachment-video 6, media-sheet 9). Run 3 times after the change: 15/15 each time. No test file changed; no new tests added, because the test files are not in Allowed files. The new behaviour was checked with a scratch Node script outside the worktree (deleted): runFork starts synchronously, an interrupted read never runs its success branch, yieldNow defers, `ensuring` runs after the match, `ignore` swallows a rejection.
+- **Typecheck**: `pnpm --filter @zilar/mobile typecheck` exit 0.
+- **Prettier**: both files pass `prettier --check`.
+- **Behaviour differences**:
+  - `attachment-video.tsx`: a failed session-token read was an unhandled promise rejection; now it is swallowed. The token stays unset and the player stays unloaded, as before.
+  - `attachment-video.tsx`: the GIF autoplay state update waits for `Effect.yieldNow` (one scheduler yield) instead of `Promise.resolve().then` (a microtask). Same order relative to the render; the timing may differ by one scheduler tick.
+  - `attachment-video.tsx`: `isApiOriginUrl` uses `parseUrl` from `@zilar/chat-core` instead of two try/catch blocks. Same results for every input I can see in the code.
+  - `media-sheet.tsx`: the first-page load is a forked fiber interrupted on cleanup, replacing the `active` flag (same effect: a stale answer is dropped).
+  - `media-sheet.tsx`: Load more still runs to completion after unmount, as before. Its `loadingMoreRef` double-tap guard is kept as it was, not moved to `useAction`.
+  - `media-sheet.tsx`: `Linking.openURL` is still called synchronously from the press; a refused open is still silent.
+  - Texts, props and rendered markup are unchanged. Permission prompts: none in these files.
+- **Unsure**: whether the Load more guard should move to `useAction` (`mode: 'ignore'`) per the brief's user-action rule. I kept the existing ref and state so the tab-switch behaviour does not change. The Acceptance line about new tests is not met, since no test file is in Allowed files; the lead can decide whether a test file is needed.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved (wave 2). Worker: Haiku 5.5. The lead reviewed the Report.
+- **Combined check:** all 25 wave 2 branches together pass lint, typecheck and the full mobile suite (`lead batch check`, report 20261009T172300Z). The remaining failures were server and web tests that pass on main, caused by load.
+- **This task:** Video attachment and media sheet converted; no behaviour change reported.
+- **Phone:** the wave branch is smoked on the emulator after the merge.
