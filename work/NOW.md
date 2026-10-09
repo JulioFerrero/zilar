@@ -2,6 +2,19 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-09 18:00 UTC: 100.0% Effect on main (`ee84523a`)**
+- **The map:** `pnpm effect:map` on main gives 879 files: effect 438, needs-effect 0, plain 329, exempt 112, legacy 0. Markers are 16 of 25, and Tier B (tracked only, decision D1) has 161 files.
+- **Merged since 17:55:**
+  - wave 2: all 25 mobile tasks (T-0810 to T-0834);
+  - chains: T-0835 (web store), T-0836 (mobile store), T-0838 (server entry);
+  - T-0839 (mobile search list), T-0840 (`lead batch check` runs lint), T-0841 (the people-search card fix);
+  - Z2 docs: the 100% rule and client patterns in `docs/EFFECT_GUIDE.md`, and an update in `docs/ROADMAP_EFFECT.md`.
+- **Running:** nothing.
+- **Open in the plan:**
+  - X8: move the stores and gateway onto `XmppCoreEffect` and delete the Promise facade. It touches messaging, so it waits for Julio.
+  - Z1: make needs-effect = 0 a hard gate. The R6 ratchet already blocks regressions; the gate policy is Julio's decision.
+- **Deploy:** live is still `73fae1bf`. Everything since is on main only and waits for Julio's live checks (listed in the 17:55 entry, plus the server start and a redeploy stop for T-0838).
+
 **2026-10-09 17:55 UTC: batch waves, 37 tasks through in about 2 hours; coverage near 90% once the queue drains**
 - **The new system** (Julio asked for speed): waves of up to 20 Claude subagents. Each worker runs only its own tests. The lead then runs one combined check (`lead batch check`, T-0799) and sends every fix back at once; one Sonnet worker takes each same-file chain. The rules are in `docs/EFFECT_BRIEF.md` and the `batch-waves` memory.
 - **Wave 1 (12 tasks), merged:** T-0792 (S2), T-0799 (`lead batch`), T-0800 (mobile toolkit), T-0801 (xmpp-core X3-X7), T-0802 (R4), T-0803 (R5), T-0804 (S10), T-0805 (server sweep), T-0806 (H2+H3), T-0807 (WU5), T-0808 (WU9), T-0809 (WU18). T-0837 (gateway S3+S4) is merged too.
