@@ -1,7 +1,7 @@
 ---
 id: T-0721
 title: "tests off drizzle (actions (announce, production-announcer, demo)): replace every drizzle query in actions/announce.test.ts, actions/production-announcer.test.ts, actions/demo.test.ts with testSql(context) + effect/sql; drop the drizzle-orm and db/schema imports"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0721-actions-small-tests-off-drizzle
 model: auto
@@ -53,4 +53,34 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**Files changed (all in Allowed files):** `apps/server/src/actions/announce.test.ts`, `apps/server/src/actions/production-announcer.test.ts`, `apps/server/src/actions/demo.test.ts`, this task file.
+
+**What changed**
+- All drizzle seed inserts, updates, reads and `.returning()` calls in the three files now run through `testSql(context)` with `SqlClient` and snake_case SQL. The `drizzle-orm` and `../db/schema` imports are gone, and so is the `eq` import.
+- `announce.test.ts`: its only drizzle use was `typeof approvals.$inferSelect`. `announce.ts` (outside scope) exports no row type, so the test declares a local `ApprovalRow` with the same shape.
+- `production-announcer.test.ts`: `context.db` remains only as `db: context.db` in the two `createProductionAnnouncer` calls.
+- `demo.test.ts`: `context.db` remains for `captureRecorder`, `createActionGateway`, `decideApproval`. The `auditLog` read is `SELECT * FROM audit_log` (the dump only checks for absence of strings). `user` is inserted as `"user"`.
+- The `approvals` inserts that used `.returning()` now reuse the client-generated id, which is the same value.
+- Local row types: `AiOwnerRow`, `ApprovalSummaryRow`, `PendingStatusRow`, `PendingResultRow`. Timestamps are passed as ISO strings. None of the touched tables has a JS-side default (`$defaultFn` or `$onUpdate` on insert), so raw inserts need no extra values.
+- No test patched `context.db` to inject a failure in these files, so the seam move from the spec was not needed.
+
+**Commands and results**
+- Before any change: `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/actions/announce.test.ts src/actions/production-announcer.test.ts src/actions/demo.test.ts`: 3 files passed, 21 tests passed.
+- After the change, same command: 3 files passed, 21 tests passed.
+- `git grep -n "drizzle-orm\|db/schema" -- <three files>`: no output (exit 1).
+- `pnpm exec prettier --write` on the three files: announce and demo unchanged, production-announcer reformatted.
+- `pnpm gate` (exit 0), summary lines:
+  - `gate: 3 changed file(s) against main`
+  - `PASS install (frozen)`, `PASS format`, `PASS lint`, `PASS typecheck`, `PASS tests @zilar/server`
+  - `scope: every changed file is inside the Allowed files`
+  - `GATE PASS`
+
+**Problems and deviations**
+- I set `status: in-progress` only at the end, not at the start as AGENTS.md step 2 asks. Status is `review` now.
+
+**Open questions**
+- None blocking. Whether `announce.ts` should export its approval row type is for a later task, since it is outside this scope.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Haiku 5.5, in one round (about 4.6 min). The lead reviewed the diff directly. The three actions tests are on `testSql`. `announce.test.ts` now declares a local `ApprovalRow` in place of `$inferSelect`; `approvals/service.ts:175` still derives its own from drizzle, and that goes in DEL. There are 21 tests before and after, and the gate passed.
