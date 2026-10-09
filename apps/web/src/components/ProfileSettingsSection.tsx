@@ -1,10 +1,42 @@
-import { useEffect, useState } from 'react';
-import { ApiError, claimHandle, checkHandle } from '@/lib/api';
+import { Effect } from 'effect';
+import { AsyncResult } from 'effect/reactivity';
+import { useState } from 'react';
+import { checkHandle, claimHandle } from '@/lib/api';
 import { useAuth } from '@/auth/AuthProvider';
 import { copyText } from '@/lib/clipboard';
+import { fromApi } from '@/lib/effect/api-effect';
+import type { ApiFailure } from '@/lib/effect/errors';
+import { isWaiting, useAction } from '@/lib/effect/use-action';
+import { useQuery } from '@/lib/effect/use-query';
 import { Button } from '@/components/ui/button';
 import { TextInput } from '@/components/ui/text-input';
 import { AvatarUploader } from './AvatarUploader';
+
+type HandleCheck =
+  { state: 'idle' } | { state: 'done'; available: boolean; reason?: string | undefined };
+
+const IDLE_CHECK: HandleCheck = { state: 'idle' };
+
+// Debounced live availability for a changed handle: the 300 ms sleep is the
+// debounce, and useQuery interrupts it when the handle changes.
+const handleCheck = (value: string, ownHandle: boolean): Effect.Effect<HandleCheck> =>
+  value === '' || ownHandle
+    ? Effect.succeed(IDLE_CHECK)
+    : Effect.sleep(300).pipe(
+        Effect.andThen(fromApi(() => checkHandle(value))),
+        Effect.map((result): HandleCheck => ({
+          state: 'done',
+          available: result.available,
+          reason: result.reason,
+        })),
+        Effect.catchTag('ApiFailure', (failure) =>
+          Effect.succeed(
+            failure.code === 'rate_limited'
+              ? ({ state: 'done', available: false, reason: 'rate_limited' } as const)
+              : IDLE_CHECK,
+          ),
+        ),
+      );
 
 /** The caller's own picture, inside Settings → Profile. */
 function ProfilePictureSection() {
@@ -13,6 +45,10 @@ function ProfilePictureSection() {
   // The uploader reports the new url (or undefined after a remove) through
   // `onChanged`; while no change happened this render, the session wins.
   const [changedUrl, setChangedUrl] = useState<string | undefined | null>(null);
+  // Replace, not ignore: a second change must refresh the session again.
+  const [, refetchUser] = useAction<void, void, ApiFailure>(() => fromApi(() => auth.refetch()), {
+    mode: 'replace',
+  });
   if (user === undefined) {
     return null;
   }
@@ -26,7 +62,7 @@ function ProfilePictureSection() {
         currentUrl={shown}
         onChanged={(next) => {
           setChangedUrl(next);
-          void auth.refetch();
+          refetchUser();
         }}
       />
     </div>
@@ -38,12 +74,8 @@ export function ProfileSettingsSection() {
   const auth = useAuth();
   const [handle, setHandle] = useState(auth.user?.handle ?? '');
   const [typed, setTyped] = useState(false);
-  const [check, setCheck] = useState<
-    { state: 'idle' } | { state: 'done'; available: boolean; reason?: string | undefined }
-  >({ state: 'idle' });
   const [error, setError] = useState<string | undefined>(undefined);
   const [saved, setSaved] = useState(false);
-  const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
 
   const trimmed = handle.trim();
@@ -63,58 +95,36 @@ export function ProfileSettingsSection() {
     setHandle(current);
   }
 
-  // Debounced live availability for a changed handle. The effect only
-  // schedules the check (the lint rule flags synchronous setState inside
-  // effects); the timeout callback applies the result once.
-  useEffect(() => {
-    if (trimmed === '' || ownHandle) {
-      return;
-    }
-    let active = true;
-    const value = trimmed;
-    const pending = setTimeout(() => {
-      void checkHandle(value).then(
-        (result) => {
-          if (active) {
-            setCheck({ state: 'done', available: result.available, reason: result.reason });
-          }
-        },
-        (checkError: unknown) => {
-          if (!active) {
-            return;
-          }
-          if (checkError instanceof ApiError && checkError.code === 'rate_limited') {
-            setCheck({ state: 'done', available: false, reason: 'rate_limited' });
-            return;
-          }
-          setCheck({ state: 'idle' });
-        },
-      );
-    }, 300);
-    return () => {
-      active = false;
-      clearTimeout(pending);
-    };
-  }, [trimmed, current, ownHandle]);
+  const [checkResult] = useQuery(() => handleCheck(trimmed, ownHandle), [trimmed, ownHandle]);
+  const check: HandleCheck = AsyncResult.isSuccess(checkResult) ? checkResult.value : IDLE_CHECK;
 
-  const save = async (): Promise<void> => {
+  const [saveState, runSave] = useAction<void, void, ApiFailure>(() =>
+    fromApi(() => claimHandle(trimmed)).pipe(
+      Effect.andThen(fromApi(() => auth.refetch())),
+      Effect.tap(() => Effect.sync(() => setSaved(true))),
+      Effect.tapError((failure) => Effect.sync(() => setError(friendlyError(failure)))),
+    ),
+  );
+  const busy = isWaiting(saveState);
+
+  const save = (): void => {
     if (trimmed === '') {
       setError('Choose a username');
       return;
     }
-    setBusy(true);
+    if (busy) {
+      return;
+    }
     setError(undefined);
     setSaved(false);
-    try {
-      await claimHandle(trimmed);
-      await auth.refetch();
-      setSaved(true);
-    } catch (saveError) {
-      setError(friendlyError(saveError));
-    } finally {
-      setBusy(false);
-    }
+    runSave();
   };
+
+  const [, copyShare] = useAction((url: string) =>
+    Effect.tryPromise(() => copyText(url)).pipe(
+      Effect.tap(() => Effect.sync(() => setCopied(true))),
+    ),
+  );
 
   const shareUrl =
     typeof window === 'undefined' || (auth.user?.handle ?? null) === null
@@ -156,17 +166,11 @@ export function ProfileSettingsSection() {
         )}
         {saved && <p className="mt-1 text-[14px] text-muted-foreground">Saved.</p>}
         <div className="mt-2 flex flex-wrap gap-2">
-          <Button type="button" onClick={() => void save()} disabled={busy || unchanged}>
+          <Button type="button" onClick={() => save()} disabled={busy || unchanged}>
             {busy ? 'Saving…' : 'Save username'}
           </Button>
           {shareUrl !== null && (
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                void copyText(shareUrl).then(() => setCopied(true));
-              }}
-            >
+            <Button type="button" variant="outline" onClick={() => copyShare(shareUrl)}>
               {copied ? 'Copied' : 'Copy share link'}
             </Button>
           )}
@@ -189,32 +193,32 @@ function reasonText(reason: string | undefined): string {
   }
 }
 
-function friendlyError(error: unknown): string {
-  if (error instanceof ApiError) {
-    switch (error.code) {
-      case 'handle_invalid':
-        return 'Use 3–32 characters: letters, numbers and _, starting with a letter.';
-      case 'handle_reserved':
-        return 'That username is reserved. Try another.';
-      case 'handle_taken':
-        return 'That username was just taken. Try another.';
-      case 'handle_change_too_soon': {
-        // The server sends the next-change date as `nextChangeAt` in the
-        // 409 error body; the message is only the fallback.
-        const next = error.detail.nextChangeAt;
-        if (typeof next === 'string' && next !== '') {
-          const date = new Date(next);
-          if (!Number.isNaN(date.getTime())) {
-            return `Next change possible on ${date.toLocaleDateString()}`;
-          }
-        }
-        return error.message;
-      }
-      case 'rate_limited':
-        return 'Too many tries — wait a little and try again.';
-      default:
-        return error.message;
-    }
+function friendlyError(error: ApiFailure): string {
+  if (error.code === 'unknown_error') {
+    return 'Could not save your username. Try again.';
   }
-  return 'Could not save your username. Try again.';
+  switch (error.code) {
+    case 'handle_invalid':
+      return 'Use 3–32 characters: letters, numbers and _, starting with a letter.';
+    case 'handle_reserved':
+      return 'That username is reserved. Try another.';
+    case 'handle_taken':
+      return 'That username was just taken. Try another.';
+    case 'handle_change_too_soon': {
+      // The server sends the next-change date as `nextChangeAt` in the
+      // 409 error body; the message is only the fallback.
+      const next = error.detail.nextChangeAt;
+      if (typeof next === 'string' && next !== '') {
+        const date = new Date(next);
+        if (!Number.isNaN(date.getTime())) {
+          return `Next change possible on ${date.toLocaleDateString()}`;
+        }
+      }
+      return error.message;
+    }
+    case 'rate_limited':
+      return 'Too many tries — wait a little and try again.';
+    default:
+      return error.message;
+  }
 }

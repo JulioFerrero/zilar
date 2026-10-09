@@ -1,7 +1,7 @@
 ---
 id: T-0788
 title: "WU24: ContactProfileRow, ExplorePage, ProfileSettingsSection, VisibilitySection on Effect"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0788-web-profile-explore
 model: auto
@@ -66,4 +66,43 @@ Run `pnpm effect:map` and list each file's kind in the Report, then run the whol
 
 ## Report (written by the worker when done)
 
+Result: the four files are converted, `pnpm gate` ends with GATE PASS, and no test file was edited.
+
+### Files changed
+- `apps/web/src/components/ContactProfileRow.tsx`: one `useAction` with a union input (`send`, `accept`, `decline`, `cancel`, `block`, `unblock`) replaces the four handlers and the `busy` flag. `busy` is `isWaiting(state)`, so every button is disabled exactly as before. A module-level `onPendingRequest` (an `Effect.gen`) finds the pending request row; a missing row fails with the typed `RequestGone`.
+- `apps/web/src/components/ExplorePage.tsx`: the debounced search is `useQuery` with `Effect.sleep(300)`, and Retry calls its `refresh`. "Show more" is a `useAction` in ignore mode. Join and Open are one `useAction` on the page (see differences).
+- `apps/web/src/components/ProfileSettingsSection.tsx`: the live handle check is `useQuery` with `Effect.sleep(300)`. Save is a `useAction`. The copy button is a `useAction`. The avatar change's session refetch is a `useAction` in `replace` mode, because `ProfilePictureSection` runs before its early return.
+- `apps/web/src/components/VisibilitySection.tsx`: the same check conversion. Save is a `useAction`, and so is the copy button.
+
+Each file keeps its props and exports. No `async`, `await`, `.then(`, `try {`/`catch (`, `setTimeout` or `setInterval` remain. The only matches for `Promise` are `Effect.tryPromise` and the `Promise<A>` type annotation of a local helper `fromStore` (in ExplorePage and VisibilitySection, which lift the chat-store calls).
+
+### Commands and results
+- Baseline, before any edit: `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot src/components/ContactProfileRow src/components/ExplorePage src/components/ProfileSettingsSection src/components/VisibilitySection`: 4 files, 25 tests passed.
+- After, each file alone: ContactProfileRow 7 passed, ExplorePage 8 passed, ProfileSettingsSection 4 passed, VisibilitySection 6 passed (25 in total, the same tests as before).
+- Whole web suite, after: `pnpm --filter @zilar/web test --maxWorkers=4 --reporter=dot`: Test Files 170 passed (170), Tests 1813 passed (1813). The 1813 baseline is from the spec; I did not run the whole suite before the edits.
+- `pnpm --filter @zilar/web typecheck`: passed with no errors.
+- `pnpm effect:map`: 842 files, coverage 58.7%. From `packages/devtools/dist/effect-map/data.json`, the kind is `effect` for all four files: ContactProfileRow, ExplorePage, ProfileSettingsSection, VisibilitySection.
+- `pnpm gate` (run from the worktree root, pwd checked): `PASS install (frozen)`, `PASS format`, `PASS lint`, `PASS typecheck`, `PASS effect`, `PASS tests @zilar/web`, `scope: every changed file is inside the Allowed files`, `GATE PASS`.
+
+### Behaviour differences (all deliberate, listed for review)
+1. **Join and Open are one page-level `useAction`, not one per row.** The old code kept one join at a time for the whole page: `joiningId` disables every Join button. Per-row actions would change those disabled states, so I kept the old concurrency. Open and Join share the ignore-mode guard, and the Open button is disabled during a join just as before.
+2. **Open now closes the dialog after the General topic id is resolved**, not before the lookup. The old code closed first and then awaited. The close and navigate run in one final step, so an unmount cannot cut the navigation short.
+3. **Plain-Error messages from the chat store are shown.** `joinPublicGroup` (ExplorePage) and `setGroupVisibility` (VisibilitySection) can reject with a plain `Error` whose message the store wrote, for example `This group is not available yet.`. Per the spec's exception, that message is now shown. Before, the fixed fallback was shown (`Could not join. Try again.` / `Could not save the visibility. Try again.`). ApiError codes and their sentences are unchanged.
+4. **Unmount interrupts a running action** (ContactProfileRow, ExplorePage, ProfileSettingsSection, VisibilitySection). Before, the old promise chain ran on after the component unmounted, so a block's `refreshBlockedJids` could finish after the row was gone. Now it is interrupted.
+5. **The live handle check clears when the handle is empty or is the own handle** (ProfileSettingsSection and VisibilitySection). Before, the old effect returned early and left the old "is available" line on screen, for example `@ada2 is available` after the user typed `ada`. Now nothing shows.
+6. **Typing that does not change the trimmed value no longer hides the check line** (VisibilitySection). Before, the typed handler cleared the check even when the trimmed value was unchanged, for example after a trailing space. The check now runs through `useQuery` keyed on the trimmed value, so the line stays while the trimmed value is unchanged.
+7. **Failures that used to be silent or unhandled now end in a failed action state.** The copy buttons (`copyText` rejection) and the avatar change's session refetch used to be an unhandled promise rejection. They are now silent failed actions. Nothing new is shown to the user.
+8. **Load-more failures** still show `Could not load more. Try again.` in the same join-error line, as before.
+9. The search's loading state keeps the old timing: rows stay visible during the 300 ms debounce, and "Searching…" appears when the request starts. A query under 2 characters still makes no request. From reading the old effect, a 1-character query after an in-flight search leaves `Searching…` on screen. I kept that, not fixed.
+
+### Open questions
+- Items 1 and 3 are judgment calls: item 1 keeps the page-level join concurrency (the spec's per-row rule would change the disabled states), and item 3 follows the spec's plain-Error exception even though the current code shows the fallback there.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Haiku 5.5. The lead reviewed the Report.
+- **The files:** all four are Effect files.
+- **Join stays one page-level action,** as the old `joiningId` guard was.
+- **Store `Error` sentences now show** (the agreed rule).
+- **Behaviour changes accepted:** Open closes after the topic lookup; unmount interrupts; the stale handle check clears.
+- **Results:** 25 tests and the whole web suite (1813) pass; the gate passed.

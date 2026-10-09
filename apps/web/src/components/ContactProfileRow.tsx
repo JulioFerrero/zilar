@@ -1,8 +1,8 @@
+import { Data, Effect } from 'effect';
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Ban, MessageSquare, UserCheck, UserMinus, UserPlus, UserX } from 'lucide-react';
 import {
-  ApiError,
   acceptContactRequest,
   blockUser,
   cancelContactRequest,
@@ -12,10 +12,36 @@ import {
   unblockUser,
   type HandleProfile,
 } from '@/lib/api';
+import { fromApi } from '@/lib/effect/api-effect';
+import type { ApiFailure } from '@/lib/effect/errors';
+import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { useChatStore } from '@/store/ChatStoreProvider';
 import { refreshBlockedJids } from '@/lib/blockedJids';
 import { Button } from '@/components/ui/button';
 import { Avatar } from './Avatar';
+
+type RowAction = 'send' | 'accept' | 'decline' | 'cancel' | 'block' | 'unblock';
+
+/** The request was answered or withdrawn before this click (another tab, or the other side). */
+class RequestGone extends Data.TaggedError('RequestGone') {}
+
+type RowFailure = ApiFailure | RequestGone;
+
+/** Finds this person's pending request in one direction, then runs `act` on it. */
+function onPendingRequest(
+  userId: string,
+  direction: 'incoming' | 'outgoing',
+  act: (requestId: string) => Effect.Effect<unknown, ApiFailure>,
+): Effect.Effect<void, RowFailure> {
+  return Effect.gen(function* () {
+    const list = yield* fromApi(() => listContactRequests());
+    const row = list[direction].find((request) => request.other.userId === userId);
+    if (row === undefined) {
+      return yield* new RequestGone();
+    }
+    yield* act(row.id);
+  });
+}
 
 /**
  * The shared profile row for an exact-handle lookup: avatar, name,
@@ -31,104 +57,74 @@ export function ContactProfileRow({
 }) {
   const navigate = useNavigate();
   const store = useChatStore();
-  const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
   const [confirmingBlock, setConfirmingBlock] = useState(false);
   // Keyed by the parent on the profile id, so a different handle remounts
   // the row with fresh local state (no reset effect needed).
 
-  const send = async (): Promise<void> => {
-    if (busy) {
-      return;
-    }
-    setBusy(true);
-    setError(undefined);
-    try {
-      const created = await sendContactRequest(profile.handle);
-      if (created.incoming === true) {
-        onRelationChange({ ...profile, relation: 'request_received' });
-      } else {
-        setSent(true);
-      }
-    } catch (sendError) {
-      setError(friendlySendError(sendError));
-    } finally {
-      setBusy(false);
+  // One action for every button of this row: the buttons share one busy
+  // flag and one error line, so a second click (on any button) waits.
+  const relationChange = (relation: HandleProfile['relation']) =>
+    Effect.sync(() => onRelationChange({ ...profile, relation }));
+
+  const perform = (action: RowAction): Effect.Effect<void, RowFailure> => {
+    switch (action) {
+      case 'send':
+        return fromApi(() => sendContactRequest(profile.handle)).pipe(
+          Effect.tap((created) =>
+            Effect.sync(() => {
+              if (created.incoming === true) {
+                onRelationChange({ ...profile, relation: 'request_received' });
+              } else {
+                setSent(true);
+              }
+            }),
+          ),
+          Effect.asVoid,
+        );
+      case 'accept':
+        return onPendingRequest(profile.userId, 'incoming', (id) =>
+          fromApi(() => acceptContactRequest(id)),
+        ).pipe(Effect.andThen(relationChange('contact')));
+      case 'decline':
+        return onPendingRequest(profile.userId, 'incoming', (id) =>
+          fromApi(() => declineContactRequest(id)),
+        ).pipe(Effect.andThen(relationChange('none')));
+      case 'cancel':
+        return onPendingRequest(profile.userId, 'outgoing', (id) =>
+          fromApi(() => cancelContactRequest(id)),
+        ).pipe(Effect.andThen(relationChange('none')));
+      case 'block':
+        return fromApi(() => blockUser(profile.userId)).pipe(
+          Effect.andThen(
+            Effect.sync(() => {
+              setConfirmingBlock(false);
+              onRelationChange({ ...profile, relation: 'blocked' });
+            }),
+          ),
+          Effect.andThen(fromApi(() => refreshBlockedJids())),
+        );
+      case 'unblock':
+        return fromApi(() => unblockUser(profile.userId)).pipe(
+          Effect.andThen(relationChange('none')),
+          Effect.andThen(fromApi(() => refreshBlockedJids())),
+        );
     }
   };
 
-  const decide = async (action: 'accept' | 'decline' | 'cancel'): Promise<void> => {
+  const [state, runAction] = useAction((action: RowAction) =>
+    perform(action).pipe(
+      Effect.tapError((failure) => Effect.sync(() => setError(rowErrorText(action, failure)))),
+    ),
+  );
+  const busy = isWaiting(state);
+  const startAction = (action: RowAction): void => {
     if (busy) {
       return;
     }
-    setBusy(true);
     setError(undefined);
-    try {
-      if (action === 'accept' || action === 'decline') {
-        const list = await listContactRequests();
-        const row = list.incoming.find((request) => request.other.userId === profile.userId);
-        if (row === undefined) {
-          setError('That request is no longer pending.');
-          return;
-        }
-        if (action === 'accept') {
-          await acceptContactRequest(row.id);
-          onRelationChange({ ...profile, relation: 'contact' });
-        } else {
-          await declineContactRequest(row.id);
-          onRelationChange({ ...profile, relation: 'none' });
-        }
-        return;
-      }
-      const list = await listContactRequests();
-      const row = list.outgoing.find((request) => request.other.userId === profile.userId);
-      if (row === undefined) {
-        setError('That request is no longer pending.');
-        return;
-      }
-      await cancelContactRequest(row.id);
-      onRelationChange({ ...profile, relation: 'none' });
-    } catch (decideError) {
-      setError(friendlySendError(decideError));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const block = async (): Promise<void> => {
-    if (busy) {
-      return;
-    }
-    setBusy(true);
-    setError(undefined);
-    try {
-      await blockUser(profile.userId);
-      setConfirmingBlock(false);
-      onRelationChange({ ...profile, relation: 'blocked' });
-      await refreshBlockedJids();
-    } catch (blockError) {
-      setError(friendlyBlockError(blockError, 'Could not block. Try again.'));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const unblock = async (): Promise<void> => {
-    if (busy) {
-      return;
-    }
-    setBusy(true);
-    setError(undefined);
-    try {
-      await unblockUser(profile.userId);
-      onRelationChange({ ...profile, relation: 'none' });
-      await refreshBlockedJids();
-    } catch (unblockError) {
-      setError(friendlyBlockError(unblockError, 'Could not unblock. Try again.'));
-    } finally {
-      setBusy(false);
-    }
+    runAction(action);
   };
 
   // The DM chat id is the contact's JID; the lookup profile carries no
@@ -193,7 +189,7 @@ export function ContactProfileRow({
             type="button"
             variant="outline"
             size="sm"
-            onClick={() => void unblock()}
+            onClick={() => startAction('unblock')}
             disabled={busy}
             className="shrink-0"
           >
@@ -214,7 +210,7 @@ export function ContactProfileRow({
           ) : (
             <Button
               type="button"
-              onClick={() => void send()}
+              onClick={() => startAction('send')}
               disabled={busy}
               size="sm"
               className="shrink-0"
@@ -228,7 +224,7 @@ export function ContactProfileRow({
             type="button"
             variant="outline"
             size="sm"
-            onClick={() => void decide('cancel')}
+            onClick={() => startAction('cancel')}
             disabled={busy}
             className="shrink-0"
           >
@@ -237,7 +233,7 @@ export function ContactProfileRow({
           </Button>
         ) : (
           <span className="flex shrink-0 gap-2">
-            <Button type="button" onClick={() => void decide('accept')} disabled={busy} size="sm">
+            <Button type="button" onClick={() => startAction('accept')} disabled={busy} size="sm">
               <UserCheck className="size-3.5" aria-hidden="true" />
               Accept
             </Button>
@@ -245,7 +241,7 @@ export function ContactProfileRow({
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => void decide('decline')}
+              onClick={() => startAction('decline')}
               disabled={busy}
             >
               <UserX className="size-3.5" aria-hidden="true" />
@@ -269,7 +265,7 @@ export function ContactProfileRow({
               type="button"
               variant="destructive"
               size="sm"
-              onClick={() => void block()}
+              onClick={() => startAction('block')}
               disabled={busy}
               aria-label="Confirm block"
             >
@@ -307,30 +303,41 @@ export function ContactProfileRow({
   );
 }
 
-function friendlySendError(error: unknown): string {
-  if (error instanceof ApiError) {
-    switch (error.code) {
-      case 'already_contact':
-        return "You're already contacts.";
-      case 'request_exists':
-        return 'A request is already pending.';
-      case 'blocked':
-        return 'Unblock this person first.';
-      case 'too_many_requests':
-        return 'Too many pending requests — wait for some answers first.';
-      case 'declined_recently':
-        return 'They declined recently — try again in a few days.';
-      case 'rate_limited':
-        return 'Too many tries — wait a little and try again.';
-      default:
-        return 'Could not complete that action. Try again.';
-    }
+function rowErrorText(action: RowAction, failure: RowFailure): string {
+  if (failure._tag === 'RequestGone') {
+    return 'That request is no longer pending.';
   }
-  return 'Could not complete that action. Try again.';
+  switch (action) {
+    case 'block':
+      return friendlyBlockError(failure, 'Could not block. Try again.');
+    case 'unblock':
+      return friendlyBlockError(failure, 'Could not unblock. Try again.');
+    default:
+      return friendlySendError(failure);
+  }
 }
 
-function friendlyBlockError(error: unknown, fallback: string): string {
-  if (error instanceof ApiError && error.code === 'rate_limited') {
+function friendlySendError(error: ApiFailure): string {
+  switch (error.code) {
+    case 'already_contact':
+      return "You're already contacts.";
+    case 'request_exists':
+      return 'A request is already pending.';
+    case 'blocked':
+      return 'Unblock this person first.';
+    case 'too_many_requests':
+      return 'Too many pending requests — wait for some answers first.';
+    case 'declined_recently':
+      return 'They declined recently — try again in a few days.';
+    case 'rate_limited':
+      return 'Too many tries — wait a little and try again.';
+    default:
+      return 'Could not complete that action. Try again.';
+  }
+}
+
+function friendlyBlockError(error: ApiFailure, fallback: string): string {
+  if (error.code === 'rate_limited') {
     return 'Too many tries — wait a little and try again.';
   }
   return fallback;
