@@ -2,6 +2,13 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-09 13:55 UTC: drizzle-free server LIVE on `73fae1bf` (`IMAGE_TAG=sha-73fae1bf1ad5`)**
+- **The deploy:** T-0749 (row types) and T-0751 (drizzle out) are deployed after a dump and a `postgres-data` backup at 13:54. The server is listening with no errors, health ok, web 200, `/api/me` 401, and real traffic arriving.
+- **The server has no legacy libraries left.** Drizzle stays only as better-auth's optional peer in the lockfile (follow-up).
+- **Codebase measure** (non-test files that import Effect): 198 of 848 files, which is 36% of lines. The server is at 83%.
+- **Julio wants 100% Effect.** T-0753 (Sonnet) writes the plan and the definition of "100%". T-0752 (Haiku) builds the self-updating map on GitHub Pages; enabling Pages needs Julio's OK.
+- **Follow-up:** an intermittent QuickJS `Aborted(JS_FreeRuntime)` line in the `sandbox/tool-worker` tests (1 run in 3; all tests pass).
+
 **2026-10-09 12:58 UTC: D3 LIVE on `f98f4c31` (`IMAGE_TAG=sha-f98f4c3122a1`)**
 - **The migrator is on effect/sql.** Live logged "migrations: adopted 46 drizzle migrations" and is listening. The journal check gives `drizzle.__drizzle_migrations` 46 rows, untouched, and `effect_sql_migrations` 1 row at id 46.
 - **Checks:** health ok on the new commit, web 200, `/api/me` 401, and real traffic already arriving (`/api/xmpp/token` 200).
