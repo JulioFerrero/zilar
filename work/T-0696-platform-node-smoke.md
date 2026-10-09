@@ -39,7 +39,7 @@ Julio wants Effect HTTP to replace Hono. To start the server without `@hono/node
 3. **No other file changes.**
 
 ### Read first
-`AGENTS.md`, `docs/audit/effect-edge-flip-plan.md` (§2, §4 B1.2), `apps/server/src/effect/http.ts` (lines 1-50), and after the install `node_modules/@effect/platform-node/dist/NodeHttpServer.d.ts`.
+`AGENTS.md`, `docs/audit/effect-edge-flip-plan.md` (§2, §4 B1.2), `apps/server/src/effect/http.ts` (lines 1-50), and, once the install is done, the NodeHttpServer type definitions in the installed package's dist folder.
 
 ### Allowed files
 `apps/server/package.json`, `pnpm-lock.yaml`, `apps/server/src/effect/node-server.test.ts`, `work/T-0696-platform-node-smoke.md`.
