@@ -3,6 +3,7 @@
 // the quality down until the bytes fit 1 MiB; the server validates all of it
 // again. `load` and `encode` are injectable so tests never touch `Image` or a
 // canvas.
+import { Effect } from 'effect';
 
 /** The smallest side the server accepts (backgrounds run 64-2048 px). */
 export const BACKGROUND_MIN_SIDE = 64;
@@ -44,48 +45,52 @@ export function fitWithin(
   };
 }
 
-async function loadFromFile(file: File): Promise<LoadedBackground> {
-  const objectUrl = URL.createObjectURL(file);
-  try {
-    const image = new Image();
-    image.decoding = 'async';
-    const loaded = new Promise<void>((resolve, reject) => {
-      image.onload = (): void => resolve();
-      image.onerror = (): void => reject(new Error('decode'));
-    });
-    image.src = objectUrl;
-    await loaded;
-    return { image, width: image.naturalWidth, height: image.naturalHeight };
-  } finally {
-    URL.revokeObjectURL(objectUrl);
-  }
-}
+// The object URL lives only while the image decodes; it is revoked on every exit.
+const loadFromFile = (file: File): Effect.Effect<LoadedBackground, Error> =>
+  Effect.acquireUseRelease(
+    Effect.sync(() => URL.createObjectURL(file)),
+    (objectUrl) =>
+      Effect.callback<LoadedBackground, Error>((resume) => {
+        const image = new Image();
+        image.decoding = 'async';
+        image.onload = (): void =>
+          resume(Effect.succeed({ image, width: image.naturalWidth, height: image.naturalHeight }));
+        image.onerror = (): void => resume(Effect.fail(new Error('decode')));
+        image.src = objectUrl;
+      }),
+    (objectUrl) =>
+      Effect.sync(() => {
+        URL.revokeObjectURL(objectUrl);
+      }),
+  );
 
-function encodeWithCanvas(
+const encodeWithCanvas = (
   image: CanvasImageSource,
   size: BackgroundSize,
   quality: number,
-): Promise<Blob | null> {
-  const canvas = document.createElement('canvas');
-  canvas.width = size.width;
-  canvas.height = size.height;
-  const context = canvas.getContext('2d');
-  if (context === null) {
-    return Promise.resolve(null);
-  }
-  context.drawImage(image, 0, 0, size.width, size.height);
-  return new Promise((resolve) => {
-    canvas.toBlob((blob) => resolve(blob), 'image/webp', quality);
+): Effect.Effect<Blob | null> =>
+  Effect.gen(function* () {
+    const canvas = document.createElement('canvas');
+    canvas.width = size.width;
+    canvas.height = size.height;
+    const context = canvas.getContext('2d');
+    if (context === null) {
+      return null;
+    }
+    context.drawImage(image, 0, 0, size.width, size.height);
+    return yield* Effect.callback<Blob | null>((resume) => {
+      canvas.toBlob((blob) => resume(Effect.succeed(blob)), 'image/webp', quality);
+    });
   });
-}
 
 /**
  * Load a file, reject images under 64 px on either side, resize it to fit
  * 2048 px and encode WebP at 0.85, 0.7 then 0.5 until it is at most 1 MiB.
  * Throws `'too_small'` or `'too_large'` so the caller can show a plain
- * sentence.
+ * sentence. A rejection from an injected `load` or `encode` passes through
+ * unchanged.
  */
-export async function prepareBackgroundImage(
+export function prepareBackgroundImage(
   file: File,
   deps: {
     load?: (file: File) => Promise<LoadedBackground>;
@@ -96,18 +101,33 @@ export async function prepareBackgroundImage(
     ) => Promise<Blob | null>;
   } = {},
 ): Promise<Blob> {
-  const load = deps.load ?? loadFromFile;
-  const encode = deps.encode ?? encodeWithCanvas;
-  const loaded = await load(file);
-  if (loaded.width < BACKGROUND_MIN_SIDE || loaded.height < BACKGROUND_MIN_SIDE) {
-    throw new Error('too_small');
-  }
-  const size = fitWithin(loaded.width, loaded.height);
-  for (const quality of BACKGROUND_QUALITIES) {
-    const blob = await encode(loaded.image, size, quality);
-    if (blob !== null && blob.size <= BACKGROUND_MAX_BYTES) {
-      return blob;
-    }
-  }
-  throw new Error('too_large');
+  const { load, encode } = deps;
+  const loadStep: Effect.Effect<LoadedBackground, unknown> =
+    load === undefined
+      ? loadFromFile(file)
+      : Effect.tryPromise({ try: () => load(file), catch: (cause) => cause });
+  const encodeStep = (
+    image: CanvasImageSource,
+    size: BackgroundSize,
+    quality: number,
+  ): Effect.Effect<Blob | null, unknown> =>
+    encode === undefined
+      ? encodeWithCanvas(image, size, quality)
+      : Effect.tryPromise({ try: () => encode(image, size, quality), catch: (cause) => cause });
+  return Effect.runPromise(
+    Effect.gen(function* () {
+      const loaded = yield* loadStep;
+      if (loaded.width < BACKGROUND_MIN_SIDE || loaded.height < BACKGROUND_MIN_SIDE) {
+        return yield* Effect.fail(new Error('too_small'));
+      }
+      const size = fitWithin(loaded.width, loaded.height);
+      for (const quality of BACKGROUND_QUALITIES) {
+        const blob = yield* encodeStep(loaded.image, size, quality);
+        if (blob !== null && blob.size <= BACKGROUND_MAX_BYTES) {
+          return blob;
+        }
+      }
+      return yield* Effect.fail(new Error('too_large'));
+    }),
+  );
 }

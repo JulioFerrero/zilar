@@ -1,9 +1,10 @@
+import { Effect } from 'effect';
 import {
   ApiError,
   checkHandle as apiCheckHandle,
   claimHandle as apiClaimHandle,
   type HandleCheck,
-} from '@/lib/api';
+} from './api';
 
 export { ApiError };
 
@@ -100,12 +101,22 @@ function shapeSuggestion(raw: string): string | null {
   return shaped;
 }
 
-export async function checkHandle(handle: string): Promise<HandleCheck> {
-  return apiCheckHandle(handle);
+// The api.ts rejection passes through unchanged: HandlePage matches `ApiError`
+// with `instanceof`, which `fromApi` would replace with an `ApiFailure`.
+const passThrough = <A>(call: () => Promise<A>): Promise<A> =>
+  Effect.runPromise(
+    Effect.tryPromise({
+      try: call,
+      catch: (cause) => cause,
+    }),
+  );
+
+export function checkHandle(handle: string): Promise<HandleCheck> {
+  return passThrough(() => apiCheckHandle(handle));
 }
 
-export async function claimHandle(handle: string): Promise<{ handle: string }> {
-  return apiClaimHandle(handle);
+export function claimHandle(handle: string): Promise<{ handle: string }> {
+  return passThrough(() => apiClaimHandle(handle));
 }
 
 export function isRateLimited(error: unknown): boolean {

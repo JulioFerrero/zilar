@@ -1,3 +1,5 @@
+import { Effect, Schema } from 'effect';
+
 /**
  * Recent stickers (T-0120): the last 30 sent, kept in `localStorage` as ids.
  * Hostile stored data (wrong shapes, non-strings, huge arrays) is ignored so
@@ -5,6 +7,17 @@
  */
 export const RECENT_STICKERS_KEY = 'zilar:recentStickers';
 export const MAX_RECENT_STICKERS = 30;
+
+// The stored value must be a JSON array; anything else reads as empty.
+const decodeRecents = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Array(Schema.Unknown)));
+
+/**
+ * Runs one synchronous step (storage, JSON, URL) at this sync edge. A throw
+ * gives `fallback`, so hostile or blocked input never breaks the caller.
+ */
+function orFallback<A>(fallback: A, step: () => A): A {
+  return Effect.runSync(Effect.try(step).pipe(Effect.orElseSucceed(() => fallback)));
+}
 
 export interface RecentStickerEntry {
   stickerId: string;
@@ -37,24 +50,11 @@ export function readRecentStickers(storage: Storage | null): RecentStickerEntry[
   if (storage === null) {
     return [];
   }
-  let raw: string | null = null;
-  try {
-    raw = storage.getItem(RECENT_STICKERS_KEY);
-  } catch {
-    return [];
-  }
+  const raw = orFallback<string | null>(null, () => storage.getItem(RECENT_STICKERS_KEY));
   if (raw === null || raw === '') {
     return [];
   }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return [];
-  }
-  if (!Array.isArray(parsed)) {
-    return [];
-  }
+  const parsed = orFallback<readonly unknown[]>([], () => decodeRecents(raw));
   const entries: RecentStickerEntry[] = [];
   for (const item of parsed.slice(0, MAX_RECENT_STICKERS)) {
     if (isEntry(item)) {
@@ -76,12 +76,11 @@ export function rememberRecentSticker(
 ): RecentStickerEntry[] {
   const recents = readRecentStickers(storage).filter((item) => item.stickerId !== entry.stickerId);
   const next = [entry, ...recents].slice(0, MAX_RECENT_STICKERS);
+  // A full or blocked localStorage must never break sending.
   if (storage !== null) {
-    try {
+    orFallback<void>(undefined, () => {
       storage.setItem(RECENT_STICKERS_KEY, JSON.stringify(next));
-    } catch {
-      // A full or blocked localStorage must never break sending.
-    }
+    });
   }
   return next;
 }
@@ -95,7 +94,8 @@ export function isSameOriginStickerUrl(url: string, apiBase: string = '/api'): b
   if (url.trim() === '') {
     return false;
   }
-  try {
+  // An unparsable URL is not same-origin: the placeholder shows.
+  return orFallback(false, () => {
     const sticker = new URL(url, window.location.origin);
     if (sticker.protocol !== 'http:' && sticker.protocol !== 'https:') {
       return false;
@@ -108,9 +108,7 @@ export function isSameOriginStickerUrl(url: string, apiBase: string = '/api'): b
     }
     const api = new URL(apiBase, window.location.origin);
     return sticker.origin === api.origin;
-  } catch {
-    return false;
-  }
+  });
 }
 
 /**

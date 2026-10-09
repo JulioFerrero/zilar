@@ -1,5 +1,7 @@
+import { Effect } from 'effect';
 import { useEffect, useSyncExternalStore } from 'react';
 import { isBlockedSender, localpartOf } from '@zilar/chat-core';
+import { fromApi } from '@/lib/effect/api-effect';
 import { listBlockedUsers } from './api';
 
 export { isBlockedSender };
@@ -9,7 +11,8 @@ export { isBlockedSender };
 // first use and on window focus; a failed load keeps the last good set so
 // a flaky network never unhides someone's messages.
 let blocked: ReadonlySet<string> = new Set();
-let loading: Promise<void> | undefined;
+// True while the first-use load runs, so mounting many rows loads once.
+let loading = false;
 let focusListening = false;
 const listeners = new Set<() => void>();
 
@@ -19,9 +22,9 @@ function emit(): void {
   }
 }
 
-async function load(): Promise<void> {
-  try {
-    const people = await listBlockedUsers();
+// One reload. It never fails: any failure keeps the last good set.
+const loadBlocked: Effect.Effect<void> = fromApi(() => listBlockedUsers()).pipe(
+  Effect.map((people) => {
     const next = new Set<string>();
     for (const person of people) {
       if (person.jid !== null && person.jid.trim() !== '') {
@@ -30,9 +33,26 @@ async function load(): Promise<void> {
     }
     blocked = next;
     emit();
-  } catch {
-    // Keep the last good set.
+  }),
+  Effect.catchCause(() => Effect.void),
+);
+
+const reload = (): Promise<void> => Effect.runPromise(loadBlocked);
+
+function loadOnce(): void {
+  if (loading) {
+    return;
   }
+  loading = true;
+  void Effect.runPromise(
+    loadBlocked.pipe(
+      Effect.ensuring(
+        Effect.sync(() => {
+          loading = false;
+        }),
+      ),
+    ),
+  );
 }
 
 function ensureFocusListener(): void {
@@ -41,7 +61,7 @@ function ensureFocusListener(): void {
   }
   focusListening = true;
   window.addEventListener('focus', () => {
-    void load();
+    void reload();
   });
 }
 
@@ -60,24 +80,20 @@ function getSnapshot(): ReadonlySet<string> {
 export function useBlockedJids(): ReadonlySet<string> {
   useEffect(() => {
     ensureFocusListener();
-    if (loading === undefined) {
-      loading = load().finally(() => {
-        loading = undefined;
-      });
-    }
+    loadOnce();
   }, []);
   return useSyncExternalStore(subscribe, getSnapshot);
 }
 
 /** Reload the set after a successful block or unblock. */
-export async function refreshBlockedJids(): Promise<void> {
-  await load();
+export function refreshBlockedJids(): Promise<void> {
+  return reload();
 }
 
 /** Test-only: reset the module state between tests. */
 export function resetBlockedJidsForTests(): void {
   blocked = new Set();
-  loading = undefined;
+  loading = false;
   focusListening = false;
   listeners.clear();
 }

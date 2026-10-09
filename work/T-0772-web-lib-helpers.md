@@ -1,7 +1,7 @@
 ---
 id: T-0772
 title: "WU2: web lib helpers on Effect — clipboard, handles, handleGate, blockedJids, topicsUi, background-image, stickers, sticker-images: async work as Effects (fromApi / tryPromise), storage via Effect.try or KeyValueStore.layerStorage with runSync at a sync edge; exported signatures unchanged"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0772-web-lib-helpers
 model: auto
@@ -69,4 +69,42 @@ Run `pnpm effect:map` and list the eight kinds in the Report.
 
 ## Report (written by the worker when done)
 
+**What changed (11 files, all in Allowed):** the eight lib modules now import `effect` and contain no `async`, `await`, `.then(`, `.finally(`, `try`/`catch`, `setTimeout` or `setInterval`. Exported names, parameters and return types are unchanged. Three new test files were added: `clipboard.test.ts`, `handles.test.ts`, `topicsUi.test.ts`. No existing test file was edited.
+
+- `clipboard.ts`: `copyText` runs a `tryPromise` on the Clipboard API, falls back to a `legacyCopy` Effect (`acquireUseRelease` removes the textarea on every exit). A throw in the legacy path rejects with the original value.
+- `handles.ts`: `checkHandle` and `claimHandle` use a local `passThrough` (`tryPromise` with `catch: (cause) => cause`), not `fromApi`. `HandlePage.tsx:59` matches `instanceof ApiError`, and `fromApi` would replace that with `ApiFailure`. The import path is now `./api` (same file, same style as `blockedJids.ts`).
+- `handleGate.ts`, `topicsUi.ts`: sessionStorage/localStorage steps run through `Effect.try(...).pipe(Effect.orElseSucceed(fallback))` and `Effect.runSync` at the sync export. `topicsUi` decodes the stored list with `Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Array(Schema.Unknown)))`, not `JSON.parse`. Fallbacks are the same as before (empty set, `false`, no-op write).
+- `blockedJids.ts`: the load is an Effect (`fromApi` + `Effect.map` + `Effect.catchCause` keeps the last good set). The first-use guard is now a boolean reset by `Effect.ensuring`, not a stored Promise. `refreshBlockedJids` and `resetBlockedJidsForTests` keep their signatures.
+- `background-image.ts`: `loadFromFile` is `acquireUseRelease` (object URL revoked on every exit) around `Effect.callback` (decode failure is `Error('decode')`). `encodeWithCanvas` is an Effect. `prepareBackgroundImage` keeps its Promise and its injectable `load`/`encode` (their rejections pass through unchanged). It still rejects with `Error('too_small')` and `Error('too_large')`, which `ChatBackgroundDialog` matches.
+- `stickers.ts`: `orFallback` (local helper, `Effect.try` + `orElseSucceed` + `runSync`) wraps storage get/set and the same-origin URL parse. The recents list is decoded with `Schema`.
+- `sticker-images.ts`: `prepareStickerImage` runs an Effect pipeline. `PrepDeps` stays Promise-based. The injected `decode`/`encode` are lifted with `tryPromise`, and the release runs with `Effect.ensuring`. `PrepError` keeps its class and `instanceof` behaviour.
+
+**Test counts (`pnpm --filter @zilar/web test --reporter=dot`):**
+- Lib tests of the 8 modules (`src/lib/background-image blockedJids handleGate sticker-images stickers sticker-url clipboard handles topicsUi`): before 6 files / 40 tests; after 9 files / 55 tests (+3 new files, +15 tests: clipboard 4, handles 5, topicsUi 6). `sticker-url.test.ts` is counted in both.
+- Callers (18 files: ChatBackgroundDialog, ChatListItem, ContactProfileRow, MessageBubble.forward, MessageList, PackEditor, ProfileSettingsSection, routes/HandleGate, routes/HandlePage, mock/api, ChatList, InviteDialog, InviteLinksSection, StickerPanel, VisibilitySection, BlockedPage, ChatView, StickersPage): before 18 files / 230 tests; after 18 files / 230 passed.
+
+**effect:map kinds (`pnpm effect:map`):** before, all eight were `needs-effect` (signals: clipboard H1 W4; handles H1; handleGate H5 W4; blockedJids H1 W4; topicsUi H5 W4 W6; background-image H1 W4; stickers W4 W6; sticker-images H1 W4). After, all eight are `effect`. Map total went from effect 202 / needs-effect 241 to effect 210 / needs-effect 233 (841 files).
+
+**Checks run:** `pnpm install`; single-file runs of each changed test file (all pass); the caller tests above (all pass); `tsc --noEmit -p tsconfig.json` in `apps/web` (no output); `pnpm exec prettier --write` on the changed files; `pnpm gate` from the worktree root:
+```
+PASS  install (frozen)  (1.2s)
+PASS  format  (1.0s)
+PASS  lint  (0.9s)
+PASS  typecheck  (2.9s)
+PASS  effect  (1.1s)
+PASS  tests @zilar/web  (4.2s)
+scope: every changed file is inside the Allowed files
+GATE PASS
+```
+
+**Deviations and open points:**
+- `handles.test.ts` stubs `fetch` (through the real `api.ts` `request`) instead of mocking the api module. A `vi.mock` of `@/lib/api` (and of `./api`) did not reach `handles.ts`: the mock was never called, while the same pattern works in `blockedJids.test.ts`. I did not find the cause, so the test uses the real request path. Worth a look, but it does not block the task.
+- Rejections from injected `load`/`encode` and from the api pass-through keep their original values, so the Effect error type is `unknown` in those spots. That is deliberate (callers match `instanceof` and `error.message`), not a missed tagged error.
+- `topicsUi.ts` and `handleGate.ts` still touch `window.localStorage` / `window.sessionStorage` by name, inside `Effect.try`. Each file has a local `storageStep` helper; the rule is per file, so no shared helper was added (that would be outside Allowed).
+- Nothing else was unsure. No other files were touched, no push, no merge.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Haiku 5.5. The lead reviewed the diff directly.
+- **The helpers:** all eight are Effect files. Synchronous storage helpers use `Effect.try` with `orElseSucceed` (the same fallback) and `runSync` at the edge; async helpers use `runPromise`. The exported signatures are unchanged.
+- **Tests:** the eight modules go from 40 to 55, the 18 callers stay at 230 unchanged, and the gate passed (with the effect step).
