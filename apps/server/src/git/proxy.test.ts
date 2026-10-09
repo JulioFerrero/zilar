@@ -1,8 +1,7 @@
-import { Hono } from 'hono';
+import { pino } from 'pino';
 import { describe, expect, it } from 'vitest';
-import { HttpError } from '../errors';
+import { createGitApi } from './api';
 import type { FetchLike } from './proxy';
-import { createGitRoutes } from './routes';
 import type { GitHubAppTokenClient } from './token';
 
 const BASE = 'http://localhost:3000';
@@ -25,24 +24,15 @@ function createFetch(handler: (call: Call) => Response): { fetchImpl: FetchLike;
   return { fetchImpl, calls };
 }
 
-function buildApp(fetchImpl: FetchLike): Hono {
-  const app = new Hono();
-  app.onError((error, c) => {
-    if (error instanceof HttpError) {
-      return c.json({ error: { code: error.code, message: error.message } }, error.status);
-    }
-    return c.json({ error: { code: 'internal_error', message: 'Internal server error' } }, 500);
+function buildApp(fetchImpl: FetchLike): (url: string, init?: RequestInit) => Promise<Response> {
+  const api = createGitApi({
+    aiName: 'alice',
+    tokenClient: tokenClient(TOKEN),
+    upstreamBaseUrl: UPSTREAM,
+    fetch: fetchImpl,
+    logger: pino({ level: 'silent' }),
   });
-  app.route(
-    '/git',
-    createGitRoutes({
-      aiName: 'alice',
-      tokenClient: tokenClient(TOKEN),
-      upstreamBaseUrl: UPSTREAM,
-      fetch: fetchImpl,
-    }),
-  );
-  return app;
+  return (url, init) => api.handler(new Request(url, init));
 }
 
 function pktLine(text: string): string {
@@ -71,9 +61,9 @@ function receivePackBodyFromCommands(commands: string[]): Uint8Array {
 describe('git proxy', () => {
   it('forwards a push to an allowed branch with the injected token', async () => {
     const { fetchImpl, calls } = createFetch(() => new Response('ok', { status: 200 }));
-    const app = buildApp(fetchImpl);
+    const send = buildApp(fetchImpl);
 
-    const res = await app.request(`${BASE}/git/acme/repo.git/git-receive-pack`, {
+    const res = await send(`${BASE}/git/acme/repo.git/git-receive-pack`, {
       method: 'POST',
       headers: {
         'content-type': 'application/x-git-receive-pack-request',
@@ -93,9 +83,9 @@ describe('git proxy', () => {
 
   it('refuses a push to main and never calls the upstream', async () => {
     const { fetchImpl, calls } = createFetch(() => new Response('nope', { status: 200 }));
-    const app = buildApp(fetchImpl);
+    const send = buildApp(fetchImpl);
 
-    const res = await app.request(`${BASE}/git/acme/repo.git/git-receive-pack`, {
+    const res = await send(`${BASE}/git/acme/repo.git/git-receive-pack`, {
       method: 'POST',
       headers: { 'content-type': 'application/x-git-receive-pack-request' },
       body: receivePackBody(['refs/heads/main']),
@@ -108,9 +98,9 @@ describe('git proxy', () => {
 
   it("refuses a push to another AI's branch", async () => {
     const { fetchImpl, calls } = createFetch(() => new Response('nope', { status: 200 }));
-    const app = buildApp(fetchImpl);
+    const send = buildApp(fetchImpl);
 
-    const res = await app.request(`${BASE}/git/acme/repo.git/git-receive-pack`, {
+    const res = await send(`${BASE}/git/acme/repo.git/git-receive-pack`, {
       method: 'POST',
       headers: { 'content-type': 'application/x-git-receive-pack-request' },
       body: receivePackBody(['refs/heads/agent/bob/feature']),
@@ -122,9 +112,9 @@ describe('git proxy', () => {
 
   it('refuses a tag push', async () => {
     const { fetchImpl, calls } = createFetch(() => new Response('nope', { status: 200 }));
-    const app = buildApp(fetchImpl);
+    const send = buildApp(fetchImpl);
 
-    const res = await app.request(`${BASE}/git/acme/repo.git/git-receive-pack`, {
+    const res = await send(`${BASE}/git/acme/repo.git/git-receive-pack`, {
       method: 'POST',
       headers: { 'content-type': 'application/x-git-receive-pack-request' },
       body: receivePackBody(['refs/tags/v1.0.0']),
@@ -136,9 +126,9 @@ describe('git proxy', () => {
 
   it('refuses an unreadable receive-pack body and never calls the upstream', async () => {
     const { fetchImpl, calls } = createFetch(() => new Response('nope', { status: 200 }));
-    const app = buildApp(fetchImpl);
+    const send = buildApp(fetchImpl);
 
-    const res = await app.request(`${BASE}/git/acme/repo.git/git-receive-pack`, {
+    const res = await send(`${BASE}/git/acme/repo.git/git-receive-pack`, {
       method: 'POST',
       headers: { 'content-type': 'application/x-git-receive-pack-request' },
       body: new TextEncoder().encode('not a pkt-line'),
@@ -151,9 +141,9 @@ describe('git proxy', () => {
 
   it('refuses a receive-pack body that yields no refs', async () => {
     const { fetchImpl, calls } = createFetch(() => new Response('nope', { status: 200 }));
-    const app = buildApp(fetchImpl);
+    const send = buildApp(fetchImpl);
 
-    const res = await app.request(`${BASE}/git/acme/repo.git/git-receive-pack`, {
+    const res = await send(`${BASE}/git/acme/repo.git/git-receive-pack`, {
       method: 'POST',
       headers: { 'content-type': 'application/x-git-receive-pack-request' },
       body: new TextEncoder().encode('0000PACK'),
@@ -165,9 +155,9 @@ describe('git proxy', () => {
 
   it('refuses a body with one good and one malformed ref', async () => {
     const { fetchImpl, calls } = createFetch(() => new Response('nope', { status: 200 }));
-    const app = buildApp(fetchImpl);
+    const send = buildApp(fetchImpl);
 
-    const res = await app.request(`${BASE}/git/acme/repo.git/git-receive-pack`, {
+    const res = await send(`${BASE}/git/acme/repo.git/git-receive-pack`, {
       method: 'POST',
       headers: { 'content-type': 'application/x-git-receive-pack-request' },
       body: receivePackBodyFromCommands([
@@ -182,9 +172,9 @@ describe('git proxy', () => {
 
   it('allows a clone/fetch (git-upload-pack)', async () => {
     const { fetchImpl, calls } = createFetch(() => new Response('ok', { status: 200 }));
-    const app = buildApp(fetchImpl);
+    const send = buildApp(fetchImpl);
 
-    const res = await app.request(`${BASE}/git/acme/repo.git/info/refs?service=git-upload-pack`);
+    const res = await send(`${BASE}/git/acme/repo.git/info/refs?service=git-upload-pack`);
 
     expect(res.status).toBe(200);
     expect(calls).toHaveLength(1);

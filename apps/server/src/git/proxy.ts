@@ -1,4 +1,3 @@
-import type { Context, Handler } from 'hono';
 import { isPushAllowed } from './branches';
 import { HttpError } from '../errors';
 import type { GitHubAppTokenClient } from './token';
@@ -132,20 +131,22 @@ function buildUpstreamUrl(baseUrl: string, inbound: URL, pathPrefix: string): UR
   return url;
 }
 
-export function createGitProxyHandler(deps: GitProxyDependencies): Handler {
+export type GitProxy = (request: Request) => Promise<Response>;
+
+export function createGitProxy(deps: GitProxyDependencies): GitProxy {
   const { aiName, tokenClient } = deps;
   const upstreamBaseUrl = deps.upstreamBaseUrl.replace(/\/+$/, '');
   const pathPrefix = deps.pathPrefix ?? DEFAULT_GIT_PATH_PREFIX;
   const fetchImpl = deps.fetch ?? fetch;
 
-  return async (c: Context) => {
-    const inbound = new URL(c.req.url);
+  return async (request: Request) => {
+    const inbound = new URL(request.url);
     const service = serviceFor(inbound);
-    const isReceivePackPost = service === 'receive-pack' && c.req.method === 'POST';
+    const isReceivePackPost = service === 'receive-pack' && request.method === 'POST';
 
     let body: ArrayBuffer | ReadableStream<Uint8Array> | null;
     if (isReceivePackPost) {
-      const buffer = await c.req.raw.arrayBuffer();
+      const buffer = await request.arrayBuffer();
       const parsed = parseRefUpdates(new Uint8Array(buffer));
       // A push we cannot enumerate is not a push we can allow: refuse an
       // unreadable or empty body rather than forwarding a write that GitHub
@@ -160,10 +161,10 @@ export function createGitProxyHandler(deps: GitProxyDependencies): Handler {
       }
       body = buffer;
     } else {
-      body = c.req.raw.body;
+      body = request.body;
     }
 
-    const headers = new Headers(c.req.raw.headers);
+    const headers = new Headers(request.headers);
     for (const name of HOP_BY_HOP_HEADERS) {
       headers.delete(name);
     }
@@ -171,7 +172,7 @@ export function createGitProxyHandler(deps: GitProxyDependencies): Handler {
     headers.set('authorization', `Bearer ${token}`);
 
     return fetchImpl(buildUpstreamUrl(upstreamBaseUrl, inbound, pathPrefix).toString(), {
-      method: c.req.method,
+      method: request.method,
       headers,
       body,
     });

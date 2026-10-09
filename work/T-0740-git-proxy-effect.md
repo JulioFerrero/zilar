@@ -1,7 +1,7 @@
 ---
 id: T-0740
 title: "A12: git proxy off Hono — proxy.ts exposes a plain Web handler, new git/api.ts wraps it as an Effect HttpRouter mount (createGitApi → EffectApiMount), git/routes.ts deleted, proxy.test.ts drives the mount; still not mounted in app.ts"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0740-git-proxy-effect
 model: auto
@@ -63,4 +63,41 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**What changed**
+- `apps/server/src/git/proxy.ts`: the Hono import is gone. `createGitProxyHandler(deps): Handler` is now `createGitProxy(deps): GitProxy`, where `export type GitProxy = (request: Request) => Promise<Response>`. It reads `request.url`, `request.method`, `request.arrayBuffer()`, `request.body` and `request.headers`. Checks, header stripping, the `push_rejected` 403s and the upstream forward are unchanged.
+- `apps/server/src/git/api.ts` (new): `createGitApi(deps: GitProxyDependencies & { logger: Logger }): EffectApiMount`. It is one `HttpRouter.add('*', '/git/*', …)` catch-all. The handler runs `HttpServerRequest.toWeb` (`Effect.orDie`), then `createGitProxy`, then `HttpServerResponse.fromWeb`, all inside `withErrorEnvelope(…, logger, requestIdOf(request))`. It is built with `HttpRouter.toWebHandler(…, { disableLogger: true })`. `routes: []`, with a comment pointing at `effect/edge.ts:95-104`.
+- `apps/server/src/git/routes.ts`: deleted (`git rm`).
+- `apps/server/src/git/proxy.test.ts`: no Hono. It builds `createGitApi({ …, logger: pino({ level: 'silent' }) })` and sends `api.handler(new Request(url, init))`. The 8 cases and their assertions are unchanged; fake `fetch` and token client are kept.
+- One addition beyond the spec: `gitRoutePath` throws if the prefix does not start with `/`, using a small `isRoutePath` type guard, because `HttpRouter` path types require a leading `/`.
+
+**Commands and results**
+- Before the change, `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/git`: 3 files, 22 tests passed.
+- After the change, the same command: 3 files, 22 tests passed. Same count.
+- `git grep -n "from 'hono'" -- apps/server/src`: no output, exit 1 (no match).
+- `pnpm exec prettier --write` on the 3 changed files: all unchanged.
+- `pnpm gate` (run from the worktree root, branch `task/T-0740-git-proxy-effect`):
+  - `gate: 5 changed file(s) against main`
+  - `PASS  install (frozen)`
+  - `PASS  format`
+  - `PASS  lint`
+  - `PASS  typecheck`
+  - `PASS  tests @zilar/server`
+  - `scope: every changed file is inside the Allowed files`
+  - `GATE PASS`
+
+**Problems and deviations**
+- None found. `app.ts` is not touched and the git proxy is still not mounted.
+- The 403 envelope now comes from `failureResponse`, so it also carries `requestId` (empty in these tests). The old Hono test handler rendered only `code` and `message`. The tests assert `code` only.
+
+**Open questions**
+- None.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Julio chose "convert". Worker: Haiku 5.5, in one round (about 2.5 min). The lead reviewed the diff directly.
+- **`proxy.ts`:** now a plain Web handler, with the same checks, header strip, errors and forward.
+- **`git/api.ts`:** an Effect `HttpRouter` catch-all through `withErrorEnvelope`, with `routes: []` because the proxy is not mounted.
+- **`git/routes.ts`:** deleted. `git grep "from 'hono'"` in `apps/server/src` prints nothing.
+- **Tests:** 22 before and 22 after, and the gate passed.
+- **Unrequested but harmless:** a guard that the path prefix starts with `/`.
+- **Next:** B1.9 (drop the `hono` dependency) is unblocked.
