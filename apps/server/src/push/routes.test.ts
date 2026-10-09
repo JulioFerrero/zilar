@@ -1,10 +1,12 @@
-import { sql } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
 import { createApp } from '../app';
 import {
   bootstrapUser,
   contactOf,
   createTestContext,
+  testSql,
   TEST_BASE_URL,
   type TestContext,
 } from '../test-support';
@@ -142,7 +144,12 @@ describe('push routes', () => {
     // Break the sync's own DB reads: without group_members the room listing
     // throws after the device row committed (subscribe) and after the delete
     // committed (delete). Both routes must still answer success.
-    await context.db.execute(sql`DROP TABLE group_members`);
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`DROP TABLE group_members`;
+      }),
+    );
 
     const subscribe = await app.request(`${TEST_BASE_URL}/api/push/subscriptions`, {
       method: 'POST',

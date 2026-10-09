@@ -1,7 +1,7 @@
 ---
 id: T-0702
 title: "tests off drizzle (push): replace every drizzle query in push/routes.test.ts, push/rooms.test.ts, push/service.test.ts with testSql(context) + effect/sql; drop the drizzle-orm and db/schema imports"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0702-push-tests-off-drizzle
 model: auto
@@ -52,4 +52,35 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**What I did**
+- `apps/server/src/push/routes.test.ts`: dropped the `drizzle-orm` import; the `DROP TABLE group_members` step now runs through `testSql(context)` with `effect/sql`.
+- `apps/server/src/push/rooms.test.ts`: dropped the `../db/schema` and `drizzle-orm` imports (including the dynamic `import('drizzle-orm')`). `topicRow` reads `SELECT * FROM topics WHERE room_localpart = ...` into `sql<TopicRow>`, the same pattern as `getTopic` in `apps/server/src/topics/access.ts:100`, because `syncTopicRoom` needs the full row. The seed inserts in `beforeEach` and the archive update became raw SQL. The archive update uses `now()` where drizzle used `new Date()`.
+- `apps/server/src/push/service.test.ts`: dropped the `../db/schema` import. All seed inserts (groups, group_members, topics, topic_members, chat_prefs) are raw SQL in `testSql(context)` blocks. The two `chat_prefs` mute rows take `muted_until` as the ISO literal `'2026-10-30T00:00:00Z'`, which is the same instant drizzle wrote. `updated_at` and `pinned_at` were left out, since they have SQL defaults or are NULL.
+- Checked the column names against `apps/server/src/db/schema.ts`. Among the five tables, only `$defaultFn` in the file is on `chatFolders`, so none of these inserts needed a JS-filled value.
+- Left alone: `context.db` passed to module functions (`saveDevice`, `devicesForUser`, `setShowPreviewsForUser`, `deviceByNode`, `createPushTestTables`, `syncTopicRoom`, `handleIncomingPush` deps).
+
+**Tests**
+- Before any change, `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/push/routes.test.ts src/push/rooms.test.ts src/push/service.test.ts`: 3 files passed, 34 tests passed.
+- After the change, same command: 3 files passed, 34 tests passed.
+- `rooms.test.ts` on its own after the first conversion: 5 passed (before the final constant clean-up, which only changed `${'...'}` to literal SQL).
+- Acceptance grep `git grep -n "drizzle-orm\|db/schema" -- <the three files>`: no output (exit 1).
+
+**`pnpm gate` (from /Users/julio/personal-projects/zilar-T-0702, run once)**
+```
+PASS  install (frozen)  (2.1s)
+PASS  format  (36.6s)
+PASS  lint  (1.4s)
+PASS  typecheck  (5.6s)
+PASS  tests @zilar/server  (26.9s)
+scope: every changed file is inside the Allowed files
+GATE PASS
+```
+Changed files: the three test files and this task file.
+
+**Problems / deviations**
+- None blocking. Nothing outside the Allowed files was touched.
+- Unsure: `now()` for the archive timestamp and the ISO literal for `muted_until` replace the JS `Date` values. They store the same kind of value, and the tests that read them pass, but a reviewer may prefer JS-side dates.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Haiku 5.5, in one round (about 5.2 min). The lead reviewed the diff directly. The push seeds (groups, members, topics, chat prefs) are raw inserts through `testSql` with explicit ids. `now()` and the ISO literal are fine for these timestamps. There are 34 tests before and after, and the gate passed.
