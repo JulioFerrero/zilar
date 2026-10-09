@@ -9,6 +9,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
+| [T-0747](T-0747-s3-storage-audit.md) | AUDIT: S3 storage plan (off-host backups + app files) | in-progress | haiku-5.5 | | Julio chose backups + plan 10-09 |
 
 ## Follow-ups
 
