@@ -110,7 +110,7 @@ describe('MessageSearchResults', () => {
     expect(screen.getByText('Messages')).toBeTruthy();
     fireEvent.click(hit.closest('button')!);
     await waitFor(() => expect(store.getState().activeChatId).toBe('c-ana'));
-    expect(screen.getByTestId('path').textContent).toBe('/c/c-ana');
+    await waitFor(() => expect(screen.getByTestId('path').textContent).toBe('/c/c-ana'));
   });
 
   it('opens the top hit on the search Enter event', async () => {

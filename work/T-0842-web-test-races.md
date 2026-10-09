@@ -1,7 +1,7 @@
 ---
 id: T-0842
 title: "CI red on main: two web tests race the Effect scheduler (MessageSearchResults path check, Composer voice flushStart); wait for the visible state instead of one tick"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0842-web-test-races
 model: auto
@@ -56,4 +56,36 @@ Plus the load runs above.
 
 ## Report (written by the worker when done)
 
+### Files changed
+`apps/web/src/components/MessageSearchResults.test.tsx`, `apps/web/src/components/Composer.voice.test.tsx`, this task file. No source changes.
+
+### Load runs (6 `yes` processes, 10 runs of the two files)
+- Before the fix: 10 of 10 passed. I could not reproduce the flake. I also tried 22 `yes` processes (2 per CPU, 11 CPUs): 10 of 10 passed.
+- After the fix: 10 of 10 passed (6 `yes`).
+- So the load run shows no regression but does not prove the fix. The change follows from reading the tests against the spec's verified facts.
+- `yes` processes killed after each run (`pgrep -x yes` shows 0).
+
+### Assertions changed
+- `MessageSearchResults.test.tsx`, "groups hits under the chat title and opens a hit on click": the `path` read is now `await waitFor(...)`. The navigation happens after the store change. The other tests in the file have no such pattern. The last test's `'/'` read after `findByRole('alert')` is a negative check that cannot wait, and I left it.
+- `Composer.voice.test.tsx` (added `waitFor` import):
+  - `getByText('Slide to cancel')` became `await findByText` (tests 1, 4, 7). I also added the same wait after `flushStart` in the three hold tests (too short, `stop()` rejects, reply set after mount). They now wait for the recorder to be running before the 500 ms hold, so the release cannot happen before `start()` is applied.
+  - `getByLabelText('Send voice message')` / `'Cancel voice message'` became `await findByLabelText` after `releaseMic`, after `flushStart` (click mode), and in the trash and Escape tests.
+  - The "message was added" `toHaveLength(before + 1)` checks became `await waitFor(...)` (tests 1, 4, 10, 11). In test 10 the `sent` array is read after the wait.
+  - Chat-switch test: the `cancelSpy` and `queryByText('Slide to cancel')` null checks became `waitFor`.
+  - Kept as they were: the "nothing sent" length checks (negative) and the checks after the sync `fireEvent.click(Cancel)` / Escape handlers.
+- Steps and expectations are unchanged.
+
+### Checks
+- vitest of the two files: 2 files, 18 tests passed.
+- `pnpm exec oxlint` on the two files: exit 0, no output. prettier applied.
+- I did not run `pnpm gate` or the full suite (lead's instruction).
+
+### Unsure
+Because I could not reproduce the failure, I cannot confirm that these waits fix the CI failures in the lead's wave check or on CI. The `Send voice message` failure on ee84523a is covered by the new `findByLabelText` calls.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Sonnet 5.5. The lead reviewed the Report.
+- **The change:** test only. The MessageSearchResults test waits for the `/c/c-ana` path, and the Composer voice tests wait with `findBy`/`waitFor` for each visible state instead of one tick.
+- **Reproduction:** the flake did not reproduce locally, even with 22 CPU-burning processes; both files pass 10 of 10 before and after.
+- **Verification:** main CI after the merge is the check. If MessageSearchResults still fails there, the cause is not timing, and the lead opens a follow-up.
