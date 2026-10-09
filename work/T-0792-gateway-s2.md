@@ -1,7 +1,7 @@
 ---
 id: T-0792
 title: "S2: AI gateway part 2 on Effect — gateway/sessions.ts, gateway/lifecycle.ts, gateway/listener.ts (retry/room timers as interruptible fibers, reconcile and pumps as Effects behind the same factory interfaces); gateway suite unchanged"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0792-gateway-s2
 model: auto
@@ -57,4 +57,23 @@ Wave mode (`docs/EFFECT_BRIEF.md`): no whole suite and no `pnpm gate`, because t
 
 ## Report (written by the worker when done)
 
+- **effect:map kinds:** `sessions.ts`, `lifecycle.ts`, `listener.ts` and `contracts.ts` are all `effect`. None has `setTimeout`, `setInterval`, `clearTimeout`, `async`, `await`, `.then(` or `try`/`catch` left.
+- **What changed:**
+  - `contracts.ts`: `AiSession.retryTimer` and `RoomListenerState.timer` are now `Fiber.Fiber<void> | undefined`. Two small helpers were added: `cancelTimer` (`interruptUnsafe`, like `clearTimeout`) and `attempt` (`Effect.tryPromise` that keeps the thrown value as the error).
+  - `sessions.ts`: the retry timer is a forked `sleep` fiber, cancelled in `scheduleRetry` and `disconnectAi`. `connectAi`, `disconnectAi`, `syncAiRooms` and `leaveRoomQuietly` are Effects, exported as Promise functions through `Effect.runPromise`; the factory return shape is unchanged. The `getToken` callback given to the core is also `Effect.runPromise`. `handleReplaced` forks the disconnect.
+  - `lifecycle.ts`: `reconcile`, `start` and `stop` are Effects behind Promise wrappers. The reconcile `setInterval` is a forked `sleep` + `Effect.forever` fiber, interrupted in `stop`. The three event handlers' `void load().then().catch(log)` became `Effect.runFork`; the group and topic handlers now share one local helper (`syncRoomsOnEvent`) with the same logic.
+  - `listener.ts`: the debounce is a forked `sleep` fiber, cancelled by `clearListenerTimer`. `fireRoomListener` is a fork of an Effect; `wakeListenerAis` had no `await`, so it is a plain sync function; the room pump is `Effect.runFork` with the same warn text.
+- **Tests:** `pnpm --filter @zilar/server test --maxWorkers=4 --reporter=dot src/agents`:
+  - Before: 430 passed, 1 failed, 1 skipped (I do not know which test: the run was in progress while I started editing and I kept only the tail of the output).
+  - After: 431 passed, 1 skipped, 0 failed, three runs out of three.
+  - `pnpm --filter @zilar/server exec tsc --noEmit -p .`: clean. Prettier was run on the four files. No test file was changed. I did not run `pnpm gate` or lint (wave mode).
+- **Behaviour differences:**
+  - A synchronous throw from `session.core.connect()` inside the retry timer used to be an uncaught exception; it is now treated as a failed reconnect (logged and retried). `connect` is async, so this cannot happen in practice.
+  - The interval is now `sleep` then tick in a loop, so its period is the interval plus a negligible drift (the tick only forks); `setInterval` had a fixed rate.
+  - Otherwise none: the same log texts, fields and order of side effects. Errors still reach Promise callers as the same instances (checked with a small script).
+- **Unsure:** the one failure in the baseline run. It did not come back in 3 runs on the new code.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead (wave 1):** approved. The lead reviewed the Report. The wave 1 combined check (all 12 branches on one tree, by hand) passed the whole-repo typecheck and every package suite: web 1916, server 2279, mobile 2222, xmpp-core 245, runner 63, runner-tunnel 71, devtools 796 after the T-0799 fix, chat-core 174, protocol 174.
+- Worker: Sonnet 5.5. sessions, lifecycle, listener and contracts are Effect files; timers are fibers; 431 agents tests pass 3 of 3 runs. Accepted: a sync throw in the retry connect now counts as a failed reconnect, and the reconcile loop is sleep-then-tick.

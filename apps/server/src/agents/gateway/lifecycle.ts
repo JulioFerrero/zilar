@@ -1,6 +1,9 @@
+import { Effect, type Fiber } from 'effect';
 import { listActiveAisForGateway, onAiLifecycle, type ActiveAiForGateway } from '../../ais/service';
 import { onGroupAi, onTopicAi } from '../../groups/events';
 import {
+  attempt,
+  cancelTimer,
   toRedactedError,
   type AgentGatewayConfig,
   type AgentGatewayDeps,
@@ -44,54 +47,82 @@ export function createGatewayLifecycle(ctx: GatewayLifecycleContext) {
   } = ctx;
 
   let started = false;
-  let timer: ReturnType<typeof setTimeout> | undefined;
+  // The periodic reconcile: a fiber that sleeps and ticks, forever.
+  let timer: Fiber.Fiber<void> | undefined;
   let unsubscribes: Array<() => void> = [];
 
   function isStarted(): boolean {
     return started;
   }
 
-  async function reconcile(): Promise<void> {
-    let active: ActiveAiForGateway[];
-    try {
-      active = await listActiveAisForGateway(deps.db);
-    } catch (error) {
-      logger.warn({ err: toRedactedError(error, secretsFor()) }, 'AI reconcile failed');
+  const reconcileEffect = Effect.fnUntraced(function* (): Effect.fn.Return<void> {
+    const active = yield* attempt(() => listActiveAisForGateway(deps.db)).pipe(
+      Effect.catch((error: unknown) =>
+        Effect.sync(() => {
+          logger.warn({ err: toRedactedError(error, secretsFor()) }, 'AI reconcile failed');
+          return null;
+        }),
+      ),
+    );
+    if (active === null) {
       return;
     }
     const wanted = new Set(active.map((ai) => ai.id));
     for (const ai of active) {
-      try {
+      yield* Effect.suspend(() => {
         const existing = sessions.get(ai.id);
-        if (existing === undefined) {
-          await connectAi(ai);
-        } else {
-          // Rooms drift without a reconnect: a missed group event, a failed
-          // join, or a stale nick is picked up here at the latest.
-          await syncAiRooms(existing, ai.name);
-        }
-      } catch (error) {
-        logger.warn(
-          { err: toRedactedError(error, secretsFor()), aiId: ai.id },
-          'AI reconcile connect failed',
-        );
-      }
+        // Rooms drift without a reconnect: a missed group event, a failed
+        // join, or a stale nick is picked up here at the latest.
+        return existing === undefined
+          ? attempt(() => connectAi(ai))
+          : attempt(() => syncAiRooms(existing, ai.name));
+      }).pipe(
+        Effect.catch((error: unknown) =>
+          Effect.sync(() => {
+            logger.warn(
+              { err: toRedactedError(error, secretsFor()), aiId: ai.id },
+              'AI reconcile connect failed',
+            );
+          }),
+        ),
+      );
     }
     for (const aiId of sessions.keys()) {
       if (!wanted.has(aiId)) {
-        try {
-          await disconnectAi(aiId);
-        } catch (error) {
-          logger.warn(
-            { err: toRedactedError(error, secretsFor()), aiId },
-            'AI reconcile disconnect failed',
-          );
-        }
+        yield* attempt(() => disconnectAi(aiId)).pipe(
+          Effect.catch((error: unknown) =>
+            Effect.sync(() => {
+              logger.warn(
+                { err: toRedactedError(error, secretsFor()), aiId },
+                'AI reconcile disconnect failed',
+              );
+            }),
+          ),
+        );
       }
     }
+  });
+
+  // Loads the active AI row and runs `next` on it when there is one. Fire and
+  // forget: a failure is logged with `failureMessage` (the AI id only).
+  function withActiveAi(
+    aiId: string,
+    next: (record: ActiveAiForGateway) => Effect.Effect<void, unknown>,
+    failureMessage: string,
+  ): void {
+    Effect.runFork(
+      attempt(() => loadActiveAi(deps.db, aiId)).pipe(
+        Effect.flatMap((record) => (record === null ? Effect.void : next(record))),
+        Effect.catch((error: unknown) =>
+          Effect.sync(() => {
+            logger.warn({ err: toRedactedError(error, secretsFor()), aiId }, failureMessage);
+          }),
+        ),
+      ),
+    );
   }
 
-  async function start(): Promise<void> {
+  const startEffect = Effect.fnUntraced(function* (): Effect.fn.Return<void> {
     if (started) {
       return;
     }
@@ -105,7 +136,7 @@ export function createGatewayLifecycle(ctx: GatewayLifecycleContext) {
     }
     started = true;
     superseded.clear();
-    await reconcile();
+    yield* reconcileEffect();
     unsubscribes.push(
       onAiLifecycle((event) => {
         if (!started) {
@@ -115,20 +146,13 @@ export function createGatewayLifecycle(ctx: GatewayLifecycleContext) {
           // `loadActiveAi` is the same `WHERE status = 'active'` filter the
           // periodic reconcile uses (T-0080): a `stopped` or `disabled` row
           // never wakes the gateway back up, even on the notifier path.
-          void loadActiveAi(deps.db, event.aiId)
-            .then((record) => {
-              if (record !== null) {
-                return connectAi(record);
-              }
-            })
-            .catch((error: unknown) => {
-              logger.warn(
-                { err: toRedactedError(error, secretsFor()), aiId: event.aiId },
-                event.type === 'created'
-                  ? 'AI post-create connect failed'
-                  : 'AI post-resume connect failed',
-              );
-            });
+          withActiveAi(
+            event.aiId,
+            (record) => attempt(() => connectAi(record)),
+            event.type === 'created'
+              ? 'AI post-create connect failed'
+              : 'AI post-resume connect failed',
+          );
         } else {
           // `stopped` and `deleted` both go through `disconnectAi`: the
           // session is removed from the map, `session.stopped` is set so
@@ -136,14 +160,20 @@ export function createGatewayLifecycle(ctx: GatewayLifecycleContext) {
           // session. For `stopped` the periodic safety net never reconnects
           // (the row is no longer in `listActiveAisForGateway`); a delete
           // tears the row down on its own.
-          void disconnectAi(event.aiId).catch((error: unknown) => {
-            logger.warn(
-              { err: toRedactedError(error, secretsFor()), aiId: event.aiId },
-              event.type === 'stopped'
-                ? 'AI post-stop disconnect failed'
-                : 'AI post-delete disconnect failed',
-            );
-          });
+          Effect.runFork(
+            attempt(() => disconnectAi(event.aiId)).pipe(
+              Effect.catch((error: unknown) =>
+                Effect.sync(() => {
+                  logger.warn(
+                    { err: toRedactedError(error, secretsFor()), aiId: event.aiId },
+                    event.type === 'stopped'
+                      ? 'AI post-stop disconnect failed'
+                      : 'AI post-delete disconnect failed',
+                  );
+                }),
+              ),
+            ),
+          );
         }
       }),
       onGroupAi((event) => {
@@ -157,18 +187,7 @@ export function createGatewayLifecycle(ctx: GatewayLifecycleContext) {
         if (session === undefined) {
           return;
         }
-        void loadActiveAi(deps.db, event.aiId)
-          .then((record) => {
-            if (record !== null && sessions.get(event.aiId) === session) {
-              return syncAiRooms(session, record.name);
-            }
-          })
-          .catch((error: unknown) => {
-            logger.warn(
-              { err: toRedactedError(error, secretsFor()), aiId: event.aiId },
-              'AI room sync failed',
-            );
-          });
+        syncRoomsOnEvent(event.aiId, session);
       }),
       // T-0109: the sibling event for per-topic AI membership. A newly added
       // or removed membership shows up without waiting for the next full
@@ -181,51 +200,56 @@ export function createGatewayLifecycle(ctx: GatewayLifecycleContext) {
         if (session === undefined) {
           return;
         }
-        void loadActiveAi(deps.db, event.aiId)
-          .then((record) => {
-            if (record !== null && sessions.get(event.aiId) === session) {
-              return syncAiRooms(session, record.name);
-            }
-          })
-          .catch((error: unknown) => {
-            logger.warn(
-              { err: toRedactedError(error, secretsFor()), aiId: event.aiId },
-              'AI room sync failed',
-            );
-          });
+        syncRoomsOnEvent(event.aiId, session);
       }),
     );
-    timer = setInterval(() => {
-      if (started) {
-        void reconcile();
-      }
-    }, reconcileIntervalMs);
+    timer = Effect.runFork(
+      Effect.sleep(reconcileIntervalMs).pipe(
+        Effect.andThen(
+          Effect.sync(() => {
+            if (started) {
+              Effect.runFork(reconcileEffect());
+            }
+          }),
+        ),
+        Effect.forever,
+      ),
+    );
+  });
+
+  // A join or leave for a live session: re-reads the AI and syncs its rooms
+  // while the same session is still the one in the map.
+  function syncRoomsOnEvent(aiId: string, session: AiSession): void {
+    withActiveAi(
+      aiId,
+      (record) =>
+        sessions.get(aiId) === session
+          ? attempt(() => syncAiRooms(session, record.name))
+          : Effect.void,
+      'AI room sync failed',
+    );
   }
 
-  async function stop(): Promise<void> {
+  const stopEffect = Effect.fnUntraced(function* (): Effect.fn.Return<void> {
     started = false;
     superseded.clear();
-    if (timer !== undefined) {
-      clearInterval(timer);
-      timer = undefined;
-    }
-    for (const unsub of unsubscribes) {
-      try {
-        unsub();
-      } catch {
-        // Unsubscribing is best-effort during shutdown.
-      }
-    }
+    cancelTimer(timer);
+    timer = undefined;
+    // Unsubscribing is best-effort during shutdown.
+    yield* Effect.forEach(unsubscribes, (unsub) =>
+      Effect.try({ try: unsub, catch: (error) => error }).pipe(Effect.ignore),
+    );
     unsubscribes = [];
     for (const aiId of sessions.keys()) {
-      try {
-        await disconnectAi(aiId);
-      } catch {
-        // Shutdown disconnects everyone; one failure stops nothing else.
-      }
+      // Shutdown disconnects everyone; one failure stops nothing else.
+      yield* attempt(() => disconnectAi(aiId)).pipe(Effect.ignore);
     }
     clearAllListeners();
-  }
+  });
+
+  const start = (): Promise<void> => Effect.runPromise(startEffect());
+  const stop = (): Promise<void> => Effect.runPromise(stopEffect());
+  const reconcile = (): Promise<void> => Effect.runPromise(reconcileEffect());
 
   return { start, stop, reconcile, isStarted };
 }
