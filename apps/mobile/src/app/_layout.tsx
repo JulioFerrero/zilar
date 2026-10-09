@@ -12,6 +12,7 @@ import { StatusBar } from 'expo-status-bar';
 import { colorScheme } from 'nativewind';
 import { useEffect } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { Effect } from 'effect';
 
 import { useAuthStore } from '@/auth/session';
 import { mobileRuntime } from '@/lib/effect/runtime';
@@ -20,9 +21,13 @@ import { ChatStoreProvider } from '@/store/chat-store-provider';
 
 export { ErrorBoundary } from 'expo-router';
 
+// The splash calls are best effort: a failed call is ignored.
+const bestEffort = (call: () => Promise<unknown>): Effect.Effect<void> =>
+  Effect.tryPromise({ try: call, catch: (cause) => cause }).pipe(Effect.ignore);
+
 // D24 is dark only: keep the splash up until Geist is loaded, then force dark
 // whatever the system setting is.
-void SplashScreen.preventAutoHideAsync().catch(() => {});
+Effect.runFork(bestEffort(() => SplashScreen.preventAutoHideAsync()));
 
 // Keeps the Effect runtime (and FetchHttpClient) in the bundle so the Hermes
 // export checks it; the mobile Effect tasks build on it (T-0800, decision D6).
@@ -33,7 +38,7 @@ function SessionBootstrap() {
   const bootstrap = useAuthStore((state) => state.bootstrap);
 
   useEffect(() => {
-    void bootstrap();
+    Effect.runFork(Effect.promise(() => bootstrap()));
   }, [bootstrap]);
 
   return null;
@@ -55,7 +60,7 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (fontsReady) {
-      void SplashScreen.hideAsync().catch(() => {});
+      Effect.runFork(bestEffort(() => SplashScreen.hideAsync()));
     }
   }, [fontsReady]);
 

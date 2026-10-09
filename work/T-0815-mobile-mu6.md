@@ -1,7 +1,7 @@
 ---
 id: T-0815
 title: "MU6: mobile tabs: index, ais, profile, settings, _layout + app/_layout on Effect"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0815-mobile-mu6
 model: auto
@@ -59,4 +59,40 @@ Run `pnpm exec prettier --write` on your changed files before committing. Do not
 
 ## Report (written by the worker when done)
 
+**effect:map kinds (after the conversion, from `pnpm effect:map`):**
+- `apps/mobile/src/app/_layout.tsx`: effect (signals: none)
+- `apps/mobile/src/app/(tabs)/_layout.tsx`: effect
+- `apps/mobile/src/app/(tabs)/ais.tsx`: effect
+- `apps/mobile/src/app/(tabs)/index.tsx`: effect (keeps one `process.env` read, W7, see below)
+- `apps/mobile/src/app/(tabs)/profile.tsx`: effect
+- `apps/mobile/src/app/(tabs)/settings.tsx`: effect
+
+**Tests:** before: 0 tests for these six screens. Commit "T-0815: tests before" adds 6 files in `apps/mobile/src/components/screens/` with 55 tests (layout 6, tabs-layout 4, ais 13, index 10, profile 15, settings 7). They pass on the old code and on the converted code (run 3 times, 55/55 each time). No existing test changed.
+
+**Commits:** "T-0815: tests before" (first commit, tests only) and the conversion commit.
+
+**Typecheck:** `apps/mobile`: `tsc --noEmit` exit 0.
+
+**Behaviour differences:**
+- index: a second mute/pin/archive tap on the same chat while its save is waiting is dropped. Each chat has its own guard (one action per row), so a change on another chat is sent at once. Before, each tap sent its own request.
+- ais: stop/resume and delete have a guard per AI id and action: a second tap on the same AI's action is dropped, another AI's action is sent. The AI calls are not mapped to `ApiFailure`, because `describeAisError` and the 409 check read `AisApiError` (raw errors pass through).
+- Fix round 1 (lead review): the guards were screen-wide `useAction`; now keyed (see above). Closing the Chats sheet is still blocked while its change saves (as before), so a second chat is reached in the app only after that save ends; the test opens the second chat's row directly. The success handlers close a sheet only if it still shows that chat or AI. Known edge: a failure message of a save shows in whichever sheet is open at that moment.
+- profile: the photo picker, save and remove share one run at a time, as the old `photoRef` did. A synchronous throw from `createPicturePicker()` now shows the fixed pick message instead of throwing out of the tap.
+- root layout: `bootstrap()` used to be a bare `void` (an unhandled rejection if it failed). Now it runs as `Effect.promise` under `runFork`, so a failure is a defect in an unobserved fiber. The splash calls keep their silent `.catch`.
+- profile: copying the username used to leave a rejected Promise unhandled. Now it runs under `runFork`; a failure is silent. Same text copied.
+- focus loads (tabs layout, settings) are interrupted when the screen loses focus, as the old `active` flag did. The AIs and profile reloads are not interrupted, as before.
+- none else.
+
+**Not converted:**
+- `index.tsx` line 86 still reads `process.env.NODE_ENV` and `EXPO_PUBLIC_ZILAR_MOCK` (W7). `apps/mobile/src/mock/gate.ts` has no helper for "use the mock search API", so I left the read.
+
+**Unsure:**
+- `Effect.runPromise` in the avatar uploader: I checked in `effect/dist/internal/effect.js` that a typed failure rejects with the raw error, and the test "rejects an upload that has no session" confirms `ProfileApiError`.
+- Focus-driven loads use `Effect.runFork` with a `useState` setter, not `useQuery`: a `useQuery` would fetch twice on mount with `useFocusEffect` and would show stale rows during a reload.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved (wave 2). Worker: Haiku 5.5. The lead reviewed the Report.
+- **Combined check:** all 25 wave 2 branches together pass lint, typecheck and the full mobile suite (`lead batch check`, report 20261009T172300Z). The remaining failures were server and web tests that pass on main, caused by load.
+- **This task:** 55 tests written first, 59 after fix round 1: the mute/pin/archive and AI stop/delete guards are per row, so a second chat is not dropped while the first saves.
+- **Phone:** the wave branch is smoked on the emulator after the merge.

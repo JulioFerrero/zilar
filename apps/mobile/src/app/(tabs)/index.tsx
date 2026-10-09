@@ -1,7 +1,8 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Effect } from 'effect';
 import { Archive, Search, X } from 'lucide-react-native';
 import { useColorScheme } from 'nativewind';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -39,6 +40,17 @@ export default function ChatsScreen() {
       <ChatsList />
     </RequireAuth>
   );
+}
+
+// Returns a copy of `keys` with `key` added (on) or removed (off).
+function withKey(keys: ReadonlySet<string>, key: string, on: boolean): ReadonlySet<string> {
+  const next = new Set(keys);
+  if (on) {
+    next.add(key);
+  } else {
+    next.delete(key);
+  }
+  return next;
 }
 
 function ChatsList() {
@@ -96,8 +108,12 @@ function ChatsList() {
   const [actionFor, setActionFor] = useState<string | null>(null);
   const [actionMuteOpen, setActionMuteOpen] = useState(false);
   const setChatPref = useChatStore((state) => state.setChatPref);
-  const [actionBusy, setActionBusy] = useState(false);
   const [actionError, setActionError] = useState('');
+  // One change per chat at a time (one action per row): a second tap on the
+  // same chat while its change saves is dropped; other chats are not blocked.
+  // The ref is read only in handlers; the state drives the busy display.
+  const prefInFlight = useRef(new Set<string>());
+  const [prefBusy, setPrefBusy] = useState<ReadonlySet<string>>(() => new Set());
   // Clear the pull-to-refresh spinner as soon as the reload settles, however it
   // ends. Adjusted during render (as ChatList does on web), not in an effect.
   const [lastChatsLoad, setLastChatsLoad] = useState(chatsLoad);
@@ -167,16 +183,42 @@ function ChatsList() {
     return chat === undefined ? undefined : { chat, groupId: undefined, groupTitle: undefined };
   }, [actionFor, chats]);
 
-  const runChatPref = (chatId: string, input: Parameters<typeof setChatPref>[1]) => {
-    setActionBusy(true);
+  const actionChatId = actionContext?.chat?.id;
+  const actionBusy = actionChatId !== undefined && prefBusy.has(actionChatId);
+
+  // A chat change that saves closes its sheet; a failure keeps it open with
+  // the message.
+  const saveChatPref = (chatId: string, input: Parameters<typeof setChatPref>[1]) => {
+    if (prefInFlight.current.has(chatId)) {
+      return;
+    }
+    prefInFlight.current.add(chatId);
+    setPrefBusy((busy) => withKey(busy, chatId, true));
     setActionError('');
-    void setChatPref(chatId, input)
-      .then(() => {
-        setActionFor(null);
-        setActionMuteOpen(false);
-      })
-      .catch(() => setActionError('Could not save. Try again.'))
-      .finally(() => setActionBusy(false));
+    Effect.runFork(
+      Effect.tryPromise({
+        try: () => setChatPref(chatId, input),
+        catch: (cause) => cause,
+      }).pipe(
+        Effect.tap(() =>
+          Effect.sync(() => {
+            setActionFor((current) => (current === chatId ? null : current));
+            setActionMuteOpen(false);
+          }),
+        ),
+        Effect.catch(() =>
+          Effect.sync(() => {
+            setActionError('Could not save. Try again.');
+          }),
+        ),
+        Effect.ensuring(
+          Effect.sync(() => {
+            prefInFlight.current.delete(chatId);
+            setPrefBusy((busy) => withKey(busy, chatId, false));
+          }),
+        ),
+      ),
+    );
   };
 
   const closeActions = () => {
@@ -463,26 +505,26 @@ function ChatsList() {
         onMute={(duration) =>
           actionContext?.chat === undefined
             ? undefined
-            : runChatPref(actionContext.chat.id, {
+            : saveChatPref(actionContext.chat.id, {
                 mutedUntil: mutedUntilFor(duration, new Date()),
               })
         }
         onUnmute={() =>
           actionContext?.chat === undefined
             ? undefined
-            : runChatPref(actionContext.chat.id, { mutedUntil: null })
+            : saveChatPref(actionContext.chat.id, { mutedUntil: null })
         }
         onTogglePin={() =>
           actionContext?.chat === undefined
             ? undefined
-            : runChatPref(actionContext.chat.id, {
+            : saveChatPref(actionContext.chat.id, {
                 pinned: actionContext.chat.pinnedAt === undefined,
               })
         }
         onToggleArchive={() =>
           actionContext?.chat === undefined
             ? undefined
-            : runChatPref(actionContext.chat.id, {
+            : saveChatPref(actionContext.chat.id, {
                 archived: actionContext.chat.archived !== true,
               })
         }
