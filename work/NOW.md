@@ -2,6 +2,18 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-09 ~08:20 UTC:**
+- **Merged:**
+  - T-0739: `@electric-sql/pglite` is now a production dependency, and CI smoke-starts the server image;
+  - T-0740: the git proxy is on Effect;
+  - T-0742: the `hono` dependency is removed, so **Hono is gone from Zilar**;
+  - T-0743: hotfix 2. Startup read mail settings before `registerSqlRuntime`, which crashed when `MAIL_TRANSPORT` is unset, as on live. The CI smoke now starts against a real Postgres and requires "zilar-server listening".
+- **Upgrade rehearsal (lead, local, tip `2dae6b1f`):** a throwaway `postgres:17` was migrated by the live image `sha-eeaddee30d85` (41 drizzle rows, listening), then the tip image started on the same DB. It applied 46 migrations, logged "listening", and returned health `db: ok` and `/api/me` 401.
+- **Found in the rehearsal:**
+  - T-0744 (running): `deploy/coolify/docker-compose.yml` lacks `BACKGROUND_STORAGE_DIR`, so chat backgrounds would sit on the container layer;
+  - **the live Coolify compose needs the same line (Julio's OK);** until then, uploaded backgrounds are lost on each redeploy.
+- **Deploy plan:** after T-0744 merges, wait for green CI and the images run (with the new smoke step), then delete `IMAGE_TAG` and restart with `pull_latest`. Then check that the hostname changed, that `/health` shows the new commit, and that `/api/me` returns 401.
+
 **2026-10-09 ~07:55 UTC, after Julio's answers:**
 - **Deploy incident:**
   - At 07:35 UTC the lead restarted the live service on `latest` (`34b73d1c`). The server crash-looped with `ERR_MODULE_NOT_FOUND @electric-sql/pglite`: a devDependency imported by `effect/sql.ts` since T-0496, so no server image since 10-08 can start.
