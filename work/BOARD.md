@@ -14,6 +14,9 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0791](T-0791-gateway-s1.md) | S1: AI gateway part 1 on Effect | in-progress | sonnet-5.5 | | effect-100-plan Phase 2 |
 | [T-0794](T-0794-web-lib-ports.md) | WU3: web lib ports (attachments, voice, push) on Effect | in-progress | sonnet-5.5 | | effect-100-plan Phase 3; Julio checks voice and push live before deploy |
 | [T-0795](T-0795-web-auth.md) | WU4: web auth on Effect | in-progress | sonnet-5.5 | | effect-100-plan Phase 3; Julio signs in live before deploy |
+| [T-0796](T-0796-sandbox-tool-worker.md) | S5b: sandbox tool worker on Effect | in-progress | sonnet-5.5 | | effect-100-plan Phase 2 |
+| [T-0797](T-0797-push-sender-component.md) | S6: push component and sender on Effect | in-progress | haiku-5.5 | | effect-100-plan Phase 2; Julio checks a push live before deploy |
+| [T-0798](T-0798-runner-tunnel-mux.md) | H1: runner-tunnel mux on Effect | in-progress | sonnet-5.5 | | effect-100-plan Phase 2; Julio checks an AI desk live before deploy |
 
 ## Follow-ups
 
