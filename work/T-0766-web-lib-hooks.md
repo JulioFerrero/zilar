@@ -1,7 +1,7 @@
 ---
 id: T-0766
 title: "WU1: web lib hooks on Effect — useDelayed, useMessageSearch, usePeopleSearch, useContactRequestCount, usePendingApprovalCount, useApprovalPolling, useChatFolders, useIsServerOwner, useVoiceTranscription (timers, polling and loads via useQuery / Effect.sleep / Schedule); same hook signatures"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0766-web-lib-hooks
 model: auto
@@ -70,4 +70,36 @@ Run `pnpm effect:map` and list in the Report the kind of each of the nine files.
 
 ## Report (written by the worker when done)
 
+All nine hooks now run their async work as Effects, with the same exported names, parameters and return shapes. Four new test files cover the four hooks that had none.
+
+**Files changed (inside Allowed):** the nine hooks under `apps/web/src/lib/`; new tests `useMessageSearch.test.ts`, `usePeopleSearch.test.ts`, `useContactRequestCount.test.ts`, `useChatFolders.test.ts`; this task file. No existing test was edited.
+
+**How each one runs (no `async`, `await`, `.then`, `try`, timers of its own):**
+- `useDelayed`: `useQuery` on `Effect.sleep(delayMs)`; a changed value interrupts the old sleep.
+- `usePendingApprovalCount`, `useChatFolders`, `useContactRequestCount`, `useApprovalPolling`, `useMessageSearch`, `usePeopleSearch`: `useAction` as the runner. The Effect calls `fromApi(...)` and writes state with `Effect.sync(setState)`. Polls use `Effect.repeat(..., Schedule.fixed(...))`. Debounces use `Effect.sleep`. Unmount or a dependency change interrupts them. Visibility and focus reads are separate runs, so they never restart the loop.
+- `useIsServerOwner`, `useVoiceTranscriptionEnabled`: `useQuery` once per mount, or an immediate success when the module cache is set. The cache is written inside the Effect.
+
+**Test counts (`pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot <files>`):**
+- Hook tests, before: 20 passed (5 files). After: 39 passed (9 files): the 20 old ones unchanged, plus 19 new.
+- Caller tests (ChatList, Skeleton, AiActivity, ApprovalCard, MessageSearch, PeopleSearchResult, VoiceMessage, ChatShell, FoldersPage, InstallMenu, TelegramImportDialog, StickersPage), before: 147 passed (12 files). After: 147 passed (12 files).
+
+**`pnpm effect:map`** (838 files, run on this tree): all nine are `kind: effect`, with no H1, H3 or W4 signals.
+
+**`pnpm gate`** from the worktree root: exit 0, `GATE PASS`. Summary lines: `PASS install (frozen)`, `PASS format`, `PASS lint`, `PASS typecheck`, `PASS tests @zilar/web`, `scope: every changed file is inside the Allowed files`. The gate reported 14 changed files, all inside Allowed.
+
+**Deviations from the spec, and why:**
+1. `useApprovalPolling`: `TimerSource` and the `timers` option stay exported and typed. The unchanged test imports the type and passes `timers`, and that test file is not in Allowed. The option is now ignored, and the `window.setInterval` default is gone. The type declaration still names `setInterval`/`setTimeout` as property names.
+2. `useIsServerOwner` and `useVoiceTranscriptionEnabled`: unmounting before the answer arrives interrupts the request, so the module cache is not filled. The next mount asks again. The old code cached the answer anyway.
+3. `useMessageSearch`: unchanged in behaviour. A query change waits 250 ms, a chat-only change searches at once, and `unavailable` stays until the server says otherwise. The superseded request is aborted by interruption, which replaces the `AbortError` check.
+4. `usePeopleSearch`: the debounce and the lookup are two runners. A lookup still in flight keeps its result while the next debounce waits, as before.
+5. `usePendingApprovalCount` and `useContactRequestCount` keep their last count when `enabled` goes false, as before. `useQuery` would have reset it, which is why they use `useAction` plus `useState`.
+
+**Unsure:** whether using `useAction` as a runner (with `Effect.sync(setState)`) for loops and debounces is the intended use, or whether a later pass should move these to a shared atom. Behaviour is covered by the tests above, but no real-chat check was done.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Haiku 5.5. The lead reviewed the code directly.
+- **The hooks:** all nine are Effect files. Debounces and searches use `useAction` in `replace` mode, so a new input interrupts the old run and aborts its request. Polls are `Effect.repeat` on `Schedule.fixed`, interrupted on unmount.
+- **The intervals and delays** are unchanged.
+- **The `TimerSource` type is still exported** (ignored) for the unchanged test.
+- **Tests:** the hooks go from 20 to 39, the callers stay at 147, and the gate passed.

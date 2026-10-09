@@ -1,5 +1,8 @@
-import { useEffect, useState } from 'react';
+import { Effect } from 'effect';
+import { AsyncResult } from 'effect/reactivity';
 import { getVoiceTranscriptionStatus } from '@/lib/api';
+import { fromApi } from '@/lib/effect/api-effect';
+import { useQuery } from '@/lib/effect/use-query';
 
 /**
  * Whether voice transcription is enabled on this server (T-0170).
@@ -11,39 +14,26 @@ import { getVoiceTranscriptionStatus } from '@/lib/api';
 let cached: boolean | undefined;
 
 export function useVoiceTranscriptionEnabled(): boolean {
-  const [enabled, setEnabled] = useState(cached ?? false);
-
-  // The effect only synchronizes with the status endpoint (the lint rule
-  // flags synchronous setState inside effects); the fetch promise resolves
-  // the next state, applied once.
-  useEffect(() => {
-    if (cached !== undefined) {
-      return;
-    }
-    let active = true;
-    void enabledFromServer().then((next) => {
-      cached = next;
-      if (active) {
-        setEnabled(next);
-      }
-    });
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  return enabled;
+  // The query runs once per mount, or not at all when the answer is cached.
+  const [enabled] = useQuery(
+    (): Effect.Effect<boolean> =>
+      cached === undefined ? enabledFromServer() : Effect.succeed(cached),
+    [],
+  );
+  return AsyncResult.getOrElse(enabled, () => false);
 }
 
-async function enabledFromServer(): Promise<boolean> {
-  try {
-    const { enabled } = await getVoiceTranscriptionStatus();
-    return enabled;
-  } catch {
+const enabledFromServer = (): Effect.Effect<boolean> =>
+  fromApi(() => getVoiceTranscriptionStatus()).pipe(
+    Effect.map((status) => status.enabled),
     // Any failure reads as disabled: the control simply stays hidden.
-    return false;
-  }
-}
+    Effect.catchTag('ApiFailure', () => Effect.succeed(false)),
+    Effect.tap((next) =>
+      Effect.sync(() => {
+        cached = next;
+      }),
+    ),
+  );
 
 /** Forgets the cached answer (tests only). */
 export function resetVoiceTranscriptionCache(): void {

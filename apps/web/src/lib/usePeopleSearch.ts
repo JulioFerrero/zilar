@@ -1,5 +1,8 @@
+import { Effect } from 'effect';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ApiError, lookupByHandle, type HandleProfile } from '@/lib/api';
+import { lookupByHandle, type HandleProfile } from '@/lib/api';
+import { fromApi } from '@/lib/effect/api-effect';
+import { useAction } from '@/lib/effect/use-action';
 import { isValidHandleShape } from '@/lib/handles';
 
 /** 900 ms of no typing before the lookup fires (the lookup is rate limited). */
@@ -13,6 +16,12 @@ export type PeopleSearchState =
   | { status: 'missing'; handle: string }
   | { status: 'rate_limited' }
   | { status: 'error'; handle: string };
+
+/** One step of the debounce: wait `delayMs`, then run `run` (a state write or a lookup). */
+interface DebouncedStep {
+  readonly delayMs: number;
+  readonly run: () => void;
+}
 
 function handleOf(query: string): string | null {
   const trimmed = query.trim();
@@ -29,7 +38,7 @@ function handleOf(query: string): string | null {
  * in a row is never looked up twice); a 429 reports rate-limited once and
  * does not retry, but a different handle is always attempted; Enter (the
  * `zilar:search-enter` event) looks up at once. Only the latest lookup
- * writes state (a request id drops stale responses).
+ * writes state: a newer lookup interrupts the one in flight.
  */
 export function usePeopleSearch(query: string): {
   state: PeopleSearchState;
@@ -40,68 +49,78 @@ export function usePeopleSearch(query: string): {
   // Handles cached on success (404 counts as settled too: it stays until
   // the text changes). A generic error clears the entry so Enter retries.
   const cachedRef = useRef<string | null>(null);
-  const requestRef = useRef(0);
 
-  const startLookup = useCallback((handle: string) => {
-    if (cachedRef.current === handle) {
-      return;
-    }
-    const id = requestRef.current + 1;
-    requestRef.current = id;
-    setState({ status: 'loading', handle });
-    void lookupByHandle(handle).then(
-      (profile) => {
-        if (requestRef.current !== id) {
-          return;
-        }
-        cachedRef.current = handle;
-        setState({ status: 'found', handle, profile });
-      },
-      (error: unknown) => {
-        if (requestRef.current !== id) {
-          return;
-        }
-        if (error instanceof ApiError && error.status === 404) {
-          cachedRef.current = handle;
-          setState({ status: 'missing', handle });
-          return;
-        }
-        if (error instanceof ApiError && error.code === 'rate_limited') {
-          cachedRef.current = handle;
-          setState({ status: 'rate_limited' });
-          return;
-        }
-        cachedRef.current = null;
-        setState({ status: 'error', handle });
-      },
-    );
-  }, []);
+  const write = (next: PeopleSearchState): Effect.Effect<void> =>
+    Effect.sync(() => {
+      setState(next);
+    });
+
+  // The lookup as an Effect. A newer lookup replaces this one, so a stale
+  // answer never reaches the state.
+  const [, lookup] = useAction<string, void, never>(
+    (handle) =>
+      fromApi(() => lookupByHandle(handle)).pipe(
+        Effect.matchEffect({
+          onSuccess: (profile) => {
+            cachedRef.current = handle;
+            return write({ status: 'found', handle, profile });
+          },
+          onFailure: (failure) => {
+            if (failure.status === 404) {
+              cachedRef.current = handle;
+              return write({ status: 'missing', handle });
+            }
+            if (failure.code === 'rate_limited') {
+              cachedRef.current = handle;
+              return write({ status: 'rate_limited' });
+            }
+            cachedRef.current = null;
+            return write({ status: 'error', handle });
+          },
+        }),
+      ),
+    { mode: 'replace' },
+  );
+
+  const startLookup = useCallback(
+    (handle: string) => {
+      if (cachedRef.current === handle) {
+        return;
+      }
+      setState({ status: 'loading', handle });
+      lookup(handle);
+    },
+    [lookup],
+  );
+
+  // The debounce is an Effect too: a new keystroke interrupts the wait, the
+  // same way clearing a timer did.
+  const [, debounce, debounceControls] = useAction<DebouncedStep, void, never>(
+    (step) => Effect.sleep(step.delayMs).pipe(Effect.andThen(Effect.sync(step.run))),
+    { mode: 'replace' },
+  );
 
   // Debounced lookup after the last keystroke. The effect only schedules the
-  // timer; the callback fires the lookup directly, so no setState runs
+  // step; the step writes the state or starts the lookup, so no setState runs
   // synchronously inside the effect.
   useEffect(() => {
     const handle = handleOf(query);
     if (handle === null) {
       cachedRef.current = null;
-      const pending = setTimeout(() => setState({ status: 'idle' }), 0);
-      return () => clearTimeout(pending);
-    }
-    if (handle === '' || !isValidHandleShape(handle)) {
+      debounce({ delayMs: 0, run: () => setState({ status: 'idle' }) });
+    } else if (handle === '' || !isValidHandleShape(handle)) {
       cachedRef.current = null;
-      const next: PeopleSearchState = { status: 'invalid', handle };
-      const pending = setTimeout(() => setState(next), 0);
-      return () => clearTimeout(pending);
+      debounce({ delayMs: 0, run: () => setState({ status: 'invalid', handle }) });
+    } else if (cachedRef.current !== handle) {
+      // A different handle after a 429 is a new search: the cache holds the
+      // last attempted handle, so a changed handle always falls through to
+      // the lookup (the server re-429s if still limited).
+      debounce({ delayMs: PEOPLE_SEARCH_DEBOUNCE_MS, run: () => startLookup(handle) });
     }
-    // A different handle after a 429 is a new search: the cache holds the
-    // last attempted handle, so a changed handle always falls through to
-    // the lookup below (the server re-429s if still limited).
-    if (cachedRef.current === handle) {
-      return;
-    }
-    const pending = setTimeout(() => startLookup(handle), PEOPLE_SEARCH_DEBOUNCE_MS);
-    return () => clearTimeout(pending);
-  }, [query, startLookup]);
+    return () => {
+      debounceControls.interrupt();
+    };
+  }, [query, startLookup, debounce, debounceControls]);
 
   const lookupNow = useCallback(() => {
     const handle = handleOf(query);

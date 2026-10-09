@@ -1,5 +1,8 @@
+import { Effect } from 'effect';
 import { useEffect, useState } from 'react';
 import { listApprovals } from '@/lib/api';
+import { fromApi } from '@/lib/effect/api-effect';
+import { useAction } from '@/lib/effect/use-action';
 
 /** A pending count plus the pending approval ids (handy for callers/tests). */
 export interface PendingApprovalCount {
@@ -13,38 +16,31 @@ export interface PendingApprovalCount {
  * loads when `enabled` flips to `true`, so opening the menu is what triggers
  * the fetch; once loaded, a failed call leaves the previous value in place.
  *
- * The state setter is only called inside the async callback; the effect body
- * itself does not call `setState` (the repo's lint forbids it).
+ * The load runs as an Effect (`useAction`); the count is written from inside
+ * that Effect, and an `enabled` flip back to `false` interrupts a load in flight.
  */
 export function usePendingApprovalCount(enabled: boolean): number | null {
   const [count, setCount] = useState<number | null>(null);
+  const [, load, controls] = useAction<void, void, never>(() =>
+    fromApi(() => listApprovals()).pipe(
+      Effect.map((list) => list.filter((approval) => approval.status === 'pending').length),
+      Effect.matchEffect({
+        onSuccess: (pending) => Effect.sync(() => setCount(pending)),
+        // A failed call leaves the previous value; the badge just stays put.
+        onFailure: () => Effect.void,
+      }),
+    ),
+  );
 
   useEffect(() => {
     if (!enabled) {
       return;
     }
-    let cancelled = false;
-    void listApprovals().then(
-      (list) => {
-        if (cancelled) {
-          return;
-        }
-        let pending = 0;
-        for (const approval of list) {
-          if (approval.status === 'pending') {
-            pending += 1;
-          }
-        }
-        setCount(pending);
-      },
-      () => {
-        // A failed call leaves the previous value; the badge just stays put.
-      },
-    );
+    load();
     return () => {
-      cancelled = true;
+      controls.interrupt();
     };
-  }, [enabled]);
+  }, [enabled, load, controls]);
 
   return count;
 }
