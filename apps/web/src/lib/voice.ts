@@ -1,4 +1,6 @@
 import type { UploadSlot } from '@zilar/xmpp-core';
+import { Effect } from 'effect';
+import { runWeb } from '@/lib/effect/runtime';
 import { API_BASE } from './api';
 
 /** Hard cap on a recording, matching the server's `POST /api/voice` limit. */
@@ -76,38 +78,46 @@ export class VoiceRecorder {
     this.#recorder.start(250);
   }
 
-  static async start(mimeType?: string): Promise<VoiceRecorder> {
-    if (!isVoiceRecordingSupported()) {
-      throw new VoiceError('voice_unsupported', 'This browser cannot record audio');
-    }
-    let stream: MediaStream;
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    } catch (error) {
-      throw voiceErrorFromGetUserMedia(error);
-    }
-    const preferred = mimeType ?? pickRecorderMime();
-    let recorder: MediaRecorder;
-    try {
-      recorder = new MediaRecorder(
-        stream,
-        preferred === undefined ? undefined : { mimeType: preferred },
-      );
-    } catch {
-      // Some browsers reject an explicit mime; let the browser choose.
-      try {
-        recorder = new MediaRecorder(stream);
-      } catch {
-        // Never leave the microphone open (the browser's recording
-        // indicator) when no recorder can be built.
-        for (const track of stream.getTracks()) {
-          track.stop();
-        }
-        throw new VoiceError('voice_unsupported', 'This browser cannot record audio');
-      }
-    }
-    return new VoiceRecorder(recorder, stream);
+  static start(mimeType?: string): Promise<VoiceRecorder> {
+    return runWeb(VoiceRecorder.startEffect(mimeType));
   }
+
+  static readonly startEffect = Effect.fnUntraced(function* (
+    mimeType?: string,
+  ): Effect.fn.Return<VoiceRecorder, VoiceError> {
+    if (!isVoiceRecordingSupported()) {
+      return yield* Effect.fail(
+        new VoiceError('voice_unsupported', 'This browser cannot record audio'),
+      );
+    }
+    const stream = yield* Effect.tryPromise({
+      try: () => navigator.mediaDevices.getUserMedia({ audio: true }),
+      catch: voiceErrorFromGetUserMedia,
+    });
+    const preferred = mimeType ?? pickRecorderMime();
+    // Some browsers reject an explicit mime; the second try lets the browser choose.
+    const recorder = yield* Effect.firstSuccessOf([
+      Effect.try(
+        () =>
+          new MediaRecorder(stream, preferred === undefined ? undefined : { mimeType: preferred }),
+      ),
+      Effect.try(() => new MediaRecorder(stream)),
+    ]).pipe(
+      // Never leave the microphone open (the browser's recording indicator)
+      // when no recorder can be built.
+      Effect.tapError(() =>
+        Effect.sync(() => {
+          for (const track of stream.getTracks()) {
+            track.stop();
+          }
+        }),
+      ),
+      Effect.mapError(
+        () => new VoiceError('voice_unsupported', 'This browser cannot record audio'),
+      ),
+    );
+    return yield* Effect.sync(() => new VoiceRecorder(recorder, stream));
+  });
 
   get durationMs(): number {
     return Date.now() - this.#startedAt;
@@ -121,28 +131,33 @@ export class VoiceRecorder {
     if (this.#stopPromise !== undefined) {
       return this.#stopPromise;
     }
-    this.#stopPromise = new Promise<RecordedVoice>((resolve) => {
-      this.#recorder.onstop = () => {
-        const type = this.#recorder.mimeType === '' ? 'audio/webm' : this.#recorder.mimeType;
-        resolve({
-          blob: new Blob(this.#chunks, { type }),
-          mimeType: type,
-          durationMs: this.durationMs,
-        });
-        this.#release();
-      };
-      this.#recorder.stop();
-    });
+    this.#stopPromise = runWeb(
+      Effect.callback<RecordedVoice>((resume) => {
+        this.#recorder.onstop = () => {
+          const type = this.#recorder.mimeType === '' ? 'audio/webm' : this.#recorder.mimeType;
+          resume(
+            Effect.succeed({
+              blob: new Blob(this.#chunks, { type }),
+              mimeType: type,
+              durationMs: this.durationMs,
+            }),
+          );
+          this.#release();
+        };
+        this.#recorder.stop();
+      }),
+    );
     return this.#stopPromise;
   }
 
   cancel(): void {
-    try {
-      this.#recorder.onstop = null;
-      this.#recorder.stop();
-    } catch {
-      // Stopping an already-stopped recorder is not an error here.
-    }
+    // Stopping an already-stopped recorder is not an error here.
+    Effect.runSync(
+      Effect.try(() => {
+        this.#recorder.onstop = null;
+        this.#recorder.stop();
+      }).pipe(Effect.orElseSucceed(() => undefined)),
+    );
     this.#release();
   }
 
@@ -182,53 +197,60 @@ export interface ConvertedVoice {
   durationMs: number;
 }
 
-async function errorCode(response: Response): Promise<string> {
-  try {
-    const body = (await response.json()) as { error?: { code?: string } };
-    if (typeof body.error?.code === 'string') {
-      return body.error.code;
-    }
-  } catch {
-    // A non-JSON error body falls through to a generic code.
-  }
-  return 'voice_failed';
+// The code in a JSON error body, or a generic one for anything else.
+function errorCodeOf(body: unknown): string {
+  const code = (body as { error?: { code?: unknown } | null } | null)?.error?.code;
+  return typeof code === 'string' ? code : 'voice_failed';
 }
 
+// A non-JSON error body falls through to the generic code.
+const errorCode = (response: Response): Effect.Effect<string> =>
+  Effect.tryPromise(() => response.json() as PromiseLike<unknown>).pipe(
+    Effect.map(errorCodeOf),
+    Effect.orElseSucceed(() => 'voice_failed'),
+  );
+
 /** Sends a recording to the server and gets back AAC/M4A plus its duration. */
-export async function convertVoice(
+export function convertVoice(blob: Blob, fetchFn: typeof fetch = fetch): Promise<ConvertedVoice> {
+  return runWeb(convertVoiceEffect(blob, fetchFn));
+}
+
+export const convertVoiceEffect = Effect.fnUntraced(function* (
   blob: Blob,
-  fetchFn: typeof fetch = fetch,
-): Promise<ConvertedVoice> {
+  fetchFn: typeof fetch,
+): Effect.fn.Return<ConvertedVoice, VoiceError> {
   if (blob.size === 0) {
-    throw new VoiceError('voice_empty', 'The recording is empty');
+    return yield* Effect.fail(new VoiceError('voice_empty', 'The recording is empty'));
   }
   if (blob.size > VOICE_MAX_BYTES) {
-    throw new VoiceError('voice_too_large', 'The recording is too long to send');
+    return yield* Effect.fail(
+      new VoiceError('voice_too_large', 'The recording is too long to send'),
+    );
   }
 
-  let response: Response;
-  try {
-    response = await fetchFn(`${API_BASE}/voice`, {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: { 'content-type': blob.type === '' ? 'application/octet-stream' : blob.type },
-      body: blob,
-    });
-  } catch {
-    throw new VoiceError('network_error', 'Could not reach the server');
-  }
+  const response = yield* Effect.tryPromise({
+    try: () =>
+      fetchFn(`${API_BASE}/voice`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'content-type': blob.type === '' ? 'application/octet-stream' : blob.type },
+        body: blob,
+      }),
+    catch: () => new VoiceError('network_error', 'Could not reach the server'),
+  });
 
   if (!response.ok) {
-    throw new VoiceError(await errorCode(response), 'The server could not convert the recording');
+    const code = yield* errorCode(response);
+    return yield* Effect.fail(new VoiceError(code, 'The server could not convert the recording'));
   }
 
   const durationMs = Number(response.headers.get('x-zilar-duration-ms'));
   if (!Number.isFinite(durationMs) || durationMs <= 0) {
-    throw new VoiceError('invalid_response', 'The server sent no duration');
+    return yield* Effect.fail(new VoiceError('invalid_response', 'The server sent no duration'));
   }
-  const audio = await response.blob();
+  const audio = yield* Effect.promise(() => response.blob());
   return { audio: new Blob([audio], { type: VOICE_MIME }), durationMs };
-}
+});
 
 /** Anything that can hand out a XEP-0363 upload slot. */
 export interface UploadSlotRequester {
@@ -240,32 +262,45 @@ export interface UploadSlotRequester {
 }
 
 /** PUTs the converted bytes to the slot and returns the download URL. */
-export async function uploadVoice(
+export function uploadVoice(
   requester: UploadSlotRequester,
   audio: Blob,
   fetchFn: typeof fetch = fetch,
 ): Promise<string> {
-  const slot = await requester.requestUploadSlot({
-    filename: VOICE_FILENAME,
-    size: audio.size,
-    contentType: VOICE_MIME,
-  });
+  return runWeb(uploadVoiceEffect(requester, audio, fetchFn));
+}
 
-  let response: Response;
-  try {
-    response = await fetchFn(slot.putUrl, {
-      method: 'PUT',
-      headers: { 'content-type': VOICE_MIME, ...slot.headers },
-      body: audio,
-    });
-  } catch {
-    throw new VoiceError('upload_failed', 'Could not upload the recording');
-  }
+// A rejection from `requestUploadSlot` is a defect, so the caller sees the
+// original error; only the PUT failures become a `VoiceError`.
+export const uploadVoiceEffect = Effect.fnUntraced(function* (
+  requester: UploadSlotRequester,
+  audio: Blob,
+  fetchFn: typeof fetch,
+): Effect.fn.Return<string, VoiceError> {
+  const slot = yield* Effect.promise(() =>
+    requester.requestUploadSlot({
+      filename: VOICE_FILENAME,
+      size: audio.size,
+      contentType: VOICE_MIME,
+    }),
+  );
+
+  const response = yield* Effect.tryPromise({
+    try: () =>
+      fetchFn(slot.putUrl, {
+        method: 'PUT',
+        headers: { 'content-type': VOICE_MIME, ...slot.headers },
+        body: audio,
+      }),
+    catch: () => new VoiceError('upload_failed', 'Could not upload the recording'),
+  });
   if (!response.ok) {
-    throw new VoiceError('upload_failed', 'The upload service refused the recording');
+    return yield* Effect.fail(
+      new VoiceError('upload_failed', 'The upload service refused the recording'),
+    );
   }
   return slot.getUrl;
-}
+});
 
 /** The three steps the store needs; injected in tests. */
 export interface VoicePort {
@@ -282,39 +317,55 @@ export const defaultVoicePort: VoicePort = {
  * Peak buckets for the bubble. Decoding uses `AudioContext`; any failure (or a
  * browser without it, like jsdom) falls back to a quiet flat waveform.
  */
-export async function computeWaveform(blob: Blob, buckets = WAVEFORM_BUCKETS): Promise<number[]> {
-  const fallback = Array.from({ length: buckets }, () => 12);
-  const AudioContextCtor = typeof AudioContext === 'undefined' ? undefined : AudioContext;
-  if (AudioContextCtor === undefined) {
-    return fallback;
-  }
-
-  let context: AudioContext | undefined;
-  try {
-    context = new AudioContextCtor();
-    const decoded = await context.decodeAudioData(await blob.arrayBuffer());
-    const channel = decoded.getChannelData(0);
-    const perBucket = Math.max(1, Math.floor(channel.length / buckets));
-    const peaks: number[] = [];
-    for (let bucket = 0; bucket < buckets; bucket += 1) {
-      const start = bucket * perBucket;
-      const end = Math.min(channel.length, start + perBucket);
-      let peak = 0;
-      for (let index = start; index < end; index += 1) {
-        const value = Math.abs(channel[index] ?? 0);
-        if (value > peak) {
-          peak = value;
-        }
-      }
-      peaks.push(Math.min(255, Math.round(peak * 255)));
-    }
-    return peaks;
-  } catch {
-    return fallback;
-  } finally {
-    await context?.close().catch(() => {});
-  }
+export function computeWaveform(blob: Blob, buckets = WAVEFORM_BUCKETS): Promise<number[]> {
+  return runWeb(computeWaveformEffect(blob, buckets));
 }
+
+function peaksOf(decoded: AudioBuffer, buckets: number): number[] {
+  const channel = decoded.getChannelData(0);
+  const perBucket = Math.max(1, Math.floor(channel.length / buckets));
+  const peaks: number[] = [];
+  for (let bucket = 0; bucket < buckets; bucket += 1) {
+    const start = bucket * perBucket;
+    const end = Math.min(channel.length, start + perBucket);
+    let peak = 0;
+    for (let index = start; index < end; index += 1) {
+      const value = Math.abs(channel[index] ?? 0);
+      if (value > peak) {
+        peak = value;
+      }
+    }
+    peaks.push(Math.min(255, Math.round(peak * 255)));
+  }
+  return peaks;
+}
+
+export const computeWaveformEffect = (
+  blob: Blob,
+  buckets = WAVEFORM_BUCKETS,
+): Effect.Effect<number[]> =>
+  Effect.suspend(() => {
+    const fallback = Array.from({ length: buckets }, () => 12);
+    const AudioContextCtor = typeof AudioContext === 'undefined' ? undefined : AudioContext;
+    if (AudioContextCtor === undefined) {
+      return Effect.succeed(fallback);
+    }
+    // The context is closed after every outcome; a failed close is ignored.
+    return Effect.acquireUseRelease(
+      Effect.try(() => new AudioContextCtor()),
+      (context) =>
+        Effect.gen(function* () {
+          const bytes = yield* Effect.tryPromise(() => blob.arrayBuffer());
+          const decoded = yield* Effect.tryPromise(() => context.decodeAudioData(bytes));
+          return yield* Effect.try(() => peaksOf(decoded, buckets));
+        }),
+      (context) =>
+        Effect.suspend(() => {
+          const closing = context.close();
+          return Effect.tryPromise(() => closing).pipe(Effect.ignore);
+        }),
+    ).pipe(Effect.orElseSucceed(() => fallback));
+  });
 
 /**
  * A short synthesized tone as a WAV data URI. Mock chats use it so their voice

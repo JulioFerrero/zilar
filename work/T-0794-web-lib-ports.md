@@ -1,7 +1,7 @@
 ---
 id: T-0794
 title: "WU3: web lib platform ports on Effect — lib/attachments.ts, lib/voice.ts (MediaRecorder), lib/push.ts (service worker); same exported Promise API as Tier B edges, Effect inside"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0794-web-lib-ports
 model: auto
@@ -66,4 +66,49 @@ Run `pnpm effect:map` and list each file's kind, then run the whole web suite on
 
 ## Report (written by the worker when done)
 
+### What I did
+Converted `attachments.ts`, `voice.ts` and `push.ts` to Effect. Every exported name, signature, return type, error class, error message and call order is unchanged; each Promise function is now a plain function returning `runWeb(<effect>)`. The three files now contain no `async`, `await`, `.then(`, JS `try`/`catch`, `setTimeout`, `setInterval` or `new Promise`.
+
+Files changed: `apps/web/src/lib/attachments.ts`, `apps/web/src/lib/voice.ts`, `apps/web/src/lib/push.ts`, and this task file.
+
+- `attachments.ts`: `safeHttpUrl`, `mediaSrc`, `trustedMediaHosts` and `isTrustedMediaUrl` use `parseUrl` from `@zilar/chat-core` instead of `try { new URL }`. `objectUrlFor` is `Effect.runSync(Effect.try(...).pipe(Effect.orElseSucceed(...)))` (the `topicsUi.ts` pattern). `readImageSize` is `runWeb(readImageSizeEffect(...))`: `Effect.acquireUseRelease` creates and always revokes the object URL, `Effect.callback` waits for the image `onload`/`onerror`, and `Effect.timeoutOrElse` replaces the `setTimeout` (a timeout gives `undefined`, detaches the handlers and then revokes). `uploadAttachment` is `uploadAttachmentEffect` with `Effect.fail(new AttachmentError(...))` and `Effect.tryPromise` for the PUT.
+- `voice.ts`: `VoiceRecorder.start` runs `VoiceRecorder.startEffect` (`getUserMedia` through `tryPromise` mapped by `voiceErrorFromGetUserMedia`; the explicit-mime recorder, then the plain one, via `Effect.firstSuccessOf`; the tracks are stopped on the final failure). `stop()` is an `Effect.callback` that registers `onstop` and calls `recorder.stop()` synchronously, as before, and keeps the cached `#stopPromise`. `cancel()` uses `Effect.runSync(Effect.try(...))`. `convertVoice` and `uploadVoice` are Effects; `errorCode` reads the JSON body with `tryPromise` and a total `errorCodeOf`. `computeWaveform` is an `acquireUseRelease` around the `AudioContext`, closed on every outcome, with the flat fallback on any failure.
+- `push.ts`: `realPushBrowser().register`, `ensureServiceWorker`, `currentSubscription`, `subscribeBrowser`, `unsubscribeBrowser`, `updateAppBadge`, `dismissChatNotifications` and `useInstallPrompt().promptInstall` run through `runWeb`. `isStandaloneDisplay` uses `Effect.runSync(Effect.try(...))`. The plain `Error`s (`notification permission X`, `no service worker registration`, `the browser subscription has no keys`) are now `Effect.fail(new Error(...))`, so the rejection is the same class and message.
+- Rejections of the injected or browser promises (`requestUploadSlot`, `getRegistration`, `unsubscribe`, `response.blob()`, ...) are lifted with `Effect.promise`, so they are defects and `runPromise` rejects with the original object (checked: `rejects.toBe(boom)`).
+- Added exports (Effect versions for later callers): `readImageSizeEffect`, `uploadAttachmentEffect`, `VoiceRecorder.startEffect`, `convertVoiceEffect`, `uploadVoiceEffect`, `computeWaveformEffect`, and the type `ImageSize`. Nothing existing was removed or renamed.
+
+### Tests
+- Before (main): `pnpm --filter @zilar/web test --reporter=dot src/lib/attachments src/lib/voice src/lib/push`: 3 files, 55 tests passed.
+- After: same command: 3 files, 55 tests passed. No existing test was edited.
+- Whole web suite (`pnpm --filter @zilar/web test --maxWorkers=4 --reporter=dot`): 172 files passed, 1845 tests passed.
+- Extra proof (not committed, written in the session scratch directory outside the repo): 23 characterization tests for the paths the existing tests do not cover (`VoiceRecorder` start/stop/cancel with a fake `MediaRecorder` including that `recorder.stop()` runs synchronously inside `stop()`, the second-recorder fallback, tracks stopped, a throwing `stop`; `convertVoice` error bodies `null`, non-JSON, `{"error":null}`, numeric code; `computeWaveform` success, decode failure, constructor failure, failing `close`; `readImageSize` timeout with detach and revoke; push subscribe, reuse, missing keys, unsubscribe rejection, `register` mapping, best-effort dismissal, badge `this` binding and sync throw). The same 23 tests pass on the original code (checked with `git stash`) and on the converted code, so they show no difference.
+- `pnpm effect:map`: `attachments.ts` effect, `voice.ts` effect, `push.ts` effect; all three have no remaining signals and are not Tier B.
+
+### Behaviour differences
+None for any real browser or caller. Two theoretical ones, both only on a broken browser object: (1) `readImageSize` when `URL.revokeObjectURL` itself throws: the old code threw inside an event handler and the promise never settled; now it rejects with that error. (2) The `register` in `realPushBrowser` used to throw synchronously if `serviceWorker.register` threw; it now returns a rejected promise (every caller awaits it inside an async function or `Effect.promise`).
+Timing: `runWeb` starts the effect synchronously (checked), so `recorder.start`, `recorder.stop()`, the size checks and the first call into `requestUploadSlot`/`fetch` happen in the same order; the settled promise can take a few more microtasks than an `async` function.
+
+### Gate
+```
+gate: 3 changed file(s) against main
+PASS  install (frozen)
+PASS  format
+PASS  lint
+PASS  typecheck
+PASS  effect
+PASS  tests @zilar/web
+scope: every changed file is inside the Allowed files
+GATE PASS
+```
+
+### Unsure
+Nothing blocking; the vitest warning "vi.fn() mock did not use 'function' or 'class'" in `voice.test.ts` comes from the existing test's mock constructor and is unchanged.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Sonnet 5.5. The lead reviewed the Report.
+- **The files:** all three are Effect files with the same exported API, plus `*Effect` exports for later callers.
+- **`recorder.stop()`** still runs synchronously inside `stop()`.
+- **Extra checks:** 23 characterization tests passed on both the old and the new code (not committed).
+- **Results:** 55 tests and the whole web suite (1845) pass; the gate passed.
+- **Live check:** Julio checks voice and push on live before the next deploy.
